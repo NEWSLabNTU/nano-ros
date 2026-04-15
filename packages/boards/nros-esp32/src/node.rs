@@ -4,7 +4,7 @@
 //! features, then calls user code with the configuration. Users create their
 //! own `nros` executor and node inside the callback.
 //!
-//! When the `wifi` feature is enabled, uses `zpico-smoltcp` for socket
+//! When the `wifi` feature is enabled, uses `nros-smoltcp` for socket
 //! management and `esp-radio` for WiFi.
 //!
 //! When the `serial` feature is enabled, zenoh-pico's built-in ESP-IDF
@@ -22,7 +22,7 @@ use esp_hal::time::Instant;
 #[cfg(feature = "wifi")]
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiDevice};
 #[cfg(feature = "wifi")]
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 #[cfg(feature = "wifi")]
 use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "wifi")]
@@ -59,7 +59,7 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 /// Helper to create a socket set with pre-allocated storage
 #[cfg(feature = "wifi")]
 unsafe fn create_socket_set() -> SocketSet<'static> {
-    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
+    let storage = unsafe { nros_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
@@ -291,8 +291,8 @@ pub fn init_hardware(config: &NodeConfig) {
 
         // Create and register TCP + UDP sockets via transport crate
         unsafe {
-            zpico_smoltcp::create_and_register_sockets(sockets);
-            zpico_smoltcp::create_and_register_udp_sockets(sockets);
+            nros_smoltcp::create_and_register_sockets(sockets);
+            nros_smoltcp::create_and_register_udp_sockets(sockets);
         }
 
         // Store global state for poll callback (via zpico-platform-esp32)
@@ -304,7 +304,7 @@ pub fn init_hardware(config: &NodeConfig) {
                 wifi_dev as *mut WifiDevice as *mut (),
             );
 
-            zpico_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
+            nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
         }
 
         // Prevent wifi_controller and radio_controller from being dropped

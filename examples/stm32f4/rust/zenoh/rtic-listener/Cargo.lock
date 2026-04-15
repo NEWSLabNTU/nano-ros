@@ -741,11 +741,11 @@ dependencies = [
  "defmt 0.3.100",
  "nros-platform",
  "nros-platform-stm32f4",
+ "nros-smoltcp",
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
  "zpico-platform-shim",
- "zpico-smoltcp",
 ]
 
 [[package]]
@@ -1470,13 +1470,6 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "nros-platform",
-]
-
-[[package]]
-name = "zpico-smoltcp"
-version = "0.1.0"
-dependencies = [
- "nros-smoltcp",
 ]
 
 [[package]]

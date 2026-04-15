@@ -14,8 +14,8 @@ nros-platform-stm32f4 = { path = "../nros-platform-stm32f4" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4"] }
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
 
-# TCP link layer via smoltcp (ethernet only)
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
+# smoltcp network provider (ethernet only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
 
 # Cortex-M runtime
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
@@ -47,7 +47,7 @@ defmt = "0.3"
 [features]
 default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
-ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:stm32-eth", "dep:smoltcp"]
+ethernet = ["dep:nros-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
 # Serial transport via USART
 serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
 

@@ -334,7 +334,6 @@ format-c:
     echo "Formatting C code..."
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format -i
     clang-format -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
-    clang-format -i packages/zpico/zpico-smoltcp/c/*.c packages/zpico/zpico-smoltcp/c/*.h
     find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format -i
     echo "C code formatted."
 
@@ -359,8 +358,7 @@ check-c:
     echo "  - clang-format (nros-c headers)"
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format --dry-run --Werror
     echo "  - clang-format (zpico C)"
-    clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h \
-        packages/zpico/zpico-smoltcp/c/*.c packages/zpico/zpico-smoltcp/c/*.h
+    clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
     find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format --dry-run --Werror
     echo "  - syntax (nros-c umbrella header)"

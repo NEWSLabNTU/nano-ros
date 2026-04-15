@@ -134,8 +134,6 @@ exclude = [
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/nros-smoltcp",
-    # smoltcp link layer for zenoh-pico (embedded-only, requires cross-compilation)
-    "packages/zpico/zpico-smoltcp",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)

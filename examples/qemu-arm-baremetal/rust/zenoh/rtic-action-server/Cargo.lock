@@ -528,10 +528,10 @@ dependencies = [
  "lan9118-smoltcp",
  "nros-platform",
  "nros-platform-mps2-an385",
+ "nros-smoltcp",
  "panic-semihosting",
  "smoltcp",
  "zpico-platform-shim",
- "zpico-smoltcp",
 ]
 
 [[package]]
@@ -1215,13 +1215,6 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "nros-platform",
-]
-
-[[package]]
-name = "zpico-smoltcp"
-version = "0.1.0"
-dependencies = [
- "nros-smoltcp",
 ]
 
 [[package]]

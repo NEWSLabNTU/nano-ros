@@ -93,14 +93,16 @@ pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: c_ulong) {
 }
 
 // ============================================================================
-// Memory
-// smoltcp transport clock (used by zpico-smoltcp for TCP/IP timestamping)
+// smoltcp bridge symbols (bare-metal only — called from zpico.c)
+// smoltcp_clock_now_ms is always needed (nros-smoltcp links against it).
+// smoltcp_init/cleanup/poll are only needed when ZPICO_SMOLTCP is defined.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     P::clock_ms()
 }
 
 // ============================================================================
+// Memory
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_malloc(size: usize) -> *mut c_void {
@@ -401,74 +403,7 @@ pub extern "C" fn _z_condvar_wait_until(
     P::condvar_wait_until(cv as *mut c_void, m as *mut c_void, t)
 }
 
-// ============================================================================
-// Socket helpers (bare-metal only — RTOS platforms provide these in C network.c)
-// ============================================================================
-
-#[cfg(feature = "socket-stubs")]
-mod socket_stubs {
-    use core::ffi::c_void;
-
-    #[repr(C)]
-    pub struct ZSysNetSocket {
-        pub _handle: i8,
-        pub _connected: bool,
-    }
-
-    #[repr(C)]
-    pub struct ZMutexRecRef {
-        _unused: u8,
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_set_non_blocking(_sock: *const ZSysNetSocket) -> i8 {
-        0
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_accept(
-        _sock_in: *const ZSysNetSocket,
-        _sock_out: *mut ZSysNetSocket,
-    ) -> i8 {
-        -1 // Not supported — client-mode only
-    }
-
-    #[cfg(feature = "smoltcp")]
-    #[unsafe(no_mangle)]
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
-        unsafe extern "C" {
-            fn _z_close_tcp(sock: *mut ZSysNetSocket);
-        }
-        if sock.is_null() {
-            return;
-        }
-        let handle = unsafe { (*sock)._handle };
-        if handle >= 0 {
-            unsafe { _z_close_tcp(sock) };
-        }
-    }
-
-    #[cfg(not(feature = "smoltcp"))]
-    #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_close(_sock: *mut ZSysNetSocket) {}
-
-    #[cfg(feature = "smoltcp")]
-    #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
-        unsafe extern "C" {
-            fn smoltcp_poll() -> i32;
-        }
-        unsafe { smoltcp_poll() };
-        0
-    }
-
-    #[cfg(not(feature = "smoltcp"))]
-    #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
-        0
-    }
-}
+// (socket_stubs module removed — replaced by `network` feature forwarders)
 
 // ============================================================================
 // Networking — TCP forwarders (Phase 80)
@@ -741,5 +676,39 @@ mod net_mcast {
             len,
             &rep as *const ZSysNetEndpoint as *const c_void,
         )
+    }
+}
+
+// ============================================================================
+// smoltcp bridge FFI (bare-metal only — called from zpico.c when ZPICO_SMOLTCP)
+// ============================================================================
+
+#[cfg(feature = "network")]
+mod net_smoltcp_bridge {
+    unsafe extern "C" {
+        fn nros_smoltcp_is_initialized() -> bool;
+        fn nros_smoltcp_init();
+        fn nros_smoltcp_do_poll() -> i32;
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn smoltcp_init() -> i32 {
+        unsafe {
+            if nros_smoltcp_is_initialized() {
+                return 0;
+            }
+            nros_smoltcp_init();
+        }
+        0
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn smoltcp_cleanup() {
+        // Static allocations — nothing to clean up
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn smoltcp_poll() -> i32 {
+        unsafe { nros_smoltcp_do_poll() }
     }
 }

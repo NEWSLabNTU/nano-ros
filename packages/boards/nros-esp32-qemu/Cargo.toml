@@ -14,8 +14,8 @@ nros-platform-esp32-qemu = { path = "../nros-platform-esp32-qemu" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32-qemu"] }
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
 
-# TCP link layer via smoltcp (ethernet only)
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
+# smoltcp network provider (ethernet only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
 # OpenCores Ethernet MAC driver (for QEMU open_eth NIC, ethernet only)
 openeth-smoltcp = { path = "../../drivers/openeth-smoltcp", optional = true }
 # Network stack (ethernet only)
@@ -39,6 +39,6 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 [features]
 default = ["ethernet"]
 # Ethernet transport via OpenETH + smoltcp
-ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:openeth-smoltcp", "dep:smoltcp"]
+ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)
 serial = []

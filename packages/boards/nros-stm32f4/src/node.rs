@@ -1,6 +1,6 @@
 //! Platform initialization and `run()` entry point for STM32F4.
 //!
-//! Uses `zpico-smoltcp` for socket management and `stm32-eth` for Ethernet
+//! Uses `nros-smoltcp` for socket management and `stm32-eth` for Ethernet
 //! when the `ethernet` feature is enabled, or `zpico-serial` for UART serial
 //! when the `serial` feature is enabled.
 
@@ -29,7 +29,7 @@ use stm32_eth::{
     dma::{RxRingEntry, TxRingEntry},
 };
 #[cfg(feature = "ethernet")]
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 #[cfg(feature = "ethernet")]
 use nros_platform_stm32f4::phy;
 
@@ -354,7 +354,7 @@ unsafe fn setup_hardware(
         );
 
         // Create socket set from transport crate's pre-allocated storage
-        let storage = unsafe { zpico_smoltcp::get_socket_storage() };
+        let storage = unsafe { nros_smoltcp::get_socket_storage() };
         let sockets = SocketSet::new(&mut storage[..]);
 
         // Move into static storage so pointers remain valid
@@ -374,8 +374,8 @@ unsafe fn setup_hardware(
         // Create and register TCP + UDP sockets via transport crate
         let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
         unsafe {
-            zpico_smoltcp::create_and_register_sockets(sockets);
-            zpico_smoltcp::create_and_register_udp_sockets(sockets);
+            nros_smoltcp::create_and_register_sockets(sockets);
+            nros_smoltcp::create_and_register_udp_sockets(sockets);
         }
 
         // Store global state for poll callback (in zpico-platform-stm32f4)
@@ -388,7 +388,7 @@ unsafe fn setup_hardware(
                 dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
             );
 
-            zpico_smoltcp::set_poll_callback(
+            nros_smoltcp::set_poll_callback(
                 crate::network::smoltcp_network_poll,
             );
         }

@@ -1095,11 +1095,11 @@ dependencies = [
  "esp-println",
  "nros-platform",
  "nros-platform-esp32-qemu",
+ "nros-smoltcp",
  "openeth-smoltcp",
  "portable-atomic",
  "smoltcp",
  "zpico-platform-shim",
- "zpico-smoltcp",
 ]
 
 [[package]]
@@ -1964,14 +1964,6 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "nros-platform",
-]
-
-[[package]]
-name = "zpico-smoltcp"
-version = "0.1.0"
-dependencies = [
- "nros-smoltcp",
- "zpico-sys",
 ]
 
 [[package]]

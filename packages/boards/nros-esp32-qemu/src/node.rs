@@ -1,6 +1,6 @@
 //! Platform initialization and `run()` entry point for ESP32-C3 QEMU.
 //!
-//! Uses `zpico-smoltcp` for socket management and `openeth-smoltcp` for
+//! Uses `nros-smoltcp` for socket management and `openeth-smoltcp` for
 //! Ethernet when the `ethernet` feature is enabled, or zenoh-pico's
 //! built-in serial when the `serial` feature is enabled.
 
@@ -32,7 +32,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 #[cfg(feature = "ethernet")]
 use nros_platform_esp32_qemu::clock;
 #[cfg(feature = "ethernet")]
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 
 // Static storage for network objects (initialized by init_hardware, must
 // outlive the function call so set_network_state pointers remain valid).
@@ -46,7 +46,7 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 /// Helper to create a socket set with pre-allocated storage
 #[cfg(feature = "ethernet")]
 unsafe fn create_socket_set() -> SocketSet<'static> {
-    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
+    let storage = unsafe { nros_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
@@ -118,8 +118,8 @@ fn init_ethernet(config: &Config) {
     // Create and register TCP + UDP sockets via transport crate
     let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
     unsafe {
-        zpico_smoltcp::create_and_register_sockets(sockets);
-        zpico_smoltcp::create_and_register_udp_sockets(sockets);
+        nros_smoltcp::create_and_register_sockets(sockets);
+        nros_smoltcp::create_and_register_udp_sockets(sockets);
     }
 
     // Store global state for poll callback
@@ -131,7 +131,7 @@ fn init_ethernet(config: &Config) {
             eth as *mut OpenEth as *mut (),
         );
 
-        zpico_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
+        nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
     }
 
     esp_println::println!("Ethernet ready.");

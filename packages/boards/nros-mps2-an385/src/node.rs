@@ -1,6 +1,6 @@
 //! Platform initialization and `run()` entry point for QEMU bare-metal.
 //!
-//! Uses `zpico-smoltcp` for socket management and `lan9118-smoltcp` for
+//! Uses `nros-smoltcp` for socket management and `lan9118-smoltcp` for
 //! Ethernet when the `ethernet` feature is enabled, or `zpico-serial` +
 //! `cmsdk-uart` for UART serial when the `serial` feature is enabled.
 
@@ -35,7 +35,7 @@ use smoltcp::phy::Device;
 #[cfg(feature = "ethernet")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 #[cfg(feature = "ethernet")]
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 
 #[cfg(feature = "ethernet")]
 static mut ETH_DEVICE: MaybeUninit<Lan9118> = MaybeUninit::uninit();
@@ -97,7 +97,7 @@ fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
 #[cfg(feature = "ethernet")]
 /// Helper to create a socket set with pre-allocated storage
 unsafe fn create_socket_set() -> SocketSet<'static> {
-    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
+    let storage = unsafe { nros_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
@@ -158,7 +158,7 @@ fn init_network<D: EthernetDevice + 'static>(
     // ARM semihosting SYS_TIME for real entropy that varies between runs.
     let host_time = semihosting_time() as u16;
     let ip_byte = config.ip[3] as u16;
-    zpico_smoltcp::seed_ephemeral_port(host_time.wrapping_add(ip_byte.wrapping_mul(251)));
+    nros_smoltcp::seed_ephemeral_port(host_time.wrapping_add(ip_byte.wrapping_mul(251)));
 
     // Seed RNG with IP to avoid zenoh ID collisions
     let ip_seed = u32::from_be_bytes(config.ip);
@@ -166,8 +166,8 @@ fn init_network<D: EthernetDevice + 'static>(
 
     // Create and register TCP + UDP sockets via transport crate
     unsafe {
-        zpico_smoltcp::create_and_register_sockets(sockets);
-        zpico_smoltcp::create_and_register_udp_sockets(sockets);
+        nros_smoltcp::create_and_register_sockets(sockets);
+        nros_smoltcp::create_and_register_udp_sockets(sockets);
     }
 
     // Store global state for poll callback
@@ -178,7 +178,7 @@ fn init_network<D: EthernetDevice + 'static>(
             eth as *mut D as *mut (),
         );
 
-        zpico_smoltcp::set_poll_callback(network::smoltcp_network_poll);
+        nros_smoltcp::set_poll_callback(network::smoltcp_network_poll);
 
         // Register the network poll as the sleep callback so busy-wait
         // sleep polls the network stack to avoid missing packets.

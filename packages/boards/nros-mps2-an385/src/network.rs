@@ -1,14 +1,14 @@
 //! Network poll callback and global state for MPS2-AN385.
 //!
 //! Provides the `smoltcp_network_poll()` FFI callback invoked by
-//! zpico-smoltcp during network operations. The board crate calls
+//! nros-smoltcp during network operations. The board crate calls
 //! `set_network_state()` during init to populate the globals.
 
 use core::ptr;
 
 use lan9118_smoltcp::Lan9118;
 use smoltcp::iface::{Interface, SocketSet};
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 
 // Global state for poll callback
 static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();
@@ -45,7 +45,7 @@ pub unsafe fn clear_network_state() {
     }
 }
 
-/// Network poll callback called by zpico-smoltcp's `smoltcp_poll()`.
+/// Network poll callback called by nros-smoltcp's `smoltcp_poll()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn smoltcp_network_poll() {
     unsafe {

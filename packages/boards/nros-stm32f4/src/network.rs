@@ -1,14 +1,14 @@
 //! Network poll callback and global state for STM32F4
 //!
 //! Provides the `smoltcp_network_poll()` FFI callback invoked by
-//! zpico-smoltcp during network operations. The board crate (nros-stm32f4)
+//! nros-smoltcp during network operations. The board crate (nros-stm32f4)
 //! calls `set_network_state()` during init to populate the globals.
 
 use core::ptr;
 
 use smoltcp::iface::{Interface, SocketSet};
 use stm32_eth::dma::EthernetDMA;
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 
 // Global state for poll callback
 static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();

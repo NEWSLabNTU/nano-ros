@@ -16,7 +16,7 @@
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-stm32f4` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `nros-smoltcp`
 //! (Ethernet) or `zpico-serial` (serial) for the link layer.
 
 #![no_std]

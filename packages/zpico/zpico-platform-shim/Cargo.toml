@@ -14,10 +14,6 @@ default = []
 # platform-* features, activated by the board crate via Cargo feature unification.
 active = []
 
-# Networking via smoltcp (bare-metal ethernet)
-smoltcp = ["socket-stubs"]
-# Provide _z_socket_* stubs (bare-metal only — RTOS network.c provides these)
-socket-stubs = []
 # Skip _z_task_* symbols (ThreadX provides them in C due to struct layout dependency)
 skip-task-symbols = []
 # Skip z_clock_* symbols (NuttX: zenoh-pico uses struct timespec clock type,

@@ -62,8 +62,8 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import zpico-smoltcp for TCP bridge
-use zpico_smoltcp::SmoltcpBridge;
+// Import nros-smoltcp for TCP bridge
+use nros_smoltcp::SmoltcpBridge;
 
 // ============================================================================
 // Network Configuration
@@ -92,7 +92,7 @@ const RX_DESC_COUNT: usize = 4;
 /// Number of TX DMA descriptors
 const TX_DESC_COUNT: usize = 4;
 
-/// Maximum number of sockets (matches zpico-smoltcp::MAX_SOCKETS)
+/// Maximum number of sockets (matches nros-smoltcp::MAX_SOCKETS)
 #[allow(dead_code)] // Used in documentation only; actual value comes from link crate
 const MAX_SOCKETS: usize = 4;
 
@@ -111,7 +111,7 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 // Clock state for smoltcp_clock_now_ms (updated by main loop)
 static mut CLOCK_MS: u64 = 0;
 
-/// Provide the millisecond clock for zpico-smoltcp's bridge.
+/// Provide the millisecond clock for nros-smoltcp's bridge.
 /// Called internally by `SmoltcpBridge::poll()` for smoltcp timestamping.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
@@ -298,11 +298,11 @@ fn main() -> ! {
     );
 
     // Create socket set using link crate's pre-allocated storage
-    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
+    let storage = unsafe { nros_smoltcp::get_socket_storage() };
     let mut sockets = SocketSet::new(&mut storage[..]);
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Initialize zpico-smoltcp bridge
+    // Initialize nros-smoltcp bridge
     // ═══════════════════════════════════════════════════════════════════════
 
     info!("Initializing smoltcp bridge...");
@@ -310,10 +310,10 @@ fn main() -> ! {
     SmoltcpBridge::init();
 
     // Create TCP sockets and register with the bridge
-    unsafe { zpico_smoltcp::create_and_register_sockets(&mut sockets) };
+    unsafe { nros_smoltcp::create_and_register_sockets(&mut sockets) };
 
     // Set the network poll callback (no-op — polling is done in main loop)
-    zpico_smoltcp::set_poll_callback(network_poll_callback);
+    nros_smoltcp::set_poll_callback(network_poll_callback);
 
     info!("smoltcp bridge initialized");
 

@@ -17,7 +17,7 @@
 //!
 //! This crate depends on `nros-platform-mps2-an385` for system primitives
 //! (clock, memory, RNG) and `zpico-platform-shim` for zenoh-pico FFI
-//! symbols. Transport layer is provided by `zpico-smoltcp` (Ethernet)
+//! symbols. Transport layer is provided by `nros-smoltcp` (Ethernet)
 //! or `zpico-serial` (serial).
 
 #![no_std]

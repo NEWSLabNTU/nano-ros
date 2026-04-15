@@ -1,14 +1,14 @@
 //! Network poll callback and global state for ESP32-C3 QEMU
 //!
 //! Provides the `smoltcp_network_poll()` FFI callback invoked by
-//! zpico-smoltcp during network operations. The board crate (nros-esp32-qemu)
+//! nros-smoltcp during network operations. The board crate (nros-esp32-qemu)
 //! calls `set_network_state()` during init to populate the globals.
 
 use core::ptr;
 
 use openeth_smoltcp::OpenEth;
 use smoltcp::iface::{Interface, SocketSet};
-use zpico_smoltcp::SmoltcpBridge;
+use nros_smoltcp::SmoltcpBridge;
 
 // Global state for poll callback
 static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();

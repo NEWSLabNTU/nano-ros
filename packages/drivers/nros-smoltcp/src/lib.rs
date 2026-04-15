@@ -2,7 +2,7 @@
 //!
 //! Provides [`SmoltcpBridge`] for managing TCP and UDP socket state and data
 //! transfer via smoltcp on bare-metal systems. This crate is RMW-agnostic —
-//! it can be used by zenoh-pico (via zpico-smoltcp), XRCE-DDS, or any other
+//! it can be used by zenoh-pico (via nros-smoltcp), XRCE-DDS, or any other
 //! middleware that needs TCP/UDP networking.
 //!
 //! # Usage
@@ -190,4 +190,23 @@ pub unsafe fn create_and_register_udp_sockets(sockets: &mut SocketSet<'static>) 
         let handle_raw: usize = unsafe { core::mem::transmute(handle) };
         SmoltcpBridge::register_udp_socket(handle_raw);
     }
+}
+
+// ============================================================================
+// FFI exports for cross-crate linking (called by zpico-platform-shim)
+// ============================================================================
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_smoltcp_is_initialized() -> bool {
+    SmoltcpBridge::is_initialized()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_smoltcp_init() {
+    SmoltcpBridge::init();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_smoltcp_do_poll() -> i32 {
+    do_poll()
 }

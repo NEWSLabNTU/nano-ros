@@ -13,7 +13,7 @@
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-esp32-qemu` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `nros-smoltcp`
 //! (Ethernet) or zenoh-pico's built-in serial for the link layer.
 
 #![no_std]

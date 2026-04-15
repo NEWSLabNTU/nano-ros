@@ -14,8 +14,8 @@ nros-platform-mps2-an385 = { path = "../nros-platform-mps2-an385" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385"] }
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
 
-# TCP link layer via smoltcp (ethernet only)
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
+# smoltcp network provider (ethernet only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
 # LAN9118 Ethernet driver for QEMU MPS2-AN385 (ethernet only)
 lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp", optional = true }
 # smoltcp network stack (ethernet only)
@@ -42,10 +42,10 @@ panic-semihosting = "0.6"
 [features]
 default = ["ethernet"]
 # Ethernet transport via LAN9118 + smoltcp
-ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:lan9118-smoltcp", "dep:smoltcp"]
+ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART
 serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
-link-tls = ["zpico-smoltcp/link-tls", "nros-platform-mps2-an385/link-tls"]
+link-tls = ["nros-platform-mps2-an385/link-tls"]

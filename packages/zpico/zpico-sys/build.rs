@@ -1403,11 +1403,8 @@ fn build_zenoh_pico_embedded(
         }
         build.include(&mbedtls_include);
 
-        // zpico-smoltcp provides the bare-metal mbedTLS config header
-        let smoltcp_c_dir = zpico_sys_dir.join("../zpico-smoltcp/c");
-        if smoltcp_c_dir.exists() {
-            build.include(&smoltcp_c_dir);
-        }
+        // Bare-metal mbedTLS config header (TLS support deferred)
+        // Previously in zpico-smoltcp/c/, will be relocated when TLS is implemented.
         build.define("MBEDTLS_CONFIG_FILE", "\"mbedtls_config.h\"");
 
         // Compile mbedTLS library sources (excluding POSIX-only files)
@@ -1424,17 +1421,8 @@ fn build_zenoh_pico_embedded(
             }
         }
 
-        // TLS platform symbols (bare-metal implementation via smoltcp)
-        let tls_src = smoltcp_c_dir.join("tls_bare_metal.c");
-        if tls_src.exists() {
-            build.file(&tls_src);
-        }
-
-        // Entropy source (DWT-based, weak symbol)
-        let entropy_src = smoltcp_c_dir.join("entropy_bare_metal.c");
-        if entropy_src.exists() {
-            build.file(&entropy_src);
-        }
+        // TLS platform symbols and entropy source (bare-metal)
+        // Previously in zpico-smoltcp/c/. Will be relocated when TLS is implemented.
     }
 
     // Embedded-optimized compiler flags
