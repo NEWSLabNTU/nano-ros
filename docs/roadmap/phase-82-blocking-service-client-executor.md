@@ -6,7 +6,7 @@ blocks, the caller must pass an executor and the API must spin that executor*.
 The action client already follows this; the service client does not, and the
 inconsistency is observable across all three language bindings.
 
-**Status**: Not Started
+**Status**: In Progress (82.2–82.6, 82.10 C examples done)
 **Priority**: Medium — soundness fix, no functional regression on currently
 passing tests, but blocks future "service-call from a callback" use cases.
 **Depends on**: Phase 77 (executor-spin pattern for blocking helpers)
@@ -297,7 +297,7 @@ pub unsafe extern "C" fn nros_executor_add_client(executor, client) {
     let handle = rust_exec.add_service_client_raw(name, type, hash, /*cb trampoline*/)?;
     let internal = client._internal.as_mut::<ClientInternal>();
     internal.handle = Some(handle);
-    internal.executor_ptr = executor._opaque.as_mut_ptr() as *mut c_void;
+    internal.executor_ptr = executor as *mut _ as *mut c_void;  // outer nros_executor_t*
     NROS_RET_OK
 }
 
@@ -738,7 +738,7 @@ subscription callback and asserts `Reentrant`.
     and Phase 82 (service client). Confirm via grep that no other public
     API violates the rule.
 
-- [ ] 82.2 — C: defer `nros_client_init` transport creation
+- [x] 82.2 — C: defer `nros_client_init` transport creation
   - **Files**: `packages/core/nros-c/src/service.rs` (lines 424–548),
     `packages/core/nros-c/src/types.rs` (or wherever `nros_client_t` is
     defined — add `_internal: [u64; N]` opaque storage like
@@ -749,17 +749,17 @@ subscription callback and asserts `Reentrant`.
     call moves to `nros_executor_add_client`. Mirrors `nros_service_init`'s
     existing deferral pattern.
 
-- [ ] 82.3 — C: add `nros_executor_add_client`
+- [x] 82.3 — C: add `nros_executor_add_client`
   - **Files**: `packages/core/nros-c/src/executor.rs`,
     `packages/core/nros-c/include/nros/executor.h`
   - **Goal**: Mirror `nros_executor_add_service`. Calls
     `Executor::add_service_client_raw_sized(...)` (new — see 82.4) on the
     Rust side, captures the returned handle into `ClientInternal.handle`,
-    and stashes `executor._opaque.as_mut_ptr()` into
-    `ClientInternal.executor_ptr`. Rejects double-registration. Increments
+    and stashes the outer `nros_executor_t*` into
+    `ServiceClientInternal.executor_ptr`. Rejects double-registration. Increments
     `executor.handle_count`.
 
-- [ ] 82.4 — nros-node: add `Executor::add_service_client_raw_sized`
+- [x] 82.4 — nros-node: add `Executor::add_service_client_raw_sized`
   - **Files**: `packages/core/nros-node/src/executor/handles.rs`,
     `packages/core/nros-node/src/executor/arena.rs`
   - **Goal**: Service clients are not currently arena entries. Add a
@@ -769,7 +769,7 @@ subscription callback and asserts `Reentrant`.
     `ActionClientRawArenaEntry::action_client_raw_try_process`. Returns a
     `ServiceClientRawHandle { entry_index }`.
 
-- [ ] 82.5 — C: add the async pair + setters
+- [x] 82.5 — C: add the async pair + setters
   - **Files**: `packages/core/nros-c/src/service.rs`,
     `packages/core/nros-c/include/nros/client.h`
   - **Goal**: Public API additions:
@@ -781,7 +781,7 @@ subscription callback and asserts `Reentrant`.
       calls `zpico_get_check`. Returns `NROS_RET_NOT_READY` if pending,
       `NROS_RET_OK` with payload on success.
 
-- [ ] 82.6 — C: rewrite `nros_client_call` on the spin-loop pattern
+- [x] 82.6 — C: rewrite `nros_client_call` on the spin-loop pattern
   - **Files**: `packages/core/nros-c/src/service.rs:602` (the existing
     `nros_client_call`)
   - **Goal**: Same external signature. Internally:
@@ -824,7 +824,7 @@ subscription callback and asserts `Reentrant`.
     `try_recv_reply_raw` for one release. Verify no in-tree caller routes
     through it (`grep call_raw`).
 
-- [ ] 82.10 — Update C and C++ examples + tests
+- [x] 82.10 — Update C examples for new lifecycle (C++ pending 82.14–82.16)
   - **Files**: `examples/*/c/zenoh/service-client/src/main.c`,
     `examples/*/cpp/zenoh/service-client/src/main.cpp`,
     `packages/testing/nros-tests/tests/services.rs`,
