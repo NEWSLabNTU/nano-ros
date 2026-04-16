@@ -138,6 +138,8 @@ exclude = [
     "packages/drivers/freertos-lwip-sys",
     # NetX Duo BSD socket bindings for ThreadX (requires THREADX_DIR + NETX_DIR)
     "packages/drivers/threadx-netx-sys",
+    # NuttX POSIX socket bindings (requires NUTTX_DIR)
+    "packages/drivers/nuttx-sys",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)

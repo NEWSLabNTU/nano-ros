@@ -1,0 +1,13 @@
+[package]
+name = "nuttx-sys"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Bindgen-generated FFI bindings for NuttX POSIX sockets"
+publish = false
+
+[lib]
+name = "nuttx_sys"
+
+[build-dependencies]
+bindgen = "0.72"
