@@ -6,7 +6,7 @@ blocks, the caller must pass an executor and the API must spin that executor*.
 The action client already follows this; the service client does not, and the
 inconsistency is observable across all three language bindings.
 
-**Status**: In Progress (82.1–82.18 done; 82.19–82.20 example rewrites remaining)
+**Status**: Complete
 **Priority**: Medium — soundness fix, no functional regression on currently
 passing tests, but blocks future "service-call from a callback" use cases.
 **Depends on**: Phase 77 (executor-spin pattern for blocking helpers)
@@ -909,7 +909,7 @@ subscription callback and asserts `Reentrant`.
     `ErrorCode::Reentrant` immediately if a callback re-enters. Add a
     regression test alongside the C reentrancy test (work item 82.11).
 
-- [ ] 82.19 — Update C++ action-client examples for Future pattern
+- [x] 82.19 — Update C++ action-client examples for Future pattern
   - **Files**: `examples/native/cpp/zenoh/action-client/src/main.cpp`,
     `examples/qemu-arm-freertos/cpp/zenoh/action-client/src/main.cpp`,
     `examples/zephyr/cpp/zenoh/action-client/src/main.cpp`
@@ -919,7 +919,7 @@ subscription callback and asserts `Reentrant`.
     returning `Future<ResultStatus>`. Use `Future::wait(executor, ...)`
     with explicit executor. 3 examples.
 
-- [ ] 82.20 — Update C++ listener examples for Stream pattern
+- [x] 82.20 — Update C++ listener examples for Stream pattern
   - **Files**: `examples/native/cpp/zenoh/listener/src/main.cpp`,
     `examples/qemu-arm-freertos/cpp/zenoh/listener/src/main.cpp`,
     `examples/qemu-arm-nuttx/cpp/zenoh/listener/src/main.cpp`,
