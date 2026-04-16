@@ -65,7 +65,7 @@ pub use zpico_sys::{
 use zpico_sys::{
     zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
-    zpico_declare_subscriber_with_attachment, zpico_get, zpico_get_zid, zpico_init,
+    zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init,
     zpico_init_with_config, zpico_is_open, zpico_open, zpico_poll, zpico_publish,
     zpico_publish_with_attachment, zpico_query_reply, zpico_spin_once, zpico_subscribe_zero_copy,
     zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
@@ -776,107 +776,6 @@ impl Context {
             return Err(ZpicoError::from_code(ret));
         }
         Ok(())
-    }
-
-    /// Send a query and wait for reply (blocking, for service client)
-    ///
-    /// This sends a query to the given key expression and waits for a reply.
-    /// Used to implement ROS 2 service clients.
-    ///
-    /// # Parameters
-    ///
-    /// * `keyexpr` - Key expression (null-terminated)
-    /// * `payload` - Request payload (can be empty slice)
-    /// * `reply_buf` - Buffer to receive reply data
-    /// * `timeout_ms` - Timeout in milliseconds
-    ///
-    /// # Returns
-    ///
-    /// Number of bytes written to reply_buf on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the query fails, times out, or if the reply is
-    /// too large for the buffer.
-    pub fn get(
-        &self,
-        keyexpr: &[u8],
-        payload: &[u8],
-        reply_buf: &mut [u8],
-        timeout_ms: u32,
-    ) -> Result<usize> {
-        let (payload_ptr, payload_len) = if payload.is_empty() {
-            (core::ptr::null(), 0)
-        } else {
-            (payload.as_ptr(), payload.len())
-        };
-
-        // When FFI guard is enabled, decompose into get_start + spin loop + get_check
-        // to avoid holding the critical section for the full timeout duration.
-        #[cfg(feature = "ffi-sync")]
-        {
-            let handle = ffi_guard(|| unsafe {
-                zpico_sys::zpico_get_start(
-                    keyexpr.as_ptr().cast(),
-                    payload_ptr,
-                    payload_len,
-                    timeout_ms,
-                )
-            });
-            if handle < 0 {
-                return Err(ZpicoError::from_code(handle));
-            }
-
-            let mut clock = [0u8; 16];
-            unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
-            loop {
-                // Drive I/O with a non-blocking spin
-                ffi_guard(|| unsafe { zpico_spin_once(0) });
-
-                // Check for reply
-                let ret = ffi_guard(|| unsafe {
-                    zpico_sys::zpico_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len())
-                });
-                if ret > 0 {
-                    return Ok(ret as usize);
-                }
-                if ret < 0 {
-                    if ret == -9 {
-                        return Err(ZpicoError::Timeout);
-                    }
-                    return Err(ZpicoError::from_code(ret));
-                }
-
-                // Check timeout
-                let elapsed =
-                    unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
-                if elapsed >= timeout_ms as core::ffi::c_ulong {
-                    return Err(ZpicoError::Timeout);
-                }
-            }
-        }
-        #[cfg(not(feature = "ffi-sync"))]
-        {
-            let ret = unsafe {
-                zpico_get(
-                    keyexpr.as_ptr().cast(),
-                    payload_ptr,
-                    payload_len,
-                    reply_buf.as_mut_ptr(),
-                    reply_buf.len(),
-                    timeout_ms,
-                )
-            };
-
-            if ret < 0 {
-                if ret == -9 {
-                    return Err(ZpicoError::Timeout);
-                }
-                return Err(ZpicoError::from_code(ret));
-            }
-
-            Ok(ret as usize)
-        }
     }
 
     /// Start a non-blocking query (for async service client).

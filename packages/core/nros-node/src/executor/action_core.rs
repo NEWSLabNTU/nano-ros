@@ -563,6 +563,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         self.goal_buffer[pos..pos + goal_cdr.len()].copy_from_slice(goal_cdr);
         let req_len = pos + goal_cdr.len();
 
+        #[allow(deprecated)]
         let len = self
             .send_goal_client
             .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
@@ -673,6 +674,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         let req_len = writer.position();
 
+        #[allow(deprecated)]
         let len = self
             .get_result_client
             .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)

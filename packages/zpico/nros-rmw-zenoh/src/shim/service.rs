@@ -456,23 +456,6 @@ impl ServiceClientTrait for ZenohServiceClient {
         }
     }
 
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
-        // Get context reference
-        let context = unsafe { &*self.context };
-
-        // Call z_get and wait for reply
-        let result = context
-            .get(
-                &self.keyexpr[..=self.keyexpr_len],
-                request,
-                reply_buf,
-                self.timeout_ms,
-            )
-            .map_err(TransportError::from)?;
-
-        Ok(result)
-    }
-
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
         let context = unsafe { &*self.context };
 

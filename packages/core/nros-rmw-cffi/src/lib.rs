@@ -521,6 +521,7 @@ pub struct CffiServiceClient {
 impl ServiceClientTrait for CffiServiceClient {
     type Error = TransportError;
 
+    #[allow(deprecated)]
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
         let rc = unsafe {
             (self.vtable.call_raw)(
@@ -558,6 +559,7 @@ impl ServiceClientTrait for CffiServiceClient {
         let req_len = self.pending_len;
         req_copy[..req_len].copy_from_slice(&self.pending_request[..req_len]);
         self.pending_len = 0;
+        #[allow(deprecated)]
         let len = self.call_raw(&req_copy[..req_len], reply_buf)?;
         Ok(Some(len))
     }

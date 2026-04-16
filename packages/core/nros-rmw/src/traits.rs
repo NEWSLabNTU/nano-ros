@@ -962,7 +962,19 @@ pub trait ServiceClientTrait {
     type Error;
 
     /// Send a service request and wait for reply (blocking)
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error>;
+    #[deprecated(note = "use Client::call → Promise::wait with an executor instead")]
+    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        self.send_request_raw(request)?;
+        for _ in 0..500_000 {
+            if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
+                return Ok(len);
+            }
+        }
+        Err(TransportError::Timeout.into())
+    }
 
     /// Send a service request without waiting for a reply (non-blocking).
     ///
@@ -1053,16 +1065,18 @@ pub trait ServiceClientTrait {
             .map_err(|_| TransportError::SerializationError)?;
         let req_len = writer.position();
 
-        // Send request and wait for reply
-        let reply_len = self.call_raw(&req_buf[..req_len], reply_buf)?;
-
-        // Deserialize reply
-        let mut reader = CdrReader::new_with_header(&reply_buf[..reply_len])
-            .map_err(|_| TransportError::DeserializationError)?;
-        let reply =
-            S::Reply::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
-
-        Ok(reply)
+        // Send request and poll for reply
+        self.send_request_raw(&req_buf[..req_len])?;
+        for _ in 0..500_000 {
+            if let Some(reply_len) = self.try_recv_reply_raw(reply_buf)? {
+                let mut reader = CdrReader::new_with_header(&reply_buf[..reply_len])
+                    .map_err(|_| TransportError::DeserializationError)?;
+                let reply = S::Reply::deserialize(&mut reader)
+                    .map_err(|_| TransportError::DeserializationError)?;
+                return Ok(reply);
+            }
+        }
+        Err(TransportError::Timeout.into())
     }
 }
 

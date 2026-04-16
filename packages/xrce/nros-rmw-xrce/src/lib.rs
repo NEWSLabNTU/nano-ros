@@ -1261,6 +1261,7 @@ pub struct XrceServiceClient {
 impl ServiceClientTrait for XrceServiceClient {
     type Error = TransportError;
 
+    #[allow(deprecated)]
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
         self.send_request_raw(request)?;
 

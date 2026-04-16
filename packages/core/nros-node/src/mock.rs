@@ -110,6 +110,7 @@ impl MockServiceClient {
 impl ServiceClientTrait for MockServiceClient {
     type Error = TransportError;
 
+    #[allow(deprecated)]
     fn call_raw(&mut self, _req: &[u8], _reply_buf: &mut [u8]) -> Result<usize, TransportError> {
         Err(TransportError::Timeout)
     }
