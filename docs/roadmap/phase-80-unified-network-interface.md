@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.7.4 done)
+**Status**: In Progress (80.1–80.8 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -334,10 +334,11 @@ typedef struct {
   - [x] 80.7.4 — Verified: 17/18 builds pass (1 pre-existing C API), pubsub E2E pass, manual talker works
   - [ ] 80.7.5 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
   - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
-- [ ] 80.8 — Implement for ThreadX (NetX Duo) via `threadx-netx-sys`
-  - [ ] 80.8.1 — `nros-platform-threadx/net.rs` using bindgen types
-  - [ ] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
-  - [ ] 80.8.3 — Verify `just threadx_linux test` passes
+- [x] 80.8 — Implement for ThreadX (NetX Duo) via manual FFI
+  - [x] 80.8.1 — `nros-platform-threadx/net.rs` using `nx_bsd_*` FFI (simple types — no bindgen needed)
+  - [x] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
+  - [x] 80.8.3 — Fix `_tx_thread_sleep` link name (`#[link_name]`) + C++ `global_handle()` friend decl
+  - [x] 80.8.4 — Verified: 16/16 builds pass, Rust pubsub + service E2E pass
 - [ ] 80.9 — Implement for NuttX via `nuttx-sys`
   - [ ] 80.9.1 — `nros-platform-nuttx/net.rs` using bindgen types
   - [ ] 80.9.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
