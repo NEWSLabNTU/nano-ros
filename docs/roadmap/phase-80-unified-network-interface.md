@@ -327,25 +327,28 @@ typedef struct {
 - [ ] 80.6.9 — Zephyr UDP multicast implementation
   - [ ] 80.6.9.1 — Port posix `mcast_open`/`mcast_listen`/`mcast_read`/`mcast_send` to Zephyr using `IP_ADD_MEMBERSHIP`, `IP_MULTICAST_IF`. Needs `struct ip_mreq` + `struct ifaddrs` bindings in `net.rs:c` module
   - [ ] 80.6.9.2 — Exercise via a Zephyr example with `CONFIG_NROS_ZENOH_SCOUTING=y` to validate the multicast path
-- [ ] 80.7 — Implement for FreeRTOS (lwIP) via cffi vtable
-  - [ ] 80.7.1 — C vtable provides lwIP socket functions
-  - [ ] 80.7.2 — Board crate registers vtable during init
-  - [ ] 80.7.3 — Verify `just freertos test` passes (29/29)
-- [ ] 80.8 — Implement for ThreadX (NetX Duo) via cffi vtable
-  - [ ] 80.8.1 — C vtable provides NetX BSD socket functions
-  - [ ] 80.8.2 — Verify `just threadx_linux test` passes
-- [ ] 80.9 — Remove C `network.c` from zpico-sys compilation
-  - [ ] 80.9.1 — Remove `unix/network.c` from CMake build copy (POSIX — already done)
-  - [ ] 80.9.2 — Remove `freertos/lwip/network.c` from cc build (FreeRTOS)
-  - [ ] 80.9.3 — Remove `threadx/network.c` from cc build (ThreadX)
+- [ ] 80.7 — Per-RTOS sys crates (bindgen FFI bindings)
+  - [x] 80.7.1 — Create `freertos-lwip-sys` bindgen crate (`packages/drivers/freertos-lwip-sys/`)
+  - [ ] 80.7.2 — Wire `nros-platform-freertos/net.rs` to use `freertos-lwip-sys` types
+  - [ ] 80.7.3 — Activate shim `network` for FreeRTOS + remove C `freertos/lwip/network.c`
+  - [ ] 80.7.4 — Verify `just freertos test` passes (22/29 Rust — C/C++ failures are pre-existing)
+  - [ ] 80.7.5 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
+  - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
+- [ ] 80.8 — Implement for ThreadX (NetX Duo) via `threadx-netx-sys`
+  - [ ] 80.8.1 — `nros-platform-threadx/net.rs` using bindgen types
+  - [ ] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
+  - [ ] 80.8.3 — Verify `just threadx_linux test` passes
+- [ ] 80.9 — Implement for NuttX via `nuttx-sys`
+  - [ ] 80.9.1 — `nros-platform-nuttx/net.rs` using bindgen types
+  - [ ] 80.9.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
+  - [ ] 80.9.3 — Verify `just nuttx test` passes
 - [ ] 80.10 — XRCE-DDS network unification (if applicable)
   - [ ] 80.10.1 — Check if XRCE-DDS uses the same network interface or custom transport
   - [ ] 80.10.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
-- [ ] 80.11 — Extend nros-platform-cffi vtable with network fields
-- [ ] 80.12 — Update documentation
-  - [ ] 80.12.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
-  - [ ] 80.12.2 — Update Phase 79 symbol tables to reflect network unification
-  - [ ] 80.12.3 — Update workspace structure in CLAUDE.md (nros-smoltcp in drivers/)
+- [ ] 80.11 — Update documentation
+  - [ ] 80.11.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
+  - [ ] 80.11.2 — Update Phase 79 symbol tables to reflect network unification
+  - [ ] 80.11.3 — Update workspace structure in CLAUDE.md (nros-smoltcp, freertos-lwip-sys)
 
 ## Design Decisions
 
