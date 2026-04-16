@@ -106,7 +106,9 @@ fn main() {
         }
     }
 
-    let bindings = builder.generate().expect("Failed to generate NuttX bindings");
+    let bindings = builder
+        .generate()
+        .expect("Failed to generate NuttX bindings");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
@@ -214,6 +216,7 @@ unsafe extern "C" {
     pub fn fcntl(fd: core::ffi::c_int, cmd: core::ffi::c_int, ...) -> core::ffi::c_int;
     pub fn getaddrinfo(node: *const core::ffi::c_char, service: *const core::ffi::c_char, hints: *const addrinfo, res: *mut *mut addrinfo) -> core::ffi::c_int;
     pub fn freeaddrinfo(ai: *mut addrinfo);
+    pub fn select(nfds: core::ffi::c_int, readfds: *mut core::ffi::c_void, writefds: *mut core::ffi::c_void, exceptfds: *mut core::ffi::c_void, timeout: *mut timeval) -> core::ffi::c_int;
 }
 "#,
     )

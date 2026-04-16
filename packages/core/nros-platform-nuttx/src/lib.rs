@@ -7,6 +7,8 @@
 //! because NuttX socket constants differ from Linux (SOL_SOCKET=1,
 //! SO_RCVTIMEO=10, TCP_NODELAY=16, O_NONBLOCK=64, SHUT_RDWR=3).
 
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 pub mod net;
 
 use core::ffi::c_void;

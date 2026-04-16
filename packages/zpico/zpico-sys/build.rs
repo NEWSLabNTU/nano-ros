@@ -1676,7 +1676,8 @@ fn build_zenoh_pico_nuttx(
 
     // Unix platform sources (NuttX is POSIX-compatible)
     // system.c skipped — most platform symbols come from zpico-platform-shim.
-    build.file(src_dir.join("system/unix/network.c"));
+    // network.c skipped — networking provided by zpico-platform-shim via
+    // nros-platform-nuttx (NuttX POSIX sockets via nuttx-sys bindgen).
 
     // NuttX-specific clock functions (struct-timespec-aware, overriding the
     // shim's usize-based clock because unix.h defines z_clock_t as struct
