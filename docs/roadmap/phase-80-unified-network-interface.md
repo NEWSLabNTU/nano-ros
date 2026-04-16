@@ -332,8 +332,8 @@ typedef struct {
   - [x] 80.7.2 — Wire `nros-platform-freertos/net.rs` to use `freertos-lwip-sys` types
   - [x] 80.7.3 — Activate shim `network` for FreeRTOS + remove C `freertos/lwip/network.c`
   - [x] 80.7.4 — Verified: 17/18 builds pass (1 pre-existing C API), pubsub E2E pass, manual talker works
-  - [ ] 80.7.5 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
-  - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
+  - [x] 80.7.5 — ~~Create `threadx-netx-sys` bindgen crate~~ — skipped, ThreadX types are trivial (manual FFI in 80.8)
+  - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets (may also be skippable — NuttX is POSIX-compatible)
 - [x] 80.8 — Implement for ThreadX (NetX Duo) via manual FFI
   - [x] 80.8.1 — `nros-platform-threadx/net.rs` using `nx_bsd_*` FFI (simple types — no bindgen needed)
   - [x] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
