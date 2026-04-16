@@ -1,0 +1,13 @@
+[package]
+name = "freertos-lwip-sys"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Bindgen-generated FFI bindings for lwIP BSD sockets on FreeRTOS"
+publish = false
+
+[lib]
+name = "freertos_lwip_sys"
+
+[build-dependencies]
+bindgen = "0.72"
