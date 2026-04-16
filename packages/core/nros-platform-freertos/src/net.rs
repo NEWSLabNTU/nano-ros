@@ -103,8 +103,8 @@ impl FreeRtosPlatform {
 
         // SO_RCVTIMEO
         let tv = timeval {
-            tv_sec: (timeout_ms / 1000) as time_t,
-            tv_usec: ((timeout_ms % 1000) * 1000) as suseconds_t,
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
         };
         if unsafe {
             lwip_setsockopt(
@@ -221,8 +221,8 @@ impl FreeRtosPlatform {
         }
 
         let tv = timeval {
-            tv_sec: (Z_TRANSPORT_LEASE / 1000) as time_t,
-            tv_usec: 0 as suseconds_t,
+            tv_sec: (Z_TRANSPORT_LEASE / 1000) as _,
+            tv_usec: 0 as _,
         };
         unsafe {
             lwip_setsockopt(
@@ -270,9 +270,8 @@ impl FreeRtosPlatform {
 
         let mut total: usize = 0;
         while total < len {
-            let n = unsafe {
-                lwip_recv(sock._socket, buf.add(total) as *mut c_void, len - total, 0)
-            };
+            let n =
+                unsafe { lwip_recv(sock._socket, buf.add(total) as *mut c_void, len - total, 0) };
             if n <= 0 {
                 return usize::MAX;
             }
@@ -361,8 +360,8 @@ impl FreeRtosPlatform {
         unsafe { (*sock)._socket = fd };
 
         let tv = timeval {
-            tv_sec: (timeout_ms / 1000) as time_t,
-            tv_usec: ((timeout_ms % 1000) * 1000) as suseconds_t,
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
         };
         unsafe {
             lwip_setsockopt(
@@ -452,8 +451,7 @@ impl FreeRtosPlatform {
         if flags < 0 {
             return -1;
         }
-        if unsafe { lwip_fcntl(sock._socket, F_SETFL as c_int, flags | O_NONBLOCK as c_int) } < 0
-        {
+        if unsafe { lwip_fcntl(sock._socket, F_SETFL as c_int, flags | O_NONBLOCK as c_int) } < 0 {
             return -1;
         }
         0
@@ -473,8 +471,8 @@ impl FreeRtosPlatform {
 
         // Set timeout + options on accepted socket
         let tv = timeval {
-            tv_sec: (Z_TRANSPORT_LEASE / 1000) as time_t,
-            tv_usec: 0 as suseconds_t,
+            tv_sec: (Z_TRANSPORT_LEASE / 1000) as _,
+            tv_usec: 0 as _,
         };
         unsafe {
             lwip_setsockopt(
