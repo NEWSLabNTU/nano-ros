@@ -62,6 +62,10 @@ int main(void)
         return 1;
     }
 
+    /* Alternative: use Stream::wait_next for blocking reception */
+    // std_msgs::msg::Int32 msg;
+    // sub.stream().wait_next(executor_handle, 1000, msg);
+
     /* Spin + poll loop */
     LOG_INF("Waiting for messages...");
 

@@ -85,6 +85,10 @@ int main(int argc, char** argv) {
 
     int message_count = 0;
 
+    // Alternative: use Stream::wait_next for blocking reception
+    // std_msgs::msg::Int32 msg;
+    // sub.stream().wait_next(nros::global_handle(), 1000, msg);
+
     // Spin + poll loop
     while (g_running && nros::ok()) {
         nros::spin_once(100);

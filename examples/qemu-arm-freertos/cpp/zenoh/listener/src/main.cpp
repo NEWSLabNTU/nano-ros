@@ -19,6 +19,10 @@ extern "C" void app_main(void) {
     ret = node.create_subscription(sub, "/chatter");
     if (!ret.ok()) { printf("create_subscription failed\n"); nros::shutdown(); return; }
 
+    // Alternative: use Stream::wait_next for blocking reception
+    // std_msgs::msg::Int32 msg;
+    // sub.stream().wait_next(executor_handle, 1000, msg);
+
     printf("Waiting for messages...\n");
     for (;;) {
         nros::spin_once(10);
