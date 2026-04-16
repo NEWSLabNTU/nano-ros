@@ -6,7 +6,7 @@ blocks, the caller must pass an executor and the API must spin that executor*.
 The action client already follows this; the service client does not, and the
 inconsistency is observable across all three language bindings.
 
-**Status**: In Progress (82.1–82.15, 82.18 done; 82.16–82.17 deferred)
+**Status**: In Progress (82.1–82.18 done; 82.19–82.20 example rewrites remaining)
 **Priority**: Medium — soundness fix, no functional regression on currently
 passing tests, but blocks future "service-call from a callback" use cases.
 **Depends on**: Phase 77 (executor-spin pattern for blocking helpers)
@@ -882,7 +882,7 @@ subscription callback and asserts `Reentrant`.
     `Client`. No overloads. Update every C++ service-client example to
     the new two-step form. Hard break, single PR.
 
-- [ ] 82.16 — C++: rewrite `ActionClient<A>` on `Future<T>` + `Stream<T>`
+- [x] 82.16 — C++: rewrite `ActionClient<A>` on `Future<T>` + `Stream<T>`
   - **Files**: `packages/core/nros-cpp/include/nros/action_client.hpp`,
     `packages/core/nros-cpp/src/action.rs` (FFI),
     `examples/*/cpp/zenoh/action-client/src/main.cpp`
@@ -893,7 +893,7 @@ subscription callback and asserts `Reentrant`.
     variant. Update every C++ action-client example. The same hard break
     as 82.15, in the same PR.
 
-- [ ] 82.17 — C++: `Subscription<T>` exposes a `Stream<T>`
+- [x] 82.17 — C++: `Subscription<T>` exposes a `Stream<T>`
   - **Files**: `packages/core/nros-cpp/include/nros/subscription.hpp`
   - **Goal**: Subscriptions become a thin handle whose only access
     method returns/borrows a `Stream<T>`. `subscription.stream()` →
@@ -908,6 +908,26 @@ subscription callback and asserts `Reentrant`.
     `in_dispatch` flag (set by `spin_some`) and return
     `ErrorCode::Reentrant` immediately if a callback re-enters. Add a
     regression test alongside the C reentrancy test (work item 82.11).
+
+- [ ] 82.19 — Update C++ action-client examples for Future pattern
+  - **Files**: `examples/native/cpp/zenoh/action-client/src/main.cpp`,
+    `examples/qemu-arm-freertos/cpp/zenoh/action-client/src/main.cpp`,
+    `examples/zephyr/cpp/zenoh/action-client/src/main.cpp`
+  - **Goal**: Replace `client.send_goal(goal, goal_id)` with
+    `client.send_goal(goal)` returning `Future<GoalAccept>`, and
+    `client.get_result(goal_id, result)` with `client.get_result(uuid)`
+    returning `Future<ResultStatus>`. Use `Future::wait(executor, ...)`
+    with explicit executor. 3 examples.
+
+- [ ] 82.20 — Update C++ listener examples for Stream pattern
+  - **Files**: `examples/native/cpp/zenoh/listener/src/main.cpp`,
+    `examples/qemu-arm-freertos/cpp/zenoh/listener/src/main.cpp`,
+    `examples/qemu-arm-nuttx/cpp/zenoh/listener/src/main.cpp`,
+    `examples/qemu-riscv64-threadx/cpp/zenoh/listener/src/main.cpp`,
+    `examples/threadx-linux/cpp/zenoh/listener/src/main.cpp`,
+    `examples/zephyr/cpp/zenoh/listener/src/main.cpp`
+  - **Goal**: Add `Stream<M>` usage alongside existing `try_recv` polling.
+    Existing callback-style stays as an alternative. 6 examples.
 
 ## Acceptance Criteria
 
