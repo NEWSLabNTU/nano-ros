@@ -6,8 +6,8 @@ use core::ffi::{c_char, c_void};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t,
-    nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 use crate::{CPP_ACTION_CLIENT_OPAQUE_U64S, CPP_ACTION_SERVER_OPAQUE_U64S};
@@ -844,6 +844,129 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
                 *feedback_len = 0;
             }
             NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Try to receive the goal acceptance response (non-blocking).
+///
+/// Returns `NROS_CPP_RET_OK` with serialized `GoalAccept` data if ready,
+/// `NROS_CPP_RET_TRY_AGAIN` if not yet available.
+///
+/// Output layout: `[goal_id: 16 bytes][accepted: 1 byte]` (17 bytes total).
+///
+/// Used by C++ `Future<GoalAccept>` via the `TryRecvFn` interface.
+///
+/// # Safety
+/// All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
+    handle: *mut c_void,
+    out_data: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || out_data.is_null() || out_len.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+        Some(c) => c,
+        None => {
+            unsafe { *out_len = 0 };
+            return NROS_CPP_RET_TRY_AGAIN;
+        }
+    };
+
+    match core.try_recv_send_goal_reply() {
+        Ok(Some(total_len)) => {
+            // The reply buffer contains: CDR header (4) + accepted byte (1) + ...
+            // We produce: goal_id (16) + accepted (1) = 17 bytes
+            let needed = 17usize;
+            if needed > out_capacity {
+                unsafe { *out_len = needed };
+                return NROS_CPP_RET_ERROR;
+            }
+            let buf = core.result_buffer_ref();
+            let accepted: u8 = if total_len >= 5 && buf[4] != 0 { 1 } else { 0 };
+            // Fill goal_id from the counter (same logic as poll())
+            let counter = core.goal_counter();
+            let mut uuid = [0u8; 16];
+            uuid[..8].copy_from_slice(&counter.to_le_bytes());
+            unsafe {
+                core::ptr::copy_nonoverlapping(uuid.as_ptr(), out_data, 16);
+                *out_data.add(16) = accepted;
+                *out_len = needed;
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe { *out_len = 0 };
+            NROS_CPP_RET_TRY_AGAIN
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Try to receive the result for a pending get_result request (non-blocking).
+///
+/// Returns `NROS_CPP_RET_OK` with result data if ready,
+/// `NROS_CPP_RET_TRY_AGAIN` if not yet available.
+///
+/// Output layout: CDR-serialized result fields (same as `get_result` output).
+///
+/// Used by C++ `Future<ResultType>` via the `TryRecvFn` interface.
+///
+/// # Safety
+/// All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
+    handle: *mut c_void,
+    out_data: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || out_data.is_null() || out_len.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+        Some(c) => c,
+        None => {
+            unsafe { *out_len = 0 };
+            return NROS_CPP_RET_TRY_AGAIN;
+        }
+    };
+
+    match core.try_recv_get_result_reply() {
+        Ok(Some(total_len)) => {
+            // Reply buffer: CDR header (4) + status (1) + result fields...
+            // We skip the CDR header + status and return just the result fields,
+            // matching what the blocking get_result produces.
+            let result_offset = 5usize;
+            if total_len <= result_offset {
+                // No result data (status-only reply)
+                unsafe { *out_len = 0 };
+                return NROS_CPP_RET_OK;
+            }
+            let data_len = total_len - result_offset;
+            if data_len > out_capacity {
+                unsafe { *out_len = data_len };
+                return NROS_CPP_RET_ERROR;
+            }
+            let buf = core.result_buffer_ref();
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf[result_offset..total_len].as_ptr(), out_data, data_len);
+                *out_len = data_len;
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe { *out_len = 0 };
+            NROS_CPP_RET_TRY_AGAIN
         }
         Err(_) => NROS_CPP_RET_ERROR,
     }

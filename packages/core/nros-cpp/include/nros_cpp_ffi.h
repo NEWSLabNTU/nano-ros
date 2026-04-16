@@ -756,6 +756,42 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void *handle,
                                                         size_t *feedback_len);
 
 /**
+ * Try to receive the goal acceptance response (non-blocking).
+ *
+ * Returns `NROS_CPP_RET_OK` with serialized `GoalAccept` data if ready,
+ * `NROS_CPP_RET_TRY_AGAIN` if not yet available.
+ *
+ * Output layout: `[goal_id: 16 bytes][accepted: 1 byte]` (17 bytes total).
+ *
+ * Used by C++ `Future<GoalAccept>` via the `TryRecvFn` interface.
+ *
+ * # Safety
+ * All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_action_client_try_recv_goal_response(void *handle,
+                                                             uint8_t *out_data,
+                                                             size_t out_capacity,
+                                                             size_t *out_len);
+
+/**
+ * Try to receive the result for a pending get_result request (non-blocking).
+ *
+ * Returns `NROS_CPP_RET_OK` with result data if ready,
+ * `NROS_CPP_RET_TRY_AGAIN` if not yet available.
+ *
+ * Output layout: CDR-serialized result fields (same as `get_result` output).
+ *
+ * Used by C++ `Future<ResultType>` via the `TryRecvFn` interface.
+ *
+ * # Safety
+ * All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void *handle,
+                                                      uint8_t *out_data,
+                                                      size_t out_capacity,
+                                                      size_t *out_len);
+
+/**
  * Destroy an action client (drop in place, no free).
  *
  * # Safety

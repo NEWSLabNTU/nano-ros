@@ -10,6 +10,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/future.hpp"
 
 // FFI declarations (create is declared in node.hpp with full type info)
 extern "C" {
@@ -24,6 +25,10 @@ nros_cpp_ret_t nros_cpp_action_client_get_result(void* handle, void* executor_ha
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8_t goal_id[16]);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
+nros_cpp_ret_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out_data,
+                                                              size_t out_capacity, size_t* out_len);
+nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data,
+                                                       size_t out_capacity, size_t* out_len);
 nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
     void* handle, void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
     void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx),
@@ -59,7 +64,27 @@ template <typename A> class ActionClient {
     using ResultType = typename A::Result;
     using FeedbackType = typename A::Feedback;
 
-    /// Send a goal and receive the generated goal UUID.
+    /// Goal acceptance response for the Future pattern.
+    ///
+    /// Returned by `send_goal_future()`. Contains the goal UUID and
+    /// whether the server accepted the goal.
+    struct GoalAccept {
+        uint8_t goal_id[16];
+        bool accepted;
+
+        static const size_t SERIALIZED_SIZE_MAX = 32;
+        static int ffi_deserialize(const uint8_t* data, size_t len, GoalAccept* out) {
+            if (!out || len < 17) return -1;
+            for (int i = 0; i < 16; ++i) out->goal_id[i] = data[i];
+            out->accepted = data[16] != 0;
+            return 0;
+        }
+    };
+
+    /// Send a goal and receive the generated goal UUID (blocking).
+    ///
+    /// Internally spins the executor until the server accepts or rejects
+    /// the goal (Phase 82 compliant -- drives the executor).
     ///
     /// @param goal     Goal to send.
     /// @param goal_id  Output 16-byte goal UUID (filled on success).
@@ -77,7 +102,8 @@ template <typename A> class ActionClient {
 
     /// Get the result for a goal (blocking with timeout).
     ///
-    /// Sends a get_result request and polls until a reply arrives or timeout.
+    /// Sends a get_result request and spins the executor until a reply
+    /// arrives or timeout (Phase 82 compliant -- drives the executor).
     ///
     /// @param goal_id  16-byte goal UUID from send_goal().
     /// @param result   Output result struct (filled on success).
@@ -95,6 +121,77 @@ template <typename A> class ActionClient {
             return Result(ErrorCode::Error);
         }
         return Result::success();
+    }
+
+    // =================================================================
+    // Future-based API — non-blocking, polled via Future<T>
+    // =================================================================
+
+    /// Send a goal and return a Future for the acceptance response.
+    ///
+    /// Returns immediately after sending the goal request. Poll the
+    /// returned future (or call `wait()`) to get the `GoalAccept` result.
+    ///
+    /// Usage:
+    /// ```cpp
+    /// auto fut = client.send_goal_future(goal);
+    /// GoalAccept accept;
+    /// NROS_TRY(fut.wait(executor.handle(), 5000, accept));
+    /// if (accept.accepted) { /* use accept.goal_id */ }
+    /// ```
+    ///
+    /// @param goal  Goal to send.
+    /// @return Future that resolves to GoalAccept. Returns a consumed
+    ///         (empty) future on serialization or send failure.
+    Future<GoalAccept> send_goal_future(const GoalType& goal) {
+        if (!initialized_) return Future<GoalAccept>();
+
+        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        size_t len = 0;
+        if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
+            return Future<GoalAccept>();
+        }
+
+        uint8_t goal_id[16];
+        nros_cpp_ret_t ret =
+            nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id);
+        if (ret != 0) return Future<GoalAccept>();
+
+        return Future<GoalAccept>(
+            storage_,
+            &nros_cpp_action_client_try_recv_goal_response,
+            0  // slot 0 (single outstanding goal request)
+        );
+    }
+
+    /// Request a goal result and return a Future for the result.
+    ///
+    /// Sends the get_result request asynchronously and returns a Future
+    /// that resolves when the result arrives. Poll the future (or call
+    /// `wait()`) to retrieve the deserialized result.
+    ///
+    /// Usage:
+    /// ```cpp
+    /// auto fut = client.get_result_future(goal_id);
+    /// ResultType result;
+    /// NROS_TRY(fut.wait(executor.handle(), 10000, result));
+    /// ```
+    ///
+    /// @param goal_id  16-byte goal UUID from send_goal() or GoalAccept.
+    /// @return Future that resolves to ResultType. Returns a consumed
+    ///         (empty) future on send failure.
+    Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
+        if (!initialized_) return Future<ResultType>();
+
+        nros_cpp_ret_t ret =
+            nros_cpp_action_client_get_result_async(storage_, goal_id);
+        if (ret != 0) return Future<ResultType>();
+
+        return Future<ResultType>(
+            storage_,
+            &nros_cpp_action_client_try_recv_result,
+            0  // slot 0 (single outstanding result request)
+        );
     }
 
     /// Try to receive feedback (non-blocking).
@@ -233,7 +330,7 @@ template <typename A> class ActionClient {
     friend class Node;
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
-    void* executor_; // Executor context needed for get_result polling
+    void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
     bool initialized_;
 };
 
