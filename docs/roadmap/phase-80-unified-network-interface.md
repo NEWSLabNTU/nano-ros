@@ -343,7 +343,7 @@ typedef struct {
 - [x] 80.10 — Implement for NuttX via nuttx-sys bindgen
   - [x] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types (NuttxPlatform as proper struct)
   - [x] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c`
-  - [ ] 80.10.3 — Verify `just nuttx test` passes
+  - [x] 80.10.3 — Verified: 20/21 pass (1 C service client failure — Phase 82 API, not networking)
 - [ ] 80.11 — Zephyr UDP multicast
   - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
   - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
