@@ -510,6 +510,18 @@ pub type RawServiceCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> bool;
 
+/// Raw service-client response callback.
+///
+/// Invoked by the executor's arena dispatch when a previously-sent
+/// service request has its response delivered. The C/C++ blocking
+/// wrappers install a one-shot trampoline that flips a static flag;
+/// async users register their own callback via the C API.
+///
+/// # Safety
+/// - `data` is valid for `len` bytes during the call.
+pub type RawResponseCallback =
+    unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
+
 /// Raw action goal callback that receives CDR bytes without deserialization.
 ///
 /// # Safety

@@ -10,13 +10,14 @@ use crate::session;
 use crate::timer::TimerDuration;
 
 use super::arena::{
-    BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry,
-    SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubInfoEntry, TimerEntry,
-    TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
-    no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-    sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
-    sub_buffered_raw_has_data, sub_buffered_raw_try_process, sub_buffered_try_process,
-    sub_info_has_data, sub_info_pre_sample, sub_info_try_process, timer_try_process,
+    BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
+    SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+    SubInfoEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
+    guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
+    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
+    sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+    sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data, sub_info_pre_sample,
+    sub_info_try_process, timer_try_process,
 };
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
@@ -36,8 +37,8 @@ use super::types::ExecutorConfig;
 use super::types::SpinOptions;
 use super::types::{
     ExecutorSemantics, GuardConditionHandle, HandleId, InvocationMode, NodeError,
-    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult,
-    SpinPeriodPollingResult, Trigger,
+    RawResponseCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
+    SpinOnceResult, SpinPeriodPollingResult, Trigger,
 };
 
 // ============================================================================
@@ -342,6 +343,35 @@ impl Executor {
                     { crate::config::DEFAULT_RX_BUF_SIZE },
                 >;
             Some(&mut (*entry_ptr).core)
+        }
+    }
+
+    /// Get a mutable reference to a service-client arena entry (Phase 82).
+    ///
+    /// Returns `None` if `entry_index` doesn't refer to a service client
+    /// entry. The default reply buffer size is assumed because the C API
+    /// always uses the default — the entry was registered via
+    /// `add_service_client_raw_sized::<DEFAULT_RX_BUF_SIZE>`.
+    ///
+    /// # Safety
+    /// `entry_index` must refer to a `ServiceClientRawArenaEntry`.
+    pub unsafe fn service_client_entry_mut(
+        &mut self,
+        entry_index: usize,
+    ) -> Option<&mut super::arena::ServiceClientRawArenaEntry<
+        { crate::config::DEFAULT_RX_BUF_SIZE },
+    >> {
+        let meta = self.entries.get(entry_index)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::ServiceClient) {
+            return None;
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let entry_ptr = arena_ptr.add(meta.offset)
+                as *mut super::arena::ServiceClientRawArenaEntry<
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                >;
+            Some(&mut *entry_ptr)
         }
     }
 
@@ -1154,6 +1184,84 @@ impl Executor {
     }
 
     // ========================================================================
+    // Raw service client registration (Phase 82)
+    // ========================================================================
+
+    /// Register a raw (untyped) service client with the default reply
+    /// buffer size.
+    ///
+    /// The client is owned by the executor's arena. Each `spin_once`
+    /// dispatch polls the in-flight reply slot via `try_recv_reply_raw`
+    /// and fires the registered callback when the response arrives.
+    /// Used by the C API thin wrapper — see Phase 82.
+    pub fn add_service_client_raw(
+        &mut self,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: Option<RawResponseCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        self.add_service_client_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    /// Register a raw service client with a custom reply buffer size.
+    pub fn add_service_client_raw_sized<const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: Option<RawResponseCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        let slot = self.next_entry_slot()?;
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut info =
+            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
+        let handle = self
+            .session
+            .create_service_client(&info)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
+
+        let offset = self.arena_alloc::<ServiceClientRawArenaEntry<REPLY_BUF>>()?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut ServiceClientRawArenaEntry<REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                ServiceClientRawArenaEntry {
+                    handle,
+                    reply_buffer: [0u8; REPLY_BUF],
+                    pending: false,
+                    callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ServiceClient,
+            try_process: service_client_raw_try_process::<REPLY_BUF>,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            drop_fn: drop_entry::<ServiceClientRawArenaEntry<REPLY_BUF>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    // ========================================================================
     // Guard condition registration
     // ========================================================================
 
@@ -1385,7 +1493,10 @@ impl Executor {
                     EntryKind::Subscription => {
                         result.subscriptions_processed += 1;
                     }
-                    EntryKind::Service | EntryKind::ActionServer | EntryKind::ActionClient => {
+                    EntryKind::Service
+                    | EntryKind::ServiceClient
+                    | EntryKind::ActionServer
+                    | EntryKind::ActionClient => {
                         result.services_handled += 1;
                     }
                     EntryKind::Timer => result.timers_fired += 1,
@@ -1396,7 +1507,10 @@ impl Executor {
                     EntryKind::Subscription => {
                         result.subscription_errors += 1;
                     }
-                    EntryKind::Service | EntryKind::ActionServer | EntryKind::ActionClient => {
+                    EntryKind::Service
+                    | EntryKind::ServiceClient
+                    | EntryKind::ActionServer
+                    | EntryKind::ActionClient => {
                         result.service_errors += 1;
                     }
                     EntryKind::Timer | EntryKind::GuardCondition => {}

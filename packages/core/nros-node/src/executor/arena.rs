@@ -12,8 +12,8 @@ use super::spsc_ring::SpscRing;
 use super::triple_buffer::TripleBuffer;
 use super::types::{
     InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
-    RawGoalCallback, RawGoalResponseCallback, RawResultCallback, RawServiceCallback,
-    RawSubscriptionCallback,
+    RawGoalCallback, RawGoalResponseCallback, RawResponseCallback, RawResultCallback,
+    RawServiceCallback, RawSubscriptionCallback,
 };
 use crate::session;
 
@@ -26,6 +26,7 @@ use crate::session;
 pub(crate) enum EntryKind {
     Subscription,
     Service,
+    ServiceClient,
     Timer,
     ActionServer,
     ActionClient,
@@ -174,6 +175,26 @@ pub(crate) struct ActionClientRawArenaEntry<
     pub(crate) feedback_callback: Option<RawFeedbackCallback>,
     pub(crate) result_callback: Option<RawResultCallback>,
     pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Concrete service-client entry for raw (untyped) async polling.
+///
+/// Holds the `RmwServiceClient` plus a single-shot reply buffer and a
+/// callback fn pointer. The executor's `service_client_raw_try_process`
+/// polls `try_recv_reply_raw` on every spin tick and fires the callback
+/// when the reply arrives. Mirrors `ActionClientRawArenaEntry` but for
+/// the simpler request/response service shape.
+///
+/// Single in-flight request per entry: a second `send_request` while
+/// `pending` is still `true` is the user's responsibility to avoid (the
+/// C wrapper checks at the call site).
+#[repr(C)]
+pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
+    pub handle: session::RmwServiceClient,
+    pub reply_buffer: [u8; REPLY_BUF],
+    pub pending: bool,
+    pub callback: Option<RawResponseCallback>,
+    pub context: *mut core::ffi::c_void,
 }
 
 /// Concrete service entry for raw (untyped) callbacks.
@@ -904,6 +925,41 @@ pub(crate) unsafe fn action_client_raw_try_process<
     }
 
     Ok(did_work)
+}
+
+/// Monomorphized raw service-client dispatch function.
+///
+/// Polls `try_recv_reply_raw` on the in-flight request, if any, and
+/// fires the registered callback when the reply arrives. Clears the
+/// `pending` flag and stops polling once consumed.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ServiceClientRawArenaEntry<REPLY_BUF>`.
+pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError> {
+    use nros_rmw::ServiceClientTrait;
+    let entry = unsafe { &mut *(ptr as *mut ServiceClientRawArenaEntry<REPLY_BUF>) };
+
+    if !entry.pending {
+        return Ok(false);
+    }
+
+    match entry.handle.try_recv_reply_raw(&mut entry.reply_buffer) {
+        Ok(Some(len)) => {
+            entry.pending = false;
+            if let Some(cb) = entry.callback {
+                unsafe { cb(entry.reply_buffer.as_ptr(), len, entry.context) };
+            }
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => {
+            entry.pending = false;
+            Err(TransportError::ServiceRequestFailed)
+        }
+    }
 }
 
 /// Monomorphized raw service dispatch function.

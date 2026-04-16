@@ -112,8 +112,8 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 // Re-export types that don't depend on RMW (always available)
 pub use executor::{
     ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
-    NodeError, RawAcceptedCallback, RawCancelCallback, RawGoalCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+    NodeError, RawAcceptedCallback, RawCancelCallback, RawGoalCallback, RawResponseCallback,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
     SpinPeriodPollingResult, Trigger,
 };
 
