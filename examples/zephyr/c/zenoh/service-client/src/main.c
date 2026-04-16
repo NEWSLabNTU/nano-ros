@@ -9,6 +9,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/client.h>
+#include <nros/executor.h>
 #include <zpico_zephyr.h>
 
 #include "example_interfaces.h"
@@ -51,6 +52,26 @@ int main(void)
         return 1;
     }
 
+    nros_executor_t executor;
+    ret = nros_executor_init(&executor, &support, 4);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Executor init failed: %d", ret);
+        nros_client_fini(&client);
+        nros_node_fini(&node);
+        nros_support_fini(&support);
+        return 1;
+    }
+
+    ret = nros_executor_add_client(&executor, &client);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Failed to register client with executor: %d", ret);
+        nros_executor_fini(&executor);
+        nros_client_fini(&client);
+        nros_node_fini(&node);
+        nros_support_fini(&support);
+        return 1;
+    }
+
     LOG_INF("Calling service...");
 
     example_interfaces_srv_add_two_ints_request request;
@@ -88,6 +109,7 @@ int main(void)
         LOG_ERR("Call failed: %d", ret);
     }
 
+    nros_executor_fini(&executor);
     nros_client_fini(&client);
     nros_node_fini(&node);
     nros_support_fini(&support);

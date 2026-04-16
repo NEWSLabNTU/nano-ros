@@ -8,6 +8,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/client.h>
+#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -19,6 +20,7 @@ static struct {
     nros_support_t support;
     nros_node_t node;
     nros_client_t client;
+    nros_executor_t executor;
 } app;
 
 // ----------------------------------------------------------------------------
@@ -53,6 +55,25 @@ void app_main(void) {
     ret = nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints");
     if (ret != NROS_RET_OK) {
         printf("Failed to initialize client: %d\n", ret);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
+    ret = nros_executor_init(&app.executor, &app.support, 4);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to initialize executor: %d\n", ret);
+        nros_client_fini(&app.client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
+    ret = nros_executor_add_client(&app.executor, &app.client);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to register client with executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_client_fini(&app.client);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
         return;
@@ -108,6 +129,7 @@ void app_main(void) {
     printf("%d/%d calls succeeded\n", success_count, num_cases);
     printf("All service calls completed.\n");
 
+    nros_executor_fini(&app.executor);
     nros_client_fini(&app.client);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
