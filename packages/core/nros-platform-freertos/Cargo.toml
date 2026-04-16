@@ -6,5 +6,6 @@ license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for FreeRTOS (calls FreeRTOS C APIs via FFI)"
 
-# No Rust dependencies — all FreeRTOS APIs are extern "C" resolved at link time
-# from the FreeRTOS kernel library linked by the board crate.
+[dependencies]
+# Bindgen-generated lwIP BSD socket FFI (struct timeval, addrinfo, lwip_* functions)
+freertos-lwip-sys = { path = "../../drivers/freertos-lwip-sys" }

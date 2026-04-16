@@ -1542,10 +1542,9 @@ fn build_zenoh_pico_freertos(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // FreeRTOS platform sources
-    // system.c skipped — platform symbols provided by zpico-platform-shim
-    // via nros-platform-freertos (uses #[repr(C)] types matching C struct layouts).
-    // TODO(phase-80): Remove network.c once Rust networking is verified.
-    build.file(src_dir.join("system/freertos/lwip/network.c"));
+    // system.c skipped — platform symbols provided by zpico-platform-shim.
+    // network.c skipped — networking provided by zpico-platform-shim via
+    // nros-platform-freertos (lwIP BSD socket calls via freertos-lwip-sys).
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("zpico").join("zpico.c"));
