@@ -9,6 +9,7 @@
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
 #include "nros/future.hpp"
+#include "nros/stream.hpp"
 #include "nros/node.hpp" // includes publisher, subscription, service, client, action headers
 
 namespace nros {

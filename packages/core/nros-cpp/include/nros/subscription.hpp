@@ -9,6 +9,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/stream.hpp"
 
 // FFI declarations
 extern "C" {
@@ -81,6 +82,22 @@ template <typename M> class Subscription {
         return nros_cpp_subscription_get_topic_name(storage_);
     }
 
+    /// Get a reference to the subscription's message stream.
+    ///
+    /// Use for blocking reception with executor spin:
+    /// ```cpp
+    /// M msg;
+    /// NROS_TRY(sub.stream().wait_next(executor.handle(), 1000, msg));
+    /// ```
+    Stream<M>& stream() {
+        if (initialized_ && !stream_.is_valid()) {
+            stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
+        }
+        return stream_;
+    }
+
+    const Stream<M>& stream() const { return stream_; }
+
     /// Check if the subscription is initialized and valid.
     bool is_valid() const { return initialized_; }
 
@@ -98,7 +115,11 @@ template <typename M> class Subscription {
             storage_[i] = other.storage_[i];
             other.storage_[i] = 0;
         }
+        if (initialized_) {
+            stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
+        }
         other.initialized_ = false;
+        other.stream_ = Stream<M>();
     }
 
     Subscription& operator=(Subscription&& other) {
@@ -111,14 +132,20 @@ template <typename M> class Subscription {
                 other.storage_[i] = 0;
             }
             initialized_ = other.initialized_;
+            if (initialized_) {
+                stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
+            } else {
+                stream_ = Stream<M>();
+            }
             other.initialized_ = false;
+            other.stream_ = Stream<M>();
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized subscription.
     /// Use `Node::create_subscription()` to initialize.
-    Subscription() : storage_(), initialized_(false) {}
+    Subscription() : storage_(), initialized_(false), stream_() {}
 
   private:
     Subscription(const Subscription&) = delete;
@@ -128,6 +155,7 @@ template <typename M> class Subscription {
 
     alignas(8) uint8_t storage_[NROS_CPP_SUBSCRIPTION_STORAGE_SIZE];
     bool initialized_;
+    Stream<M> stream_;
 };
 
 } // namespace nros
