@@ -324,32 +324,36 @@ typedef struct {
   - [x] 80.6.8.7 — Activate `zpico-platform-shim?/network` for `zephyr = [...]` in `zpico-sys/Cargo.toml`
   - [x] 80.6.8.8 — Remove `zenoh-pico/src/system/zephyr/network.c` from `zephyr/CMakeLists.txt` (replaced by Rust shim forwarders)
   - [x] 80.6.8.9 — `just zephyr build` clean, `just zephyr test` 23/27 (same 4 pre-existing zeth0 TAP contention failures tracked in Phase 81, zero new regressions)
-- [ ] 80.6.9 — Zephyr UDP multicast implementation
-  - [ ] 80.6.9.1 — Port posix `mcast_open`/`mcast_listen`/`mcast_read`/`mcast_send` to Zephyr using `IP_ADD_MEMBERSHIP`, `IP_MULTICAST_IF`. Needs `struct ip_mreq` + `struct ifaddrs` bindings in `net.rs:c` module
-  - [ ] 80.6.9.2 — Exercise via a Zephyr example with `CONFIG_NROS_ZENOH_SCOUTING=y` to validate the multicast path
-- [x] 80.7 — Per-RTOS sys crates (bindgen FFI bindings) — FreeRTOS done
+- Zephyr UDP multicast deferred to 80.11
+- [x] 80.7 — FreeRTOS lwIP networking via bindgen
   - [x] 80.7.1 — Create `freertos-lwip-sys` bindgen crate (`packages/drivers/freertos-lwip-sys/`)
   - [x] 80.7.2 — Wire `nros-platform-freertos/net.rs` to use `freertos-lwip-sys` types
   - [x] 80.7.3 — Activate shim `network` for FreeRTOS + remove C `freertos/lwip/network.c`
-  - [x] 80.7.4 — Verified: 17/18 builds pass (1 pre-existing C API), pubsub E2E pass, manual talker works
-  - [x] 80.7.5 — ~~Create `threadx-netx-sys` bindgen crate~~ — skipped, ThreadX types are trivial (manual FFI in 80.8)
-  - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets (may also be skippable — NuttX is POSIX-compatible)
-- [x] 80.8 — Implement for ThreadX (NetX Duo) via manual FFI
-  - [x] 80.8.1 — `nros-platform-threadx/net.rs` using `nx_bsd_*` FFI (simple types — no bindgen needed)
+  - [x] 80.7.4 — Verified: 17/18 builds pass (1 pre-existing C API), pubsub E2E pass
+- [x] 80.8 — ThreadX NetX Duo networking (manual FFI, pending bindgen migration)
+  - [x] 80.8.1 — `nros-platform-threadx/net.rs` using `nx_bsd_*` manual FFI
   - [x] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
-  - [x] 80.8.3 — Fix `_tx_thread_sleep` link name (`#[link_name]`) + C++ `global_handle()` friend decl
+  - [x] 80.8.3 — Fix `_tx_thread_sleep` link name + C++ `global_handle()` friend decl
   - [x] 80.8.4 — Verified: 16/16 builds pass, Rust pubsub + service E2E pass
-- [ ] 80.9 — Implement for NuttX via `nuttx-sys`
-  - [ ] 80.9.1 — `nros-platform-nuttx/net.rs` using bindgen types
-  - [ ] 80.9.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
-  - [ ] 80.9.3 — Verify `just nuttx test` passes
-- [ ] 80.10 — XRCE-DDS network unification (if applicable)
-  - [ ] 80.10.1 — Check if XRCE-DDS uses the same network interface or custom transport
-  - [ ] 80.10.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
-- [ ] 80.11 — Update documentation
-  - [ ] 80.11.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
-  - [ ] 80.11.2 — Update Phase 79 symbol tables to reflect network unification
-  - [ ] 80.11.3 — Update workspace structure in CLAUDE.md (nros-smoltcp, freertos-lwip-sys)
+- [ ] 80.9 — Per-RTOS bindgen sys crates (consistency + safety)
+  - [ ] 80.9.1 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
+  - [ ] 80.9.2 — Wire `nros-platform-threadx/net.rs` to use `threadx-netx-sys` types (replace manual FFI)
+  - [ ] 80.9.3 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
+  - [ ] 80.9.4 — Create `zephyr-posix-sys` bindgen crate for Zephyr POSIX sockets (replace manual FFI)
+- [ ] 80.10 — Implement for NuttX
+  - [ ] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types
+  - [ ] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
+  - [ ] 80.10.3 — Verify `just nuttx test` passes
+- [ ] 80.11 — Zephyr UDP multicast
+  - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
+  - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
+- [ ] 80.12 — XRCE-DDS network unification (if applicable)
+  - [ ] 80.12.1 — Check if XRCE-DDS uses the same network interface or custom transport
+  - [ ] 80.12.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
+- [ ] 80.13 — Update documentation
+  - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
+  - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification
+  - [ ] 80.13.3 — Update workspace structure in CLAUDE.md (nros-smoltcp, *-sys crates)
 
 ## Design Decisions
 
