@@ -52,3 +52,9 @@ pub const NROS_RET_REJECTED: nros_ret_t = -13;
 /// Operation not yet ready (e.g., async response still pending).
 /// Caller should spin the executor and try again.
 pub const NROS_RET_TRY_AGAIN: nros_ret_t = -14;
+
+/// Reentrant call detected — a blocking helper (`nros_client_call`,
+/// `nros_action_send_goal`, `nros_action_get_result`) was called from
+/// inside a dispatch callback. These functions internally call
+/// `nros_executor_spin_some`, which is not reentrant.
+pub const NROS_RET_REENTRANT: nros_ret_t = -15;

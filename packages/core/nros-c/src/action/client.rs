@@ -260,6 +260,13 @@ pub unsafe extern "C" fn nros_action_send_goal(
 ) -> nros_ret_t {
     validate_not_null!(client, goal, goal_uuid, executor);
 
+    // Reentrancy guard: this function spins the executor internally,
+    // so it must not be called from inside a dispatch callback.
+    let exec_ref = &*executor;
+    if exec_ref.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+
     // Send async
     let ret = nros_action_send_goal_async(client, goal, goal_len, goal_uuid);
     if ret != NROS_RET_OK {
@@ -350,6 +357,13 @@ pub unsafe extern "C" fn nros_action_get_result(
     result_len: *mut usize,
 ) -> nros_ret_t {
     validate_not_null!(client, executor, goal_uuid, status, result, result_len);
+
+    // Reentrancy guard: this function spins the executor internally,
+    // so it must not be called from inside a dispatch callback.
+    let exec_ref = &*executor;
+    if exec_ref.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
 
     // Send get_result request async
     let ret = nros_action_get_result_async(client, goal_uuid);
