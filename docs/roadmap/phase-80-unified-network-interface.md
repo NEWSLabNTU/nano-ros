@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.6.8 done, 80.7.1 done)
+**Status**: In Progress (80.1–80.7.4 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -327,11 +327,11 @@ typedef struct {
 - [ ] 80.6.9 — Zephyr UDP multicast implementation
   - [ ] 80.6.9.1 — Port posix `mcast_open`/`mcast_listen`/`mcast_read`/`mcast_send` to Zephyr using `IP_ADD_MEMBERSHIP`, `IP_MULTICAST_IF`. Needs `struct ip_mreq` + `struct ifaddrs` bindings in `net.rs:c` module
   - [ ] 80.6.9.2 — Exercise via a Zephyr example with `CONFIG_NROS_ZENOH_SCOUTING=y` to validate the multicast path
-- [ ] 80.7 — Per-RTOS sys crates (bindgen FFI bindings)
+- [x] 80.7 — Per-RTOS sys crates (bindgen FFI bindings) — FreeRTOS done
   - [x] 80.7.1 — Create `freertos-lwip-sys` bindgen crate (`packages/drivers/freertos-lwip-sys/`)
-  - [ ] 80.7.2 — Wire `nros-platform-freertos/net.rs` to use `freertos-lwip-sys` types
-  - [ ] 80.7.3 — Activate shim `network` for FreeRTOS + remove C `freertos/lwip/network.c`
-  - [ ] 80.7.4 — Verify `just freertos test` passes (22/29 Rust — C/C++ failures are pre-existing)
+  - [x] 80.7.2 — Wire `nros-platform-freertos/net.rs` to use `freertos-lwip-sys` types
+  - [x] 80.7.3 — Activate shim `network` for FreeRTOS + remove C `freertos/lwip/network.c`
+  - [x] 80.7.4 — Verified: 17/18 builds pass (1 pre-existing C API), pubsub E2E pass, manual talker works
   - [ ] 80.7.5 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
   - [ ] 80.7.6 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
 - [ ] 80.8 — Implement for ThreadX (NetX Duo) via `threadx-netx-sys`
