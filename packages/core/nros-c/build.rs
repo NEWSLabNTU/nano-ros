@@ -65,6 +65,13 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
     let action_server_storage_bytes = 256usize; // ActionServerInternal: ~64 bytes on ARM64
     let action_server_opaque_u64s = action_server_storage_bytes.div_ceil(8);
 
+    // ServiceClientInternal (Phase 82): arena_entry_index (i32) + executor_ptr (*mut c_void)
+    // + timeout_ms (u32). Storage bytes are also a generous upper bound for the C ABI
+    // header layout. Validated at compile time by assertion in opaque_sizes.rs.
+    let service_client_internal_bytes = 24usize;
+    let service_client_internal_opaque_u64s = service_client_internal_bytes.div_ceil(8);
+    let service_client_internal_storage_bytes = service_client_internal_opaque_u64s * 8;
+
     let contents = format!(
         "/// Maximum number of handles in an executor \
          (derived from NROS_EXECUTOR_MAX_CBS via nros-node).\n\
@@ -91,7 +98,13 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
          /// Inline opaque storage for `ActionServerInternal` inside `nros_action_server_t` (in u64 units).\n\
          /// Conservative upper bound for a small struct with function pointers.\n\
          /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const ACTION_SERVER_INTERNAL_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n"
+         pub const ACTION_SERVER_INTERNAL_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n\
+         \n\
+         /// Inline opaque storage for `ServiceClientInternal` inside `nros_client_t` (in u64 units).\n\
+         /// Phase 82: replaces the old RmwServiceClient inline storage (the\n\
+         /// transport handle now lives in the executor's arena instead).\n\
+         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
+         pub const SERVICE_CLIENT_INTERNAL_OPAQUE_U64S: usize = {service_client_internal_opaque_u64s};\n"
     );
 
     std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
@@ -110,6 +123,9 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
          \n\
          /** Inline opaque storage size (bytes) for nros_action_server_t._internal. */\n\
          #define NROS_ACTION_SERVER_STORAGE_SIZE {action_server_storage_bytes}\n\
+         \n\
+         /** Inline opaque storage size (bytes) for nros_client_t._internal. */\n\
+         #define NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE {service_client_internal_storage_bytes}\n\
          \n\
          #endif /* NROS_CONFIG_GENERATED_H */\n"
     );

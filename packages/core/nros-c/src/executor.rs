@@ -14,7 +14,10 @@ use crate::action::{
 };
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
-use crate::service::{nros_service_state_t, nros_service_t};
+use crate::service::{
+    ServiceClientInternal, client_response_trampoline, nros_client_state_t, nros_client_t,
+    nros_service_state_t, nros_service_t,
+};
 use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
 use crate::support::{nros_support_state_t, nros_support_t};
 use crate::timer::{nros_timer_state_t, nros_timer_t};
@@ -659,6 +662,86 @@ pub unsafe extern "C" fn nros_executor_add_service(
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+}
+
+/// Add a service client to the executor (Phase 82).
+///
+/// Creates the underlying `RmwServiceClient` inside the executor's arena
+/// and stashes the executor pointer + arena entry index into the
+/// client's `_internal` blob so subsequent calls to `nros_client_call`,
+/// `nros_client_send_request_async`, and friends can drive the executor
+/// without taking it as an explicit argument.
+///
+/// Must be called exactly once after `nros_client_init` and before any
+/// send/call. Calling it twice on the same client returns
+/// `NROS_RET_BAD_SEQUENCE`.
+///
+/// # Safety
+/// * Both pointers must reference initialized objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_client(
+    executor: *mut nros_executor_t,
+    client: *mut nros_client_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, client);
+
+    let executor = &mut *executor;
+    let client_ref = &*client;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        client_ref,
+        nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+    );
+
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    {
+        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let rust_exec = get_executor_from_ptr(opaque_ptr);
+
+        let service_name = core::str::from_utf8_unchecked(
+            &client_ref.service_name[..client_ref.service_name_len],
+        );
+        let type_str =
+            core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
+
+        // Trampoline always installed — checks the C struct's
+        // response_callback at invocation time, so blocking wrappers
+        // (nros_client_call) can install one-shot callbacks AFTER
+        // registration without re-registering with the arena.
+        let cb: Option<nros_node::RawResponseCallback> = Some(client_response_trampoline);
+        let client_ctx = client as *mut core::ffi::c_void;
+
+        let result = rust_exec.add_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
+            service_name,
+            type_str,
+            type_hash_str,
+            cb,
+            client_ctx,
+        );
+
+        match result {
+            Ok(handle_id) => {
+                let client_mut = &mut *client;
+                let internal = &mut *(client_mut._internal.as_mut_ptr() as *mut ServiceClientInternal);
+                internal.arena_entry_index = handle_id.0 as i32;
+                internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+                client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
+
+                executor.handle_count += 1;
                 NROS_RET_OK
             }
             Err(_) => NROS_RET_ERROR,

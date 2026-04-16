@@ -6,13 +6,12 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 
-use crate::constants::{
-    MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, SERVICE_CLIENT_OPAQUE_U64S,
-};
+use crate::config::SERVICE_CLIENT_INTERNAL_OPAQUE_U64S;
+use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
+use crate::executor::nros_executor_t;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::publisher::nros_message_type_t;
-use crate::support::nros_support_state_t;
 
 // ============================================================================
 // Service Server
@@ -346,16 +345,59 @@ pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -
 // Service Client
 // ============================================================================
 
+/// Default service-client RPC timeout in milliseconds (Phase 82).
+///
+/// `nros_client_call` reads this from `ServiceClientInternal.timeout_ms`,
+/// which is initialised to this value by `nros_client_init` and can be
+/// changed at any time via `nros_client_set_timeout`.
+const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = 5000;
+
+/// Service-client response callback type (Phase 82).
+///
+/// Invoked by the executor's `spin_some` dispatch when a previously-sent
+/// request has its response delivered. The CDR bytes are owned by the
+/// arena entry's reply buffer for the duration of the call — copy if you
+/// need to keep them.
+pub type nros_response_callback_t = Option<
+    unsafe extern "C" fn(response: *const u8, response_len: usize, context: *mut c_void),
+>;
+
+/// Internal state for the service client (Phase 82).
+///
+/// Lightweight — stores only the arena entry index and the executor
+/// pointer where the actual transport handle lives. Mirrors
+/// `ActionClientInternal`.
+pub(crate) struct ServiceClientInternal {
+    /// Arena entry index. -1 means not registered with any executor yet.
+    pub(crate) arena_entry_index: i32,
+    /// Pointer to the Rust executor that owns the arena entry.
+    pub(crate) executor_ptr: *mut c_void,
+    /// Default timeout used by `nros_client_call`.
+    pub(crate) timeout_ms: u32,
+}
+
+impl ServiceClientInternal {
+    pub(crate) fn new() -> Self {
+        Self {
+            arena_entry_index: -1,
+            executor_ptr: ptr::null_mut(),
+            timeout_ms: NROS_DEFAULT_SERVICE_TIMEOUT_MS,
+        }
+    }
+}
+
 /// Client state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_client_state_t {
     /// Not initialized
     NROS_CLIENT_STATE_UNINITIALIZED = 0,
-    /// Initialized and ready
+    /// Initialized — metadata stored, *not yet registered with an executor*.
     NROS_CLIENT_STATE_INITIALIZED = 1,
+    /// Registered with an executor and ready for `send_request_async` / `call`.
+    NROS_CLIENT_STATE_REGISTERED = 2,
     /// Shutdown
-    NROS_CLIENT_STATE_SHUTDOWN = 2,
+    NROS_CLIENT_STATE_SHUTDOWN = 3,
 }
 
 /// Service client structure.
@@ -375,15 +417,18 @@ pub struct nros_client_t {
     pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
     pub type_hash_len: usize,
+    /// User response callback, fired from `nros_executor_spin_some` when
+    /// a response to a previously-sent async request arrives.
+    pub response_callback: nros_response_callback_t,
+    /// User context pointer passed to `response_callback`.
+    pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Inline opaque storage for the RMW service client handle.
-    /// Avoids heap allocation — managed by nros_client_init/fini.
-    pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
+    /// Opaque inline storage for `ServiceClientInternal`.
+    /// Filled by `nros_executor_add_client`. Validated at compile time
+    /// by an assertion in `opaque_sizes.rs`.
+    pub _internal: [u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S],
 }
-
-// SERVICE_CLIENT_OPAQUE_U64S is computed from size_of::<RmwServiceClient>() in
-// opaque_sizes.rs — always large enough by construction.
 
 impl Default for nros_client_t {
     fn default() -> Self {
@@ -395,8 +440,10 @@ impl Default for nros_client_t {
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
+            response_callback: None,
+            context: ptr::null_mut(),
             node: ptr::null(),
-            _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
+            _internal: [0u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S],
         }
     }
 }
@@ -407,7 +454,12 @@ pub extern "C" fn nros_client_get_zero_initialized() -> nros_client_t {
     nros_client_t::default()
 }
 
-/// Initialize a service client.
+/// Initialize a service client (Phase 82: metadata-only).
+///
+/// Stores the service name/type metadata and a `ServiceClientInternal`
+/// blob; the actual transport handle (`RmwServiceClient`) is created
+/// later by `nros_executor_add_client`. This deferred lifecycle matches
+/// `nros_service_init` (server side) and the action client.
 ///
 /// # Parameters
 /// * `client` - Pointer to a zero-initialized client
@@ -419,7 +471,6 @@ pub extern "C" fn nros_client_get_zero_initialized() -> nros_client_t {
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
 /// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_client_init(
     client: *mut nros_client_t,
@@ -489,65 +540,26 @@ pub unsafe extern "C" fn nros_client_init(
         client.type_hash_len = len;
     }
 
-    // Store node pointer
+    // Store node pointer + zero callback fields
     client.node = node;
+    client.response_callback = None;
+    client.context = ptr::null_mut();
 
-    // Create the internal service client
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-    {
-        use nros_rmw::{ServiceInfo, Session};
+    // Initialise the internal blob (executor_ptr null until registration)
+    core::ptr::write(
+        client._internal.as_mut_ptr() as *mut ServiceClientInternal,
+        ServiceClientInternal::new(),
+    );
 
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
-
-        // Save domain_id before borrowing session
-        let domain_id = support_mut.domain_id as u32;
-
-        // Get mutable session reference
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        // Build ServiceInfo
-        let svc_name_str =
-            core::str::from_utf8_unchecked(&client.service_name[..client.service_name_len]);
-        let type_str = core::str::from_utf8_unchecked(&client.type_name[..client.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&client.type_hash[..client.type_hash_len]);
-
-        let svc_info =
-            ServiceInfo::new(svc_name_str, type_str, type_hash_str).with_domain(domain_id);
-
-        // Create service client — write handle directly into inline opaque storage
-        match session.create_service_client(&svc_info) {
-            Ok(client_handle) => {
-                core::ptr::write(
-                    client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient,
-                    client_handle,
-                );
-            }
-            Err(_) => return NROS_RET_ERROR,
-        }
-
-        client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
-        NROS_RET_OK
-    }
-
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
-    {
-        NROS_RET_ERROR
-    }
+    client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
+    NROS_RET_OK
 }
 
 /// Finalize a service client.
+///
+/// Phase 82: the underlying transport handle lives in the executor's
+/// arena and is dropped automatically when the executor is finalised.
+/// This function only resets the C-side metadata + internal blob.
 ///
 /// # Parameters
 /// * `client` - Pointer to an initialized client
@@ -562,30 +574,211 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 
     let client = &mut *client;
 
-    validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
-
-    // Drop the inline RMW service client handle
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    if client.state == nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED
+        || client.state == nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN
     {
-        core::ptr::drop_in_place(
-            client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient
-        );
+        return NROS_RET_NOT_INIT;
     }
 
-    client._opaque = [0u64; SERVICE_CLIENT_OPAQUE_U64S];
+    // Drop the inline ServiceClientInternal (no transport handle here
+    // — the RmwServiceClient lives in the arena and is freed when the
+    // executor is destroyed).
+    core::ptr::drop_in_place(client._internal.as_mut_ptr() as *mut ServiceClientInternal);
+
+    client._internal = [0u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S];
+    client.response_callback = None;
+    client.context = ptr::null_mut();
     client.node = ptr::null();
     client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
 
-/// Call a service (blocking).
+// ============================================================================
+// Service Client async pair + setters (Phase 82)
+// ============================================================================
+
+/// Response trampoline registered with the executor's arena entry.
 ///
-/// This function sends a request and blocks until a response is received
-/// or a timeout occurs.
+/// Reads the user's `response_callback` from the `nros_client_t` struct
+/// at invocation time so the blocking wrapper (`nros_client_call`) can
+/// install a one-shot callback after registration.
+///
+/// # Safety
+/// `context` must point to a live `nros_client_t`.
+pub(crate) unsafe extern "C" fn client_response_trampoline(
+    response: *const u8,
+    response_len: usize,
+    context: *mut c_void,
+) {
+    let client = &*(context as *const nros_client_t);
+    if let Some(cb) = client.response_callback {
+        cb(response, response_len, client.context);
+    }
+}
+
+/// Set the response callback fired by `nros_executor_spin_some` when an
+/// async request has its reply delivered.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_set_response_callback(
+    client: *mut nros_client_t,
+    callback: nros_response_callback_t,
+    context: *mut c_void,
+) -> nros_ret_t {
+    validate_not_null!(client);
+    let client = &mut *client;
+    client.response_callback = callback;
+    client.context = context;
+    NROS_RET_OK
+}
+
+/// Set the default timeout used by `nros_client_call`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_set_timeout(
+    client: *mut nros_client_t,
+    timeout_ms: u32,
+) -> nros_ret_t {
+    validate_not_null!(client);
+    let client = &mut *client;
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ServiceClientInternal);
+    internal.timeout_ms = timeout_ms;
+    NROS_RET_OK
+}
+
+/// Send a service request asynchronously (Phase 82).
+///
+/// Non-blocking. The reply is delivered via the registered
+/// `response_callback` during `nros_executor_spin_some`. The user must
+/// have previously registered the client with `nros_executor_add_client`.
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_NOT_INIT` if the client is not registered with an executor
+/// * `NROS_RET_BAD_SEQUENCE` if a previous request is still pending
+/// * `NROS_RET_ERROR` on transport failure
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_send_request_async(
+    client: *mut nros_client_t,
+    request_data: *const u8,
+    request_len: usize,
+) -> nros_ret_t {
+    validate_not_null!(client, request_data);
+
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        use nros_rmw::ServiceClientTrait;
+
+        let client_ref = &mut *client;
+        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let internal =
+            &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
+            Some(e) => e,
+            None => return NROS_RET_NOT_INIT,
+        };
+        if entry.pending {
+            return NROS_RET_BAD_SEQUENCE;
+        }
+
+        let request = core::slice::from_raw_parts(request_data, request_len);
+        match entry.handle.send_request_raw(request) {
+            Ok(()) => {
+                entry.pending = true;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = (client, request_data, request_len);
+        NROS_RET_ERROR
+    }
+}
+
+/// Poll for the reply to the most recently sent async request.
+///
+/// # Returns
+/// * `NROS_RET_OK` if the reply was filled into `response_data`
+/// * `NROS_RET_TRY_AGAIN` if no reply yet (caller should spin and retry)
+/// * `NROS_RET_NOT_INIT` if the client isn't registered or has no pending request
+/// * `NROS_RET_ERROR` on transport failure
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_try_recv_response(
+    client: *mut nros_client_t,
+    response_data: *mut u8,
+    response_capacity: usize,
+    response_len: *mut usize,
+) -> nros_ret_t {
+    validate_not_null!(client, response_data, response_len);
+
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        use nros_rmw::ServiceClientTrait;
+
+        let client_ref = &mut *client;
+        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let internal =
+            &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
+            Some(e) => e,
+            None => return NROS_RET_NOT_INIT,
+        };
+        if !entry.pending {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
+        match entry.handle.try_recv_reply_raw(buf) {
+            Ok(Some(len)) => {
+                entry.pending = false;
+                *response_len = len;
+                NROS_RET_OK
+            }
+            Ok(None) => NROS_RET_TRY_AGAIN,
+            Err(_) => {
+                entry.pending = false;
+                NROS_RET_ERROR
+            }
+        }
+    }
+
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = (client, response_data, response_capacity, response_len);
+        NROS_RET_ERROR
+    }
+}
+
+/// Call a service (blocking convenience over the async pair).
+///
+/// Phase 82: signature unchanged, but no longer blocks at the transport
+/// layer. Internally calls `nros_client_send_request_async` and spins
+/// the registered executor via `nros_executor_spin_some` until the
+/// response arrives or the client's `timeout_ms` elapses. The client
+/// must have been registered with `nros_executor_add_client`.
 ///
 /// # Parameters
-/// * `client` - Pointer to an initialized client
+/// * `client` - Pointer to a registered client
 /// * `request_data` - CDR-serialized request data
 /// * `request_len` - Length of request data
 /// * `response_data` - Buffer to receive CDR-serialized response
@@ -595,10 +788,11 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 /// # Returns
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
-/// * `NROS_RET_TIMEOUT` if no response within timeout
+/// * `NROS_RET_NOT_INIT` if the client isn't registered with an executor
+/// * `NROS_RET_TIMEOUT` if no response within `timeout_ms`
 /// * `NROS_RET_ERROR` on call failure
 #[unsafe(no_mangle)]
+#[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_client_call(
     client: *mut nros_client_t,
     request_data: *const u8,
@@ -609,33 +803,67 @@ pub unsafe extern "C" fn nros_client_call(
 ) -> nros_ret_t {
     validate_not_null!(client, request_data, response_data, response_len);
 
-    let client = &mut *client;
+    let client_ref = &mut *client;
+    if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+        return NROS_RET_NOT_INIT;
+    }
 
-    validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
+    let internal_ptr = client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal;
+    let executor_ptr = (*internal_ptr).executor_ptr;
+    let timeout_ms = (*internal_ptr).timeout_ms;
+    if executor_ptr.is_null() {
+        return NROS_RET_NOT_INIT;
+    }
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-    {
-        use nros_rmw::ServiceClientTrait;
+    // One-shot blocking response capture. Static is fine because
+    // nros_client_call is non-reentrant by design (callable only from
+    // outside spin_some; the reentrancy guard in 82.8 will enforce it).
+    static mut BLK_DONE: i32 = -1;
+    static mut BLK_LEN: usize = 0;
+    static mut BLK_BUF: [u8; 4096] = [0u8; 4096];
+    BLK_DONE = -1;
+    BLK_LEN = 0;
 
-        let client_handle =
-            &mut *(client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient);
-        let request = core::slice::from_raw_parts(request_data, request_len);
-        let reply_buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
+    let orig_cb = client_ref.response_callback;
+    let orig_ctx = client_ref.context;
 
-        match client_handle.call_raw(request, reply_buf) {
-            Ok(len) => {
-                *response_len = len;
-                NROS_RET_OK
+    unsafe extern "C" fn blocking_response_cb(
+        data: *const u8,
+        len: usize,
+        _ctx: *mut c_void,
+    ) {
+        let copy = len.min(BLK_BUF.len());
+        core::ptr::copy_nonoverlapping(data, BLK_BUF.as_mut_ptr(), copy);
+        BLK_LEN = copy;
+        BLK_DONE = 1;
+    }
+    client_ref.response_callback = Some(blocking_response_cb);
+
+    let send = nros_client_send_request_async(client, request_data, request_len);
+    if send != NROS_RET_OK {
+        client_ref.response_callback = orig_cb;
+        client_ref.context = orig_ctx;
+        return send;
+    }
+
+    let executor = executor_ptr as *mut nros_executor_t;
+    let max_spins = (timeout_ms / 10).max(1);
+    for _ in 0..max_spins {
+        crate::executor::nros_executor_spin_some(executor, 10_000_000);
+        if BLK_DONE >= 0 {
+            client_ref.response_callback = orig_cb;
+            client_ref.context = orig_ctx;
+            if BLK_LEN > response_capacity {
+                return NROS_RET_ERROR;
             }
-            Err(nros_rmw::TransportError::Timeout) => NROS_RET_TIMEOUT,
-            Err(_) => NROS_RET_ERROR,
+            core::ptr::copy_nonoverlapping(BLK_BUF.as_ptr(), response_data, BLK_LEN);
+            *response_len = BLK_LEN;
+            return NROS_RET_OK;
         }
     }
-
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
-    {
-        NROS_RET_ERROR
-    }
+    client_ref.response_callback = orig_cb;
+    client_ref.context = orig_ctx;
+    NROS_RET_TIMEOUT
 }
 
 /// Get the service name of a client.
@@ -987,7 +1215,7 @@ mod verification {
             nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(client.node.is_null());
-        assert!(client._opaque.iter().all(|&v| v == 0));
+        assert!(client._internal.iter().all(|&v| v == 0));
     }
 
     #[kani::proof]

@@ -39,6 +39,5 @@ pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
 // Computed from `core::mem::size_of` at compile time — always matches the
 // actual Rust type layout. See `opaque_sizes.rs`.
 pub use crate::opaque_sizes::{
-    GUARD_HANDLE_OPAQUE_U64S, PUBLISHER_OPAQUE_U64S, SERVICE_CLIENT_OPAQUE_U64S,
-    SESSION_OPAQUE_U64S,
+    GUARD_HANDLE_OPAQUE_U64S, PUBLISHER_OPAQUE_U64S, SESSION_OPAQUE_U64S,
 };

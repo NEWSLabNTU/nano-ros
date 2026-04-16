@@ -48,3 +48,7 @@ pub const NROS_RET_NOT_ALLOWED: nros_ret_t = -12;
 
 /// Request was rejected (e.g., goal rejected by server)
 pub const NROS_RET_REJECTED: nros_ret_t = -13;
+
+/// Operation not yet ready (e.g., async response still pending).
+/// Caller should spin the executor and try again.
+pub const NROS_RET_TRY_AGAIN: nros_ret_t = -14;

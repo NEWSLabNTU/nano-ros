@@ -30,13 +30,10 @@ pub const SESSION_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwSession>()
     feature = "rmw-cffi"
 ))]
 pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublisher>();
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwServiceClient>();
+// Phase 82: service client opaque storage no longer holds the RMW
+// transport handle (it lives in the executor's arena). Use
+// SERVICE_CLIENT_INTERNAL_OPAQUE_U64S (from build.rs) for the C struct
+// instead.
 
 // Placeholders for no-RMW workspace builds.
 #[cfg(not(any(
@@ -53,13 +50,6 @@ pub const SESSION_OPAQUE_U64S: usize = 1;
     feature = "rmw-cffi"
 )))]
 pub const PUBLISHER_OPAQUE_U64S: usize = 1;
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const SERVICE_CLIENT_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
 
@@ -89,4 +79,12 @@ const _: () = assert!(
         <= crate::config::ACTION_CLIENT_INTERNAL_OPAQUE_U64S,
     "ACTION_CLIENT_INTERNAL_OPAQUE_U64S too small — \
      increase action_client formula in build.rs"
+);
+
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    u64s_for::<crate::service::ServiceClientInternal>()
+        <= crate::config::SERVICE_CLIENT_INTERNAL_OPAQUE_U64S,
+    "SERVICE_CLIENT_INTERNAL_OPAQUE_U64S too small — \
+     increase service_client_internal formula in build.rs"
 );
