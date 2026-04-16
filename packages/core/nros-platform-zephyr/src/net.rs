@@ -37,7 +37,9 @@ use crate::ZephyrPlatform;
 mod c {
     use core::ffi::{c_char, c_int, c_void};
 
-    pub type socklen_t = u32;
+    // Zephyr: `typedef size_t socklen_t` — 8 bytes on 64-bit native_sim,
+    // 4 bytes on 32-bit ARM. Using usize matches.
+    pub type socklen_t = usize;
     pub type sa_family_t = u16;
     pub type ssize_t = isize;
 
@@ -98,18 +100,37 @@ mod c {
         pub sa_data: [u8; 14],
     }
 
-    /// `struct addrinfo` — POSIX layout. Zephyr's version matches this
-    /// ordering (see `zephyr/net/socket.h`).
+    /// `DNS_MAX_NAME_SIZE + 1` from `zephyr/net/dns_resolve.h` — inline
+    /// canonical-name storage in the zsock_addrinfo record.
+    pub const DNS_MAX_NAME_SIZE_PLUS_1: usize = 21;
+
+    /// Matches `struct zsock_addrinfo` in `zephyr/net/socket.h`. This is
+    /// **not** the POSIX `struct addrinfo` layout — `ai_next` comes
+    /// first, there's an extra `ai_eflags`, the order of `ai_addr`/
+    /// `ai_canonname` is swapped, and the struct embeds storage for
+    /// both (`_ai_addr`, `_ai_canonname`) so that `getaddrinfo()` does
+    /// not allocate.
+    ///
+    /// POSIX `getaddrinfo` in `zephyr/lib/posix/options/net.c` is a thin
+    /// wrapper that forwards to `zsock_getaddrinfo`, so this is the
+    /// binary layout we must match.
     #[repr(C)]
     pub struct addrinfo {
+        pub ai_next: *mut addrinfo,
         pub ai_flags: c_int,
         pub ai_family: c_int,
         pub ai_socktype: c_int,
         pub ai_protocol: c_int,
+        pub ai_eflags: c_int,
         pub ai_addrlen: socklen_t,
-        pub ai_canonname: *mut c_char,
         pub ai_addr: *mut sockaddr,
-        pub ai_next: *mut addrinfo,
+        pub ai_canonname: *mut c_char,
+        // Internal storage — zsock_getaddrinfo fills these and sets
+        // `ai_addr`/`ai_canonname` to point at them. We never touch
+        // them from Rust, but their size affects the total struct
+        // size when zenoh-pico allocates an `addrinfo` on the stack.
+        pub _ai_addr: sockaddr,
+        pub _ai_canonname: [u8; DNS_MAX_NAME_SIZE_PLUS_1],
     }
 
     unsafe extern "C" {
