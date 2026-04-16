@@ -6,7 +6,7 @@ blocks, the caller must pass an executor and the API must spin that executor*.
 The action client already follows this; the service client does not, and the
 inconsistency is observable across all three language bindings.
 
-**Status**: In Progress (82.2–82.6, 82.10 C examples done)
+**Status**: In Progress (82.1–82.15, 82.18 done; 82.16–82.17 deferred)
 **Priority**: Medium — soundness fix, no functional regression on currently
 passing tests, but blocks future "service-call from a callback" use cases.
 **Depends on**: Phase 77 (executor-spin pattern for blocking helpers)
@@ -729,7 +729,7 @@ subscription callback and asserts `Reentrant`.
 
 ## Work Items
 
-- [ ] 82.1 — Audit & document the rule
+- [x] 82.1 — Audit & document the rule
   - **Files**: new `docs/design/blocking-api-rules.md`,
     `book/src/concepts/api-conventions.md` (new section)
   - **Goal**: One canonical statement: "every blocking helper that the
@@ -794,7 +794,7 @@ subscription callback and asserts `Reentrant`.
     4. Spin: `for _ in 0..(timeout_ms / 10) { nros_executor_spin_some(executor, 10ms); if BLK_DONE { break; } }`.
     5. Restore original callback. Return the result.
 
-- [ ] 82.7 — Service server symmetry
+- [x] 82.7 — Service server symmetry
   - **Files**: `packages/core/nros-c/src/service.rs` (server side, lines
     141–226), `packages/core/nros-c/src/types.rs` (add `_internal` to
     `nros_service_t`), `packages/core/nros-c/src/executor.rs`
@@ -805,7 +805,7 @@ subscription callback and asserts `Reentrant`.
     user code. This is the lifecycle-symmetry cleanup mentioned in the
     "Service server symmetry" section above.
 
-- [ ] 82.8 — Reentrancy guard on `nros_executor_t`
+- [x] 82.8 — Reentrancy guard on `nros_executor_t`
   - **Files**: `packages/core/nros-c/src/executor.rs`,
     `packages/core/nros-c/src/service.rs`,
     `packages/core/nros-c/src/action/client.rs`
@@ -815,7 +815,7 @@ subscription callback and asserts `Reentrant`.
     `nros_action_send_goal`, and `nros_action_get_result` check the flag
     and return `NROS_RET_REENTRANT` immediately if set.
 
-- [ ] 82.9 — Rust: deprecate `ServiceClientTrait::call_raw`
+- [x] 82.9 — Rust: deprecate `ServiceClientTrait::call_raw`
   - **Files**: `packages/core/nros-rmw/src/traits.rs:965`,
     `packages/zpico/nros-rmw-zenoh/src/shim/service.rs:459`,
     `packages/xrce/nros-rmw-xrce/src/lib.rs`
@@ -836,7 +836,7 @@ subscription callback and asserts `Reentrant`.
     Verify all service-client integration tests still pass on every
     platform.
 
-- [ ] 82.11 — Test coverage: reentrancy + nested spin
+- [x] 82.11 — Test coverage: reentrancy + nested spin
   - **Files**: `packages/testing/nros-tests/tests/services.rs`
   - **Goal**: Regression test that calls `nros_client_call` from inside a
     subscription callback and asserts it returns `NROS_RET_REENTRANT`.
@@ -844,7 +844,7 @@ subscription callback and asserts `Reentrant`.
     successful response (proves the blocking wrapper drives the
     executor).
 
-- [ ] 82.12 — Strip `zpico_get` from the call path entirely
+- [x] 82.12 — Strip `zpico_get` from the call path entirely
   - **Files**: `packages/zpico/nros-rmw-zenoh/src/shim/service.rs`,
     `packages/zpico/nros-rmw-zenoh/src/zpico.rs`,
     `packages/zpico/zpico-sys/c/zpico/zpico.c`
@@ -855,14 +855,14 @@ subscription callback and asserts `Reentrant`.
     if anything still references it. The non-blocking
     `zpico_get_start` / `zpico_get_check` pair stays.
 
-- [ ] 82.13 — Update Phase 64 / parameter services
+- [x] 82.13 — Update Phase 64 / parameter services (N/A — all param ops are local)
   - **Files**: `packages/core/nros-node/src/parameter_services.rs`
   - **Goal**: ROS 2 param queries are services. Confirm the C-side
     helpers for requesting them (if any blocking ones exist) route
     through the new executor-driven path. If a "blocking get parameter"
     helper exists, it follows the same `executor_ptr` stash pattern.
 
-- [ ] 82.14 — C++: introduce `Future<T>` + `Stream<T>`
+- [x] 82.14 — C++: introduce `Future<T>` (Stream<T> deferred to 82.17)
   - **Files**: new `packages/core/nros-cpp/include/nros/future.hpp`,
     new `packages/core/nros-cpp/include/nros/stream.hpp`,
     `packages/core/nros-cpp/src/future.rs` (FFI for slot management)
@@ -873,7 +873,7 @@ subscription callback and asserts `Reentrant`.
     `__cpp_impl_coroutine`. Same shape for `Stream<T>` with
     `wait_next(executor, timeout, out)`.
 
-- [ ] 82.15 — C++: rewrite `Client<S>` on `Future<Response>`
+- [x] 82.15 — C++: rewrite `Client<S>` on `Future<Response>`
   - **Files**: `packages/core/nros-cpp/include/nros/client.hpp`,
     `packages/core/nros-cpp/src/client.rs` (FFI),
     `examples/*/cpp/zenoh/service-client/src/main.cpp`
@@ -901,7 +901,7 @@ subscription callback and asserts `Reentrant`.
     stays as a separate alternative for users who prefer it. Update C++
     subscriber examples to use the stream form where it reads cleaner.
 
-- [ ] 82.18 — C++: reentrancy guard
+- [x] 82.18 — C++: reentrancy guard (ErrorCode::Reentrant added)
   - **Files**: `packages/core/nros-cpp/include/nros/future.hpp`,
     `packages/core/nros-cpp/include/nros/stream.hpp`
   - **Goal**: `Future::wait` and `Stream::wait_next` check the C ABI's

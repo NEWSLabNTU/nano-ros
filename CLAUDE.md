@@ -271,7 +271,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 79 | Unified platform abstraction layer | Complete |
 | 80 | Unified network interface for nros-platform | Not Started |
 | 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Not Started |
-| 82 | Blocking service client must take an executor | In Progress (82.2–82.6, 82.10 C done) |
+| 82 | Blocking service client must take an executor | In Progress (82.16–82.17 deferred) |
 
 ## Quick Reference
 
