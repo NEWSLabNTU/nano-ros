@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.9.2 done)
+**Status**: In Progress (80.1–80.10 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -340,9 +340,9 @@ typedef struct {
   - [x] 80.9.2 — Wire `nros-platform-threadx/net.rs` to use `threadx-netx-sys` types — found wrong constants (SOL_SOCKET, SO_RCVTIMEO)
   - [ ] 80.9.3 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets (depends on 80.10)
   - [ ] 80.9.4 — Create `zephyr-posix-sys` bindgen crate (deferred — needs Zephyr build environment)
-- [ ] 80.10 — Implement for NuttX
-  - [ ] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types
-  - [ ] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
+- [x] 80.10 — Implement for NuttX via nuttx-sys bindgen
+  - [x] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types (NuttxPlatform as proper struct)
+  - [x] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c`
   - [ ] 80.10.3 — Verify `just nuttx test` passes
 - [ ] 80.11 — Zephyr UDP multicast
   - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
