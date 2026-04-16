@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.8 done)
+**Status**: In Progress (80.1–80.9.2 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -335,11 +335,11 @@ typedef struct {
   - [x] 80.8.2 — Activate shim `network` for ThreadX + remove C `threadx/network.c`
   - [x] 80.8.3 — Fix `_tx_thread_sleep` link name + C++ `global_handle()` friend decl
   - [x] 80.8.4 — Verified: 16/16 builds pass, Rust pubsub + service E2E pass
-- [ ] 80.9 — Per-RTOS bindgen sys crates (consistency + safety)
-  - [ ] 80.9.1 — Create `threadx-netx-sys` bindgen crate for ThreadX/NetX Duo BSD sockets
-  - [ ] 80.9.2 — Wire `nros-platform-threadx/net.rs` to use `threadx-netx-sys` types (replace manual FFI)
-  - [ ] 80.9.3 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets
-  - [ ] 80.9.4 — Create `zephyr-posix-sys` bindgen crate for Zephyr POSIX sockets (replace manual FFI)
+- [x] 80.9 — Per-RTOS bindgen sys crates (consistency + safety)
+  - [x] 80.9.1 — Create `threadx-netx-sys` bindgen crate (`packages/drivers/threadx-netx-sys/`)
+  - [x] 80.9.2 — Wire `nros-platform-threadx/net.rs` to use `threadx-netx-sys` types — found wrong constants (SOL_SOCKET, SO_RCVTIMEO)
+  - [ ] 80.9.3 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets (depends on 80.10)
+  - [ ] 80.9.4 — Create `zephyr-posix-sys` bindgen crate (deferred — needs Zephyr build environment)
 - [ ] 80.10 — Implement for NuttX
   - [ ] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types
   - [ ] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c` (NuttX path)
