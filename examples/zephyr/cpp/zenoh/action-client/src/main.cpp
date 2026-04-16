@@ -4,8 +4,8 @@
  *
  * This example demonstrates a Fibonacci action client on Zephyr RTOS
  * using the nros C++ API (nros::init, nros::Node, nros::ActionClient<A>).
- * Sends a goal, polls for feedback, then gets the result.
- * The nros module handles zenoh initialization and platform support.
+ * Sends a goal using the Future-based API, polls for feedback, then gets
+ * the result. The nros module handles zenoh initialization and platform support.
  */
 
 #include <zephyr/kernel.h>
@@ -72,14 +72,21 @@ int main(void)
     example_interfaces::action::Fibonacci::Goal goal;
     goal.order = order;
 
-    uint8_t goal_id[16];
-    ret = client.send_goal(goal, goal_id);
-    if (!ret.ok()) {
-        LOG_ERR("Failed to send goal: %d", ret.raw());
+    auto goal_fut = client.send_goal_future(goal);
+    if (goal_fut.is_consumed()) {
+        LOG_ERR("Failed to send goal");
         nros::shutdown();
         return 1;
     }
-    LOG_INF("Goal sent: order=%d", order);
+
+    nros::ActionClient<example_interfaces::action::Fibonacci>::GoalAccept accept;
+    ret = goal_fut.wait(nros::global_handle(), 10000, accept);
+    if (!ret.ok() || !accept.accepted) {
+        LOG_ERR("Goal not accepted: %d", ret.raw());
+        nros::shutdown();
+        return 1;
+    }
+    LOG_INF("Goal accepted: order=%d", order);
 
     /* Poll for feedback while waiting */
     for (int i = 0; i < 20; i++) {
@@ -91,9 +98,16 @@ int main(void)
         }
     }
 
-    /* Get result (blocking) */
+    /* Get result (Future-based) */
+    auto result_fut = client.get_result_future(accept.goal_id);
+    if (result_fut.is_consumed()) {
+        LOG_ERR("Failed to request result");
+        nros::shutdown();
+        return 1;
+    }
+
     example_interfaces::action::Fibonacci::Result result;
-    ret = client.get_result(goal_id, result);
+    ret = result_fut.wait(nros::global_handle(), 30000, result);
     if (ret.ok()) {
         LOG_INF("Result received: sequence length=%d", result.sequence.length());
         LOG_INF("[OK]");
