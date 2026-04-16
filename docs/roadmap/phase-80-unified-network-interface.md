@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.6 done)
+**Status**: In Progress (80.1–80.6.8 done, 80.7.1 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -286,7 +286,7 @@ typedef struct {
   - [x] 80.2.1 — TCP forwarders (8 functions): endpoint create/free, open, listen, close, read, read_exact, send
   - [x] 80.2.2 — UDP unicast forwarders (8 functions): endpoint create/free, open, listen, close, read, read_exact, send
   - [x] 80.2.3 — Socket helper forwarders: set_non_blocking, accept, close, wait_event
-  - [ ] 80.2.4 — Remove existing `socket_stubs` module (deferred — replaced when `network` feature activated)
+  - [x] 80.2.4 — Remove existing `socket_stubs` module (done in 80.6.7)
 - [x] 80.3 — Implement `PlatformTcp`/`PlatformUdp` for POSIX
   - [x] 80.3.1 — TCP: getaddrinfo, socket, connect, recv, send, shutdown+close via libc
   - [x] 80.3.2 — UDP: getaddrinfo, socket, recvfrom, sendto via libc
