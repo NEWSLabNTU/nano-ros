@@ -48,7 +48,6 @@ unsafe extern "C" {
         optlen: c_int,
     ) -> c_int;
     fn nx_bsd_soc_close(fd: c_int) -> c_int;
-    fn tx_thread_sleep(ticks: u32);
 }
 
 // Byte order conversion (NetX expects network byte order in sockaddr)
@@ -442,7 +441,7 @@ impl ThreadxPlatform {
     }
 
     pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
-        unsafe { tx_thread_sleep(1) };
+        unsafe { crate::ffi::tx_thread_sleep(1) };
         0
     }
 }

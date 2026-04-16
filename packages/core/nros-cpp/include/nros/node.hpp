@@ -415,6 +415,7 @@ class Node {
     friend Result create_node(Node& out, const char* name, const char* ns);
     friend Result spin_once(int32_t timeout_ms);
     friend Result spin(uint32_t duration_ms, int32_t poll_ms);
+    friend void* global_handle();
 
     // Global executor inline storage for init/shutdown free functions.
     static uint8_t* global_storage() {
