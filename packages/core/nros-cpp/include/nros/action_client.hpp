@@ -26,9 +26,9 @@ nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out_data,
-                                                              size_t out_capacity, size_t* out_len);
+                                                             size_t out_capacity, size_t* out_len);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data,
-                                                       size_t out_capacity, size_t* out_len);
+                                                      size_t out_capacity, size_t* out_len);
 nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
     void* handle, void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
     void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx),
@@ -75,7 +75,8 @@ template <typename A> class ActionClient {
         static const size_t SERIALIZED_SIZE_MAX = 32;
         static int ffi_deserialize(const uint8_t* data, size_t len, GoalAccept* out) {
             if (!out || len < 17) return -1;
-            for (int i = 0; i < 16; ++i) out->goal_id[i] = data[i];
+            for (int i = 0; i < 16; ++i)
+                out->goal_id[i] = data[i];
             out->accepted = data[16] != 0;
             return 0;
         }
@@ -153,14 +154,11 @@ template <typename A> class ActionClient {
         }
 
         uint8_t goal_id[16];
-        nros_cpp_ret_t ret =
-            nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id);
+        nros_cpp_ret_t ret = nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id);
         if (ret != 0) return Future<GoalAccept>();
 
-        return Future<GoalAccept>(
-            storage_,
-            &nros_cpp_action_client_try_recv_goal_response,
-            0  // slot 0 (single outstanding goal request)
+        return Future<GoalAccept>(storage_, &nros_cpp_action_client_try_recv_goal_response,
+                                  0 // slot 0 (single outstanding goal request)
         );
     }
 
@@ -183,14 +181,11 @@ template <typename A> class ActionClient {
     Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
         if (!initialized_) return Future<ResultType>();
 
-        nros_cpp_ret_t ret =
-            nros_cpp_action_client_get_result_async(storage_, goal_id);
+        nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(storage_, goal_id);
         if (ret != 0) return Future<ResultType>();
 
-        return Future<ResultType>(
-            storage_,
-            &nros_cpp_action_client_try_recv_result,
-            0  // slot 0 (single outstanding result request)
+        return Future<ResultType>(storage_, &nros_cpp_action_client_try_recv_result,
+                                  0 // slot 0 (single outstanding result request)
         );
     }
 

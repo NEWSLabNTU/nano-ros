@@ -29,8 +29,7 @@ namespace nros {
 /// MsgType msg;
 /// NROS_TRY(stream.wait_next(executor.handle(), 5000, msg));
 /// ```
-template <typename T>
-class Stream {
+template <typename T> class Stream {
   public:
     /// Try to receive the next value (non-blocking).
     ///
@@ -68,8 +67,7 @@ class Stream {
     bool is_valid() const { return try_recv_fn_ != nullptr; }
 
     // Move semantics (non-copyable)
-    Stream(Stream&& other) noexcept
-        : storage_(other.storage_), try_recv_fn_(other.try_recv_fn_) {
+    Stream(Stream&& other) noexcept : storage_(other.storage_), try_recv_fn_(other.try_recv_fn_) {
         other.storage_ = nullptr;
         other.try_recv_fn_ = nullptr;
     }

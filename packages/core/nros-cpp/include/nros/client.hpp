@@ -65,10 +65,8 @@ template <typename S> class Client {
         nros_cpp_ret_t ret = nros_cpp_service_client_send_request(storage_, req_buf, req_len);
         if (ret != 0) return Future<ResponseType>();
 
-        return Future<ResponseType>(
-            storage_,
-            &nros_cpp_service_client_try_recv_reply,
-            0  // slot 0 (single outstanding request)
+        return Future<ResponseType>(storage_, &nros_cpp_service_client_try_recv_reply,
+                                    0 // slot 0 (single outstanding request)
         );
     }
 

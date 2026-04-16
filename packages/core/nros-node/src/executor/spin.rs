@@ -13,8 +13,8 @@ use super::arena::{
     BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
     SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
     SubInfoEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
-    guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
-    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
+    guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process, srv_has_data,
+    srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
     sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
     sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data, sub_info_pre_sample,
     sub_info_try_process, timer_try_process,
@@ -358,9 +358,8 @@ impl Executor {
     pub unsafe fn service_client_entry_mut(
         &mut self,
         entry_index: usize,
-    ) -> Option<&mut super::arena::ServiceClientRawArenaEntry<
-        { crate::config::DEFAULT_RX_BUF_SIZE },
-    >> {
+    ) -> Option<&mut super::arena::ServiceClientRawArenaEntry<{ crate::config::DEFAULT_RX_BUF_SIZE }>>
+    {
         let meta = self.entries.get(entry_index)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::ServiceClient) {
             return None;

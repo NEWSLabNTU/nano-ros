@@ -387,9 +387,8 @@ const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = 5000;
 /// request has its response delivered. The CDR bytes are owned by the
 /// arena entry's reply buffer for the duration of the call — copy if you
 /// need to keep them.
-pub type nros_response_callback_t = Option<
-    unsafe extern "C" fn(response: *const u8, response_len: usize, context: *mut c_void),
->;
+pub type nros_response_callback_t =
+    Option<unsafe extern "C" fn(response: *const u8, response_len: usize, context: *mut c_void)>;
 
 /// Internal state for the service client (Phase 82).
 ///
@@ -702,8 +701,7 @@ pub unsafe extern "C" fn nros_client_send_request_async(
             return NROS_RET_NOT_INIT;
         }
 
-        let internal =
-            &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
             return NROS_RET_NOT_INIT;
         }
@@ -760,8 +758,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
             return NROS_RET_NOT_INIT;
         }
 
-        let internal =
-            &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
             return NROS_RET_NOT_INIT;
         }
@@ -863,11 +860,7 @@ pub unsafe extern "C" fn nros_client_call(
     let orig_cb = client_ref.response_callback;
     let orig_ctx = client_ref.context;
 
-    unsafe extern "C" fn blocking_response_cb(
-        data: *const u8,
-        len: usize,
-        _ctx: *mut c_void,
-    ) {
+    unsafe extern "C" fn blocking_response_cb(data: *const u8, len: usize, _ctx: *mut c_void) {
         let copy = len.min(BLK_BUF.len());
         core::ptr::copy_nonoverlapping(data, BLK_BUF.as_mut_ptr(), copy);
         BLK_LEN = copy;
@@ -1359,8 +1352,7 @@ mod verification {
         // Simulate registration: set state to REGISTERED and stash
         // a pointer to a fake executor with in_dispatch = true.
         let mut executor = crate::executor::nros_executor_get_zero_initialized();
-        executor.state =
-            crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
         executor.in_dispatch = true;
 
         client.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;

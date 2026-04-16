@@ -28,8 +28,7 @@ namespace nros {
 /// ResponseType resp;
 /// NROS_TRY(fut.wait(executor.handle(), 5000, resp));
 /// ```
-template <typename T>
-class Future {
+template <typename T> class Future {
   public:
     /// Check if the result has arrived (non-blocking).
     bool is_ready() {
@@ -41,7 +40,8 @@ class Future {
         if (ret == 0 && len > 0) {
             ready_ = true;
             cached_len_ = len < sizeof(cached_buf_) ? len : sizeof(cached_buf_);
-            for (size_t i = 0; i < cached_len_; ++i) cached_buf_[i] = buf[i];
+            for (size_t i = 0; i < cached_len_; ++i)
+                cached_buf_[i] = buf[i];
             return true;
         }
         return false;
@@ -88,12 +88,10 @@ class Future {
 
     // Move semantics (non-copyable, single-shot)
     Future(Future&& other) noexcept
-        : client_storage_(other.client_storage_),
-          try_recv_fn_(other.try_recv_fn_),
-          slot_(other.slot_),
-          ready_(other.ready_),
-          cached_len_(other.cached_len_) {
-        for (size_t i = 0; i < cached_len_; ++i) cached_buf_[i] = other.cached_buf_[i];
+        : client_storage_(other.client_storage_), try_recv_fn_(other.try_recv_fn_),
+          slot_(other.slot_), ready_(other.ready_), cached_len_(other.cached_len_) {
+        for (size_t i = 0; i < cached_len_; ++i)
+            cached_buf_[i] = other.cached_buf_[i];
         other.slot_ = -1;
         other.ready_ = false;
     }
@@ -105,7 +103,8 @@ class Future {
             slot_ = other.slot_;
             ready_ = other.ready_;
             cached_len_ = other.cached_len_;
-            for (size_t i = 0; i < cached_len_; ++i) cached_buf_[i] = other.cached_buf_[i];
+            for (size_t i = 0; i < cached_len_; ++i)
+                cached_buf_[i] = other.cached_buf_[i];
             other.slot_ = -1;
             other.ready_ = false;
         }
@@ -115,8 +114,9 @@ class Future {
     ~Future() { cancel(); }
 
     /// Default constructor -- creates an empty/consumed future.
-    Future() : client_storage_(nullptr), try_recv_fn_(nullptr), slot_(-1),
-               ready_(false), cached_len_(0) {}
+    Future()
+        : client_storage_(nullptr), try_recv_fn_(nullptr), slot_(-1), ready_(false),
+          cached_len_(0) {}
 
   private:
     Future(const Future&) = delete;
@@ -128,8 +128,7 @@ class Future {
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
     Future(void* storage, TryRecvFn fn, int slot)
-        : client_storage_(storage), try_recv_fn_(fn), slot_(slot),
-          ready_(false), cached_len_(0) {}
+        : client_storage_(storage), try_recv_fn_(fn), slot_(slot), ready_(false), cached_len_(0) {}
 
     void* client_storage_;
     TryRecvFn try_recv_fn_;

@@ -718,9 +718,8 @@ pub unsafe extern "C" fn nros_executor_add_client(
         let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
-        let service_name = core::str::from_utf8_unchecked(
-            &client_ref.service_name[..client_ref.service_name_len],
-        );
+        let service_name =
+            core::str::from_utf8_unchecked(&client_ref.service_name[..client_ref.service_name_len]);
         let type_str =
             core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
         let type_hash_str =
@@ -744,7 +743,8 @@ pub unsafe extern "C" fn nros_executor_add_client(
         match result {
             Ok(handle_id) => {
                 let client_mut = &mut *client;
-                let internal = &mut *(client_mut._internal.as_mut_ptr() as *mut ServiceClientInternal);
+                let internal =
+                    &mut *(client_mut._internal.as_mut_ptr() as *mut ServiceClientInternal);
                 internal.arena_entry_index = handle_id.0 as i32;
                 internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
                 client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;

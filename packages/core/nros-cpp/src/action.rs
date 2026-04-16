@@ -959,7 +959,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
             }
             let buf = core.result_buffer_ref();
             unsafe {
-                core::ptr::copy_nonoverlapping(buf[result_offset..total_len].as_ptr(), out_data, data_len);
+                core::ptr::copy_nonoverlapping(
+                    buf[result_offset..total_len].as_ptr(),
+                    out_data,
+                    data_len,
+                );
                 *out_len = data_len;
             }
             NROS_CPP_RET_OK
