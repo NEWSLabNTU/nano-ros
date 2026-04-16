@@ -6,5 +6,6 @@ license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for ThreadX (calls ThreadX C APIs via FFI)"
 
-# No Rust dependencies — all ThreadX APIs are extern "C" resolved at link time
-# from the ThreadX kernel + NetX Duo libraries linked by the board crate.
+[dependencies]
+# Bindgen-generated NetX Duo BSD socket FFI (struct nx_bsd_sockaddr_in, nx_bsd_* functions)
+threadx-netx-sys = { path = "../../drivers/threadx-netx-sys" }

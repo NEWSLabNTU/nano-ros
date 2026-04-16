@@ -1,0 +1,13 @@
+[package]
+name = "threadx-netx-sys"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Bindgen-generated FFI bindings for NetX Duo BSD sockets on ThreadX"
+publish = false
+
+[lib]
+name = "threadx_netx_sys"
+
+[build-dependencies]
+bindgen = "0.72"
