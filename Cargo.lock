@@ -1411,6 +1411,9 @@ dependencies = [
 [[package]]
 name = "nros-platform-threadx"
 version = "0.1.0"
+dependencies = [
+ "threadx-netx-sys",
+]
 
 [[package]]
 name = "nros-platform-zephyr"
@@ -2171,6 +2174,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "threadx-netx-sys"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
 ]
 
 [[package]]
