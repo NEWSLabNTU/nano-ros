@@ -11,15 +11,30 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let freertos_dir = env::var("FREERTOS_DIR").expect(
-        "FREERTOS_DIR not set. Run: just freertos setup && source .envrc",
-    );
-    let lwip_dir =
-        env::var("LWIP_DIR").expect("LWIP_DIR not set");
+    let freertos_dir = match env::var("FREERTOS_DIR") {
+        Ok(d) => d,
+        Err(_) => {
+            // Env vars not set — emit placeholder types so the crate compiles
+            // in workspace checks without FreeRTOS installed.
+            emit_placeholder_bindings();
+            return;
+        }
+    };
+    let lwip_dir = match env::var("LWIP_DIR") {
+        Ok(d) => d,
+        Err(_) => {
+            emit_placeholder_bindings();
+            return;
+        }
+    };
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CM3".to_string());
-    let freertos_config_dir = env::var("FREERTOS_CONFIG_DIR").expect(
-        "FREERTOS_CONFIG_DIR not set",
-    );
+    let freertos_config_dir = match env::var("FREERTOS_CONFIG_DIR") {
+        Ok(d) => d,
+        Err(_) => {
+            emit_placeholder_bindings();
+            return;
+        }
+    };
 
     let freertos = PathBuf::from(&freertos_dir);
     let lwip = PathBuf::from(&lwip_dir);
@@ -121,6 +136,90 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
     println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
+    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
+}
+
+/// Emit minimal placeholder bindings when FreeRTOS env vars aren't set.
+/// Allows the crate to compile in workspace checks without FreeRTOS installed.
+fn emit_placeholder_bindings() {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    std::fs::write(
+        out_dir.join("bindings.rs"),
+        r#"
+// Placeholder — FreeRTOS/lwIP headers not available.
+// Set FREERTOS_DIR, LWIP_DIR, FREERTOS_CONFIG_DIR for real bindings.
+pub type time_t = i64;
+pub type suseconds_t = i64;
+pub type socklen_t = u32;
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct timeval { pub tv_sec: time_t, pub tv_usec: suseconds_t }
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct addrinfo {
+    pub ai_flags: core::ffi::c_int,
+    pub ai_family: core::ffi::c_int,
+    pub ai_socktype: core::ffi::c_int,
+    pub ai_protocol: core::ffi::c_int,
+    pub ai_addrlen: socklen_t,
+    pub ai_addr: *mut sockaddr,
+    pub ai_canonname: *mut core::ffi::c_char,
+    pub ai_next: *mut addrinfo,
+}
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct sockaddr { pub sa_len: u8, pub sa_family: u8, pub sa_data: [u8; 14] }
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct linger { pub l_onoff: core::ffi::c_int, pub l_linger: core::ffi::c_int }
+
+pub const PF_UNSPEC: u32 = 0;
+pub const SOCK_STREAM: u32 = 1;
+pub const SOCK_DGRAM: u32 = 2;
+pub const IPPROTO_TCP: u32 = 6;
+pub const IPPROTO_UDP: u32 = 17;
+pub const SOL_SOCKET: u32 = 0xFFF;
+pub const SO_KEEPALIVE: u32 = 0x0008;
+pub const SO_LINGER: u32 = 0x0080;
+pub const SO_RCVTIMEO: u32 = 0x1006;
+pub const SO_SNDTIMEO: u32 = 0x1005;
+pub const SO_REUSEADDR: u32 = 0x0004;
+pub const TCP_NODELAY: u32 = 0x01;
+pub const F_GETFL: u32 = 3;
+pub const F_SETFL: u32 = 4;
+pub const O_NONBLOCK: u32 = 1;
+pub const SHUT_RDWR: u32 = 2;
+
+unsafe extern "C" {
+    pub fn lwip_socket_thread_init();
+    pub fn lwip_socket_thread_cleanup();
+    pub fn lwip_socket(domain: core::ffi::c_int, ty: core::ffi::c_int, proto: core::ffi::c_int) -> core::ffi::c_int;
+    pub fn lwip_connect(s: core::ffi::c_int, name: *const sockaddr, namelen: socklen_t) -> core::ffi::c_int;
+    pub fn lwip_bind(s: core::ffi::c_int, name: *const sockaddr, namelen: socklen_t) -> core::ffi::c_int;
+    pub fn lwip_listen(s: core::ffi::c_int, backlog: core::ffi::c_int) -> core::ffi::c_int;
+    pub fn lwip_accept(s: core::ffi::c_int, addr: *mut sockaddr, addrlen: *mut socklen_t) -> core::ffi::c_int;
+    pub fn lwip_recv(s: core::ffi::c_int, mem: *mut core::ffi::c_void, len: usize, flags: core::ffi::c_int) -> isize;
+    pub fn lwip_recvfrom(s: core::ffi::c_int, mem: *mut core::ffi::c_void, len: usize, flags: core::ffi::c_int, from: *mut sockaddr, fromlen: *mut socklen_t) -> isize;
+    pub fn lwip_send(s: core::ffi::c_int, data: *const core::ffi::c_void, size: usize, flags: core::ffi::c_int) -> isize;
+    pub fn lwip_sendto(s: core::ffi::c_int, data: *const core::ffi::c_void, size: usize, flags: core::ffi::c_int, to: *const sockaddr, tolen: socklen_t) -> isize;
+    pub fn lwip_setsockopt(s: core::ffi::c_int, level: core::ffi::c_int, optname: core::ffi::c_int, optval: *const core::ffi::c_void, optlen: socklen_t) -> core::ffi::c_int;
+    pub fn lwip_close(s: core::ffi::c_int) -> core::ffi::c_int;
+    pub fn lwip_shutdown(s: core::ffi::c_int, how: core::ffi::c_int) -> core::ffi::c_int;
+    pub fn lwip_fcntl(s: core::ffi::c_int, cmd: core::ffi::c_int, val: core::ffi::c_int) -> core::ffi::c_int;
+    pub fn lwip_select(maxfdp1: core::ffi::c_int, readset: *mut core::ffi::c_void, writeset: *mut core::ffi::c_void, exceptset: *mut core::ffi::c_void, timeout: *mut timeval) -> core::ffi::c_int;
+    pub fn lwip_getaddrinfo(nodename: *const core::ffi::c_char, servname: *const core::ffi::c_char, hints: *const addrinfo, res: *mut *mut addrinfo) -> core::ffi::c_int;
+    pub fn lwip_freeaddrinfo(ai: *mut addrinfo);
+}
+"#,
+    )
+    .unwrap();
+
+    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
+    println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
 }
 

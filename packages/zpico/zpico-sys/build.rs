@@ -1886,7 +1886,8 @@ fn build_zenoh_pico_threadx(
     // layout (TX_THREAD + embedded stack + function/arg pointers).
     let platform_dir = c_dir.join("platform");
     build.file(platform_dir.join("threadx/task.c"));
-    build.file(platform_dir.join("threadx/network.c"));
+    // network.c skipped — networking provided by zpico-platform-shim via
+    // nros-platform-threadx (NetX Duo BSD socket calls).
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("zpico").join("zpico.c"));

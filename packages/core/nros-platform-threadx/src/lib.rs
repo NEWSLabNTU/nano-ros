@@ -20,6 +20,7 @@ use core::ffi::c_void;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 mod ffi;
+pub mod net;
 
 /// Zero-sized type implementing all platform methods for ThreadX.
 pub struct ThreadxPlatform;

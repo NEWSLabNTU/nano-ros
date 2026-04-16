@@ -26,7 +26,7 @@ zephyr = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network", "zpico-platform-shim?/network-smoltcp-bridge"]
 freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-clock-symbols"]
-threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-task-symbols"]
+threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-task-symbols", "zpico-platform-shim?/network"]
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.
