@@ -88,3 +88,11 @@ const _: () = assert!(
     "SERVICE_CLIENT_INTERNAL_OPAQUE_U64S too small — \
      increase service_client_internal formula in build.rs"
 );
+
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    u64s_for::<crate::service::ServiceServerInternal>()
+        <= crate::config::SERVICE_SERVER_INTERNAL_OPAQUE_U64S,
+    "SERVICE_SERVER_INTERNAL_OPAQUE_U64S too small — \
+     increase service_server_internal formula in build.rs"
+);

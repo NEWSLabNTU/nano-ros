@@ -72,6 +72,12 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
     let service_client_internal_opaque_u64s = service_client_internal_bytes.div_ceil(8);
     let service_client_internal_storage_bytes = service_client_internal_opaque_u64s * 8;
 
+    // ServiceServerInternal (Phase 82.7): arena_entry_index (i32) + executor_ptr (*mut c_void).
+    // Validated at compile time by assertion in opaque_sizes.rs.
+    let service_server_internal_bytes = 16usize; // i32 + pointer + padding
+    let service_server_internal_opaque_u64s = service_server_internal_bytes.div_ceil(8);
+    let service_server_internal_storage_bytes = service_server_internal_opaque_u64s * 8;
+
     let contents = format!(
         "/// Maximum number of handles in an executor \
          (derived from NROS_EXECUTOR_MAX_CBS via nros-node).\n\
@@ -104,7 +110,12 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
          /// Phase 82: replaces the old RmwServiceClient inline storage (the\n\
          /// transport handle now lives in the executor's arena instead).\n\
          /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const SERVICE_CLIENT_INTERNAL_OPAQUE_U64S: usize = {service_client_internal_opaque_u64s};\n"
+         pub const SERVICE_CLIENT_INTERNAL_OPAQUE_U64S: usize = {service_client_internal_opaque_u64s};\n\
+         \n\
+         /// Inline opaque storage for `ServiceServerInternal` inside `nros_service_t` (in u64 units).\n\
+         /// Phase 82.7: adds symmetry with service client and action entities.\n\
+         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
+         pub const SERVICE_SERVER_INTERNAL_OPAQUE_U64S: usize = {service_server_internal_opaque_u64s};\n"
     );
 
     std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
@@ -126,6 +137,9 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
          \n\
          /** Inline opaque storage size (bytes) for nros_client_t._internal. */\n\
          #define NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE {service_client_internal_storage_bytes}\n\
+         \n\
+         /** Inline opaque storage size (bytes) for nros_service_t._internal. */\n\
+         #define NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE {service_server_internal_storage_bytes}\n\
          \n\
          #endif /* NROS_CONFIG_GENERATED_H */\n"
     );

@@ -14,4 +14,7 @@
 /** Inline opaque storage size (bytes) for nros_client_t._internal. */
 #define NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE 24
 
+/** Inline opaque storage size (bytes) for nros_service_t._internal. */
+#define NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE 16
+
 #endif /* NROS_CONFIG_GENERATED_H */

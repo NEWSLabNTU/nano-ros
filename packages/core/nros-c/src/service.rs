@@ -6,7 +6,7 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 
-use crate::config::SERVICE_CLIENT_INTERNAL_OPAQUE_U64S;
+use crate::config::{SERVICE_CLIENT_INTERNAL_OPAQUE_U64S, SERVICE_SERVER_INTERNAL_OPAQUE_U64S};
 use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::executor::nros_executor_t;
@@ -76,8 +76,10 @@ pub struct nros_service_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Handle ID from executor registration (SIZE_MAX = not registered)
-    pub handle_id: usize,
+    /// Opaque inline storage for `ServiceServerInternal`.
+    /// Filled by `nros_executor_add_service`. Validated at compile time
+    /// by an assertion in `opaque_sizes.rs`.
+    pub _internal: [u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S],
 }
 
 impl Default for nros_service_t {
@@ -93,7 +95,7 @@ impl Default for nros_service_t {
             callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            handle_id: usize::MAX,
+            _internal: [0u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S],
         }
     }
 }
@@ -107,11 +109,6 @@ impl nros_service_t {
     /// Get the context pointer
     pub(crate) fn get_context(&self) -> *mut c_void {
         self.context
-    }
-
-    /// Set the handle ID from executor registration
-    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
-        self.handle_id = id.0;
     }
 }
 
@@ -218,7 +215,11 @@ pub unsafe extern "C" fn nros_service_init(
 
     // Service server creation is deferred to nros_executor_add_service(),
     // which calls nros_node::Executor::add_service_raw_sized().
-    service.handle_id = usize::MAX;
+    // Initialise the internal blob (executor_ptr null until registration).
+    core::ptr::write(
+        service._internal.as_mut_ptr() as *mut ServiceServerInternal,
+        ServiceServerInternal::new(),
+    );
     service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -244,9 +245,12 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
         nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
     );
 
-    // The service server lives in the executor arena (if registered),
-    // so we don't drop anything here — just reset metadata.
-    service.handle_id = usize::MAX;
+    // Drop the inline ServiceServerInternal (no transport handle here
+    // — the service server lives in the arena and is freed when the
+    // executor is destroyed).
+    core::ptr::drop_in_place(service._internal.as_mut_ptr() as *mut ServiceServerInternal);
+
+    service._internal = [0u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S];
     service.callback = None;
     service.context = ptr::null_mut();
     service.node = ptr::null();
@@ -338,6 +342,31 @@ pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -
         1
     } else {
         0
+    }
+}
+
+// ============================================================================
+// Service Server Internal
+// ============================================================================
+
+/// Internal state for the service server (Phase 82.7).
+///
+/// Lightweight — stores only the arena entry index and the executor
+/// pointer where the actual transport handle lives. Mirrors
+/// `ServiceClientInternal` and `ActionClientInternal`.
+pub(crate) struct ServiceServerInternal {
+    /// Arena entry index. -1 means not registered with any executor yet.
+    pub(crate) arena_entry_index: i32,
+    /// Pointer to the outer `nros_executor_t` that owns the arena entry.
+    pub(crate) executor_ptr: *mut c_void,
+}
+
+impl ServiceServerInternal {
+    pub(crate) fn new() -> Self {
+        Self {
+            arena_entry_index: -1,
+            executor_ptr: core::ptr::null_mut(),
+        }
     }
 }
 
@@ -813,6 +842,13 @@ pub unsafe extern "C" fn nros_client_call(
     let timeout_ms = (*internal_ptr).timeout_ms;
     if executor_ptr.is_null() {
         return NROS_RET_NOT_INIT;
+    }
+
+    // Reentrancy guard: nros_client_call spins the executor internally,
+    // so it must not be called from inside a dispatch callback.
+    let exec_t = &*(executor_ptr as *const nros_executor_t);
+    if exec_t.in_dispatch {
+        return NROS_RET_REENTRANT;
     }
 
     // One-shot blocking response capture. Static is fine because
@@ -1298,6 +1334,57 @@ mod verification {
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_call_reentrant_rejected() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+        let mut client = nros_client_get_zero_initialized();
+        let ret = unsafe {
+            nros_client_init(
+                &mut client,
+                &node,
+                &type_info,
+                svc_name.as_ptr() as *const core::ffi::c_char,
+            )
+        };
+        assert_eq!(ret, NROS_RET_OK);
+
+        // Simulate registration: set state to REGISTERED and stash
+        // a pointer to a fake executor with in_dispatch = true.
+        let mut executor = crate::executor::nros_executor_get_zero_initialized();
+        executor.state =
+            crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.in_dispatch = true;
+
+        client.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
+        let internal =
+            unsafe { &mut *(client._internal.as_mut_ptr() as *mut ServiceClientInternal) };
+        internal.executor_ptr = &mut executor as *mut _ as *mut core::ffi::c_void;
+        internal.timeout_ms = 5000;
+
+        let req = [0u8; 8];
+        let mut resp = [0u8; 8];
+        let mut resp_len: usize = 0;
+
+        assert_eq!(
+            unsafe {
+                nros_client_call(
+                    &mut client,
+                    req.as_ptr(),
+                    req.len(),
+                    resp.as_mut_ptr(),
+                    resp.len(),
+                    &mut resp_len,
+                )
+            },
+            NROS_RET_REENTRANT,
         );
     }
 

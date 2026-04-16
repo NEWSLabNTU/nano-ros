@@ -163,6 +163,10 @@ pub struct nros_executor_t {
     pub service_count: usize,
     /// Next invocation time in nanoseconds for drift-compensated spin_period
     pub invocation_time_ns: u64,
+    /// Reentrancy guard: set to `true` while `spin_once` is dispatching
+    /// callbacks. Blocking helpers (`nros_client_call`, `nros_action_send_goal`,
+    /// etc.) check this flag and return `NROS_RET_REENTRANT` if set.
+    pub in_dispatch: bool,
     /// Inline opaque storage for the Rust executor.
     /// Managed by nros_executor_init/fini — no heap allocation needed.
     pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
@@ -183,6 +187,7 @@ impl Default for nros_executor_t {
             timer_count: 0,
             service_count: 0,
             invocation_time_ns: 0,
+            in_dispatch: false,
             #[allow(clippy::large_stack_arrays)] // Intentional: inline opaque storage avoids heap
             _opaque: [0u64; EXECUTOR_OPAQUE_U64S],
         }
@@ -658,7 +663,10 @@ pub unsafe extern "C" fn nros_executor_add_service(
         match result {
             Ok(handle_id) => {
                 let service_mut = &mut *service;
-                service_mut.set_handle_id(handle_id);
+                let internal = &mut *(service_mut._internal.as_mut_ptr()
+                    as *mut crate::service::ServiceServerInternal);
+                internal.arena_entry_index = handle_id.0 as i32;
+                internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
@@ -1108,8 +1116,11 @@ pub unsafe extern "C" fn nros_executor_spin_some(
         };
 
         // spin_once drives I/O internally and handles trigger evaluation,
-        // LET semantics, and dispatch
+        // LET semantics, and dispatch. Guard against reentrancy so
+        // blocking helpers called from inside a callback are detected.
+        executor.in_dispatch = true;
         let result = rust_exec.spin_once(timeout_ms);
+        executor.in_dispatch = false;
 
         if result.any_work() {
             NROS_RET_OK
