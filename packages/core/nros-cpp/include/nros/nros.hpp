@@ -8,9 +8,21 @@
 
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
+#include "nros/future.hpp"
 #include "nros/node.hpp" // includes publisher, subscription, service, client, action headers
 
 namespace nros {
+
+/// Get the global executor handle for Future::wait().
+///
+/// Returns the raw storage pointer used by the global `init()`/`spin_once()`
+/// free functions. Use with `Future::wait(nros::global_handle(), ...)`.
+///
+/// @return Executor handle, or nullptr if not initialized.
+inline void* global_handle() {
+    if (!Node::global_initialized()) return nullptr;
+    return Node::global_storage();
+}
 
 /// Drive transport I/O and dispatch callbacks.
 ///

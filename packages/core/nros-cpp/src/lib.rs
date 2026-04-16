@@ -148,6 +148,10 @@ pub const NROS_CPP_RET_INVALID_ARGUMENT: nros_cpp_ret_t = -3;
 pub const NROS_CPP_RET_NOT_INIT: nros_cpp_ret_t = -4;
 /// Resource limit reached.
 pub const NROS_CPP_RET_FULL: nros_cpp_ret_t = -5;
+/// Try again — operation not ready yet.
+pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -6;
+/// Reentrant call detected — executor is already spinning.
+pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -7;
 /// Transport / connection error.
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 

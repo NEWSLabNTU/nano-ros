@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ service client — AddTwoInts (ThreadX Linux)
+/// @brief C++ service client — AddTwoInts (ThreadX Linux, async Future)
 
 #include <cstdio>
 #include <nros/nros.hpp>
@@ -26,7 +26,9 @@ extern "C" void app_main(void) {
         example_interfaces::srv::AddTwoInts::Request req;
         req.a = cases[i].a; req.b = cases[i].b;
         example_interfaces::srv::AddTwoInts::Response resp;
-        ret = client.call(req, resp);
+        auto fut = client.send_request(req);
+        if (fut.is_consumed()) { printf("Call [%d] send failed\n", i+1); continue; }
+        ret = fut.wait(nros::global_handle(), 5000, resp);
         if (ret.ok()) {
             printf("Response: %d + %d = %d", (int)req.a, (int)req.b, (int)resp.sum);
             if (resp.sum == req.a + req.b) { printf(" [OK]\n"); ok_count++; }

@@ -135,6 +135,16 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
 #define NROS_CPP_RET_FULL -5
 
 /**
+ * Try again — operation not ready yet.
+ */
+#define NROS_CPP_RET_TRY_AGAIN -6
+
+/**
+ * Reentrant call detected — executor is already spinning.
+ */
+#define NROS_CPP_RET_REENTRANT -7
+
+/**
  * Transport / connection error.
  */
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
@@ -419,6 +429,34 @@ nros_cpp_ret_t nros_cpp_service_client_call_raw(void *storage,
                                                 uint8_t *resp_data,
                                                 size_t resp_capacity,
                                                 size_t *resp_len);
+
+/**
+ * Send a service request asynchronously (non-blocking).
+ *
+ * The caller must subsequently poll [`nros_cpp_service_client_try_recv_reply`]
+ * to receive the response.
+ *
+ * # Safety
+ * `storage` must be a valid initialized service client. `req_data` must point
+ * to `req_len` readable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_client_send_request(void *storage,
+                                                    const uint8_t *req_data,
+                                                    size_t req_len);
+
+/**
+ * Try to receive a reply (non-blocking).
+ *
+ * Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
+ * `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
+ *
+ * # Safety
+ * All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void *storage,
+                                                      uint8_t *resp_data,
+                                                      size_t resp_capacity,
+                                                      size_t *resp_len);
 
 /**
  * Destroy a service client (drop in place, no free).

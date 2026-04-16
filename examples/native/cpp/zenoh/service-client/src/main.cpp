@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ service client example - calls AddTwoInts service (blocking)
+/// @brief C++ service client example - calls AddTwoInts service (async Future)
 
 #include <cstdio>
 #include <cstdlib>
@@ -80,7 +80,12 @@ int main(int argc, char** argv) {
         req.b = test_cases[i].b;
 
         example_interfaces::srv::AddTwoInts::Response resp;
-        ret = client.call(req, resp);
+        auto fut = client.send_request(req);
+        if (fut.is_consumed()) {
+            std::fprintf(stderr, "Call [%d]: send_request failed\n", i + 1);
+            continue;
+        }
+        ret = fut.wait(nros::global_handle(), 5000, resp);
 
         if (ret.ok()) {
             std::printf("Call [%d]: %lld + %lld = %lld", i + 1,

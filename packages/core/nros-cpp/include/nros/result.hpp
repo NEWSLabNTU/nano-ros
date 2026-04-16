@@ -18,6 +18,8 @@ enum class ErrorCode : int32_t {
     InvalidArgument = -3,
     NotInitialized = -4,
     Full = -5,
+    TryAgain = -6,
+    Reentrant = -7,
     TransportError = -100,
 };
 

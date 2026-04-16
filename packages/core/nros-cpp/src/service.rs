@@ -6,8 +6,8 @@ use nros_rmw::{ServiceClientTrait, ServiceInfo, ServiceServerTrait, Session};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t,
-    nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Default receive buffer size for service requests/replies.
@@ -317,6 +317,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
 
     // Use the client's internal buffer for the raw reply
+    #[allow(deprecated)]
     match client.handle.call_raw(req_slice, &mut client.buffer) {
         Ok(len) => {
             if len <= resp_capacity {
@@ -333,6 +334,74 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
             }
         }
         Err(_) => NROS_CPP_RET_TIMEOUT,
+    }
+}
+
+/// Send a service request asynchronously (non-blocking).
+///
+/// The caller must subsequently poll [`nros_cpp_service_client_try_recv_reply`]
+/// to receive the response.
+///
+/// # Safety
+/// `storage` must be a valid initialized service client. `req_data` must point
+/// to `req_len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_send_request(
+    storage: *mut c_void,
+    req_data: *const u8,
+    req_len: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || req_data.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(storage as *mut CppServiceClient) };
+    let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
+    match client.handle.send_request_raw(req_slice) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
+/// Try to receive a reply (non-blocking).
+///
+/// Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
+/// `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
+///
+/// # Safety
+/// All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
+    storage: *mut c_void,
+    resp_data: *mut u8,
+    resp_capacity: usize,
+    resp_len: *mut usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || resp_data.is_null() || resp_len.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(storage as *mut CppServiceClient) };
+    match client.handle.try_recv_reply_raw(&mut client.buffer) {
+        Ok(Some(len)) => {
+            if len <= resp_capacity {
+                unsafe {
+                    core::ptr::copy_nonoverlapping(client.buffer.as_ptr(), resp_data, len);
+                    *resp_len = len;
+                }
+                NROS_CPP_RET_OK
+            } else {
+                unsafe {
+                    *resp_len = len;
+                }
+                NROS_CPP_RET_ERROR
+            }
+        }
+        Ok(None) => {
+            unsafe {
+                *resp_len = 0;
+            }
+            NROS_CPP_RET_TRY_AGAIN
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
     }
 }
 

@@ -4,7 +4,7 @@
  *
  * This example demonstrates calling an AddTwoInts service on Zephyr RTOS
  * using the nros C++ API (nros::init, nros::Node, nros::Client<S>).
- * Uses blocking client.call() with sleep between calls.
+ * Uses async send_request() + Future::wait() with sleep between calls.
  * The nros module handles zenoh initialization and platform support.
  */
 
@@ -84,7 +84,12 @@ int main(void)
         req.b = test_cases[i].b;
 
         example_interfaces::srv::AddTwoInts::Response resp;
-        ret = client.call(req, resp);
+        auto fut = client.send_request(req);
+        if (fut.is_consumed()) {
+            LOG_ERR("Call [%d]: send_request failed", i + 1);
+            continue;
+        }
+        ret = fut.wait(nros::global_handle(), 5000, resp);
 
         if (ret.ok()) {
             if (resp.sum == req.a + req.b) {
