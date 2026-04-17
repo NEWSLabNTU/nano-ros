@@ -189,8 +189,7 @@ impl Stm32f4Platform {
 
             if SmoltcpBridge::tcp_can_recv(handle) {
                 let remaining = len - total;
-                let slice =
-                    unsafe { core::slice::from_raw_parts_mut(buf.add(total), remaining) };
+                let slice = unsafe { core::slice::from_raw_parts_mut(buf.add(total), remaining) };
                 let received = SmoltcpBridge::tcp_recv(handle, slice);
                 if received > 0 {
                     total += received as usize;
@@ -228,8 +227,7 @@ impl Stm32f4Platform {
 
             if SmoltcpBridge::tcp_can_send(handle) {
                 let remaining = len - total;
-                let data =
-                    unsafe { core::slice::from_raw_parts(buf.add(total), remaining) };
+                let data = unsafe { core::slice::from_raw_parts(buf.add(total), remaining) };
                 let sent = SmoltcpBridge::tcp_send(handle, data);
                 if sent > 0 {
                     total += sent as usize;
@@ -359,8 +357,7 @@ impl Stm32f4Platform {
 
             if SmoltcpBridge::udp_can_recv(handle) {
                 let remaining = len - total;
-                let slice =
-                    unsafe { core::slice::from_raw_parts_mut(buf.add(total), remaining) };
+                let slice = unsafe { core::slice::from_raw_parts_mut(buf.add(total), remaining) };
                 let received = SmoltcpBridge::udp_recv(handle, slice);
                 if received > 0 {
                     total += received as usize;
@@ -400,8 +397,7 @@ impl Stm32f4Platform {
 
             if SmoltcpBridge::udp_can_send(handle) {
                 let remaining = len - total;
-                let data =
-                    unsafe { core::slice::from_raw_parts(buf.add(total), remaining) };
+                let data = unsafe { core::slice::from_raw_parts(buf.add(total), remaining) };
                 let sent = SmoltcpBridge::udp_send(handle, data, &rep._ip, rep._port);
                 if sent > 0 {
                     total += sent as usize;

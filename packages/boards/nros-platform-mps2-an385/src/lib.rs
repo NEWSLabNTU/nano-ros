@@ -16,8 +16,8 @@ pub mod memory;
 pub mod net;
 pub mod random;
 pub mod sleep;
-pub mod time;
 pub mod threading;
+pub mod time;
 pub mod timing;
 
 /// Zero-sized type implementing all platform methods for MPS2-AN385.
@@ -150,28 +150,70 @@ impl Mps2An385Platform {
         -1 // Cannot create threads on single-threaded platform
     }
 
-    pub fn task_join(_task: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn task_detach(_task: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn task_cancel(_task: *mut core::ffi::c_void) -> i8 { 0 }
+    pub fn task_join(_task: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn task_detach(_task: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn task_cancel(_task: *mut core::ffi::c_void) -> i8 {
+        0
+    }
     pub fn task_exit() {}
     pub fn task_free(_task: *mut *mut core::ffi::c_void) {}
 
-    pub fn mutex_init(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_drop(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_lock(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_try_lock(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_unlock(_m: *mut core::ffi::c_void) -> i8 { 0 }
+    pub fn mutex_init(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_drop(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_lock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_try_lock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_unlock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
 
-    pub fn mutex_rec_init(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_rec_drop(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_rec_lock(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_rec_try_lock(_m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn mutex_rec_unlock(_m: *mut core::ffi::c_void) -> i8 { 0 }
+    pub fn mutex_rec_init(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_rec_drop(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_rec_lock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_rec_try_lock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn mutex_rec_unlock(_m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
 
-    pub fn condvar_init(_cv: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn condvar_drop(_cv: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn condvar_signal(_cv: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn condvar_signal_all(_cv: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn condvar_wait(_cv: *mut core::ffi::c_void, _m: *mut core::ffi::c_void) -> i8 { 0 }
-    pub fn condvar_wait_until(_cv: *mut core::ffi::c_void, _m: *mut core::ffi::c_void, _abstime: u64) -> i8 { 0 }
+    pub fn condvar_init(_cv: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn condvar_drop(_cv: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn condvar_signal(_cv: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn condvar_signal_all(_cv: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn condvar_wait(_cv: *mut core::ffi::c_void, _m: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    pub fn condvar_wait_until(
+        _cv: *mut core::ffi::c_void,
+        _m: *mut core::ffi::c_void,
+        _abstime: u64,
+    ) -> i8 {
+        0
+    }
 }
