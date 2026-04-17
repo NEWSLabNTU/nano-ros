@@ -347,8 +347,16 @@ typedef struct {
 - [ ] 80.11 — Zephyr UDP multicast
   - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
   - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
-- [x] 80.12 — XRCE-DDS network unification — **not applicable**
-  - [x] 80.12.1 — XRCE uses `uxrCustomTransport` callbacks (open/close/write/read), not zenoh-pico's `_z_open_tcp` interface. Transport is self-contained per-backend (xrce-smoltcp, POSIX UDP, Zephyr). The nros-platform PlatformTcp/PlatformUdp traits don't map to XRCE's callback model.
+- [ ] 80.12 — XRCE-DDS network unification via nros-platform
+  - [ ] 80.12.1 — Extend `xrce-platform-shim` with UDP network forwarders (`uxr_udp_open/write/read/close` → `ConcretePlatform::udp_*()`)
+  - [ ] 80.12.2 — Implement uxrCustomTransport callbacks as thin wrappers: open → `create_endpoint` + `open`, write → `send`, read → `read` with timeout loop, close → `close` + `free_endpoint`
+  - [ ] 80.12.3 — Store socket/endpoint handle in `uxrCustomTransport.args` or module-level static (XRCE uses single session)
+  - [ ] 80.12.4 — Wire `nros-rmw-xrce` to use shim callbacks instead of per-platform transport modules
+  - [ ] 80.12.5 — Remove `posix_udp.rs` from nros-rmw-xrce (~60 lines)
+  - [ ] 80.12.6 — Remove `xrce_zephyr.c` from xrce-zephyr (~97 lines)
+  - [ ] 80.12.7 — Remove or simplify `xrce-smoltcp` staging buffers (~280 lines) — nros-smoltcp provides PlatformUdp for bare-metal
+  - [ ] 80.12.8 — Verify native XRCE tests pass (`just xrce test`)
+  - [ ] 80.12.9 — Verify Zephyr XRCE tests pass (`just zephyr test-xrce`)
 - [ ] 80.13 — Update documentation
   - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
   - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification
