@@ -110,7 +110,10 @@ fn main() {
     if is_arm {
         let gcc_include = find_gcc_include().unwrap_or_default();
         // GCC's include-fixed is a sibling of include: .../10.3.1/include-fixed
-        let gcc_base = PathBuf::from(&gcc_include).parent().unwrap_or(std::path::Path::new("")).to_path_buf();
+        let gcc_base = PathBuf::from(&gcc_include)
+            .parent()
+            .unwrap_or(std::path::Path::new(""))
+            .to_path_buf();
         let gcc_include_fixed = gcc_base.join("include-fixed").to_string_lossy().to_string();
         let newlib_include = find_newlib_include().unwrap_or_default();
 

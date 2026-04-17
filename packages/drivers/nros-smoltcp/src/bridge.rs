@@ -18,8 +18,8 @@ use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
 // Configuration
 // ============================================================================
 
-pub use crate::config::{MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE};
 pub use crate::config::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
+pub use crate::config::{MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE};
 
 /// RFC 6056 ephemeral port range lower bound.
 const EPHEMERAL_PORT_START: u16 = 49152;
@@ -426,11 +426,7 @@ impl SmoltcpBridge {
     ///
     /// Must be called periodically. Returns `true` if any network activity
     /// occurred.
-    pub fn poll<D: Device>(
-        iface: &mut Interface,
-        device: &mut D,
-        sockets: &mut SocketSet,
-    ) -> bool {
+    pub fn poll<D: Device>(iface: &mut Interface, device: &mut D, sockets: &mut SocketSet) -> bool {
         let timestamp =
             smoltcp::time::Instant::from_millis(unsafe { smoltcp_clock_now_ms() } as i64);
 
@@ -690,7 +686,9 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            entry.staging.send(&mut SOCKET_TX_BUFFERS[handle as usize], data)
+            entry
+                .staging
+                .send(&mut SOCKET_TX_BUFFERS[handle as usize], data)
         }
     }
 

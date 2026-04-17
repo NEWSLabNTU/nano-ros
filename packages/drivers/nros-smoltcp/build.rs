@@ -10,10 +10,16 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let max_sockets = env_usize_compat("NROS_SMOLTCP_MAX_SOCKETS", "ZPICO_SMOLTCP_MAX_SOCKETS", 4);
-    let max_udp_sockets =
-        env_usize_compat("NROS_SMOLTCP_MAX_UDP_SOCKETS", "ZPICO_SMOLTCP_MAX_UDP_SOCKETS", 2);
-    let buffer_size =
-        env_usize_compat("NROS_SMOLTCP_BUFFER_SIZE", "ZPICO_SMOLTCP_BUFFER_SIZE", 2048);
+    let max_udp_sockets = env_usize_compat(
+        "NROS_SMOLTCP_MAX_UDP_SOCKETS",
+        "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
+        2,
+    );
+    let buffer_size = env_usize_compat(
+        "NROS_SMOLTCP_BUFFER_SIZE",
+        "ZPICO_SMOLTCP_BUFFER_SIZE",
+        2048,
+    );
     let connect_timeout_ms = env_usize_compat(
         "NROS_SMOLTCP_CONNECT_TIMEOUT_MS",
         "ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS",
@@ -63,11 +69,7 @@ fn main() {
          pub const SOCKET_TIMEOUT_MS: u64 = {socket_timeout_ms};\n"
     );
 
-    std::fs::write(
-        Path::new(&out_dir).join("nros_smoltcp_config.rs"),
-        contents,
-    )
-    .unwrap();
+    std::fs::write(Path::new(&out_dir).join("nros_smoltcp_config.rs"), contents).unwrap();
 }
 
 /// Read a usize from an environment variable, with fallback name for backward

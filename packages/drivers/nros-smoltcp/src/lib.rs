@@ -18,14 +18,13 @@
 
 #![no_std]
 
-mod config;
 pub mod bridge;
+mod config;
 pub mod util;
 
 pub use bridge::{
-    SmoltcpBridge, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE,
-    CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS,
-    seed_ephemeral_port, set_poll_callback, do_poll, has_poll_callback, poll_count,
+    CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
+    SmoltcpBridge, do_poll, has_poll_callback, poll_count, seed_ephemeral_port, set_poll_callback,
 };
 
 // Re-export smoltcp types needed by board crates
