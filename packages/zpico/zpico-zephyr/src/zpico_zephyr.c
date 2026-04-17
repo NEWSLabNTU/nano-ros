@@ -23,6 +23,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     struct net_if* iface = net_if_get_default();
     int elapsed = 0;
 
+    /* Wait for interface to be administratively up */
     while (!net_if_is_up(iface) && elapsed < timeout_ms) {
         k_sleep(K_MSEC(50));
         elapsed += 50;
@@ -31,6 +32,18 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     if (!net_if_is_up(iface)) {
         LOG_ERR("Network interface not ready after %d ms", timeout_ms);
         return -1;
+    }
+
+    /* On native_sim, the TAP device needs additional time for the
+     * carrier to establish after the process opens the fd. Without
+     * this, TCP connect to the bridge gateway fails immediately. */
+    while (!net_if_is_carrier_ok(iface) && elapsed < timeout_ms) {
+        k_sleep(K_MSEC(50));
+        elapsed += 50;
+    }
+
+    if (!net_if_is_carrier_ok(iface)) {
+        LOG_WRN("Network carrier not ready after %d ms (continuing anyway)", timeout_ms);
     }
 
     LOG_INF("Network interface up (waited %d ms)", elapsed);

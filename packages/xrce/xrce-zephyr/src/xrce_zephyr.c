@@ -50,6 +50,12 @@ int32_t xrce_zephyr_wait_network(int timeout_ms)
         return -1;
     }
 
+    /* Wait for carrier (TAP device on native_sim needs time) */
+    while (!net_if_is_carrier_ok(iface) && elapsed < timeout_ms) {
+        k_sleep(K_MSEC(50));
+        elapsed += 50;
+    }
+
     LOG_INF("Network interface up (waited %d ms)", elapsed);
     return 0;
 }
