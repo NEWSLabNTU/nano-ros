@@ -99,16 +99,13 @@ This is the recommended approach. Create a ZST and implement each capability as 
 
 ```rust
 // packages/core/nros-platform-myos/src/lib.rs
-
 #![no_std]
-
 use core::ffi::c_void;
 
 /// Zero-sized type implementing platform methods for MyOS.
 pub struct MyOsPlatform;
 
 // -- Clock --
-
 impl MyOsPlatform {
     pub fn clock_ms() -> u64 {
         // Call your RTOS tick API, e.g.:
@@ -116,23 +113,18 @@ impl MyOsPlatform {
         todo!()
     }
 
-    pub fn clock_us() -> u64 {
-        Self::clock_ms() * 1000
-    }
+    pub fn clock_us() -> u64 { Self::clock_ms() * 1000 }
 }
 
 // -- Alloc --
-
 impl MyOsPlatform {
     pub fn alloc(size: usize) -> *mut c_void {
-        // Map to your RTOS heap, e.g.:
         // unsafe { myos_malloc(size) }
         todo!()
     }
 
     pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-        // If your RTOS lacks realloc: alloc new, copy, free old.
-        // Be aware the caller is responsible for ensuring old size >= new size.
+        // If your RTOS lacks realloc: alloc new, copy, free old
         todo!()
     }
 
@@ -143,39 +135,24 @@ impl MyOsPlatform {
 }
 
 // -- Sleep --
-
 impl MyOsPlatform {
-    pub fn sleep_us(us: usize) {
-        Self::sleep_ms(us.div_ceil(1000));
-    }
-
+    pub fn sleep_us(us: usize) { Self::sleep_ms(us.div_ceil(1000)); }
     pub fn sleep_ms(ms: usize) {
         // unsafe { myos_thread_sleep(ms as u32) }
         todo!()
     }
-
-    pub fn sleep_s(s: usize) {
-        Self::sleep_ms(s * 1000);
-    }
+    pub fn sleep_s(s: usize) { Self::sleep_ms(s * 1000); }
 }
 
 // -- Threading (stubs for single-threaded, real impls for RTOS) --
-
 impl MyOsPlatform {
     pub fn mutex_init(m: *mut c_void) -> i8 {
         // Create a mutex via your RTOS API. Store the handle in `m`.
         // Return 0 on success, -1 on failure.
         todo!()
     }
-
-    pub fn mutex_lock(m: *mut c_void) -> i8 {
-        todo!()
-    }
-
-    pub fn mutex_unlock(m: *mut c_void) -> i8 {
-        todo!()
-    }
-
+    pub fn mutex_lock(m: *mut c_void) -> i8 { todo!() }
+    pub fn mutex_unlock(m: *mut c_void) -> i8 { todo!() }
     // ... remaining threading methods (see traits.rs for the full list)
 }
 ```

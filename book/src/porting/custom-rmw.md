@@ -1,21 +1,18 @@
 # Porting a Custom RMW Backend
 
-nano-ros ships with two RMW (ROS Middleware) backends -- zenoh-pico and
-Micro-XRCE-DDS. If your system uses a different transport (DDS, MQTT, a
-proprietary bus, etc.), you can implement your own backend by satisfying a
-small set of Rust traits.
+nano-ros ships with two RMW backends -- zenoh-pico and Micro-XRCE-DDS. To
+add your own transport (DDS, MQTT, a proprietary bus, etc.), implement a
+small set of traits or fill in a C function table.
 
-There are two paths:
+Two paths are available:
 
 - **Rust path** -- implement the `nros-rmw` traits directly.
-- **C/C++ path** -- fill in a C function table (`nros_rmw_vtable_t`) and
-  register it at startup. The `nros-rmw-cffi` crate bridges those function
-  pointers into the Rust trait system.
+- **C/C++ path** -- fill in `nros_rmw_vtable_t` and register it at
+  startup via `nros-rmw-cffi`.
 
 ## What you implement
 
-The trait hierarchy lives in `nros-rmw`. Your backend must provide concrete
-types for six traits:
+Your backend provides concrete types for six traits:
 
 ```text
 Rmw                    -- factory: opens a Session from RmwConfig
@@ -42,15 +39,11 @@ For full trait signatures and associated types, see
 
 ## Use nros-platform for networking
 
-Your RMW backend should call `ConcretePlatform::tcp_open()`,
-`ConcretePlatform::udp_bind()`, etc. from `nros-platform` rather than
-using OS sockets directly. This makes your backend portable across every
-platform that implements the platform traits (POSIX, Zephyr, FreeRTOS,
-NuttX, ThreadX, bare-metal with smoltcp).
-
-If your transport library already abstracts networking (like zenoh-pico
-or the XRCE-DDS client do), you can skip this and use the library's own
-I/O layer instead.
+Call `ConcretePlatform::tcp_open()` / `udp_bind()` from `nros-platform`
+rather than OS sockets directly. This makes your backend portable across
+every platform (POSIX, Zephyr, FreeRTOS, NuttX, ThreadX, bare-metal). If
+your transport library already abstracts networking (like zenoh-pico does),
+you can use its own I/O layer instead.
 
 ---
 
@@ -58,48 +51,23 @@ I/O layer instead.
 
 ### 1. Create the crate
 
-```text
-packages/myproto/nros-rmw-myproto/
-  Cargo.toml
-  src/
-    lib.rs
-```
-
-```toml
-# Cargo.toml
-[package]
-name = "nros-rmw-myproto"
-version = "0.1.0"
-edition = "2024"
-
-[features]
-default = ["std"]
-std = ["alloc", "nros-rmw/std", "nros-core/std"]
-alloc = ["nros-rmw/alloc", "nros-core/alloc"]
-
-[dependencies]
-nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
-nros-core = { version = "0.1.0", path = "../../core/nros-core", default-features = false }
-```
+Create `packages/myproto/nros-rmw-myproto/` with `nros-rmw` and
+`nros-core` as dependencies (both `default-features = false` for
+`no_std` support). Follow the `std`/`alloc` feature forwarding pattern
+used by the existing backends.
 
 ### 2. Implement the traits
 
 ```rust
-// src/lib.rs
 #![no_std]
-use nros_rmw::{
-    Publisher, QosSettings, Rmw, RmwConfig, ServiceClientTrait,
-    ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
-    Subscriber, TopicInfo, TransportError,
-};
+use nros_rmw::*;
 
 pub struct MyProtoRmw;
 impl Rmw for MyProtoRmw {
     type Session = MyProtoSession;
     type Error = TransportError;
     fn open(config: &RmwConfig) -> Result<MyProtoSession, TransportError> {
-        // Parse config.locator, establish connection, map config.domain_id
-        todo!()
+        todo!() // Parse config.locator, connect, map config.domain_id
     }
 }
 
@@ -111,42 +79,37 @@ impl Session for MyProtoSession {
     type ServiceServerHandle = MyProtoServer;
     type ServiceClientHandle = MyProtoClient;
 
-    fn create_publisher(&mut self, topic: &TopicInfo, qos: QosSettings)
+    fn create_publisher(&mut self, t: &TopicInfo, q: QosSettings)
         -> Result<MyProtoPub, TransportError> { todo!() }
-    fn create_subscriber(&mut self, topic: &TopicInfo, qos: QosSettings)
+    fn create_subscriber(&mut self, t: &TopicInfo, q: QosSettings)
         -> Result<MyProtoSub, TransportError> { todo!() }
-    fn create_service_server(&mut self, service: &ServiceInfo)
+    fn create_service_server(&mut self, s: &ServiceInfo)
         -> Result<MyProtoServer, TransportError> { todo!() }
-    fn create_service_client(&mut self, service: &ServiceInfo)
+    fn create_service_client(&mut self, s: &ServiceInfo)
         -> Result<MyProtoClient, TransportError> { todo!() }
     fn close(&mut self) -> Result<(), TransportError> { todo!() }
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
-        // Read from network, dispatch to subscriber/service buffers.
-        // The executor calls this on every spin iteration.
-        let _ = timeout_ms; Ok(())
+        let _ = timeout_ms; Ok(()) // poll network, dispatch to buffers
     }
 }
 
-pub struct MyProtoPub { /* handle */ }
+pub struct MyProtoPub;
 impl Publisher for MyProtoPub {
     type Error = TransportError;
-    fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
-        todo!() // Send CDR bytes over the wire
-    }
+    fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> { todo!() }
     fn buffer_error(&self) -> TransportError { TransportError::BufferTooSmall }
     fn serialization_error(&self) -> TransportError { TransportError::SerializationError }
 }
 
-pub struct MyProtoSub { /* handle + receive buffer */ }
+pub struct MyProtoSub;
 impl Subscriber for MyProtoSub {
     type Error = TransportError;
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        todo!() // Copy next queued message into buf; Ok(None) if empty
-    }
+    fn try_recv_raw(&mut self, buf: &mut [u8])
+        -> Result<Option<usize>, TransportError> { todo!() }
     fn deserialization_error(&self) -> TransportError { TransportError::DeserializationError }
 }
 
-pub struct MyProtoServer { /* handle */ }
+pub struct MyProtoServer;
 impl ServiceServerTrait for MyProtoServer {
     type Error = TransportError;
     fn try_recv_request<'a>(&mut self, buf: &'a mut [u8])
@@ -155,149 +118,90 @@ impl ServiceServerTrait for MyProtoServer {
         -> Result<(), TransportError> { todo!() }
 }
 
-pub struct MyProtoClient { /* handle */ }
+pub struct MyProtoClient;
 impl ServiceClientTrait for MyProtoClient {
     type Error = TransportError;
-    fn send_request_raw(&mut self, request: &[u8])
+    fn send_request_raw(&mut self, req: &[u8])
         -> Result<(), TransportError> { todo!() }
-    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8])
+    fn try_recv_reply_raw(&mut self, buf: &mut [u8])
         -> Result<Option<usize>, TransportError> { todo!() }
 }
 ```
 
 ### 3. Wire into nros
 
-Add your backend as an optional dependency and feature flag in
-`packages/core/nros/Cargo.toml`:
+Three changes are needed to integrate the new backend:
+
+**a)** In `nros/Cargo.toml`, add a feature and optional dependency:
 
 ```toml
-[features]
 rmw-myproto = ["dep:nros-rmw-myproto", "nros-node/rmw-myproto"]
-
-[dependencies]
-nros-rmw-myproto = { version = "0.1.0", path = "../../myproto/nros-rmw-myproto", default-features = false, optional = true }
 ```
 
-Then add the type alias in `nros-node` so the executor resolves your
-session type when the feature is active:
+**b)** In `nros-node`, add the concrete session type alias:
 
 ```rust
 #[cfg(feature = "rmw-myproto")]
 pub type ConcreteSession = nros_rmw_myproto::MyProtoSession;
 ```
 
-Enforce mutual exclusivity with the other backends:
+**c)** Add `compile_error!` guards to enforce mutual exclusivity with the
+other backends (see existing guards in `nros-node/src/session.rs`).
 
-```rust
-#[cfg(all(feature = "rmw-myproto", feature = "rmw-zenoh"))]
-compile_error!("Only one RMW backend can be enabled at a time");
-```
-
-Applications select your backend with:
-
-```toml
-[dependencies]
-nros = { version = "0.1.0", features = ["rmw-myproto", "platform-posix"] }
-```
+Applications then select your backend with
+`nros = { features = ["rmw-myproto", "platform-posix"] }`.
 
 ---
 
 ## C/C++ path
 
-If your transport library is written in C or C++, use the `nros-rmw-cffi`
-crate instead of implementing Rust traits directly. It provides a vtable
-of C function pointers that map one-to-one onto the Rust trait methods.
+If your transport library is C or C++, use `nros-rmw-cffi` -- a vtable of
+C function pointers that map one-to-one onto the Rust trait methods.
 
 ### 1. Fill in the vtable
+
+The vtable has 18 function pointers. Key signatures:
 
 ```c
 #include <nros/rmw_vtable.h>
 
 static void *my_open(const char *locator, uint8_t mode,
-                     uint32_t domain_id, const char *node_name) {
-    // Initialize your transport, return an opaque session handle
-    // (or NULL on failure)
-}
-
-static int my_close(void *session) {
-    // Tear down the session. Return 0 on success, -1 on error.
-}
-
-static int my_drive_io(void *session, int timeout_ms) {
-    // Read from network, dispatch to internal buffers.
-    return 0;
-}
-
-static void *my_create_publisher(void *session,
-        const char *topic, const char *type_name,
-        const char *type_hash, uint32_t domain_id,
-        const nros_cffi_qos_t *qos) {
-    // Return an opaque publisher handle (or NULL on failure)
-}
-
-static void  my_destroy_publisher(void *pub_handle) { /* cleanup */ }
-
-static int my_publish_raw(void *pub_handle,
-        const uint8_t *data, size_t len) {
-    // Send CDR bytes. Return 0 on success, -1 on error.
-}
-
-/* ... implement remaining function pointers for subscriber,
-       service server, and service client ... */
+                     uint32_t domain_id, const char *node_name);
+static int   my_close(void *session);
+static int   my_drive_io(void *session, int timeout_ms);
+static void *my_create_publisher(void *session, const char *topic,
+    const char *type_name, const char *type_hash,
+    uint32_t domain_id, const nros_cffi_qos_t *qos);
+static void  my_destroy_publisher(void *pub_handle);
+static int   my_publish_raw(void *pub_handle, const uint8_t *data, size_t len);
+// ... subscriber, service server, service client follow the same pattern.
 
 static nros_rmw_vtable_t my_vtable = {
-    .open               = my_open,
-    .close              = my_close,
-    .drive_io           = my_drive_io,
-    .create_publisher   = my_create_publisher,
-    .destroy_publisher  = my_destroy_publisher,
-    .publish_raw        = my_publish_raw,
-    .create_subscriber  = my_create_subscriber,
-    .destroy_subscriber = my_destroy_subscriber,
-    .try_recv_raw       = my_try_recv_raw,
-    .has_data           = my_has_data,
-    .create_service_server  = my_create_service_server,
-    .destroy_service_server = my_destroy_service_server,
-    .try_recv_request       = my_try_recv_request,
-    .has_request            = my_has_request,
-    .send_reply             = my_send_reply,
-    .create_service_client  = my_create_service_client,
-    .destroy_service_client = my_destroy_service_client,
-    .call_raw               = my_call_raw,
+    .open = my_open, .close = my_close, .drive_io = my_drive_io,
+    .create_publisher = my_create_publisher,
+    .destroy_publisher = my_destroy_publisher,
+    .publish_raw = my_publish_raw,
+    /* ... fill all 18 fields (see nros/rmw_vtable.h) ... */
 };
 ```
 
 ### 2. Register before opening a session
 
 ```c
-int main(void) {
-    nros_rmw_cffi_register(&my_vtable);
-    // Now use the normal nros C API -- it routes through your vtable
-    nros_executor_t exec;
-    nros_executor_open(&exec, "tcp/127.0.0.1:9000", 0);
-    // ...
-}
+nros_rmw_cffi_register(&my_vtable);  // before any nros API call
 ```
 
-Enable the `rmw-cffi` feature when building the nros C library:
+Build with `cargo build -p nros-c --features "rmw-cffi,platform-posix,ros-humble"`.
 
-```bash
-cargo build -p nros-c --features "rmw-cffi,platform-posix,ros-humble"
-```
-
-All strings passed to vtable functions are null-terminated. Handles are
-opaque `void *` pointers -- the Rust side never inspects them. Return
-values follow the convention: 0 = success / no data, positive = byte
-count, negative = error.
+All strings are null-terminated. Handles are opaque `void *`. Return
+convention: 0 = success/no data, positive = byte count, negative = error.
 
 ---
 
 ## Example: local echo RMW
 
-A minimal backend that loops published messages back to subscribers on the
-same session, with no network transport. Useful for unit testing. Only the
-publisher and subscriber are shown -- service types are stubbed as no-ops
-(return `Ok(None)` / `Ok(())`).
+Loops published messages back to subscribers -- no real transport. Only
+pub/sub shown; service types are no-op stubs.
 
 ```rust
 static mut ECHO_BUF: [u8; 1024] = [0; 1024];
@@ -344,9 +248,8 @@ skeleton above -- `create_publisher` returns `Ok(EchoPub)`, etc. The
 
 - [RMW API Reference](../reference/rmw-api.md) -- full trait signatures,
   QoS profiles, error types, configuration structs.
-- [Internals: Adding a New RMW Backend](../internals/adding-rmw-backend.md)
-  -- contributor-oriented details on discovery, key expression format, and
-  testing infrastructure.
+- [RMW API Design](../internals/rmw-api-design.md) -- architectural
+  motivation and comparison with the ROS 2 rmw interface.
 - [Zenoh-pico Symbol Reference](../internals/porting-platform/zenoh-pico.md)
   -- FFI symbol mapping for the zenoh-pico backend (useful as a reference
   for how an existing backend is structured).
