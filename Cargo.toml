@@ -140,6 +140,8 @@ exclude = [
     "packages/drivers/threadx-netx-sys",
     # NuttX POSIX socket bindings (requires NUTTX_DIR)
     "packages/drivers/nuttx-sys",
+    # Zephyr POSIX socket bindings (requires ZEPHYR_BUILD_DIR)
+    "packages/drivers/zephyr-posix-sys",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
