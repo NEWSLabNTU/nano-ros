@@ -158,36 +158,14 @@ Dashed arrows indicate feature-gated optional dependencies. Solid arrows are unc
 
 nano-ros uses three orthogonal compile-time axes. Each axis is mutually exclusive, enforced by `compile_error!()` in the nano-ros facade crate. Zero features on an axis is valid (reduced functionality).
 
-```mermaid
-graph LR
-    subgraph "RMW Backend (pick one)"
-        Z[rmw-zenoh]
-        X[rmw-xrce]
-        CF[rmw-cffi]
-    end
+| Axis | Rule | Options |
+|------|------|---------|
+| **RMW Backend** | Pick one | `rmw-zenoh`, `rmw-xrce`, `rmw-cffi` |
+| **Platform** | Pick one | `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`, `platform-nuttx`, `platform-threadx` |
+| **ROS Edition** | Pick one | `ros-humble`, `ros-iron` |
+| **Cross-cutting** | Any combination | `std`, `alloc`, `safety-e2e`, `param-services`, `ffi-sync` |
 
-    subgraph "Platform (pick one)"
-        P1[platform-posix]
-        P2[platform-zephyr]
-        P3[platform-bare-metal]
-        P4[platform-freertos]
-        P5[platform-nuttx]
-        P6[platform-threadx]
-    end
-
-    subgraph "ROS Edition (pick one)"
-        R1[ros-humble]
-        R2[ros-iron]
-    end
-
-    subgraph "Cross-cutting (any combination)"
-        S1[std]
-        S2[alloc]
-        S3[safety-e2e]
-        S4[param-services]
-        S5[ffi-sync]
-    end
-```
+The first three axes are mutually exclusive within each axis. Zero features on an axis is valid (reduced functionality). Cross-cutting features are independent and can be combined freely.
 
 A typical embedded configuration:
 
