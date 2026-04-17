@@ -14,11 +14,27 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-env-changed=ZEPHYR_BUILD_DIR");
 
-    let build_dir = match env::var("ZEPHYR_BUILD_DIR") {
-        Ok(d) => PathBuf::from(d),
-        Err(_) => {
-            emit_placeholder_bindings();
-            return;
+    // Auto-detect Zephyr build dir following the Zephyr workspace convention:
+    // ZEPHYR_BUILD_DIR env var, or ZEPHYR_WORKSPACE/build-talker (same logic as justfile).
+    let build_dir = if let Ok(d) = env::var("ZEPHYR_BUILD_DIR") {
+        PathBuf::from(d)
+    } else {
+        // Try zephyr-workspace/build-talker (in-repo), then ../nano-ros-workspace/build-talker
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        let repo_root = manifest_dir
+            .parent().unwrap()  // drivers/
+            .parent().unwrap()  // packages/
+            .parent().unwrap(); // repo root
+        let candidates = [
+            repo_root.join("zephyr-workspace/build-talker"),
+            repo_root.parent().unwrap_or(repo_root).join("nano-ros-workspace/build-talker"),
+        ];
+        match candidates.iter().find(|p| p.join("compile_commands.json").exists()) {
+            Some(p) => p.clone(),
+            None => {
+                emit_placeholder_bindings();
+                return;
+            }
         }
     };
 
@@ -102,8 +118,9 @@ fn main() {
         .clang_arg("-D__x86_64__");
 
     // Add all include paths and defines from the Zephyr build
+    // (includes already have -I or -isystem prefix from extract_flags)
     for inc in &includes {
-        builder = builder.clang_arg(format!("-I{inc}"));
+        builder = builder.clang_arg(inc);
     }
     for def in &defines {
         builder = builder.clang_arg(format!("-D{def}"));
@@ -123,27 +140,34 @@ fn main() {
     }
 }
 
-/// Extract -I and -D flags from compile_commands.json.
+/// Extract -I, -isystem, and -D flags from compile_commands.json.
 /// Looks for a C file containing "socket" or "network" in its path.
 fn extract_flags(compile_commands: &std::path::Path) -> Option<(Vec<String>, Vec<String>)> {
     let data = std::fs::read_to_string(compile_commands).ok()?;
     let commands: Vec<serde_json::Value> = serde_json::from_str(&data).ok()?;
 
-    // Find a command that compiles a networking-related file
     for cmd in &commands {
         let file = cmd.get("file")?.as_str()?;
         if file.contains("socket") || file.contains("network") || file.contains("net_core") {
             let command = cmd.get("command")?.as_str()?;
-            let includes: Vec<String> = command
-                .split_whitespace()
-                .filter(|w| w.starts_with("-I"))
-                .map(|w| w[2..].to_string())
-                .collect();
-            let defines: Vec<String> = command
-                .split_whitespace()
-                .filter(|w| w.starts_with("-D"))
-                .map(|w| w[2..].to_string())
-                .collect();
+            let mut includes: Vec<String> = Vec::new();
+            let mut defines: Vec<String> = Vec::new();
+            let words: Vec<&str> = command.split_whitespace().collect();
+            let mut i = 0;
+            while i < words.len() {
+                let w = words[i];
+                if w.starts_with("-I") {
+                    includes.push(format!("-I{}", &w[2..]));
+                } else if w == "-isystem" && i + 1 < words.len() {
+                    includes.push(format!("-isystem{}", words[i + 1]));
+                    i += 1;
+                } else if w.starts_with("-isystem") {
+                    includes.push(w.to_string());
+                } else if w.starts_with("-D") {
+                    defines.push(w[2..].to_string());
+                }
+                i += 1;
+            }
             if !includes.is_empty() {
                 return Some((includes, defines));
             }
