@@ -125,11 +125,17 @@ fn main() {
         .derive_default(true)
         .derive_copy(true);
 
-    // For RISC-V cross-compilation
+    // For RISC-V cross-compilation: use GCC + picolibc/newlib sysroot headers.
+    // Query riscv64-unknown-elf-gcc for its include search paths — no hardcoded dirs.
     if target.contains("riscv") {
         builder = builder
             .clang_arg("--target=riscv64-unknown-elf")
-            .clang_arg("-march=rv64imc");
+            .clang_arg("-march=rv64imc")
+            .clang_arg("-nostdinc");
+
+        for path in find_riscv_system_includes() {
+            builder = builder.clang_arg(format!("-isystem{path}"));
+        }
     }
 
     let bindings = builder.generate().expect("Failed to generate bindings");
@@ -202,4 +208,49 @@ unsafe extern "C" {
 "#,
     )
     .unwrap();
+}
+
+/// Query `riscv64-unknown-elf-gcc` for its system include search paths.
+///
+/// Uses `gcc -E -Wp,-v` with picolibc specs (falling back to default specs)
+/// to extract the include directories GCC would use. Returns paths in order.
+fn find_riscv_system_includes() -> Vec<String> {
+    // Try with picolibc specs first, then without
+    for specs in &["--specs=picolibc.specs", ""] {
+        let mut args = vec!["-march=rv64imc", "-mabi=lp64", "-E", "-Wp,-v", "-x", "c"];
+        if !specs.is_empty() {
+            args.insert(0, specs);
+        }
+        args.push("/dev/null");
+
+        if let Ok(output) = std::process::Command::new("riscv64-unknown-elf-gcc")
+            .args(&args)
+            .output()
+        {
+            // GCC prints include paths to stderr between
+            // "#include <...> search starts here:" and "End of search list."
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let mut in_search = false;
+            let mut paths = Vec::new();
+            for line in stderr.lines() {
+                if line.contains("#include <...> search starts here:") {
+                    in_search = true;
+                    continue;
+                }
+                if line.contains("End of search list.") {
+                    break;
+                }
+                if in_search {
+                    let path = line.trim().to_string();
+                    if !path.is_empty() && std::path::Path::new(&path).exists() {
+                        paths.push(path);
+                    }
+                }
+            }
+            if !paths.is_empty() {
+                return paths;
+            }
+        }
+    }
+    Vec::new()
 }
