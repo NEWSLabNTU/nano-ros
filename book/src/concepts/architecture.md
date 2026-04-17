@@ -6,15 +6,18 @@ This document presents the overall nano-ros architecture: the layered crate stru
 
 ## High-Level Layer Diagram
 
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 420" font-family="system-ui, -apple-system, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 476" font-family="system-ui, -apple-system, sans-serif" font-size="13">
   <defs>
     <style>
-      .layer { fill: none; stroke: #444; stroke-width: 1.5; rx: 6; }
-      .impl  { fill: #f0f4f8; stroke: #888; stroke-width: 1; rx: 4; }
-      .iface { fill: #e8f0fe; stroke: #5b8def; stroke-width: 1; rx: 4; }
-      .label { font-weight: 600; fill: #333; }
-      .sub   { fill: #555; font-size: 11px; }
-      .group { font-size: 11px; fill: #777; font-style: italic; }
+      .layer  { fill: none; stroke: #444; stroke-width: 1.5; rx: 6; }
+      .board  { fill: none; stroke: #e08600; stroke-width: 1.5; stroke-dasharray: 4 3; rx: 6; }
+      .impl   { fill: #f0f4f8; stroke: #888; stroke-width: 1; rx: 4; }
+      .boardi { fill: #fff4e0; stroke: #e08600; stroke-width: 1; rx: 4; }
+      .iface  { fill: #e8f0fe; stroke: #5b8def; stroke-width: 1; rx: 4; }
+      .label  { font-weight: 600; fill: #333; }
+      .sub    { fill: #555; font-size: 11px; }
+      .group  { font-size: 11px; fill: #777; font-style: italic; }
+      .boardg { font-size: 11px; fill: #9c5d00; font-style: italic; font-weight: 600; }
     </style>
   </defs>
 
@@ -24,62 +27,73 @@ This document presents the overall nano-ros architecture: the layered crate stru
   <rect class="impl" x="20" y="30" width="580" height="24"/>
   <text class="label" x="310" y="46" text-anchor="middle">User code (Rust / C / C++)</text>
 
+  <!-- Board layer (optional wrapper) -->
+  <rect class="board" x="10" y="68" width="600" height="60"/>
+  <text class="boardg" x="20" y="84">Board  (optional — bundles hardware init + drivers + re-exports nros)</text>
+  <rect class="boardi" x="20" y="90" width="285" height="32"/>
+  <text class="label" x="162" y="104" text-anchor="middle">nros-mps2-an385-freertos</text>
+  <text class="sub" x="162" y="117" text-anchor="middle">MPS2-AN385 + FreeRTOS + lwIP + LAN9118</text>
+  <rect class="boardi" x="315" y="90" width="285" height="32"/>
+  <text class="label" x="457" y="104" text-anchor="middle">nros-nuttx-qemu-arm / nros-threadx-* / ...</text>
+  <text class="sub" x="457" y="117" text-anchor="middle">one crate per (board + RTOS) combination</text>
+
   <!-- Core layer -->
-  <rect class="layer" x="10" y="68" width="600" height="108"/>
-  <text class="group" x="20" y="84">Core</text>
-  <rect class="iface" x="20" y="88" width="580" height="24"/>
-  <text class="label" x="200" y="104">nros</text>
-  <text class="sub" x="240" y="104">(facade — re-exports + feature gates)</text>
-  <rect class="impl" x="20" y="118" width="186" height="50"/>
-  <text class="label" x="113" y="136" text-anchor="middle">nros-node</text>
-  <text class="sub" x="113" y="152" text-anchor="middle">Executor, Node</text>
-  <rect class="impl" x="216" y="118" width="186" height="50"/>
-  <text class="label" x="309" y="136" text-anchor="middle">nros-params</text>
-  <text class="sub" x="309" y="152" text-anchor="middle">ParameterServer</text>
-  <rect class="impl" x="412" y="118" width="188" height="50"/>
-  <text class="label" x="506" y="136" text-anchor="middle">nros-core</text>
-  <text class="sub" x="506" y="152" text-anchor="middle">RosMessage, CDR</text>
+  <rect class="layer" x="10" y="136" width="600" height="108"/>
+  <text class="group" x="20" y="152">Core</text>
+  <rect class="iface" x="20" y="156" width="580" height="24"/>
+  <text class="label" x="200" y="172">nros</text>
+  <text class="sub" x="240" y="172">(facade — re-exports + feature gates)</text>
+  <rect class="impl" x="20" y="186" width="186" height="50"/>
+  <text class="label" x="113" y="204" text-anchor="middle">nros-node</text>
+  <text class="sub" x="113" y="220" text-anchor="middle">Executor, Node</text>
+  <rect class="impl" x="216" y="186" width="186" height="50"/>
+  <text class="label" x="309" y="204" text-anchor="middle">nros-params</text>
+  <text class="sub" x="309" y="220" text-anchor="middle">ParameterServer</text>
+  <rect class="impl" x="412" y="186" width="188" height="50"/>
+  <text class="label" x="506" y="204" text-anchor="middle">nros-core</text>
+  <text class="sub" x="506" y="220" text-anchor="middle">RosMessage, CDR</text>
 
   <!-- RMW layer -->
-  <rect class="layer" x="10" y="184" width="600" height="100"/>
-  <text class="group" x="20" y="200">RMW (middleware abstraction)</text>
-  <rect class="iface" x="20" y="204" width="580" height="24"/>
-  <text class="label" x="200" y="220">nros-rmw</text>
-  <text class="sub" x="268" y="220">(Session, Publisher, Subscriber traits)</text>
-  <rect class="impl" x="20" y="234" width="193" height="42"/>
-  <text class="label" x="116" y="252" text-anchor="middle">nros-rmw-zenoh</text>
-  <text class="sub" x="116" y="266" text-anchor="middle">zenoh-pico</text>
-  <rect class="impl" x="223" y="234" width="187" height="42"/>
-  <text class="label" x="316" y="252" text-anchor="middle">nros-rmw-xrce</text>
-  <text class="sub" x="316" y="266" text-anchor="middle">XRCE-DDS</text>
-  <rect class="impl" x="420" y="234" width="180" height="42"/>
-  <text class="label" x="510" y="252" text-anchor="middle">nros-rmw-cffi</text>
-  <text class="sub" x="510" y="266" text-anchor="middle">C vtable</text>
+  <rect class="layer" x="10" y="252" width="600" height="100"/>
+  <text class="group" x="20" y="268">RMW (middleware abstraction)</text>
+  <rect class="iface" x="20" y="272" width="580" height="24"/>
+  <text class="label" x="200" y="288">nros-rmw</text>
+  <text class="sub" x="268" y="288">(Session, Publisher, Subscriber traits)</text>
+  <rect class="impl" x="20" y="302" width="193" height="42"/>
+  <text class="label" x="116" y="320" text-anchor="middle">nros-rmw-zenoh</text>
+  <text class="sub" x="116" y="334" text-anchor="middle">zenoh-pico</text>
+  <rect class="impl" x="223" y="302" width="187" height="42"/>
+  <text class="label" x="316" y="320" text-anchor="middle">nros-rmw-xrce</text>
+  <text class="sub" x="316" y="334" text-anchor="middle">XRCE-DDS</text>
+  <rect class="impl" x="420" y="302" width="180" height="42"/>
+  <text class="label" x="510" y="320" text-anchor="middle">nros-rmw-cffi</text>
+  <text class="sub" x="510" y="334" text-anchor="middle">C vtable</text>
 
   <!-- Platform layer -->
-  <rect class="layer" x="10" y="292" width="600" height="120"/>
-  <text class="group" x="20" y="308">Platform (hardware + OS abstraction)</text>
-  <rect class="iface" x="20" y="312" width="580" height="24"/>
-  <text class="label" x="200" y="328">nros-platform</text>
-  <text class="sub" x="300" y="328">(Clock, Alloc, Threading, TCP, …)</text>
-  <rect class="impl" x="20"  y="342" width="112" height="42"/>
-  <text class="label" x="76"  y="367" text-anchor="middle">posix</text>
-  <rect class="impl" x="140" y="342" width="112" height="42"/>
-  <text class="label" x="196" y="367" text-anchor="middle">freertos</text>
-  <rect class="impl" x="260" y="342" width="112" height="42"/>
-  <text class="label" x="316" y="367" text-anchor="middle">zephyr</text>
-  <rect class="impl" x="380" y="342" width="112" height="42"/>
-  <text class="label" x="436" y="367" text-anchor="middle">threadx</text>
-  <rect class="impl" x="500" y="342" width="100" height="42"/>
-  <text class="label" x="550" y="367" text-anchor="middle">bare-metal</text>
+  <rect class="layer" x="10" y="360" width="600" height="108"/>
+  <text class="group" x="20" y="376">Platform (hardware + OS abstraction)</text>
+  <rect class="iface" x="20" y="380" width="580" height="24"/>
+  <text class="label" x="200" y="396">nros-platform</text>
+  <text class="sub" x="300" y="396">(Clock, Alloc, Threading, TCP, …)</text>
+  <rect class="impl" x="20"  y="410" width="112" height="42"/>
+  <text class="label" x="76"  y="435" text-anchor="middle">posix</text>
+  <rect class="impl" x="140" y="410" width="112" height="42"/>
+  <text class="label" x="196" y="435" text-anchor="middle">freertos</text>
+  <rect class="impl" x="260" y="410" width="112" height="42"/>
+  <text class="label" x="316" y="435" text-anchor="middle">zephyr</text>
+  <rect class="impl" x="380" y="410" width="112" height="42"/>
+  <text class="label" x="436" y="435" text-anchor="middle">threadx</text>
+  <rect class="impl" x="500" y="410" width="100" height="42"/>
+  <text class="label" x="550" y="435" text-anchor="middle">bare-metal</text>
 </svg>
 
-Four conceptual layers, each with a clear boundary:
+Five conceptual layers. Arrows point downward — each layer depends on the one below:
 
-- **Application** — user code in Rust, C, or C++. Depends only on `nros` (Rust) or `nros-c`/`nros-cpp` (C/C++).
+- **Application** — user code in Rust, C, or C++. Depends on either `nros` directly (if doing hardware init manually) or on a board package that handles setup.
+- **Board** *(optional)* — "batteries-included" wrapper crates like `nros-mps2-an385-freertos` that combine a platform crate + network drivers + hardware-init code + a `Config` struct + a `run()` entry point. They re-export `nros` so user code uses the same API either way. Most embedded users depend on a board package; POSIX users skip this layer. See [Custom Board Package](../porting/custom-board.md) for what a board crate provides.
 - **Core** — the `nros` facade re-exports `nros-node` (executor, node, handles), `nros-params` (parameter server), and `nros-core` (message traits, CDR serialization). Middleware-agnostic — knows nothing about zenoh or XRCE.
 - **RMW** — `nros-rmw` defines the `Session`/`Publisher`/`Subscriber` trait interface. Backend crates (`nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-cffi`) implement these traits using specific transport protocols. Selected at compile time via Cargo feature flags.
-- **Platform** — `nros-platform` defines traits for clock, memory, sleep, random, threading, and networking. Platform crates (`nros-platform-posix`, `nros-platform-freertos`, `nros-platform-zephyr`, etc.) implement these for each OS/RTOS. Board crates add hardware-specific init on top. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Platform Customization Guide](../internals/platform-customization.md) for which crates to modify.
+- **Platform** — `nros-platform` defines traits for clock, memory, sleep, random, threading, and networking. Platform crates (`nros-platform-posix`, `nros-platform-freertos`, `nros-platform-zephyr`, etc.) implement these for each OS/RTOS. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Custom Platform](../porting/custom-platform.md) guide for porting.
 
 ## Crate Dependency Graph
 
