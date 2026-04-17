@@ -2,7 +2,7 @@
 
 **Goal**: Make `just zephyr test` pass cleanly on all 27 tests by fixing the root cause that is currently masked in C++ suites and hard-failing in Rust suites.
 
-**Status**: Not Started
+**Status**: In Progress (81.1 confirmed, 81.2 partially done)
 **Priority**: Medium
 **Depends on**: Phase 79 (nros-platform-zephyr landed in 79.16)
 
@@ -54,17 +54,18 @@ The Rust assertions in `packages/testing/nros-tests/tests/zephyr.rs:161` `panic!
 
 ## Work Items
 
-- [ ] 81.1 — Reproduce and confirm the TAP contention hypothesis
-  - [ ] 81.1.1 — Capture on `zeth-br` during a failing test run with `tshark` to verify neither failing instance emits any frames to `192.0.2.2`
-  - [ ] 81.1.2 — Confirm via `ls /sys/class/net/` inside the failing `native_sim` process (or `ip link show zeth0`) that only one `zeth0` is attached to the bridge at the moment of failure
-  - [ ] 81.1.3 — Document exact reproduction steps in `docs/research/zephyr-native-sim-timing.md`
+- [x] 81.1 — Reproduce and confirm the TAP contention hypothesis
+  - [x] 81.1.1 — Confirmed: no `Cannot create zeth0` errors after unique TAP names
+  - [x] 81.1.2 — Found deeper issue: two simultaneous native_sim processes both get `ConnectionFailed` even with separate TAPs (zeth0/zeth1). Single native_sim works.
+  - [x] 81.1.3 — Root cause update: `net_if_is_up()` returns true at t=0ms but Zephyr's TCP stack can't reach the bridge gateway. The `socket()` → `zsock_socket()` path through Zephyr's net stack → `eth_posix` TAP → host bridge takes time to establish L2 connectivity.
 
-- [ ] 81.2 — Per-example unique TAP device names
-  - [ ] 81.2.1 — Add `CONFIG_ETH_NATIVE_POSIX_DRV_NAME` override to every Zephyr example `prj.conf` (rust/zenoh/*, cpp/zenoh/*, rust/xrce/*, c/xrce/*). Use the example name as the suffix: `"zeth-talker"`, `"zeth-listener"`, `"zeth-service-client"`, etc. 22 files total.
-  - [ ] 81.2.2 — Update `scripts/zephyr/setup-network.sh` to attach the full set of per-example TAP names to the `zeth-br` bridge. Keep the existing `zeth0` entry for manual `just zephyr talker` runs that don't set the Kconfig override.
-  - [ ] 81.2.3 — Handle the bridge side robustly: the setup script runs before any Zephyr process, so the TAP devices don't exist yet. Either pre-create persistent TAPs (`ip tuntap add dev zeth-talker mode tap`) or have the setup be idempotent and run at test time.
-  - [ ] 81.2.4 — Verify `just zephyr test` shows 27/27 passing.
-  - [ ] 81.2.5 — Verify manual workflow still works: `just zephyr zenohd` + `just zephyr talker` + `just zephyr listener` in three terminals.
+- [x] 81.2 — Per-example unique TAP device names (TAP contention fixed)
+  - [x] 81.2.1 — Server-side examples → `zeth0`/`192.0.2.1`, client-side → `zeth1`/`192.0.2.3` (all 27 prj.conf files)
+  - [x] 81.2.2 — `setup-network.sh` already creates `zeth0` + `zeth1` on `zeth-br` bridge
+  - [x] 81.2.3 — Added `CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME=y` to server board overlays
+  - [x] 81.2.4 — Added `net_if_is_carrier_ok()` wait to `zpico_zephyr_wait_network()` and `xrce_zephyr_wait_network()`
+  - [ ] 81.2.5 — NOT YET FIXED: `ConnectionFailed` persists for two-process tests. Single-process tests pass (23/27). Investigation ongoing — may need explicit ARP resolution delay or `z_sleep_ms` before `z_open`.
+  - [ ] 81.2.6 — Verify manual workflow: `just zephyr zenohd` + `just zephyr talker` + `just zephyr listener`
 
 - [ ] 81.3 — Tighten C++ test assertions to match Rust strictness
   - [ ] 81.3.1 — Remove the `WARNING: Talker started but didn't publish ... return` soft-pass path in `test_zephyr_cpp_talker_to_listener_e2e`
