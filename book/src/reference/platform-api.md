@@ -6,8 +6,8 @@ nano-ros abstracts hardware and OS differences through the **nros-platform** tra
 
 ```mermaid
 graph TD
-    ZP["zenoh-pico (C)"] --> ZPSHIM["zpico-platform-shim<br/>(~80 extern C symbols)"]
-    XRCE["XRCE-DDS (C)"] --> XSHIM["xrce-platform-shim<br/>(3 extern C symbols)"]
+    ZP["zenoh-pico (C)"] --> ZPSHIM["zpico-platform-shim"]
+    XRCE["XRCE-DDS (C)"] --> XSHIM["xrce-platform-shim"]
     ZPSHIM --> NP["nros-platform::ConcretePlatform"]
     XSHIM --> NP
     NP --> POSIX["nros-platform-posix"]
@@ -194,150 +194,9 @@ Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX, FreeR
 
 Standard C library functions needed by zenoh-pico on targets without a C runtime. Provides `strlen`, `strcmp`, `strncmp`, `strchr`, `strncpy`, `memcpy`, `memmove`, `memset`, `memcmp`, `memchr`, `strtoul`, `errno_ptr`.
 
-## Zenoh-pico Shim Symbols (`zpico-platform-shim`)
+## How It Works
 
-The shim translates ~80 `extern "C"` symbols expected by zenoh-pico into calls on `ConcretePlatform`. These symbols are resolved at link time. The count breaks down as: 46 system symbols (always active) + ~25 networking symbols (active when the `network` feature is enabled) + 7–12 libc stubs (bare-metal only).
-
-### Clock (7 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `z_clock_now` | `PlatformClock::clock_ms` |
-| `z_clock_elapsed_us` | `PlatformClock::clock_us` |
-| `z_clock_elapsed_ms` | `PlatformClock::clock_ms` |
-| `z_clock_elapsed_s` | `PlatformClock::clock_ms` / 1000 |
-| `z_clock_advance_us` | pointer arithmetic |
-| `z_clock_advance_ms` | pointer arithmetic |
-| `z_clock_advance_s` | pointer arithmetic |
-
-### Memory (3 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `z_malloc` | `PlatformAlloc::alloc` |
-| `z_realloc` | `PlatformAlloc::realloc` |
-| `z_free` | `PlatformAlloc::dealloc` |
-
-### Sleep (3 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `z_sleep_us` | `PlatformSleep::sleep_us` |
-| `z_sleep_ms` | `PlatformSleep::sleep_ms` |
-| `z_sleep_s` | `PlatformSleep::sleep_s` |
-
-### Random (5 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `z_random_u8` | `PlatformRandom::random_u8` |
-| `z_random_u16` | `PlatformRandom::random_u16` |
-| `z_random_u32` | `PlatformRandom::random_u32` |
-| `z_random_u64` | `PlatformRandom::random_u64` |
-| `z_random_fill` | `PlatformRandom::random_fill` |
-
-### Time (6 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `z_time_now` | `PlatformTime::time_now_ms` |
-| `z_time_now_as_str` | formatted string from `time_since_epoch` |
-| `z_time_elapsed_us` | `PlatformTime::time_now_ms` delta |
-| `z_time_elapsed_ms` | `PlatformTime::time_now_ms` delta |
-| `z_time_elapsed_s` | `PlatformTime::time_now_ms` delta |
-| `_z_get_time_since_epoch` | `PlatformTime::time_since_epoch` |
-
-### Threading (22 symbols)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `_z_task_init` | `PlatformThreading::task_init` |
-| `_z_task_join` | `PlatformThreading::task_join` |
-| `_z_task_detach` | `PlatformThreading::task_detach` |
-| `_z_task_cancel` | `PlatformThreading::task_cancel` |
-| `_z_task_exit` | `PlatformThreading::task_exit` |
-| `_z_task_free` | `PlatformThreading::task_free` |
-| `_z_mutex_init` | `PlatformThreading::mutex_init` |
-| `_z_mutex_drop` | `PlatformThreading::mutex_drop` |
-| `_z_mutex_lock` | `PlatformThreading::mutex_lock` |
-| `_z_mutex_try_lock` | `PlatformThreading::mutex_try_lock` |
-| `_z_mutex_unlock` | `PlatformThreading::mutex_unlock` |
-| `_z_mutex_rec_init` | `PlatformThreading::mutex_rec_init` |
-| `_z_mutex_rec_drop` | `PlatformThreading::mutex_rec_drop` |
-| `_z_mutex_rec_lock` | `PlatformThreading::mutex_rec_lock` |
-| `_z_mutex_rec_try_lock` | `PlatformThreading::mutex_rec_try_lock` |
-| `_z_mutex_rec_unlock` | `PlatformThreading::mutex_rec_unlock` |
-| `_z_condvar_init` | `PlatformThreading::condvar_init` |
-| `_z_condvar_drop` | `PlatformThreading::condvar_drop` |
-| `_z_condvar_signal` | `PlatformThreading::condvar_signal` |
-| `_z_condvar_signal_all` | `PlatformThreading::condvar_signal_all` |
-| `_z_condvar_wait` | `PlatformThreading::condvar_wait` |
-| `_z_condvar_wait_until` | `PlatformThreading::condvar_wait_until` |
-
-### Networking — TCP (8 symbols, `network` feature)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `_z_create_endpoint_tcp` | `PlatformTcp::create_endpoint` |
-| `_z_free_endpoint_tcp` | `PlatformTcp::free_endpoint` |
-| `_z_open_tcp` | `PlatformTcp::open` |
-| `_z_listen_tcp` | `PlatformTcp::listen` |
-| `_z_close_tcp` | `PlatformTcp::close` |
-| `_z_read_tcp` | `PlatformTcp::read` |
-| `_z_read_exact_tcp` | `PlatformTcp::read_exact` |
-| `_z_send_tcp` | `PlatformTcp::send` |
-
-### Networking — UDP unicast (8 symbols, `network` feature)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `_z_create_endpoint_udp` | `PlatformUdp::create_endpoint` |
-| `_z_free_endpoint_udp` | `PlatformUdp::free_endpoint` |
-| `_z_open_udp_unicast` | `PlatformUdp::open` |
-| `_z_listen_udp_unicast` | stub (returns -1) |
-| `_z_close_udp_unicast` | `PlatformUdp::close` |
-| `_z_read_udp_unicast` | `PlatformUdp::read` |
-| `_z_read_exact_udp_unicast` | `PlatformUdp::read_exact` |
-| `_z_send_udp_unicast` | `PlatformUdp::send` |
-
-### Networking — UDP multicast (6 symbols, `network` feature)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `_z_open_udp_multicast` | `PlatformUdpMulticast::mcast_open` |
-| `_z_listen_udp_multicast` | `PlatformUdpMulticast::mcast_listen` |
-| `_z_close_udp_multicast` | `PlatformUdpMulticast::mcast_close` |
-| `_z_read_udp_multicast` | `PlatformUdpMulticast::mcast_read` |
-| `_z_read_exact_udp_multicast` | `PlatformUdpMulticast::mcast_read_exact` |
-| `_z_send_udp_multicast` | `PlatformUdpMulticast::mcast_send` |
-
-### Networking — Socket helpers (4 symbols, `network` feature)
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `_z_socket_set_non_blocking` | `PlatformSocketHelpers::set_non_blocking` |
-| `_z_socket_accept` | `PlatformSocketHelpers::accept` |
-| `_z_socket_close` | `PlatformSocketHelpers::close` |
-| `_z_socket_wait_event` | `PlatformSocketHelpers::wait_event` |
-
-### smoltcp bridge (bare-metal only, `network-smoltcp-bridge` feature)
-
-| C Symbol | Description |
-|----------|-------------|
-| `smoltcp_init` | Initialize smoltcp bridge (called from board crate `init_hardware()`) |
-| `smoltcp_cleanup` | Clean up smoltcp state |
-| `smoltcp_poll` | Poll network stack + advance sockets |
-| `smoltcp_clock_now_ms` | `PlatformClock::clock_ms` (for smoltcp driver timestamping) |
-
-## XRCE-DDS Shim Symbols (`xrce-platform-shim`)
-
-The XRCE-DDS shim is minimal — only 3 symbols:
-
-| C Symbol | Platform Method |
-|----------|----------------|
-| `uxr_millis` | `PlatformClock::clock_ms` |
-| `uxr_nanos` | `PlatformClock::clock_us` * 1000 |
-| `smoltcp_clock_now_ms` | `PlatformClock::clock_ms` |
+Platform crates implement the traits above as inherent methods on a zero-sized type (e.g., `PosixPlatform`, `FreeRtosPlatform`). Thin shim crates (`zpico-platform-shim`, `xrce-platform-shim`) automatically forward RMW-layer C symbols to the active platform — this mapping is internal to nano-ros and transparent to platform implementors. You never implement or call shim symbols directly; you only implement traits.
 
 ## Platform Implementations
 
@@ -370,14 +229,4 @@ pub type ConcretePlatform = nros_platform_threadx::ThreadxPlatform;
 // ... etc.
 ```
 
-The shim crates use `ConcretePlatform` directly — no dynamic dispatch, no generics propagation:
-
-```rust
-// In zpico-platform-shim/src/shim.rs:
-use nros_platform::ConcretePlatform;
-
-#[unsafe(no_mangle)]
-pub extern "C" fn z_clock_now() -> usize {
-    ConcretePlatform::clock_ms() as usize
-}
-```
+RMW shim crates use `ConcretePlatform` directly — no dynamic dispatch, no generics propagation. The forwarding from RMW-layer C symbols to platform trait methods is handled internally by nano-ros and is transparent to platform implementors.
