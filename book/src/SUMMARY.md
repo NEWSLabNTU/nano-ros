@@ -22,11 +22,19 @@
 - [Serial Transport](./user-guide/serial-transport.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
 
+# Porting
+
+- [Overview](./porting/overview.md)
+- [Custom RMW Backend](./porting/custom-rmw.md)
+- [Custom Platform](./porting/custom-platform.md)
+- [Custom Board Package](./porting/custom-board.md)
+
 # Reference
 
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [C++ API](./reference/cpp-api.md)
+- [RMW API](./reference/rmw-api.md)
 - [Platform API](./reference/platform-api.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
@@ -40,19 +48,13 @@
 # Internals
 
 - [RMW API Design](./internals/rmw-api-design.md)
-- [RMW API Reference](./internals/rmw-api.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Formal Verification](./internals/verification.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
 - [Safety Protocol](./internals/safety.md)
-- [Porting to a New Platform](./internals/porting-platform/README.md)
-  - [Implementing a Platform](./internals/porting-platform/implementing-a-platform.md)
-  - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
-  - [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
-- [Adding an RMW Backend](./internals/adding-rmw-backend.md)
-- [Board Crate Implementation](./internals/board-crate.md)
-- [Platform Customization](./internals/platform-customization.md)
+- [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
+- [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
 - [Creating Examples](./internals/creating-examples.md)
 - [Platform Porting Pitfalls](./internals/platform-porting-pitfalls.md)
 - [Contributing](./internals/contributing.md)

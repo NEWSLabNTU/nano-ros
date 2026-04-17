@@ -283,11 +283,12 @@ See `book/src/reference/build-commands.md` for manual testing, ROS 2 interop, Do
 book/src/              # User-facing documentation (mdbook)
 ├── getting-started/   # installation, native, zephyr, freertos, nuttx, threadx, bare-metal, esp32, ros2-interop
 ├── user-guide/        # rmw-backends, configuration, message-generation, serial-transport, troubleshooting
-├── reference/         # rust-api, c-api, cpp-api, platform-api, environment-variables, build-commands
+├── porting/           # overview, custom-rmw, custom-platform, custom-board
+├── reference/         # rust-api, c-api, cpp-api, rmw-api, platform-api, environment-variables, build-commands
 ├── concepts/          # architecture, no-std, platform-model
-└── internals/         # rmw-api-design, rmw-api, rmw-zenoh-protocol, scheduling-models,
-                       # verification, realtime-analysis, safety, porting-platform/,
-                       # adding-rmw-backend, board-crate, platform-customization,
+└── internals/         # rmw-api-design, rmw-zenoh-protocol, scheduling-models,
+                       # verification, realtime-analysis, safety,
+                       # zenoh-pico + xrce-dds symbol refs,
                        # creating-examples, platform-porting-pitfalls, contributing
 
 docs/                  # Contributor/internal documentation
