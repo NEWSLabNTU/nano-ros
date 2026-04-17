@@ -44,22 +44,18 @@ fn main() {
     let threadx = PathBuf::from(&threadx_dir);
     let netx = PathBuf::from(&netx_dir);
 
-    // Detect port directory based on target
+    // Detect port directory based on target.
+    // Only linux and risc-v64 ports have BSD socket support (needed by
+    // threadx-netx-sys). ARM bare-metal targets don't — emit placeholders.
     let target = env::var("TARGET").unwrap_or_default();
-    let tx_port = if target.contains("linux") || target.contains("x86_64") {
-        "linux/gnu"
+    let (tx_port, nx_port) = if target.contains("linux") || target.contains("x86_64") {
+        ("linux/gnu", "linux/gnu")
     } else if target.contains("riscv") {
-        "risc-v64/gnu"
+        ("risc-v64/gnu", "risc-v64/gnu")
     } else {
-        "linux/gnu" // fallback
-    };
-
-    let nx_port = if target.contains("linux") || target.contains("x86_64") {
-        "linux/gnu"
-    } else if target.contains("riscv") {
-        "risc-v64/gnu"
-    } else {
-        "linux/gnu"
+        // ARM bare-metal and other targets: no BSD socket port available.
+        emit_placeholder_bindings();
+        return;
     };
 
     let mut builder = bindgen::Builder::default()
