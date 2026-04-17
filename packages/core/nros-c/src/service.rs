@@ -5,6 +5,8 @@
 
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
+use core::sync::atomic::AtomicBool;
+use core::task::{RawWaker, RawWakerVTable, Waker};
 
 use crate::config::{SERVICE_CLIENT_INTERNAL_OPAQUE_U64S, SERVICE_SERVER_INTERNAL_OPAQUE_U64S};
 use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
@@ -12,6 +14,36 @@ use crate::error::*;
 use crate::executor::nros_executor_t;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::publisher::nros_message_type_t;
+
+// ============================================================================
+// Waker helper — creates a Waker that sets an AtomicBool
+// ============================================================================
+
+/// Create a [`Waker`] that sets the given [`AtomicBool`] to `true` when woken.
+///
+/// The `AtomicBool` must outlive the waker. Used to bridge the transport's
+/// reply notification (`register_waker`) to the arena entry's `reply_ready`
+/// flag, avoiding blind polling of `get_check` on every spin tick.
+fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(
+        // clone: return a new RawWaker pointing to the same flag
+        |data| RawWaker::new(data, &VTABLE),
+        // wake: set the flag (by value — consumes the waker)
+        |data| unsafe {
+            (*(data as *const AtomicBool)).store(true, core::sync::atomic::Ordering::Release);
+        },
+        // wake_by_ref: set the flag (by reference — waker stays alive)
+        |data| unsafe {
+            (*(data as *const AtomicBool)).store(true, core::sync::atomic::Ordering::Release);
+        },
+        // drop: no-op (flag is borrowed, not owned)
+        |_data| {},
+    );
+    let raw = RawWaker::new(flag as *const AtomicBool as *const (), &VTABLE);
+    // SAFETY: the vtable is valid and the flag outlives the waker (it lives
+    // in the arena entry which outlives any single spin iteration).
+    unsafe { Waker::from_raw(raw) }
+}
 
 // ============================================================================
 // Service Server
@@ -717,9 +749,19 @@ pub unsafe extern "C" fn nros_client_send_request_async(
         }
 
         let request = core::slice::from_raw_parts(request_data, request_len);
+        // Clear the ready flag before sending so we don't pick up a
+        // stale wake from a previous request.
+        entry
+            .reply_ready
+            .store(false, core::sync::atomic::Ordering::Release);
         match entry.handle.send_request_raw(request) {
             Ok(()) => {
                 entry.pending = true;
+                // Register a waker that sets reply_ready when the
+                // transport delivers the reply. This replaces blind
+                // polling of get_check on every spin tick.
+                let waker = atomic_bool_waker(&entry.reply_ready);
+                entry.handle.register_waker(&waker);
                 NROS_RET_OK
             }
             Err(_) => NROS_RET_ERROR,
@@ -875,6 +917,10 @@ pub unsafe extern "C" fn nros_client_call(
         return send;
     }
 
+    // Spin: drive I/O then dispatch arena entries. On single-threaded
+    // transports (smoltcp/NuttX), drive_io reads from the socket. On
+    // multi-threaded (POSIX), the background thread handles I/O and
+    // the waker signals reply_ready when the response arrives.
     let executor = executor_ptr as *mut nros_executor_t;
     let max_spins = (timeout_ms / 10).max(1);
     for _ in 0..max_spins {

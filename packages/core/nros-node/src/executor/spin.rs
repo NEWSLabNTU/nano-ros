@@ -1242,6 +1242,7 @@ impl Executor {
                     handle,
                     reply_buffer: [0u8; REPLY_BUF],
                     pending: false,
+                    reply_ready: core::sync::atomic::AtomicBool::new(false),
                     callback,
                     context,
                 },

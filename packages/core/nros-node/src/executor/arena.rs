@@ -180,10 +180,10 @@ pub(crate) struct ActionClientRawArenaEntry<
 /// Concrete service-client entry for raw (untyped) async polling.
 ///
 /// Holds the `RmwServiceClient` plus a single-shot reply buffer and a
-/// callback fn pointer. The executor's `service_client_raw_try_process`
-/// polls `try_recv_reply_raw` on every spin tick and fires the callback
-/// when the reply arrives. Mirrors `ActionClientRawArenaEntry` but for
-/// the simpler request/response service shape.
+/// callback fn pointer. The executor dispatches via
+/// `service_client_raw_try_process` which checks `reply_ready` (set by
+/// the transport waker) before calling `try_recv_reply_raw`. This
+/// avoids busy-polling `get_check` on every spin tick.
 ///
 /// Single in-flight request per entry: a second `send_request` while
 /// `pending` is still `true` is the user's responsibility to avoid (the
@@ -193,6 +193,9 @@ pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
     pub handle: session::RmwServiceClient,
     pub reply_buffer: [u8; REPLY_BUF],
     pub pending: bool,
+    /// Set by the transport waker when a reply arrives for this slot.
+    /// Checked by `try_process` to avoid blind polling.
+    pub reply_ready: core::sync::atomic::AtomicBool,
     pub callback: Option<RawResponseCallback>,
     pub context: *mut core::ffi::c_void,
 }
@@ -929,9 +932,9 @@ pub(crate) unsafe fn action_client_raw_try_process<
 
 /// Monomorphized raw service-client dispatch function.
 ///
-/// Polls `try_recv_reply_raw` on the in-flight request, if any, and
-/// fires the registered callback when the reply arrives. Clears the
-/// `pending` flag and stops polling once consumed.
+/// Checks `reply_ready` (set by the transport waker) before calling
+/// `try_recv_reply_raw`. This avoids blind polling on every spin tick —
+/// the only cost per tick is an atomic load when no reply is pending.
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `ServiceClientRawArenaEntry<REPLY_BUF>`.
@@ -939,12 +942,16 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
 ) -> Result<bool, TransportError> {
+    use core::sync::atomic::Ordering;
     use nros_rmw::ServiceClientTrait;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientRawArenaEntry<REPLY_BUF>) };
 
     if !entry.pending {
         return Ok(false);
     }
+
+    // Clear the waker flag if set (consumed by this check).
+    entry.reply_ready.store(false, Ordering::Release);
 
     match entry.handle.try_recv_reply_raw(&mut entry.reply_buffer) {
         Ok(Some(len)) => {
