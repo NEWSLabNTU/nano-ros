@@ -347,9 +347,8 @@ typedef struct {
 - [ ] 80.11 — Zephyr UDP multicast
   - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
   - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
-- [ ] 80.12 — XRCE-DDS network unification (if applicable)
-  - [ ] 80.12.1 — Check if XRCE-DDS uses the same network interface or custom transport
-  - [ ] 80.12.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
+- [x] 80.12 — XRCE-DDS network unification — **not applicable**
+  - [x] 80.12.1 — XRCE uses `uxrCustomTransport` callbacks (open/close/write/read), not zenoh-pico's `_z_open_tcp` interface. Transport is self-contained per-backend (xrce-smoltcp, POSIX UDP, Zephyr). The nros-platform PlatformTcp/PlatformUdp traits don't map to XRCE's callback model.
 - [ ] 80.13 — Update documentation
   - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
   - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification
