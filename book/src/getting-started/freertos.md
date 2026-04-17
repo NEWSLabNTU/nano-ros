@@ -129,7 +129,7 @@ FreeRTOS QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-mps2-an385-freertos` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../guides/board-crate.md). It provides network and node configuration presets (`default()`, `listener()`, `server()`, `client()`) and initializes FreeRTOS, lwIP, and LAN9118 before running the user closure as a FreeRTOS task. Output uses ARM semihosting (`SYS_WRITE0`).
+The `nros-mps2-an385-freertos` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md). It provides network and node configuration presets (`default()`, `listener()`, `server()`, `client()`) and initializes FreeRTOS, lwIP, and LAN9118 before running the user closure as a FreeRTOS task. Output uses ARM semihosting (`SYS_WRITE0`).
 
 Unlike NuttX, FreeRTOS is `no_std` -- examples use `#![no_std]` / `#![no_main]`
 entry points with semihosting for output.

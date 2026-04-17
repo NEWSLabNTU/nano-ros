@@ -601,7 +601,7 @@ CONFIG_NET_SOCKETS=y
 - RMW backend selected in two places: `Cargo.toml` features (Rust) and `prj.conf` Kconfig
 - No `target_sources` needed for transport C files -- the module handles it
 - Build via `west build`, not `cargo build`
-- See [Zephyr](../platforms/zephyr.md) for full Kconfig reference
+- See [Zephyr](../getting-started/zephyr.md) for full Kconfig reference
 
 ---
 
@@ -623,4 +623,4 @@ CONFIG_NET_SOCKETS=y
 ## See Also
 
 - [Message Generation](message-generation.md) -- Message generation details
-- [Zephyr](../platforms/zephyr.md) -- Zephyr workspace setup
+- [Zephyr](../getting-started/zephyr.md) -- Zephyr workspace setup

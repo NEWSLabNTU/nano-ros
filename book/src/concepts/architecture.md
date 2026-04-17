@@ -47,7 +47,7 @@ Four conceptual layers, each with a clear boundary:
 - **Application** — user code in Rust, C, or C++. Depends only on `nros` (Rust) or `nros-c`/`nros-cpp` (C/C++).
 - **Core** — the `nros` facade re-exports `nros-node` (executor, node, handles), `nros-params` (parameter server), and `nros-core` (message traits, CDR serialization). Middleware-agnostic — knows nothing about zenoh or XRCE.
 - **RMW** — `nros-rmw` defines the `Session`/`Publisher`/`Subscriber` trait interface. Backend crates (`nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-cffi`) implement these traits using specific transport protocols. Selected at compile time via Cargo feature flags.
-- **Platform** — `nros-platform` defines traits for clock, memory, sleep, random, threading, and networking. Platform crates (`nros-platform-posix`, `nros-platform-freertos`, `nros-platform-zephyr`, etc.) implement these for each OS/RTOS. Board crates add hardware-specific init on top. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Platform Customization Guide](../guides/platform-customization.md) for which crates to modify.
+- **Platform** — `nros-platform` defines traits for clock, memory, sleep, random, threading, and networking. Platform crates (`nros-platform-posix`, `nros-platform-freertos`, `nros-platform-zephyr`, etc.) implement these for each OS/RTOS. Board crates add hardware-specific init on top. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Platform Customization Guide](../internals/platform-customization.md) for which crates to modify.
 
 ## Crate Dependency Graph
 

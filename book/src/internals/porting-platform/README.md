@@ -67,7 +67,7 @@ the same regardless of backend:
    crate with mutual exclusivity enforcement
 3. **Write an example** — see [Creating Examples](../creating-examples.md)
 4. **Add test infrastructure** — add `just test-<name>` recipe and nextest
-   group; see [Platform Porting Pitfalls](../../advanced/platform-porting-pitfalls.md)
+   group; see [Platform Porting Pitfalls](../platform-porting-pitfalls.md)
    for QEMU-specific rules
 
 ## Guides

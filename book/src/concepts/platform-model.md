@@ -151,4 +151,4 @@ The RMW transport libraries access platform primitives through thin shim crates 
 
 The default feature set is `std` only. No RMW backend or platform is selected by default -- users must explicitly choose their configuration.
 
-For implementation details on how to add a new platform, see the [Porting Guide](../guides/porting-platform/README.md) and [Platform API Reference](../reference/platform-api.md).
+For implementation details on how to add a new platform, see the [Porting Guide](../internals/porting-platform/README.md) and [Platform API Reference](../reference/platform-api.md).

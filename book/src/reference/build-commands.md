@@ -186,4 +186,4 @@ The `zephyr-workspace` symlink points to the actual workspace (default: `../nano
 ln -sfn /path/to/custom-workspace zephyr-workspace
 ```
 
-See [Zephyr](../platforms/zephyr.md) for full details.
+See [Zephyr](../getting-started/zephyr.md) for full details.

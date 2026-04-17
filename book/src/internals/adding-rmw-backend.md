@@ -371,7 +371,7 @@ For example:
 0/chatter/std_msgs::msg::dds_::String_/RIHS01_...
 ```
 
-See [RMW Zenoh Protocol](../reference/rmw-zenoh-protocol.md) for the full
+See [RMW Zenoh Protocol](rmw-zenoh-protocol.md) for the full
 format specification.
 
 ## Testing

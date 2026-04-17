@@ -721,6 +721,111 @@ content, missing chapters, duplicated topics, and architecture drift.
   - [x] 65.55.2 — `mdbook build book/` zero warnings after all changes
 
 
+## Book Reorganization (65.56–65.65)
+
+Reorganization filed 2026-04-17. The book is primarily for users; dev/contributor
+content moves to an Internals chapter. Getting Started becomes example-driven
+(one page per platform). Configuration consolidated into a single User Guide page.
+
+### New SUMMARY.md structure
+
+```
+Introduction
+# Getting Started
+  Installation
+  Native (Linux / macOS)         ← merge first-app-rust + first-app-c + posix.md
+  Zephyr                         ← merge zephyr.md + relevant config
+  FreeRTOS (QEMU)                ← merge freertos.md
+  NuttX (QEMU)                   ← merge nuttx.md
+  ThreadX                        ← merge threadx.md
+  Bare-metal (QEMU ARM)          ← merge qemu-bare-metal.md
+  ESP32                          ← merge esp32.md
+  ROS 2 Interoperability
+# User Guide
+  Choosing an RMW Backend        ← practical guide (from rmw-backends.md)
+  Configuration                  ← ONE page: features + config.toml + env vars + tuning
+  Message Generation
+  Serial Transport
+  Troubleshooting
+# Reference
+  Rust API
+  C API
+  C++ API
+  Platform API
+  Environment Variables          ← lookup table only
+  Build Commands
+# Concepts
+  Architecture Overview
+  no_std Support
+  Platform Model
+# Internals
+  RMW API Design                 ← from Concepts
+  RMW API Reference              ← from Reference
+  RMW Zenoh Protocol             ← from Reference
+  Scheduling Models              ← from Concepts
+  Formal Verification            ← from Advanced
+  Real-Time Analysis             ← from Advanced
+  Safety Protocol                ← from Advanced
+  Porting to a New Platform      ← from Guides
+  Adding an RMW Backend          ← from Guides
+  Board Crate Implementation     ← from Guides
+  Platform Customization         ← from Guides
+  Platform Porting Pitfalls      ← from Advanced
+  Contributing                   ← from Advanced
+```
+
+### Work items
+
+- [ ] 65.56 — Restructure Getting Started: per-platform example pages
+  - [ ] 65.56.1 — Merge `getting-started/first-app-rust.md` +
+    `getting-started/first-app-c.md` + `platforms/posix.md` into a
+    single `getting-started/native.md` page (show both Rust and C
+    on the same page, explain RMW/feature selection in context)
+  - [ ] 65.56.2 — Move `platforms/zephyr.md` → `getting-started/zephyr.md`
+  - [ ] 65.56.3 — Move `platforms/freertos.md` → `getting-started/freertos.md`
+  - [ ] 65.56.4 — Move `platforms/nuttx.md` → `getting-started/nuttx.md`
+  - [ ] 65.56.5 — Move `platforms/threadx.md` → `getting-started/threadx.md`
+  - [ ] 65.56.6 — Move `guides/qemu-bare-metal.md` → `getting-started/bare-metal.md`
+  - [ ] 65.56.7 — Move `guides/esp32.md` → `getting-started/esp32.md`
+  - [ ] 65.56.8 — Keep `getting-started/ros2-interop.md` in place
+  - [ ] 65.56.9 — Delete `platforms/README.md` (overview absorbed into
+    Getting Started intro or architecture page)
+
+- [ ] 65.57 — Create User Guide section
+  - [ ] 65.57.1 — Move `concepts/rmw-backends.md` → `user-guide/rmw-backends.md`,
+    rewrite to practical tone ("use zenoh for X, XRCE for Y")
+  - [ ] 65.57.2 — Merge `guides/configuration.md` + `reference/config-toml.md` +
+    `reference/embedded-tuning.md` into single `user-guide/configuration.md`.
+    Keep `reference/environment-variables.md` as lookup-only table.
+  - [ ] 65.57.3 — Move `guides/message-generation.md` → `user-guide/message-generation.md`
+  - [ ] 65.57.4 — Move `guides/serial-transport.md` → `user-guide/serial-transport.md`
+  - [ ] 65.57.5 — Move `guides/troubleshooting.md` → `user-guide/troubleshooting.md`
+
+- [ ] 65.58 — Slim down Reference section
+  - [ ] 65.58.1 — Delete `reference/config-toml.md` (merged into user-guide/configuration.md)
+  - [ ] 65.58.2 — Delete `reference/embedded-tuning.md` (merged into user-guide/configuration.md)
+  - [ ] 65.58.3 — Move `reference/rmw-api.md` → `internals/rmw-api.md`
+  - [ ] 65.58.4 — Move `reference/rmw-zenoh-protocol.md` → `internals/rmw-zenoh-protocol.md`
+
+- [ ] 65.59 — Slim down Concepts section
+  - [ ] 65.59.1 — Move `concepts/rmw-api-design.md` → `internals/rmw-api-design.md`
+  - [ ] 65.59.2 — Move `concepts/scheduling-models.md` → `internals/scheduling-models.md`
+
+- [ ] 65.60 — Create Internals section (rename Advanced → Internals)
+  - [ ] 65.60.1 — Rename `advanced/` dir → `internals/`
+  - [ ] 65.60.2 — Move porting guides: `guides/porting-platform/*` → `internals/porting-platform/*`
+  - [ ] 65.60.3 — Move `guides/adding-rmw-backend.md` → `internals/adding-rmw-backend.md`
+  - [ ] 65.60.4 — Move `guides/board-crate.md` → `internals/board-crate.md`
+  - [ ] 65.60.5 — Move `guides/platform-customization.md` → `internals/platform-customization.md`
+  - [ ] 65.60.6 — Move `guides/creating-examples.md` → `internals/creating-examples.md`
+
+- [ ] 65.61 — Rewrite SUMMARY.md for new structure
+- [ ] 65.62 — Fix all internal cross-links (relative paths changed by moves)
+- [ ] 65.63 — Delete empty directories and orphaned files
+- [ ] 65.64 — `mdbook build book/` zero warnings
+- [ ] 65.65 — Update CLAUDE.md documentation index
+
+
 ## Acceptance Criteria
 
 ### Original (65.1–65.41)
@@ -737,19 +842,30 @@ content, missing chapters, duplicated topics, and architecture drift.
 - [x] Platform chapters cover all five supported platforms
 - [x] CLAUDE.md docs index updated
 
-### Revision (65.42–65.55)
+### Revision (65.42–65.55) — all done
 
-- [ ] C++ API reference exists and covers Future/Stream patterns (Phase 82)
-- [ ] RMW API reference exists with trait signatures for both backends
-- [ ] Platform customization guide exists; clearly marks core vs user packages
-- [ ] Rust API reference documents `call()` → `Promise`, action client
+- [x] C++ API reference exists and covers Future/Stream patterns (Phase 82)
+- [x] RMW API reference exists with trait signatures for both backends
+- [x] Platform customization guide exists; clearly marks core vs user packages
+- [x] Rust API reference documents `call()` → `Promise`, action client
       `send_goal()` / `get_result()`, `spin_async()`, `spin_period()`
-- [ ] C API reference documents action server/client and non-blocking patterns
-- [ ] Platform API reference documents all Phase 80 networking traits
-- [ ] Architecture diagram shows nros-platform layer + networking flow
-- [ ] No topic is explained in detail in more than one chapter — duplicates
+- [x] C API reference documents action server/client and non-blocking patterns
+- [x] Platform API reference documents all Phase 80 networking traits
+- [x] Architecture diagram shows nros-platform layer + networking flow
+- [x] No topic is explained in detail in more than one chapter — duplicates
       replaced with cross-links
-- [ ] `mdbook build book/` zero warnings after all changes
+- [x] `mdbook build book/` zero warnings after all changes
+
+### Reorganization (65.56–65.65)
+
+- [ ] Getting Started has one page per platform (example-driven)
+- [ ] User Guide exists with config, RMW selection, message gen, serial, troubleshooting
+- [ ] Reference is lookup-only (no prose duplication with User Guide)
+- [ ] Concepts is minimal (3 pages: architecture, no_std, platform model)
+- [ ] Internals chapter contains all dev/contributor content
+- [ ] No empty directories or orphaned files
+- [ ] `mdbook build book/` zero warnings
+- [ ] CLAUDE.md docs index updated
 
 ## Notes
 

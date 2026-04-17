@@ -224,7 +224,7 @@ functions and provides safe Rust wrappers.
 
 - **Poll-driven clocks**: Never increment the clock only when polled.
   Use a free-running hardware timer. See
-  [Platform Porting Pitfalls](../../advanced/platform-porting-pitfalls.md).
+  [Platform Porting Pitfalls](../platform-porting-pitfalls.md).
 - **Stack overflow on RTOS**: The `Executor` has an inline arena on the
   task stack. Ensure the application task stack is large enough (e.g.,
   16384 words / 64 KB for action examples on FreeRTOS).

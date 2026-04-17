@@ -32,7 +32,7 @@ Each example includes a `config.toml` that defines hardware and network
 settings. The file is embedded into the binary via `include_str!` (Rust)
 or parsed by CMake at configure time (C/C++).
 
-See [Example Configuration (config.toml)](../reference/config-toml.md) for
+See the config.toml section below for
 the full format reference.
 
 ### Network Section
@@ -93,7 +93,7 @@ zenoh_lease_priority = 16
 app_stack_bytes = 65536
 ```
 
-See [config.toml reference](../reference/config-toml.md) for the full
+See the config.toml section below for the full
 priority scale and constraints.
 
 ### How config.toml is consumed
@@ -158,7 +158,7 @@ elsewhere.
 
 ### Buffer Tuning
 
-All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- platform-appropriate defaults apply if unset. See the [Environment Variables Reference](../reference/environment-variables.md) for the complete list of all buffer tuning variables. For detailed sizing guidance, memory budget estimation, and recommended configurations by RAM class, see [Embedded Tuning](../reference/embedded-tuning.md).
+All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- platform-appropriate defaults apply if unset. See the [Environment Variables Reference](../reference/environment-variables.md) for the complete list of all buffer tuning variables. For detailed sizing guidance, memory budget estimation, and recommended configurations by RAM class.
 
 ## Layer 3: Cargo Features
 

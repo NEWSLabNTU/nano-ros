@@ -301,6 +301,6 @@ pub unsafe fn clear_network_state();
 
 ## Common pitfalls
 
-See [Platform Porting Pitfalls](../../advanced/platform-porting-pitfalls.md) for
+See [Platform Porting Pitfalls](../platform-porting-pitfalls.md) for
 detailed failure modes including poll-driven clocks, DMA buffer placement,
 QEMU I/O starvation, recursive mutexes, stack sizing, and heap sizing.
