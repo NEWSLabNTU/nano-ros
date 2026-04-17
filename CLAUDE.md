@@ -280,17 +280,19 @@ See `book/src/reference/build-commands.md` for manual testing, ROS 2 interop, Do
 ## Documentation Index
 
 ```
-book/src/            # User-facing documentation (mdbook)
-├── getting-started/ # installation, first-app-rust, first-app-c, ros2-interop
-├── concepts/        # architecture, no-std, rmw-backends, platform-model
-├── guides/          # message-generation, creating-examples, qemu-bare-metal, esp32, troubleshooting
-├── platforms/       # overview, posix, zephyr, freertos, nuttx, threadx
-├── reference/       # rust-api, c-api, environment-variables, embedded-tuning, build-commands, rmw-zenoh-protocol
-└── advanced/        # verification, realtime-analysis, safety, contributing
+book/src/              # User-facing documentation (mdbook)
+├── getting-started/   # installation, native, zephyr, freertos, nuttx, threadx, bare-metal, esp32, ros2-interop
+├── user-guide/        # rmw-backends, configuration, message-generation, serial-transport, troubleshooting
+├── reference/         # rust-api, c-api, cpp-api, platform-api, environment-variables, build-commands
+├── concepts/          # architecture, no-std, platform-model
+└── internals/         # rmw-api-design, rmw-api, rmw-zenoh-protocol, scheduling-models,
+                       # verification, realtime-analysis, safety, porting-platform/,
+                       # adding-rmw-backend, board-crate, platform-customization,
+                       # creating-examples, platform-porting-pitfalls, contributing
 
-docs/                # Contributor/internal documentation
-├── reference/       # api-comparison-rclrs, rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
-├── design/          # rmw-layer-design, example-directory-layout, zonal-vehicle-architecture
-├── research/        # Internal research
-└── roadmap/         # Active + archived phases
+docs/                  # Contributor/internal documentation
+├── reference/         # api-comparison-rclrs, rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
+├── design/            # rmw-layer-design, example-directory-layout, zonal-vehicle-architecture
+├── research/          # Internal research
+└── roadmap/           # Active + archived phases
 ```
