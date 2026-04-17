@@ -156,69 +156,9 @@ elsewhere.
 | `SSID` | WiFi SSID for ESP32 examples | `build-examples-esp32` |
 | `PASSWORD` | WiFi password for ESP32 examples | `build-examples-esp32` |
 
-### Buffer Tuning (Zenoh-pico)
+### Buffer Tuning
 
-All optional. Platform-appropriate defaults apply if unset.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ZPICO_FRAG_MAX_SIZE` | 65536 / 2048 | Max reassembled message size |
-| `ZPICO_BATCH_UNICAST_SIZE` | 65536 / 1024 | Max unicast batch before fragmentation |
-| `ZPICO_BATCH_MULTICAST_SIZE` | 8192 / 1024 | Max multicast batch |
-| `ZPICO_MAX_PUBLISHERS` | 8 | Max concurrent publishers |
-| `ZPICO_MAX_SUBSCRIBERS` | 8 | Max concurrent subscribers |
-| `ZPICO_MAX_QUERYABLES` | 8 | Max concurrent queryables |
-| `ZPICO_MAX_LIVELINESS` | 16 | Max concurrent liveliness tokens |
-| `ZPICO_MAX_PENDING_GETS` | 4 | Max in-flight service calls |
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 | Per-subscriber static buffer (bytes) |
-| `ZPICO_SERVICE_BUFFER_SIZE` | 1024 | Per-service static buffer (bytes) |
-| `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | Service client reply buffer |
-| `ZPICO_GET_POLL_INTERVAL_MS` | 10 | Single-threaded poll interval |
-
-Slash notation `X / Y` means `X` on desktop, `Y` on embedded targets.
-
-### Buffer Tuning (smoltcp)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ZPICO_SMOLTCP_MAX_SOCKETS` | 4 | Max TCP sockets |
-| `ZPICO_SMOLTCP_MAX_UDP_SOCKETS` | 2 | Max UDP sockets |
-| `ZPICO_SMOLTCP_BUFFER_SIZE` | 2048 | Per-socket staging buffer |
-| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | 30000 | TCP connect timeout |
-| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` | 10000 | TCP read/write timeout |
-
-### Buffer Tuning (XRCE-DDS)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `XRCE_TRANSPORT_MTU` | 4096 / 512 | Transport MTU (also sizes stream buffers) |
-| `XRCE_MAX_SUBSCRIBERS` | 8 | Max concurrent subscribers |
-| `XRCE_MAX_SERVICE_SERVERS` | 4 | Max concurrent service servers |
-| `XRCE_MAX_SERVICE_CLIENTS` | 4 | Max concurrent service clients |
-| `XRCE_BUFFER_SIZE` | 1024 | Per-slot static buffer |
-| `XRCE_STREAM_HISTORY` | 4 | Reliable stream history depth (>= 2) |
-| `XRCE_ENTITY_CREATION_TIMEOUT_MS` | 1000 | Entity creation timeout |
-| `XRCE_SERVICE_REPLY_TIMEOUT_MS` | 1000 | Service reply timeout |
-| `XRCE_SERVICE_REPLY_RETRIES` | 5 | Service reply retries |
-
-### Buffer Tuning (Core nros)
-
-| Variable | Default | Crate | Description |
-|----------|---------|-------|-------------|
-| `NROS_EXECUTOR_MAX_CBS` | 4 | nros-node | Max executor callback slots |
-| `NROS_EXECUTOR_ARENA_SIZE` | 4096 | nros-node | Executor arena size (bytes) |
-| `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | nros-node | Default subscription buffer |
-| `NROS_EXECUTOR_MAX_HANDLES` | 16 | nros-c | Max handles in C API executor |
-| `NROS_MAX_SUBSCRIPTIONS` | 8 | nros-c | Max subscriptions (C API) |
-| `NROS_MAX_TIMERS` | 8 | nros-c | Max timers (C API) |
-| `NROS_MAX_SERVICES` | 4 | nros-c | Max services (C API) |
-| `NROS_LET_BUFFER_SIZE` | 512 | nros-c | LET semantics buffer per handle |
-| `NROS_MESSAGE_BUFFER_SIZE` | 4096 | nros-c | Max message buffer (C API) |
-| `NROS_MAX_PARAMETERS` | 32 | nros-params | Max parameters |
-| `NROS_MAX_PARAM_NAME_LEN` | 64 | nros-params | Max parameter name length |
-| `NROS_MAX_STRING_VALUE_LEN` | 256 | nros-params | Max string value length |
-| `NROS_MAX_ARRAY_LEN` | 32 | nros-params | Max array length |
-| `NROS_MAX_BYTE_ARRAY_LEN` | 256 | nros-params | Max byte array length |
+All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- platform-appropriate defaults apply if unset. See the [Environment Variables Reference](../reference/environment-variables.md) for the complete list of all buffer tuning variables. For detailed sizing guidance, memory budget estimation, and recommended configurations by RAM class, see [Embedded Tuning](../reference/embedded-tuning.md).
 
 ## Layer 3: Cargo Features
 

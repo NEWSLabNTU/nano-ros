@@ -1,12 +1,12 @@
 # Platform API Reference
 
-nano-ros abstracts hardware and OS differences through the **nros-platform** trait system. Each platform (POSIX, FreeRTOS, NuttX, ThreadX, bare-metal) implements these traits once, and both RMW backends (zenoh-pico and XRCE-DDS) consume them through thin shim crates.
+nano-ros abstracts hardware and OS differences through the **nros-platform** trait system. Each platform (POSIX, FreeRTOS, NuttX, ThreadX, Zephyr, bare-metal) implements these traits once, and both RMW backends (zenoh-pico and XRCE-DDS) consume them through thin shim crates.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    ZP["zenoh-pico (C)"] --> ZPSHIM["zpico-platform-shim<br/>(53 extern C symbols)"]
+    ZP["zenoh-pico (C)"] --> ZPSHIM["zpico-platform-shim<br/>(~80 extern C symbols)"]
     XRCE["XRCE-DDS (C)"] --> XSHIM["xrce-platform-shim<br/>(3 extern C symbols)"]
     ZPSHIM --> NP["nros-platform::ConcretePlatform"]
     XSHIM --> NP
@@ -14,6 +14,7 @@ graph TD
     NP --> FREERTOS["nros-platform-freertos"]
     NP --> NUTTX["nros-platform-nuttx"]
     NP --> THREADX["nros-platform-threadx"]
+    NP --> ZEPHYR["nros-platform-zephyr"]
     NP --> BM["nros-platform-mps2-an385<br/>nros-platform-stm32f4<br/>nros-platform-esp32"]
 ```
 
@@ -117,13 +118,85 @@ Recursive mutex variants (`mutex_rec_*`) have the same signatures.
 
 Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX, FreeRTOS, ThreadX).
 
+### `PlatformTcp` (zenoh-pico networking)
+
+TCP socket operations. Socket and endpoint parameters are opaque `*mut c_void` pointers to platform-specific types whose sizes are auto-detected from C headers at build time.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `create_endpoint` | `fn create_endpoint(ep, address, port) -> i8` | Resolve address + port into an endpoint handle (getaddrinfo) |
+| `free_endpoint` | `fn free_endpoint(ep)` | Free endpoint resources (freeaddrinfo) |
+| `open` | `fn open(sock, endpoint, timeout_ms) -> i8` | Open a TCP client connection |
+| `listen` | `fn listen(sock, endpoint) -> i8` | Open a TCP listening socket |
+| `close` | `fn close(sock)` | Shutdown + close a TCP socket |
+| `read` | `fn read(sock, buf, len) -> usize` | Read up to `len` bytes; `usize::MAX` on error |
+| `read_exact` | `fn read_exact(sock, buf, len) -> usize` | Read exactly `len` bytes; `usize::MAX` on error |
+| `send` | `fn send(sock, buf, len) -> usize` | Send `len` bytes; `usize::MAX` on error |
+
+### `PlatformUdp` (zenoh-pico networking)
+
+UDP unicast socket operations.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `create_endpoint` | `fn create_endpoint(ep, address, port) -> i8` | Resolve address + port (SOCK_DGRAM) |
+| `free_endpoint` | `fn free_endpoint(ep)` | Free endpoint resources |
+| `open` | `fn open(sock, endpoint, timeout_ms) -> i8` | Open a UDP socket |
+| `close` | `fn close(sock)` | Close a UDP socket |
+| `read` | `fn read(sock, buf, len) -> usize` | Receive up to `len` bytes (recvfrom) |
+| `read_exact` | `fn read_exact(sock, buf, len) -> usize` | Receive exactly `len` bytes |
+| `send` | `fn send(sock, buf, len, endpoint) -> usize` | Send `len` bytes to endpoint (sendto) |
+
+### `PlatformSocketHelpers` (zenoh-pico networking)
+
+Cross-cutting socket operations used by zenoh-pico's transport layer.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `set_non_blocking` | `fn set_non_blocking(sock) -> i8` | Set socket to non-blocking mode |
+| `accept` | `fn accept(sock_in, sock_out) -> i8` | Accept a pending connection |
+| `close` | `fn close(sock)` | Close a socket (shutdown + close) |
+| `wait_event` | `fn wait_event(peers, mutex) -> i8` | Wait for socket events; yields on multi-threaded platforms |
+
+### `PlatformUdpMulticast` (zenoh-pico networking, desktop platforms)
+
+UDP multicast for zenoh scouting. Not required on embedded platforms that use `tcp/` locators with scouting disabled.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `mcast_open` | `fn mcast_open(sock, endpoint, lep, timeout_ms, iface) -> i8` | Open multicast socket + join group |
+| `mcast_listen` | `fn mcast_listen(sock, endpoint, timeout_ms, iface, join) -> i8` | Listen on multicast group |
+| `mcast_close` | `fn mcast_close(sockrecv, socksend, rep, lep)` | Leave group + close sockets |
+| `mcast_read` | `fn mcast_read(sock, buf, len, lep, addr) -> usize` | Receive multicast datagram |
+| `mcast_read_exact` | `fn mcast_read_exact(sock, buf, len, lep, addr) -> usize` | Receive exact bytes |
+| `mcast_send` | `fn mcast_send(sock, buf, len, endpoint) -> usize` | Send multicast datagram |
+
+### Networking implementation status
+
+| Platform | TCP | UDP | Multicast | Socket Helpers | Implementation |
+|----------|-----|-----|-----------|----------------|----------------|
+| POSIX | Rust | Rust | Rust | Rust | `nros-platform-posix/src/net.rs` via libc |
+| Bare-metal | Rust | Rust | — | Rust | Board platform crates via nros-smoltcp |
+| FreeRTOS | Rust | Rust | — | Rust | `nros-platform-freertos/src/net.rs` via lwIP (freertos-lwip-sys) |
+| Zephyr | Rust | Rust | stubbed | Rust | `nros-platform-zephyr/src/net.rs` via Zephyr POSIX sockets |
+| NuttX | C | C | C | C | zenoh-pico `unix/network.c` (POSIX-compatible) |
+| ThreadX | C | C | — | C | `c/platform/threadx/network.c` via NetX Duo BSD |
+
+### `PlatformNetworkPoll` (bare-metal only)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `network_poll` | `fn network_poll()` | Poll smoltcp network stack for pending I/O |
+
+Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX, FreeRTOS, ThreadX).
+
 ### `PlatformLibc` (bare-metal only)
 
 Standard C library functions needed by zenoh-pico on targets without a C runtime. Provides `strlen`, `strcmp`, `strncmp`, `strchr`, `strncpy`, `memcpy`, `memmove`, `memset`, `memcmp`, `memchr`, `strtoul`, `errno_ptr`.
 
 ## Zenoh-pico Shim Symbols (`zpico-platform-shim`)
 
-The shim translates 53 `extern "C"` symbols expected by zenoh-pico into calls on `ConcretePlatform`. These symbols are resolved at link time.
+The shim translates ~80 `extern "C"` symbols expected by zenoh-pico into calls on `ConcretePlatform`. These symbols are resolved at link time. The count breaks down as: 46 system symbols (always active) + ~25 networking symbols (active when the `network` feature is enabled) + 7–12 libc stubs (bare-metal only).
 
 ### Clock (7 symbols)
 
@@ -201,15 +274,60 @@ The shim translates 53 `extern "C"` symbols expected by zenoh-pico into calls on
 | `_z_condvar_wait` | `PlatformThreading::condvar_wait` |
 | `_z_condvar_wait_until` | `PlatformThreading::condvar_wait_until` |
 
-### Socket stubs (7 symbols, bare-metal/smoltcp only)
+### Networking — TCP (8 symbols, `network` feature)
+
+| C Symbol | Platform Method |
+|----------|----------------|
+| `_z_create_endpoint_tcp` | `PlatformTcp::create_endpoint` |
+| `_z_free_endpoint_tcp` | `PlatformTcp::free_endpoint` |
+| `_z_open_tcp` | `PlatformTcp::open` |
+| `_z_listen_tcp` | `PlatformTcp::listen` |
+| `_z_close_tcp` | `PlatformTcp::close` |
+| `_z_read_tcp` | `PlatformTcp::read` |
+| `_z_read_exact_tcp` | `PlatformTcp::read_exact` |
+| `_z_send_tcp` | `PlatformTcp::send` |
+
+### Networking — UDP unicast (8 symbols, `network` feature)
+
+| C Symbol | Platform Method |
+|----------|----------------|
+| `_z_create_endpoint_udp` | `PlatformUdp::create_endpoint` |
+| `_z_free_endpoint_udp` | `PlatformUdp::free_endpoint` |
+| `_z_open_udp_unicast` | `PlatformUdp::open` |
+| `_z_listen_udp_unicast` | stub (returns -1) |
+| `_z_close_udp_unicast` | `PlatformUdp::close` |
+| `_z_read_udp_unicast` | `PlatformUdp::read` |
+| `_z_read_exact_udp_unicast` | `PlatformUdp::read_exact` |
+| `_z_send_udp_unicast` | `PlatformUdp::send` |
+
+### Networking — UDP multicast (6 symbols, `network` feature)
+
+| C Symbol | Platform Method |
+|----------|----------------|
+| `_z_open_udp_multicast` | `PlatformUdpMulticast::mcast_open` |
+| `_z_listen_udp_multicast` | `PlatformUdpMulticast::mcast_listen` |
+| `_z_close_udp_multicast` | `PlatformUdpMulticast::mcast_close` |
+| `_z_read_udp_multicast` | `PlatformUdpMulticast::mcast_read` |
+| `_z_read_exact_udp_multicast` | `PlatformUdpMulticast::mcast_read_exact` |
+| `_z_send_udp_multicast` | `PlatformUdpMulticast::mcast_send` |
+
+### Networking — Socket helpers (4 symbols, `network` feature)
+
+| C Symbol | Platform Method |
+|----------|----------------|
+| `_z_socket_set_non_blocking` | `PlatformSocketHelpers::set_non_blocking` |
+| `_z_socket_accept` | `PlatformSocketHelpers::accept` |
+| `_z_socket_close` | `PlatformSocketHelpers::close` |
+| `_z_socket_wait_event` | `PlatformSocketHelpers::wait_event` |
+
+### smoltcp bridge (bare-metal only, `network-smoltcp-bridge` feature)
 
 | C Symbol | Description |
 |----------|-------------|
-| `_z_socket_set_non_blocking` | No-op (smoltcp handles non-blocking internally) |
-| `_z_socket_accept` | Not supported on bare-metal |
-| `_z_socket_close` | Close smoltcp socket |
-| `_z_socket_wait_event` | Network poll + sleep |
-| `smoltcp_clock_now_ms` | `PlatformClock::clock_ms` (for smoltcp driver) |
+| `smoltcp_init` | Initialize smoltcp bridge (called from board crate `init_hardware()`) |
+| `smoltcp_cleanup` | Clean up smoltcp state |
+| `smoltcp_poll` | Poll network stack + advance sockets |
+| `smoltcp_clock_now_ms` | `PlatformClock::clock_ms` (for smoltcp driver timestamping) |
 
 ## XRCE-DDS Shim Symbols (`xrce-platform-shim`)
 
@@ -223,16 +341,17 @@ The XRCE-DDS shim is minimal — only 3 symbols:
 
 ## Platform Implementations
 
-| Crate | Target | Clock Source | Allocator | Threading |
-|-------|--------|-------------|-----------|-----------|
-| `nros-platform-posix` | Linux/macOS | `clock_gettime` | libc `malloc` | pthreads |
-| `nros-platform-nuttx` | NuttX QEMU | POSIX (alias) | libc `malloc` | pthreads |
-| `nros-platform-freertos` | FreeRTOS | `xTaskGetTickCount` | `pvPortMalloc` | FreeRTOS tasks |
-| `nros-platform-threadx` | ThreadX | `tx_time_get` | `tx_byte_allocate` | ThreadX threads |
-| `nros-platform-mps2-an385` | Cortex-M3 | CMSDK Timer0 | bump allocator | single-threaded |
-| `nros-platform-stm32f4` | STM32F4 | DWT cycle counter | bump allocator | single-threaded |
-| `nros-platform-esp32` | ESP32 | `esp_timer_get_time` | bump allocator | single-threaded |
-| `nros-platform-esp32-qemu` | ESP32 QEMU | `esp_timer_get_time` | bump allocator | single-threaded |
+| Crate | Target | Clock Source | Allocator | Threading | Networking |
+|-------|--------|-------------|-----------|-----------|------------|
+| `nros-platform-posix` | Linux/macOS | `clock_gettime` | libc `malloc` | pthreads | libc BSD sockets (Rust) |
+| `nros-platform-nuttx` | NuttX QEMU | POSIX (alias) | libc `malloc` | pthreads | zenoh-pico C `network.c` |
+| `nros-platform-freertos` | FreeRTOS | `xTaskGetTickCount` | `pvPortMalloc` | FreeRTOS tasks | lwIP via freertos-lwip-sys (Rust) |
+| `nros-platform-threadx` | ThreadX | `tx_time_get` | `tx_byte_allocate` | ThreadX threads | NetX Duo C `network.c` |
+| `nros-platform-zephyr` | Zephyr | `k_uptime_get` | `k_malloc` | Zephyr POSIX pthreads | Zephyr POSIX sockets (Rust) |
+| `nros-platform-mps2-an385` | Cortex-M3 | CMSDK Timer0 | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-stm32f4` | STM32F4 | DWT cycle counter | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-esp32` | ESP32 | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-esp32-qemu` | ESP32 QEMU | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
 
 ## Compile-Time Resolution
 

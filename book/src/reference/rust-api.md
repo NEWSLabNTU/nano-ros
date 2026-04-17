@@ -31,10 +31,13 @@ let mut executor = Executor::open(&config)?;
 
 | Method | Description |
 |--------|-------------|
-| `spin_once(timeout_ms)` | Poll once, process ready callbacks |
-| `spin_blocking(opts)` | Block forever processing callbacks (requires `std`) |
-| `spin_period(duration)` | Spin at a fixed rate (requires `std`) |
-| `spin_async().await` | Async spin loop (never returns) |
+| `spin_once(timeout_ms)` | Poll once, process ready callbacks. Returns immediately after processing. |
+| `spin(count)` | Call `spin_once()` in a loop `count` times (convenience for examples). |
+| `spin_blocking(opts)` | Block forever processing callbacks. Requires `std`. Uses `SpinOptions` for configuration. |
+| `spin_period(duration)` | Spin at a fixed rate, sleeping between iterations. Requires `std`. Returns `SpinPeriodResult`. |
+| `spin_async()` | Returns a future that drives the executor. Use with an external async runtime (tokio, Embassy). Does not call `block_on` — the caller's runtime provides the event loop. |
+
+**`spin_once` vs `spin_blocking`:** `spin_once(timeout_ms)` is the low-level primitive — one poll cycle, returns control immediately. `spin_blocking` and `spin_period` are convenience wrappers for common patterns. On `no_std` embedded targets, use `spin_once()` in a loop or `spin(count)`.
 
 ## Node
 
@@ -92,30 +95,77 @@ Register a handler callback via the executor, or poll manually.
 ### Client
 
 ```rust
-let client = node.create_client::<AddTwoInts>("/add")?;
-let promise: Promise<AddTwoInts> = client.call(&request)?;
+let mut client = node.create_client::<AddTwoInts>("/add")?;
 ```
 
-`Promise` resolves on a subsequent `spin_once()` call.
+**Non-blocking (recommended):**
 
-Use the `_sized` variants to control request/reply buffer sizes.
+```rust
+let promise = client.call(&request)?;  // returns Promise<Response>
+
+// Promise resolves on subsequent spin_once() calls
+executor.spin_once(100);
+if let Some(reply) = promise.try_recv()? {
+    println!("Result: {}", reply.sum);
+}
+
+// Or wait with timeout
+let reply = promise.wait(&mut executor, 5000)?;
+```
+
+**Blocking (legacy):**
+
+```rust
+let reply = client.call_blocking(&request, 5000)?;  // blocks up to 5s
+```
+
+`call_blocking()` internally calls `spin_once()` in a loop. Prefer `call()` + `Promise` for better control over timeouts and cancellation.
 
 ## Action
 
 ### Server
 
 ```rust
-let action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;
+let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;
+```
+
+**Callback-based (via executor):**
+
+```rust
+executor.add_action_server::<Fibonacci, _>("/fibonacci", |goal| {
+    // Process goal, publish feedback, return result
+    let mut feedback = FibonacciFeedback { sequence: heapless::Vec::new() };
+    // ... compute ...
+    FibonacciResult { sequence: feedback.sequence }
+})?;
+```
+
+**Manual-poll:**
+
+```rust
+let mut server = node.create_action_server::<Fibonacci>("/fibonacci")?;
+
+// create_action_server() is NOT arena-registered — spin_once() does NOT
+// process get_result queries automatically. After completing a goal, you
+// must explicitly call:
+server.try_handle_get_result()?;
 ```
 
 ### Client
 
 ```rust
-let action_client = node.create_action_client::<Fibonacci>("/fibonacci")?;
+let mut action_client = node.create_action_client::<Fibonacci>("/fibonacci")?;
+
+// send_goal() returns (GoalId, Promise<bool>)
+let (goal_id, accepted) = action_client.send_goal(&goal)?;
+let was_accepted = accepted.wait(&mut executor, 5000)?;
+
+// get_result() returns Promise<(GoalStatus, Result)>
+let result_promise = action_client.get_result(&goal_id)?;
+let (status, result) = result_promise.wait(&mut executor, 10000)?;
 ```
 
-Goal feedback is delivered via `FeedbackStream`. See the `action-server` and
-`action-client` examples for complete usage.
+**GoalStatus** values: `Unknown(0)`, `Accepted(1)`, `Executing(2)`, `Canceling(3)`, `Succeeded(4)`, `Canceled(5)`, `Aborted(6)`.
 
 ## Timer
 

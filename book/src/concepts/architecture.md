@@ -50,14 +50,28 @@ block-beta
     N["C vtable"]
   end
 
+  space:3
+
+  block:platform:3
+    O["nros-platform (traits + shims)"]
+  end
+
+  space:3
+
+  block:hw:3
+    P["nros-platform-posix / freertos / zephyr / ..."]
+  end
+
   app --> facade
   facade --> core
   core --> rmw
   rmw --> backends
   backends --> transport
+  transport --> platform
+  platform --> hw
 ```
 
-Applications depend on the nano-ros facade crate (`nros`), which re-exports everything and enforces compile-time mutual exclusivity of feature axes. The core library stack is middleware-agnostic. Only the RMW backend crates know about specific transport protocols.
+Applications depend on the nano-ros facade crate (`nros`), which re-exports everything and enforces compile-time mutual exclusivity of feature axes. The core library stack is middleware-agnostic. Only the RMW backend crates know about specific transport protocols. The **platform layer** (`nros-platform`) provides a unified trait interface for clock, memory, threading, and networking — the transport layer calls platform functions through thin shim crates (`zpico-platform-shim`, `xrce-platform-shim`) that forward to the active platform implementation. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Platform Customization Guide](../guides/platform-customization.md) for which crates to modify.
 
 ## Crate Dependency Graph
 
@@ -85,7 +99,7 @@ graph TD
     subgraph "Zenoh Backend"
         RMW_Z["nros-rmw-zenoh<br/><i>ZenohSession, keyexpr, liveliness</i>"]
         ZPICO["zpico-sys<br/><i>C shim + zenoh-pico</i>"]
-        ZSMOL["zpico-smoltcp<br/><i>TCP/UDP via smoltcp</i>"]
+        NSMOL["nros-smoltcp<br/><i>TCP/UDP via smoltcp</i>"]
         ZPSHIM["zpico-platform-shim<br/><i>z_* → ConcretePlatform</i>"]
     end
 
@@ -97,8 +111,8 @@ graph TD
     end
 
     subgraph "Platform Layer"
-        NPLAT["nros-platform<br/><i>PlatformOps trait + ConcretePlatform alias</i>"]
-        NPLATIMPL["nros-platform-*<br/><i>clock, memory, sleep, random, threading</i>"]
+        NPLAT["nros-platform<br/><i>PlatformClock, PlatformTcp, PlatformUdp, ... traits<br/>+ ConcretePlatform alias</i>"]
+        NPLATIMPL["nros-platform-posix / freertos / zephyr / threadx / nuttx<br/>nros-platform-mps2-an385 / stm32f4 / esp32<br/><i>clock, memory, sleep, random, threading, networking</i>"]
     end
 
     subgraph "Board Crates"
@@ -136,7 +150,7 @@ graph TD
 
     RMW_Z --> RMW
     RMW_Z --> ZPICO
-    ZPICO --> ZSMOL
+    ZPICO --> NSMOL
     ZPICO --> ZPSHIM
     ZPSHIM --> NPLAT
 
@@ -152,7 +166,7 @@ graph TD
     BOARD --> NPLAT
     BOARD --> NPLATIMPL
     BOARD --> ZPSHIM
-    BOARD --> ZSMOL
+    BOARD --> NSMOL
     BOARD --> DRV
 
     style NROS fill:#1864ab,color:#fff
@@ -330,13 +344,7 @@ When `MAX_CBS = 0` and `CB_ARENA = 0`, the arrays are zero-sized. This means man
 
 ### Spin Variants
 
-| Method                                   | `no_std` | Description                                                        |
-|------------------------------------------|----------|--------------------------------------------------------------------|
-| `spin_once(timeout_ms)`                  | Yes      | Single iteration: drive I/O, dispatch ready callbacks              |
-| `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
-| `spin_blocking(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
-| `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
-| `spin_async()`                           | Yes      | Yields between iterations via `poll_fn`; works with Embassy, tokio |
+The executor provides several spin strategies (`spin_once`, `spin_blocking`, `spin_period`, `spin_async`) for different deployment scenarios. See [Rust API Reference: Spin Methods](../reference/rust-api.md#spin-methods) for the full list with signatures and `no_std` compatibility.
 
 ### Node Factory
 

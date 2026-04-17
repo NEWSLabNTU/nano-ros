@@ -46,6 +46,68 @@ Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` -> `${AMENT
 
 Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
 
+## C API by Header
+
+### Core lifecycle (`nros/init.h`, `nros/executor.h`, `nros/node.h`)
+
+- `nros_init(locator)` / `nros_shutdown()` — session open/close
+- `nros_executor_init()` / `nros_spin_once(timeout_ms)` — executor lifecycle
+- `nros_create_node(name)` — create a node handle
+
+### Pub/Sub (`nros/publisher.h`, `nros/subscription.h`)
+
+- `nros_publisher_init()` / `nros_publish(msg, size)`
+- `nros_subscription_init()` / `nros_executor_add_subscription(callback)`
+
+### Services (`nros/service.h`, `nros/client.h`)
+
+- `nros_service_init()` / `nros_executor_add_service(callback)`
+- `nros_client_init()` / `nros_call_service(req, req_size, reply, reply_size, timeout_ms)`
+
+### Actions (`nros/action.h`)
+
+**Action client:**
+
+| Function | Description |
+|----------|-------------|
+| `nros_action_client_init()` | Create action client for a given action type |
+| `nros_action_send_goal(goal, size, timeout_ms)` | Blocking: send goal, wait for acceptance |
+| `nros_action_send_goal_async(goal, size)` | Non-blocking: send goal, poll via callbacks |
+| `nros_action_get_result(goal_id, result, size, timeout_ms)` | Blocking: wait for result |
+| `nros_action_get_result_async(goal_id)` | Non-blocking: poll via result callback |
+| `nros_action_cancel_goal(goal_id, timeout_ms)` | Cancel an active goal |
+| `nros_executor_add_action_client(executor, client)` | Register for callback-driven processing |
+
+**Action server:**
+
+| Function | Description |
+|----------|-------------|
+| `nros_action_server_init()` | Create action server |
+| `nros_action_publish_feedback(goal, feedback, size)` | Publish feedback to the client |
+| `nros_action_succeed(goal, result, size)` | Complete goal with success |
+| `nros_action_abort(goal, result, size)` | Abort goal |
+| `nros_action_canceled(goal, result, size)` | Mark goal as canceled |
+
+**Callback registration:**
+
+```c
+nros_action_client_set_goal_response_callback(client, on_goal_accepted);
+nros_action_client_set_feedback_callback(client, on_feedback);
+nros_action_client_set_result_callback(client, on_result);
+```
+
+**Non-blocking pattern:** Use `_async` variants to avoid blocking the executor. The async call returns immediately; results arrive via the registered callback on subsequent `nros_spin_once()` calls.
+
+### Timers (`nros/timer.h`)
+
+- `nros_timer_init(period_ms)` / `nros_executor_add_timer(callback)`
+
+### Parameters, Lifecycle, Guard Condition
+
+- `nros/parameter.h` — declare/get/set parameters
+- `nros/lifecycle.h` — lifecycle state machine
+- `nros/guard_condition.h` — thread-safe trigger
+
 ## System Install
 
 For package maintainers:

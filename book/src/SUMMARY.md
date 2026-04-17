@@ -32,6 +32,7 @@
   - [XRCE-DDS Symbol Reference](./guides/porting-platform/xrce-dds.md)
 - [Adding an RMW Backend](./guides/adding-rmw-backend.md)
 - [Board Crate Implementation](./guides/board-crate.md)
+- [Platform Customization](./guides/platform-customization.md)
 - [Troubleshooting](./guides/troubleshooting.md)
 
 # Platforms
@@ -47,6 +48,8 @@
 
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
+- [C++ API](./reference/cpp-api.md)
+- [RMW API](./reference/rmw-api.md)
 - [Platform API](./reference/platform-api.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Example Configuration (config.toml)](./reference/config-toml.md)
