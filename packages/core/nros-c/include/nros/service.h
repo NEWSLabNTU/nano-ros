@@ -12,6 +12,7 @@
 #define NROS_SERVICE_H
 
 #include "nros/types.h"
+#include "nros/nros_config_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,8 +78,8 @@ typedef struct nros_service_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Handle ID from executor registration (@c SIZE_MAX = not registered). */
-    size_t handle_id;
+    /** Opaque inline storage for @c ServiceServerInternal. */
+    _Alignas(8) uint8_t _internal[NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE];
 } nros_service_t;
 
 /* ===================================================================

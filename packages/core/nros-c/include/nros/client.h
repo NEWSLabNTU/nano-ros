@@ -10,6 +10,7 @@
 #define NROS_CLIENT_H
 
 #include "nros/types.h"
+#include "nros/nros_config_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,14 +23,19 @@ struct nros_node_t;
  * Types
  * =================================================================== */
 
+/** Response callback type for async service client (Phase 82). */
+typedef void (*nros_response_callback_t)(const uint8_t* data, size_t len, void* context);
+
 /** Client state. */
 typedef enum nros_client_state_t {
     /** Not initialized. */
     NROS_CLIENT_STATE_UNINITIALIZED = 0,
-    /** Initialized and ready. */
+    /** Initialized (metadata only, not yet registered with executor). */
     NROS_CLIENT_STATE_INITIALIZED = 1,
+    /** Registered with an executor and ready for use. */
+    NROS_CLIENT_STATE_REGISTERED = 2,
     /** Shutdown. */
-    NROS_CLIENT_STATE_SHUTDOWN = 2,
+    NROS_CLIENT_STATE_SHUTDOWN = 3,
 } nros_client_state_t;
 
 /** Service client structure. */
@@ -48,11 +54,15 @@ typedef struct nros_client_t {
     uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
     /** Type hash length. */
     size_t type_hash_len;
+    /** Response callback for async requests (Phase 82). */
+    nros_response_callback_t response_callback;
+    /** User context pointer for @ref response_callback. */
+    void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Inline opaque storage for the RMW service client handle.
-     *  Avoids heap allocation — managed by nros_client_init/fini. */
-    uint64_t _opaque[NROS_SERVICE_CLIENT_OPAQUE_U64S];
+    /** Opaque inline storage for @c ServiceClientInternal.
+     *  Filled by nros_executor_add_client(). */
+    _Alignas(8) uint8_t _internal[NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE];
 } nros_client_t;
 
 /* ===================================================================
@@ -116,6 +126,44 @@ NROS_PUBLIC
 nros_ret_t nros_client_call(struct nros_client_t* client, const uint8_t* request_data,
                             size_t request_len, uint8_t* response_data, size_t response_capacity,
                             size_t* response_len);
+
+/**
+ * @brief Send a service request asynchronously (non-blocking, Phase 82).
+ *
+ * The reply is delivered via the registered response callback during
+ * nros_executor_spin_some(). The client must have been registered
+ * with nros_executor_add_client() first.
+ *
+ * @param client       Pointer to a registered client.
+ * @param request_data CDR-serialized request data.
+ * @param request_len  Length of request data.
+ *
+ * @retval NROS_RET_OK           on success.
+ * @retval NROS_RET_NOT_INIT     if not registered with an executor.
+ * @retval NROS_RET_BAD_SEQUENCE if a previous request is still pending.
+ */
+NROS_PUBLIC
+nros_ret_t nros_client_send_request_async(struct nros_client_t* client, const uint8_t* request_data,
+                                          size_t request_len);
+
+/**
+ * @brief Set the response callback for async requests.
+ *
+ * @param client   Pointer to a client.
+ * @param callback Callback invoked when a response arrives.
+ * @param context  User context pointer passed to @p callback.
+ */
+NROS_PUBLIC
+nros_ret_t nros_client_set_response_callback(struct nros_client_t* client,
+                                             nros_response_callback_t callback, void* context);
+
+/**
+ * @brief Set the default timeout for nros_client_call().
+ *
+ * @param client     Pointer to a client.
+ * @param timeout_ms Timeout in milliseconds.
+ */
+NROS_PUBLIC nros_ret_t nros_client_set_timeout(struct nros_client_t* client, uint32_t timeout_ms);
 
 /**
  * @brief Get the service name of a client.
