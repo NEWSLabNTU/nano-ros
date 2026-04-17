@@ -4,7 +4,7 @@
 structure. Original content (65.1–65.41) archived in
 `archived/phase-65-nano-ros-book-original.md`.
 
-**Status**: In Progress (65.66–65.72 Porting section)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -86,45 +86,45 @@ Reference. Absorb scattered Internals porting pages into the new chapters.
 
 ### Work items
 
-- [ ] 65.66 — Write `porting/overview.md`
-  - [ ] 65.66.1 — Decision table: "I want to…" → which chapter
-  - [ ] 65.66.2 — Core vs customizable package summary (from platform-customization.md)
-  - [ ] 65.66.3 — Trait requirements table (which traits each RMW needs)
+- [x] 65.66 — Write `porting/overview.md`
+  - [x] 65.66.1 — Decision table: "I want to…" → which chapter
+  - [x] 65.66.2 — Core vs customizable package summary (from platform-customization.md)
+  - [x] 65.66.3 — Trait requirements table (which traits each RMW needs)
 
-- [ ] 65.67 — Write `porting/custom-rmw.md`
-  - [ ] 65.67.1 — nros-rmw trait hierarchy overview (Session, Publisher, etc.)
-  - [ ] 65.67.2 — How to use nros-platform for networking (don't roll own sockets)
-  - [ ] 65.67.3 — Rust path: implement traits, wire Cargo feature, skeleton example
-  - [ ] 65.67.4 — C/C++ path: nros-rmw-cffi vtable, register at init
-  - [ ] 65.67.5 — Minimal "hello world" RMW example
+- [x] 65.67 — Write `porting/custom-rmw.md`
+  - [x] 65.67.1 — nros-rmw trait hierarchy overview (Session, Publisher, etc.)
+  - [x] 65.67.2 — How to use nros-platform for networking (don't roll own sockets)
+  - [x] 65.67.3 — Rust path: implement traits, wire Cargo feature, skeleton example
+  - [x] 65.67.4 — C/C++ path: nros-rmw-cffi vtable, register at init
+  - [x] 65.67.5 — Minimal "hello world" RMW example
 
-- [ ] 65.68 — Write `porting/custom-platform.md`
-  - [ ] 65.68.1 — nros-platform trait list (required vs optional)
-  - [ ] 65.68.2 — Wiring: new crate, Cargo features, resolve.rs, zpico-sys activation
-  - [ ] 65.68.3 — Rust path: inherent methods on ZST, show FreeRTOS as real example
-  - [ ] 65.68.4 — C/C++ path: nros-platform-cffi vtable, nros_platform_cffi_register()
-  - [ ] 65.68.5 — Networking traits: when to implement PlatformTcp/Udp vs keep C network.c
+- [x] 65.68 — Write `porting/custom-platform.md`
+  - [x] 65.68.1 — nros-platform trait list (required vs optional)
+  - [x] 65.68.2 — Wiring: new crate, Cargo features, resolve.rs, zpico-sys activation
+  - [x] 65.68.3 — Rust path: inherent methods on ZST, show FreeRTOS as real example
+  - [x] 65.68.4 — C/C++ path: nros-platform-cffi vtable, nros_platform_cffi_register()
+  - [x] 65.68.5 — Networking traits: when to implement PlatformTcp/Udp vs keep C network.c
 
-- [ ] 65.69 — Write `porting/custom-board.md`
-  - [ ] 65.69.1 — What a board package provides (Config, run(), hardware init)
-  - [ ] 65.69.2 — Board = platform + hardware specifics (PHY/MAC, driver wiring)
-  - [ ] 65.69.3 — Annotated skeleton (Cargo.toml, lib.rs with run(), config.rs)
-  - [ ] 65.69.4 — Force-link of shim crates (extern crate zpico_platform_shim)
+- [x] 65.69 — Write `porting/custom-board.md`
+  - [x] 65.69.1 — What a board package provides (Config, run(), hardware init)
+  - [x] 65.69.2 — Board = platform + hardware specifics (PHY/MAC, driver wiring)
+  - [x] 65.69.3 — Annotated skeleton (Cargo.toml, lib.rs with run(), config.rs)
+  - [x] 65.69.4 — Force-link of shim crates (extern crate zpico_platform_shim)
 
-- [ ] 65.70 — Move RMW API Reference back to Reference
-  - [ ] 65.70.1 — Move `internals/rmw-api.md` → `reference/rmw-api.md`
-  - [ ] 65.70.2 — Update SUMMARY.md
+- [x] 65.70 — Move RMW API Reference back to Reference
+  - [x] 65.70.1 — Move `internals/rmw-api.md` → `reference/rmw-api.md`
+  - [x] 65.70.2 — Update SUMMARY.md
 
-- [ ] 65.71 — Clean up Internals (remove absorbed pages)
-  - [ ] 65.71.1 — Delete `internals/porting-platform/README.md` (absorbed into overview + custom-platform)
-  - [ ] 65.71.2 — Delete `internals/porting-platform/implementing-a-platform.md` (absorbed into custom-platform)
-  - [ ] 65.71.3 — Delete `internals/adding-rmw-backend.md` (absorbed into custom-rmw)
-  - [ ] 65.71.4 — Delete `internals/board-crate.md` (absorbed into custom-board)
-  - [ ] 65.71.5 — Delete `internals/platform-customization.md` (absorbed into overview)
-  - [ ] 65.71.6 — Keep `internals/porting-platform/zenoh-pico.md` + `xrce-dds.md`
+- [x] 65.71 — Clean up Internals (remove absorbed pages)
+  - [x] 65.71.1 — Delete `internals/porting-platform/README.md` (absorbed into overview + custom-platform)
+  - [x] 65.71.2 — Delete `internals/porting-platform/implementing-a-platform.md` (absorbed into custom-platform)
+  - [x] 65.71.3 — Delete `internals/adding-rmw-backend.md` (absorbed into custom-rmw)
+  - [x] 65.71.4 — Delete `internals/board-crate.md` (absorbed into custom-board)
+  - [x] 65.71.5 — Delete `internals/platform-customization.md` (absorbed into overview)
+  - [x] 65.71.6 — Keep `internals/porting-platform/zenoh-pico.md` + `xrce-dds.md`
     (internal FFI symbol tables — link from custom-rmw for deep reference)
 
-- [ ] 65.72 — Update SUMMARY.md + CLAUDE.md + verify build
+- [x] 65.72 — Update SUMMARY.md + CLAUDE.md + verify build
 
 
 ## Acceptance Criteria
