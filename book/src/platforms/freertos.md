@@ -129,46 +129,10 @@ FreeRTOS QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-mps2-an385-freertos` board crate provides:
-
-- **`Config`** -- network and node configuration with presets (`default()` for
-  talker, `listener()`, `server()`, `client()`)
-- **`run(config, closure)`** -- entry point that initializes FreeRTOS, lwIP,
-  LAN9118, starts the scheduler, and runs the user closure as a FreeRTOS task
-- **`println!`** -- output via ARM semihosting (`SYS_WRITE0`)
+The `nros-mps2-an385-freertos` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../guides/board-crate.md). It provides network and node configuration presets (`default()`, `listener()`, `server()`, `client()`) and initializes FreeRTOS, lwIP, and LAN9118 before running the user closure as a FreeRTOS task. Output uses ARM semihosting (`SYS_WRITE0`).
 
 Unlike NuttX, FreeRTOS is `no_std` -- examples use `#![no_std]` / `#![no_main]`
 entry points with semihosting for output.
-
-### Example Structure
-
-```rust
-#![no_std]
-#![no_main]
-
-use nros::prelude::*;
-use nros_mps2_an385_freertos::{Config, println, run};
-use panic_semihosting as _;
-use std_msgs::msg::Int32;
-
-#[unsafe(no_mangle)]
-extern "C" fn _start() -> ! {
-    run(Config::default(), |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("talker");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("talker")?;
-        let publisher = node.create_publisher::<Int32>("/chatter")?;
-
-        for i in 0..10i32 {
-            for _ in 0..100 { executor.spin_once(10); }
-            publisher.publish(&Int32 { data: i })?;
-        }
-        Ok::<(), NodeError>(())
-    })
-}
-```
 
 ### FreeRTOS Configuration
 

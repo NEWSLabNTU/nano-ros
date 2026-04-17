@@ -150,3 +150,5 @@ Platform features propagate through two paths depending on the platform type:
 The RMW transport libraries access platform primitives through thin shim crates -- `zpico-platform-shim` (consumed by `zpico-sys`) and `xrce-platform-shim` (consumed by `xrce-sys`) -- which forward `z_*` and `uxr_*` FFI symbols to the unified `ConcretePlatform` type alias from `nros-platform`. Board crates depend on the shim crate directly (with the `active` feature) to ensure the symbols are linked.
 
 The default feature set is `std` only. No RMW backend or platform is selected by default -- users must explicitly choose their configuration.
+
+For implementation details on how to add a new platform, see the [Porting Guide](../guides/porting-platform/README.md) and [Platform API Reference](../reference/platform-api.md).

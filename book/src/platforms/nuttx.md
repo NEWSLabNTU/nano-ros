@@ -106,43 +106,13 @@ NuttX QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-nuttx-qemu-arm` board crate provides:
-
-- **`Config`** -- network and node configuration with presets (`talker()`,
-  `listener()`, `server()`, `client()`)
-- **`run(config, closure)`** -- entry point that prints startup info and
-  runs the user closure with error handling
-- **`init_hardware()`** -- no-op on NuttX (kernel handles everything)
+The `nros-nuttx-qemu-arm` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../guides/board-crate.md). It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
 
 Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
 initialization, no network stack setup, and no task creation. NuttX's kernel
 boots the hardware, initializes virtio-net, and starts the application
-before `main()` runs.
-
-### Example Structure
-
-```rust
-use nros::prelude::*;
-use nros_nuttx_qemu_arm::{Config, run};
-use std_msgs::msg::Int32;
-
-fn main() {
-    run(Config::default(), |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("talker");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("talker")?;
-        let publisher = node.create_publisher::<Int32>("/chatter")?;
-
-        for i in 0..10i32 {
-            for _ in 0..100 { executor.spin_once(10); }
-            publisher.publish(&Int32 { data: i })?;
-        }
-        Ok::<(), NodeError>(())
-    })
-}
-```
+before `main()` runs. Because NuttX supports Rust `std`, examples use standard
+`fn main()` entry points.
 
 ### NuttX Defconfig
 

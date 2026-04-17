@@ -562,37 +562,37 @@ content, missing chapters, duplicated topics, and architecture drift.
 
 ### Missing chapters
 
-- [ ] 65.42 — Reference: C++ API (`reference/cpp-api.md`)
-  - [ ] 65.42.1 — Write reference doc covering `nros::Node`, `nros::Publisher<M>`,
+- [x] 65.42 — Reference: C++ API (`reference/cpp-api.md`)
+  - [x] 65.42.1 — Write reference doc covering `nros::Node`, `nros::Publisher<M>`,
     `nros::Subscription<M>`, `nros::Service<S>`, `nros::Client<S>`,
     `nros::ActionServer<A>`, `nros::ActionClient<A>`, `nros::Timer`,
     `nros::GuardCondition`, `nros::Executor`
-  - [ ] 65.42.2 — Document `nros::Result` + `NROS_TRY` error handling
-  - [ ] 65.42.3 — Document freestanding vs std mode (`NROS_CPP_STD`):
+  - [x] 65.42.2 — Document `nros::Result` + `NROS_TRY` error handling
+  - [x] 65.42.3 — Document freestanding vs std mode (`NROS_CPP_STD`):
     `const char*` / C function pointers / integer ms (freestanding) vs
     `std::string` / `std::function` / `std::chrono` (std mode)
-  - [ ] 65.42.4 — Document `Future<T>` (Phase 82) for non-blocking service
+  - [x] 65.42.4 — Document `Future<T>` (Phase 82) for non-blocking service
     calls and action goals: `client.call(req)` → `Future<Response>`,
     `action_client.send_goal(goal)` → `Future<bool>`
-  - [ ] 65.42.5 — Document `Stream<T>` (Phase 82) for action feedback
-  - [ ] 65.42.6 — CMake integration: `nano_ros_generate_interfaces(... LANGUAGE CPP)`,
+  - [x] 65.42.5 — Document `Stream<T>` (Phase 82) for action feedback
+  - [x] 65.42.6 — CMake integration: `nano_ros_generate_interfaces(... LANGUAGE CPP)`,
     Zephyr `CONFIG_NROS_CPP_API=y`
-  - [ ] 65.42.7 — Add to SUMMARY.md under Reference section
+  - [x] 65.42.7 — Add to SUMMARY.md under Reference section
 
-- [ ] 65.43 — Reference: RMW API (`reference/rmw-api.md`)
-  - [ ] 65.43.1 — Write reference-style doc for `nros-rmw` trait signatures:
+- [x] 65.43 — Reference: RMW API (`reference/rmw-api.md`)
+  - [x] 65.43.1 — Write reference-style doc for `nros-rmw` trait signatures:
     `Session`, `SessionPublisher`, `SessionSubscriber`, `ServiceServerTrait`,
     `ServiceClientTrait`; associated types `Error`, `Publisher`, `Subscriber`
-  - [ ] 65.43.2 — Document zenoh-specific extensions: `ZenohSession`,
+  - [x] 65.43.2 — Document zenoh-specific extensions: `ZenohSession`,
     `ZenohPublisher`, `LivelinessToken`, `RmwAttachment`, `Ros2Liveliness`
-  - [ ] 65.43.3 — Document XRCE-specific extensions: `XrceRmw`, transport
+  - [x] 65.43.3 — Document XRCE-specific extensions: `XrceRmw`, transport
     init callbacks
-  - [ ] 65.43.4 — Cross-link from `concepts/rmw-api-design.md` (architectural)
+  - [x] 65.43.4 — Cross-link from `concepts/rmw-api-design.md` (architectural)
     to this doc (reference)
-  - [ ] 65.43.5 — Add to SUMMARY.md
+  - [x] 65.43.5 — Add to SUMMARY.md
 
-- [ ] 65.44 — Guides: platform customization (`guides/platform-customization.md`)
-  - [ ] 65.44.1 — Write a unified guide explaining which packages are
+- [x] 65.44 — Guides: platform customization (`guides/platform-customization.md`)
+  - [x] 65.44.1 — Write a unified guide explaining which packages are
     user-customizable vs core (must not be modified):
     - **Customizable**: `nros-platform-<name>` (one per RTOS/bare-metal),
       `nros-rmw-<name>` (one per transport backend), board crates
@@ -602,123 +602,123 @@ content, missing chapters, duplicated topics, and architecture drift.
       `nros-serdes`, `nros-macros`, `nros-params`, `nros-rmw`,
       `nros-platform` (the trait crate), `zpico-platform-shim`,
       `xrce-platform-shim`, `zpico-sys`, `xrce-sys`
-  - [ ] 65.44.2 — Diagram showing the customization boundary: core crates
+  - [x] 65.44.2 — Diagram showing the customization boundary: core crates
     (fixed) → trait boundary → user crates (platform, RMW, board, drivers)
-  - [ ] 65.44.3 — Cross-link from `concepts/architecture.md` and
+  - [x] 65.44.3 — Cross-link from `concepts/architecture.md` and
     `guides/porting-platform/README.md`
-  - [ ] 65.44.4 — Add to SUMMARY.md
+  - [x] 65.44.4 — Add to SUMMARY.md
 
 ### Stale content updates
 
-- [ ] 65.45 — Update Rust API reference for non-blocking calls (Phase 68+77+82)
-  - [ ] 65.45.1 — Document `call()` → `Promise<Reply>` (non-blocking) vs
+- [x] 65.45 — Update Rust API reference for non-blocking calls (Phase 68+77+82)
+  - [x] 65.45.1 — Document `call()` → `Promise<Reply>` (non-blocking) vs
     `call_blocking()` (old blocking API). `Promise` resolves via `spin_once()`
-  - [ ] 65.45.2 — Document action client: `send_goal()` → `(GoalId,
+  - [x] 65.45.2 — Document action client: `send_goal()` → `(GoalId,
     Promise<bool>)`, `get_result()` → `Promise<(GoalStatus, Result)>`
-  - [ ] 65.45.3 — Document `spin_async()` for async executors (Embassy, tokio)
-  - [ ] 65.45.4 — Document `spin_period(Duration)` return type `SpinPeriodResult`
-  - [ ] 65.45.5 — Document manual-poll action server: `create_action_server()`
+  - [x] 65.45.3 — Document `spin_async()` for async executors (Embassy, tokio)
+  - [x] 65.45.4 — Document `spin_period(Duration)` return type `SpinPeriodResult`
+  - [x] 65.45.5 — Document manual-poll action server: `create_action_server()`
     is NOT arena-registered; must call `server.try_handle_get_result()` explicitly
-  - [ ] 65.45.6 — Verify all code snippets compile against current API
+  - [x] 65.45.6 — Verify all code snippets compile against current API
 
-- [ ] 65.46 — Update C API reference for actions + non-blocking patterns
-  - [ ] 65.46.1 — Document C action server/client API: `nros_create_action_server()`,
+- [x] 65.46 — Update C API reference for actions + non-blocking patterns
+  - [x] 65.46.1 — Document C action server/client API: `nros_create_action_server()`,
     `nros_create_action_client()`, `nros_action_send_goal()`,
     `nros_action_get_result()`
-  - [ ] 65.46.2 — Document C non-blocking get: `nros_action_send_goal_start()` /
+  - [x] 65.46.2 — Document C non-blocking get: `nros_action_send_goal_start()` /
     `nros_action_send_goal_check()` poll pattern
-  - [ ] 65.46.3 — Verify CMake examples match current `nano_ros_generate_interfaces()` API
+  - [x] 65.46.3 — Verify CMake examples match current `nano_ros_generate_interfaces()` API
 
-- [ ] 65.47 — Update platform API reference for Phase 80 networking traits
-  - [ ] 65.47.1 — Add `PlatformTcp` trait: `create_endpoint`, `free_endpoint`,
+- [x] 65.47 — Update platform API reference for Phase 80 networking traits
+  - [x] 65.47.1 — Add `PlatformTcp` trait: `create_endpoint`, `free_endpoint`,
     `open`, `listen`, `close`, `read`, `read_exact`, `send`
-  - [ ] 65.47.2 — Add `PlatformUdp` trait: `create_endpoint`, `free_endpoint`,
+  - [x] 65.47.2 — Add `PlatformUdp` trait: `create_endpoint`, `free_endpoint`,
     `open`, `close`, `read`, `read_exact`, `send`
-  - [ ] 65.47.3 — Add `PlatformSocketHelpers` trait: `set_non_blocking`,
+  - [x] 65.47.3 — Add `PlatformSocketHelpers` trait: `set_non_blocking`,
     `accept`, `close`, `wait_event`
-  - [ ] 65.47.4 — Add `PlatformUdpMulticast` trait: `mcast_open`,
+  - [x] 65.47.4 — Add `PlatformUdpMulticast` trait: `mcast_open`,
     `mcast_listen`, `mcast_close`, `mcast_read`, `mcast_read_exact`, `mcast_send`
-  - [ ] 65.47.5 — Update symbol count: was ~53 zenoh-pico symbols, now ~80+
+  - [x] 65.47.5 — Update symbol count: was ~53 zenoh-pico symbols, now ~80+
     with networking forwarders; update the table in the doc
-  - [ ] 65.47.6 — Note which platforms have Rust networking (POSIX, bare-metal,
+  - [x] 65.47.6 — Note which platforms have Rust networking (POSIX, bare-metal,
     FreeRTOS, Zephyr) vs C networking (NuttX, ThreadX) vs deferred (multicast
     on Zephyr)
 
-- [ ] 65.48 — Update architecture diagrams for platform abstraction layer
-  - [ ] 65.48.1 — Add `nros-platform` trait layer to the main architecture
+- [x] 65.48 — Update architecture diagrams for platform abstraction layer
+  - [x] 65.48.1 — Add `nros-platform` trait layer to the main architecture
     diagram in `concepts/architecture.md`. Show: Application → nros facade →
     nros-node → nros-rmw-zenoh → zpico-platform-shim → nros-platform →
     nros-platform-<impl>
-  - [ ] 65.48.2 — Add networking flow: zenoh-pico C transport calls →
+  - [x] 65.48.2 — Add networking flow: zenoh-pico C transport calls →
     shim `_z_open_tcp` etc. → `ConcretePlatform::tcp_open()` →
     platform-specific socket API (libc, lwIP, Zephyr POSIX, smoltcp)
-  - [ ] 65.48.3 — Update the "Board Crates" section to show the split
+  - [x] 65.48.3 — Update the "Board Crates" section to show the split
     between `nros-platform-<rtos>` (generic) and `nros-<board>-<rtos>`
     (hardware-specific)
-  - [ ] 65.48.4 — Add `nros-smoltcp` in the driver layer diagram (replaces
+  - [x] 65.48.4 — Add `nros-smoltcp` in the driver layer diagram (replaces
     the deleted `zpico-smoltcp`)
 
 ### Deduplication
 
-- [ ] 65.49 — Consolidate platform porting material
-  - [ ] 65.49.1 — Audit the 11 files that mention `PlatformClock` /
+- [x] 65.49 — Consolidate platform porting material
+  - [x] 65.49.1 — Audit the 11 files that mention `PlatformClock` /
     `zpico-platform-shim` / `nros-platform`. In most cases (concepts/,
     platforms/, reference/) the mentions should be replaced with a brief
     summary + cross-link to `guides/porting-platform/` as the single source
     of truth for the porting procedure
-  - [ ] 65.49.2 — `concepts/platform-model.md` should explain the *model*
+  - [x] 65.49.2 — `concepts/platform-model.md` should explain the *model*
     (three axes, feature flags) but NOT repeat the porting steps;
     link to `guides/porting-platform/` for how-to
-  - [ ] 65.49.3 — `platforms/README.md` should list platforms with links
+  - [x] 65.49.3 — `platforms/README.md` should list platforms with links
     but NOT repeat the trait list; link to `reference/platform-api.md`
 
-- [ ] 65.50 — Consolidate configuration material
-  - [ ] 65.50.1 — Audit `guides/configuration.md`, `reference/config-toml.md`,
+- [x] 65.50 — Consolidate configuration material
+  - [x] 65.50.1 — Audit `guides/configuration.md`, `reference/config-toml.md`,
     `reference/environment-variables.md`, `reference/embedded-tuning.md`:
     - `guides/configuration.md` = unified guide (4-layer overview + examples)
     - `reference/config-toml.md` = reference for config.toml fields
     - `reference/environment-variables.md` = reference for env vars
     - `reference/embedded-tuning.md` = deep-dive on transport buffer sizing
-  - [ ] 65.50.2 — Remove duplicated env var tables from `guides/configuration.md`
+  - [x] 65.50.2 — Remove duplicated env var tables from `guides/configuration.md`
     (keep in `reference/environment-variables.md` only, link from the guide)
-  - [ ] 65.50.3 — Remove duplicated ZPICO_MAX_* descriptions from
+  - [x] 65.50.3 — Remove duplicated ZPICO_MAX_* descriptions from
     `reference/environment-variables.md` if already in `embedded-tuning.md`
 
-- [ ] 65.51 — Consolidate executor/spin pattern descriptions
-  - [ ] 65.51.1 — `reference/rust-api.md` is the single source for executor
+- [x] 65.51 — Consolidate executor/spin pattern descriptions
+  - [x] 65.51.1 — `reference/rust-api.md` is the single source for executor
     spin patterns (`spin_once`, `spin_blocking`, `spin_period`, `spin_async`).
     Other files that explain spin should have a brief sentence + cross-link
-  - [ ] 65.51.2 — Remove detailed spin explanations from
+  - [x] 65.51.2 — Remove detailed spin explanations from
     `concepts/architecture.md` (keep the architectural overview, link to
     Rust API ref for details)
 
-- [ ] 65.52 — Consolidate board crate material
-  - [ ] 65.52.1 — `guides/board-crate.md` is the single source. Platform
+- [x] 65.52 — Consolidate board crate material
+  - [x] 65.52.1 — `guides/board-crate.md` is the single source. Platform
     chapters (freertos.md, nuttx.md, threadx.md) should reference it rather
     than repeating the `Config` struct / `run()` pattern
-  - [ ] 65.52.2 — `guides/porting-platform/implementing-a-platform.md`
+  - [x] 65.52.2 — `guides/porting-platform/implementing-a-platform.md`
     should reference `guides/board-crate.md` for the board crate step
 
 ### New concepts chapter
 
-- [ ] 65.53 — Concepts: scheduling models update
-  - [ ] 65.53.1 — `concepts/scheduling-models.md` exists but is not listed
+- [x] 65.53 — Concepts: scheduling models update
+  - [x] 65.53.1 — `concepts/scheduling-models.md` exists but is not listed
     in SUMMARY.md → verify it's actually linked (it IS in SUMMARY.md per
     grep; confirmed). Review content for staleness — verify priority
     recommendations match current CLAUDE.md (poll task ≥ 4 on FreeRTOS)
 
 ### Acceptance criteria update
 
-- [ ] 65.54 — Update SUMMARY.md for all new chapters
-  - [ ] 65.54.1 — Add `reference/cpp-api.md`
-  - [ ] 65.54.2 — Add `reference/rmw-api.md`
-  - [ ] 65.54.3 — Add `guides/platform-customization.md`
+- [x] 65.54 — Update SUMMARY.md for all new chapters
+  - [x] 65.54.1 — Add `reference/cpp-api.md`
+  - [x] 65.54.2 — Add `reference/rmw-api.md`
+  - [x] 65.54.3 — Add `guides/platform-customization.md`
 
-- [ ] 65.55 — Final cross-link pass
-  - [ ] 65.55.1 — Every chapter that mentions a topic covered in another
+- [x] 65.55 — Final cross-link pass
+  - [x] 65.55.1 — Every chapter that mentions a topic covered in another
     chapter should have a `[see X](../path.md)` link instead of inline
     re-explanation
-  - [ ] 65.55.2 — `mdbook build book/` zero warnings after all changes
+  - [x] 65.55.2 — `mdbook build book/` zero warnings after all changes
 
 
 ## Acceptance Criteria

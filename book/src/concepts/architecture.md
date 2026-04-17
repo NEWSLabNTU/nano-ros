@@ -446,16 +446,7 @@ graph TD
 
 ### Platform Primitives
 
-Each platform provides OS-level primitives that the transport libraries (zenoh-pico, XRCE-DDS) require at link time:
-
-| Primitive | POSIX | Bare-metal | FreeRTOS | NuttX | ThreadX | Zephyr |
-|-----------|-------|------------|----------|-------|---------|--------|
-| Threading | pthreads | N/A (single-threaded) | xTaskCreate | pthreads | tx_thread_create | k_thread_create |
-| Mutex | pthread_mutex | spin / critical-section | xSemaphore | pthread_mutex | tx_mutex | k_mutex |
-| Clock | clock_gettime | DWT / cycle counter | xTaskGetTickCount | clock_gettime | tx_time_get | k_uptime_get |
-| Sleep | usleep | busy-wait | vTaskDelay | usleep | tx_thread_sleep | k_sleep |
-| Network | BSD sockets | smoltcp | lwIP | BSD sockets | NetX Duo | Zephyr sockets |
-| RNG | /dev/urandom | IP-seeded PRNG | IP-seeded srand() | /dev/urandom | IP-seeded | sys_rand32_get |
+Each platform provides OS-level primitives (clock, memory, sleep, random, threading, networking) that the transport libraries require at link time. See the [Platform API Reference](../reference/platform-api.md) for the full trait definitions and per-platform implementation details.
 
 ## C API
 

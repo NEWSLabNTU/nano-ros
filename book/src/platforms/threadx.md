@@ -114,42 +114,19 @@ sudo just setup-network
 
 ## Architecture
 
-### Linux Simulation Board Crate
+### Board Crates
 
-The `nros-threadx-linux` board crate runs the full ThreadX kernel as
-pthreads on a Linux host. NetX Duo uses a TAP network driver
-(`tap-netx` in `packages/drivers/`) for Ethernet I/O via Linux TAP
-devices. This provides the fastest iteration cycle for ThreadX-specific code.
+Both board crates follow the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../guides/board-crate.md).
 
-### QEMU RISC-V Board Crate
-
-The `nros-threadx-qemu-riscv64` board crate runs ThreadX's RISC-V port on
-QEMU virt machine with real preemptive scheduling. NetX Duo uses a
-virtio-net driver (`virtio-net-netx` in `packages/drivers/`) for Ethernet
-I/O over QEMU's virtio MMIO interface.
-
-```
-User Application (Executor + Node + Pub/Sub)
-        │
-nros-node (Executor)
-        │
-nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
-        │                       │
-        │          zenoh-pico ThreadX platform
-        │          (tx_thread, tx_mutex, BSD sockets)
-        │
-Board Crate (nros-threadx-qemu-riscv64)
-├── ThreadX kernel (RISC-V port)
-├── NetX Duo (BSD sockets over virtio-net)
-└── virtio-net NetX Duo driver (virtio MMIO)
-```
+- **`nros-threadx-linux`** -- runs the full ThreadX kernel as pthreads on a Linux host. NetX Duo uses a TAP network driver (`tap-netx` in `packages/drivers/`) for Ethernet I/O. This provides the fastest iteration cycle for ThreadX-specific code.
+- **`nros-threadx-qemu-riscv64`** -- runs ThreadX's RISC-V port on QEMU virt machine with real preemptive scheduling. NetX Duo uses a virtio-net driver (`virtio-net-netx` in `packages/drivers/`) for Ethernet I/O over QEMU's virtio MMIO interface.
 
 ### Key Design Points
 
 - **Multi-threaded**: ThreadX provides real threads/mutexes. zenoh-pico uses
   background read/lease tasks.
 - **NetX Duo BSD sockets**: POSIX-compatible `socket()`/`connect()`/`select()`
-  — same code path as zenoh-pico's POSIX platform.
+  -- same code path as zenoh-pico's POSIX platform.
 - **Build via `cc` crate**: ThreadX kernel + NetX Duo compiled in the board
   crate's `build.rs` (no external CMake needed).
 - **`no_std` target**: `riscv64gc-unknown-none-elf` for QEMU; Linux simulation
