@@ -6,41 +6,73 @@ This document presents the overall nano-ros architecture: the layered crate stru
 
 ## High-Level Layer Diagram
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Application                                            │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  User code (Rust / C / C++)                        │  │
-│  └────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│  Core                                                   │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  nros  (facade — re-exports + feature gates)       │  │
-│  │  ┌──────────┐ ┌───────────┐ ┌────────────��─────┐  │  │
-│  │  │ nros-node│ │nros-params│ │    nros-core      │  │  │
-│  │  │ Executor │ │ Parameter │ │ RosMessage traits  │  │  │
-│  │  │ Node     │ │ Server    │ │ CdrWriter/Reader   │  │  │
-│  │  └──────────┘ └───────────┘ └──────────────────┘  │  │
-│  └────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│  RMW (middleware abstraction)                           │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  nros-rmw  (Session, Publisher, Subscriber traits) │  │
-│  ├────────────────┬───────────────┬───────────────────┤  │
-│  │ nros-rmw-zenoh │ nros-rmw-xrce │  nros-rmw-cffi   │  │
-│  │ (zenoh-pico)   │ (XRCE-DDS)    │  (C vtable)      │  │
-│  └────────────────┴───────────────┴───────────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│  Platform (hardware + OS abstraction)                   │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  nros-platform  (Clock, Alloc, Threading, TCP, ... │  │
-│  │                   traits + ConcretePlatform alias) │  │
-│  ├──────────┬──────────┬────────┬─────────┬──────────┤  │
-│  │  posix   │ freertos │ zephyr │ threadx │ bare-    │  │
-│  │          │          │        │         │ metal    │  │
-│  └──────────┴──────────┴────────┴─────────┴──────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 420" font-family="system-ui, -apple-system, sans-serif" font-size="13">
+  <defs>
+    <style>
+      .layer { fill: none; stroke: #444; stroke-width: 1.5; rx: 6; }
+      .impl  { fill: #f0f4f8; stroke: #888; stroke-width: 1; rx: 4; }
+      .iface { fill: #e8f0fe; stroke: #5b8def; stroke-width: 1; rx: 4; }
+      .label { font-weight: 600; fill: #333; }
+      .sub   { fill: #555; font-size: 11px; }
+      .group { font-size: 11px; fill: #777; font-style: italic; }
+    </style>
+  </defs>
+
+  <!-- Application layer -->
+  <rect class="layer" x="10" y="8" width="600" height="52"/>
+  <text class="group" x="20" y="24">Application</text>
+  <rect class="impl" x="20" y="30" width="580" height="24"/>
+  <text class="label" x="310" y="46" text-anchor="middle">User code (Rust / C / C++)</text>
+
+  <!-- Core layer -->
+  <rect class="layer" x="10" y="68" width="600" height="108"/>
+  <text class="group" x="20" y="84">Core</text>
+  <rect class="iface" x="20" y="88" width="580" height="24"/>
+  <text class="label" x="200" y="104">nros</text>
+  <text class="sub" x="240" y="104">(facade — re-exports + feature gates)</text>
+  <rect class="impl" x="20" y="118" width="186" height="50"/>
+  <text class="label" x="113" y="136" text-anchor="middle">nros-node</text>
+  <text class="sub" x="113" y="152" text-anchor="middle">Executor, Node</text>
+  <rect class="impl" x="216" y="118" width="186" height="50"/>
+  <text class="label" x="309" y="136" text-anchor="middle">nros-params</text>
+  <text class="sub" x="309" y="152" text-anchor="middle">ParameterServer</text>
+  <rect class="impl" x="412" y="118" width="188" height="50"/>
+  <text class="label" x="506" y="136" text-anchor="middle">nros-core</text>
+  <text class="sub" x="506" y="152" text-anchor="middle">RosMessage, CDR</text>
+
+  <!-- RMW layer -->
+  <rect class="layer" x="10" y="184" width="600" height="100"/>
+  <text class="group" x="20" y="200">RMW (middleware abstraction)</text>
+  <rect class="iface" x="20" y="204" width="580" height="24"/>
+  <text class="label" x="200" y="220">nros-rmw</text>
+  <text class="sub" x="268" y="220">(Session, Publisher, Subscriber traits)</text>
+  <rect class="impl" x="20" y="234" width="193" height="42"/>
+  <text class="label" x="116" y="252" text-anchor="middle">nros-rmw-zenoh</text>
+  <text class="sub" x="116" y="266" text-anchor="middle">zenoh-pico</text>
+  <rect class="impl" x="223" y="234" width="187" height="42"/>
+  <text class="label" x="316" y="252" text-anchor="middle">nros-rmw-xrce</text>
+  <text class="sub" x="316" y="266" text-anchor="middle">XRCE-DDS</text>
+  <rect class="impl" x="420" y="234" width="180" height="42"/>
+  <text class="label" x="510" y="252" text-anchor="middle">nros-rmw-cffi</text>
+  <text class="sub" x="510" y="266" text-anchor="middle">C vtable</text>
+
+  <!-- Platform layer -->
+  <rect class="layer" x="10" y="292" width="600" height="120"/>
+  <text class="group" x="20" y="308">Platform (hardware + OS abstraction)</text>
+  <rect class="iface" x="20" y="312" width="580" height="24"/>
+  <text class="label" x="200" y="328">nros-platform</text>
+  <text class="sub" x="300" y="328">(Clock, Alloc, Threading, TCP, …)</text>
+  <rect class="impl" x="20"  y="342" width="112" height="42"/>
+  <text class="label" x="76"  y="367" text-anchor="middle">posix</text>
+  <rect class="impl" x="140" y="342" width="112" height="42"/>
+  <text class="label" x="196" y="367" text-anchor="middle">freertos</text>
+  <rect class="impl" x="260" y="342" width="112" height="42"/>
+  <text class="label" x="316" y="367" text-anchor="middle">zephyr</text>
+  <rect class="impl" x="380" y="342" width="112" height="42"/>
+  <text class="label" x="436" y="367" text-anchor="middle">threadx</text>
+  <rect class="impl" x="500" y="342" width="100" height="42"/>
+  <text class="label" x="550" y="367" text-anchor="middle">bare-metal</text>
+</svg>
 
 Four conceptual layers, each with a clear boundary:
 
