@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ action client example - Fibonacci (Future-based)
+/// @brief C++ action client example - Fibonacci (blocking)
 
 #include <cstdio>
 #include <cstdlib>
@@ -68,21 +68,14 @@ int main(int argc, char** argv) {
     example_interfaces::action::Fibonacci::Goal goal;
     goal.order = order;
 
-    auto goal_fut = client.send_goal_future(goal);
-    if (goal_fut.is_consumed()) {
-        std::fprintf(stderr, "Failed to send goal\n");
+    uint8_t goal_id[16];
+    ret = client.send_goal(goal, goal_id);
+    if (!ret.ok()) {
+        std::fprintf(stderr, "Failed to send goal: %d\n", ret.raw());
         nros::shutdown();
         return 1;
     }
-
-    nros::ActionClient<example_interfaces::action::Fibonacci>::GoalAccept accept;
-    ret = goal_fut.wait(nros::global_handle(), 10000, accept);
-    if (!ret.ok() || !accept.accepted) {
-        std::fprintf(stderr, "Goal not accepted: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
-    std::printf("Goal accepted [OK]\n");
+    std::printf("Goal sent: order=%d [OK]\n", order);
 
     // Poll for feedback while waiting
     for (int i = 0; i < 20; i++) {
@@ -99,16 +92,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Get result (Future-based)
-    auto result_fut = client.get_result_future(accept.goal_id);
-    if (result_fut.is_consumed()) {
-        std::fprintf(stderr, "Failed to request result\n");
-        nros::shutdown();
-        return 1;
-    }
-
+    // Get result (blocking)
     example_interfaces::action::Fibonacci::Result result;
-    ret = result_fut.wait(nros::global_handle(), 30000, result);
+    ret = client.get_result(goal_id, result);
     if (ret.ok()) {
         std::printf("Result: sequence=[");
         for (uint32_t i = 0; i < result.sequence.length(); i++) {
