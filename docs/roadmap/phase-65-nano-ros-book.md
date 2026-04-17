@@ -4,7 +4,7 @@
 structure. Original content (65.1–65.41) archived in
 `archived/phase-65-nano-ros-book-original.md`.
 
-**Status**: In Progress (65.42–65.55 done; 65.56–65.64 done; 65.65 remaining)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -53,18 +53,11 @@ Introduction
 - [x] 65.63 — Deleted empty directories + orphaned files
 - [x] 65.64 — `mdbook build book/` zero warnings
 
-## Remaining work
+### 65.65 + 65.32 — Final cleanup (done)
 
-- [ ] 65.65 — Update CLAUDE.md documentation index
-  - [ ] 65.65.1 — Update the `Documentation Index` section to reflect
-    the new 5-section structure (Getting Started, User Guide, Reference,
-    Concepts, Internals)
-  - [ ] 65.65.2 — Remove references to deleted directories (platforms/,
-    advanced/, guides/)
-
-- [ ] 65.32 — Delete superseded docs (deferred from original pass)
-  - Still pending: `docs/guides/getting-started.md`,
-    `docs/reference/micro-ros-comparison.md`
+- [x] 65.65 — CLAUDE.md documentation index updated for 5-section structure
+- [x] 65.32 — Deleted superseded docs (`docs/guides/getting-started.md`,
+  `docs/reference/micro-ros-comparison.md`)
 
 ## Acceptance Criteria
 
@@ -75,4 +68,4 @@ Introduction
 - [x] Internals chapter contains all dev/contributor content
 - [x] No empty directories or orphaned files
 - [x] `mdbook build book/` zero warnings
-- [ ] CLAUDE.md docs index updated
+- [x] CLAUDE.md docs index updated
