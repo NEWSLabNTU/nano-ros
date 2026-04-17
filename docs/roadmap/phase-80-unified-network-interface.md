@@ -338,8 +338,8 @@ typedef struct {
 - [x] 80.9 — Per-RTOS bindgen sys crates (consistency + safety)
   - [x] 80.9.1 — Create `threadx-netx-sys` bindgen crate (`packages/drivers/threadx-netx-sys/`)
   - [x] 80.9.2 — Wire `nros-platform-threadx/net.rs` to use `threadx-netx-sys` types — found wrong constants (SOL_SOCKET, SO_RCVTIMEO)
-  - [ ] 80.9.3 — Create `nuttx-sys` bindgen crate for NuttX POSIX sockets (depends on 80.10)
-  - [ ] 80.9.4 — Create `zephyr-posix-sys` bindgen crate (deferred — needs Zephyr build environment)
+  - [x] 80.9.3 — Create `nuttx-sys` bindgen crate — found different constants (SOL_SOCKET=1, SO_RCVTIMEO=10, TCP_NODELAY=16, time_t=u64)
+  - [x] 80.9.4 — Create `zephyr-posix-sys` bindgen crate (placeholder fallback — see known issue below)
 - [x] 80.10 — Implement for NuttX via nuttx-sys bindgen
   - [x] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types (NuttxPlatform as proper struct)
   - [x] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c`
@@ -453,3 +453,23 @@ may be insufficient for QEMU slirp + smoltcp TCP handshake under load.
 Stale build artifacts can also cause failures — clean rebuilds resolve
 this. Consider increasing timeout or adding explicit connection-ready
 detection in the test harness.
+
+### `zephyr-posix-sys` bindgen — build tree path mismatch
+
+`zephyr-posix-sys` extracts include paths from a Zephyr build tree's
+`compile_commands.json`. Currently bindgen fails with "processor
+architecture not supported" because:
+
+1. Zephyr headers require `CONFIG_ARCH_POSIX` (defined in `autoconf.h`)
+2. `autoconf.h` is found via include paths in `compile_commands.json`
+3. Those paths may point to a **different directory** than where the
+   actual generated headers live (e.g., `zephyr-workspace/build-talker/`
+   vs `nano-ros-workspace/build-talker/`)
+4. Additionally, clang (used by bindgen) needs `--target=x86_64-linux-gnu`
+   and the Zephyr gcc.h toolchain header checks arch-specific macros
+
+To fix: either rewrite `compile_commands.json` paths at extraction time,
+or generate a minimal "bindgen shim" header that `#include`s `autoconf.h`
+explicitly with corrected paths. The crate falls back to hand-verified
+placeholder bindings (matching the current `nros-platform-zephyr/net.rs`
+manual FFI values) when bindgen fails.
