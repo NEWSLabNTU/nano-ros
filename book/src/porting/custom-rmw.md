@@ -248,8 +248,8 @@ skeleton above -- `create_publisher` returns `Ok(EchoPub)`, etc. The
 
 - [RMW API Reference](../reference/rmw-api.md) -- full trait signatures,
   QoS profiles, error types, configuration structs.
-- [RMW API Design](../internals/rmw-api-design.md) -- architectural
-  motivation and comparison with the ROS 2 rmw interface.
+- [RMW API Design](../design/rmw.md) -- architectural motivation and
+  comparison with the ROS 2 rmw interface.
 - [Zenoh-pico Symbol Reference](../internals/porting-platform/zenoh-pico.md)
   -- FFI symbol mapping for the zenoh-pico backend (useful as a reference
   for how an existing backend is structured).

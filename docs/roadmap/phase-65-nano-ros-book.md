@@ -126,6 +126,56 @@ Reference. Absorb scattered Internals porting pages into the new chapters.
 
 - [x] 65.72 — Update SUMMARY.md + CLAUDE.md + verify build
 
+## Design Section (65.73)
+
+Add a top-level "Design" section that explains the *why* behind the API
+shape. Distinct from Porting (the *how*), Reference (the *what*), and
+Concepts (high-level orientation). Move `internals/rmw-api-design.md`
+into Design and expand it with explicit "why we revised `rmw.h`"
+rationale grouped by RTOS/bare-metal constraints. Add two new pages on
+the client-library model (vs rclc/rclcpp/rclrs) and on the platform API
+trait groups + behavior contracts.
+
+### Target structure
+
+```
+# Design (new, between Concepts and Internals)
+  Overview               ← three design choices, links to deeper pages
+  RMW API Design         ← moved from Internals + "Why we revised rmw.h"
+  Client Library Model   ← Future/Promise, no internal spin, executor as session
+  Platform API Design    ← trait group rationale + behavior contract tables
+# Internals (slimmed)
+  - rmw-api-design       ← moved into Design
+# Reference (unchanged surface; trimmed prose)
+  Platform API           ← trim "How It Works" + bare-metal sleep callout
+                           (those rationale pieces move to Design)
+```
+
+### Work items
+
+- [x] 65.73 — Design section
+  - [x] 65.73.1 — Move `internals/rmw-api-design.md` → `design/rmw.md`
+  - [x] 65.73.2 — Update SUMMARY.md (add Design section, remove from Internals)
+  - [x] 65.73.3 — Fix in-file cross-ref (was `internals/rmw-api.md`, now `reference/rmw-api.md`)
+  - [x] 65.73.4 — Add "Why we revised `rmw.h`" section to `design/rmw.md`
+    (grouped by: heap availability, threading model, single-threaded
+    callback dispatch, no dynamic discovery tables)
+  - [x] 65.73.5 — Write `design/client-library.md`
+    - Side-by-side table: rclc / rclcpp / rclrs / nros
+    - Future/Promise as unifying primitive (blocking + async, one API)
+    - No internal spin (rclcpp::spin owns a thread, nros can't)
+    - Executor is the session owner, not a singleton
+    - Language parity (Rust Promise / C++ Future + NROS_TRY / C `_async`)
+  - [x] 65.73.6 — Write `design/platform-api.md`
+    - Trait group rationale (Time, Memory, Threading, Sleep/Random/Wall-time,
+      Networking, NetworkPoll, Libc)
+    - Why `clock_ms` *and* `clock_us`, not `clock_ns`
+    - Per-trait behavior contract tables (columns: Method | Blocking? |
+      May fail? | Unsupported fallback | Notes)
+  - [x] 65.73.7 — Trim `reference/platform-api.md` (remove rationale prose
+    that migrated to Design; add banner linking to `design/platform-api.md`)
+  - [x] 65.73.8 — Write `design/overview.md` last (one-screen orientation)
+  - [x] 65.73.9 — `mdbook build book/` zero warnings, no broken cross-links
 
 ## Acceptance Criteria
 
@@ -135,5 +185,8 @@ Reference. Absorb scattered Internals porting pages into the new chapters.
 - [x] Concepts is minimal (3 pages: architecture, no_std, platform model)
 - [x] Internals chapter contains all dev/contributor content
 - [x] No empty directories or orphaned files
-- [x] `mdbook build book/` zero warnings
 - [x] CLAUDE.md docs index updated
+- [x] Design section exists with overview + 3 deeper pages
+- [x] `internals/rmw-api-design.md` no longer present (moved to Design)
+- [x] Behavior contract tables present for every platform trait
+- [x] `mdbook build book/` zero warnings (final)

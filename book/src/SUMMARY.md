@@ -22,13 +22,6 @@
 - [Serial Transport](./user-guide/serial-transport.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
 
-# Porting
-
-- [Overview](./porting/overview.md)
-- [Custom RMW Backend](./porting/custom-rmw.md)
-- [Custom Platform](./porting/custom-platform.md)
-- [Custom Board Package](./porting/custom-board.md)
-
 # Reference
 
 - [Rust API](./reference/rust-api.md)
@@ -45,9 +38,22 @@
 - [no_std Support](./concepts/no-std.md)
 - [Platform Model](./concepts/platform-model.md)
 
+# Porting
+
+- [Overview](./porting/overview.md)
+- [Custom RMW Backend](./porting/custom-rmw.md)
+- [Custom Platform](./porting/custom-platform.md)
+- [Custom Board Package](./porting/custom-board.md)
+
+# Design
+
+- [Overview](./design/overview.md)
+- [RMW API Design](./design/rmw.md)
+- [Client Library Model](./design/client-library.md)
+- [Platform API Design](./design/platform-api.md)
+
 # Internals
 
-- [RMW API Design](./internals/rmw-api-design.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Formal Verification](./internals/verification.md)

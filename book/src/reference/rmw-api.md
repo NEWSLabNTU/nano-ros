@@ -3,7 +3,7 @@
 This chapter is a reference for the `nros-rmw` trait layer and its two backend
 implementations (`nros-rmw-zenoh`, `nros-rmw-xrce`). For architectural
 motivation and comparisons with the ROS 2 rmw interface, see
-[RMW API Design](../internals/rmw-api-design.md).
+[RMW API Design](../design/rmw.md).
 
 **Crate:** `nros-rmw` (re-exported via `nros::internals`)
 

@@ -2,6 +2,8 @@
 
 nano-ros abstracts hardware and OS differences through the **nros-platform** trait system. Each platform (POSIX, FreeRTOS, NuttX, ThreadX, Zephyr, bare-metal) implements these traits once, and both RMW backends (zenoh-pico and XRCE-DDS) consume them through thin shim crates.
 
+> For the design rationale -- why these traits are grouped this way, why we expose both `clock_ms` and `clock_us`, and the per-method behavior contracts (blocking, may-fail, unsupported-fallback) -- see [Platform API Design](../design/platform-api.md). For implementing a new platform, see [Custom Platform](../porting/custom-platform.md).
+
 ## Architecture
 
 ```mermaid
@@ -49,11 +51,7 @@ Heap memory allocation. zenoh-pico requires ~64 KB heap for transport buffers.
 | `sleep_ms` | `fn sleep_ms(ms: usize)` | Sleep for milliseconds |
 | `sleep_s` | `fn sleep_s(s: usize)` | Sleep for seconds |
 
-> **Bare-metal note:** Implementations should poll the network stack (smoltcp) during busy-wait sleep to avoid missing packets.
-
 ### `PlatformRandom` (zenoh-pico only)
-
-A simple xorshift32 PRNG is sufficient. Seed with hardware entropy during platform init.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -193,10 +191,6 @@ Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX, FreeR
 ### `PlatformLibc` (bare-metal only)
 
 Standard C library functions needed by zenoh-pico on targets without a C runtime. Provides `strlen`, `strcmp`, `strncmp`, `strchr`, `strncpy`, `memcpy`, `memmove`, `memset`, `memcmp`, `memchr`, `strtoul`, `errno_ptr`.
-
-## How It Works
-
-Platform crates implement the traits above as inherent methods on a zero-sized type (e.g., `PosixPlatform`, `FreeRtosPlatform`). Thin shim crates (`zpico-platform-shim`, `xrce-platform-shim`) automatically forward RMW-layer C symbols to the active platform — this mapping is internal to nano-ros and transparent to platform implementors. You never implement or call shim symbols directly; you only implement traits.
 
 ## Platform Implementations
 

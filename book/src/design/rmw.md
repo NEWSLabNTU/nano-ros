@@ -2,7 +2,41 @@
 
 nano-ros defines its own RMW (ROS Middleware) abstraction in the `nros-rmw` crate. While it serves the same purpose as the official [ros2/rmw](https://github.com/ros2/rmw) interface -- decoupling the client library from the transport backend -- it is designed for `no_std` embedded systems and uses a fundamentally different approach.
 
-This page documents the architectural differences and trade-offs.
+This page documents the architectural differences and trade-offs. For trait signatures and the available backends, see [RMW API Reference](../reference/rmw-api.md). For implementing a new backend, see [Custom RMW Backend](../porting/custom-rmw.md).
+
+## Why We Revised `rmw.h`
+
+`rmw.h` was designed for ROS 2 on Linux: a process with a libc heap, an OS scheduler, dynamic loaders, and middleware-owned background threads. None of those assumptions hold on a Cortex-M3 with 64 KB of RAM. Each constraint below drove a specific change.
+
+### Heap availability
+
+`rmw.h` heap-allocates everywhere -- handles, serialized message buffers, wait sets, type support tables. Bare-metal targets often have no allocator; RTOS targets have allocators with hard total budgets (~16-256 KB) that must cover the application as well.
+
+nros-rmw moves all I/O buffers to the caller. `publish_raw(&[u8])` and `try_recv_raw(&mut [u8])` operate on slices that the caller stack- or statically-allocates. Type metadata is a string-only `TopicInfo` struct, not a pointer-laden `rosidl_message_type_support_t` table. The only heap users in core paths are zenoh-pico's internal transport buffers (~64 KB), exposed through `PlatformAlloc` and replaceable with a bump allocator on bare-metal.
+
+### Threading model
+
+`rmw.h` assumes the middleware owns threads. `rmw_wait()` blocks the calling thread on a wait set; some implementations also spawn internal dispatch threads that fire callbacks asynchronously. Bare-metal has no scheduler; cooperative RTOS configurations can't tolerate hidden threads.
+
+nros-rmw replaces `rmw_wait` with `Session::drive_io(timeout_ms)` -- a single call the executor invokes from its own (and only) thread. There is no wait set object, and no entity is implicitly polled by the middleware. The application drives all I/O explicitly. For async runtimes, subscribers and service clients expose `register_waker(&Waker)` so the transport's C receive callback can wake a Rust future without a wait set abstraction.
+
+### Single-threaded callback dispatch
+
+`rmw.h` permits multi-threaded executors and reentrant callbacks. Cooperative single-threaded targets cannot guarantee atomicity around RMW state without locks they don't have.
+
+nros-rmw assumes a single-threaded executor that owns the session for its lifetime. Callbacks run sequentially on the executor thread; no callback can preempt another. This eliminates the need for internal locking around publisher state, subscriber buffers, or service queues -- a measurable code-size and runtime win on MCUs.
+
+### No dynamic discovery tables
+
+`rmw.h` provides `rmw_get_topic_names_and_types()`, `rmw_count_publishers()`, `rmw_get_node_names()`, and similar graph-introspection APIs. These require maintaining a dynamic discovery cache, which costs heap and CPU continuously even when nothing reads it.
+
+nros-rmw drops these APIs entirely. Discovery still happens at the transport layer (zenoh liveliness, XRCE-DDS session establishment), but it is not surfaced as queryable graph state. Applications that need topic introspection can issue a zenoh query directly.
+
+### Compile-time backend selection
+
+`rmw.h` selects backends at runtime via `dlopen()` of `librmw_*.so`. This requires a dynamic loader (no embedded MCU has one) and forces every call through a vtable.
+
+nros-rmw selects the backend at compile time via Cargo features. The `Session` trait uses associated types, so the compiler monomorphizes all transport calls -- no vtables, no dynamic dispatch, no relocation overhead at startup. The trade-off is exactly one RMW backend per binary, enforced by `compile_error!()`.
 
 ## Architectural Pattern
 
