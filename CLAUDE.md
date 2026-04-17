@@ -260,7 +260,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
-| 65 | .env.example + environment docs | In Progress (35/36 done) |
+| 65 | nano-ros book (mdbook user guide) | In Progress (65.1–65.41 done; 65.42–65.55 revision pass) |
 | 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1–69.3, 69.5–69.9 done; 69.4 builds pass, E2E timeout) |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
