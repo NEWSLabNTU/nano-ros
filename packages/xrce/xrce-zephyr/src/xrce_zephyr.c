@@ -19,6 +19,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/conn_mgr_monitor.h>
 #include <zephyr/net/socket.h>
 
 #include <errno.h>
@@ -32,31 +34,60 @@ LOG_MODULE_REGISTER(xrce_zephyr, LOG_LEVEL_INF);
 static int udp_sock = -1;
 
 /* ============================================================================
+ * L4 connectivity semaphore
+ * ============================================================================ */
+
+static K_SEM_DEFINE(net_l4_connected, 0, 1);
+static struct net_mgmt_event_callback l4_cb;
+
+static void l4_event_handler(struct net_mgmt_event_callback *cb,
+                             uint32_t event, struct net_if *iface)
+{
+    if (event == NET_EVENT_L4_CONNECTED) {
+        k_sem_give(&net_l4_connected);
+    }
+}
+
+static int register_l4_callback(void)
+{
+    net_mgmt_init_event_callback(&l4_cb, l4_event_handler,
+                                 NET_EVENT_L4_CONNECTED |
+                                 NET_EVENT_L4_DISCONNECTED);
+    net_mgmt_add_event_callback(&l4_cb);
+    return 0;
+}
+
+SYS_INIT(register_l4_callback, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
+/* ============================================================================
  * Network wait
  * ============================================================================ */
 
 int32_t xrce_zephyr_wait_network(int timeout_ms)
 {
-    struct net_if *iface = net_if_get_default();
-    int elapsed = 0;
+    bool already_up = false;
 
-    while (!net_if_is_up(iface) && elapsed < timeout_ms) {
-        k_sleep(K_MSEC(50));
-        elapsed += 50;
+    if (k_sem_take(&net_l4_connected, K_NO_WAIT) == 0) {
+        LOG_INF("Network L4 connected (already up)");
+        already_up = true;
     }
 
-    if (!net_if_is_up(iface)) {
-        LOG_ERR("Network interface not ready after %d ms", timeout_ms);
-        return -1;
+    if (!already_up) {
+        LOG_INF("Waiting for network L4 connectivity (timeout %d ms)...", timeout_ms);
+        int ret = k_sem_take(&net_l4_connected,
+                             timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
+        if (ret != 0) {
+            LOG_ERR("Network L4 not connected after %d ms", timeout_ms);
+            return -1;
+        }
+        LOG_INF("Network L4 connected");
     }
 
-    /* Wait for carrier (TAP device on native_sim needs time) */
-    while (!net_if_is_carrier_ok(iface) && elapsed < timeout_ms) {
-        k_sleep(K_MSEC(50));
-        elapsed += 50;
-    }
+#ifdef CONFIG_BOARD_NATIVE_SIM
+    /* TAP bridge stabilization — see zpico_zephyr.c comment */
+    k_sleep(K_MSEC(2000));
+#endif
 
-    LOG_INF("Network interface up (waited %d ms)", elapsed);
     return 0;
 }
 

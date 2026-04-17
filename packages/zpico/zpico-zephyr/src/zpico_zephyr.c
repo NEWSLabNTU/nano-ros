@@ -16,37 +16,76 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/conn_mgr_monitor.h>
 
 LOG_MODULE_REGISTER(zpico_zephyr, LOG_LEVEL_INF);
 
+/* ── L4 connectivity semaphore ───────────────────────────────────────────── */
+
+static K_SEM_DEFINE(net_l4_connected, 0, 1);
+
+static struct net_mgmt_event_callback l4_cb;
+
+static void l4_event_handler(struct net_mgmt_event_callback *cb,
+                             uint32_t event, struct net_if *iface)
+{
+    if (event == NET_EVENT_L4_CONNECTED) {
+        k_sem_give(&net_l4_connected);
+    }
+}
+
+/* Register the L4 callback at boot, before any application code runs.
+ * This ensures we don't miss the event if the interface comes up fast. */
+static int register_l4_callback(void)
+{
+    net_mgmt_init_event_callback(&l4_cb, l4_event_handler,
+                                 NET_EVENT_L4_CONNECTED |
+                                 NET_EVENT_L4_DISCONNECTED);
+    net_mgmt_add_event_callback(&l4_cb);
+    return 0;
+}
+
+SYS_INIT(register_l4_callback, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
+/* ── Public API ���─────────────────────────────────────────────────────────── */
+
 int32_t zpico_zephyr_wait_network(int timeout_ms) {
-    struct net_if* iface = net_if_get_default();
-    int elapsed = 0;
+    /* Check if already connected (interface may have come up before we
+     * were called — the SYS_INIT callback would have given the sem). */
+    struct net_if *iface = net_if_get_default();
+    bool already_up = false;
 
-    /* Wait for interface to be administratively up */
-    while (!net_if_is_up(iface) && elapsed < timeout_ms) {
-        k_sleep(K_MSEC(50));
-        elapsed += 50;
+    if (iface != NULL && net_if_is_up(iface) && net_if_is_carrier_ok(iface)) {
+        if (k_sem_take(&net_l4_connected, K_NO_WAIT) == 0) {
+            LOG_INF("Network L4 connected (already up)");
+            already_up = true;
+        }
     }
 
-    if (!net_if_is_up(iface)) {
-        LOG_ERR("Network interface not ready after %d ms", timeout_ms);
-        return -1;
+    if (!already_up) {
+        /* Wait for NET_EVENT_L4_CONNECTED — fires when the connection
+         * manager detects IP connectivity. */
+        LOG_INF("Waiting for network L4 connectivity (timeout %d ms)...", timeout_ms);
+
+        int ret = k_sem_take(&net_l4_connected,
+                             timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
+        if (ret != 0) {
+            LOG_ERR("Network L4 not connected after %d ms", timeout_ms);
+            return -1;
+        }
+        LOG_INF("Network L4 connected");
     }
 
-    /* On native_sim, the TAP device needs additional time for the
-     * carrier to establish after the process opens the fd. Without
-     * this, TCP connect to the bridge gateway fails immediately. */
-    while (!net_if_is_carrier_ok(iface) && elapsed < timeout_ms) {
-        k_sleep(K_MSEC(50));
-        elapsed += 50;
-    }
+#ifdef CONFIG_BOARD_NATIVE_SIM
+    /* On native_sim, the TAP bridge needs a brief stabilization period
+     * after L4 connected event — ARP resolution and host-side bridge
+     * port learning happen asynchronously. Without this, the first
+     * TCP SYN may be dropped. */
+    k_sleep(K_MSEC(2000));
+    LOG_INF("TAP bridge stabilization complete");
+#endif
 
-    if (!net_if_is_carrier_ok(iface)) {
-        LOG_WRN("Network carrier not ready after %d ms (continuing anyway)", timeout_ms);
-    }
-
-    LOG_INF("Network interface up (waited %d ms)", elapsed);
     return 0;
 }
 
