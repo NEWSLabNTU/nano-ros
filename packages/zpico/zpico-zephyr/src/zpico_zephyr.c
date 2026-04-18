@@ -51,8 +51,13 @@ SYS_INIT(register_l4_callback, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 /* ── Public API ���─────────────────────────────────────────────────────────── */
 
 int32_t zpico_zephyr_wait_network(int timeout_ms) {
-    /* Check if already connected (interface may have come up before we
-     * were called — the SYS_INIT callback would have given the sem). */
+#ifdef CONFIG_NET_NATIVE_OFFLOADED_SOCKETS
+    /* NSOS (Native Sim Offloaded Sockets) uses host kernel networking
+     * directly — always ready, no L4 event needed. */
+    LOG_INF("Network ready (NSOS — host kernel sockets)");
+    return 0;
+#else
+    /* Native Zephyr net stack: wait for NET_EVENT_L4_CONNECTED */
     struct net_if *iface = net_if_get_default();
     bool already_up = false;
 
@@ -64,8 +69,6 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     }
 
     if (!already_up) {
-        /* Wait for NET_EVENT_L4_CONNECTED — fires when the connection
-         * manager detects IP connectivity. */
         LOG_INF("Waiting for network L4 connectivity (timeout %d ms)...", timeout_ms);
 
         int ret = k_sem_take(&net_l4_connected,
@@ -77,16 +80,8 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
         LOG_INF("Network L4 connected");
     }
 
-#ifdef CONFIG_BOARD_NATIVE_SIM
-    /* On native_sim, the TAP bridge needs a brief stabilization period
-     * after L4 connected event — ARP resolution and host-side bridge
-     * port learning happen asynchronously. Without this, the first
-     * TCP SYN may be dropped. */
-    k_sleep(K_MSEC(2000));
-    LOG_INF("TAP bridge stabilization complete");
-#endif
-
     return 0;
+#endif
 }
 
 int32_t zpico_zephyr_init_session(const char* locator) {
