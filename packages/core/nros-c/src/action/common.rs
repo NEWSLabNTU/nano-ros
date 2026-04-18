@@ -88,14 +88,15 @@ pub struct nros_goal_uuid_t {
 // ============================================================================
 
 /// Goal handle structure.
+///
+/// Identity-only: carries the UUID, user context pointer, and a back-pointer
+/// to the owning server. Goal status and active-or-not are authoritatively
+/// owned by `nros-node`'s `ActionServerArenaEntry::active_goals`; query them
+/// via [`nros_action_get_goal_status`](super::nros_action_get_goal_status).
 #[repr(C)]
 pub struct nros_goal_handle_t {
     /// Goal UUID
     pub uuid: nros_goal_uuid_t,
-    /// Current status
-    pub status: nros_goal_status_t,
-    /// Whether this goal slot is in use
-    pub active: bool,
     /// User context pointer for this goal
     pub context: *mut c_void,
     /// Pointer back to the action server (internal)
@@ -106,8 +107,6 @@ impl Default for nros_goal_handle_t {
     fn default() -> Self {
         Self {
             uuid: nros_goal_uuid_t::default(),
-            status: nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-            active: false,
             context: core::ptr::null_mut(),
             server: core::ptr::null_mut(),
         }

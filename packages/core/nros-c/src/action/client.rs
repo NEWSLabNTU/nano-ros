@@ -480,13 +480,19 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
 
                 if fb_fields_len > 0 {
                     let mut fb_buf = [0u8; 512];
-                    let payload = write_cdr_le_header(&mut fb_buf).expect("fb_buf >= CDR_HEADER_LEN");
+                    let payload =
+                        write_cdr_le_header(&mut fb_buf).expect("fb_buf >= CDR_HEADER_LEN");
                     let copy_len = fb_fields_len.min(payload.len());
                     payload[..copy_len].copy_from_slice(
                         &core.feedback_buffer_ref()
                             [FEEDBACK_FRAMING_LEN..FEEDBACK_FRAMING_LEN + copy_len],
                     );
-                    cb(&uuid, fb_buf.as_ptr(), CDR_HEADER_LEN + copy_len, client.context);
+                    cb(
+                        &uuid,
+                        fb_buf.as_ptr(),
+                        CDR_HEADER_LEN + copy_len,
+                        client.context,
+                    );
                 } else {
                     cb(&uuid, ptr::null(), 0, client.context);
                 }

@@ -184,14 +184,17 @@ typedef void (*nros_accepted_callback_t)(struct nros_goal_handle_t* goal, void* 
 
 /* --- Goal handle --- */
 
-/** Goal handle structure. */
+/**
+ * Goal handle structure.
+ *
+ * Identity-only: carries the UUID, a user context pointer, and a
+ * back-pointer to the owning server. Goal status and active-or-not are
+ * authoritatively owned by `nros-node`'s `ActionServerArenaEntry::active_goals`
+ * and queried via @ref nros_action_get_goal_status.
+ */
 typedef struct nros_goal_handle_t {
     /** Goal UUID. */
     struct nros_goal_uuid_t uuid;
-    /** Current status. */
-    enum nros_goal_status_t status;
-    /** Whether this goal slot is in use. */
-    bool active;
     /** User context pointer for this goal. */
     void* context;
     /** Pointer back to the action server (internal). */
@@ -256,10 +259,13 @@ typedef struct nros_action_server_t {
     nros_accepted_callback_t accepted_callback;
     /** User context pointer. */
     void* context;
-    /** Goal handles. */
+    /**
+     * Goal handles — persistent storage for the values passed to user
+     * callbacks. Holds identity only (`{uuid, context, server}`); goal
+     * lifecycle state is owned by the arena in `nros-node` and queried
+     * via @ref nros_action_get_goal_status.
+     */
     struct nros_goal_handle_t goals[NROS_MAX_CONCURRENT_GOALS];
-    /** Number of active goals. */
-    size_t active_goal_count;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
     /** Inline opaque storage for internal implementation. */
@@ -587,13 +593,32 @@ nros_ret_t nros_action_canceled(struct nros_goal_handle_t* goal, const uint8_t* 
 NROS_PUBLIC nros_ret_t nros_action_execute(struct nros_goal_handle_t* goal);
 
 /**
- * @brief Get the number of active goals.
+ * @brief Get the number of currently active goals.
+ *
+ * Reads from the arena via `ActionServerRawHandle::active_goal_count`.
+ * Returns 0 if the server isn't registered or has been finalised.
  *
  * @param server  Pointer to an action server.
  * @return Number of active goals.
  */
 NROS_PUBLIC
 size_t nros_action_server_get_active_goal_count(const struct nros_action_server_t* server);
+
+/**
+ * @brief Look up a goal's current status in the arena by UUID.
+ *
+ * Returns `NROS_RET_OK` and writes the arena-sourced status on success.
+ * Returns `NROS_RET_NOT_FOUND` if the arena has already retired the goal
+ * (completed + result delivered, or cancelled + acknowledged).
+ *
+ * @param goal     Pointer to an initialised goal handle.
+ * @param status   Output: the arena-sourced goal status.
+ * @retval NROS_RET_OK on success.
+ * @retval NROS_RET_NOT_FOUND if the arena has no record of this goal.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_get_goal_status(const struct nros_goal_handle_t* goal,
+                                       enum nros_goal_status_t* status);
 
 /**
  * @brief Finalise an action server.

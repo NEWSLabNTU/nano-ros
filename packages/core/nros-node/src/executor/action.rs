@@ -700,6 +700,29 @@ impl ActionServerRawHandle {
             }
         }
     }
+
+    /// Look up the status of a single active goal by UUID.
+    ///
+    /// Returns `Some(status)` while the goal is still in the arena's
+    /// `active_goals` vector. Returns `None` once the goal has been
+    /// retired (completed + result delivered, or cancelled + acknowledged).
+    ///
+    /// This is the authoritative source of goal status — the C/C++ FFI
+    /// layers call this from `nros_action_get_goal_status` rather than
+    /// reading a cached field on their own handle structs.
+    pub fn goal_status(
+        &self,
+        executor: &Executor,
+        goal_id: &nros_core::GoalId,
+    ) -> Option<nros_core::GoalStatus> {
+        let mut found = None;
+        self.for_each_active_goal(executor, |g| {
+            if g.goal_id.uuid == goal_id.uuid && found.is_none() {
+                found = Some(g.status);
+            }
+        });
+        found
+    }
 }
 
 // ============================================================================
