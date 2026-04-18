@@ -1,7 +1,9 @@
 //! Shared constants for nros-c
 //!
-//! These constants define the maximum sizes for various string buffers
-//! used in the C API. They are exported to C through cbindgen.
+//! The canonical values live in [`nros_node::limits`]. Literals are mirrored
+//! here so `cbindgen` (run with `parse_deps = false`) can emit `#define`
+//! values in the generated C header without crossing crate boundaries.
+//! A `const _` assertion below catches any drift between the two sites.
 
 /// Maximum length of a zenoh locator string (e.g., "tcp/127.0.0.1:7447")
 pub const MAX_LOCATOR_LEN: usize = 128;
@@ -33,6 +35,20 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 /// affects `nros_action_server_t` struct layout. Changing it requires
 /// recompiling both Rust and C code.
 pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
+
+// Compile-time drift check: these literals must match the canonical values
+// exported from `nros_node::limits`.
+const _: () = {
+    assert!(MAX_LOCATOR_LEN == nros_node::limits::MAX_LOCATOR_LEN);
+    assert!(MAX_NAME_LEN == nros_node::limits::MAX_NAME_LEN);
+    assert!(MAX_NAMESPACE_LEN == nros_node::limits::MAX_NAMESPACE_LEN);
+    assert!(MAX_TOPIC_LEN == nros_node::limits::MAX_TOPIC_LEN);
+    assert!(MAX_SERVICE_NAME_LEN == nros_node::limits::MAX_SERVICE_NAME_LEN);
+    assert!(MAX_ACTION_NAME_LEN == nros_node::limits::MAX_ACTION_NAME_LEN);
+    assert!(MAX_TYPE_NAME_LEN == nros_node::limits::MAX_TYPE_NAME_LEN);
+    assert!(MAX_TYPE_HASH_LEN == nros_node::limits::MAX_TYPE_HASH_LEN);
+    assert!(NROS_MAX_CONCURRENT_GOALS == nros_node::limits::MAX_CONCURRENT_GOALS);
+};
 
 // ── Inline opaque storage sizes ─────────────────────────────────────────
 //

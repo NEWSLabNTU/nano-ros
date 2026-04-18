@@ -63,6 +63,7 @@ extern crate alloc;
 pub mod config;
 pub mod executor;
 pub mod lifecycle;
+pub mod limits;
 mod node;
 mod publisher;
 #[cfg(any(has_rmw, test))]
