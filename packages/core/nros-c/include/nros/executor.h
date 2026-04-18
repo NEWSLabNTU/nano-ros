@@ -9,6 +9,8 @@
 #ifndef NROS_EXECUTOR_H
 #define NROS_EXECUTOR_H
 
+#include <stdbool.h>
+
 #include "nros/types.h"
 #include "nros/nros_config_generated.h"
 
@@ -105,6 +107,11 @@ typedef struct nros_executor_t {
     size_t service_count;
     /** Next invocation time in nanoseconds for drift-compensated spin_period. */
     uint64_t invocation_time_ns;
+    /** Reentrancy guard: set by nros_executor_spin_some during dispatch.
+     *  Blocking helpers (nros_client_call, nros_action_send_goal,
+     *  nros_action_get_result) check this and return NROS_RET_REENTRANT
+     *  if called from within a dispatched callback. */
+    bool in_dispatch;
     /** Inline opaque storage for the Rust executor.
      *  Size is computed at build time from NROS_EXECUTOR_MAX_CBS and
      *  NROS_EXECUTOR_ARENA_SIZE — no heap allocation needed. */
