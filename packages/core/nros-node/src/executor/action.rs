@@ -398,6 +398,7 @@ impl Executor {
     ///
     /// `type_name` and `type_hash` identify the action type for key expression
     /// construction and liveliness tokens.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_action_server_raw(
         &mut self,
         action_name: &str,
@@ -420,6 +421,7 @@ impl Executor {
     }
 
     /// Register a raw action server with custom buffer sizes.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
