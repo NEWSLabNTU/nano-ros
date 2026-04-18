@@ -15,7 +15,8 @@ queueing and state tracking that `nros-node`'s arena already owns, and
 CDR header framing (`0x00 0x01 0x00 0x00` + offsets 4/20/24) is
 scattered as magic numbers across both crates.
 
-**Status**: Not Started
+**Status**: In Progress (CDR centralization done; Step 1 arena-authoritative
+state in progress; Step 2 ID-card handle redesign queued)
 **Priority**: Medium — architectural cleanup, no user-visible regression on
 passing tests. Blocks future multi-goal / multi-language consistency work
 because the current duplication means any arena change needs parallel
@@ -23,6 +24,58 @@ updates in C and C++.
 **Depends on**: Phase 77 (async action client — partially closes the
 related blocking-flag issue), Phase 82 (executor-driven blocking APIs —
 established the lifecycle pattern)
+
+## Two-step migration
+
+The goal-state refactor ships as two PRs to keep each blast radius
+bounded and independently revertible.
+
+### Step 1 — Option 3: arena-authoritative state, source-compatible callbacks
+
+- Struct ABI shrinks: `nros_goal_handle_t` drops `status` and `active`
+  fields; `nros_action_server_t` drops `active_goal_count`. Users must
+  recompile. No source change needed for callers that don't read the
+  dropped fields — none of the in-repo examples do.
+- Trampolines stop duplicating arena state. `nros_action_succeed` /
+  `abort` / `cancel_accept` stop mutating the C-side goal handle and
+  just delegate to the arena.
+- `server.goals[N]` *stays* as persistent storage for `nros_goal_handle_t`
+  structs that trampolines hand out to user callbacks. The array is
+  reduced to `{uuid, context, server}` triples — no state duplication,
+  just storage for the pointers user callbacks receive.
+- New public API: `nros_action_get_goal_status(goal, &out)` reads the
+  arena; returns `NROS_RET_NOT_FOUND` for retired goals.
+- Existing `nros_action_server_get_active_goal_count` signature unchanged;
+  backing switches to `ActionServerRawHandle::active_goal_count(executor)`.
+- nros-cpp is *not touched* in Step 1 — the `PendingGoal[]` / auto-accept
+  pattern remains until Step 2 rewrites it wholesale.
+- **Caller impact**: source-compatible for every in-repo example and
+  test. Out-of-repo C code that reads `goal->status` / `goal->active` /
+  `server->active_goal_count` as struct fields needs a mechanical
+  migration to the new arena getters. ABI break on struct size.
+
+### Step 2 — Option 2: ID-card handle, stateless server, uniform callbacks
+
+- `nros_goal_handle_t` reduces to `{ uuid }`. No `context`, no `server`
+  back-pointer. Copyable by value; users track per-goal state in their
+  own `{uuid → state}` tables.
+- Callback signatures add `server` as an explicit parameter:
+  - `nros_goal_callback_t(server, uuid, request, len, ctx)`
+  - `nros_accepted_callback_t(server, goal_handle, ctx)`
+  - `nros_cancel_callback_t(server, goal_handle, ctx)`
+- Operations take `(server, goal)` explicitly:
+  `nros_action_execute/succeed/abort/publish_feedback/get_goal_status(server, goal, ...)`.
+- `nros_action_server_t` drops the `goals[N]` array entirely. Trampoline
+  builds a stack-local `nros_goal_handle_t` per invocation; users copy
+  by value if they need the UUID beyond the callback.
+- nros-cpp switches to uniformly callback-based:
+  `server.set_goal_callback(...)` / `set_cancel_callback(...)` +
+  `for_each_active_goal` iterator. `PendingGoal[]`, auto-accept
+  trampoline, and `try_recv_goal` poll API all deleted.
+- **Caller impact**: source break for every action-server example and
+  test in the repo. Migration is mechanical (add `server` arg, change
+  `goal` to `const *`, move per-goal context to user-side storage).
+  Every in-repo example updated in the same PR. No deprecation shim.
 
 ## Overview
 
@@ -421,119 +474,182 @@ because only the Rust FFI shim uses them.
 
 ## Work Items
 
-- [ ] 83.1 — nros-node: add `for_each_active_goal_raw` + `active_goal_raw`
+### Part B — CDR header centralization (complete)
+
+- [x] 83.9 — nros-serdes: add `CDR_HEADER_LEN` + helpers, re-export
+      through `nros::cdr`
+  - Landed in commit `d24a28ef`. Adds `CDR_HEADER_LEN`, reuses
+    existing `CDR_LE_HEADER` / `CDR_BE_HEADER`, adds
+    `write_cdr_le_header` / `strip_cdr_header` helpers. `nros::cdr`
+    module re-exports them so nros-c / nros-cpp go through the umbrella
+    crate rather than depending on `nros-serdes` directly.
+
+- [x] 83.10 — nros-c: migrate CDR header call sites
+  - Landed in commit `d24a28ef`. All inline
+    `buf[0..4] = 0x00 0x01 0x00 0x00` writes in
+    `nros-c/src/action/{client,server}.rs` replaced with
+    `write_cdr_le_header`; all "strip CDR header" offsets replaced
+    with `strip_cdr_header`. `4 + 16` magic uses
+    `CDR_HEADER_LEN + GoalId::UUID_LEN` (also re-exported via
+    `nros::GoalId::UUID_LEN`).
+
+- [x] 83.11 — nros-cpp: migrate CDR header call sites
+  - Landed in commit `d24a28ef`. Same migration applied to
+    `nros-cpp/src/action.rs`.
+
+### Step 1 — Option 3: arena-authoritative state (current)
+
+All Step 1 work items keep the existing callback-shape-compatible API
+surface. No source change required for in-repo examples; struct ABI
+shrinks.
+
+- [ ] 83.1 — nros-node: add `ActionServerRawHandle::goal_status`
   - **Files**: `packages/core/nros-node/src/executor/action.rs`,
     `packages/core/nros-node/src/executor/action_core.rs`
-  - **Goal**: Read-only accessors on `Executor` keyed by
-    `ActionServerRawHandle`. Iterate/query
-    `ActionServerArenaEntry::active_goals`. Document that the callback is
-    invoked synchronously and must not call back into the arena.
+  - **Goal**: Single-goal lookup `fn goal_status(&self, executor: &Executor,
+    goal_id: &GoalId) -> Option<GoalStatus>`. Implemented as a thin
+    scan over `ActionServerArenaEntry::active_goals` using the existing
+    `for_each_active_goal` hook. `active_goal_count(executor)` already
+    exists; no change there.
 
-- [ ] 83.2 — nros-c: drop `goals[]` + `active_goal_count` from
-      `nros_action_server_t`
+- [ ] 83.2 — nros-c: drop `active_goal_count` from `nros_action_server_t`
   - **Files**: `packages/core/nros-c/src/action/server.rs`,
     `packages/core/nros-c/include/nros/action.h` (regenerate via
-    cbindgen)
-  - **Goal**: Remove the fields. Update every internal reference.
-    `nros_goal_handle_t` stays as an output struct for the existing
-    getters; it is no longer *stored* in the server.
+    cbindgen), `packages/core/nros-c/src/action/common.rs` (Kani tests
+    that assert zero count)
+  - **Goal**: Remove the field and every `active_goal_count += / -=`
+    mutation. The public
+    `nros_action_server_get_active_goal_count(server)` signature is
+    unchanged; it forwards to `ActionServerRawHandle::active_goal_count`
+    via `ActionServerInternal.{handle, executor_ptr}`.
 
-- [ ] 83.3 — nros-c: rewrite `nros_action_get_goal_status` on arena query
-  - **Files**: `packages/core/nros-c/src/action/server.rs` (the getter),
+- [ ] 83.3 — nros-c: drop `status` and `active` fields from
+      `nros_goal_handle_t`
+  - **Files**: `packages/core/nros-c/src/action/common.rs`,
+    `packages/core/nros-c/src/action/server.rs`,
+    `packages/core/nros-c/include/nros/action.h` (regenerated)
+  - **Goal**: Struct reduces to `{uuid, context, server}`. Every
+    internal reference to `goal->status` / `goal->active` is
+    eliminated. `goals: [nros_goal_handle_t; N]` stays — it is the
+    persistent storage for the pointers user callbacks receive, now
+    holding just `{uuid, context, server}` triples.
+
+- [ ] 83.4 — nros-c: add `nros_action_get_goal_status(goal, &out)`
+  - **Files**: `packages/core/nros-c/src/action/server.rs`,
     `packages/core/nros-c/include/nros/action.h`
-  - **Goal**: Call `Executor::active_goal_raw` through `ActionServerInternal`.
-    Return `NROS_RET_NOT_FOUND` for retired goals instead of returning
-    stale `SUCCEEDED` / `ABORTED` cached status.
+  - **Goal**: New public C function: reads `goal->server`, pulls
+    `ActionServerInternal.{handle, executor_ptr}`, calls
+    `handle.goal_status(executor, &GoalId { uuid: goal.uuid.uuid })`.
+    Returns `NROS_RET_NOT_FOUND` for retired goals instead of a
+    spuriously-cached terminal status.
 
-- [ ] 83.4 — nros-c: simplify goal / accepted trampolines
+- [ ] 83.5 — nros-c: simplify trampolines and lifecycle APIs
   - **Files**: `packages/core/nros-c/src/action/server.rs`
-  - **Goal**: Remove the "fill C goal slot" and "increment
-    active_goal_count" blocks from the trampolines. They become pure ABI
-    shims that call the user's C callback and return the response.
-    Keep the existing `accepted_callback` post-accept hook intact.
+  - **Goal**: Goal / accepted / cancel trampolines stop writing
+    `status` and `active` into the slot. Slot reclamation uses the
+    arena: a slot is free when its UUID is no longer in `active_goals`
+    (queried via `handle.goal_status`). `nros_action_succeed` / `abort`
+    / `cancel_accept` drop all `goal->status = X` / `goal->active = false`
+    / `count -= 1` blocks and just call the arena. Keep the existing
+    `accepted_callback` post-accept hook intact.
 
-- [ ] 83.5 — nros-cpp: add callback-based action server API
+- [ ] 83.6 — Step 1 verification: unit + native integration tests
+  - **Files**: `packages/testing/nros-tests/tests/action_server.rs` (new),
+    existing native action-server tests
+  - **Goal**: Add a regression test that calls
+    `nros_action_get_goal_status` for a retired goal and asserts
+    `NROS_RET_NOT_FOUND`. Run `just check` + `just test-unit` +
+    `just native test` and confirm no regression in existing
+    action-server coverage (native POSIX, FreeRTOS QEMU via the
+    existing `just freertos test` if available in the dev loop).
+
+### Step 2 — Option 2: ID-card handle + stateless server (queued)
+
+Step 2 lands as its own PR after Step 1 is verified on every platform.
+It's a hard source break for every action-server user; every in-repo
+example + test migrates in the same diff. No deprecation shim.
+
+- [ ] 83.7 — nros-c: collapse `nros_goal_handle_t` to `{ uuid }`
+  - **Files**: `packages/core/nros-c/src/action/common.rs`,
+    `packages/core/nros-c/include/nros/action.h`
+  - **Goal**: Drop the `context` and `server` fields. Handle becomes a
+    pure ID card, copyable by value. Trampolines build a stack-local
+    per invocation; users copy into their own storage if they need it
+    past the callback.
+
+- [ ] 83.8 — nros-c: drop `goals[N]` array from `nros_action_server_t`
+  - **Files**: `packages/core/nros-c/src/action/server.rs`,
+    `packages/core/nros-c/include/nros/action.h`
+  - **Goal**: Server struct holds metadata + handle opaque storage
+    only. `NROS_MAX_CONCURRENT_GOALS` still governs the arena's
+    template parameter but no longer sizes a C-side array.
+
+- [ ] 83.9 (Step 2) — nros-c: callback + operation signatures take
+      `(server, goal, ...)`
+  - **Files**: `packages/core/nros-c/src/action/{common,server}.rs`,
+    `packages/core/nros-c/include/nros/action.h`
+  - **Goal**: Every callback receives `nros_action_server_t *server` +
+    `const nros_goal_uuid_t *` or `const nros_goal_handle_t *`. Every
+    `nros_action_*` operation takes `server` as the first argument and
+    `const nros_goal_handle_t *` as the second. All examples migrated
+    in the same commit.
+
+- [ ] 83.10 (Step 2) — Migrate every in-repo C action-server example
+  - **Files**: `examples/native/c/zenoh/action-server/src/main.c` and
+    ~9 sibling files across `qemu-arm-{freertos,nuttx}`,
+    `qemu-riscv64-threadx`, `threadx-linux`, `zephyr/c/{zenoh,xrce}`,
+    `native/c/xrce`
+  - **Goal**: Update callback signatures, insert `server` arg on every
+    `nros_action_*` call, move per-goal context to user-side
+    `{uuid → state}` storage.
+
+- [ ] 83.11 (Step 2) — nros-cpp: add callback-based action-server API
   - **Files**: `packages/core/nros-cpp/include/nros/action_server.hpp`,
     `packages/core/nros-cpp/src/action.rs` (FFI)
   - **Goal**: New `set_goal_callback` / `set_cancel_callback` on
     `ActionServer<A>`, typed in terms of `A::Goal` via the existing
-    `NROS_TRY`-style codegen. Trampolines dispatch to `std::function` when
+    codegen. Trampolines dispatch to `std::function` when
     `NROS_CPP_STD` is defined, plain function pointers otherwise.
 
-- [ ] 83.6 — nros-cpp: add `for_each_active_goal` iterator
+- [ ] 83.12 (Step 2) — nros-cpp: add `for_each_active_goal` iterator
   - **Files**: `packages/core/nros-cpp/include/nros/action_server.hpp`,
     `packages/core/nros-cpp/src/action.rs`
   - **Goal**: Template method that parses CDR goal bytes into `A::Goal`
-    and forwards `(uuid, status, goal)` to the user's visitor. Backed by
-    the new `for_each_active_goal_raw` FFI call.
+    and forwards `(uuid, status, goal)` to the user's visitor. Backed
+    by `ActionServerRawHandle::for_each_active_goal`.
 
-- [ ] 83.7 — nros-cpp: delete `PendingGoal[]` + auto-accept trampoline
-  - **Files**: `packages/core/nros-cpp/src/action.rs:25–94`,
-    related destruction + size-assertion sites
-  - **Goal**: Remove `struct PendingGoal`, the `pending` field on
-    `CppActionServer`, the auto-accept trampoline, and the
-    `nros_cpp_action_server_try_recv_goal` FFI entry. Shrink
-    `CppActionServer` — the opaque-storage estimate in `build.rs`
-    updates with it.
+- [ ] 83.13 (Step 2) — nros-cpp: delete `PendingGoal[]` + auto-accept
+      trampoline + `try_recv_goal`
+  - **Files**: `packages/core/nros-cpp/src/action.rs`,
+    related destruction + size-assertion sites,
+    `packages/core/nros-cpp/include/nros/action_server.hpp`
+  - **Goal**: Remove the C++-side goal queue, the auto-accept
+    trampoline, and the `nros_cpp_action_server_try_recv_goal` FFI
+    entry. Shrink `CppActionServer`; the opaque-storage estimate in
+    `build.rs` updates with it.
 
-- [ ] 83.8 — nros-cpp: migrate action-server examples
+- [ ] 83.14 (Step 2) — Migrate every in-repo C++ action-server example
   - **Files**: `examples/native/cpp/zenoh/action-server/src/main.cpp`,
     `examples/qemu-arm-freertos/cpp/zenoh/action-server/src/main.cpp`,
     `examples/zephyr/cpp/zenoh/action-server/src/main.cpp`
-  - **Goal**: Replace the old `try_recv_goal` polling loop with
-    `server.set_goal_callback([](uuid, goal){ return GoalResponse::AcceptAndExecute; })`
-    plus `server.for_each_active_goal(...)` for iteration. At least one
-    example (native) should show a non-auto-accept goal callback as
+  - **Goal**: Replace the `try_recv_goal` poll loop with
+    `set_goal_callback(...)` + `for_each_active_goal(...)`. At least
+    one example (native) shows a non-auto-accept goal callback as
     documentation.
 
-- [ ] 83.9 — nros-serdes: introduce `cdr_header` module
-  - **Files**: new `packages/core/nros-serdes/src/cdr_header.rs`,
-    `packages/core/nros-serdes/src/lib.rs` (module export)
-  - **Goal**: Publish `CDR_HEADER_LEN`, `CDR_HEADER_LE`, `strip_header`,
-    `prepend_header`. Add a Verus proof (or a plain unit test if Verus
-    is overkill) that `strip_header(prepend_header(buf))` is a no-op on
-    the tail.
-
-- [ ] 83.10 — nros-c: migrate all CDR header call sites
-  - **Files**: `packages/core/nros-c/src/action/client.rs:418–428,
-    472–486`, `packages/core/nros-c/src/action/server.rs:141–155,
-    431–433, 480–482`, `packages/core/nros-c/src/service.rs` (similar
-    sites), `packages/core/nros-c/src/publisher.rs` and
-    `packages/core/nros-c/src/subscription.rs` (audit for the same
-    magic bytes)
-  - **Goal**: Replace inline `[0x00, 0x01, 0x00, 0x00]` writes, bare
-    `4`-byte offsets, and `20`/`24` offsets documented as "CDR + UUID"
-    with named constants from `nros_serdes::cdr_header` + module-local
-    `const CDR_HEADER_PLUS_UUID: usize = CDR_HEADER_LEN + GOAL_ID_LEN;`.
-
-- [ ] 83.11 — nros-cpp: migrate all CDR header call sites
-  - **Files**: `packages/core/nros-cpp/src/action.rs:610–614, 823–826,
-    892, 948, 1151, 1172`, any equivalent sites in `service.rs` /
-    `publisher.rs` / `subscription.rs` surfaced by grep
-  - **Goal**: Same migration as 83.10 — no inline header bytes, no bare
-    `4`/`20`/`24` offsets. Use the Rust-side constants via
-    `use nros_serdes::cdr_header::*;` in the FFI staticlib.
-
-- [ ] 83.12 — Test coverage: stale-goal-status regression
-  - **Files**: `packages/testing/nros-tests/tests/action_server.rs`
-  - **Goal**: Test that calls `nros_action_get_goal_status` for a goal
-    the arena has retired and asserts `NROS_RET_NOT_FOUND`, not a
-    spuriously-cached terminal status. Exercises the Part-A fix
-    end-to-end.
-
-- [ ] 83.13 — Test coverage: C++ goal rejection works
+- [ ] 83.15 (Step 2) — Test coverage: C++ goal rejection works
   - **Files**: `packages/testing/nros-tests/tests/cpp_action.rs`
   - **Goal**: Test with a `set_goal_callback` that returns
     `GoalResponse::Reject` and asserts the client sees a rejection.
-    This case is currently untestable on the C++ side because the
-    auto-accept trampoline ignores the user's callback.
+    This case was untestable before Step 2 because the auto-accept
+    trampoline ignored the user's callback.
 
-- [ ] 83.14 — Thin-wrapper compliance audit re-run
+- [ ] 83.16 (Step 2) — Thin-wrapper compliance audit re-run
   - **Files**: `docs/design/thin-wrapper-audit.md` (new) — summary of
     the audit methodology and a checklist for future reviewers
-  - **Goal**: Document how the audit was run, the five findings, and the
-    resolution for each. Future code review uses this as the
-    compliance checklist so the same violations don't re-appear.
+  - **Goal**: Document how the audit was run, the original five
+    findings, and the resolution for each. Future code review uses this
+    as the compliance checklist so the same violations don't reappear.
 
 ## Acceptance Criteria
 
