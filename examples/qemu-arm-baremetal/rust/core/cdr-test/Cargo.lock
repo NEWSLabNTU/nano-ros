@@ -133,6 +133,7 @@ dependencies = [
  "nros-params",
  "nros-platform",
  "nros-rmw",
+ "nros-serdes",
 ]
 
 [[package]]

@@ -404,6 +404,7 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-zenoh",
+ "nros-serdes",
 ]
 
 [[package]]

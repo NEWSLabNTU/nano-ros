@@ -427,6 +427,7 @@ dependencies = [
  "nros-rmw-dds",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
+ "nros-serdes",
 ]
 
 [[package]]
