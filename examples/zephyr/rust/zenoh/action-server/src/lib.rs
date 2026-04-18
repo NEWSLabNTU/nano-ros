@@ -33,7 +33,7 @@ fn run() -> Result<(), NodeError> {
     // asynchronously after IPv4 assignment.
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
-    let config = ExecutorConfig::new("tcp/192.0.2.2:7456");
+    let config = ExecutorConfig::new("tcp/127.0.0.1:7456");
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;
     let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;

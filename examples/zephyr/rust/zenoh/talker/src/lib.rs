@@ -31,7 +31,7 @@ fn run() -> Result<(), NodeError> {
     // link reports up asynchronously after IPv4 assignment.
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
-    let config = ExecutorConfig::new("tcp/192.0.2.2:7456");
+    let config = ExecutorConfig::new("tcp/127.0.0.1:7456");
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("talker")?;
