@@ -2,7 +2,9 @@
 
 **Goal**: Bring C and C++ example and integration test coverage to parity with Rust across all platforms. Currently, C/C++ examples only exist on native (POSIX), Zephyr, and NuttX (C only). Multiple platforms lack C/C++ examples entirely, and no embedded platform has C/C++ integration tests.
 
-**Status**: In Progress (69.1–69.3, 69.5–69.9 done; 69.4 remaining)
+**Status**: In Progress (69.1–69.3, 69.5–69.9 done modulo the deferred
+C++ action examples below; 69.4 blocked on the NuttX `z_open` hang
+tracked separately)
 **Priority**: Medium
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 54.10 (FreeRTOS C examples, deferred)
 
@@ -97,12 +99,12 @@ C examples:
 - [x] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
 - [ ] 69.4 -- NuttX C integration tests (build tests pass; E2E tests timeout — z_open hang)
 
-C++ examples (4 per platform: talker, listener, service-server, service-client;
-action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`):
-- [x] 69.5 -- FreeRTOS C++ examples + integration tests
-- [x] 69.6 -- NuttX C++ examples + integration tests
-- [x] 69.7 -- ThreadX Linux C++ examples + integration tests
-- [x] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
+C++ examples (4 per platform initial; action-server/action-client added as
+Phase 77 / 83 unblocked them):
+- [x] 69.5 -- FreeRTOS C++ examples + integration tests (6 examples incl. actions)
+- [~] 69.6 -- NuttX C++ examples + integration tests (4 done; 2 action examples + tests pending)
+- [~] 69.7 -- ThreadX Linux C++ examples + integration tests (4 done; 2 action examples + tests pending)
+- [~] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests (4 examples + limited tests done; 2 action examples + full test coverage pending)
 
 Documentation:
 - [x] 69.9 -- Documentation
@@ -186,7 +188,7 @@ Add 4 C++ examples under `examples/qemu-arm-freertos/cpp/zenoh/` using `nros-cpp
 
 ### 69.6 -- NuttX C++ examples + integration tests
 
-Add 4 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/` using `nros-cpp` freestanding mode. Cross-compiles for `armv7a-nuttx-eabihf` via `nros-nuttx-ffi` cargo crate. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
+Add 4 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/` using `nros-cpp` freestanding mode. Cross-compiles for `armv7a-nuttx-eabihf` via `nros-nuttx-ffi` cargo crate.
 
 - [x] Create `examples/qemu-arm-nuttx/cmake/nuttx-platform.cmake` (NuttX codegen + `nuttx_build_example()`)
 - [x] Create `examples/qemu-arm-nuttx/cmake/armv7a-nuttx-toolchain.cmake`
@@ -195,10 +197,12 @@ Add 4 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/` using `nros-cpp` f
 - [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/listener/`
 - [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/service-server/`
 - [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/service-client/`
-- [ ] Add NuttX C++ build tests to `nuttx_qemu.rs`
-- [ ] Add NuttX C++ E2E pub/sub test
-- [ ] Add NuttX C++ E2E service test
-- [ ] Add action-server + action-client once `nros-cpp` has action support
+- [x] Add NuttX C++ build tests to `nuttx_qemu.rs` (`test_nuttx_cpp_{talker,listener,service_server,service_client}_builds`)
+- [x] Add NuttX C++ E2E pub/sub test (`test_nuttx_cpp_pubsub_e2e`)
+- [x] Add NuttX C++ E2E service test (`test_nuttx_cpp_service_e2e`)
+- [ ] Create `examples/qemu-arm-nuttx/cpp/zenoh/action-server/` (unblocked by Phase 83)
+- [ ] Create `examples/qemu-arm-nuttx/cpp/zenoh/action-client/` (unblocked by Phase 77 / 83)
+- [ ] Add NuttX C++ action build tests + E2E test
 
 ### 69.7 -- ThreadX Linux C++ examples + integration tests
 
@@ -214,16 +218,21 @@ Add 4 C++ examples under `examples/threadx-linux/cpp/zenoh/`. ThreadX Linux sim 
 - [x] Add ThreadX Linux C++ build tests to `threadx_linux.rs`
 - [x] Add ThreadX Linux C++ E2E pub/sub test
 - [x] Add ThreadX Linux C++ E2E service test
-- [ ] Add action-server + action-client once `nros-cpp` has action support
+- [ ] Create `examples/threadx-linux/cpp/zenoh/action-server/` (unblocked by Phase 83)
+- [ ] Create `examples/threadx-linux/cpp/zenoh/action-client/` (unblocked by Phase 77 / 83)
+- [ ] Add ThreadX Linux C++ action build tests + E2E test
 
 ### 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
 Add 4 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` using `nros-cpp` freestanding mode. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-- [x] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (+ 3 more C++ examples)
+- [x] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (+ listener, service-server, service-client)
 - [x] Add ThreadX RISC-V C++ build tests (talker, listener — pass)
 - [x] Add ThreadX RISC-V C++ E2E pubsub test (pass)
-- [ ] Add action-server + action-client once `nros-cpp` has action support
+- [ ] Add ThreadX RISC-V C++ service build + E2E tests
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/action-server/` (unblocked by Phase 83)
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/action-client/` (unblocked by Phase 77 / 83)
+- [ ] Add ThreadX RISC-V C++ action build tests + E2E test
 
 ### 69.9 -- Documentation
 
@@ -242,22 +251,29 @@ Add 4 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`. Cross-compi
 
 ## Example Count After Completion
 
-C++ counts are 4 per RTOS platform (no action examples until `nros-cpp`
-gains `ActionServer`/`ActionClient`). C counts are 6 (actions are alloc-free).
+With `nros-cpp` now providing `ActionServer` (Phase 83) and
+`ActionClient` (Phase 77), the C++ count is 6 per RTOS platform
+(talker, listener, service-server, service-client, action-server,
+action-client) — matching the C count and the Zephyr / native totals.
 
 | Platform              | Rust | C  | C++ | Total |
 |-----------------------|:----:|:--:|:---:|:-----:|
 | native (POSIX)        | 28   | 14 | 6   | 48    |
 | qemu-arm-baremetal    | 14   | -- | --  | 14    |
-| qemu-arm-freertos     | 6    |  6 |  4  | 16    |
-| qemu-arm-nuttx        | 6    |  6 |  4  | 16    |
+| qemu-arm-freertos     | 6    |  6 |  6  | 18    |
+| qemu-arm-nuttx        | 6    |  6 |  6  | 18    |
 | qemu-esp32-baremetal  | 2    | -- | --  | 2     |
-| qemu-riscv64-threadx  | 6    | +6 | +4  | 16    |
+| qemu-riscv64-threadx  | 6    | +6 | +6  | 18    |
 | esp32                 | 3    | -- | --  | 3     |
 | stm32f4               | 9    | -- | --  | 9     |
-| threadx-linux         | 6    | +6 | +4  | 16    |
+| threadx-linux         | 6    | +6 | +6  | 18    |
 | zephyr                | 7    | 12 | 6   | 25    |
-| **Total**             | 87   | 50 | 22  | 165   |
+| **Total**             | 87   | 50 | 28  | 171   |
+
+Live count (as of this phase doc update): C++ is at 4 on qemu-arm-nuttx,
+qemu-riscv64-threadx, and threadx-linux — the 6 missing examples
+(action-client + action-server per platform × 3 platforms) are the
+remaining 69.6 / 69.7 / 69.8 deliverables.
 
 ## Integration Test Count After Completion
 
