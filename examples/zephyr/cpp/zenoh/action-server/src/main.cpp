@@ -2,10 +2,9 @@
  * @file main.cpp
  * @brief Zephyr C++ action server example using nros-cpp API
  *
- * This example demonstrates a Fibonacci action server on Zephyr RTOS
- * using the nros C++ API (nros::init, nros::Node, nros::ActionServer<A>).
- * Uses manual-poll with spin_once() + try_recv_goal().
- * The nros module handles zenoh initialization and platform support.
+ * Callback-based action server: set_goal_callback registers a stateless
+ * goal handler that computes Fibonacci inline, publishing feedback and
+ * completing the goal before returning.
  */
 
 #include <zephyr/kernel.h>
@@ -22,9 +21,47 @@ extern "C" {
 
 LOG_MODULE_REGISTER(nros_cpp_action_server, LOG_LEVEL_INF);
 
-/* ============================================================================
- * Application
- * ============================================================================ */
+using Fibonacci = example_interfaces::action::Fibonacci;
+
+static nros::ActionServer<Fibonacci>* g_srv = nullptr;
+static int g_goal_count = 0;
+
+static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal) {
+    if (goal.order < 0 || goal.order >= 64) {
+        LOG_WRN("Goal rejected (order out of range): %d", goal.order);
+        return nros::GoalResponse::Reject;
+    }
+
+    g_goal_count++;
+    LOG_INF("Goal received: order=%d", goal.order);
+
+    int32_t a = 0;
+    int32_t b = 1;
+    Fibonacci::Result result;
+
+    for (int32_t i = 0; i < goal.order && i < 64; i++) {
+        result.sequence.push_back(a);
+
+        if (i > 0 && (i % 3 == 0 || i == goal.order - 1)) {
+            Fibonacci::Feedback fb;
+            for (uint32_t k = 0; k < result.sequence.length(); k++) {
+                fb.sequence.push_back(result.sequence[k]);
+            }
+            g_srv->publish_feedback(uuid, fb);
+        }
+
+        int32_t next = a + b;
+        a = b;
+        b = next;
+    }
+
+    if (g_srv->complete_goal(uuid, result).ok()) {
+        LOG_INF("Goal completed (sequence length=%d)", result.sequence.length());
+    } else {
+        LOG_ERR("Failed to complete goal");
+    }
+    return nros::GoalResponse::AcceptAndExecute;
+}
 
 int main(void)
 {
@@ -53,8 +90,8 @@ int main(void)
         return 1;
     }
 
-    /* Create action server (manual-poll) */
-    nros::ActionServer<example_interfaces::action::Fibonacci> srv;
+    /* Create action server (callback-based) */
+    nros::ActionServer<Fibonacci> srv;
     ret = node.create_action_server(srv, "/fibonacci");
     if (!ret.ok()) {
         LOG_ERR("Action server creation failed: %d", ret.raw());
@@ -62,55 +99,16 @@ int main(void)
         return 1;
     }
 
-    /* Spin + poll loop */
-    LOG_INF("Waiting for goal requests...");
+    g_srv = &srv;
+    srv.set_goal_callback(on_goal);
 
-    int goal_count = 0;
+    LOG_INF("Waiting for goal requests...");
 
     while (true) {
         nros::spin_once(100);
-
-        example_interfaces::action::Fibonacci::Goal goal;
-        uint8_t goal_id[16];
-        while (srv.try_recv_goal(goal, goal_id)) {
-            goal_count++;
-            LOG_INF("Goal received: order=%d", goal.order);
-
-            /* Compute Fibonacci sequence with feedback */
-            int32_t a = 0;
-            int32_t b = 1;
-
-            example_interfaces::action::Fibonacci::Result result;
-
-            for (int32_t i = 0; i < goal.order && i < 64; i++) {
-                result.sequence.push_back(a);
-
-                /* Publish feedback periodically */
-                if (i > 0 && (i % 3 == 0 || i == goal.order - 1)) {
-                    example_interfaces::action::Fibonacci::Feedback fb;
-                    for (uint32_t k = 0; k < result.sequence.length(); k++) {
-                        fb.sequence.push_back(result.sequence[k]);
-                    }
-                    srv.publish_feedback(goal_id, fb);
-                }
-
-                int32_t next = a + b;
-                a = b;
-                b = next;
-            }
-
-            /* Complete goal */
-            ret = srv.complete_goal(goal_id, result);
-            if (ret.ok()) {
-                LOG_INF("Goal completed (sequence length=%d)", result.sequence.length());
-            } else {
-                LOG_ERR("Failed to complete goal: %d", ret.raw());
-            }
-        }
     }
 
-    /* Cleanup (unreachable in this example) */
+    /* Unreachable */
     nros::shutdown();
-
     return 0;
 }

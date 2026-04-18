@@ -8,9 +8,7 @@ use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header};
 
 use super::common::*;
 use crate::config::ACTION_SERVER_INTERNAL_OPAQUE_U64S;
-use crate::constants::{
-    MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, NROS_MAX_CONCURRENT_GOALS,
-};
+use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 
@@ -63,12 +61,6 @@ pub struct nros_action_server_t {
     pub accepted_callback: nros_accepted_callback_t,
     /// User context pointer
     pub context: *mut c_void,
-    /// Goal handles — persistent storage for the `nros_goal_handle_t`
-    /// values passed to user callbacks. Holds identity only
-    /// (`{uuid, context, server}`); goal lifecycle state is owned by the
-    /// arena in `nros-node` and queried via
-    /// [`nros_action_get_goal_status`].
-    pub goals: [nros_goal_handle_t; NROS_MAX_CONCURRENT_GOALS],
     /// Pointer to parent node
     pub node: *const nros_node_t,
     /// Opaque inline storage for internal implementation
@@ -89,12 +81,6 @@ impl Default for nros_action_server_t {
             cancel_callback: None,
             accepted_callback: None,
             context: ptr::null_mut(),
-            goals: [
-                nros_goal_handle_t::default(),
-                nros_goal_handle_t::default(),
-                nros_goal_handle_t::default(),
-                nros_goal_handle_t::default(),
-            ],
             node: ptr::null(),
             _internal: [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S],
         }
@@ -115,9 +101,10 @@ pub(crate) struct ActionServerInternal {
     pub(crate) handle: Option<nros_node::ActionServerRawHandle>,
     /// Pointer to the internal Rust executor (`CExecutor`).
     pub(crate) executor_ptr: *mut c_void,
-    /// C goal callback from init.
+    /// C goal callback from init. Required.
     pub(crate) c_goal_callback: unsafe extern "C" fn(
-        *const nros_goal_uuid_t,
+        *mut nros_action_server_t,
+        *const nros_goal_handle_t,
         *const u8,
         usize,
         *mut c_void,
@@ -132,12 +119,26 @@ pub(crate) struct ActionServerInternal {
     pub(crate) server_ptr: *mut nros_action_server_t,
 }
 
+/// Build a stack-local `nros_goal_handle_t` from an arena-supplied UUID.
+///
+/// The handle is a pure ID card (`{uuid}`), so the trampolines can hand
+/// user callbacks a `*const nros_goal_handle_t` that's valid for the
+/// duration of the callback. Users copy the handle by value if they need
+/// the UUID beyond the callback's lifetime.
+unsafe fn handle_from_goal_id(goal_id: *const nros_core::GoalId) -> nros_goal_handle_t {
+    nros_goal_handle_t {
+        uuid: nros_goal_uuid_t {
+            uuid: (*goal_id).uuid,
+        },
+    }
+}
+
 /// Goal callback trampoline for nros-node.
 ///
-/// Wraps the C `nros_goal_callback_t` as a `RawGoalCallback`. On acceptance,
-/// reserves a `nros_goal_handle_t` slot whose UUID the arena hasn't retired
-/// and caches the new goal's UUID there. The `accepted_callback_trampoline`
-/// looks up the slot by UUID afterwards.
+/// Builds a stack-local `nros_goal_handle_t` from the incoming goal_id
+/// and forwards to the user's `c_goal_callback` with `(server, goal,
+/// request, len, ctx)`. The handle lives on this stack frame; users that
+/// need to reference the goal later copy it by value.
 pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     goal_id: *const nros_core::GoalId,
     goal_data: *const u8,
@@ -145,10 +146,7 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     context: *mut c_void,
 ) -> nros_core::GoalResponse {
     let internal = &*(context as *const ActionServerInternal);
-    let server = &mut *internal.server_ptr;
-
-    // GoalId and nros_goal_uuid_t are layout-compatible (both [u8; 16])
-    let uuid_ptr = goal_id as *const nros_goal_uuid_t;
+    let goal_handle = handle_from_goal_id(goal_id);
 
     // goal_data contains the full CDR request: [CDR_HDR][GoalId seq][UUID][goal_fields].
     // The C callback expects CDR-encoded goal data: [CDR_HDR][goal_fields].
@@ -167,105 +165,62 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
         (goal_data, goal_len)
     };
 
-    // Call the C goal callback with CDR-encoded goal data
-    let c_response = (internal.c_goal_callback)(uuid_ptr, cb_ptr, cb_len, internal.c_context);
+    let c_response = (internal.c_goal_callback)(
+        internal.server_ptr,
+        &goal_handle,
+        cb_ptr,
+        cb_len,
+        internal.c_context,
+    );
 
-    // Map C response to Rust GoalResponse
-    let response = match c_response {
-        nros_goal_response_t::NROS_GOAL_REJECT => return nros_core::GoalResponse::Reject,
+    match c_response {
+        nros_goal_response_t::NROS_GOAL_REJECT => nros_core::GoalResponse::Reject,
         nros_goal_response_t::NROS_GOAL_ACCEPT_AND_EXECUTE => {
             nros_core::GoalResponse::AcceptAndExecute
         }
         nros_goal_response_t::NROS_GOAL_ACCEPT_AND_DEFER => nros_core::GoalResponse::AcceptAndDefer,
-    };
-
-    // Goal was accepted — reserve a slot in `server.goals[]` so
-    // `accepted_callback_trampoline` can hand a `*mut nros_goal_handle_t`
-    // to the user callback. A slot is reusable if its UUID is no longer
-    // tracked by the arena (None from `goal_status`), or if it has never
-    // been used (zero UUID).
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let handle = match internal.handle {
-        Some(h) => h,
-        None => return response,
-    };
-    let slot = server.goals.iter_mut().find(|g| {
-        let slot_id = nros_core::GoalId { uuid: g.uuid.uuid };
-        g.uuid.uuid == [0; 16] || handle.goal_status(executor, &slot_id).is_none()
-    });
-    if let Some(slot) = slot {
-        slot.uuid = *uuid_ptr;
-        slot.context = ptr::null_mut();
-        slot.server = internal.server_ptr;
     }
-
-    response
 }
 
 /// Post-accept trampoline for nros-node.
 ///
 /// Invoked by the arena *after* `ActionServerCore::accept_goal` has sent
-/// the accept reply to the client. Finds the C-side goal slot matching
-/// `goal_id` and calls the user-supplied `c_accepted_callback`.
+/// the accept reply to the client. Forwards to the user's
+/// `c_accepted_callback` with a stack-local handle.
 pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
     goal_id: *const nros_core::GoalId,
     context: *mut c_void,
 ) {
     let internal = &*(context as *const ActionServerInternal);
-    let server = &mut *internal.server_ptr;
-    let uuid = (*goal_id).uuid;
-
-    let Some(slot) = server.goals.iter_mut().find(|g| g.uuid.uuid == uuid) else {
-        return;
-    };
-
     if let Some(cb) = internal.c_accepted_callback {
-        cb(slot as *mut _, internal.c_context);
+        let goal_handle = handle_from_goal_id(goal_id);
+        cb(internal.server_ptr, &goal_handle, internal.c_context);
     }
 }
 
 /// Cancel callback trampoline for nros-node.
 ///
-/// The Rust `RawCancelCallback` receives `(goal_id, status, context)`,
-/// while the C `nros_cancel_callback_t` receives `(goal_handle, context)`.
-/// This trampoline looks up the C-side goal slot by UUID and forwards to
-/// the user's cancel callback. Status transitions (CANCELING, etc.) are
-/// performed by the arena in `ActionServerCore` — this trampoline only
-/// translates the ABI.
+/// Forwards to the user's `c_cancel_callback` with a stack-local handle.
+/// Status transitions (CANCELING, etc.) are performed by the arena in
+/// `ActionServerCore`; this trampoline only translates the ABI.
 pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
     goal_id: *const nros_core::GoalId,
     _status: nros_core::GoalStatus,
     context: *mut c_void,
 ) -> nros_core::CancelResponse {
     let internal = &*(context as *const ActionServerInternal);
-    let server = &mut *internal.server_ptr;
 
-    // Find the C-side slot matching this goal_id (for identity only — the
-    // slot carries no authoritative state).
-    let goal_id_ref = &*goal_id;
-    let goal_slot = server
-        .goals
-        .iter_mut()
-        .find(|g| g.uuid.uuid == goal_id_ref.uuid);
+    let Some(cb) = internal.c_cancel_callback else {
+        // No cancel callback — accept by default.
+        return nros_core::CancelResponse::Ok;
+    };
 
-    match (internal.c_cancel_callback, goal_slot) {
-        (Some(cb), Some(goal)) => {
-            let c_response = cb(goal as *mut _, internal.c_context);
-            // C: REJECT=0, ACCEPT=1 ; Rust: Ok=0 (accepted), Rejected=1
-            match c_response {
-                nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_core::CancelResponse::Ok,
-                nros_cancel_response_t::NROS_CANCEL_REJECT => nros_core::CancelResponse::Rejected,
-            }
-        }
-        (None, _) => {
-            // No cancel callback — accept by default
-            nros_core::CancelResponse::Ok
-        }
-        (_, None) => {
-            // No matching slot — arena was asked to cancel something the
-            // C side never saw (stale or racing). Report UnknownGoal.
-            nros_core::CancelResponse::UnknownGoal
-        }
+    let goal_handle = handle_from_goal_id(goal_id);
+    let c_response = cb(internal.server_ptr, &goal_handle, internal.c_context);
+    // C: REJECT=0, ACCEPT=1 ; Rust: Ok=0 (accepted), Rejected=1
+    match c_response {
+        nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_core::CancelResponse::Ok,
+        nros_cancel_response_t::NROS_CANCEL_REJECT => nros_core::CancelResponse::Rejected,
     }
 }
 
@@ -376,13 +331,6 @@ pub unsafe extern "C" fn nros_action_server_init(
     server.context = context;
     server.node = node;
 
-    // Initialize goal slots with pointer back to server
-    let server_ptr = server as *mut nros_action_server_t;
-    for goal in server.goals.iter_mut() {
-        *goal = nros_goal_handle_t::default();
-        goal.server = server_ptr;
-    }
-
     // RMW entity creation is deferred to nros_executor_add_action_server()
     server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
@@ -390,24 +338,21 @@ pub unsafe extern "C" fn nros_action_server_init(
     NROS_RET_OK
 }
 
-/// Publish feedback for an executing goal.
+/// Publish feedback for an active goal.
 ///
 /// Delegates to `ActionServerRawHandle::publish_feedback_raw`; the arena
 /// enforces goal liveness and is the sole source of truth for lifecycle
 /// state.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_publish_feedback(
-    goal: *mut nros_goal_handle_t,
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
     feedback: *const u8,
     feedback_len: usize,
 ) -> nros_ret_t {
-    validate_not_null!(goal, feedback);
+    validate_not_null!(server, goal, feedback);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let handle = match internal.handle {
         Some(h) => h,
         None => return NROS_RET_NOT_INIT,
@@ -415,7 +360,7 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     let data = core::slice::from_raw_parts(feedback, feedback_len);
 
@@ -435,17 +380,14 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
 /// owns the active-goals vector and retires the goal there.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_succeed(
-    goal: *mut nros_goal_handle_t,
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    validate_not_null!(goal);
+    validate_not_null!(server, goal);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let handle = match internal.handle {
         Some(h) => h,
         None => return NROS_RET_NOT_INIT,
@@ -453,7 +395,7 @@ pub unsafe extern "C" fn nros_action_succeed(
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
         core::slice::from_raw_parts(result, result_len)
@@ -481,17 +423,14 @@ pub unsafe extern "C" fn nros_action_succeed(
 /// Delegates to `ActionServerRawHandle::complete_goal_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_abort(
-    goal: *mut nros_goal_handle_t,
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    validate_not_null!(goal);
+    validate_not_null!(server, goal);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let handle = match internal.handle {
         Some(h) => h,
         None => return NROS_RET_NOT_INIT,
@@ -499,7 +438,7 @@ pub unsafe extern "C" fn nros_action_abort(
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
         core::slice::from_raw_parts(result, result_len)
@@ -525,17 +464,14 @@ pub unsafe extern "C" fn nros_action_abort(
 /// Delegates to `ActionServerRawHandle::complete_goal_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_canceled(
-    goal: *mut nros_goal_handle_t,
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    validate_not_null!(goal);
+    validate_not_null!(server, goal);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let handle = match internal.handle {
         Some(h) => h,
         None => return NROS_RET_NOT_INIT,
@@ -543,7 +479,7 @@ pub unsafe extern "C" fn nros_action_canceled(
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
         core::slice::from_raw_parts(result, result_len)
@@ -571,21 +507,20 @@ pub unsafe extern "C" fn nros_action_canceled(
 /// `NROS_RET_OK` on success, `NROS_RET_NOT_INIT` if the server isn't
 /// registered.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_execute(goal: *mut nros_goal_handle_t) -> nros_ret_t {
-    validate_not_null!(goal);
+pub unsafe extern "C" fn nros_action_execute(
+    server: *mut nros_action_server_t,
+    goal: *const nros_goal_handle_t,
+) -> nros_ret_t {
+    validate_not_null!(server, goal);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let Some(handle) = internal.handle else {
         return NROS_RET_NOT_INIT;
     };
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     handle.set_goal_status(executor, &goal_id, nros_core::GoalStatus::Executing);
     NROS_RET_OK
@@ -620,28 +555,25 @@ pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
 /// Returns `NROS_RET_NOT_FOUND` if the arena has already retired the goal
 /// (completed + result delivered, or cancelled + acknowledged).
 ///
-/// This is the authoritative successor to the previous stale
-/// `goal->status` field: lifecycle transitions are driven by
+/// This is the authoritative successor to the removed `goal->status`
+/// field: lifecycle transitions are driven by
 /// `ActionServerArenaEntry::active_goals` and read back through this
 /// function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_get_goal_status(
+    server: *const nros_action_server_t,
     goal: *const nros_goal_handle_t,
     status: *mut nros_goal_status_t,
 ) -> nros_ret_t {
-    validate_not_null!(goal, status);
+    validate_not_null!(server, goal, status);
 
-    let goal = &*goal;
-    if goal.server.is_null() {
-        return NROS_RET_NOT_INIT;
-    }
-    let internal = get_internal(goal.server);
+    let internal = get_internal(server);
     let Some(handle) = internal.handle else {
         return NROS_RET_NOT_INIT;
     };
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
-        uuid: goal.uuid.uuid,
+        uuid: (*goal).uuid.uuid,
     };
     match handle.goal_status(executor, &goal_id) {
         Some(s) => {
@@ -682,11 +614,6 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
     core::ptr::drop_in_place(server._internal.as_mut_ptr() as *mut ActionServerInternal);
     server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
 
-    // Reset all goal handles
-    for goal in server.goals.iter_mut() {
-        *goal = nros_goal_handle_t::default();
-    }
-
     server.goal_callback = None;
     server.cancel_callback = None;
     server.accepted_callback = None;
@@ -722,7 +649,8 @@ mod verification {
 
     // Helper goal callback
     unsafe extern "C" fn dummy_goal_callback(
-        _uuid: *const nros_goal_uuid_t,
+        _server: *mut nros_action_server_t,
+        _goal: *const nros_goal_handle_t,
         _req: *const u8,
         _len: usize,
         _ctx: *mut core::ffi::c_void,
@@ -941,17 +869,24 @@ mod verification {
     #[kani::unwind(5)]
     fn action_publish_feedback_null_ptrs() {
         let feedback = [0u8; 8];
+        let goal = nros_goal_handle_t::default();
+
+        // NULL server
+        assert_eq!(
+            unsafe { nros_action_publish_feedback(ptr::null_mut(), &goal, feedback.as_ptr(), 8) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
 
         // NULL goal
+        let mut srv = nros_action_server_get_zero_initialized();
         assert_eq!(
-            unsafe { nros_action_publish_feedback(ptr::null_mut(), feedback.as_ptr(), 8) },
+            unsafe { nros_action_publish_feedback(&mut srv, ptr::null(), feedback.as_ptr(), 8) },
             NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL feedback
-        let mut goal = nros_goal_handle_t::default();
         assert_eq!(
-            unsafe { nros_action_publish_feedback(&mut goal, ptr::null(), 0) },
+            unsafe { nros_action_publish_feedback(&mut srv, &goal, ptr::null(), 0) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }
@@ -960,7 +895,7 @@ mod verification {
     #[kani::unwind(5)]
     fn goal_succeed_null_ptr() {
         assert_eq!(
-            unsafe { nros_action_succeed(ptr::null_mut(), ptr::null(), 0) },
+            unsafe { nros_action_succeed(ptr::null_mut(), ptr::null(), ptr::null(), 0) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }
@@ -969,7 +904,7 @@ mod verification {
     #[kani::unwind(5)]
     fn goal_abort_null_ptr() {
         assert_eq!(
-            unsafe { nros_action_abort(ptr::null_mut(), ptr::null(), 0) },
+            unsafe { nros_action_abort(ptr::null_mut(), ptr::null(), ptr::null(), 0) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }
@@ -978,7 +913,7 @@ mod verification {
     #[kani::unwind(5)]
     fn goal_canceled_null_ptr() {
         assert_eq!(
-            unsafe { nros_action_canceled(ptr::null_mut(), ptr::null(), 0) },
+            unsafe { nros_action_canceled(ptr::null_mut(), ptr::null(), ptr::null(), 0) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }

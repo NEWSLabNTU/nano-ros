@@ -57,6 +57,10 @@ typedef enum nros_cpp_qos_history_t {
   NROS_CPP_QOS_KEEP_ALL = 1,
 } nros_cpp_qos_history_t;
 
+typedef struct Option_CppCancelCallback Option_CppCancelCallback;
+
+typedef struct Option_CppGoalCallback Option_CppGoalCallback;
+
 /**
  * Return type for nros C++ FFI functions.
  */
@@ -614,26 +618,22 @@ nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
 nros_cpp_ret_t nros_cpp_action_server_register(void *storage, void *executor_handle);
 
 /**
- * Try to receive a pending goal request (non-blocking).
+ * Register callbacks on the action server.
  *
- * Goals are auto-accepted during `spin_once()`. This function returns
- * the next buffered goal request.
- *
- * # Parameters
- * * `handle` — Action server handle.
- * * `goal_buf` — Buffer to receive CDR-serialized goal data.
- * * `buf_len` — Size of the goal buffer.
- * * `goal_len` — Receives the actual goal data length (0 if no pending goal).
- * * `goal_id_out` — Receives the 16-byte goal UUID.
+ * The goal callback receives raw CDR goal bytes and returns `1`
+ * (AcceptAndExecute), `2` (AcceptAndDefer), or `0` (Reject). The cancel
+ * callback returns `1` (Accept) or `0` (Reject). Either callback may be
+ * null — a null goal callback causes every request to be rejected; a
+ * null cancel callback causes every cancel to be accepted. The C++
+ * template header translates typed callables into this raw-bytes form.
  *
  * # Safety
- * All pointers must be valid.
+ * `handle` must be a valid initialized action server storage.
  */
-nros_cpp_ret_t nros_cpp_action_server_try_recv_goal(void *handle,
-                                                    uint8_t *goal_buf,
-                                                    size_t buf_len,
-                                                    size_t *goal_len,
-                                                    uint8_t (*goal_id_out)[16]);
+nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void *handle,
+                                                    struct Option_CppGoalCallback goal_cb,
+                                                    struct Option_CppCancelCallback cancel_cb,
+                                                    void *ctx);
 
 /**
  * Publish feedback for an active goal.

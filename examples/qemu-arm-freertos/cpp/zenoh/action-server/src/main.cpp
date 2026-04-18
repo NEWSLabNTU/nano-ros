@@ -1,9 +1,55 @@
 /// @file main.cpp
-/// @brief C++ action server — Fibonacci on /fibonacci (FreeRTOS QEMU)
+/// @brief C++ action server — Fibonacci on /fibonacci (FreeRTOS QEMU, callback-based)
 
 #include <cstdio>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
+
+using Fibonacci = example_interfaces::action::Fibonacci;
+
+static nros::ActionServer<Fibonacci>* g_srv = nullptr;
+static int g_goal_count = 0;
+
+static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal) {
+    if (goal.order < 0 || goal.order >= 64) {
+        printf("Goal rejected (order out of range): %d\n", goal.order);
+        return nros::GoalResponse::Reject;
+    }
+
+    g_goal_count++;
+    printf("Goal request [%d]: order=%d\n", g_goal_count, goal.order);
+
+    Fibonacci::Feedback fb;
+    fb.sequence.size = 0;
+    for (int32_t i = 0; i <= goal.order; i++) {
+        int32_t val;
+        if (i == 0) val = 0;
+        else if (i == 1) val = 1;
+        else val = fb.sequence.data[i - 1] + fb.sequence.data[i - 2];
+        fb.sequence.data[i] = val;
+        fb.sequence.size = static_cast<uint32_t>(i + 1);
+
+        if (g_srv->publish_feedback(uuid, fb).ok()) {
+            printf("  Feedback: [");
+            for (uint32_t j = 0; j < fb.sequence.size; j++) {
+                if (j > 0) printf(", ");
+                printf("%d", fb.sequence.data[j]);
+            }
+            printf("]\n");
+        }
+    }
+
+    Fibonacci::Result result;
+    result.sequence.size = fb.sequence.size;
+    for (uint32_t i = 0; i < fb.sequence.size; i++) {
+        result.sequence.data[i] = fb.sequence.data[i];
+    }
+
+    if (g_srv->complete_goal(uuid, result).ok()) {
+        printf("  Goal SUCCEEDED\n");
+    }
+    return nros::GoalResponse::AcceptAndExecute;
+}
 
 extern "C" void app_main(void) {
     printf("nros C++ Action Server (FreeRTOS)\n");
@@ -15,64 +61,18 @@ extern "C" void app_main(void) {
     if (!ret.ok()) { printf("create_node failed\n"); nros::shutdown(); return; }
     printf("Node created\n");
 
-    nros::ActionServer<example_interfaces::action::Fibonacci> srv;
+    nros::ActionServer<Fibonacci> srv;
     ret = node.create_action_server(srv, "/fibonacci");
     if (!ret.ok()) { printf("create_action_server failed: %d\n", ret.raw()); nros::shutdown(); return; }
+
+    g_srv = &srv;
+    srv.set_goal_callback(on_goal);
 
     printf("Action server ready on /fibonacci\n");
     printf("Waiting for goals...\n");
 
-    int goal_count = 0;
     for (int poll = 0; poll < 50000; poll++) {
         nros::spin_once(10);
-
-        example_interfaces::action::Fibonacci::Goal goal;
-        uint8_t goal_id[16];
-        while (srv.try_recv_goal(goal, goal_id)) {
-            goal_count++;
-            printf("Goal request [%d]: order=%d\n", goal_count, goal.order);
-
-            if (goal.order < 0 || goal.order >= 64) {
-                printf("  -> order out of range, skipping\n");
-                continue;
-            }
-
-            // Compute Fibonacci and publish feedback
-            example_interfaces::action::Fibonacci::Feedback fb;
-            fb.sequence.size = 0;
-            for (int32_t i = 0; i <= goal.order; i++) {
-                int32_t val;
-                if (i == 0) val = 0;
-                else if (i == 1) val = 1;
-                else val = fb.sequence.data[i - 1] + fb.sequence.data[i - 2];
-                fb.sequence.data[i] = val;
-                fb.sequence.size = static_cast<uint32_t>(i + 1);
-
-                ret = srv.publish_feedback(goal_id, fb);
-                if (ret.ok()) {
-                    printf("  Feedback: [");
-                    for (uint32_t j = 0; j < fb.sequence.size; j++) {
-                        if (j > 0) printf(", ");
-                        printf("%d", fb.sequence.data[j]);
-                    }
-                    printf("]\n");
-                }
-            }
-
-            // Complete goal with final result
-            example_interfaces::action::Fibonacci::Result result;
-            result.sequence.size = fb.sequence.size;
-            for (uint32_t i = 0; i < fb.sequence.size; i++) {
-                result.sequence.data[i] = fb.sequence.data[i];
-            }
-
-            ret = srv.complete_goal(goal_id, result);
-            if (ret.ok()) {
-                printf("  Goal SUCCEEDED\n");
-            } else {
-                printf("  complete_goal failed: %d\n", ret.raw());
-            }
-        }
     }
 
     printf("Server shutting down.\n");

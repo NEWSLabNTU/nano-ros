@@ -7,9 +7,7 @@ use core::ffi::{c_char, c_void};
 use nros::GoalId;
 use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header};
 use nros_node::config::DEFAULT_RX_BUF_SIZE;
-use nros_node::limits::{
-    MAX_ACTION_NAME_LEN, MAX_CONCURRENT_GOALS, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN,
-};
+use nros_node::limits::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
@@ -23,32 +21,34 @@ use crate::{CPP_ACTION_CLIENT_OPAQUE_U64S, CPP_ACTION_SERVER_OPAQUE_U64S};
 // Action Server
 // ============================================================================
 
-/// A pending goal request buffered by the goal callback.
-struct PendingGoal {
-    goal_id: nros::GoalId,
-    data: [u8; DEFAULT_RX_BUF_SIZE],
-    data_len: usize,
-    occupied: bool,
-}
+/// Goal callback type invoked by the arena goal trampoline.
+///
+/// Receives raw CDR goal bytes — the C++ header layer deserializes them
+/// into the typed `A::Goal` before forwarding to the user's callback.
+/// Returns `1` for `AcceptAndExecute`, `2` for `AcceptAndDefer`, `0` for `Reject`.
+pub type CppGoalCallback = unsafe extern "C" fn(
+    goal_id: *const [u8; 16],
+    data: *const u8,
+    len: usize,
+    ctx: *mut c_void,
+) -> i32;
 
-impl Default for PendingGoal {
-    fn default() -> Self {
-        Self {
-            goal_id: nros::GoalId::default(),
-            data: [0u8; DEFAULT_RX_BUF_SIZE],
-            data_len: 0,
-            occupied: false,
-        }
-    }
-}
+/// Cancel callback type invoked by the arena cancel trampoline.
+///
+/// Returns `1` for `Accept`, `0` for `Reject`.
+pub type CppCancelCallback =
+    unsafe extern "C" fn(goal_id: *const [u8; 16], ctx: *mut c_void) -> i32;
 
 /// Internal state for the action server.
 ///
-/// The `pending` array is filled by the goal callback trampoline during `spin_once()`,
-/// and drained by `try_recv_goal()`.
+/// Holds the arena handle, the user-registered callbacks, and just enough
+/// metadata for register-after-create. No C++-side goal queue — the arena
+/// in `nros-node` owns all lifecycle state.
 pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
-    pending: [PendingGoal; MAX_CONCURRENT_GOALS],
+    goal_cb: Option<CppGoalCallback>,
+    cancel_cb: Option<CppCancelCallback>,
+    cb_ctx: *mut c_void,
     action_name: [u8; MAX_ACTION_NAME_LEN],
     _action_name_len: usize,
     type_name: [u8; MAX_TYPE_NAME_LEN],
@@ -64,7 +64,12 @@ const _: () = assert!(
     "CPP_ACTION_SERVER_OPAQUE_U64S too small for CppActionServer"
 );
 
-/// Goal callback trampoline — auto-accepts goals and buffers them for polling.
+/// Goal callback trampoline — forwards to the user's registered callback
+/// (if any) and returns `Reject` otherwise.
+///
+/// The request bytes arrive as the full CDR payload
+/// `[CDR_HDR][seq_prefix][UUID][fields]`; we strip the 24-byte framing so
+/// the user callback receives just `[CDR_HDR][fields]` (re-prepended).
 ///
 /// # Safety
 /// `context` must point to a valid `CppActionServer`.
@@ -74,37 +79,54 @@ unsafe extern "C" fn goal_callback_trampoline(
     goal_len: usize,
     context: *mut c_void,
 ) -> nros::GoalResponse {
-    let server = unsafe { &mut *(context as *mut CppActionServer) };
-    let id = unsafe { *goal_id };
+    let server = unsafe { &*(context as *const CppActionServer) };
+    let Some(cb) = server.goal_cb else {
+        return nros::GoalResponse::Reject;
+    };
 
-    // Find an empty slot in the pending queue
-    for slot in &mut server.pending {
-        if !slot.occupied {
-            slot.goal_id = id;
-            let copy_len = goal_len.min(DEFAULT_RX_BUF_SIZE);
-            unsafe {
-                core::ptr::copy_nonoverlapping(goal_data, slot.data.as_mut_ptr(), copy_len);
-            }
-            slot.data_len = copy_len;
-            slot.occupied = true;
-            return nros::GoalResponse::AcceptAndExecute;
-        }
+    // Incoming framing: [CDR_HDR][seq_prefix(4)][UUID(16)][goal_fields].
+    // User-facing framing: [CDR_HDR][goal_fields].
+    let framing_len = CDR_HEADER_LEN + 4 + GoalId::UUID_LEN;
+    let slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
+    let mut user_buf = [0u8; 512];
+    let (ptr, len) = if goal_len > framing_len {
+        let fields = &slice[framing_len..];
+        user_buf[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+        let copy_len = fields.len().min(user_buf.len() - CDR_HEADER_LEN);
+        user_buf[CDR_HEADER_LEN..CDR_HEADER_LEN + copy_len].copy_from_slice(&fields[..copy_len]);
+        (user_buf.as_ptr(), CDR_HEADER_LEN + copy_len)
+    } else {
+        (goal_data, goal_len)
+    };
+
+    let uuid_ptr = goal_id as *const [u8; 16];
+    let resp = unsafe { cb(uuid_ptr, ptr, len, server.cb_ctx) };
+    match resp {
+        1 => nros::GoalResponse::AcceptAndExecute,
+        2 => nros::GoalResponse::AcceptAndDefer,
+        _ => nros::GoalResponse::Reject,
     }
-
-    // No room — reject the goal
-    nros::GoalResponse::Reject
 }
 
-/// Cancel callback trampoline — accepts all cancel requests.
+/// Cancel callback trampoline — forwards to the user's registered
+/// callback, defaulting to `Accept` when none is set.
 ///
 /// # Safety
 /// `context` must point to a valid `CppActionServer`.
 unsafe extern "C" fn cancel_callback_trampoline(
-    _goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalId,
     _status: nros::GoalStatus,
-    _context: *mut c_void,
+    context: *mut c_void,
 ) -> nros::CancelResponse {
-    nros::CancelResponse::Ok
+    let server = unsafe { &*(context as *const CppActionServer) };
+    let Some(cb) = server.cancel_cb else {
+        return nros::CancelResponse::Ok;
+    };
+    let uuid_ptr = goal_id as *const [u8; 16];
+    match unsafe { cb(uuid_ptr, server.cb_ctx) } {
+        0 => nros::CancelResponse::Rejected,
+        _ => nros::CancelResponse::Ok,
+    }
 }
 
 /// Create an action server on a node.
@@ -158,7 +180,9 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
     let hash_len = hash_str.len().min(MAX_TYPE_HASH_LEN - 1);
     let mut server = CppActionServer {
         handle: None,
-        pending: Default::default(),
+        goal_cb: None,
+        cancel_cb: None,
+        cb_ctx: core::ptr::null_mut(),
         action_name: [0u8; MAX_ACTION_NAME_LEN],
         _action_name_len: name_len,
         type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -222,59 +246,31 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     }
 }
 
-/// Try to receive a pending goal request (non-blocking).
+/// Register callbacks on the action server.
 ///
-/// Goals are auto-accepted during `spin_once()`. This function returns
-/// the next buffered goal request.
-///
-/// # Parameters
-/// * `handle` — Action server handle.
-/// * `goal_buf` — Buffer to receive CDR-serialized goal data.
-/// * `buf_len` — Size of the goal buffer.
-/// * `goal_len` — Receives the actual goal data length (0 if no pending goal).
-/// * `goal_id_out` — Receives the 16-byte goal UUID.
+/// The goal callback receives raw CDR goal bytes and returns `1`
+/// (AcceptAndExecute), `2` (AcceptAndDefer), or `0` (Reject). The cancel
+/// callback returns `1` (Accept) or `0` (Reject). Either callback may be
+/// null — a null goal callback causes every request to be rejected; a
+/// null cancel callback causes every cancel to be accepted. The C++
+/// template header translates typed callables into this raw-bytes form.
 ///
 /// # Safety
-/// All pointers must be valid.
+/// `handle` must be a valid initialized action server storage.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal(
+pub unsafe extern "C" fn nros_cpp_action_server_set_callbacks(
     handle: *mut c_void,
-    goal_buf: *mut u8,
-    buf_len: usize,
-    goal_len: *mut usize,
-    goal_id_out: *mut [u8; 16],
+    goal_cb: Option<CppGoalCallback>,
+    cancel_cb: Option<CppCancelCallback>,
+    ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || goal_buf.is_null() || goal_len.is_null() || goal_id_out.is_null() {
+    if handle.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-
     let server = unsafe { &mut *(handle as *mut CppActionServer) };
-
-    // Find and consume the first pending goal
-    for slot in &mut server.pending {
-        if slot.occupied {
-            let len = slot.data_len;
-            if len <= buf_len {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(slot.data.as_ptr(), goal_buf, len);
-                    *goal_len = len;
-                    *goal_id_out = slot.goal_id.uuid;
-                }
-                slot.occupied = false;
-                return NROS_CPP_RET_OK;
-            } else {
-                unsafe {
-                    *goal_len = len;
-                }
-                return NROS_CPP_RET_ERROR;
-            }
-        }
-    }
-
-    // No pending goals
-    unsafe {
-        *goal_len = 0;
-    }
+    server.goal_cb = goal_cb;
+    server.cancel_cb = cancel_cb;
+    server.cb_ctx = ctx;
     NROS_CPP_RET_OK
 }
 

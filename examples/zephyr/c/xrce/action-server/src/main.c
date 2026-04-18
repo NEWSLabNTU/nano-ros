@@ -31,7 +31,7 @@ static nros_goal_response_t goal_callback(
 {
     (void)context;
 
-    example_interfaces_action_fibonacci_goal goal;
+    example_interfaces_action_fibonacci_goal goal_msg;
     if (example_interfaces_action_fibonacci_goal_deserialize(
             &goal, goal_request, goal_len) != 0) {
         LOG_ERR("Failed to deserialize goal");
@@ -39,9 +39,9 @@ static nros_goal_response_t goal_callback(
     }
 
     LOG_INF("Goal request: order=%d (uuid=%02x%02x...)",
-            goal.order, goal_uuid->uuid[0], goal_uuid->uuid[1]);
+            goal_msg.order, goal->uuid.uuid[0], goal->uuid.uuid[1]);
 
-    if (goal.order < 0 || goal.order >= 64) {
+    if (goal_msg.order < 0 || goal_msg.order >= 64) {
         LOG_INF("  -> REJECTED (order out of range)");
         return NROS_GOAL_REJECT;
     }
@@ -60,8 +60,9 @@ static nros_cancel_response_t cancel_callback(
     return NROS_CANCEL_ACCEPT;
 }
 
-static void accepted_callback(nros_goal_handle_t* goal, void* context)
+static void accepted_callback(nros_action_server_t* server, const nros_goal_handle_t* goal, void* context)
 {
+    (void)server;
     (void)context;
     g_goal_count++;
 
@@ -74,7 +75,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context)
      * For this example, we use a fixed order of 10. */
     int32_t order = 10;
 
-    nros_ret_t ret = nros_action_execute(goal);
+    nros_ret_t ret = nros_action_execute(server, goal);
     if (ret != NROS_RET_OK) {
         LOG_ERR("Failed to set executing state: %d", ret);
         return;
@@ -100,7 +101,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context)
         int32_t fb_len = example_interfaces_action_fibonacci_feedback_serialize(
             &fb, fb_buf, sizeof(fb_buf));
         if (fb_len > 0) {
-            ret = nros_action_publish_feedback(goal, fb_buf, (size_t)fb_len);
+            ret = nros_action_publish_feedback(server, goal, fb_buf, (size_t)fb_len);
             if (ret != NROS_RET_OK) {
                 LOG_ERR("Failed to publish feedback: %d", ret);
             }
@@ -118,7 +119,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context)
     int32_t result_len = example_interfaces_action_fibonacci_result_serialize(
         &result, result_buf, sizeof(result_buf));
     if (result_len > 0) {
-        ret = nros_action_succeed(goal, result_buf, (size_t)result_len);
+        ret = nros_action_succeed(server, goal, result_buf, (size_t)result_len);
         if (ret != NROS_RET_OK) {
             LOG_ERR("Failed to send result: %d", ret);
         } else {

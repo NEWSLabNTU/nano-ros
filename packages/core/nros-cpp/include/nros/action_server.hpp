@@ -14,8 +14,15 @@
 // FFI declarations (create is declared in node.hpp with full type info)
 extern "C" {
 typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_action_server_try_recv_goal(void* handle, uint8_t* goal_buf, size_t buf_len,
-                                                    size_t* goal_len, uint8_t goal_id_out[16]);
+
+typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
+                                            size_t len, void* ctx);
+typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+
+nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void* handle, nros_cpp_goal_callback_t goal_cb,
+                                                    nros_cpp_cancel_callback_t cancel_cb,
+                                                    void* ctx);
+
 nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void* handle, void* executor_handle,
                                                        const uint8_t goal_id[16],
                                                        const uint8_t* feedback_buf,
@@ -28,60 +35,75 @@ nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
 
 namespace nros {
 
+/// Goal acceptance response returned from the user's goal callback.
+enum class GoalResponse : int32_t {
+    Reject = 0,
+    AcceptAndExecute = 1,
+    AcceptAndDefer = 2,
+};
+
+/// Cancel acceptance response returned from the user's cancel callback.
+enum class CancelResponse : int32_t {
+    Reject = 0,
+    Accept = 1,
+};
+
 /// Typed action server for a ROS 2 action.
 ///
-/// Mirrors `rclcpp_action::Server<A>` (polling model). The action type `A` must provide
-/// nested `Goal`, `Result`, and `Feedback` types with `TYPE_NAME`, `TYPE_HASH`,
-/// `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and `ffi_deserialize()`.
-///
-/// Goals are auto-accepted during `spin_once()`. Use `try_recv_goal()` to poll
-/// for accepted goal requests, then `publish_feedback()` and `complete_goal()`
-/// to drive the action lifecycle.
+/// Mirrors `rclcpp_action::Server<A>` with a callback-based API. The
+/// action type `A` must provide nested `Goal`, `Result`, and `Feedback`
+/// types with `TYPE_NAME`, `TYPE_HASH`, `SERIALIZED_SIZE_MAX`,
+/// `ffi_serialize()`, and `ffi_deserialize()`.
 ///
 /// Usage:
 /// ```cpp
-/// nros::ActionServer<example_interfaces::action::Fibonacci> srv;
+/// using Fib = example_interfaces::action::Fibonacci;
+/// nros::ActionServer<Fib> srv;
 /// NROS_TRY(node.create_action_server(srv, "/fibonacci"));
-/// typename decltype(srv)::GoalType goal;
-/// uint8_t goal_id[16];
-/// if (srv.try_recv_goal(goal, goal_id)) {
-///     typename decltype(srv)::FeedbackType fb;
-///     fb.partial_sequence = ...;
-///     srv.publish_feedback(goal_id, fb);
-///     typename decltype(srv)::ResultType result;
-///     result.sequence = ...;
-///     srv.complete_goal(goal_id, result);
-/// }
+///
+/// srv.set_goal_callback(
+///     [](const uint8_t[16], const Fib::Goal& g) {
+///         if (g.order > 46) return nros::GoalResponse::Reject;
+///         return nros::GoalResponse::AcceptAndExecute;
+///     });
 /// ```
+///
+/// Callbacks must be stateless (empty-capture lambdas or plain function
+/// pointers). This is a freestanding C++14 library without `std::function`,
+/// so per-instance closure storage is not available.
 template <typename A> class ActionServer {
   public:
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
     using FeedbackType = typename A::Feedback;
 
-    /// Try to receive a pending goal request (non-blocking).
-    ///
-    /// Goals are auto-accepted during `spin_once()`. This returns the next
-    /// buffered goal.
-    ///
-    /// @param goal     Output goal struct (filled on success).
-    /// @param goal_id  Output 16-byte goal UUID (filled on success).
-    /// @return true if a goal was received and deserialized.
-    bool try_recv_goal(GoalType& goal, uint8_t goal_id[16]) {
-        if (!initialized_) return false;
+    /// User-facing typed goal callback signature.
+    using TypedGoalFn = GoalResponse (*)(const uint8_t uuid[16], const GoalType& goal);
+    /// User-facing typed cancel callback signature.
+    using TypedCancelFn = CancelResponse (*)(const uint8_t uuid[16]);
 
-        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
-        size_t len = 0;
-        nros_cpp_ret_t ret =
-            nros_cpp_action_server_try_recv_goal(storage_, buf, sizeof(buf), &len, goal_id);
-        if (ret != 0 || len == 0) return false;
-        if (GoalType::ffi_deserialize(buf, len, &goal) != 0) return false;
-        return true;
+    /// Register a typed goal callback.
+    ///
+    /// `F` must be a stateless callable that decays to `TypedGoalFn`
+    /// (empty-capture lambda or plain function pointer).
+    template <typename F> Result set_goal_callback(F f) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_goal_fn_ = TypedGoalFn(f);
+        return install_callbacks();
+    }
+
+    /// Register a cancel callback.
+    ///
+    /// `F` must be a stateless callable that decays to `TypedCancelFn`.
+    template <typename F> Result set_cancel_callback(F f) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_cancel_fn_ = TypedCancelFn(f);
+        return install_callbacks();
     }
 
     /// Publish feedback for an active goal.
     ///
-    /// @param goal_id  16-byte goal UUID from try_recv_goal().
+    /// @param goal_id  16-byte goal UUID from the goal callback.
     /// @param feedback Feedback to publish.
     /// @return Result indicating success or failure.
     Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& feedback) {
@@ -97,10 +119,6 @@ template <typename A> class ActionServer {
     }
 
     /// Complete a goal with a result.
-    ///
-    /// @param goal_id  16-byte goal UUID from try_recv_goal().
-    /// @param result   Result to send.
-    /// @return Result indicating success or failure.
     Result complete_goal(const uint8_t goal_id[16], const ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
@@ -125,10 +143,13 @@ template <typename A> class ActionServer {
 
     // Move semantics (non-copyable)
     ActionServer(ActionServer&& other)
-        : executor_(other.executor_), initialized_(other.initialized_) {
+        : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
+          user_cancel_fn_(other.user_cancel_fn_), initialized_(other.initialized_) {
         if (other.initialized_) {
             memcpy(storage_, other.storage_, sizeof(storage_));
             other.initialized_ = false;
+            // Re-install callbacks with our `this` pointer.
+            install_callbacks();
         }
     }
 
@@ -138,10 +159,13 @@ template <typename A> class ActionServer {
                 nros_cpp_action_server_destroy(storage_);
             }
             executor_ = other.executor_;
+            user_goal_fn_ = other.user_goal_fn_;
+            user_cancel_fn_ = other.user_cancel_fn_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
                 memcpy(storage_, other.storage_, sizeof(storage_));
                 other.initialized_ = false;
+                install_callbacks();
             }
         }
         return *this;
@@ -149,7 +173,9 @@ template <typename A> class ActionServer {
 
     /// Default constructor — creates an uninitialized action server.
     /// Use `Node::create_action_server()` to initialize.
-    ActionServer() : executor_(nullptr), initialized_(false) {}
+    ActionServer()
+        : executor_(nullptr), user_goal_fn_(nullptr), user_cancel_fn_(nullptr),
+          initialized_(false) {}
 
   private:
     ActionServer(const ActionServer&) = delete;
@@ -157,8 +183,43 @@ template <typename A> class ActionServer {
 
     friend class Node;
 
+    // ── C trampolines ───────────────────────────────────────────────
+    //
+    // `ctx` is a pointer to this `ActionServer<A>` instance, so the
+    // trampoline reads the user's stored function pointer via the
+    // instance's own fields — no shared mutable statics.
+
+    static int32_t goal_trampoline(const uint8_t goal_id[16], const uint8_t* data, size_t len,
+                                   void* ctx) {
+        auto* self = static_cast<ActionServer*>(ctx);
+        if (!self || self->user_goal_fn_ == nullptr) {
+            return static_cast<int32_t>(GoalResponse::Reject);
+        }
+        GoalType g;
+        if (GoalType::ffi_deserialize(data, len, &g) != 0) {
+            return static_cast<int32_t>(GoalResponse::Reject);
+        }
+        return static_cast<int32_t>(self->user_goal_fn_(goal_id, g));
+    }
+
+    static int32_t cancel_trampoline(const uint8_t goal_id[16], void* ctx) {
+        auto* self = static_cast<ActionServer*>(ctx);
+        if (!self || self->user_cancel_fn_ == nullptr) {
+            return static_cast<int32_t>(CancelResponse::Accept);
+        }
+        return static_cast<int32_t>(self->user_cancel_fn_(goal_id));
+    }
+
+    Result install_callbacks() {
+        nros_cpp_goal_callback_t gcb = user_goal_fn_ ? &goal_trampoline : nullptr;
+        nros_cpp_cancel_callback_t ccb = user_cancel_fn_ ? &cancel_trampoline : nullptr;
+        return Result(nros_cpp_action_server_set_callbacks(storage_, gcb, ccb, this));
+    }
+
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
     void* executor_; // Executor context needed for feedback/result operations
+    TypedGoalFn user_goal_fn_;
+    TypedCancelFn user_cancel_fn_;
     bool initialized_;
 };
 

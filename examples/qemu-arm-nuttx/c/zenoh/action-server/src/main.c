@@ -33,21 +33,22 @@ static struct {
     server_context_t ctx;
 } app;
 
-static nros_goal_response_t goal_callback(const nros_goal_uuid_t* goal_uuid,
+static nros_goal_response_t goal_callback(nros_action_server_t* server, const nros_goal_handle_t* goal,
                                           const uint8_t* goal_request, size_t goal_len,
                                           void* context) {
+    (void)server;
     (void)context;
 
-    example_interfaces_action_fibonacci_goal goal;
-    if (example_interfaces_action_fibonacci_goal_deserialize(&goal, goal_request, goal_len) != 0) {
+    example_interfaces_action_fibonacci_goal goal_msg;
+    if (example_interfaces_action_fibonacci_goal_deserialize(&goal_msg, goal_request, goal_len) != 0) {
         fprintf(stderr, "Failed to deserialize goal\n");
         return NROS_GOAL_REJECT;
     }
 
-    printf("Goal request: order=%d (uuid=%02x%02x...)\n", goal.order, goal_uuid->uuid[0],
-           goal_uuid->uuid[1]);
+    printf("Goal request: order=%d (uuid=%02x%02x...)\n", goal_msg.order, goal->uuid.uuid[0],
+           goal->uuid.uuid[1]);
 
-    if (goal.order < 0 || goal.order >= 64) {
+    if (goal_msg.order < 0 || goal_msg.order >= 64) {
         printf("  -> REJECTED (order out of range)\n");
         return NROS_GOAL_REJECT;
     }
@@ -56,13 +57,15 @@ static nros_goal_response_t goal_callback(const nros_goal_uuid_t* goal_uuid,
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
-static nros_cancel_response_t cancel_callback(nros_goal_handle_t* goal, void* context) {
+static nros_cancel_response_t cancel_callback(nros_action_server_t* server, const nros_goal_handle_t* goal, void* context) {
+    (void)server;
     (void)context;
     printf("Cancel request (uuid=%02x%02x...)\n", goal->uuid.uuid[0], goal->uuid.uuid[1]);
     return NROS_CANCEL_ACCEPT;
 }
 
-static void accepted_callback(nros_goal_handle_t* goal, void* context) {
+static void accepted_callback(nros_action_server_t* server, const nros_goal_handle_t* goal, void* context) {
+    (void)server;
     server_context_t* ctx = (server_context_t*)context;
     ctx->goal_count++;
 
@@ -70,7 +73,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context) {
 
     int32_t order = 10;
 
-    nros_ret_t ret = nros_action_execute(goal);
+    nros_ret_t ret = nros_action_execute(server, goal);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set executing state: %d\n", ret);
         return;
@@ -95,7 +98,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context) {
         int32_t fb_len =
             example_interfaces_action_fibonacci_feedback_serialize(&fb, fb_buf, sizeof(fb_buf));
         if (fb_len > 0) {
-            ret = nros_action_publish_feedback(goal, fb_buf, (size_t)fb_len);
+            ret = nros_action_publish_feedback(server, goal, fb_buf, (size_t)fb_len);
             if (ret == NROS_RET_OK) {
                 printf("  Feedback: [");
                 for (uint32_t j = 0; j < fb.sequence.size; j++) {
@@ -116,7 +119,7 @@ static void accepted_callback(nros_goal_handle_t* goal, void* context) {
     int32_t result_len = example_interfaces_action_fibonacci_result_serialize(&result, result_buf,
                                                                               sizeof(result_buf));
     if (result_len > 0) {
-        ret = nros_action_succeed(goal, result_buf, (size_t)result_len);
+        ret = nros_action_succeed(server, goal, result_buf, (size_t)result_len);
         if (ret == NROS_RET_OK) {
             printf("  Goal SUCCEEDED\n");
         }

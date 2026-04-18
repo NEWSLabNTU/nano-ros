@@ -87,30 +87,21 @@ pub struct nros_goal_uuid_t {
 // Goal Handle
 // ============================================================================
 
-/// Goal handle structure.
+/// Goal handle — a pure UUID identity card.
 ///
-/// Identity-only: carries the UUID, user context pointer, and a back-pointer
-/// to the owning server. Goal status and active-or-not are authoritatively
-/// owned by `nros-node`'s `ActionServerArenaEntry::active_goals`; query them
-/// via [`nros_action_get_goal_status`](super::nros_action_get_goal_status).
+/// Carries just the goal UUID. All lifecycle state (accepted, executing,
+/// cancelling, etc.) and per-goal context are managed outside the handle:
+/// status comes from the arena via
+/// [`nros_action_get_goal_status`](super::nros_action_get_goal_status);
+/// per-goal user context is tracked in caller-managed `{uuid → state}`
+/// storage. The handle is copyable by value — trampolines build a
+/// stack-local and pass it to user callbacks, and users can copy it into
+/// their own data structures to reference the goal later.
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
 pub struct nros_goal_handle_t {
     /// Goal UUID
     pub uuid: nros_goal_uuid_t,
-    /// User context pointer for this goal
-    pub context: *mut c_void,
-    /// Pointer back to the action server (internal)
-    pub server: *mut super::nros_action_server_t,
-}
-
-impl Default for nros_goal_handle_t {
-    fn default() -> Self {
-        Self {
-            uuid: nros_goal_uuid_t::default(),
-            context: core::ptr::null_mut(),
-            server: core::ptr::null_mut(),
-        }
-    }
 }
 
 // ============================================================================
@@ -118,9 +109,13 @@ impl Default for nros_goal_handle_t {
 // ============================================================================
 
 /// Goal request callback type.
+///
+/// Invoked when a client sends a new goal. Return `NROS_GOAL_REJECT`,
+/// `NROS_GOAL_ACCEPT_AND_EXECUTE`, or `NROS_GOAL_ACCEPT_AND_DEFER`.
 pub type nros_goal_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nros_goal_uuid_t,
+        server: *mut super::nros_action_server_t,
+        goal: *const nros_goal_handle_t,
         goal_request: *const u8,
         goal_len: usize,
         context: *mut c_void,
@@ -128,16 +123,28 @@ pub type nros_goal_callback_t = Option<
 >;
 
 /// Cancel request callback type.
+///
+/// Invoked when a client requests cancellation of an accepted goal.
+/// Return `NROS_CANCEL_ACCEPT` or `NROS_CANCEL_REJECT`.
 pub type nros_cancel_callback_t = Option<
     unsafe extern "C" fn(
-        goal: *mut nros_goal_handle_t,
+        server: *mut super::nros_action_server_t,
+        goal: *const nros_goal_handle_t,
         context: *mut c_void,
     ) -> nros_cancel_response_t,
 >;
 
 /// Goal accepted callback type.
-pub type nros_accepted_callback_t =
-    Option<unsafe extern "C" fn(goal: *mut nros_goal_handle_t, context: *mut c_void)>;
+///
+/// Invoked after the arena has sent the accept reply to the client.
+/// Use this to kick off goal execution.
+pub type nros_accepted_callback_t = Option<
+    unsafe extern "C" fn(
+        server: *mut super::nros_action_server_t,
+        goal: *const nros_goal_handle_t,
+        context: *mut c_void,
+    ),
+>;
 
 /// Goal response callback type (for async client).
 /// Called when the action server accepts or rejects a goal.
