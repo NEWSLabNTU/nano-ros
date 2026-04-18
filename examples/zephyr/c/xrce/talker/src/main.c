@@ -44,10 +44,11 @@ int main(void)
 
     /* Initialize support context */
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init(
+    nros_ret_t ret = nros_support_init_named(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-        CONFIG_NROS_DOMAIN_ID);
+        CONFIG_NROS_DOMAIN_ID,
+        "xrce_talker");
     if (ret != NROS_RET_OK) {
         LOG_ERR("Support init failed: %d", ret);
         return 1;

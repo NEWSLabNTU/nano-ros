@@ -26,7 +26,7 @@ extern "C" fn rust_main() {
 
 fn run() -> Result<(), NodeError> {
     // The locator for XRCE is "agent_addr:port" (no tcp/ prefix)
-    let config = ExecutorConfig::new("192.0.2.2:2018");
+    let config = ExecutorConfig::new("127.0.0.1:2018").node_name("xrce_talker");
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("xrce_talker")?;

@@ -65,6 +65,12 @@ SYS_INIT(register_l4_callback, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 int32_t xrce_zephyr_wait_network(int timeout_ms)
 {
+#ifdef CONFIG_NET_NATIVE_OFFLOADED_SOCKETS
+    /* NSOS (Native Sim Offloaded Sockets) uses host kernel networking
+     * directly — always ready, no L4 event needed. */
+    LOG_INF("Network ready (NSOS — host kernel sockets)");
+    return 0;
+#else
     bool already_up = false;
 
     if (k_sem_take(&net_l4_connected, K_NO_WAIT) == 0) {
@@ -89,6 +95,7 @@ int32_t xrce_zephyr_wait_network(int timeout_ms)
 #endif
 
     return 0;
+#endif /* CONFIG_NET_NATIVE_OFFLOADED_SOCKETS */
 }
 
 /* ============================================================================

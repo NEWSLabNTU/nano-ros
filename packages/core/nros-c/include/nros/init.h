@@ -96,6 +96,23 @@ nros_ret_t nros_support_init(struct nros_support_t* support, const char* locator
                              uint8_t domain_id);
 
 /**
+ * @brief Initialise the support context with a session name.
+ *
+ * Like nros_support_init(), but allows specifying a session name for
+ * XRCE-DDS key derivation. Different XRCE clients on the same agent
+ * MUST use different session names; otherwise the agent treats them
+ * as the same client and won't relay data between them.
+ *
+ * @param support       Pointer to a zero-initialized support context.
+ * @param locator       Middleware locator string, or NULL for default.
+ * @param domain_id     ROS domain ID (0–232).
+ * @param session_name  Session name for XRCE key derivation, or NULL for default.
+ */
+NROS_PUBLIC
+nros_ret_t nros_support_init_named(struct nros_support_t* support, const char* locator,
+                                   uint8_t domain_id, const char* session_name);
+
+/**
  * @brief Finalise the support context.
  *
  * Closes the middleware session and releases all resources.

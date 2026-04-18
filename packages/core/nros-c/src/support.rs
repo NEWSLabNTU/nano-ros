@@ -87,6 +87,32 @@ pub unsafe extern "C" fn nros_support_init(
     locator: *const c_char,
     domain_id: u8,
 ) -> nros_ret_t {
+    unsafe { nros_support_init_named(support, locator, domain_id, core::ptr::null()) }
+}
+
+/// Initialize the support context with a session name.
+///
+/// Like `nros_support_init`, but allows specifying a session name for
+/// XRCE-DDS. Different XRCE clients on the same agent MUST use different
+/// session names; otherwise the agent treats them as the same client and
+/// won't relay data between them.
+///
+/// # Parameters
+/// * `support` - Pointer to a zero-initialized support context
+/// * `locator` - Middleware locator string, or NULL for default
+/// * `domain_id` - ROS domain ID (0-232)
+/// * `session_name` - Session name for XRCE key derivation, or NULL for default
+///
+/// # Safety
+/// * `support` must be a valid pointer to a zero-initialized nros_support_t
+/// * `locator` and `session_name` must be valid null-terminated strings or NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_support_init_named(
+    support: *mut nros_support_t,
+    locator: *const c_char,
+    domain_id: u8,
+    session_name: *const c_char,
+) -> nros_ret_t {
     if support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -137,24 +163,35 @@ pub unsafe extern "C" fn nros_support_init(
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 
-        // Generate unique session name per process. XRCE derives the session key
-        // from the node_name — two processes with the same name would conflict
-        // on the same Agent.
-        #[cfg(feature = "std")]
-        let session_name = {
-            let mut buf = nros_core::heapless::String::<32>::new();
-            let _ =
-                core::fmt::Write::write_fmt(&mut buf, format_args!("nros_{}", std::process::id()));
-            buf
+        // Derive session name. XRCE uses this to generate a unique session key —
+        // two processes with the same name on the same agent will collide.
+        let name: nros_core::heapless::String<32> = if !session_name.is_null() {
+            // Use caller-provided name
+            let name_cstr = core::ffi::CStr::from_ptr(session_name);
+            nros_core::heapless::String::try_from(name_cstr.to_str().unwrap_or("nros"))
+                .unwrap_or_else(|_| nros_core::heapless::String::try_from("nros").unwrap())
+        } else {
+            // Auto-generate: use PID on std, fallback on no_std
+            #[cfg(feature = "std")]
+            {
+                let mut buf = nros_core::heapless::String::<32>::new();
+                let _ = core::fmt::Write::write_fmt(
+                    &mut buf,
+                    format_args!("nros_{}", std::process::id()),
+                );
+                buf
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                nros_core::heapless::String::try_from("nros").unwrap()
+            }
         };
-        #[cfg(not(feature = "std"))]
-        let session_name = nros_core::heapless::String::<32>::try_from("nros").unwrap();
 
         match nros::internals::open_session(
             locator_str,
             SessionMode::Client,
             support.domain_id as u32,
-            &session_name,
+            &name,
         ) {
             Ok(session) => {
                 // Write session directly into inline opaque storage
