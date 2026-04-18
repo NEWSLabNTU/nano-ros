@@ -2,9 +2,12 @@
 
 **Goal**: Bring C and C++ example and integration test coverage to parity with Rust across all platforms. Currently, C/C++ examples only exist on native (POSIX), Zephyr, and NuttX (C only). Multiple platforms lack C/C++ examples entirely, and no embedded platform has C/C++ integration tests.
 
-**Status**: In Progress (all C/C++ base examples + C++ action examples
-across 10 platforms landed; 69.4 NuttX C E2E blocked on the `z_open`
-→ `tcp_update_timer` hang investigation)
+**Status**: Complete — all C/C++ base + action examples across 10
+platforms landed. 69.4 NuttX C E2E unblocked by `1915c761` (usleep
+fallback for condvar hang) and `8b37cfeb` (`z_clock_t` size fix). All
+three NuttX C E2E tests pass on ARM QEMU. Remaining optional follow-ups
+(C++ action E2E on threadx-linux / riscv64-threadx, RISC-V C++ service
+tests) tracked under the respective work items but non-blocking.
 **Priority**: Medium
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 54.10 (FreeRTOS C examples, deferred)
 
@@ -97,7 +100,7 @@ C examples:
 - [x] 69.1 -- FreeRTOS C examples + integration tests
 - [x] 69.2 -- ThreadX Linux C examples + integration tests
 - [x] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
-- [ ] 69.4 -- NuttX C integration tests (build tests pass; E2E tests timeout — z_open hang)
+- [x] 69.4 -- NuttX C integration tests (all three E2E tests pass after `1915c761` + `8b37cfeb`)
 
 C++ examples (6 per platform now — 4 base + 2 action examples added as
 Phase 77 / 83 unblocked them):
@@ -168,9 +171,30 @@ The 6 NuttX C examples already exist under `examples/qemu-arm-nuttx/c/zenoh/`. A
 
 - [x] Add NuttX C build tests to `nuttx_qemu.rs` (all 6 build: talker, listener, service-server/client, action-server/client)
 - [x] Fix `nuttx_build_example()` to pass generated .c sources via `APP_EXTRA_SOURCES` env var to build.rs
-- [ ] Add NuttX C E2E pub/sub test (`test_nuttx_c_pubsub_e2e`) — currently times out (z_open hang on ARM QEMU)
-- [ ] Add NuttX C E2E service test (`test_nuttx_c_service_e2e`) — same z_open hang
-- [ ] Add NuttX C E2E action test (`test_nuttx_c_action_e2e`) — same z_open hang
+- [x] Add NuttX C E2E pub/sub test (`test_nuttx_c_pubsub_e2e`) — unblocked by `1915c761` (usleep fallback for the NuttX condvar hang)
+- [x] Add NuttX C E2E service test (`test_nuttx_c_service_e2e`) — unblocked by `8b37cfeb` (`z_clock_t` size mismatch between zpico-platform-shim and zenoh-pico's `struct timespec`)
+- [x] Add NuttX C E2E action test (`test_nuttx_c_action_e2e`) — unblocked by the same `z_clock_t` fix
+
+All three pass on ARM QEMU virt via slirp networking. The original
+`z_open` hang and the `tcp_update_timer` follow-up identified earlier
+in this phase's investigation were root-caused to two separate issues
+in zpico-platform-shim / zenoh-pico rather than NuttX itself:
+
+1. **Condvar hang**: `_z_condvar_wait_until` wraps NuttX's
+   watchdog-backed semaphore (`nxsem_clockwait_uninterruptible`) which
+   blocks forever. `1915c761` replaces it with `usleep` under
+   `ZENOH_NUTTX` — losing the early-wake optimisation but letting
+   `zpico_spin_once` tick.
+2. **`z_clock_t` size mismatch**: on NuttX, zenoh-pico's
+   `unix.h` defines `z_clock_t` as `struct timespec` (16 bytes on
+   32-bit ARM), but zpico-platform-shim used a 4-byte `usize`. Every
+   elapsed-time calculation read garbage, so
+   `_z_pending_query_process_timeout` immediately dropped every
+   in-flight query — the service/action client's
+   `get_reply_handler` never fired. `8b37cfeb` adds a
+   `skip-clock-symbols` feature in zpico-platform-shim and wires a
+   proper `struct timespec`-aware implementation for NuttX via
+   zpico-sys.
 
 ### 69.5 -- FreeRTOS C++ examples + integration tests
 

@@ -261,7 +261,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 41 | Iron type hash support | Not Started |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | nano-ros book (mdbook user guide) | Complete |
-| 69 | Cross-platform C/C++ examples + integration tests | In Progress (C/C++ base done on 10 platforms; 69.4 NuttX C E2E blocked on z_open hang; C++ action ports landing for nuttx/riscv64-threadx/threadx-linux + tests) |
+| 69 | Cross-platform C/C++ examples + integration tests | Complete (all 10 platforms; NuttX C E2E fixed via usleep + z_clock_t patches) |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
