@@ -156,6 +156,22 @@ Recommendation: **option 1 + option 3** together. Option 1 actually
 fixes the bug; option 3 prevents future drift where one language's
 tests hide failures from the other's.
 
+### Resolution (Phase 81, 2026-04-18)
+
+The root cause was **not** TAP contention — it was `pthread_create(thread, NULL, ...)`
+returning `EINVAL` (22) on Zephyr. NULL pthread attrs are not supported; Zephyr
+requires explicit stack via `pthread_attr_setstack`. The TCP connect and zenoh
+handshake both succeeded (confirmed via strace), but `z_open()` returned
+`_Z_ERR_SYSTEM_TASK_FAILED` (-79) when read/lease threads failed to start.
+
+Fixes applied:
+1. **NSOS** (Native Sim Offloaded Sockets) — host kernel BSD sockets instead of TAP
+2. **`nros_zephyr_task_create()`** C shim with `K_THREAD_STACK_ARRAY_DEFINE`
+3. **`NET_EVENT_L4_CONNECTED`** via Connection Manager for proper network readiness
+4. Zenoh locator `127.0.0.1:7456` (loopback, no bridge)
+
+Result: **27/27 Zephyr tests pass**.
+
 ### What *did* ship while chasing this
 
 `nros::platform::zephyr::wait_for_network(timeout_ms)` was added to the
