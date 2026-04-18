@@ -64,6 +64,15 @@ unsafe extern "C" {
         arg: *mut c_void,
     ) -> i32;
 
+    /// Thread creation with Zephyr-managed stacks (static allocation).
+    /// Avoids EINVAL from pthread_create(thread, NULL, ...) — Zephyr
+    /// requires explicit stack via pthread_attr_setstack.
+    pub fn nros_zephyr_task_create(
+        thread: *mut c_void,
+        entry: extern "C" fn(*mut c_void) -> *mut c_void,
+        arg: *mut c_void,
+    ) -> i32;
+
     pub fn pthread_join(thread: u32, retval: *mut *mut c_void) -> i32;
     pub fn pthread_detach(thread: u32) -> i32;
     pub fn pthread_cancel(thread: u32) -> i32;

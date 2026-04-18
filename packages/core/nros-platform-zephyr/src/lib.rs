@@ -200,13 +200,10 @@ impl ZephyrPlatform {
         // SAFETY: `unsafe extern "C" fn` and `extern "C" fn` share an ABI.
         let start: PthreadStart = unsafe { core::mem::transmute(entry) };
 
-        // Attr handling: zenoh-pico's zephyr/system.c picks a stack from a
-        // static `K_THREAD_STACK_ARRAY` of CONFIG_MAIN_STACK_SIZE slots and
-        // calls `pthread_attr_setstack`. We can't replicate that from Rust
-        // without allocating stacks, so we rely on Zephyr POSIX's default
-        // stack (CONFIG_POSIX_THREAD_DEFAULT_STACK_SIZE). Projects that need
-        // custom stacks must override via prj.conf.
-        let ret = unsafe { ffi::pthread_create(task, ptr::null(), start, arg) };
+        // Use nros_zephyr_task_create (C shim) which allocates a stack from
+        // a static K_THREAD_STACK_ARRAY. Zephyr's pthread_create requires
+        // explicit stack via pthread_attr_setstack — NULL attr returns EINVAL.
+        let ret = unsafe { ffi::nros_zephyr_task_create(task, start, arg) };
         if ret == 0 { 0 } else { -1 }
     }
 
