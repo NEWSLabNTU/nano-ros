@@ -265,12 +265,12 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
-| 76 | RTOS scheduling configuration via config.toml | Not Started |
+| 76 | RTOS scheduling configuration via config.toml | Complete (FreeRTOS; ThreadX/NuttX/Zephyr deferred to future work) |
 | 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1–77.5 done) |
 | 78 | Colcon build type (`nros.<lang>.<platform>`) | Not Started |
 | 79 | Unified platform abstraction layer | Complete |
 | 80 | Unified network interface for nros-platform | Not Started |
-| 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Not Started |
+| 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Complete (27/27 Zephyr tests pass) |
 | 82 | Blocking service client must take an executor | Complete |
 | 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete |
 
