@@ -27,9 +27,8 @@ static K_SEM_DEFINE(net_l4_connected, 0, 1);
 
 static struct net_mgmt_event_callback l4_cb;
 
-static void l4_event_handler(struct net_mgmt_event_callback *cb,
-                             uint32_t event, struct net_if *iface)
-{
+static void l4_event_handler(struct net_mgmt_event_callback* cb, uint32_t event,
+                             struct net_if* iface) {
     if (event == NET_EVENT_L4_CONNECTED) {
         k_sem_give(&net_l4_connected);
     }
@@ -37,11 +36,9 @@ static void l4_event_handler(struct net_mgmt_event_callback *cb,
 
 /* Register the L4 callback at boot, before any application code runs.
  * This ensures we don't miss the event if the interface comes up fast. */
-static int register_l4_callback(void)
-{
+static int register_l4_callback(void) {
     net_mgmt_init_event_callback(&l4_cb, l4_event_handler,
-                                 NET_EVENT_L4_CONNECTED |
-                                 NET_EVENT_L4_DISCONNECTED);
+                                 NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED);
     net_mgmt_add_event_callback(&l4_cb);
     return 0;
 }
@@ -58,7 +55,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     return 0;
 #else
     /* Native Zephyr net stack: wait for NET_EVENT_L4_CONNECTED */
-    struct net_if *iface = net_if_get_default();
+    struct net_if* iface = net_if_get_default();
     bool already_up = false;
 
     if (iface != NULL && net_if_is_up(iface) && net_if_is_carrier_ok(iface)) {
@@ -71,8 +68,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     if (!already_up) {
         LOG_INF("Waiting for network L4 connectivity (timeout %d ms)...", timeout_ms);
 
-        int ret = k_sem_take(&net_l4_connected,
-                             timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
+        int ret = k_sem_take(&net_l4_connected, timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
         if (ret != 0) {
             LOG_ERR("Network L4 not connected after %d ms", timeout_ms);
             return -1;
