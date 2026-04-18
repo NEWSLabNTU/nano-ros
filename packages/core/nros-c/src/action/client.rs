@@ -3,11 +3,22 @@
 use core::ffi::c_void;
 use core::ptr;
 
+use nros::GoalId;
+use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header};
+
 use super::common::*;
 use crate::config::ACTION_CLIENT_INTERNAL_OPAQUE_U64S;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
+
+/// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
+/// Mirrors the constant of the same name in `server.rs`.
+const GOAL_ID_SEQ_PREFIX_LEN: usize = 4;
+
+/// Bytes of CDR framing that precede feedback fields in a feedback message:
+/// CDR encapsulation header + GoalId sequence length prefix + UUID.
+const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + GoalId::UUID_LEN;
 
 // ============================================================================
 // Internal implementation
@@ -416,16 +427,13 @@ pub unsafe extern "C" fn nros_action_get_result(
             };
 
             // Prepend CDR header for C deserializer
-            let output_len = 4 + data_len;
+            let output_len = CDR_HEADER_LEN + data_len;
             if output_len > result_capacity {
                 return NROS_RET_ERROR;
             }
             let out = core::slice::from_raw_parts_mut(result, result_capacity);
-            out[0] = 0x00;
-            out[1] = 0x01;
-            out[2] = 0x00;
-            out[3] = 0x00;
-            out[4..4 + data_len].copy_from_slice(&BLK_RESULT_BUF[..data_len]);
+            let payload = write_cdr_le_header(out).expect("out_capacity >= CDR_HEADER_LEN");
+            payload[..data_len].copy_from_slice(&BLK_RESULT_BUF[..data_len]);
             *result_len = output_len;
             return NROS_RET_OK;
         }
@@ -465,25 +473,20 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
             if let Some(cb) = client.feedback_callback {
                 let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
 
-                // Feedback CDR layout: header (4) + GoalId seq_len (4) + UUID (16) = 24 bytes
-                // After offset 24: raw feedback fields (no CDR header, since
-                // the server strips it in nros_action_publish_feedback).
+                // Feedback wire layout: [CDR_HEADER][GoalId seq prefix][UUID][feedback fields].
                 // The C deserializer expects [CDR_HEADER][fields], so we
                 // prepend a CDR header in a stack buffer.
-                let fb_offset = 24usize;
-                let fb_fields_len = len.saturating_sub(fb_offset);
+                let fb_fields_len = len.saturating_sub(FEEDBACK_FRAMING_LEN);
 
                 if fb_fields_len > 0 {
                     let mut fb_buf = [0u8; 512];
-                    fb_buf[0] = 0x00;
-                    fb_buf[1] = 0x01;
-                    fb_buf[2] = 0x00;
-                    fb_buf[3] = 0x00;
-                    let copy_len = fb_fields_len.min(fb_buf.len() - 4);
-                    fb_buf[4..4 + copy_len].copy_from_slice(
-                        &core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
+                    let payload = write_cdr_le_header(&mut fb_buf).expect("fb_buf >= CDR_HEADER_LEN");
+                    let copy_len = fb_fields_len.min(payload.len());
+                    payload[..copy_len].copy_from_slice(
+                        &core.feedback_buffer_ref()
+                            [FEEDBACK_FRAMING_LEN..FEEDBACK_FRAMING_LEN + copy_len],
                     );
-                    cb(&uuid, fb_buf.as_ptr(), 4 + copy_len, client.context);
+                    cb(&uuid, fb_buf.as_ptr(), CDR_HEADER_LEN + copy_len, client.context);
                 } else {
                     cb(&uuid, ptr::null(), 0, client.context);
                 }
@@ -531,12 +534,8 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
     let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
     let goal_data = core::slice::from_raw_parts(goal, goal_len);
 
-    // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
-    let goal_fields = if goal_data.len() > 4 {
-        &goal_data[4..]
-    } else {
-        goal_data
-    };
+    // C serialize produces [CDR_HEADER][fields] — strip the header.
+    let goal_fields = strip_cdr_header(goal_data);
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
@@ -664,7 +663,12 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
         && let Some(cb) = client_ref.feedback_callback
     {
         let buf = core.feedback_buffer_ref();
-        let offset = 4 + 16; // CDR header + GoalId
+        // NOTE: this polling path uses CDR_HEADER + UUID (20 bytes) whereas
+        // `nros_action_try_recv_feedback` above uses CDR_HEADER + seq_prefix
+        // + UUID (24). The discrepancy is tracked as a Phase 83 audit finding
+        // — preserve current semantics until the feedback framing is unified
+        // inside `ActionClientCore`.
+        let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
         if total_len > offset {
             let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
             cb(

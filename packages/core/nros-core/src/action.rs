@@ -152,6 +152,9 @@ pub struct GoalId {
 }
 
 impl GoalId {
+    /// Length of the goal UUID in bytes (ROS 2 `unique_identifier_msgs/UUID`).
+    pub const UUID_LEN: usize = 16;
+
     /// Create a new GoalId from UUID bytes
     pub const fn new(uuid: [u8; 16]) -> Self {
         Self { uuid }

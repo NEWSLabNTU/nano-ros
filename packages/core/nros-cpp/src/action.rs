@@ -4,6 +4,8 @@
 
 use core::ffi::{c_char, c_void};
 
+use nros::GoalId;
+use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header};
 use nros_node::config::DEFAULT_RX_BUF_SIZE;
 use nros_node::limits::{
     MAX_ACTION_NAME_LEN, MAX_CONCURRENT_GOALS, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN,
@@ -607,14 +609,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
     let goal_data = unsafe { core::slice::from_raw_parts(goal_buf, goal_len) };
 
-    // C++ ffi_serialize produces [CDR_HEADER(4)][fields], but send_goal_blocking
+    // C++ ffi_serialize produces [CDR_HEADER][fields], but send_goal_blocking
     // expects raw fields only (it adds its own CDR header + GoalId).
-    // Skip the 4-byte CDR header from the serialized data.
-    let goal_fields = if goal_data.len() > 4 {
-        &goal_data[4..]
-    } else {
-        goal_data
-    };
+    let goal_fields = strip_cdr_header(goal_data);
 
     // Send goal via arena core (non-blocking)
     let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
@@ -820,9 +817,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
 
     match core.try_recv_feedback_raw() {
         Ok(Some((_goal_id, total_len))) => {
-            // Feedback buffer layout: CDR header (4) + GoalId (16) + feedback data
+            // Feedback buffer layout: [CDR_HEADER][UUID][feedback_fields]
             let buf = core.feedback_buffer_ref();
-            let offset = 4 + 16; // CDR header + UUID
+            let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
             if total_len > offset {
                 let data = &buf[offset..total_len];
                 if data.len() <= buf_len {
@@ -1017,11 +1014,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_async(
     let goal_data = unsafe { core::slice::from_raw_parts(goal_buf, goal_len) };
 
     // Strip CDR header (same as blocking variant)
-    let goal_fields = if goal_data.len() > 4 {
-        &goal_data[4..]
-    } else {
-        goal_data
-    };
+    let goal_fields = strip_cdr_header(goal_data);
 
     let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
         Some(c) => c,
@@ -1148,7 +1141,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
         && let Some(cb) = feedback_cb
     {
-        let offset = 4 + 16;
+        // [CDR_HEADER][UUID][feedback_fields]
+        let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
         if total_len > offset {
             let buf = core.feedback_buffer_ref();
             unsafe {

@@ -19,6 +19,7 @@ std = [
     "nros-rmw-xrce?/std",
     "nros-rmw-dds?/std",
     "nros-params/std",
+    "nros-serdes/std",
 ]
 alloc = [
     "nros-core/alloc",
@@ -26,6 +27,7 @@ alloc = [
     "nros-rmw/alloc",
     "nros-rmw-xrce?/alloc",
     "nros-params/alloc",
+    "nros-serdes/alloc",
 ]
 
 # RMW backend (select one)
@@ -121,6 +123,7 @@ nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-fea
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
+nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
 
 [dev-dependencies]
 

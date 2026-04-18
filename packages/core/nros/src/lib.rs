@@ -137,6 +137,14 @@ extern crate alloc;
 
 pub mod guide;
 
+/// CDR encapsulation constants and helpers for FFI layers that handle raw
+/// CDR bytes (e.g. nros-c, nros-cpp action and service paths).
+pub mod cdr {
+    pub use nros_serdes::{
+        CDR_BE_HEADER, CDR_HEADER_LEN, CDR_LE_HEADER, strip_cdr_header, write_cdr_le_header,
+    };
+}
+
 // Re-export core types
 pub use nros_core::{
     CdrReader, CdrWriter, Clock, ClockType, DeserError, Deserialize, Duration, Logger, MessageInfo,
