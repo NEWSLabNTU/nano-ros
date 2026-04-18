@@ -13,9 +13,7 @@
 //! Or: `cargo nextest run -p nros-tests --test threadx_linux`
 
 use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ZenohRouter, is_veth_bridge_available, is_zenohd_available, require_veth_bridge, require_zenohd,
-};
+use nros_tests::fixtures::{ZenohRouter, is_zenohd_available, require_zenohd};
 use nros_tests::platform;
 use nros_tests::process::{ManagedProcess, kill_process_group};
 use nros_tests::{TestError, TestResult, project_root};
@@ -35,35 +33,26 @@ fn is_threadx_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if NETX_DIR environment variable is set and points to a valid directory
-fn is_netx_available() -> bool {
-    std::env::var("NETX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("common/inc/nx_api.h").exists())
-        .unwrap_or(false)
-}
-
-/// Check if the TAP network driver is available
-fn is_tap_driver_available() -> bool {
+/// Check if the nsos-netx BSD shim source is available
+fn is_nsos_netx_available() -> bool {
     let root = project_root();
-    root.join("packages/drivers/tap-netx/src/nx_tap_network_driver.c")
+    root.join("packages/drivers/nsos-netx/src/nsos_netx.c")
         .exists()
 }
 
 /// Skip test if ThreadX build prerequisites are not available
+///
+/// ThreadX-Linux uses NSOS-style networking (nsos-netx forwards
+/// `nx_bsd_*` calls to host POSIX sockets), so no NetX Duo source
+/// or TAP/veth interface is needed for the build.
 fn require_threadx() -> bool {
     if !is_threadx_available() {
         eprintln!("Skipping test: THREADX_DIR not set or invalid");
         eprintln!("Run: just setup-threadx && source .envrc");
         return false;
     }
-    if !is_netx_available() {
-        eprintln!("Skipping test: NETX_DIR not set or invalid");
-        eprintln!("Run: just setup-threadx && source .envrc");
-        return false;
-    }
-    if !is_tap_driver_available() {
-        eprintln!("Skipping test: TAP network driver not found at packages/drivers/tap-netx/");
+    if !is_nsos_netx_available() {
+        eprintln!("Skipping test: nsos-netx not found at packages/drivers/nsos-netx/");
         return false;
     }
     true
@@ -72,16 +61,12 @@ fn require_threadx() -> bool {
 /// Skip test if full ThreadX E2E prerequisites are not available
 ///
 /// E2E tests require:
-/// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + TAP driver)
-/// 2. TAP bridge network (qemu-br + tap-tx0 + tap-tx1) — TAP interfaces
-///    are user-owned (created by `just setup-network`), so no CAP_NET_RAW
-///    or special caps are needed on the test binaries.
-/// 3. zenohd router (built from submodule)
+/// 1. ThreadX build prerequisites (THREADX_DIR + nsos-netx)
+/// 2. zenohd router (built from submodule)
+///
+/// No bridge / TAP / veth setup needed — nsos-netx uses host loopback.
 fn require_threadx_e2e() -> bool {
     if !require_threadx() {
-        return false;
-    }
-    if !require_veth_bridge() {
         return false;
     }
     if !require_zenohd() {
@@ -199,19 +184,15 @@ fn build_threadx_action_client() -> TestResult<&'static Path> {
 #[test]
 fn test_threadx_detection() {
     let threadx = is_threadx_available();
-    let netx = is_netx_available();
-    let tap_driver = is_tap_driver_available();
-    let veth_bridge = is_veth_bridge_available();
+    let nsos_netx = is_nsos_netx_available();
     let zenohd = is_zenohd_available();
     eprintln!("ThreadX available: {}", threadx);
-    eprintln!("NetX Duo available: {}", netx);
-    eprintln!("TAP driver available: {}", tap_driver);
-    eprintln!("veth bridge available: {}", veth_bridge);
+    eprintln!("nsos-netx available: {}", nsos_netx);
     eprintln!("zenohd available: {}", zenohd);
 }
 
 // =============================================================================
-// Build tests (require THREADX_DIR + NETX_DIR + TAP driver)
+// Build tests (require THREADX_DIR + nsos-netx)
 // =============================================================================
 
 #[test]
@@ -636,9 +617,6 @@ fn require_threadx_cpp_e2e() -> bool {
     if !require_threadx_cpp() {
         return false;
     }
-    if !require_veth_bridge() {
-        return false;
-    }
     if !require_zenohd() {
         return false;
     }
@@ -673,13 +651,11 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
             .display()
             .to_string()
     });
-    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/netxduo")
+    let nsos_netx_dir = std::env::var("NSOS_NETX_DIR").unwrap_or_else(|_| {
+        root.join("packages/drivers/nsos-netx")
             .display()
             .to_string()
     });
-    let tap_netx_dir = std::env::var("TAP_NETX_DIR")
-        .unwrap_or_else(|_| root.join("packages/drivers/tap-netx").display().to_string());
     let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
         root.join("packages/boards/nros-threadx-linux/config")
             .display()
@@ -700,8 +676,7 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
         &prefix_path,
         "-DNANO_ROS_PLATFORM=threadx_linux",
         &format!("-DTHREADX_DIR={threadx_dir}"),
-        &format!("-DNETX_DIR={netx_dir}"),
-        &format!("-DTAP_NETX_DIR={tap_netx_dir}"),
+        &format!("-DNSOS_NETX_DIR={nsos_netx_dir}"),
         &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
         &format!("-DTHREADX_APP_DEFINE={app_define}"),
         "-DCMAKE_BUILD_TYPE=Release"
@@ -952,9 +927,6 @@ fn require_threadx_c_e2e() -> bool {
     if !require_threadx_c() {
         return false;
     }
-    if !require_veth_bridge() {
-        return false;
-    }
     if !require_zenohd() {
         return false;
     }
@@ -989,13 +961,11 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
             .display()
             .to_string()
     });
-    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/netxduo")
+    let nsos_netx_dir = std::env::var("NSOS_NETX_DIR").unwrap_or_else(|_| {
+        root.join("packages/drivers/nsos-netx")
             .display()
             .to_string()
     });
-    let tap_netx_dir = std::env::var("TAP_NETX_DIR")
-        .unwrap_or_else(|_| root.join("packages/drivers/tap-netx").display().to_string());
     let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
         root.join("packages/boards/nros-threadx-linux/config")
             .display()
@@ -1016,8 +986,7 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
         &prefix_path,
         "-DNANO_ROS_PLATFORM=threadx_linux",
         &format!("-DTHREADX_DIR={threadx_dir}"),
-        &format!("-DNETX_DIR={netx_dir}"),
-        &format!("-DTAP_NETX_DIR={tap_netx_dir}"),
+        &format!("-DNSOS_NETX_DIR={nsos_netx_dir}"),
         &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
         &format!("-DTHREADX_APP_DEFINE={app_define}"),
         "-DCMAKE_BUILD_TYPE=Release"

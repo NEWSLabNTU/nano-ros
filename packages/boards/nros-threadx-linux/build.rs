@@ -1,13 +1,15 @@
 //! Build script for nros-threadx-linux
 //!
-//! Compiles the ThreadX kernel (Linux simulation port), NetX Duo stack,
-//! the Linux TAP network driver, and board-specific C glue into static
-//! libraries linked into the final binary.
+//! Compiles the ThreadX kernel (Linux simulation port), the nsos-netx
+//! BSD socket shim (forwards `nx_bsd_*` to host POSIX), and board-specific
+//! C glue into static libraries linked into the final binary.
+//!
+//! No NetX Duo TCP/IP stack is built — networking goes through the host
+//! kernel via nsos-netx.
 //!
 //! Environment variables (auto-set by justfile recipes):
-//!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
-//!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
-//!   TAP_NETX_DIR         — TAP network driver (default: packages/drivers/tap-netx)
+//!   THREADX_DIR  — ThreadX kernel source root (default: third-party/threadx/kernel)
+//!   NSOS_NETX_DIR — nsos-netx shim source (default: packages/drivers/nsos-netx)
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -24,17 +26,10 @@ fn main() {
         .expect("Could not resolve workspace root");
 
     let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
-    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
-    // Validate directories
     assert!(
         threadx_dir.join("common/inc").exists(),
         "ThreadX common/inc/ not found at {} — run `just setup-threadx`",
         threadx_dir.display()
-    );
-    assert!(
-        netx_dir.join("common/inc").exists(),
-        "NetX Duo common/inc/ not found at {} — run `just setup-threadx`",
-        netx_dir.display()
     );
 
     let threadx_port_dir = threadx_dir.join("ports/linux/gnu");
@@ -67,76 +62,46 @@ fn main() {
 
     threadx.compile("threadx");
 
-    // ---- Build NetX Duo ----
-    let mut netxduo = cc::Build::new();
-    configure_linux(&mut netxduo);
-    add_threadx_includes(&mut netxduo, &threadx_dir, &threadx_port_dir, &config_dir);
-    add_netx_includes(&mut netxduo, &netx_dir, &config_dir);
-
-    // All NetX Duo common sources
-    for entry in std::fs::read_dir(netx_dir.join("common/src")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "c") {
-            netxduo.file(&path);
-        }
-    }
-
-    // BSD socket addon
-    netxduo.file(netx_dir.join("addons/BSD/nxd_bsd.c"));
-
-    netxduo.compile("netxduo");
-
-    // ---- Build TAP network driver ----
-    let mut driver = cc::Build::new();
-    configure_linux(&mut driver);
-    add_threadx_includes(&mut driver, &threadx_dir, &threadx_port_dir, &config_dir);
-    add_netx_includes(&mut driver, &netx_dir, &config_dir);
-
-    let tap_netx_dir = env_path_or(
-        "TAP_NETX_DIR",
-        workspace_root.join("packages/drivers/tap-netx"),
+    // ---- Build nsos-netx (NetX BSD compatibility shim over POSIX) ----
+    let nsos_netx_dir = env_path_or(
+        "NSOS_NETX_DIR",
+        workspace_root.join("packages/drivers/nsos-netx"),
     );
-    let driver_src = tap_netx_dir.join("src/nx_tap_network_driver.c");
+    let nsos_src = nsos_netx_dir.join("src/nsos_netx.c");
     assert!(
-        driver_src.exists(),
-        "TAP network driver not found at {}",
-        driver_src.display()
+        nsos_src.exists(),
+        "nsos-netx not found at {}",
+        nsos_src.display()
     );
-    driver.include(tap_netx_dir.join("include"));
-    driver.file(&driver_src);
 
-    driver.compile("netxdriver");
+    let mut nsos = cc::Build::new();
+    configure_linux(&mut nsos);
+    nsos.include(nsos_netx_dir.join("include"));
+    nsos.file(&nsos_src);
+    nsos.compile("nsos_netx");
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        driver_src.display()
-    );
+    println!("cargo:rerun-if-changed={}", nsos_src.display());
 
     // ---- Build C glue (app_define.c) ----
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
-    add_netx_includes(&mut glue, &netx_dir, &config_dir);
-    glue.include(tap_netx_dir.join("include"));
     glue.file(manifest_dir.join("c/app_define.c"));
 
     glue.compile("glue");
 
     // ---- Link order (reverse dependency) ----
     println!("cargo:rustc-link-lib=static=glue");
-    println!("cargo:rustc-link-lib=static=netxdriver");
-    println!("cargo:rustc-link-lib=static=netxduo");
+    println!("cargo:rustc-link-lib=static=nsos_netx");
     println!("cargo:rustc-link-lib=static=threadx");
     println!("cargo:rustc-link-lib=pthread");
 
     // ---- Rerun triggers ----
     println!("cargo:rerun-if-changed=c/app_define.c");
     println!("cargo:rerun-if-changed=config/tx_user.h");
-    println!("cargo:rerun-if-changed=config/nx_user.h");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=TAP_NETX_DIR");
+    println!("cargo:rerun-if-env-changed=NSOS_NETX_DIR");
 }
 
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
@@ -150,8 +115,7 @@ fn configure_linux(build: &mut cc::Build) {
         .flag("-fdata-sections")
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
-        .define("TX_INCLUDE_USER_DEFINE_FILE", None)
-        .define("NX_INCLUDE_USER_DEFINE_FILE", None);
+        .define("TX_INCLUDE_USER_DEFINE_FILE", None);
     // Suppress common warnings in third-party code
     build.warnings(false);
 }
@@ -166,12 +130,4 @@ fn add_threadx_includes(
         .include(config_dir)
         .include(threadx_dir.join("common/inc"))
         .include(port_dir.join("inc"));
-}
-
-fn add_netx_includes(build: &mut cc::Build, netx_dir: &Path, config_dir: &Path) {
-    build
-        .include(config_dir)
-        .include(netx_dir.join("common/inc"))
-        .include(netx_dir.join("ports/linux/gnu/inc"))
-        .include(netx_dir.join("addons/BSD"));
 }

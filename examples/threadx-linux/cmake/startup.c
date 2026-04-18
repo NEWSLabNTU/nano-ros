@@ -38,6 +38,11 @@ extern void nros_threadx_set_config(
 
 int main(void)
 {
+    /* Line-buffer stdout so printf output is visible to test harnesses
+     * that pipe stdout (otherwise it would be fully buffered and only
+     * flushed at exit, losing all output on timeout/kill). */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     uint8_t ip[]      = APP_IP;
     uint8_t netmask[] = APP_NETMASK;
     uint8_t gateway[] = APP_GATEWAY;
