@@ -82,13 +82,46 @@ Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_ty
 
 | Function | Description |
 |----------|-------------|
-| `nros_action_server_init()` | Create action server |
-| `nros_action_publish_feedback(goal, feedback, size)` | Publish feedback to the client |
-| `nros_action_succeed(goal, result, size)` | Complete goal with success |
-| `nros_action_abort(goal, result, size)` | Abort goal |
-| `nros_action_canceled(goal, result, size)` | Mark goal as canceled |
+| `nros_action_server_init()` | Create action server (registers `goal`, `cancel`, `accepted` callbacks) |
+| `nros_action_execute(server, goal)` | Transition an accepted goal to `EXECUTING` |
+| `nros_action_publish_feedback(server, goal, feedback, size)` | Publish feedback to the client |
+| `nros_action_succeed(server, goal, result, size)` | Complete goal with success |
+| `nros_action_abort(server, goal, result, size)` | Abort goal |
+| `nros_action_canceled(server, goal, result, size)` | Mark goal as canceled |
+| `nros_action_get_goal_status(server, goal, &status)` | Read arena-authoritative status; `NROS_RET_NOT_FOUND` for retired goals |
+| `nros_action_server_get_active_goal_count(server)` | Count of active goals from the arena |
 
-**Callback registration:**
+**Goal handle (`nros_goal_handle_t`):** a pure identity card containing only the
+16-byte `uuid`. Per-goal user state (parsed goal data, progress, etc.) belongs
+in caller-managed `{uuid → state}` storage. The handle pointer passed to
+callbacks is valid only for the duration of that callback — copy it by value if
+you need to reference the goal later.
+
+**Server callback signatures** all receive the owning `server`, a
+`const nros_goal_handle_t *`, and a user `context`:
+
+```c
+nros_goal_response_t goal_callback(
+    nros_action_server_t* server,
+    const nros_goal_handle_t* goal,
+    const uint8_t* goal_request, size_t goal_len, void* context);
+
+nros_cancel_response_t cancel_callback(
+    nros_action_server_t* server,
+    const nros_goal_handle_t* goal, void* context);
+
+void accepted_callback(
+    nros_action_server_t* server,
+    const nros_goal_handle_t* goal, void* context);
+```
+
+Goal lifecycle (status, active-goal count) is owned by the arena in
+`nros-node`. The C struct does not duplicate it: there are no `status` /
+`active` fields on `nros_goal_handle_t`, and no `goals[]` / `active_goal_count`
+fields on `nros_action_server_t`. Always read status via
+`nros_action_get_goal_status`.
+
+**Client callback registration:**
 
 ```c
 nros_action_client_set_goal_response_callback(client, on_goal_accepted);
