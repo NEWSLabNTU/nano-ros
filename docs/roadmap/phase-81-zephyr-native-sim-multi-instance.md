@@ -2,7 +2,7 @@
 
 **Goal**: Make `just zephyr test` pass cleanly on all 27 tests by fixing the root cause that is currently masked in C++ suites and hard-failing in Rust suites.
 
-**Status**: Complete (26/27 Zephyr tests pass — was 23/27)
+**Status**: Complete (27/27 Zephyr tests pass — was 23/27)
 **Priority**: Medium
 **Depends on**: Phase 79 (nros-platform-zephyr landed in 79.16)
 
@@ -68,8 +68,8 @@ The Rust assertions in `packages/testing/nros-tests/tests/zephyr.rs:161` `panic!
   - [x] 81.2.6 — **26/27 Zephyr tests pass** (was 23/27) — all 4 previously failing multi-instance tests now pass
   - [x] 81.2.7 — Manual workflow works: `zenohd + talker` publishes successfully
 
-- [ ] 81.3 — Remaining: XRCE Rust talker/listener E2E (1 failure)
-  - [ ] 81.3.1 — `test_zephyr_xrce_rust_talker_listener` fails — likely needs same thread stack fix in `xrce_zephyr.c`
+- [x] 81.3 — XRCE Rust talker/listener E2E — fixed by NSOS locator change (127.0.0.1)
+  - [x] 81.3.1 — `test_zephyr_xrce_rust_talker_listener` now passes — **27/27 all pass**
 
 - [ ] 81.4 — Tighten C++ test assertions (deferred — all C++ tests pass now)
 - [ ] 81.5 — Guard against regression via nextest grouping (deferred — NSOS eliminates TAP contention)
