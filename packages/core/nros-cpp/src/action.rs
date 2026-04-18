@@ -4,6 +4,11 @@
 
 use core::ffi::{c_char, c_void};
 
+use nros_node::config::DEFAULT_RX_BUF_SIZE;
+use nros_node::limits::{
+    MAX_ACTION_NAME_LEN, MAX_CONCURRENT_GOALS, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN,
+};
+
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
     NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cstr_to_str,
@@ -12,20 +17,14 @@ use crate::{
 
 use crate::{CPP_ACTION_CLIENT_OPAQUE_U64S, CPP_ACTION_SERVER_OPAQUE_U64S};
 
-/// Buffer size for action messages.
-const ACTION_BUF_SIZE: usize = 1024;
-
 // ============================================================================
 // Action Server
 // ============================================================================
 
-/// Maximum number of pending (unpolled) goal requests.
-const MAX_PENDING_GOALS: usize = 4;
-
 /// A pending goal request buffered by the goal callback.
 struct PendingGoal {
     goal_id: nros::GoalId,
-    data: [u8; ACTION_BUF_SIZE],
+    data: [u8; DEFAULT_RX_BUF_SIZE],
     data_len: usize,
     occupied: bool,
 }
@@ -34,7 +33,7 @@ impl Default for PendingGoal {
     fn default() -> Self {
         Self {
             goal_id: nros::GoalId::default(),
-            data: [0u8; ACTION_BUF_SIZE],
+            data: [0u8; DEFAULT_RX_BUF_SIZE],
             data_len: 0,
             occupied: false,
         }
@@ -47,12 +46,12 @@ impl Default for PendingGoal {
 /// and drained by `try_recv_goal()`.
 pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
-    pending: [PendingGoal; MAX_PENDING_GOALS],
-    action_name: [u8; 256],
+    pending: [PendingGoal; MAX_CONCURRENT_GOALS],
+    action_name: [u8; MAX_ACTION_NAME_LEN],
     _action_name_len: usize,
-    type_name: [u8; 256],
+    type_name: [u8; MAX_TYPE_NAME_LEN],
     _type_name_len: usize,
-    type_hash: [u8; 256],
+    type_hash: [u8; MAX_TYPE_HASH_LEN],
     _type_hash_len: usize,
 }
 
@@ -80,7 +79,7 @@ unsafe extern "C" fn goal_callback_trampoline(
     for slot in &mut server.pending {
         if !slot.occupied {
             slot.goal_id = id;
-            let copy_len = goal_len.min(ACTION_BUF_SIZE);
+            let copy_len = goal_len.min(DEFAULT_RX_BUF_SIZE);
             unsafe {
                 core::ptr::copy_nonoverlapping(goal_data, slot.data.as_mut_ptr(), copy_len);
             }
@@ -152,17 +151,17 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
 
     // Store metadata only — transport handles are created in
     // nros_cpp_action_server_register (called by Node::create_action_server).
-    let name_len = act_str.len().min(255);
-    let type_len = type_str.len().min(255);
-    let hash_len = hash_str.len().min(255);
+    let name_len = act_str.len().min(MAX_ACTION_NAME_LEN - 1);
+    let type_len = type_str.len().min(MAX_TYPE_NAME_LEN - 1);
+    let hash_len = hash_str.len().min(MAX_TYPE_HASH_LEN - 1);
     let mut server = CppActionServer {
         handle: None,
         pending: Default::default(),
-        action_name: [0u8; 256],
+        action_name: [0u8; MAX_ACTION_NAME_LEN],
         _action_name_len: name_len,
-        type_name: [0u8; 256],
+        type_name: [0u8; MAX_TYPE_NAME_LEN],
         _type_name_len: type_len,
-        type_hash: [0u8; 256],
+        type_hash: [0u8; MAX_TYPE_HASH_LEN],
         _type_hash_len: hash_len,
     };
     server.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
@@ -420,7 +419,7 @@ pub(crate) struct CppActionClient {
     callbacks: CppActionClientCallbacks,
     arena_entry_index: i32,
     executor_ptr: *mut c_void,
-    action_name: [u8; 256],
+    action_name: [u8; MAX_ACTION_NAME_LEN],
     _action_name_len: usize,
 }
 
@@ -566,12 +565,12 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
         Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
     };
 
-    let name_len = act_str.len().min(255);
+    let name_len = act_str.len().min(MAX_ACTION_NAME_LEN - 1);
     let mut client = CppActionClient {
         callbacks: CppActionClientCallbacks::default(),
         arena_entry_index: handle.entry_index() as i32,
         executor_ptr: node_ref.executor,
-        action_name: [0u8; 256],
+        action_name: [0u8; MAX_ACTION_NAME_LEN],
         _action_name_len: name_len,
     };
     client.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
@@ -730,7 +729,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // Flag-based: install temporary result callback, spin until flag set.
     static mut BLOCKING_RESULT_LEN: i32 = -1; // -1=pending, >=0=length
     static mut BLOCKING_RESULT_STATUS: i32 = 0;
-    static mut BLOCKING_RESULT_BUF: [u8; 1024] = [0u8; 1024];
+    static mut BLOCKING_RESULT_BUF: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
     unsafe {
         BLOCKING_RESULT_LEN = -1;
         BLOCKING_RESULT_STATUS = 0;
@@ -747,7 +746,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     ) {
         unsafe {
             BLOCKING_RESULT_STATUS = status;
-            let copy_len = len.min(1024);
+            let copy_len = len.min(DEFAULT_RX_BUF_SIZE);
             core::ptr::copy_nonoverlapping(data, BLOCKING_RESULT_BUF.as_mut_ptr(), copy_len);
             BLOCKING_RESULT_LEN = copy_len as i32;
         }

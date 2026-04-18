@@ -61,17 +61,22 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     // host `usize` underestimates sizes for 4-byte ARM targets.
     let ptr_bytes = target_pointer_bytes();
 
-    // PendingGoal { goal_id: GoalId(16), data: [u8; 1024], data_len: usize, occupied: bool }
+    // PendingGoal { goal_id: GoalId(16), data: [u8; DEFAULT_RX_BUF_SIZE], data_len: usize, occupied: bool }
     // Rust lays out fields in declaration order for non-repr(C) structs,
     // but may reorder for alignment. Compute a safe upper bound using the
     // struct's natural alignment (= alignment of its most-aligned field).
-    let action_buf_size = 1024usize; // ACTION_BUF_SIZE in action.rs
-    let max_pending_goals = 4usize; // MAX_PENDING_GOALS in action.rs
+    //
+    // All size constants below are sourced from `nros-node` (rx_buf via
+    // Cargo links metadata, layout caps via `nros_node::limits`). The 256
+    // here is `MAX_ACTION_NAME_LEN` / `MAX_TYPE_NAME_LEN` and also acts
+    // as an upper bound for `MAX_TYPE_HASH_LEN` (128).
+    let action_buf_size = dep_usize("DEP_NROS_NODE_RX_BUF_SIZE");
+    let max_pending_goals = 4usize; // = nros_node::limits::MAX_CONCURRENT_GOALS
     let pending_goal_size = align_up(16 + action_buf_size + ptr_bytes + 1, ptr_bytes);
-    // CppActionServer { handle: Option<Handle>, pending: [PendingGoal; 4],
-    //                    action_name: [u8; 256], _len: usize, ×3 for name/type/hash }
+    // CppActionServer { handle: Option<Handle>, pending: [PendingGoal; MAX_CONCURRENT_GOALS],
+    //                    action_name: [u8; MAX_ACTION_NAME_LEN], _len: usize, ×3 for name/type/hash }
     let handle_size = align_up(ptr_bytes + 4, ptr_bytes); // Option<ActionServerRawHandle> ~ usize + tag
-    let name_field_size = 256 + ptr_bytes; // [u8; 256] + usize len
+    let name_field_size = 256 + ptr_bytes; // MAX_ACTION_NAME_LEN + usize len
     // Add margin for Rust's flexible (non-repr(C)) struct layout — the compiler
     // may add inter-field padding that differs from our estimate. The compile-time
     // assertion in action.rs catches any undercount.
@@ -87,12 +92,12 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     let action_server_storage = action_server_opaque_u64s * 8;
 
     // CppActionClient { callbacks: CppActionClientCallbacks, arena_entry_index: i32,
-    //                    executor_ptr: *mut, action_name: [u8; 256], _action_name_len: usize }
+    //                    executor_ptr: *mut, action_name: [u8; MAX_ACTION_NAME_LEN], _action_name_len: usize }
     // CppActionClientCallbacks = 3 Option<fn> + context ptr
     // Each Option<fn> is 2 × ptr_bytes (function pointer + discriminant, aligned)
     let action_client_callbacks = 3 * (2 * ptr_bytes) + ptr_bytes;
     let action_client_bytes = align_up(
-        action_client_callbacks + 4 + ptr_bytes + 256 + ptr_bytes + 8 * ptr_bytes, // fields + layout padding
+        action_client_callbacks + 4 + ptr_bytes + 256 + ptr_bytes + 8 * ptr_bytes, // fields + layout padding (256 = MAX_ACTION_NAME_LEN)
         8,
     );
     let action_client_opaque_u64s = action_client_bytes.div_ceil(8);

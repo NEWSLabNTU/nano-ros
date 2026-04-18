@@ -2,6 +2,8 @@
 
 use core::ffi::{c_char, c_void};
 
+use nros_node::config::DEFAULT_RX_BUF_SIZE;
+use nros_node::limits::MAX_SERVICE_NAME_LEN;
 use nros_rmw::{ServiceClientTrait, ServiceInfo, ServiceServerTrait, Session};
 
 use crate::{
@@ -10,9 +12,6 @@ use crate::{
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
-/// Default receive buffer size for service requests/replies.
-const SERVICE_BUF_SIZE: usize = 1024;
-
 // ============================================================================
 // Service Server
 // ============================================================================
@@ -20,8 +19,8 @@ const SERVICE_BUF_SIZE: usize = 1024;
 /// Service server wrapper stored in caller-provided inline storage.
 pub(crate) struct CppServiceServer {
     handle: nros::internals::RmwServiceServer,
-    buffer: [u8; SERVICE_BUF_SIZE],
-    service_name: [u8; 256],
+    buffer: [u8; DEFAULT_RX_BUF_SIZE],
+    service_name: [u8; MAX_SERVICE_NAME_LEN],
     _service_name_len: usize,
 }
 
@@ -95,9 +94,9 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         Ok(handle) => {
             let mut server = CppServiceServer {
                 handle,
-                buffer: [0u8; SERVICE_BUF_SIZE],
-                service_name: [0u8; 256],
-                _service_name_len: svc_str.len().min(255),
+                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
+                service_name: [0u8; MAX_SERVICE_NAME_LEN],
+                _service_name_len: svc_str.len().min(MAX_SERVICE_NAME_LEN - 1),
             };
             server.service_name[..server._service_name_len]
                 .copy_from_slice(&svc_str.as_bytes()[..server._service_name_len]);
@@ -206,8 +205,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_destroy(storage: *mut c_void) -
 /// Service client wrapper stored in caller-provided inline storage.
 pub(crate) struct CppServiceClient {
     handle: nros::internals::RmwServiceClient,
-    buffer: [u8; SERVICE_BUF_SIZE],
-    service_name: [u8; 256],
+    buffer: [u8; DEFAULT_RX_BUF_SIZE],
+    service_name: [u8; MAX_SERVICE_NAME_LEN],
     _service_name_len: usize,
 }
 
@@ -279,9 +278,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
         Ok(handle) => {
             let mut client = CppServiceClient {
                 handle,
-                buffer: [0u8; SERVICE_BUF_SIZE],
-                service_name: [0u8; 256],
-                _service_name_len: svc_str.len().min(255),
+                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
+                service_name: [0u8; MAX_SERVICE_NAME_LEN],
+                _service_name_len: svc_str.len().min(MAX_SERVICE_NAME_LEN - 1),
             };
             client.service_name[..client._service_name_len]
                 .copy_from_slice(&svc_str.as_bytes()[..client._service_name_len]);

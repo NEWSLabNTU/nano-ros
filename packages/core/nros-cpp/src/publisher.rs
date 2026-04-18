@@ -2,6 +2,7 @@
 
 use core::ffi::{c_char, c_void};
 
+use nros_node::limits::MAX_TOPIC_LEN;
 use nros_rmw::{Publisher as PublisherTrait, Session, TopicInfo};
 
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
 /// Publisher wrapper stored in caller-provided inline storage.
 pub(crate) struct CppPublisher {
     handle: nros::internals::RmwPublisher,
-    topic_name: [u8; 256],
+    topic_name: [u8; MAX_TOPIC_LEN],
     topic_name_len: usize,
 }
 
@@ -92,8 +93,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         Ok(handle) => {
             let mut pub_handle = CppPublisher {
                 handle,
-                topic_name: [0u8; 256],
-                topic_name_len: topic_str.len().min(255),
+                topic_name: [0u8; MAX_TOPIC_LEN],
+                topic_name_len: topic_str.len().min(MAX_TOPIC_LEN - 1),
             };
             pub_handle.topic_name[..pub_handle.topic_name_len]
                 .copy_from_slice(&topic_str.as_bytes()[..pub_handle.topic_name_len]);

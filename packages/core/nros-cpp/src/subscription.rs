@@ -2,6 +2,8 @@
 
 use core::ffi::{c_char, c_void};
 
+use nros_node::config::DEFAULT_RX_BUF_SIZE;
+use nros_node::limits::MAX_TOPIC_LEN;
 use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo};
 
 use crate::{
@@ -10,14 +12,11 @@ use crate::{
     nros_cpp_ret_t,
 };
 
-/// Default receive buffer size (matches nros-node's DEFAULT_RX_BUF_SIZE).
-const RX_BUF_SIZE: usize = 1024;
-
 /// Subscription wrapper stored in caller-provided inline storage.
 pub(crate) struct CppSubscription {
     handle: nros::internals::RmwSubscriber,
-    buffer: [u8; RX_BUF_SIZE],
-    topic_name: [u8; 256],
+    buffer: [u8; DEFAULT_RX_BUF_SIZE],
+    topic_name: [u8; MAX_TOPIC_LEN],
     topic_name_len: usize,
 }
 
@@ -96,9 +95,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         Ok(handle) => {
             let mut sub_handle = CppSubscription {
                 handle,
-                buffer: [0u8; RX_BUF_SIZE],
-                topic_name: [0u8; 256],
-                topic_name_len: topic_str.len().min(255),
+                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
+                topic_name: [0u8; MAX_TOPIC_LEN],
+                topic_name_len: topic_str.len().min(MAX_TOPIC_LEN - 1),
             };
             sub_handle.topic_name[..sub_handle.topic_name_len]
                 .copy_from_slice(&topic_str.as_bytes()[..sub_handle.topic_name_len]);
