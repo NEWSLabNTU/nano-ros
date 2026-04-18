@@ -272,6 +272,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 80 | Unified network interface for nros-platform | Not Started |
 | 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Not Started |
 | 82 | Blocking service client must take an executor | Complete |
+| 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Not Started |
 
 ## Quick Reference
 
