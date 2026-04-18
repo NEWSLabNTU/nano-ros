@@ -832,6 +832,8 @@ static NUTTX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
     NUTTX_CPP_TALKER_BINARY
@@ -857,6 +859,22 @@ fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_nuttx_cmake_example("cpp", "service-client", "nuttx_cpp_service_client")
+        })
+        .map(|p| p.as_path())
+}
+
+fn build_nuttx_cpp_action_server() -> TestResult<&'static Path> {
+    NUTTX_CPP_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("cpp", "action-server", "nuttx_cpp_action_server")
+        })
+        .map(|p| p.as_path())
+}
+
+fn build_nuttx_cpp_action_client() -> TestResult<&'static Path> {
+    NUTTX_CPP_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("cpp", "action-client", "nuttx_cpp_action_client")
         })
         .map(|p| p.as_path())
 }
@@ -925,6 +943,28 @@ fn test_nuttx_cpp_service_client_builds() {
         build_nuttx_cpp_service_client().expect("Failed to build nuttx_cpp_service_client");
     assert!(binary.exists());
     eprintln!("SUCCESS: nuttx_cpp_service_client at {}", binary.display());
+}
+
+#[test]
+#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+fn test_nuttx_cpp_action_server_builds() {
+    if !require_nuttx_cpp() {
+        nros_tests::skip!("require_nuttx_cpp check failed");
+    }
+    let binary = build_nuttx_cpp_action_server().expect("Failed to build nuttx_cpp_action_server");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_action_server at {}", binary.display());
+}
+
+#[test]
+#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+fn test_nuttx_cpp_action_client_builds() {
+    if !require_nuttx_cpp() {
+        nros_tests::skip!("require_nuttx_cpp check failed");
+    }
+    let binary = build_nuttx_cpp_action_client().expect("Failed to build nuttx_cpp_action_client");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_action_client at {}", binary.display());
 }
 
 // =============================================================================

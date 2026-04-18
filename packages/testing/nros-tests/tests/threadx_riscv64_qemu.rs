@@ -641,6 +641,8 @@ static RV64_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static RV64_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn is_cmake_available() -> bool {
     Command::new("cmake")
@@ -822,6 +824,20 @@ fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
         })
         .map(|p| p.as_path())
 }
+fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
+    RV64_CPP_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_rv64_cmake_example("cpp", "action-server", "riscv64_threadx_cpp_action_server")
+        })
+        .map(|p| p.as_path())
+}
+fn build_rv64_cpp_action_client() -> TestResult<&'static Path> {
+    RV64_CPP_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_rv64_cmake_example("cpp", "action-client", "riscv64_threadx_cpp_action_client")
+        })
+        .map(|p| p.as_path())
+}
 
 // =============================================================================
 // C Build tests
@@ -903,6 +919,26 @@ fn test_rv64_cpp_listener_builds() {
         nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_cpp_listener().expect("build failed");
+    assert!(b.exists());
+    eprintln!("SUCCESS: {}", b.display());
+}
+
+#[test]
+fn test_rv64_cpp_action_server_builds() {
+    if !require_threadx_rv64_cmake() {
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
+    }
+    let b = build_rv64_cpp_action_server().expect("build failed");
+    assert!(b.exists());
+    eprintln!("SUCCESS: {}", b.display());
+}
+
+#[test]
+fn test_rv64_cpp_action_client_builds() {
+    if !require_threadx_rv64_cmake() {
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
+    }
+    let b = build_rv64_cpp_action_client().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
 }

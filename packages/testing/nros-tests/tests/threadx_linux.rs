@@ -91,6 +91,8 @@ static THREADX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build a ThreadX Linux example
 fn build_threadx_linux_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
@@ -749,6 +751,18 @@ fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+fn build_threadx_cpp_action_server() -> TestResult<&'static Path> {
+    THREADX_CPP_ACTION_SERVER_BINARY
+        .get_or_try_init(|| build_threadx_cpp_example("action-server", "threadx_cpp_action_server"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_cpp_action_client() -> TestResult<&'static Path> {
+    THREADX_CPP_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| build_threadx_cpp_example("action-client", "threadx_cpp_action_client"))
+        .map(|p| p.as_path())
+}
+
 // =============================================================================
 // C++ Build tests
 // =============================================================================
@@ -799,6 +813,28 @@ fn test_threadx_cpp_service_client_builds() {
         "SUCCESS: threadx_cpp_service_client at {}",
         binary.display()
     );
+}
+
+#[test]
+fn test_threadx_cpp_action_server_builds() {
+    if !require_threadx_cpp() {
+        nros_tests::skip!("require_threadx_cpp check failed");
+    }
+    let binary =
+        build_threadx_cpp_action_server().expect("Failed to build threadx_cpp_action_server");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_cpp_action_server at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_cpp_action_client_builds() {
+    if !require_threadx_cpp() {
+        nros_tests::skip!("require_threadx_cpp check failed");
+    }
+    let binary =
+        build_threadx_cpp_action_client().expect("Failed to build threadx_cpp_action_client");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_cpp_action_client at {}", binary.display());
 }
 
 // =============================================================================
