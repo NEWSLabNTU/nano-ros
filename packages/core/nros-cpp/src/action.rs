@@ -353,6 +353,46 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     NROS_CPP_RET_OK
 }
 
+/// Iterate over every goal currently live in the arena.
+///
+/// Calls `visitor(uuid, status, ctx)` for each entry in the
+/// arena's `active_goals`. Status is the raw i8 discriminant of
+/// `nros_core::GoalStatus` (0 = Unknown, 1 = Accepted, 2 = Executing,
+/// 3 = Canceling, 4 = Succeeded, 5 = Canceled, 6 = Aborted). The arena
+/// never stores the original goal CDR payload, so only identity + status
+/// are forwarded; users needing the goal bytes should stash them in
+/// their own `{uuid → state}` table keyed from `set_goal_callback`.
+///
+/// # Safety
+/// `handle` must be a valid `CppActionServer` storage pointer.
+/// `executor_handle` must point to a valid `CppContext`.
+/// `visitor` must be a valid function pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
+    handle: *mut c_void,
+    executor_handle: *mut c_void,
+    visitor: Option<unsafe extern "C" fn(goal_id: *const [u8; 16], status: i8, ctx: *mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || executor_handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(visitor) = visitor else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let server = unsafe { &*(handle as *const CppActionServer) };
+    let executor_ctx = unsafe { &*(executor_handle as *const CppContext) };
+    let arena_handle = match &server.handle {
+        Some(h) => *h,
+        None => return NROS_CPP_RET_ERROR,
+    };
+    arena_handle.for_each_active_goal(&executor_ctx.executor, |g| unsafe {
+        let uuid_ptr: *const [u8; 16] = &g.goal_id.uuid;
+        visitor(uuid_ptr, g.status as i8, ctx);
+    });
+    NROS_CPP_RET_OK
+}
+
 /// Destroy an action server (drop in place, no free).
 ///
 /// # Safety

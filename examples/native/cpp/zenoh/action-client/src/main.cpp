@@ -61,8 +61,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Test with order=10
+    // Default order=10; override via NROS_TEST_GOAL_ORDER for tests that
+    // want to exercise server-side rejection (order >= 64) or other edges.
     int32_t order = 10;
+    if (const char* ord = std::getenv("NROS_TEST_GOAL_ORDER")) {
+        order = std::atoi(ord);
+    }
     std::printf("\nSending goal: order=%d\n", order);
 
     example_interfaces::action::Fibonacci::Goal goal;
@@ -71,9 +75,9 @@ int main(int argc, char** argv) {
     uint8_t goal_id[16];
     ret = client.send_goal(goal, goal_id);
     if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to send goal: %d\n", ret.raw());
+        std::fprintf(stderr, "Goal REJECTED by server (order=%d, ret=%d)\n", order, ret.raw());
         nros::shutdown();
-        return 1;
+        return 2;
     }
     std::printf("Goal sent: order=%d [OK]\n", order);
 

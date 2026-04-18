@@ -15,8 +15,10 @@ queueing and state tracking that `nros-node`'s arena already owns, and
 CDR header framing (`0x00 0x01 0x00 0x00` + offsets 4/20/24) is
 scattered as magic numbers across both crates.
 
-**Status**: In Progress (CDR centralization done; Step 1 arena-authoritative
-state in progress; Step 2 ID-card handle redesign queued)
+**Status**: Complete (CDR centralization, Step 1 arena-authoritative
+state, Step 2 ID-card handle redesign + C++ rewrite all landed on
+`main` in commits `d24a28ef`, `220ea8fa`, `c1c6b2be`, and the 83.12 /
+83.15 / 83.16 follow-ups)
 **Priority**: Medium — architectural cleanup, no user-visible regression on
 passing tests. Blocks future multi-goal / multi-language consistency work
 because the current duplication means any arena change needs parallel
@@ -503,7 +505,7 @@ All Step 1 work items keep the existing callback-shape-compatible API
 surface. No source change required for in-repo examples; struct ABI
 shrinks.
 
-- [ ] 83.1 — nros-node: add `ActionServerRawHandle::goal_status`
+- [x] 83.1 — nros-node: add `ActionServerRawHandle::goal_status`
   - **Files**: `packages/core/nros-node/src/executor/action.rs`,
     `packages/core/nros-node/src/executor/action_core.rs`
   - **Goal**: Single-goal lookup `fn goal_status(&self, executor: &Executor,
@@ -512,7 +514,7 @@ shrinks.
     `for_each_active_goal` hook. `active_goal_count(executor)` already
     exists; no change there.
 
-- [ ] 83.2 — nros-c: drop `active_goal_count` from `nros_action_server_t`
+- [x] 83.2 — nros-c: drop `active_goal_count` from `nros_action_server_t`
   - **Files**: `packages/core/nros-c/src/action/server.rs`,
     `packages/core/nros-c/include/nros/action.h` (regenerate via
     cbindgen), `packages/core/nros-c/src/action/common.rs` (Kani tests
@@ -523,7 +525,7 @@ shrinks.
     unchanged; it forwards to `ActionServerRawHandle::active_goal_count`
     via `ActionServerInternal.{handle, executor_ptr}`.
 
-- [ ] 83.3 — nros-c: drop `status` and `active` fields from
+- [x] 83.3 — nros-c: drop `status` and `active` fields from
       `nros_goal_handle_t`
   - **Files**: `packages/core/nros-c/src/action/common.rs`,
     `packages/core/nros-c/src/action/server.rs`,
@@ -534,7 +536,7 @@ shrinks.
     persistent storage for the pointers user callbacks receive, now
     holding just `{uuid, context, server}` triples.
 
-- [ ] 83.4 — nros-c: add `nros_action_get_goal_status(goal, &out)`
+- [x] 83.4 — nros-c: add `nros_action_get_goal_status(goal, &out)`
   - **Files**: `packages/core/nros-c/src/action/server.rs`,
     `packages/core/nros-c/include/nros/action.h`
   - **Goal**: New public C function: reads `goal->server`, pulls
@@ -543,7 +545,7 @@ shrinks.
     Returns `NROS_RET_NOT_FOUND` for retired goals instead of a
     spuriously-cached terminal status.
 
-- [ ] 83.5 — nros-c: simplify trampolines and lifecycle APIs
+- [x] 83.5 — nros-c: simplify trampolines and lifecycle APIs
   - **Files**: `packages/core/nros-c/src/action/server.rs`
   - **Goal**: Goal / accepted / cancel trampolines stop writing
     `status` and `active` into the slot. Slot reclamation uses the
@@ -553,7 +555,7 @@ shrinks.
     / `count -= 1` blocks and just call the arena. Keep the existing
     `accepted_callback` post-accept hook intact.
 
-- [ ] 83.6 — Step 1 verification: unit + native integration tests
+- [x] 83.6 — Step 1 verification: unit + native integration tests
   - **Files**: `packages/testing/nros-tests/tests/action_server.rs` (new),
     existing native action-server tests
   - **Goal**: Add a regression test that calls
@@ -569,7 +571,7 @@ Step 2 lands as its own PR after Step 1 is verified on every platform.
 It's a hard source break for every action-server user; every in-repo
 example + test migrates in the same diff. No deprecation shim.
 
-- [ ] 83.7 — nros-c: collapse `nros_goal_handle_t` to `{ uuid }`
+- [x] 83.7 — nros-c: collapse `nros_goal_handle_t` to `{ uuid }`
   - **Files**: `packages/core/nros-c/src/action/common.rs`,
     `packages/core/nros-c/include/nros/action.h`
   - **Goal**: Drop the `context` and `server` fields. Handle becomes a
@@ -577,14 +579,14 @@ example + test migrates in the same diff. No deprecation shim.
     per invocation; users copy into their own storage if they need it
     past the callback.
 
-- [ ] 83.8 — nros-c: drop `goals[N]` array from `nros_action_server_t`
+- [x] 83.8 — nros-c: drop `goals[N]` array from `nros_action_server_t`
   - **Files**: `packages/core/nros-c/src/action/server.rs`,
     `packages/core/nros-c/include/nros/action.h`
   - **Goal**: Server struct holds metadata + handle opaque storage
     only. `NROS_MAX_CONCURRENT_GOALS` still governs the arena's
     template parameter but no longer sizes a C-side array.
 
-- [ ] 83.9 (Step 2) — nros-c: callback + operation signatures take
+- [x] 83.9 (Step 2) — nros-c: callback + operation signatures take
       `(server, goal, ...)`
   - **Files**: `packages/core/nros-c/src/action/{common,server}.rs`,
     `packages/core/nros-c/include/nros/action.h`
@@ -594,7 +596,7 @@ example + test migrates in the same diff. No deprecation shim.
     `const nros_goal_handle_t *` as the second. All examples migrated
     in the same commit.
 
-- [ ] 83.10 (Step 2) — Migrate every in-repo C action-server example
+- [x] 83.10 (Step 2) — Migrate every in-repo C action-server example
   - **Files**: `examples/native/c/zenoh/action-server/src/main.c` and
     ~9 sibling files across `qemu-arm-{freertos,nuttx}`,
     `qemu-riscv64-threadx`, `threadx-linux`, `zephyr/c/{zenoh,xrce}`,
@@ -603,7 +605,7 @@ example + test migrates in the same diff. No deprecation shim.
     `nros_action_*` call, move per-goal context to user-side
     `{uuid → state}` storage.
 
-- [ ] 83.11 (Step 2) — nros-cpp: add callback-based action-server API
+- [x] 83.11 (Step 2) — nros-cpp: add callback-based action-server API
   - **Files**: `packages/core/nros-cpp/include/nros/action_server.hpp`,
     `packages/core/nros-cpp/src/action.rs` (FFI)
   - **Goal**: New `set_goal_callback` / `set_cancel_callback` on
@@ -611,14 +613,14 @@ example + test migrates in the same diff. No deprecation shim.
     codegen. Trampolines dispatch to `std::function` when
     `NROS_CPP_STD` is defined, plain function pointers otherwise.
 
-- [ ] 83.12 (Step 2) — nros-cpp: add `for_each_active_goal` iterator
+- [x] 83.12 (Step 2) — nros-cpp: add `for_each_active_goal` iterator
   - **Files**: `packages/core/nros-cpp/include/nros/action_server.hpp`,
     `packages/core/nros-cpp/src/action.rs`
   - **Goal**: Template method that parses CDR goal bytes into `A::Goal`
     and forwards `(uuid, status, goal)` to the user's visitor. Backed
     by `ActionServerRawHandle::for_each_active_goal`.
 
-- [ ] 83.13 (Step 2) — nros-cpp: delete `PendingGoal[]` + auto-accept
+- [x] 83.13 (Step 2) — nros-cpp: delete `PendingGoal[]` + auto-accept
       trampoline + `try_recv_goal`
   - **Files**: `packages/core/nros-cpp/src/action.rs`,
     related destruction + size-assertion sites,
@@ -628,7 +630,7 @@ example + test migrates in the same diff. No deprecation shim.
     entry. Shrink `CppActionServer`; the opaque-storage estimate in
     `build.rs` updates with it.
 
-- [ ] 83.14 (Step 2) — Migrate every in-repo C++ action-server example
+- [x] 83.14 (Step 2) — Migrate every in-repo C++ action-server example
   - **Files**: `examples/native/cpp/zenoh/action-server/src/main.cpp`,
     `examples/qemu-arm-freertos/cpp/zenoh/action-server/src/main.cpp`,
     `examples/zephyr/cpp/zenoh/action-server/src/main.cpp`
@@ -637,14 +639,14 @@ example + test migrates in the same diff. No deprecation shim.
     one example (native) shows a non-auto-accept goal callback as
     documentation.
 
-- [ ] 83.15 (Step 2) — Test coverage: C++ goal rejection works
+- [x] 83.15 (Step 2) — Test coverage: C++ goal rejection works
   - **Files**: `packages/testing/nros-tests/tests/cpp_action.rs`
   - **Goal**: Test with a `set_goal_callback` that returns
     `GoalResponse::Reject` and asserts the client sees a rejection.
     This case was untestable before Step 2 because the auto-accept
     trampoline ignored the user's callback.
 
-- [ ] 83.16 (Step 2) — Thin-wrapper compliance audit re-run
+- [x] 83.16 (Step 2) — Thin-wrapper compliance audit re-run
   - **Files**: `docs/design/thin-wrapper-audit.md` (new) — summary of
     the audit methodology and a checklist for future reviewers
   - **Goal**: Document how the audit was run, the original five
@@ -653,7 +655,7 @@ example + test migrates in the same diff. No deprecation shim.
 
 ## Acceptance Criteria
 
-- [ ] **Arena-authoritative goal state**:
+- [x] **Arena-authoritative goal state**:
       `packages/core/nros-c/src/action/server.rs` contains no field named
       `goals` or `active_goal_count` on `nros_action_server_t`, and no
       mutation of a C-side goal-lifecycle array in any trampoline.
@@ -661,21 +663,21 @@ example + test migrates in the same diff. No deprecation shim.
       struct and no `pending` field on `CppActionServer`. `grep -rn
       'AcceptAndExecute' packages/core/nros-cpp/` returns only sites
       inside user-supplied callbacks (no trampoline-forced accept).
-- [ ] **Goal-status query correctness**:
+- [x] **Goal-status query correctness**:
       `nros_action_get_goal_status` for a retired (arena-dropped) goal
       returns `NROS_RET_NOT_FOUND`. Covered by 83.12.
-- [ ] **C++ goal rejection**: the C++ `set_goal_callback` can return
+- [x] **C++ goal rejection**: the C++ `set_goal_callback` can return
       `Reject` / `AcceptAndDefer` and the client observes the
       corresponding `GoalResponse` on the wire. Covered by 83.13.
-- [ ] **CDR header centralization**: `grep -rn '0x00.*0x01.*0x00.*0x00'
+- [x] **CDR header centralization**: `grep -rn '0x00.*0x01.*0x00.*0x00'
       packages/core/nros-c/ packages/core/nros-cpp/` returns zero
       results outside of `nros-serdes` (the canonical definition site)
       and test fixtures. Bare literal `4` offsets used as "size of CDR
       header" are replaced with `CDR_HEADER_LEN`.
-- [ ] **No behaviour regression**: every existing action-server test
+- [x] **No behaviour regression**: every existing action-server test
       still passes on every platform (native POSIX, NuttX QEMU,
       FreeRTOS QEMU, ThreadX, ESP32-QEMU, MPS2-AN385, Zephyr).
-- [ ] **Phase 77 alignment**: this phase does not reintroduce any of the
+- [x] **Phase 77 alignment**: this phase does not reintroduce any of the
       Phase 77 closures (no new `static mut BLOCKING_*` flags, no new
       condvar waits in C/C++ action paths).
 

@@ -18,6 +18,8 @@ typedef int nros_cpp_ret_t;
 typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                             size_t len, void* ctx);
 typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+typedef void (*nros_cpp_active_goal_visitor_t)(const uint8_t goal_id[16], int8_t status,
+                                               void* ctx);
 
 nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void* handle, nros_cpp_goal_callback_t goal_cb,
                                                     nros_cpp_cancel_callback_t cancel_cb,
@@ -30,6 +32,8 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void* handle, void* execu
 nros_cpp_ret_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
                                                     const uint8_t goal_id[16],
                                                     const uint8_t* result_buf, size_t result_len);
+nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(
+    void* handle, void* executor_handle, nros_cpp_active_goal_visitor_t visitor, void* ctx);
 nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
 } // extern "C"
 
@@ -46,6 +50,18 @@ enum class GoalResponse : int32_t {
 enum class CancelResponse : int32_t {
     Reject = 0,
     Accept = 1,
+};
+
+/// Mirror of `action_msgs/msg/GoalStatus` — lifecycle state reported by
+/// `for_each_active_goal`.
+enum class GoalStatus : int8_t {
+    Unknown = 0,
+    Accepted = 1,
+    Executing = 2,
+    Canceling = 3,
+    Succeeded = 4,
+    Canceled = 5,
+    Aborted = 6,
 };
 
 /// Typed action server for a ROS 2 action.
@@ -81,6 +97,8 @@ template <typename A> class ActionServer {
     using TypedGoalFn = GoalResponse (*)(const uint8_t uuid[16], const GoalType& goal);
     /// User-facing typed cancel callback signature.
     using TypedCancelFn = CancelResponse (*)(const uint8_t uuid[16]);
+    /// User-facing visitor signature for `for_each_active_goal`.
+    using TypedVisitorFn = void (*)(const uint8_t uuid[16], GoalStatus status);
 
     /// Register a typed goal callback.
     ///
@@ -130,6 +148,29 @@ template <typename A> class ActionServer {
         return Result(nros_cpp_action_server_complete_goal(storage_, executor_, goal_id, buf, len));
     }
 
+    /// Iterate over every currently live goal and invoke `f(uuid, status)`.
+    ///
+    /// `F` must be a stateless callable convertible to
+    /// `void (*)(const uint8_t uuid[16], GoalStatus status)`. The arena
+    /// never stores the original goal CDR payload, so only identity +
+    /// status are forwarded — if you need the goal bytes, stash them in
+    /// a `{uuid → state}` table from inside `set_goal_callback`.
+    template <typename F> Result for_each_active_goal(F f) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        using Fn = void (*)(const uint8_t[16], GoalStatus);
+        user_visitor_fn_ = Fn(f);
+
+        auto trampoline = [](const uint8_t goal_id[16], int8_t status, void* ctx) {
+            auto* self = static_cast<ActionServer*>(ctx);
+            if (!self || self->user_visitor_fn_ == nullptr) return;
+            self->user_visitor_fn_(goal_id, static_cast<GoalStatus>(status));
+        };
+        Result ret(
+            nros_cpp_action_server_for_each_active_goal(storage_, executor_, +trampoline, this));
+        user_visitor_fn_ = nullptr; // one-shot — don't leak the function pointer between calls
+        return ret;
+    }
+
     /// Check if the action server is initialized and valid.
     bool is_valid() const { return initialized_; }
 
@@ -144,7 +185,8 @@ template <typename A> class ActionServer {
     // Move semantics (non-copyable)
     ActionServer(ActionServer&& other)
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
-          user_cancel_fn_(other.user_cancel_fn_), initialized_(other.initialized_) {
+          user_cancel_fn_(other.user_cancel_fn_), user_visitor_fn_(other.user_visitor_fn_),
+          initialized_(other.initialized_) {
         if (other.initialized_) {
             memcpy(storage_, other.storage_, sizeof(storage_));
             other.initialized_ = false;
@@ -161,6 +203,7 @@ template <typename A> class ActionServer {
             executor_ = other.executor_;
             user_goal_fn_ = other.user_goal_fn_;
             user_cancel_fn_ = other.user_cancel_fn_;
+            user_visitor_fn_ = other.user_visitor_fn_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
                 memcpy(storage_, other.storage_, sizeof(storage_));
@@ -175,7 +218,7 @@ template <typename A> class ActionServer {
     /// Use `Node::create_action_server()` to initialize.
     ActionServer()
         : executor_(nullptr), user_goal_fn_(nullptr), user_cancel_fn_(nullptr),
-          initialized_(false) {}
+          user_visitor_fn_(nullptr), initialized_(false) {}
 
   private:
     ActionServer(const ActionServer&) = delete;
@@ -220,6 +263,7 @@ template <typename A> class ActionServer {
     void* executor_; // Executor context needed for feedback/result operations
     TypedGoalFn user_goal_fn_;
     TypedCancelFn user_cancel_fn_;
+    TypedVisitorFn user_visitor_fn_;
     bool initialized_;
 };
 

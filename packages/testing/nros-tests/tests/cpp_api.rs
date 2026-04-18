@@ -598,3 +598,64 @@ fn test_cpp_action_communication(
         client_output
     );
 }
+
+// =============================================================================
+// Goal Rejection Test (Phase 83.15)
+// =============================================================================
+//
+// Exercises the Step-2 `set_goal_callback` rejection path. The C++
+// action-server example rejects `order >= 64` via the registered goal
+// callback; the client is parametrised via `NROS_TEST_GOAL_ORDER=100`
+// to trigger that path. Before Phase 83 Step 2 this case was
+// untestable — the auto-accept trampoline ignored the user's callback
+// and every goal was accepted unconditionally.
+
+#[rstest]
+fn test_cpp_action_goal_rejection(
+    zenohd_unique: ZenohRouter,
+    cpp_action_server_binary: PathBuf,
+    cpp_action_client_binary: PathBuf,
+) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+
+    let locator = zenohd_unique.locator();
+
+    let mut server_cmd = stdbuf_command(&cpp_action_server_binary);
+    server_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "cpp-action-server")
+        .expect("Failed to start cpp-action-server");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    let mut client_cmd = stdbuf_command(&cpp_action_client_binary);
+    client_cmd.env("ZENOH_LOCATOR", &locator);
+    // Order 100 > 64 → server's goal callback returns Reject.
+    client_cmd.env("NROS_TEST_GOAL_ORDER", "100");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "cpp-action-client")
+        .expect("Failed to start cpp-action-client");
+
+    let client_output = client
+        .wait_for_output_pattern("REJECTED", Duration::from_secs(20))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("C++ action client output:\n{}", client_output);
+
+    assert!(
+        client_output.contains("REJECTED"),
+        "Expected goal rejection marker in client output.\nOutput:\n{}",
+        client_output
+    );
+    assert!(
+        !client_output.contains("[OK]"),
+        "Client should not report success on a rejected goal.\nOutput:\n{}",
+        client_output
+    );
+}

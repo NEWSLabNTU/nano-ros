@@ -674,6 +674,29 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal(void *handle,
                                                     size_t result_len);
 
 /**
+ * Iterate over every goal currently live in the arena.
+ *
+ * Calls `visitor(uuid, status, ctx)` for each entry in the
+ * arena's `active_goals`. Status is the raw i8 discriminant of
+ * `nros_core::GoalStatus` (0 = Unknown, 1 = Accepted, 2 = Executing,
+ * 3 = Canceling, 4 = Succeeded, 5 = Canceled, 6 = Aborted). The arena
+ * never stores the original goal CDR payload, so only identity + status
+ * are forwarded; users needing the goal bytes should stash them in
+ * their own `{uuid → state}` table keyed from `set_goal_callback`.
+ *
+ * # Safety
+ * `handle` must be a valid `CppActionServer` storage pointer.
+ * `executor_handle` must point to a valid `CppContext`.
+ * `visitor` must be a valid function pointer.
+ */
+nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
+                                                           void *executor_handle,
+                                                           void (*visitor)(const uint8_t (*goal_id)[16],
+                                                                           int8_t status,
+                                                                           void *ctx),
+                                                           void *ctx);
+
+/**
  * Destroy an action server (drop in place, no free).
  *
  * # Safety
