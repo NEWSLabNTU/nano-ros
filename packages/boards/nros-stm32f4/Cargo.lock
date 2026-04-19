@@ -560,19 +560,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros-platform"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-stm32f4",
+]
+
+[[package]]
+name = "nros-platform-stm32f4"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "defmt 0.3.100",
+ "nros-smoltcp",
+ "zpico-alloc",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+]
+
+[[package]]
 name = "nros-stm32f4"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
+ "nros-platform",
+ "nros-platform-stm32f4",
+ "nros-smoltcp",
  "smoltcp",
  "stm32-eth",
  "stm32f4-usart",
  "stm32f4xx-hal",
- "zpico-platform-stm32f4",
+ "zpico-platform-shim",
  "zpico-serial",
- "zpico-smoltcp",
 ]
 
 [[package]]
@@ -1156,15 +1182,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
-name = "zpico-platform-stm32f4"
+name = "zpico-alloc"
+version = "0.1.0"
+
+[[package]]
+name = "zpico-platform-shim"
 version = "0.1.0"
 dependencies = [
- "cortex-m",
- "defmt 0.3.100",
- "smoltcp",
- "stm32-eth",
- "zpico-smoltcp",
- "zpico-sys",
+ "cc",
+ "nros-platform",
 ]
 
 [[package]]
@@ -1175,18 +1201,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "zpico-smoltcp"
-version = "0.1.0"
-dependencies = [
- "smoltcp",
- "zpico-sys",
-]
-
-[[package]]
 name = "zpico-sys"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-platform-shim",
 ]

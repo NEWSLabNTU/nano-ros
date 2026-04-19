@@ -25,8 +25,11 @@
 
 #![no_std]
 
+mod board;
 mod resolve;
 mod traits;
+
+pub use board::BoardConfig;
 
 #[cfg(any(
     feature = "platform-posix",

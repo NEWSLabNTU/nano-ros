@@ -42,6 +42,7 @@ pub use nros_platform_stm32f4;
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
+pub use nros_platform::BoardConfig;
 pub use nros_platform_stm32f4::timing::{CycleCounter, MonotonicClock};
 
 // Re-export hardware modules from zpico-platform
@@ -61,4 +62,5 @@ pub mod prelude {
     pub use nros_platform_stm32f4::phy::PhyType;
     pub use nros_platform_stm32f4::pins::PinConfig;
     pub use nros_platform_stm32f4::timing::{CycleCounter, MonotonicClock};
+    pub use nros_platform::BoardConfig;
 }

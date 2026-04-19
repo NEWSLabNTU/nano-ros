@@ -481,3 +481,13 @@ fn parse_u32(s: &str) -> Option<u32> {
     }
     if has_digit { Some(result) } else { None }
 }
+
+impl nros_platform::BoardConfig for Config {
+    fn zenoh_locator(&self) -> &str {
+        self.zenoh_locator
+    }
+
+    fn domain_id(&self) -> u32 {
+        self.domain_id
+    }
+}
