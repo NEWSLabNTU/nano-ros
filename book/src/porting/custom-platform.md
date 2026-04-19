@@ -80,16 +80,46 @@ pub type ConcretePlatform = nros_platform_myos::MyOsPlatform;
 
 In `packages/core/nros/Cargo.toml`, add `platform-myos` to the feature list so users can write `nros = { features = ["rmw-zenoh", "platform-myos"] }`.
 
-### 5. Activate the shim in zpico-sys
+### 5. Activate the shim(s)
 
-In `packages/zpico/zpico-sys/Cargo.toml`, add a feature that activates the platform shim:
+Each RMW backend has its own platform shim crate. Enable the ones your
+platform will support:
 
 ```toml
+# packages/zpico/zpico-sys/Cargo.toml  (needed for rmw-zenoh)
 [features]
-myos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
+myos = [
+    "dep:zpico-platform-shim",
+    "zpico-platform-shim?/active",
+    "zpico-platform-shim?/network",
+]
+
+# packages/xrce/xrce-sys/Cargo.toml  (needed for rmw-xrce)
+[features]
+myos = [
+    "dep:xrce-platform-shim",
+    "xrce-platform-shim?/active",
+]
 ```
 
-The shim crate picks up `ConcretePlatform` automatically through Cargo feature unification -- no changes inside the shim itself.
+Shim feature flags:
+
+| Feature | When to enable |
+|---------|----------------|
+| `active` | Always, when this platform should claim the shim's symbols |
+| `network` | Rust-native TCP/UDP path — forwards `_z_open_tcp`/`_z_read_tcp`/etc. to your `PlatformTcp`/`PlatformUdp` impl. Omit if you compile zenoh-pico's C `network.c` directly (see "Networking" below). |
+| `skip-clock-symbols` | Your platform provides its own `_z_time_elapsed_us` etc. (e.g. NuttX ships clock functions in libc). Skips the shim's default clock forwarders to avoid duplicate-symbol link errors. |
+| `network-smoltcp-bridge` | Bare-metal smoltcp integration (implies `network`). |
+
+The shim picks up `ConcretePlatform` automatically through Cargo
+feature unification — no changes inside the shim itself.
+
+Build-script contract: the shim's `build.rs` reads
+`DEP_ZPICO_SOCKET_SIZE` / `DEP_ZPICO_ENDPOINT_SIZE` (exported by
+`zpico-sys`'s `build.rs`) so it can size socket-handle slabs correctly.
+If you replace `zpico-sys` with a custom transport crate, export the
+same `DEP_*` variables from its `build.rs` or the shim will fall back
+to defaults.
 
 ## Rust path
 
@@ -174,9 +204,40 @@ If your platform is easier to implement in C, use the `nros-platform-cffi` adapt
 
 ### 1. Fill in the vtable
 
-```c
-#include <nros/platform_vtable.h>
+The vtable struct (`nros_platform_vtable_t`) is currently defined in
+Rust (`packages/core/nros-platform-cffi/src/lib.rs` as
+`NrosPlatformVtable`, `#[repr(C)]`). A C header is not yet
+auto-generated — until cbindgen produces one, mirror the struct
+manually in C, matching the Rust field order exactly:
 
+```c
+// my_platform_vtable.h — hand-mirrored from NrosPlatformVtable
+#include <stdint.h>
+#include <stddef.h>
+
+typedef struct nros_platform_vtable_t {
+    // -- Clock --
+    uint64_t (*clock_ms)(void);
+    uint64_t (*clock_us)(void);
+    // -- Alloc --
+    void* (*alloc)(size_t size);
+    void* (*realloc)(void* ptr, size_t size);
+    void  (*dealloc)(void* ptr);
+    // -- Sleep --
+    void (*sleep_us)(size_t us);
+    void (*sleep_ms)(size_t ms);
+    void (*sleep_s)(size_t s);
+    // -- Random / Time / Threading / Sockets follow in the order
+    //    defined in nros-platform-cffi/src/lib.rs --
+    /* ... */
+} nros_platform_vtable_t;
+
+extern int32_t nros_platform_cffi_register(const nros_platform_vtable_t* vtable);
+```
+
+Then fill in the callbacks:
+
+```c
 static uint64_t my_clock_ms(void) {
     return myos_get_ticks();  // your RTOS tick API
 }

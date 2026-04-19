@@ -244,6 +244,101 @@ skeleton above -- `create_publisher` returns `Ok(EchoPub)`, etc. The
 
 ---
 
+## What the ROS 2 ecosystem expects
+
+Implementing the six traits compiles and runs, but a backend that stops
+there will not interoperate cleanly with `ros2 CLI`, RQt, or
+`rmw_zenoh_cpp` nodes. Real ROS 2 interop requires four extra
+invariants the traits do not express:
+
+### 1. Discovery / liveliness tokens
+
+`ros2 node list`, `ros2 topic list`, `ros2 service list` rely on
+discovery traffic. How you emit it depends on the backend protocol:
+
+- **Zenoh-flavoured backends**: publish a liveliness token per endpoint
+  under `@ros2_lv/<domain>/<zid>/<entity_kind>/<id>/…`. See
+  [rmw-zenoh-protocol.md](../internals/rmw-zenoh-protocol.md) for the
+  exact key grammar.
+- **DDS-flavoured backends**: use the SPDP/SEDP discovery traffic that
+  your DDS stack provides, plus the ROS 2–specific USER_DATA payload
+  (node name, namespace, enclave).
+
+If your backend is brand new (not wire-compatible with zenoh or DDS),
+you still need *some* discovery channel for `ros2 CLI` tools to find
+your endpoints. The traits currently do not cover this — discovery
+happens inside `create_publisher` / `create_subscriber` /
+`create_service_*` as a side effect.
+
+### 2. RMW attachments (per-message metadata)
+
+Every published message carries ROS 2 metadata that consumers read
+through `MessageInfo`:
+
+| Field | Size | Meaning |
+|-------|------|---------|
+| `sequence_number` | 8 bytes | `int64` LE — monotonic per publisher |
+| `timestamp`       | 8 bytes | `int64` LE — source nanoseconds |
+| `gid`             | 16 bytes | random per publisher, constant over its lifetime |
+
+- **Zenoh**: the attachment rides alongside the payload as a zenoh
+  `Attachment`. Humble uses a simple concatenation; Jazzy onward uses a
+  VLE-encoded `gid_length` prefix.
+- **DDS**: sample identity and source timestamp fall out of the DDS
+  sample info — your backend only has to forward them.
+
+If you skip this, `add_subscription_with_info()` on consumers always
+reports `MessageInfo::default()`, and downstream features (safety-e2e
+checks, source-timestamp ordering) silently degrade.
+
+### 3. Actions decompose into five underlying channels
+
+ROS 2 actions are not a transport primitive — they are a pattern built
+on services and topics. Each action server exposes:
+
+| Sub-entity | Kind | Name suffix |
+|------------|------|-------------|
+| `send_goal` | Service | `_action/send_goal` |
+| `cancel_goal` | Service | `_action/cancel_goal` |
+| `get_result` | Service | `_action/get_result` |
+| `feedback` | Topic (pub) | `_action/feedback` |
+| `status` | Topic (pub) | `_action/status` |
+
+A backend that implements the six core traits automatically supports
+actions — `nros-node` composes the five channels itself. The only
+backend-specific piece is the key / topic construction, which the
+`Session::create_service_server` and `create_publisher` methods already
+handle.
+
+### 4. Type hashes
+
+| ROS 2 distro | Type hash |
+|--------------|-----------|
+| Humble | literal string `"TypeHashNotSupported"` |
+| Iron / Jazzy / Rolling | `RIHS01_<sha256_hex>` computed from the IDL |
+
+nano-ros currently targets Humble (see [Phase
+41](../../../docs/roadmap/phase-41-iron-type-hash-support.md) for Iron
+support). A new backend that aims at a newer distro must compute the
+right hash string — the `TopicInfo::type_hash` field is already plumbed
+through.
+
+### 5. QoS mapping
+
+ROS 2 QoS (reliability, durability, history, depth) maps differently
+onto each backend:
+
+- **Zenoh** has reliable/best-effort and a `KEEP_LAST(N)` / `KEEP_ALL`
+  buffering policy — direct mapping.
+- **DDS** has native QoS — almost 1:1.
+- **Custom backends** must either honour the requested QoS or document
+  which fields are ignored. A `best_effort` publisher matched with a
+  `reliable` subscriber is a QoS mismatch in ROS 2 — the transport must
+  refuse the subscription (or flag it at runtime) rather than silently
+  lose messages.
+
+---
+
 ## Further reading
 
 - [RMW API Reference](../reference/rmw-api.md) -- full trait signatures,

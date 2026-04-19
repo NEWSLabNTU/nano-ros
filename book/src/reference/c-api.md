@@ -48,21 +48,93 @@ Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_ty
 
 ## C API by Header
 
+All objects use **inline opaque storage** — no heap allocation. Declare
+each as a `static` in `.bss` (the examples use an `app` struct) and pass
+pointers to the `_init` functions. Pair every `_init` with a matching
+`_fini` at shutdown.
+
 ### Core lifecycle (`nros/init.h`, `nros/executor.h`, `nros/node.h`)
 
-- `nros_init(locator)` / `nros_shutdown()` — session open/close
-- `nros_executor_init()` / `nros_spin_once(timeout_ms)` — executor lifecycle
-- `nros_create_node(name)` — create a node handle
+```c
+nros_support_t support = nros_support_get_zero_initialized();
+nros_support_init(&support, "tcp/127.0.0.1:7447", /*domain_id=*/0);
+
+nros_node_t node = nros_node_get_zero_initialized();
+nros_node_init(&node, &support, "my_node", /*namespace=*/"");
+
+nros_executor_t exec = nros_executor_get_zero_initialized();
+nros_executor_init(&exec, &support, /*max_handles=*/8);
+
+while (running) {
+    nros_executor_spin_some(&exec, /*timeout_ms=*/100);
+}
+
+nros_executor_fini(&exec);
+nros_node_fini(&node);
+nros_support_fini(&support);
+```
+
+Related helpers:
+
+- `nros_support_init_named()` — for XRCE sessions that need a distinct session name
+- `nros_executor_spin(&exec)` — blocking loop (no return)
+- `nros_executor_spin_period(&exec, period_ns)` — fixed-rate blocking loop
+- `nros_executor_stop(&exec)` — signal the blocking spin to return
 
 ### Pub/Sub (`nros/publisher.h`, `nros/subscription.h`)
 
-- `nros_publisher_init()` / `nros_publish(msg, size)`
-- `nros_subscription_init()` / `nros_executor_add_subscription(callback)`
+```c
+// Publisher
+nros_publisher_t pub = nros_publisher_get_zero_initialized();
+nros_publisher_init(&pub, &node, &my_msg_type, "/counter");
+
+uint8_t buf[64];
+size_t len;
+my_msg_serialize(&msg, buf, sizeof(buf), &len);
+nros_publish_raw(&pub, buf, len);
+
+// Subscription (callback-based via executor)
+nros_subscription_t sub = nros_subscription_get_zero_initialized();
+nros_subscription_init(&sub, &node, &my_msg_type, "/counter",
+                       on_message_callback, &ctx);
+nros_executor_add_subscription(&exec, &sub, NROS_EXECUTOR_ON_READY);
+```
+
+QoS variants: `nros_publisher_init_best_effort()`,
+`nros_publisher_init_with_qos(..., &qos_profile)`. Same for subscription.
+(Phase 84.G1 will consolidate the four `_init` variants into
+`_init` + `_init_with_qos`.)
 
 ### Services (`nros/service.h`, `nros/client.h`)
 
-- `nros_service_init()` / `nros_executor_add_service(callback)`
-- `nros_client_init()` / `nros_call_service(req, req_size, reply, reply_size, timeout_ms)`
+```c
+// Service server (callback-based via executor)
+nros_service_t srv = nros_service_get_zero_initialized();
+nros_service_init(&srv, &node, &add_two_ints_type, "/add",
+                  on_request_callback, &ctx);
+nros_executor_add_service(&exec, &srv, NROS_EXECUTOR_ON_READY);
+
+// Service client (blocking call)
+nros_client_t cli = nros_client_get_zero_initialized();
+nros_client_init(&cli, &node, &add_two_ints_type, "/add");
+nros_executor_add_client(&exec, &cli, /*timeout_ms=*/5000);
+
+uint8_t req_buf[64], resp_buf[64];
+size_t req_len = /* serialize request into req_buf */, resp_len = 0;
+nros_ret_t ret = nros_client_call(&cli,
+                                   req_buf, req_len,
+                                   resp_buf, sizeof(resp_buf), &resp_len);
+```
+
+`nros_client_call` spins the executor internally until the reply arrives
+or the registered timeout expires. Returns `NROS_RET_REENTRANT` (`-15`)
+if called from inside a dispatch callback — use a standalone non-blocking
+client path from within callbacks.
+
+> **Type-argument note** (Phase 84.B1): `nros_service_init` and
+> `nros_client_init` currently take `nros_message_type_t*`. A future fix
+> changes this to `nros_service_type_t*` to match the type struct in
+> `nros/types.h` — the existing signature is a known bug.
 
 ### Actions (`nros/action.h`)
 
@@ -133,7 +205,16 @@ nros_action_client_set_result_callback(client, on_result);
 
 ### Timers (`nros/timer.h`)
 
-- `nros_timer_init(period_ms)` / `nros_executor_add_timer(callback)`
+```c
+nros_timer_t tmr = nros_timer_get_zero_initialized();
+nros_timer_init(&tmr, &support,
+                /*period_ns=*/1000UL * 1000 * 1000,  // 1 s
+                timer_callback, &ctx);
+nros_executor_add_timer(&exec, &tmr, NROS_EXECUTOR_ALWAYS);
+```
+
+The callback signature is `void (*)(struct nros_timer_t* timer, void* context)`.
+Period is expressed in **nanoseconds**.
 
 ### Parameters, Lifecycle, Guard Condition
 

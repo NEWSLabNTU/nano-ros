@@ -120,6 +120,12 @@ test-unit verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run rustdoc doctests for the `nros` umbrella crate.
+# Nextest does not execute doctests, so we run them separately.
+# This catches drift between rustdoc examples and the real API.
+test-doc:
+    cargo test --doc -p nros
+
 # Count real (non-[SKIPPED]) test failures from the latest junit.xml.
 # Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
 # are environment-conditional skips and excluded from the real failure count.
@@ -227,8 +233,8 @@ test-all verbose="": build-zenohd
         echo "All tests passed!"
     fi
 
-# Run CI: format check + clippy + tests (never modifies code)
-ci: check test
+# Run CI: format check + clippy + tests + doctests (never modifies code)
+ci: check test test-doc
     @echo "CI passed!"
 
 # =============================================================================
