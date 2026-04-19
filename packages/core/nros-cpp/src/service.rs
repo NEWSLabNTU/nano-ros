@@ -315,7 +315,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let client = unsafe { &mut *(storage as *mut CppServiceClient) };
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
 
-    // Use the client's internal buffer for the raw reply
+    // Deprecated blocking call via zpico_get. Prefer send_request + try_recv_reply.
+    // Kept for backward compatibility on multi-threaded platforms.
     #[allow(deprecated)]
     match client.handle.call_raw(req_slice, &mut client.buffer) {
         Ok(len) => {

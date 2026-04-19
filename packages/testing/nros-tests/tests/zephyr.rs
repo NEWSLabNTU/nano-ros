@@ -1822,7 +1822,7 @@ fn get_zephyr_cpp_action_client_native_sim() -> PathBuf {
 /// 2. Runs Zephyr C++ action server and client
 /// 3. Verifies goal completion
 #[test]
-#[ignore] // C++ action client uses blocking zpico_get — hangs waiting for result (Phase 77)
+#[ignore] // C++ action client get_result times out on Zephyr native_sim (server completes but client can't retrieve)
 fn test_zephyr_cpp_action_server_to_client_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
