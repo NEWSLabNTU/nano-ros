@@ -20,6 +20,7 @@
 
 pub mod bridge;
 mod config;
+mod platform_macro;
 pub mod util;
 
 pub use bridge::{
