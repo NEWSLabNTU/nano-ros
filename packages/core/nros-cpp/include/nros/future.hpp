@@ -66,12 +66,18 @@ template <typename T> class Future {
     /// @param executor_handle  Raw executor handle (Executor::handle() or global).
     /// @param timeout_ms       Maximum wait time in milliseconds.
     /// @param out              Output object (filled on success).
+    /// @param poll_ms          Per-iteration spin_once timeout in ms
+    ///                         (default 10). Smaller values give lower
+    ///                         latency when the reply arrives mid-step
+    ///                         but wake the executor more often; larger
+    ///                         values reduce wakeups for long waits.
     /// @return Result::success(), ErrorCode::Timeout, or error.
-    Result wait(void* executor_handle, uint32_t timeout_ms, T& out) {
+    Result wait(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
         if (slot_ < 0) return Result(ErrorCode::Error);
+        if (poll_ms == 0) poll_ms = 1;
         uint32_t elapsed = 0;
         while (elapsed < timeout_ms) {
-            uint32_t step = 10;
+            uint32_t step = poll_ms;
             if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
             nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
             if (is_ready()) return try_take(out);

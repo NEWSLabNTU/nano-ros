@@ -506,7 +506,12 @@ mod net_udp {
         _rep: ZSysNetEndpoint,
         _tout: u32,
     ) -> i8 {
-        -1 // Not yet implemented on any platform
+        // Permanent fallback while platforms use inherent-method
+        // dispatch. `PlatformUdp::listen` defaults to -1; when Phase
+        // 84.F4 migrates platforms to trait dispatch, this shim can
+        // forward to `P::listen(...)` and platforms that override
+        // it will take effect automatically.
+        -1
     }
 
     #[unsafe(no_mangle)]

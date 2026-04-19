@@ -529,9 +529,9 @@ impl Default for TransportConfig<'_> {
 
 /// Middleware-agnostic session configuration.
 ///
-/// Unlike [`TransportConfig`] which carries backend-specific properties,
 /// `RmwConfig` provides a uniform interface that any RMW backend can
-/// interpret. Backends map these fields to their own connection parameters.
+/// interpret. Backends map the universal fields to their own connection
+/// parameters and interpret `properties` for anything backend-specific.
 ///
 /// # Examples
 ///
@@ -544,6 +544,7 @@ impl Default for TransportConfig<'_> {
 ///     domain_id: 0,
 ///     node_name: "talker",
 ///     namespace: "",
+///     properties: &[],
 /// };
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -561,6 +562,17 @@ pub struct RmwConfig<'a> {
     pub node_name: &'a str,
     /// Node namespace (e.g., `""` or `"/ns1"`)
     pub namespace: &'a str,
+    /// Backend-specific key/value properties.
+    ///
+    /// Uniform escape hatch for backend-specific tuning that doesn't fit
+    /// the universal fields above. Each backend documents the keys it
+    /// understands; unknown keys are ignored. Passing `&[]` is always
+    /// valid.
+    ///
+    /// Examples:
+    /// - zenoh: `"tls.root_ca"`, `"scouting.multicast.enabled"`
+    /// - XRCE-DDS: `"agent_port"`, `"client_key"`
+    pub properties: &'a [(&'a str, &'a str)],
 }
 
 impl Default for RmwConfig<'_> {
@@ -571,6 +583,7 @@ impl Default for RmwConfig<'_> {
             domain_id: 0,
             node_name: "node",
             namespace: "",
+            properties: &[],
         }
     }
 }
@@ -711,14 +724,18 @@ pub trait Session {
     /// Both zenoh-pico and XRCE-DDS are pull-based: they require the
     /// application to periodically call this method to read from the
     /// network socket and dispatch incoming messages to subscriber
-    /// buffers.  Backends that receive data via OS callbacks (push-based)
-    /// can use the default no-op.
+    /// buffers.
     ///
-    /// `timeout_ms` is the maximum time to wait for data (0 = non-blocking).
-    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
-        let _ = timeout_ms;
-        Ok(())
-    }
+    /// `timeout_ms` is the maximum time to wait for data (0 = non-blocking;
+    /// negative values mean "block indefinitely" — see Phase 84.D7 for the
+    /// planned migration to `core::time::Duration`).
+    ///
+    /// **Required**. There is no default body — both shipped backends
+    /// (zenoh and XRCE) must drive I/O, and a silent no-op default was a
+    /// trap for third-party implementers. If your backend genuinely
+    /// receives data via OS callbacks (push-based) and has nothing to do
+    /// here, return `Ok(())` explicitly.
+    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error>;
 }
 
 /// Publisher trait for sending messages
@@ -790,17 +807,19 @@ pub trait Subscriber {
     ///
     /// Returns `Ok(true)` if a message was available and `f` was called,
     /// `Ok(false)` if no message was available.
-    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
-        // Default: fall back to try_recv_raw with a stack buffer.
-        // Backends override this with a zero-copy implementation.
-        let mut buf = [0u8; 1024];
-        match self.try_recv_raw(&mut buf)? {
-            Some(len) => {
-                f(&buf[..len]);
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+    ///
+    /// **Default body**: returns `Err(MessageTooLarge)` — the old default
+    /// silently truncated anything larger than 1 KB into a stack buffer,
+    /// which broke large messages with no diagnostic. Backends must
+    /// override this with a real zero-copy path if they advertise support
+    /// for `process_raw_in_place`; callers that hit the default should
+    /// use `try_recv_raw` with a caller-sized buffer instead.
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = f;
+        Err(TransportError::MessageTooLarge.into())
     }
 
     /// Try to receive raw data along with publisher metadata.
@@ -980,18 +999,25 @@ pub trait ServiceClientTrait {
     /// Error type for service operations
     type Error;
 
-    /// Send a service request and wait for reply (blocking)
+    /// Send a service request and wait for reply (blocking).
+    ///
+    /// **Deprecated — do not call.** The default body returns `Timeout`
+    /// immediately without polling. Use `Client::call` →
+    /// `Promise::wait(executor, timeout_ms)` which lets the executor
+    /// drive I/O while waiting instead of busy-looping on
+    /// `try_recv_reply_raw` with no sleep (which starves the transport
+    /// on FreeRTOS / Zephyr single-threaded schedulers).
+    ///
+    /// Backends that still need an internal blocking path should
+    /// override this with a real sleep-between-polls implementation,
+    /// but all in-tree backends (zenoh, XRCE) route blocking waits
+    /// through the executor.
     #[deprecated(note = "use Client::call → Promise::wait with an executor instead")]
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error>
+    fn call_raw(&mut self, request: &[u8], _reply_buf: &mut [u8]) -> Result<usize, Self::Error>
     where
         Self::Error: From<TransportError>,
     {
-        self.send_request_raw(request)?;
-        for _ in 0..500_000 {
-            if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
-                return Ok(len);
-            }
-        }
+        let _ = request;
         Err(TransportError::Timeout.into())
     }
 
@@ -1064,37 +1090,31 @@ pub trait ServiceClientTrait {
     /// Default: no-op (backends that don't support waking simply ignore this).
     fn register_waker(&self, _waker: &core::task::Waker) {}
 
-    /// Call a service with typed messages (blocking)
+    /// Call a service with typed messages (blocking).
+    ///
+    /// **Deprecated — do not call.** The default body returns `Timeout`
+    /// immediately without polling. Use `Client::call` on the executor
+    /// instead, which drives I/O while waiting. See
+    /// [`call_raw`](Self::call_raw) for the same reasoning.
+    #[deprecated(note = "use Client::call → Promise::wait with an executor instead")]
     fn call<S: RosService>(
         &mut self,
         request: &S::Request,
         req_buf: &mut [u8],
-        reply_buf: &mut [u8],
+        _reply_buf: &mut [u8],
     ) -> Result<S::Reply, Self::Error>
     where
         Self::Error: From<TransportError>,
     {
-        use nros_core::{CdrReader, CdrWriter};
+        use nros_core::CdrWriter;
 
-        // Serialize request
+        // Serialize request so the error surface matches the old impl
+        // for the "bad request" path; but skip the receive busy-loop.
         let mut writer =
             CdrWriter::new_with_header(req_buf).map_err(|_| TransportError::BufferTooSmall)?;
         request
             .serialize(&mut writer)
             .map_err(|_| TransportError::SerializationError)?;
-        let req_len = writer.position();
-
-        // Send request and poll for reply
-        self.send_request_raw(&req_buf[..req_len])?;
-        for _ in 0..500_000 {
-            if let Some(reply_len) = self.try_recv_reply_raw(reply_buf)? {
-                let mut reader = CdrReader::new_with_header(&reply_buf[..reply_len])
-                    .map_err(|_| TransportError::DeserializationError)?;
-                let reply = S::Reply::deserialize(&mut reader)
-                    .map_err(|_| TransportError::DeserializationError)?;
-                return Ok(reply);
-            }
-        }
         Err(TransportError::Timeout.into())
     }
 }
@@ -1447,12 +1467,15 @@ mod tests {
             domain_id: 42,
             node_name: "talker",
             namespace: "/ns1",
+            properties: &[("agent_port", "2019")],
         };
         assert_eq!(config.locator, "tcp/192.168.1.1:7447");
         assert_eq!(config.mode, SessionMode::Peer);
         assert_eq!(config.domain_id, 42);
         assert_eq!(config.node_name, "talker");
         assert_eq!(config.namespace, "/ns1");
+        assert_eq!(config.properties.len(), 1);
+        assert_eq!(config.properties[0].0, "agent_port");
     }
 
     #[test]

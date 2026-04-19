@@ -183,4 +183,9 @@ impl Session for MockSession {
     fn close(&mut self) -> Result<(), TransportError> {
         Ok(())
     }
+
+    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), TransportError> {
+        // Mock transport: no I/O to drive.
+        Ok(())
+    }
 }

@@ -100,6 +100,7 @@ impl Executor {
                 domain_id: config.domain_id,
                 node_name: config.node_name,
                 namespace: config.namespace,
+                properties: &[],
             };
             let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
@@ -117,6 +118,7 @@ impl Executor {
                 domain_id: config.domain_id,
                 node_name: config.node_name,
                 namespace: config.namespace,
+                properties: &[],
             };
             let session = nros_rmw_dds::DdsRmw::open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
@@ -134,6 +136,7 @@ impl Executor {
                 domain_id: config.domain_id,
                 node_name: config.node_name,
                 namespace: config.namespace,
+                properties: &[],
             };
             let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;

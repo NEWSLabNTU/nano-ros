@@ -61,7 +61,7 @@ the real implementation first.
 - [ ] 84.C2 — Fix `std::function` trampoline leak in `std_compat.hpp:46-81`: attach closure ownership to the Timer/GuardCondition C++ instance (e.g. `std::unique_ptr<std::function<…>>` field), pass raw pointer to Rust, free in destructor
 - [ ] 84.C3 — `Future<T>::wait` / `Stream<T>::wait_next` must propagate non-transient `spin_once` errors (currently discards every return)
 - [ ] 84.C4 — `ActionClient::set_callbacks` returns `Result`, not `void`
-- [ ] 84.C5 — Expose `poll_ms` on `Future::wait` / `Stream::wait_next` (currently hard-coded to 10 ms)
+- [x] 84.C5 — Expose `poll_ms` on `Future::wait` / `Stream::wait_next` (currently hard-coded to 10 ms)
 - [ ] 84.C6 — Add `static_assert` on `set_goal_callback` / `set_cancel_callback` / `for_each_active_goal` requiring stateless callables, with a targeted error message
 - [ ] 84.C7 — Auto-generate every `NROS_CPP_*_STORAGE_SIZE` macro in `nros_cpp_config_generated.h` (publisher/subscription/service/guard are still hand-rolled; executor/action already auto-generate)
 - [x] 84.C8 — `Executor::handle()` should be non-const (it returns a mutable pointer via `const_cast`)
@@ -88,11 +88,11 @@ the real implementation first.
 - [ ] 84.E2b — **PR 2 (real refactor)**: delete `static mut TRANSPORT / SESSION / INITIALIZED` from `packages/xrce/nros-rmw-xrce/src/lib.rs`. Move transport state into `XrceRmw` fields; `XrceSession` owns the live transport after `open`. Verify multi-session / parallel-test stories (at least two `XrceRmw::new().open(...)` in the same process succeed). Delete the `RmwLegacy` shim introduced in 84.E2a — the refactor is complete, no external callers remain.
 - [ ] 84.E2c — Update `book/src/porting/custom-rmw.md` with the prescriptive factory shape: every backend provides a value type (`Default` + `new()` helpers), consumes `self` in `open`, and holds post-open state inside `Session`. Include the "each backend reads its own env vars via `<Backend>::from_env()`" convention so `ExecutorConfig::from_env()` composes.
 - [x] 84.E3 — Rename `ZENOH_LOCATOR` / `ZENOH_MODE` env vars to `NROS_LOCATOR` / `NROS_SESSION_MODE`; accept legacy names with a deprecation warning. Update `book/src/reference/environment-variables.md`.
-- [ ] 84.E4 — Add `properties: &'a [(&'a str, &'a str)]` to `RmwConfig` so backend-specific config (TLS certs, multicast scouting, XRCE agent port) has a uniform channel
-- [ ] 84.E5 — Drop the 500k-iter busy-loop default body from `call_raw` / `call<S>` on the `Transport` trait — either force impls or return `TransportError::Timeout` immediately
+- [x] 84.E4 — Add `properties: &'a [(&'a str, &'a str)]` to `RmwConfig` so backend-specific config (TLS certs, multicast scouting, XRCE agent port) has a uniform channel
+- [x] 84.E5 — Drop the 500k-iter busy-loop default body from `call_raw` / `call<S>` on the `Transport` trait — either force impls or return `TransportError::Timeout` immediately
 - [ ] 84.E6 — Flip `nros-rmw` default features to no-std (`default = []`); anyone relying on `std` must opt in. Use crate-internal `sync::Mutex` in the zenoh shim instead of `std::sync::Mutex`.
-- [ ] 84.E7 — Remove the 1 KB stack buffer default for `process_raw_in_place` on the `Subscriber` trait; force backends to implement (or return `MessageTooLarge`)
-- [ ] 84.E8 — Remove the no-op default for `Session::drive_io`; both shipped backends are pull-based, so the default is a trap for a third implementer
+- [x] 84.E7 — Remove the 1 KB stack buffer default for `process_raw_in_place` on the `Subscriber` trait; force backends to implement (or return `MessageTooLarge`)
+- [x] 84.E8 — Remove the no-op default for `Session::drive_io`; both shipped backends are pull-based, so the default is a trap for a third implementer
 - [x] 84.E9 — Remove `ZenohZeroCopySubscriber` from the public `nros-rmw-zenoh` surface. The doc already says "Deprecated" and board crates pull in `unstable-zenoh-api` only because of this re-export. Drop the type, drop the re-export, audit board Cargo.tomls for the now-unused feature. *(Feature itself kept — still used by `add_subscription_buffered_raw` via zpico-sys. No board Cargo.tomls needed cleanup.)*
 - [x] 84.E10 — Add `Udp` variant to `locator_protocol` / `validate_locator`, or move locator parsing into backend crates entirely
 - [ ] 84.E11 — Remove `Copy` from `TransportError` (keep `Clone + Debug + PartialEq + Eq`). Add `Backend(&'static str)` variant unconditionally + `BackendDynamic(alloc::string::String)` gated on the `alloc` feature. Migrate ~dozen Rust match sites in `nros-node` that rely on `Copy` (add `ref` or `.clone()`). C/C++ ABI is unaffected — both map `TransportError` to `nros_ret_t` / `ErrorCode` integer codes before crossing FFI. Add `nros_get_last_backend_error_message(char* buf, size_t cap)` FFI so C users can retrieve the backend string.
@@ -110,7 +110,7 @@ the real implementation first.
       - Update CLAUDE.md workspace layout and all book porting docs.
       - Sequencing: this is the **last** item in Phase 84 because the rename touches every example Cargo.toml, every board-specific doc, and every `zephyr/modules.yaml`-style integration point. Land it after all other Phase 84 groups stabilize.
 - [ ] 84.F7 — `Config` per-board divergence: define `trait BoardConfig { zenoh_locator, domain_id, from_toml }` in a shared crate, with transport-specific extension traits. Unifies the 4 ~90-line `from_toml` parsers.
-- [ ] 84.F8 — Move `_z_listen_udp_unicast` from a hard-coded `-1` stub in `zpico-platform-shim::shim.rs:503` onto `PlatformUdp::udp_listen(...)` with a default `-1` impl so future ports can override
+- [x] 84.F8 — Move `_z_listen_udp_unicast` from a hard-coded `-1` stub in `zpico-platform-shim::shim.rs:503` onto `PlatformUdp::udp_listen(...)` with a default `-1` impl so future ports can override *(trait default added; shim stays `-1` until Phase 84.F4 switches platforms to trait dispatch)*
 
 ### Group G — Minor / nit
 

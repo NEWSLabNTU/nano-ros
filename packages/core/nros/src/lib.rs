@@ -371,6 +371,7 @@ pub mod internals {
                 domain_id,
                 node_name,
                 namespace: "",
+                properties: &[],
             };
             nros_rmw_xrce::XrceRmw::open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
@@ -390,6 +391,7 @@ pub mod internals {
                 domain_id,
                 node_name,
                 namespace: "",
+                properties: &[],
             };
             nros_rmw_dds::DdsRmw::open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
@@ -410,6 +412,7 @@ pub mod internals {
                 domain_id,
                 node_name,
                 namespace: "",
+                properties: &[],
             };
             nros_rmw_cffi::CffiRmw::open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)

@@ -310,7 +310,7 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_LOCAL_SUBSCRIBER 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LOCAL_QUERYABLE 0").unwrap();
     writeln!(header, "#define Z_FEATURE_SESSION_CHECK 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_BATCHING 1").unwrap();
+    writeln!(header, "#define Z_FEATURE_BATCHING 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_TX_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_PEER_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_MATCHING 0").unwrap();

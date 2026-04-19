@@ -27,6 +27,7 @@ fn test_zenohrmw_open_client_mode(zenohd_unique: ZenohRouter) {
         domain_id: 0,
         node_name: "test_open",
         namespace: "",
+        properties: &[],
     };
 
     let mut session = ZenohRmw::open(&config).expect("ZenohRmw::open() failed");
@@ -46,6 +47,7 @@ fn test_zenohrmw_open_with_domain_id(zenohd_unique: ZenohRouter) {
         domain_id: 42,
         node_name: "test_domain",
         namespace: "/ns1",
+        properties: &[],
     };
 
     let mut session = ZenohRmw::open(&config).expect("ZenohRmw::open() with domain_id failed");
@@ -69,6 +71,7 @@ fn test_zenohrmw_create_publisher(zenohd_unique: ZenohRouter) {
         domain_id: 0,
         node_name: "test_pub",
         namespace: "",
+        properties: &[],
     };
 
     let mut session = ZenohRmw::open(&config).expect("open failed");
@@ -98,6 +101,7 @@ fn test_zenohrmw_create_subscriber(zenohd_unique: ZenohRouter) {
         domain_id: 0,
         node_name: "test_sub",
         namespace: "",
+        properties: &[],
     };
 
     let mut session = ZenohRmw::open(&config).expect("open failed");
@@ -141,6 +145,7 @@ fn test_zenohrmw_publish_raw(zenohd_unique: ZenohRouter) {
         domain_id: 0,
         node_name: "test_publish",
         namespace: "",
+        properties: &[],
     };
 
     let mut session = ZenohRmw::open(&config).expect("open failed");

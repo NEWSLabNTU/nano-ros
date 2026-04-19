@@ -237,6 +237,19 @@ pub trait PlatformUdp {
     fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     fn send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize;
+
+    /// Open a UDP socket in listen (server) mode, bound to the given
+    /// endpoint. Returns 0 on success, negative on failure.
+    ///
+    /// Optional — the default returns `-1`, which the shim forwards to
+    /// `_z_listen_udp_unicast` as "not implemented". Platforms that
+    /// need UDP server sockets (e.g. for running an XRCE-DDS agent
+    /// locally) should override this. Once Phase 84.F4 lands (the
+    /// "platform traits become a real contract" refactor), the shim
+    /// will dispatch through this trait method automatically.
+    fn listen(_sock: *mut c_void, _endpoint: *const c_void, _timeout_ms: u32) -> i8 {
+        -1
+    }
 }
 
 // ============================================================================
