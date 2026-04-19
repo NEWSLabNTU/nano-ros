@@ -33,6 +33,81 @@ void nros_zephyr_rand_fill(void *dst, size_t len) {
     sys_rand_get(dst, len);
 }
 
+/* ── BSD socket wrappers ────────────────────────────────────────────
+ *
+ * On native_sim, glibc's getaddrinfo/freeaddrinfo symbols override
+ * Zephyr's POSIX wrappers. The glibc versions return POSIX addrinfo
+ * layout (ai_flags first), but Zephyr's zsock_addrinfo has ai_next
+ * first. Use Zephyr's zsock_* API directly to avoid the collision.
+ */
+
+#include <zephyr/net/socket.h>
+
+int nros_zephyr_getaddrinfo(const char *node, const char *service,
+                            const struct zsock_addrinfo *hints,
+                            struct zsock_addrinfo **res) {
+    return zsock_getaddrinfo(node, service, hints, res);
+}
+
+void nros_zephyr_freeaddrinfo(struct zsock_addrinfo *res) {
+    zsock_freeaddrinfo(res);
+}
+
+int nros_zephyr_socket(int family, int type, int proto) {
+    return zsock_socket(family, type, proto);
+}
+
+int nros_zephyr_close(int fd) {
+    return zsock_close(fd);
+}
+
+int nros_zephyr_connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
+    return zsock_connect(fd, addr, addrlen);
+}
+
+int nros_zephyr_bind(int fd, const struct sockaddr *addr, socklen_t addrlen) {
+    return zsock_bind(fd, addr, addrlen);
+}
+
+int nros_zephyr_listen(int fd, int backlog) {
+    return zsock_listen(fd, backlog);
+}
+
+int nros_zephyr_accept(int fd, struct sockaddr *addr, socklen_t *addrlen) {
+    return zsock_accept(fd, addr, addrlen);
+}
+
+int nros_zephyr_shutdown(int fd, int how) {
+    return zsock_shutdown(fd, how);
+}
+
+int nros_zephyr_setsockopt(int fd, int level, int optname,
+                           const void *optval, socklen_t optlen) {
+    return zsock_setsockopt(fd, level, optname, optval, optlen);
+}
+
+int nros_zephyr_fcntl(int fd, int cmd, int arg) {
+    return zsock_fcntl(fd, cmd, arg);
+}
+
+ssize_t nros_zephyr_recv(int fd, void *buf, size_t len, int flags) {
+    return zsock_recv(fd, buf, len, flags);
+}
+
+ssize_t nros_zephyr_recvfrom(int fd, void *buf, size_t len, int flags,
+                             struct sockaddr *src_addr, socklen_t *addrlen) {
+    return zsock_recvfrom(fd, buf, len, flags, src_addr, addrlen);
+}
+
+ssize_t nros_zephyr_send(int fd, const void *buf, size_t len, int flags) {
+    return zsock_send(fd, buf, len, flags);
+}
+
+ssize_t nros_zephyr_sendto(int fd, const void *buf, size_t len, int flags,
+                           const struct sockaddr *dest_addr, socklen_t addrlen) {
+    return zsock_sendto(fd, buf, len, flags, dest_addr, addrlen);
+}
+
 /* ── Thread creation with Zephyr-managed stacks ─────────────────────
  *
  * Requires CONFIG_POSIX_API (or equivalent CONFIG_PTHREAD).

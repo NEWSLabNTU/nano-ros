@@ -26,8 +26,8 @@ use nros_tests::fixtures::{
 };
 use nros_tests::platform;
 use nros_tests::zephyr::{
-    ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_zephyr_available, require_zephyr,
-    zephyr_workspace_path,
+    ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_zephyr_available,
+    require_zephyr, zephyr_workspace_path,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -77,10 +77,8 @@ fn test_zephyr_talker_to_listener_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd started on port {}", platform::ZEPHYR.zenohd_port);
 
     // Give zenohd time to start
@@ -200,11 +198,9 @@ fn test_zephyr_to_native_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     // Give zenohd time to start
@@ -296,11 +292,9 @@ fn test_native_to_zephyr_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     // Give zenohd time to start
@@ -404,11 +398,9 @@ fn test_bidirectional_native_zephyr_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -818,11 +810,9 @@ fn test_zephyr_action_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd started on port {}", platform::ZEPHYR.zenohd_port);
 
     std::thread::sleep(Duration::from_millis(500));
@@ -1062,11 +1052,9 @@ fn test_native_server_zephyr_client() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -1215,7 +1203,6 @@ fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
 /// - XRCE Agent available: `just build-xrce-agent`
 #[test]
-#[ignore] // Zephyr NSOS: udp_create_endpoint uses getaddrinfo which hangs for UDP on NSOS
 fn test_zephyr_xrce_rust_talker_listener() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
@@ -1415,11 +1402,9 @@ fn test_zephyr_server_native_client() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -1537,10 +1522,8 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let talker_binary = get_zephyr_cpp_talker_native_sim();
@@ -1604,9 +1587,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
-    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     // Build native Rust listener
@@ -1674,9 +1655,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
-    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     // Build native Rust talker
@@ -1764,10 +1743,8 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_cpp_service_server_native_sim();
@@ -1851,10 +1828,8 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-
     eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(platform::ZEPHYR.zenohd_port).expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_cpp_action_server_native_sim();

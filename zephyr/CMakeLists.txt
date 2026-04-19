@@ -17,6 +17,14 @@ zephyr_library()
 zephyr_library_named(nros)
 
 # =============================================================================
+# Platform shims (all RMW backends)
+# =============================================================================
+
+# Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
+# sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
+zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
+
+# =============================================================================
 # Backend-specific C sources
 # =============================================================================
 
@@ -49,10 +57,6 @@ if(CONFIG_NROS_RMW_ZENOH)
     #   network feature forwarders.
     # Both replacements link in via the Rust staticlib produced from
     # nros-c / nros-cpp / rustapp.
-
-    # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
-    # sys_rand_get) that nros-platform-zephyr needs to call via FFI.
-    list(APPEND _zenoh_pico_sources "${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c")
 
     zephyr_library_sources(${_zenoh_pico_sources})
 

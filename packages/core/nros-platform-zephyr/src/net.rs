@@ -133,14 +133,27 @@ mod c {
         pub _ai_canonname: [u8; DNS_MAX_NAME_SIZE_PLUS_1],
     }
 
+    // All socket functions use nros_zephyr_* C shim wrappers that call
+    // Zephyr's zsock_* API. On native_sim, glibc's BSD socket symbols
+    // (socket, connect, getaddrinfo, etc.) override Zephyr's POSIX wrappers,
+    // causing ABI mismatches (e.g., POSIX addrinfo vs zsock_addrinfo layout).
+    // The shims are defined in nros_platform_zephyr_shims.c.
     unsafe extern "C" {
+        #[link_name = "nros_zephyr_socket"]
         pub fn socket(family: c_int, ty: c_int, proto: c_int) -> c_int;
+        #[link_name = "nros_zephyr_close"]
         pub fn close(fd: c_int) -> c_int;
+        #[link_name = "nros_zephyr_connect"]
         pub fn connect(fd: c_int, addr: *const sockaddr, addrlen: socklen_t) -> c_int;
+        #[link_name = "nros_zephyr_bind"]
         pub fn bind(fd: c_int, addr: *const sockaddr, addrlen: socklen_t) -> c_int;
+        #[link_name = "nros_zephyr_listen"]
         pub fn listen(fd: c_int, backlog: c_int) -> c_int;
+        #[link_name = "nros_zephyr_accept"]
         pub fn accept(fd: c_int, addr: *mut sockaddr, addrlen: *mut socklen_t) -> c_int;
+        #[link_name = "nros_zephyr_shutdown"]
         pub fn shutdown(fd: c_int, how: c_int) -> c_int;
+        #[link_name = "nros_zephyr_setsockopt"]
         pub fn setsockopt(
             fd: c_int,
             level: c_int,
@@ -148,8 +161,11 @@ mod c {
             optval: *const c_void,
             optlen: socklen_t,
         ) -> c_int;
+        #[link_name = "nros_zephyr_fcntl"]
         pub fn fcntl(fd: c_int, cmd: c_int, arg: c_int) -> c_int;
+        #[link_name = "nros_zephyr_recv"]
         pub fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> ssize_t;
+        #[link_name = "nros_zephyr_recvfrom"]
         pub fn recvfrom(
             fd: c_int,
             buf: *mut c_void,
@@ -158,7 +174,9 @@ mod c {
             addr: *mut sockaddr,
             addrlen: *mut socklen_t,
         ) -> ssize_t;
+        #[link_name = "nros_zephyr_send"]
         pub fn send(fd: c_int, buf: *const c_void, len: usize, flags: c_int) -> ssize_t;
+        #[link_name = "nros_zephyr_sendto"]
         pub fn sendto(
             fd: c_int,
             buf: *const c_void,
@@ -167,12 +185,14 @@ mod c {
             dest: *const sockaddr,
             addrlen: socklen_t,
         ) -> ssize_t;
+        #[link_name = "nros_zephyr_getaddrinfo"]
         pub fn getaddrinfo(
             node: *const c_char,
             service: *const c_char,
             hints: *const addrinfo,
             res: *mut *mut addrinfo,
         ) -> c_int;
+        #[link_name = "nros_zephyr_freeaddrinfo"]
         pub fn freeaddrinfo(res: *mut addrinfo);
     }
 }
