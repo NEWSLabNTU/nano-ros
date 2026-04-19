@@ -336,6 +336,44 @@ mod executor_config {
 }
 pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
 
+// Compile-time asserts that the auto-generated C-side STORAGE macros
+// are large enough for their Rust counterparts. If a Rust type grows
+// past the estimate emitted by build.rs, compilation fails with a
+// clear error instead of silently overflowing caller-provided storage.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+const _: () = {
+    assert!(
+        core::mem::size_of::<publisher::CppPublisher>()
+            <= executor_config::CPP_PUBLISHER_STORAGE_BYTES,
+        "NROS_CPP_PUBLISHER_STORAGE_SIZE too small for CppPublisher — bump publisher_bytes in build.rs"
+    );
+    assert!(
+        core::mem::size_of::<subscription::CppSubscription>()
+            <= executor_config::CPP_SUBSCRIPTION_STORAGE_BYTES,
+        "NROS_CPP_SUBSCRIPTION_STORAGE_SIZE too small for CppSubscription — bump subscription_bytes in build.rs"
+    );
+    assert!(
+        core::mem::size_of::<service::CppServiceServer>()
+            <= executor_config::CPP_SERVICE_STORAGE_BYTES,
+        "NROS_CPP_SERVICE_SERVER_STORAGE_SIZE too small for CppServiceServer — bump service_bytes in build.rs"
+    );
+    assert!(
+        core::mem::size_of::<service::CppServiceClient>()
+            <= executor_config::CPP_SERVICE_STORAGE_BYTES,
+        "NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE too small for CppServiceClient — bump service_bytes in build.rs"
+    );
+    assert!(
+        core::mem::size_of::<nros_node::GuardConditionHandle>()
+            <= executor_config::CPP_GUARD_STORAGE_BYTES,
+        "NROS_CPP_GUARD_CONDITION_STORAGE_SIZE too small for GuardConditionHandle — bump guard_bytes in build.rs"
+    );
+};
+
 // ============================================================================
 // Executor handle (alloc-free — caller provides inline storage)
 // ============================================================================
