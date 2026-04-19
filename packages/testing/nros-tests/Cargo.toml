@@ -27,7 +27,9 @@ nros-core = { path = "../../core/nros-core", optional = true }
 nros-serdes = { path = "../../core/nros-serdes", optional = true }
 
 # RMW abstraction layer (optional, for in-process integration tests)
-nros-rmw = { path = "../../core/nros-rmw", optional = true }
+# `nros-rmw` defaults to no-std; tests always run with std, so opt in
+# explicitly to keep rich error-context / logging available.
+nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"], optional = true }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix", "std"], optional = true }
 
 # Node + executor API (optional, for trigger condition integration tests)

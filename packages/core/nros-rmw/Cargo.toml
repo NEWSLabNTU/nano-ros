@@ -7,7 +7,10 @@ repository.workspace = true
 description = "RMW abstraction layer for nros (middleware-agnostic traits)"
 
 [features]
-default = ["std"]
+# Default: no-std. Depending crates that want `std` must opt in
+# explicitly (matches nros-core). Previously `default = ["std"]`, which
+# required `default-features = false` on every `no_std` downstream.
+default = []
 std = ["nros-core/std", "log"]
 alloc = ["nros-core/alloc"]
 
