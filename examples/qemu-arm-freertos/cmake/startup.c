@@ -599,6 +599,19 @@ extern void app_main(void);
 #define POLL_TASK_PRIORITY 4
 #define POLL_INTERVAL_MS  1
 
+/* zenoh-pico read/lease task config — must be priority HIGHER than the
+ * app task or the read task gets starved (FreeRTOS preempts strict-prio).
+ * Without this configuration, zenoh-pico spawns the read task at default
+ * priority 0 (idle) and it never runs, so subscriptions never receive. */
+#define ZENOH_TASK_PRIORITY 5  /* > POLL_TASK_PRIORITY (4) > APP_TASK_PRIORITY (3) */
+#define ZENOH_READ_STACK    5120
+#define ZENOH_LEASE_STACK   5120
+
+extern void zpico_set_task_config(uint32_t read_priority,
+                                  uint32_t read_stack_bytes,
+                                  uint32_t lease_priority,
+                                  uint32_t lease_stack_bytes);
+
 static void poll_task_entry(void *arg) {
     (void)arg;
     for (;;) {
@@ -633,6 +646,13 @@ static void app_task_entry(void *arg) {
      * test harnesses that capture stdout from QEMU processes). */
     semihosting_stdio_init();
     setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Configure zenoh-pico read+lease task priorities BEFORE app_main
+     * (which calls zpico_init -> zp_start_read_task). Without this,
+     * the read task spawns at priority 0 (idle) and never delivers
+     * subscription messages on a system with higher-priority tasks. */
+    zpico_set_task_config(ZENOH_TASK_PRIORITY, ZENOH_READ_STACK,
+                          ZENOH_TASK_PRIORITY, ZENOH_LEASE_STACK);
 
     /* Run user application */
     app_main();
