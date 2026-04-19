@@ -59,10 +59,10 @@ the real implementation first.
 
 - [ ] 84.C1 — Fix opaque-storage move unsafety on `Publisher`/`Subscription`/`Service`/`Client`/`GuardCondition`/`Executor`/`Timer`/`ActionClient` (and converge `ActionServer`'s hand-rolled reinstall-callbacks pattern with the same approach). Add per-entity `handle.reregister(new_ctx)` methods on `nros-node`'s raw handle types (e.g., `SubscriptionRawHandle::reregister`, `ActionServerRawHandle::reregister`). Expose thin `nros_cpp_<type>_relocate(old, new)` FFI in `nros-cpp` that does `ptr::read` + `ptr::write` then calls the new `handle.reregister`. C++ move ctors / assignments call `_relocate`. Fall-through for types that register nothing external: `_relocate` is just `ptr::read` / `ptr::write` with no handle call. See the per-type audit table in §OQ-1 Resolution below.
 - [ ] 84.C2 — Fix `std::function` trampoline leak in `std_compat.hpp:46-81`: attach closure ownership to the Timer/GuardCondition C++ instance (e.g. `std::unique_ptr<std::function<…>>` field), pass raw pointer to Rust, free in destructor
-- [ ] 84.C3 — `Future<T>::wait` / `Stream<T>::wait_next` must propagate non-transient `spin_once` errors (currently discards every return)
-- [ ] 84.C4 — `ActionClient::set_callbacks` returns `Result`, not `void`
+- [x] 84.C3 — `Future<T>::wait` / `Stream<T>::wait_next` must propagate non-transient `spin_once` errors (currently discards every return)
+- [x] 84.C4 — `ActionClient::set_callbacks` returns `Result`, not `void`
 - [x] 84.C5 — Expose `poll_ms` on `Future::wait` / `Stream::wait_next` (currently hard-coded to 10 ms)
-- [ ] 84.C6 — Add `static_assert` on `set_goal_callback` / `set_cancel_callback` / `for_each_active_goal` requiring stateless callables, with a targeted error message
+- [x] 84.C6 — Add `static_assert` on `set_goal_callback` / `set_cancel_callback` / `for_each_active_goal` requiring stateless callables, with a targeted error message
 - [ ] 84.C7 — Auto-generate every `NROS_CPP_*_STORAGE_SIZE` macro in `nros_cpp_config_generated.h` (publisher/subscription/service/guard are still hand-rolled; executor/action already auto-generate)
 - [x] 84.C8 — `Executor::handle()` should be non-const (it returns a mutable pointer via `const_cast`)
 - [x] 84.C9 — Add `[[deprecated("use send_request().wait()")]]` on blocking `Client::call` / `call_raw`
@@ -90,12 +90,12 @@ the real implementation first.
 - [x] 84.E3 — Rename `ZENOH_LOCATOR` / `ZENOH_MODE` env vars to `NROS_LOCATOR` / `NROS_SESSION_MODE`; accept legacy names with a deprecation warning. Update `book/src/reference/environment-variables.md`.
 - [x] 84.E4 — Add `properties: &'a [(&'a str, &'a str)]` to `RmwConfig` so backend-specific config (TLS certs, multicast scouting, XRCE agent port) has a uniform channel
 - [x] 84.E5 — Drop the 500k-iter busy-loop default body from `call_raw` / `call<S>` on the `Transport` trait — either force impls or return `TransportError::Timeout` immediately
-- [ ] 84.E6 — Flip `nros-rmw` default features to no-std (`default = []`); anyone relying on `std` must opt in. Use crate-internal `sync::Mutex` in the zenoh shim instead of `std::sync::Mutex`.
+- [x] 84.E6 — Flip `nros-rmw` default features to no-std (`default = []`); anyone relying on `std` must opt in. Use crate-internal `sync::Mutex` in the zenoh shim instead of `std::sync::Mutex`. *(Default-flip done; zenoh shim's `EXECUTOR_WAKE` kept on `std::sync::Mutex + Condvar` because the crate's `sync::Mutex` is a closure-based `with()` API with no condvar support — replacing it would require adding condvar primitives to `nros-rmw::sync`, which is out of scope.)*
 - [x] 84.E7 — Remove the 1 KB stack buffer default for `process_raw_in_place` on the `Subscriber` trait; force backends to implement (or return `MessageTooLarge`)
 - [x] 84.E8 — Remove the no-op default for `Session::drive_io`; both shipped backends are pull-based, so the default is a trap for a third implementer
 - [x] 84.E9 — Remove `ZenohZeroCopySubscriber` from the public `nros-rmw-zenoh` surface. The doc already says "Deprecated" and board crates pull in `unstable-zenoh-api` only because of this re-export. Drop the type, drop the re-export, audit board Cargo.tomls for the now-unused feature. *(Feature itself kept — still used by `add_subscription_buffered_raw` via zpico-sys. No board Cargo.tomls needed cleanup.)*
 - [x] 84.E10 — Add `Udp` variant to `locator_protocol` / `validate_locator`, or move locator parsing into backend crates entirely
-- [ ] 84.E11 — Remove `Copy` from `TransportError` (keep `Clone + Debug + PartialEq + Eq`). Add `Backend(&'static str)` variant unconditionally + `BackendDynamic(alloc::string::String)` gated on the `alloc` feature. Migrate ~dozen Rust match sites in `nros-node` that rely on `Copy` (add `ref` or `.clone()`). C/C++ ABI is unaffected — both map `TransportError` to `nros_ret_t` / `ErrorCode` integer codes before crossing FFI. Add `nros_get_last_backend_error_message(char* buf, size_t cap)` FFI so C users can retrieve the backend string.
+- [x] 84.E11 — Remove `Copy` from `TransportError` (keep `Clone + Debug + PartialEq + Eq`). Add `Backend(&'static str)` variant unconditionally + `BackendDynamic(alloc::string::String)` gated on the `alloc` feature. `NodeError` loses `Copy` too (it wraps `TransportError::Transport`). No existing Rust code relied on `Copy` — zero migration burden inside `nros-node`. C/C++ ABI unaffected (both sides see integer codes). The `nros_get_last_backend_error_message` FFI helper is deferred: no backend currently emits a `Backend`/`BackendDynamic` variant, so there's no string to retrieve; add it once a real backend populates the diagnostic.
 
 ### Group F — Platform: duplication, CycleCounter units, trait contract
 

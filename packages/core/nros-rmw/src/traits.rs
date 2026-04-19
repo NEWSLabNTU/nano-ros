@@ -196,8 +196,15 @@ impl<'a> ServiceInfo<'a> {
     }
 }
 
-/// Transport error types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Transport error types.
+///
+/// No longer `Copy` — the `Backend` / `BackendDynamic` variants carry a
+/// string diagnostic, which can't be `Copy`. Rust callers that used to
+/// copy a `TransportError` value repeatedly now need `.clone()` or
+/// `ref` in match arms. C/C++ callers are unaffected — both map
+/// `TransportError` to integer codes (`nros_ret_t` / `ErrorCode`)
+/// before crossing the FFI boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportError {
     /// Failed to connect to transport
     ConnectionFailed,
@@ -237,6 +244,18 @@ pub enum TransportError {
     KeepaliveFailed,
     /// Failed to send join message
     JoinFailed,
+    /// Backend-specific error with a `'static` diagnostic string.
+    ///
+    /// Useful for zenoh-pico / XRCE-DDS return codes that map to a
+    /// fixed set of known messages. `no_std`-compatible.
+    Backend(&'static str),
+    /// Backend-specific error with an owned diagnostic string.
+    ///
+    /// Available only with the `alloc` feature. Use this when the
+    /// diagnostic is formatted at runtime (e.g. from a C error code
+    /// plus a socket address).
+    #[cfg(feature = "alloc")]
+    BackendDynamic(alloc::string::String),
 }
 
 /// QoS history policy

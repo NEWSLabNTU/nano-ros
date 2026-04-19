@@ -304,7 +304,13 @@ impl ExecutorConfig<'static> {
 // ============================================================================
 
 /// Error type for generic embedded node operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Not `Copy` — `NodeError::Transport` wraps a [`TransportError`] which
+/// carries owned diagnostic strings (`Backend` / `BackendDynamic`). Rust
+/// callers that matched on `NodeError` by value may need `ref` arms or
+/// `.clone()`; C/C++ callers are unaffected (they see an integer
+/// `nros_ret_t`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeError {
     /// Transport-level error.
     Transport(TransportError),
