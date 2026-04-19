@@ -437,6 +437,24 @@ impl FreeRtosPlatform {
         };
         if n <= 0 { usize::MAX } else { n as usize }
     }
+
+    pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        unsafe { lwip_socket_thread_init() };
+        let sock = unsafe { &*(sock as *const Socket) };
+        let tv = timeval {
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
+        };
+        unsafe {
+            lwip_setsockopt(
+                sock._socket,
+                SOL_SOCKET as c_int,
+                SO_RCVTIMEO as c_int,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<timeval>() as u32,
+            );
+        }
+    }
 }
 
 // ============================================================================

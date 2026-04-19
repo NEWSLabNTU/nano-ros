@@ -376,6 +376,21 @@ impl ThreadxPlatform {
         };
         if n <= 0 { usize::MAX } else { n as usize }
     }
+
+    pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        let sock = unsafe { &*(sock as *const Socket) };
+        // NetX BSD takes INT milliseconds, not struct timeval
+        let tv_ms: INT = timeout_ms as INT;
+        unsafe {
+            nx_bsd_setsockopt(
+                sock._fd,
+                SOL_SOCKET as INT,
+                SO_RCVTIMEO as INT,
+                &tv_ms as *const _ as *const c_void,
+                core::mem::size_of::<INT>() as INT,
+            );
+        }
+    }
 }
 
 // ============================================================================

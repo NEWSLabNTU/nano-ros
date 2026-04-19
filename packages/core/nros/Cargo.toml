@@ -43,6 +43,7 @@ platform-posix = [
     "nros-rmw-zenoh?/platform-posix",
     "nros-rmw-xrce?/platform-posix",
     "nros-rmw-dds?/platform-posix",
+    "platform-udp",
 ]
 platform-zephyr = [
     "nros-platform/platform-zephyr",
@@ -50,6 +51,7 @@ platform-zephyr = [
     "nros-rmw-zenoh?/platform-zephyr",
     "nros-rmw-xrce?/platform-zephyr",
     "nros-rmw-dds?/platform-zephyr",
+    "platform-udp",
 ]
 platform-bare-metal = [
     "nros-node/platform-bare-metal",
@@ -62,6 +64,7 @@ platform-freertos = [
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-xrce?/platform-freertos",
     "nros-rmw-dds?/platform-freertos",
+    "platform-udp",
 ]
 platform-nuttx = [
     "nros-platform/platform-nuttx",
@@ -69,6 +72,7 @@ platform-nuttx = [
     "nros-rmw-zenoh?/platform-nuttx",
     "nros-rmw-xrce?/platform-nuttx",
     "nros-rmw-dds?/platform-nuttx",
+    "platform-udp",
 ]
 platform-threadx = [
     "nros-platform/platform-threadx",
@@ -76,6 +80,7 @@ platform-threadx = [
     "nros-rmw-zenoh?/platform-threadx",
     "nros-rmw-xrce?/platform-threadx",
     "nros-rmw-dds?/platform-threadx",
+    "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
 
@@ -84,8 +89,10 @@ link-tcp = ["nros-rmw-zenoh?/link-tcp"]
 link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
 link-tls = ["nros-rmw-zenoh?/link-tls"]
 
-# XRCE transport refinements (posix-only)
-xrce-udp = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]
+# XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features)
+platform-udp = ["nros-node/platform-udp"]
+# XRCE transport refinements (legacy aliases)
+xrce-udp = ["platform-posix", "platform-udp"]
 xrce-serial = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)

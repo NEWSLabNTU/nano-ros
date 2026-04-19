@@ -254,15 +254,15 @@ pub mod internals {
     /// the transport. These are provided for advanced use cases.
     #[cfg(feature = "rmw-xrce")]
     pub mod xrce_transport {
-        /// Initialize POSIX UDP transport for XRCE-DDS.
+        /// Initialize platform UDP transport for XRCE-DDS.
         ///
         /// # Safety
         ///
         /// Must not be called concurrently. Only one transport may be active.
-        #[cfg(feature = "xrce-udp")]
-        pub unsafe fn init_posix_udp(agent_addr: &str) {
+        #[cfg(feature = "platform-udp")]
+        pub unsafe fn init_platform_udp(agent_addr: &str) {
             unsafe {
-                nros_rmw_xrce::posix_udp::init_posix_udp_transport(agent_addr);
+                nros_rmw_xrce::platform_udp::init_platform_udp_transport(agent_addr);
             }
         }
 
@@ -350,19 +350,14 @@ pub mod internals {
             use nros_rmw::Rmw;
 
             // Initialize transport based on active transport feature
-            #[cfg(feature = "xrce-udp")]
+            #[cfg(feature = "platform-udp")]
             unsafe {
-                nros_rmw_xrce::posix_udp::init_posix_udp_transport(locator);
+                nros_rmw_xrce::platform_udp::init_platform_udp_transport(locator);
             }
 
             #[cfg(feature = "xrce-serial")]
             unsafe {
                 nros_rmw_xrce::posix_serial::init_posix_serial_transport(locator);
-            }
-
-            #[cfg(feature = "platform-zephyr")]
-            unsafe {
-                nros_rmw_xrce::zephyr::init_zephyr_transport(locator);
             }
 
             let config = nros_rmw::RmwConfig {

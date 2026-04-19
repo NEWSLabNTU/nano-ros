@@ -80,18 +80,23 @@ impl Executor {
         {
             use nros_rmw::Rmw;
 
+            // Wait for network on platforms that need it
+            #[cfg(feature = "platform-zephyr")]
+            {
+                unsafe extern "C" {
+                    fn xrce_zephyr_wait_network(timeout_ms: core::ffi::c_int) -> i32;
+                }
+                unsafe { xrce_zephyr_wait_network(5000) };
+            }
+
             // Auto-init transport based on active feature
-            #[cfg(feature = "posix-udp")]
+            #[cfg(feature = "platform-udp")]
             unsafe {
-                nros_rmw_xrce::posix_udp::init_posix_udp_transport(config.locator);
+                nros_rmw_xrce::platform_udp::init_platform_udp_transport(config.locator);
             }
             #[cfg(feature = "posix-serial")]
             unsafe {
                 nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
-            }
-            #[cfg(feature = "platform-zephyr")]
-            unsafe {
-                nros_rmw_xrce::zephyr::init_zephyr_transport(config.locator);
             }
 
             let rmw_config = nros_rmw::RmwConfig {

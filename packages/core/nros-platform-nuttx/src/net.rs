@@ -361,6 +361,23 @@ impl NuttxPlatform {
         };
         if n <= 0 { usize::MAX } else { n as usize }
     }
+
+    pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        let sock = unsafe { &*(sock as *const Socket) };
+        let tv = timeval {
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
+        };
+        unsafe {
+            setsockopt(
+                sock._fd,
+                SOL_SOCKET as _,
+                SO_RCVTIMEO as _,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<timeval>() as _,
+            );
+        }
+    }
 }
 
 // ============================================================================

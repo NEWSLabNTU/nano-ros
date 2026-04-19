@@ -1469,6 +1469,7 @@ dependencies = [
  "critical-section",
  "heapless",
  "libc",
+ "nros-platform",
  "nros-rmw",
  "xrce-sys",
 ]

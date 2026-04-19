@@ -10,7 +10,6 @@
 #include <nros/node.h>
 #include <nros/service.h>
 #include <nros/executor.h>
-#include <xrce_zephyr.h>
 
 #include "example_interfaces.h"
 
@@ -60,22 +59,13 @@ int main(void)
 {
     LOG_INF("nros Zephyr Service Server (XRCE)");
 
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
-        LOG_ERR("Network not ready");
-        return 1;
-    }
-
-    if (xrce_zephyr_init(CONFIG_NROS_XRCE_AGENT_ADDR,
-                         CONFIG_NROS_XRCE_AGENT_PORT) != 0) {
-        LOG_ERR("XRCE transport init failed");
-        return 1;
-    }
-
+    /* Initialize support context (handles network wait + transport setup) */
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init(
+    nros_ret_t ret = nros_support_init_named(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-        CONFIG_NROS_DOMAIN_ID);
+        CONFIG_NROS_DOMAIN_ID,
+        "xrce_service_server");
     if (ret != NROS_RET_OK) {
         LOG_ERR("Support init failed: %d", ret);
         return 1;

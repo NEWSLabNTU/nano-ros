@@ -393,6 +393,23 @@ impl PosixPlatform {
         if ret < 0 { usize::MAX } else { ret as usize }
     }
 
+    pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        let sock = unsafe { &*(sock as *const Socket) };
+        let tv = libc::timeval {
+            tv_sec: (timeout_ms / 1000) as libc::time_t,
+            tv_usec: ((timeout_ms % 1000) * 1000) as libc::suseconds_t,
+        };
+        unsafe {
+            libc::setsockopt(
+                sock._fd,
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<libc::timeval>() as libc::socklen_t,
+            );
+        }
+    }
+
     // -- Socket helpers --
 
     pub fn socket_set_non_blocking(sock: *const c_void) -> i8 {

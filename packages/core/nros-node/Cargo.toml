@@ -19,8 +19,8 @@ rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 
-# XRCE transport refinements (posix-only, forwarded to nros-rmw-xrce)
-posix-udp = ["nros-rmw-xrce?/posix-udp"]
+# XRCE transport refinements (forwarded to nros-rmw-xrce)
+platform-udp = ["nros-rmw-xrce?/platform-udp"]
 posix-serial = ["nros-rmw-xrce?/posix-serial"]
 
 # ROS edition feature flags (controls which env vars are supported)

@@ -27,14 +27,11 @@ extern crate alloc;
 pub(crate) mod config;
 mod naming;
 
-#[cfg(feature = "posix-udp")]
-pub mod posix_udp;
+#[cfg(feature = "platform-udp")]
+pub mod platform_udp;
 
 #[cfg(feature = "posix-serial")]
 pub mod posix_serial;
-
-#[cfg(feature = "platform-zephyr")]
-pub mod zephyr;
 
 use atomic_waker::AtomicWaker;
 use core::ffi::{c_char, c_int, c_void};

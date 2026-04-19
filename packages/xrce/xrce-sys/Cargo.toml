@@ -9,9 +9,10 @@ links = "xrce_client"
 
 [features]
 default = []
-# Platform backends.
-# All platforms (except Zephyr) activate the shim for uxr_millis/uxr_nanos.
-# Zephyr provides its own symbols via xrce_zephyr.c (compiled by Zephyr CMake).
+# Platform backends — all (except Zephyr) activate the shim for uxr_millis/uxr_nanos.
+# Zephyr provides clock symbols via xrce_zephyr.c (compiled by Zephyr CMake,
+# needs Zephyr kernel headers that nros_platform_zephyr_shims.c can't provide
+# without CONFIG_POSIX_API).
 posix = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
 bare-metal = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
 zephyr = []

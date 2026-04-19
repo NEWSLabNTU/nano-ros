@@ -46,6 +46,9 @@ macro_rules! __define_smoltcp_platform_impl {
             use $crate::SmoltcpBridge;
             use $crate::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 
+            /// Per-call UDP receive timeout, updated by `udp_set_recv_timeout`.
+            static mut UDP_RECV_TIMEOUT_MS: u64 = SOCKET_TIMEOUT_MS;
+
             // ---- C struct layouts (must match bare-metal/platform.h) ----
 
             /// Socket: `{ int8_t _handle; bool _connected; }`
@@ -360,6 +363,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
 
                     let handle = sock._handle as i32;
+                    let timeout = unsafe { UDP_RECV_TIMEOUT_MS };
                     let start = SmoltcpBridge::clock_now_ms();
 
                     loop {
@@ -373,7 +377,7 @@ macro_rules! __define_smoltcp_platform_impl {
                             }
                         }
 
-                        if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
+                        if SmoltcpBridge::clock_now_ms() - start > timeout {
                             return usize::MAX;
                         }
                     }
@@ -456,6 +460,16 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
 
                     total
+                }
+
+                pub fn udp_set_recv_timeout(_sock: *const c_void, timeout_ms: u32) {
+                    unsafe {
+                        UDP_RECV_TIMEOUT_MS = if timeout_ms == 0 {
+                            SOCKET_TIMEOUT_MS
+                        } else {
+                            timeout_ms as u64
+                        };
+                    }
                 }
             }
 

@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.10 done)
+**Status**: In Progress (80.1–80.10, 80.12 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -347,16 +347,25 @@ typedef struct {
 - [ ] 80.11 — Zephyr UDP multicast
   - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
   - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
-- [ ] 80.12 — XRCE-DDS network unification via nros-platform
-  - [ ] 80.12.1 — Extend `xrce-platform-shim` with UDP network forwarders (`uxr_udp_open/write/read/close` → `ConcretePlatform::udp_*()`)
-  - [ ] 80.12.2 — Implement uxrCustomTransport callbacks as thin wrappers: open → `create_endpoint` + `open`, write → `send`, read → `read` with timeout loop, close → `close` + `free_endpoint`
-  - [ ] 80.12.3 — Store socket/endpoint handle in `uxrCustomTransport.args` or module-level static (XRCE uses single session)
-  - [ ] 80.12.4 — Wire `nros-rmw-xrce` to use shim callbacks instead of per-platform transport modules
-  - [ ] 80.12.5 — Remove `posix_udp.rs` from nros-rmw-xrce (~60 lines)
-  - [ ] 80.12.6 — Remove `xrce_zephyr.c` from xrce-zephyr (~97 lines)
-  - [ ] 80.12.7 — Remove or simplify `xrce-smoltcp` staging buffers (~280 lines) — nros-smoltcp provides PlatformUdp for bare-metal
-  - [ ] 80.12.8 — Verify native XRCE tests pass (`just xrce test`)
-  - [ ] 80.12.9 — Verify Zephyr XRCE tests pass (`just zephyr test-xrce`)
+- [x] 80.12 — XRCE-DDS network unification via nros-platform
+  - [x] 80.12.1 — Add `set_recv_timeout()` to `PlatformUdp` trait (XRCE needs per-read timeout)
+  - [x] 80.12.2 — Implement `set_recv_timeout` in 5 platform crates (posix, zephyr, freertos, nuttx, threadx)
+  - [x] 80.12.3 — Create `platform_udp.rs` in nros-rmw-xrce: XRCE callbacks delegate to `ConcretePlatform::udp_*()`
+  - [x] 80.12.4 — Wire `nros-rmw-xrce` to use `platform_udp` module via `platform-udp` feature
+  - [x] 80.12.5 — Remove `posix_udp.rs` and `zephyr.rs` from nros-rmw-xrce
+  - [x] 80.12.6 — Remove transport callbacks + clock symbols + `xrce_zephyr_init` from `xrce_zephyr.c`
+  - [x] 80.12.7 — Add `udp_set_recv_timeout` to 4 bare-metal board crates (mps2-an385, esp32, esp32-qemu, stm32f4) — enables XRCE via platform_udp on bare-metal
+  - [x] 80.12.8 — Verify Zephyr XRCE Rust test passes (25/25 + 2 skipped)
+  - [x] 80.12.9 — Migrate all 6 C XRCE examples to `nros_support_init_named()`, remove `xrce_zephyr_init`
+  - [x] 80.12.10 — Delete `xrce-smoltcp` crate (replaced by nros-smoltcp via PlatformUdp)
+  - [x] 80.12.11 — Strip `xrce_zephyr.c` to L4 wait only (transport callbacks + clock symbols removed)
+- [ ] 80.14 — RMW-agnostic serial transport via nros-platform
+  - [ ] 80.14.1 — Add `PlatformSerial` trait to nros-platform (`open`, `close`, `read`, `write`, `configure`)
+  - [ ] 80.14.2 — Implement `PlatformSerial` on PosixPlatform (extract from `posix_serial.rs` — PTY/termios)
+  - [ ] 80.14.3 — Create `platform_serial.rs` in nros-rmw-xrce (XRCE callbacks → `ConcretePlatform::serial_*()`)
+  - [ ] 80.14.4 — Wire zpico serial transport through `PlatformSerial` (replace `zpico-serial` direct libc)
+  - [ ] 80.14.5 — Remove `posix_serial.rs` from nros-rmw-xrce
+  - [ ] 80.14.6 — Verify serial XRCE tests pass
 - [ ] 80.13 — Update documentation
   - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
   - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification

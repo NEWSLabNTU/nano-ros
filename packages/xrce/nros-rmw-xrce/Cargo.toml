@@ -9,13 +9,17 @@ description = "XRCE-DDS RMW backend for nros"
 default = []
 std = ["alloc", "nros-rmw/std", "xrce-sys/std"]
 alloc = ["nros-rmw/alloc"]
-platform-posix = ["xrce-sys/posix"]
+# Platform-agnostic UDP transport via nros-platform
+platform-udp = ["dep:nros-platform"]
+# Platform features — each enables platform-udp automatically
+platform-posix = ["xrce-sys/posix", "platform-udp", "nros-platform/platform-posix"]
 platform-bare-metal = ["xrce-sys/bare-metal"]
-platform-zephyr = ["xrce-sys/zephyr"]
-platform-freertos = ["xrce-sys/freertos"]
-platform-nuttx = ["xrce-sys/nuttx"]
-platform-threadx = ["xrce-sys/threadx"]
-posix-udp = ["platform-posix", "dep:libc"]
+platform-zephyr = ["xrce-sys/zephyr", "platform-udp", "nros-platform/platform-zephyr"]
+platform-freertos = ["xrce-sys/freertos", "platform-udp", "nros-platform/platform-freertos"]
+platform-nuttx = ["xrce-sys/nuttx", "platform-udp", "nros-platform/platform-nuttx"]
+platform-threadx = ["xrce-sys/threadx", "platform-udp", "nros-platform/platform-threadx"]
+# Backward compat alias (posix-udp → platform-posix)
+posix-udp = ["platform-posix"]
 posix-serial = ["platform-posix", "dep:libc"]
 ffi-sync = ["dep:critical-section"]
 # E2E safety protocol (CRC-32 + sequence tracking). Forwards to nros-rmw.
@@ -26,6 +30,7 @@ safety-e2e = ["nros-rmw/safety-e2e"]
 
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, optional = true }
 xrce-sys = { version = "0.1.0", path = "../xrce-sys", default-features = false }
 heapless = "0.8"
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }

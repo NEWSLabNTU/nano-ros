@@ -131,10 +131,9 @@ if(CONFIG_NROS_RMW_ZENOH)
 
 elseif(CONFIG_NROS_RMW_XRCE)
     # -------------------------------------------------------------------------
-    # XRCE-DDS transport glue (compiled by Zephyr CMake)
+    # XRCE-DDS platform support (compiled by Zephyr CMake)
     # -------------------------------------------------------------------------
-    # The XRCE library itself is compiled by Cargo (xrce-sys/build.rs).
-    # Only the Zephyr transport glue needs Zephyr headers.
+    # xrce_zephyr.c provides L4 network readiness wait + uxr_millis/uxr_nanos.
 
     zephyr_library_sources(
         ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/src/xrce_zephyr.c
