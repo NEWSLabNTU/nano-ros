@@ -10,6 +10,11 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 
+#ifdef NROS_CPP_STD
+#include <functional>
+#include <memory>
+#endif
+
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
@@ -59,10 +64,16 @@ class GuardCondition {
             nros_cpp_guard_condition_destroy(storage_);
             initialized_ = false;
         }
+        // closure_ (if any) destructs here.
     }
 
     // Move semantics (non-copyable)
-    GuardCondition(GuardCondition&& other) : initialized_(other.initialized_) {
+    GuardCondition(GuardCondition&& other)
+        : initialized_(other.initialized_)
+#ifdef NROS_CPP_STD
+          , closure_(std::move(other.closure_))
+#endif
+    {
         for (unsigned i = 0; i < sizeof(storage_); ++i) {
             storage_[i] = other.storage_[i];
             other.storage_[i] = 0;
@@ -80,6 +91,9 @@ class GuardCondition {
                 other.storage_[i] = 0;
             }
             initialized_ = other.initialized_;
+#ifdef NROS_CPP_STD
+            closure_ = std::move(other.closure_);
+#endif
             other.initialized_ = false;
         }
         return *this;
@@ -89,6 +103,15 @@ class GuardCondition {
     /// Use `Node::create_guard_condition()` to initialize.
     GuardCondition() : storage_(), initialized_(false) {}
 
+#ifdef NROS_CPP_STD
+    /// @internal Attach a heap-allocated std::function closure. See
+    /// `Timer::attach_std_closure` for rationale. Not intended for user
+    /// code — called by the NROS_CPP_STD convenience wrappers.
+    void attach_std_closure(std::unique_ptr<std::function<void()>> closure) {
+        closure_ = std::move(closure);
+    }
+#endif
+
   private:
     GuardCondition(const GuardCondition&) = delete;
     GuardCondition& operator=(const GuardCondition&) = delete;
@@ -97,6 +120,10 @@ class GuardCondition {
 
     alignas(8) uint8_t storage_[NROS_CPP_GUARD_CONDITION_STORAGE_SIZE];
     bool initialized_;
+
+#ifdef NROS_CPP_STD
+    std::unique_ptr<std::function<void()>> closure_;
+#endif
 };
 
 } // namespace nros

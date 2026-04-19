@@ -9,6 +9,11 @@
 
 #include "nros/result.hpp"
 
+#ifdef NROS_CPP_STD
+#include <functional>
+#include <memory>
+#endif
+
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
@@ -72,12 +77,18 @@ class Timer {
             nros_cpp_timer_cancel(executor_, handle_id_);
             initialized_ = false;
         }
+        // closure_ (if any) destructs here; the Rust side no longer
+        // holds a raw pointer to it because we cancelled above.
     }
 
     // Move semantics (non-copyable)
     Timer(Timer&& other)
         : executor_(other.executor_), handle_id_(other.handle_id_),
-          initialized_(other.initialized_) {
+          initialized_(other.initialized_)
+#ifdef NROS_CPP_STD
+          , closure_(std::move(other.closure_))
+#endif
+    {
         other.executor_ = nullptr;
         other.initialized_ = false;
     }
@@ -90,6 +101,9 @@ class Timer {
             executor_ = other.executor_;
             handle_id_ = other.handle_id_;
             initialized_ = other.initialized_;
+#ifdef NROS_CPP_STD
+            closure_ = std::move(other.closure_);
+#endif
             other.executor_ = nullptr;
             other.initialized_ = false;
         }
@@ -100,6 +114,18 @@ class Timer {
     /// Use `Node::create_timer()` to initialize.
     Timer() : executor_(nullptr), handle_id_(0), initialized_(false) {}
 
+#ifdef NROS_CPP_STD
+    /// @internal Attach a heap-allocated std::function closure to this
+    /// timer. Called by the `NROS_CPP_STD` convenience wrappers in
+    /// `std_compat.hpp` *after* the Rust side registered a raw callback
+    /// pointing into the same closure. The unique_ptr keeps the closure
+    /// alive for the lifetime of the Timer, freeing it automatically on
+    /// destruction. Not intended for user code.
+    void attach_std_closure(std::unique_ptr<std::function<void()>> closure) {
+        closure_ = std::move(closure);
+    }
+#endif
+
   private:
     Timer(const Timer&) = delete;
     Timer& operator=(const Timer&) = delete;
@@ -109,6 +135,15 @@ class Timer {
     void* executor_;
     size_t handle_id_;
     bool initialized_;
+
+#ifdef NROS_CPP_STD
+    /// Owns the heap-allocated `std::function<void()>` closure (if any).
+    ///
+    /// Only populated when the Timer was created through the
+    /// `NROS_CPP_STD` convenience wrapper. Freed automatically when the
+    /// Timer is destroyed or moved-from.
+    std::unique_ptr<std::function<void()>> closure_;
+#endif
 };
 
 } // namespace nros

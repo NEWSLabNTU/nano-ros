@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace nros {
@@ -21,6 +22,12 @@ namespace nros {
 // ============================================================================
 // A) std::function callback wrappers for Timer and GuardCondition
 // ============================================================================
+//
+// Lifetime: the heap-allocated std::function is owned by the Timer /
+// GuardCondition instance via `attach_std_closure(unique_ptr)`. The Rust
+// side receives a raw pointer into the same std::function; the Timer's
+// destructor cancels the Rust-side callback before the unique_ptr is
+// dropped, so the raw pointer is never dereferenced after free.
 
 namespace detail {
 
@@ -34,9 +41,9 @@ inline void std_function_trampoline(void* context) {
 
 /// Create a repeating timer with a std::function callback.
 ///
-/// The `callback` is heap-allocated and must outlive the Timer. The caller
-/// is responsible for calling `delete` on the returned pointer when the
-/// Timer is destroyed, or managing lifetime via shared_ptr capture.
+/// The closure is owned by the `Timer` — it is freed automatically
+/// when the `Timer` is destroyed or moved-from. No manual lifetime
+/// management required.
 ///
 /// @param node      The parent node.
 /// @param out       Receives the initialized timer.
@@ -45,39 +52,47 @@ inline void std_function_trampoline(void* context) {
 /// @return Result indicating success or failure.
 inline Result create_timer(Node& node, Timer& out, std::chrono::milliseconds period,
                            std::function<void()> callback) {
-    auto* fn = new std::function<void()>(std::move(callback));
-    return node.create_timer(out, static_cast<uint64_t>(period.count()),
-                             detail::std_function_trampoline, fn);
+    auto fn = std::unique_ptr<std::function<void()>>(
+        new std::function<void()>(std::move(callback)));
+    auto* raw = fn.get();
+    Result r = node.create_timer(out, static_cast<uint64_t>(period.count()),
+                                 detail::std_function_trampoline, raw);
+    if (r.ok()) {
+        out.attach_std_closure(std::move(fn));
+    }
+    return r;
 }
 
 /// Create a one-shot timer with a std::function callback.
 ///
-/// Same lifetime rules as create_timer().
-///
-/// @param node      The parent node.
-/// @param out       Receives the initialized timer.
-/// @param delay     Delay before the callback fires.
-/// @param callback  Callable invoked once.
-/// @return Result indicating success or failure.
+/// Same ownership rules as `create_timer`: the closure lives with the
+/// Timer and is freed on destruction.
 inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::milliseconds delay,
                                    std::function<void()> callback) {
-    auto* fn = new std::function<void()>(std::move(callback));
-    return node.create_timer_oneshot(out, static_cast<uint64_t>(delay.count()),
-                                     detail::std_function_trampoline, fn);
+    auto fn = std::unique_ptr<std::function<void()>>(
+        new std::function<void()>(std::move(callback)));
+    auto* raw = fn.get();
+    Result r = node.create_timer_oneshot(out, static_cast<uint64_t>(delay.count()),
+                                         detail::std_function_trampoline, raw);
+    if (r.ok()) {
+        out.attach_std_closure(std::move(fn));
+    }
+    return r;
 }
 
 /// Create a guard condition with a std::function callback.
 ///
-/// Same lifetime rules as create_timer().
-///
-/// @param node      The parent node.
-/// @param out       Receives the initialized guard condition.
-/// @param callback  Callable invoked when triggered.
-/// @return Result indicating success or failure.
+/// Same ownership rules as `create_timer`.
 inline Result create_guard_condition(Node& node, GuardCondition& out,
                                      std::function<void()> callback) {
-    auto* fn = new std::function<void()>(std::move(callback));
-    return node.create_guard_condition(out, detail::std_function_trampoline, fn);
+    auto fn = std::unique_ptr<std::function<void()>>(
+        new std::function<void()>(std::move(callback)));
+    auto* raw = fn.get();
+    Result r = node.create_guard_condition(out, detail::std_function_trampoline, raw);
+    if (r.ok()) {
+        out.attach_std_closure(std::move(fn));
+    }
+    return r;
 }
 
 // ============================================================================
