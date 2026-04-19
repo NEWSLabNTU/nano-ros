@@ -1,0 +1,11 @@
+# Zephyr Rust examples build via `west build`, which invokes Corrosion →
+# cargo under its own environment. Without this pin, Corrosion picks up
+# the workspace's root `rust-toolchain.toml` (stable, thumbv7em target),
+# which misses the features the Zephyr Rust integration relies on.
+#
+# Matches `examples/qemu-arm-nuttx/rust-toolchain.toml`'s pattern. Bump
+# to a newer nightly when the Zephyr examples or zephyr-lang-rust
+# require it — run `just zephyr test` after any change to confirm.
+[toolchain]
+channel = "nightly-2026-04-11"
+components = ["rust-src", "rustfmt"]
