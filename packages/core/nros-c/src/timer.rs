@@ -2,7 +2,7 @@
 //!
 //! Timers provide periodic callbacks for time-based operations.
 
-use core::ffi::{c_int, c_void};
+use core::ffi::c_void;
 use core::ptr;
 
 use crate::error::*;
@@ -253,66 +253,13 @@ pub unsafe extern "C" fn nros_timer_fini(timer: *mut nros_timer_t) -> nros_ret_t
     NROS_RET_OK
 }
 
-/// Check if timer is ready to fire.
-///
-/// # Parameters
-/// * `timer` - Pointer to an initialized timer
-/// * `current_time_ns` - Current time in nanoseconds
-///
-/// # Returns
-/// * Non-zero if timer is ready, 0 otherwise
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_timer_is_ready(
-    timer: *const nros_timer_t,
-    current_time_ns: u64,
-) -> c_int {
-    if timer.is_null() {
-        return 0;
-    }
-
-    let timer = &*timer;
-
-    if timer.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
-        return 0;
-    }
-
-    let elapsed = current_time_ns.saturating_sub(timer.last_call_time_ns);
-    if elapsed >= timer.period_ns { 1 } else { 0 }
-}
-
-/// Call the timer callback and update last call time.
-///
-/// This is called by the executor when the timer is ready.
-///
-/// # Parameters
-/// * `timer` - Pointer to an initialized timer
-/// * `current_time_ns` - Current time in nanoseconds
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized or not running
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_timer_call(
-    timer: *mut nros_timer_t,
-    current_time_ns: u64,
-) -> nros_ret_t {
-    validate_not_null!(timer);
-
-    let timer_ref = &mut *timer;
-
-    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
-
-    // Update last call time
-    timer_ref.last_call_time_ns = current_time_ns;
-
-    // Call the callback
-    if let Some(cb) = timer_ref.callback {
-        cb(timer, timer_ref.context);
-    }
-
-    NROS_RET_OK
-}
+// `nros_timer_is_ready` and `nros_timer_call` were previously exposed
+// as public C symbols for users who wanted to drive timers manually.
+// The executor arena now owns timer readiness evaluation and callback
+// dispatch end-to-end (see `packages/core/nros-c/src/executor.rs`'s
+// timer handling), so those entry points never fired in normal flow
+// and duplicated logic that the arena was already doing. Both
+// functions are removed from the public C ABI as of Phase 84.B5.
 
 /// Check if timer is valid (initialized and not shutdown).
 ///

@@ -47,9 +47,12 @@ typedef void (*nros_timer_callback_t)(struct nros_timer_t* timer, void* context)
 typedef struct nros_timer_t {
     /** Current state. */
     enum nros_timer_state_t state;
-    /** Period in nanoseconds. */
+    /** @internal Period in nanoseconds.
+     *  Do not read or write directly — use @ref nros_timer_get_period
+     *  / @ref nros_timer_set_period. */
     uint64_t period_ns;
-    /** Last trigger time in nanoseconds. */
+    /** @internal Last trigger time in nanoseconds.
+     *  Executor bookkeeping — never touch from user code. */
     uint64_t last_call_time_ns;
     /** User callback function. */
     nros_timer_callback_t callback;
@@ -57,9 +60,11 @@ typedef struct nros_timer_t {
     void* context;
     /** Pointer to parent support context. */
     const struct nros_support_t* support;
-    /** Handle ID from executor registration (SIZE_MAX = not registered). */
+    /** @internal Handle ID from executor registration
+     *  (SIZE_MAX = not registered). */
     size_t handle_id;
-    /** Opaque pointer to internal executor (set by nros_executor_add_timer). */
+    /** @internal Opaque pointer to internal executor
+     *  (set by nros_executor_add_timer). */
     void* _executor;
 } nros_timer_t;
 
@@ -131,29 +136,6 @@ NROS_PUBLIC nros_ret_t nros_timer_reset(struct nros_timer_t* timer);
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC nros_ret_t nros_timer_fini(struct nros_timer_t* timer);
-
-/**
- * @brief Check if timer is ready to fire.
- *
- * @param timer           Pointer to an initialized timer.
- * @param current_time_ns Current time in nanoseconds.
- * @return Non-zero if timer is ready, 0 otherwise.
- */
-NROS_PUBLIC int nros_timer_is_ready(const struct nros_timer_t* timer, uint64_t current_time_ns);
-
-/**
- * @brief Call the timer callback and update last call time.
- *
- * This is called by the executor when the timer is ready.
- *
- * @param timer           Pointer to an initialized timer.
- * @param current_time_ns Current time in nanoseconds.
- *
- * @retval NROS_RET_OK               on success.
- * @retval NROS_RET_INVALID_ARGUMENT  if @p timer is NULL.
- * @retval NROS_RET_NOT_INIT          if not initialized or not running.
- */
-NROS_PUBLIC nros_ret_t nros_timer_call(struct nros_timer_t* timer, uint64_t current_time_ns);
 
 /**
  * @brief Check if timer is valid (initialized and not shutdown).
