@@ -533,9 +533,14 @@ static RV64_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+// E2E tests for C++ action on RISC-V ThreadX are queued (Phase 69.8
+// follow-up); builders stay ready for that.
+#[allow(dead_code)]
 static RV64_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+#[allow(dead_code)]
 static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+#[allow(dead_code)]
 fn is_cmake_available() -> bool {
     Command::new("cmake")
         .arg("--version")
@@ -544,6 +549,7 @@ fn is_cmake_available() -> bool {
         .unwrap_or(false)
 }
 
+#[allow(dead_code)]
 fn require_threadx_rv64_cmake() -> bool {
     if !require_threadx_riscv64() {
         return false;
@@ -716,6 +722,7 @@ fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
         })
         .map(|p| p.as_path())
 }
+#[allow(dead_code)]
 fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
     RV64_CPP_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
@@ -723,6 +730,7 @@ fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
         })
         .map(|p| p.as_path())
 }
+#[allow(dead_code)]
 fn build_rv64_cpp_action_client() -> TestResult<&'static Path> {
     RV64_CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {

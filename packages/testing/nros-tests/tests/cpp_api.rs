@@ -192,8 +192,12 @@ fn test_cpp_talker_listener_communication(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "cpp-listener")
         .expect("Failed to start cpp-listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for the C++ listener to subscribe. It prints
+    // "Waiting for messages" after `create_subscription` succeeds.
+    // Keep the consumed output — downstream assertions grep it.
+    let listener_boot_output = listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("cpp-listener did not become ready");
 
     // Start talker
     let mut talker_cmd = stdbuf_command(&cpp_talker_binary);
@@ -211,10 +215,11 @@ fn test_cpp_talker_listener_communication(
 
     eprintln!("C++ talker output:\n{}", talker_output);
 
-    // Collect listener output
-    let listener_output = listener
+    // Collect listener output — combine pre-ready + post-ready.
+    let listener_tail = listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener_output = listener_boot_output + &listener_tail;
 
     eprintln!("C++ listener output:\n{}", listener_output);
 
@@ -296,8 +301,10 @@ fn test_cpp_service_communication(
     let mut server = ManagedProcess::spawn_command(server_cmd, "cpp-service-server")
         .expect("Failed to start cpp-service-server");
 
-    // Wait for server to be ready
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for the C++ service server to register its queryable.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("cpp-service-server did not become ready");
 
     // Start client
     let mut client_cmd = stdbuf_command(&cpp_service_client_binary);
@@ -360,8 +367,10 @@ fn test_cpp_rust_pubsub_interop(zenohd_unique: ZenohRouter, cpp_talker_binary: P
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "rust-listener")
         .expect("Failed to start Rust listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for the Rust listener to subscribe.
+    listener
+        .wait_for_output_pattern("Subscriber created", Duration::from_secs(10))
+        .expect("rust-listener did not become ready");
 
     // Start C++ talker
     let mut talker_cmd = stdbuf_command(&cpp_talker_binary);
@@ -424,16 +433,16 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter, cpp_service_server_
     let mut server = ManagedProcess::spawn_command(server_cmd, "cpp-service-server")
         .expect("Failed to start C++ service server");
 
-    // Verify server is running before proceeding
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for the C++ service server to register its queryable. The
+    // "Waiting for" marker prints after queryable registration, so once
+    // we see it the router has the route.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("cpp-service-server did not become ready");
     assert!(
         server.is_running(),
         "C++ service server died during startup"
     );
-
-    // Wait for server to register service queryable with zenohd.
-    // The queryable needs time to propagate through the router.
-    std::thread::sleep(Duration::from_secs(5));
 
     // Start Rust client
     let mut client_cmd = Command::new(&rust_client);
@@ -571,8 +580,12 @@ fn test_cpp_action_communication(
     let mut server = ManagedProcess::spawn_command(server_cmd, "cpp-action-server")
         .expect("Failed to start cpp-action-server");
 
-    // Wait for server to be ready
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for the C++ action server to register all 5 entities. It
+    // prints "Waiting for goal requests" after `create_action_server`
+    // returns.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("cpp-action-server did not become ready");
 
     // Start client
     let mut client_cmd = stdbuf_command(&cpp_action_client_binary);

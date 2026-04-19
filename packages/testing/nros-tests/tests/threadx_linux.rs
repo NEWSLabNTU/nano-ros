@@ -91,7 +91,12 @@ static THREADX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+// E2E tests for C++ action on ThreadX Linux are queued (Phase 69.7
+// follow-up); the builders stay ready for that and carry their own
+// OnceCell caches.
+#[allow(dead_code)]
 static THREADX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+#[allow(dead_code)]
 static THREADX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build a ThreadX Linux example
@@ -644,12 +649,14 @@ fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+#[allow(dead_code)]
 fn build_threadx_cpp_action_server() -> TestResult<&'static Path> {
     THREADX_CPP_ACTION_SERVER_BINARY
         .get_or_try_init(|| build_threadx_cpp_example("action-server", "threadx_cpp_action_server"))
         .map(|p| p.as_path())
 }
 
+#[allow(dead_code)]
 fn build_threadx_cpp_action_client() -> TestResult<&'static Path> {
     THREADX_CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| build_threadx_cpp_example("action-client", "threadx_cpp_action_client"))

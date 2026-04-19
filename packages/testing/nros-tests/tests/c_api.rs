@@ -157,8 +157,12 @@ fn test_c_talker_listener_communication(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-listener")
         .expect("Failed to start c-listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for the listener to subscribe. The C listener prints
+    // "Waiting for messages" after `nros_subscription_init` succeeds.
+    // Keep the consumed output — downstream assertions grep it.
+    let listener_boot_output = listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("c-listener did not become ready");
 
     // Start talker
     let mut talker_cmd = stdbuf_command(&c_talker_binary);
@@ -176,10 +180,12 @@ fn test_c_talker_listener_communication(
 
     eprintln!("C talker output:\n{}", talker_output);
 
-    // Collect listener output
-    let listener_output = listener
+    // Collect listener output — concatenate the boot-phase output
+    // (consumed by the ready probe above) with anything new.
+    let listener_tail = listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener_output = listener_boot_output + &listener_tail;
 
     eprintln!("C listener output:\n{}", listener_output);
 
@@ -299,8 +305,11 @@ fn test_c_service_communication(
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-service-server")
         .expect("Failed to start c-service-server");
 
-    // Wait for server to be ready
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for the server to register its queryable. The C service
+    // server prints "Waiting for service requests" after init.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("c-service-server did not become ready");
 
     // Start client
     let mut client_cmd = stdbuf_command(&c_service_client_binary);
@@ -429,8 +438,12 @@ fn test_c_action_communication(
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-action-server")
         .expect("Failed to start c-action-server");
 
-    // Wait for server to be ready
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for the action server to register all five entities. It
+    // prints "Waiting for action goals" after the executor arena is
+    // populated and the handle is ready.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("c-action-server did not become ready");
 
     // Start client
     let mut client_cmd = stdbuf_command(&c_action_client_binary);
@@ -503,8 +516,12 @@ fn test_c_rust_pubsub_interop(zenohd_unique: ZenohRouter, c_talker_binary: PathB
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "rust-listener")
         .expect("Failed to start Rust listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for the Rust listener to subscribe. The Rust listener
+    // logs "Subscriber created" at info level once
+    // `create_subscription` succeeds.
+    listener
+        .wait_for_output_pattern("Subscriber created", Duration::from_secs(10))
+        .expect("rust-listener did not become ready");
 
     // Start C talker
     let mut talker_cmd = stdbuf_command(&c_talker_binary);
@@ -568,8 +585,10 @@ fn test_c_rust_service_interop(zenohd_unique: ZenohRouter, c_service_server_bina
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-service-server")
         .expect("Failed to start C service server");
 
-    // Wait for server to register service queryable with zenohd
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for the C service server to register its queryable.
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("c-service-server did not become ready");
 
     // Start Rust client
     let mut client_cmd = Command::new(&rust_client);
