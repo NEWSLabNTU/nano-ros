@@ -263,10 +263,12 @@ template <typename A> class ActionClient {
     /// Register async callbacks for goal response, feedback, and result.
     ///
     /// @param options  Callback pointers and context.
-    void set_callbacks(const SendGoalOptions& options) {
-        if (!initialized_) return;
-        nros_cpp_action_client_set_callbacks(storage_, options.goal_response, options.feedback,
-                                             options.result, options.context);
+    /// @return Result::success() on success, ErrorCode::NotInitialized
+    ///         if the client is not initialized, or the FFI error code.
+    Result set_callbacks(const SendGoalOptions& options) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_set_callbacks(
+            storage_, options.goal_response, options.feedback, options.result, options.context));
     }
 
     /// Poll for pending async replies (non-blocking).

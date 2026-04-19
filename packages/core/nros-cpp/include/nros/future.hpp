@@ -79,7 +79,15 @@ template <typename T> class Future {
         while (elapsed < timeout_ms) {
             uint32_t step = poll_ms;
             if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
-            nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+            // Transient conditions: keep polling. Anything else propagates.
+            // - Ok (0): nothing to dispatch this round.
+            // - Timeout (-2): spin_once returned after its timeout — normal.
+            // - TryAgain (-6): transport hint to retry.
+            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout)
+                && ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
+                return Result(ret);
+            }
             if (is_ready()) return try_take(out);
             elapsed += step;
         }

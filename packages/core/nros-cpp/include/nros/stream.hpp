@@ -61,7 +61,12 @@ template <typename T> class Stream {
         while (elapsed < timeout_ms) {
             uint32_t step = poll_ms;
             if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
-            nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+            // Transient conditions: keep polling. Anything else propagates.
+            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout)
+                && ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
+                return Result(ret);
+            }
             if (try_next(out)) return Result::success();
             elapsed += step;
         }
