@@ -50,7 +50,7 @@ pub use zpico_sys::{
     ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT, ZPICO_MAX_LIVELINESS,
     ZPICO_MAX_PENDING_GETS, ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SUBSCRIBERS,
     ZPICO_OK, ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, ZpicoCallback, ZpicoCallbackWithAttachment,
-    ZpicoNotifyCallback, ZpicoQueryCallback, ZpicoZeroCopyCallback, zpico_property_t,
+    ZpicoNotifyCallback, ZpicoQueryCallback, zpico_property_t,
 };
 
 // Import FFI functions from sys crate
@@ -67,7 +67,7 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_poll, zpico_publish, zpico_publish_with_attachment,
-    zpico_query_reply, zpico_spin_once, zpico_subscribe_zero_copy, zpico_undeclare_liveliness,
+    zpico_query_reply, zpico_spin_once, zpico_undeclare_liveliness,
     zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
     zpico_uses_polling,
 };
@@ -529,34 +529,6 @@ impl Context {
                 callback,
                 ctx,
             )
-        });
-        if handle < 0 {
-            return Err(ZpicoError::from_code(handle));
-        }
-
-        Ok(Subscriber {
-            handle,
-            _ctx: PhantomData,
-        })
-    }
-
-    /// Declare a zero-copy subscriber for the given key expression.
-    ///
-    /// The callback receives a borrowed pointer directly into zenoh-pico's
-    /// internal receive buffer. The pointer is only valid during the callback.
-    ///
-    /// # Safety
-    ///
-    /// The callback and context must remain valid for the lifetime of the subscriber.
-    /// The data pointer passed to the callback is only valid during the callback invocation.
-    pub unsafe fn subscribe_zero_copy_raw<'a>(
-        &'a self,
-        keyexpr: &[u8],
-        callback: ZpicoZeroCopyCallback,
-        ctx: *mut c_void,
-    ) -> Result<Subscriber<'a>> {
-        let handle = ffi_guard(|| unsafe {
-            zpico_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx)
         });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));

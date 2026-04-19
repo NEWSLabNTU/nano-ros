@@ -92,10 +92,9 @@ void app_main(void) {
         }
     }
 
-    nros_message_type_t add_two_ints_type = {
+    nros_service_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
-        .serialized_size_max = 256,
     };
 
     // Wait for NuttX networking to become ready before attempting the

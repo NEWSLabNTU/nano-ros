@@ -90,7 +90,7 @@ NROS_PUBLIC struct nros_client_t nros_client_get_zero_initialized(void);
  */
 NROS_PUBLIC
 nros_ret_t nros_client_init(struct nros_client_t* client, const struct nros_node_t* node,
-                            const struct nros_message_type_t* type_info, const char* service_name);
+                            const struct nros_service_type_t* type_info, const char* service_name);
 
 /**
  * @brief Finalise a service client.

@@ -116,10 +116,9 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Build type info using generated type name/hash
-    nros_message_type_t add_two_ints_type = {
+    nros_service_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
-        .serialized_size_max = 256,
     };
 
     // Initialize support context

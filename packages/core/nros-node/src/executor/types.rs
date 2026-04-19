@@ -236,14 +236,32 @@ static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 #[cfg(feature = "std")]
 fn env_cache() -> &'static EnvCache {
     ENV_CACHE.get_or_init(|| {
-        let locator = std::env::var("ZENOH_LOCATOR")
+        // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
+        // names with a stderr deprecation warning.
+        let locator = std::env::var("NROS_LOCATOR")
+            .or_else(|_| {
+                std::env::var("ZENOH_LOCATOR").inspect(|_| {
+                    std::eprintln!(
+                        "nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead"
+                    );
+                })
+            })
             .unwrap_or_else(|_| std::string::String::from("tcp/127.0.0.1:7447"));
         let domain_id = std::env::var("ROS_DOMAIN_ID")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let mode = match std::env::var("ZENOH_MODE") {
-            Ok(s) if s == "peer" => SessionMode::Peer,
+        let mode_str = std::env::var("NROS_SESSION_MODE")
+            .or_else(|_| {
+                std::env::var("ZENOH_MODE").inspect(|_| {
+                    std::eprintln!(
+                        "nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead"
+                    );
+                })
+            })
+            .ok();
+        let mode = match mode_str.as_deref() {
+            Some("peer") => SessionMode::Peer,
             _ => SessionMode::Client,
         };
         EnvCache {
@@ -259,9 +277,11 @@ impl ExecutorConfig<'static> {
     /// Create a configuration from environment variables.
     ///
     /// Reads:
-    /// - `ZENOH_LOCATOR` — Middleware locator (default: `"tcp/127.0.0.1:7447"`)
-    /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`)
-    /// - `ZENOH_MODE` — Session mode: `"client"` or `"peer"` (default: `"client"`)
+    /// - `NROS_LOCATOR` — Middleware locator (default: `"tcp/127.0.0.1:7447"`).
+    ///   Legacy name `ZENOH_LOCATOR` is accepted with a deprecation warning.
+    /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`).
+    /// - `NROS_SESSION_MODE` — Session mode: `"client"` or `"peer"` (default:
+    ///   `"client"`). Legacy name `ZENOH_MODE` is accepted with a deprecation warning.
     ///
     /// Env-var values are cached in a process-global `OnceLock` on the
     /// first call and reused for the process lifetime — repeated calls

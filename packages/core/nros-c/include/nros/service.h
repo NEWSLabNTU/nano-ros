@@ -112,7 +112,7 @@ NROS_PUBLIC struct nros_service_t nros_service_get_zero_initialized(void);
  */
 NROS_PUBLIC
 nros_ret_t nros_service_init(struct nros_service_t* service, const struct nros_node_t* node,
-                             const struct nros_message_type_t* type_info, const char* service_name,
+                             const struct nros_service_type_t* type_info, const char* service_name,
                              nros_service_callback_t callback, void* context);
 
 /**

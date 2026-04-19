@@ -13,7 +13,7 @@ use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LE
 use crate::error::*;
 use crate::executor::nros_executor_t;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::publisher::nros_message_type_t;
+use crate::publisher::nros_service_type_t;
 
 // ============================================================================
 // Waker helper — creates a Waker that sets an AtomicBool
@@ -169,7 +169,7 @@ pub extern "C" fn nros_service_get_zero_initialized() -> nros_service_t {
 pub unsafe extern "C" fn nros_service_init(
     service: *mut nros_service_t,
     node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+    type_info: *const nros_service_type_t,
     service_name: *const c_char,
     callback: nros_service_callback_t,
     context: *mut c_void,
@@ -531,7 +531,7 @@ pub extern "C" fn nros_client_get_zero_initialized() -> nros_client_t {
 pub unsafe extern "C" fn nros_client_init(
     client: *mut nros_client_t,
     node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+    type_info: *const nros_service_type_t,
     service_name: *const c_char,
 ) -> nros_ret_t {
     validate_not_null!(client, node, type_info, service_name);
@@ -988,13 +988,12 @@ mod verification {
     use core::ptr;
 
     // Helper to create a dummy type_info
-    fn dummy_message_type() -> nros_message_type_t {
+    fn dummy_service_type() -> nros_service_type_t {
         let type_name = b"example_interfaces::srv::dds_::AddTwoInts_\0";
         let type_hash = b"RIHS01_test\0";
-        nros_message_type_t {
+        nros_service_type_t {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
-            serialized_size_max: 16,
         }
     }
 
@@ -1016,7 +1015,7 @@ mod verification {
     #[kani::unwind(5)]
     fn service_init_null_ptrs() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let mut node = crate::node::nros_node_get_zero_initialized();
 
         // NULL service
@@ -1087,7 +1086,7 @@ mod verification {
     #[kani::unwind(5)]
     fn service_init_none_callback() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let node = crate::node::nros_node_get_zero_initialized();
 
         let mut svc = nros_service_get_zero_initialized();
@@ -1110,7 +1109,7 @@ mod verification {
     #[kani::unwind(5)]
     fn service_init_uninit_node() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let node = crate::node::nros_node_get_zero_initialized();
 
         // Node is UNINITIALIZED → NOT_INIT
@@ -1159,7 +1158,7 @@ mod verification {
     #[kani::unwind(5)]
     fn service_double_init_rejected() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let mut node = crate::node::nros_node_get_zero_initialized();
         // Manually set node to initialized state for this test
         node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
@@ -1200,7 +1199,7 @@ mod verification {
     #[kani::unwind(5)]
     fn client_init_null_ptrs() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let node = crate::node::nros_node_get_zero_initialized();
 
         // NULL client
@@ -1256,7 +1255,7 @@ mod verification {
     #[kani::unwind(5)]
     fn client_init_uninit_node() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let node = crate::node::nros_node_get_zero_initialized();
 
         let mut client = nros_client_get_zero_initialized();
@@ -1372,7 +1371,7 @@ mod verification {
     #[kani::unwind(5)]
     fn client_call_reentrant_rejected() {
         let svc_name = b"/add_two_ints\0";
-        let type_info = dummy_message_type();
+        let type_info = dummy_service_type();
         let mut node = crate::node::nros_node_get_zero_initialized();
         node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
 

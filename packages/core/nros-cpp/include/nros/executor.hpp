@@ -119,7 +119,12 @@ class Executor {
     bool ok() const { return initialized_; }
 
     /// Get the raw executor storage (for advanced use).
-    void* handle() const { return const_cast<uint8_t*>(storage_); }
+    ///
+    /// Non-const: downstream FFI mutates executor state through this
+    /// pointer (e.g. `spin_once`), so exposing it as `const` would be a
+    /// lie. Callers that only need to observe the handle should do so
+    /// through methods on `Executor` directly.
+    void* handle() { return storage_; }
 
     /// Shut down the executor and close the middleware connection.
     Result shutdown() {

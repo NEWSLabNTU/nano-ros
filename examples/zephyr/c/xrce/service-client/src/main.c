@@ -48,10 +48,9 @@ int main(void)
         return 1;
     }
 
-    nros_message_type_t type = {
+    nros_service_type_t type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
-        .serialized_size_max = 256,
     };
 
     nros_client_t client = nros_client_get_zero_initialized();

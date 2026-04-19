@@ -17,14 +17,20 @@ Variables in `.env` take precedence over justfile defaults but are overridden by
 
 Examples use `ExecutorConfig::from_env()` for configuration:
 
-| Variable                               | Description                                    | Default              |
-|----------------------------------------|------------------------------------------------|----------------------|
-| `ROS_DOMAIN_ID`                        | ROS 2 domain ID                                | `0`                  |
-| `ZENOH_LOCATOR`                        | Router address (`tcp/…`, `udp/…`, or `tls/…`)  | `tcp/127.0.0.1:7447` |
-| `ZENOH_MODE`                           | Session mode: `client` or `peer`               | `client`             |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE`        | Path to CA certificate (PEM) for TLS           | (none)               |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS          | (none)               |
-| `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`) | (none)               |
+| Variable                               | Description                                                     | Default              |
+|----------------------------------------|-----------------------------------------------------------------|----------------------|
+| `ROS_DOMAIN_ID`                        | ROS 2 domain ID                                                 | `0`                  |
+| `NROS_LOCATOR`                         | RMW locator (`tcp/…`, `udp/…`, `serial/…`, or `tls/…`)          | `tcp/127.0.0.1:7447` |
+| `NROS_SESSION_MODE`                    | Session mode: `client` or `peer`                                | `client`             |
+| `ZENOH_TLS_ROOT_CA_CERTIFICATE`        | Path to CA certificate (PEM) for TLS                            | (none)               |
+| `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS                           | (none)               |
+| `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`)                  | (none)               |
+
+> **Deprecated legacy names**: `ZENOH_LOCATOR` and `ZENOH_MODE` are still
+> accepted (they fall back to `NROS_LOCATOR` / `NROS_SESSION_MODE`) but
+> will print a one-line deprecation warning to stderr. Migrate to the
+> `NROS_*` names. `ZENOH_TLS_*` names are kept because TLS is currently
+> zenoh-specific.
 
 ### TLS Notes
 

@@ -143,6 +143,14 @@ typedef int nros_ret_t;
 /** Request was rejected (e.g., goal rejected by server). */
 #define NROS_RET_REJECTED -13
 
+/** No data available yet; retry later (non-blocking poll returned empty). */
+#define NROS_RET_TRY_AGAIN -14
+
+/** Re-entrant call not allowed (e.g., a blocking client/action helper was
+ *  invoked from inside a dispatch callback, which would spin the executor
+ *  recursively). Return immediately and retry from outside the callback. */
+#define NROS_RET_REENTRANT -15
+
 /* ===================================================================
  * Time and Duration
  * =================================================================== */

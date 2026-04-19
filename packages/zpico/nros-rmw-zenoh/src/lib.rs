@@ -74,18 +74,6 @@ pub use shim::{
     ZenohSession, ZenohSubscriber, ZenohTransport,
 };
 
-// Re-export zero-copy subscriber when unstable API + alloc are enabled
-#[cfg(all(
-    feature = "unstable-zenoh-api",
-    feature = "alloc",
-    any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal"
-    )
-))]
-pub use shim::ZenohZeroCopySubscriber;
-
 // Re-export std-only executor wake functions
 #[cfg(all(
     feature = "std",

@@ -67,9 +67,6 @@ pub use session::ZenohSession;
 pub use subscriber::ZenohSubscriber;
 pub use transport::{ZenohRmw, ZenohTransport};
 
-#[cfg(all(feature = "unstable-zenoh-api", feature = "alloc"))]
-pub use subscriber::ZenohZeroCopySubscriber;
-
 // ============================================================================
 // Constants
 // ============================================================================

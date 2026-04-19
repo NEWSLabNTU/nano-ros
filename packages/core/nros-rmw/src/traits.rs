@@ -580,6 +580,8 @@ impl Default for RmwConfig<'_> {
 pub enum LocatorProtocol {
     /// TCP transport (e.g., "tcp/127.0.0.1:7447")
     Tcp,
+    /// UDP transport (e.g., "udp/192.168.1.50:2019" — common for XRCE-DDS)
+    Udp,
     /// Serial/UART transport (e.g., "serial//dev/ttyUSB0#baudrate=115200")
     Serial,
     /// Unknown protocol
@@ -590,6 +592,8 @@ pub enum LocatorProtocol {
 pub fn locator_protocol(locator: &str) -> LocatorProtocol {
     if locator.starts_with("tcp/") {
         LocatorProtocol::Tcp
+    } else if locator.starts_with("udp/") {
+        LocatorProtocol::Udp
     } else if locator.starts_with("serial/") {
         LocatorProtocol::Serial
     } else {
@@ -600,10 +604,12 @@ pub fn locator_protocol(locator: &str) -> LocatorProtocol {
 /// Validate a locator string format.
 ///
 /// Returns `Ok(())` if the locator is well-formed, or an error message describing
-/// the problem. This provides early feedback before zenoh-pico rejects a bad locator.
+/// the problem. This provides early feedback before zenoh-pico or XRCE-DDS rejects
+/// a bad locator.
 ///
 /// Supported formats:
 /// - TCP: `tcp/<host>:<port>` (e.g., `tcp/127.0.0.1:7447`)
+/// - UDP: `udp/<host>:<port>` (e.g., `udp/192.168.1.50:2019`)
 /// - Serial: `serial/<device>#baudrate=<rate>` (e.g., `serial//dev/ttyUSB0#baudrate=115200`)
 pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
     match locator_protocol(locator) {
@@ -611,6 +617,13 @@ pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
             let rest = &locator[4..]; // skip "tcp/"
             if !rest.contains(':') {
                 return Err("TCP locator must contain host:port (e.g., tcp/127.0.0.1:7447)");
+            }
+            Ok(())
+        }
+        LocatorProtocol::Udp => {
+            let rest = &locator[4..]; // skip "udp/"
+            if !rest.contains(':') {
+                return Err("UDP locator must contain host:port (e.g., udp/192.168.1.50:2019)");
             }
             Ok(())
         }
@@ -635,7 +648,9 @@ pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
             }
             Ok(())
         }
-        LocatorProtocol::Unknown => Err("unknown locator protocol (expected tcp/ or serial/)"),
+        LocatorProtocol::Unknown => {
+            Err("unknown locator protocol (expected tcp/, udp/, or serial/)")
+        }
     }
 }
 
@@ -1345,11 +1360,21 @@ mod tests {
 
     #[test]
     fn test_locator_protocol_unknown() {
+        assert_eq!(locator_protocol(""), LocatorProtocol::Unknown);
+        assert_eq!(locator_protocol("http://foo"), LocatorProtocol::Unknown);
+        assert_eq!(locator_protocol("tls/host:port"), LocatorProtocol::Unknown);
+    }
+
+    #[test]
+    fn test_locator_protocol_udp() {
         assert_eq!(
             locator_protocol("udp/127.0.0.1:7447"),
-            LocatorProtocol::Unknown
+            LocatorProtocol::Udp
         );
-        assert_eq!(locator_protocol(""), LocatorProtocol::Unknown);
+        assert_eq!(
+            locator_protocol("udp/192.168.1.50:2019"),
+            LocatorProtocol::Udp
+        );
     }
 
     #[test]
@@ -1387,7 +1412,19 @@ mod tests {
 
     #[test]
     fn test_validate_unknown_protocol() {
-        assert!(validate_locator("udp/127.0.0.1:7447").is_err());
+        assert!(validate_locator("http://foo").is_err());
+        assert!(validate_locator("tls/host:port").is_err());
+    }
+
+    #[test]
+    fn test_validate_udp_locator_ok() {
+        assert!(validate_locator("udp/127.0.0.1:7447").is_ok());
+        assert!(validate_locator("udp/192.168.1.50:2019").is_ok());
+    }
+
+    #[test]
+    fn test_validate_udp_locator_missing_port() {
+        assert!(validate_locator("udp/127.0.0.1").is_err());
     }
 
     // --- RmwConfig Tests ---
