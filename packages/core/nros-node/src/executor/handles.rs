@@ -506,6 +506,52 @@ impl<
             .try_handle_get_result_raw(&default_buf[..default_len])
     }
 
+    /// Drain all pending server-side work in one call.
+    ///
+    /// Calls `try_accept_goal`, `try_handle_cancel`, and
+    /// `try_handle_get_result` in sequence. Invoke this on every
+    /// `spin_once` iteration in manual-poll code — otherwise clients
+    /// will hang on `get_result` because `create_action_server()`
+    /// servers are not arena-registered.
+    ///
+    /// The two callbacks may be called zero or one times per `poll()`:
+    ///   * `on_goal` fires when a new goal arrives.
+    ///   * `on_cancel` fires when a cancel request arrives.
+    ///
+    /// Get-result requests are drained unconditionally (no callback
+    /// needed — the result is pulled from the goal's stored state).
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut server = node.create_action_server::<Fibonacci>("/fibonacci")?;
+    /// loop {
+    ///     executor.spin_once(Duration::from_millis(10));
+    ///     server.poll(
+    ///         |id, goal| {
+    ///             /* accept or reject based on `goal` */
+    ///             GoalResponse::AcceptAndExecute
+    ///         },
+    ///         |_id, _status| CancelResponse::Accept,
+    ///     )?;
+    /// }
+    /// ```
+    pub fn poll<GF, CF>(
+        &mut self,
+        mut on_goal: GF,
+        mut on_cancel: CF,
+    ) -> Result<(), NodeError>
+    where
+        GF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
+        CF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
+        A::Goal: Clone,
+        A::Result: Clone + Default,
+    {
+        let _ = self.try_accept_goal(|id, goal| on_goal(id, goal))?;
+        let _ = self.try_handle_cancel(|id, status| on_cancel(id, status))?;
+        let _ = self.try_handle_get_result()?;
+        Ok(())
+    }
+
     /// Get a reference to an active goal.
     pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<ActiveGoal<A>>
     where

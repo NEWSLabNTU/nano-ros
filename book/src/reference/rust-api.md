@@ -190,16 +190,27 @@ buffer sizes and the concurrent-goal cap.
 let mut server = node.create_action_server::<Fibonacci>("/fibonacci")?;
 ```
 
-**Footgun**: `create_action_server()` is **not** arena-registered. `spin_once()`
-will **not** process `get_result` queries automatically. After completing a
-goal, you must explicitly drain the result-query channel yourself:
+`create_action_server()` is **not** arena-registered — `spin_once()` does
+not drain the server's three channels automatically. Call `poll()` on
+every loop iteration to accept new goals, handle cancel requests, and
+drain result queries:
 
 ```rust
-server.try_handle_get_result()?;
+loop {
+    executor.spin_once(10);
+    server.poll(
+        |_id, goal| {
+            if goal.order > 46 { GoalResponse::Reject }
+            else              { GoalResponse::AcceptAndExecute }
+        },
+        |_id, _status| CancelResponse::Accept,
+    )?;
+}
 ```
 
-This is tracked as Phase 84.D2 — the manual-poll server will gain a fused
-`poll()` method that does accept / cancel / get-result drainage in one call.
+If you need finer control, the three draining methods are also exposed
+individually: `try_accept_goal()`, `try_handle_cancel()`,
+`try_handle_get_result()`. `poll()` calls them in the same order.
 
 ### Client
 

@@ -292,6 +292,8 @@ pub enum NodeError {
     NameTooLong,
     /// CDR serialization failed.
     Serialization,
+    /// CDR deserialization failed.
+    Deserialization,
     /// Buffer too small for message.
     BufferTooSmall,
     /// Action server/client creation failed.
@@ -310,6 +312,18 @@ pub enum NodeError {
 impl From<TransportError> for NodeError {
     fn from(err: TransportError) -> Self {
         NodeError::Transport(err)
+    }
+}
+
+impl From<nros_core::SerError> for NodeError {
+    fn from(_: nros_core::SerError) -> Self {
+        NodeError::Serialization
+    }
+}
+
+impl From<nros_core::DeserError> for NodeError {
+    fn from(_: nros_core::DeserError) -> Self {
+        NodeError::Deserialization
     }
 }
 
