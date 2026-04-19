@@ -38,19 +38,16 @@ max-threads = 1
 [test-groups.qemu-zephyr]
 max-threads = 1
 
-[test-groups.c_api]
-max-threads = 1
-
-[test-groups.cpp_api]
+[test-groups.native_api]
 max-threads = 1
 
 # XRCE-DDS tests: single Agent instance per test
 [test-groups.xrce]
 max-threads = 1
 
-# Note: C XRCE tests use the c_api group (not a separate group) because both
-# zenoh and XRCE C tests write to the same target/release/libnros_c.a — running
-# them concurrently causes library overwrites and link-time failures.
+# Note: C XRCE tests use the native_api group (not a separate group) because
+# both zenoh and XRCE C tests write to the same target/release/libnros_c.a —
+# running them concurrently causes library overwrites and link-time failures.
 
 [[profile.default.overrides]]
 filter = "binary(esp32_emulator)"
@@ -69,8 +66,8 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 [[profile.default.overrides]]
-filter = "binary(c_api)"
-test-group = "c_api"
+filter = "binary(native_api)"
+test-group = "native_api"
 
 [[profile.default.overrides]]
 filter = "binary(xrce)"
@@ -78,12 +75,8 @@ test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 [[profile.default.overrides]]
-filter = "binary(cpp_api)"
-test-group = "cpp_api"
-
-[[profile.default.overrides]]
 filter = "binary(c_xrce_api)"
-test-group = "c_api"
+test-group = "native_api"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 # XRCE ↔ ROS 2 DDS interop: needs XRCE Agent + ROS 2 + rmw_fastrtps

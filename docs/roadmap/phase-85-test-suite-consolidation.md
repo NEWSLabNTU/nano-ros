@@ -23,15 +23,15 @@ The integration-test suite under
 duplication as platforms were added one at a time. A detailed audit
 found:
 
-| Surface                             | Count | Notes                                                       |
-|-------------------------------------|:-----:|-------------------------------------------------------------|
-| Test functions                      | 214   | Across 30 `.rs` files                                       |
-| Build-only tests (`test_X_builds`)  | 69    | One per (platform, example, language) tuple                 |
-| Near-identical E2E test bodies      | 32    | Same assertions, different `QemuProcess::start_X_virt`      |
-| Per-file `OnceCell<PathBuf>` caches | 30    | No cross-file sharing — same binary rebuilt per test file    |
-| `sleep(Duration::from_secs(≥2))`    | 11+   | Mostly in c_api / cpp_api / safety_e2e; ~15–30s per run      |
-| Nextest `max-threads=1` groups      | 8     | One per platform; mostly over-restrictive post-port-table    |
-| `#[ignore]`'d tests                 | 2     | Both genuinely blocked (Phase 77 C++ action; XRCE forwarder) |
+| Surface                             | Count | Notes                                                        |
+|-------------------------------------|:-----:|--------------------------------------------------------------|
+| Test functions                      |  214  | Across 30 `.rs` files                                        |
+| Build-only tests (`test_X_builds`)  |  69   | One per (platform, example, language) tuple                  |
+| Near-identical E2E test bodies      |  32   | Same assertions, different `QemuProcess::start_X_virt`       |
+| Per-file `OnceCell<PathBuf>` caches |  30   | No cross-file sharing — same binary rebuilt per test file    |
+| `sleep(Duration::from_secs(≥2))`    |  11+  | Mostly in c_api / cpp_api / safety_e2e; ~15–30s per run      |
+| Nextest `max-threads=1` groups      |   8   | One per platform; mostly over-restrictive post-port-table    |
+| `#[ignore]`'d tests                 |   2   | Both genuinely blocked (Phase 77 C++ action; XRCE forwarder) |
 
 ### What "the same test, 32 times" looks like
 
@@ -66,7 +66,7 @@ that each just call `build_X()` and assert the binary exists).
 
 ### Group A — Land today (quick wins, ~0 risk)
 
-- [ ] 85.1 — Merge `c_api.rs` + `cpp_api.rs` into `native_api.rs`
+- [x] 85.1 — Merge `c_api.rs` + `cpp_api.rs` into `native_api.rs`
   - **Files**: `packages/testing/nros-tests/tests/c_api.rs`,
     `packages/testing/nros-tests/tests/cpp_api.rs` → new
     `packages/testing/nros-tests/tests/native_api.rs`
@@ -76,7 +76,7 @@ that each just call `build_X()` and assert the binary exists).
   - **Coverage**: Every existing native C / C++ test scenario runs
     under the parametrised test with the same assertions.
 
-- [ ] 85.2 — Replace `sleep(Duration::from_secs(N))` with ready-probes
+- [x] 85.2 — Replace `sleep(Duration::from_secs(N))` with ready-probes
   - **Files**: `c_api.rs`, `cpp_api.rs`, `safety_e2e.rs` (and any other
     files surfaced by `rg 'sleep\(Duration::from_secs\([2-9]'`)
   - **Goal**: Swap stabilization sleeps for
@@ -86,7 +86,7 @@ that each just call `build_X()` and assert the binary exists).
   - **Expected speedup**: 15–30 s per full run. More if we push the
     probe into `spawn` / `wait_for_output_pattern` helpers.
 
-- [ ] 85.3 — Delete the 60+ build-only `test_X_Y_builds` tests
+- [x] 85.3 — Delete the 60+ build-only `test_X_Y_builds` tests
   - **Files**: `freertos_qemu.rs`, `nuttx_qemu.rs`, `threadx_linux.rs`,
     `threadx_riscv64_qemu.rs`
   - **Goal**: Remove `test_X_talker_builds`, `test_X_listener_builds`,

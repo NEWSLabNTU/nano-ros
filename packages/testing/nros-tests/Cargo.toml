@@ -72,8 +72,8 @@ name = "actions"
 path = "tests/actions.rs"
 
 [[test]]
-name = "c_api"
-path = "tests/c_api.rs"
+name = "native_api"
+path = "tests/native_api.rs"
 
 [[test]]
 name = "rmw"
