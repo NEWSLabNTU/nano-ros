@@ -53,3 +53,8 @@ pub use traits::{
     ServiceRequest, ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport,
     TransportConfig, TransportError, locator_protocol, validate_locator,
 };
+
+// Re-export `MessageInfo` from nros-core so backends implementing
+// `Subscriber::try_recv_raw_with_info` don't need their own direct
+// nros-core dep.
+pub use nros_core::MessageInfo;

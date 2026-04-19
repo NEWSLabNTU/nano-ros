@@ -1168,6 +1168,23 @@ impl Subscriber for XrceSubscriber {
         }
     }
 
+    /// Returns `(len, None)` — XRCE does not yet plumb per-sample info
+    /// through the receive callback, so the returned `MessageInfo` is
+    /// always `None`. The zenoh backend parses RMW attachments to
+    /// populate publisher GID / sequence number / source timestamp;
+    /// adding equivalent support on XRCE (reading `uxrObjectId` /
+    /// sample identity from `uxr_run_session`) is tracked as a
+    /// follow-up to Phase 84.E1. Users that need `MessageInfo` should
+    /// stick with the zenoh backend for now.
+    fn try_recv_raw_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<nros_rmw::MessageInfo>)>, TransportError> {
+        // Explicit override (not a default fallthrough) so the gap is
+        // visible in the code; behavior matches the trait default.
+        self.try_recv_raw(buf).map(|opt| opt.map(|len| (len, None)))
+    }
+
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
     }

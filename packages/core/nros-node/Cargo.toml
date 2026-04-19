@@ -38,7 +38,11 @@ platform-threadx = ["nros-rmw-zenoh?/platform-threadx", "nros-rmw-xrce?/platform
 platform-cffi = []
 
 # E2E safety protocol (CRC-32 + sequence tracking)
-safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+safety-e2e = [
+    "nros-rmw/safety-e2e",
+    "nros-rmw-zenoh?/safety-e2e",
+    "nros-rmw-xrce?/safety-e2e",
+]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]

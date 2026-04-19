@@ -89,7 +89,12 @@ xrce-udp = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-udp", "nros-no
 xrce-serial = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
-safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+safety-e2e = [
+    "nros-node/safety-e2e",
+    "nros-rmw/safety-e2e",
+    "nros-rmw-zenoh?/safety-e2e",
+    "nros-rmw-xrce?/safety-e2e",
+]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["nros-node/unstable-zenoh-api", "nros-rmw-zenoh?/unstable-zenoh-api"]

@@ -18,6 +18,11 @@ platform-threadx = ["xrce-sys/threadx"]
 posix-udp = ["platform-posix", "dep:libc"]
 posix-serial = ["platform-posix", "dep:libc"]
 ffi-sync = ["dep:critical-section"]
+# E2E safety protocol (CRC-32 + sequence tracking). Forwards to nros-rmw.
+# When enabled, `Subscriber::try_recv_validated` is available; XRCE does
+# not yet plumb per-sample info through the callback, so the validation
+# result will always report `crc_valid: None` (see Phase 84.E1).
+safety-e2e = ["nros-rmw/safety-e2e"]
 
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
