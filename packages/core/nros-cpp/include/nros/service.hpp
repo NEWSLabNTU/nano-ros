@@ -50,18 +50,22 @@ template <typename S> class Service {
     ///
     /// @param req     Output request struct (filled on success).
     /// @param seq_id  Output sequence number for reply matching.
-    /// @return true if a request was received and deserialized.
-    bool try_recv_request(RequestType& req, int64_t& seq_id) {
-        if (!initialized_) return false;
+    /// @return Result::success() if a request was received and deserialized;
+    ///         ErrorCode::TryAgain if no data is available;
+    ///         ErrorCode::NotInitialized or the FFI error code otherwise;
+    ///         ErrorCode::Error if deserialization failed.
+    Result try_recv_request(RequestType& req, int64_t& seq_id) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[RequestType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         int64_t seq = 0;
         nros_cpp_ret_t ret =
             nros_cpp_service_server_try_recv_raw(storage_, buf, sizeof(buf), &len, &seq);
-        if (ret != 0 || len == 0) return false;
-        if (RequestType::ffi_deserialize(buf, len, &req) != 0) return false;
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (RequestType::ffi_deserialize(buf, len, &req) != 0) return Result(ErrorCode::Error);
         seq_id = seq;
-        return true;
+        return Result::success();
     }
 
     /// Send a typed reply to a previously received request.

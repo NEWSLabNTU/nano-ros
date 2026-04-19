@@ -192,17 +192,24 @@ template <typename A> class ActionClient {
     /// Try to receive feedback (non-blocking).
     ///
     /// @param feedback Output feedback struct (filled on success).
-    /// @return true if feedback was received and deserialized.
-    bool try_recv_feedback(FeedbackType& feedback) {
-        if (!initialized_) return false;
+    /// @return Result::success() if feedback was received and deserialized;
+    ///         ErrorCode::TryAgain if no feedback is available right now;
+    ///         ErrorCode::NotInitialized if the client is not initialized;
+    ///         ErrorCode::Error if deserialization failed; otherwise the
+    ///         FFI error code.
+    Result try_recv_feedback(FeedbackType& feedback) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
 
         uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_action_client_try_recv_feedback(storage_, buf, sizeof(buf), &len);
-        if (ret != 0 || len == 0) return false;
-        if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) return false;
-        return true;
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) {
+            return Result(ErrorCode::Error);
+        }
+        return Result::success();
     }
 
     // =================================================================

@@ -34,14 +34,20 @@ template <typename T> class Stream {
     /// Try to receive the next value (non-blocking).
     ///
     /// @param out  Output object (filled on success).
-    /// @return true if a value was received and deserialized.
-    bool try_next(T& out) {
-        if (!try_recv_fn_) return false;
+    /// @return Result::success() if a value was received and deserialized;
+    ///         ErrorCode::TryAgain if no data is available right now;
+    ///         ErrorCode::NotInitialized if the stream is unbound;
+    ///         ErrorCode::Error if deserialization failed; otherwise the
+    ///         FFI error code.
+    Result try_next(T& out) {
+        if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[T::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret = try_recv_fn_(storage_, buf, sizeof(buf), &len);
-        if (ret != 0 || len == 0) return false;
-        return T::ffi_deserialize(buf, len, &out) == 0;
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (T::ffi_deserialize(buf, len, &out) != 0) return Result(ErrorCode::Error);
+        return Result::success();
     }
 
     /// Block until the next value arrives, spinning the executor.
@@ -67,7 +73,14 @@ template <typename T> class Stream {
                 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
                 return Result(ret);
             }
-            if (try_next(out)) return Result::success();
+            Result rn = try_next(out);
+            if (rn.ok()) return Result::success();
+            // TryAgain / NotInitialized / Error from try_next: keep polling
+            // unless we've hit a hard error that's not "no data yet".
+            if (rn.code() != ErrorCode::TryAgain
+                && rn.code() != ErrorCode::NotInitialized) {
+                return rn;
+            }
             elapsed += step;
         }
         return Result(ErrorCode::Timeout);

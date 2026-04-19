@@ -48,32 +48,40 @@ template <typename M> class Subscription {
     /// using the codegen-generated `M::ffi_deserialize()`.
     ///
     /// @param msg  Output message struct (filled on success).
-    /// @return true if a message was received and deserialized, false otherwise.
-    bool try_recv(M& msg) {
-        if (!initialized_) return false;
+    /// @return Result::success() if a message was received and deserialized;
+    ///         ErrorCode::TryAgain if no data is available right now;
+    ///         ErrorCode::NotInitialized if the subscription is not initialized;
+    ///         ErrorCode::Error if deserialization failed.
+    Result try_recv(M& msg) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[M::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(storage_, buf, sizeof(buf), &len);
-        if (ret != 0 || len == 0) return false;
-        return M::ffi_deserialize(buf, len, &msg) == 0;
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(ErrorCode::Error);
+        return Result::success();
     }
 
     /// Try to receive raw CDR data (non-blocking).
     ///
-    /// Returns true if data was received and copied into `buf`.
     /// Sets `out_len` to the number of bytes received (0 if no data).
     ///
     /// @param buf       Buffer to receive CDR data.
     /// @param capacity  Size of the buffer.
     /// @param out_len   Receives the number of bytes (0 if no data available).
-    /// @return true if data was received, false otherwise.
-    bool try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len) {
+    /// @return Result::success() if data was received; ErrorCode::TryAgain
+    ///         if no data is available; ErrorCode::NotInitialized or the
+    ///         FFI error code otherwise.
+    Result try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len) {
         if (!initialized_) {
             out_len = 0;
-            return false;
+            return Result(ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(storage_, buf, capacity, &out_len);
-        return ret == 0 && out_len > 0;
+        if (ret != 0) return Result(ret);
+        if (out_len == 0) return Result(ErrorCode::TryAgain);
+        return Result::success();
     }
 
     /// Get the topic name.

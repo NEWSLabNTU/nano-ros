@@ -233,15 +233,20 @@ model -- call `spin_once()` to drive I/O, then `try_recv()` to check for data.
 template <typename M>
 class Subscription {
 public:
-    bool try_recv(M& msg);
-    bool try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len);
+    Result try_recv(M& msg);
+    Result try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len);
     Stream<M>& stream();
     const char* get_topic_name() const;
     bool is_valid() const;
 };
 ```
 
-Usage:
+`try_recv*` methods return `Result` so callers can distinguish
+"no message yet" (`ErrorCode::TryAgain`) from "deserialization
+failed" (`ErrorCode::Error`) from "subscription not initialized"
+(`ErrorCode::NotInitialized`). `Result` has an `explicit
+operator bool`, so `if (sub.try_recv(msg)) { ... }` continues to
+work as a "succeeded" check:
 
 ```cpp
 nros::Subscription<std_msgs::msg::Int32> sub;
@@ -252,6 +257,12 @@ std_msgs::msg::Int32 msg;
 if (sub.try_recv(msg)) {
     // process msg.data
 }
+
+// Or match specific outcomes:
+auto r = sub.try_recv(msg);
+if (r.ok()) { /* got one */ }
+else if (r.code() == nros::ErrorCode::TryAgain) { /* nothing this round */ }
+else { /* real error */ }
 ```
 
 For blocking reception, use the subscription's `Stream`:
@@ -272,7 +283,7 @@ public:
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
 
-    bool try_recv_request(RequestType& req, int64_t& seq_id);
+    Result try_recv_request(RequestType& req, int64_t& seq_id);
     Result send_reply(int64_t seq_id, const ResponseType& resp);
     bool is_valid() const;
 };
@@ -497,7 +508,7 @@ public:
     void poll();
 
     // Feedback (all patterns)
-    bool try_recv_feedback(FeedbackType& feedback);
+    Result try_recv_feedback(FeedbackType& feedback);
 
     bool is_valid() const;
 };
