@@ -602,10 +602,29 @@ extern void app_main(void);
 /* zenoh-pico read/lease task config — must be priority HIGHER than the
  * app task or the read task gets starved (FreeRTOS preempts strict-prio).
  * Without this configuration, zenoh-pico spawns the read task at default
- * priority 0 (idle) and it never runs, so subscriptions never receive. */
-#define ZENOH_TASK_PRIORITY 5  /* > POLL_TASK_PRIORITY (4) > APP_TASK_PRIORITY (3) */
-#define ZENOH_READ_STACK    5120
-#define ZENOH_LEASE_STACK   5120
+ * priority 0 (idle) and it never runs, so subscriptions never receive.
+ * Examples can override via [scheduling] in config.toml; the CMake
+ * NROS_CONFIG_* mapping passes them as APP_ZENOH_*_PRIORITY defines. */
+#ifdef APP_ZENOH_READ_PRIORITY
+#define ZENOH_READ_PRIORITY  APP_ZENOH_READ_PRIORITY
+#else
+#define ZENOH_READ_PRIORITY  5  /* > POLL_TASK_PRIORITY (4) > APP_TASK_PRIORITY (3) */
+#endif
+#ifdef APP_ZENOH_LEASE_PRIORITY
+#define ZENOH_LEASE_PRIORITY APP_ZENOH_LEASE_PRIORITY
+#else
+#define ZENOH_LEASE_PRIORITY 5
+#endif
+#ifdef APP_ZENOH_READ_STACK_BYTES
+#define ZENOH_READ_STACK     APP_ZENOH_READ_STACK_BYTES
+#else
+#define ZENOH_READ_STACK     5120
+#endif
+#ifdef APP_ZENOH_LEASE_STACK_BYTES
+#define ZENOH_LEASE_STACK    APP_ZENOH_LEASE_STACK_BYTES
+#else
+#define ZENOH_LEASE_STACK    5120
+#endif
 
 extern void zpico_set_task_config(uint32_t read_priority,
                                   uint32_t read_stack_bytes,
@@ -651,8 +670,8 @@ static void app_task_entry(void *arg) {
      * (which calls zpico_init -> zp_start_read_task). Without this,
      * the read task spawns at priority 0 (idle) and never delivers
      * subscription messages on a system with higher-priority tasks. */
-    zpico_set_task_config(ZENOH_TASK_PRIORITY, ZENOH_READ_STACK,
-                          ZENOH_TASK_PRIORITY, ZENOH_LEASE_STACK);
+    zpico_set_task_config(ZENOH_READ_PRIORITY, ZENOH_READ_STACK,
+                          ZENOH_LEASE_PRIORITY, ZENOH_LEASE_STACK);
 
     /* Run user application */
     app_main();
