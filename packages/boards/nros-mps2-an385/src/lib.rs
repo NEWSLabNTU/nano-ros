@@ -42,7 +42,7 @@ pub use nros_platform_mps2_an385;
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
-pub use nros_platform_mps2_an385::timing::CycleCounter;
+pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 
 /// Print to QEMU semihosting console
 #[macro_export]

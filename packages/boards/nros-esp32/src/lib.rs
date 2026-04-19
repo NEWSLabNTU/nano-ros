@@ -47,7 +47,7 @@ pub use config::NodeConfig;
 #[cfg(feature = "wifi")]
 pub use config::{IpMode, WifiConfig};
 pub use node::{init_hardware, run};
-pub use nros_platform_esp32::timing::CycleCounter;
+pub use nros_platform_esp32::timing::MonotonicClock;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
@@ -65,5 +65,5 @@ pub mod prelude {
     pub use crate::config::{IpMode, WifiConfig};
     pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
-    pub use nros_platform_esp32::timing::CycleCounter;
+    pub use nros_platform_esp32::timing::MonotonicClock;
 }

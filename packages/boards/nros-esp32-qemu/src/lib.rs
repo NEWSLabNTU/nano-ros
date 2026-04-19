@@ -42,7 +42,7 @@ pub use nros_platform_esp32_qemu;
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
-pub use nros_platform_esp32_qemu::timing::CycleCounter;
+pub use nros_platform_esp32_qemu::timing::MonotonicClock;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
@@ -55,5 +55,5 @@ pub mod prelude {
     pub use crate::config::Config;
     pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
-    pub use nros_platform_esp32_qemu::timing::CycleCounter;
+    pub use nros_platform_esp32_qemu::timing::MonotonicClock;
 }
