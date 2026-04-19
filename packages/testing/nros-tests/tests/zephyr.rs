@@ -1312,7 +1312,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
 /// - XRCE Agent available: `just build-xrce-agent`
 #[test]
-#[ignore] // XRCE C: double transport init (xrce_zephyr_init + nros_support_init) causes session conflict
+#[ignore] // C API executor spin doesn't poll XRCE session — no recvfrom after setup
 fn test_zephyr_xrce_c_talker_listener() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");

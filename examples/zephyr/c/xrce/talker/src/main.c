@@ -13,7 +13,6 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
-#include <xrce_zephyr.h>
 
 /* Generated message bindings */
 #include "std_msgs.h"
@@ -29,20 +28,7 @@ int main(void)
     LOG_INF("nros Zephyr XRCE C Talker");
     LOG_INF("==========================");
 
-    /* Wait for network interface */
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
-        LOG_ERR("Network not ready");
-        return 1;
-    }
-
-    /* Initialize XRCE UDP transport */
-    if (xrce_zephyr_init(CONFIG_NROS_XRCE_AGENT_ADDR,
-                         CONFIG_NROS_XRCE_AGENT_PORT) != 0) {
-        LOG_ERR("XRCE transport init failed");
-        return 1;
-    }
-
-    /* Initialize support context */
+    /* Initialize support context (handles network wait + transport setup) */
     nros_support_t support = nros_support_get_zero_initialized();
     nros_ret_t ret = nros_support_init_named(
         &support,
