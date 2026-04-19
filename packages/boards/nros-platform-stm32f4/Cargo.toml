@@ -17,3 +17,5 @@ zpico-alloc = { path = "../../zpico/zpico-alloc" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep, libc stubs)
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common", features = ["libc-stubs"] }

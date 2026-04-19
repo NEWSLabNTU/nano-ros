@@ -1,44 +1,17 @@
-//! Sleep functions for bare-metal MPS2-AN385 (busy-wait with optional poll).
+//! Busy-wait sleep — delegates to `nros_baremetal_common::sleep`.
 //!
-//! During sleep, an optional poll callback is invoked each iteration.
-//! The board crate registers the callback (e.g., smoltcp network poll)
-//! during initialization.
+//! The platform's init code registers `clock::clock_ms` as the sleep
+//! clock source via `nros_baremetal_common::sleep::set_clock_fn`.
+//! Once that's done, calls to `sleep_ms` here forward to the shared
+//! module which polls the registered clock in a busy-wait loop.
 
-use crate::clock;
-use core::sync::atomic::{AtomicPtr, Ordering};
+pub use nros_baremetal_common::sleep::{
+    PollFn, clear_poll_callback, set_poll_callback, sleep_ms,
+};
 
-/// Poll callback type — called during busy-wait sleep.
-/// Uses `extern "C"` to match smoltcp_network_poll and similar callbacks.
-type PollFn = unsafe extern "C" fn();
-
-/// Registered poll callback (set by board crate via `set_poll_callback`).
-static POLL_CALLBACK: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
-
-/// Register a poll callback to be invoked during sleep.
-///
-/// Typically set to the smoltcp network poll function so packets
-/// are processed during busy-wait delays.
-pub fn set_poll_callback(callback: PollFn) {
-    POLL_CALLBACK.store(callback as *mut (), Ordering::Release);
-}
-
-/// Clear the poll callback.
-pub fn clear_poll_callback() {
-    POLL_CALLBACK.store(core::ptr::null_mut(), Ordering::Release);
-}
-
-/// Busy-wait sleep with optional poll callback.
-pub fn sleep_ms(time_ms: usize) {
-    let start = clock::clock_ms();
-    while clock::clock_ms().wrapping_sub(start) < time_ms as u64 {
-        let cb = POLL_CALLBACK.load(Ordering::Acquire);
-        if !cb.is_null() {
-            unsafe {
-                let f: PollFn = core::mem::transmute(cb);
-                f();
-            }
-        } else {
-            core::hint::spin_loop();
-        }
-    }
+/// Register the platform's clock function with the shared sleep
+/// module. Must be called once at platform init before any
+/// `sleep_ms` call.
+pub fn init_clock() {
+    nros_baremetal_common::sleep::set_clock_fn(crate::clock::clock_ms);
 }

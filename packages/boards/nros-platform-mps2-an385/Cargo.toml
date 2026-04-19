@@ -21,3 +21,5 @@ zpico-alloc = { path = "../../zpico/zpico-alloc" }
 cortex-m = "0.7"
 # smoltcp network provider (TCP/UDP via SmoltcpBridge)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep, libc stubs)
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common", features = ["libc-stubs"] }

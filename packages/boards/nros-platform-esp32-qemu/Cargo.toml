@@ -16,3 +16,6 @@ default = []
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32c3", "unstable"] }
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep). esp-hal already provides
+# libc symbols, so we do NOT enable the `libc-stubs` feature here.
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }

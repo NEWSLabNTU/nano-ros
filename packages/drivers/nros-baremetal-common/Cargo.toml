@@ -1,0 +1,20 @@
+[package]
+name = "nros-baremetal-common"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Shared bare-metal helpers (PRNG, sleep, libc stubs) for nros-platform-* crates"
+publish = false
+
+[lib]
+name = "nros_baremetal_common"
+
+[features]
+default = []
+# Emit `#[unsafe(no_mangle)]` libc stubs (strlen, memcpy, …). Enable on
+# exactly one platform crate per binary — multiple definitions cause
+# linker errors. ESP32 / ESP32-QEMU should NOT enable this since
+# esp-hal already provides them.
+libc-stubs = []
+
+[dependencies]

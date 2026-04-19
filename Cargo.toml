@@ -134,6 +134,8 @@ exclude = [
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/nros-smoltcp",
+    # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
+    "packages/drivers/nros-baremetal-common",
     # lwIP BSD socket bindings for FreeRTOS (requires FREERTOS_DIR + LWIP_DIR)
     "packages/drivers/freertos-lwip-sys",
     # NetX Duo BSD socket bindings for ThreadX (requires THREADX_DIR + NETX_DIR)

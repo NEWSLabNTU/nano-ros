@@ -1247,6 +1247,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-baremetal-common"
+version = "0.1.0"
+
+[[package]]
 name = "nros-builtin-interfaces"
 version = "0.1.0"
 dependencies = [
@@ -1356,6 +1360,7 @@ name = "nros-platform-esp32"
 version = "0.1.0"
 dependencies = [
  "esp-hal",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1365,6 +1370,7 @@ name = "nros-platform-esp32-qemu"
 version = "0.1.0"
 dependencies = [
  "esp-hal",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1381,6 +1387,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1406,6 +1413,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "defmt 0.3.100",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]

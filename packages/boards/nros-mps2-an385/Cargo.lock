@@ -402,6 +402,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros-baremetal-common"
+version = "0.1.0"
+
+[[package]]
 name = "nros-mps2-an385"
 version = "0.1.0"
 dependencies = [
@@ -431,6 +435,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]
