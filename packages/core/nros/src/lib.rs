@@ -157,8 +157,7 @@ pub use nros_core::heapless;
 // Re-export node types
 pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
 
-// Re-export standalone node options (when no RMW backend is active)
-#[cfg(not(feature = "rmw-zenoh"))]
+// Re-export publisher/subscriber options (topic + QoS; always available).
 pub use nros_node::{PublisherOptions, SubscriberOptions};
 
 // Re-export timer types
@@ -506,23 +505,25 @@ pub mod prelude {
         LifecycleTransition, TransitionResult,
     };
 
-    // Re-export executor config types (always available)
+    // Re-export executor config + handle types (always available)
     pub use crate::{
-        ExecutorConfig, NodeError, SessionMode, SpinOnceResult, SpinOptions,
-        SpinPeriodPollingResult,
+        ExecutorConfig, GuardConditionHandle, HandleId, HandleSet, InvocationMode, NodeError,
+        SessionMode, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, TransportError, Trigger,
     };
 
-    // Re-export RMW-dependent executor types
+    // Re-export RMW-dependent executor + handle types
     #[cfg(any(
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
         feature = "rmw-cffi"
     ))]
-    pub use crate::{EmbeddedPublisher, Executor, Node, Subscription};
+    pub use crate::{
+        EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
+        Subscription,
+    };
 
-    // Standalone node options (no-transport simulation mode)
-    #[cfg(not(feature = "rmw-zenoh"))]
+    // Publisher/Subscriber options (topic + QoS).
     pub use crate::{PublisherOptions, SubscriberOptions};
 
     #[cfg(all(

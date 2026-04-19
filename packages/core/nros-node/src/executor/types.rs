@@ -224,6 +224,37 @@ impl<'a> ExecutorConfig<'a> {
 }
 
 #[cfg(feature = "std")]
+struct EnvCache {
+    locator: std::string::String,
+    domain_id: u32,
+    mode: SessionMode,
+}
+
+#[cfg(feature = "std")]
+static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
+
+#[cfg(feature = "std")]
+fn env_cache() -> &'static EnvCache {
+    ENV_CACHE.get_or_init(|| {
+        let locator = std::env::var("ZENOH_LOCATOR")
+            .unwrap_or_else(|_| std::string::String::from("tcp/127.0.0.1:7447"));
+        let domain_id = std::env::var("ROS_DOMAIN_ID")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let mode = match std::env::var("ZENOH_MODE") {
+            Ok(s) if s == "peer" => SessionMode::Peer,
+            _ => SessionMode::Client,
+        };
+        EnvCache {
+            locator,
+            domain_id,
+            mode,
+        }
+    })
+}
+
+#[cfg(feature = "std")]
 impl ExecutorConfig<'static> {
     /// Create a configuration from environment variables.
     ///
@@ -232,25 +263,16 @@ impl ExecutorConfig<'static> {
     /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`)
     /// - `ZENOH_MODE` — Session mode: `"client"` or `"peer"` (default: `"client"`)
     ///
-    /// String values are heap-allocated and leaked into `'static` references.
-    /// This is fine on hosted platforms where std provides a global allocator.
+    /// Env-var values are cached in a process-global `OnceLock` on the
+    /// first call and reused for the process lifetime — repeated calls
+    /// do NOT re-read the environment and do NOT accrete memory. The
+    /// returned `&'static str` fields point into the cache.
     pub fn from_env() -> Self {
-        let locator: &'static str = match std::env::var("ZENOH_LOCATOR") {
-            Ok(s) => std::boxed::Box::leak(s.into_boxed_str()),
-            Err(_) => "tcp/127.0.0.1:7447",
-        };
-        let domain_id: u32 = std::env::var("ROS_DOMAIN_ID")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let mode = match std::env::var("ZENOH_MODE") {
-            Ok(s) if s == "peer" => SessionMode::Peer,
-            _ => SessionMode::Client,
-        };
+        let cache = env_cache();
         Self {
-            locator,
-            mode,
-            domain_id,
+            locator: cache.locator.as_str(),
+            mode: cache.mode,
+            domain_id: cache.domain_id,
             node_name: "node",
             namespace: "",
         }
@@ -280,6 +302,9 @@ pub enum NodeError {
     ServiceReplyFailed,
     /// Operation timed out.
     Timeout,
+    /// A required subsystem has not been initialized (e.g. parameter
+    /// services have not been registered on the executor).
+    NotInitialized,
 }
 
 impl From<TransportError> for NodeError {

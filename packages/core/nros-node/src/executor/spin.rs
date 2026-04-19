@@ -1836,15 +1836,14 @@ impl Executor {
     /// `.default()`, `.description()`, `.range()`, and terminal methods
     /// `.mandatory()`, `.optional()`, or `.read_only()`.
     ///
-    /// # Panics
-    ///
-    /// Panics if parameter services have not been registered
-    /// (call [`register_parameter_services`] first).
+    /// Returns [`NodeError::NotInitialized`] if parameter services have
+    /// not been registered yet — call [`register_parameter_services`]
+    /// first.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let max_speed = executor.parameter::<f64>("max_speed")
+    /// let max_speed = executor.parameter::<f64>("max_speed")?
     ///     .default(25.0)
     ///     .description("Maximum velocity (m/s)")
     ///     .read_only()?;
@@ -1855,12 +1854,13 @@ impl Executor {
     pub fn parameter<'a, T: nros_params::ParameterVariant>(
         &'a mut self,
         name: &'a str,
-    ) -> nros_params::ParameterBuilder<'a, T> {
-        let server =
-            self.params.as_mut().map(|p| &mut p.server).expect(
-                "parameter services not registered — call register_parameter_services() first",
-            );
-        nros_params::ParameterBuilder::new(server, name)
+    ) -> Result<nros_params::ParameterBuilder<'a, T>, NodeError> {
+        let server = self
+            .params
+            .as_mut()
+            .map(|p| &mut p.server)
+            .ok_or(NodeError::NotInitialized)?;
+        Ok(nros_params::ParameterBuilder::new(server, name))
     }
 }
 

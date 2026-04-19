@@ -97,8 +97,7 @@ pub use nros_rmw::{
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 
-// Re-export options for standalone node when zenoh feature is not enabled
-#[cfg(not(feature = "rmw-zenoh"))]
+// Re-export publisher/subscriber options (topic + QoS; backend-agnostic).
 pub use node::{PublisherOptions, SubscriberOptions};
 
 // Re-export session mode (used by ExecutorConfig)

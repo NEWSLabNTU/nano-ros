@@ -252,10 +252,13 @@ pub enum QosHistoryPolicy {
 /// QoS reliability policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QosReliabilityPolicy {
-    /// Reliable delivery (retransmit if needed)
+    /// Reliable delivery (retransmit if needed).
+    ///
+    /// Default — matches ROS 2 `rmw_qos_profile_default` and the
+    /// `QosSettings::default()` / `QOS_PROFILE_DEFAULT` aggregates.
+    #[default]
     Reliable,
     /// Best-effort delivery (no retransmits)
-    #[default]
     BestEffort,
 }
 
@@ -289,11 +292,12 @@ impl Default for QosSettings {
 }
 
 impl QosSettings {
-    /// Create new QoS settings with defaults
+    /// Create new QoS settings with defaults (matches `QOS_PROFILE_DEFAULT`:
+    /// Reliable, Volatile, KeepLast(10)).
     pub const fn new() -> Self {
         Self {
             history: QosHistoryPolicy::KeepLast,
-            reliability: QosReliabilityPolicy::BestEffort,
+            reliability: QosReliabilityPolicy::Reliable,
             durability: QosDurabilityPolicy::Volatile,
             depth: 10,
         }
