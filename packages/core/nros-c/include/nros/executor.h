@@ -227,16 +227,27 @@ NROS_PUBLIC bool nros_executor_trigger_always(const bool* ready, size_t count, v
  * @brief Built-in trigger: fire when the handle at a specific index
  *        has data.
  *
- * Pass the handle index (cast to @c void*) as the @p context parameter.
+ * @p context must point to a caller-owned @c size_t holding the handle
+ * index. Casting an integer to @c void* and passing it directly is
+ * NOT supported — that pattern is UB on strict-alignment targets and
+ * CHERI, and this function will dereference the pointer.
+ *
+ * Example:
+ * @code
+ * static size_t my_trigger_index = 2;
+ * nros_executor_set_trigger(&exec, nros_executor_trigger_one,
+ *                           &my_trigger_index);
+ * @endcode
  *
  * @param ready   Array of boolean ready-flags, one per registered handle.
  * @param count   Number of elements in @p ready.
- * @param context Handle index cast to @c void* (the first registered
- *                handle when 0).
- * @return @c true if the handle at the given index is ready.
+ * @param context Pointer to a caller-owned @c size_t index.
+ * @return @c true if the handle at the given index is ready, @c false
+ *         if @p context is NULL or the index is out of range.
  *
  * @pre @p ready must point to a valid array of at least @p count booleans.
- * @pre @p context is interpreted as a @c size_t index.
+ * @pre @p context must point to a valid @c size_t alive for the trigger's
+ *      lifetime.
  */
 NROS_PUBLIC bool nros_executor_trigger_one(const bool* ready, size_t count, void* context);
 
@@ -400,9 +411,9 @@ NROS_PUBLIC int nros_executor_get_handle_count(const struct nros_executor_t* exe
 /**
  * @brief Check if executor is valid (initialized).
  * @param executor  Pointer to an executor.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_executor_is_valid(const struct nros_executor_t* executor);
+NROS_PUBLIC bool nros_executor_is_valid(const struct nros_executor_t* executor);
 
 /**
  * @brief Get remaining total handle capacity.

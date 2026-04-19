@@ -127,9 +127,9 @@ NROS_PUBLIC nros_ret_t nros_guard_condition_clear(struct nros_guard_condition_t*
  * @brief Check if guard condition is valid (initialized).
  *
  * @param guard  Pointer to a guard condition.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_guard_condition_is_valid(const struct nros_guard_condition_t* guard);
+NROS_PUBLIC bool nros_guard_condition_is_valid(const struct nros_guard_condition_t* guard);
 
 /**
  * @brief Finalise a guard condition.

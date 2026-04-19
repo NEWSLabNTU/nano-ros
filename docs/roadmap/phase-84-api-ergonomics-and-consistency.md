@@ -116,15 +116,15 @@ the real implementation first.
 
 Small wins worth rolling into the PRs of adjacent groups.
 
-- [ ] 84.G1 — C API: drop `_init_default` / `_init_best_effort` aliases on publisher/subscription; standardize on `_init` + `_init_with_qos`
-- [ ] 84.G2 — C API: standardize `_is_valid` predicates to `bool` (currently a mix of `int` and `bool`)
-- [ ] 84.G3 — C API: decide publisher vs. subscription storage convention (inline opaque vs. `void* _internal`) and converge
-- [ ] 84.G4 — C API: fix `#include <nano_ros/init.h>` copy-paste bug in `nros/platform.h:15` (should be `<nros/init.h>`)
-- [ ] 84.G5 — C API: either implement `NROS_PARAMETER_*_ARRAY` variants or remove them (currently enum values with no API)
-- [ ] 84.G6 — C API: replace `(void*)(size_t)idx` cast in `nros_executor_trigger_one` with a typed setter
-- [ ] 84.G7 — C++: add `ActionClient::feedback_stream()` returning `Stream<FeedbackType>` (asymmetry with `Subscription::stream()`)
-- [ ] 84.G8 — C++: consider splitting `node.hpp` into `node.hpp` (lean) + `node_entities.hpp` (full) to cut compile cost for users who only need one entity
-- [ ] 84.G9 — C++: add `set_goal_callback_with_ctx(TypedGoalFnWithCtx, void*)` overload so users can pass state without globals
+- [x] 84.G1 — C API: drop `_init_default` / `_init_best_effort` aliases on publisher/subscription; standardize on `_init` + `_init_with_qos`
+- [x] 84.G2 — C API: standardize `_is_valid` predicates to `bool` (currently a mix of `int` and `bool`)
+- [ ] 84.G3 — **Deferred** (not a nit): converge subscription (`*mut c_void` internal) and node (`*mut c_void`) onto the inline opaque-storage convention used by publisher / executor / service / action. Today's pointer-based approach requires heap allocation (Box::leak pattern) — converting to inline storage is a proper refactor that belongs in a dedicated PR outside Group G.
+- [x] 84.G4 — C API: fix `#include <nano_ros/init.h>` copy-paste bug in `nros/platform.h:15` (should be `<nros/init.h>`)
+- [x] 84.G5 — C API: add missing array-parameter function declarations to `parameter.h`. The Rust implementations already exist via the `impl_param_array!` macro (byte/bool/integer/double/string variants, declare/get/set), but were never exposed in any C header — making the `NROS_PARAMETER_*_ARRAY` enum values effectively unreachable. 15 function declarations added; no Rust changes needed.
+- [x] 84.G6 — C API: `nros_executor_trigger_one` now reads `*(size_t*)context` instead of casting `context as usize`. Callers point at a real `size_t`, which is typed and UB-free on CHERI / strict-alignment targets.
+- [ ] 84.G7 — **Deferred to Group C** (post-Phase 77): add `ActionClient::feedback_stream()` returning `Stream<FeedbackType>`. Phase 77's async action client work may reshape the stream surface; rerun this after 77 lands.
+- [ ] 84.G8 — **Deferred** (not a nit): splitting `node.hpp` into a lean interface + a full-entities variant is a real header-surgery refactor that needs careful auditing of every entity's template instantiation. Belongs in a dedicated PR.
+- [ ] 84.G9 — **Deferred to Group C** (post-Phase 77): add `set_goal_callback_with_ctx(TypedGoalFnWithCtx, void*)` overload. Tied up with Group C1's move-safety refactor and Phase 77's async action work — don't touch `ActionServer` trampolines twice.
 
 ## Acceptance Criteria
 

@@ -131,9 +131,9 @@ NROS_PUBLIC nros_ret_t nros_support_fini(struct nros_support_t* support);
  * @brief Check if the support context is valid (initialized).
  *
  * @param support  Pointer to a support context.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_support_is_valid(const struct nros_support_t* support);
+NROS_PUBLIC bool nros_support_is_valid(const struct nros_support_t* support);
 
 #ifdef __cplusplus
 }

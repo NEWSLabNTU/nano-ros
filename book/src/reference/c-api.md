@@ -100,10 +100,10 @@ nros_subscription_init(&sub, &node, &my_msg_type, "/counter",
 nros_executor_add_subscription(&exec, &sub, NROS_EXECUTOR_ON_READY);
 ```
 
-QoS variants: `nros_publisher_init_best_effort()`,
-`nros_publisher_init_with_qos(..., &qos_profile)`. Same for subscription.
-(Phase 84.G1 will consolidate the four `_init` variants into
-`_init` + `_init_with_qos`.)
+QoS customization: call `nros_publisher_init_with_qos(..., &qos_profile)` /
+`nros_subscription_init_with_qos(..., &qos_profile)` with a QoS struct
+(e.g. `NROS_QOS_SENSOR_DATA` for best-effort sensor data). The bare
+`_init` forms use RELIABLE / KEEP_LAST(10).
 
 ### Services (`nros/service.h`, `nros/client.h`)
 

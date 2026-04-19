@@ -2,7 +2,7 @@
 //!
 //! Subscriptions receive messages from topics that publishers send to.
 
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_char, c_void};
 use core::ptr;
 
 use crate::constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
@@ -129,75 +129,6 @@ pub unsafe extern "C" fn nros_subscription_init(
         callback,
         context,
         ptr::null(),
-    )
-}
-
-/// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
-///
-/// Alias for `nros_subscription_init()` for rclc API compatibility.
-///
-/// # Safety
-/// See `nros_subscription_init()` for safety requirements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_init_default(
-    subscription: *mut nros_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
-    topic_name: *const c_char,
-    callback: nros_subscription_callback_t,
-    context: *mut c_void,
-) -> nros_ret_t {
-    nros_subscription_init_with_qos(
-        subscription,
-        node,
-        type_info,
-        topic_name,
-        callback,
-        context,
-        ptr::null(),
-    )
-}
-
-/// Initialize a subscription with best-effort QoS (BEST_EFFORT, VOLATILE).
-///
-/// Use this for sensor data or high-frequency topics where occasional
-/// message loss is acceptable but low latency is preferred.
-///
-/// # Parameters
-/// * `subscription` - Pointer to a zero-initialized subscription
-/// * `node` - Pointer to an initialized node
-/// * `type_info` - Pointer to message type information
-/// * `topic_name` - Topic name (null-terminated string)
-/// * `callback` - Callback function to invoke when messages arrive
-/// * `context` - User context pointer passed to callback (can be NULL)
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
-///
-/// # Safety
-/// * All required pointers must be valid
-/// * `topic_name` must be a valid null-terminated string
-/// * `callback` must be a valid function pointer
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_init_best_effort(
-    subscription: *mut nros_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
-    topic_name: *const c_char,
-    callback: nros_subscription_callback_t,
-    context: *mut c_void,
-) -> nros_ret_t {
-    nros_subscription_init_with_qos(
-        subscription,
-        node,
-        type_info,
-        topic_name,
-        callback,
-        context,
-        &crate::qos::NROS_QOS_SENSOR_DATA,
     )
 }
 
@@ -369,21 +300,17 @@ pub unsafe extern "C" fn nros_subscription_get_topic_name(
 /// * `subscription` - Pointer to a subscription
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_subscription_is_valid(
     subscription: *const nros_subscription_t,
-) -> c_int {
+) -> bool {
     if subscription.is_null() {
-        return 0;
+        return false;
     }
 
     let subscription = &*subscription;
-    if subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
 }
 
 // Internal helper methods for executor

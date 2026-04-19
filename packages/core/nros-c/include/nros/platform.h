@@ -13,7 +13,7 @@
  *
  * Example usage:
  *   #define NROS_PLATFORM_ZEPHYR
- *   #include <nano_ros/init.h>
+ *   #include <nros/init.h>
  *
  * Or via compiler flag:
  *   gcc -DNROS_PLATFORM_POSIX -c main.c

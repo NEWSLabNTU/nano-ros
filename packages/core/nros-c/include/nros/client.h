@@ -177,9 +177,9 @@ NROS_PUBLIC const char* nros_client_get_service_name(const struct nros_client_t*
  * @brief Check if client is valid (initialized).
  *
  * @param client  Pointer to a client.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_client_is_valid(const struct nros_client_t* client);
+NROS_PUBLIC bool nros_client_is_valid(const struct nros_client_t* client);
 
 #ifdef __cplusplus
 }

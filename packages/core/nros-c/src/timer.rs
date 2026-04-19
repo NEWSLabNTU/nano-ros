@@ -320,19 +320,19 @@ pub unsafe extern "C" fn nros_timer_call(
 /// * `timer` - Pointer to a timer
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_timer_is_valid(timer: *const nros_timer_t) -> c_int {
+pub unsafe extern "C" fn nros_timer_is_valid(timer: *const nros_timer_t) -> bool {
     if timer.is_null() {
-        return 0;
+        return false;
     }
 
     let timer = &*timer;
-    match timer.state {
+    matches!(
+        timer.state,
         nros_timer_state_t::NROS_TIMER_STATE_RUNNING
-        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => 1,
-        _ => 0,
-    }
+            | nros_timer_state_t::NROS_TIMER_STATE_CANCELED
+    )
 }
 
 /// Get the timer period in nanoseconds.

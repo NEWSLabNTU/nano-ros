@@ -3,7 +3,7 @@
 //! Services provide request-reply communication patterns.
 //! This module implements both service servers and clients.
 
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_char, c_void};
 use core::ptr;
 use core::sync::atomic::AtomicBool;
 use core::task::{RawWaker, RawWakerVTable, Waker};
@@ -362,19 +362,15 @@ pub unsafe extern "C" fn nros_service_get_service_name(
 /// * `service` - Pointer to a service
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -> c_int {
+pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -> bool {
     if service.is_null() {
-        return 0;
+        return false;
     }
 
     let service = &*service;
-    if service.state == nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    service.state == nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
 }
 
 // ============================================================================
@@ -970,19 +966,15 @@ pub unsafe extern "C" fn nros_client_get_service_name(
 /// * `client` - Pointer to a client
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_is_valid(client: *const nros_client_t) -> c_int {
+pub unsafe extern "C" fn nros_client_is_valid(client: *const nros_client_t) -> bool {
     if client.is_null() {
-        return 0;
+        return false;
     }
 
     let client = &*client;
-    if client.state == nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    client.state == nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
 }
 
 // ============================================================================

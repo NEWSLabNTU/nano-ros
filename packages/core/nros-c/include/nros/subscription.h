@@ -111,61 +111,6 @@ nros_ret_t nros_subscription_init(struct nros_subscription_t* subscription,
                                   void* context);
 
 /**
- * @brief Initialise a subscription with default QoS.
- *
- * Alias for nros_subscription_init() for rclc API compatibility.
- *
- * @param subscription Pointer to a zero-initialized subscription.
- * @param node         Pointer to an initialized node.
- * @param type_info    Pointer to message type information.
- * @param topic_name   Topic name (null-terminated).
- * @param callback     Function called when a message is received.
- * @param context      User pointer passed to @p callback (may be NULL).
- *
- * @retval NROS_RET_OK               on success.
- * @retval NROS_RET_INVALID_ARGUMENT  if any required pointer is NULL.
- * @retval NROS_RET_NOT_INIT          if @p node is not initialized.
- * @retval NROS_RET_ERROR             on initialisation failure.
- *
- * @pre All required pointers must be valid.
- * @pre @p topic_name must be a valid null-terminated string.
- */
-NROS_PUBLIC
-nros_ret_t nros_subscription_init_default(struct nros_subscription_t* subscription,
-                                          const struct nros_node_t* node,
-                                          const struct nros_message_type_t* type_info,
-                                          const char* topic_name,
-                                          nros_subscription_callback_t callback, void* context);
-
-/**
- * @brief Initialise a subscription with best-effort QoS.
- *
- * Use this for sensor data or high-frequency topics where occasional
- * message loss is acceptable but low latency is preferred.
- *
- * @param subscription Pointer to a zero-initialized subscription.
- * @param node         Pointer to an initialized node.
- * @param type_info    Pointer to message type information.
- * @param topic_name   Topic name (null-terminated).
- * @param callback     Function called when a message is received.
- * @param context      User pointer passed to @p callback (may be NULL).
- *
- * @retval NROS_RET_OK               on success.
- * @retval NROS_RET_INVALID_ARGUMENT  if any required pointer is NULL.
- * @retval NROS_RET_NOT_INIT          if @p node is not initialized.
- * @retval NROS_RET_ERROR             on initialisation failure.
- *
- * @pre All required pointers must be valid.
- * @pre @p topic_name must be a valid null-terminated string.
- */
-NROS_PUBLIC
-nros_ret_t nros_subscription_init_best_effort(struct nros_subscription_t* subscription,
-                                              const struct nros_node_t* node,
-                                              const struct nros_message_type_t* type_info,
-                                              const char* topic_name,
-                                              nros_subscription_callback_t callback, void* context);
-
-/**
  * @brief Initialise a subscription with custom QoS.
  *
  * @param subscription Pointer to a zero-initialized subscription.
@@ -216,9 +161,9 @@ nros_subscription_get_topic_name(const struct nros_subscription_t* subscription)
  * @brief Check if subscription is valid (initialized).
  *
  * @param subscription Pointer to a subscription.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_subscription_is_valid(const struct nros_subscription_t* subscription);
+NROS_PUBLIC bool nros_subscription_is_valid(const struct nros_subscription_t* subscription);
 
 #ifdef __cplusplus
 }

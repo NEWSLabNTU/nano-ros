@@ -3,7 +3,7 @@
 //! The support context manages the underlying middleware session and provides
 //! shared resources for nodes, publishers, and subscribers.
 
-use core::ffi::{c_char, c_int};
+use core::ffi::c_char;
 
 use crate::constants::{MAX_LOCATOR_LEN, SESSION_OPAQUE_U64S};
 use crate::error::*;
@@ -256,19 +256,15 @@ pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros
 /// * `support` - Pointer to a support context
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_support_is_valid(support: *const nros_support_t) -> c_int {
+pub unsafe extern "C" fn nros_support_is_valid(support: *const nros_support_t) -> bool {
     if support.is_null() {
-        return 0;
+        return false;
     }
 
     let support = &*support;
-    if support.state == nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    support.state == nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
 }
 
 #[cfg(kani)]

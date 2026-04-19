@@ -421,18 +421,30 @@ pub unsafe extern "C" fn nros_executor_trigger_always(
 
 /// Built-in trigger: fire when the handle at the index stored in context has data.
 ///
-/// Pass the handle index (cast to `void*`) as the context parameter.
+/// `context` must point to a caller-owned `size_t` holding the handle
+/// index. Passing `(void*)(size_t)idx` directly is NOT supported — that
+/// pattern is UB on strict-alignment targets and CHERI, and the function
+/// will dereference the pointer.
+///
+/// Recommended usage:
+/// ```c
+/// static size_t my_trigger_index = 2;
+/// nros_executor_set_trigger(&exec, nros_executor_trigger_one, &my_trigger_index);
+/// ```
 ///
 /// # Safety
-/// * `ready` must point to a valid array of at least `count` booleans
-/// * `context` is interpreted as a `size_t` index
+/// * `ready` must point to a valid array of at least `count` booleans.
+/// * `context` must point to a valid `size_t` alive for the trigger's lifetime.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_trigger_one(
     ready: *const bool,
     count: usize,
     context: *mut core::ffi::c_void,
 ) -> bool {
-    let index = context as usize;
+    if context.is_null() {
+        return false;
+    }
+    let index = *(context as *const usize);
     if index < count {
         *ready.add(index)
     } else {
@@ -1299,17 +1311,17 @@ pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_ex
 
 /// Check if executor is valid (initialized).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t) -> c_int {
+pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t) -> bool {
     if executor.is_null() {
-        return 0;
+        return false;
     }
 
     let executor = &*executor;
-    match executor.state {
+    matches!(
+        executor.state,
         nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        | nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING => 1,
-        _ => 0,
-    }
+            | nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    )
 }
 
 /// Get remaining total handle capacity.
@@ -1441,23 +1453,32 @@ mod tests {
     fn test_trigger_one_matches_behavior() {
         unsafe {
             let ready = [false, true, false];
-
+            let mut idx: usize = 1;
             assert!(nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
-                1usize as *mut core::ffi::c_void,
+                &mut idx as *mut usize as *mut core::ffi::c_void,
             ));
 
+            idx = 0;
             assert!(!nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
-                0usize as *mut core::ffi::c_void,
+                &mut idx as *mut usize as *mut core::ffi::c_void,
             ));
 
+            idx = 10;
             assert!(!nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
-                10usize as *mut core::ffi::c_void,
+                &mut idx as *mut usize as *mut core::ffi::c_void,
+            ));
+
+            // NULL context returns false (no dereference).
+            assert!(!nros_executor_trigger_one(
+                ready.as_ptr(),
+                ready.len(),
+                core::ptr::null_mut(),
             ));
         }
     }

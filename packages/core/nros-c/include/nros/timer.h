@@ -159,9 +159,9 @@ NROS_PUBLIC nros_ret_t nros_timer_call(struct nros_timer_t* timer, uint64_t curr
  * @brief Check if timer is valid (initialized and not shutdown).
  *
  * @param timer  Pointer to a timer.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_timer_is_valid(const struct nros_timer_t* timer);
+NROS_PUBLIC bool nros_timer_is_valid(const struct nros_timer_t* timer);
 
 /**
  * @brief Get the timer period in nanoseconds.

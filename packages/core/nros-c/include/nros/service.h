@@ -186,9 +186,9 @@ NROS_PUBLIC const char* nros_service_get_service_name(const struct nros_service_
  * @brief Check if service is valid (initialized).
  *
  * @param service  Pointer to a service.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_service_is_valid(const struct nros_service_t* service);
+NROS_PUBLIC bool nros_service_is_valid(const struct nros_service_t* service);
 
 #ifdef __cplusplus
 }

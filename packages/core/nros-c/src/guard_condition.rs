@@ -4,7 +4,7 @@
 //! another thread. They are used for shutdown requests, custom triggers,
 //! and inter-thread communication.
 
-use core::ffi::{c_int, c_void};
+use core::ffi::c_void;
 use core::ptr;
 
 use crate::constants::GUARD_HANDLE_OPAQUE_U64S;
@@ -244,18 +244,13 @@ pub unsafe extern "C" fn nros_guard_condition_clear(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_guard_condition_is_valid(
     guard: *const nros_guard_condition_t,
-) -> c_int {
+) -> bool {
     if guard.is_null() {
-        return 0;
+        return false;
     }
 
     let guard = &*guard;
-
-    if guard.state == nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    guard.state == nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
 }
 
 /// Finalize a guard condition.

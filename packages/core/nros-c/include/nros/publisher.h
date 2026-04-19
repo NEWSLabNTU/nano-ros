@@ -88,55 +88,6 @@ nros_ret_t nros_publisher_init(struct nros_publisher_t* publisher, const struct 
                                const struct nros_message_type_t* type_info, const char* topic_name);
 
 /**
- * @brief Initialise a publisher with default QoS.
- *
- * Alias for nros_publisher_init() for rclc API compatibility.
- *
- * @param publisher  Pointer to a zero-initialized publisher.
- * @param node       Pointer to an initialized node.
- * @param type_info  Pointer to message type information.
- * @param topic_name Topic name (null-terminated).
- *
- * @retval NROS_RET_OK               on success.
- * @retval NROS_RET_INVALID_ARGUMENT  if any pointer is NULL.
- * @retval NROS_RET_NOT_INIT          if @p node is not initialized.
- * @retval NROS_RET_ERROR             on initialisation failure.
- *
- * @pre All pointers must be valid.
- * @pre @p topic_name must be a valid null-terminated string.
- */
-NROS_PUBLIC
-nros_ret_t nros_publisher_init_default(struct nros_publisher_t* publisher,
-                                       const struct nros_node_t* node,
-                                       const struct nros_message_type_t* type_info,
-                                       const char* topic_name);
-
-/**
- * @brief Initialise a publisher with best-effort QoS.
- *
- * Use this for sensor data or high-frequency topics where occasional
- * message loss is acceptable but low latency is preferred.
- *
- * @param publisher  Pointer to a zero-initialized publisher.
- * @param node       Pointer to an initialized node.
- * @param type_info  Pointer to message type information.
- * @param topic_name Topic name (null-terminated).
- *
- * @retval NROS_RET_OK               on success.
- * @retval NROS_RET_INVALID_ARGUMENT  if any pointer is NULL.
- * @retval NROS_RET_NOT_INIT          if @p node is not initialized.
- * @retval NROS_RET_ERROR             on initialisation failure.
- *
- * @pre All pointers must be valid.
- * @pre @p topic_name must be a valid null-terminated string.
- */
-NROS_PUBLIC
-nros_ret_t nros_publisher_init_best_effort(struct nros_publisher_t* publisher,
-                                           const struct nros_node_t* node,
-                                           const struct nros_message_type_t* type_info,
-                                           const char* topic_name);
-
-/**
  * @brief Initialise a publisher with custom QoS.
  *
  * @param publisher  Pointer to a zero-initialized publisher.
@@ -201,9 +152,9 @@ NROS_PUBLIC const char* nros_publisher_get_topic_name(const struct nros_publishe
  * @brief Check if publisher is valid (initialized).
  *
  * @param publisher  Pointer to a publisher.
- * @return Non-zero if valid, 0 if invalid or NULL.
+ * @return @c true if valid, @c false if invalid or NULL.
  */
-NROS_PUBLIC int nros_publisher_is_valid(const struct nros_publisher_t* publisher);
+NROS_PUBLIC bool nros_publisher_is_valid(const struct nros_publisher_t* publisher);
 
 #ifdef __cplusplus
 }

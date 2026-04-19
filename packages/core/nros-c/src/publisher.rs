@@ -2,7 +2,7 @@
 //!
 //! Publishers send messages to topics that subscribers can receive.
 
-use core::ffi::{c_char, c_int};
+use core::ffi::c_char;
 use core::ptr;
 
 use crate::constants::{
@@ -128,58 +128,6 @@ pub unsafe extern "C" fn nros_publisher_init(
     topic_name: *const c_char,
 ) -> nros_ret_t {
     nros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
-}
-
-/// Initialize a publisher with default QoS (RELIABLE, KEEP_LAST(10)).
-///
-/// Alias for `nros_publisher_init()` for rclc API compatibility.
-///
-/// # Safety
-/// See `nros_publisher_init()` for safety requirements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_init_default(
-    publisher: *mut nros_publisher_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
-    topic_name: *const c_char,
-) -> nros_ret_t {
-    nros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
-}
-
-/// Initialize a publisher with best-effort QoS (BEST_EFFORT, VOLATILE).
-///
-/// Use this for sensor data or high-frequency topics where occasional
-/// message loss is acceptable but low latency is preferred.
-///
-/// # Parameters
-/// * `publisher` - Pointer to a zero-initialized publisher
-/// * `node` - Pointer to an initialized node
-/// * `type_info` - Pointer to message type information
-/// * `topic_name` - Topic name (null-terminated string)
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
-///
-/// # Safety
-/// * All pointers must be valid
-/// * `topic_name` must be a valid null-terminated string
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_init_best_effort(
-    publisher: *mut nros_publisher_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
-    topic_name: *const c_char,
-) -> nros_ret_t {
-    nros_publisher_init_with_qos(
-        publisher,
-        node,
-        type_info,
-        topic_name,
-        &crate::qos::NROS_QOS_SENSOR_DATA,
-    )
 }
 
 /// Initialize a publisher with custom QoS.
@@ -457,19 +405,15 @@ pub unsafe extern "C" fn nros_publisher_get_topic_name(
 /// * `publisher` - Pointer to a publisher
 ///
 /// # Returns
-/// * Non-zero if valid, 0 if invalid or NULL
+/// * `true` if valid, `false` if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_is_valid(publisher: *const nros_publisher_t) -> c_int {
+pub unsafe extern "C" fn nros_publisher_is_valid(publisher: *const nros_publisher_t) -> bool {
     if publisher.is_null() {
-        return 0;
+        return false;
     }
 
     let publisher = &*publisher;
-    if publisher.state == nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
-        1
-    } else {
-        0
-    }
+    publisher.state == nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
 }
 
 #[cfg(kani)]

@@ -320,6 +320,80 @@ NROS_PUBLIC
 nros_ret_t nros_param_set_string(struct nros_param_server_t* server, const char* name,
                                  const char* value);
 
+/* -------------------------------------------------------------------
+ * Array parameters
+ *
+ * Array parameters store a pointer + length to caller-owned data.
+ * The caller MUST keep the underlying storage alive for the lifetime of
+ * the parameter (until @ref nros_param_server_fini, or until the
+ * parameter is overwritten with a new pointer via the matching `_set`
+ * function). String arrays point to an array of `const char*` — each
+ * element is itself a null-terminated, caller-owned string.
+ * ------------------------------------------------------------------- */
+
+/** @brief Declare a byte array parameter (`uint8_t[]`). */
+NROS_PUBLIC
+nros_ret_t nros_param_declare_byte_array(struct nros_param_server_t* server, const char* name,
+                                         const uint8_t* data, size_t len);
+/** @brief Declare a boolean array parameter (`bool[]`). */
+NROS_PUBLIC
+nros_ret_t nros_param_declare_bool_array(struct nros_param_server_t* server, const char* name,
+                                         const bool* data, size_t len);
+/** @brief Declare an integer array parameter (`int64_t[]`). */
+NROS_PUBLIC
+nros_ret_t nros_param_declare_integer_array(struct nros_param_server_t* server, const char* name,
+                                            const int64_t* data, size_t len);
+/** @brief Declare a double array parameter (`double[]`). */
+NROS_PUBLIC
+nros_ret_t nros_param_declare_double_array(struct nros_param_server_t* server, const char* name,
+                                           const double* data, size_t len);
+/** @brief Declare a string array parameter (array of `const char*`). */
+NROS_PUBLIC
+nros_ret_t nros_param_declare_string_array(struct nros_param_server_t* server, const char* name,
+                                           const char* const* data, size_t len);
+
+/** @brief Get a byte array parameter (returns stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_get_byte_array(const struct nros_param_server_t* server, const char* name,
+                                     const uint8_t** data, size_t* len);
+/** @brief Get a boolean array parameter (returns stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_get_bool_array(const struct nros_param_server_t* server, const char* name,
+                                     const bool** data, size_t* len);
+/** @brief Get an integer array parameter (returns stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_get_integer_array(const struct nros_param_server_t* server, const char* name,
+                                        const int64_t** data, size_t* len);
+/** @brief Get a double array parameter (returns stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_get_double_array(const struct nros_param_server_t* server, const char* name,
+                                       const double** data, size_t* len);
+/** @brief Get a string array parameter (returns stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_get_string_array(const struct nros_param_server_t* server, const char* name,
+                                       const char* const** data, size_t* len);
+
+/** @brief Set a byte array parameter (replaces stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_set_byte_array(struct nros_param_server_t* server, const char* name,
+                                     const uint8_t* data, size_t len);
+/** @brief Set a boolean array parameter (replaces stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_set_bool_array(struct nros_param_server_t* server, const char* name,
+                                     const bool* data, size_t len);
+/** @brief Set an integer array parameter (replaces stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_set_integer_array(struct nros_param_server_t* server, const char* name,
+                                        const int64_t* data, size_t len);
+/** @brief Set a double array parameter (replaces stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_set_double_array(struct nros_param_server_t* server, const char* name,
+                                       const double* data, size_t len);
+/** @brief Set a string array parameter (replaces stored pointer + length). */
+NROS_PUBLIC
+nros_ret_t nros_param_set_string_array(struct nros_param_server_t* server, const char* name,
+                                       const char* const* data, size_t len);
+
 /**
  * @brief Check if a parameter exists.
  *
