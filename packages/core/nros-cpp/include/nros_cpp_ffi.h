@@ -316,6 +316,20 @@ nros_cpp_ret_t nros_cpp_guard_condition_trigger(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_destroy(void *storage);
 
 /**
+ * Relocate a `GuardConditionHandle` from `old_storage` to `new_storage`.
+ *
+ * The handle itself contains a `&'static AtomicBool` pointing into the
+ * executor arena (stable address); the wrapper closure stored in the
+ * arena captures the user's `context` pointer (also stable, provided by
+ * the caller), not the storage address. So relocation is a straight
+ * `ptr::read` + `ptr::write`.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_relocate(void *old_storage, void *new_storage);
+
+/**
  * Create a publisher on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
@@ -348,6 +362,23 @@ nros_cpp_ret_t nros_cpp_publish_raw(void *storage, const uint8_t *data, size_t l
  * `storage` must be a valid initialized publisher storage, or NULL (no-op).
  */
 nros_cpp_ret_t nros_cpp_publisher_destroy(void *storage);
+
+/**
+ * Relocate a `CppPublisher` from `old_storage` to `new_storage`.
+ *
+ * `CppPublisher` registers nothing externally that references its
+ * storage address, so relocation is a straight `ptr::read` + `ptr::write`.
+ * Called by the C++ `Publisher` move ctor / move assignment.
+ *
+ * # Safety
+ * Both `old_storage` and `new_storage` must be valid, 8-byte-aligned
+ * buffers of at least `CPP_PUBLISHER_OPAQUE_U64S * 8` bytes. `old_storage`
+ * must contain an initialised `CppPublisher`; `new_storage` must not.
+ * After the call, `old_storage` is logically uninitialised and must
+ * not be destroyed — the C++ side sets its `initialized_` flag to
+ * `false`.
+ */
+nros_cpp_ret_t nros_cpp_publisher_relocate(void *old_storage, void *new_storage);
 
 /**
  * Get the topic name of a publisher.
@@ -404,6 +435,18 @@ nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void *storage,
  * `storage` must be a valid initialized service server storage, or NULL (no-op).
  */
 nros_cpp_ret_t nros_cpp_service_server_destroy(void *storage);
+
+/**
+ * Relocate a `CppServiceServer` from `old_storage` to `new_storage`.
+ *
+ * Service servers are pull-based (`try_recv_request` / `send_reply`)
+ * and register nothing externally that references the storage address —
+ * relocation is a straight `ptr::read` + `ptr::write`.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_service_server_relocate(void *old_storage, void *new_storage);
 
 /**
  * Create a service client on a node.
@@ -471,6 +514,17 @@ nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void *storage,
 nros_cpp_ret_t nros_cpp_service_client_destroy(void *storage);
 
 /**
+ * Relocate a `CppServiceClient` from `old_storage` to `new_storage`.
+ *
+ * Service clients are pull-based and register nothing externally —
+ * relocation is a straight `ptr::read` + `ptr::write`.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_service_client_relocate(void *old_storage, void *new_storage);
+
+/**
  * Create a subscription on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
@@ -506,6 +560,19 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
  * `storage` must be a valid initialized subscription storage, or NULL (no-op).
  */
 nros_cpp_ret_t nros_cpp_subscription_destroy(void *storage);
+
+/**
+ * Relocate a `CppSubscription` from `old_storage` to `new_storage`.
+ *
+ * Subscriptions are pull-based (`try_recv_raw`) and register nothing
+ * externally that references the storage address — relocation is a
+ * straight `ptr::read` + `ptr::write`. Called by the C++ `Subscription`
+ * move ctor / move assignment.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_subscription_relocate(void *old_storage, void *new_storage);
 
 /**
  * Get the topic name of a subscription.
@@ -705,6 +772,22 @@ nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
 nros_cpp_ret_t nros_cpp_action_server_destroy(void *storage);
 
 /**
+ * Relocate a `CppActionServer` from `old_storage` to `new_storage`.
+ *
+ * Performs the bitwise move. The C++ `ActionServer<A>` move ctor /
+ * move assignment must still call `install_callbacks()` afterwards,
+ * because the callback trampolines were registered with the previous
+ * `this` as their context and need to be re-registered with the new
+ * `this`. This FFI only transfers the Rust-side state; the re-install
+ * step is intentionally left to the C++ side so this function stays
+ * free of C++-specific pointer semantics.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_action_server_relocate(void *old_storage, void *new_storage);
+
+/**
  * Create an action client on a node.
  *
  * # Safety
@@ -821,6 +904,18 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void *handle,
  * `storage` must be a valid initialized action client storage, or NULL (no-op).
  */
 nros_cpp_ret_t nros_cpp_action_client_destroy(void *storage);
+
+/**
+ * Relocate a `CppActionClient` from `old_storage` to `new_storage`.
+ *
+ * The action client's async callback context (`options.context`) is
+ * user-provided, so it stays valid across the move. Relocation is a
+ * straight `ptr::read` + `ptr::write`.
+ *
+ * # Safety
+ * See `nros_cpp_publisher_relocate`.
+ */
+nros_cpp_ret_t nros_cpp_action_client_relocate(void *old_storage, void *new_storage);
 
 /**
  * Send a goal asynchronously (non-blocking).

@@ -6,24 +6,24 @@
 #define NROS_CPP_EXECUTOR_STORAGE_SIZE 17728
 
 /** Inline opaque storage size (bytes) for nros::Publisher<M>. */
-#define NROS_CPP_PUBLISHER_STORAGE_SIZE 328
+#define NROS_CPP_PUBLISHER_STORAGE_SIZE 296
 
 /** Inline opaque storage size (bytes) for nros::Subscription<M>. */
-#define NROS_CPP_SUBSCRIPTION_STORAGE_SIZE 1352
+#define NROS_CPP_SUBSCRIPTION_STORAGE_SIZE 1320
 
 /** Inline opaque storage size (bytes) for nros::Service<S>. */
-#define NROS_CPP_SERVICE_SERVER_STORAGE_SIZE 2376
+#define NROS_CPP_SERVICE_SERVER_STORAGE_SIZE 2344
 
 /** Inline opaque storage size (bytes) for nros::Client<S>. */
-#define NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE 2376
+#define NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE 2344
 
 /** Inline opaque storage size (bytes) for nros::GuardCondition. */
-#define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE 48
+#define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE 24
 
 /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */
-#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 5096
+#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 5016
 
 /** Inline opaque storage size (bytes) for nros::ActionClient<A>. */
-#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 400
+#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 328
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
