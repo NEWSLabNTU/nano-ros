@@ -110,6 +110,32 @@ if let Some(msg) = sub.try_recv()? {
 }
 ```
 
+The same `Subscription<M>` exposes three blocking modes for users who
+don't want to write the spin/poll loop themselves:
+
+```rust
+// Sync — spin the executor until a message arrives or timeout.
+// Returns Ok(None) on timeout (not an error — keep retrying).
+while let Some(msg) = sub.wait_next(&mut executor, 1000)? {
+    /* handle msg */
+}
+
+// Async (no `futures` dep) — drives via `executor.spin_async()` in a
+// separate task. Never returns None on a healthy subscription.
+loop {
+    let msg = sub.recv().await?;
+    /* handle msg */
+}
+
+// Async (with the `stream` feature) — `futures_core::Stream` impl,
+// works with StreamExt / TryStreamExt combinators.
+use futures::StreamExt;
+while let Some(item) = sub.next().await {
+    let msg = item?;
+    /* handle msg */
+}
+```
+
 ## Service
 
 ### Server

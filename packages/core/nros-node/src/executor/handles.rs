@@ -119,6 +119,91 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         }
         Ok(processed)
     }
+
+    /// Async: wait for the next message (no `futures` dependency needed).
+    ///
+    /// Requires a background task running `executor.spin_async()` to drive
+    /// I/O. Returns `Ok(msg)` on the next received message, or `Err` if the
+    /// transport reports an error.
+    ///
+    /// When the `stream` feature is enabled, prefer `StreamExt::next()` /
+    /// `TryStreamExt::try_next()` for combinator support.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut sub = node.create_subscription::<Int32>("/topic")?;
+    /// loop {
+    ///     let msg = sub.recv().await?;
+    ///     /* handle msg */
+    /// }
+    /// ```
+    pub async fn recv(&mut self) -> Result<M, NodeError> {
+        core::future::poll_fn(|cx| {
+            // Register the waker FIRST, then check for data. This ordering
+            // closes the race window where a subscriber callback fires
+            // between `try_recv` returning `None` and the waker being
+            // registered — the wake would otherwise be delivered to the
+            // previous waker (or nowhere) and the task would hang.
+            self.handle.register_waker(cx.waker());
+            match self.try_recv() {
+                Ok(Some(msg)) => core::task::Poll::Ready(Ok(msg)),
+                Ok(None) => core::task::Poll::Pending,
+                Err(e) => core::task::Poll::Ready(Err(e)),
+            }
+        })
+        .await
+    }
+
+    /// Sync: wait for the next message, spinning the executor.
+    ///
+    /// Returns `Ok(Some(msg))` if a message arrives within `timeout_ms`,
+    /// or `Ok(None)` on timeout. Unlike [`Promise::wait()`], timeout is
+    /// not an error — the caller typically retries in a loop.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// while let Some(msg) = sub.wait_next(&mut executor, 1000)? {
+    ///     /* handle msg */
+    /// }
+    /// ```
+    pub fn wait_next(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout_ms: u64,
+    ) -> Result<Option<M>, NodeError> {
+        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
+        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        for _ in 0..max_spins {
+            executor.spin_once(spin_interval_ms as i32);
+            if let Some(msg) = self.try_recv()? {
+                return Ok(Some(msg));
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(feature = "stream")]
+impl<M: RosMessage + Unpin, const RX_BUF: usize> futures_core::Stream
+    for Subscription<M, RX_BUF>
+{
+    type Item = Result<M, NodeError>;
+
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        // Register-then-check: see Subscription::recv for rationale.
+        this.handle.register_waker(cx.waker());
+        match this.try_recv() {
+            Ok(Some(msg)) => core::task::Poll::Ready(Some(Ok(msg))),
+            Ok(None) => core::task::Poll::Pending,
+            Err(e) => core::task::Poll::Ready(Some(Err(e))),
+        }
+    }
 }
 
 // ============================================================================
@@ -299,12 +384,12 @@ impl<T> core::future::Future for Promise<'_, T> {
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
         let this = self.get_mut();
+        // Register-then-check (closes the race where a reply lands
+        // between try_recv returning None and the waker registering).
+        this.handle.register_waker(cx.waker());
         match this.try_recv() {
             Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
-            Ok(None) => {
-                this.handle.register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
+            Ok(None) => core::task::Poll::Pending,
             Err(e) => core::task::Poll::Ready(Err(e)),
         }
     }
@@ -746,16 +831,17 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// }
     /// ```
     pub async fn recv(&mut self) -> Option<Result<(nros_core::GoalId, A::Feedback), NodeError>> {
-        core::future::poll_fn(|cx| match self.client.try_recv_feedback() {
-            Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
-            Ok(None) => {
-                self.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
+        core::future::poll_fn(|cx| {
+            // Register-then-check (closes the AtomicWaker race).
+            self.client
+                .core
+                .feedback_subscriber
+                .register_waker(cx.waker());
+            match self.client.try_recv_feedback() {
+                Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
+                Ok(None) => core::task::Poll::Pending,
+                Err(e) => core::task::Poll::Ready(Some(Err(e))),
             }
-            Err(e) => core::task::Poll::Ready(Some(Err(e))),
         })
         .await
     }
@@ -793,15 +879,14 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        // Register-then-check (closes the AtomicWaker race).
+        this.client
+            .core
+            .feedback_subscriber
+            .register_waker(cx.waker());
         match this.client.try_recv_feedback() {
             Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
-            Ok(None) => {
-                this.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
+            Ok(None) => core::task::Poll::Pending,
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
         }
     }
@@ -834,26 +919,23 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
     /// `TryStreamExt::try_next()` for combinator support.
     pub async fn recv(&mut self) -> Option<Result<A::Feedback, NodeError>> {
-        core::future::poll_fn(|cx| match self.client.try_recv_feedback() {
-            Ok(Some((id, feedback))) if id.uuid == self.goal_id.uuid => {
-                core::task::Poll::Ready(Some(Ok(feedback)))
+        core::future::poll_fn(|cx| {
+            // Register-then-check (closes the AtomicWaker race). The
+            // waker is registered once for both the "no data" and
+            // "wrong goal" branches that fall through to Pending.
+            self.client
+                .core
+                .feedback_subscriber
+                .register_waker(cx.waker());
+            match self.client.try_recv_feedback() {
+                Ok(Some((id, feedback))) if id.uuid == self.goal_id.uuid => {
+                    core::task::Poll::Ready(Some(Ok(feedback)))
+                }
+                // Feedback for a different goal — keep waiting.
+                Ok(Some(_)) => core::task::Poll::Pending,
+                Ok(None) => core::task::Poll::Pending,
+                Err(e) => core::task::Poll::Ready(Some(Err(e))),
             }
-            Ok(Some(_)) => {
-                // Feedback for a different goal — register waker and keep waiting
-                self.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
-            Ok(None) => {
-                self.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
-            Err(e) => core::task::Poll::Ready(Some(Err(e))),
         })
         .await
     }
@@ -889,24 +971,17 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        // Register-then-check (closes the AtomicWaker race).
+        this.client
+            .core
+            .feedback_subscriber
+            .register_waker(cx.waker());
         match this.client.try_recv_feedback() {
             Ok(Some((id, feedback))) if id.uuid == this.goal_id.uuid => {
                 core::task::Poll::Ready(Some(Ok(feedback)))
             }
-            Ok(Some(_)) => {
-                this.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
-            Ok(None) => {
-                this.client
-                    .core
-                    .feedback_subscriber
-                    .register_waker(cx.waker());
-                core::task::Poll::Pending
-            }
+            Ok(Some(_)) => core::task::Poll::Pending,
+            Ok(None) => core::task::Poll::Pending,
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
         }
     }
