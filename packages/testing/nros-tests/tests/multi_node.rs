@@ -44,8 +44,8 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -57,8 +57,8 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     for i in 0..3 {
         let mut cmd = Command::new(&talker_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
             .expect("Failed to start talker");
@@ -119,8 +119,8 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     for i in 0..3 {
         let mut cmd = Command::new(&listener_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
             .expect("Failed to start listener");
@@ -133,8 +133,8 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -210,8 +210,8 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
     for i in 0..2 {
         let mut cmd = Command::new(&listener_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
             .expect("Failed to start listener");
@@ -225,8 +225,8 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
     for i in 0..2 {
         let mut cmd = Command::new(&talker_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
             .expect("Failed to start talker");
@@ -287,8 +287,8 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -299,8 +299,8 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -359,8 +359,8 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -371,8 +371,8 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -460,8 +460,8 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     for i in 0..num_listeners {
         let mut cmd = Command::new(&listener_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
             .expect("Failed to start listener");
@@ -477,8 +477,8 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -537,8 +537,8 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -552,8 +552,8 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     for i in 0..num_talkers {
         let mut cmd = Command::new(&talker_binary);
         cmd.env("RUST_LOG", "info")
-            .env("ZENOH_LOCATOR", &locator)
-            .env("ZENOH_MODE", "client");
+            .env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client");
 
         let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
             .expect("Failed to start talker");
@@ -614,26 +614,26 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     let mut listener1_cmd = Command::new(&listener_binary);
     listener1_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener2_cmd = Command::new(&listener_binary);
     listener2_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker1_cmd = Command::new(&talker_binary);
     talker1_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker2_cmd = Command::new(&talker_binary);
     talker2_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     // Start all 4 processes as quickly as possible
     let mut listener1 = ManagedProcess::spawn_command(listener1_cmd, "listener1")

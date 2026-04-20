@@ -34,8 +34,8 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
@@ -75,8 +75,8 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
@@ -118,8 +118,8 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -131,8 +131,8 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -205,8 +205,8 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -218,8 +218,8 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -280,8 +280,8 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(talker_binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
@@ -324,14 +324,14 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
     let mut talker1_cmd = Command::new(&talker_binary);
     talker1_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker2_cmd = Command::new(&talker_binary);
     talker2_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker1 =
         ManagedProcess::spawn_command(talker1_cmd, "talker1").expect("Failed to start talker1");
@@ -381,8 +381,8 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "debug") // Debug to see more internal details
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 

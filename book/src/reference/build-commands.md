@@ -22,7 +22,7 @@ On native/POSIX, zenoh-pico has built-in UDP support via OS sockets:
 
 ```bash
 # Use UDP instead of TCP for the zenoh locator
-ZENOH_LOCATOR=udp/127.0.0.1:7447 cargo run --features zenoh
+NROS_LOCATOR=udp/127.0.0.1:7447 cargo run --features zenoh
 ```
 
 On bare-metal, enable the `link-udp-unicast` feature to use UDP over smoltcp:
@@ -50,7 +50,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
 
 # Terminal 2: Talker with TLS
-ZENOH_LOCATOR=tls/localhost:7447 \
+NROS_LOCATOR=tls/localhost:7447 \
   ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
   cargo run -p native-rs-talker --features link-tls
 ```

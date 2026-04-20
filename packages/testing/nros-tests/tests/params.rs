@@ -38,8 +38,8 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
@@ -88,8 +88,8 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "debug") // Debug level to see parameter details
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
@@ -137,8 +137,8 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
@@ -371,8 +371,8 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 

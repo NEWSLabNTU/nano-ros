@@ -134,8 +134,8 @@ acceptance — each group may land and be verified independently.
 
 Cross-cutting criteria that apply once all groups land:
 
-- [ ] `cargo test --doc -p nros` passes in CI (Group A).
-- [ ] `grep -rn 'ZENOH_LOCATOR' book/ packages/` returns only legacy-fallback
+- [x] `cargo test --doc -p nros` passes in CI (Group A). Verified 2026-04-20: 1 passed, 4 ignored, 0 failed.
+- [x] `grep -rn 'ZENOH_LOCATOR' book/ packages/` returns only legacy-fallback
       / migration-doc hits (Group E).
 - [ ] No `static mut` in `packages/xrce/nros-rmw-xrce/src/lib.rs` session /
       transport globals (Group E).

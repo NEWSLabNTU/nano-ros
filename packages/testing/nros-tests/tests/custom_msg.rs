@@ -102,8 +102,8 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(&binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
 
@@ -224,8 +224,8 @@ fn test_custom_msg_no_router() {
     // Run with zenoh feature but no router - should handle gracefully
     let mut cmd = Command::new(&binary);
     cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:19999") // Non-existent port
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:19999") // Non-existent port
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
 

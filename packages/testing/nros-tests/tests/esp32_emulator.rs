@@ -344,7 +344,7 @@ fn test_esp32_to_native() {
     // Start native listener on localhost (connects to same zenohd)
     let mut listener_cmd = Command::new(native_listener);
     listener_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7448")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7448")
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
@@ -434,7 +434,7 @@ fn test_native_to_esp32() {
     // Start native talker on localhost (publishes every 1s)
     let mut talker_cmd = Command::new(native_talker);
     talker_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7448")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7448")
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");

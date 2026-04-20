@@ -43,8 +43,8 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -56,8 +56,8 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -123,8 +123,8 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -136,8 +136,8 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -219,8 +219,8 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -231,8 +231,8 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -299,8 +299,8 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("RUST_LOG", "debug") // Debug to see QoS info
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
@@ -311,8 +311,8 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "debug")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -363,14 +363,14 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut listener1_cmd = Command::new(&listener_binary);
     listener1_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener2_cmd = Command::new(&listener_binary);
     listener2_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut listener1 = ManagedProcess::spawn_command(listener1_cmd, "listener1")
         .expect("Failed to start listener1");
@@ -383,8 +383,8 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
@@ -443,8 +443,8 @@ fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(talker_binary);
     cmd.env("RUST_LOG", "debug") // Debug to see liveliness keyexpr
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 

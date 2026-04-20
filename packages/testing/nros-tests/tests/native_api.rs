@@ -231,7 +231,7 @@ fn test_native_action_client_builds(#[values(Language::C, Language::Cpp)] lang: 
 
 fn spawn_native(binary: &Path, lang: Language, kind: &str, locator: &str) -> ManagedProcess {
     let mut cmd = stdbuf_command(binary);
-    cmd.env("ZENOH_LOCATOR", locator);
+    cmd.env("NROS_LOCATOR", locator);
     let name = format!("{}-{}", lang.tag(), kind);
     ManagedProcess::spawn_command(cmd, &name).unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
@@ -558,7 +558,7 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
         .expect("cpp-action-server did not become ready");
 
     let mut client_cmd = stdbuf_command(&client_bin);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd.env("NROS_LOCATOR", &locator);
     // Order 100 > 64 triggers the server's goal callback to return
     // `GoalResponse::Reject`.
     client_cmd.env("NROS_TEST_GOAL_ORDER", "100");
@@ -602,7 +602,7 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     };
 
     let mut listener_cmd = Command::new(&rust_listener);
-    listener_cmd.env("ZENOH_LOCATOR", locator);
+    listener_cmd.env("NROS_LOCATOR", locator);
     listener_cmd.env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "rust-listener")
         .expect("Failed to start Rust listener");
@@ -679,7 +679,7 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     );
 
     let mut client_cmd = Command::new(&rust_client);
-    client_cmd.env("ZENOH_LOCATOR", locator);
+    client_cmd.env("NROS_LOCATOR", locator);
     client_cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "rust-service-client")
         .expect("Failed to start Rust service client");

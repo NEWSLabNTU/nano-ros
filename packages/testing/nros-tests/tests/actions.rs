@@ -25,7 +25,7 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&action_server_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-action-server")
         .expect("Failed to start action server");
@@ -59,7 +59,7 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&action_client_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-action-client")
         .expect("Failed to start action client");
@@ -94,7 +94,7 @@ fn test_action_server_client_communication(
 
     // Start action server first
     let mut server_cmd = Command::new(&action_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-action-server")
         .expect("Failed to start action server");
@@ -111,7 +111,7 @@ fn test_action_server_client_communication(
 
     // Start action client
     let mut client_cmd = Command::new(&action_client_binary);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd.env("NROS_LOCATOR", &locator);
     client_cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
         .expect("Failed to start action client");

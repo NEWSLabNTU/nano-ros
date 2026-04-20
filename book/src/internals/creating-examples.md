@@ -152,7 +152,7 @@ fn main() {
 
 - Use `nros` with `features = ["std"]` and gate real transport behind `zenoh` feature
 - Entry point is a standard `fn main()`
-- Use `Context::from_env()` to read `ROS_DOMAIN_ID`, `ZENOH_LOCATOR`, `ZENOH_MODE`
+- Use `Context::from_env()` to read `ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE` (legacy `ZENOH_LOCATOR` / `ZENOH_MODE` still accepted)
 - Logging via `log` + `env_logger` (`RUST_LOG=info cargo run`)
 
 ---

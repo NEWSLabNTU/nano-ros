@@ -121,8 +121,9 @@ fn main() {
 
 Key API elements:
 
-- `ExecutorConfig::from_env()` reads `ZENOH_LOCATOR`, `ROS_DOMAIN_ID`, and
-  `ZENOH_MODE` from the environment.
+- `ExecutorConfig::from_env()` reads `NROS_LOCATOR`, `ROS_DOMAIN_ID`, and
+  `NROS_SESSION_MODE` from the environment (legacy names `ZENOH_LOCATOR`
+  and `ZENOH_MODE` still work with a deprecation warning).
 - `Executor` sizing is configured via `NROS_EXECUTOR_MAX_CBS` (default 4) and
   `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables.
 - `create_node()` borrows the session from the executor.

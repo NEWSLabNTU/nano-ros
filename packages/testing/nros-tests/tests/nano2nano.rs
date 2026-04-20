@@ -26,7 +26,7 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&talker_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     let mut talker =
         ManagedProcess::spawn_command(cmd, "native-rs-talker").expect("Failed to start talker");
 
@@ -54,7 +54,7 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&listener_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     let mut listener =
         ManagedProcess::spawn_command(cmd, "native-rs-listener").expect("Failed to start listener");
 
@@ -85,10 +85,10 @@ fn test_talker_listener_communication(
 
     let locator = zenohd_unique.locator();
 
-    // Start listener first with ZENOH_LOCATOR env var
+    // Start listener first with NROS_LOCATOR env var
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -96,9 +96,9 @@ fn test_talker_listener_communication(
     // Wait for listener to be ready (prints "Waiting for" after subscription)
     let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
-    // Start talker with ZENOH_LOCATOR env var
+    // Start talker with NROS_LOCATOR env var
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd.env("NROS_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -134,7 +134,7 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     // Start listener in peer mode
     let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd.env("ZENOH_MODE", "peer");
+    listener_cmd.env("NROS_SESSION_MODE", "peer");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
@@ -150,7 +150,7 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     // Start talker in peer mode
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_MODE", "peer");
+    talker_cmd.env("NROS_SESSION_MODE", "peer");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-peer")
         .expect("Failed to start talker in peer mode");
 
@@ -209,7 +209,7 @@ fn test_sequence_number_increment(
     // Start listener with RUST_LOG=trace to get MessageInfo trace output
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "trace");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -219,7 +219,7 @@ fn test_sequence_number_increment(
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd.env("NROS_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -284,7 +284,7 @@ fn test_gid_consistency(
     // Start listener with RUST_LOG=trace to get MessageInfo trace output
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "trace");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -294,7 +294,7 @@ fn test_gid_consistency(
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd.env("NROS_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -389,7 +389,7 @@ fn test_tls_talker_listener_communication(
     // Start listener with TLS locator and CA certificate
     let mut listener_cmd = Command::new(&listener_tls_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-tls")
@@ -401,7 +401,7 @@ fn test_tls_talker_listener_communication(
     // Start talker with TLS locator and CA certificate
     let mut talker_cmd = Command::new(&talker_tls_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-tls")
         .expect("Failed to start TLS talker");
@@ -451,7 +451,7 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     // Start listener first
     let mut listener_cmd = Command::new(rtic_listener);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "rtic-listener")
         .expect("Failed to start rtic-listener");
@@ -462,7 +462,7 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     // Start talker
     let mut talker_cmd = Command::new(rtic_talker);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "rtic-talker")
         .expect("Failed to start rtic-talker");
@@ -504,7 +504,7 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     // Start server first
     let mut server_cmd = Command::new(rtic_server);
     server_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-service-server")
         .expect("Failed to start rtic-service-server");
@@ -515,7 +515,7 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     // Start client
     let mut client_cmd = Command::new(rtic_client);
     client_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-service-client")
         .expect("Failed to start rtic-service-client");
@@ -558,7 +558,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     // Start server first
     let mut server_cmd = Command::new(rtic_server);
     server_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-action-server")
         .expect("Failed to start rtic-action-server");
@@ -569,7 +569,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     // Start client
     let mut client_cmd = Command::new(rtic_client);
     client_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-action-client")
         .expect("Failed to start rtic-action-client");

@@ -58,7 +58,7 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&service_server_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-service-server")
         .expect("Failed to start service server");
@@ -102,7 +102,7 @@ fn test_service_client_starts_without_server(
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(&service_client_binary);
-    cmd.env("ZENOH_LOCATOR", &locator);
+    cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
@@ -154,7 +154,7 @@ fn test_service_request_response(
 
     // Start service server first
     let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start service server");
@@ -175,7 +175,7 @@ fn test_service_request_response(
 
     // Start service client
     let mut client_cmd = Command::new(&service_client_binary);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd.env("NROS_LOCATOR", &locator);
     client_cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start service client");
@@ -254,7 +254,7 @@ fn test_service_multiple_sequential_calls(
 
     // Start server
     let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
         .expect("Failed to start service server");
@@ -275,7 +275,7 @@ fn test_service_multiple_sequential_calls(
         eprintln!("--- Client run {} ---", run);
 
         let mut client_cmd = Command::new(&service_client_binary);
-        client_cmd.env("ZENOH_LOCATOR", &locator);
+        client_cmd.env("NROS_LOCATOR", &locator);
         client_cmd.env("RUST_LOG", "info");
         let mut client = ManagedProcess::spawn_command(client_cmd, "service-client")
             .expect("Failed to start service client");
@@ -321,7 +321,7 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
 
     // Start client WITHOUT server - should timeout
     let mut client_cmd = Command::new(&service_client_binary);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd.env("NROS_LOCATOR", &locator);
     client_cmd.env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
@@ -367,7 +367,7 @@ fn test_service_server_multiple_clients(
 
     // Start server
     let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
         .expect("Failed to start service server");
@@ -383,7 +383,7 @@ fn test_service_server_multiple_clients(
 
     // Start two clients with staggered starts to avoid zenoh queryable race
     let mut client1_cmd = Command::new(&service_client_binary);
-    client1_cmd.env("ZENOH_LOCATOR", &locator);
+    client1_cmd.env("NROS_LOCATOR", &locator);
     client1_cmd.env("RUST_LOG", "info");
     let mut client1 = ManagedProcess::spawn_command(client1_cmd, "service-client-1")
         .expect("Failed to start client 1");
@@ -393,7 +393,7 @@ fn test_service_server_multiple_clients(
     std::thread::sleep(Duration::from_secs(2));
 
     let mut client2_cmd = Command::new(&service_client_binary);
-    client2_cmd.env("ZENOH_LOCATOR", &locator);
+    client2_cmd.env("NROS_LOCATOR", &locator);
     client2_cmd.env("RUST_LOG", "info");
     let mut client2 = ManagedProcess::spawn_command(client2_cmd, "service-client-2")
         .expect("Failed to start client 2");

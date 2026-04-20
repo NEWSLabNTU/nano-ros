@@ -35,7 +35,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
     // Test sizes from small to large (up to 32KB)
     for &size in &[64, 256, 1024, 4096, 8192, 32768] {
         let mut cmd = Command::new(&zenoh_stress_test_binary);
-        cmd.env("ZENOH_LOCATOR", &locator)
+        cmd.env("NROS_LOCATOR", &locator)
             .env("MODE", "talker")
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
@@ -67,7 +67,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     // Start listener first
     let mut listener_cmd = Command::new(&zenoh_stress_test_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "20")
@@ -84,7 +84,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     // Start talker
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "512")
         .env("PUBLISH_COUNT", "20")
@@ -133,7 +133,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
     // Start listener expecting 512B payloads
     let mut listener_cmd = Command::new(&zenoh_stress_test_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "5")
@@ -148,7 +148,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
     // Talker sends 2048B payloads (larger than default 1024B receiver buffer)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "2048")
         .env("PUBLISH_COUNT", "5")
@@ -207,7 +207,7 @@ fn test_zenoh_e2e_large_receive(
     // Listener (built with 8192B shim buffer)
     let mut listener_cmd = Command::new(&zenoh_stress_test_large_buf_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "4096")
         .env("EXPECTED_COUNT", "10")
@@ -221,7 +221,7 @@ fn test_zenoh_e2e_large_receive(
     // Talker (same large-buf binary)
     let mut talker_cmd = Command::new(&zenoh_stress_test_large_buf_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "4096")
         .env("PUBLISH_COUNT", "10")
@@ -268,7 +268,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     // Start listener
     let mut listener_cmd = Command::new(&zenoh_stress_test_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
@@ -282,7 +282,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     // Start talker at 100 Hz
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
@@ -322,7 +322,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     // Start listener
     let mut listener_cmd = Command::new(&zenoh_stress_test_binary);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
@@ -336,7 +336,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     // Start talker with no delay (burst)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")

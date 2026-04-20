@@ -220,7 +220,7 @@ fn test_zephyr_to_native_e2e() {
     let mut listener_cmd = Command::new(listener_path);
     // Both native and Zephyr NSOS processes connect to zenohd on localhost
     listener_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -322,7 +322,7 @@ fn test_native_to_zephyr_e2e() {
     let mut talker_cmd = Command::new(talker_path);
     // Both connect to zenohd on localhost
     talker_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
@@ -424,7 +424,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     let mut native_listener_cmd = Command::new(native_listener_path);
     native_listener_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut native_listener =
         ManagedProcess::spawn_command(native_listener_cmd, "native-rs-listener")
@@ -444,7 +444,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     let mut native_talker_cmd = Command::new(native_talker_path);
     native_talker_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut native_talker = ManagedProcess::spawn_command(native_talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");
@@ -1073,7 +1073,7 @@ fn test_native_server_zephyr_client() {
 
     let mut server_cmd = Command::new(server_path);
     server_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start native service server");
@@ -1431,7 +1431,7 @@ fn test_zephyr_server_native_client() {
 
     let mut client_cmd = Command::new(client_path);
     client_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456")
+        .env("NROS_LOCATOR", "tcp/127.0.0.1:7456")
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start native service client");
@@ -1604,7 +1604,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
 
     // Start native listener first (connects to zenohd)
     let mut listener_cmd = std::process::Command::new(&native_listener);
-    listener_cmd.env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456");
+    listener_cmd.env("NROS_LOCATOR", "tcp/127.0.0.1:7456");
     listener_cmd.env("RUST_LOG", "info");
     let mut listener =
         nros_tests::fixtures::ManagedProcess::spawn_command(listener_cmd, "native-listener")
@@ -1676,7 +1676,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 
     // Start native talker (connects to zenohd)
     let mut talker_cmd = std::process::Command::new(&native_talker);
-    talker_cmd.env("ZENOH_LOCATOR", "tcp/127.0.0.1:7456");
+    talker_cmd.env("NROS_LOCATOR", "tcp/127.0.0.1:7456");
     talker_cmd.env("RUST_LOG", "info");
     let mut talker =
         nros_tests::fixtures::ManagedProcess::spawn_command(talker_cmd, "native-talker")

@@ -7,8 +7,8 @@
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
-| `ZENOH_LOCATOR` | Router address (`tcp/…`, `udp/…`, or `tls/…`) | `tcp/127.0.0.1:7447` |
-| `ZENOH_MODE` | Session mode: `client` or `peer` | `client` |
+| `NROS_LOCATOR` | Router address (`tcp/…`, `udp/…`, or `tls/…`). Legacy alias: `ZENOH_LOCATOR`. | `tcp/127.0.0.1:7447` |
+| `NROS_SESSION_MODE` | Session mode: `client` or `peer`. Legacy alias: `ZENOH_MODE`. | `client` |
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE` | Path to CA certificate (PEM) for TLS | — |
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA cert (bare-metal) | — |
 

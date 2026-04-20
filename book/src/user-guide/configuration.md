@@ -199,8 +199,8 @@ at process startup:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
-| `ZENOH_LOCATOR` | Router address | `tcp/127.0.0.1:7447` |
-| `ZENOH_MODE` | Session mode (`client` / `peer`) | `client` |
+| `NROS_LOCATOR` | Router address (legacy alias: `ZENOH_LOCATOR`) | `tcp/127.0.0.1:7447` |
+| `NROS_SESSION_MODE` | Session mode, `client` / `peer` (legacy alias: `ZENOH_MODE`) | `client` |
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE` | Path to CA certificate (PEM) | (none) |
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA cert | (none) |
 | `ZENOH_TLS_VERIFY_NAME_ON_CONNECT` | Verify hostname (`true`/`false`) | (none) |
@@ -220,7 +220,7 @@ from `config.toml` (layer 1).
 ### Desktop development (POSIX)
 
 ```
-Layer 4: ZENOH_LOCATOR=tcp/127.0.0.1:7447  (shell export or .env)
+Layer 4: NROS_LOCATOR=tcp/127.0.0.1:7447  (shell export or .env)
 Layer 3: features = ["rmw-zenoh", "platform-posix", "std"]
 ```
 

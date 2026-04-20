@@ -165,7 +165,7 @@ static void on_signal(int sig) {
 }
 
 int main(void) {
-    const char *locator = getenv("ZENOH_LOCATOR");
+    const char *locator = getenv("NROS_LOCATOR");
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
     /* Initialise transport */

@@ -35,7 +35,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     // Start listener first (subscriber before publisher)
     let mut listener_cmd = Command::new(listener_path);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "safety-listener")
         .expect("Failed to start safety listener");
@@ -53,7 +53,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     // Start talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
@@ -121,7 +121,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     // Start standard listener first
     let mut listener_cmd = Command::new(listener_path);
     listener_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "std-listener")
         .expect("Failed to start standard listener");
@@ -136,7 +136,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     // Start safety-e2e talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd
-        .env("ZENOH_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
