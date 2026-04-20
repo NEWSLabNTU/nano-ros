@@ -37,22 +37,15 @@ pub fn is_arm_gcc_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Nightly toolchain supports the `armv7a-nuttx-eabihf` target with
-/// `rust-src` installed (required for `-Z build-std`).
+/// Trust that `just setup` installed the pinned NuttX nightly
+/// toolchain. The pinned version lives in
+/// `examples/qemu-arm-nuttx/rust-toolchain.toml` and is the
+/// authoritative source — cargo auto-resolves it when invoked from
+/// inside that directory tree. If setup wasn't run, the cargo build
+/// will fail with an actionable "toolchain not found" message, which
+/// is the correct behaviour per CLAUDE.md "fail on unmet preconditions".
 pub fn is_nuttx_toolchain_available() -> bool {
-    let target_known = Command::new("rustc")
-        .args(["+nightly", "--print", "target-list"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("armv7a-nuttx-eabihf"))
-        .unwrap_or(false);
-
-    let rust_src = Command::new("rustup")
-        .args(["component", "list", "--toolchain", "nightly"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("rust-src (installed)"))
-        .unwrap_or(false);
-
-    target_known && rust_src
+    true
 }
 
 /// Path to a pre-built NuttX kernel image, if it exists.
