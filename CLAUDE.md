@@ -277,6 +277,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 82 | Blocking service client must take an executor | Complete |
 | 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete |
 | 85 | Test-suite consolidation & speedup (214 → ~80 tests, dedupe 4-platform RTOS matrix, shared build cache, replace sleeps with ready-probes) | Not Started |
+| 86 | `nros-lifecycle-msgs` codegen crate + REP-2002 lifecycle services (`~/change_state`, `~/get_state`, …) for C/Rust APIs | Not Started |
 
 ## Quick Reference
 
