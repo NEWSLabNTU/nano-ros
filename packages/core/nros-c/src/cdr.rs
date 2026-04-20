@@ -1,20 +1,94 @@
 //! CDR serialization helpers for generated C message types.
 //!
-//! These functions are used by generated message serialization/deserialization code.
-//! They handle CDR (Common Data Representation) encoding with little-endian byte order.
-//!
-//! All functions that perform alignment take an `origin` pointer that marks the start
-//! of the CDR data stream (right after the 4-byte encapsulation header). Alignment is
-//! computed relative to this origin, not relative to the absolute memory address.
+//! Thin FFI wrappers over [`nros_core::CdrWriter`] / [`nros_core::CdrReader`].
+//! The public `extern "C"` surface is preserved for the generated C message
+//! code: the write/read helpers take a `(cursor, end, origin)` triple, and
+//! advance `cursor` on success.
 
 use core::ffi::c_char;
+use nros_core::{CdrReader, CdrWriter, DeserError, SerError};
 
-/// Write a boolean value to the buffer.
+// ===========================================================================
+// Bridge helpers
+// ===========================================================================
+
+/// Run `f` against a positioned [`CdrWriter`] spanning `origin..end`.
 ///
-/// # Safety
-/// - `ptr` must point to a valid mutable pointer to a buffer
-/// - The buffer must have sufficient space
-/// - `origin` is accepted for calling convention uniformity but unused
+/// Returns 0 on success (advancing `*ptr`), -1 on any bounds / alignment /
+/// serializer failure.
+#[inline]
+unsafe fn with_writer<F>(
+    ptr: *mut *mut u8,
+    end: *const u8,
+    origin: *const u8,
+    f: F,
+) -> i32
+where
+    F: FnOnce(&mut CdrWriter<'_>) -> Result<(), SerError>,
+{
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -1;
+    }
+    let cur = *ptr;
+    if cur.is_null() {
+        return -1;
+    }
+    if (cur as *const u8) < origin || (cur as *const u8) > end {
+        return -1;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts_mut(origin as *mut u8, buf_len);
+    let mut w = match CdrWriter::new_at(slice, pos) {
+        Ok(w) => w,
+        Err(_) => return -1,
+    };
+    if f(&mut w).is_err() {
+        return -1;
+    }
+    *ptr = (origin as *mut u8).add(w.position());
+    0
+}
+
+/// Run `f` against a positioned [`CdrReader`] spanning `origin..end`.
+#[inline]
+unsafe fn with_reader<F>(
+    ptr: *mut *const u8,
+    end: *const u8,
+    origin: *const u8,
+    f: F,
+) -> i32
+where
+    F: FnOnce(&mut CdrReader<'_>) -> Result<(), DeserError>,
+{
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -1;
+    }
+    let cur = *ptr;
+    if cur.is_null() {
+        return -1;
+    }
+    if cur < origin || cur > end {
+        return -1;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts(origin, buf_len);
+    let mut r = match CdrReader::new_at(slice, pos) {
+        Ok(r) => r,
+        Err(_) => return -1,
+    };
+    if f(&mut r).is_err() {
+        return -1;
+    }
+    *ptr = origin.add(r.position());
+    0
+}
+
+// ===========================================================================
+// Write functions
+// ===========================================================================
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_bool(
     ptr: *mut *mut u8,
@@ -22,20 +96,9 @@ pub unsafe extern "C" fn nros_cdr_write_bool(
     origin: *const u8,
     value: bool,
 ) -> i32 {
-    let _ = origin;
-    if ptr.is_null() || (*ptr).is_null() {
-        return -1;
-    }
-    let p = *ptr;
-    if p >= end as *mut u8 {
-        return -1;
-    }
-    *p = if value { 1 } else { 0 };
-    *ptr = p.add(1);
-    0
+    with_writer(ptr, end, origin, |w| w.write_bool(value))
 }
 
-/// Write a u8 value to the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u8(
     ptr: *mut *mut u8,
@@ -43,20 +106,9 @@ pub unsafe extern "C" fn nros_cdr_write_u8(
     origin: *const u8,
     value: u8,
 ) -> i32 {
-    let _ = origin;
-    if ptr.is_null() || (*ptr).is_null() {
-        return -1;
-    }
-    let p = *ptr;
-    if p >= end as *mut u8 {
-        return -1;
-    }
-    *p = value;
-    *ptr = p.add(1);
-    0
+    with_writer(ptr, end, origin, |w| w.write_u8(value))
 }
 
-/// Write an i8 value to the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i8(
     ptr: *mut *mut u8,
@@ -64,28 +116,9 @@ pub unsafe extern "C" fn nros_cdr_write_i8(
     origin: *const u8,
     value: i8,
 ) -> i32 {
-    nros_cdr_write_u8(ptr, end, origin, value as u8)
+    with_writer(ptr, end, origin, |w| w.write_i8(value))
 }
 
-/// Align pointer to the specified alignment relative to origin.
-///
-/// CDR alignment is computed relative to the start of the data stream (origin),
-/// not relative to the absolute memory address.
-unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize, origin: *const u8) -> i32 {
-    let offset = (*ptr as usize).wrapping_sub(origin as usize);
-    let padding = (align - (offset % align)) % align;
-    if (*ptr).add(padding) > end as *mut u8 {
-        return -1;
-    }
-    // Zero-fill padding bytes
-    for i in 0..padding {
-        *(*ptr).add(i) = 0;
-    }
-    *ptr = (*ptr).add(padding);
-    0
-}
-
-/// Write a u16 value to the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u16(
     ptr: *mut *mut u8,
@@ -93,24 +126,9 @@ pub unsafe extern "C" fn nros_cdr_write_u16(
     origin: *const u8,
     value: u16,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() {
-        return -1;
-    }
-    if align_ptr(ptr, end, 2, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(2) > end as *mut u8 {
-        return -1;
-    }
-    // Little-endian
-    *p = (value & 0xFF) as u8;
-    *p.add(1) = ((value >> 8) & 0xFF) as u8;
-    *ptr = p.add(2);
-    0
+    with_writer(ptr, end, origin, |w| w.write_u16(value))
 }
 
-/// Write an i16 value to the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i16(
     ptr: *mut *mut u8,
@@ -118,10 +136,9 @@ pub unsafe extern "C" fn nros_cdr_write_i16(
     origin: *const u8,
     value: i16,
 ) -> i32 {
-    nros_cdr_write_u16(ptr, end, origin, value as u16)
+    with_writer(ptr, end, origin, |w| w.write_i16(value))
 }
 
-/// Write a u32 value to the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u32(
     ptr: *mut *mut u8,
@@ -129,26 +146,9 @@ pub unsafe extern "C" fn nros_cdr_write_u32(
     origin: *const u8,
     value: u32,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() {
-        return -1;
-    }
-    if align_ptr(ptr, end, 4, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(4) > end as *mut u8 {
-        return -1;
-    }
-    // Little-endian
-    *p = (value & 0xFF) as u8;
-    *p.add(1) = ((value >> 8) & 0xFF) as u8;
-    *p.add(2) = ((value >> 16) & 0xFF) as u8;
-    *p.add(3) = ((value >> 24) & 0xFF) as u8;
-    *ptr = p.add(4);
-    0
+    with_writer(ptr, end, origin, |w| w.write_u32(value))
 }
 
-/// Write an i32 value to the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i32(
     ptr: *mut *mut u8,
@@ -156,10 +156,9 @@ pub unsafe extern "C" fn nros_cdr_write_i32(
     origin: *const u8,
     value: i32,
 ) -> i32 {
-    nros_cdr_write_u32(ptr, end, origin, value as u32)
+    with_writer(ptr, end, origin, |w| w.write_i32(value))
 }
 
-/// Write a u64 value to the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u64(
     ptr: *mut *mut u8,
@@ -167,25 +166,9 @@ pub unsafe extern "C" fn nros_cdr_write_u64(
     origin: *const u8,
     value: u64,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() {
-        return -1;
-    }
-    if align_ptr(ptr, end, 8, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(8) > end as *mut u8 {
-        return -1;
-    }
-    // Little-endian
-    for i in 0..8 {
-        *p.add(i) = ((value >> (i * 8)) & 0xFF) as u8;
-    }
-    *ptr = p.add(8);
-    0
+    with_writer(ptr, end, origin, |w| w.write_u64(value))
 }
 
-/// Write an i64 value to the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i64(
     ptr: *mut *mut u8,
@@ -193,10 +176,9 @@ pub unsafe extern "C" fn nros_cdr_write_i64(
     origin: *const u8,
     value: i64,
 ) -> i32 {
-    nros_cdr_write_u64(ptr, end, origin, value as u64)
+    with_writer(ptr, end, origin, |w| w.write_i64(value))
 }
 
-/// Write a f32 value to the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_f32(
     ptr: *mut *mut u8,
@@ -204,10 +186,9 @@ pub unsafe extern "C" fn nros_cdr_write_f32(
     origin: *const u8,
     value: f32,
 ) -> i32 {
-    nros_cdr_write_u32(ptr, end, origin, value.to_bits())
+    with_writer(ptr, end, origin, |w| w.write_f32(value))
 }
 
-/// Write a f64 value to the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_f64(
     ptr: *mut *mut u8,
@@ -215,12 +196,10 @@ pub unsafe extern "C" fn nros_cdr_write_f64(
     origin: *const u8,
     value: f64,
 ) -> i32 {
-    nros_cdr_write_u64(ptr, end, origin, value.to_bits())
+    with_writer(ptr, end, origin, |w| w.write_f64(value))
 }
 
-/// Write a string to the buffer (length-prefixed).
-///
-/// CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
+/// Write a null-terminated string (CDR: u32 length inc. null + bytes + null).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_string(
     ptr: *mut *mut u8,
@@ -228,44 +207,18 @@ pub unsafe extern "C" fn nros_cdr_write_string(
     origin: *const u8,
     value: *const c_char,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-
-    // Calculate string length
-    let mut len: usize = 0;
-    let mut s = value;
-    while *s != 0 {
+    let mut len = 0usize;
+    while *value.add(len) != 0 {
         len += 1;
-        s = s.add(1);
     }
-
-    // Write length (including null terminator)
-    let total_len = (len + 1) as u32;
-    if nros_cdr_write_u32(ptr, end, origin, total_len) < 0 {
-        return -1;
-    }
-
-    // Check space for string + null
-    let p = *ptr;
-    if p.add(len + 1) > end as *mut u8 {
-        return -1;
-    }
-
-    // Copy string bytes
-    for i in 0..len {
-        *p.add(i) = *value.add(i) as u8;
-    }
-    // Null terminator
-    *p.add(len) = 0;
-
-    *ptr = p.add(len + 1);
-    0
+    let data = core::slice::from_raw_parts(value as *const u8, len);
+    with_writer(ptr, end, origin, |w| write_string_payload(w, data))
 }
 
-/// Write a string from a pointer+length pair (not null-terminated).
-///
-/// CDR encoding: u32 length (data_len + 1 for null) + bytes + null terminator.
+/// Write a ptr+len string (CDR: u32 length inc. null + bytes + null).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_string_n(
     ptr: *mut *mut u8,
@@ -274,61 +227,29 @@ pub unsafe extern "C" fn nros_cdr_write_string_n(
     data: *const c_char,
     data_len: usize,
 ) -> i32 {
-    if ptr.is_null() || unsafe { (*ptr).is_null() } || (data.is_null() && data_len > 0) {
+    if data.is_null() && data_len > 0 {
         return -1;
     }
-
-    // Write length (including null terminator)
-    let total_len = (data_len + 1) as u32;
-    if unsafe { nros_cdr_write_u32(ptr, end, origin, total_len) } < 0 {
-        return -1;
-    }
-
-    // Check space for string + null
-    let p = unsafe { *ptr };
-    if unsafe { p.add(data_len + 1) } > end as *mut u8 {
-        return -1;
-    }
-
-    // Copy string bytes
-    if data_len > 0 && !data.is_null() {
-        unsafe {
-            core::ptr::copy_nonoverlapping(data as *const u8, p, data_len);
-        }
-    }
-    // Null terminator
-    unsafe {
-        *p.add(data_len) = 0;
-        *ptr = p.add(data_len + 1);
-    }
-    0
+    let slice = if data_len == 0 {
+        &[][..]
+    } else {
+        core::slice::from_raw_parts(data as *const u8, data_len)
+    };
+    with_writer(ptr, end, origin, |w| write_string_payload(w, slice))
 }
 
-// =============================================================================
+#[inline]
+fn write_string_payload(w: &mut CdrWriter<'_>, data: &[u8]) -> Result<(), SerError> {
+    let total = (data.len() + 1) as u32;
+    w.write_u32(total)?;
+    w.write_bytes(data)?;
+    w.write_u8(0)
+}
+
+// ===========================================================================
 // Read functions
-// =============================================================================
+// ===========================================================================
 
-/// Align read pointer to the specified alignment relative to origin.
-///
-/// CDR alignment is computed relative to the start of the data stream (origin),
-/// not relative to the absolute memory address.
-unsafe fn align_read_ptr(
-    ptr: *mut *const u8,
-    end: *const u8,
-    align: usize,
-    origin: *const u8,
-) -> i32 {
-    let offset = (*ptr as usize).wrapping_sub(origin as usize);
-    let padding = (align - (offset % align)) % align;
-    let new_ptr = (*ptr).add(padding);
-    if new_ptr > end {
-        return -1;
-    }
-    *ptr = new_ptr;
-    0
-}
-
-/// Read a boolean value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_bool(
     ptr: *mut *const u8,
@@ -336,20 +257,15 @@ pub unsafe extern "C" fn nros_cdr_read_bool(
     origin: *const u8,
     value: *mut bool,
 ) -> i32 {
-    let _ = origin;
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-    let p = *ptr;
-    if p >= end {
-        return -1;
-    }
-    *value = *p != 0;
-    *ptr = p.add(1);
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_bool()?;
+        Ok(())
+    })
 }
 
-/// Read a u8 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u8(
     ptr: *mut *const u8,
@@ -357,20 +273,15 @@ pub unsafe extern "C" fn nros_cdr_read_u8(
     origin: *const u8,
     value: *mut u8,
 ) -> i32 {
-    let _ = origin;
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-    let p = *ptr;
-    if p >= end {
-        return -1;
-    }
-    *value = *p;
-    *ptr = p.add(1);
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_u8()?;
+        Ok(())
+    })
 }
 
-/// Read an i8 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i8(
     ptr: *mut *const u8,
@@ -378,10 +289,15 @@ pub unsafe extern "C" fn nros_cdr_read_i8(
     origin: *const u8,
     value: *mut i8,
 ) -> i32 {
-    nros_cdr_read_u8(ptr, end, origin, value as *mut u8)
+    if value.is_null() {
+        return -1;
+    }
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_i8()?;
+        Ok(())
+    })
 }
 
-/// Read a u16 value from the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u16(
     ptr: *mut *const u8,
@@ -389,23 +305,15 @@ pub unsafe extern "C" fn nros_cdr_read_u16(
     origin: *const u8,
     value: *mut u16,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 2, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(2) > end {
-        return -1;
-    }
-    // Little-endian
-    *value = (*p as u16) | ((*p.add(1) as u16) << 8);
-    *ptr = p.add(2);
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_u16()?;
+        Ok(())
+    })
 }
 
-/// Read an i16 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i16(
     ptr: *mut *const u8,
@@ -413,10 +321,15 @@ pub unsafe extern "C" fn nros_cdr_read_i16(
     origin: *const u8,
     value: *mut i16,
 ) -> i32 {
-    nros_cdr_read_u16(ptr, end, origin, value as *mut u16)
+    if value.is_null() {
+        return -1;
+    }
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_i16()?;
+        Ok(())
+    })
 }
 
-/// Read a u32 value from the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u32(
     ptr: *mut *const u8,
@@ -424,26 +337,15 @@ pub unsafe extern "C" fn nros_cdr_read_u32(
     origin: *const u8,
     value: *mut u32,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 4, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(4) > end {
-        return -1;
-    }
-    // Little-endian
-    *value = (*p as u32)
-        | ((*p.add(1) as u32) << 8)
-        | ((*p.add(2) as u32) << 16)
-        | ((*p.add(3) as u32) << 24);
-    *ptr = p.add(4);
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_u32()?;
+        Ok(())
+    })
 }
 
-/// Read an i32 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i32(
     ptr: *mut *const u8,
@@ -451,10 +353,15 @@ pub unsafe extern "C" fn nros_cdr_read_i32(
     origin: *const u8,
     value: *mut i32,
 ) -> i32 {
-    nros_cdr_read_u32(ptr, end, origin, value as *mut u32)
+    if value.is_null() {
+        return -1;
+    }
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_i32()?;
+        Ok(())
+    })
 }
 
-/// Read a u64 value from the buffer (with alignment).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u64(
     ptr: *mut *const u8,
@@ -462,27 +369,15 @@ pub unsafe extern "C" fn nros_cdr_read_u64(
     origin: *const u8,
     value: *mut u64,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() {
+    if value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 8, origin) < 0 {
-        return -1;
-    }
-    let p = *ptr;
-    if p.add(8) > end {
-        return -1;
-    }
-    // Little-endian
-    let mut v: u64 = 0;
-    for i in 0..8 {
-        v |= (*p.add(i) as u64) << (i * 8);
-    }
-    *value = v;
-    *ptr = p.add(8);
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_u64()?;
+        Ok(())
+    })
 }
 
-/// Read an i64 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i64(
     ptr: *mut *const u8,
@@ -490,10 +385,15 @@ pub unsafe extern "C" fn nros_cdr_read_i64(
     origin: *const u8,
     value: *mut i64,
 ) -> i32 {
-    nros_cdr_read_u64(ptr, end, origin, value as *mut u64)
+    if value.is_null() {
+        return -1;
+    }
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_i64()?;
+        Ok(())
+    })
 }
 
-/// Read a f32 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_f32(
     ptr: *mut *const u8,
@@ -501,18 +401,15 @@ pub unsafe extern "C" fn nros_cdr_read_f32(
     origin: *const u8,
     value: *mut f32,
 ) -> i32 {
-    let mut bits: u32 = 0;
-    let result = nros_cdr_read_u32(ptr, end, origin, &mut bits);
-    if result < 0 {
-        return result;
+    if value.is_null() {
+        return -1;
     }
-    unsafe {
-        *value = f32::from_bits(bits);
-    }
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_f32()?;
+        Ok(())
+    })
 }
 
-/// Read a f64 value from the buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_f64(
     ptr: *mut *const u8,
@@ -520,20 +417,17 @@ pub unsafe extern "C" fn nros_cdr_read_f64(
     origin: *const u8,
     value: *mut f64,
 ) -> i32 {
-    let mut bits: u64 = 0;
-    let result = nros_cdr_read_u64(ptr, end, origin, &mut bits);
-    if result < 0 {
-        return result;
+    if value.is_null() {
+        return -1;
     }
-    unsafe {
-        *value = f64::from_bits(bits);
-    }
-    0
+    with_reader(ptr, end, origin, |r| {
+        *value = r.read_f64()?;
+        Ok(())
+    })
 }
 
-/// Read a string from the buffer into a fixed-size buffer.
-///
-/// CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
+/// Read a CDR string into a fixed-size C buffer. Fails if the encoded length
+/// exceeds `max_len`. Always null-terminates the output on success.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_string(
     ptr: *mut *const u8,
@@ -542,448 +436,28 @@ pub unsafe extern "C" fn nros_cdr_read_string(
     value: *mut c_char,
     max_len: usize,
 ) -> i32 {
-    if ptr.is_null() || (*ptr).is_null() || value.is_null() || max_len == 0 {
+    if value.is_null() || max_len == 0 {
         return -1;
     }
-
-    // Read length
-    let mut len: u32 = 0;
-    if nros_cdr_read_u32(ptr, end, origin, &mut len) < 0 {
-        return -1;
-    }
-
-    let p = *ptr;
-    let str_len = len as usize;
-
-    // Check bounds
-    if p.add(str_len) > end {
-        return -1;
-    }
-
-    // Check destination buffer size (need space for null terminator)
-    if str_len > max_len {
-        return -1;
-    }
-
-    // Copy string (including null terminator if present)
-    let copy_len = if str_len > 0 { str_len - 1 } else { 0 }; // Exclude null from copy count
-    for i in 0..copy_len {
-        *value.add(i) = *p.add(i) as c_char;
-    }
-    // Ensure null termination
-    *value.add(copy_len) = 0;
-
-    *ptr = p.add(str_len);
-    0
+    with_reader(ptr, end, origin, |r| {
+        let str_len = r.read_u32()? as usize;
+        if str_len > max_len {
+            return Err(DeserError::UnexpectedEof);
+        }
+        let bytes = r.read_bytes(str_len)?;
+        // CDR-encoded strings include a trailing null; strip it from the copy.
+        let copy_len = str_len.saturating_sub(1);
+        for (i, &b) in bytes.iter().take(copy_len).enumerate() {
+            *value.add(i) = b as c_char;
+        }
+        *value.add(copy_len) = 0;
+        Ok(())
+    })
 }
 
-#[cfg(kani)]
-mod verification {
-    use super::*;
-
-    // =========================================================================
-    // Null safety — write functions
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_write_u8_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        // NULL ptr → -1
-        assert_eq!(
-            unsafe { nros_cdr_write_u8(core::ptr::null_mut(), end, origin, 0) },
-            -1
-        );
-        // NULL *ptr → -1
-        let mut null_inner: *mut u8 = core::ptr::null_mut();
-        let buf = [0u8; 4];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_write_u8(&mut null_inner, end, origin, 0) },
-            -1
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_write_u32_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        assert_eq!(
-            unsafe { nros_cdr_write_u32(core::ptr::null_mut(), end, origin, 0) },
-            -1
-        );
-        let mut null_inner: *mut u8 = core::ptr::null_mut();
-        let buf = [0u8; 8];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_write_u32(&mut null_inner, end, origin, 0) },
-            -1
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn cdr_write_u64_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        assert_eq!(
-            unsafe { nros_cdr_write_u64(core::ptr::null_mut(), end, origin, 0) },
-            -1
-        );
-        let mut null_inner: *mut u8 = core::ptr::null_mut();
-        let buf = [0u8; 16];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_write_u64(&mut null_inner, end, origin, 0) },
-            -1
-        );
-    }
-
-    // =========================================================================
-    // Null safety — read functions
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_read_u8_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        let mut val: u8 = 0;
-        // NULL ptr → -1
-        assert_eq!(
-            unsafe { nros_cdr_read_u8(core::ptr::null_mut(), end, origin, &mut val) },
-            -1
-        );
-        // NULL *ptr → -1
-        let mut null_inner: *const u8 = core::ptr::null();
-        let buf = [0u8; 4];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u8(&mut null_inner, end, origin, &mut val) },
-            -1
-        );
-        // NULL value → -1
-        let mut rptr: *const u8 = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u8(&mut rptr, end, origin, core::ptr::null_mut()) },
-            -1
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_read_u32_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        let mut val: u32 = 0;
-        assert_eq!(
-            unsafe { nros_cdr_read_u32(core::ptr::null_mut(), end, origin, &mut val) },
-            -1
-        );
-        let mut null_inner: *const u8 = core::ptr::null();
-        let buf = [0u8; 8];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u32(&mut null_inner, end, origin, &mut val) },
-            -1
-        );
-        let mut rptr: *const u8 = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u32(&mut rptr, end, origin, core::ptr::null_mut()) },
-            -1
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn cdr_read_u64_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        let mut val: u64 = 0;
-        assert_eq!(
-            unsafe { nros_cdr_read_u64(core::ptr::null_mut(), end, origin, &mut val) },
-            -1
-        );
-        let mut null_inner: *const u8 = core::ptr::null();
-        let buf = [0u8; 16];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u64(&mut null_inner, end, origin, &mut val) },
-            -1
-        );
-        let mut rptr: *const u8 = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_u64(&mut rptr, end, origin, core::ptr::null_mut()) },
-            -1
-        );
-    }
-
-    // =========================================================================
-    // Buffer bounds — write functions (insufficient space → -1, no OOB write)
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_write_u8_bounds() {
-        // Zero-length buffer → -1
-        let mut buf = [0u8; 1];
-        let end = buf.as_ptr(); // end == start, zero capacity
-        let origin = buf.as_ptr();
-        let mut wptr = buf.as_mut_ptr();
-        assert_eq!(unsafe { nros_cdr_write_u8(&mut wptr, end, origin, 42) }, -1);
-    }
-
-    // NOTE: Buffer bounds and alignment harnesses for multi-byte types (u32, u64)
-    // are not included because:
-    //
-    // 1. align_ptr() uses pointer-to-integer-to-pointer round-trips for alignment
-    //    arithmetic (`*ptr as usize` → align → `aligned as *mut u8`), which CBMC's
-    //    pointer model cannot track across allocation boundaries.
-    //
-    // 2. Bounds-checking code uses `ptr.add(N) > end` where N may exceed the
-    //    allocation, which Kani flags as a pointer offset violation even though
-    //    the result is only used in a comparison.
-    //
-    // These properties are verified by the existing #[test] unit tests
-    // (test_alignment, test_write_read_u32, etc.) and by Miri (`just test-miri`
-    // on nros-serdes which uses the same CDR logic in safe Rust).
-    //
-    // The round-trip harnesses below (u32, u64) succeed because they start at
-    // offset 0 where no alignment padding is needed.
-
-    // =========================================================================
-    // Round-trip correctness — write then read preserves value
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_roundtrip_u8() {
-        let mut buf = [0u8; 4];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        let val: u8 = kani::any();
-
-        let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nros_cdr_write_u8(&mut wptr, end, origin, val) };
-        assert_eq!(wret, 0);
-
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut out: u8 = 0;
-        let rret = unsafe { nros_cdr_read_u8(&mut rptr, end, origin, &mut out) };
-        assert_eq!(rret, 0);
-        assert_eq!(out, val);
-    }
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_roundtrip_bool() {
-        let mut buf = [0u8; 4];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        let val: bool = kani::any();
-
-        let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nros_cdr_write_bool(&mut wptr, end, origin, val) };
-        assert_eq!(wret, 0);
-
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut out: bool = false;
-        let rret = unsafe { nros_cdr_read_bool(&mut rptr, end, origin, &mut out) };
-        assert_eq!(rret, 0);
-        assert_eq!(out, val);
-    }
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_roundtrip_u32() {
-        let mut buf = [0u8; 16];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        let val: u32 = kani::any();
-
-        let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nros_cdr_write_u32(&mut wptr, end, origin, val) };
-        assert_eq!(wret, 0);
-
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut out: u32 = 0;
-        let rret = unsafe { nros_cdr_read_u32(&mut rptr, end, origin, &mut out) };
-        assert_eq!(rret, 0);
-        assert_eq!(out, val);
-    }
-
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn cdr_roundtrip_u64() {
-        let mut buf = [0u8; 16];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        let val: u64 = kani::any();
-
-        let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nros_cdr_write_u64(&mut wptr, end, origin, val) };
-        assert_eq!(wret, 0);
-
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut out: u64 = 0;
-        let rret = unsafe { nros_cdr_read_u64(&mut rptr, end, origin, &mut out) };
-        assert_eq!(rret, 0);
-        assert_eq!(out, val);
-    }
-
-    // =========================================================================
-    // String — null safety
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_write_string_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        // NULL ptr → -1
-        assert_eq!(
-            unsafe { nros_cdr_write_string(core::ptr::null_mut(), end, origin, core::ptr::null()) },
-            -1
-        );
-        // NULL *ptr → -1
-        let mut null_inner: *mut u8 = core::ptr::null_mut();
-        let buf = [0u8; 64];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe {
-                nros_cdr_write_string(
-                    &mut null_inner,
-                    end,
-                    origin,
-                    b"hi\0".as_ptr() as *const c_char,
-                )
-            },
-            -1
-        );
-        // NULL value string → -1
-        let mut wptr = buf.as_ptr() as *mut u8;
-        assert_eq!(
-            unsafe { nros_cdr_write_string(&mut wptr, end, origin, core::ptr::null()) },
-            -1
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(5)]
-    fn cdr_read_string_null_safety() {
-        let end: *const u8 = core::ptr::null();
-        let origin: *const u8 = core::ptr::null();
-        let mut val = [0i8; 16];
-        // NULL ptr → -1
-        assert_eq!(
-            unsafe {
-                nros_cdr_read_string(
-                    core::ptr::null_mut(),
-                    end,
-                    origin,
-                    val.as_mut_ptr(),
-                    val.len(),
-                )
-            },
-            -1
-        );
-        // NULL *ptr → -1
-        let mut null_inner: *const u8 = core::ptr::null();
-        let buf = [0u8; 64];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-        assert_eq!(
-            unsafe {
-                nros_cdr_read_string(&mut null_inner, end, origin, val.as_mut_ptr(), val.len())
-            },
-            -1
-        );
-        // NULL value buffer → -1
-        let mut rptr: *const u8 = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_string(&mut rptr, end, origin, core::ptr::null_mut(), 16) },
-            -1
-        );
-        // max_len == 0 → -1
-        let mut rptr: *const u8 = buf.as_ptr();
-        assert_eq!(
-            unsafe { nros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), 0) },
-            -1
-        );
-    }
-
-    // =========================================================================
-    // String — buffer bounds
-    // =========================================================================
-
-    // NOTE: cdr_write_string_bounds is not included due to the same pointer
-    // offset limitation described above (the bounds-check `p.add(len+1) > end`
-    // creates an out-of-bounds intermediate pointer).
-
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn cdr_read_string_bounds() {
-        // Write a valid string then try to read with max_len too small
-        let mut buf = [0u8; 64];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-
-        // Write "Hello\0"
-        let mut wptr = buf.as_mut_ptr();
-        let s = b"Hello\0";
-        let wret =
-            unsafe { nros_cdr_write_string(&mut wptr, end, origin, s.as_ptr() as *const c_char) };
-        assert_eq!(wret, 0);
-
-        // Read with max_len = 2 (too small for "Hello" + null = 6 bytes; CDR len includes null = 6)
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut val = [0i8; 2];
-        let rret =
-            unsafe { nros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), val.len()) };
-        assert_eq!(rret, -1);
-    }
-
-    // =========================================================================
-    // String — round-trip
-    // =========================================================================
-
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn cdr_roundtrip_string() {
-        let mut buf = [0u8; 64];
-        let end = unsafe { buf.as_ptr().add(buf.len()) };
-        let origin = buf.as_ptr();
-
-        // Write "Hi\0"
-        let s = b"Hi\0";
-        let mut wptr = buf.as_mut_ptr();
-        let wret =
-            unsafe { nros_cdr_write_string(&mut wptr, end, origin, s.as_ptr() as *const c_char) };
-        assert_eq!(wret, 0);
-
-        // Read back
-        let mut rptr: *const u8 = buf.as_ptr();
-        let mut val = [0i8; 32];
-        let rret =
-            unsafe { nros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), val.len()) };
-        assert_eq!(rret, 0);
-
-        // Verify content preserved
-        assert_eq!(val[0], b'H' as i8);
-        assert_eq!(val[1], b'i' as i8);
-        // Verify null-terminated
-        assert_eq!(val[2], 0);
-    }
-}
+// ===========================================================================
+// Tests
+// ===========================================================================
 
 #[cfg(test)]
 mod tests {
@@ -995,13 +469,9 @@ mod tests {
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
-
-        // Write
         unsafe {
             assert_eq!(nros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
-
-        // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: u32 = 0;
         unsafe {
@@ -1016,13 +486,9 @@ mod tests {
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
-
-        // Write negative value
         unsafe {
             assert_eq!(nros_cdr_write_i32(&mut ptr, end, origin, -12345), 0);
         }
-
-        // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: i32 = 0;
         unsafe {
@@ -1037,22 +503,16 @@ mod tests {
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
-
-        // Write
+        let test_val = 1234567.89012345_f64;
         unsafe {
-            assert_eq!(
-                nros_cdr_write_f64(&mut ptr, end, origin, 3.14159265358979),
-                0
-            );
+            assert_eq!(nros_cdr_write_f64(&mut ptr, end, origin, test_val), 0);
         }
-
-        // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: f64 = 0.0;
         unsafe {
             assert_eq!(nros_cdr_read_f64(&mut read_ptr, end, origin, &mut value), 0);
         }
-        assert!((value - 3.14159265358979).abs() < 1e-15);
+        assert_eq!(value, test_val);
     }
 
     #[test]
@@ -1061,8 +521,6 @@ mod tests {
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
-
-        // Write
         let test_str = b"Hello, World!\0";
         unsafe {
             assert_eq!(
@@ -1070,8 +528,6 @@ mod tests {
                 0
             );
         }
-
-        // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value = [0i8; 32];
         unsafe {
@@ -1080,8 +536,6 @@ mod tests {
                 0
             );
         }
-
-        // Convert to string and compare
         let result = unsafe { std::ffi::CStr::from_ptr(value.as_ptr()).to_str().unwrap() };
         assert_eq!(result, "Hello, World!");
     }
@@ -1092,54 +546,35 @@ mod tests {
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
-
-        // Write u8, then u32 - should align to 4 bytes relative to origin
         unsafe {
             assert_eq!(nros_cdr_write_u8(&mut ptr, end, origin, 0xAA), 0);
             assert_eq!(nros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
-
-        // Check alignment: u8 at offset 0, u32 at offset 4
         assert_eq!(buffer[0], 0xAA);
-        assert_eq!(buffer[1], 0); // padding
-        assert_eq!(buffer[2], 0); // padding
-        assert_eq!(buffer[3], 0); // padding
-        assert_eq!(buffer[4], 0x78); // u32 little-endian
+        assert_eq!(buffer[1], 0);
+        assert_eq!(buffer[2], 0);
+        assert_eq!(buffer[3], 0);
+        assert_eq!(buffer[4], 0x78);
         assert_eq!(buffer[5], 0x56);
         assert_eq!(buffer[6], 0x34);
         assert_eq!(buffer[7], 0x12);
     }
 
-    /// Test origin-relative alignment with a simulated CDR header.
-    ///
-    /// This simulates the real-world scenario: 4-byte CDR header, then origin
-    /// points to byte 4, and i64 (align=8) should NOT add spurious padding.
     #[test]
     fn test_alignment_with_offset() {
         let mut buffer = [0u8; 32];
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
-
-        // Simulate CDR header (4 bytes)
         buffer[0] = 0x00;
         buffer[1] = 0x01;
         buffer[2] = 0x00;
         buffer[3] = 0x00;
-
-        // Origin is after the CDR header
         let origin = unsafe { buffer.as_ptr().add(4) };
         let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
-
-        // Write i64 immediately after header — origin-relative offset is 0,
-        // which is already 8-byte aligned, so no padding should be added.
         let test_val: i64 = 0x0102030405060708;
         unsafe {
             assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, test_val), 0);
         }
-
-        // The i64 should start at buffer[4] (no padding)
         assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(12) });
-
-        // Read it back
         let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
         let mut value: i64 = 0;
         unsafe {
@@ -1148,32 +583,21 @@ mod tests {
         assert_eq!(value, test_val);
     }
 
-    /// Test that two i64 fields after a CDR header round-trip correctly,
-    /// matching the AddTwoInts service request layout.
     #[test]
     fn test_two_i64_after_header() {
         let mut buffer = [0u8; 32];
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
-
-        // CDR header
         buffer[0] = 0x00;
         buffer[1] = 0x01;
         buffer[2] = 0x00;
         buffer[3] = 0x00;
-
         let origin = unsafe { buffer.as_ptr().add(4) };
         let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
-
-        // Write two i64 values (like AddTwoInts request: a=3, b=5)
         unsafe {
             assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, 3), 0);
             assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, 5), 0);
         }
-
-        // Should use exactly 16 bytes of payload (no padding between them)
         assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(20) });
-
-        // Read back
         let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
         let mut a: i64 = 0;
         let mut b: i64 = 0;
@@ -1183,5 +607,21 @@ mod tests {
         }
         assert_eq!(a, 3);
         assert_eq!(b, 5);
+    }
+
+    #[test]
+    fn test_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
+        // NULL ptr → -1
+        assert_eq!(
+            unsafe { nros_cdr_write_u8(core::ptr::null_mut(), end, origin, 0) },
+            -1
+        );
+        let mut val: u32 = 0;
+        assert_eq!(
+            unsafe { nros_cdr_read_u32(core::ptr::null_mut(), end, origin, &mut val) },
+            -1
+        );
     }
 }

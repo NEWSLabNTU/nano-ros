@@ -27,6 +27,22 @@ impl<'a> CdrWriter<'a> {
         }
     }
 
+    /// Create a CDR writer positioned at `pos` bytes into `buf`.
+    ///
+    /// `origin` stays at 0, so alignment is computed relative to the start
+    /// of `buf`. Used by FFI bridges that hand us a `(origin, cursor, end)`
+    /// triple where `buf = origin..end` and the caller's cursor is `pos`.
+    pub fn new_at(buf: &'a mut [u8], pos: usize) -> Result<Self, SerError> {
+        if pos > buf.len() {
+            return Err(SerError::BufferTooSmall);
+        }
+        Ok(Self {
+            buf,
+            pos,
+            origin: 0,
+        })
+    }
+
     /// Create a new CDR writer with the 4-byte encapsulation header.
     ///
     /// Writes `[0x00, 0x01, 0x00, 0x00]` (CDR little-endian) at the start
@@ -217,6 +233,22 @@ impl<'a> CdrReader<'a> {
             pos: 0,
             origin: 0,
         }
+    }
+
+    /// Create a CDR reader positioned at `pos` bytes into `buf`.
+    ///
+    /// `origin` stays at 0, so alignment is computed relative to the start
+    /// of `buf`. Used by FFI bridges that hand us a `(origin, cursor, end)`
+    /// triple where `buf = origin..end` and the caller's cursor is `pos`.
+    pub fn new_at(buf: &'a [u8], pos: usize) -> Result<Self, DeserError> {
+        if pos > buf.len() {
+            return Err(DeserError::UnexpectedEof);
+        }
+        Ok(Self {
+            buf,
+            pos,
+            origin: 0,
+        })
     }
 
     /// Create a new CDR reader, parsing and validating the encapsulation header

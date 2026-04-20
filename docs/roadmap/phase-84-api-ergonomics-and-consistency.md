@@ -49,7 +49,7 @@ Biggest design debt. Every item is multi-day because `nros-node` must grow
 the real implementation first.
 
 - [x] 84.B1 — Fix `nros_service_init` / `nros_client_init` to take `nros_service_type_t*` instead of `nros_message_type_t*`
-- [ ] 84.B2 — Delete `packages/core/nros-c/src/cdr.rs` (1187 lines); delegate to `nros_serdes::{CdrReader, CdrWriter}`
+- [x] 84.B2 — Delete `packages/core/nros-c/src/cdr.rs` (1187 lines); delegate to `nros_serdes::{CdrReader, CdrWriter}`. Landed as thin FFI bridges over positioned `CdrReader::new_at` / `CdrWriter::new_at` constructors added to `nros-serdes`. Line count 1187 → 627 (hand-rolled align/endian logic removed; FFI tests kept; kani harnesses dropped since the logic now lives in `nros-serdes`, already covered there).
 - [ ] 84.B3 — Move parameter-server logic to `nros-node::parameter_services`; C wrapper becomes a thin opaque handle + register/trigger shims; wire to the real `~/get_parameters` service endpoints
 - [ ] 84.B4 — Move lifecycle state-machine logic to `nros-node::LifecycleNode`; C wrapper becomes opaque handle + register/trigger; expose ROS 2 lifecycle service endpoints
 - [x] 84.B5 — Hide or remove `nros_timer_call` / `nros_timer_is_ready` + mutable `period_ns` / `last_call_time_ns` fields (executor-internal). Dead FFI functions removed entirely (no internal callers). Struct fields tagged `@internal` in the C header pointing users to `nros_timer_get_period` / `nros_timer_set_period` accessors instead of a field-name break.
