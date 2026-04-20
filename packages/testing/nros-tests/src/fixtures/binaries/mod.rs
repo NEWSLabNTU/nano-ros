@@ -2,6 +2,11 @@
 //!
 //! Provides functions to build test binaries with caching support.
 
+pub mod freertos;
+pub mod nuttx;
+pub mod threadx_linux;
+pub mod threadx_riscv64;
+
 use crate::{TestError, TestResult, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;

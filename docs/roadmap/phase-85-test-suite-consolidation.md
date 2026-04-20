@@ -127,7 +127,7 @@ that each just call `build_X()` and assert the binary exists).
     output pattern. Adding a new platform becomes a one-line
     `Platform` table entry instead of a new `*.rs` file.
 
-- [ ] 85.5 — Consolidate `OnceCell<PathBuf>` builders into a shared module
+- [x] 85.5 — Consolidate `OnceCell<PathBuf>` builders into a shared module
   - **Files**: new
     `packages/testing/nros-tests/src/fixtures/binaries.rs` module
     (the existing `fixtures/binaries.rs` grows a per-platform

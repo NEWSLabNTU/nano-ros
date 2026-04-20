@@ -13,43 +13,25 @@
 //! Or: `cargo nextest run -p nros-tests --test freertos_qemu`
 
 use nros_tests::count_pattern;
+use nros_tests::fixtures::freertos::{
+    build_freertos_action_client, build_freertos_action_server, build_freertos_c_action_client,
+    build_freertos_c_action_server, build_freertos_c_listener, build_freertos_c_service_client,
+    build_freertos_c_service_server, build_freertos_c_talker, build_freertos_cpp_action_client,
+    build_freertos_cpp_action_server, build_freertos_cpp_listener,
+    build_freertos_cpp_service_client, build_freertos_cpp_service_server,
+    build_freertos_cpp_talker, build_freertos_listener, build_freertos_service_client,
+    build_freertos_service_server, build_freertos_talker, is_arm_gcc_available, is_cmake_available,
+    is_freertos_available, is_lwip_available,
+};
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
-use nros_tests::{TestError, TestResult, platform, project_root};
-use once_cell::sync::OnceCell;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use nros_tests::platform;
 use std::time::Duration;
 
 // =============================================================================
 // Prerequisite checks
 // =============================================================================
-
-/// Check if FREERTOS_DIR environment variable is set and points to a valid directory
-fn is_freertos_available() -> bool {
-    std::env::var("FREERTOS_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("tasks.c").exists())
-        .unwrap_or(false)
-}
-
-/// Check if LWIP_DIR environment variable is set and points to a valid directory
-fn is_lwip_available() -> bool {
-    std::env::var("LWIP_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("src/include/lwip/init.h").exists())
-        .unwrap_or(false)
-}
-
-/// Check if arm-none-eabi-gcc is available
-fn is_arm_gcc_available() -> bool {
-    Command::new("arm-none-eabi-gcc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
 
 /// Skip test if FreeRTOS prerequisites are not available
 fn require_freertos() -> bool {
@@ -90,114 +72,6 @@ fn require_freertos_e2e() -> bool {
         return false;
     }
     true
-}
-
-// =============================================================================
-// Binary builders
-// =============================================================================
-
-static FREERTOS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-// C++ binary caches
-static FREERTOS_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-// C binary caches
-static FREERTOS_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Build a FreeRTOS QEMU example
-fn build_freertos_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/zenoh/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "FreeRTOS example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-arm-freertos/rust/zenoh/{}...", name);
-
-    let output = duct::cmd!("cargo", "build", "--release")
-        .dir(&example_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    let binary_path =
-        example_dir.join(format!("target/thumbv7m-none-eabi/release/{}", binary_name));
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-fn build_freertos_talker() -> TestResult<&'static Path> {
-    FREERTOS_TALKER_BINARY
-        .get_or_try_init(|| build_freertos_example("talker", "qemu-freertos-talker"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_listener() -> TestResult<&'static Path> {
-    FREERTOS_LISTENER_BINARY
-        .get_or_try_init(|| build_freertos_example("listener", "qemu-freertos-listener"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_service_server() -> TestResult<&'static Path> {
-    FREERTOS_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_freertos_example("service-server", "qemu-freertos-service-server")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_service_client() -> TestResult<&'static Path> {
-    FREERTOS_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_freertos_example("service-client", "qemu-freertos-service-client")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_action_server() -> TestResult<&'static Path> {
-    FREERTOS_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_freertos_example("action-server", "qemu-freertos-action-server"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_action_client() -> TestResult<&'static Path> {
-    FREERTOS_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_freertos_example("action-client", "qemu-freertos-action-client"))
-        .map(|p| p.as_path())
 }
 
 // =============================================================================
@@ -518,139 +392,8 @@ fn test_freertos_action_e2e() {
 }
 
 // =============================================================================
-// C++ binary builders (CMake-based)
+// C++ test helpers
 // =============================================================================
-
-/// Check if cmake is available
-fn is_cmake_available() -> bool {
-    Command::new("cmake")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Build a FreeRTOS C++ QEMU example via CMake
-fn build_freertos_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/cpp/zenoh/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "FreeRTOS C++ example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-arm-freertos/cpp/zenoh/{} (CMake)...", name);
-
-    let build_dir = example_dir.join("build");
-    std::fs::create_dir_all(&build_dir).ok();
-
-    let prefix_path = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let toolchain_file = format!(
-        "-DCMAKE_TOOLCHAIN_FILE={}",
-        root.join("cmake/toolchain/arm-freertos-armcm3.cmake")
-            .display()
-    );
-
-    // cmake configure — pass CMAKE_PREFIX_PATH and toolchain via build script
-    let output = duct::cmd!(
-        "cmake",
-        "-S",
-        &example_dir,
-        "-B",
-        &build_dir,
-        &prefix_path,
-        &toolchain_file,
-        "-DCMAKE_BUILD_TYPE=Release"
-    )
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake configure failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    // cmake build
-    let output = duct::cmd!("cmake", "--build", &build_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake build failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let binary_path = build_dir.join(binary_name);
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-fn build_freertos_cpp_talker() -> TestResult<&'static Path> {
-    FREERTOS_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_freertos_cpp_example("talker", "freertos_cpp_talker"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_cpp_listener() -> TestResult<&'static Path> {
-    FREERTOS_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_freertos_cpp_example("listener", "freertos_cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_cpp_service_server() -> TestResult<&'static Path> {
-    FREERTOS_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_freertos_cpp_example("service-server", "freertos_cpp_service_server")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_cpp_service_client() -> TestResult<&'static Path> {
-    FREERTOS_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_freertos_cpp_example("service-client", "freertos_cpp_service_client")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_cpp_action_server() -> TestResult<&'static Path> {
-    FREERTOS_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_freertos_cpp_example("action-server", "freertos_cpp_action_server")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_cpp_action_client() -> TestResult<&'static Path> {
-    FREERTOS_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_freertos_cpp_example("action-client", "freertos_cpp_action_client")
-        })
-        .map(|p| p.as_path())
-}
 
 /// Skip test if C++ FreeRTOS prerequisites are not available
 fn require_freertos_cpp() -> bool {
@@ -842,122 +585,8 @@ fn test_freertos_cpp_action_e2e() {
 }
 
 // =============================================================================
-// C binary builders (CMake-based)
+// C test helpers
 // =============================================================================
-
-/// Build a FreeRTOS C QEMU example via CMake
-fn build_freertos_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/c/zenoh/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "FreeRTOS C example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-arm-freertos/c/zenoh/{} (CMake)...", name);
-
-    let build_dir = example_dir.join("build");
-    std::fs::create_dir_all(&build_dir).ok();
-
-    let prefix_path = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let toolchain_file = format!(
-        "-DCMAKE_TOOLCHAIN_FILE={}",
-        root.join("cmake/toolchain/arm-freertos-armcm3.cmake")
-            .display()
-    );
-
-    // cmake configure — pass CMAKE_PREFIX_PATH and toolchain via build script
-    let output = duct::cmd!(
-        "cmake",
-        "-S",
-        &example_dir,
-        "-B",
-        &build_dir,
-        &prefix_path,
-        &toolchain_file,
-        "-DCMAKE_BUILD_TYPE=Release"
-    )
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake configure failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    // cmake build
-    let output = duct::cmd!("cmake", "--build", &build_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake build failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let binary_path = build_dir.join(binary_name);
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-fn build_freertos_c_talker() -> TestResult<&'static Path> {
-    FREERTOS_C_TALKER_BINARY
-        .get_or_try_init(|| build_freertos_c_example("talker", "freertos_c_talker"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_c_listener() -> TestResult<&'static Path> {
-    FREERTOS_C_LISTENER_BINARY
-        .get_or_try_init(|| build_freertos_c_example("listener", "freertos_c_listener"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_c_service_server() -> TestResult<&'static Path> {
-    FREERTOS_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_freertos_c_example("service-server", "freertos_c_service_server"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_c_service_client() -> TestResult<&'static Path> {
-    FREERTOS_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_freertos_c_example("service-client", "freertos_c_service_client"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_c_action_server() -> TestResult<&'static Path> {
-    FREERTOS_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_freertos_c_example("action-server", "freertos_c_action_server"))
-        .map(|p| p.as_path())
-}
-
-fn build_freertos_c_action_client() -> TestResult<&'static Path> {
-    FREERTOS_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_freertos_c_example("action-client", "freertos_c_action_client"))
-        .map(|p| p.as_path())
-}
 
 /// Skip test if C FreeRTOS prerequisites are not available
 fn require_freertos_c() -> bool {

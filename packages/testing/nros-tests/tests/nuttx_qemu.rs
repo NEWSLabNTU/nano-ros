@@ -24,83 +24,25 @@
 //! Or: `cargo nextest run -p nros-tests --test nuttx_qemu`
 
 use nros_tests::count_pattern;
+use nros_tests::fixtures::nuttx::{
+    build_nuttx_action_client, build_nuttx_action_server, build_nuttx_c_action_client,
+    build_nuttx_c_action_server, build_nuttx_c_listener, build_nuttx_c_service_client,
+    build_nuttx_c_service_server, build_nuttx_c_talker, build_nuttx_cpp_action_client,
+    build_nuttx_cpp_action_server, build_nuttx_cpp_listener, build_nuttx_cpp_service_client,
+    build_nuttx_cpp_service_server, build_nuttx_cpp_talker, build_nuttx_listener,
+    build_nuttx_service_client, build_nuttx_service_server, build_nuttx_talker,
+    is_arm_gcc_available, is_cmake_available, is_nuttx_available, is_nuttx_configured,
+    is_nuttx_toolchain_available, nuttx_kernel_path,
+};
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
 use nros_tests::platform;
-use nros_tests::{TestError, TestResult, project_root};
-use once_cell::sync::OnceCell;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 // =============================================================================
 // Prerequisite checks
 // =============================================================================
-
-/// Check if NUTTX_DIR environment variable is set and points to a valid directory
-fn is_nuttx_available() -> bool {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("Makefile").exists())
-        .unwrap_or(false)
-}
-
-/// Check if NuttX has been configured (config.h exists)
-///
-/// NuttX must be configured (via `build-nuttx.sh` or `make olddefconfig`) before
-/// C code can be compiled against it. NuttX's system headers (e.g., `stdbool.h`)
-/// include `<nuttx/config.h>` which is only generated during configuration.
-fn is_nuttx_configured() -> bool {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("include/nuttx/config.h").exists())
-        .unwrap_or(false)
-}
-
-/// Check if arm-none-eabi-gcc is available (required for NuttX cross-compilation)
-fn is_arm_gcc_available() -> bool {
-    Command::new("arm-none-eabi-gcc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Check if nightly toolchain supports armv7a-nuttx-eabihf target
-///
-/// NuttX targets are Tier 3 in Rust — they cannot be installed via `rustup target add`.
-/// Instead, they are compiled from source via `-Z build-std`. We check that the nightly
-/// compiler knows about the target (it's in the target list) and that rust-src is installed
-/// (required for build-std).
-fn is_nuttx_toolchain_available() -> bool {
-    // Check that nightly knows about the target
-    let target_known = Command::new("rustc")
-        .args(["+nightly", "--print", "target-list"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("armv7a-nuttx-eabihf"))
-        .unwrap_or(false);
-
-    // Check that rust-src component is installed (needed for -Z build-std)
-    let rust_src = Command::new("rustup")
-        .args(["component", "list", "--toolchain", "nightly"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("rust-src (installed)"))
-        .unwrap_or(false);
-
-    target_known && rust_src
-}
-
-/// Check if a pre-built NuttX kernel image exists
-///
-/// The NuttX kernel must be built via `build-nuttx.sh` before E2E tests can run.
-/// Returns the path to the `nuttx` ELF in $NUTTX_DIR if it exists.
-fn nuttx_kernel_path() -> Option<PathBuf> {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("nuttx"))
-        .filter(|p| p.exists())
-}
 
 /// Skip test if NuttX build prerequisites are not available
 fn require_nuttx() -> bool {
@@ -156,106 +98,6 @@ fn require_nuttx_e2e() -> bool {
         return false;
     }
     true
-}
-
-// =============================================================================
-// Binary builders
-// =============================================================================
-
-static NUTTX_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Build a NuttX QEMU example using nightly cargo
-fn build_nuttx_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/rust/zenoh/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "NuttX example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-arm-nuttx/rust/zenoh/{}...", name);
-
-    // The cc-rs crate doesn't recognize armv7a-nuttx-eabihf (Tier 3 target) and falls
-    // back to the host `cc` (x86 GCC), which fails on ARM flags like -march=armv7-a.
-    // Set the target-specific CC env var so cc-rs uses the ARM cross-compiler.
-    //
-    // Unset RUSTUP_TOOLCHAIN so rustup re-reads the example dir's
-    // rust-toolchain.toml. The outer nextest harness is compiled against
-    // the root `stable` toolchain and propagates RUSTUP_TOOLCHAIN=stable to
-    // children — which would override our pinned nightly and break -Z build-std.
-    let output = duct::cmd!("cargo", "build", "--release")
-        .dir(&example_dir)
-        .env("CC_armv7a_nuttx_eabi", "arm-none-eabi-gcc")
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    let binary_path = example_dir.join(format!(
-        "target/armv7a-nuttx-eabihf/release/{}",
-        binary_name
-    ));
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-fn build_nuttx_talker() -> TestResult<&'static Path> {
-    NUTTX_TALKER_BINARY
-        .get_or_try_init(|| build_nuttx_example("talker", "nuttx-rs-talker"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_listener() -> TestResult<&'static Path> {
-    NUTTX_LISTENER_BINARY
-        .get_or_try_init(|| build_nuttx_example("listener", "nuttx-rs-listener"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_service_server() -> TestResult<&'static Path> {
-    NUTTX_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_example("service-server", "nuttx-rs-service-server"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_service_client() -> TestResult<&'static Path> {
-    NUTTX_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_example("service-client", "nuttx-rs-service-client"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_action_server() -> TestResult<&'static Path> {
-    NUTTX_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_example("action-server", "nuttx-rs-action-server"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_action_client() -> TestResult<&'static Path> {
-    NUTTX_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_example("action-client", "nuttx-rs-action-client"))
-        .map(|p| p.as_path())
 }
 
 // =============================================================================
@@ -648,150 +490,14 @@ fn test_nuttx_action_e2e() {
 }
 
 // =============================================================================
-// C++ binary builders (CMake-based)
+// C++ test helpers
 // =============================================================================
-
-/// Build a NuttX C or C++ QEMU example via CMake (nuttx_build_example).
-fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/{}/zenoh/{}", lang, name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "NuttX {lang} example not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-arm-nuttx/{}/zenoh/{} (CMake)...", lang, name);
-
-    let build_dir = example_dir.join("build");
-    std::fs::create_dir_all(&build_dir).ok();
-
-    // cmake configure — nuttx_build_example() handles cross-compilation via cargo,
-    // so no CMake toolchain file is needed. Pass NUTTX_DIR for the kernel link.
-    let prefix_path = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let nuttx_dir = std::env::var("NUTTX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/nuttx/nuttx").display().to_string());
-
-    // CMake invokes cargo internally (via corrosion) for the Rust pieces.
-    // Unset RUSTUP_TOOLCHAIN so rustup picks up the example tree's pinned
-    // nightly from rust-toolchain.toml instead of inheriting `stable` from
-    // the nextest harness.
-    let output = duct::cmd!(
-        "cmake",
-        "-S",
-        &example_dir,
-        "-B",
-        &build_dir,
-        &prefix_path,
-        &format!("-DNUTTX_DIR={nuttx_dir}"),
-        "-DCMAKE_BUILD_TYPE=Release"
-    )
-    .env_remove("RUSTUP_TOOLCHAIN")
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake configure failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let output = duct::cmd!("cmake", "--build", &build_dir)
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake build failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let binary_path = build_dir.join(binary_name);
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-static NUTTX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
-    NUTTX_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp", "talker", "nuttx_cpp_talker"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
-    NUTTX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp", "listener", "nuttx_cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
-    NUTTX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("cpp", "service-server", "nuttx_cpp_service_server")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
-    NUTTX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("cpp", "service-client", "nuttx_cpp_service_client")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_cpp_action_server() -> TestResult<&'static Path> {
-    NUTTX_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("cpp", "action-server", "nuttx_cpp_action_server")
-        })
-        .map(|p| p.as_path())
-}
-
-fn build_nuttx_cpp_action_client() -> TestResult<&'static Path> {
-    NUTTX_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("cpp", "action-client", "nuttx_cpp_action_client")
-        })
-        .map(|p| p.as_path())
-}
 
 fn require_nuttx_cpp() -> bool {
     if !require_nuttx() {
         return false;
     }
-    if !Command::new("cmake")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
+    if !is_cmake_available() {
         eprintln!("Skipping test: cmake not found");
         return false;
     }
@@ -966,56 +672,6 @@ fn test_nuttx_cpp_service_e2e() {
     );
     assert!(responses > 0, "NuttX C++ service E2E: 0 responses");
     eprintln!("[PASS] NuttX C++ service E2E: {} responses", responses);
-}
-
-// =============================================================================
-// C binary builders (uses same nuttx_build_example CMake approach as C++)
-// =============================================================================
-
-static NUTTX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-fn build_nuttx_c_talker() -> TestResult<&'static Path> {
-    NUTTX_C_TALKER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "talker", "nuttx_c_talker"))
-        .map(|p| p.as_path())
-}
-fn build_nuttx_c_listener() -> TestResult<&'static Path> {
-    NUTTX_C_LISTENER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "listener", "nuttx_c_listener"))
-        .map(|p| p.as_path())
-}
-fn build_nuttx_c_service_server() -> TestResult<&'static Path> {
-    NUTTX_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("c", "service-server", "nuttx_c_service_server")
-        })
-        .map(|p| p.as_path())
-}
-fn build_nuttx_c_service_client() -> TestResult<&'static Path> {
-    NUTTX_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("c", "service-client", "nuttx_c_service_client")
-        })
-        .map(|p| p.as_path())
-}
-fn build_nuttx_c_action_server() -> TestResult<&'static Path> {
-    NUTTX_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("c", "action-server", "nuttx_c_action_server")
-        })
-        .map(|p| p.as_path())
-}
-fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
-    NUTTX_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_nuttx_cmake_example("c", "action-client", "nuttx_c_action_client")
-        })
-        .map(|p| p.as_path())
 }
 
 // =============================================================================
