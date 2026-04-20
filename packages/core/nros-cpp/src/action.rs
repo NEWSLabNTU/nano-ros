@@ -518,6 +518,12 @@ unsafe extern "C" fn cpp_feedback_trampoline(
     }
 }
 
+/// Stash for result data captured by the trampoline.
+/// Used by `nros_cpp_action_client_try_recv_result` to retrieve
+/// results that were consumed by the executor's auto-dispatch.
+static mut RESULT_STASH_LEN: i32 = -1; // -1 = empty, >= 0 = data length
+static mut RESULT_STASH: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
+
 unsafe extern "C" fn cpp_result_trampoline(
     goal_id: *const nros::GoalId,
     status: nros::GoalStatus,
@@ -525,6 +531,18 @@ unsafe extern "C" fn cpp_result_trampoline(
     result_len: usize,
     context: *mut c_void,
 ) {
+    // Always stash the result for Future::wait polling
+    unsafe {
+        let copy_len = result_len.min(DEFAULT_RX_BUF_SIZE);
+        core::ptr::copy_nonoverlapping(
+            result_data,
+            core::ptr::addr_of_mut!(RESULT_STASH) as *mut u8,
+            copy_len,
+        );
+        core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), copy_len as i32);
+    }
+
+    // Also forward to user callback if set
     let client = unsafe { &*(context as *const CppActionClient) };
     if let Some(cb) = client.callbacks.result {
         let s = match status {
@@ -964,8 +982,33 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+    // Check the result stash (filled by cpp_result_trampoline during spin_once).
+    // The executor's action_client_raw_try_process consumes the reply from the
+    // core and fires the trampoline, which stashes the data here. We can't call
+    // core.try_recv_get_result_reply() because the data is already consumed.
+    let stash_len = unsafe { core::ptr::read(core::ptr::addr_of!(RESULT_STASH_LEN)) };
+    if stash_len >= 0 {
+        let data_len = stash_len as usize;
+        unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
+        if data_len > out_capacity {
+            unsafe { *out_len = data_len };
+            return NROS_CPP_RET_ERROR;
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                core::ptr::addr_of!(RESULT_STASH) as *const u8,
+                out_data,
+                data_len,
+            );
+            *out_len = data_len;
+        }
+        return NROS_CPP_RET_OK;
+    }
+
+    // Fallback: check the core directly (in case the trampoline wasn't fired yet)
+    let _client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let core = match unsafe { cpp_arena_core_mut(_client.arena_entry_index, _client.executor_ptr) }
+    {
         Some(c) => c,
         None => {
             unsafe { *out_len = 0 };
@@ -975,12 +1018,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
 
     match core.try_recv_get_result_reply() {
         Ok(Some(total_len)) => {
-            // Reply buffer: CDR header (4) + status (1) + result fields...
-            // We skip the CDR header + status and return just the result fields,
-            // matching what the blocking get_result produces.
             let result_offset = 5usize;
             if total_len <= result_offset {
-                // No result data (status-only reply)
                 unsafe { *out_len = 0 };
                 return NROS_CPP_RET_OK;
             }
@@ -1090,6 +1129,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };
+
+    // Reset result stash before sending (so try_recv_result starts clean)
+    unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
 
     let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
         Some(c) => c,
