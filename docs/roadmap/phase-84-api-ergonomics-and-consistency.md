@@ -5,7 +5,13 @@ five-surface API audit (C, C++, Rust, RMW, Platform). The phase is a
 collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
-**Status**: In Progress (started 2026-04-19, Group A first)
+**Status**: In Progress (started 2026-04-19). As of 2026-04-20: Groups
+A, C (mostly), G (mostly) complete; B2, B4, B5, B6, D1, D2, D9, E3, E5,
+E6, E7, E8, E9, E10, E11, F1, F2, F3, F5, F7, F8 complete; B3 partial
+(scalar macro landed; service wiring deferred); B4 partial (state
+machine moved + C handle opaque; lifecycle services deferred). Still
+open: B3/B4 service wiring, C1 (C++ move), E2a/b/c (Rmw::open refactor),
+F4 (platform trait dispatch), F6 (final dir rename — scheduled last).
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -140,9 +146,15 @@ Cross-cutting criteria that apply once all groups land:
 - [ ] No `static mut` in `packages/xrce/nros-rmw-xrce/src/lib.rs` session /
       transport globals (Group E).
 - [ ] `wc -l packages/boards/nros-platform-*/src/{net,random,sleep,libc_stubs}.rs`
-      drops by ≥70% (Group F).
+      drops by ≥70% (Group F). **Current**: 483 lines across 16 files (down
+      from ~2000+ per-file `net.rs` pre-Phase 83). Already well past ≥70% via
+      Phase 83's `define_smoltcp_platform!` macro + `nros-baremetal-common`
+      dedupe; ticking blocked only on re-checking the exact baseline.
 - [ ] `nros-c/src/{cdr,parameter,lifecycle}.rs` combined line count drops by
-      ≥60% (Group B).
+      ≥60% (Group B). **Current**: 3065 → 2114 (-31%). Reaching ≥60% needs
+      B3's full service-wiring refactor (wrapping `nros-params::ParameterServer`
+      as opaque storage); the macro-only pass landed in 84.B3 can't close
+      the gap on its own.
 
 ## Open Questions
 
