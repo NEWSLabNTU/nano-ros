@@ -96,3 +96,7 @@ path = "tests/large_msg.rs"
 name = "trigger_conditions"
 path = "tests/trigger_conditions.rs"
 required-features = ["trigger-test"]
+
+[[test]]
+name = "rtos_e2e"
+path = "tests/rtos_e2e.rs"

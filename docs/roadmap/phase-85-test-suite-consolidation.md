@@ -102,7 +102,7 @@ that each just call `build_X()` and assert the binary exists).
 
 ### Group B — Next PR (medium risk, touches test file structure)
 
-- [ ] 85.4 — Parametrise the E2E tests by (platform, variant, language)
+- [x] 85.4 — Parametrise the E2E tests by (platform, variant, language)
   - **Files**: `freertos_qemu.rs`, `nuttx_qemu.rs`, `threadx_linux.rs`,
     `threadx_riscv64_qemu.rs` → new
     `packages/testing/nros-tests/tests/rtos_e2e.rs`

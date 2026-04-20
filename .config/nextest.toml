@@ -52,7 +52,7 @@ max-threads = 1
 
 # QEMU + bridge-networked binaries.
 [[profile.default.overrides]]
-filter = "binary(emulator) or binary(esp32_emulator) or binary(zephyr) or binary(freertos_qemu) or binary(nuttx_qemu) or binary(threadx_riscv64_qemu) or binary(threadx_linux)"
+filter = "binary(emulator) or binary(esp32_emulator) or binary(zephyr) or binary(freertos_qemu) or binary(nuttx_qemu) or binary(threadx_riscv64_qemu) or binary(threadx_linux) or binary(rtos_e2e)"
 test-group = "qemu-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
