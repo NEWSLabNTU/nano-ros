@@ -180,6 +180,99 @@ that each just call `build_X()` and assert the binary exists).
     parallel tests on the same dev box pick the same port. Pairs
     naturally with 85.6 (reducing the need for `max-threads = 1`).
 
+### Group D — Follow-ups surfaced by 85.4 (production bugs, not test plumbing)
+
+Phase 85.4 removed the silent-return paths in the per-platform RTOS
+E2E bodies (per CLAUDE.md's "tests must fail on unmet preconditions").
+Running `cargo nextest run --test rtos_e2e` on a dev box with the full
+SDK chain now unmasks two pre-existing production bugs that the old
+silent-skip / lenient-assertion patterns were hiding. These are
+distinct from the test-plumbing work in Groups A–C and belong in
+their own phases, but are tracked here because 85.4 is what caused
+them to stop silently passing.
+
+- [ ] 85.9 — Replace `nros-cpp` manual storage-size calc with
+      compile-time derivation
+  - **Files**: `packages/core/nros-cpp/build.rs`,
+    `packages/core/nros-cpp/src/lib.rs`,
+    `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+    (currently emitted by build.rs), optionally a new probe sub-crate.
+  - **Goal**: Drop the hand-coded `4 * ptr_bytes + name_buf + …`
+    formulas for `CPP_PUBLISHER_STORAGE_BYTES`,
+    `CPP_SUBSCRIPTION_STORAGE_BYTES`,
+    `CPP_SERVICE_STORAGE_BYTES`, and the action-server / action-client
+    opaque sizes. The estimates currently under-count on armv7a
+    (32-bit pointers + nested zenoh-pico handle state), causing
+    `evaluation panicked: NROS_CPP_PUBLISHER_STORAGE_SIZE too small
+    for CppPublisher` at the `lib.rs:350` compile-time assert when
+    building NuttX / FreeRTOS C / C++ examples.
+  - **Constraint**: The C++ classes (`Publisher`, `Subscription`,
+    `ServiceServer`, `ServiceClient`, `ActionServer`, `ActionClient`)
+    embed `alignas(8) uint8_t storage_[NROS_CPP_*_STORAGE_SIZE]`,
+    which forces the size to be a C++ compile-time constant. build.rs
+    runs on the *host*, so `size_of::<CppPublisher>()` inside build.rs
+    gives the host pointer width, not the target's.
+  - **Options** (pick one in the phase):
+    1. **Probe crate**: new tiny crate `nros-cpp-sizes` that mirrors
+       only the types whose sizes matter, compiled for the target
+       during build.rs via `rustc --emit=obj` + `nm` symbol
+       extraction, or nightly `-Zprint-type-sizes` parsing. Target-
+       aware, no API change. Adds a build-time `rustc` invocation.
+    2. **Heap-allocated opaque**: refactor the C++ classes to hold
+       `void*`, let Rust `malloc` / deallocate exact-sized storage.
+       Removes the whole class of undercount bugs and the build.rs
+       math; cost is one extra allocation per handle and an API
+       break for anyone reaching into `storage_` directly.
+    3. **cbindgen-evaluated `const`**: define
+       `pub const CPP_PUBLISHER_STORAGE_BYTES: usize =
+        core::mem::size_of::<CppPublisher>();` in `nros-cpp/src/lib.rs`
+       and check whether cbindgen evaluates the expression when
+       emitting `nros_cpp_ffi.h`. If it does, this is the cleanest
+       answer. If it doesn't (most likely — cbindgen parses AST, it
+       doesn't run const-eval), fall back to 1 or 2.
+  - **Blocks**: `test_rtos_{pubsub,service,action}_e2e::platform_2_Platform__Nuttx::lang_{2_Lang__C,3_Lang__Cpp}`
+    (3 cases). Also blocks the FreeRTOS C / C++ equivalents once
+    FreeRTOS E2E infrastructure is reliable (see 85.10 adjacent).
+  - **Out of 85.4 scope**: a numeric bump (`handle_upper = 32 * ptr_bytes`)
+    works locally but violates this phase's "no manual size calc"
+    directive, so 85.4 left the original estimate in place and opens
+    this phase to fix it properly.
+
+- [ ] 85.10 — Fix ThreadX QEMU RISC-V zenoh session connect failure
+  - **Files**: `examples/qemu-riscv64-threadx/rust/zenoh/*/src/lib.rs`
+    (initial suspect), `packages/boards/nros-threadx-qemu-riscv64/`,
+    `packages/drivers/virtio-net-netx/`, potentially `zpico-sys` or
+    `zenoh-pico` itself.
+  - **Goal**: The RV64 firmware boots cleanly (virtio init, NetX IP
+    stack up, BSD sockets initialised) but `Session::open(...)` fails
+    with `Transport(ConnectionFailed)`. The slirp gateway at
+    `10.0.2.2:7453` is reachable from the guest in principle —
+    `QemuProcess::start_riscv64_virt` uses the same slirp setup as
+    the other QEMU platforms that work.
+  - **Reproducer**:
+    ```
+    cargo nextest run --test rtos_e2e -p nros-tests \
+      -E 'test(rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust)'
+    ```
+    Failure message: `Application error: Transport(ConnectionFailed)`.
+  - **Scope**:
+    - Verify zenohd is reachable from the RV64 slirp guest (tcpdump
+      on host loopback during the test).
+    - Check whether the failure is at TCP SYN (network routing
+      issue), at the zenoh handshake (protocol mismatch / transport
+      layer bug), or inside zenoh-pico's session negotiation.
+    - The existing ThreadX Linux port table entry (bridge-networked)
+      works; the RV64 port uses slirp. Compare the two paths.
+  - **Cross-reference**: my session memory notes a related
+    `ThreadX Linux x86_64 pointer truncation` investigation
+    (`packages/drivers/nsos-netx`) — the RV64 driver
+    (`virtio-net-netx`) may have a similar class of pointer-size /
+    socket-handle bug.
+  - **Blocks**: 7 `rtos_e2e` cases
+    (`platform_4_Platform__ThreadxRiscv64 × {Rust, C, Cpp} ×
+     {pubsub, service, action}` minus the 2 cases skipped by
+     `skip_reason` for missing C++ service / action examples).
+
 ## Acceptance Criteria
 
 - [ ] `just test` (post-85.7 rename: `just test-fast`) completes in at

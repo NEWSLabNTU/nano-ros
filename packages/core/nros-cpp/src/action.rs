@@ -994,17 +994,24 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
     if stash_len >= 0 {
         let data_len = stash_len as usize;
         unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
-        if data_len > out_capacity {
-            unsafe { *out_len = data_len };
+
+        // The stash contains raw result fields (no CDR header) from the trampoline.
+        // ffi_deserialize expects CDR-encoded data, so prepend a CDR header.
+        let total_len = 4 + data_len; // CDR header (4) + result fields
+        if total_len > out_capacity {
+            unsafe { *out_len = total_len };
             return NROS_CPP_RET_ERROR;
         }
         unsafe {
+            // CDR header: little-endian, no options
+            let cdr_header: [u8; 4] = [0x00, 0x01, 0x00, 0x00];
+            core::ptr::copy_nonoverlapping(cdr_header.as_ptr(), out_data, 4);
             core::ptr::copy_nonoverlapping(
                 core::ptr::addr_of!(RESULT_STASH) as *const u8,
-                out_data,
+                out_data.add(4),
                 data_len,
             );
-            *out_len = data_len;
+            *out_len = total_len;
         }
         return NROS_CPP_RET_OK;
     }
