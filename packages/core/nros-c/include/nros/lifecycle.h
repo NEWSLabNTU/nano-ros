@@ -70,31 +70,28 @@ struct nros_node_t;
  * =================================================================== */
 
 /**
- * Lifecycle state machine structure.
+ * Lifecycle state machine — opaque handle (allocate by value).
  *
  * Manages the REP-2002 lifecycle state and transition callbacks for a
- * node.  Created with nros_lifecycle_get_zero_initialized() and
+ * node. Created with nros_lifecycle_get_zero_initialized() and
  * initialised with nros_lifecycle_init().
+ *
+ * **Layout is opaque.** The struct is defined here so C callers can
+ * allocate it by value; its fields are implementation details that may
+ * change at any time. Use the accessor functions
+ * (nros_lifecycle_get_state(), nros_lifecycle_register_on_*(), etc.)
+ * to interact with the state machine.
+ *
+ * The `_opaque_*` fields must never be read or written directly by C
+ * code.
  */
 typedef struct nros_lifecycle_state_machine_t {
-    /** Current lifecycle state (one of the @c NROS_LIFECYCLE_STATE_* constants). */
-    uint8_t current_state;
-    /** Configure callback: Unconfigured -> Inactive. */
-    uint8_t (*on_configure)(void*);
-    /** Activate callback: Inactive -> Active. */
-    uint8_t (*on_activate)(void*);
-    /** Deactivate callback: Active -> Inactive. */
-    uint8_t (*on_deactivate)(void*);
-    /** Cleanup callback: Inactive -> Unconfigured. */
-    uint8_t (*on_cleanup)(void*);
-    /** Shutdown callback: any state -> Finalized. */
-    uint8_t (*on_shutdown)(void*);
-    /** Error callback: ErrorProcessing -> Unconfigured. */
-    uint8_t (*on_error)(void*);
-    /** User context pointer passed to callbacks. */
-    void* context;
-    /** Whether the state machine has been initialized. */
-    bool initialized;
+    /** @internal Initialisation flag; do not access directly. */
+    bool _opaque_initialized;
+    /** @internal Padding; do not access. */
+    uint8_t _opaque_pad[7];
+    /** @internal Storage for the underlying Rust state machine. */
+    uint64_t _opaque_storage[NROS_LIFECYCLE_CTX_OPAQUE_U64S];
 } nros_lifecycle_state_machine_t;
 
 /* ===================================================================

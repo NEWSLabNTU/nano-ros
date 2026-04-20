@@ -55,6 +55,19 @@ pub const PUBLISHER_OPAQUE_U64S: usize = 1;
 
 pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();
 
+// ── Lifecycle (no RMW dependency) ────────────────────────────────────────
+//
+// Uses a conservative upper bound (NROS_LIFECYCLE_CTX_OPAQUE_U64S = 16)
+// so the C header stays a single literal that matches across targets.
+// The assertion below verifies the real type fits.
+
+const _: () = assert!(
+    u64s_for::<nros_node::lifecycle::LifecyclePollingNodeCtx>()
+        <= crate::constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S,
+    "NROS_LIFECYCLE_CTX_OPAQUE_U64S too small — \
+     bump constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S and types.h to match"
+);
+
 // ── Action Server / Client ────────────────────────────────────────────
 //
 // ACTION_SERVER_INTERNAL_OPAQUE_U64S and ACTION_CLIENT_INTERNAL_OPAQUE_U64S

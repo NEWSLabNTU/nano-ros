@@ -84,6 +84,12 @@ extern "C" {
 /** Inline storage for GuardConditionHandle inside @ref nros_guard_condition_t. */
 #define NROS_GUARD_HANDLE_OPAQUE_U64S 4
 
+/** Inline storage for LifecyclePollingNodeCtx inside @ref nros_lifecycle_state_machine_t.
+ *
+ * Sized for the largest supported target (u64 pointer width); the Rust
+ * type's real size is asserted to fit at compile time. */
+#define NROS_LIFECYCLE_CTX_OPAQUE_U64S 16
+
 /** Maximum length of a parameter name. */
 #define NROS_MAX_PARAM_NAME_LEN 64
 

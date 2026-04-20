@@ -2,8 +2,11 @@
 //!
 //! Provides managed lifecycle state machines for nros nodes.
 //!
-//! - [`LifecyclePollingNode`] — standalone state machine with function pointers (`no_std`)
+//! - [`LifecyclePollingNode`] — standalone state machine with plain function pointers (`no_std`)
+//! - [`LifecyclePollingNodeCtx`] — standalone state machine with `unsafe fn(*mut c_void) -> TransitionResult`
+//!   callbacks, for bridging the C FFI (`no_std`)
 
+use core::ffi::c_void;
 use nros_core::lifecycle::{
     LifecycleState, LifecycleTransition, TransitionResult, apply_transition, can_transition,
 };
@@ -208,6 +211,170 @@ impl Default for LifecyclePollingNode {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LIFECYCLE POLLING NODE WITH CONTEXT (no_std — C FFI compatible)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Lifecycle callback taking a user context pointer (`no_std`, C FFI shape).
+///
+/// Returns a `u8` matching the C `NROS_LIFECYCLE_RET_*` constants
+/// (`0 = Success`, `1 = Failure`, `2 = Error`). Any unknown value is
+/// coerced to [`TransitionResult::Error`] inside
+/// [`LifecyclePollingNodeCtx::trigger_transition`].
+pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
+
+/// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
+///
+/// Thin counterpart to [`LifecyclePollingNode`] for bridging the C FFI: each
+/// callback slot stores a pointer to `extern "C"` user code plus a single
+/// shared `*mut c_void` context that is passed on every invocation. The core
+/// state machine logic comes from [`nros_core::lifecycle`], same as
+/// `LifecyclePollingNode`.
+pub struct LifecyclePollingNodeCtx {
+    state: LifecycleState,
+    on_configure: Option<LifecycleCallbackFnCtx>,
+    on_activate: Option<LifecycleCallbackFnCtx>,
+    on_deactivate: Option<LifecycleCallbackFnCtx>,
+    on_cleanup: Option<LifecycleCallbackFnCtx>,
+    on_shutdown: Option<LifecycleCallbackFnCtx>,
+    on_error: Option<LifecycleCallbackFnCtx>,
+    context: *mut c_void,
+}
+
+// `*mut c_void` is `!Sync` + `!Send`; that's the correct posture for a
+// state machine owned by one task. No auto-impl needed.
+
+impl LifecyclePollingNodeCtx {
+    /// Create a new standalone lifecycle state machine. Starts in `Unconfigured`.
+    pub const fn new() -> Self {
+        Self {
+            state: LifecycleState::Unconfigured,
+            on_configure: None,
+            on_activate: None,
+            on_deactivate: None,
+            on_cleanup: None,
+            on_shutdown: None,
+            on_error: None,
+            context: core::ptr::null_mut(),
+        }
+    }
+
+    /// Get the current lifecycle state.
+    pub const fn state(&self) -> LifecycleState {
+        self.state
+    }
+
+    /// Set the user context pointer passed to every callback.
+    pub fn set_context(&mut self, ctx: *mut c_void) {
+        self.context = ctx;
+    }
+
+    /// Get the user context pointer.
+    pub fn context(&self) -> *mut c_void {
+        self.context
+    }
+
+    /// Register / clear the callback for a given transition slot.
+    pub fn register(&mut self, slot: LifecycleCallbackSlot, cb: Option<LifecycleCallbackFnCtx>) {
+        match slot {
+            LifecycleCallbackSlot::Configure => self.on_configure = cb,
+            LifecycleCallbackSlot::Activate => self.on_activate = cb,
+            LifecycleCallbackSlot::Deactivate => self.on_deactivate = cb,
+            LifecycleCallbackSlot::Cleanup => self.on_cleanup = cb,
+            LifecycleCallbackSlot::Shutdown => self.on_shutdown = cb,
+            LifecycleCallbackSlot::Error => self.on_error = cb,
+        }
+    }
+
+    /// Clear every registered callback. Used on fini.
+    pub fn clear_callbacks(&mut self) {
+        self.on_configure = None;
+        self.on_activate = None;
+        self.on_deactivate = None;
+        self.on_cleanup = None;
+        self.on_shutdown = None;
+        self.on_error = None;
+        self.context = core::ptr::null_mut();
+    }
+
+    /// Force the state to `Finalized`. Used on fini.
+    pub fn finalize(&mut self) {
+        self.state = LifecycleState::Finalized;
+    }
+
+    /// Trigger a lifecycle transition.
+    ///
+    /// # Safety
+    /// The registered callback (if any) is called via a raw `unsafe fn` pointer
+    /// with the stored `*mut c_void` context. The caller must guarantee that
+    /// any registered callback / context pair remains valid.
+    pub unsafe fn trigger_transition(
+        &mut self,
+        transition: LifecycleTransition,
+    ) -> Result<LifecycleState, LifecycleError> {
+        if self.state.is_terminal() {
+            return Err(LifecycleError::NodeFinalized);
+        }
+
+        if !can_transition(self.state, transition) {
+            return Err(LifecycleError::InvalidTransition {
+                from: self.state,
+                transition,
+            });
+        }
+
+        let cb = match transition {
+            LifecycleTransition::Configure => self.on_configure,
+            LifecycleTransition::Activate => self.on_activate,
+            LifecycleTransition::Deactivate => self.on_deactivate,
+            LifecycleTransition::Cleanup => self.on_cleanup,
+            LifecycleTransition::ShutdownUnconfigured
+            | LifecycleTransition::ShutdownInactive
+            | LifecycleTransition::ShutdownActive => self.on_shutdown,
+            LifecycleTransition::ErrorRecovery => self.on_error,
+        };
+
+        let result = match cb {
+            Some(f) => {
+                let raw = unsafe { f(self.context) };
+                TransitionResult::from_u8(raw).unwrap_or(TransitionResult::Error)
+            }
+            None => TransitionResult::Success,
+        };
+
+        self.state = apply_transition(self.state, transition, result);
+
+        if result == TransitionResult::Success {
+            Ok(self.state)
+        } else {
+            Err(LifecycleError::CallbackFailed { transition, result })
+        }
+    }
+}
+
+impl Default for LifecyclePollingNodeCtx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Which transition callback slot to register in [`LifecyclePollingNodeCtx::register`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecycleCallbackSlot {
+    /// `Unconfigured -> Inactive`
+    Configure,
+    /// `Inactive -> Active`
+    Activate,
+    /// `Active -> Inactive`
+    Deactivate,
+    /// `Inactive -> Unconfigured`
+    Cleanup,
+    /// any state -> `Finalized`
+    Shutdown,
+    /// `ErrorProcessing -> Unconfigured`
+    Error,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,5 +572,131 @@ mod tests {
 
         // Shutdown from Unconfigured should invoke the shutdown callback
         assert_eq!(node.shutdown().unwrap(), LifecycleState::Finalized);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // LifecyclePollingNodeCtx tests (C FFI shape)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    unsafe extern "C" fn ctx_cb_success(_: *mut c_void) -> u8 {
+        TransitionResult::Success as u8
+    }
+    unsafe extern "C" fn ctx_cb_failure(_: *mut c_void) -> u8 {
+        TransitionResult::Failure as u8
+    }
+    unsafe extern "C" fn ctx_cb_error(_: *mut c_void) -> u8 {
+        TransitionResult::Error as u8
+    }
+
+    #[test]
+    fn test_ctx_node_happy_path() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_success));
+            node.register(LifecycleCallbackSlot::Activate, Some(ctx_cb_success));
+            node.register(LifecycleCallbackSlot::Deactivate, Some(ctx_cb_success));
+            node.register(LifecycleCallbackSlot::Shutdown, Some(ctx_cb_success));
+
+            assert_eq!(
+                node.trigger_transition(LifecycleTransition::Configure).unwrap(),
+                LifecycleState::Inactive
+            );
+            assert_eq!(
+                node.trigger_transition(LifecycleTransition::Activate).unwrap(),
+                LifecycleState::Active
+            );
+            assert_eq!(
+                node.trigger_transition(LifecycleTransition::Deactivate).unwrap(),
+                LifecycleState::Inactive
+            );
+            assert_eq!(
+                node.trigger_transition(LifecycleTransition::ShutdownInactive).unwrap(),
+                LifecycleState::Finalized
+            );
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_invalid_transition() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            let err = node
+                .trigger_transition(LifecycleTransition::Activate)
+                .unwrap_err();
+            assert_eq!(
+                err,
+                LifecycleError::InvalidTransition {
+                    from: LifecycleState::Unconfigured,
+                    transition: LifecycleTransition::Activate,
+                }
+            );
+            assert_eq!(node.state(), LifecycleState::Unconfigured);
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_callback_failure_rolls_back() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_failure));
+            assert!(node.trigger_transition(LifecycleTransition::Configure).is_err());
+            assert_eq!(node.state(), LifecycleState::Unconfigured);
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_callback_error_enters_error_processing() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_error));
+            assert!(node.trigger_transition(LifecycleTransition::Configure).is_err());
+            assert_eq!(node.state(), LifecycleState::ErrorProcessing);
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_finalized_rejects() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.finalize();
+            let err = node
+                .trigger_transition(LifecycleTransition::Configure)
+                .unwrap_err();
+            assert_eq!(err, LifecycleError::NodeFinalized);
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_context_passed() {
+        use core::sync::atomic::{AtomicU32, Ordering};
+        static SEEN: AtomicU32 = AtomicU32::new(0);
+        unsafe extern "C" fn cb_record(ctx: *mut c_void) -> u8 {
+            SEEN.store(ctx as usize as u32, Ordering::Relaxed);
+            TransitionResult::Success as u8
+        }
+
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.set_context(0xBEEFu32 as usize as *mut c_void);
+            node.register(LifecycleCallbackSlot::Configure, Some(cb_record));
+            let _ = node.trigger_transition(LifecycleTransition::Configure);
+            assert_eq!(SEEN.load(Ordering::Relaxed), 0xBEEF);
+        }
+    }
+
+    #[test]
+    fn test_ctx_node_clear_callbacks_resets() {
+        unsafe {
+            let mut node = LifecyclePollingNodeCtx::new();
+            node.set_context(1usize as *mut c_void);
+            node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_success));
+            node.clear_callbacks();
+            assert!(node.context().is_null());
+            // With no callback, transition still succeeds (default = Success).
+            assert_eq!(
+                node.trigger_transition(LifecycleTransition::Configure).unwrap(),
+                LifecycleState::Inactive
+            );
+        }
     }
 }
