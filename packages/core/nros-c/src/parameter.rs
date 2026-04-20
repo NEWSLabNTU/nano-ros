@@ -328,59 +328,81 @@ unsafe fn declare_parameter_internal(
     NROS_RET_OK
 }
 
-/// Declare a boolean parameter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_declare_bool(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    default_value: bool,
-) -> nros_ret_t {
-    let value = nros_parameter_value_t {
-        bool_value: default_value,
+/// Generate `declare`/`get`/`set` FFI functions for a scalar parameter type.
+macro_rules! impl_param_scalar {
+    (
+        name: $name:ident,
+        ty: $T:ty,
+        variant: $variant:ident,
+        union_field: $field:ident,
+        doc: $doc:literal
+    ) => {
+        paste::paste! {
+            #[doc = "Declare " $doc " parameter."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nros_param_declare_ $name>](
+                server: *mut nros_param_server_t,
+                name: *const c_char,
+                default_value: $T,
+            ) -> nros_ret_t {
+                let value = nros_parameter_value_t { $field: default_value };
+                declare_parameter_internal(
+                    server,
+                    name,
+                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
+                    value,
+                )
+            }
+
+            #[doc = "Get " $doc " parameter value."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nros_param_get_ $name>](
+                server: *const nros_param_server_t,
+                name: *const c_char,
+                value: *mut $T,
+            ) -> nros_ret_t {
+                if server.is_null() || name.is_null() || value.is_null() {
+                    return NROS_RET_INVALID_ARGUMENT;
+                }
+                let server = &*server;
+                if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+                    return NROS_RET_NOT_INIT;
+                }
+                match find_parameter(server, name) {
+                    Some(idx) => {
+                        let param = &*server.parameters.add(idx);
+                        if param.r#type != nros_parameter_type_t::[<NROS_PARAMETER_ $variant>] {
+                            return NROS_RET_INVALID_ARGUMENT;
+                        }
+                        *value = param.value.$field;
+                        NROS_RET_OK
+                    }
+                    None => NROS_RET_NOT_FOUND,
+                }
+            }
+
+            #[doc = "Set " $doc " parameter value."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nros_param_set_ $name>](
+                server: *mut nros_param_server_t,
+                name: *const c_char,
+                value: $T,
+            ) -> nros_ret_t {
+                let new_value = nros_parameter_value_t { $field: value };
+                set_parameter_internal(
+                    server,
+                    name,
+                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
+                    new_value,
+                )
+            }
+        }
     };
-    declare_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_BOOL,
-        value,
-    )
 }
 
-/// Declare an integer parameter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_declare_integer(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    default_value: i64,
-) -> nros_ret_t {
-    let value = nros_parameter_value_t {
-        integer_value: default_value,
-    };
-    declare_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_INTEGER,
-        value,
-    )
-}
-
-/// Declare a double parameter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_declare_double(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    default_value: f64,
-) -> nros_ret_t {
-    let value = nros_parameter_value_t {
-        double_value: default_value,
-    };
-    declare_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_DOUBLE,
-        value,
-    )
-}
+impl_param_scalar!(name: bool, ty: bool, variant: BOOL, union_field: bool_value, doc: "a boolean");
+impl_param_scalar!(name: integer, ty: i64, variant: INTEGER, union_field: integer_value, doc: "an integer");
+impl_param_scalar!(name: double, ty: f64, variant: DOUBLE, union_field: double_value, doc: "a double");
 
 /// Declare a string parameter.
 #[unsafe(no_mangle)]
@@ -404,96 +426,6 @@ pub unsafe extern "C" fn nros_param_declare_string(
         nros_parameter_type_t::NROS_PARAMETER_STRING,
         value,
     )
-}
-
-/// Get a boolean parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_get_bool(
-    server: *const nros_param_server_t,
-    name: *const c_char,
-    value: *mut bool,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() || value.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => {
-            let param = &*server.parameters.add(idx);
-            if param.r#type != nros_parameter_type_t::NROS_PARAMETER_BOOL {
-                return NROS_RET_INVALID_ARGUMENT;
-            }
-            *value = param.value.bool_value;
-            NROS_RET_OK
-        }
-        None => NROS_RET_NOT_FOUND,
-    }
-}
-
-/// Get an integer parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_get_integer(
-    server: *const nros_param_server_t,
-    name: *const c_char,
-    value: *mut i64,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() || value.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => {
-            let param = &*server.parameters.add(idx);
-            if param.r#type != nros_parameter_type_t::NROS_PARAMETER_INTEGER {
-                return NROS_RET_INVALID_ARGUMENT;
-            }
-            *value = param.value.integer_value;
-            NROS_RET_OK
-        }
-        None => NROS_RET_NOT_FOUND,
-    }
-}
-
-/// Get a double parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_get_double(
-    server: *const nros_param_server_t,
-    name: *const c_char,
-    value: *mut f64,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() || value.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => {
-            let param = &*server.parameters.add(idx);
-            if param.r#type != nros_parameter_type_t::NROS_PARAMETER_DOUBLE {
-                return NROS_RET_INVALID_ARGUMENT;
-            }
-            *value = param.value.double_value;
-            NROS_RET_OK
-        }
-        None => NROS_RET_NOT_FOUND,
-    }
 }
 
 /// Get a string parameter value.
@@ -590,58 +522,6 @@ unsafe fn set_parameter_internal(
         }
         None => NROS_RET_NOT_FOUND,
     }
-}
-
-/// Set a boolean parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_set_bool(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    value: bool,
-) -> nros_ret_t {
-    let new_value = nros_parameter_value_t { bool_value: value };
-    set_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_BOOL,
-        new_value,
-    )
-}
-
-/// Set an integer parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_set_integer(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    value: i64,
-) -> nros_ret_t {
-    let new_value = nros_parameter_value_t {
-        integer_value: value,
-    };
-    set_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_INTEGER,
-        new_value,
-    )
-}
-
-/// Set a double parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_set_double(
-    server: *mut nros_param_server_t,
-    name: *const c_char,
-    value: f64,
-) -> nros_ret_t {
-    let new_value = nros_parameter_value_t {
-        double_value: value,
-    };
-    set_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_DOUBLE,
-        new_value,
-    )
 }
 
 /// Set a string parameter value.
