@@ -686,7 +686,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // dispatches to the user's callback (or our temporary one).
     static mut BLOCKING_ACCEPTED: i32 = -1; // -1=pending, 0=rejected, 1=accepted
     unsafe {
-        BLOCKING_ACCEPTED = -1;
+        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_ACCEPTED), -1i32);
     }
 
     // Save original callback and install temporary one
@@ -698,7 +698,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
         _ctx: *mut c_void,
     ) {
         unsafe {
-            BLOCKING_ACCEPTED = if _accepted { 1 } else { 0 };
+            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_ACCEPTED), if _accepted { 1i32 } else { 0i32 });
         }
     }
     client.callbacks.goal_response = Some(blocking_goal_cb);
@@ -708,7 +708,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     for _ in 0..1000 {
         let _ = ctx.executor.spin_once(10);
-        let flag = unsafe { BLOCKING_ACCEPTED };
+        let flag = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_ACCEPTED)) };
         if flag >= 0 {
             // Restore original callback
             client.callbacks.goal_response = orig_cb;
@@ -782,8 +782,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     static mut BLOCKING_RESULT_STATUS: i32 = 0;
     static mut BLOCKING_RESULT_BUF: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
     unsafe {
-        BLOCKING_RESULT_LEN = -1;
-        BLOCKING_RESULT_STATUS = 0;
+        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN), -1i32);
+        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_STATUS), 0i32);
     }
 
     let orig_cb = client.callbacks.result;
@@ -796,10 +796,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
         _ctx: *mut c_void,
     ) {
         unsafe {
-            BLOCKING_RESULT_STATUS = status;
+            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_STATUS), status);
             let copy_len = len.min(DEFAULT_RX_BUF_SIZE);
-            core::ptr::copy_nonoverlapping(data, BLOCKING_RESULT_BUF.as_mut_ptr(), copy_len);
-            BLOCKING_RESULT_LEN = copy_len as i32;
+            core::ptr::copy_nonoverlapping(
+                data,
+                core::ptr::addr_of_mut!(BLOCKING_RESULT_BUF) as *mut u8,
+                copy_len,
+            );
+            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN), copy_len as i32);
         }
     }
     client.callbacks.result = Some(blocking_result_cb);
@@ -809,7 +813,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     for _ in 0..1000 {
         let _ = ctx.executor.spin_once(10);
-        let rlen = unsafe { BLOCKING_RESULT_LEN };
+        let rlen = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_RESULT_LEN)) };
         if rlen >= 0 {
             client.callbacks.result = orig_cb;
             client.callbacks.context = orig_ctx;
@@ -817,7 +821,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
             if data_len <= result_buf_len {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
-                        BLOCKING_RESULT_BUF.as_ptr(),
+                        core::ptr::addr_of!(BLOCKING_RESULT_BUF) as *const u8,
                         result_buf,
                         data_len,
                     );
