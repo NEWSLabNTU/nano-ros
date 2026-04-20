@@ -147,6 +147,34 @@ pub unsafe extern "C" fn nros_cpp_publisher_destroy(storage: *mut c_void) -> nro
     NROS_CPP_RET_OK
 }
 
+/// Relocate a `CppPublisher` from `old_storage` to `new_storage`.
+///
+/// `CppPublisher` registers nothing externally that references its
+/// storage address, so relocation is a straight `ptr::read` + `ptr::write`.
+/// Called by the C++ `Publisher` move ctor / move assignment.
+///
+/// # Safety
+/// Both `old_storage` and `new_storage` must be valid, 8-byte-aligned
+/// buffers of at least `CPP_PUBLISHER_OPAQUE_U64S * 8` bytes. `old_storage`
+/// must contain an initialised `CppPublisher`; `new_storage` must not.
+/// After the call, `old_storage` is logically uninitialised and must
+/// not be destroyed — the C++ side sets its `initialized_` flag to
+/// `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppPublisher);
+        core::ptr::write(new_storage as *mut CppPublisher, value);
+    }
+    NROS_CPP_RET_OK
+}
+
 /// Get the topic name of a publisher.
 ///
 /// # Safety

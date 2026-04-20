@@ -198,6 +198,29 @@ pub unsafe extern "C" fn nros_cpp_service_server_destroy(storage: *mut c_void) -
     NROS_CPP_RET_OK
 }
 
+/// Relocate a `CppServiceServer` from `old_storage` to `new_storage`.
+///
+/// Service servers are pull-based (`try_recv_request` / `send_reply`)
+/// and register nothing externally that references the storage address —
+/// relocation is a straight `ptr::read` + `ptr::write`.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_server_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppServiceServer);
+        core::ptr::write(new_storage as *mut CppServiceServer, value);
+    }
+    NROS_CPP_RET_OK
+}
+
 // ============================================================================
 // Service Client
 // ============================================================================
@@ -416,6 +439,28 @@ pub unsafe extern "C" fn nros_cpp_service_client_destroy(storage: *mut c_void) -
     }
     unsafe {
         core::ptr::drop_in_place(storage as *mut CppServiceClient);
+    }
+    NROS_CPP_RET_OK
+}
+
+/// Relocate a `CppServiceClient` from `old_storage` to `new_storage`.
+///
+/// Service clients are pull-based and register nothing externally —
+/// relocation is a straight `ptr::read` + `ptr::write`.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppServiceClient);
+        core::ptr::write(new_storage as *mut CppServiceClient, value);
     }
     NROS_CPP_RET_OK
 }

@@ -170,6 +170,30 @@ pub unsafe extern "C" fn nros_cpp_subscription_destroy(storage: *mut c_void) -> 
     NROS_CPP_RET_OK
 }
 
+/// Relocate a `CppSubscription` from `old_storage` to `new_storage`.
+///
+/// Subscriptions are pull-based (`try_recv_raw`) and register nothing
+/// externally that references the storage address — relocation is a
+/// straight `ptr::read` + `ptr::write`. Called by the C++ `Subscription`
+/// move ctor / move assignment.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppSubscription);
+        core::ptr::write(new_storage as *mut CppSubscription, value);
+    }
+    NROS_CPP_RET_OK
+}
+
 /// Get the topic name of a subscription.
 ///
 /// # Safety

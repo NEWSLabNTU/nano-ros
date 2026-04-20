@@ -408,6 +408,33 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy(storage: *mut c_void) ->
     NROS_CPP_RET_OK
 }
 
+/// Relocate a `CppActionServer` from `old_storage` to `new_storage`.
+///
+/// Performs the bitwise move. The C++ `ActionServer<A>` move ctor /
+/// move assignment must still call `install_callbacks()` afterwards,
+/// because the callback trampolines were registered with the previous
+/// `this` as their context and need to be re-registered with the new
+/// `this`. This FFI only transfers the Rust-side state; the re-install
+/// step is intentionally left to the C++ side so this function stays
+/// free of C++-specific pointer semantics.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppActionServer);
+        core::ptr::write(new_storage as *mut CppActionServer, value);
+    }
+    NROS_CPP_RET_OK
+}
+
 // ============================================================================
 // Action Client
 // ============================================================================
@@ -1069,6 +1096,29 @@ pub unsafe extern "C" fn nros_cpp_action_client_destroy(storage: *mut c_void) ->
     }
     unsafe {
         core::ptr::drop_in_place(storage as *mut CppActionClient);
+    }
+    NROS_CPP_RET_OK
+}
+
+/// Relocate a `CppActionClient` from `old_storage` to `new_storage`.
+///
+/// The action client's async callback context (`options.context`) is
+/// user-provided, so it stays valid across the move. Relocation is a
+/// straight `ptr::read` + `ptr::write`.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut CppActionClient);
+        core::ptr::write(new_storage as *mut CppActionClient, value);
     }
     NROS_CPP_RET_OK
 }

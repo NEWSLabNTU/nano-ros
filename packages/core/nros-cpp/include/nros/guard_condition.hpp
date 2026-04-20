@@ -24,6 +24,7 @@ nros_cpp_ret_t nros_cpp_guard_condition_create(void* executor_handle,
                                                void* storage);
 nros_cpp_ret_t nros_cpp_guard_condition_trigger(void* storage);
 nros_cpp_ret_t nros_cpp_guard_condition_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_guard_condition_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -67,34 +68,34 @@ class GuardCondition {
         // closure_ (if any) destructs here.
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_guard_condition_relocate` FFI (Phase 84.C1).
     GuardCondition(GuardCondition&& other)
         : initialized_(other.initialized_)
 #ifdef NROS_CPP_STD
           , closure_(std::move(other.closure_))
 #endif
     {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
+        if (other.initialized_) {
+            nros_cpp_guard_condition_relocate(other.storage_, storage_);
+            other.initialized_ = false;
         }
-        other.initialized_ = false;
     }
 
     GuardCondition& operator=(GuardCondition&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_guard_condition_destroy(storage_);
+                initialized_ = false;
             }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
+            if (other.initialized_) {
+                nros_cpp_guard_condition_relocate(other.storage_, storage_);
+                initialized_ = true;
+                other.initialized_ = false;
             }
-            initialized_ = other.initialized_;
 #ifdef NROS_CPP_STD
             closure_ = std::move(other.closure_);
 #endif
-            other.initialized_ = false;
         }
         return *this;
     }

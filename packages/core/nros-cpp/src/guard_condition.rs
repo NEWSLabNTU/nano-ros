@@ -91,3 +91,28 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_destroy(storage: *mut c_void) 
     }
     NROS_CPP_RET_OK
 }
+
+/// Relocate a `GuardConditionHandle` from `old_storage` to `new_storage`.
+///
+/// The handle itself contains a `&'static AtomicBool` pointing into the
+/// executor arena (stable address); the wrapper closure stored in the
+/// arena captures the user's `context` pointer (also stable, provided by
+/// the caller), not the storage address. So relocation is a straight
+/// `ptr::read` + `ptr::write`.
+///
+/// # Safety
+/// See `nros_cpp_publisher_relocate`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_guard_condition_relocate(
+    old_storage: *mut c_void,
+    new_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if old_storage.is_null() || new_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        let value = core::ptr::read(old_storage as *mut GuardConditionHandle);
+        core::ptr::write(new_storage as *mut GuardConditionHandle, value);
+    }
+    NROS_CPP_RET_OK
+}

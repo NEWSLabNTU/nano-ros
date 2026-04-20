@@ -19,6 +19,7 @@ nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void* storage, uint8_t* out_
 nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void* storage, int64_t sequence_number,
                                                       const uint8_t* data, size_t len);
 nros_cpp_ret_t nros_cpp_service_server_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_service_server_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -94,26 +95,26 @@ template <typename S> class Service {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_service_server_relocate` FFI (Phase 84.C1).
     Service(Service&& other) : initialized_(other.initialized_) {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
+        if (other.initialized_) {
+            nros_cpp_service_server_relocate(other.storage_, storage_);
+            other.initialized_ = false;
         }
-        other.initialized_ = false;
     }
 
     Service& operator=(Service&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_service_server_destroy(storage_);
+                initialized_ = false;
             }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
+            if (other.initialized_) {
+                nros_cpp_service_server_relocate(other.storage_, storage_);
+                initialized_ = true;
+                other.initialized_ = false;
             }
-            initialized_ = other.initialized_;
-            other.initialized_ = false;
         }
         return *this;
     }

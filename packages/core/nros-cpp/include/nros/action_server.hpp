@@ -35,6 +35,7 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal(void* handle, void* executor
 nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(
     void* handle, void* executor_handle, nros_cpp_active_goal_visitor_t visitor, void* ctx);
 nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_action_server_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -185,15 +186,18 @@ template <typename A> class ActionServer {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_action_server_relocate` FFI (Phase 84.C1) and
+    // then `install_callbacks()` re-registers the goal/cancel trampolines
+    // with the new `this` as the arena callback context — this is the one
+    // type in nros-cpp that registers its storage address externally.
     ActionServer(ActionServer&& other)
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
           user_cancel_fn_(other.user_cancel_fn_), user_visitor_fn_(other.user_visitor_fn_),
           initialized_(other.initialized_) {
         if (other.initialized_) {
-            memcpy(storage_, other.storage_, sizeof(storage_));
+            nros_cpp_action_server_relocate(other.storage_, storage_);
             other.initialized_ = false;
-            // Re-install callbacks with our `this` pointer.
             install_callbacks();
         }
     }
@@ -209,7 +213,7 @@ template <typename A> class ActionServer {
             user_visitor_fn_ = other.user_visitor_fn_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
-                memcpy(storage_, other.storage_, sizeof(storage_));
+                nros_cpp_action_server_relocate(other.storage_, storage_);
                 other.initialized_ = false;
                 install_callbacks();
             }

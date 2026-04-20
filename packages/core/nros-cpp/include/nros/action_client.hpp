@@ -37,6 +37,7 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
     void* context);
 nros_cpp_ret_t nros_cpp_action_client_poll(void* handle);
 nros_cpp_ret_t nros_cpp_action_client_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_action_client_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -299,11 +300,12 @@ template <typename A> class ActionClient {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_action_client_relocate` FFI (Phase 84.C1).
     ActionClient(ActionClient&& other)
         : executor_(other.executor_), initialized_(other.initialized_) {
         if (other.initialized_) {
-            memcpy(storage_, other.storage_, sizeof(storage_));
+            nros_cpp_action_client_relocate(other.storage_, storage_);
             other.initialized_ = false;
         }
     }
@@ -316,7 +318,7 @@ template <typename A> class ActionClient {
             executor_ = other.executor_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
-                memcpy(storage_, other.storage_, sizeof(storage_));
+                nros_cpp_action_client_relocate(other.storage_, storage_);
                 other.initialized_ = false;
             }
         }

@@ -17,6 +17,7 @@ typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void* storage, uint8_t* out_data,
                                                   size_t out_capacity, size_t* out_len);
 nros_cpp_ret_t nros_cpp_subscription_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_subscription_relocate(void* old_storage, void* new_storage);
 const char* nros_cpp_subscription_get_topic_name(const void* storage);
 } // extern "C"
 
@@ -117,16 +118,15 @@ template <typename M> class Subscription {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_subscription_relocate` FFI (Phase 84.C1);
+    // the `stream_` is rebound to the new storage afterwards.
     Subscription(Subscription&& other) : initialized_(other.initialized_) {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
-        }
-        if (initialized_) {
+        if (other.initialized_) {
+            nros_cpp_subscription_relocate(other.storage_, storage_);
             stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
+            other.initialized_ = false;
         }
-        other.initialized_ = false;
         other.stream_ = Stream<M>();
     }
 
@@ -134,18 +134,15 @@ template <typename M> class Subscription {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_subscription_destroy(storage_);
-            }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
-            }
-            initialized_ = other.initialized_;
-            if (initialized_) {
-                stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
-            } else {
+                initialized_ = false;
                 stream_ = Stream<M>();
             }
-            other.initialized_ = false;
+            if (other.initialized_) {
+                nros_cpp_subscription_relocate(other.storage_, storage_);
+                stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
+                initialized_ = true;
+                other.initialized_ = false;
+            }
             other.stream_ = Stream<M>();
         }
         return *this;

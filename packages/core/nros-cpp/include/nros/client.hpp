@@ -22,6 +22,7 @@ nros_cpp_ret_t nros_cpp_service_client_call_raw(void* storage, const uint8_t* re
                                                 size_t req_len, uint8_t* resp_data,
                                                 size_t resp_capacity, size_t* resp_len);
 nros_cpp_ret_t nros_cpp_service_client_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_service_client_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -114,26 +115,26 @@ template <typename S> class Client {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_service_client_relocate` FFI (Phase 84.C1).
     Client(Client&& other) : initialized_(other.initialized_) {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
+        if (other.initialized_) {
+            nros_cpp_service_client_relocate(other.storage_, storage_);
+            other.initialized_ = false;
         }
-        other.initialized_ = false;
     }
 
     Client& operator=(Client&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_service_client_destroy(storage_);
+                initialized_ = false;
             }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
+            if (other.initialized_) {
+                nros_cpp_service_client_relocate(other.storage_, storage_);
+                initialized_ = true;
+                other.initialized_ = false;
             }
-            initialized_ = other.initialized_;
-            other.initialized_ = false;
         }
         return *this;
     }

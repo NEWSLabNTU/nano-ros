@@ -15,6 +15,7 @@ extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
 nros_cpp_ret_t nros_cpp_publisher_destroy(void* storage);
+nros_cpp_ret_t nros_cpp_publisher_relocate(void* old_storage, void* new_storage);
 const char* nros_cpp_publisher_get_topic_name(const void* storage);
 } // extern "C"
 
@@ -64,26 +65,26 @@ template <typename M> class Publisher {
         }
     }
 
-    // Move semantics (non-copyable)
+    // Move semantics (non-copyable). Relocation goes through the
+    // Rust-side `nros_cpp_publisher_relocate` FFI (Phase 84.C1).
     Publisher(Publisher&& other) : initialized_(other.initialized_) {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
+        if (other.initialized_) {
+            nros_cpp_publisher_relocate(other.storage_, storage_);
+            other.initialized_ = false;
         }
-        other.initialized_ = false;
     }
 
     Publisher& operator=(Publisher&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_publisher_destroy(storage_);
+                initialized_ = false;
             }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
+            if (other.initialized_) {
+                nros_cpp_publisher_relocate(other.storage_, storage_);
+                initialized_ = true;
+                other.initialized_ = false;
             }
-            initialized_ = other.initialized_;
-            other.initialized_ = false;
         }
         return *this;
     }
