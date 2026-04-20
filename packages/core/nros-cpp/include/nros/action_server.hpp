@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <string.h>
-#include <type_traits>
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
@@ -105,31 +104,20 @@ template <typename A> class ActionServer {
     ///
     /// `F` must be a stateless callable that decays to `TypedGoalFn`
     /// (empty-capture lambda or plain function pointer).
+    /// F must be a stateless callable convertible to TypedGoalFn
+    /// (empty-capture lambda or plain function pointer).
     template <typename F> Result set_goal_callback(F f) {
-        static_assert(
-            std::is_convertible<F, TypedGoalFn>::value,
-            "ActionServer::set_goal_callback requires a stateless callable "
-            "(empty-capture lambda or plain function pointer). "
-            "Capturing lambdas / std::function cannot be converted to a "
-            "C function pointer; store per-goal state in a caller-owned "
-            "{uuid -> state} table instead.");
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        user_goal_fn_ = TypedGoalFn(f);
+        user_goal_fn_ = TypedGoalFn(f); // compile error if F is not convertible
         return install_callbacks();
     }
 
     /// Register a cancel callback.
     ///
-    /// `F` must be a stateless callable that decays to `TypedCancelFn`.
+    /// F must be a stateless callable convertible to TypedCancelFn.
     template <typename F> Result set_cancel_callback(F f) {
-        static_assert(
-            std::is_convertible<F, TypedCancelFn>::value,
-            "ActionServer::set_cancel_callback requires a stateless callable "
-            "(empty-capture lambda or plain function pointer). "
-            "Capturing lambdas / std::function cannot be converted to a "
-            "C function pointer.");
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        user_cancel_fn_ = TypedCancelFn(f);
+        user_cancel_fn_ = TypedCancelFn(f); // compile error if F is not convertible
         return install_callbacks();
     }
 
@@ -169,16 +157,11 @@ template <typename A> class ActionServer {
     /// never stores the original goal CDR payload, so only identity +
     /// status are forwarded — if you need the goal bytes, stash them in
     /// a `{uuid → state}` table from inside `set_goal_callback`.
+    /// F must be a stateless callable convertible to void(*)(const uint8_t[16], GoalStatus).
     template <typename F> Result for_each_active_goal(F f) {
         using Fn = void (*)(const uint8_t[16], GoalStatus);
-        static_assert(
-            std::is_convertible<F, Fn>::value,
-            "ActionServer::for_each_active_goal requires a stateless callable "
-            "(empty-capture lambda or plain function pointer). "
-            "Capturing lambdas / std::function cannot be converted to a "
-            "C function pointer.");
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        user_visitor_fn_ = Fn(f);
+        user_visitor_fn_ = Fn(f); // compile error if F is not convertible
 
         auto trampoline = [](const uint8_t goal_id[16], int8_t status, void* ctx) {
             auto* self = static_cast<ActionServer*>(ctx);
