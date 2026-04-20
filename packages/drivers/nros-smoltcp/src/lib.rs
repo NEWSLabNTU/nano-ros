@@ -20,8 +20,11 @@
 
 pub mod bridge;
 mod config;
+mod network_state;
 mod platform_macro;
 pub mod util;
+
+pub use network_state::NetworkState;
 
 pub use bridge::{
     CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
