@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
     demo_platform_time();
 
     // Get configuration
-    const char* locator = getenv("ZENOH_LOCATOR");
+    const char* locator = getenv("NROS_LOCATOR");
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
     const char* domain_str = getenv("ROS_DOMAIN_ID");

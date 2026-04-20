@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     std::printf("===================\n");
 
     // Get configuration from environment
-    const char* locator = std::getenv("ZENOH_LOCATOR");
+    const char* locator = std::getenv("NROS_LOCATOR");
     if (!locator) {
         locator = "tcp/127.0.0.1:7447";
     }

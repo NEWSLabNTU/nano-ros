@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     printf("=================\n");
 
     // Get configuration from environment
-    const char* locator = getenv("ZENOH_LOCATOR");
+    const char* locator = getenv("NROS_LOCATOR");
     if (!locator) {
         locator = "tcp/127.0.0.1:7447";
     }
