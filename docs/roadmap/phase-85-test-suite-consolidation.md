@@ -143,7 +143,7 @@ that each just call `build_X()` and assert the binary exists).
     build serves all (variant × language) test runs for a given
     platform.
 
-- [ ] 85.6 — Shrink the nextest `max-threads=1` group list
+- [x] 85.6 — Shrink the nextest `max-threads=1` group list
   - **Files**: `.config/nextest.toml`
   - **Goal**: Replace the 8 per-platform groups with two groups:
     - `qemu-serial` — everything that launches a QEMU instance and

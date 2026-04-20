@@ -12,56 +12,48 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
-# Per-platform test groups: each platform has its own zenohd port and
-# isolated slirp/bridge networking, so platforms run in parallel.
-# Within each group, tests are serial (one QEMU pair at a time).
+# QEMU + bridge-networked tests: serialize across all platforms. Host
+# resource pressure (one QEMU instance per test plus a zenohd router)
+# is the remaining reason for serialising — the per-platform zenohd-port
+# table (`nros_tests::platform`) already prevents port collisions, so
+# the 7 former per-platform groups (qemu-baremetal / qemu-freertos /
+# qemu-nuttx / qemu-threadx-riscv / qemu-esp32 / qemu-zephyr /
+# threadx-linux) have been collapsed into this single group.
 # Ports: baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453,
 # esp32=7454, threadx-linux=7455, zephyr=7456.
-[test-groups.qemu-baremetal]
+[test-groups.qemu-serial]
 max-threads = 1
 
-[test-groups.qemu-freertos]
-max-threads = 1
-
-[test-groups.qemu-nuttx]
-max-threads = 1
-
-[test-groups.qemu-threadx-riscv]
-max-threads = 1
-
-[test-groups.qemu-esp32]
-max-threads = 1
-
-[test-groups.threadx-linux]
-max-threads = 1
-
-[test-groups.qemu-zephyr]
-max-threads = 1
-
+# Native C / C++ API tests share the same `target/release/libnros_c.a`
+# between zenoh and XRCE-DDS variants, so running them concurrently
+# causes library overwrites and link-time failures. c_xrce_api lives
+# in the same group for the same reason.
 [test-groups.native_api]
 max-threads = 1
 
-# XRCE-DDS tests: single Agent instance per test
+# XRCE-DDS tests: single Agent instance per test.
 [test-groups.xrce]
 max-threads = 1
 
-# Note: C XRCE tests use the native_api group (not a separate group) because
-# both zenoh and XRCE C tests write to the same target/release/libnros_c.a —
-# running them concurrently causes library overwrites and link-time failures.
+# XRCE ↔ ROS 2 DDS interop: needs XRCE Agent + ROS 2 + rmw_fastrtps.
+[test-groups.xrce_ros2_interop]
+max-threads = 1
 
-[[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
-test-group = "qemu-esp32"
-slow-timeout = { period = "120s", terminate-after = 3 }
+# ROS 2 interop tests: ros2 CLI commands with rmw_zenoh_cpp are
+# heavyweight (each spawns zenoh sessions for discovery). Running in
+# parallel causes resource contention and discovery timeouts.
+[test-groups.ros2-interop]
+max-threads = 1
 
-[[profile.default.overrides]]
-filter = "binary(zephyr)"
-test-group = "qemu-zephyr"
-slow-timeout = { period = "120s", terminate-after = 3 }
+# Large message & throughput stress tests: sequential (shared
+# zenohd/agent ports).
+[test-groups.large_msg]
+max-threads = 1
 
+# QEMU + bridge-networked binaries.
 [[profile.default.overrides]]
-filter = "binary(emulator) and not binary(esp32_emulator)"
-test-group = "qemu-baremetal"
+filter = "binary(emulator) or binary(esp32_emulator) or binary(zephyr) or binary(freertos_qemu) or binary(nuttx_qemu) or binary(threadx_riscv64_qemu) or binary(threadx_linux)"
+test-group = "qemu-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
@@ -79,20 +71,10 @@ filter = "binary(c_xrce_api)"
 test-group = "native_api"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
-# XRCE ↔ ROS 2 DDS interop: needs XRCE Agent + ROS 2 + rmw_fastrtps
-[test-groups.xrce_ros2_interop]
-max-threads = 1
-
 [[profile.default.overrides]]
 filter = "binary(xrce_ros2_interop)"
 test-group = "xrce_ros2_interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
-
-# ROS 2 interop tests: ros2 CLI commands with rmw_zenoh_cpp are heavyweight
-# (each spawns zenoh sessions for discovery). Running in parallel causes
-# resource contention and discovery timeouts.
-[test-groups.ros2-interop]
-max-threads = 1
 
 [[profile.default.overrides]]
 filter = "binary(params)"
@@ -109,10 +91,6 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 filter = "binary(safety_e2e)"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
-# Large message & throughput stress tests: sequential (shared zenohd/agent ports)
-[test-groups.large_msg]
-max-threads = 1
-
 [[profile.default.overrides]]
 filter = "binary(large_msg)"
 test-group = "large_msg"
@@ -122,33 +100,6 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = "binary(zero_copy)"
 slow-timeout = { period = "60s", terminate-after = 2 }
-
-# NuttX QEMU tests: zenohd port 7452
-[[profile.default.overrides]]
-filter = "binary(nuttx_qemu)"
-test-group = "qemu-nuttx"
-slow-timeout = { period = "120s", terminate-after = 3 }
-
-# FreeRTOS QEMU tests: zenohd port 7451
-[[profile.default.overrides]]
-filter = "binary(freertos_qemu)"
-test-group = "qemu-freertos"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# ThreadX Linux tests: zenohd port 7455
-[[profile.default.overrides]]
-filter = "binary(threadx_linux)"
-test-group = "threadx-linux"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# ThreadX QEMU RISC-V tests: zenohd port 7453
-[[profile.default.overrides]]
-filter = "binary(threadx_riscv64_qemu)"
-test-group = "qemu-threadx-riscv"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [profile.ci]
 # CI profile with stricter timeouts
