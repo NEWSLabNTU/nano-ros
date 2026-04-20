@@ -748,6 +748,273 @@ pub unsafe extern "C" fn nros_param_server_fini(server: *mut nros_param_server_t
     NROS_RET_OK
 }
 
+// ============================================================================
+// Service-Backed Parameter API (Phase 84.B3)
+// ============================================================================
+//
+// These functions operate on the `nros-params::ParameterServer` owned by
+// the Executor. Unlike the legacy `nros_param_server_t` API above, a
+// parameter declared here is visible to `ros2 param list /<node>` once
+// `nros_executor_register_parameter_services` is called.
+//
+// The RMW backend must be compiled in (`rmw-zenoh` or `rmw-xrce`) because
+// the Executor type is only defined under those features.
+
+#[cfg(all(
+    feature = "param-services",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce")
+))]
+mod service_backed {
+    use super::*;
+    use crate::executor::{get_executor, nros_executor_t};
+    use nros_node::{ParameterValue, SetParameterResult};
+
+    /// Read a C string up to `max_len` bytes into a `&str` slice.
+    /// Returns `None` if `name` is NULL or non-UTF-8.
+    unsafe fn cstr_to_str<'a>(name: *const c_char) -> Option<&'a str> {
+        if name.is_null() {
+            return None;
+        }
+        let mut len = 0usize;
+        while *name.add(len) != 0 {
+            len += 1;
+            if len > NROS_MAX_PARAM_NAME_LEN {
+                return None;
+            }
+        }
+        core::str::from_utf8(core::slice::from_raw_parts(name as *const u8, len)).ok()
+    }
+
+    /// Copy a `&str` to a null-terminated C buffer of size `max_len`.
+    /// Returns `NROS_RET_INVALID_ARGUMENT` if the buffer is too small.
+    unsafe fn str_to_cbuf(src: &str, dst: *mut c_char, max_len: usize) -> nros_ret_t {
+        if max_len == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let bytes = src.as_bytes();
+        if bytes.len() + 1 > max_len {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        for (i, &b) in bytes.iter().enumerate() {
+            *dst.add(i) = b as c_char;
+        }
+        *dst.add(bytes.len()) = 0;
+        NROS_RET_OK
+    }
+
+    /// Register the 6 ROS 2 parameter services on the executor's node.
+    ///
+    /// After this call, parameters declared via
+    /// `nros_executor_declare_param_*` are visible to `ros2 param list`,
+    /// `ros2 param get`, `ros2 param set`, etc.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_register_parameter_services(
+        executor: *mut nros_executor_t,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        match exec.register_parameter_services() {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    macro_rules! impl_executor_param_scalar {
+        (
+            name: $name:ident,
+            ty: $T:ty,
+            from_variant: $from:path,
+            as_variant: $as:ident,
+            doc: $doc:literal
+        ) => {
+            paste::paste! {
+                #[doc = "Declare " $doc " parameter on the executor's server."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_declare_param_ $name>](
+                    executor: *mut nros_executor_t,
+                    name: *const c_char,
+                    value: $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let exec = get_executor(&mut (*executor)._opaque);
+                    if exec.declare_parameter(n, $from(value)) {
+                        NROS_RET_OK
+                    } else {
+                        NROS_RET_ALREADY_EXISTS
+                    }
+                }
+
+                #[doc = "Get " $doc " parameter from the executor's server."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_get_param_ $name>](
+                    executor: *mut nros_executor_t,
+                    name: *const c_char,
+                    out_value: *mut $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() || out_value.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let inner = get_executor(&mut (*executor)._opaque);
+                    match inner.get_parameter(n).and_then(|v| v.$as()) {
+                        Some(v) => {
+                            *out_value = v.into();
+                            NROS_RET_OK
+                        }
+                        None => NROS_RET_NOT_FOUND,
+                    }
+                }
+
+                #[doc = "Set " $doc " parameter on the executor's server."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_set_param_ $name>](
+                    executor: *mut nros_executor_t,
+                    name: *const c_char,
+                    value: $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let exec = get_executor(&mut (*executor)._opaque);
+                    let Some(server) = exec.params_mut() else {
+                        return NROS_RET_NOT_INIT;
+                    };
+                    match server.set(n, $from(value)) {
+                        SetParameterResult::Success => NROS_RET_OK,
+                        SetParameterResult::NotFound => NROS_RET_NOT_FOUND,
+                        _ => NROS_RET_INVALID_ARGUMENT,
+                    }
+                }
+            }
+        };
+    }
+
+    impl_executor_param_scalar!(
+        name: bool, ty: bool,
+        from_variant: ParameterValue::from_bool,
+        as_variant: as_bool,
+        doc: "a boolean"
+    );
+    impl_executor_param_scalar!(
+        name: integer, ty: i64,
+        from_variant: ParameterValue::from_integer,
+        as_variant: as_integer,
+        doc: "an integer"
+    );
+    impl_executor_param_scalar!(
+        name: double, ty: f64,
+        from_variant: ParameterValue::from_double,
+        as_variant: as_double,
+        doc: "a double"
+    );
+
+    /// Declare a string parameter on the executor's server.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_declare_param_string(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_string(v) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        if exec.declare_parameter(n, pv) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ALREADY_EXISTS
+        }
+    }
+
+    /// Get a string parameter from the executor's server into a fixed buffer.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_string(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        out_value: *mut c_char,
+        max_len: usize,
+    ) -> nros_ret_t {
+        if executor.is_null() || out_value.is_null() || max_len == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let inner = get_executor(&mut (*executor)._opaque);
+        match inner.get_parameter(n).and_then(|v| v.as_string()) {
+            Some(s) => str_to_cbuf(s, out_value, max_len),
+            None => NROS_RET_NOT_FOUND,
+        }
+    }
+
+    /// Set a string parameter on the executor's server.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_string(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_string(v) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(server) = exec.params_mut() else {
+            return NROS_RET_NOT_INIT;
+        };
+        match server.set(n, pv) {
+            SetParameterResult::Success => NROS_RET_OK,
+            SetParameterResult::NotFound => NROS_RET_NOT_FOUND,
+            _ => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
+    /// Check if a parameter exists on the executor's server.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_has_param(
+        executor: *mut nros_executor_t,
+        name: *const c_char,
+    ) -> bool {
+        if executor.is_null() {
+            return false;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return false;
+        };
+        let inner = get_executor(&mut (*executor)._opaque);
+        inner.get_parameter(n).is_some()
+    }
+}
+
+#[cfg(all(
+    feature = "param-services",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce")
+))]
+pub use service_backed::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -430,6 +430,79 @@ NROS_PUBLIC size_t nros_param_server_get_count(const struct nros_param_server_t*
  */
 NROS_PUBLIC nros_ret_t nros_param_server_fini(struct nros_param_server_t* server);
 
+/* ===================================================================
+ * Service-Backed Parameter API (requires NROS_PARAM_SERVICES feature)
+ *
+ * These functions operate on the nros-params::ParameterServer owned by
+ * the Executor. After calling nros_executor_register_parameter_services,
+ * declared parameters are visible to `ros2 param list /<node>`.
+ *
+ * Only available when nros-c is built with the `param-services` Cargo
+ * feature (requires alloc).
+ * =================================================================== */
+
+struct nros_executor_t;
+
+/**
+ * @brief Register the 6 ROS 2 parameter services on the executor's node.
+ *
+ * Creates service servers for:
+ *   - `~/get_parameters`
+ *   - `~/set_parameters`
+ *   - `~/set_parameters_atomically`
+ *   - `~/list_parameters`
+ *   - `~/describe_parameters`
+ *   - `~/get_parameter_types`
+ *
+ * After this call, parameters declared via
+ * nros_executor_declare_param_*() are visible to `ros2 param` tooling.
+ */
+NROS_PUBLIC nros_ret_t
+nros_executor_register_parameter_services(struct nros_executor_t* executor);
+
+/** @brief Declare a boolean parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_bool(struct nros_executor_t* executor,
+                                                        const char* name, bool value);
+/** @brief Declare an integer parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_integer(struct nros_executor_t* executor,
+                                                           const char* name, int64_t value);
+/** @brief Declare a double parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_double(struct nros_executor_t* executor,
+                                                          const char* name, double value);
+/** @brief Declare a string parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_string(struct nros_executor_t* executor,
+                                                          const char* name, const char* value);
+
+/** @brief Get a boolean parameter from the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_bool(struct nros_executor_t* executor,
+                                                    const char* name, bool* out_value);
+/** @brief Get an integer parameter from the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_integer(struct nros_executor_t* executor,
+                                                       const char* name, int64_t* out_value);
+/** @brief Get a double parameter from the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_double(struct nros_executor_t* executor,
+                                                      const char* name, double* out_value);
+/** @brief Get a string parameter into a caller-provided null-terminated buffer. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_string(struct nros_executor_t* executor,
+                                                      const char* name, char* out_value,
+                                                      size_t max_len);
+
+/** @brief Set a boolean parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_bool(struct nros_executor_t* executor,
+                                                    const char* name, bool value);
+/** @brief Set an integer parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_integer(struct nros_executor_t* executor,
+                                                       const char* name, int64_t value);
+/** @brief Set a double parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_double(struct nros_executor_t* executor,
+                                                      const char* name, double value);
+/** @brief Set a string parameter on the executor's server. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_string(struct nros_executor_t* executor,
+                                                      const char* name, const char* value);
+
+/** @brief Check if a parameter exists on the executor's server. */
+NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t* executor, const char* name);
+
 #ifdef __cplusplus
 }
 #endif

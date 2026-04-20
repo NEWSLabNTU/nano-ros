@@ -44,6 +44,11 @@ ros-iron = ["nros/ros-iron"]
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
 
+# Expose ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
+# via `nros_executor_register_parameter_services`. Requires alloc for boxed
+# service responses.
+param-services = ["alloc", "nros/param-services", "nros-node/param-services"]
+
 [dependencies]
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true

@@ -79,7 +79,9 @@ pub mod parameter_services;
 
 // Re-export parameter types when param-services is enabled
 #[cfg(feature = "param-services")]
-pub use nros_params::{ParameterDescriptor, ParameterServer, ParameterType, ParameterValue};
+pub use nros_params::{
+    ParameterDescriptor, ParameterServer, ParameterType, ParameterValue, SetParameterResult,
+};
 
 // Export standalone node (without transport)
 pub use node::{Node as StandaloneNode, NodeConfig, NodeError as StandaloneNodeError};
