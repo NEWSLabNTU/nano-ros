@@ -1300,7 +1300,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
 /// - XRCE Agent available: `just build-xrce-agent`
 #[test]
-#[ignore] // XRCE C: agent doesn't forward data between C API talker/listener (Rust XRCE test passes)
+// Previously #[ignore]: C talker didn't flush XRCE output stream after publish (fixed)
 fn test_zephyr_xrce_c_talker_listener() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");

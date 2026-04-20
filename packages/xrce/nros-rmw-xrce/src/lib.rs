@@ -1039,6 +1039,12 @@ impl Publisher for XrcePublisher {
                 data.len(),
             );
             if req != xrce_sys::UXR_INVALID_REQUEST_ID {
+                // Flush the output stream so the data reaches the agent.
+                // Without this, data stays in the reliable stream buffer
+                // until the next uxr_run_session_time() call (e.g., from
+                // spin_once). Callers that don't use an executor (e.g.,
+                // the C API's nros_publish_raw loop) would never flush.
+                xrce_sys::uxr_run_session_time(&raw mut SESSION, 0);
                 return Ok(());
             }
 
