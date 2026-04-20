@@ -2,10 +2,8 @@
  * @file main.cpp
  * @brief Zephyr C++ action client example using nros-cpp API
  *
- * This example demonstrates a Fibonacci action client on Zephyr RTOS
- * using the nros C++ API (nros::init, nros::Node, nros::ActionClient<A>).
- * Sends a goal, polls for feedback, then gets the result.
- * The nros module handles zenoh initialization and platform support.
+ * Sends a goal asynchronously, polls for feedback, then retrieves
+ * the result via Future::wait (executor-driven, no blocking zpico_get).
  */
 
 #include <zephyr/kernel.h>
@@ -21,10 +19,6 @@ extern "C" {
 #include "example_interfaces.hpp"
 
 LOG_MODULE_REGISTER(nros_cpp_action_client, LOG_LEVEL_INF);
-
-/* ============================================================================
- * Application
- * ============================================================================ */
 
 int main(void)
 {
@@ -54,7 +48,8 @@ int main(void)
     }
 
     /* Create action client */
-    nros::ActionClient<example_interfaces::action::Fibonacci> client;
+    using Fibonacci = example_interfaces::action::Fibonacci;
+    nros::ActionClient<Fibonacci> client;
     ret = node.create_action_client(client, "/fibonacci");
     if (!ret.ok()) {
         LOG_ERR("Action client creation failed: %d", ret.raw());
@@ -62,14 +57,16 @@ int main(void)
         return 1;
     }
 
-    /* Allow time for connection to stabilize */
-    k_sleep(K_SECONDS(2));
+    /* Warm-up spin — allow zenoh discovery to complete */
+    for (int i = 0; i < 30; i++) {
+        nros::spin_once(100);
+    }
 
-    /* Send goal */
+    /* Send goal (blocking convenience — spins executor internally) */
     int32_t order = 10;
     LOG_INF("Sending goal: order=%d", order);
 
-    example_interfaces::action::Fibonacci::Goal goal;
+    Fibonacci::Goal goal;
     goal.order = order;
 
     uint8_t goal_id[16];
@@ -81,19 +78,20 @@ int main(void)
     }
     LOG_INF("Goal sent: order=%d", order);
 
-    /* Poll for feedback while waiting */
-    for (int i = 0; i < 20; i++) {
+    /* Poll for feedback while waiting for server to complete */
+    for (int i = 0; i < 30; i++) {
         nros::spin_once(100);
 
-        example_interfaces::action::Fibonacci::Feedback fb;
+        Fibonacci::Feedback fb;
         while (client.try_recv_feedback(fb)) {
             LOG_INF("Feedback: sequence length=%d", fb.sequence.length());
         }
     }
 
-    /* Get result (blocking) */
-    example_interfaces::action::Fibonacci::Result result;
-    ret = client.get_result(goal_id, result);
+    /* Get result via async Future (executor-driven, no blocking zpico_get) */
+    auto result_fut = client.get_result_future(goal_id);
+    Fibonacci::Result result;
+    ret = result_fut.wait(nros::global_handle(), 10000, result);
     if (ret.ok()) {
         LOG_INF("Result received: sequence length=%d", result.sequence.length());
         LOG_INF("[OK]");
