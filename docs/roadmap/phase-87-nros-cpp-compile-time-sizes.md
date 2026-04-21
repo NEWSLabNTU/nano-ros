@@ -1,437 +1,516 @@
-# Phase 87: `nros-cpp` Compile-Time Storage-Size Derivation
+# Phase 87: Rust-as-SSoT sizes for C/C++ opaque storage
 
-**Goal**: Replace `nros-cpp/build.rs`'s hand-coded `4 * ptr_bytes + …`
-struct-layout math with compile-time-derived sizes obtained from
-`core::mem::size_of::<T>()`. The sizes flow from the target Rust
-compilation out to a `#define` in `nros_cpp_config_generated.h` via a
-probe crate that reflects symbol values from a target-compiled
-object file.
+**Goal**: Replace every hand-coded opaque-storage size in the workspace
+with values sourced from Rust's `core::mem::size_of`. The `nros` umbrella
+crate owns the size constants; `nros-c` / `nros-cpp` read them at build
+time by probing `nros`'s compiled rlib via the `object` crate.
 
 **Status**: Not Started
-**Priority**: Medium — currently blocks 3 `rtos_e2e` test cases on
-NuttX (C + C++), and the same class of undercount will hit FreeRTOS
-/ ThreadX once their RMW firmware failures in 85.10 are fixed. Also
-closes a latent bug in `nros-c` where `opaque_sizes.rs` thinks it
-uses `size_of::<T>()` but cbindgen silently drops the value.
-**Depends on**: Phase 85.4 (parametrised RTOS E2E tests exist and
-currently surface the undercount as a compile-time assertion
-failure). Supersedes [Phase 85.9](./phase-85-test-suite-consolidation.md).
+**Priority**: Medium — unblocks 3 NuttX rtos_e2e cases that currently
+trip a compile-time assert on 32-bit targets, and removes an entire
+class of drift bug across 4 build scripts.
+**Depends on**: Phase 85.4 (rtos_e2e parametrised tests; currently the
+loudest failure mode for the undercount bug).
+**Supersedes**: Phase 85.9 (the "stopgap bump" path explicitly rejected
+by the project owner: *"we should avoid manual size calculation. Instead,
+the size should be generated in compile time"*).
 
 ## Overview
 
-### The problem
+### Problem
 
-Every opaque C++ wrapper in `nros-cpp`
-(`Publisher`, `Subscription`, `ServiceServer`, `ServiceClient`,
-`ActionServer`, `ActionClient`, `GuardCondition`, `Executor`) embeds a
-fixed-size byte array for the Rust handle:
+Every opaque C/C++ wrapper in the project embeds a fixed-size byte array
+sized by hand-math in build scripts:
 
 ```cpp
-// packages/core/nros-cpp/include/nros/publisher.hpp:101
+// nros-cpp/include/nros/publisher.hpp
 alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
 ```
 
-The `#define` is emitted at build time by
-`packages/core/nros-cpp/build.rs:122-146`, which currently estimates
-each handle size with pointer-width math:
-
-```rust
-let publisher_bytes = align_up(
-    4 * ptr_bytes + name_buf + ptr_bytes + 4 * ptr_bytes,
-    8,
-);
+```c
+// nros-c generated header / types.h
+uint64_t _opaque[NROS_PUBLISHER_OPAQUE_U64S];
 ```
 
-This formula under-counts on 32-bit ARM (`armv7a-nuttx-eabihf`,
-`thumbv7m-none-eabi`): zenoh-pico's internal `RmwPublisher` holds more
-state than "4 pointers" when expanded field-by-field, so the compile-
-time assert at `packages/core/nros-cpp/src/lib.rs:350` trips:
+The backing constants come from four different places, none of which
+agree or are authoritative:
 
-```
-evaluation panicked: NROS_CPP_PUBLISHER_STORAGE_SIZE too small for
-CppPublisher — bump publisher_bytes in build.rs
-```
+1. **`nros-cpp/build.rs`** — pointer-width arithmetic: `4 * ptr_bytes +
+   name_buf + ptr_bytes + 4 * ptr_bytes` per entity. Under-counts on
+   32-bit ARM → trips `const _: () = assert!(size_of::<T>() <= STORAGE)`
+   in `nros-cpp/src/lib.rs:350` → blocks NuttX C/C++ builds.
+2. **`nros-c/build.rs`** — hand-picked literals: `session_upper = 512`,
+   `entries_upper = max_cbs * 80`, `action_server_storage_bytes = 256`.
+   Works only because the literals are deliberately generous.
+3. **`nros-c/src/opaque_sizes.rs`** — the only place that uses real
+   `u64s_for::<T>()`, but cbindgen drops it (issue #252) so the
+   generated header shows `#define PUBLISHER_OPAQUE_U64S 1` — a
+   placeholder that no C code should consume.
+4. **`nros-c/include/nros/types.h`** — hand-maintained magic numbers
+   (`#define NROS_PUBLISHER_OPAQUE_U64S 48`). What C examples actually
+   link against. Drifts silently from (3).
 
-The failure blocks
-`test_rtos_{pubsub,service,action}_e2e::platform_2_Platform__Nuttx::lang_{2_Lang__C,3_Lang__Cpp}`
-(3 cases, plus symmetric future blockage on FreeRTOS / ThreadX
-variants once those firmware E2Es unblock).
+Every one of these needs an update any time a backend's handle type
+grows a field. The drift cost is real: the 32-bit ARM undercount has
+been blocking tests for weeks.
 
-### Why not just bump the formula
+### Design
 
-The obvious stopgap — bump the `4 * ptr_bytes` to `32 * ptr_bytes` or
-some other generous constant — was rejected in Phase 85.4 because it
-preserves the underlying problem: `build.rs` continues to guess at
-struct layouts by hand. Any future change to `CppPublisher` (added
-field, different backend wrapping the handle, Rust compiler layout
-changes) can silently undercount again.
+Three principles, picked jointly with the project owner:
 
-The project owner's directive, re-stated in Phase 85.4's commit message:
+1. **Rust is the single source of truth for sizes.** Each relevant type
+   has exactly one `pub const FOO_SIZE: usize = core::mem::size_of::<T>();`
+   entry. That const is the contract; C/C++ values are derived from it.
 
-> we should avoid manual size calculation. Instead, the size should be
-> generated in compile time.
+2. **`nros` (the umbrella crate) hosts the exports.** Users and
+   consumer build scripts look in one place — not per-backend crates
+   that pollute the dep graph with size-only edges.
 
-### Why a probe crate
+3. **Generation happens during normal `cargo build`.** No separate
+   codegen tool, no `cargo nros-headers` subcommand, no external
+   pipeline. `nros-c/build.rs` and `nros-cpp/build.rs` probe `nros`'s
+   compiled rlib with the `object` crate, format the values into their
+   respective headers.
 
-Two approaches were investigated and ruled out:
+Further, the consumer wrappers go on a diet:
 
-- **cbindgen-evaluated const**. Empirically verified (`/tmp/cbindgen-probe`
-  and `/tmp/cbi-probe2`) that cbindgen silently drops any const whose
-  value depends on `core::mem::size_of::<T>()`. Tracked upstream at
-  [cbindgen#252](https://github.com/mozilla/cbindgen/issues/252) (open
-  since 2018), no fix in sight. The `nros-c` crate has the same latent
-  bug: `opaque_sizes.rs:32` uses `u64s_for::<RmwPublisher>()` but the
-  cbindgen-generated `nros_generated.h` has `#define
-  PUBLISHER_OPAQUE_U64S 1` (placeholder branch). It works only because
-  `types.h:79` hand-maintains `NROS_PUBLISHER_OPAQUE_U64S 48`.
+4. **The C++ wrappers become thin.** Today `CppPublisher` is a Rust
+   struct bundling `RmwPublisher + [u8; 256] name + usize len`. The
+   metadata moves to the C++ class; the opaque storage shrinks to just
+   `size_of::<RmwPublisher>()`. Both nros-c and nros-cpp end up with
+   the *same* opaque size per Rust handle, sourced from the same const.
 
-- **`-Zprint-type-sizes`** is nightly-only with an unstable output
-  format; parsing from `build.rs` is brittle.
+5. **C-internal FFI shims become `#[repr(C)]`.** Types like
+   `ActionServerInternal` and `ServiceClientInternal` are shim structs
+   of pointers and small integers — there's no reason they can't be
+   `#[repr(C)]`. Once they are, cbindgen emits the C struct directly
+   and the C compiler computes `sizeof()` natively. No probe needed for
+   these.
 
-The remaining feasible approach is a **probe crate**: a sibling crate
-compiled for the same target with the same features as `nros-cpp`,
-whose `build.rs` invokes `rustc --target $TARGET --emit=obj` on a
-generated probe source and extracts `#[used] #[unsafe(no_mangle)] pub
-static … = size_of::<T>()` values from the resulting object file via
-the `object` crate. The values are forwarded to
-`nros-cpp/build.rs` through the standard `links = "…"` + `cargo:KEY=VALUE`
-→ `DEP_NROS_CPP_SIZEPROBE_*` cargo metadata channel.
+### Why the `object` crate, not `llvm-nm`
 
-### Why a shared types crate
+Two options for reading symbol sizes out of the rlib:
 
-A naïve probe-crate design duplicates the struct layouts (`CppPublisher`,
-`CppSubscription`, …) between `nros-cpp/src/*.rs` and
-`nros-cpp-sizeprobe/src/lib.rs`. If the two drift, the probe reports a
-stale size; the compile-time assert at `lib.rs:350` catches it
-eventually, but only *after* the mismatch trips in CI. That's a
-foot-gun that Phase 87 avoids by factoring the struct layouts into a
-new **types-only** crate that both `nros-cpp` (wrappers + FFI) and
-`nros-cpp-sizeprobe` (sizing) depend on.
+- **`llvm-nm --print-size --defined-only`** — used by
+  `zpico-platform-shim/build.rs` today for probing C struct sizes.
+  Subprocess, string parsing, path-finding for rustc's bundled llvm-nm.
+- **`object` crate (gimli-rs)** — pure Rust, typed API. Parses ar
+  archives natively, dispatches per-member to ELF/Mach-O/COFF readers,
+  exposes `ObjectSymbol::size()` directly. What rustc itself uses
+  internally for object-file reading. No subprocess, no string parsing,
+  no path-hunting.
+
+We pick `object`. The probe is 30 lines, no external tool dependency,
+typed error handling. `zpico-platform-shim`'s llvm-nm-based probe
+stays for now; a follow-up can migrate it for consistency.
 
 ### Crate graph (after Phase 87)
 
 ```
- ┌────────────────────────────────────────────┐
- │ nros-rmw-zenoh / nros-rmw-xrce / nros-node │  (unchanged)
- └────────────────────┬───────────────────────┘
-                      │
-                      ▼
- ┌─────────────────────────────────────────┐
- │ nros-cpp-types                          │   NEW — struct defs
- │   CppPublisher, CppSubscription,        │   ONLY, no FFI
- │   CppServiceServer, CppServiceClient,   │   (pub fields, #[repr(C)])
- │   CppActionServer, CppActionClient,     │
- │   CppGuardCondition                     │
- └───────┬──────────────────┬──────────────┘
-         │                  │
-         ▼                  ▼
- ┌──────────────┐   ┌────────────────────────┐
- │ nros-cpp     │   │ nros-cpp-sizeprobe     │   NEW — compile-time
- │ (wrappers +  │   │   #[used] static       │   size probe, links
- │  FFI, C++    │   │   NROS_CPP_*_SIZE      │   = "nros_cpp_sizeprobe"
- │  headers)    │   │                        │
- └──────┬───────┘   └──────────┬─────────────┘
-        │                      │
-        └──────────────────────┘
-         reads DEP_NROS_CPP_SIZEPROBE_* in build.rs
-         → emits #define to nros_cpp_config_generated.h
+ ┌──────────────────────────────────────────────┐
+ │ nros-rmw-zenoh, nros-rmw-xrce, nros-node     │  unchanged — define
+ │                                              │  the real Rust types
+ └──────────────────────┬───────────────────────┘
+                        │
+                        ▼
+ ┌──────────────────────────────────────────────┐
+ │ nros (umbrella)                              │
+ │   src/sizes.rs  ← SSoT                       │
+ │     pub const PUBLISHER_SIZE = size_of::<T>();
+ │     #[used] static __NROS_SIZE_PUBLISHER:    │
+ │                   [u8; PUBLISHER_SIZE] = [0; _];
+ │                                              │
+ │   feature axes match today's — `rmw-zenoh`   │
+ │   / `rmw-xrce` / `rmw-dds` flip in which     │
+ │   concrete type T resolves to via the        │
+ │   `RmwPublisher = <ConcreteSession as        │
+ │    Session>::PublisherHandle` alias          │
+ └──────────┬──────────────────────┬────────────┘
+            │                      │
+            ▼                      ▼
+ ┌──────────────────────┐ ┌──────────────────────┐
+ │ nros-c               │ │ nros-cpp             │
+ │   build.rs reads     │ │   build.rs reads     │
+ │   nros's rlib via    │ │   nros's rlib via    │
+ │   nros-sizes-build   │ │   nros-sizes-build   │
+ │   → writes           │ │   → writes           │
+ │   nros_config_       │ │   nros_cpp_config_   │
+ │   generated.h        │ │   generated.h        │
+ │                      │ │   (thin-wrapper      │
+ │   types.h drops      │ │    refactor removes  │
+ │   hand-maintained    │ │    CppPublisher etc.)│
+ │   size consts        │ │                      │
+ └──────────────────────┘ └──────────────────────┘
+            ▲                      ▲
+            │                      │
+            └──────────┬───────────┘
+                       │
+                       ▼
+ ┌──────────────────────────────────────────────┐
+ │ nros-sizes-build (NEW build-dep utility)     │
+ │   fn find_dep_rlib(name) -> PathBuf          │
+ │   fn extract_sizes(rlib, prefix)             │
+ │       -> HashMap<String, u64>                │
+ │   (~60 lines total, uses `object` = "0.39")  │
+ └──────────────────────────────────────────────┘
 ```
 
-## Work Items
+## Work items
 
-- [ ] 87.1 — Create `packages/core/nros-cpp-types/`
-- [ ] 87.2 — Migrate `nros-cpp`'s `Cpp*` struct definitions to
-      `nros-cpp-types` (types crate becomes the single source of truth)
-- [ ] 87.3 — Create `packages/core/nros-cpp-sizeprobe/` with a
-      `build.rs` that invokes `rustc` and parses the object file
-- [ ] 87.4 — Rewrite `packages/core/nros-cpp/build.rs` to consume
-      sizes from `DEP_NROS_CPP_SIZEPROBE_*` and drop all hand-math
-- [ ] 87.5 — Apply the same pattern to `nros-c` (close the latent
-      `opaque_sizes.rs` / cbindgen-drop bug in one go)
-- [ ] 87.6 — Verify on all target triples + integration tests
-- [ ] 87.7 — Doc updates
+Implementation proceeds in four stages. Stages 1–2 are the probe
+infrastructure and can land as a single PR; Stages 3–4 are larger
+refactors with public-API surface area, each a separate PR.
 
-### 87.1 — Create `packages/core/nros-cpp-types`
+- [ ] **87.1** Create `nros-sizes-build` build-script utility
+- [ ] **87.2** Add `nros/src/sizes.rs` with `export_size!` macro + exports
+- [ ] **87.3** Update `nros-c/build.rs` and `nros-cpp/build.rs` to probe
+      `nros`'s rlib; run both hand-math and probe in parallel, assert
+      equal, land once green
+- [ ] **87.4** Delete hand-math; probe is authoritative
+- [ ] **87.5** `#[repr(C)]` migration for `ActionServerInternal`,
+      `ActionClientInternal`, `ServiceClientInternal`,
+      `ServiceServerInternal` — cbindgen takes over their sizing
+- [ ] **87.6** Thin-wrapper refactor: delete `CppPublisher`,
+      `CppSubscription`, `CppService`, `CppActionServer`,
+      `CppActionClient`, `CppGuardCondition`; move metadata to C++
+      classes; one shared `#define` per Rust handle
+- [ ] **87.7** Remove `nros-c/include/nros/types.h` hand-maintained
+      sizes; headers become 100% generated
+- [ ] **87.8** Verify across every target; update docs
 
-- Cargo package with `no_std` + feature gates mirroring `nros-cpp`:
-  `rmw-zenoh` / `rmw-xrce` / `rmw-dds` / `rmw-cffi` (forwarded to
-  `nros-rmw-zenoh` / `nros-rmw-xrce` / `nros-rmw-dds` / `nros-rmw-cffi`
-  respectively), plus the `platform-*` / `ros-*` axes.
-- Exports `pub struct CppPublisher { pub handle: RmwPublisher,
-  pub topic_name: [u8; MAX_TOPIC_LEN], pub topic_name_len: usize }` and
-  the same for `CppSubscription`, `CppServiceServer`,
-  `CppServiceClient`, `CppActionServer`, `CppActionClient`,
-  `CppGuardCondition`. No `impl` blocks, no FFI — just the layout.
-- The fields are `pub` (were `pub(crate)` in `nros-cpp`) so both
-  `nros-cpp` and `nros-cpp-sizeprobe` can build them in tests /
-  probes without downstream-visibility leakage (the types themselves
-  are still only meant for consumption through the C++ header).
-- **Files**: `packages/core/nros-cpp-types/{Cargo.toml,src/lib.rs}`.
+### 87.1 — `nros-sizes-build` build-script utility
 
-### 87.2 — Migrate struct definitions out of `nros-cpp`
-
-- Replace the inline `pub(crate) struct CppPublisher { … }` in
-  `packages/core/nros-cpp/src/publisher.rs:14` (and siblings) with
-  `use nros_cpp_types::CppPublisher;`. Same for
-  `subscription.rs:16`, `service.rs:20`, `service.rs:206`,
-  `action.rs` (server + client), `guard_condition.rs`.
-- `nros-cpp` gains `nros-cpp-types` as a workspace dependency. Feature
-  forwarding: `nros-cpp/rmw-zenoh` implies
-  `nros-cpp-types/rmw-zenoh` (otherwise the `RmwPublisher` type alias
-  inside `nros-cpp-types` has no backend).
-- No API change visible to C++ / external callers. Everything behind
-  the opaque `storage_` stays byte-identical.
-- **Files**: `packages/core/nros-cpp/Cargo.toml`,
-  `packages/core/nros-cpp/src/{publisher,subscription,service,action,guard_condition}.rs`.
-
-### 87.3 — Create `packages/core/nros-cpp-sizeprobe`
-
-- Cargo package with `links = "nros_cpp_sizeprobe"`. Depends on
-  `nros-cpp-types`.
-- `src/lib.rs` is minimal:
-  ```rust
-  #![no_std]
-  use nros_cpp_types::*;
-  macro_rules! export_size {
-      ($name:ident, $ty:ty) => {
-          #[used]
-          #[unsafe(no_mangle)]
-          pub static $name: usize = core::mem::size_of::<$ty>();
-      };
-  }
-  export_size!(NROS_CPP_PUBLISHER_SIZE, CppPublisher);
-  export_size!(NROS_CPP_SUBSCRIPTION_SIZE, CppSubscription);
-  export_size!(NROS_CPP_SERVICE_SERVER_SIZE, CppServiceServer);
-  export_size!(NROS_CPP_SERVICE_CLIENT_SIZE, CppServiceClient);
-  export_size!(NROS_CPP_ACTION_SERVER_SIZE, CppActionServer);
-  export_size!(NROS_CPP_ACTION_CLIENT_SIZE, CppActionClient);
-  export_size!(NROS_CPP_GUARD_CONDITION_SIZE, CppGuardCondition);
-  ```
-- `build.rs` does the probe dance:
-  1. Wait until the crate's own `cargo build` step has produced the
-     `.rlib` for the target (this is implicit — `build.rs` runs
-     *after* dep compilation but *before* own `lib.rs` compilation).
-  2. **Actually, can't rely on own rlib being built yet**. Instead:
-     emit a probe source to `$OUT_DIR/probe.rs` containing the same
-     static declarations, invoke
-     `rustc --target $TARGET --edition 2024 --crate-type obj
-      --extern nros_cpp_types=<path> -O -o $OUT_DIR/probe.o probe.rs`.
-  3. The `<path>` for `--extern` is discovered via `cargo metadata
-     --format-version=1 --no-deps` from the current workspace (that
-     tells us where cargo put the target-compiled `rlib` in
-     `target/<target>/release/deps/libnros_cpp_types-HASH.rlib`).
-     Alternative: use the `DEP_*` channel from a stub build.rs on
-     `nros-cpp-types` itself to forward its own `OUT_DIR`.
-  4. Parse `probe.o` with the `object` crate; for each
-     `NROS_CPP_*_SIZE` symbol, read its value out of the `.rodata`
-     section. Statics of type `usize` with a const initialiser are
-     constant-evaluated and end up as raw bytes in `.rodata`.
-  5. Emit each as `println!("cargo:{name}={value}")` — cargo translates
-     this into `DEP_NROS_CPP_SIZEPROBE_{name}` for dependents.
-- **Cross-target caveat**: `rustc` can be invoked for the target even
-  on a host that can't execute the target (we only need the object
-  file, not an executable). Confirmed workable for ARM / RISC-V
-  cross-compilation.
-- **Files**: `packages/core/nros-cpp-sizeprobe/{Cargo.toml,src/lib.rs,build.rs}`.
-
-### 87.4 — Rewrite `packages/core/nros-cpp/build.rs`
-
-- Delete `target_pointer_bytes()`, all the `publisher_bytes = …`
-  hand-math (lines 60–146).
-- Replace with:
-  ```rust
-  let publisher_storage = env::var("DEP_NROS_CPP_SIZEPROBE_NROS_CPP_PUBLISHER_SIZE")
-      .expect("DEP_NROS_CPP_SIZEPROBE_NROS_CPP_PUBLISHER_SIZE not set — is nros-cpp-sizeprobe a direct dependency?")
-      .parse::<usize>()
-      .expect("invalid usize");
-  // … similar for subscription, service, action_server, action_client,
-  //       guard_condition, executor.
-  ```
-- The rest of `build.rs` (writing `nros_cpp_ffi_config.rs` + the C
-  header) stays byte-identical except the `format!` args now read
-  from the parsed env values.
-- **Files**: `packages/core/nros-cpp/build.rs`.
-
-### 87.5 — Apply the same pattern to `nros-c`
-
-- `packages/core/nros-c/src/opaque_sizes.rs:32` has
-  `pub const PUBLISHER_OPAQUE_U64S: usize =
-   u64s_for::<nros::internals::RmwPublisher>();` — cbindgen drops
-  this, so `include/nros/nros_generated.h:85` shows
-  `#define PUBLISHER_OPAQUE_U64S 1` (the no-RMW placeholder).
-  `include/nros/types.h:79` hand-maintains `#define
-  NROS_PUBLISHER_OPAQUE_U64S 48`; the two names diverge silently.
-- Fix: re-use the same sizeprobe crate (or a sibling `nros-c-sizeprobe`
-  if type-graph clash prevents sharing) to emit the RmwPublisher /
-  RmwSession / RmwServiceClient sizes. `nros-c/build.rs` reads them
-  via `DEP_*` and writes `types.h` instead of hand-maintaining it.
-- Alternatively, if `nros-cpp-types` already has the required type
-  aliases (`RmwPublisher`, `RmwSession`, `RmwServiceClient`), extend
-  `nros-cpp-sizeprobe` with those additional statics. Most likely
-  cleanest — the RMW types are shared across both C and C++ APIs.
-- **Files**: `packages/core/nros-c/build.rs`,
-  `packages/core/nros-c/include/nros/types.h` (becomes generated),
-  `packages/core/nros-c/src/opaque_sizes.rs` (replace with the same
-  `DEP_*` read-through pattern, or keep the asserts and drop the
-  now-redundant `u64s_for::<T>()` computation).
-
-### 87.6 — Verification
-
-- `cargo build -p nros-cpp --target armv7a-nuttx-eabihf
-  --features "rmw-zenoh,platform-nuttx,ros-humble"` succeeds without
-  the `NROS_CPP_PUBLISHER_STORAGE_SIZE too small` assert firing.
-- Same for `thumbv7m-none-eabi` (FreeRTOS), `riscv64gc-unknown-none-elf`
-  (ThreadX RISC-V), and `x86_64-unknown-linux-gnu` (native).
-- `cargo nextest run --test rtos_e2e
-   -E 'test(platform_2_Platform__Nuttx::lang_{2_Lang__C,3_Lang__Cpp})'`
-  progresses past the build step (may still hit the Phase 85.10 RV64
-  connect failure downstream; that's out of scope for 87).
-- `diff` before / after of each target's `nros_cpp_config_generated.h`:
-  the sizes should be *smaller or equal* on 32-bit targets (the old
-  formula over-padded for some fields while under-padding the handle)
-  and *similar* on 64-bit targets.
-
-### 87.7 — Doc updates
-
-- `book/src/internals/nros-cpp-opaque-storage.md` (new) or a section
-  in the existing C++ API reference explaining the sizeprobe design
-  for future maintainers.
-- Comment block at the top of `packages/core/nros-cpp-sizeprobe/build.rs`
-  enumerating the `--extern` discovery strategy and citing the cargo
-  `links` docs + the `object` crate.
-
-## Design Notes
-
-### Finding `--extern` paths from `build.rs`
-
-The hardest part of 87.3 is step 3: the probe's `build.rs` needs to
-tell `rustc` where to find `libnros_cpp_types-*.rlib`. Three viable
-strategies ranked by robustness:
-
-1. **`cargo metadata --format-version=1 --no-deps` + path glob**. Parse
-   the JSON, find `nros-cpp-types`, read `manifest_path`, then derive
-   `target/<target>/<profile>/deps/libnros_cpp_types-*.rlib`. The
-   hash suffix needs a glob-match. Brittle across cargo releases but
-   currently the standard approach used by `cargo-llvm-cov` and
-   similar tools.
-
-2. **`nros-cpp-types` emits its own `OUT_DIR` via `links`**. Add
-   `links = "nros_cpp_types"` to `nros-cpp-types/Cargo.toml` and have
-   its build.rs emit `cargo:out-dir=$OUT_DIR`. Dependents (including
-   the sizeprobe's `build.rs`) read `DEP_NROS_CPP_TYPES_OUT_DIR`.
-   `OUT_DIR` is next to (but not identical to) the rlib dir; a fixup
-   is needed. Less brittle than glob-matching.
-
-3. **Invoke `cargo rustc -p nros-cpp-types --target $T -- --print
-    file-names`**. Canonical but involves a nested cargo, which
-   cargo itself discourages. Fallback only.
-
-Recommend (1) as the primary path, (2) as a reliability backstop if
-(1) breaks. The probe crate's build.rs should log the discovered path
-to `stderr` so drift is debuggable.
-
-### `object` crate symbol extraction
-
-The probe file exports `#[used] #[unsafe(no_mangle)] pub static
-NROS_CPP_PUBLISHER_SIZE: usize = core::mem::size_of::<CppPublisher>();`.
-rustc constant-evaluates the `size_of::<T>()` call at compile time for
-the target, so the emitted `.rodata` entry for the symbol contains the
-raw 4- or 8-byte little-endian number. Algorithm:
+New workspace crate at `packages/core/nros-sizes-build/`. Build-time
+library, not published. Provides two functions:
 
 ```rust
-use object::{Object, ObjectSection, ObjectSymbol};
-let data = std::fs::read(&probe_obj)?;
-let file = object::File::parse(&*data)?;
-for sym in file.symbols() {
-    let Ok(name) = sym.name() else { continue };
-    if !name.starts_with("NROS_CPP_") { continue }
-    let Some(sect_idx) = sym.section_index() else { continue };
-    let sect = file.section_by_index(sect_idx)?;
-    let bytes = sect.data()?;
-    let off = sym.address() - sect.address();
-    // target endianness + pointer width from file.architecture()
-    let value = read_usize_le(&bytes[off as usize..], ptr_bytes);
-    println!("cargo:{}={value}", name);
+// packages/core/nros-sizes-build/src/lib.rs
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Locate the compiled rlib for a direct dependency within the current
+/// cargo build. Uses `cargo metadata` to find the target directory, then
+/// globs `target/<triple>/<profile>/deps/lib<name>-*.rlib` and picks the
+/// newest.
+pub fn find_dep_rlib(crate_name: &str) -> PathBuf { /* ~25 lines */ }
+
+/// Read all defined symbols starting with `prefix` from an rlib, returning
+/// a map of {suffix-after-prefix → ObjectSymbol::size()}. Iterates ar
+/// archive members via `object::read::archive::ArchiveFile`; skips
+/// `.rmeta` metadata members.
+pub fn extract_sizes(rlib: &Path, prefix: &str) -> HashMap<String, u64> {
+    /* ~30 lines */
 }
 ```
 
+Dependencies: `object = "0.39"`, `serde_json = "1"` (for cargo metadata
+parsing). Both are already transitively present in the workspace via
+other build scripts.
+
+**Files**: `packages/core/nros-sizes-build/{Cargo.toml,src/lib.rs,README.md}`.
+
+### 87.2 — `nros/src/sizes.rs`
+
+```rust
+//! Single source of truth for FFI storage sizes.
+//!
+//! Each `export_size!` invocation creates two artefacts:
+//!
+//! * `pub const FOO_SIZE: usize = core::mem::size_of::<T>();` — for Rust
+//!   consumers (including in-crate `const _: () = assert!(...)` checks).
+//! * `pub static __NROS_SIZE_FOO: [u8; FOO_SIZE]` — array-sized static
+//!   whose *symbol storage size* in the compiled rlib equals `FOO_SIZE`.
+//!   `nros-c`/`nros-cpp` build scripts extract these via
+//!   `nros_sizes_build::extract_sizes()`.
+
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
+mod rmw_sizes {
+    use nros_node::session::*;
+
+    macro_rules! export_size {
+        ($vis:vis $name:ident = $ty:ty) => {
+            $vis const $name: usize = core::mem::size_of::<$ty>();
+            paste::paste! {
+                #[used]
+                #[unsafe(no_mangle)]
+                pub static [<__NROS_SIZE_ $name>]: [u8; $name] = [0u8; $name];
+            }
+        };
+    }
+
+    export_size!(pub PUBLISHER_SIZE       = RmwPublisher);
+    export_size!(pub SUBSCRIBER_SIZE      = RmwSubscriber);
+    export_size!(pub SERVICE_CLIENT_SIZE  = RmwServiceClient);
+    export_size!(pub SERVICE_SERVER_SIZE  = RmwServiceServer);
+    export_size!(pub EXECUTOR_SIZE        = nros_node::Executor);
+    export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
+}
+
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
+pub use rmw_sizes::*;
+```
+
+**Feature gating**: the statics only exist when an RMW backend is
+enabled. Workspace-level `cargo check` (no RMW feature) sees empty
+module — same as today's `#[cfg(any(rmw-*))]` pattern in
+`opaque_sizes.rs`.
+
+**Files**: `packages/core/nros/src/sizes.rs`,
+`packages/core/nros/src/lib.rs` (add `pub mod sizes;`).
+
+### 87.3 — Probe in consumer build scripts
+
+`nros-c/build.rs` and `nros-cpp/build.rs` each add:
+
+```rust
+let nros_rlib = nros_sizes_build::find_dep_rlib("nros");
+let sizes = nros_sizes_build::extract_sizes(&nros_rlib, "__NROS_SIZE_");
+
+// For transition safety, keep hand-math as `expected_*` and assert:
+assert_eq!(sizes["PUBLISHER_SIZE"] as usize, expected_publisher_size,
+    "probe / hand-math mismatch — bump hand-math or refresh probe");
+```
+
+This mode lands under a feature flag (`verify-probe`) enabled in CI;
+once every target reports identical values across a few days of CI, the
+hand-math branch is deleted (87.4).
+
+**Files**: `packages/core/nros-c/build.rs`,
+`packages/core/nros-cpp/build.rs`.
+
+### 87.4 — Delete hand-math
+
+With the probe proven, remove:
+
+- `target_pointer_bytes()` and all `*_bytes = 4 * ptr_bytes + …`
+  arithmetic in `nros-cpp/build.rs` (~90 lines).
+- Literal constants (`session_upper`, `entries_upper`, `action_*_bytes`)
+  in `nros-c/build.rs` (~30 lines).
+- `u64s_for::<T>()` computations in `nros-c/src/opaque_sizes.rs` — the
+  `const _: () = assert!(...)` checks stay; the `pub const *_OPAQUE_U64S`
+  declarations go (cbindgen wasn't emitting them anyway).
+
+`nros-c/include/nros/types.h`'s hand-written `#define NROS_*_OPAQUE_U64S`
+lines come out; the generated header takes over.
+
+**Files**: `packages/core/nros-c/build.rs`,
+`packages/core/nros-cpp/build.rs`,
+`packages/core/nros-c/src/opaque_sizes.rs`,
+`packages/core/nros-c/include/nros/types.h`.
+
+### 87.5 — `#[repr(C)]` for internal FFI shim types
+
+Four structs in `nros-c` currently rely on hand-math because their
+sizes end up in C headers via `const _: () = assert!` defence rather
+than cbindgen:
+
+| Type | File | Size (today) |
+|------|------|--------------|
+| `ActionServerInternal` | `nros-c/src/action/server.rs` | ~40 bytes |
+| `ActionClientInternal` | `nros-c/src/action/client.rs` | ~16 bytes |
+| `ServiceClientInternal` | `nros-c/src/service.rs` | ~24 bytes |
+| `ServiceServerInternal` | `nros-c/src/service.rs` | ~16 bytes |
+
+All four contain only C-ABI-compatible fields (function pointers, raw
+`*mut c_void`, `i32` indices). The one obstacle is `Option<RawHandle>`
+fields — migrate to a plain `i32 = -1` sentinel or an explicit tagged
+struct.
+
+After `#[repr(C)]`:
+
+- cbindgen emits matching C struct definitions.
+- `nros_action_server_t._internal` becomes a plain inline
+  `ActionServerInternal` (no more `uint64_t _internal[OPAQUE_U64S]`).
+- No probe, no hand-math, no `const_assert` for these types.
+
+**Files**: `nros-c/src/action/{server,client}.rs`,
+`nros-c/src/service.rs`, `nros-c/include/nros/{action,service}.h`,
+`nros-c/cbindgen.toml`.
+
+### 87.6 — Thin-wrapper refactor (the big one)
+
+Goal: **both C and C++ consumers hold the same Rust handle**, differing
+only in language-native metadata (topic name storage, etc.).
+
+Before:
+
+```rust
+// nros-cpp/src/publisher.rs
+pub(crate) struct CppPublisher {
+    pub handle: RmwPublisher,
+    pub topic_name: [u8; 256],
+    pub topic_name_len: usize,
+}
+```
+
+```cpp
+// nros-cpp/include/nros/publisher.hpp
+class Publisher {
+    alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
+    // name is inside storage_ (Rust-side)
+};
+```
+
+After:
+
+```rust
+// No CppPublisher. nros-cpp's FFI operates on RmwPublisher directly.
+```
+
+```cpp
+class Publisher {
+    alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE];   // same macro as nros-c
+    char topic_name_[256];                               // C++-side
+    size_t topic_name_len_;                              // C++-side
+public:
+    const char* topic_name() const { return topic_name_; }  // no FFI hop
+};
+```
+
+Impact per entity (Publisher, Subscription, ServiceServer, ServiceClient,
+ActionServer, ActionClient, GuardCondition — 7 types):
+
+1. Delete the `Cpp*` struct definition (~10 lines/each).
+2. Update the FFI functions to take `*mut RmwXxx` (or opaque bytes) and
+   operate on the handle directly. ~3 functions/entity.
+3. Update the C++ hpp class to declare the metadata as C++ fields.
+4. Update the C++ constructor to copy the string into the C++ field
+   instead of passing it through FFI.
+5. Update `_relocate` FFI to `ptr::read`/`ptr::write` on `RmwXxx`
+   directly; the `reregister` path (Executor, ActionServer) stays.
+
+Roughly ~200 lines of diff across 14 files (.rs + .hpp pairs). No
+public C++ API change — accessors keep the same signatures.
+
+**Files**: `nros-cpp/src/{publisher,subscription,service,action,guard_condition}.rs`,
+`nros-cpp/include/nros/*.hpp`, matching cbindgen output.
+
+### 87.7 — Header cleanup
+
+With 87.4–87.6 in: remove the hand-written `types.h` constants, fold
+everything into the generated `nros_config_generated.h`. Keep
+`types.h` for non-size material (enum definitions, common typedefs).
+
+**Files**: `nros-c/include/nros/types.h`.
+
+### 87.8 — Cross-target verification + docs
+
+- `cargo build --target thumbv7m-none-eabi --features "rmw-zenoh,…"`
+  succeeds without any `STORAGE_SIZE too small` assert.
+- Same for `armv7a-nuttx-eabi`, `riscv64gc-unknown-none-elf`,
+  `x86_64-unknown-linux-gnu`.
+- `cargo nextest run -p nros-tests --test rtos_e2e -E
+   'test(Nuttx::lang_2_Lang__C) | test(Nuttx::lang_3_Lang__Cpp)'`
+  progresses past build (runtime failures tracked separately in 85.10).
+- Book updates: `book/src/internals/opaque-storage.md` (new) or a
+  section in the existing C API reference explaining the `export_size!`
+  pattern for future maintainers.
+
+## Acceptance criteria
+
+- [ ] `packages/core/nros-c/build.rs` and
+      `packages/core/nros-cpp/build.rs` contain **zero** target-specific
+      struct-layout math. The only numeric constants they compute are
+      `sizes["FOO_SIZE"].div_ceil(8)` / `.next_multiple_of(8)` kind of
+      mechanical unit conversions.
+- [ ] `packages/core/nros/src/sizes.rs` is the only place in the tree
+      where a size-bearing type's identity appears in a `size_of` or
+      `[u8; _]` context.
+- [ ] `NROS_PUBLISHER_OPAQUE_U64S` (C) and `NROS_PUBLISHER_SIZE` (C++
+      thin-wrapper result) derive from the same underlying const
+      `nros::sizes::PUBLISHER_SIZE`.
+- [ ] `types.h` ships zero hand-written `#define *_OPAQUE_U64S` or
+      `*_STORAGE_SIZE` lines.
+- [ ] The 3 NuttX C / C++ rtos_e2e cases that fail today with
+      "STORAGE_SIZE too small" build past that assertion (runtime
+      behaviour out of scope).
+- [ ] If cbindgen upstream [#252](https://github.com/mozilla/cbindgen/issues/252)
+      ever ships, the architecture requires no restructure — the
+      `export_size!` macro's const line is what cbindgen would pick up;
+      the probe step degrades to a no-op.
+
+## Design notes
+
+### `find_dep_rlib` mechanics
+
+cargo doesn't expose dep rlib paths to build scripts via any stable env
+var. Two reliable strategies:
+
+1. **`cargo metadata --format-version=1 --no-deps`** for
+   `target_directory`, then glob
+   `{target_directory}/<triple>/<profile>/deps/lib<name>-*.rlib` and
+   pick the newest mtime. Used by `cargo-llvm-cov` and similar tools.
+2. **`links = "..."` + `cargo:rlib-path=`** — doesn't work here; build
+   scripts run before their own crate compiles, so the rlib path isn't
+   known to emit.
+
+Phase 87 uses (1). The glob picks up stale rlibs from feature-flag
+combinations; newest-mtime selection matches cargo's own incremental
+semantics.
+
+Two candidate `deps/` paths are checked: `target/<triple>/<profile>/deps/`
+(cross-compile or explicit `--target`) and `target/<profile>/deps/`
+(native without `--target`). Whichever exists first wins.
+
+### Why array-sized statics, not value-encoded statics
+
+`pub static FOO: usize = size_of::<T>();` stores the *value* (e.g., 48)
+in `.rodata`. `llvm-nm --print-size` would report the symbol's storage
+size (8, a usize), not the value. Reading the value requires parsing
+`.rodata` bytes via `object`'s section API — workable but an extra step.
+
+`pub static FOO: [u8; size_of::<T>()] = [0; _];` makes the *symbol's
+storage size* equal to the type's size. `ObjectSymbol::size()` returns
+it directly — no section decoding. This trick is already used by
+`zpico-platform-shim/c/size_probe.c` for the C→Rust direction:
+
+```c
+const unsigned char __nros_sizeof_net_socket[sizeof(_z_sys_net_socket_t)] = {0};
+```
+
+Phase 87 mirrors this pattern on the Rust side.
+
 ### Feature-flag forwarding
 
-Because `RmwPublisher` is `<ConcreteSession as
-Session>::PublisherHandle`, it only exists when a backend feature is
-enabled. `nros-cpp-types` and `nros-cpp-sizeprobe` must forward the
-same mutually-exclusive RMW feature axis as `nros-cpp`:
-`rmw-zenoh` / `rmw-xrce` / `rmw-dds` / `rmw-cffi`. The compile-time
-check `#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature
-= "rmw-dds", feature = "rmw-cffi"))]` that currently guards `lib.rs`
-also guards `nros-cpp-types::*`. A build with no RMW feature produces
-placeholder sizes (or outright omits the symbols) — same semantics as
-today's no-RMW build.
+`RmwPublisher` is `<ConcreteSession as Session>::PublisherHandle`, which
+only resolves when exactly one of `rmw-zenoh` / `rmw-xrce` / `rmw-dds`
+is active. `nros/src/sizes.rs` mirrors that cfg guard. A no-RMW
+workspace check sees no statics; consumers of `nros-c`/`nros-cpp`
+always enable an RMW feature anyway.
 
-### Cost estimate
+### Interaction with cbindgen
 
-- 87.1 + 87.2: ~2–4h (mechanical move; `pub(crate)` → `pub` and an
-  import statement in each consumer).
-- 87.3 + 87.4: ~6–10h (the probe is the first use of object-file
-  parsing in this repo, so some debugging is likely).
-- 87.5: ~3–4h (mirror of the nros-c work once the pattern is proven).
-- 87.6 + 87.7: ~2–3h.
+cbindgen still runs for FFI declarations. It won't see the
+`__NROS_SIZE_*` statics (they're not `pub`-exported in the
+cbindgen-visible sense — they're symbols in the rlib), nor will it try
+to evaluate `size_of` expressions for the size consts (avoided by
+keeping the consts' values as array lengths rather than `#define`-able
+scalars). This sidesteps cbindgen#252 entirely.
 
-Total: ~2–3 focused days.
+### Out of scope
 
-## Acceptance Criteria
-
-- [ ] `packages/core/nros-cpp/build.rs` contains **zero**
-      target-specific struct-layout math. The only build-time
-      constants it reads are config values from `nros-node`'s
-      `links` metadata (`DEP_NROS_NODE_RX_BUF_SIZE`, `MAX_CBS`,
-      `ARENA_SIZE`) and size values from `nros-cpp-sizeprobe`'s
-      `DEP_NROS_CPP_SIZEPROBE_*`.
-- [ ] `cargo build -p nros-cpp --target armv7a-nuttx-eabihf
-       --features …` succeeds, producing a
-      `nros_cpp_config_generated.h` whose `NROS_CPP_PUBLISHER_STORAGE_SIZE`
-      is exactly `size_of::<CppPublisher>()` rounded up to 8.
-- [ ] The `const _: () = assert!(size_of::<T>() <= STORAGE_BYTES)` in
-      `packages/core/nros-cpp/src/lib.rs:349-375` remains in place
-      as a defence-in-depth check; it must pass trivially (the bound
-      is now tight).
-- [ ] No code duplication: `CppPublisher` / `CppSubscription` / …
-      appear exactly once (in `nros-cpp-types`), imported by both
-      `nros-cpp` and `nros-cpp-sizeprobe`.
-- [ ] `nros-c` has its latent cbindgen-drop bug closed in the same
-      PR, or explicitly deferred to a named follow-up phase.
-- [ ] The 3 NuttX C / C++ `rtos_e2e` cases that currently fail with
-      the compile-time-assert message build past the assert. (They
-      may still fail at runtime for reasons outside 87's scope —
-      that belongs to Phase 85.10 and Phase 69.x follow-ups.)
+- **`cxx` adoption**. Removes the size problem by heap-allocating
+  everything, but breaks nros-cpp's `no_std` contract. Rejected.
+- **`-Z print-type-sizes`**. Nightly-only, unstable output format.
+  Rejected.
+- **Migrating `zpico-platform-shim` to `object`**. Possible as a
+  follow-up phase; out of scope for 87. The shim is 150 lines of
+  llvm-nm+sysroot-hunting that would shrink to ~40 with `object`, but
+  it works today.
 
 ## Notes
 
-- **Why not use `cxx`?** The `cxx` bridge crate moves ownership of
-  Rust types behind pointers — no inline storage in the C++ class.
-  That removes the size-derivation problem entirely, but requires
-  an allocator on every target. nros-cpp's `no_std` contract
-  explicitly rules out heap allocation for these handles (several
-  downstream platforms — bare-metal, some FreeRTOS builds — have no
-  `alloc`). Keeping inline storage is the design constraint; Phase 87
-  serves that constraint.
-
-- **Why not use `-Zprint-type-sizes`?** The flag is nightly-only, the
-  output format is not stable, and stable-Rust builds of nros-cpp are
-  an intentional goal (`armv7a-nuttx-eabihf` is the only target that
-  needs nightly, and it needs nightly for `-Z build-std`, not for
-  type-size inspection). Parsing `-Zprint-type-sizes` from `build.rs`
-  also couples the whole crate to nightly.
-
-- **Interaction with Phase 85.9**. Phase 85.9 is superseded by this
-  phase. The "stopgap bump" path called out in 85.9 is explicitly
-  rejected; the proper fix lives here. Mark 85.9 as
-  `superseded-by: phase-87` rather than implementing the bump.
-
-- **cbindgen upstream fix**. An alternative that removes the whole
-  probe infrastructure would be cbindgen gaining const-eval support
-  for `size_of`. The relevant upstream issue is
-  [cbindgen#252](https://github.com/mozilla/cbindgen/issues/252). If
-  it ever lands, Phase 87 becomes obsolete — the probe crate could
-  be deleted and `opaque_sizes.rs` would directly drive the C header.
-  Not holding breath; opened 2018.
+- The `export_size!` macro uses `paste` for identifier concatenation
+  (`__NROS_SIZE_ ## $name`). `paste` is already a workspace dep.
+- The `object` crate has no default-feature caveats relevant here. All
+  needed readers (archive, elf, macho, coff) are on by default.
+  `read_core` alone would suffice but isn't worth shaving 200 KB off
+  the build-script compile.
+- `cargo metadata` invocation from build.rs costs ~50 ms per
+  consumer crate on a warm cache. Negligible compared to the
+  rebuild-of-everything that drops `hand-math`-only.
+- The `const _: () = assert!(size_of::<T>() <= STORAGE);` defence-in-depth
+  checks in `nros-cpp/src/lib.rs` and `nros-c/src/opaque_sizes.rs` stay.
+  Post-phase they become trivially true — the storage size is
+  *derived* from `size_of`, so the assertion's failure would mean the
+  probe lied. A useful tripwire for probe bugs.
