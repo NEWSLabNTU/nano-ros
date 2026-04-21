@@ -57,6 +57,30 @@ fn probe_sizes(
 
     let target = env::var("TARGET").unwrap_or_default();
 
+    // Zephyr builds set ZEPHYR_BASE. The probe can't easily include Zephyr
+    // headers (they depend on the generated zephyr/kconfig.h and the full
+    // west build context), so we short-circuit with hardcoded sizes that
+    // match `zenoh-pico/include/zenoh-pico/system/platform/zephyr.h`:
+    //
+    //   _z_sys_net_socket_t   = union { int _fd; const struct device *_serial; }
+    //   _z_sys_net_endpoint_t = union { struct addrinfo *_iptcp; }
+    //
+    // Both collapse to pointer size on the target (8 bytes on 64-bit,
+    // 4 bytes on 32-bit). Skipping the probe is safe because the layouts
+    // are fixed and trivial.
+    if env::var("ZEPHYR_BASE").is_ok() {
+        let ptr_size = if env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
+            .ok()
+            .as_deref()
+            == Some("32")
+        {
+            4
+        } else {
+            8
+        };
+        return Some((ptr_size, ptr_size));
+    }
+
     // Target triple determines the platform branch FIRST; env vars
     // are consulted only as sources of SDK paths. Using env vars as
     // the branching key was unreliable because `.envrc` exports
