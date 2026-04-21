@@ -32,14 +32,16 @@ static struct {
 // Action callbacks
 // ----------------------------------------------------------------------------
 
-static nros_goal_response_t goal_callback(const nros_goal_uuid_t *goal_uuid,
+static nros_goal_response_t goal_callback(nros_action_server_t *server,
+                                          const nros_goal_handle_t *goal,
                                           const uint8_t *goal_request, size_t goal_len,
                                           void *context) {
+    (void)server;
     (void)context;
 
     example_interfaces_action_fibonacci_goal goal_msg;
     if (example_interfaces_action_fibonacci_goal_deserialize(
-            &goal, goal_request, goal_len) != 0) {
+            &goal_msg, goal_request, goal_len) != 0) {
         printf("Failed to deserialize goal\n");
         return NROS_GOAL_REJECT;
     }
@@ -56,13 +58,18 @@ static nros_goal_response_t goal_callback(const nros_goal_uuid_t *goal_uuid,
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
-static nros_cancel_response_t cancel_callback(nros_goal_handle_t *goal, void *context) {
+static nros_cancel_response_t cancel_callback(nros_action_server_t *server,
+                                              const nros_goal_handle_t *goal,
+                                              void *context) {
+    (void)server;
     (void)context;
     (void)goal;
     return NROS_CANCEL_ACCEPT;
 }
 
-static void accepted_callback(nros_goal_handle_t *goal, void *context) {
+static void accepted_callback(nros_action_server_t *server,
+                              const nros_goal_handle_t *goal,
+                              void *context) {
     server_context_t *ctx = (server_context_t *)context;
     ctx->goal_count++;
 
