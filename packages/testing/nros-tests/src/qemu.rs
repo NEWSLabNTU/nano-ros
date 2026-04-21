@@ -344,9 +344,13 @@ impl QemuProcess {
                     Ok(n) => {
                         output.push_str(&String::from_utf8_lossy(&buffer[..n]));
                         if output.contains(pattern) {
-                            std::thread::sleep(Duration::from_millis(100));
-                            kill_process_group(&mut self.handle);
-                            break;
+                            // Put stdout back on the handle so subsequent
+                            // wait_for_output / kill calls still see it.
+                            // (Killing here would break two-phase tests
+                            // that wait for a "ready" pattern then expect
+                            // the process to keep running.)
+                            self.handle.stdout = Some(stdout);
+                            return Ok(output);
                         }
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
