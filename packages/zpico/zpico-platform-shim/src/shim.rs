@@ -237,11 +237,18 @@ pub extern "C" fn _z_get_time_since_epoch(t: *mut ZTimeSinceEpoch) -> i8 {
 
 // Opaque types matching zenoh-pico's expectations.
 // The actual layout is defined by the platform backend.
+//
+// `ZTask`/`ZTaskAttr` are only referenced by the `_z_task_*` shim functions
+// below, which are compiled out under `skip-task-symbols` (ThreadX provides
+// its own task.c). Gate the structs with the same cfg so they don't trip
+// dead_code when tasks are supplied by C.
+#[cfg(not(feature = "skip-task-symbols"))]
 #[repr(C)]
 pub struct ZTask {
     _opaque: [u8; 64],
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[repr(C)]
 pub struct ZTaskAttr {
     _opaque: [u8; 64],
