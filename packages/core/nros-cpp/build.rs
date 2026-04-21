@@ -150,13 +150,9 @@ fn generate_config(
     let rx_buf = action_buf_size; // DEP_NROS_NODE_RX_BUF_SIZE
     let name_buf = 256; // MAX_TOPIC_LEN == MAX_SERVICE_NAME_LEN
 
-    // CppPublisher { handle: RmwPublisher, topic_name: [u8; 256], topic_name_len: usize }
-    // handle ~ 3*ptr (backend handle + phantom), + name + len + layout padding.
-    let publisher_bytes = align_up(
-        4 * ptr_bytes + name_buf + ptr_bytes + 4 * ptr_bytes, // layout padding
-        8,
-    );
-    let publisher_storage = publisher_bytes.div_ceil(8) * 8;
+    // Phase 87.6: Publisher is a thin wrapper — storage sized to
+    // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from
+    // the nros rlib). No hand-math needed.
 
     // CppSubscription { handle: RmwSubscriber, rx_buffer: [u8; RX_BUF_SIZE],
     //                    topic_name: [u8; 256], topic_name_len: usize }
@@ -195,7 +191,6 @@ fn generate_config(
          // within the generated C macro — if the Rust type grows past\n\
          // the estimate, the build fails loudly instead of silently\n\
          // overflowing caller-provided storage.\n\
-         pub const CPP_PUBLISHER_STORAGE_BYTES: usize = {publisher_storage};\n\
          pub const CPP_SUBSCRIPTION_STORAGE_BYTES: usize = {subscription_storage};\n\
          pub const CPP_SERVICE_STORAGE_BYTES: usize = {service_storage};\n\
          pub const CPP_GUARD_STORAGE_BYTES: usize = {guard_storage};\n"
@@ -240,9 +235,6 @@ fn generate_config(
          \n\
          /** Inline opaque storage size (bytes) for nros::Executor. */\n\
          #define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros::Publisher<M>. */\n\
-         #define NROS_CPP_PUBLISHER_STORAGE_SIZE {publisher_storage}\n\
          \n\
          /** Inline opaque storage size (bytes) for nros::Subscription<M>. */\n\
          #define NROS_CPP_SUBSCRIPTION_STORAGE_SIZE {subscription_storage}\n\

@@ -173,13 +173,9 @@ const fn u64s_for<T>() -> usize {
 }
 
 // With RMW backend: exact sizes from actual types.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_PUBLISHER_OPAQUE_U64S: usize = u64s_for::<publisher::CppPublisher>();
+// Phase 87.6: `CppPublisher` removed — the FFI stores an `RmwPublisher`
+// handle directly, sized via `NROS_PUBLISHER_SIZE` from the `nros` probe
+// (see packages/core/nros-cpp/build.rs).
 #[cfg(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -217,13 +213,6 @@ pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<action::CppActionSer
 pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<action::CppActionClient>();
 
 // Without RMW backend: placeholders for workspace-level check.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 1;
 #[cfg(not(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -347,11 +336,9 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
     feature = "rmw-cffi"
 ))]
 const _: () = {
-    assert!(
-        core::mem::size_of::<publisher::CppPublisher>()
-            <= executor_config::CPP_PUBLISHER_STORAGE_BYTES,
-        "NROS_CPP_PUBLISHER_STORAGE_SIZE too small for CppPublisher — bump publisher_bytes in build.rs"
-    );
+    // Phase 87.6: `CppPublisher` assertion removed — opaque storage now
+    // sized to `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE`, no
+    // hand-math upper bound.
     assert!(
         core::mem::size_of::<subscription::CppSubscription>()
             <= executor_config::CPP_SUBSCRIPTION_STORAGE_BYTES,

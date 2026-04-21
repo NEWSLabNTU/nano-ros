@@ -5,9 +5,6 @@
 /** Inline opaque storage size (bytes) for nros::Executor. */
 #define NROS_CPP_EXECUTOR_STORAGE_SIZE 17728
 
-/** Inline opaque storage size (bytes) for nros::Publisher<M>. */
-#define NROS_CPP_PUBLISHER_STORAGE_SIZE 328
-
 /** Inline opaque storage size (bytes) for nros::Subscription<M>. */
 #define NROS_CPP_SUBSCRIPTION_STORAGE_SIZE 1352
 

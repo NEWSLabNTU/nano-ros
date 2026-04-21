@@ -180,6 +180,16 @@ class Node {
         nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                        ffi_qos, out.storage_);
         if (ret == 0) {
+            // Phase 87.6: topic name lives C++-side now (was inside the
+            // deleted `CppPublisher` Rust wrapper). Copy + null-terminate
+            // into the fixed-size buffer; truncation is silent.
+            size_t topic_len = 0;
+            while (topic[topic_len] != '\0' &&
+                   topic_len + 1 < sizeof(out.topic_name_)) {
+                out.topic_name_[topic_len] = topic[topic_len];
+                ++topic_len;
+            }
+            out.topic_name_[topic_len] = '\0';
             out.initialized_ = true;
         }
         return Result(ret);

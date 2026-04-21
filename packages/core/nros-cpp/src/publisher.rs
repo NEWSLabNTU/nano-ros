@@ -1,8 +1,12 @@
 //! Publisher FFI functions for the C++ API.
+//!
+//! Phase 87.6 (thin-wrapper refactor): the caller's opaque storage now holds
+//! a bare `RmwPublisher` handle — no more `CppPublisher` wrapper bundling
+//! topic-name metadata. The `nros::Publisher<M>` C++ class owns the topic
+//! name buffer alongside the storage.
 
 use core::ffi::{c_char, c_void};
 
-use nros_node::limits::MAX_TOPIC_LEN;
 use nros_rmw::{Publisher as PublisherTrait, Session, TopicInfo};
 
 use crate::{
@@ -10,24 +14,16 @@ use crate::{
     NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
-/// Publisher wrapper stored in caller-provided inline storage.
-pub(crate) struct CppPublisher {
-    handle: nros::internals::RmwPublisher,
-    topic_name: [u8; MAX_TOPIC_LEN],
-    topic_name_len: usize,
-}
-
-// CPP_PUBLISHER_OPAQUE_U64S is computed from size_of::<CppPublisher>() — always exact.
-
 /// Create a publisher on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `CPP_PUBLISHER_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
-/// The publisher is written directly into this buffer (no heap allocation).
+/// `size_of::<RmwPublisher>()` bytes (exposed via `NROS_PUBLISHER_SIZE` in
+/// the generated header), aligned to its alignment requirement. The
+/// `RmwPublisher` handle is written directly into this buffer.
 ///
 /// # Safety
 /// All pointer parameters must be valid. `storage` must point to an
-/// 8-byte-aligned buffer of at least `CPP_PUBLISHER_OPAQUE_U64S * 8` bytes.
+/// appropriately-aligned buffer of at least `NROS_PUBLISHER_SIZE` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publisher_create(
     node: *const nros_cpp_node_t,
@@ -91,17 +87,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         .create_publisher(&topic_info, qos_settings)
     {
         Ok(handle) => {
-            let mut pub_handle = CppPublisher {
-                handle,
-                topic_name: [0u8; MAX_TOPIC_LEN],
-                topic_name_len: topic_str.len().min(MAX_TOPIC_LEN - 1),
-            };
-            pub_handle.topic_name[..pub_handle.topic_name_len]
-                .copy_from_slice(&topic_str.as_bytes()[..pub_handle.topic_name_len]);
-
-            // Write directly into caller-provided storage (no heap allocation)
+            // Write the bare RmwPublisher handle into caller-provided storage.
             unsafe {
-                core::ptr::write(storage as *mut CppPublisher, pub_handle);
+                core::ptr::write(storage as *mut nros::internals::RmwPublisher, handle);
             }
             NROS_CPP_RET_OK
         }
@@ -112,7 +100,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
 /// Publish raw CDR data.
 ///
 /// # Safety
-/// `storage` must be a valid publisher storage. `data` must point to `len` readable bytes.
+/// `storage` must be a valid publisher storage (initialised by
+/// `nros_cpp_publisher_create`). `data` must point to `len` readable bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publish_raw(
     storage: *mut c_void,
@@ -123,10 +112,10 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let publisher = unsafe { &*(storage as *const CppPublisher) };
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
     let data_slice = unsafe { core::slice::from_raw_parts(data, len) };
 
-    match publisher.handle.publish_raw(data_slice) {
+    match publisher.publish_raw(data_slice) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -142,24 +131,23 @@ pub unsafe extern "C" fn nros_cpp_publisher_destroy(storage: *mut c_void) -> nro
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        core::ptr::drop_in_place(storage as *mut CppPublisher);
+        core::ptr::drop_in_place(storage as *mut nros::internals::RmwPublisher);
     }
     NROS_CPP_RET_OK
 }
 
-/// Relocate a `CppPublisher` from `old_storage` to `new_storage`.
+/// Relocate an `RmwPublisher` from `old_storage` to `new_storage`.
 ///
-/// `CppPublisher` registers nothing externally that references its
-/// storage address, so relocation is a straight `ptr::read` + `ptr::write`.
-/// Called by the C++ `Publisher` move ctor / move assignment.
+/// `RmwPublisher` registers nothing externally that references its storage
+/// address, so relocation is a straight `ptr::read` + `ptr::write`. Called
+/// by the C++ `Publisher` move ctor / move assignment.
 ///
 /// # Safety
-/// Both `old_storage` and `new_storage` must be valid, 8-byte-aligned
-/// buffers of at least `CPP_PUBLISHER_OPAQUE_U64S * 8` bytes. `old_storage`
-/// must contain an initialised `CppPublisher`; `new_storage` must not.
-/// After the call, `old_storage` is logically uninitialised and must
-/// not be destroyed — the C++ side sets its `initialized_` flag to
-/// `false`.
+/// Both `old_storage` and `new_storage` must be valid, appropriately-aligned
+/// buffers of at least `NROS_PUBLISHER_SIZE` bytes. `old_storage` must
+/// contain an initialised `RmwPublisher`; `new_storage` must not. After the
+/// call, `old_storage` is logically uninitialised and must not be destroyed
+/// — the C++ side sets its `initialized_` flag to `false`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publisher_relocate(
     old_storage: *mut c_void,
@@ -169,23 +157,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_relocate(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     unsafe {
-        let value = core::ptr::read(old_storage as *mut CppPublisher);
-        core::ptr::write(new_storage as *mut CppPublisher, value);
+        let value = core::ptr::read(old_storage as *mut nros::internals::RmwPublisher);
+        core::ptr::write(new_storage as *mut nros::internals::RmwPublisher, value);
     }
     NROS_CPP_RET_OK
-}
-
-/// Get the topic name of a publisher.
-///
-/// # Safety
-/// `storage` must be a valid publisher storage, or NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_publisher_get_topic_name(
-    storage: *const c_void,
-) -> *const c_char {
-    if storage.is_null() {
-        return core::ptr::null();
-    }
-    let publisher = unsafe { &*(storage as *const CppPublisher) };
-    publisher.topic_name.as_ptr() as *const c_char
 }
