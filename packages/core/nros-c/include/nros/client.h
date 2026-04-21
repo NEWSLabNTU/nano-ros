@@ -18,6 +18,7 @@ extern "C" {
 
 /* Forward declarations */
 struct nros_node_t;
+struct nros_executor_t;
 
 /* ===================================================================
  * Types
@@ -180,6 +181,21 @@ NROS_PUBLIC const char* nros_client_get_service_name(const struct nros_client_t*
  * @return @c true if valid, @c false if invalid or NULL.
  */
 NROS_PUBLIC bool nros_client_is_valid(const struct nros_client_t* client);
+
+/**
+ * @brief Register a service client with an executor.
+ *
+ * Required before nros_client_send_request_async() or
+ * nros_client_call() can be used. The executor drives the response
+ * callback during nros_executor_spin_some().
+ *
+ * @param executor Pointer to an initialized executor.
+ * @param client   Pointer to an initialized service client.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_add_client(struct nros_executor_t* executor, struct nros_client_t* client);
 
 #ifdef __cplusplus
 }

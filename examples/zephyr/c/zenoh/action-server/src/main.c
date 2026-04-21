@@ -24,16 +24,18 @@ LOG_MODULE_REGISTER(nros_action_server, LOG_LEVEL_INF);
 static int g_goal_count = 0;
 
 static nros_goal_response_t goal_callback(
-    const nros_goal_uuid_t* goal_uuid,
+    nros_action_server_t* server,
+    const nros_goal_handle_t* goal,
     const uint8_t* goal_request,
     size_t goal_len,
     void* context)
 {
+    (void)server;
     (void)context;
 
     example_interfaces_action_fibonacci_goal goal_msg;
     if (example_interfaces_action_fibonacci_goal_deserialize(
-            &goal, goal_request, goal_len) != 0) {
+            &goal_msg, goal_request, goal_len) != 0) {
         LOG_ERR("Failed to deserialize goal");
         return NROS_GOAL_REJECT;
     }
@@ -51,9 +53,11 @@ static nros_goal_response_t goal_callback(
 }
 
 static nros_cancel_response_t cancel_callback(
-    nros_goal_handle_t* goal,
+    nros_action_server_t* server,
+    const nros_goal_handle_t* goal,
     void* context)
 {
+    (void)server;
     (void)context;
     LOG_INF("Cancel request (uuid=%02x%02x...)",
             goal->uuid.uuid[0], goal->uuid.uuid[1]);

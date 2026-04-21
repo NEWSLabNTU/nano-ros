@@ -16,11 +16,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 
-// Define platform BEFORE including nros headers
-// On real bare-metal: #define NROS_PLATFORM_BAREMETAL
-// For this demo, we simulate bare-metal on POSIX
-#define NROS_PLATFORM_POSIX
+// NROS_PLATFORM_POSIX is propagated by the NanoRos::NanoRos CMake target.
+// On real bare-metal: link a board crate that forwards the
+// platform-bare-metal feature instead.
 
 // nros modular includes
 #include <nros/init.h>

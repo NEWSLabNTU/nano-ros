@@ -133,6 +133,24 @@ if(NOT TARGET NanoRos::NanoRos)
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
       INTERFACE_LINK_LIBRARIES pthread dl m "-framework Security" "-framework CoreFoundation")
   endif()
+
+  # Treat warnings as errors for consumers of NanoRos::NanoRos. Catches
+  # signature mismatches on function-pointer typedefs (e.g. action server
+  # goal/cancel/accepted callbacks) that GCC otherwise reports only as
+  # warnings via -Wincompatible-pointer-types. Opt out with
+  # -DNANO_ROS_WERROR=OFF at configure time.
+  if(NOT DEFINED NANO_ROS_WERROR)
+    set(NANO_ROS_WERROR ON)
+  endif()
+  if(NANO_ROS_WERROR)
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_COMPILE_OPTIONS
+        $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Werror>
+        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Werror>
+        $<$<COMPILE_LANG_AND_ID:C,MSVC>:/WX>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX>
+    )
+  endif()
 endif()
 
 # Legacy alias for code that uses nros_c::nros_c

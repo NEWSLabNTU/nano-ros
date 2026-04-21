@@ -99,4 +99,20 @@ if(NOT TARGET NanoRos::NanoRosCpp)
     set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
       INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_NUTTX)
   endif()
+
+  # Treat warnings as errors for consumers of NanoRos::NanoRosCpp.
+  # Mirrors the flag set on NanoRos::NanoRos (C). Opt out with
+  # -DNANO_ROS_WERROR=OFF at configure time.
+  if(NOT DEFINED NANO_ROS_WERROR)
+    set(NANO_ROS_WERROR ON)
+  endif()
+  if(NANO_ROS_WERROR)
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_COMPILE_OPTIONS
+        $<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-Werror>
+        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Werror>
+        $<$<COMPILE_LANG_AND_ID:C,MSVC>:/WX>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX>
+    )
+  endif()
 endif()

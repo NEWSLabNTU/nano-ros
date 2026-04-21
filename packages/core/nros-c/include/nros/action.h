@@ -18,6 +18,7 @@ extern "C" {
 
 /* Forward declarations */
 struct nros_node_t;
+struct nros_executor_t;
 struct nros_action_server_t;
 struct nros_goal_handle_t;
 struct nros_goal_uuid_t;
