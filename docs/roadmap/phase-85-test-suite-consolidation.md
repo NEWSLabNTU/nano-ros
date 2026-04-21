@@ -229,8 +229,9 @@ distinct from the test-plumbing work in Groups A–C and belong in
 their own phases, but are tracked here because 85.4 is what caused
 them to stop silently passing.
 
-- [ ] 85.9 — Replace `nros-cpp` manual storage-size calc with
-      compile-time derivation
+- [~] 85.9 — Replace `nros-cpp` manual storage-size calc with
+      compile-time derivation — **superseded by
+      [Phase 87](./phase-87-nros-cpp-compile-time-sizes.md)**
   - **Files**: `packages/core/nros-cpp/build.rs`,
     `packages/core/nros-cpp/src/lib.rs`,
     `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
@@ -275,6 +276,12 @@ them to stop silently passing.
     works locally but violates this phase's "no manual size calc"
     directive, so 85.4 left the original estimate in place and opens
     this phase to fix it properly.
+  - **Status**: superseded by
+    [Phase 87 — nros-cpp compile-time storage-size derivation](./phase-87-nros-cpp-compile-time-sizes.md),
+    which picks **Option C** (shared types crate + probe crate) from
+    the three alternatives listed above. The scope expanded beyond a
+    single 85.x work item — it now includes a types-only crate
+    refactor and a parallel fix for the same latent bug in `nros-c`.
 
 - [ ] 85.10 — Fix ThreadX QEMU RISC-V zenoh session connect failure
   - **Files**: `examples/qemu-riscv64-threadx/rust/zenoh/*/src/lib.rs`
