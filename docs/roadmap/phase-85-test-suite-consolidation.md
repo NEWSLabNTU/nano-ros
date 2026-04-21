@@ -157,18 +157,47 @@ that each just call `build_X()` and assert the binary exists).
 
 ### Group C — Design discussion (bigger, optional)
 
-- [ ] 85.7 — Recipe rename pass
-  - **Files**: `justfile`, `platforms/*.just`
-  - **Goal**: Rename `just test` → `just test-fast` (host / POSIX
-    only), `just test-all` → `just test` (the default that also
-    covers QEMU platforms). `just ci` uses `test-fast`; nightlies
-    use `test`. Removes the ad-hoc `--exclude` list in the current
-    `just test` recipe — the scope is now declared by group
-    membership in nextest.toml, not by a hand-maintained exclusion.
-  - **Caveat**: This is a UX break for anyone who has `just test` in
-    muscle memory. Pair the rename with a
-    `just test: @echo "renamed to test-fast"; just test-fast` alias
-    during a transition window.
+- [x] 85.7 — Drift-fix: centralise the `just test` exclusion list
+  - **Files**: `justfile`, `.config/nextest.toml`
+  - **Problem**: `just test`'s inline `-E 'not binary(zephyr) and
+    not binary(rmw_interop) and …'` filter had drifted out of sync
+    with the test matrix. Missing from the exclusion — therefore
+    silently included despite being heavy — were `emulator` (QEMU
+    bare-metal), `freertos_qemu`, `rtos_e2e` (the Phase 85.4
+    parametrised binary), `params` (ROS 2 interop), and
+    `dds_ros2_interop`. 210 tests were running when ~126 was the
+    intent.
+  - **Fix**: New `[profile.fast]` in `.config/nextest.toml` with a
+    `default-filter` that excludes all 13 heavy-dep binaries — QEMU
+    / bridge-networked (the qemu-serial set), ROS 2 / DDS interop,
+    XRCE-Agent-dependent, and large-msg stress. `just test` now
+    runs `cargo nextest run --profile fast`. Adding a new heavy
+    binary is a one-line edit to the profile's filter.
+  - **Caveat**: Nextest's filter DSL doesn't (yet) support a
+    `test_group(…)` predicate, so the profile's `default-filter`
+    still enumerates binaries by name — just in one place instead
+    of scattered through `justfile`. The group list in
+    `.config/nextest.toml` and the `[profile.fast]` filter must be
+    kept in sync manually for now.
+  - **Doesn't do**: rename / UX changes. See 85.11.
+
+- [ ] 85.11 — `just test` / `just test-all` / `just ci` rename pass
+  - **Files**: `justfile`, `just/*.just`, downstream CI workflows,
+    any contributor docs that reference `just test`.
+  - **Goal** (unchanged from the original 85.7 proposal): rename
+    `just test` → `just test-fast` (host / POSIX only, the current
+    fast-profile scope), `just test-all` → `just test` (the new
+    default that also covers QEMU platforms). `just ci` uses
+    `test-fast`; nightlies use `test`.
+  - **Caveat**: This is a UX break for anyone who has `just test`
+    in muscle memory. Pair the rename with a transitional alias
+    (`just test: @echo "renamed to test-fast"; just test-fast`) and
+    a deprecation note. Coordinate with any external CI workflow
+    that invokes `just test` — the scope flip (fast → full) is the
+    part that actually matters, so a partially-migrated downstream
+    will start running the full matrix on PRs.
+  - **Depends on**: 85.7 (drift-fix must land first so `just
+    test-fast` is well-defined before the rename).
 
 - [x] 85.8 — Port-table migration for non-RTOS tests
   - **Files**: `packages/testing/nros-tests/tests/zephyr.rs` (8 × `tcp/127.0.0.1:7456`),

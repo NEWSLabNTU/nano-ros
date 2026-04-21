@@ -167,14 +167,16 @@ _test-summary:
     fi
     echo "Real failures: $real / $total total failures"
 
-# Run standard tests (needs qemu-system-arm + zenohd)
-# Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri
+# Run standard tests (fast path — skips heavy external-dep binaries).
+#
+# The exclusion list lives in `.config/nextest.toml` under
+# `[profile.fast]`. When a new heavy test binary lands, update the
+# `default-filter` there, not this recipe.
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
-    args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(nuttx_qemu) and not binary(threadx_linux) and not binary(threadx_riscv64_qemu)')
+    args=(--workspace --no-fail-fast --profile fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
