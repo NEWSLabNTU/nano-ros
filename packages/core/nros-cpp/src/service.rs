@@ -1,9 +1,13 @@
 //! Service server and client FFI functions for the C++ API.
+//!
+//! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a bare
+//! `RmwServiceServer` / `RmwServiceClient` handle. Service-name buffers live
+//! on the C++ `nros::Service<S>` / `nros::Client<S>` classes. Received CDR
+//! bytes are copied directly into caller-provided output buffers — no
+//! Rust-side scratch.
 
 use core::ffi::{c_char, c_void};
 
-use nros_node::config::DEFAULT_RX_BUF_SIZE;
-use nros_node::limits::MAX_SERVICE_NAME_LEN;
 use nros_rmw::{ServiceClientTrait, ServiceInfo, ServiceServerTrait, Session};
 
 use crate::{
@@ -16,24 +20,13 @@ use crate::{
 // Service Server
 // ============================================================================
 
-/// Service server wrapper stored in caller-provided inline storage.
-pub(crate) struct CppServiceServer {
-    handle: nros::internals::RmwServiceServer,
-    buffer: [u8; DEFAULT_RX_BUF_SIZE],
-    service_name: [u8; MAX_SERVICE_NAME_LEN],
-    _service_name_len: usize,
-}
-
-// CPP_SERVICE_SERVER_OPAQUE_U64S is computed from size_of::<CppServiceServer>() — always exact.
-
 /// Create a service server on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `CPP_SERVICE_SERVER_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
+/// `size_of::<RmwServiceServer>()` bytes (exposed via `NROS_SERVICE_SERVER_SIZE`).
 ///
 /// # Safety
-/// All pointer parameters must be valid. `storage` must point to an
-/// 8-byte-aligned buffer of at least `CPP_SERVICE_SERVER_OPAQUE_U64S * 8` bytes.
+/// All pointer parameters must be valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_service_server_create(
     node: *const nros_cpp_node_t,
@@ -70,7 +63,6 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    // Extract node name/namespace from the node handle
     let node_name_str = core::str::from_utf8(&node_ref.name)
         .ok()
         .and_then(|s| s.split('\0').next());
@@ -92,18 +84,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 
     match ctx.executor.session_mut().create_service_server(&svc_info) {
         Ok(handle) => {
-            let mut server = CppServiceServer {
-                handle,
-                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
-                service_name: [0u8; MAX_SERVICE_NAME_LEN],
-                _service_name_len: svc_str.len().min(MAX_SERVICE_NAME_LEN - 1),
-            };
-            server.service_name[..server._service_name_len]
-                .copy_from_slice(&svc_str.as_bytes()[..server._service_name_len]);
-
-            // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                core::ptr::write(storage as *mut CppServiceServer, server);
+                core::ptr::write(storage as *mut nros::internals::RmwServiceServer, handle);
             }
             NROS_CPP_RET_OK
         }
@@ -112,6 +94,9 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 }
 
 /// Try to receive a raw service request (non-blocking).
+///
+/// Writes the received CDR bytes directly into the caller's output buffer —
+/// no Rust-side scratch.
 ///
 /// # Safety
 /// All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
@@ -127,27 +112,16 @@ pub unsafe extern "C" fn nros_cpp_service_server_try_recv_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let server = unsafe { &mut *(storage as *mut CppServiceServer) };
+    let server = unsafe { &mut *(storage as *mut nros::internals::RmwServiceServer) };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
 
-    match server.handle.try_recv_request(&mut server.buffer) {
+    match server.try_recv_request(out_slice) {
         Ok(Some(request)) => {
-            let data_len = request.data.len();
-            let seq = request.sequence_number;
-            // Copy data from buffer to caller's buffer
-            if data_len <= out_capacity {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(server.buffer.as_ptr(), out_data, data_len);
-                    *out_len = data_len;
-                    *out_sequence = seq;
-                }
-                NROS_CPP_RET_OK
-            } else {
-                unsafe {
-                    *out_len = data_len;
-                    *out_sequence = seq;
-                }
-                NROS_CPP_RET_ERROR
+            unsafe {
+                *out_len = request.data.len();
+                *out_sequence = request.sequence_number;
             }
+            NROS_CPP_RET_OK
         }
         Ok(None) => {
             unsafe {
@@ -174,10 +148,10 @@ pub unsafe extern "C" fn nros_cpp_service_server_send_reply_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let server = unsafe { &mut *(storage as *mut CppServiceServer) };
+    let server = unsafe { &mut *(storage as *mut nros::internals::RmwServiceServer) };
     let data_slice = unsafe { core::slice::from_raw_parts(data, len) };
 
-    match server.handle.send_reply(sequence_number, data_slice) {
+    match server.send_reply(sequence_number, data_slice) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -193,16 +167,12 @@ pub unsafe extern "C" fn nros_cpp_service_server_destroy(storage: *mut c_void) -
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        core::ptr::drop_in_place(storage as *mut CppServiceServer);
+        core::ptr::drop_in_place(storage as *mut nros::internals::RmwServiceServer);
     }
     NROS_CPP_RET_OK
 }
 
-/// Relocate a `CppServiceServer` from `old_storage` to `new_storage`.
-///
-/// Service servers are pull-based (`try_recv_request` / `send_reply`)
-/// and register nothing externally that references the storage address —
-/// relocation is a straight `ptr::read` + `ptr::write`.
+/// Relocate an `RmwServiceServer` from `old_storage` to `new_storage`.
 ///
 /// # Safety
 /// See `nros_cpp_publisher_relocate`.
@@ -215,8 +185,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_relocate(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     unsafe {
-        let value = core::ptr::read(old_storage as *mut CppServiceServer);
-        core::ptr::write(new_storage as *mut CppServiceServer, value);
+        let value = core::ptr::read(old_storage as *mut nros::internals::RmwServiceServer);
+        core::ptr::write(new_storage as *mut nros::internals::RmwServiceServer, value);
     }
     NROS_CPP_RET_OK
 }
@@ -225,20 +195,10 @@ pub unsafe extern "C" fn nros_cpp_service_server_relocate(
 // Service Client
 // ============================================================================
 
-/// Service client wrapper stored in caller-provided inline storage.
-pub(crate) struct CppServiceClient {
-    handle: nros::internals::RmwServiceClient,
-    buffer: [u8; DEFAULT_RX_BUF_SIZE],
-    service_name: [u8; MAX_SERVICE_NAME_LEN],
-    _service_name_len: usize,
-}
-
-// CPP_SERVICE_CLIENT_OPAQUE_U64S is computed from size_of::<CppServiceClient>() — always exact.
-
 /// Create a service client on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `CPP_SERVICE_CLIENT_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
+/// `size_of::<RmwServiceClient>()` bytes (exposed via `NROS_SERVICE_CLIENT_SIZE`).
 ///
 /// # Safety
 /// All pointer parameters must be valid.
@@ -299,18 +259,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
 
     match ctx.executor.session_mut().create_service_client(&svc_info) {
         Ok(handle) => {
-            let mut client = CppServiceClient {
-                handle,
-                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
-                service_name: [0u8; MAX_SERVICE_NAME_LEN],
-                _service_name_len: svc_str.len().min(MAX_SERVICE_NAME_LEN - 1),
-            };
-            client.service_name[..client._service_name_len]
-                .copy_from_slice(&svc_str.as_bytes()[..client._service_name_len]);
-
-            // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                core::ptr::write(storage as *mut CppServiceClient, client);
+                core::ptr::write(storage as *mut nros::internals::RmwServiceClient, handle);
             }
             NROS_CPP_RET_OK
         }
@@ -335,35 +285,25 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let client = unsafe { &mut *(storage as *mut CppServiceClient) };
+    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
+    let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
-    // Deprecated blocking call via zpico_get. Prefer send_request + try_recv_reply.
-    // Kept for backward compatibility on multi-threaded platforms.
+    // Deprecated blocking call via zpico_get. Prefer send_request +
+    // try_recv_reply on platforms without threads.
     #[allow(deprecated)]
-    match client.handle.call_raw(req_slice, &mut client.buffer) {
+    match client.call_raw(req_slice, resp_slice) {
         Ok(len) => {
-            if len <= resp_capacity {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(client.buffer.as_ptr(), resp_data, len);
-                    *resp_len = len;
-                }
-                NROS_CPP_RET_OK
-            } else {
-                unsafe {
-                    *resp_len = len;
-                }
-                NROS_CPP_RET_ERROR
+            unsafe {
+                *resp_len = len;
             }
+            NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_TIMEOUT,
     }
 }
 
 /// Send a service request asynchronously (non-blocking).
-///
-/// The caller must subsequently poll [`nros_cpp_service_client_try_recv_reply`]
-/// to receive the response.
 ///
 /// # Safety
 /// `storage` must be a valid initialized service client. `req_data` must point
@@ -377,9 +317,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
     if storage.is_null() || req_data.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let client = unsafe { &mut *(storage as *mut CppServiceClient) };
+    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
-    match client.handle.send_request_raw(req_slice) {
+    match client.send_request_raw(req_slice) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
     }
@@ -402,21 +342,15 @@ pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
     if storage.is_null() || resp_data.is_null() || resp_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let client = unsafe { &mut *(storage as *mut CppServiceClient) };
-    match client.handle.try_recv_reply_raw(&mut client.buffer) {
+    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
+    let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
+
+    match client.try_recv_reply_raw(resp_slice) {
         Ok(Some(len)) => {
-            if len <= resp_capacity {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(client.buffer.as_ptr(), resp_data, len);
-                    *resp_len = len;
-                }
-                NROS_CPP_RET_OK
-            } else {
-                unsafe {
-                    *resp_len = len;
-                }
-                NROS_CPP_RET_ERROR
+            unsafe {
+                *resp_len = len;
             }
+            NROS_CPP_RET_OK
         }
         Ok(None) => {
             unsafe {
@@ -438,15 +372,12 @@ pub unsafe extern "C" fn nros_cpp_service_client_destroy(storage: *mut c_void) -
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        core::ptr::drop_in_place(storage as *mut CppServiceClient);
+        core::ptr::drop_in_place(storage as *mut nros::internals::RmwServiceClient);
     }
     NROS_CPP_RET_OK
 }
 
-/// Relocate a `CppServiceClient` from `old_storage` to `new_storage`.
-///
-/// Service clients are pull-based and register nothing externally —
-/// relocation is a straight `ptr::read` + `ptr::write`.
+/// Relocate an `RmwServiceClient` from `old_storage` to `new_storage`.
 ///
 /// # Safety
 /// See `nros_cpp_publisher_relocate`.
@@ -459,8 +390,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_relocate(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     unsafe {
-        let value = core::ptr::read(old_storage as *mut CppServiceClient);
-        core::ptr::write(new_storage as *mut CppServiceClient, value);
+        let value = core::ptr::read(old_storage as *mut nros::internals::RmwServiceClient);
+        core::ptr::write(new_storage as *mut nros::internals::RmwServiceClient, value);
     }
     NROS_CPP_RET_OK
 }

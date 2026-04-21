@@ -147,8 +147,8 @@ fn generate_config(
     // Field sizes come from `nros_node::limits`:
     //   MAX_TOPIC_LEN = 256, MAX_SERVICE_NAME_LEN = 256, MAX_TYPE_NAME_LEN = 256,
     //   MAX_TYPE_HASH_LEN = 128.
-    let rx_buf = action_buf_size; // DEP_NROS_NODE_RX_BUF_SIZE
-    let name_buf = 256; // MAX_TOPIC_LEN == MAX_SERVICE_NAME_LEN
+    let _rx_buf = action_buf_size; // DEP_NROS_NODE_RX_BUF_SIZE (unused after 87.6)
+    let _name_buf = 256usize; // MAX_TOPIC_LEN == MAX_SERVICE_NAME_LEN (unused after 87.6)
 
     // Phase 87.6: Publisher is a thin wrapper — storage sized to
     // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from
@@ -158,13 +158,9 @@ fn generate_config(
     // `size_of::<RmwSubscriber>()` via `NROS_SUBSCRIBER_SIZE`. The rx
     // scratch buffer lives C++-side on the `nros::Subscription<M>` class.
 
-    // CppServiceServer/Client each hold a transport handle + request/reply
-    // buffers + name storage. Upper bound: 2 rx-buf slots + name + layout padding.
-    let service_bytes = align_up(
-        4 * ptr_bytes + rx_buf + rx_buf + name_buf + ptr_bytes + 4 * ptr_bytes,
-        8,
-    );
-    let service_storage = service_bytes.div_ceil(8) * 8;
+    // Phase 87.6: Service server/client are thin wrappers — storage sized
+    // to `size_of::<RmwServiceServer>()` / `size_of::<RmwServiceClient>()`
+    // via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE`.
 
     // CppGuardCondition { handle_id: HandleId (usize), callback: fn, ctx: *mut, executor: *mut }
     let guard_bytes = align_up(4 * ptr_bytes + 2 * ptr_bytes, 8);
@@ -187,7 +183,6 @@ fn generate_config(
          // within the generated C macro — if the Rust type grows past\n\
          // the estimate, the build fails loudly instead of silently\n\
          // overflowing caller-provided storage.\n\
-         pub const CPP_SERVICE_STORAGE_BYTES: usize = {service_storage};\n\
          pub const CPP_GUARD_STORAGE_BYTES: usize = {guard_storage};\n"
     );
 
@@ -230,12 +225,6 @@ fn generate_config(
          \n\
          /** Inline opaque storage size (bytes) for nros::Executor. */\n\
          #define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros::Service<S>. */\n\
-         #define NROS_CPP_SERVICE_SERVER_STORAGE_SIZE {service_storage}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros::Client<S>. */\n\
-         #define NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE {service_storage}\n\
          \n\
          /** Inline opaque storage size (bytes) for nros::GuardCondition. */\n\
          #define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE {guard_storage}\n\

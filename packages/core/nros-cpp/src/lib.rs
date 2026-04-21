@@ -179,20 +179,10 @@ const fn u64s_for<T>() -> usize {
 // Phase 87.6: `CppSubscription` removed — the FFI stores an
 // `RmwSubscriber` handle directly, sized via `NROS_SUBSCRIBER_SIZE` from
 // the `nros` probe.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = u64s_for::<service::CppServiceServer>();
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<service::CppServiceClient>();
+// Phase 87.6: `CppServiceServer` and `CppServiceClient` removed — the FFI
+// stores `RmwServiceServer` / `RmwServiceClient` handles directly, sized
+// via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE` from the
+// `nros` probe.
 #[cfg(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -209,20 +199,6 @@ pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<action::CppActionSer
 pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<action::CppActionClient>();
 
 // Without RMW backend: placeholders for workspace-level check.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 1;
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 1;
 #[cfg(not(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -325,19 +301,10 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
     feature = "rmw-cffi"
 ))]
 const _: () = {
-    // Phase 87.6: `CppPublisher` and `CppSubscription` assertions removed —
-    // both now use thin-wrapper storage sized from the Rust SSoT
-    // (`NROS_PUBLISHER_SIZE` / `NROS_SUBSCRIBER_SIZE`).
-    assert!(
-        core::mem::size_of::<service::CppServiceServer>()
-            <= executor_config::CPP_SERVICE_STORAGE_BYTES,
-        "NROS_CPP_SERVICE_SERVER_STORAGE_SIZE too small for CppServiceServer — bump service_bytes in build.rs"
-    );
-    assert!(
-        core::mem::size_of::<service::CppServiceClient>()
-            <= executor_config::CPP_SERVICE_STORAGE_BYTES,
-        "NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE too small for CppServiceClient — bump service_bytes in build.rs"
-    );
+    // Phase 87.6: `CppPublisher`, `CppSubscription`, `CppServiceServer`,
+    // and `CppServiceClient` assertions removed — all four now use
+    // thin-wrapper storage sized from the Rust SSoT (`NROS_*_SIZE`
+    // probes in the generated header).
     assert!(
         core::mem::size_of::<nros_node::GuardConditionHandle>()
             <= executor_config::CPP_GUARD_STORAGE_BYTES,

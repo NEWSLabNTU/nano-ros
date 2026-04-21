@@ -129,7 +129,7 @@ template <typename S> class Client {
 
     friend class Node;
 
-    alignas(8) uint8_t storage_[NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE];
+    alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
     void* executor_;
     bool initialized_;
 };

@@ -129,7 +129,7 @@ template <typename S> class Service {
 
     friend class Node;
 
-    alignas(8) uint8_t storage_[NROS_CPP_SERVICE_SERVER_STORAGE_SIZE];
+    alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
 };
 

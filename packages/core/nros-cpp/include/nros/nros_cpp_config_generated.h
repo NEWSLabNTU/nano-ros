@@ -5,12 +5,6 @@
 /** Inline opaque storage size (bytes) for nros::Executor. */
 #define NROS_CPP_EXECUTOR_STORAGE_SIZE 17728
 
-/** Inline opaque storage size (bytes) for nros::Service<S>. */
-#define NROS_CPP_SERVICE_SERVER_STORAGE_SIZE 2376
-
-/** Inline opaque storage size (bytes) for nros::Client<S>. */
-#define NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE 2376
-
 /** Inline opaque storage size (bytes) for nros::GuardCondition. */
 #define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE 48
 
