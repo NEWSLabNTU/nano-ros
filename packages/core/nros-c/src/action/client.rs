@@ -29,12 +29,16 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
 /// created by `nros_executor_add_action_client`.
-pub(crate) struct ActionClientInternal {
+///
+/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
+/// emit this struct into the C header.
+#[repr(C)]
+pub struct ActionClientInternal {
     /// Arena entry index (set by nros_executor_add_action_client).
     /// -1 means not registered with executor.
-    pub(crate) arena_entry_index: i32,
+    pub arena_entry_index: i32,
     /// Pointer to the Rust executor (set by nros_executor_add_action_client).
-    pub(crate) executor_ptr: *mut core::ffi::c_void,
+    pub executor_ptr: *mut core::ffi::c_void,
 }
 
 impl ActionClientInternal {

@@ -382,11 +382,17 @@ pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -
 /// Lightweight — stores only the arena entry index and the executor
 /// pointer where the actual transport handle lives. Mirrors
 /// `ServiceClientInternal` and `ActionClientInternal`.
-pub(crate) struct ServiceServerInternal {
+///
+/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
+/// emit this struct into the C header. The size is determined by the
+/// struct definition directly — no hand-math or `u64s_for::<T>()` probe
+/// required.
+#[repr(C)]
+pub struct ServiceServerInternal {
     /// Arena entry index. -1 means not registered with any executor yet.
-    pub(crate) arena_entry_index: i32,
+    pub arena_entry_index: i32,
     /// Pointer to the outer `nros_executor_t` that owns the arena entry.
-    pub(crate) executor_ptr: *mut c_void,
+    pub executor_ptr: *mut c_void,
 }
 
 impl ServiceServerInternal {
@@ -423,13 +429,17 @@ pub type nros_response_callback_t =
 /// Lightweight — stores only the arena entry index and the executor
 /// pointer where the actual transport handle lives. Mirrors
 /// `ActionClientInternal`.
-pub(crate) struct ServiceClientInternal {
+///
+/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
+/// emit this struct into the C header.
+#[repr(C)]
+pub struct ServiceClientInternal {
     /// Arena entry index. -1 means not registered with any executor yet.
-    pub(crate) arena_entry_index: i32,
+    pub arena_entry_index: i32,
     /// Pointer to the Rust executor that owns the arena entry.
-    pub(crate) executor_ptr: *mut c_void,
+    pub executor_ptr: *mut c_void,
     /// Default timeout used by `nros_client_call`.
-    pub(crate) timeout_ms: u32,
+    pub timeout_ms: u32,
 }
 
 impl ServiceClientInternal {
