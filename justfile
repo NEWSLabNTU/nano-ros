@@ -169,14 +169,21 @@ _test-summary:
 
 # Run standard tests (fast path — skips heavy external-dep binaries).
 #
-# The exclusion list lives in `.config/nextest.toml` under
-# `[profile.fast]`. When a new heavy test binary lands, update the
-# `default-filter` there, not this recipe.
+# The exclusion keys off nextest test-groups: any binary assigned to
+# `qemu-serial`, `ros2-interop`, `xrce_ros2_interop`, or `large_msg`
+# in `.config/nextest.toml` is skipped. When a new heavy test binary
+# lands, assign it to one of those groups via an override entry and
+# this recipe will pick it up automatically.
+#
+# `group(...)` is a CLI-only filter predicate (nextest 0.9.133+), so
+# the list lives here rather than under a `[profile.fast]`
+# default-filter.
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
-    args=(--workspace --no-fail-fast --profile fast)
+    exclude='not (group(=qemu-serial) or group(=ros2-interop) or group(=xrce_ros2_interop) or group(=large_msg))'
+    args=(--workspace --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

@@ -167,18 +167,21 @@ that each just call `build_X()` and assert the binary exists).
     parametrised binary), `params` (ROS 2 interop), and
     `dds_ros2_interop`. 210 tests were running when ~126 was the
     intent.
-  - **Fix**: New `[profile.fast]` in `.config/nextest.toml` with a
-    `default-filter` that excludes all 13 heavy-dep binaries — QEMU
-    / bridge-networked (the qemu-serial set), ROS 2 / DDS interop,
-    XRCE-Agent-dependent, and large-msg stress. `just test` now
-    runs `cargo nextest run --profile fast`. Adding a new heavy
-    binary is a one-line edit to the profile's filter.
-  - **Caveat**: Nextest's filter DSL doesn't (yet) support a
-    `test_group(…)` predicate, so the profile's `default-filter`
-    still enumerates binaries by name — just in one place instead
-    of scattered through `justfile`. The group list in
-    `.config/nextest.toml` and the `[profile.fast]` filter must be
-    kept in sync manually for now.
+  - **Fix**: `just test` now invokes nextest with
+    `-E 'not (group(=qemu-serial) or group(=ros2-interop) or
+    group(=xrce_ros2_interop) or group(=large_msg))'` — the
+    exclusion references test-groups by name, so the group override
+    list in `.config/nextest.toml` is the single source of truth.
+    `dds_ros2_interop` was added to the `ros2-interop` group as
+    part of this change (it was previously groupless).
+  - **Note on nextest's `group()` filter predicate**: nextest
+    0.9.133 (shipped via [PR #3273](https://github.com/nextest-rs/nextest/pull/3273))
+    added the `group(name-matcher)` filterset predicate, but it's
+    **CLI-only** — it can't appear inside a `[profile.*]`
+    `default-filter` or a per-test override's `filter`. That's why
+    the group list lives in `justfile` rather than in a
+    `[profile.fast]` config block. Reference:
+    [filterset docs](https://nexte.st/docs/filtersets/reference/).
   - **Doesn't do**: rename / UX changes. See 85.11.
 
 - [ ] 85.11 — `just test` / `just test-all` / `just ci` rename pass

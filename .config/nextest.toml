@@ -86,6 +86,11 @@ filter = "binary(rmw_interop)"
 test-group = "ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+[[profile.default.overrides]]
+filter = "binary(dds_ros2_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime
 [[profile.default.overrides]]
 filter = "binary(safety_e2e)"
@@ -106,28 +111,19 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true
 
-# `fast` profile — skips external-dependency-heavy binaries.
+# The "fast path" — invoked by `just test` — excludes heavy-dep
+# binaries by referencing the test-groups defined above via the
+# nextest 0.9.133+ `group(...)` filterset predicate. The filter
+# lives in `justfile` because `group(...)` is CLI-only; see
+# https://nexte.st/docs/filtersets/reference/ and
+# https://github.com/nextest-rs/nextest/pull/3273.
 #
-# `just test` uses this profile so the fast path stays fast even as
-# new heavy test binaries land. Binaries are excluded when they
-# require one of:
-#   * QEMU / bridge-networked simulation (qemu-serial group)
-#   * A ROS 2 CLI or DDS implementation on PATH
-#   * An XRCE-DDS Agent spawned as a sibling process
-#   * Large-message stress payloads that serialise zenohd
+# Groups currently excluded from the fast path:
+#   * qemu-serial          — QEMU / bridge-networked simulation
+#   * ros2-interop         — needs ROS 2 CLI on PATH
+#   * xrce_ros2_interop    — needs XRCE Agent + ROS 2
+#   * large_msg            — stress payloads that saturate zenohd
 #
-# When a new heavy test binary lands, add it to this filter AND to
-# the relevant group override above — the two lists should stay in
-# sync. (A future change could derive one from the other; today the
-# duplication is the cost of the nextest filter DSL not supporting
-# a `test_group(...)` predicate.)
-[profile.fast]
-default-filter = """
-not (binary(emulator) or binary(esp32_emulator) or binary(zephyr)
-  or binary(freertos_qemu) or binary(nuttx_qemu)
-  or binary(threadx_riscv64_qemu) or binary(threadx_linux)
-  or binary(rtos_e2e)
-  or binary(rmw_interop) or binary(params)
-  or binary(xrce_ros2_interop) or binary(dds_ros2_interop)
-  or binary(large_msg))
-"""
+# When a new heavy test binary lands, assign it to one of these
+# groups via a `[[profile.default.overrides]]` entry — `just test`
+# will automatically pick up the exclusion.
