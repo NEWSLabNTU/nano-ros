@@ -428,6 +428,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-baremetal-common"
+version = "0.1.0"
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -493,6 +497,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]

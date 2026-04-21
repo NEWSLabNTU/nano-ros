@@ -462,7 +462,7 @@ version = "0.1.0"
 dependencies = [
  "atomic-waker",
  "heapless",
- "libc",
+ "nros-platform",
  "nros-rmw",
  "xrce-sys",
 ]
