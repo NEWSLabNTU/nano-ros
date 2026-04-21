@@ -183,6 +183,16 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         }
         Ok(None)
     }
+
+    /// `Duration`-taking alias for [`wait_next`](Self::wait_next) (Phase 84.D7).
+    pub fn wait_next_for(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<Option<M>, NodeError> {
+        let ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        self.wait_next(executor, ms)
+    }
 }
 
 #[cfg(feature = "stream")]
@@ -268,6 +278,11 @@ pub struct EmbeddedServiceClient<
     pub(crate) handle: session::RmwServiceClient,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
+    /// Phase 84.D3: set after a successful `send_request`, cleared on a
+    /// successful `Promise::try_recv`. Guards against "drop Promise
+    /// without awaiting, then `call()` again" which would otherwise
+    /// deliver the stale reply to the new caller.
+    pub(crate) in_flight: bool,
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
@@ -287,7 +302,20 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ///     }
     /// }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NodeError::RequestInFlight`] if a previous call's reply
+    /// has not been received. This prevents the old hazard where dropping
+    /// a [`Promise`] without awaiting its reply left the stale reply
+    /// queued to land on the next [`call`](Self::call). Resolve by
+    /// polling the existing promise to completion or calling
+    /// [`reset_in_flight`](Self::reset_in_flight).
     pub fn call(&mut self, request: &Svc::Request) -> Result<Promise<'_, Svc::Reply>, NodeError> {
+        if self.in_flight {
+            return Err(NodeError::RequestInFlight);
+        }
+
         // Serialize request into req_buffer
         let mut writer = CdrWriter::new_with_header(&mut self.req_buffer)
             .map_err(|_| NodeError::BufferTooSmall)?;
@@ -301,11 +329,25 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             .send_request_raw(&self.req_buffer[..req_len])
             .map_err(|_| NodeError::ServiceRequestFailed)?;
 
+        self.in_flight = true;
+
         Ok(Promise {
             handle: &mut self.handle,
             reply_buffer: &mut self.reply_buffer,
             parse: cdr_deserialize_reply::<Svc>,
+            in_flight_flag: &mut self.in_flight,
         })
+    }
+
+    /// Explicitly clear the in-flight flag (Phase 84.D3).
+    ///
+    /// Call this if a previous [`Promise`] was dropped without completing
+    /// and you want to abandon the pending reply. The next
+    /// [`call`](Self::call) will proceed but may still observe the stale
+    /// reply if one is in the transport's queue — callers that need strict
+    /// correctness should drain / ignore one extra `try_recv` first.
+    pub fn reset_in_flight(&mut self) {
+        self.in_flight = false;
     }
 }
 
@@ -321,6 +363,12 @@ pub struct Promise<'a, T> {
     pub(crate) handle: &'a mut session::RmwServiceClient,
     pub(crate) reply_buffer: &'a mut [u8],
     pub(crate) parse: fn(&[u8]) -> Result<T, NodeError>,
+    /// Phase 84.D3: cleared on a successful `try_recv` so the client's
+    /// next `call()` can proceed. If the `Promise` is dropped before the
+    /// reply is consumed, the flag stays set — forcing the user to
+    /// explicitly acknowledge the abandoned call via
+    /// `reset_in_flight()`.
+    pub(crate) in_flight_flag: &'a mut bool,
 }
 
 impl<T> Promise<'_, T> {
@@ -336,6 +384,8 @@ impl<T> Promise<'_, T> {
         {
             Some(len) => {
                 let reply = (self.parse)(&self.reply_buffer[..len])?;
+                // Reply consumed — allow the client to issue another call.
+                *self.in_flight_flag = false;
                 Ok(Some(reply))
             }
             None => Ok(None),
@@ -371,6 +421,16 @@ impl<T> Promise<'_, T> {
             }
         }
         Err(NodeError::Timeout)
+    }
+
+    /// `Duration`-taking alias for [`wait`](Self::wait) (Phase 84.D7).
+    pub fn wait_for(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<T, NodeError> {
+        let ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        self.wait(executor, ms)
     }
 }
 
@@ -683,6 +743,10 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         &mut self,
         goal: &A::Goal,
     ) -> Result<(nros_core::GoalId, Promise<'_, bool>), NodeError> {
+        if self.core.in_flight_send_goal {
+            return Err(NodeError::RequestInFlight);
+        }
+
         // Serialize goal into a temp buffer (without CDR header or GoalId)
         let mut tmp = [0u8; GOAL_BUF];
         let mut writer = CdrWriter::new(&mut tmp);
@@ -691,6 +755,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         let goal_len = writer.position();
 
         let goal_id = self.core.send_goal_raw(&tmp[..goal_len])?;
+        self.core.in_flight_send_goal = true;
 
         Ok((
             goal_id,
@@ -698,6 +763,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
                 handle: &mut self.core.send_goal_client,
                 reply_buffer: &mut self.core.result_buffer,
                 parse: parse_goal_accepted,
+                in_flight_flag: &mut self.core.in_flight_send_goal,
             },
         ))
     }
@@ -731,12 +797,17 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<Promise<'_, nros_core::CancelResponse>, NodeError> {
+        if self.core.in_flight_cancel {
+            return Err(NodeError::RequestInFlight);
+        }
         self.core.send_cancel_request(goal_id)?;
+        self.core.in_flight_cancel = true;
 
         Ok(Promise {
             handle: &mut self.core.cancel_goal_client,
             reply_buffer: &mut self.core.result_buffer,
             parse: parse_cancel_response,
+            in_flight_flag: &mut self.core.in_flight_cancel,
         })
     }
 
@@ -745,13 +816,33 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result)>, NodeError> {
+        if self.core.in_flight_get_result {
+            return Err(NodeError::RequestInFlight);
+        }
         self.core.send_get_result_request(goal_id)?;
+        self.core.in_flight_get_result = true;
 
         Ok(Promise {
             handle: &mut self.core.get_result_client,
             reply_buffer: &mut self.core.result_buffer,
             parse: parse_result_response::<A>,
+            in_flight_flag: &mut self.core.in_flight_get_result,
         })
+    }
+
+    /// Explicitly clear the "send_goal reply in flight" flag (Phase 84.D3).
+    pub fn reset_send_goal_in_flight(&mut self) {
+        self.core.in_flight_send_goal = false;
+    }
+
+    /// Explicitly clear the "cancel reply in flight" flag (Phase 84.D3).
+    pub fn reset_cancel_in_flight(&mut self) {
+        self.core.in_flight_cancel = false;
+    }
+
+    /// Explicitly clear the "get_result reply in flight" flag (Phase 84.D3).
+    pub fn reset_get_result_in_flight(&mut self) {
+        self.core.in_flight_get_result = false;
     }
 
     /// Create a feedback stream (receives feedback for all goals).

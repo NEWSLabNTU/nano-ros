@@ -329,6 +329,12 @@ pub enum NodeError {
     /// A required subsystem has not been initialized (e.g. parameter
     /// services have not been registered on the executor).
     NotInitialized,
+    /// The client / action client already has a request in flight that
+    /// hasn't been consumed. Phase 84.D3: fixes the hazard where dropping
+    /// a `Promise` without awaiting its reply left the stale reply queued
+    /// to be delivered to the *next* call. Resolve by either polling the
+    /// existing promise to completion or calling `reset_in_flight()`.
+    RequestInFlight,
 }
 
 impl From<TransportError> for NodeError {

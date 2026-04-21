@@ -186,6 +186,7 @@ impl<'a> Node<'a> {
             handle,
             req_buffer: [0u8; REQ_BUF],
             reply_buffer: [0u8; REPLY_BUF],
+            in_flight: false,
             _phantom: PhantomData,
         })
     }
@@ -349,6 +350,9 @@ impl<'a> Node<'a> {
                 result_buffer: [0u8; RESULT_BUF],
                 feedback_buffer: [0u8; FEEDBACK_BUF],
                 goal_counter: 0,
+                in_flight_send_goal: false,
+                in_flight_cancel: false,
+                in_flight_get_result: false,
             },
             _phantom: PhantomData,
         })

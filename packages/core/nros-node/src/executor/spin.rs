@@ -1393,10 +1393,18 @@ impl Executor {
     /// 3. **Dispatch** — invoke callbacks according to their `InvocationMode`.
     ///
     /// Returns a [`SpinOnceResult`] with counts of processed items and errors.
+    ///
+    /// # Arguments
+    /// * `timeout_ms` — upper bound on the I/O wait, in milliseconds. Clamped
+    ///   to `[0, i32::MAX]`; negative values are treated as zero (no wait).
+    ///   Phase 84.D7: the previous `.max(0) as u64` happened only for the
+    ///   timer delta accumulator, so `spin_once(-1)` silently froze timers
+    ///   while still polling I/O. Clamping here makes both paths agree.
     pub fn spin_once(&mut self, timeout_ms: i32) -> SpinOnceResult {
+        let timeout_ms = timeout_ms.max(0);
         let _ = self.session.drive_io(timeout_ms);
 
-        let delta_ms = timeout_ms.max(0) as u64;
+        let delta_ms = timeout_ms as u64;
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
         // Phase 1: Readiness scan
@@ -1554,6 +1562,20 @@ impl Executor {
         loop {
             self.spin_once(timeout_ms);
         }
+    }
+
+    /// `Duration`-taking alias for [`spin_once`](Self::spin_once) (Phase 84.D7).
+    ///
+    /// Saturates at `i32::MAX` ms if `timeout > ~24 days`.
+    pub fn spin_once_for(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
+        let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+        self.spin_once(ms)
+    }
+
+    /// `Duration`-taking alias for [`spin`](Self::spin) (Phase 84.D7).
+    pub fn spin_with_period(&mut self, period: core::time::Duration) -> ! {
+        let ms = period.as_millis().min(i32::MAX as u128) as i32;
+        self.spin(ms)
     }
 
     /// Drive I/O and dispatch callbacks asynchronously.

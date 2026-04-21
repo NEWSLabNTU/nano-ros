@@ -483,6 +483,13 @@ pub struct ActionClientCore<
     pub(crate) result_buffer: [u8; RESULT_BUF],
     pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
     pub(crate) goal_counter: u64,
+    /// Phase 84.D3: per-sub-client in-flight flags. Each of the three
+    /// sub-clients (send_goal / cancel / get_result) is an independent
+    /// request/reply channel and tracks its own "unconsumed reply"
+    /// state. Cleared by `Promise::try_recv` on success.
+    pub(crate) in_flight_send_goal: bool,
+    pub(crate) in_flight_cancel: bool,
+    pub(crate) in_flight_get_result: bool,
 }
 
 impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
@@ -504,6 +511,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             result_buffer: [0u8; RESULT_BUF],
             feedback_buffer: [0u8; FEEDBACK_BUF],
             goal_counter: 0,
+            in_flight_send_goal: false,
+            in_flight_cancel: false,
+            in_flight_get_result: false,
         }
     }
 
