@@ -58,7 +58,7 @@ extern "C" fn main() -> ! {
 
                             // Yield to network
                             for _ in 0..50 {
-                                executor.spin_once(10);
+                                executor.spin_once(core::time::Duration::from_millis(10));
                             }
                         }
 
@@ -71,7 +71,7 @@ extern "C" fn main() -> ! {
                     if goals_handled >= 1 {
                         // Spin to serve get_result queries before shutting down.
                         for _ in 0..2000 {
-                            executor.spin_once(10);
+                            executor.spin_once(core::time::Duration::from_millis(10));
                             let _ = server.try_handle_get_result();
                         }
                         println!("Server shutting down.");
@@ -84,7 +84,7 @@ extern "C" fn main() -> ! {
                 }
             }
 
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         println!("Server timeout.");

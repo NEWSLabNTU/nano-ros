@@ -73,7 +73,7 @@ fn test_add_subscription_and_spin_once_no_data() {
         })
         .unwrap();
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 0);
     assert!(!result.any_work());
     assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
@@ -103,7 +103,7 @@ fn test_add_subscription_and_spin_once_with_data() {
     let (data, len) = encode_test_msg(42);
     unsafe { &*sub_ptr }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 1);
     assert!(result.any_work());
     assert_eq!(*received.lock().unwrap(), Some(42));
@@ -139,7 +139,7 @@ fn test_multiple_subscriptions() {
     let (data2, len2) = encode_test_msg(20);
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data2, len2);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 2);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
@@ -233,7 +233,7 @@ fn test_executor_spin_once_no_entries() {
     let session = MockSession::new();
     let mut executor = Executor::from_session(session);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(!result.any_work());
 }
 
@@ -270,12 +270,12 @@ fn test_add_timer_and_fire() {
         .unwrap();
 
     // Not enough time elapsed — should not fire
-    let result = executor.spin_once(50);
+    let result = executor.spin_once(core::time::Duration::from_millis(50));
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
 
     // Now enough time elapsed (50 + 60 = 110 >= 100)
-    let result = executor.spin_once(60);
+    let result = executor.spin_once(core::time::Duration::from_millis(60));
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -294,9 +294,9 @@ fn test_timer_repeats() {
         .unwrap();
 
     // Fire 3 times
-    let _ = executor.spin_once(100);
-    let _ = executor.spin_once(100);
-    let _ = executor.spin_once(100);
+    let _ = executor.spin_once(core::time::Duration::from_millis(100));
+    let _ = executor.spin_once(core::time::Duration::from_millis(100));
+    let _ = executor.spin_once(core::time::Duration::from_millis(100));
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
 
@@ -314,12 +314,12 @@ fn test_timer_oneshot_fires_once() {
         .unwrap();
 
     // First spin fires
-    let result = executor.spin_once(60);
+    let result = executor.spin_once(core::time::Duration::from_millis(60));
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     // Second spin should NOT fire again
-    let result = executor.spin_once(60);
+    let result = executor.spin_once(core::time::Duration::from_millis(60));
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -338,7 +338,7 @@ fn test_timer_does_not_fire_at_zero_delta() {
         .unwrap();
 
     // Zero delta should never fire
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.timers_fired, 0);
 }
 
@@ -369,7 +369,7 @@ fn test_timer_with_subscriptions() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(100);
+    let result = executor.spin_once(core::time::Duration::from_millis(100));
     assert_eq!(result.timers_fired, 1);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(timer_count.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -499,7 +499,7 @@ fn test_action_server_spin_once_no_requests() {
         .unwrap();
 
     // With no pending requests, spin_once should return no work
-    let result = executor.spin_once(10);
+    let result = executor.spin_once(core::time::Duration::from_millis(10));
     assert_eq!(result.services_handled, 0);
     assert!(!result.any_work());
 }
@@ -520,7 +520,7 @@ fn test_action_server_registers_and_spins() {
     // Action server registered
     assert!(executor.entries[0].is_some());
 
-    let result = executor.spin_once(10);
+    let result = executor.spin_once(core::time::Duration::from_millis(10));
     assert!(!result.any_work());
 }
 
@@ -778,7 +778,7 @@ fn test_trigger_any_fires_on_data() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 1);
 }
 
@@ -793,7 +793,7 @@ fn test_trigger_any_no_data_no_dispatch() {
         .unwrap();
 
     // No data loaded → trigger should not pass (for subscriptions)
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 0);
 }
 
@@ -815,7 +815,7 @@ fn test_trigger_always_fires_without_data() {
     executor.set_invocation(id, InvocationMode::Always);
 
     // No data, but trigger Always → dispatch phase runs, callback fires
-    let _result = executor.spin_once(0);
+    let _result = executor.spin_once(core::time::Duration::from_millis(0));
     // Subscription try_recv returns None, so subscriptions_processed stays 0
     // but the callback IS invoked (Always invocation) — try_process returns Ok(false)
     // because there's no actual data
@@ -842,7 +842,7 @@ fn test_trigger_one_fires_on_specific_handle() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta0.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     // Trigger requires handle 1 to have data, but only handle 0 does
     assert_eq!(result.subscriptions_processed, 0);
 
@@ -851,7 +851,7 @@ fn test_trigger_one_fires_on_specific_handle() {
     let meta1 = executor.entries[1].as_ref().unwrap();
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data2, len2);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(result.subscriptions_processed >= 1);
 }
 
@@ -870,7 +870,7 @@ fn test_trigger_predicate() {
     }));
 
     // No data → predicate returns false
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 0);
 }
 
@@ -893,13 +893,13 @@ fn test_guard_condition_trigger_fires_callback() {
         .unwrap();
 
     // Not triggered yet
-    let _result = executor.spin_once(0);
+    let _result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
 
     // Trigger the guard condition
     handle.trigger();
 
-    let _result = executor.spin_once(0);
+    let _result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(called.load(std::sync::atomic::Ordering::SeqCst));
 }
 
@@ -919,16 +919,16 @@ fn test_guard_condition_clears_after_trigger() {
 
     // Trigger once
     handle.trigger();
-    executor.spin_once(0);
+    executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     // Without re-triggering, callback should not fire again
-    executor.spin_once(0);
+    executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     // Trigger again
     handle.trigger();
-    executor.spin_once(0);
+    executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
 
@@ -970,7 +970,7 @@ fn test_raw_subscription_callback() {
         (*sub_ptr).load(data, len);
     }
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 1);
     assert!(RAW_CALLED.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(RAW_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
@@ -1069,7 +1069,7 @@ fn test_let_semantics_pre_samples_data() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(*received.lock().unwrap(), Some(77));
 }
@@ -1107,7 +1107,7 @@ fn test_let_semantics_raw_subscription() {
         (*sub_ptr).load(data, len);
     }
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(RAW_LET_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
 }
@@ -1132,7 +1132,7 @@ fn test_trigger_all_with_mixed_handles() {
     executor.set_trigger(Trigger::All);
 
     // Timer is always ready, but subscription has no data → trigger fails
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.subscriptions_processed, 0);
     // Timer delta still accumulates
 
@@ -1142,7 +1142,7 @@ fn test_trigger_all_with_mixed_handles() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(100);
+    let result = executor.spin_once(core::time::Duration::from_millis(100));
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(result.timers_fired, 1);
 }
@@ -1174,7 +1174,7 @@ fn test_trigger_allof_fires_when_both_ready() {
     let (data, len) = encode_test_msg(1);
     unsafe { &*(arena_ptr.add(off_a) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         result.subscriptions_processed, 0,
         "AllOf should not fire with only one ready"
@@ -1186,7 +1186,7 @@ fn test_trigger_allof_fires_when_both_ready() {
     unsafe { &*(arena_ptr.add(off_a) as *const MockSubscriber) }.load(data_a, len_a);
     unsafe { &*(arena_ptr.add(off_b) as *const MockSubscriber) }.load(data_b, len_b);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         result.subscriptions_processed, 2,
         "AllOf should fire when both ready"
@@ -1206,7 +1206,7 @@ fn test_trigger_allof_empty_set_always_fires() {
     executor.set_trigger(Trigger::AllOf(HandleSet::EMPTY));
 
     // No data loaded, but trigger passes (empty set)
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     // Subscription still has no data, so callback won't fire (try_recv returns None)
     assert_eq!(result.subscriptions_processed, 0);
 }
@@ -1231,7 +1231,7 @@ fn test_trigger_anyof_fires_when_one_ready() {
     executor.set_trigger(Trigger::AnyOf(id_a | id_b));
 
     // No data → trigger should NOT fire
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         result.subscriptions_processed, 0,
         "AnyOf should not fire with none ready"
@@ -1243,7 +1243,7 @@ fn test_trigger_anyof_fires_when_one_ready() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta_a.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         result.subscriptions_processed >= 1,
         "AnyOf should fire when one handle ready"
@@ -1268,7 +1268,7 @@ fn test_trigger_anyof_empty_set_never_fires() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(0);
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         result.subscriptions_processed, 0,
         "AnyOf(EMPTY) should never fire"
@@ -1303,10 +1303,10 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
     // When the timer fires during the trigger-failed path, its callback
     // IS invoked (timers always fire regardless of trigger), but the
     // SpinOnceResult is not propagated.
-    let _result = executor.spin_once(50); // elapsed=50, not ready
+    let _result = executor.spin_once(core::time::Duration::from_millis(50)); // elapsed=50, not ready
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
 
-    let _result = executor.spin_once(60); // elapsed=110, fires!
+    let _result = executor.spin_once(core::time::Duration::from_millis(60)); // elapsed=110, fires!
     // Timer callback fired even though trigger didn't pass
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

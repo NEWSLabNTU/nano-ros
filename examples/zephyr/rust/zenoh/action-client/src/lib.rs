@@ -49,7 +49,7 @@ fn run() -> Result<(), NodeError> {
     let (goal_id, mut promise) = action_client.send_goal(&goal)?;
 
     // Wait for goal acceptance (drives I/O internally)
-    let accepted = match promise.wait(&mut executor, 10000) {
+    let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok(accepted) => accepted,
         Err(e) => {
             error!("Goal acceptance failed: {:?}", e);
@@ -75,7 +75,7 @@ fn run() -> Result<(), NodeError> {
         let mut feedback_count: u32 = 0;
         for _ in 0..20 {
             // 20 x 1000ms = 20 second max
-            match stream.wait_next(&mut executor, 1000) {
+            match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
                     info!(
@@ -105,7 +105,7 @@ fn run() -> Result<(), NodeError> {
     // Get final result using the Promise pattern
     let mut result_promise = action_client.get_result(&goal_id)?;
 
-    match result_promise.wait(&mut executor, 10000) {
+    match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok((status, result)) => {
             info!(
                 "Result: status={:?}, sequence={:?}",

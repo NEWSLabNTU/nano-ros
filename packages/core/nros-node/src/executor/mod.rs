@@ -17,7 +17,7 @@
 //! publisher.publish(&Int32 { data: 42 })?;
 //!
 //! loop {
-//!     executor.spin_once(10);
+//!     executor.spin_once(core::time::Duration::from_millis(10));
 //! }
 //! ```
 

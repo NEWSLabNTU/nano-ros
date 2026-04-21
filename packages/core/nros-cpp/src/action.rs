@@ -737,7 +737,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     for _ in 0..1000 {
-        let _ = ctx.executor.spin_once(10);
+        let _ = ctx
+            .executor
+            .spin_once(core::time::Duration::from_millis(10));
         let flag = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_ACCEPTED)) };
         if flag >= 0 {
             // Restore original callback
@@ -845,7 +847,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     for _ in 0..1000 {
-        let _ = ctx.executor.spin_once(10);
+        let _ = ctx
+            .executor
+            .spin_once(core::time::Duration::from_millis(10));
         let rlen = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_RESULT_LEN)) };
         if rlen >= 0 {
             client.callbacks.result = orig_cb;

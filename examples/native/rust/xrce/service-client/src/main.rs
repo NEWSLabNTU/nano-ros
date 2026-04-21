@@ -67,7 +67,7 @@ fn main() {
         };
 
         // Wait for the reply (drives I/O internally)
-        match promise.wait(&mut executor, 5000) {
+        match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
             Ok(reply) => {
                 println!("Received reply: sum={}", reply.sum);
                 success_count += 1;

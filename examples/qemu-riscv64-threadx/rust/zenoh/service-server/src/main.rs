@@ -28,7 +28,7 @@ extern "C" fn main() -> ! {
 
         // Spin for a bounded time (test automation)
         for _ in 0..50000u32 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         println!("Server shutting down.");

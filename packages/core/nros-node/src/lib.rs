@@ -42,7 +42,7 @@
 //!
 //! // In your main loop:
 //! loop {
-//!     executor.spin_once(10);
+//!     executor.spin_once(core::time::Duration::from_millis(10));
 //!     // platform delay...
 //! }
 //! ```

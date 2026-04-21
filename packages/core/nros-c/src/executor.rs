@@ -14,6 +14,7 @@ use crate::action::{
 };
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
+use crate::node::nros_node_t;
 use crate::service::{
     ServiceClientInternal, client_response_trampoline, nros_client_state_t, nros_client_t,
     nros_service_state_t, nros_service_t,
@@ -63,6 +64,25 @@ pub(crate) unsafe fn get_executor(opaque: &mut [u64; EXECUTOR_OPAQUE_U64S]) -> &
 #[inline]
 pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'static mut CExecutor {
     &mut *(ptr as *mut CExecutor)
+}
+
+/// Propagate node identity from a C node into the Rust executor before
+/// registering an entity. The Rust `add_*_raw_*` methods read
+/// `self.node_name` / `self.namespace` to build the liveliness keyexpr;
+/// without identity, no liveliness token is declared and rmw_zenoh
+/// subscribers won't discover the entity.
+///
+/// # Safety
+/// `node` must be NULL or point to an initialized `nros_node_t` with
+/// valid `name_len` / `namespace_len`.
+unsafe fn set_executor_node_identity(rust_exec: &mut CExecutor, node: *const nros_node_t) {
+    if node.is_null() {
+        return;
+    }
+    let node_ref = &*node;
+    let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+    let ns_str = core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+    rust_exec.set_node_identity(name_str, ns_str);
 }
 
 // ============================================================================
@@ -513,6 +533,10 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         };
         let context = subscription_ref.get_context();
 
+        // Propagate node identity into the executor so the underlying
+        // create_subscriber call gets liveliness keyexpr metadata.
+        set_executor_node_identity(rust_exec, subscription_ref.node);
+
         // Register with the nros-node executor using MESSAGE_BUFFER_SIZE
         let result = rust_exec.add_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
             topic_str,
@@ -663,6 +687,9 @@ pub unsafe extern "C" fn nros_executor_add_service(
         };
         let context = service_ref.get_context();
 
+        // Propagate node identity for liveliness key expression.
+        set_executor_node_identity(rust_exec, service_ref.node);
+
         // Register with the nros-node executor
         let result = rust_exec.add_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
             service_name,
@@ -743,6 +770,9 @@ pub unsafe extern "C" fn nros_executor_add_client(
         // registration without re-registering with the arena.
         let cb: Option<nros_node::RawResponseCallback> = Some(client_response_trampoline);
         let client_ctx = client as *mut core::ffi::c_void;
+
+        // Propagate node identity for liveliness key expression.
+        set_executor_node_identity(rust_exec, client_ref.node);
 
         let result = rust_exec.add_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
             service_name,
@@ -896,6 +926,9 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         );
         let context = server_mut._internal.as_mut_ptr() as *mut core::ffi::c_void;
 
+        // Propagate node identity for liveliness key expression.
+        set_executor_node_identity(rust_exec, server_ref.node);
+
         // Register with the nros-node executor using trampolines. The
         // accepted_callback_trampoline is invoked by the arena *after* the
         // accept reply is sent, so the user's long-running execution does
@@ -997,6 +1030,9 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
             core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
         let type_hash_str =
             core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
+
+        // Propagate node identity for liveliness key expression.
+        set_executor_node_identity(rust_exec, client_ref.node);
 
         // Create a NEW ActionClientCore in the arena via add_action_client_raw.
         // The async send functions will use this core (not the client's original).
@@ -1121,8 +1157,8 @@ pub unsafe extern "C" fn nros_executor_spin_some(
         let rust_exec = get_executor(&mut executor._opaque);
 
         // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
-        let timeout_ms: i32 = if timeout_ns > 0 {
-            ((timeout_ns / 1_000_000).max(1)).min(i32::MAX as u64) as i32
+        let timeout_ms: u64 = if timeout_ns > 0 {
+            (timeout_ns / 1_000_000).max(1)
         } else {
             0
         };
@@ -1131,7 +1167,7 @@ pub unsafe extern "C" fn nros_executor_spin_some(
         // LET semantics, and dispatch. Guard against reentrancy so
         // blocking helpers called from inside a callback are detected.
         executor.in_dispatch = true;
-        let result = rust_exec.spin_once(timeout_ms);
+        let result = rust_exec.spin_once(core::time::Duration::from_millis(timeout_ms));
         executor.in_dispatch = false;
 
         if result.any_work() {

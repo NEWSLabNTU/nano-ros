@@ -33,7 +33,7 @@ fn main() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
     while std::time::Instant::now() < deadline {
-        executor.spin_once(0);
+        executor.spin_once(core::time::Duration::from_millis(0));
 
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
@@ -73,7 +73,7 @@ fn main() {
 
                         // Drive I/O between feedback publishes
                         for _ in 0..10 {
-                            executor.spin_once(0);
+                            executor.spin_once(core::time::Duration::from_millis(0));
                             std::thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
@@ -86,7 +86,7 @@ fn main() {
                 // Handle get_result requests after completing
                 for _ in 0..200 {
                     let _ = server.try_handle_get_result();
-                    executor.spin_once(0);
+                    executor.spin_once(core::time::Duration::from_millis(0));
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }

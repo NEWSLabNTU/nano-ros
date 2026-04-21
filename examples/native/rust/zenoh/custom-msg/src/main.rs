@@ -258,12 +258,12 @@ fn main() {
                 reading.sensor_id, reading.temperature, reading.humidity
             );
 
-            executor.spin_once(100);
+            executor.spin_once(core::time::Duration::from_millis(100));
             std::thread::sleep(Duration::from_millis(100));
         }
 
         // Process remaining callbacks
-        executor.spin_once(500);
+        executor.spin_once(core::time::Duration::from_millis(500));
     }
 
     println!();

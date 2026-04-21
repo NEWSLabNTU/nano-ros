@@ -151,7 +151,7 @@ fn client_scenario_2() {
         if let Ok(mut promise) = client.call(&request) {
             let start = Instant::now();
             loop {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
                 match promise.try_recv() {
                     Ok(Some(_)) => break,
                     Ok(None) => {
@@ -211,7 +211,7 @@ fn publish_scenario_3() {
             if let Ok(mut promise) = client.call(&req) {
                 let call_start = Instant::now();
                 loop {
-                    executor.spin_once(10);
+                    executor.spin_once(core::time::Duration::from_millis(10));
                     match promise.try_recv() {
                         Ok(Some(_)) => break,
                         Ok(None) => {

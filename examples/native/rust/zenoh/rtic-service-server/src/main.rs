@@ -33,7 +33,7 @@ fn main() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
     while std::time::Instant::now() < deadline {
-        executor.spin_once(0);
+        executor.spin_once(core::time::Duration::from_millis(0));
 
         match service.handle_request(|req| {
             let sum = req.a + req.b;

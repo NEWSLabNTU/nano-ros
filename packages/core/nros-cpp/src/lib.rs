@@ -693,7 +693,10 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     }
 
     let ctx = unsafe { &mut *(handle as *mut CppContext) };
-    let _ = ctx.executor.spin_once(timeout_ms);
+    let ms = timeout_ms.max(0) as u64;
+    let _ = ctx
+        .executor
+        .spin_once(core::time::Duration::from_millis(ms));
     NROS_CPP_RET_OK
 }
 

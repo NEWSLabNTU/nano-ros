@@ -41,5 +41,5 @@ fn run() -> Result<(), NodeError> {
     info!("Service server ready: /add_two_ints");
     info!("Waiting for service requests...");
 
-    executor.spin(100);
+    executor.spin(core::time::Duration::from_millis(100));
 }

@@ -23,7 +23,7 @@ extern "C" fn main() -> ! {
 
         // Wait for service to be available
         for _ in 0..500 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         let test_cases: &[(i64, i64)] = &[(5, 3), (10, 20), (100, 200), (-5, 10)];
@@ -37,7 +37,7 @@ extern "C" fn main() -> ! {
             // Poll for response
             let mut response = None;
             for _ in 0..5000 {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
                 if let Some(reply) = promise.try_recv()? {
                     response = Some(reply);
                     break;

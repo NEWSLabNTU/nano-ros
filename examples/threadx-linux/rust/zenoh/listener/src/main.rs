@@ -25,7 +25,7 @@ fn main() {
         let mut poll_count = 0u32;
 
         loop {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
 
             if let Some(msg) = subscription.try_recv()? {
                 msg_count += 1;

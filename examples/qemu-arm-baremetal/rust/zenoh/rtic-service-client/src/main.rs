@@ -71,7 +71,9 @@ mod app {
     async fn call_service(cx: call_service::Context) {
         // Wait for zenoh session + server queryable discovery.
         for _ in 0..500 {
-            cx.local.executor.spin_once(0);
+            cx.local
+                .executor
+                .spin_once(core::time::Duration::from_millis(0));
             Mono::delay(10.millis()).await;
         }
 
@@ -87,7 +89,9 @@ mod app {
 
             let mut got_reply = false;
             for _i in 0..3000u32 {
-                cx.local.executor.spin_once(0);
+                cx.local
+                    .executor
+                    .spin_once(core::time::Duration::from_millis(0));
                 Mono::delay(10.millis()).await;
 
                 match promise.try_recv() {
@@ -108,7 +112,9 @@ mod app {
                 nros_mps2_an385::exit_failure();
             }
 
-            cx.local.executor.spin_once(0);
+            cx.local
+                .executor
+                .spin_once(core::time::Duration::from_millis(0));
             Mono::delay(10.millis()).await;
         }
 

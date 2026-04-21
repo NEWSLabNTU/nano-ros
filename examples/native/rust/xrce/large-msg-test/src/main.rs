@@ -65,7 +65,7 @@ fn main() {
         }
 
         // Flush any pending output before each test
-        executor.spin_once(50);
+        executor.spin_once(core::time::Duration::from_millis(50));
 
         match publisher.publish_raw(&payload) {
             Ok(()) => {
@@ -79,7 +79,7 @@ fn main() {
         }
 
         // Drive session to flush the message through the transport
-        executor.spin_once(200);
+        executor.spin_once(core::time::Duration::from_millis(200));
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 

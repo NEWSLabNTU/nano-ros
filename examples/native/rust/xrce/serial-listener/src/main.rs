@@ -55,7 +55,7 @@ fn main() {
     let timeout = std::time::Duration::from_secs(30);
 
     while received.load(Ordering::SeqCst) < msg_count && start.elapsed() < timeout {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
     }
 
     let final_count = received.load(Ordering::SeqCst);

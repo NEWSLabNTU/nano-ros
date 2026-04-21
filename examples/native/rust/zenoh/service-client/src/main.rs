@@ -59,7 +59,7 @@ fn main() {
         };
 
         // Wait for the reply (drives I/O internally)
-        let response = match promise.wait(&mut executor, 5000) {
+        let response = match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
             Ok(reply) => reply,
             Err(e) => {
                 error!("Service call failed: {:?}", e);

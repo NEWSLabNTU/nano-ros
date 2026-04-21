@@ -73,7 +73,9 @@ mod app {
     #[task(local = [executor], priority = 1)]
     async fn net_poll(cx: net_poll::Context) {
         loop {
-            cx.local.executor.spin_once(0);
+            cx.local
+                .executor
+                .spin_once(core::time::Duration::from_millis(0));
             Mono::delay(10.millis()).await;
         }
     }

@@ -55,7 +55,7 @@ fn main() {
     let timeout = std::time::Duration::from_secs(timeout_secs);
 
     while start.elapsed() < timeout {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
     }
 
     eprintln!("Server timeout, exiting");

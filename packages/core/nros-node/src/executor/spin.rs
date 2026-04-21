@@ -467,7 +467,7 @@ impl Executor {
     ///     // handle message
     /// })?;
     /// loop {
-    ///     executor.spin_once(10);
+    ///     executor.spin_once(core::time::Duration::from_millis(10));
     /// }
     /// ```
     pub fn add_subscription<M, F>(
@@ -1395,13 +1395,15 @@ impl Executor {
     /// Returns a [`SpinOnceResult`] with counts of processed items and errors.
     ///
     /// # Arguments
-    /// * `timeout_ms` — upper bound on the I/O wait, in milliseconds. Clamped
-    ///   to `[0, i32::MAX]`; negative values are treated as zero (no wait).
-    ///   Phase 84.D7: the previous `.max(0) as u64` happened only for the
-    ///   timer delta accumulator, so `spin_once(-1)` silently froze timers
-    ///   while still polling I/O. Clamping here makes both paths agree.
-    pub fn spin_once(&mut self, timeout_ms: i32) -> SpinOnceResult {
-        let timeout_ms = timeout_ms.max(0);
+    /// * `timeout` — upper bound on the I/O wait. Saturated at
+    ///   `i32::MAX` ms (~24 days) for the underlying transport call.
+    ///
+    /// Phase 84.D7: unified on `core::time::Duration`. The previous
+    /// `timeout_ms: i32` signature had a latent footgun where
+    /// `spin_once(-1)` silently froze timers while still polling I/O;
+    /// `Duration` has no negative sentinel.
+    pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
+        let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
         let _ = self.session.drive_io(timeout_ms);
 
         let delta_ms = timeout_ms as u64;
@@ -1558,24 +1560,10 @@ impl Executor {
     /// executor.add_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
     /// executor.spin(10); // never returns
     /// ```
-    pub fn spin(&mut self, timeout_ms: i32) -> ! {
+    pub fn spin(&mut self, timeout: core::time::Duration) -> ! {
         loop {
-            self.spin_once(timeout_ms);
+            self.spin_once(timeout);
         }
-    }
-
-    /// `Duration`-taking alias for [`spin_once`](Self::spin_once) (Phase 84.D7).
-    ///
-    /// Saturates at `i32::MAX` ms if `timeout > ~24 days`.
-    pub fn spin_once_for(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
-        let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
-        self.spin_once(ms)
-    }
-
-    /// `Duration`-taking alias for [`spin`](Self::spin) (Phase 84.D7).
-    pub fn spin_with_period(&mut self, period: core::time::Duration) -> ! {
-        let ms = period.as_millis().min(i32::MAX as u128) as i32;
-        self.spin(ms)
     }
 
     /// Drive I/O and dispatch callbacks asynchronously.
@@ -1597,13 +1585,13 @@ impl Executor {
     /// // Pattern 2: manual polling (no async runtime)
     /// let mut promise = client.call(&req)?;
     /// loop {
-    ///     executor.spin_once(10);
+    ///     executor.spin_once(core::time::Duration::from_millis(10));
     ///     if let Ok(Some(r)) = promise.try_recv() { break r; }
     /// }
     /// ```
     pub async fn spin_async(&mut self) -> ! {
         loop {
-            self.spin_once(1);
+            self.spin_once(core::time::Duration::from_millis(1));
             core::future::poll_fn::<(), _>(|cx| {
                 cx.waker().wake_by_ref();
                 core::task::Poll::Pending
@@ -1634,7 +1622,7 @@ impl Executor {
     /// }
     /// ```
     pub fn spin_one_period(&mut self, period_ms: u64, elapsed_ms: u64) -> SpinPeriodPollingResult {
-        let result = self.spin_once(elapsed_ms as i32);
+        let result = self.spin_once(core::time::Duration::from_millis(elapsed_ms));
         SpinPeriodPollingResult {
             work: result,
             remaining_ms: period_ms.saturating_sub(elapsed_ms),
@@ -1923,7 +1911,7 @@ impl Executor {
     pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
         use std::time::{Duration, Instant};
 
-        const POLL_INTERVAL_MS: i32 = 10;
+        const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
         let start = Instant::now();
         let timeout = opts.timeout_ms.map(Duration::from_millis);
@@ -1941,7 +1929,7 @@ impl Executor {
                 break;
             }
 
-            let result = self.spin_once(POLL_INTERVAL_MS);
+            let result = self.spin_once(POLL_INTERVAL);
             total_callbacks += result.total();
 
             if opts.max_callbacks.is_some_and(|max| total_callbacks >= max) {
@@ -1975,8 +1963,7 @@ impl Executor {
         period: std::time::Duration,
     ) -> super::types::SpinPeriodResult {
         let start = std::time::Instant::now();
-        let period_ms = period.as_millis() as i32;
-        let result = self.spin_once(period_ms.max(1));
+        let result = self.spin_once(period);
         let elapsed = start.elapsed();
         let overrun = elapsed > period;
         if !overrun {
@@ -2011,8 +1998,7 @@ impl Executor {
                 break;
             }
 
-            let period_ms = period.as_millis() as i32;
-            self.spin_once(period_ms.max(1));
+            self.spin_once(period);
 
             let now = std::time::Instant::now();
             if now < next_invocation {

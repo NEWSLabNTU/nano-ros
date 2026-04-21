@@ -54,7 +54,7 @@ fn main() {
 
     // Spin until 20 messages published
     while counter.load(Ordering::SeqCst) < 20 {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
     }
 
     // Clean up

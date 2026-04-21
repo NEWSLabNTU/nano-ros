@@ -56,7 +56,7 @@ fn main() {
     };
 
     // Wait for goal acceptance (drives I/O internally)
-    let accepted = match promise.wait(&mut executor, 10000) {
+    let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok(accepted) => accepted,
         Err(e) => {
             error!("Goal acceptance failed: {:?}", e);
@@ -77,7 +77,7 @@ fn main() {
     let mut feedback_count = 0;
     for _ in 0..30 {
         // 30 x 1000ms = 30 second max
-        match stream.wait_next(&mut executor, 1000) {
+        match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
             Ok(Some(feedback)) => {
                 feedback_count += 1;
                 info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);

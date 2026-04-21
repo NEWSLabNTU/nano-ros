@@ -91,7 +91,7 @@ fn run_talker() {
         .expect("Failed to create publisher");
 
     // Stabilize connection
-    executor.spin_once(500);
+    executor.spin_once(core::time::Duration::from_millis(500));
     std::thread::sleep(std::time::Duration::from_millis(500));
     println!("Publishing...");
 
@@ -108,7 +108,7 @@ fn run_talker() {
                 eprintln!("Publish error: seq={} size={}: {:?}", seq, actual_size, e);
             }
         }
-        executor.spin_once(50);
+        executor.spin_once(core::time::Duration::from_millis(50));
         if interval_ms > 0 {
             std::thread::sleep(std::time::Duration::from_millis(interval_ms));
         }
@@ -166,7 +166,7 @@ fn run_listener() {
     let mut invalid: usize = 0;
 
     while received < expected_count && start.elapsed() < timeout {
-        executor.spin_once(50);
+        executor.spin_once(core::time::Duration::from_millis(50));
 
         match subscription.try_recv_raw() {
             Ok(Some(len)) => {

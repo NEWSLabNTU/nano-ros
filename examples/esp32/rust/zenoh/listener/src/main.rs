@@ -46,7 +46,7 @@ fn main() -> ! {
             esp_println::println!("Waiting for messages...");
 
             loop {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
 
                 if let Some(msg) = subscription.try_recv()? {
                     esp_println::println!("Received: {}", msg.data);

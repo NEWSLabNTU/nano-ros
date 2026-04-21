@@ -62,7 +62,7 @@ fn main() {
 
                             // Brief delay between feedback messages
                             for _ in 0..50 {
-                                executor.spin_once(10);
+                                executor.spin_once(core::time::Duration::from_millis(10));
                             }
                         }
 
@@ -79,7 +79,7 @@ fn main() {
                     }
                 }
                 Ok(None) => {
-                    executor.spin_once(10);
+                    executor.spin_once(core::time::Duration::from_millis(10));
                 }
                 Err(e) => {
                     eprintln!("Error accepting goal: {:?}", e);

@@ -24,7 +24,7 @@ fn main() {
         println!("Sending goal: order={}", goal.order);
 
         let (goal_id, mut promise) = client.send_goal(&goal)?;
-        let accepted = promise.wait(&mut executor, 10000)?;
+        let accepted = promise.wait(&mut executor, core::time::Duration::from_millis(10000))?;
 
         if !accepted {
             println!("Goal rejected!");
@@ -37,7 +37,7 @@ fn main() {
         let mut stream = client.feedback_stream_for(goal_id);
         let mut feedback_count = 0;
         for _ in 0..30 {
-            match stream.wait_next(&mut executor, 1000) {
+            match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
                     println!("Feedback #{}: {:?}", feedback_count, feedback.sequence);

@@ -30,7 +30,7 @@ fn main() {
 
     // Stabilization delay (like RTIC Mono::delay(2000.millis()))
     for _ in 0..200 {
-        executor.spin_once(0);
+        executor.spin_once(core::time::Duration::from_millis(0));
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
@@ -44,7 +44,7 @@ fn main() {
 
         // Drive I/O with spin_once(0) — non-blocking, like RTIC net_poll task
         for _ in 0..100 {
-            executor.spin_once(0);
+            executor.spin_once(core::time::Duration::from_millis(0));
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }

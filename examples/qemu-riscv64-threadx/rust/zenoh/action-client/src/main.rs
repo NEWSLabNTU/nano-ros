@@ -23,7 +23,7 @@ extern "C" fn main() -> ! {
 
         // Wait for server to be available
         for _ in 0..500 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         let goal = FibonacciGoal { order: 5 };
@@ -34,7 +34,7 @@ extern "C" fn main() -> ! {
         // Poll for goal acceptance
         let mut accepted = false;
         for _ in 0..5000 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
             if let Some(result) = promise.try_recv()? {
                 accepted = result;
                 break;
@@ -51,7 +51,7 @@ extern "C" fn main() -> ! {
         println!("Requesting result...");
         let mut result_promise = client.get_result(&goal_id)?;
         for _ in 0..10000u32 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
             if let Some((status, result)) = result_promise.try_recv()? {
                 println!("Result status: {:?}", status);
                 println!("Fibonacci sequence: {:?}", result.sequence);

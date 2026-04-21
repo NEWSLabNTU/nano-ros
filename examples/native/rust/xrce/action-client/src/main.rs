@@ -58,7 +58,7 @@ fn main() {
     };
 
     // Wait for goal acceptance (drives I/O internally)
-    let accepted = match promise.wait(&mut executor, 10000) {
+    let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok(accepted) => accepted,
         Err(e) => {
             eprintln!("Goal acceptance failed: {:?}", e);
@@ -80,7 +80,7 @@ fn main() {
         let mut feedback_count = 0usize;
         for _ in 0..15 {
             // 15 x 1000ms = 15 second max
-            match stream.wait_next(&mut executor, 1000) {
+            match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
                     println!(
@@ -105,7 +105,7 @@ fn main() {
 
     // Small delay to let server finish storing result
     for _ in 0..5 {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
     }
 
     // Get result using the Promise pattern
@@ -118,7 +118,7 @@ fn main() {
         }
     };
 
-    match result_promise.wait(&mut executor, 10000) {
+    match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok((status, result)) => {
             println!("Result: status={}, sequence={:?}", status, result.sequence);
         }

@@ -37,7 +37,7 @@ use nros_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds
-const POLL_INTERVAL_MS: i32 = 10;
+const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
 /// Publish interval in milliseconds
 const PUBLISH_INTERVAL_MS: u32 = 1000;
@@ -59,7 +59,7 @@ fn main() -> ! {
         let mut last_publish_ms: u64 = 0;
 
         loop {
-            executor.spin_once(POLL_INTERVAL_MS);
+            executor.spin_once(POLL_INTERVAL);
 
             let now_ms = clock_ms();
             if now_ms - last_publish_ms >= PUBLISH_INTERVAL_MS as u64 {

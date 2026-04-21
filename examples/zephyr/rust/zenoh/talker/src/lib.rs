@@ -46,5 +46,5 @@ fn run() -> Result<(), NodeError> {
 
     info!("Publishing messages...");
 
-    executor.spin(10);
+    executor.spin(core::time::Duration::from_millis(10));
 }

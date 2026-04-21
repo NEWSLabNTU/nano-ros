@@ -54,7 +54,7 @@ fn main() -> ! {
 
             // Poll to establish connection
             for _ in 0..50 {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
 
             let test_sizes: &[usize] = &[64, 128, 256, 512, 768, 1024];
@@ -76,7 +76,7 @@ fn main() -> ! {
                 }
                 // Allow network processing between publishes
                 for _ in 0..10 {
-                    executor.spin_once(10);
+                    executor.spin_once(core::time::Duration::from_millis(10));
                 }
             }
 

@@ -44,7 +44,7 @@ fn main() -> ! {
             loop {
                 // Poll to process serial transport events (~1s between publishes)
                 for _ in 0..100u32 {
-                    executor.spin_once(10);
+                    executor.spin_once(core::time::Duration::from_millis(10));
                 }
 
                 match publisher.publish(&Int32 { data: count }) {

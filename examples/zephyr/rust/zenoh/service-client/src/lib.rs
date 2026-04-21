@@ -55,7 +55,7 @@ fn run() -> Result<(), NodeError> {
         let mut promise = client.call(&req)?;
 
         // Wait for the reply (drives I/O internally)
-        match promise.wait(&mut executor, 5000) {
+        match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
             Ok(resp) => {
                 info!("[{}] Response: sum={}", count, resp.sum);
             }

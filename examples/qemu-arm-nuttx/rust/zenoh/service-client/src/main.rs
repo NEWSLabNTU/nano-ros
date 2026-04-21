@@ -27,7 +27,7 @@ fn main() {
             println!("Calling: {} + {} = ?", a, b);
 
             let mut promise = client.call(&request)?;
-            let response = promise.wait(&mut executor, 5000)?;
+            let response = promise.wait(&mut executor, core::time::Duration::from_millis(5000))?;
 
             println!("Response: {} + {} = {}", a, b, response.sum);
         }

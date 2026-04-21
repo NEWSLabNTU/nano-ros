@@ -170,21 +170,30 @@ int nros_freertos_init_network(
 {
     ip4_addr_t ipaddr, mask, gateway;
 
-    /* Seed the C stdlib RNG with a value unique to this node.
-     * Without this, rand() starts from seed 1 on every boot, causing
-     * all QEMU instances to generate identical zenoh-pico session IDs
-     * (16 bytes from LWIP_RAND → rand()). zenohd rejects duplicate
-     * session IDs, so the second QEMU's z_open() always fails.
+    /* Seed the platform PRNG with a value unique to this node.
+     *
+     * zenoh-pico's z_random_* are overridden by zpico-platform-shim,
+     * which delegates to nros-platform-freertos's xorshift PRNG (with
+     * static state defaulting to 0x12345678). Without seeding, two
+     * QEMU instances both start with the same default seed → produce
+     * identical 16-byte zenoh session IDs → zenohd treats them as the
+     * same peer (max_links=1) and rejects the second connection.
+     *
+     * `srand()` here would be a no-op for our purposes — it seeds
+     * libc's rand state, but the platform PRNG never reads from there.
+     * The Rust path calls `nros_platform_freertos::seed()` directly;
+     * the C path mirrors that via the C-callable wrapper.
      *
      * Use IP octets directly — each node has a unique IP. Multiply to
      * spread bits and avoid XOR cancellation between MAC and IP. */
+    extern void nros_platform_freertos_seed_rng(uint32_t value);
     {
         uint32_t seed = ((uint32_t)ip[0] << 24) | ((uint32_t)ip[1] << 16)
                       | ((uint32_t)ip[2] << 8)  | (uint32_t)ip[3];
         seed = seed * 2654435761u;  /* Knuth multiplicative hash */
         seed ^= ((uint32_t)mac[4] << 8) | (uint32_t)mac[5];
         if (seed == 0) seed = 1;
-        srand(seed);
+        nros_platform_freertos_seed_rng(seed);
     }
 
     IP4_ADDR(&ipaddr,  ip[0], ip[1], ip[2], ip[3]);

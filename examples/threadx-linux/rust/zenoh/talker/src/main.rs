@@ -23,7 +23,7 @@ fn main() {
 
         for i in 0..10i32 {
             for _ in 0..100 {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
 
             if let Err(e) = publisher.publish(&Int32 { data: i }) {

@@ -42,7 +42,7 @@ fn run() -> Result<(), NodeError> {
     info!("Waiting for action goals...");
 
     loop {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
 
         // Handle cancel requests
         let _ = action_server.try_handle_cancel(|_goal_id, status| {
@@ -83,7 +83,7 @@ fn run() -> Result<(), NodeError> {
 
             for i in 0..=order {
                 // Process events (including cancel requests)
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
                 let _ = action_server.try_handle_cancel(|cid, status| {
                     if cid.uuid == goal_id.uuid
                         && (status == GoalStatus::Executing || status == GoalStatus::Accepted)

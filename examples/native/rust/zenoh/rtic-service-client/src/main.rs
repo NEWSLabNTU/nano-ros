@@ -33,7 +33,7 @@ fn main() {
 
     // Stabilization delay
     for _ in 0..200 {
-        executor.spin_once(0);
+        executor.spin_once(core::time::Duration::from_millis(0));
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
@@ -55,7 +55,7 @@ fn main() {
         // Poll for reply with timeout (~5 seconds) — RTIC-compatible pattern
         let mut got_reply = false;
         for _ in 0..500 {
-            executor.spin_once(0);
+            executor.spin_once(core::time::Duration::from_millis(0));
 
             if let Ok(Some(reply)) = promise.try_recv() {
                 info!("Reply: {} + {} = {}", a, b, reply.sum);
@@ -73,7 +73,7 @@ fn main() {
 
         // Brief pause between calls
         for _ in 0..50 {
-            executor.spin_once(0);
+            executor.spin_once(core::time::Duration::from_millis(0));
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }

@@ -50,7 +50,7 @@ fn main() {
     let timeout = std::time::Duration::from_secs(timeout_secs);
 
     while start.elapsed() < timeout {
-        executor.spin_once(100);
+        executor.spin_once(core::time::Duration::from_millis(100));
 
         // Handle get_result requests
         let _ = action_server.try_handle_get_result();
@@ -91,7 +91,7 @@ fn main() {
                 let _ = action_server.publish_feedback(&goal_id, &feedback);
 
                 println!("Feedback: step={}, sequence_len={}", i, sequence.len());
-                executor.spin_once(100);
+                executor.spin_once(core::time::Duration::from_millis(100));
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
 

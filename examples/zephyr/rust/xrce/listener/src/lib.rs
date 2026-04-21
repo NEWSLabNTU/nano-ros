@@ -36,5 +36,5 @@ fn run() -> Result<(), NodeError> {
 
     info!("Waiting for messages on /chatter...");
 
-    executor.spin(1000);
+    executor.spin(core::time::Duration::from_millis(1000));
 }

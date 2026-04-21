@@ -28,7 +28,7 @@ fn main() {
 
         // Spin for a bounded time (embedded test pattern)
         for _ in 0..10000 {
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         println!();

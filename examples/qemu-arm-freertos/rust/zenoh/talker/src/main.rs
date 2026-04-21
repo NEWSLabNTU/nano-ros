@@ -28,7 +28,7 @@ extern "C" fn _start() -> ! {
         let mut count: i32 = 0;
         loop {
             for _ in 0..100 {
-                executor.spin_once(10);
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
 
             match publisher.publish(&Int32 { data: count }) {

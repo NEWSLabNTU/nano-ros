@@ -59,7 +59,7 @@ extern "C" fn _start() -> ! {
 
                             // Yield to network
                             for _ in 0..50 {
-                                executor.spin_once(10);
+                                executor.spin_once(core::time::Duration::from_millis(10));
                             }
                         }
 
@@ -75,7 +75,7 @@ extern "C" fn _start() -> ! {
                         // arena, so spin_once() alone won't process get_result
                         // queries — we must call try_handle_get_result() explicitly.
                         for _ in 0..2000 {
-                            executor.spin_once(10);
+                            executor.spin_once(core::time::Duration::from_millis(10));
                             let _ = server.try_handle_get_result();
                         }
                         println!("Server shutting down.");
@@ -88,7 +88,7 @@ extern "C" fn _start() -> ! {
                 }
             }
 
-            executor.spin_once(10);
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         println!("Server timeout.");

@@ -29,7 +29,7 @@ fn main() {
     info!("Waiting for Int32 messages on /chatter (RTIC pattern)...");
 
     loop {
-        executor.spin_once(0);
+        executor.spin_once(core::time::Duration::from_millis(0));
 
         match subscription.try_recv() {
             Ok(Some(msg)) => {

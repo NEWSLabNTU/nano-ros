@@ -164,34 +164,25 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// # Example
     ///
     /// ```ignore
-    /// while let Some(msg) = sub.wait_next(&mut executor, 1000)? {
+    /// while let Some(msg) = sub.wait_next(&mut executor, core::time::Duration::from_millis(1000))? {
     ///     /* handle msg */
     /// }
     /// ```
     pub fn wait_next(
         &mut self,
         executor: &mut super::Executor,
-        timeout_ms: u64,
+        timeout: core::time::Duration,
     ) -> Result<Option<M>, NodeError> {
-        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
-        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
         for _ in 0..max_spins {
-            executor.spin_once(spin_interval_ms as i32);
+            executor.spin_once(spin_interval);
             if let Some(msg) = self.try_recv()? {
                 return Ok(Some(msg));
             }
         }
         Ok(None)
-    }
-
-    /// `Duration`-taking alias for [`wait_next`](Self::wait_next) (Phase 84.D7).
-    pub fn wait_next_for(
-        &mut self,
-        executor: &mut super::Executor,
-        timeout: core::time::Duration,
-    ) -> Result<Option<M>, NodeError> {
-        let ms = timeout.as_millis().min(u64::MAX as u128) as u64;
-        self.wait_next(executor, ms)
     }
 }
 
@@ -296,7 +287,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// ```ignore
     /// let mut promise = client.call(&request)?;
     /// loop {
-    ///     executor.spin_once(10);
+    ///     executor.spin_once(core::time::Duration::from_millis(10));
     ///     if let Some(reply) = promise.try_recv()? {
     ///         break;
     ///     }
@@ -410,27 +401,18 @@ impl<T> Promise<'_, T> {
     pub fn wait(
         &mut self,
         executor: &mut super::Executor,
-        timeout_ms: u64,
+        timeout: core::time::Duration,
     ) -> Result<T, NodeError> {
-        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
-        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
         for _ in 0..max_spins {
-            executor.spin_once(spin_interval_ms as i32);
+            executor.spin_once(spin_interval);
             if let Some(result) = self.try_recv()? {
                 return Ok(result);
             }
         }
         Err(NodeError::Timeout)
-    }
-
-    /// `Duration`-taking alias for [`wait`](Self::wait) (Phase 84.D7).
-    pub fn wait_for(
-        &mut self,
-        executor: &mut super::Executor,
-        timeout: core::time::Duration,
-    ) -> Result<T, NodeError> {
-        let ms = timeout.as_millis().min(u64::MAX as u128) as u64;
-        self.wait(executor, ms)
     }
 }
 
@@ -939,12 +921,13 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     pub fn wait_next(
         &mut self,
         executor: &mut super::Executor,
-        timeout_ms: u64,
+        timeout: core::time::Duration,
     ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
-        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
-        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
         for _ in 0..max_spins {
-            executor.spin_once(spin_interval_ms as i32);
+            executor.spin_once(spin_interval);
             if let Some(item) = self.client.try_recv_feedback()? {
                 return Ok(Some(item));
             }
@@ -1029,12 +1012,13 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     pub fn wait_next(
         &mut self,
         executor: &mut super::Executor,
-        timeout_ms: u64,
+        timeout: core::time::Duration,
     ) -> Result<Option<A::Feedback>, NodeError> {
-        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
-        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
         for _ in 0..max_spins {
-            executor.spin_once(spin_interval_ms as i32);
+            executor.spin_once(spin_interval);
             if let Some((id, feedback)) = self.client.try_recv_feedback()?
                 && id.uuid == self.goal_id.uuid
             {
