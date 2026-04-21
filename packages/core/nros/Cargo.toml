@@ -136,6 +136,7 @@ nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
+paste = "1"
 
 [dev-dependencies]
 

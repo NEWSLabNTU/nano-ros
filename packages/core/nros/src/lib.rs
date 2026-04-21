@@ -137,6 +137,12 @@ extern crate alloc;
 
 pub mod guide;
 
+/// Compile-time opaque storage sizes for FFI consumers.
+///
+/// See [`sizes`] for the `export_size!` pattern used to expose these values
+/// to `nros-c` / `nros-cpp` at build time.
+pub mod sizes;
+
 /// CDR encapsulation constants and helpers for FFI layers that handle raw
 /// CDR bytes (e.g. nros-c, nros-cpp action and service paths).
 pub mod cdr {

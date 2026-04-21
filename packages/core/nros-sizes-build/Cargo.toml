@@ -1,0 +1,12 @@
+[package]
+name = "nros-sizes-build"
+version = "0.1.0"
+edition = "2024"
+description = "Build-script helper that extracts Rust-side type sizes from a compiled rlib for C/C++ FFI header generation"
+license = "Apache-2.0"
+repository.workspace = true
+publish = false
+
+[dependencies]
+object = { version = "0.39", default-features = false, features = ["read", "archive", "elf", "macho", "coff", "std"] }
+serde_json = "1"

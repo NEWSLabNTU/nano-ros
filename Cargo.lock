@@ -1244,6 +1244,7 @@ dependencies = [
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "nros-serdes",
+ "paste",
 ]
 
 [[package]]
@@ -1506,6 +1507,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-sizes-build"
+version = "0.1.0"
+dependencies = [
+ "object",
+ "serde_json",
+]
+
+[[package]]
 name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
@@ -1546,6 +1555,15 @@ name = "nuttx-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+]
+
+[[package]]
+name = "object"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

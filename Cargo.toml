@@ -9,6 +9,9 @@ members = [
     "packages/core/nros-params",
     "packages/core/nros-rmw",
     "packages/core/nros-node",
+    # Build-script helper: extracts Rust type sizes from a compiled rlib so
+    # nros-c/nros-cpp can size their opaque storage from Rust's size_of.
+    "packages/core/nros-sizes-build",
     # Zenoh-pico FFI bindings
     "packages/zpico/zpico-sys",
     # Free-list allocator for z_malloc/z_free on bare-metal
@@ -222,6 +225,7 @@ nros-rmw-xrce = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce", defau
 nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
+nros-sizes-build = { version = "0.1.0", path = "packages/core/nros-sizes-build" }
 nros-platform = { version = "0.1.0", path = "packages/core/nros-platform", default-features = false }
 nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cffi", default-features = false }
 nros-platform-posix = { version = "0.1.0", path = "packages/core/nros-platform-posix", default-features = false }
