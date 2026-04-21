@@ -57,7 +57,23 @@ fn probe_sizes(
 
     let target = env::var("TARGET").unwrap_or_default();
 
-    if env::var("FREERTOS_DIR").is_ok() {
+    // Target triple determines the platform branch FIRST; env vars
+    // are consulted only as sources of SDK paths. Using env vars as
+    // the branching key was unreliable because `.envrc` exports
+    // `FREERTOS_DIR` / `NUTTX_DIR` / `THREADX_DIR` globally whenever
+    // any of those SDKs is set up — so a build for `riscv64gc-…-elf`
+    // (ThreadX) would silently take the FREERTOS branch and the
+    // probe would fall through to defaults (16/8), corrupting the
+    // `_z_sys_net_socket_t` pass-by-value ABI.
+    let is_freertos = target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok();
+    let is_nuttx = target.contains("nuttx") || target.contains("armv7a-nuttx");
+    let is_threadx_rv64 = target.contains("riscv64") && env::var("THREADX_DIR").is_ok();
+    let is_threadx_native = !target.contains("none")
+        && !target.contains("linux-gnu")
+        && env::var("THREADX_DIR").is_ok()
+        && env::var("NETX_DIR").is_ok();
+
+    if is_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         if let Ok(dir) = env::var("FREERTOS_DIR") {
             let f = PathBuf::from(&dir);
@@ -72,16 +88,68 @@ fn probe_sizes(
         if let Ok(dir) = env::var("LWIP_DIR") {
             build.include(PathBuf::from(dir).join("src/include"));
         }
-    } else if env::var("NUTTX_DIR").is_ok() {
+    } else if is_nuttx {
         build.define("ZENOH_NUTTX", None);
         build.define("ZENOH_LINUX", None);
         if let Ok(dir) = env::var("NUTTX_DIR") {
             build.include(PathBuf::from(dir).join("include"));
         }
-    } else if env::var("THREADX_DIR").is_ok() {
+    } else if is_threadx_rv64 || is_threadx_native {
         build.define("ZENOH_GENERIC", None);
         build.define("ZENOH_THREADX", None);
         build.include(zpico_sys_dir.join("c/platform"));
+
+        // ThreadX platform.h pulls in tx_api.h which pulls in
+        // architecture-specific `tx_port.h` + C standard library
+        // (stdint.h). Without the ThreadX / NetX / picolibc includes
+        // the probe falls back to hardcoded 16/8 and silently skews
+        // the `_z_sys_net_socket_t` pass-by-value ABI. Mirror the
+        // include set from the main zpico-sys threadx build.
+        if let Ok(dir) = env::var("THREADX_DIR") {
+            let threadx_dir = PathBuf::from(&dir);
+            build.include(threadx_dir.join("common/inc"));
+            if target.contains("riscv64") {
+                build.include(threadx_dir.join("ports/risc-v64/gnu/inc"));
+            } else if !target.contains("none") {
+                build.include(threadx_dir.join("ports/linux/gnu/inc"));
+            }
+        }
+        if let Ok(dir) = env::var("THREADX_CONFIG_DIR") {
+            build.include(dir);
+        }
+        if let Ok(dir) = env::var("NETX_DIR") {
+            let netx_dir = PathBuf::from(&dir);
+            build.include(netx_dir.join("common/inc"));
+            build.include(netx_dir.join("addons/BSD"));
+            if !target.contains("none") {
+                build.include(netx_dir.join("ports/linux/gnu/inc"));
+            }
+        }
+        if let Ok(dir) = env::var("NETX_CONFIG_DIR") {
+            build.include(dir);
+        }
+        if target.contains("riscv64") {
+            build
+                .flag("-march=rv64gc")
+                .flag("-mabi=lp64d")
+                .flag("-mcmodel=medany");
+            let errno_dir = out_dir.join("errno-override");
+            std::fs::create_dir_all(&errno_dir).ok();
+            std::fs::write(
+                errno_dir.join("errno.h"),
+                include_bytes!("../zpico-sys/c/platform/errno_override.h"),
+            )
+            .ok();
+            build.include(&errno_dir);
+            if let Some(sysroot) = get_picolibc_sysroot() {
+                build.include(sysroot.join("include"));
+            } else {
+                println!(
+                    "cargo:warning=zpico-platform-shim: picolibc sysroot not found; \
+                     size probe will likely fail and fall back to default sizes"
+                );
+            }
+        }
     } else if target.contains("none") {
         // Bare-metal: ZENOH_GENERIC → zenoh_generic_platform.h → bare-metal/platform.h
         build.define("ZENOH_GENERIC", None);
@@ -93,7 +161,20 @@ fn probe_sizes(
     }
 
     build.cargo_metadata(false);
-    build.try_compile("nros_size_probe").ok()?;
+    if let Err(e) = build.try_compile("nros_size_probe") {
+        // Loud fallback — silent fallback to hardcoded 16/8 sizes
+        // silently corrupts the `_z_sys_net_socket_t` pass-by-value
+        // ABI on targets whose real socket size differs (e.g. ThreadX
+        // RV64 where the real size is 4 bytes). Keep this warning
+        // visible so any future probe breakage is diagnosable.
+        println!(
+            "cargo:warning=zpico-platform-shim size_probe failed ({e}); \
+             falling back to default sizes — pass-by-value ABI for \
+             _z_sys_net_socket_t will corrupt if the real struct \
+             size differs"
+        );
+        return None;
+    }
 
     let archive = out_dir.join("libnros_size_probe.a");
     let socket = read_symbol_size(&archive, "__nros_sizeof_net_socket");
@@ -104,6 +185,37 @@ fn probe_sizes(
     } else {
         None
     }
+}
+
+/// Get the picolibc sysroot path for bare-metal RISC-V (provides
+/// C standard library headers: stdint.h, etc.). Mirrors the helper
+/// in `zpico-sys/build.rs` — kept in sync manually.
+fn get_picolibc_sysroot() -> Option<PathBuf> {
+    for cc_name in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+        if let Ok(output) = Command::new(cc_name)
+            .args([
+                "-march=rv32imc",
+                "-mabi=ilp32",
+                "--specs=picolibc.specs",
+                "-print-sysroot",
+            ])
+            .output()
+            && output.status.success()
+        {
+            let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !sysroot.is_empty() {
+                let path = PathBuf::from(&sysroot);
+                if path.join("include").exists() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    let fallback = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
+    if fallback.join("include").exists() {
+        return Some(fallback);
+    }
+    None
 }
 
 fn read_symbol_size(archive: &Path, symbol: &str) -> usize {

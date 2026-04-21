@@ -599,6 +599,66 @@ fn probe_net_type_sizes(
         build.define("ZENOH_THREADX", None);
         let platform_dir = c_dir.join("platform");
         build.include(&platform_dir);
+
+        // ThreadX platform.h includes `tx_api.h` which pulls in ThreadX
+        // kernel headers + a port-specific `tx_port.h`. Without these
+        // the probe compile fails and we fall back to the hardcoded
+        // 16/8 default — which silently skews the pass-by-value ABI
+        // of `_z_sys_net_socket_t` at the FFI boundary (the Rust
+        // shim ends up reading garbage from the wrong registers).
+        //
+        // Mirror the include set the main build uses for ThreadX.
+        let target = env::var("TARGET").unwrap_or_default();
+        if let Ok(dir) = env::var("THREADX_DIR") {
+            let threadx_dir = PathBuf::from(&dir);
+            build.include(threadx_dir.join("common/inc"));
+            // Pick the port-specific header matching the target arch.
+            if target.contains("riscv64") {
+                build.include(threadx_dir.join("ports/risc-v64/gnu/inc"));
+            } else if !is_embedded_target(&target) {
+                build.include(threadx_dir.join("ports/linux/gnu/inc"));
+            }
+        }
+        if let Ok(dir) = env::var("THREADX_CONFIG_DIR") {
+            build.include(dir);
+        }
+        if let Ok(dir) = env::var("NETX_DIR") {
+            let netx_dir = PathBuf::from(&dir);
+            build.include(netx_dir.join("common/inc"));
+            build.include(netx_dir.join("addons/BSD"));
+            if !is_embedded_target(&target) {
+                build.include(netx_dir.join("ports/linux/gnu/inc"));
+            }
+        }
+        if let Ok(dir) = env::var("NETX_CONFIG_DIR") {
+            build.include(dir);
+        }
+
+        // Cross-compile flags + C-library sysroot for bare-metal
+        // RISC-V. Without these the probe fails with
+        // `stdint.h: No such file or directory` and falls back to
+        // the hardcoded default sizes.
+        if target.contains("riscv64") {
+            build
+                .flag("-march=rv64gc")
+                .flag("-mabi=lp64d")
+                .flag("-mcmodel=medany");
+
+            // errno-override header (picolibc's TLS errno doesn't
+            // work on bare-metal). Must be searched before picolibc.
+            let errno_dir = out_dir.join("errno-override");
+            std::fs::create_dir_all(&errno_dir).ok();
+            std::fs::write(
+                errno_dir.join("errno.h"),
+                include_bytes!("c/platform/errno_override.h"),
+            )
+            .ok();
+            build.include(&errno_dir);
+
+            if let Some(sysroot) = get_picolibc_sysroot() {
+                build.include(sysroot.join("include"));
+            }
+        }
     } else {
         // POSIX: zenoh-pico auto-detects ZENOH_LINUX/ZENOH_MACOS from target
         let target = env::var("TARGET").unwrap_or_default();
@@ -618,8 +678,27 @@ fn probe_net_type_sizes(
     // Compile to a separate static library (may fail on targets without
     // C standard library headers, e.g. RISC-V without picolibc)
     build.cargo_metadata(false); // Don't emit link flags
-    if build.try_compile("size_probe").is_err() {
-        // Fallback: emit default sizes (16/8) when probe fails
+    if let Err(e) = build.try_compile("size_probe") {
+        // Fallback: emit default sizes (16/8) when probe fails.
+        //
+        // This is a known foot-gun: the fallback silently skews the
+        // `_z_sys_net_socket_t` / `_z_sys_net_endpoint_t` pass-by-value
+        // ABI when the Rust shim reads its opaque buffer from the
+        // wrong call-site register. If you see this warning and the
+        // target is cross-compiled (FreeRTOS / NuttX / ThreadX /
+        // bare-metal), the runtime failure mode is a silent
+        // `Transport(ConnectionFailed)` at session open (zero-length
+        // send, no read).
+        //
+        // To diagnose: rerun `cargo build` with `-vv` to see the
+        // underlying `cc::try_compile` error, and add the missing
+        // include path to `probe_net_type_sizes` for that backend.
+        println!(
+            "cargo:warning=zpico-sys size_probe failed ({e}); \
+             falling back to SOCKET_SIZE=16 / ENDPOINT_SIZE=8 — \
+             pass-by-value ABI for _z_sys_net_socket_t will corrupt \
+             if the real struct size differs"
+        );
         println!("cargo:SOCKET_SIZE=16");
         println!("cargo:ENDPOINT_SIZE=8");
         return;
