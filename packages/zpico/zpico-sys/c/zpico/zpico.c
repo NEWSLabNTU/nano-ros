@@ -194,11 +194,25 @@ static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
 typedef void (*zpico_waker_fn)(int32_t slot);
 static zpico_waker_fn g_reply_waker = NULL;
 
-// Condition variable for multi-threaded spin_once().
+// Spin-wake primitive for multi-threaded spin_once().
 // Signaled by our callbacks (sample_handler, query_handler, get reply handlers)
 // so spin_once() can wake immediately when application data arrives, rather
 // than sleeping for the full timeout duration.
-#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
+
+#if defined(ZENOH_FREERTOS_LWIP)
+// FreeRTOS: binary semaphore — lightweight, no mutex needed.
+#include <FreeRTOS.h>
+#include <semphr.h>
+static SemaphoreHandle_t g_spin_sem = NULL;
+
+static inline void _zpico_notify_spin(void) {
+    if (g_spin_sem != NULL) {
+        xSemaphoreGive(g_spin_sem);
+    }
+}
+#else
+// POSIX/Zephyr: mutex + condvar
 static _z_mutex_t g_spin_mutex;
 static _z_condvar_t g_spin_cv;
 static bool g_spin_cv_initialized = false;
@@ -210,6 +224,8 @@ static inline void _zpico_notify_spin(void) {
         _z_mutex_unlock(&g_spin_mutex);
     }
 }
+#endif // ZENOH_FREERTOS_LWIP
+
 #else
 static inline void _zpico_notify_spin(void) {}
 #endif
@@ -586,7 +602,9 @@ int32_t zpico_open(void) {
     // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
     // explicitly via zpico_poll() / zpico_spin_once()
 #if Z_FEATURE_MULTI_THREAD == 1
-#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZENOH_FREERTOS_LWIP)
+    g_spin_sem = xSemaphoreCreateBinary();
+#elif !defined(ZPICO_SMOLTCP)
     _z_mutex_init(&g_spin_mutex);
     _z_condvar_init(&g_spin_cv);
     g_spin_cv_initialized = true;
@@ -661,7 +679,12 @@ void zpico_close(void) {
         zp_stop_read_task(z_session_loan_mut(&g_session));
         zp_stop_lease_task(z_session_loan_mut(&g_session));
 
-#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZENOH_FREERTOS_LWIP)
+        if (g_spin_sem != NULL) {
+            vSemaphoreDelete(g_spin_sem);
+            g_spin_sem = NULL;
+        }
+#elif !defined(ZPICO_SMOLTCP)
         g_spin_cv_initialized = false;
         _z_condvar_drop(&g_spin_cv);
         _z_mutex_drop(&g_spin_mutex);
@@ -1146,14 +1169,11 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
 
 #elif defined(ZENOH_FREERTOS_LWIP)
     // FreeRTOS+lwIP: background read and lease tasks handle data and
-    // keep-alives respectively. Just yield CPU time with vTaskDelay()
-    // to let lower-priority tasks (network poll) run. Do NOT call
-    // zp_send_keep_alive() here — the lease task handles it, and
-    // sending from the app task contends on the TX mutex which can
-    // block indefinitely when the background tasks hold it.
-    extern void vTaskDelay(unsigned long);
-    if (timeout_ms > 0) {
-        vTaskDelay(timeout_ms);
+    // keep-alives. Wait on a binary semaphore that _zpico_notify_spin()
+    // signals when application data arrives (subscriptions, query replies).
+    // This gives near-zero latency wake-up without busy-looping.
+    if (timeout_ms > 0 && g_spin_sem != NULL) {
+        xSemaphoreTake(g_spin_sem, pdMS_TO_TICKS(timeout_ms));
     }
     return 0;
 

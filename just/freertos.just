@@ -96,8 +96,30 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Run all FreeRTOS tests (same as test — no additional slow tests)
-test-all verbose="": (test verbose)
+# Run all FreeRTOS tests including networked E2E
+test-all verbose="":
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$FREERTOS_DIR/include" ]; then
+        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
+        exit 1
+    fi
+    if [ ! -d "$LWIP_DIR/src/include" ]; then
+        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just freertos setup"
+        exit 1
+    fi
+    # Build tests
+    args=(-p nros-tests --test freertos_qemu --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+    # E2E networking tests (pubsub, service, action across RTOS platforms)
+    e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Freertos)' --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        e2e_args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 ci: doctor test
