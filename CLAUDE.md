@@ -81,9 +81,16 @@ First-time: `just setup` installs everything (workspace + verification + all pla
 
 Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and uncomment values. Loaded automatically by justfile and direnv.
 
+**Use `direnv allow` once after cloning** so `cargo nextest run …`, `cargo build`, `cmake …`, etc., pick up the SDK paths and `FREERTOS_PORT` automatically. Without direnv (or without manual exports), running cargo directly outside of `just <plat> …` panics in `zpico-sys/build.rs` with `"FREERTOS_PORT not set"`. The `.envrc` defaults match the justfile defaults; an `.env` file overrides both. Setup:
+```bash
+sudo apt install direnv                              # if not installed
+echo 'eval "$(direnv hook bash)"' >> ~/.bashrc       # or fish/zsh
+direnv allow                                          # one-time per checkout
+```
+
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere:
+FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes and `.envrc` (defaulting to `third-party/<sdk>/` paths populated by `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere:
 - `FREERTOS_DIR` — FreeRTOS kernel source (default: `third-party/freertos/kernel`)
 - `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
 - `LWIP_DIR` — lwIP source (default: `third-party/freertos/lwip`)
