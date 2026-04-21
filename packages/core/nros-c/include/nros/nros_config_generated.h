@@ -17,4 +17,24 @@
 /** Inline opaque storage size (bytes) for nros_service_t._internal. */
 #define NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE 16
 
+/* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
+* Values below are `size_of::<T>()` for each Rust type, extracted from
+* the compiled `nros` rlib by nros-sizes-build. They coexist with the
+* hand-math macros above during the Phase 87.3 transition; once
+* downstream consumers are migrated (Phase 87.4/87.6) the hand-math
+* macros are deleted.
+*/
+/** `size_of::<nros_node::Executor>()` */
+#define NROS_EXECUTOR_SIZE 16784
+/** `size_of::<nros_node::GuardConditionHandle>()` */
+#define NROS_GUARD_CONDITION_SIZE 8
+/** `size_of::<RmwPublisher>()` */
+#define NROS_PUBLISHER_SIZE 48
+/** `size_of::<RmwSubscriber>()` */
+#define NROS_SUBSCRIBER_SIZE 24
+/** `size_of::<RmwServiceClient>()` */
+#define NROS_SERVICE_CLIENT_SIZE 296
+/** `size_of::<RmwServiceServer>()` */
+#define NROS_SERVICE_SERVER_SIZE 296
+
 #endif /* NROS_CONFIG_GENERATED_H */

@@ -1269,6 +1269,7 @@ dependencies = [
  "nros-core",
  "nros-node",
  "nros-rmw",
+ "nros-sizes-build",
  "panic-halt",
  "paste",
 ]
@@ -1290,6 +1291,7 @@ dependencies = [
  "nros",
  "nros-node",
  "nros-rmw",
+ "nros-sizes-build",
  "panic-halt",
 ]
 

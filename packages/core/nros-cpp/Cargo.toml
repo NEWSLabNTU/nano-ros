@@ -52,6 +52,7 @@ panic-halt = { version = "1", optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"
+nros-sizes-build = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)'] }

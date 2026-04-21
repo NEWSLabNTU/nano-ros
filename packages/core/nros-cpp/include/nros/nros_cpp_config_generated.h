@@ -26,4 +26,18 @@
 /** Inline opaque storage size (bytes) for nros::ActionClient<A>. */
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 400
 
+/* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
+* `size_of::<T>()` per Rust type, extracted from the compiled `nros`
+* rlib by nros-sizes-build. During the 87.3 transition these exist
+* alongside the hand-math macros above; 87.4 drops hand-math and
+* 87.6 switches nros::Publisher<M> etc. to use NROS_PUBLISHER_SIZE
+* directly (thin-wrapper refactor).
+*/
+#define NROS_EXECUTOR_SIZE 16784
+#define NROS_GUARD_CONDITION_SIZE 8
+#define NROS_PUBLISHER_SIZE 48
+#define NROS_SUBSCRIBER_SIZE 24
+#define NROS_SERVICE_CLIENT_SIZE 296
+#define NROS_SERVICE_SERVER_SIZE 296
+
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
