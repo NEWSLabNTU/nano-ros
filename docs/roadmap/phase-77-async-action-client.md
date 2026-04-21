@@ -268,16 +268,16 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - [x] Added `executor_` field to `Client<S>`, set by `Node::create_client()`
     - [x] Removed deprecated `nros_cpp_service_client_call_raw` FFI declaration from C++ header
     - No `zpico_get` in any C/C++ client path (service or action)
-- [ ] 77.16 — FreeRTOS: replace `vTaskDelay` in `zpico_spin_once` with event-driven wake
-    - Current: `zpico_spin_once` on FreeRTOS sleeps with `vTaskDelay(timeout_ms)`, giving up to 10ms latency per poll iteration
-    - Target: use a FreeRTOS event group or task notification that the zpico reply callback signals, so `spin_once` wakes immediately when data arrives
-    - This matches the POSIX/Zephyr condvar pattern but with FreeRTOS primitives
-    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (FreeRTOS block)
-- [ ] 77.17 — NuttX: replace `usleep` in `zpico_spin_once` with condvar or semaphore wake
-    - Current: `zpico_spin_once` on NuttX uses `usleep(timeout_ms * 1000)` because pthread timed condvar hangs
-    - Target: investigate NuttX `sem_timedwait` or `sigtimedwait` as alternatives to the broken `pthread_cond_timedwait`
-    - Alternatively, use NuttX's native `work_queue` or `mq_timedreceive` for event-driven wake
-    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (NuttX block)
+- [x] 77.16 — FreeRTOS: replace `vTaskDelay` in `zpico_spin_once` with event-driven wake
+    - Landed in commit `d2880d9a` (2026-04-21)
+    - `zpico_spin_once` on FreeRTOS now waits on `xSemaphoreTake(g_spin_sem, pdMS_TO_TICKS(timeout_ms))`; the binary semaphore is signaled by `_zpico_notify_spin()` from the read task when application data arrives (subscriptions, query replies). Wake-up latency dropped from up to 10 ms/poll to near-zero.
+    - Note: `zpico_poll` (distinct entry point) still uses `vTaskDelay` — out of scope for 77.16 since the executor drives everything through `spin_once` now.
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (FreeRTOS block, lines 203–213 / 1170–1178)
+- [x] 77.17 — NuttX: replace `usleep` in `zpico_spin_once` with condvar or semaphore wake
+    - Use POSIX `sem_t` + `sem_timedwait` (analogous to the FreeRTOS binary-semaphore path from 77.16). The NuttX kernel's watchdog-backed pthread timed-wait is the bug source; POSIX `sem_timedwait` does not share that code path.
+    - Implementation: new `g_spin_sem_posix` / `g_spin_sem_initialized` pair in `zpico.c`, init in `zpico_open` via `sem_init(&, 0, 0)`, destroy in `zpico_close` via `sem_destroy`, signal from the read task via `_zpico_notify_spin` → `sem_post`, and wait in `zpico_spin_once` with an absolute `CLOCK_REALTIME` deadline computed from `timeout_ms`. `EINTR` is retried; `ETIMEDOUT` is accepted. A residual `usleep` fallback handles the (shouldn't-happen) case where `sem_init` failed at session open.
+    - Validated by `just nuttx test` + NuttX Rust/Cpp rtos_e2e pubsub/service/action tests (6/6 pass).
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (NuttX notify helper + init/destroy + spin_once)
 - [ ] 77.18 — Bare-metal: explore interrupt-driven network polling
     - Current: bare-metal (smoltcp/serial) `zpico_spin_once` busy-polls the network stack in a loop
     - Options to reduce CPU usage:

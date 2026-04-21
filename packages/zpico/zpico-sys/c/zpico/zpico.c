@@ -211,6 +211,26 @@ static inline void _zpico_notify_spin(void) {
         xSemaphoreGive(g_spin_sem);
     }
 }
+#elif defined(ZENOH_NUTTX)
+// NuttX: POSIX `sem_t` + `sem_timedwait`. We can't use the pthread
+// mutex + condvar pair here — on NuttX the pthread-timed-wait path
+// hangs indefinitely inside the kernel's watchdog-backed semaphore
+// wait (Phase 55.12 follow-up). POSIX `sem_timedwait` does not share
+// that code path and is safe.
+#include <semaphore.h>
+#include <time.h>
+#include <errno.h>
+static sem_t g_spin_sem_posix;
+static bool g_spin_sem_initialized = false;
+
+static inline void _zpico_notify_spin(void) {
+    if (g_spin_sem_initialized) {
+        // sem_post is async-signal-safe; binary-ish semantics are fine
+        // because we only care that spin_once wakes at least once per
+        // event, not that every post is counted.
+        sem_post(&g_spin_sem_posix);
+    }
+}
 #else
 // POSIX/Zephyr: mutex + condvar
 static _z_mutex_t g_spin_mutex;
@@ -224,7 +244,7 @@ static inline void _zpico_notify_spin(void) {
         _z_mutex_unlock(&g_spin_mutex);
     }
 }
-#endif // ZENOH_FREERTOS_LWIP
+#endif // ZENOH_FREERTOS_LWIP / ZENOH_NUTTX
 
 #else
 static inline void _zpico_notify_spin(void) {}
@@ -604,6 +624,10 @@ int32_t zpico_open(void) {
 #if Z_FEATURE_MULTI_THREAD == 1
 #if defined(ZENOH_FREERTOS_LWIP)
     g_spin_sem = xSemaphoreCreateBinary();
+#elif defined(ZENOH_NUTTX)
+    if (sem_init(&g_spin_sem_posix, 0, 0) == 0) {
+        g_spin_sem_initialized = true;
+    }
 #elif !defined(ZPICO_SMOLTCP)
     _z_mutex_init(&g_spin_mutex);
     _z_condvar_init(&g_spin_cv);
@@ -683,6 +707,11 @@ void zpico_close(void) {
         if (g_spin_sem != NULL) {
             vSemaphoreDelete(g_spin_sem);
             g_spin_sem = NULL;
+        }
+#elif defined(ZENOH_NUTTX)
+        if (g_spin_sem_initialized) {
+            g_spin_sem_initialized = false;
+            sem_destroy(&g_spin_sem_posix);
         }
 #elif !defined(ZPICO_SMOLTCP)
         g_spin_cv_initialized = false;
@@ -1178,18 +1207,40 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     return 0;
 
 #elif Z_FEATURE_MULTI_THREAD == 1
-    // Multi-threaded (Zephyr/POSIX): background read and lease tasks handle
-    // data and keep-alives. Wait on a condvar that our callbacks signal when
-    // application data arrives (subscriptions, query replies, service requests).
-    // This gives near-zero latency wake-up without busy-looping on select().
+    // Multi-threaded (Zephyr/POSIX/NuttX): background read and lease tasks
+    // handle data and keep-alives. Wait on a wake primitive that our
+    // callbacks signal when application data arrives (subscriptions, query
+    // replies, service requests). This gives near-zero latency wake-up
+    // without busy-looping on select().
     //
-    // On NuttX the pthread-timed-wait path hangs indefinitely inside the
-    // kernel's watchdog-backed semaphore wait (see Phase 55.12 follow-up).
-    // Fall back to a plain usleep there — we lose the early-wake optimisation
-    // but preserve the timeout semantics the executor loop depends on.
+    // NuttX note: the pthread-timed-wait path (`pthread_cond_timedwait`)
+    // hangs indefinitely inside the kernel's watchdog-backed semaphore
+    // wait (Phase 55.12 follow-up), so we can't reuse the condvar path
+    // there. POSIX `sem_timedwait` does not share that code path and is
+    // safe — it gives us the same early-wake optimisation the other
+    // multi-threaded backends enjoy, replacing the old blind
+    // `usleep(timeout_ms * 1000)` busy-sleep.
     if (timeout_ms > 0) {
 #ifdef ZENOH_NUTTX
-        usleep((useconds_t)timeout_ms * 1000);
+        if (g_spin_sem_initialized) {
+            struct timespec deadline;
+            clock_gettime(CLOCK_REALTIME, &deadline);
+            deadline.tv_sec += (time_t)(timeout_ms / 1000);
+            deadline.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+            if (deadline.tv_nsec >= 1000000000L) {
+                deadline.tv_sec += 1;
+                deadline.tv_nsec -= 1000000000L;
+            }
+            // EINTR / ETIMEDOUT are both acceptable — the outer executor
+            // loop re-checks arena state regardless of why we woke up.
+            while (sem_timedwait(&g_spin_sem_posix, &deadline) != 0
+                   && errno == EINTR) {
+                // retry on signal
+            }
+        } else {
+            // Fallback if sem_init failed at session open.
+            usleep((useconds_t)timeout_ms * 1000);
+        }
 #else
         z_clock_t deadline = z_clock_now();
         z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
