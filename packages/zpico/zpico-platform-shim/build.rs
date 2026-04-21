@@ -41,6 +41,17 @@ fn main() {
     );
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum ProbePlatform {
+    Freertos,
+    Nuttx,
+    Threadx,
+    BareMetal,
+    Linux,
+    Macos,
+    Unknown,
+}
+
 fn probe_sizes(
     zpico_sys_dir: &Path,
     zenoh_include: &Path,
@@ -50,10 +61,6 @@ fn probe_sizes(
     if !probe_c.exists() {
         return None;
     }
-
-    let mut build = cc::Build::new();
-    build.file(&probe_c);
-    build.include(zenoh_include);
 
     let target = env::var("TARGET").unwrap_or_default();
 
@@ -89,15 +96,87 @@ fn probe_sizes(
     // (ThreadX) would silently take the FREERTOS branch and the
     // probe would fall through to defaults (16/8), corrupting the
     // `_z_sys_net_socket_t` pass-by-value ABI.
-    let is_freertos = target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok();
-    let is_nuttx = target.contains("nuttx") || target.contains("armv7a-nuttx");
-    let is_threadx_rv64 = target.contains("riscv64") && env::var("THREADX_DIR").is_ok();
-    let is_threadx_native = !target.contains("none")
+    let primary = if target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok() {
+        ProbePlatform::Freertos
+    } else if target.contains("nuttx") || target.contains("armv7a-nuttx") {
+        ProbePlatform::Nuttx
+    } else if target.contains("riscv64") && env::var("THREADX_DIR").is_ok() {
+        ProbePlatform::Threadx
+    } else if !target.contains("none")
         && !target.contains("linux-gnu")
         && env::var("THREADX_DIR").is_ok()
-        && env::var("NETX_DIR").is_ok();
+        && env::var("NETX_DIR").is_ok()
+    {
+        ProbePlatform::Threadx
+    } else if target.contains("none") {
+        ProbePlatform::BareMetal
+    } else if target.contains("linux") {
+        ProbePlatform::Linux
+    } else if target.contains("darwin") || target.contains("macos") {
+        ProbePlatform::Macos
+    } else {
+        ProbePlatform::Unknown
+    };
 
-    if is_freertos {
+    // Try the heuristically-selected platform first. If that probe
+    // fails on a `-none-` target (bare-metal-capable), retry with the
+    // bare-metal config — the heuristic can misfire when `.envrc`
+    // exports `FREERTOS_DIR` / `THREADX_DIR` globally for a workspace
+    // where this particular crate is actually being built bare-metal.
+    //
+    // The primary attempt runs with `cargo_warnings(false)` so its
+    // compiler stderr doesn't surface as `cargo:warning=…`; a retry
+    // success means the primary was the wrong pick, not a real bug.
+    let will_retry = target.contains("none") && primary != ProbePlatform::BareMetal;
+    if let Some(sizes) = try_probe(
+        &probe_c,
+        zenoh_include,
+        zpico_sys_dir,
+        out_dir,
+        &target,
+        primary,
+        /* suppress_warnings = */ will_retry,
+    ) {
+        return Some(sizes);
+    }
+    if will_retry {
+        if let Some(sizes) = try_probe(
+            &probe_c,
+            zenoh_include,
+            zpico_sys_dir,
+            out_dir,
+            &target,
+            ProbePlatform::BareMetal,
+            false,
+        ) {
+            return Some(sizes);
+        }
+    }
+    println!(
+        "cargo:warning=zpico-platform-shim size_probe failed for all platform \
+         configurations — falling back to default sizes — pass-by-value ABI \
+         for _z_sys_net_socket_t will corrupt if the real struct size differs"
+    );
+    None
+}
+
+fn try_probe(
+    probe_c: &Path,
+    zenoh_include: &Path,
+    zpico_sys_dir: &Path,
+    out_dir: &Path,
+    target: &str,
+    platform: ProbePlatform,
+    suppress_warnings: bool,
+) -> Option<(usize, usize)> {
+    let mut build = cc::Build::new();
+    build.file(probe_c);
+    build.include(zenoh_include);
+    if suppress_warnings {
+        build.cargo_warnings(false);
+    }
+
+    if platform == ProbePlatform::Freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         if let Ok(dir) = env::var("FREERTOS_DIR") {
             let f = PathBuf::from(&dir);
@@ -112,13 +191,13 @@ fn probe_sizes(
         if let Ok(dir) = env::var("LWIP_DIR") {
             build.include(PathBuf::from(dir).join("src/include"));
         }
-    } else if is_nuttx {
+    } else if platform == ProbePlatform::Nuttx {
         build.define("ZENOH_NUTTX", None);
         build.define("ZENOH_LINUX", None);
         if let Ok(dir) = env::var("NUTTX_DIR") {
             build.include(PathBuf::from(dir).join("include"));
         }
-    } else if is_threadx_rv64 || is_threadx_native {
+    } else if platform == ProbePlatform::Threadx {
         build.define("ZENOH_GENERIC", None);
         build.define("ZENOH_THREADX", None);
         build.include(zpico_sys_dir.join("c/platform"));
@@ -174,33 +253,64 @@ fn probe_sizes(
                 );
             }
         }
-    } else if target.contains("none") {
+    } else if platform == ProbePlatform::BareMetal {
         // Bare-metal: ZENOH_GENERIC → zenoh_generic_platform.h → bare-metal/platform.h
         build.define("ZENOH_GENERIC", None);
         build.include(zpico_sys_dir.join("c/platform"));
-    } else if target.contains("linux") {
+
+        // RV32 bare-metal (ESP32-C3): picolibc isn't on the system's
+        // `riscv64-unknown-elf-gcc -march=rv32imc` default include path,
+        // so the probe fails with `fatal error: stdint.h: No such file
+        // or directory` and the silent fallback to 16/8 corrupts the
+        // `_z_sys_net_socket_t` pass-by-value ABI. Mirror the RV32
+        // cross-compile setup from `zpico-sys/build.rs::build_zenoh_pico_embedded`.
+        if target.contains("riscv32") {
+            build.flag("-march=rv32imc").flag("-mabi=ilp32");
+            let errno_dir = out_dir.join("errno-override");
+            std::fs::create_dir_all(&errno_dir).ok();
+            std::fs::write(
+                errno_dir.join("errno.h"),
+                include_bytes!("../zpico-sys/c/platform/errno_override.h"),
+            )
+            .ok();
+            build.include(&errno_dir);
+            if let Some(sysroot) = get_picolibc_sysroot() {
+                build.include(sysroot.join("include"));
+            }
+        } else if target.contains("thumbv7m") || target.contains("thumbv7em") {
+            if target.contains("thumbv7em") {
+                build
+                    .flag("-mcpu=cortex-m4")
+                    .flag("-mthumb")
+                    .flag("-mfpu=fpv4-sp-d16")
+                    .flag("-mfloat-abi=hard");
+            } else {
+                build.flag("-mcpu=cortex-m3").flag("-mthumb");
+            }
+        }
+    } else if platform == ProbePlatform::Linux {
         build.define("ZENOH_LINUX", None);
-    } else if target.contains("darwin") || target.contains("macos") {
+    } else if platform == ProbePlatform::Macos {
         build.define("ZENOH_MACOS", None);
     }
 
     build.cargo_metadata(false);
-    if let Err(e) = build.try_compile("nros_size_probe") {
-        // Loud fallback — silent fallback to hardcoded 16/8 sizes
-        // silently corrupts the `_z_sys_net_socket_t` pass-by-value
-        // ABI on targets whose real socket size differs (e.g. ThreadX
-        // RV64 where the real size is 4 bytes). Keep this warning
-        // visible so any future probe breakage is diagnosable.
-        println!(
-            "cargo:warning=zpico-platform-shim size_probe failed ({e}); \
-             falling back to default sizes — pass-by-value ABI for \
-             _z_sys_net_socket_t will corrupt if the real struct \
-             size differs"
-        );
+    // Use a unique archive name per platform so retry attempts don't
+    // clash with each other in the same OUT_DIR.
+    let archive_name = match platform {
+        ProbePlatform::Freertos => "nros_size_probe_freertos",
+        ProbePlatform::Nuttx => "nros_size_probe_nuttx",
+        ProbePlatform::Threadx => "nros_size_probe_threadx",
+        ProbePlatform::BareMetal => "nros_size_probe_bare_metal",
+        ProbePlatform::Linux => "nros_size_probe_linux",
+        ProbePlatform::Macos => "nros_size_probe_macos",
+        ProbePlatform::Unknown => "nros_size_probe",
+    };
+    if build.try_compile(archive_name).is_err() {
         return None;
     }
 
-    let archive = out_dir.join("libnros_size_probe.a");
+    let archive = out_dir.join(format!("lib{archive_name}.a"));
     let socket = read_symbol_size(&archive, "__nros_sizeof_net_socket");
     let endpoint = read_symbol_size(&archive, "__nros_sizeof_net_endpoint");
 

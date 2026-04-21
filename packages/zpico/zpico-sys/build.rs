@@ -572,6 +572,47 @@ fn probe_net_type_sizes(
         build.define("ZENOH_GENERIC", None);
         let platform_dir = c_dir.join("platform");
         build.include(&platform_dir);
+
+        // RV32 bare-metal (ESP32-C3): mirror `build_zenoh_pico_embedded` —
+        // add the cross-compile flags, errno override and picolibc sysroot
+        // so the probe finds <stdint.h>. Without this the probe emits
+        // `fatal error: stdint.h: No such file or directory` (picolibc
+        // headers aren't on the default system include path for
+        // `riscv64-unknown-elf-gcc -march=rv32imc`) and falls back to the
+        // hardcoded 16/8 defaults.
+        let target = env::var("TARGET").unwrap_or_default();
+        if target.contains("riscv32") {
+            detect_riscv_compiler(&mut build);
+            build.flag("-march=rv32imc").flag("-mabi=ilp32");
+
+            let errno_dir = out_dir.join("errno-override");
+            std::fs::create_dir_all(&errno_dir).ok();
+            std::fs::write(
+                errno_dir.join("errno.h"),
+                include_bytes!("c/platform/errno_override.h"),
+            )
+            .ok();
+            build.include(&errno_dir);
+
+            if let Some(sysroot) = get_picolibc_sysroot() {
+                build.include(sysroot.join("include"));
+            }
+        } else if target.contains("thumbv7m") || target.contains("thumbv7em") {
+            // ARM Cortex-M bare-metal: cc crate selects arm-none-eabi-gcc
+            // which ships its own newlib sysroot, so no sysroot include
+            // is needed here — but the -mcpu flags are required for the
+            // preprocessor to pick the right architecture-dependent
+            // headers.
+            if target.contains("thumbv7em") {
+                build
+                    .flag("-mcpu=cortex-m4")
+                    .flag("-mthumb")
+                    .flag("-mfpu=fpv4-sp-d16")
+                    .flag("-mfloat-abi=hard");
+            } else {
+                build.flag("-mcpu=cortex-m3").flag("-mthumb");
+            }
+        }
     } else if use_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         // lwIP + FreeRTOS headers needed
