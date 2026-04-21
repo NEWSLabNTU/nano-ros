@@ -283,7 +283,7 @@ them to stop silently passing.
     single 85.x work item — it now includes a types-only crate
     refactor and a parallel fix for the same latent bug in `nros-c`.
 
-- [ ] 85.10 — Fix ThreadX QEMU RISC-V zenoh session connect failure
+- [x] 85.10 — Fix ThreadX QEMU RISC-V zenoh session connect failure
   - **Files**: `packages/core/nros-platform-threadx/src/net.rs`
     (NetX BSD socket shim — suspect after bisect),
     `packages/zpico/zpico-sys/zenoh-pico/src/transport/common/tx.c`
@@ -352,6 +352,29 @@ them to stop silently passing.
     (`platform_4_Platform__ThreadxRiscv64 × {Rust, C, Cpp} ×
      {pubsub, service, action}` minus the 2 cases skipped by
      `skip_reason` for missing C++ service / action examples).
+  - **Root cause found (85.10b, 2026-04-21)** — hypothesis (c) (ABI
+    size mismatch) confirmed. The size probe in
+    `zpico-platform-shim/build.rs` used `env::var("FREERTOS_DIR").is_ok()`
+    as its first branch, but `.envrc` exports `FREERTOS_DIR`
+    globally. Every cross-compile — including RV64 ThreadX — took
+    the FREERTOS branch, failed to compile the probe (couldn't find
+    lwIP headers), fell back to hardcoded `SOCKET_SIZE=16 /
+    ENDPOINT_SIZE=8`, and emitted a Rust shim whose opaque wrapper
+    for `_z_sys_net_socket_t` was 12 bytes too large. Pass-by-value
+    marshaling of `sock` across the `_z_send_tcp(sock, ptr, len)`
+    FFI boundary shifted the arguments one register down — Rust
+    read whatever was in a3 as `len`, which happens to be zero at
+    function entry, hence the "tcp_send len=0x00000000" probe trace.
+    Fix: switch the probe's branch key from "SDK env var set" to
+    "target triple + SDK env var set", mirror the full ThreadX /
+    NetX / picolibc include chain from the main build (otherwise
+    the probe still fails to compile for RV64), and turn the silent
+    fallback into a loud `cargo:warning`. Committed as `7d79276e`.
+  - **Result**:
+    `cargo nextest run -p nros-tests --test rtos_e2e
+     -E 'test(rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust)'`
+    passes in 73 s (previously failed at 20 s with
+    `Transport(ConnectionFailed)`).
 
 ## Acceptance Criteria
 
