@@ -20,6 +20,7 @@ extern "C" void app_main(void) {
     if (!ret.ok()) { printf("create_service failed\n"); nros::shutdown(); return; }
 
     printf("Service server ready\n");
+    printf("Waiting for requests...\n");
     int req_count = 0;
     for (int poll = 0; poll < 50000; poll++) {
         nros::spin_once(10);
