@@ -44,7 +44,7 @@ fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
     guard_handle.trigger();
 
     // Spin to process
-    executor.spin_once(10);
+    executor.spin_once(core::time::Duration::from_millis(10));
 
     let fired = GUARD_FIRED.load(Ordering::SeqCst);
     assert_eq!(
@@ -54,7 +54,7 @@ fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
     );
 
     // Spin again — should NOT fire (cleared after first trigger)
-    executor.spin_once(10);
+    executor.spin_once(core::time::Duration::from_millis(10));
     let fired2 = GUARD_FIRED.load(Ordering::SeqCst);
     assert_eq!(
         fired2, 1,

@@ -19,7 +19,7 @@
 //! let mut promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 })?;
 //!
 //! let reply = loop {
-//!     executor.spin_once(10);
+//!     executor.spin_once(core::time::Duration::from_millis(10));
 //!     if let Ok(Some(reply)) = promise.try_recv() {
 //!         break reply;
 //!     }

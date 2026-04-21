@@ -107,6 +107,19 @@ pub fn seed(value: u32) {
     unsafe { RNG_STATE = if value == 0 { 0x12345678 } else { value } }
 }
 
+/// C-callable version for FreeRTOS startup.c to seed the platform RNG.
+///
+/// Without this, the C examples have no way to inject per-instance
+/// entropy into the xorshift state, so two QEMU instances both start
+/// with the default `0x12345678` seed → produce identical zenoh
+/// session IDs → zenohd treats them as the same peer (`max_links=1`)
+/// and rejects the second connection. The Rust path seeds via
+/// `seed()` from `app_task_entry`; the C path now mirrors that.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_platform_freertos_seed_rng(value: u32) {
+    seed(value);
+}
+
 fn next_u32() -> u32 {
     unsafe {
         let mut x = RNG_STATE;

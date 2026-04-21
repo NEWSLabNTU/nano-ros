@@ -373,7 +373,7 @@ mod app {
         loop {
             // When zenoh-pico is available, this would be:
             // if let Some(ctx) = &ZENOH_CONTEXT {
-            //     match ctx.spin_once(0) {
+            //     match ctx.spin_once(core::time::Duration::from_millis(0)) {
             //         Ok(events) if events > 0 => {
             //             debug!("Processed {} zenoh events", events);
             //         }

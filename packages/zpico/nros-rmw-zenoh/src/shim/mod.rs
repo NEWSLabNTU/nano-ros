@@ -33,7 +33,7 @@
 //! let mut session = ZenohTransport::open(&config).expect("Failed to open session");
 //!
 //! // Must poll periodically
-//! session.spin_once(10)?;
+//! session.spin_once(core::time::Duration::from_millis(10))?;
 //! ```
 
 pub mod publisher;

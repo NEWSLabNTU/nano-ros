@@ -261,8 +261,17 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
         let type_hash_str =
             core::str::from_utf8_unchecked(&publisher.type_hash[..publisher.type_hash_len]);
 
+        // Pull node identity for liveliness — without these, no liveliness token
+        // is declared and rmw_zenoh-style routing won't deliver messages.
+        let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+        let namespace_str =
+            core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+
         // Build TopicInfo
-        let topic_info = TopicInfo::new(topic_str, type_str, type_hash_str).with_domain(domain_id);
+        let topic_info = TopicInfo::new(topic_str, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
 
         // Create publisher — write handle directly into inline opaque storage
         match session.create_publisher(&topic_info, _qos_settings) {
