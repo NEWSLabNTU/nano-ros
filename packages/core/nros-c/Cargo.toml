@@ -49,6 +49,11 @@ panic-halt = ["dep:panic-halt"]
 # service responses.
 param-services = ["alloc", "nros/param-services", "nros-node/param-services"]
 
+# Expose ROS 2 lifecycle services (~/change_state, ~/get_state, etc. — REP-2002)
+# via `nros_executor_register_lifecycle_services`. Requires alloc for boxed
+# service responses.
+lifecycle-services = ["alloc", "nros/lifecycle-services", "nros-node/lifecycle-services"]
+
 [dependencies]
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true

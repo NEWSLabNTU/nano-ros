@@ -119,6 +119,9 @@ ffi-sync = [
 # Parameter services for ROS 2 interop (ros2 param list/get/set)
 param-services = ["nros-node/param-services"]
 
+# Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002)
+lifecycle-services = ["nros-node/lifecycle-services"]
+
 # ROS edition feature flags
 ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
 ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]

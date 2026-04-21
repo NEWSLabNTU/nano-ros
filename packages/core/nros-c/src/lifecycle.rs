@@ -284,6 +284,178 @@ unsafe fn register(
 }
 
 // ============================================================================
+// Executor-integrated lifecycle services (ROS 2 tooling surface)
+// ============================================================================
+//
+// These functions are gated on `lifecycle-services` + an active RMW backend
+// because the Executor type is only defined when an RMW is compiled in.
+// They expose the state machine owned *by the Executor* (created during
+// `nros_executor_register_lifecycle_services`) — distinct from the
+// standalone `nros_lifecycle_state_machine_t` used by drivers that don't
+// want ROS 2 tooling integration.
+
+#[cfg(all(
+    feature = "lifecycle-services",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce")
+))]
+mod service_backed {
+    use super::*;
+    use crate::executor::{get_executor, nros_executor_t};
+
+    /// Register the five REP-2002 lifecycle services on the executor's node.
+    ///
+    /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
+    /// executor-owned state machine. Register transition callbacks via
+    /// `nros_executor_lifecycle_register_on_*` and inspect the state via
+    /// `nros_executor_lifecycle_get_state`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_register_lifecycle_services(
+        executor: *mut nros_executor_t,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = unsafe { get_executor(&mut (*executor)._opaque) };
+        match exec.register_lifecycle_services() {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    /// Get the current lifecycle state of the executor's state machine.
+    ///
+    /// Returns `NROS_LIFECYCLE_STATE_UNCONFIGURED` if services are not
+    /// registered yet.
+    ///
+    /// Takes `*mut` rather than `*const` because `get_executor` returns
+    /// `&mut CExecutor` — reading the state is logically read-only but the
+    /// executor accessor shares storage with the services loop that needs
+    /// `&mut` during spin.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_get_state(
+        executor: *mut nros_executor_t,
+    ) -> u8 {
+        if executor.is_null() {
+            return NROS_LIFECYCLE_STATE_UNCONFIGURED;
+        }
+        let exec = unsafe { get_executor(&mut (*executor)._opaque) };
+        match exec.lifecycle_state_machine() {
+            Some(sm) => sm.state() as u8,
+            None => NROS_LIFECYCLE_STATE_UNCONFIGURED,
+        }
+    }
+
+    /// Trigger a lifecycle transition on the executor's state machine.
+    ///
+    /// # Safety
+    /// Invokes the user's registered C callback through a raw function
+    /// pointer. The caller must ensure the callback and any context it
+    /// captures are live.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_change_state(
+        executor: *mut nros_executor_t,
+        transition_id: u8,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = unsafe { get_executor(&mut (*executor)._opaque) };
+        let Some(sm) = exec.lifecycle_state_machine_mut() else {
+            return NROS_RET_NOT_INIT;
+        };
+        let Some(t) = LifecycleTransition::from_u8(transition_id) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        // SAFETY: forwarded through this function's unsafe contract.
+        match unsafe { sm.trigger_transition(t) } {
+            Ok(_) => NROS_RET_OK,
+            Err(LifecycleError::NodeFinalized) => NROS_RET_BAD_SEQUENCE,
+            Err(LifecycleError::InvalidTransition { .. }) => NROS_RET_INVALID_ARGUMENT,
+            Err(LifecycleError::CallbackFailed { .. }) => NROS_RET_ERROR,
+        }
+    }
+
+    #[inline]
+    unsafe fn register_exec(
+        executor: *mut nros_executor_t,
+        slot: LifecycleCallbackSlot,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = unsafe { get_executor(&mut (*executor)._opaque) };
+        let Some(sm) = exec.lifecycle_state_machine_mut() else {
+            return NROS_RET_NOT_INIT;
+        };
+        sm.register(slot, cb);
+        sm.set_context(context);
+        NROS_RET_OK
+    }
+
+    /// Register the on-configure callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_configure(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Configure, cb, context) }
+    }
+
+    /// Register the on-activate callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_activate(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Activate, cb, context) }
+    }
+
+    /// Register the on-deactivate callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_deactivate(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Deactivate, cb, context) }
+    }
+
+    /// Register the on-cleanup callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_cleanup(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Cleanup, cb, context) }
+    }
+
+    /// Register the on-shutdown callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_shutdown(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Shutdown, cb, context) }
+    }
+
+    /// Register the on-error callback on the executor's state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_lifecycle_register_on_error(
+        executor: *mut nros_executor_t,
+        cb: Option<LifecycleCallbackFnCtx>,
+        context: *mut c_void,
+    ) -> nros_ret_t {
+        unsafe { register_exec(executor, LifecycleCallbackSlot::Error, cb, context) }
+    }
+}
+
+// ============================================================================
 // Tests — focused on the FFI bridge; the state machine itself is tested in
 // `nros_node::lifecycle::tests`.
 // ============================================================================

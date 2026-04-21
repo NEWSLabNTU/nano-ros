@@ -1842,6 +1842,14 @@ impl Executor {
         Ok(())
     }
 
+}
+
+// ============================================================================
+// Lifecycle services (cfg lifecycle-services)
+// ============================================================================
+
+#[cfg(feature = "lifecycle-services")]
+impl Executor {
     /// Register the five REP-2002 lifecycle services on this executor.
     ///
     /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
@@ -1854,7 +1862,6 @@ impl Executor {
     /// Registered callbacks on the state machine are C FFI function pointers.
     /// The caller must keep the callback code and any context it captures
     /// valid for as long as the executor processes services.
-    #[cfg(feature = "lifecycle-services")]
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
         use crate::lifecycle::LifecyclePollingNodeCtx;
         use crate::lifecycle_services::{
@@ -1979,7 +1986,6 @@ impl Executor {
     ///
     /// Used to register transition callbacks before spinning and to read the
     /// current state from application code.
-    #[cfg(feature = "lifecycle-services")]
     pub fn lifecycle_state_machine_mut(
         &mut self,
     ) -> Option<&mut crate::lifecycle::LifecyclePollingNodeCtx> {
@@ -1987,13 +1993,19 @@ impl Executor {
     }
 
     /// Immutable access to the lifecycle state machine, if registered.
-    #[cfg(feature = "lifecycle-services")]
     pub fn lifecycle_state_machine(
         &self,
     ) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
         self.lifecycle.as_ref().map(|lc| &lc.state_machine)
     }
+}
 
+// ============================================================================
+// Parameter declaration API (cfg param-services)
+// ============================================================================
+
+#[cfg(feature = "param-services")]
+impl Executor {
     /// Declare a parameter with a value. Returns `true` if successful.
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         if let Some(params) = &mut self.params {
