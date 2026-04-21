@@ -284,10 +284,13 @@ them to stop silently passing.
     refactor and a parallel fix for the same latent bug in `nros-c`.
 
 - [ ] 85.10 — Fix ThreadX QEMU RISC-V zenoh session connect failure
-  - **Files**: `examples/qemu-riscv64-threadx/rust/zenoh/*/src/lib.rs`
-    (initial suspect), `packages/boards/nros-threadx-qemu-riscv64/`,
-    `packages/drivers/virtio-net-netx/`, potentially `zpico-sys` or
-    `zenoh-pico` itself.
+  - **Files**: `packages/core/nros-platform-threadx/src/net.rs`
+    (NetX BSD socket shim — suspect after bisect),
+    `packages/zpico/zpico-sys/zenoh-pico/src/transport/common/tx.c`
+    and `src/link/link.c` (`_z_link_send_t_msg` →
+    `_z_link_send_wbuf`), `packages/drivers/virtio-net-netx/`,
+    possibly `packages/zpico/zpico-sys/` codegen for
+    `NET_SOCKET_SIZE` ABI layout.
   - **Goal**: The RV64 firmware boots cleanly (virtio init, NetX IP
     stack up, BSD sockets initialised) but `Session::open(...)` fails
     with `Transport(ConnectionFailed)`. The slirp gateway at
@@ -308,6 +311,38 @@ them to stop silently passing.
       layer bug), or inside zenoh-pico's session negotiation.
     - The existing ThreadX Linux port table entry (bridge-networked)
       works; the RV64 port uses slirp. Compare the two paths.
+  - **Bisect so far (85.10a, 2026-04-21)** — instrumented
+    `Context::with_config` (zpico.rs), zenoh-pico `zpico_open` (C),
+    and the Rust-side `tcp_open` / `tcp_send` in
+    `nros-platform-threadx/src/net.rs` with UART-print probes. Boot
+    sequence:
+    1. `nx_bsd_socket()` — OK, valid fd.
+    2. `nx_bsd_connect(10.0.2.2:7453)` — returns `0` (success).
+       Zenohd-side `tcpdump` not run due to loopback-BPF permissions,
+       but the stub-socket success means NetX's TCP stack reached the
+       slirp gateway.
+    3. Exactly **one** `_z_send_tcp` call with `len == 0`, then
+       zenoh-pico `z_open()` returns `_Z_ERR_TRANSPORT_TX_FAILED`
+       (-100). No `_z_read_tcp` / `_z_read_exact_tcp` ever called.
+    4. The fact that the *only* `_z_send_tcp` call has `len == 0`
+       strongly suggests the failure is **before** the INIT(Syn)
+       message actually gets encoded / emitted — most likely inside
+       `_z_link_send_t_msg` (`transport/common/tx.c:417`) or the
+       wbuf-iosli iteration in `_z_link_send_wbuf`
+       (`link/link.c:205`). Either the wbuf is empty (encoding
+       failed silently) or a single empty iosli is iterated.
+    5. Debug probes were reverted after the bisect — the next
+       investigator should re-apply them locally and check two
+       hypotheses: (a) `zl->_cap._flow` is not
+       `Z_LINK_CAP_FLOW_STREAM` for the RV64 ThreadX TCP link (which
+       skips the length-prefix write and produces an empty wbuf),
+       (b) `_z_wbuf_make(mtu, false)` is returning a wbuf with zero
+       capacity due to a `z_malloc` failure somewhere upstream.
+    6. Also worth comparing `NET_SOCKET_SIZE` / `NET_ENDPOINT_SIZE`
+       between host and target (see `zpico-platform-shim`'s
+       `platform_net_sizes.rs`) — a cross-size mismatch would
+       corrupt the ABI when `ZSysNetSocket` is passed by value to
+       `_z_send_tcp`.
   - **Cross-reference**: my session memory notes a related
     `ThreadX Linux x86_64 pointer truncation` investigation
     (`packages/drivers/nsos-netx`) — the RV64 driver
