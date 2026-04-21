@@ -6,7 +6,8 @@ Rust APIs can register the REP-2002 lifecycle services (`~/change_state`,
 `~/get_transition_graph`) on a node, matching what `rclcpp_lifecycle` /
 `rclc_lifecycle` do for upstream ROS 2.
 
-**Status**: Not Started
+**Status**: Complete (all work items + acceptance criteria landed; live
+`ros2 lifecycle` interop verified against a pinned `rmw_zenoh_cpp`).
 **Priority**: Medium — the state machine already exists in
 `nros-node::lifecycle`; this phase is about surfacing it to ROS 2 tooling
 (`ros2 lifecycle set`, `ros2 lifecycle get`, `ros2 lifecycle nodes`).
@@ -87,6 +88,32 @@ Upstream message types (`lifecycle_msgs/msg/`): `State`, `Transition`,
       Unconfigured cycle through registered `extern "C"` callbacks.
       Loadable-mock extensions to `MockServiceServer` (simulating a
       live ChangeState request) remain deferred.
+- [x] 86.9 — Pin `rmw_zenoh_cpp` as a submodule and build it into an
+      ament overlay (`just rmw_zenoh setup`) so the interop test runs
+      against a zenoh version wire-matched to our zenoh-pico/zenohd.
+      - Submodule: `third-party/zenoh/rmw_zenoh` at `9732f535` (humble
+        branch, zenoh 1.7.1 — last humble commit before the 1.8.0 bump).
+      - Colcon workspace lives at `$XDG_CACHE_HOME/nros/rmw_zenoh_ws`
+        (outside the repo tree so `zenoh_cpp_vendor`'s nested cargo
+        build doesn't discover our `edition = "2024"` root manifest);
+        install dir symlinked into `build/rmw_zenoh_ws/install/`.
+      - `nros-tests` harness now prefers the overlay's `setup.bash`
+        over a distro-installed `rmw_zenoh_cpp`; falls back to distro
+        when the overlay isn't built. Wired into `just setup`/`doctor`.
+- [x] 86.10 — Live ROS 2 interop test
+      (`tests/ros2_lifecycle_interop.rs`). Four assertions against a
+      live zenohd + nros lifecycle-node, routed through the pinned
+      `rmw_zenoh_cpp`:
+      - A. `ros2 lifecycle nodes` discovers `/lifecycle_demo`.
+      - B. `ros2 lifecycle get` returns Unconfigured initially.
+      - C. `ros2 lifecycle set configure` transitions to Inactive and
+        fires the user's `extern "C" fn on_configure` (verified by
+        grepping the node's stdout).
+      - D. `ros2 lifecycle list` shows the transitions reachable from
+        Inactive (`activate`, `cleanup`, `shutdown`).
+      Runs in ~15s; skips cleanly when the overlay or zenohd is
+      absent. Registered in the `ros2-interop` nextest group
+      (`max-threads = 1`) and fronted by `just native test-ros2-lifecycle`.
 
 ## Design Notes
 
@@ -104,28 +131,41 @@ Upstream message types (`lifecycle_msgs/msg/`): `State`, `Transition`,
   a split-borrow at call sites (same trick `ParamState::process` already
   uses for the parameter server).
 - **Event-side publisher (`~/transition_event`)**: out of scope for
-  86.1–86.6. Adding a publisher that emits a `TransitionEvent` on every
-  transition is a small follow-up once the services themselves are
-  landed.
+  86.1–86.10. Adding a publisher that emits a `TransitionEvent` on
+  every transition is a small follow-up once the services themselves
+  are landed (still deferred — file a follow-up phase when needed).
+- **Pinned `rmw_zenoh` version drift**: phase 86.9 pins
+  `third-party/zenoh/rmw_zenoh` at `9732f535` (humble, zenoh 1.7.1)
+  because the upstream humble branch jumped 1.7.1 → 1.8.0 without ever
+  landing 1.7.2. If we bump our zenoh-pico/zenohd to 1.8.0, move the
+  rmw_zenoh pin to the post-1.8.0 humble HEAD (`6d2a55c` or later) in
+  lockstep — otherwise the interop test will silently break on wire
+  protocol differences.
 - **`lifecycle_msgs` service hashes**: need to match upstream ROS 2 so
   `rmw_zenoh` routes correctly. Codegen already computes these — no
   manual type hash maintenance needed.
 
 ## Acceptance Criteria
 
-- [ ] `ros2 lifecycle nodes` lists an nros test node.
-- [ ] `ros2 lifecycle get /<node>` returns the current state (string +
-      id) and round-trips correctly after a
-      `nros_lifecycle_change_state` call.
-- [ ] `ros2 lifecycle set /<node> configure` drives
+All criteria verified by `tests/ros2_lifecycle_interop.rs` (work item
+86.10) running the pinned `rmw_zenoh_cpp` overlay against a live
+`zenohd` and the `examples/native/rust/zenoh/lifecycle-node` example.
+
+- [x] `ros2 lifecycle nodes` lists an nros test node. (assertion A)
+- [x] `ros2 lifecycle get /<node>` returns the current state (string +
+      id) and round-trips correctly after a transition.
+      (assertions B + C-get)
+- [x] `ros2 lifecycle set /<node> configure` drives
       `LifecyclePollingNodeCtx` through `Configure`, runs the user's
       callback, and reflects the new state on the next
-      `ros2 lifecycle get`.
-- [ ] `ros2 lifecycle list /<node>` prints the 5 expected transitions
-      reachable from the current state.
-- [ ] No `static mut` added in the service registration path —
-      everything lives inside the executor's `Box<LifecycleState>`,
-      matching `Box<ParamState>`.
+      `ros2 lifecycle get`. (assertion C + on_configure stdout grep)
+- [x] `ros2 lifecycle list /<node>` prints the expected transitions
+      reachable from the current state. (assertion D)
+- [x] No `static mut` added in the service registration path —
+      everything lives inside the executor's
+      `Option<Box<LifecycleRuntimeState>>`, matching `Box<ParamState>`
+      (see `packages/core/nros-node/src/executor/spin.rs` for the
+      field definition + split-borrow drain site in `spin_once`).
 
 ## Notes
 
