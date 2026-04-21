@@ -257,31 +257,28 @@ fn test_zephyr_to_native_e2e() {
     eprintln!("\n=== Zephyr output ===\n{}", zephyr_output);
     eprintln!("\n=== Native listener output ===\n{}", listener_output);
 
-    // Check for known zenoh-pico transport TX failure
-    let zephyr_tx_failed = zephyr_output.contains("z_publisher_put failed")
+    // Strict delivery check: the native listener must log at least one
+    // real "Received: <N>" line (not setup text like "Waiting for Int32 ...").
+    let received_count = count_pattern(&listener_output, "Received:");
+    let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
+        || zephyr_output.contains("z_publisher_put failed")
         || zephyr_output.contains("Failed to publish");
-    let zephyr_connected = zephyr_output.contains("Session opened");
-    let zephyr_declared_pub = zephyr_output.contains("Declared publisher");
 
-    // The listener should have received at least one message
-    let has_received = listener_output.contains("Received")
-        || listener_output.contains("Int32")
-        || listener_output.contains("data:");
-
-    if has_received {
-        let count = count_pattern(&listener_output, "Received");
+    if received_count >= 1 {
         eprintln!(
             "\nSUCCESS: Native listener received {} messages from Zephyr talker",
-            count
+            received_count
         );
-    } else if zephyr_tx_failed && zephyr_connected && zephyr_declared_pub {
+    } else if zephyr_transport_err {
         panic!(
-            "zenoh-pico transport TX failure — talker connected and declared publisher but failed to send"
+            "Zephyr talker transport failed — check zenoh-pico session setup. \
+             Listener received 0 messages."
         );
-    } else if !zephyr_connected {
-        panic!("Zephyr talker failed to connect to zenohd");
     } else {
-        panic!("No messages received from Zephyr");
+        panic!(
+            "No messages delivered from Zephyr talker to native listener. \
+             Listener received 0 'Received:' lines."
+        );
     }
 }
 
@@ -354,39 +351,31 @@ fn test_native_to_zephyr_e2e() {
     eprintln!("\n=== Native talker output ===\n{}", talker_output);
     eprintln!("\n=== Zephyr listener output ===\n{}", zephyr_output);
 
-    // Check for known zenoh-pico transport issues
-    let zephyr_connected = zephyr_output.contains("Session opened");
-    let zephyr_subscribed = zephyr_output.contains("Declared subscriber")
-        || zephyr_output.contains("Subscriber created");
-    let zephyr_subscribe_failed = zephyr_output.contains("Failed to create subscriber")
-        || zephyr_output.contains("z_declare_subscriber failed");
-
-    // The listener should have received at least one message
-    let has_received = zephyr_output.contains("Received")
-        || zephyr_output.contains("Int32")
-        || zephyr_output.contains("data:");
-
-    // Check native talker status
+    // Strict delivery check: the Zephyr listener must log at least one
+    // real "Received: <N>" line (not setup text like "Waiting for messages ...").
+    let received_count = count_pattern(&zephyr_output, "Received:");
+    let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
+        || zephyr_output.contains("z_declare_subscriber failed")
+        || zephyr_output.contains("Failed to create subscriber");
     let talker_published = talker_output.contains("Published");
 
-    if has_received {
-        let count = count_pattern(&zephyr_output, "Received");
+    if received_count >= 1 {
         eprintln!(
             "\nSUCCESS: Zephyr listener received {} messages from native talker",
-            count
+            received_count
         );
-    } else if zephyr_subscribe_failed && zephyr_connected {
+    } else if zephyr_transport_err {
         panic!(
-            "zenoh-pico subscription failure — Zephyr listener connected but failed to subscribe"
+            "Zephyr listener transport failed — check zenoh-pico session setup. \
+             Listener received 0 messages."
         );
-    } else if zephyr_subscribed && talker_published && !has_received {
-        panic!(
-            "Both sides ready but messages not delivered — Zephyr subscribed and native talker published"
-        );
-    } else if !zephyr_connected {
-        panic!("Zephyr listener failed to connect to zenohd");
+    } else if !talker_published {
+        panic!("Native talker did not publish — check talker output for errors");
     } else {
-        panic!("No messages received by Zephyr listener");
+        panic!(
+            "Native talker published but Zephyr listener received 0 messages. \
+             Check Zephyr output for subscription/session errors."
+        );
     }
 }
 
@@ -500,23 +489,10 @@ fn test_bidirectional_native_zephyr_e2e() {
         zephyr_listener_output
     );
 
-    // Check direction 1: Zephyr talker → Native listener
-    let native_received = native_listener_output.contains("Received")
-        || native_listener_output.contains("Int32")
-        || native_listener_output.contains("data:");
-    let native_received_count = count_pattern(&native_listener_output, "Received");
-
-    // Check direction 2: Native talker → Zephyr listener
-    let zephyr_received = zephyr_listener_output.contains("Received")
-        || zephyr_listener_output.contains("Int32")
-        || zephyr_listener_output.contains("data:");
-    let zephyr_received_count = count_pattern(&zephyr_listener_output, "Received");
-
-    // Check for known limitations
-    let zephyr_talker_tx_failed = zephyr_talker_output.contains("Failed to publish")
-        || zephyr_talker_output.contains("z_publisher_put failed");
-    let zephyr_listener_sub_failed = zephyr_listener_output.contains("Failed to create subscriber")
-        || zephyr_listener_output.contains("z_declare_subscriber failed");
+    // Strict delivery counts: match only real "Received: <N>" lines,
+    // not setup text like "Waiting for Int32 messages ...".
+    let native_received_count = count_pattern(&native_listener_output, "Received:");
+    let zephyr_received_count = count_pattern(&zephyr_listener_output, "Received:");
 
     eprintln!("\n=== Results ===");
     eprintln!(
@@ -528,31 +504,21 @@ fn test_bidirectional_native_zephyr_e2e() {
         zephyr_received_count
     );
 
-    // Analyze results
-    if native_received && zephyr_received {
-        eprintln!("\nSUCCESS: Bidirectional communication works!");
-        eprintln!(
-            "  - Native listener received {} messages from Zephyr",
+    match (native_received_count >= 1, zephyr_received_count >= 1) {
+        (true, true) => {
+            eprintln!("\nSUCCESS: Bidirectional communication works!");
+        }
+        (true, false) => panic!(
+            "Zephyr → Native works ({} msgs), Native → Zephyr failed (0 msgs)",
             native_received_count
-        );
-        eprintln!(
-            "  - Zephyr listener received {} messages from native",
+        ),
+        (false, true) => panic!(
+            "Native → Zephyr works ({} msgs), Zephyr → Native failed (0 msgs)",
             zephyr_received_count
-        );
-    } else if native_received && !zephyr_received {
-        if zephyr_listener_sub_failed {
-            panic!("Zephyr → Native works, Native → Zephyr failed (subscription failure)");
-        } else {
-            panic!("Zephyr → Native works, Native → Zephyr failed");
-        }
-    } else if !native_received && zephyr_received {
-        if zephyr_talker_tx_failed {
-            panic!("Native → Zephyr works, Zephyr → Native failed (TX failure)");
-        } else {
-            panic!("Native → Zephyr works, Zephyr → Native failed");
-        }
-    } else {
-        panic!("Bidirectional communication failed — no messages received in either direction");
+        ),
+        (false, false) => panic!(
+            "Bidirectional communication failed — 0 messages in both directions"
+        ),
     }
 }
 
@@ -1164,10 +1130,9 @@ fn test_native_server_zephyr_client() {
     } else if !zephyr_connected {
         panic!(
             "Zephyr service E2E failed — client did not connect to zenohd.\n\
-             This is an environment issue. Verify:\n\
-             - Zephyr bridge: `ip addr show zeth-br` (should have 192.0.2.2)\n\
+             Verify:\n\
              - Zephyr binary up to date: rebuild with `west build`\n\
-             - zenohd reachable on bridge IP"
+             - zenohd reachable on tcp/127.0.0.1:7456 (NSOS forwards sockets to host loopback)"
         );
     } else {
         panic!(
