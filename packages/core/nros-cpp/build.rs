@@ -162,9 +162,8 @@ fn generate_config(
     // to `size_of::<RmwServiceServer>()` / `size_of::<RmwServiceClient>()`
     // via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE`.
 
-    // CppGuardCondition { handle_id: HandleId (usize), callback: fn, ctx: *mut, executor: *mut }
-    let guard_bytes = align_up(4 * ptr_bytes + 2 * ptr_bytes, 8);
-    let guard_storage = guard_bytes.div_ceil(8) * 8;
+    // Phase 87.6: GuardCondition is thin — storage sized to
+    // `size_of::<GuardConditionHandle>()` via `NROS_GUARD_CONDITION_SIZE`.
 
     let contents = format!(
         "/// Inline opaque storage for `CppContext` (in u64 units).\n\
@@ -183,7 +182,7 @@ fn generate_config(
          // within the generated C macro — if the Rust type grows past\n\
          // the estimate, the build fails loudly instead of silently\n\
          // overflowing caller-provided storage.\n\
-         pub const CPP_GUARD_STORAGE_BYTES: usize = {guard_storage};\n"
+"
     );
 
     std::fs::write(
@@ -225,9 +224,6 @@ fn generate_config(
          \n\
          /** Inline opaque storage size (bytes) for nros::Executor. */\n\
          #define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros::GuardCondition. */\n\
-         #define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE {guard_storage}\n\
          \n\
          /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */\n\
          #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE {action_server_storage}\n\

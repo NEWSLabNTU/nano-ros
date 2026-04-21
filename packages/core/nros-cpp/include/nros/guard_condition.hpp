@@ -120,7 +120,7 @@ class GuardCondition {
 
     friend class Node;
 
-    alignas(8) uint8_t storage_[NROS_CPP_GUARD_CONDITION_STORAGE_SIZE];
+    alignas(8) uint8_t storage_[NROS_GUARD_CONDITION_SIZE];
     bool initialized_;
 
 #ifdef NROS_CPP_STD

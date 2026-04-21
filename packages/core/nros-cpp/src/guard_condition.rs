@@ -5,16 +5,12 @@ use core::ffi::c_void;
 use nros_node::GuardConditionHandle;
 
 use crate::{
-    CPP_GUARD_HANDLE_OPAQUE_U64S, CppContext, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_OK, nros_cpp_ret_t,
+    CppContext, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, nros_cpp_ret_t,
 };
 
-// Compile-time assertion: inline storage must fit GuardConditionHandle.
-const _: () = assert!(
-    core::mem::size_of::<GuardConditionHandle>()
-        <= CPP_GUARD_HANDLE_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_GUARD_HANDLE_OPAQUE_U64S too small for GuardConditionHandle — increase the constant in lib.rs"
-);
+// Phase 87.6: no compile-time assertion needed — the C++ side sizes
+// `storage_` to `NROS_GUARD_CONDITION_SIZE`, which is literally
+// `size_of::<GuardConditionHandle>()` (probed from the nros rlib).
 
 /// C callback type for guard conditions: `void callback(void* context)`.
 pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
@@ -22,8 +18,9 @@ pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c
 /// Create a guard condition and register it with the executor.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `CPP_GUARD_HANDLE_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
-/// The guard condition handle is written directly into this buffer.
+/// `size_of::<GuardConditionHandle>()` bytes (exposed via
+/// `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
+/// directly into this buffer.
 ///
 /// # Safety
 /// `executor_handle` and `storage` must be valid pointers.

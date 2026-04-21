@@ -214,8 +214,10 @@ pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = 1;
 )))]
 pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = 1;
 
-/// Inline storage for `GuardConditionHandle` (in u64 units).
-pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();
+// Phase 87.6: `CPP_GUARD_HANDLE_OPAQUE_U64S` removed — the C++
+// `nros::GuardCondition` class sizes its `storage_` from
+// `NROS_GUARD_CONDITION_SIZE` (`size_of::<GuardConditionHandle>()`
+// probed from the nros rlib).
 
 // ============================================================================
 // QoS types (passed from C++ to Rust by value)
@@ -305,11 +307,8 @@ const _: () = {
     // and `CppServiceClient` assertions removed — all four now use
     // thin-wrapper storage sized from the Rust SSoT (`NROS_*_SIZE`
     // probes in the generated header).
-    assert!(
-        core::mem::size_of::<nros_node::GuardConditionHandle>()
-            <= executor_config::CPP_GUARD_STORAGE_BYTES,
-        "NROS_CPP_GUARD_CONDITION_STORAGE_SIZE too small for GuardConditionHandle — bump guard_bytes in build.rs"
-    );
+    // Phase 87.6: `GuardConditionHandle` assertion removed — storage
+    // sized from `NROS_GUARD_CONDITION_SIZE` (probed).
 };
 
 // ============================================================================

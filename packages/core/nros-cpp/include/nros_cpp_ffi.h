@@ -149,8 +149,6 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
 
 
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -272,8 +270,9 @@ extern void z_free(void *ptr);
  * Create a guard condition and register it with the executor.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
- * `CPP_GUARD_HANDLE_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
- * The guard condition handle is written directly into this buffer.
+ * `size_of::<GuardConditionHandle>()` bytes (exposed via
+ * `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
+ * directly into this buffer.
  *
  * # Safety
  * `executor_handle` and `storage` must be valid pointers.
