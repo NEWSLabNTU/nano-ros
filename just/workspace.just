@@ -1,5 +1,7 @@
 set working-directory := '..'
 
+NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
+
 # Workspace module — host-agnostic dev environment setup.
 #
 # "workspace" here means the developer's dev workspace (host OS packages,
@@ -12,12 +14,16 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install all workspace prerequisites (apt + rust + cargo tools).
+#
+# Rust toolchain channels and components are driven by the
+# `rust-toolchain.toml` files checked into the repo (root, tools/,
+# examples/**/, packages/verification/nros-verification/). No bare
+# `stable`/`nightly` channels are installed here — every version is
+# pinned in a TOML file and installed by `rust-pinned-toolchains`.
 setup:
     @just workspace apt-packages
-    @just workspace rust-toolchains
-    @just workspace rust-components
-    @just workspace rust-targets
     @just workspace rust-pinned-toolchains
+    @just workspace rust-targets
     @just workspace cargo-tools
 
 # Diagnose workspace install status (read-only).
@@ -46,33 +52,42 @@ doctor:
         fail=1
     fi
 
-    # --- rust-toolchains ---
-    if rustup toolchain list 2>/dev/null | grep -q '^stable' \
-       && rustup toolchain list 2>/dev/null | grep -q '^nightly'; then
-        echo "  [OK] rust-toolchains: stable + nightly"
-    else
-        echo "  [MISSING] rust-toolchains (run: just workspace rust-toolchains)"
-        fail=1
-    fi
-
-    # --- rust-components ---
-    # rust-src is installed as exactly "rust-src" (no host suffix);
-    # other components are "<name>-<host>" (e.g. "rustfmt-x86_64-unknown-linux-gnu").
+    # --- rust-pinned-toolchains ---
+    # Every `rust-toolchain.toml` checked into the repo must have its
+    # channel installed, together with the components it declares.
+    # This is the single source of truth for both versions and components
+    # — no separate `rustup toolchain install` / `rustup component add`
+    # steps.
+    shopt -s globstar nullglob 2>/dev/null
+    pinned_missing=()
     comp_missing=()
     has_component() {
-        rustup component list --installed ${2:+--toolchain "$2"} 2>/dev/null \
+        rustup component list --installed --toolchain "$2" 2>/dev/null \
             | grep -qE "^$1(-[^[:space:]]+)?$"
     }
-    for c in rustfmt clippy rust-src llvm-tools; do
-        has_component "$c" || comp_missing+=("$c")
+    for f in $(just workspace _pinned-toolchain-files); do
+        channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
+        [ -z "$channel" ] && continue
+        if ! rustup toolchain list 2>/dev/null | grep -q "^$channel"; then
+            pinned_missing+=("$channel ($f)")
+            continue
+        fi
+        components=$(awk '/^components *=/ { sub(/^[^=]*= */, ""); gsub(/[][",]/, " "); print; exit }' "$f")
+        for c in $components; do
+            [ -z "$c" ] && continue
+            has_component "$c" "$channel" || comp_missing+=("$channel/$c")
+        done
     done
-    for c in rustfmt miri rust-src llvm-tools; do
-        has_component "$c" nightly || comp_missing+=("nightly/$c")
-    done
-    if [ ${#comp_missing[@]} -eq 0 ]; then
-        echo "  [OK] rust-components"
+    if [ ${#pinned_missing[@]} -eq 0 ] && [ ${#comp_missing[@]} -eq 0 ]; then
+        echo "  [OK] rust-pinned-toolchains"
     else
-        echo "  [MISSING] rust-components: ${comp_missing[*]} (run: just workspace rust-components)"
+        if [ ${#pinned_missing[@]} -gt 0 ]; then
+            echo "  [MISSING] rust-pinned-toolchains channels: ${pinned_missing[*]}"
+        fi
+        if [ ${#comp_missing[@]} -gt 0 ]; then
+            echo "  [MISSING] rust-pinned-toolchains components: ${comp_missing[*]}"
+        fi
+        echo "            run: just workspace rust-pinned-toolchains"
         fail=1
     fi
 
@@ -85,26 +100,6 @@ doctor:
         echo "  [OK] rust-targets"
     else
         echo "  [MISSING] rust-targets: ${tgt_missing[*]} (run: just workspace rust-targets)"
-        fail=1
-    fi
-
-    # --- rust-pinned-toolchains ---
-    # Every `rust-toolchain.toml` under examples/ must have its channel
-    # installed; the pinned nightly is required to build those examples.
-    shopt -s globstar nullglob 2>/dev/null
-    pinned_missing=()
-    for f in examples/**/rust-toolchain.toml; do
-        case "$f" in */target/*) continue ;; esac
-        channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
-        [ -z "$channel" ] && continue
-        if ! rustup toolchain list 2>/dev/null | grep -q "^$channel"; then
-            pinned_missing+=("$channel")
-        fi
-    done
-    if [ ${#pinned_missing[@]} -eq 0 ]; then
-        echo "  [OK] rust-pinned-toolchains"
-    else
-        echo "  [MISSING] rust-pinned-toolchains: ${pinned_missing[*]} (run: just workspace rust-pinned-toolchains)"
         fail=1
     fi
 
@@ -191,49 +186,59 @@ apt-packages:
         sudo apt-get install -y "${pkgs[@]}"
     fi
 
-# Install Rust stable + nightly toolchains via rustup.
-rust-toolchains:
-    rustup toolchain install stable
-    rustup toolchain install nightly
-
-# Install rustup components (rustfmt, clippy, rust-src, miri, llvm-tools).
-rust-components:
-    rustup component add rustfmt clippy rust-src llvm-tools
-    rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
-
-# Install every pinned toolchain referenced by an `rust-toolchain.toml`
-# checked into the workspace.
-#
-# Examples pin specific nightly builds (e.g. NuttX pins a nightly that
-# matches its patched libc). Running cargo from inside such a tree
-# triggers rustup's auto-install, but only for the toolchain — not for
-# the components declared alongside it. This recipe installs each
-# pinned channel explicitly with its declared components so a fresh
-# `just setup` produces a working test environment.
-rust-pinned-toolchains:
+# Print the list of project-owned `rust-toolchain.toml` files that
+# `rust-pinned-toolchains` and `doctor` walk. Third-party vendored
+# files (third-party/, scripts/zenohd/) are excluded. Private helper —
+# kept as a recipe so the list has a single definition.
+[private]
+_pinned-toolchain-files:
     #!/usr/bin/env bash
     set -e
     shopt -s globstar nullglob
-    # Gather unique (channel, components) pairs from every
-    # rust-toolchain.toml under examples/.
-    declare -A seen
+    emit() { [ -f "$1" ] && echo "$1"; }
+    emit rust-toolchain.toml
+    emit tools/rust-toolchain.toml
+    emit packages/verification/nros-verification/rust-toolchain.toml
     for f in examples/**/rust-toolchain.toml; do
-        # Skip nested toml files that sit under target/ caches, if any.
         case "$f" in */target/*) continue ;; esac
+        echo "$f"
+    done
+
+# Install every pinned toolchain referenced by a checked-in
+# `rust-toolchain.toml`, together with the components each file declares.
+#
+# This is the single source of truth for Rust toolchain versions in the
+# repo:
+#   - rust-toolchain.toml                                   stable + workspace components
+#   - tools/rust-toolchain.toml                             pinned nightly for workspace tooling
+#   - examples/qemu-arm-nuttx/rust-toolchain.toml           nightly for -Z build-std + patched libc
+#   - examples/zephyr/rust-toolchain.toml                   nightly for Corrosion + Zephyr Rust
+#   - packages/verification/nros-verification/…             Verus-required channel
+#
+# Channels and components are never duplicated into shell scripts; the
+# TOML files are authoritative. Running cargo in a directory triggers
+# rustup's auto-download of the channel, but *not* of declared
+# components — so this recipe installs both explicitly.
+rust-pinned-toolchains:
+    #!/usr/bin/env bash
+    set -e
+    declare -A seen
+    while read -r f; do
+        [ -z "$f" ] && continue
         channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
         components=$(awk '/^components *=/ { sub(/^[^=]*= */, ""); gsub(/[][",]/, " "); print; exit }' "$f")
         [ -z "$channel" ] && continue
         key="$channel | $components"
         if [ -n "${seen[$key]}" ]; then continue; fi
         seen[$key]=1
-        echo "=== $channel (components: ${components:-<none>}) ==="
+        echo "=== $channel ($f; components: ${components:-<none>}) ==="
         comp_args=""
         for c in $components; do
             [ -n "$c" ] && comp_args="$comp_args -c $c"
         done
         # shellcheck disable=SC2086
         rustup toolchain install --profile minimal "$channel" $comp_args
-    done
+    done < <(just workspace _pinned-toolchain-files)
 
 # Install cross-compilation targets.
 rust-targets:
@@ -243,8 +248,8 @@ rust-targets:
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
     rustup target add riscv64gc-unknown-none-elf
-    rustup +nightly target add thumbv7m-none-eabi
-    if rustc +nightly --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
+    rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
+    if rustc +{{NIGHTLY}} --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
         echo "  armv7a-nuttx-eabi (NuttX Tier 3): supported via nightly + build-std"
     else
         echo "  WARNING: armv7a-nuttx-eabi not in nightly target list — NuttX builds may fail"

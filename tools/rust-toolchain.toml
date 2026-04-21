@@ -1,0 +1,16 @@
+# Pinned nightly for workspace-wide tooling: `cargo fmt` (nightly-only fmt
+# options), `cargo miri`, `cargo llvm-cov` with MC/DC, ESP32 `-Z build-std`,
+# `-Z emit-stack-sizes` in `scripts/stack-analysis.sh`, and nightly-only
+# target adds (e.g. `thumbv7m-none-eabi`, `armv7a-nuttx-eabi`).
+#
+# The root `rust-toolchain.toml` stays on stable for the workspace build.
+# Recipes that need nightly read this file's channel via awk and pass it
+# as `+<channel>`, so the version lives only here.
+#
+# When bumping: check that `cargo fmt --check`, `cargo miri test`, and
+# `just coverage` still work with the new channel. The
+# `examples/qemu-arm-nuttx/` and `examples/zephyr/` pins typically track
+# the same channel but may diverge if a platform's build-std breaks.
+[toolchain]
+channel = "nightly-2026-04-11"
+components = ["rustfmt", "miri", "rust-src", "llvm-tools"]

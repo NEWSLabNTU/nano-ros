@@ -4,6 +4,7 @@ default:
     @just --list --justfile {{source_file()}}
 CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
 LOG_DIR := "test-logs"
+NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
 # =============================================================================
 # Rust examples (auto-discovered from examples/{platform}/{lang}/{rmw}/{use-case}/)
@@ -28,7 +29,7 @@ build:
         if [ "$platform" != "native" ]; then flags="--release"; fi
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
-            toolchain="+nightly"
+            toolchain="+{{NIGHTLY}}"
         fi
         echo "  build $dir"
         (cd "$dir" && eval $env_prefix cargo $toolchain build $flags)
@@ -47,7 +48,7 @@ format:
         -not -path '*/qemu-riscv64-threadx/*' \
         -exec dirname {} \; | sort \
     | parallel --halt now,fail=1 --line-buffer \
-        'cd {} && cargo +nightly fmt && echo "  fmt {}"'
+        'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
     echo "All examples formatted!"
 
 # Check all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS)
@@ -70,7 +71,7 @@ check:
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
         echo "  check $dir"
-        (cd "$dir" && cargo +nightly fmt --check && eval $env_prefix cargo clippy $flags -- {{CLIPPY_LINTS}})
+        (cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags -- {{CLIPPY_LINTS}})
     done
     echo "All examples check passed!"
 

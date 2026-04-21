@@ -3,9 +3,24 @@ set -euo pipefail
 echo "=== Verus Setup ==="
 VERUS_DIR="tools"
 VERUS_BIN="$VERUS_DIR/verus"
+
+install_toolchain() {
+    local required_tc
+    required_tc=$("$VERUS_BIN" --version 2>&1 | grep 'Toolchain:' | sed 's/.*Toolchain: //' || true)
+    if [ -n "$required_tc" ]; then
+        if rustup run "$required_tc" rustc --version &>/dev/null; then
+            echo "Required toolchain already installed: $required_tc"
+        else
+            echo "Installing required toolchain: $required_tc"
+            rustup toolchain install "$required_tc"
+        fi
+    fi
+}
+
 if [ -x "$VERUS_BIN" ]; then
     echo "Verus already installed at $VERUS_BIN"
     "$VERUS_BIN" --version
+    install_toolchain
     exit 0
 fi
 # Determine platform suffix for release asset
@@ -36,11 +51,6 @@ mkdir -p "$VERUS_DIR"
 cp -r "$TMPDIR"/verus-${PLATFORM}/* "$VERUS_DIR/"
 rm -rf "$TMPDIR" "$ZIPFILE"
 chmod +x "$VERUS_BIN" "$VERUS_DIR/cargo-verus" "$VERUS_DIR/z3" "$VERUS_DIR/rust_verify"
-# Install required Rust toolchain
-REQUIRED_TC=$("$VERUS_BIN" --version 2>&1 | grep 'Toolchain:' | sed 's/.*Toolchain: //' || true)
-if [ -n "$REQUIRED_TC" ]; then
-    echo "Installing required toolchain: $REQUIRED_TC"
-    rustup toolchain install "$REQUIRED_TC"
-fi
+install_toolchain
 "$VERUS_BIN" --version
 echo "Verus setup complete."

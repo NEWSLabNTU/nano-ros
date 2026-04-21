@@ -5,6 +5,11 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 
 LOG_DIR := "test-logs"
 
+# Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
+# Source of truth: tools/rust-toolchain.toml. Read via awk so the version
+# is never duplicated into build scripts.
+NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
+
 # Default paths for external SDKs — exported so all recipes (build + test) see them
 export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "third-party/freertos/kernel")
 export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
@@ -301,12 +306,12 @@ build-workspace-embedded:
 
 # Format workspace code
 format-workspace:
-    cargo +nightly fmt
+    cargo +{{NIGHTLY}} fmt
 
 # Check workspace: formatting and clippy (no_std, native)
 # nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
 check-workspace:
-    cargo +nightly fmt --check
+    cargo +{{NIGHTLY}} fmt --check
     cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
@@ -413,7 +418,7 @@ test-workspace verbose="": (test-unit verbose)
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 test-miri:
     @echo "Running Miri on embedded-safe crates..."
-    CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +nightly miri test -p nros-serdes -p nros-core -p nros-params
+    CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +{{NIGHTLY}} miri test -p nros-serdes -p nros-core -p nros-params
 
 
 # =============================================================================
@@ -583,7 +588,7 @@ coverage:
     echo ""
 
     # Clean once at start so --no-clean preserves each crate's HTML output
-    cargo +nightly llvm-cov clean --workspace
+    cargo +{{NIGHTLY}} llvm-cov clean --workspace
 
     for entry in "${CRATES[@]}"; do
         crate=$(echo "$entry" | awk '{print $1}')
@@ -595,14 +600,14 @@ coverage:
 
         # Try MC/DC first (--mcdc implies branch), fall back to branch-only
         # --no-clean preserves HTML from prior crate runs
-        if cargo +nightly llvm-cov test --no-clean \
+        if cargo +{{NIGHTLY}} llvm-cov test --no-clean \
             -p "$crate" $extra_args \
             --mcdc \
             --html --output-dir "$report_dir" 2>/dev/null; then
             echo "  [OK] MC/DC + branch coverage → $report_dir/"
         else
             echo "  [INFO] MC/DC not supported on this toolchain, using branch coverage"
-            cargo +nightly llvm-cov test --no-clean \
+            cargo +{{NIGHTLY}} llvm-cov test --no-clean \
                 -p "$crate" $extra_args \
                 --branch \
                 --html --output-dir "$report_dir"

@@ -21,6 +21,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# --- Pinned nightly channel (source of truth: tools/rust-toolchain.toml) ---
+NIGHTLY="$(awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' "$REPO_ROOT/tools/rust-toolchain.toml")"
+[[ -n "$NIGHTLY" ]] || { echo "Error: could not read channel from $REPO_ROOT/tools/rust-toolchain.toml" >&2; exit 1; }
+
 # --- Argument parsing ---
 EXAMPLE_DIR=""
 ELF_FILE=""
@@ -72,16 +76,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Locate llvm-readobj from rustup nightly sysroot ---
-SYSROOT="$(rustc +nightly --print sysroot 2>/dev/null)" || {
-    echo "Error: nightly toolchain not found. Install it with: rustup toolchain install nightly" >&2
+SYSROOT="$(rustc "+$NIGHTLY" --print sysroot 2>/dev/null)" || {
+    echo "Error: pinned nightly '$NIGHTLY' not found. Install it with: just workspace rust-pinned-toolchains" >&2
     exit 1
 }
-HOST_TRIPLE="$(rustc +nightly -vV | grep '^host:' | cut -d' ' -f2)"
+HOST_TRIPLE="$(rustc "+$NIGHTLY" -vV | grep '^host:' | cut -d' ' -f2)"
 LLVM_READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
 
 if [[ ! -x "$LLVM_READOBJ" ]]; then
     echo "Error: llvm-readobj not found at $LLVM_READOBJ" >&2
-    echo "Install it with: rustup +nightly component add llvm-tools" >&2
+    echo "llvm-tools is declared as a component in tools/rust-toolchain.toml; run: just workspace rust-pinned-toolchains" >&2
     exit 1
 fi
 
@@ -198,7 +202,7 @@ else
 
     (
         cd "$EXAMPLE_DIR"
-        RUSTFLAGS="-Z emit-stack-sizes ${EXISTING_FLAGS}" cargo +nightly build --release 2>&1 \
+        RUSTFLAGS="-Z emit-stack-sizes ${EXISTING_FLAGS}" cargo "+$NIGHTLY" build --release 2>&1 \
             | grep -v '^\s*Compiling\|^\s*Finished\|^\s*Downloaded\|^\s*Downloading' || true
     )
     echo ""

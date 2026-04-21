@@ -323,6 +323,27 @@ pub fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// Read the pinned nightly channel from `tools/rust-toolchain.toml`.
+///
+/// This is the single source of truth for the nightly used by workspace
+/// tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes). Test
+/// fixtures that invoke `cargo +<nightly>` read it from here instead of
+/// hardcoding the channel.
+pub fn pinned_nightly() -> String {
+    let path = project_root().join("tools/rust-toolchain.toml");
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+    for line in contents.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("channel") {
+            if let Some(eq) = rest.find('=') {
+                return rest[eq + 1..].trim().trim_matches('"').to_string();
+            }
+        }
+    }
+    panic!("no channel = \"...\" line in {}", path.display());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

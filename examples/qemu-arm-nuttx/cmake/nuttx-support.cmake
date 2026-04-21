@@ -37,7 +37,8 @@ get_filename_component(_NROS_CPP_INCLUDE_DIR "${NanoRos_DIR}/../../../include" A
 #   )
 #
 # This function:
-#   1. Runs `cargo +nightly build --release` on nros-nuttx-ffi
+#   1. Runs `cargo build --release` on nros-nuttx-ffi (the crate's
+#      rust-toolchain.toml pins the required nightly channel)
 #   2. Sets APP_MAIN_CPP to the C/C++ source file
 #   3. Sets APP_INCLUDE_DIRS to the codegen include directories
 #   4. Sets APP_EXTRA_SOURCES to additional .c files (e.g. generated interfaces)
@@ -78,7 +79,7 @@ function(nuttx_build_example name main_cpp)
             "APP_COMPILE_DEFS=${_compile_defs_str}"
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_DIR}/../nuttx-apps"
-            cargo +nightly build --release
+            cargo build --release
         WORKING_DIRECTORY "${_FFI_CRATE_DIR}"
         DEPENDS "${main_cpp}" ${_ARG_SOURCES}
         COMMENT "Building NuttX C++ example: ${name}"

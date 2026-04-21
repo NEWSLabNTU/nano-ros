@@ -1,2 +1,16 @@
+# Verus sets `--cfg verus_keep_ghost` when compiling proc-macro deps like
+# `verus_builtin_macros`, which enables `#![feature(proc_macro_tracked_env)]`
+# and other nightly-only proc-macro APIs. That requires a nightly rustc
+# even though Verus's binary distribution reports `Toolchain: 1.95.0`.
+#
+# Reusing the same nightly the NuttX/Zephyr examples pin
+# (`examples/{qemu-arm-nuttx,zephyr}/rust-toolchain.toml`) — bump those
+# together when updating.
+# This pin should track the `Toolchain:` line in `tools/verus --version`.
+# Upstream Verus 0.2026.04.19 currently reports `1.95.0` but its bundled
+# `verus_builtin_macros` still references `proc_macro::tracked_env` (renamed
+# upstream in rustc 1.95 to `proc_macro::tracked`), so `cargo verus verify`
+# fails on any channel. Leaving the pin at 1.93.0 until Verus upstream
+# publishes a compatible release; bump together with `setup-verus.sh`.
 [toolchain]
 channel = "1.93.0"

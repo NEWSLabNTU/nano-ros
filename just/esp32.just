@@ -1,5 +1,7 @@
 set working-directory := '..'
 
+NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
+
 default:
     @just --list --justfile {{source_file()}}
 
@@ -57,7 +59,7 @@ build:
     for ex in talker listener; do
         echo "  Building esp32/rust/zenoh/$ex..."
         (cd examples/esp32/rust/zenoh/$ex && \
-         SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +nightly build --release)
+         SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +{{NIGHTLY}} build --release)
     done
     echo "ESP32 examples built!"
 
@@ -68,7 +70,7 @@ build-qemu:
     echo "Building ESP32 QEMU examples..."
     for ex in talker listener; do
         echo "  Building qemu-esp32/rust/zenoh/$ex..."
-        (cd examples/qemu-esp32-baremetal/rust/zenoh/$ex && cargo +nightly build --release)
+        (cd examples/qemu-esp32-baremetal/rust/zenoh/$ex && cargo +{{NIGHTLY}} build --release)
     done
     echo ""
     echo "Creating flash images..."

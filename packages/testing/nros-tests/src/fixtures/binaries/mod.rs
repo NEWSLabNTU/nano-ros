@@ -7,7 +7,7 @@ pub mod nuttx;
 pub mod threadx_linux;
 pub mod threadx_riscv64;
 
-use crate::{TestError, TestResult, project_root};
+use crate::{TestError, TestResult, pinned_nightly, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
@@ -1650,10 +1650,11 @@ pub fn c_xrce_listener_binary() -> PathBuf {
 // ESP32-C3 QEMU Example Builders (nightly toolchain)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Build an ESP32-C3 QEMU example using `cargo +nightly`
+/// Build an ESP32-C3 QEMU example using the pinned nightly
 ///
-/// ESP32 examples require the nightly toolchain with `-Zbuild-std`, so we
+/// ESP32 examples require a nightly toolchain with `-Zbuild-std`, so we
 /// can't use the generic `build_example()` which uses stable `cargo build`.
+/// The channel comes from `tools/rust-toolchain.toml` via [`pinned_nightly`].
 fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
     let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/zenoh/{}", name));
@@ -1667,7 +1668,8 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
 
     eprintln!("Building qemu-esp32/rust/zenoh/{}...", name);
 
-    let output = cmd!("cargo", "+nightly", "build", "--release")
+    let nightly = format!("+{}", pinned_nightly());
+    let output = cmd!("cargo", &nightly, "build", "--release")
         .dir(&example_dir)
         .stderr_to_stdout()
         .stdout_capture()
