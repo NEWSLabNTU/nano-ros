@@ -1406,10 +1406,7 @@ mod tests {
 
     #[test]
     fn test_locator_protocol_udp() {
-        assert_eq!(
-            locator_protocol("udp/127.0.0.1:7447"),
-            LocatorProtocol::Udp
-        );
+        assert_eq!(locator_protocol("udp/127.0.0.1:7447"), LocatorProtocol::Udp);
         assert_eq!(
             locator_protocol("udp/192.168.1.50:2019"),
             LocatorProtocol::Udp

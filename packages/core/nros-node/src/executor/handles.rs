@@ -186,9 +186,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 }
 
 #[cfg(feature = "stream")]
-impl<M: RosMessage + Unpin, const RX_BUF: usize> futures_core::Stream
-    for Subscription<M, RX_BUF>
-{
+impl<M: RosMessage + Unpin, const RX_BUF: usize> futures_core::Stream for Subscription<M, RX_BUF> {
     type Item = Result<M, NodeError>;
 
     fn poll_next(
@@ -620,11 +618,7 @@ impl<
     ///     )?;
     /// }
     /// ```
-    pub fn poll<GF, CF>(
-        &mut self,
-        mut on_goal: GF,
-        mut on_cancel: CF,
-    ) -> Result<(), NodeError>
+    pub fn poll<GF, CF>(&mut self, mut on_goal: GF, mut on_cancel: CF) -> Result<(), NodeError>
     where
         GF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
         CF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,

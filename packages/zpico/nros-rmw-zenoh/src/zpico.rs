@@ -67,9 +67,8 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_poll, zpico_publish, zpico_publish_with_attachment,
-    zpico_query_reply, zpico_spin_once, zpico_undeclare_liveliness,
-    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
-    zpico_uses_polling,
+    zpico_query_reply, zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
+    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================

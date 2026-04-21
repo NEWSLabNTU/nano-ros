@@ -598,19 +598,23 @@ mod tests {
             node.register(LifecycleCallbackSlot::Shutdown, Some(ctx_cb_success));
 
             assert_eq!(
-                node.trigger_transition(LifecycleTransition::Configure).unwrap(),
+                node.trigger_transition(LifecycleTransition::Configure)
+                    .unwrap(),
                 LifecycleState::Inactive
             );
             assert_eq!(
-                node.trigger_transition(LifecycleTransition::Activate).unwrap(),
+                node.trigger_transition(LifecycleTransition::Activate)
+                    .unwrap(),
                 LifecycleState::Active
             );
             assert_eq!(
-                node.trigger_transition(LifecycleTransition::Deactivate).unwrap(),
+                node.trigger_transition(LifecycleTransition::Deactivate)
+                    .unwrap(),
                 LifecycleState::Inactive
             );
             assert_eq!(
-                node.trigger_transition(LifecycleTransition::ShutdownInactive).unwrap(),
+                node.trigger_transition(LifecycleTransition::ShutdownInactive)
+                    .unwrap(),
                 LifecycleState::Finalized
             );
         }
@@ -639,7 +643,10 @@ mod tests {
         unsafe {
             let mut node = LifecyclePollingNodeCtx::new();
             node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_failure));
-            assert!(node.trigger_transition(LifecycleTransition::Configure).is_err());
+            assert!(
+                node.trigger_transition(LifecycleTransition::Configure)
+                    .is_err()
+            );
             assert_eq!(node.state(), LifecycleState::Unconfigured);
         }
     }
@@ -649,7 +656,10 @@ mod tests {
         unsafe {
             let mut node = LifecyclePollingNodeCtx::new();
             node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_error));
-            assert!(node.trigger_transition(LifecycleTransition::Configure).is_err());
+            assert!(
+                node.trigger_transition(LifecycleTransition::Configure)
+                    .is_err()
+            );
             assert_eq!(node.state(), LifecycleState::ErrorProcessing);
         }
     }
@@ -694,7 +704,8 @@ mod tests {
             assert!(node.context().is_null());
             // With no callback, transition still succeeds (default = Success).
             assert_eq!(
-                node.trigger_transition(LifecycleTransition::Configure).unwrap(),
+                node.trigger_transition(LifecycleTransition::Configure)
+                    .unwrap(),
                 LifecycleState::Inactive
             );
         }

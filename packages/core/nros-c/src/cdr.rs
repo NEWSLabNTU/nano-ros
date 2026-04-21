@@ -17,12 +17,7 @@ use nros_core::{CdrReader, CdrWriter, DeserError, SerError};
 /// Returns 0 on success (advancing `*ptr`), -1 on any bounds / alignment /
 /// serializer failure.
 #[inline]
-unsafe fn with_writer<F>(
-    ptr: *mut *mut u8,
-    end: *const u8,
-    origin: *const u8,
-    f: F,
-) -> i32
+unsafe fn with_writer<F>(ptr: *mut *mut u8, end: *const u8, origin: *const u8, f: F) -> i32
 where
     F: FnOnce(&mut CdrWriter<'_>) -> Result<(), SerError>,
 {
@@ -52,12 +47,7 @@ where
 
 /// Run `f` against a positioned [`CdrReader`] spanning `origin..end`.
 #[inline]
-unsafe fn with_reader<F>(
-    ptr: *mut *const u8,
-    end: *const u8,
-    origin: *const u8,
-    f: F,
-) -> i32
+unsafe fn with_reader<F>(ptr: *mut *const u8, end: *const u8, origin: *const u8, f: F) -> i32
 where
     F: FnOnce(&mut CdrReader<'_>) -> Result<(), DeserError>,
 {

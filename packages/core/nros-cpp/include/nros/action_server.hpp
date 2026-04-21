@@ -18,8 +18,7 @@ typedef int nros_cpp_ret_t;
 typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                             size_t len, void* ctx);
 typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
-typedef void (*nros_cpp_active_goal_visitor_t)(const uint8_t goal_id[16], int8_t status,
-                                               void* ctx);
+typedef void (*nros_cpp_active_goal_visitor_t)(const uint8_t goal_id[16], int8_t status, void* ctx);
 
 nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void* handle, nros_cpp_goal_callback_t goal_cb,
                                                     nros_cpp_cancel_callback_t cancel_cb,
@@ -32,8 +31,9 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void* handle, void* execu
 nros_cpp_ret_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
                                                     const uint8_t goal_id[16],
                                                     const uint8_t* result_buf, size_t result_len);
-nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(
-    void* handle, void* executor_handle, nros_cpp_active_goal_visitor_t visitor, void* ctx);
+nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void* handle, void* executor_handle,
+                                                           nros_cpp_active_goal_visitor_t visitor,
+                                                           void* ctx);
 nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
 nros_cpp_ret_t nros_cpp_action_server_relocate(void* old_storage, void* new_storage);
 } // extern "C"

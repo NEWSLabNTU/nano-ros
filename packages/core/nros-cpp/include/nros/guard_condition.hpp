@@ -73,7 +73,8 @@ class GuardCondition {
     GuardCondition(GuardCondition&& other)
         : initialized_(other.initialized_)
 #ifdef NROS_CPP_STD
-          , closure_(std::move(other.closure_))
+          ,
+          closure_(std::move(other.closure_))
 #endif
     {
         if (other.initialized_) {

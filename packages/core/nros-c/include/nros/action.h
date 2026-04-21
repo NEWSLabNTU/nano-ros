@@ -178,9 +178,10 @@ typedef struct nros_goal_handle_t {
  * @return @ref NROS_GOAL_ACCEPT_AND_EXECUTE, @ref NROS_GOAL_ACCEPT_AND_DEFER,
  *         or @ref NROS_GOAL_REJECT.
  */
-typedef enum nros_goal_response_t (*nros_goal_callback_t)(
-    struct nros_action_server_t* server, const struct nros_goal_handle_t* goal,
-    const uint8_t* goal_request, size_t goal_len, void* context);
+typedef enum nros_goal_response_t (*nros_goal_callback_t)(struct nros_action_server_t* server,
+                                                          const struct nros_goal_handle_t* goal,
+                                                          const uint8_t* goal_request,
+                                                          size_t goal_len, void* context);
 
 /**
  * Cancel request callback type.
@@ -192,8 +193,9 @@ typedef enum nros_goal_response_t (*nros_goal_callback_t)(
  * @param context User-provided context pointer.
  * @return @ref NROS_CANCEL_ACCEPT or @ref NROS_CANCEL_REJECT.
  */
-typedef enum nros_cancel_response_t (*nros_cancel_callback_t)(
-    struct nros_action_server_t* server, const struct nros_goal_handle_t* goal, void* context);
+typedef enum nros_cancel_response_t (*nros_cancel_callback_t)(struct nros_action_server_t* server,
+                                                              const struct nros_goal_handle_t* goal,
+                                                              void* context);
 
 /**
  * Goal accepted callback type.

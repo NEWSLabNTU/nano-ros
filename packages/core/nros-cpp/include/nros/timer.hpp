@@ -83,10 +83,10 @@ class Timer {
 
     // Move semantics (non-copyable)
     Timer(Timer&& other)
-        : executor_(other.executor_), handle_id_(other.handle_id_),
-          initialized_(other.initialized_)
+        : executor_(other.executor_), handle_id_(other.handle_id_), initialized_(other.initialized_)
 #ifdef NROS_CPP_STD
-          , closure_(std::move(other.closure_))
+          ,
+          closure_(std::move(other.closure_))
 #endif
     {
         other.executor_ = nullptr;

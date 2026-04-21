@@ -52,8 +52,8 @@ inline void std_function_trampoline(void* context) {
 /// @return Result indicating success or failure.
 inline Result create_timer(Node& node, Timer& out, std::chrono::milliseconds period,
                            std::function<void()> callback) {
-    auto fn = std::unique_ptr<std::function<void()>>(
-        new std::function<void()>(std::move(callback)));
+    auto fn =
+        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
     auto* raw = fn.get();
     Result r = node.create_timer(out, static_cast<uint64_t>(period.count()),
                                  detail::std_function_trampoline, raw);
@@ -69,8 +69,8 @@ inline Result create_timer(Node& node, Timer& out, std::chrono::milliseconds per
 /// Timer and is freed on destruction.
 inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::milliseconds delay,
                                    std::function<void()> callback) {
-    auto fn = std::unique_ptr<std::function<void()>>(
-        new std::function<void()>(std::move(callback)));
+    auto fn =
+        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
     auto* raw = fn.get();
     Result r = node.create_timer_oneshot(out, static_cast<uint64_t>(delay.count()),
                                          detail::std_function_trampoline, raw);
@@ -85,8 +85,8 @@ inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::millisec
 /// Same ownership rules as `create_timer`.
 inline Result create_guard_condition(Node& node, GuardCondition& out,
                                      std::function<void()> callback) {
-    auto fn = std::unique_ptr<std::function<void()>>(
-        new std::function<void()>(std::move(callback)));
+    auto fn =
+        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
     auto* raw = fn.get();
     Result r = node.create_guard_condition(out, detail::std_function_trampoline, raw);
     if (r.ok()) {

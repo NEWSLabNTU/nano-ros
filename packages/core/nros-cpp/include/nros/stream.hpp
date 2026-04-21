@@ -69,16 +69,15 @@ template <typename T> class Stream {
             if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
             nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
             // Transient conditions: keep polling. Anything else propagates.
-            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout)
-                && ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
+            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout) &&
+                ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
                 return Result(ret);
             }
             Result rn = try_next(out);
             if (rn.ok()) return Result::success();
             // TryAgain / NotInitialized / Error from try_next: keep polling
             // unless we've hit a hard error that's not "no data yet".
-            if (rn.code() != ErrorCode::TryAgain
-                && rn.code() != ErrorCode::NotInitialized) {
+            if (rn.code() != ErrorCode::TryAgain && rn.code() != ErrorCode::NotInitialized) {
                 return rn;
             }
             elapsed += step;

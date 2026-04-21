@@ -79,8 +79,8 @@ template <typename S> class Client {
     /// @param req   Request to send.
     /// @param resp  Output response struct (filled on success).
     /// @return Result indicating success or failure.
-    [[deprecated("use send_request() + Future::wait(executor.handle(), timeout_ms, resp)")]]
-    Result call(const RequestType& req, ResponseType& resp) {
+    [[deprecated("use send_request() + Future::wait(executor.handle(), timeout_ms, resp)")]] Result
+    call(const RequestType& req, ResponseType& resp) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
         // Serialize request

@@ -457,8 +457,7 @@ struct nros_executor_t;
  * After this call, parameters declared via
  * nros_executor_declare_param_*() are visible to `ros2 param` tooling.
  */
-NROS_PUBLIC nros_ret_t
-nros_executor_register_parameter_services(struct nros_executor_t* executor);
+NROS_PUBLIC nros_ret_t nros_executor_register_parameter_services(struct nros_executor_t* executor);
 
 /** @brief Declare a boolean parameter on the executor's server. */
 NROS_PUBLIC nros_ret_t nros_executor_declare_param_bool(struct nros_executor_t* executor,

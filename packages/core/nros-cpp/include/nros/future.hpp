@@ -84,8 +84,8 @@ template <typename T> class Future {
             // - Ok (0): nothing to dispatch this round.
             // - Timeout (-2): spin_once returned after its timeout — normal.
             // - TryAgain (-6): transport hint to retry.
-            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout)
-                && ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
+            if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout) &&
+                ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
                 return Result(ret);
             }
             if (is_ready()) return try_take(out);

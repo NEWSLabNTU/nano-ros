@@ -241,9 +241,7 @@ fn env_cache() -> &'static EnvCache {
         let locator = std::env::var("NROS_LOCATOR")
             .or_else(|_| {
                 std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                    std::eprintln!(
-                        "nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead"
-                    );
+                    std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
                 })
             })
             .unwrap_or_else(|_| std::string::String::from("tcp/127.0.0.1:7447"));
@@ -254,9 +252,7 @@ fn env_cache() -> &'static EnvCache {
         let mode_str = std::env::var("NROS_SESSION_MODE")
             .or_else(|_| {
                 std::env::var("ZENOH_MODE").inspect(|_| {
-                    std::eprintln!(
-                        "nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead"
-                    );
+                    std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
                 })
             })
             .ok();

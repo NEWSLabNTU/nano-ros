@@ -93,7 +93,9 @@ impl Default for nros_lifecycle_state_machine_t {
 // ============================================================================
 
 #[inline]
-unsafe fn inner_mut(sm: *mut nros_lifecycle_state_machine_t) -> &'static mut LifecyclePollingNodeCtx {
+unsafe fn inner_mut(
+    sm: *mut nros_lifecycle_state_machine_t,
+) -> &'static mut LifecyclePollingNodeCtx {
     let ptr = (*sm).storage.as_mut_ptr() as *mut LifecyclePollingNodeCtx;
     &mut *ptr
 }
@@ -300,10 +302,16 @@ mod tests {
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
             assert_eq!(nros_lifecycle_init(&mut sm, node_ptr), NROS_RET_OK);
             assert!(sm.initialized);
-            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_UNCONFIGURED);
+            assert_eq!(
+                nros_lifecycle_get_state(&sm),
+                NROS_LIFECYCLE_STATE_UNCONFIGURED
+            );
 
             // Double-init rejected
-            assert_eq!(nros_lifecycle_init(&mut sm, node_ptr), NROS_RET_BAD_SEQUENCE);
+            assert_eq!(
+                nros_lifecycle_init(&mut sm, node_ptr),
+                NROS_RET_BAD_SEQUENCE
+            );
 
             assert_eq!(nros_lifecycle_fini(&mut sm), NROS_RET_OK);
             assert!(!sm.initialized);
@@ -324,7 +332,10 @@ mod tests {
                 NROS_RET_INVALID_ARGUMENT
             );
             assert_eq!(
-                nros_lifecycle_change_state(core::ptr::null_mut(), NROS_LIFECYCLE_TRANSITION_CONFIGURE),
+                nros_lifecycle_change_state(
+                    core::ptr::null_mut(),
+                    NROS_LIFECYCLE_TRANSITION_CONFIGURE
+                ),
                 NROS_RET_INVALID_ARGUMENT
             );
             assert_eq!(nros_lifecycle_get_state(core::ptr::null()), 0);
@@ -376,7 +387,10 @@ mod tests {
                 nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_ERROR
             );
-            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_UNCONFIGURED);
+            assert_eq!(
+                nros_lifecycle_get_state(&sm),
+                NROS_LIFECYCLE_STATE_UNCONFIGURED
+            );
         }
     }
 

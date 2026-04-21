@@ -725,7 +725,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
         _ctx: *mut c_void,
     ) {
         unsafe {
-            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_ACCEPTED), if _accepted { 1i32 } else { 0i32 });
+            core::ptr::write(
+                core::ptr::addr_of_mut!(BLOCKING_ACCEPTED),
+                if _accepted { 1i32 } else { 0i32 },
+            );
         }
     }
     client.callbacks.goal_response = Some(blocking_goal_cb);
@@ -830,7 +833,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
                 core::ptr::addr_of_mut!(BLOCKING_RESULT_BUF) as *mut u8,
                 copy_len,
             );
-            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN), copy_len as i32);
+            core::ptr::write(
+                core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN),
+                copy_len as i32,
+            );
         }
     }
     client.callbacks.result = Some(blocking_result_cb);
