@@ -119,7 +119,7 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "builtin_interfaces"
-version = "1.2.2"
+version = "1.2.1"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
@@ -1165,6 +1165,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-baremetal-common"
+version = "0.1.0"
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -1234,6 +1238,7 @@ name = "nros-platform-esp32"
 version = "0.1.0"
 dependencies = [
  "esp-hal",
+ "nros-baremetal-common",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1627,7 +1632,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "std_msgs"
-version = "4.9.1"
+version = "4.2.4"
 dependencies = [
  "builtin_interfaces",
  "heapless 0.8.0",
