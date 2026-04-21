@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
@@ -18,10 +19,14 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void* storage, uint8_t* out_da
                                                   size_t out_capacity, size_t* out_len);
 nros_cpp_ret_t nros_cpp_subscription_destroy(void* storage);
 nros_cpp_ret_t nros_cpp_subscription_relocate(void* old_storage, void* new_storage);
-const char* nros_cpp_subscription_get_topic_name(const void* storage);
 } // extern "C"
 
 namespace nros {
+
+/// Maximum topic name length stored inside `nros::Subscription<M>`.
+/// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Phase 87.6 thin-wrapper refactor:
+/// topic name owned C++-side, not inside a Rust-side FFI struct.
+static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 
 /// Typed subscription for a ROS 2 topic.
 ///
@@ -86,10 +91,7 @@ template <typename M> class Subscription {
     }
 
     /// Get the topic name.
-    const char* get_topic_name() const {
-        if (!initialized_) return "";
-        return nros_cpp_subscription_get_topic_name(storage_);
-    }
+    const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
 
     /// Get a reference to the subscription's message stream.
     ///
@@ -124,6 +126,7 @@ template <typename M> class Subscription {
     Subscription(Subscription&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_subscription_relocate(other.storage_, storage_);
+            std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
             stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
             other.initialized_ = false;
         }
@@ -139,6 +142,7 @@ template <typename M> class Subscription {
             }
             if (other.initialized_) {
                 nros_cpp_subscription_relocate(other.storage_, storage_);
+                std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
                 stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
                 initialized_ = true;
                 other.initialized_ = false;
@@ -150,7 +154,7 @@ template <typename M> class Subscription {
 
     /// Default constructor — creates an uninitialized subscription.
     /// Use `Node::create_subscription()` to initialize.
-    Subscription() : storage_(), initialized_(false), stream_() {}
+    Subscription() : storage_(), topic_name_{}, initialized_(false), stream_() {}
 
   private:
     Subscription(const Subscription&) = delete;
@@ -158,7 +162,8 @@ template <typename M> class Subscription {
 
     friend class Node;
 
-    alignas(8) uint8_t storage_[NROS_CPP_SUBSCRIPTION_STORAGE_SIZE];
+    alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
+    char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
     Stream<M> stream_;
 };

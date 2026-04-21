@@ -176,13 +176,9 @@ const fn u64s_for<T>() -> usize {
 // Phase 87.6: `CppPublisher` removed — the FFI stores an `RmwPublisher`
 // handle directly, sized via `NROS_PUBLISHER_SIZE` from the `nros` probe
 // (see packages/core/nros-cpp/build.rs).
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = u64s_for::<subscription::CppSubscription>();
+// Phase 87.6: `CppSubscription` removed — the FFI stores an
+// `RmwSubscriber` handle directly, sized via `NROS_SUBSCRIBER_SIZE` from
+// the `nros` probe.
 #[cfg(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -213,13 +209,6 @@ pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<action::CppActionSer
 pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<action::CppActionClient>();
 
 // Without RMW backend: placeholders for workspace-level check.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 1;
 #[cfg(not(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -336,14 +325,9 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
     feature = "rmw-cffi"
 ))]
 const _: () = {
-    // Phase 87.6: `CppPublisher` assertion removed — opaque storage now
-    // sized to `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE`, no
-    // hand-math upper bound.
-    assert!(
-        core::mem::size_of::<subscription::CppSubscription>()
-            <= executor_config::CPP_SUBSCRIPTION_STORAGE_BYTES,
-        "NROS_CPP_SUBSCRIPTION_STORAGE_SIZE too small for CppSubscription — bump subscription_bytes in build.rs"
-    );
+    // Phase 87.6: `CppPublisher` and `CppSubscription` assertions removed —
+    // both now use thin-wrapper storage sized from the Rust SSoT
+    // (`NROS_PUBLISHER_SIZE` / `NROS_SUBSCRIBER_SIZE`).
     assert!(
         core::mem::size_of::<service::CppServiceServer>()
             <= executor_config::CPP_SERVICE_STORAGE_BYTES,

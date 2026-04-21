@@ -154,13 +154,9 @@ fn generate_config(
     // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from
     // the nros rlib). No hand-math needed.
 
-    // CppSubscription { handle: RmwSubscriber, rx_buffer: [u8; RX_BUF_SIZE],
-    //                    topic_name: [u8; 256], topic_name_len: usize }
-    let subscription_bytes = align_up(
-        4 * ptr_bytes + rx_buf + name_buf + ptr_bytes + 4 * ptr_bytes,
-        8,
-    );
-    let subscription_storage = subscription_bytes.div_ceil(8) * 8;
+    // Phase 87.6: Subscription is a thin wrapper — storage sized to
+    // `size_of::<RmwSubscriber>()` via `NROS_SUBSCRIBER_SIZE`. The rx
+    // scratch buffer lives C++-side on the `nros::Subscription<M>` class.
 
     // CppServiceServer/Client each hold a transport handle + request/reply
     // buffers + name storage. Upper bound: 2 rx-buf slots + name + layout padding.
@@ -191,7 +187,6 @@ fn generate_config(
          // within the generated C macro — if the Rust type grows past\n\
          // the estimate, the build fails loudly instead of silently\n\
          // overflowing caller-provided storage.\n\
-         pub const CPP_SUBSCRIPTION_STORAGE_BYTES: usize = {subscription_storage};\n\
          pub const CPP_SERVICE_STORAGE_BYTES: usize = {service_storage};\n\
          pub const CPP_GUARD_STORAGE_BYTES: usize = {guard_storage};\n"
     );
@@ -235,9 +230,6 @@ fn generate_config(
          \n\
          /** Inline opaque storage size (bytes) for nros::Executor. */\n\
          #define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros::Subscription<M>. */\n\
-         #define NROS_CPP_SUBSCRIPTION_STORAGE_SIZE {subscription_storage}\n\
          \n\
          /** Inline opaque storage size (bytes) for nros::Service<S>. */\n\
          #define NROS_CPP_SERVICE_SERVER_STORAGE_SIZE {service_storage}\n\

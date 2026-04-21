@@ -1,10 +1,13 @@
 //! Subscription FFI functions for the C++ API.
+//!
+//! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a
+//! bare `RmwSubscriber` handle. Topic name lives on the C++
+//! `nros::Subscription<M>` class. Received CDR bytes are copied directly
+//! into the caller's output buffer — no Rust-side 1 KiB scratch buffer.
 
 use core::ffi::{c_char, c_void};
 
-use nros_node::config::DEFAULT_RX_BUF_SIZE;
-use nros_node::limits::MAX_TOPIC_LEN;
-use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo};
+use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo, TransportError};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
@@ -12,24 +15,14 @@ use crate::{
     nros_cpp_ret_t,
 };
 
-/// Subscription wrapper stored in caller-provided inline storage.
-pub(crate) struct CppSubscription {
-    handle: nros::internals::RmwSubscriber,
-    buffer: [u8; DEFAULT_RX_BUF_SIZE],
-    topic_name: [u8; MAX_TOPIC_LEN],
-    topic_name_len: usize,
-}
-
-// CPP_SUBSCRIPTION_OPAQUE_U64S is computed from size_of::<CppSubscription>() — always exact.
-
 /// Create a subscription on a node.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `CPP_SUBSCRIPTION_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
+/// `size_of::<RmwSubscriber>()` bytes (exposed via `NROS_SUBSCRIBER_SIZE`).
 ///
 /// # Safety
 /// All pointer parameters must be valid. `storage` must point to an
-/// 8-byte-aligned buffer of at least `CPP_SUBSCRIPTION_OPAQUE_U64S * 8` bytes.
+/// appropriately-aligned buffer of at least `NROS_SUBSCRIBER_SIZE` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_create(
     node: *const nros_cpp_node_t,
@@ -66,7 +59,6 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    // Extract node name/namespace from the node handle
     let node_name_str = core::str::from_utf8(&node_ref.name)
         .ok()
         .and_then(|s| s.split('\0').next());
@@ -93,18 +85,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         .create_subscriber(&topic_info, qos_settings)
     {
         Ok(handle) => {
-            let mut sub_handle = CppSubscription {
-                handle,
-                buffer: [0u8; DEFAULT_RX_BUF_SIZE],
-                topic_name: [0u8; MAX_TOPIC_LEN],
-                topic_name_len: topic_str.len().min(MAX_TOPIC_LEN - 1),
-            };
-            sub_handle.topic_name[..sub_handle.topic_name_len]
-                .copy_from_slice(&topic_str.as_bytes()[..sub_handle.topic_name_len]);
-
-            // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                core::ptr::write(storage as *mut CppSubscription, sub_handle);
+                core::ptr::write(storage as *mut nros::internals::RmwSubscriber, handle);
             }
             NROS_CPP_RET_OK
         }
@@ -113,6 +95,12 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 }
 
 /// Try to receive raw CDR data from a subscription (non-blocking).
+///
+/// Writes the received CDR bytes directly into the caller's output buffer
+/// — no Rust-side scratch. If the message is larger than `out_capacity`
+/// the backend drops it and returns `NROS_CPP_RET_FULL`; callers that need
+/// to handle oversized messages should size `out_data` to the message type's
+/// `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::try_recv` does).
 ///
 /// # Safety
 /// `storage` must be a valid subscription storage. `out_data` must point to
@@ -128,28 +116,29 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let sub = unsafe { &mut *(storage as *mut CppSubscription) };
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
 
-    match sub.handle.try_recv_raw(&mut sub.buffer) {
+    match sub.try_recv_raw(out_slice) {
         Ok(Some(len)) => {
-            if len <= out_capacity {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(sub.buffer.as_ptr(), out_data, len);
-                    *out_len = len;
-                }
-                NROS_CPP_RET_OK
-            } else {
-                unsafe {
-                    *out_len = len;
-                }
-                NROS_CPP_RET_FULL
+            unsafe {
+                *out_len = len;
             }
+            NROS_CPP_RET_OK
         }
         Ok(None) => {
             unsafe {
                 *out_len = 0;
             }
             NROS_CPP_RET_OK
+        }
+        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+            // The backend drops the oversized message; `out_len` stays 0
+            // because the backend doesn't report the actual length.
+            unsafe {
+                *out_len = 0;
+            }
+            NROS_CPP_RET_FULL
         }
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -165,17 +154,16 @@ pub unsafe extern "C" fn nros_cpp_subscription_destroy(storage: *mut c_void) -> 
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        core::ptr::drop_in_place(storage as *mut CppSubscription);
+        core::ptr::drop_in_place(storage as *mut nros::internals::RmwSubscriber);
     }
     NROS_CPP_RET_OK
 }
 
-/// Relocate a `CppSubscription` from `old_storage` to `new_storage`.
+/// Relocate an `RmwSubscriber` from `old_storage` to `new_storage`.
 ///
 /// Subscriptions are pull-based (`try_recv_raw`) and register nothing
 /// externally that references the storage address — relocation is a
-/// straight `ptr::read` + `ptr::write`. Called by the C++ `Subscription`
-/// move ctor / move assignment.
+/// straight `ptr::read` + `ptr::write`.
 ///
 /// # Safety
 /// See `nros_cpp_publisher_relocate`.
@@ -188,23 +176,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_relocate(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     unsafe {
-        let value = core::ptr::read(old_storage as *mut CppSubscription);
-        core::ptr::write(new_storage as *mut CppSubscription, value);
+        let value = core::ptr::read(old_storage as *mut nros::internals::RmwSubscriber);
+        core::ptr::write(new_storage as *mut nros::internals::RmwSubscriber, value);
     }
     NROS_CPP_RET_OK
-}
-
-/// Get the topic name of a subscription.
-///
-/// # Safety
-/// `storage` must be a valid subscription storage, or NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_get_topic_name(
-    storage: *const c_void,
-) -> *const c_char {
-    if storage.is_null() {
-        return core::ptr::null();
-    }
-    let sub = unsafe { &*(storage as *const CppSubscription) };
-    sub.topic_name.as_ptr() as *const c_char
 }
