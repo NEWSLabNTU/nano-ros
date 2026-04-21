@@ -70,6 +70,23 @@ Upstream message types (`lifecycle_msgs/msg/`): `State`, `Transition`,
       section + `reference/c-api.md` to point at the new registration
       functions; `porting/custom-rmw.md` if the message encoding exposes
       anything backend-specific (unlikely — these are plain CDR).
+- [x] 86.7 — Serde round-trip tests for every generated msg/srv in
+      `nros-lifecycle-msgs`. Catches codegen drift (field re-ordering,
+      missing variants) without needing a transport. Implemented in
+      `nros-node::lifecycle_services::tests` (not in the generated
+      crate, so regeneration can't clobber them): 11 round-trip tests
+      covering `State`, `Transition`, `TransitionDescription`,
+      `TransitionEvent`, and every service Request/Response pair.
+- [x] 86.8 — Integration tests for `Executor::register_lifecycle_services`
+      using `MockSession`. Covers: (a) registration succeeds and
+      `lifecycle_state_machine_mut()` returns `Some`; (b) `spin_once`
+      drains the (empty) service set without error; (c) the handler
+      functions respond correctly when invoked against the
+      executor-owned state machine through the accessor. Also walks
+      the full Unconfigured → Inactive → Active → Inactive →
+      Unconfigured cycle through registered `extern "C"` callbacks.
+      Loadable-mock extensions to `MockServiceServer` (simulating a
+      live ChangeState request) remain deferred.
 
 ## Design Notes
 

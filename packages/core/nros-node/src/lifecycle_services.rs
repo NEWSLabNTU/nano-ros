@@ -503,4 +503,245 @@ mod tests {
         assert!(resp.success);
         assert_eq!(sm.state(), InternalState::Inactive);
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Phase 86.7 — CDR round-trip tests for generated lifecycle_msgs types
+    // ═══════════════════════════════════════════════════════════════════
+    //
+    // These live here (not in the generated crate) so regenerating
+    // `nros-lifecycle-msgs` can't clobber them. They catch codegen drift
+    // where the encoder and decoder fall out of sync — any field rename,
+    // re-ordering, or missing variant trips the round-trip comparison.
+
+    use nros_core::{CdrReader, CdrWriter, Deserialize, Serialize};
+
+    /// Encode `value` to CDR, decode it back, and assert equality.
+    fn round_trip<T: Serialize + Deserialize + PartialEq + core::fmt::Debug>(value: T) {
+        let mut buf = [0u8; 4096];
+        let mut writer = CdrWriter::new_with_header(&mut buf).expect("writer init");
+        value.serialize(&mut writer).expect("serialize");
+        let len = writer.position();
+
+        let mut reader = CdrReader::new_with_header(&buf[..len]).expect("reader init");
+        let decoded = T::deserialize(&mut reader).expect("deserialize");
+        assert_eq!(value, decoded, "CDR round-trip mismatch");
+    }
+
+    #[test]
+    fn round_trip_state() {
+        let mut s = MsgState::default();
+        s.id = state_id::PRIMARY_STATE_ACTIVE;
+        let _ = s.label.push_str("active");
+        round_trip(s);
+    }
+
+    #[test]
+    fn round_trip_state_every_primary() {
+        for state in ALL_STATES.iter().copied() {
+            round_trip(to_msg_state(state));
+        }
+    }
+
+    #[test]
+    fn round_trip_transition() {
+        let mut t = MsgTransition::default();
+        t.id = transition_id::CONFIGURE;
+        let _ = t.label.push_str("configure");
+        round_trip(t);
+    }
+
+    #[test]
+    fn round_trip_transition_every_variant() {
+        for trans in ALL_TRANSITIONS.iter().copied() {
+            round_trip(to_msg_transition(trans));
+        }
+    }
+
+    #[test]
+    fn round_trip_transition_description() {
+        round_trip(build_transition_desc(InternalTransition::Activate));
+    }
+
+    #[test]
+    fn round_trip_transition_event() {
+        use nros_lifecycle_msgs::msg::TransitionEvent;
+        let mut ev = TransitionEvent::default();
+        ev.timestamp = 1_234_567_890;
+        ev.transition = to_msg_transition(InternalTransition::Configure);
+        ev.start_state = to_msg_state(InternalState::Unconfigured);
+        ev.goal_state = to_msg_state(InternalState::Inactive);
+        round_trip(ev);
+    }
+
+    #[test]
+    fn round_trip_change_state_request() {
+        let mut req = ChangeStateRequest::default();
+        req.transition = to_msg_transition(InternalTransition::Activate);
+        round_trip(req);
+    }
+
+    #[test]
+    fn round_trip_change_state_response() {
+        round_trip(ChangeStateResponse { success: true });
+        round_trip(ChangeStateResponse { success: false });
+    }
+
+    #[test]
+    fn round_trip_get_state_request_response() {
+        round_trip(GetStateRequest::default());
+        let mut resp = GetStateResponse::default();
+        resp.current_state = to_msg_state(InternalState::Inactive);
+        round_trip(resp);
+    }
+
+    #[test]
+    fn round_trip_get_available_states_request_response() {
+        round_trip(GetAvailableStatesRequest::default());
+        let mut resp = GetAvailableStatesResponse::default();
+        for state in ALL_STATES.iter().copied() {
+            let _ = resp.available_states.push(to_msg_state(state));
+        }
+        round_trip(resp);
+    }
+
+    #[test]
+    fn round_trip_get_available_transitions_request_response() {
+        round_trip(GetAvailableTransitionsRequest::default());
+        let mut resp = GetAvailableTransitionsResponse::default();
+        for trans in ALL_TRANSITIONS.iter().copied() {
+            let _ = resp.available_transitions.push(build_transition_desc(trans));
+        }
+        round_trip(resp);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Phase 86.8 — Integration tests via MockSession
+    // ═══════════════════════════════════════════════════════════════════
+    //
+    // These exercise the full `Executor::register_lifecycle_services`
+    // wiring: creating the five service-server handles, mounting the
+    // state machine on the executor, and draining services during
+    // spin_once. With `MockSession` every service server returns
+    // `Ok(None)` from `try_recv_request`, so the tests confirm the
+    // plumbing doesn't crash when there's nothing to process and that
+    // the state machine accessors behave correctly.
+
+    use crate::executor::Executor;
+    use crate::mock::MockSession;
+    use core::ffi::c_void;
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use core::time::Duration;
+    use nros_core::lifecycle::TransitionResult;
+
+    #[test]
+    fn register_lifecycle_services_succeeds_on_mock() {
+        let session = MockSession::new();
+        let mut executor: Executor = Executor::from_session(session);
+        executor
+            .register_lifecycle_services()
+            .expect("register on MockSession should succeed");
+        assert!(
+            executor.lifecycle_state_machine().is_some(),
+            "state machine should exist after registration"
+        );
+        assert_eq!(
+            executor.lifecycle_state_machine().unwrap().state(),
+            InternalState::Unconfigured,
+            "fresh state machine starts in Unconfigured"
+        );
+    }
+
+    #[test]
+    fn state_machine_absent_before_registration() {
+        let session = MockSession::new();
+        let executor: Executor = Executor::from_session(session);
+        assert!(executor.lifecycle_state_machine().is_none());
+    }
+
+    #[test]
+    fn spin_once_drains_empty_lifecycle_services_cleanly() {
+        let session = MockSession::new();
+        let mut executor: Executor = Executor::from_session(session);
+        executor.register_lifecycle_services().unwrap();
+
+        // No requests are queued on MockServiceServer, so spin_once must
+        // return without incrementing services_handled and without panic.
+        let result = executor.spin_once(Duration::from_millis(0));
+        assert_eq!(result.services_handled, 0);
+        assert_eq!(result.service_errors, 0);
+        assert!(!result.any_work());
+    }
+
+    static CB_CALLS: AtomicU32 = AtomicU32::new(0);
+
+    unsafe extern "C" fn record_success(_ctx: *mut c_void) -> u8 {
+        CB_CALLS.fetch_add(1, Ordering::SeqCst);
+        TransitionResult::Success as u8
+    }
+
+    #[test]
+    fn executor_accessor_drives_full_state_machine_cycle() {
+        let session = MockSession::new();
+        let mut executor: Executor = Executor::from_session(session);
+        executor.register_lifecycle_services().unwrap();
+
+        CB_CALLS.store(0, Ordering::SeqCst);
+
+        // Register callbacks through the executor accessor and walk the
+        // happy path: Unconfigured → Inactive → Active → Inactive → Unconfigured.
+        let sm = executor.lifecycle_state_machine_mut().unwrap();
+        sm.register(
+            crate::lifecycle::LifecycleCallbackSlot::Configure,
+            Some(record_success),
+        );
+        sm.register(
+            crate::lifecycle::LifecycleCallbackSlot::Activate,
+            Some(record_success),
+        );
+        sm.register(
+            crate::lifecycle::LifecycleCallbackSlot::Deactivate,
+            Some(record_success),
+        );
+        sm.register(
+            crate::lifecycle::LifecycleCallbackSlot::Cleanup,
+            Some(record_success),
+        );
+
+        // SAFETY: callbacks have 'static lifetime; ctx is null (unused).
+        unsafe {
+            sm.trigger_transition(InternalTransition::Configure).unwrap();
+            assert_eq!(sm.state(), InternalState::Inactive);
+            sm.trigger_transition(InternalTransition::Activate).unwrap();
+            assert_eq!(sm.state(), InternalState::Active);
+            sm.trigger_transition(InternalTransition::Deactivate).unwrap();
+            assert_eq!(sm.state(), InternalState::Inactive);
+            sm.trigger_transition(InternalTransition::Cleanup).unwrap();
+            assert_eq!(sm.state(), InternalState::Unconfigured);
+        }
+        assert_eq!(CB_CALLS.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn change_state_handler_via_executor_accessor() {
+        let session = MockSession::new();
+        let mut executor: Executor = Executor::from_session(session);
+        executor.register_lifecycle_services().unwrap();
+
+        // Drive `handle_change_state` directly against the executor's
+        // state machine, simulating what the service dispatcher does
+        // when a `ChangeState` request arrives.
+        let sm = executor.lifecycle_state_machine_mut().unwrap();
+        let mut req = ChangeStateRequest::default();
+        req.transition.id = transition_id::CONFIGURE;
+
+        // SAFETY: no callback registered; trigger_transition uses the
+        // implicit Success result.
+        let resp = unsafe { handle_change_state(sm, &req) };
+        assert!(resp.success);
+        assert_eq!(sm.state(), InternalState::Inactive);
+
+        // Subsequent `get_state` handler must reflect the new state.
+        let gs = handle_get_state(sm, &GetStateRequest::default());
+        assert_eq!(gs.current_state.id, state_id::PRIMARY_STATE_INACTIVE);
+    }
 }
