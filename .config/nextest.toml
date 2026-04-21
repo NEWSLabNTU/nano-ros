@@ -87,6 +87,11 @@ test-group = "ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
 [[profile.default.overrides]]
+filter = "binary(ros2_lifecycle_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[[profile.default.overrides]]
 filter = "binary(dds_ros2_interop)"
 test-group = "ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 2 }

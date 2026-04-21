@@ -49,3 +49,6 @@
 [submodule "third-party/tracing/Tonbandgeraet"]
 	path = third-party/tracing/Tonbandgeraet
 	url = https://github.com/schilkp/Tonbandgeraet.git
+[submodule "third-party/zenoh/rmw_zenoh"]
+	path = third-party/zenoh/rmw_zenoh
+	url = https://github.com/ros2/rmw_zenoh.git

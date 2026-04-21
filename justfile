@@ -39,6 +39,7 @@ mod docker 'just/docker.just'
 mod workspace 'just/workspace.just'
 mod verification 'just/verification.just'
 mod zenohd 'just/zenohd.just'
+mod rmw_zenoh 'just/rmw_zenoh.just'
 
 default:
     @just --list
@@ -771,6 +772,7 @@ _orchestrate verb:
     run zephyr
     run xrce
     run zenohd
+    run rmw_zenoh
     echo ""
     if [ ${#failed[@]} -gt 0 ]; then
         echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"

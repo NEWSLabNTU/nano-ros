@@ -27,6 +27,9 @@ static NATIVE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-listener binary
 static NATIVE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-lifecycle-node binary
+static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-talker binary with safety-e2e
 static NATIVE_TALKER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -280,6 +283,23 @@ pub fn build_native_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Build native-rs-lifecycle-node (cached)
+///
+/// Enables `lifecycle-services` so the `ros2 lifecycle *` service surface
+/// is exposed for interop tests.
+pub fn build_native_lifecycle_node() -> TestResult<&'static Path> {
+    NATIVE_LIFECYCLE_NODE_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/lifecycle-node",
+                "lifecycle-node",
+                Some(&["lifecycle-services"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// rstest fixture that provides the qemu-test binary path
 #[rstest::fixture]
 pub fn qemu_binary() -> PathBuf {
@@ -329,6 +349,14 @@ pub fn talker_binary() -> PathBuf {
 pub fn listener_binary() -> PathBuf {
     build_native_listener()
         .expect("Failed to build native-rs-listener")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the native-rs-lifecycle-node binary path
+#[rstest::fixture]
+pub fn lifecycle_node_binary() -> PathBuf {
+    build_native_lifecycle_node()
+        .expect("Failed to build native-rs-lifecycle-node")
         .to_path_buf()
 }
 

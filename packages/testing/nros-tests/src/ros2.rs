@@ -4,11 +4,23 @@
 
 use crate::process::{kill_process_group, set_new_process_group};
 use crate::{TestError, TestResult};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 /// Default ROS 2 distro to use
 pub const DEFAULT_ROS_DISTRO: &str = "humble";
+
+/// Locate the pinned `rmw_zenoh_cpp` overlay built by `just rmw_zenoh setup`.
+///
+/// Returns the overlay's `setup.bash` path when the ament install is present,
+/// allowing tests to source a zenoh RMW whose wire version matches our
+/// pinned `zenoh-pico` / `zenohd`. When absent, callers should fall back to
+/// the distro install (if any).
+pub fn rmw_zenoh_overlay() -> Option<PathBuf> {
+    let overlay = crate::project_root().join("build/rmw_zenoh_ws/install/setup.bash");
+    overlay.exists().then_some(overlay)
+}
 
 /// Check if ROS 2 is available
 pub fn is_ros2_available() -> bool {
@@ -38,8 +50,14 @@ pub fn require_ros2() -> bool {
     true
 }
 
-/// Check if rmw_zenoh_cpp is available
+/// Check if rmw_zenoh_cpp is available.
+///
+/// Prefers the pinned overlay built by `just rmw_zenoh setup`; falls back to
+/// a distro-installed `rmw_zenoh_cpp` if the overlay is absent.
 pub fn is_rmw_zenoh_available() -> bool {
+    if rmw_zenoh_overlay().is_some() {
+        return true;
+    }
     Command::new("bash")
         .args([
             "-c",
@@ -104,8 +122,16 @@ fn write_zenoh_session_config(locator: &str) -> tempfile::TempDir {
 pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, tempfile::TempDir) {
     let config_dir = write_zenoh_session_config(locator);
     let config_path = config_dir.path().join("session_config.json5");
+    // Source the pinned overlay on top of the distro setup so
+    // rmw_zenoh_cpp comes from `build/rmw_zenoh_ws/install/` (wire-matched
+    // to our zenoh-pico pin). Fall through to the distro install when the
+    // overlay is missing.
+    let overlay_snippet = match rmw_zenoh_overlay() {
+        Some(path) => format!(" && source {}", path.display()),
+        None => String::new(),
+    };
     let cmd = format!(
-        "source /opt/ros/{distro}/setup.bash && \
+        "source /opt/ros/{distro}/setup.bash{overlay_snippet} && \
          ros2 daemon stop 2>/dev/null; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
          export ZENOH_SESSION_CONFIG_URI={config_path}",

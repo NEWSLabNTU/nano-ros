@@ -230,6 +230,18 @@ test-ros2 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
+# Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
+test-ros2-lifecycle verbose="":
+    #!/usr/bin/env bash
+    set -e
+    just build-zenohd
+    args=(-p nros-tests --test ros2_lifecycle_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Run ROS 2 interop tests (shell script)
 test-ros2-shell:
     ./tests/ros2-interop.sh

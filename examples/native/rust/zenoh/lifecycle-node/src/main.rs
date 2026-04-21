@@ -66,7 +66,7 @@ fn main() {
         .init();
     info!("Lifecycle demo starting…");
 
-    let config = ExecutorConfig::from_env().node_name("lifecycle");
+    let config = ExecutorConfig::from_env().node_name("lifecycle_demo");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     executor
