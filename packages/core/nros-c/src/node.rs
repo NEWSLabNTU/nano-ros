@@ -39,8 +39,6 @@ pub struct nros_node_t {
     pub namespace_len: usize,
     /// Pointer to parent support context
     pub support: *const nros_support_t,
-    /// Opaque pointer to internal Rust node
-    pub _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_node_t {
@@ -52,7 +50,6 @@ impl Default for nros_node_t {
             namespace: [0u8; MAX_NAMESPACE_LEN],
             namespace_len: 0,
             support: ptr::null(),
-            _internal: ptr::null_mut(),
         }
     }
 }
@@ -142,9 +139,8 @@ pub unsafe extern "C" fn nros_node_init(
     // Store support reference
     node.support = support;
 
-    // For now, we don't create an internal Rust node object
-    // The node is just metadata; publishers/subscribers will use support directly
-    node._internal = ptr::null_mut();
+    // The node is just metadata; publishers/subscribers use support directly,
+    // so no internal Rust node object is needed.
     node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -172,12 +168,6 @@ pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nros_ret_t {
 
     if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
-    }
-
-    // Clean up internal resources if any
-    if !node._internal.is_null() {
-        // Currently no internal resources to clean up
-        node._internal = ptr::null_mut();
     }
 
     node.support = ptr::null();
@@ -306,7 +296,6 @@ mod verification {
         let node = nros_node_get_zero_initialized();
         assert_eq!(node.state, nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED);
         assert!(node.support.is_null());
-        assert!(node._internal.is_null());
     }
 }
 

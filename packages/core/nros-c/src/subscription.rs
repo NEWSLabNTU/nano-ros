@@ -59,8 +59,6 @@ pub struct nros_subscription_t {
     pub qos: crate::qos::nros_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
-    /// Opaque pointer to internal Rust subscriber (unused in executor model)
-    pub _internal: *mut c_void,
 }
 
 impl Default for nros_subscription_t {
@@ -78,7 +76,6 @@ impl Default for nros_subscription_t {
             node: ptr::null(),
             qos: crate::qos::nros_qos_t::default(),
             handle_id: usize::MAX,
-            _internal: ptr::null_mut(),
         }
     }
 }
@@ -227,7 +224,6 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 
     // Subscriber creation is deferred to nros_executor_add_subscription(),
     // which calls nros_node::Executor::add_subscription_raw_with_qos_sized().
-    subscription._internal = ptr::null_mut();
     subscription.handle_id = usize::MAX;
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
 
@@ -261,7 +257,6 @@ pub unsafe extern "C" fn nros_subscription_fini(
 
     // The subscriber lives in the executor arena (if registered),
     // so we don't drop anything here — just reset metadata.
-    subscription._internal = ptr::null_mut();
     subscription.handle_id = usize::MAX;
     subscription.callback = None;
     subscription.context = ptr::null_mut();
@@ -335,8 +330,4 @@ impl nros_subscription_t {
         self.handle_id = id.0;
     }
 
-    /// Get the internal subscriber handle
-    pub(crate) fn get_internal(&self) -> *mut c_void {
-        self._internal
-    }
 }

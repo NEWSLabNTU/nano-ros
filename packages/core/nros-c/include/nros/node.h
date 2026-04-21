@@ -50,8 +50,6 @@ typedef struct nros_node_t {
     size_t namespace_len;
     /** Pointer to parent support context. */
     const struct nros_support_t* support;
-    /** Opaque pointer to internal Rust node. */
-    void* _internal;
 } nros_node_t;
 
 /* ===================================================================

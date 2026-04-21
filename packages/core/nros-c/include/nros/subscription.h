@@ -69,8 +69,6 @@ typedef struct nros_subscription_t {
     struct nros_qos_t qos;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
-    /** Opaque pointer to internal Rust subscription. */
-    void* _internal;
 } nros_subscription_t;
 
 /* ===================================================================
