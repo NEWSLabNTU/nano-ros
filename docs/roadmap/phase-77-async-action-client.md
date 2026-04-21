@@ -262,10 +262,31 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - C API reference: document new `executor` parameter on blocking functions
     - C++ API guide: document `SendGoalOptions`, `set_callbacks`, arena-based architecture
     - **Files**: `docs/reference/c-api-cmake.md`, `docs/guides/cpp-api.md`, `book/src/reference/c-api.md`
-- [ ] 77.15 — Extend unified design to service client (`Client<S>`)
-    - Service client blocking `call()` currently uses `zpico_get` directly
-    - Refactor to `call_async` + executor spin (same pattern as action client)
-    - This eliminates the last `zpico_get` usage in C/C++ client paths
+- [x] 77.15 — Extend unified design to service client (`Client<S>`)
+    - [x] C API `nros_client_call()` already uses async + executor spin (no `zpico_get`)
+    - [x] C++ `Client<S>::call()` rewritten to use `send_request()` + `Future::wait(executor_, timeout, resp)`
+    - [x] Added `executor_` field to `Client<S>`, set by `Node::create_client()`
+    - [x] Removed deprecated `nros_cpp_service_client_call_raw` FFI declaration from C++ header
+    - No `zpico_get` in any C/C++ client path (service or action)
+- [ ] 77.16 — FreeRTOS: replace `vTaskDelay` in `zpico_spin_once` with event-driven wake
+    - Current: `zpico_spin_once` on FreeRTOS sleeps with `vTaskDelay(timeout_ms)`, giving up to 10ms latency per poll iteration
+    - Target: use a FreeRTOS event group or task notification that the zpico reply callback signals, so `spin_once` wakes immediately when data arrives
+    - This matches the POSIX/Zephyr condvar pattern but with FreeRTOS primitives
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (FreeRTOS block)
+- [ ] 77.17 — NuttX: replace `usleep` in `zpico_spin_once` with condvar or semaphore wake
+    - Current: `zpico_spin_once` on NuttX uses `usleep(timeout_ms * 1000)` because pthread timed condvar hangs
+    - Target: investigate NuttX `sem_timedwait` or `sigtimedwait` as alternatives to the broken `pthread_cond_timedwait`
+    - Alternatively, use NuttX's native `work_queue` or `mq_timedreceive` for event-driven wake
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (NuttX block)
+- [ ] 77.18 — Bare-metal: explore interrupt-driven network polling
+    - Current: bare-metal (smoltcp/serial) `zpico_spin_once` busy-polls the network stack in a loop
+    - Options to reduce CPU usage:
+      - (a) WFI (wait-for-interrupt) between polls — CPU sleeps until NIC interrupt fires
+      - (b) DMA completion callback — smoltcp poll triggered by NIC DMA transfer complete interrupt
+      - (c) Hardware timer interrupt — poll at fixed interval (e.g., 1ms) instead of tight loop
+    - Trade-off: interrupt-driven reduces power consumption but adds latency jitter; tight-loop gives lowest latency for real-time
+    - Board crates would implement a platform-specific `wait_for_event(timeout_ms)` hook
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (smoltcp/serial blocks), board crates
 
 ## Acceptance Criteria
 

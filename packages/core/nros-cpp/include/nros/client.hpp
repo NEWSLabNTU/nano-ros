@@ -18,9 +18,6 @@ nros_cpp_ret_t nros_cpp_service_client_send_request(void* storage, const uint8_t
                                                     size_t req_len);
 nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data,
                                                       size_t resp_capacity, size_t* resp_len);
-nros_cpp_ret_t nros_cpp_service_client_call_raw(void* storage, const uint8_t* req_data,
-                                                size_t req_len, uint8_t* resp_data,
-                                                size_t resp_capacity, size_t* resp_len);
 nros_cpp_ret_t nros_cpp_service_client_destroy(void* storage);
 nros_cpp_ret_t nros_cpp_service_client_relocate(void* old_storage, void* new_storage);
 } // extern "C"
@@ -71,37 +68,19 @@ template <typename S> class Client {
         );
     }
 
-    /// Send a request and block until a reply is received (deprecated).
+    /// Send a request and block until a reply is received.
     ///
-    /// Prefer `send_request()` + `Future::wait()` which allows the executor
-    /// to spin while waiting.
+    /// Spins the executor internally (like Rust's `Promise::wait`).
+    /// Never calls `zpico_get` — all I/O is driven by `spin_once`.
     ///
-    /// @param req   Request to send.
-    /// @param resp  Output response struct (filled on success).
-    /// @return Result indicating success or failure.
-    [[deprecated("use send_request() + Future::wait(executor.handle(), timeout_ms, resp)")]] Result
-    call(const RequestType& req, ResponseType& resp) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-
-        // Serialize request
-        uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
-        size_t req_len = 0;
-        if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(ErrorCode::Error);
-        }
-
-        // Call and receive reply
-        uint8_t resp_buf[ResponseType::SERIALIZED_SIZE_MAX];
-        size_t resp_len = 0;
-        nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(storage_, req_buf, req_len, resp_buf,
-                                                              sizeof(resp_buf), &resp_len);
-        if (ret != 0) return Result(ret);
-
-        // Deserialize response
-        if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
-            return Result(ErrorCode::Error);
-        }
-        return Result::success();
+    /// @param req          Request to send.
+    /// @param resp         Output response struct (filled on success).
+    /// @param timeout_ms   Maximum wait time (default 5000ms).
+    /// @return Result indicating success, timeout, or failure.
+    Result call(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
+        if (!initialized_ || !executor_) return Result(ErrorCode::NotInitialized);
+        auto fut = send_request(req);
+        return fut.wait(executor_, timeout_ms, resp);
     }
 
     /// Check if the client is initialized and valid.
@@ -117,7 +96,7 @@ template <typename S> class Client {
 
     // Move semantics (non-copyable). Relocation goes through the
     // Rust-side `nros_cpp_service_client_relocate` FFI (Phase 84.C1).
-    Client(Client&& other) : initialized_(other.initialized_) {
+    Client(Client&& other) : executor_(other.executor_), initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);
             other.initialized_ = false;
@@ -130,6 +109,7 @@ template <typename S> class Client {
                 nros_cpp_service_client_destroy(storage_);
                 initialized_ = false;
             }
+            executor_ = other.executor_;
             if (other.initialized_) {
                 nros_cpp_service_client_relocate(other.storage_, storage_);
                 initialized_ = true;
@@ -141,7 +121,7 @@ template <typename S> class Client {
 
     /// Default constructor -- creates an uninitialized service client.
     /// Use `Node::create_client()` to initialize.
-    Client() : storage_(), initialized_(false) {}
+    Client() : storage_(), executor_(nullptr), initialized_(false) {}
 
   private:
     Client(const Client&) = delete;
@@ -150,6 +130,7 @@ template <typename S> class Client {
     friend class Node;
 
     alignas(8) uint8_t storage_[NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE];
+    void* executor_;
     bool initialized_;
 };
 

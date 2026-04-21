@@ -249,6 +249,7 @@ class Node {
         nros_cpp_ret_t ret = nros_cpp_service_client_create(
             &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
+            out.executor_ = executor_handle_;
             out.initialized_ = true;
         }
         return Result(ret);
