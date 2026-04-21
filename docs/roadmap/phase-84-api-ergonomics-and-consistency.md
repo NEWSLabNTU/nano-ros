@@ -5,13 +5,14 @@ five-surface API audit (C, C++, Rust, RMW, Platform). The phase is a
 collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
-**Status**: In Progress (started 2026-04-19). As of 2026-04-20: Groups
-A, C (mostly), G (mostly) complete; B2, B4, B5, B6, D1, D2, D9, E3, E5,
-E6, E7, E8, E9, E10, E11, F1, F2, F3, F5, F7, F8 complete; B3 partial
-(scalar macro landed; service wiring deferred); B4 partial (state
-machine moved + C handle opaque; lifecycle services deferred). Still
-open: B3/B4 service wiring, C1 (C++ move), E2a/b/c (Rmw::open refactor),
-F4 (platform trait dispatch), F6 (final dir rename — scheduled last).
+**Status**: In Progress (started 2026-04-19). As of 2026-04-21: Groups
+A, C (mostly), G (mostly) complete; B2, B3, B4, B5, B6, D1, D2, D9, E3,
+E5, E6, E7, E8, E9, E10, E11, F1, F2, F3, F5, F7, F8 complete. B4's
+REP-2002 service exposure deferred half is now closed by Phase 86
+(`nros-lifecycle-msgs` codegen + executor-integrated lifecycle
+services + C FFI). Still open: C1 (C++ move), E2a/b/c (Rmw::open
+refactor), F4 (platform trait dispatch), F6 (final dir rename —
+scheduled last).
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -57,7 +58,7 @@ the real implementation first.
 - [x] 84.B1 — Fix `nros_service_init` / `nros_client_init` to take `nros_service_type_t*` instead of `nros_message_type_t*`
 - [x] 84.B2 — Delete `packages/core/nros-c/src/cdr.rs` (1187 lines); delegate to `nros_serdes::{CdrReader, CdrWriter}`. Landed as thin FFI bridges over positioned `CdrReader::new_at` / `CdrWriter::new_at` constructors added to `nros-serdes`. Line count 1187 → 627 (hand-rolled align/endian logic removed; FFI tests kept; kani harnesses dropped since the logic now lives in `nros-serdes`, already covered there).
 - [x] 84.B3 — **Done in two passes**. Pass 1: `impl_param_scalar!` macro mirroring the existing `impl_param_array!`, collapsing `nros_param_{declare,get,set}_{bool,integer,double}` to one ~60-line macro instance each (parameter.rs 1175 → 1055, -10%). Pass 2: real service wiring via a new `nros_executor_register_parameter_services(exec)` FFI + `nros_executor_{declare,get,set}_param_{bool,integer,double,string}` + `nros_executor_has_param`, all gated on a new `param-services` Cargo feature on `nros-c` (forwards to `nros-node::param-services` + needs `alloc`). The new API operates on the `nros-params::ParameterServer` owned by the `Executor`, so a C-declared parameter is now visible to `ros2 param list /<node>` once services are registered. The legacy `nros_param_server_t` + its array storage is left in place for backwards compatibility; new code should use the executor-backed path. `SetParameterResult` now re-exported from `nros-node` for FFI consumers.
-- [x] 84.B4 — **Partial**: state-machine logic moved to `nros_node::lifecycle::LifecyclePollingNodeCtx` (new C-FFI-compatible variant of the existing `LifecyclePollingNode`). C wrapper `nros_lifecycle_state_machine_t` is now an opaque u64-storage struct that holds the Rust type inline; all register / trigger / finalise paths delegate. ABI-breaking: C callers can no longer reach into `current_state` / `on_configure` / etc. — they must use `nros_lifecycle_get_state()` + `nros_lifecycle_register_on_*()`. Line count 703 → 430 (-39%). State-machine tests moved to `nros_node::lifecycle::tests`. **Deferred** (multi-day, separate PR): exposing the REP-2002 `~/change_state` / `~/get_state` / `~/get_available_states` / `~/get_available_transitions` / `~/get_transition_graph` ROS 2 services at the C FFI. That requires authoring a new `nros-lifecycle-msgs` codegen crate (none of the `lifecycle_msgs/{srv,msg}` types exist in `packages/interfaces/` yet), plus service-registration plumbing in `nros-node::lifecycle` analogous to `register_parameter_services` on `Executor`, plus the matching C FFI. The state machine itself is ready to back such services — all the event / transition / callback hooks are already on `LifecyclePollingNodeCtx`.
+- [x] 84.B4 — **Complete** (two landings). First landing: state-machine logic moved to `nros_node::lifecycle::LifecyclePollingNodeCtx` (new C-FFI-compatible variant of the existing `LifecyclePollingNode`). C wrapper `nros_lifecycle_state_machine_t` is now an opaque u64-storage struct that holds the Rust type inline; all register / trigger / finalise paths delegate. ABI-breaking: C callers can no longer reach into `current_state` / `on_configure` / etc. — they must use `nros_lifecycle_get_state()` + `nros_lifecycle_register_on_*()`. Line count 703 → 430 (-39%). State-machine tests moved to `nros_node::lifecycle::tests`. Second landing (REP-2002 service exposure): **closed by Phase 86** — see [`docs/roadmap/archived/phase-86-nros-lifecycle-msgs.md`](archived/phase-86-nros-lifecycle-msgs.md). Phase 86 added the `nros-lifecycle-msgs` codegen crate (86.1), the `nros_node::lifecycle_services` module wiring the five REP-2002 services into `Executor::spin_once` (86.2–86.3), and the C FFI (`nros_executor_register_lifecycle_services` + handle accessors in `nros-c/src/lifecycle.rs`, 86.4), with serde round-trip tests (86.7), integration tests (86.8), and live ROS 2 interop verified against a pinned `rmw_zenoh_cpp` (86.9–86.10).
 - [x] 84.B5 — Hide or remove `nros_timer_call` / `nros_timer_is_ready` + mutable `period_ns` / `last_call_time_ns` fields (executor-internal). Dead FFI functions removed entirely (no internal callers). Struct fields tagged `@internal` in the C header pointing users to `nros_timer_get_period` / `nros_timer_set_period` accessors instead of a field-name break.
 - [x] 84.B6 — Add `NROS_RET_REENTRANT` (= -15) to public `nros/types.h` (also added `NROS_RET_TRY_AGAIN = -14` which was missing)
 
@@ -151,10 +152,15 @@ Cross-cutting criteria that apply once all groups land:
       Phase 83's `define_smoltcp_platform!` macro + `nros-baremetal-common`
       dedupe; ticking blocked only on re-checking the exact baseline.
 - [ ] `nros-c/src/{cdr,parameter,lifecycle}.rs` combined line count drops by
-      ≥60% (Group B). **Current**: 3065 → 2114 (-31%). Reaching ≥60% needs
-      B3's full service-wiring refactor (wrapping `nros-params::ParameterServer`
-      as opaque storage); the macro-only pass landed in 84.B3 can't close
-      the gap on its own.
+      ≥60% (Group B). **Current**: 3065 → 2557 (-17%) after B2+B3+B4 + Phase
+      86 (cdr 617 / parameter 1322 / lifecycle 618). Both B3 and B4 landed
+      their full service-wiring paths — parameter.rs and lifecycle.rs still
+      house the C FFI surface that mirrors Rust's service plumbing rather
+      than shrinking it. Reaching ≥60% would need deleting the legacy
+      `nros_param_server_t` storage path (B3 kept for back-compat) and
+      collapsing the lifecycle C FFI further; neither is cheap. Consider
+      relaxing the target or rewriting as "line count does not grow" now
+      that the wiring refactors have landed.
 
 ## Open Questions
 
