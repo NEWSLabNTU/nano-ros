@@ -30,7 +30,9 @@ fn test_zenohrmw_open_client_mode(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::default().open(&config).expect("ZenohRmw::default().open() failed");
+    let mut session = ZenohRmw::default()
+        .open(&config)
+        .expect("ZenohRmw::default().open() failed");
     session.close().expect("session.close() failed");
 }
 
@@ -50,7 +52,9 @@ fn test_zenohrmw_open_with_domain_id(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::default().open(&config).expect("ZenohRmw::default().open() with domain_id failed");
+    let mut session = ZenohRmw::default()
+        .open(&config)
+        .expect("ZenohRmw::default().open() with domain_id failed");
     session.close().expect("session.close() failed");
 }
 
