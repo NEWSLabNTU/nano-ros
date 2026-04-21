@@ -706,6 +706,22 @@ generate-rcl-interfaces:
         --rename rcl_interfaces=nros-rcl-interfaces
     echo "✓ rcl-interfaces regenerated"
 
+# Regenerate lifecycle-msgs bindings (workspace member with nros- prefix)
+generate-lifecycle-msgs:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building nano-ros codegen tool..."
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
+    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
+    echo "Regenerating lifecycle-msgs bindings..."
+    cd packages/interfaces/lifecycle-msgs
+    rm -rf generated/humble/nros-lifecycle-msgs
+    $NANO_ROS generate-rust --force -o generated/humble \
+        --rename lifecycle_msgs=nros-lifecycle-msgs
+    echo "✓ lifecycle-msgs regenerated"
+    echo "NOTE: re-apply workspace inheritance to the generated Cargo.toml"
+    echo "      (version.workspace, edition.workspace, etc.) — see rcl-interfaces."
+
 # Clean and regenerate all bindings from scratch
 regenerate-bindings: clean-bindings generate-bindings
 

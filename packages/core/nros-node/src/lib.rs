@@ -83,6 +83,9 @@ pub use nros_params::{
     ParameterDescriptor, ParameterServer, ParameterType, ParameterValue, SetParameterResult,
 };
 
+#[cfg(feature = "lifecycle-services")]
+pub mod lifecycle_services;
+
 // Export standalone node (without transport)
 pub use node::{Node as StandaloneNode, NodeConfig, NodeError as StandaloneNodeError};
 

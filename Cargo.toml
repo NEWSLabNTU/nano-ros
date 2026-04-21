@@ -35,6 +35,7 @@ members = [
     # cargo requires workspace member paths to exist on disk.
     "packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces",
     "packages/interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces",
+    "packages/interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs",
     # C function table adapter for third-party RMW backends
     "packages/core/nros-rmw-cffi",
     # Ghost model types for verification (shared between production tests and Verus proofs)
@@ -58,6 +59,8 @@ exclude = [
     "packages/dds/dust-dds",
     # rcl-interfaces parent package (metadata only, no Rust targets)
     "packages/interfaces/rcl-interfaces",
+    # lifecycle-msgs parent package (metadata only, no Rust targets)
+    "packages/interfaces/lifecycle-msgs",
     # Examples are standalone packages that generate their own bindings
     # Native Rust examples (desktop/Linux)
     "examples/native/rust/zenoh/talker",

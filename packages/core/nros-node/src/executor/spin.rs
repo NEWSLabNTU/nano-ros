@@ -220,6 +220,9 @@ pub struct Executor {
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
+    #[cfg(feature = "lifecycle-services")]
+    pub(crate) lifecycle:
+        Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
 }
 
 impl Executor {
@@ -245,6 +248,8 @@ impl Executor {
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(feature = "lifecycle-services")]
+            lifecycle: None,
         }
     }
 
@@ -272,6 +277,8 @@ impl Executor {
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(feature = "lifecycle-services")]
+            lifecycle: None,
         }
     }
 
@@ -1474,6 +1481,18 @@ impl Executor {
                 let _ = services.process_services(server);
             }
 
+            // Same treatment for lifecycle services — `ros2 lifecycle get`
+            // must succeed even when no callbacks fired this tick.
+            // SAFETY: see the matching invariant on the later call site.
+            #[cfg(feature = "lifecycle-services")]
+            if let Some(lc) = &mut self.lifecycle {
+                let crate::lifecycle_services::LifecycleRuntimeState {
+                    state_machine,
+                    services,
+                } = &mut **lc;
+                let _ = unsafe { services.process_services(state_machine) };
+            }
+
             return SpinOnceResult::new();
         }
 
@@ -1544,6 +1563,23 @@ impl Executor {
         if let Some(params) = &mut self.params {
             let crate::parameter_services::ParamState { server, services } = &mut **params;
             if let Ok(n) = services.process_services(server) {
+                result.services_handled += n;
+            }
+        }
+
+        // Process lifecycle services (outside the arena).
+        //
+        // SAFETY: `change_state` dispatches a user-supplied C callback through a
+        // raw function pointer stored in `LifecyclePollingNodeCtx`. The caller
+        // of `register_lifecycle_services` guarantees the callback/context pair
+        // stays live for as long as the executor (see that method's docs).
+        #[cfg(feature = "lifecycle-services")]
+        if let Some(lc) = &mut self.lifecycle {
+            let crate::lifecycle_services::LifecycleRuntimeState {
+                state_machine,
+                services,
+            } = &mut **lc;
+            if let Ok(n) = unsafe { services.process_services(state_machine) } {
                 result.services_handled += n;
             }
         }
@@ -1804,6 +1840,158 @@ impl Executor {
         ));
 
         Ok(())
+    }
+
+    /// Register the five REP-2002 lifecycle services on this executor.
+    ///
+    /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
+    /// stored [`LifecyclePollingNodeCtx`](crate::lifecycle::LifecyclePollingNodeCtx)
+    /// through the node's lifecycle. The state machine is created fresh
+    /// (starting in `Unconfigured`); callers register their transition
+    /// callbacks via [`Executor::lifecycle_state_machine_mut`].
+    ///
+    /// # Safety
+    /// Registered callbacks on the state machine are C FFI function pointers.
+    /// The caller must keep the callback code and any context it captures
+    /// valid for as long as the executor processes services.
+    #[cfg(feature = "lifecycle-services")]
+    pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
+        use crate::lifecycle::LifecyclePollingNodeCtx;
+        use crate::lifecycle_services::{
+            ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
+            LIFECYCLE_SERVICE_BUFFER_SIZE, LifecycleRuntimeState, LifecycleServiceServers,
+        };
+        use nros_core::RosService;
+
+        type LcSrv<Svc> = super::handles::EmbeddedServiceServer<
+            Svc,
+            LIFECYCLE_SERVICE_BUFFER_SIZE,
+            LIFECYCLE_SERVICE_BUFFER_SIZE,
+        >;
+
+        // Build the node FQN from namespace + node_name (same convention as
+        // register_parameter_services).
+        let mut node_fqn = heapless::String::<256>::new();
+        let ns: &str = &self.namespace;
+        let nn: &str = &self.node_name;
+        if ns.is_empty() || ns == "/" {
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
+        } else {
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn
+                .push_str(ns.trim_matches('/'))
+                .map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
+        }
+
+        fn create_lc_srv<Svc: RosService>(
+            session: &mut session::ConcreteSession,
+            node_fqn: &str,
+            namespace: &str,
+            node_name: &str,
+            suffix: &str,
+        ) -> Result<session::RmwServiceServer, NodeError> {
+            let mut name = heapless::String::<256>::new();
+            name.push_str(node_fqn)
+                .map_err(|_| NodeError::NameTooLong)?;
+            name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
+            let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+                .with_namespace(namespace);
+            if !node_name.is_empty() {
+                info = info.with_node_name(node_name);
+            }
+            session
+                .create_service_server(&info)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
+        }
+
+        let cs_handle =
+            create_lc_srv::<ChangeState>(&mut self.session, &node_fqn, ns, nn, "change_state")?;
+        let gs_handle =
+            create_lc_srv::<GetState>(&mut self.session, &node_fqn, ns, nn, "get_state")?;
+        let gas_handle = create_lc_srv::<GetAvailableStates>(
+            &mut self.session,
+            &node_fqn,
+            ns,
+            nn,
+            "get_available_states",
+        )?;
+        let gat_handle = create_lc_srv::<GetAvailableTransitions>(
+            &mut self.session,
+            &node_fqn,
+            ns,
+            nn,
+            "get_available_transitions",
+        )?;
+        let gtg_handle = create_lc_srv::<GetAvailableTransitions>(
+            &mut self.session,
+            &node_fqn,
+            ns,
+            nn,
+            "get_transition_graph",
+        )?;
+
+        let servers = LifecycleServiceServers::new(
+            LcSrv::<ChangeState> {
+                handle: cs_handle,
+                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            LcSrv::<GetState> {
+                handle: gs_handle,
+                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            LcSrv::<GetAvailableStates> {
+                handle: gas_handle,
+                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            LcSrv::<GetAvailableTransitions> {
+                handle: gat_handle,
+                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            LcSrv::<GetAvailableTransitions> {
+                handle: gtg_handle,
+                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+        );
+
+        self.lifecycle = Some(alloc::boxed::Box::new(LifecycleRuntimeState {
+            state_machine: LifecyclePollingNodeCtx::new(),
+            services: alloc::boxed::Box::new(servers),
+        }));
+
+        Ok(())
+    }
+
+    /// Mutable access to the lifecycle state machine, if registered.
+    ///
+    /// Used to register transition callbacks before spinning and to read the
+    /// current state from application code.
+    #[cfg(feature = "lifecycle-services")]
+    pub fn lifecycle_state_machine_mut(
+        &mut self,
+    ) -> Option<&mut crate::lifecycle::LifecyclePollingNodeCtx> {
+        self.lifecycle.as_mut().map(|lc| &mut lc.state_machine)
+    }
+
+    /// Immutable access to the lifecycle state machine, if registered.
+    #[cfg(feature = "lifecycle-services")]
+    pub fn lifecycle_state_machine(
+        &self,
+    ) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
+        self.lifecycle.as_ref().map(|lc| &lc.state_machine)
     }
 
     /// Declare a parameter with a value. Returns `true` if successful.

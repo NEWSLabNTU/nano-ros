@@ -1,0 +1,15 @@
+[package]
+name = "lifecycle-msgs"
+version = "0.1.0"
+edition = "2021"
+description = "Generated lifecycle_msgs bindings for nros lifecycle services"
+license = "Apache-2.0"
+
+[features]
+default = []
+std = ["nros-core/std", "nros-serdes/std"]
+
+[dependencies]
+nros-core = { path = "../../core/nros-core", default-features = false }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false }
+heapless = "0.8"

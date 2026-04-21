@@ -1,0 +1,21 @@
+[package]
+name = "nros-lifecycle-msgs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Generated nros types for lifecycle_msgs (ROS 2 Humble 1.2.2)"
+
+[package.metadata.ros]
+upstream-package = "lifecycle_msgs"
+upstream-version = "1.2.2"
+ros-edition = "humble"
+
+[features]
+default = []
+std = ["nros-core/std", "nros-serdes/std"]
+
+[dependencies]
+nros-core.workspace = true
+nros-serdes.workspace = true
+heapless = "0.8"

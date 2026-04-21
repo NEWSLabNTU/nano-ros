@@ -1300,6 +1300,15 @@ name = "nros-ghost-types"
 version = "0.1.0"
 
 [[package]]
+name = "nros-lifecycle-msgs"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-macros"
 version = "0.1.0"
 dependencies = [
@@ -1317,6 +1326,7 @@ dependencies = [
  "log",
  "nros-core",
  "nros-ghost-types",
+ "nros-lifecycle-msgs",
  "nros-params",
  "nros-rcl-interfaces",
  "nros-rmw",

@@ -56,6 +56,9 @@ ffi-sync = ["nros-rmw-zenoh?/ffi-sync", "nros-rmw-xrce?/ffi-sync"]
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:nros-rcl-interfaces", "alloc"]
 
+# Lifecycle services (ros2 lifecycle CLI support — REP-2002)
+lifecycle-services = ["dep:nros-lifecycle-msgs", "alloc"]
+
 [dependencies]
 nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
@@ -69,6 +72,7 @@ portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
+nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
