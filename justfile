@@ -301,6 +301,7 @@ build-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-platform-posix \
         --exclude nros-platform-nuttx \
+        --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim
 
@@ -327,6 +328,7 @@ check-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-platform-posix \
         --exclude nros-platform-nuttx \
+        --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim -- {{CLIPPY_LINTS}}
 
