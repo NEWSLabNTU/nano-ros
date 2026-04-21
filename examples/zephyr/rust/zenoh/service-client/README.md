@@ -23,9 +23,8 @@ Rust Application (src/lib.rs)
 ## Prerequisites
 
 1. Set up the Zephyr workspace (see main README)
-2. Set up TAP interface: `sudo ./scripts/setup-zephyr-network.sh`
-3. Start zenoh router: `zenohd --listen tcp/0.0.0.0:7447`
-4. Start a service server (see below)
+2. Start zenoh router on the host loopback: `zenohd --listen tcp/127.0.0.1:7456`
+3. Start a service server (see below)
 
 ## Build
 
@@ -55,17 +54,14 @@ Then run the client:
 ```
 
 The service client will:
-1. Connect to the zenoh router at 192.0.2.2:7456
+1. Connect to the zenoh router at tcp/127.0.0.1:7456 (via NSOS loopback)
 2. Send AddTwoInts requests every 2 seconds
 3. Print the responses
 
 ## Network Configuration
 
-- Zephyr IP: 192.0.2.1
-- Host/Router IP: 192.0.2.2
-- TAP interface: zeth0
-
-See `scripts/setup-zephyr-network.sh` for network setup.
+`native_sim` uses NSOS (offloaded host sockets). No TAP bridge or `sudo` is
+required — everything talks to the host on `127.0.0.1`.
 
 ## Notes
 

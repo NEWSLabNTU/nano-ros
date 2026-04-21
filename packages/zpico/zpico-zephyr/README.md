@@ -17,7 +17,7 @@ which provides the nros-c library (C) or Kconfig-to-Cargo bridging (Rust).
 zpico_zephyr_wait_network(2000);
 
 // Initialize and open zenoh session
-zpico_zephyr_init_session("tcp/192.0.2.2:7456");
+zpico_zephyr_init_session("tcp/127.0.0.1:7456");
 
 // ... use nros-c or nros Rust API ...
 

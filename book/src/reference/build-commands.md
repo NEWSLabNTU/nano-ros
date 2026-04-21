@@ -175,10 +175,9 @@ Run `just qemu-help` for more options.
 ## Zephyr Setup
 
 ```bash
-just zephyr setup                      # Initialize workspace + create symlink
-sudo ./scripts/zephyr/setup-network.sh # Configure bridge network (zeth-br)
-just test-zephyr                       # Run zenoh tests
-just test-zephyr-xrce                  # Run XRCE tests
+just zephyr setup   # Initialize workspace + create symlink
+just test-zephyr    # Run zenoh tests (native_sim uses NSOS on host loopback)
+just test-zephyr-xrce
 ```
 
 The `zephyr-workspace` symlink points to the actual workspace (default: `../nano-ros-workspace/`). For custom workspace locations, update the symlink:

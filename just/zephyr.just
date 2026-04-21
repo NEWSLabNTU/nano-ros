@@ -38,13 +38,7 @@ doctor:
         echo "  [MISSING] Zephyr workspace at $WORKSPACE (run: just zephyr setup)"
         fail=1
     fi
-    # Bridge network / TAP interface is required for E2E but needs sudo,
-    # so report it separately instead of failing on it.
-    if ip link show zeth-br &>/dev/null; then
-        echo "  [OK] Zephyr bridge network (zeth-br)"
-    else
-        echo "  [INFO] Zephyr bridge network not up (run: sudo just setup-network)"
-    fi
+    # native_sim uses NSOS (host loopback) — no TAP bridge required.
     exit $fail
 
 # Build Zephyr Rust examples (all Rust examples for native_sim)
@@ -131,7 +125,7 @@ build-xrce:
 build-all: build build-c build-cpp build-xrce
     @echo "All Zephyr examples built!"
 
-# Run Zephyr E2E tests (requires pre-built Zephyr examples + bridge network)
+# Run Zephyr E2E tests (requires pre-built Zephyr examples; native_sim uses NSOS on host loopback)
 test verbose="":
     #!/usr/bin/env bash
     set -e
@@ -197,8 +191,8 @@ help:
     @echo "==============="
     @echo ""
     @echo "Prerequisites:"
-    @echo "  1. Set up Zephyr workspace: ./scripts/zephyr/setup.sh"
-    @echo "  2. Set up bridge network:   sudo ./scripts/zephyr/setup-network.sh"
+    @echo "  Set up Zephyr workspace: ./scripts/zephyr/setup.sh"
+    @echo "  (native_sim uses NSOS; no TAP bridge/sudo required.)"
     @echo ""
     @echo "Build examples:"
     @echo "  just zephyr build          # Build Rust zenoh Zephyr examples"

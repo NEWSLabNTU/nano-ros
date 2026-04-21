@@ -250,10 +250,10 @@ config NROS_SERVICE_BUFFER_SIZE
 
 config NROS_ZENOH_LOCATOR
     string "Zenoh router locator"
-    default "tcp/192.0.2.2:7456"
+    default "tcp/127.0.0.1:7456"
     help
       Zenoh router address. Supported formats:
-        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7456")
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/127.0.0.1:7456")
         Serial: "serial/DEVICE#baudrate=RATE"
 
 config NROS_TRANSPORT_SERIAL
@@ -315,7 +315,7 @@ config NROS_XRCE_STREAM_HISTORY
 
 config NROS_XRCE_AGENT_ADDR
     string "XRCE-DDS Agent address"
-    default "192.0.2.2"
+    default "127.0.0.1"
     help
       IP address of the Micro-XRCE-DDS Agent.
 

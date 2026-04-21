@@ -285,81 +285,16 @@ pub fn is_zephyr_workspace_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if TAP interface is configured for Zephyr networking
-///
-/// Returns true if either the bridge network (zeth0/zeth1) or legacy single
-/// interface (zeth) is available.
-pub fn is_tap_interface_available() -> bool {
-    // Check for bridge network first (preferred)
-    if is_bridge_network_available() {
-        return true;
-    }
-
-    // Fall back to checking for any zeth* interface
-    Command::new("sh")
-        .args(["-c", "ip link show | grep -q 'zeth'"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Check if bridge network is configured for multiple Zephyr instances
-///
-/// This checks for the full bridge setup with zeth0 and zeth1 interfaces,
-/// which is required for E2E talker-listener tests.
-pub fn is_bridge_network_available() -> bool {
-    // Check if bridge exists
-    let bridge_ok = Command::new("ip")
-        .args(["link", "show", "zeth-br"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    // Check if zeth0 (talker) exists
-    let zeth0_ok = Command::new("ip")
-        .args(["link", "show", "zeth0"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    // Check if zeth1 (listener) exists
-    let zeth1_ok = Command::new("ip")
-        .args(["link", "show", "zeth1"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    bridge_ok && zeth0_ok && zeth1_ok
-}
-
-/// Require bridge network for E2E tests
-///
-/// Returns `false` if bridge network is not configured, printing a skip message.
-pub fn require_bridge_network() -> bool {
-    if !is_bridge_network_available() {
-        eprintln!("Skipping test: Bridge network not configured");
-        eprintln!("  Run: sudo ./scripts/zephyr/setup-network.sh");
-        return false;
-    }
-    true
-}
-
 /// Check if all Zephyr prerequisites are available
 ///
 /// Checks:
 /// - west command available
 /// - Zephyr workspace configured
-/// - TAP interface (zeth) available for networking tests
+///
+/// Networking on native_sim uses NSOS (host loopback), so no TAP/bridge setup
+/// is required.
 pub fn is_zephyr_available() -> bool {
-    is_west_available() && is_zephyr_workspace_available() && is_tap_interface_available()
+    is_west_available() && is_zephyr_workspace_available()
 }
 
 /// Skip test if Zephyr is not available
@@ -374,11 +309,6 @@ pub fn require_zephyr() -> bool {
     if !is_zephyr_workspace_available() {
         eprintln!("Skipping test: Zephyr workspace not found");
         eprintln!("  Run: ./scripts/zephyr/setup.sh");
-        return false;
-    }
-    if !is_tap_interface_available() {
-        eprintln!("Skipping test: TAP interface (zeth) not found");
-        eprintln!("  Run: sudo ./scripts/zephyr/setup-network.sh");
         return false;
     }
     true
@@ -650,17 +580,5 @@ mod tests {
         } else {
             eprintln!("Zephyr workspace not found");
         }
-    }
-
-    #[test]
-    fn test_tap_interface_detection() {
-        let available = is_tap_interface_available();
-        eprintln!("TAP interface (zeth) available: {}", available);
-    }
-
-    #[test]
-    fn test_bridge_network_detection() {
-        let available = is_bridge_network_available();
-        eprintln!("Bridge network available: {}", available);
     }
 }

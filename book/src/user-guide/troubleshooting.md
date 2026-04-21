@@ -140,22 +140,7 @@ The `--seed` parameter initializes the test entropy source with a different valu
 
 ## Network Configuration Issues
 
-### Zephyr and QEMU Subnet Conflicts
-
-**Symptom**: Network communication fails when running both Zephyr native_sim and QEMU tests.
-
-**Cause**: Both Zephyr and QEMU were using the same subnet (192.0.2.0/24).
-
-**Solution**: nros uses separate subnets:
-- **Zephyr (native_sim)**: 192.0.2.0/24
-  - Bridge: `zeth-br` at 192.0.2.2
-  - Talker: 192.0.2.1
-  - Listener: 192.0.2.3
-- **QEMU (MPS2-AN385)**: 192.0.3.0/24
-  - TAP interface: `tap0` at 192.0.3.1
-  - Guests: 192.0.3.10+
-
-### TAP Interface Setup
+### TAP Interface Setup (QEMU bare-metal only)
 
 **Symptom**: QEMU cannot connect to the network.
 
@@ -164,18 +149,20 @@ The `--seed` parameter initializes the test entropy source with a different valu
 sudo ./scripts/qemu/setup-network.sh
 ```
 
-This creates and configures the TAP interface with proper permissions.
+This creates and configures the `tap0` interface at `192.0.3.1`. QEMU
+bare-metal guests live on `192.0.3.10+`.
 
-### Zephyr Bridge Setup
+### Zephyr native_sim networking
 
-**Symptom**: Zephyr native_sim instances cannot communicate.
+Zephyr `native_sim` uses **NSOS** (Native Sim Offloaded Sockets) — socket
+calls are forwarded to host syscalls, so there is no emulated L2 stack and
+no TAP bridge. Point each example at a host-loopback zenohd / XRCE Agent:
 
-**Solution**: Run the Zephyr network setup:
 ```bash
-sudo ./scripts/zephyr/setup-network.sh
+zenohd --listen tcp/127.0.0.1:7456  # or any host-accessible address
 ```
 
-This creates the `zeth-br` bridge for Zephyr native simulator instances.
+Multiple `native_sim` instances can coexist without bridge configuration.
 
 ---
 
@@ -292,9 +279,8 @@ pgrep zenohd
 # Check if port 7447 is in use
 ss -tlnp | grep 7447
 
-# Verify network interfaces
+# Verify QEMU bare-metal TAP (only needed for QEMU bare-metal platforms)
 ip addr show tap0
-ip addr show zeth-br
 ```
 
 ### Zephyr Tests Skip
@@ -313,9 +299,6 @@ export ZEPHYR_WORKSPACE=/path/to/nano-ros-workspace
 
 # Verify west is available
 west --version
-
-# Verify TAP network
-ip addr show zeth-br
 ```
 
 ---

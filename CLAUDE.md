@@ -69,7 +69,7 @@ just freertos test          # FreeRTOS QEMU E2E (needs arm-none-eabi-gcc)
 just nuttx test             # NuttX QEMU E2E (needs nightly + qemu-system-arm)
 just threadx_linux test     # ThreadX Linux sim E2E (needs ThreadX/NetX)
 just threadx_riscv64 test   # ThreadX RISC-V QEMU E2E
-just zephyr test            # Zephyr E2E (needs west + TAP bridge)
+just zephyr test            # Zephyr E2E (needs west; native_sim uses NSOS on host loopback)
 just zephyr test-all        # + XRCE + C examples
 just esp32 test             # ESP32 QEMU E2E
 just <platform> ci          # Platform-specific check + test
@@ -132,7 +132,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 ### QEMU Networked Test Rules
 - **Slirp networking** — QEMU platforms (bare-metal, FreeRTOS, NuttX, ThreadX RISC-V, ESP32) use slirp user-mode networking. No TAP devices, bridges, or `sudo` needed.
 - **Per-platform zenohd ports** — each platform has a fixed port in `nros_tests::platform` (baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453, esp32=7454, threadx-linux=7455, zephyr=7456). Use `ZenohRouter::start(platform::FREERTOS.zenohd_port)`, not hardcoded ports.
-- **Bridge-networked platforms** — Zephyr (TAP) and ThreadX Linux (veth) use bridge networking and need `ZenohRouter::start_on("0.0.0.0", port)` instead of `start(port)`.
+- **Bridge-networked platforms** — ThreadX Linux sim (veth) uses bridge networking and needs `ZenohRouter::start_on("0.0.0.0", port)` instead of `start(port)`. Zephyr native_sim migrated to NSOS (Phase 81) and uses `127.0.0.1` on the host like any other loopback-bound test.
 - **Start subscriber first, then publisher.** Zenoh doesn't buffer for unknown subscribers.
 - **5–10s stabilization delay** between subscriber connection and publisher start
 - **Per-platform nextest groups** — each platform has its own `max-threads = 1` group (e.g., `qemu-freertos`). Platforms run in parallel; tests within a platform are serial.

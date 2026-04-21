@@ -7,8 +7,7 @@
 #
 # Prerequisites:
 #   - Zephyr workspace set up (./scripts/zephyr/setup.sh)
-#   - TAP network configured (sudo ./scripts/zephyr/setup-network.sh)
-#   - zenohd installed
+#   - zenohd installed (native_sim uses NSOS on host loopback — no TAP bridge)
 #
 # Usage:
 #   ./tests/zephyr/run-c.sh
@@ -113,90 +112,11 @@ else
     NANO_ROS_NAME="$(basename "$PROJECT_ROOT")"
     ZEPHYR_WORKSPACE="$(dirname "$PROJECT_ROOT")/${NANO_ROS_NAME}-workspace"
 fi
-# TAP interface: Use bridge (zeth-br) which has the host IP
-TAP_INTERFACE="zeth-br"
-HOST_IP="192.0.2.2"
-ZEPHYR_IP="192.0.2.1"
 TEST_TIMEOUT=15
 
 setup_cleanup
 
 log_header "Zephyr C Examples Test (native_sim)"
-
-# =============================================================================
-# Network Device Status Check
-# =============================================================================
-
-check_network_device() {
-    log_header "Checking Network Device Status"
-
-    local status=0
-
-    # Check if TAP interface exists
-    if ! ip link show "$TAP_INTERFACE" &>/dev/null; then
-        log_error "TAP interface '$TAP_INTERFACE' does not exist"
-        log_info "Run: sudo ./scripts/zephyr/setup-network.sh"
-        return 1
-    fi
-    log_success "TAP interface '$TAP_INTERFACE' exists"
-
-    # Check interface state (UP flag)
-    local flags
-    flags=$(ip link show "$TAP_INTERFACE" | head -1)
-    if echo "$flags" | grep -q "UP"; then
-        log_success "Interface is UP"
-    else
-        log_error "Interface is DOWN"
-        log_info "Run: sudo ip link set $TAP_INTERFACE up"
-        status=1
-    fi
-
-    # Check IP address configuration
-    local ip_addr
-    ip_addr=$(ip -4 addr show "$TAP_INTERFACE" 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
-    if [ "$ip_addr" = "$HOST_IP" ]; then
-        log_success "IP address configured: $ip_addr"
-    elif [ -n "$ip_addr" ]; then
-        log_warn "Unexpected IP address: $ip_addr (expected $HOST_IP)"
-    else
-        log_error "No IP address configured on $TAP_INTERFACE"
-        log_info "Run: sudo ip addr add $HOST_IP/24 dev $TAP_INTERFACE"
-        status=1
-    fi
-
-    # Check interface ownership (should be owned by current user)
-    local owner_file="/sys/class/net/$TAP_INTERFACE/owner"
-    if [ -f "$owner_file" ]; then
-        local owner_uid
-        owner_uid=$(cat "$owner_file")
-        local my_uid
-        my_uid=$(id -u)
-        if [ "$owner_uid" = "$my_uid" ]; then
-            log_success "Interface owned by current user (UID: $my_uid)"
-        else
-            log_warn "Interface owned by UID $owner_uid (current: $my_uid)"
-        fi
-    fi
-
-    # Check carrier state
-    local carrier_state
-    carrier_state=$(cat "/sys/class/net/$TAP_INTERFACE/carrier" 2>/dev/null || echo "0")
-    if [ "$carrier_state" = "1" ]; then
-        log_success "Carrier detected (link up)"
-    else
-        log_info "No carrier (expected when Zephyr not running)"
-    fi
-
-    # Show full interface info in verbose mode
-    if [ "$VERBOSE" = true ]; then
-        echo ""
-        echo "=== Interface Details ==="
-        ip addr show "$TAP_INTERFACE"
-        echo ""
-    fi
-
-    return $status
-}
 
 # =============================================================================
 # Prerequisites Check
@@ -309,7 +229,7 @@ test_zephyr_to_native() {
     log_info "Starting zenoh router..."
     pkill -x zenohd 2>/dev/null || true
     sleep 1
-    "$ZENOHD" --listen tcp/0.0.0.0:7447 > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
+    "$ZENOHD" --listen tcp/127.0.0.1:7456 --no-multicast-scouting > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
     local zenohd_pid=$!
     register_pid $zenohd_pid
     sleep 2
@@ -378,18 +298,6 @@ test_zephyr_to_native() {
 # =============================================================================
 
 RESULT=0
-
-# Check network device first
-if ! check_network_device; then
-    log_error "Network device not properly configured"
-    log_info ""
-    log_info "To set up TAP networking:"
-    log_info "  sudo ./scripts/zephyr/setup-network.sh"
-    log_info ""
-    log_info "To check network status manually:"
-    log_info "  ip addr show $TAP_INTERFACE"
-    exit 1
-fi
 
 # Check prerequisites
 if ! check_zephyr_prerequisites; then

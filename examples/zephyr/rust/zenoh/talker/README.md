@@ -56,16 +56,9 @@ west flash
 
 ## Network Configuration
 
-The example uses TAP networking for native_sim:
-
-```bash
-# Create TAP interface (one-time setup)
-sudo ./scripts/setup-zephyr-network.sh
-```
-
-Default configuration:
-- Device IP: 192.0.2.1 (QEMU/native_sim) or board-specific
-- Router: tcp/192.0.2.2:7456
+`native_sim` uses NSOS (offloaded host sockets), so no TAP bridge or `sudo`
+is needed. The example connects to `tcp/127.0.0.1:7456` by default; change
+`ExecutorConfig::new(...)` in `src/lib.rs` to reach a remote router.
 
 ## Testing with Native Subscriber
 

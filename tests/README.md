@@ -250,9 +250,8 @@ Tests Zephyr native_sim integration:
 ```bash
 # Setup (one time)
 ./zephyr/setup.sh
-sudo ./scripts/setup-zephyr-network.sh
 
-# Run tests
+# Run tests (native_sim uses NSOS on host loopback — no TAP bridge required)
 just test-zephyr
 ```
 

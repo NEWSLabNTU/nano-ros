@@ -84,7 +84,7 @@ impl ZenohRouter {
     /// sufficient for QEMU slirp tests (slirp NAT connects via `127.0.0.1`)
     /// and native/POSIX tests.
     ///
-    /// For bridge-networked tests (ThreadX Linux, Zephyr) that connect via
+    /// For bridge-networked tests (ThreadX Linux sim) that connect via
     /// a non-loopback IP, use [`start_on`](Self::start_on) with `"0.0.0.0"`.
     pub fn start(port: u16) -> TestResult<Self> {
         Self::start_on("127.0.0.1", port)

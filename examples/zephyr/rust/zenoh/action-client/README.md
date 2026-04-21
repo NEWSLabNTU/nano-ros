@@ -40,16 +40,13 @@ west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/action-client
 ## Run
 
 ```bash
-# Terminal 1: Set up TAP interface (one-time)
-sudo ./nros/scripts/setup-zephyr-network.sh
+# Terminal 1: Start zenoh router on the host loopback (NSOS talks to 127.0.0.1)
+zenohd --listen tcp/127.0.0.1:7456
 
-# Terminal 2: Start zenoh router
-zenohd --listen tcp/0.0.0.0:7447
-
-# Terminal 3: Run action server
+# Terminal 2: Run action server
 cargo run -p native-rs-action-server --features zenoh
 
-# Terminal 4: Run Zephyr action client
+# Terminal 3: Run Zephyr action client
 ./build/zephyr/zephyr.exe
 ```
 

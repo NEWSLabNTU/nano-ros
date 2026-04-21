@@ -38,7 +38,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms);
  * Calls zpico_init() followed by zpico_open(). The network
  * interface must be up before calling this function.
  *
- * @param locator Zenoh router locator (e.g., "tcp/192.0.2.2:7456")
+ * @param locator Zenoh router locator (e.g., "tcp/127.0.0.1:7456")
  * @return 0 on success, negative error code on failure
  */
 int32_t zpico_zephyr_init_session(const char* locator);

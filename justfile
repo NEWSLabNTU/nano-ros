@@ -761,13 +761,11 @@ _orchestrate verb:
     fi
     echo "{{verb}} complete!"
 
-# Setup all network bridges (QEMU + Zephyr, requires sudo)
+# Setup bridge network for ThreadX Linux sim (requires sudo; Zephyr native_sim uses NSOS and needs no bridge)
 setup-network: qemu::setup-network
-    sudo ./scripts/zephyr/setup-network.sh
 
-# Teardown all network bridges (requires sudo)
+# Teardown bridge network (requires sudo)
 teardown-network: qemu::teardown-network
-    sudo ./scripts/zephyr/setup-network.sh --down
 
 # Generate Rust API documentation (rustdoc)
 doc-rust:
