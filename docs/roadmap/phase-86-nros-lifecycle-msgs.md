@@ -38,13 +38,13 @@ Upstream message types (`lifecycle_msgs/msg/`): `State`, `Transition`,
 
 ## Work Items
 
-- [ ] 86.1 — Create `packages/interfaces/lifecycle-msgs/` following the
+- [x] 86.1 — Create `packages/interfaces/lifecycle-msgs/` following the
       `rcl-interfaces` pattern: `Cargo.toml` pointing at
       `nros-core` / `nros-serdes`, `package.xml` depending on upstream
       `lifecycle_msgs`, `generated/` directory populated by
       `cargo nano-ros generate`. Gate on a `ros-humble` / `ros-iron`
       feature axis (same as `rcl-interfaces`).
-- [ ] 86.2 — Add `pub mod lifecycle_services;` to `nros-node` behind a
+- [x] 86.2 — Add `pub mod lifecycle_services;` to `nros-node` behind a
       new `lifecycle-services` Cargo feature (mirroring the existing
       `param-services` layout). Module exposes:
       - `LifecycleServiceServers` — the 5 service servers.
@@ -53,20 +53,20 @@ Upstream message types (`lifecycle_msgs/msg/`): `State`, `Transition`,
         `LifecycleState { state_machine, services }` next to `params`.
       - Handler functions (`handle_change_state`, `handle_get_state`, …)
         that read / mutate the `LifecyclePollingNodeCtx`.
-- [ ] 86.3 — Wire the 5 services into `Executor::spin_once` so incoming
+- [x] 86.3 — Wire the 5 services into `Executor::spin_once` so incoming
       requests drain during the normal poll cycle (same pattern as
       `ParamState`).
-- [ ] 86.4 — Add C FFI in `nros-c/src/lifecycle.rs`:
+- [x] 86.4 — Add C FFI in `nros-c/src/lifecycle.rs`:
       - `nros_executor_register_lifecycle_services(exec, sm)` — takes
         the existing `nros_lifecycle_state_machine_t*` (post-Phase 84
         opaque handle) and registers the 5 services.
       - Gate on a new `lifecycle-services` Cargo feature on `nros-c` that
         forwards to `nros-node/lifecycle-services` and implies `alloc`.
-- [ ] 86.5 — Reference example: extend
+- [x] 86.5 — Reference example: extend
       `examples/native/rust/zenoh/lifecycle-node/` (new) to demonstrate
       `ros2 lifecycle set /<node> configure` / `ros2 lifecycle get /<node>`
       driving the state machine.
-- [ ] 86.6 — Doc updates: book's `reference/rust-api.md` lifecycle
+- [x] 86.6 — Doc updates: book's `reference/rust-api.md` lifecycle
       section + `reference/c-api.md` to point at the new registration
       functions; `porting/custom-rmw.md` if the message encoding exposes
       anything backend-specific (unlikely — these are plain CDR).

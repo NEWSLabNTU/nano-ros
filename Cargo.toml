@@ -65,6 +65,7 @@ exclude = [
     # Native Rust examples (desktop/Linux)
     "examples/native/rust/zenoh/talker",
     "examples/native/rust/zenoh/listener",
+    "examples/native/rust/zenoh/lifecycle-node",
     "examples/native/rust/zenoh/custom-msg",
     "examples/native/rust/zenoh/service-server",
     "examples/native/rust/zenoh/service-client",

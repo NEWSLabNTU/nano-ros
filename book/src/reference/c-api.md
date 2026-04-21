@@ -222,6 +222,33 @@ Period is expressed in **nanoseconds**.
 - `nros/lifecycle.h` — lifecycle state machine
 - `nros/guard_condition.h` — thread-safe trigger
 
+#### ROS 2 lifecycle services (REP-2002)
+
+The standalone `nros_lifecycle_state_machine_t` runs without any ROS 2
+tooling hooks. To expose a node's lifecycle to `ros2 lifecycle
+set|get|list|nodes`, register the five REP-2002 services on the
+executor instead of initialising a standalone state machine. Enable the
+`lifecycle-services` feature on `nros-c` (forwarded to `nros-node`) and
+call:
+
+```c
+nros_ret_t r = nros_executor_register_lifecycle_services(exec);
+nros_executor_lifecycle_register_on_configure(exec, on_configure, ctx);
+nros_executor_lifecycle_register_on_activate (exec, on_activate,  ctx);
+nros_executor_lifecycle_register_on_deactivate(exec, on_deactivate, ctx);
+nros_executor_lifecycle_register_on_cleanup  (exec, on_cleanup,   ctx);
+nros_executor_lifecycle_register_on_shutdown (exec, on_shutdown,  ctx);
+
+uint8_t state = nros_executor_lifecycle_get_state(exec);
+nros_executor_lifecycle_change_state(exec, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+```
+
+The executor owns the state machine; each `spin_once` drains the five
+service servers (`~/change_state`, `~/get_state`,
+`~/get_available_states`, `~/get_available_transitions`,
+`~/get_transition_graph`) so `ros2 lifecycle` queries round-trip
+without dedicated threads.
+
 ## System Install
 
 For package maintainers:

@@ -1,0 +1,19 @@
+[package]
+name = "native-rs-lifecycle-node"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "lifecycle-node"
+path = "src/main.rs"
+
+[features]
+default = ["lifecycle-services"]
+lifecycle-services = ["nros/lifecycle-services"]
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "lifecycle-services"] }
+log = "0.4"
+env_logger = "0.11"

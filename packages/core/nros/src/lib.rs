@@ -486,6 +486,13 @@ pub use nros_core::{
 pub use nros_core::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use nros_node::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
+/// Re-export of the full lifecycle module so examples can reach
+/// `LifecycleCallbackSlot`, `LifecyclePollingNodeCtx`, etc.
+pub mod lifecycle {
+    pub use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
+    pub use nros_node::lifecycle::*;
+}
+
 // Re-export parameter types
 pub use nros_params::{
     MandatoryParameter, OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor,

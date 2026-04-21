@@ -319,6 +319,41 @@ speed.set(2.0)?;               // typed write
 Enable the `param-services` feature on `nros-node` to expose the standard
 ROS 2 parameter services (`~/get_parameters`, `~/set_parameters`, etc.).
 
+## Lifecycle (REP-2002)
+
+Two APIs are available depending on whether ROS 2 tooling should be able
+to drive the lifecycle:
+
+- **`LifecyclePollingNode` / `LifecyclePollingNodeCtx`** — standalone state
+  machines. No network I/O, no service servers; ideal for bare-metal
+  nodes that manage their own state without ROS 2 introspection.
+- **Executor-integrated lifecycle services** — the five REP-2002 services
+  (`~/change_state`, `~/get_state`, `~/get_available_states`,
+  `~/get_available_transitions`, `~/get_transition_graph`) registered on
+  the executor so `ros2 lifecycle set|get|list|nodes` drives the state
+  machine directly. Enable `nros-node/lifecycle-services` (or
+  `nros/lifecycle-services`):
+
+  ```rust,ignore
+  use nros::lifecycle::{LifecycleCallbackSlot, TransitionResult};
+  use nros::{Executor, ExecutorConfig};
+
+  unsafe extern "C" fn on_configure(_ctx: *mut core::ffi::c_void) -> u8 {
+      TransitionResult::Success as u8
+  }
+
+  let config = ExecutorConfig::from_env().node_name("lifecycle_demo");
+  let mut executor: Executor = Executor::open(&config)?;
+  executor.register_lifecycle_services()?;
+  let sm = executor.lifecycle_state_machine_mut().unwrap();
+  sm.register(LifecycleCallbackSlot::Configure, Some(on_configure));
+  // spin loop…
+  ```
+
+  Each `spin_once` drains the five service servers so `ros2 lifecycle`
+  queries round-trip without dedicated threads. See
+  `examples/native/rust/zenoh/lifecycle-node/` for a runnable reference.
+
 ## Error Types
 
 The primary user-facing error type is `NodeError`, returned by every

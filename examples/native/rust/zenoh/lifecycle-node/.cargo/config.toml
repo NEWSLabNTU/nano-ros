@@ -1,0 +1,3 @@
+[patch.crates-io]
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
