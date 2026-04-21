@@ -170,15 +170,21 @@ that each just call `build_X()` and assert the binary exists).
     `just test: @echo "renamed to test-fast"; just test-fast` alias
     during a transition window.
 
-- [ ] 85.8 — Port-table migration for non-RTOS tests
-  - **Files**: `packages/testing/nros-tests/src/platform.rs` (the
-    `platform::NATIVE` / `platform::NATIVE_XRCE` entries if they
-    don't already exist), `c_api.rs` / `cpp_api.rs` / `services.rs` /
-    `actions.rs`
-  - **Goal**: Replace any hardcoded zenohd ports in native tests with
-    `platform::NATIVE.zenohd_port`. Removes a footgun where two
-    parallel tests on the same dev box pick the same port. Pairs
-    naturally with 85.6 (reducing the need for `max-threads = 1`).
+- [x] 85.8 — Port-table migration for non-RTOS tests
+  - **Files**: `packages/testing/nros-tests/tests/zephyr.rs` (8 × `tcp/127.0.0.1:7456`),
+    `packages/testing/nros-tests/tests/esp32_emulator.rs`
+    (2 × `tcp/127.0.0.1:7448` — which didn't even match
+    `platform::ESP32.zenohd_port = 7454`, so this was a latent bug
+    as well as a DRY issue). Native-side tests (`native_api.rs`,
+    `services.rs`, `actions.rs`) already use the `zenohd_unique`
+    rstest fixture (ephemeral port), so they needed no migration —
+    the originally-listed `platform::NATIVE` constant was redundant.
+  - **Result**: Replaced hardcoded locator strings with
+    `format!("tcp/127.0.0.1:{}", platform::ZEPHYR.zenohd_port)` and
+    the ESP32 equivalent. The ESP32 assertion message was also
+    reformatted to pull the port from the constant. Comments inside
+    the files that still show specific port numbers left in place
+    (cosmetic-only, no behavioural impact).
 
 ### Group D — Follow-ups surfaced by 85.4 (production bugs, not test plumbing)
 

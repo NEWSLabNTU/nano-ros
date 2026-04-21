@@ -229,7 +229,8 @@ fn test_esp32_talker_listener_e2e() {
     // Verify zenohd is reachable on localhost
     assert!(
         wait_for_port(platform::ESP32.zenohd_port, Duration::from_secs(10)),
-        "zenohd not reachable on localhost:7448"
+        "zenohd not reachable on localhost:{}",
+        platform::ESP32.zenohd_port
     );
 
     // Step 1: Start listener
@@ -338,13 +339,17 @@ fn test_esp32_to_native() {
     // Verify zenohd is reachable on localhost
     assert!(
         wait_for_port(platform::ESP32.zenohd_port, Duration::from_secs(10)),
-        "zenohd not reachable on localhost:7448"
+        "zenohd not reachable on localhost:{}",
+        platform::ESP32.zenohd_port
     );
 
     // Start native listener on localhost (connects to same zenohd)
     let mut listener_cmd = Command::new(native_listener);
     listener_cmd
-        .env("NROS_LOCATOR", "tcp/127.0.0.1:7448")
+        .env(
+            "NROS_LOCATOR",
+            format!("tcp/127.0.0.1:{}", platform::ESP32.zenohd_port),
+        )
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
@@ -410,7 +415,8 @@ fn test_native_to_esp32() {
     // Verify zenohd is reachable on localhost
     assert!(
         wait_for_port(platform::ESP32.zenohd_port, Duration::from_secs(10)),
-        "zenohd not reachable on localhost:7448"
+        "zenohd not reachable on localhost:{}",
+        platform::ESP32.zenohd_port
     );
 
     // Start ESP32 listener
@@ -434,7 +440,10 @@ fn test_native_to_esp32() {
     // Start native talker on localhost (publishes every 1s)
     let mut talker_cmd = Command::new(native_talker);
     talker_cmd
-        .env("NROS_LOCATOR", "tcp/127.0.0.1:7448")
+        .env(
+            "NROS_LOCATOR",
+            format!("tcp/127.0.0.1:{}", platform::ESP32.zenohd_port),
+        )
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");
