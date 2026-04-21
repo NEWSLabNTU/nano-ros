@@ -1163,6 +1163,13 @@ pub trait Transport {
 /// Each backend provides its own `Rmw` implementation that bridges
 /// from the middleware-agnostic [`RmwConfig`] to backend-specific
 /// initialization.
+///
+/// Phase 84.E2: `open` consumes `self`. Backends carry their own
+/// configuration (agent addresses, serial ports, TLS CA slots)
+/// inside the factory value and hand that over to the session at
+/// `open` time. All in-repo backends also implement
+/// [`Default`](core::default::Default); most callers spell this as
+/// `BackendRmw::default().open(&config)`.
 pub trait Rmw {
     /// Session type returned by [`open`](Rmw::open)
     type Session: Session;
@@ -1173,8 +1180,10 @@ pub trait Rmw {
     ///
     /// The backend maps [`RmwConfig`] fields to its own connection
     /// parameters (e.g., zenoh locator and session mode, XRCE-DDS
-    /// agent address).
-    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error>;
+    /// agent address). Any backend-specific pre-open state stored
+    /// on `self` (e.g. configured agent IP / port) is moved into the
+    /// returned `Session`.
+    fn open(self, config: &RmwConfig) -> Result<Self::Session, Self::Error>;
 }
 
 #[cfg(test)]

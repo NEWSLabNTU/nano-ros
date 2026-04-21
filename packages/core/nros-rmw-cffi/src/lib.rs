@@ -576,13 +576,14 @@ impl Drop for CffiServiceClient {
 // ============================================================================
 
 /// RMW factory for the C function table backend.
+#[derive(Default)]
 pub struct CffiRmw;
 
 impl nros_rmw::Rmw for CffiRmw {
     type Session = CffiSession;
     type Error = TransportError;
 
-    fn open(config: &nros_rmw::RmwConfig) -> Result<CffiSession, TransportError> {
+    fn open(self, config: &nros_rmw::RmwConfig) -> Result<CffiSession, TransportError> {
         let mode = match config.mode {
             nros_rmw::SessionMode::Client => 0u8,
             nros_rmw::SessionMode::Peer => 1u8,

@@ -15,13 +15,14 @@ use crate::session::DdsSession;
 ///
 /// Opens a DDS `DomainParticipant` using dust-dds with UDP multicast transport.
 /// Discovery is brokerless (SPDP/SEDP) — no router or agent needed.
+#[derive(Default)]
 pub struct DdsRmw;
 
 impl Rmw for DdsRmw {
     type Session = DdsSession;
     type Error = TransportError;
 
-    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+    fn open(self, config: &RmwConfig) -> Result<Self::Session, Self::Error> {
         #[cfg(feature = "std")]
         {
             let factory = DomainParticipantFactory::get_instance();

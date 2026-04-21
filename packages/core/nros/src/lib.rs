@@ -368,7 +368,8 @@ pub mod internals {
                 namespace: "",
                 properties: &[],
             };
-            nros_rmw_xrce::XrceRmw::open(&config)
+            nros_rmw_xrce::XrceRmw::default()
+                .open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
         }
 
@@ -388,7 +389,8 @@ pub mod internals {
                 namespace: "",
                 properties: &[],
             };
-            nros_rmw_dds::DdsRmw::open(&config)
+            nros_rmw_dds::DdsRmw::default()
+                .open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
         }
 
@@ -409,7 +411,8 @@ pub mod internals {
                 namespace: "",
                 properties: &[],
             };
-            nros_rmw_cffi::CffiRmw::open(&config)
+            nros_rmw_cffi::CffiRmw::default()
+                .open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
         }
     }

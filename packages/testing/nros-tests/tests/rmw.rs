@@ -1,6 +1,6 @@
 //! RMW abstraction layer integration tests
 //!
-//! Tests ZenohRmw::open(), publisher/subscriber creation, and pub/sub roundtrip
+//! Tests ZenohRmw::default().open(), publisher/subscriber creation, and pub/sub roundtrip
 //! using the nros-rmw trait interface directly (in-process, no external binaries).
 
 use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
@@ -30,7 +30,7 @@ fn test_zenohrmw_open_client_mode(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::open(&config).expect("ZenohRmw::open() failed");
+    let mut session = ZenohRmw::default().open(&config).expect("ZenohRmw::default().open() failed");
     session.close().expect("session.close() failed");
 }
 
@@ -50,7 +50,7 @@ fn test_zenohrmw_open_with_domain_id(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::open(&config).expect("ZenohRmw::open() with domain_id failed");
+    let mut session = ZenohRmw::default().open(&config).expect("ZenohRmw::default().open() with domain_id failed");
     session.close().expect("session.close() failed");
 }
 
@@ -74,7 +74,7 @@ fn test_zenohrmw_create_publisher(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::open(&config).expect("open failed");
+    let mut session = ZenohRmw::default().open(&config).expect("open failed");
 
     let topic = TopicInfo::new(
         "/test_topic",
@@ -104,7 +104,7 @@ fn test_zenohrmw_create_subscriber(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::open(&config).expect("open failed");
+    let mut session = ZenohRmw::default().open(&config).expect("open failed");
 
     let topic = TopicInfo::new(
         "/test_topic",
@@ -148,7 +148,7 @@ fn test_zenohrmw_publish_raw(zenohd_unique: ZenohRouter) {
         properties: &[],
     };
 
-    let mut session = ZenohRmw::open(&config).expect("open failed");
+    let mut session = ZenohRmw::default().open(&config).expect("open failed");
 
     let topic = TopicInfo::new(
         "/rmw_test_publish",

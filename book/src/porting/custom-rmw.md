@@ -62,11 +62,18 @@ used by the existing backends.
 #![no_std]
 use nros_rmw::*;
 
-pub struct MyProtoRmw;
+#[derive(Default)]
+pub struct MyProtoRmw {
+    // Optional pre-open configuration (agent address, TLS CA, serial
+    // device handle, …) can live here and move into the Session at
+    // `open` time. Every backend in-repo implements `Default` so the
+    // caller can spell the common case as
+    // `MyProtoRmw::default().open(&config)`.
+}
 impl Rmw for MyProtoRmw {
     type Session = MyProtoSession;
     type Error = TransportError;
-    fn open(config: &RmwConfig) -> Result<MyProtoSession, TransportError> {
+    fn open(self, config: &RmwConfig) -> Result<MyProtoSession, TransportError> {
         todo!() // Parse config.locator, connect, map config.domain_id
     }
 }
@@ -127,6 +134,46 @@ impl ServiceClientTrait for MyProtoClient {
         -> Result<Option<usize>, TransportError> { todo!() }
 }
 ```
+
+### Factory shape (Phase 84.E2)
+
+`Rmw::open` consumes `self`, not a `&self`. That shape asks every
+backend to treat its factory type as a **value** that carries any
+pre-open configuration (agent address, serial device, TLS CA, …)
+and *moves* that state into the returned `Session`:
+
+```rust,ignore
+// Default constructor (picks config from `&RmwConfig`):
+let session = MyProtoRmw::default().open(&config)?;
+
+// Explicit constructor when the backend has pre-open state
+// that isn't in the middleware-agnostic `RmwConfig`:
+let session = MyProtoRmw::with_endpoint("10.0.0.1", 7447).open(&config)?;
+```
+
+Conventions:
+
+- **Every backend implements `Default`.** Keeps the common call
+  site short and lets generic code build a factory without
+  knowing the backend type.
+- **Provide `new(...)` / `with_*(...)` helpers for backend-specific
+  pre-open state.** Don't bake it into `RmwConfig` — that type is
+  the middleware-agnostic contract. If your backend needs an agent
+  IP, a serial device path, or a certificate slot, take it on the
+  factory constructor.
+- **Read your own environment variables in `<Backend>::from_env()`**
+  if you want zero-boilerplate POSIX configuration. The shipped
+  `ExecutorConfig::from_env()` only reads the middleware-agnostic
+  `NROS_LOCATOR` / `NROS_SESSION_MODE` / `ROS_DOMAIN_ID`; anything
+  backend-specific (e.g. `NROS_XRCE_AGENT`) stays on the backend
+  side.
+- **Post-open state lives in `Session`, never in `static mut`.**
+  The `open(self, …)` signature makes it natural to move the
+  configured transport into the `Session` return value, which
+  then owns the connection for the rest of its lifetime. A backend
+  that still uses `static mut` session-global state will fail any
+  multi-session test (`backend.open(...)` twice in one process
+  should succeed).
 
 ### 3. Wire into nros
 

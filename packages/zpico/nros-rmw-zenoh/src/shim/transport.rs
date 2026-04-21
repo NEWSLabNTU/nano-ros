@@ -44,15 +44,16 @@ impl Transport for ZenohTransport {
 ///     node_name: "talker",
 ///     namespace: "",
 /// };
-/// let session = ZenohRmw::open(&config).unwrap();
+/// let session = ZenohRmw::default().open(&config).unwrap();
 /// ```
+#[derive(Default)]
 pub struct ZenohRmw;
 
 impl Rmw for ZenohRmw {
     type Session = ZenohSession;
     type Error = TransportError;
 
-    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+    fn open(self, config: &RmwConfig) -> Result<Self::Session, Self::Error> {
         let transport_config = TransportConfig {
             locator: Some(config.locator),
             mode: config.mode,

@@ -107,7 +107,8 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
+            let session = nros_rmw_xrce::XrceRmw::default()
+                .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
             executor.set_node_identity(config.node_name, config.namespace);
@@ -125,7 +126,8 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_dds::DdsRmw::open(&rmw_config)
+            let session = nros_rmw_dds::DdsRmw::default()
+                .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
             executor.set_node_identity(config.node_name, config.namespace);
@@ -143,7 +145,8 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
+            let session = nros_rmw_cffi::CffiRmw::default()
+                .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
             executor.set_node_identity(config.node_name, config.namespace);
