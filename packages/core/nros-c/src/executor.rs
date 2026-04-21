@@ -16,7 +16,7 @@ use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::node::nros_node_t;
 use crate::service::{
-    ServiceClientInternal, client_response_trampoline, nros_client_state_t, nros_client_t,
+    client_response_trampoline, nros_client_state_t, nros_client_t,
     nros_service_state_t, nros_service_t,
 };
 use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
@@ -702,10 +702,8 @@ pub unsafe extern "C" fn nros_executor_add_service(
         match result {
             Ok(handle_id) => {
                 let service_mut = &mut *service;
-                let internal = &mut *(service_mut._internal.as_mut_ptr()
-                    as *mut crate::service::ServiceServerInternal);
-                internal.arena_entry_index = handle_id.0 as i32;
-                internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+                service_mut._internal.arena_entry_index = handle_id.0 as i32;
+                service_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
@@ -785,10 +783,8 @@ pub unsafe extern "C" fn nros_executor_add_client(
         match result {
             Ok(handle_id) => {
                 let client_mut = &mut *client;
-                let internal =
-                    &mut *(client_mut._internal.as_mut_ptr() as *mut ServiceClientInternal);
-                internal.arena_entry_index = handle_id.0 as i32;
-                internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+                client_mut._internal.arena_entry_index = handle_id.0 as i32;
+                client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
                 client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
 
                 executor.handle_count += 1;
@@ -1051,10 +1047,8 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         match result {
             Ok(handle) => {
                 let client_mut = &mut *client;
-                let int_ref = &mut *(client_mut._internal.as_mut_ptr()
-                    as *mut crate::action::ActionClientInternal);
-                int_ref.arena_entry_index = handle.entry_index() as i32;
-                int_ref.executor_ptr = opaque_ptr;
+                client_mut._internal.arena_entry_index = handle.entry_index() as i32;
+                client_mut._internal.executor_ptr = opaque_ptr;
 
                 executor.handle_count += 1;
                 NROS_RET_OK

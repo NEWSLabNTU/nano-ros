@@ -46,7 +46,7 @@ fn main() {
 fn probe_nros_sizes() -> std::collections::HashMap<String, u64> {
     use std::collections::HashMap;
 
-    let rlib = match nros_sizes_build::find_dep_rlib("nros") {
+    let rlib = match nros_sizes_build::find_dep_rlib("nros", "__NROS_SIZE_") {
         Ok(p) => p,
         Err(e) => {
             println!("cargo:warning=nros-cpp probe: {e}");

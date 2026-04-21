@@ -8,7 +8,6 @@ use core::ptr;
 use core::sync::atomic::AtomicBool;
 use core::task::{RawWaker, RawWakerVTable, Waker};
 
-use crate::config::{SERVICE_CLIENT_INTERNAL_OPAQUE_U64S, SERVICE_SERVER_INTERNAL_OPAQUE_U64S};
 use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::executor::nros_executor_t;
@@ -108,10 +107,9 @@ pub struct nros_service_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque inline storage for `ServiceServerInternal`.
-    /// Filled by `nros_executor_add_service`. Validated at compile time
-    /// by an assertion in `opaque_sizes.rs`.
-    pub _internal: [u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S],
+    /// Internal state (arena entry index + executor pointer). Phase 87.5:
+    /// now a typed `#[repr(C)]` field instead of a `[u64; N]` opaque blob.
+    pub _internal: ServiceServerInternal,
 }
 
 impl Default for nros_service_t {
@@ -127,7 +125,7 @@ impl Default for nros_service_t {
             callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            _internal: [0u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S],
+            _internal: ServiceServerInternal::new(),
         }
     }
 }
@@ -247,11 +245,8 @@ pub unsafe extern "C" fn nros_service_init(
 
     // Service server creation is deferred to nros_executor_add_service(),
     // which calls nros_node::Executor::add_service_raw_sized().
-    // Initialise the internal blob (executor_ptr null until registration).
-    core::ptr::write(
-        service._internal.as_mut_ptr() as *mut ServiceServerInternal,
-        ServiceServerInternal::new(),
-    );
+    // Initialise the internal state (executor_ptr null until registration).
+    service._internal = ServiceServerInternal::new();
     service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -277,12 +272,11 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
         nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
     );
 
-    // Drop the inline ServiceServerInternal (no transport handle here
-    // — the service server lives in the arena and is freed when the
-    // executor is destroyed).
-    core::ptr::drop_in_place(service._internal.as_mut_ptr() as *mut ServiceServerInternal);
-
-    service._internal = [0u64; SERVICE_SERVER_INTERNAL_OPAQUE_U64S];
+    // Reset the inline ServiceServerInternal. The actual service server
+    // lives in the executor's arena and is freed when the executor is
+    // destroyed; this struct has no Drop impl, so a simple overwrite
+    // with `new()` is sufficient.
+    service._internal = ServiceServerInternal::new();
     service.callback = None;
     service.context = ptr::null_mut();
     service.node = ptr::null();
@@ -396,11 +390,17 @@ pub struct ServiceServerInternal {
 }
 
 impl ServiceServerInternal {
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             arena_entry_index: -1,
             executor_ptr: core::ptr::null_mut(),
         }
+    }
+}
+
+impl Default for ServiceServerInternal {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -443,12 +443,18 @@ pub struct ServiceClientInternal {
 }
 
 impl ServiceClientInternal {
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             arena_entry_index: -1,
             executor_ptr: ptr::null_mut(),
             timeout_ms: NROS_DEFAULT_SERVICE_TIMEOUT_MS,
         }
+    }
+}
+
+impl Default for ServiceClientInternal {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -490,10 +496,9 @@ pub struct nros_client_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque inline storage for `ServiceClientInternal`.
-    /// Filled by `nros_executor_add_client`. Validated at compile time
-    /// by an assertion in `opaque_sizes.rs`.
-    pub _internal: [u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S],
+    /// Internal state (arena entry index + executor pointer + timeout).
+    /// Phase 87.5: now a typed `#[repr(C)]` field.
+    pub _internal: ServiceClientInternal,
 }
 
 impl Default for nros_client_t {
@@ -509,7 +514,7 @@ impl Default for nros_client_t {
             response_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            _internal: [0u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S],
+            _internal: ServiceClientInternal::new(),
         }
     }
 }
@@ -611,11 +616,8 @@ pub unsafe extern "C" fn nros_client_init(
     client.response_callback = None;
     client.context = ptr::null_mut();
 
-    // Initialise the internal blob (executor_ptr null until registration)
-    core::ptr::write(
-        client._internal.as_mut_ptr() as *mut ServiceClientInternal,
-        ServiceClientInternal::new(),
-    );
+    // Initialise the internal state (executor_ptr null until registration).
+    client._internal = ServiceClientInternal::new();
 
     client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
     NROS_RET_OK
@@ -646,12 +648,9 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
         return NROS_RET_NOT_INIT;
     }
 
-    // Drop the inline ServiceClientInternal (no transport handle here
-    // — the RmwServiceClient lives in the arena and is freed when the
-    // executor is destroyed).
-    core::ptr::drop_in_place(client._internal.as_mut_ptr() as *mut ServiceClientInternal);
-
-    client._internal = [0u64; SERVICE_CLIENT_INTERNAL_OPAQUE_U64S];
+    // Reset the inline ServiceClientInternal. The RmwServiceClient lives
+    // in the executor's arena and is freed when the executor is destroyed.
+    client._internal = ServiceClientInternal::new();
     client.response_callback = None;
     client.context = ptr::null_mut();
     client.node = ptr::null();
@@ -706,8 +705,7 @@ pub unsafe extern "C" fn nros_client_set_timeout(
 ) -> nros_ret_t {
     validate_not_null!(client);
     let client = &mut *client;
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ServiceClientInternal);
-    internal.timeout_ms = timeout_ms;
+    client._internal.timeout_ms = timeout_ms;
     NROS_RET_OK
 }
 
@@ -739,7 +737,7 @@ pub unsafe extern "C" fn nros_client_send_request_async(
             return NROS_RET_NOT_INIT;
         }
 
-        let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
             return NROS_RET_NOT_INIT;
         }
@@ -806,7 +804,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
             return NROS_RET_NOT_INIT;
         }
 
-        let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal);
+        let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
             return NROS_RET_NOT_INIT;
         }
@@ -882,9 +880,8 @@ pub unsafe extern "C" fn nros_client_call(
         return NROS_RET_NOT_INIT;
     }
 
-    let internal_ptr = client_ref._internal.as_mut_ptr() as *mut ServiceClientInternal;
-    let executor_ptr = (*internal_ptr).executor_ptr;
-    let timeout_ms = (*internal_ptr).timeout_ms;
+    let executor_ptr = client_ref._internal.executor_ptr;
+    let timeout_ms = client_ref._internal.timeout_ms;
     if executor_ptr.is_null() {
         return NROS_RET_NOT_INIT;
     }
@@ -1403,10 +1400,8 @@ mod verification {
         executor.in_dispatch = true;
 
         client.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
-        let internal =
-            unsafe { &mut *(client._internal.as_mut_ptr() as *mut ServiceClientInternal) };
-        internal.executor_ptr = &mut executor as *mut _ as *mut core::ffi::c_void;
-        internal.timeout_ms = 5000;
+        client._internal.executor_ptr = &mut executor as *mut _ as *mut core::ffi::c_void;
+        client._internal.timeout_ms = 5000;
 
         let req = [0u8; 8];
         let mut resp = [0u8; 8];

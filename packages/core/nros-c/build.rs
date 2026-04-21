@@ -36,7 +36,7 @@ fn main() {
 fn probe_nros_sizes() -> std::collections::HashMap<String, u64> {
     use std::collections::HashMap;
 
-    let rlib = match nros_sizes_build::find_dep_rlib("nros") {
+    let rlib = match nros_sizes_build::find_dep_rlib("nros", "__NROS_SIZE_") {
         Ok(p) => p,
         Err(e) => {
             println!("cargo:warning=nros-c probe: {e}");
@@ -82,32 +82,18 @@ fn generate_config(
     let executor_opaque_u64s = executor_bytes.div_ceil(8);
     let executor_storage_bytes = executor_opaque_u64s * 8;
 
-    // --- Action storage upper bounds ---
-    // These must be >= size_of::<ActionClientInternal>() / size_of::<ActionServerInternal>()
-    // for every supported target architecture.
-    // Validated at compile time by assertions in opaque_sizes.rs.
+    // --- Action server storage upper bound ---
+    // Must be >= size_of::<ActionServerInternal>() for every supported
+    // target architecture. Validated at compile time by the assertion in
+    // opaque_sizes.rs.
     //
-    // ActionClientInternal now stores only arena_entry_index (i32) + executor_ptr (*mut c_void).
-    // The ActionClientCore lives in the executor's arena.
-    let action_client_bytes = 16usize; // i32 + pointer + padding
-    let action_client_opaque_u64s = action_client_bytes.div_ceil(8);
-    let action_client_storage_bytes = action_client_opaque_u64s * 8;
-
+    // Phase 87.5: ActionClientInternal, ServiceClientInternal, and
+    // ServiceServerInternal are now `#[repr(C)]` and embedded directly
+    // in their outer `nros_*_t` types. Only `ActionServerInternal` still
+    // uses the opaque-storage pattern (deferred due to
+    // `Option<ActionServerRawHandle>` — needs a niche-free rewrite).
     let action_server_storage_bytes = 256usize; // ActionServerInternal: ~64 bytes on ARM64
     let action_server_opaque_u64s = action_server_storage_bytes.div_ceil(8);
-
-    // ServiceClientInternal (Phase 82): arena_entry_index (i32) + executor_ptr (*mut c_void)
-    // + timeout_ms (u32). Storage bytes are also a generous upper bound for the C ABI
-    // header layout. Validated at compile time by assertion in opaque_sizes.rs.
-    let service_client_internal_bytes = 24usize;
-    let service_client_internal_opaque_u64s = service_client_internal_bytes.div_ceil(8);
-    let service_client_internal_storage_bytes = service_client_internal_opaque_u64s * 8;
-
-    // ServiceServerInternal (Phase 82.7): arena_entry_index (i32) + executor_ptr (*mut c_void).
-    // Validated at compile time by assertion in opaque_sizes.rs.
-    let service_server_internal_bytes = 16usize; // i32 + pointer + padding
-    let service_server_internal_opaque_u64s = service_server_internal_bytes.div_ceil(8);
-    let service_server_internal_storage_bytes = service_server_internal_opaque_u64s * 8;
 
     let contents = format!(
         "/// Maximum number of handles in an executor \
@@ -127,26 +113,10 @@ fn generate_config(
          /// Validated at compile time by `size_of::<Executor>()` assertion.\n\
          pub const EXECUTOR_OPAQUE_U64S: usize = {executor_opaque_u64s};\n\
          \n\
-         /// Inline opaque storage for `ActionClientInternal` inside `nros_action_client_t` (in u64 units).\n\
-         /// Upper bound: 3 × service_client (384) + subscriber (128) + 3 × message_buffer + overhead.\n\
-         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const ACTION_CLIENT_INTERNAL_OPAQUE_U64S: usize = {action_client_opaque_u64s};\n\
-         \n\
          /// Inline opaque storage for `ActionServerInternal` inside `nros_action_server_t` (in u64 units).\n\
          /// Conservative upper bound for a small struct with function pointers.\n\
          /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const ACTION_SERVER_INTERNAL_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n\
-         \n\
-         /// Inline opaque storage for `ServiceClientInternal` inside `nros_client_t` (in u64 units).\n\
-         /// Phase 82: replaces the old RmwServiceClient inline storage (the\n\
-         /// transport handle now lives in the executor's arena instead).\n\
-         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const SERVICE_CLIENT_INTERNAL_OPAQUE_U64S: usize = {service_client_internal_opaque_u64s};\n\
-         \n\
-         /// Inline opaque storage for `ServiceServerInternal` inside `nros_service_t` (in u64 units).\n\
-         /// Phase 82.7: adds symmetry with service client and action entities.\n\
-         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const SERVICE_SERVER_INTERNAL_OPAQUE_U64S: usize = {service_server_internal_opaque_u64s};\n"
+         pub const ACTION_SERVER_INTERNAL_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n"
     );
 
     std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
@@ -186,17 +156,8 @@ fn generate_config(
          /** Inline opaque storage size (bytes) for nros_executor_t. */\n\
          #define NROS_EXECUTOR_STORAGE_SIZE {executor_storage_bytes}\n\
          \n\
-         /** Inline opaque storage size (bytes) for nros_action_client_t._internal. */\n\
-         #define NROS_ACTION_CLIENT_STORAGE_SIZE {action_client_storage_bytes}\n\
-         \n\
          /** Inline opaque storage size (bytes) for nros_action_server_t._internal. */\n\
          #define NROS_ACTION_SERVER_STORAGE_SIZE {action_server_storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros_client_t._internal. */\n\
-         #define NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE {service_client_internal_storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros_service_t._internal. */\n\
-         #define NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE {service_server_internal_storage_bytes}\n\
          \n\
          /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─\n\
           * Values below are `size_of::<T>()` for each Rust type, extracted from\n\

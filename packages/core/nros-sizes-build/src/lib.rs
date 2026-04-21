@@ -69,14 +69,23 @@ impl From<object::Error> for Error {
     }
 }
 
-/// Locate the newest rlib for `crate_name` produced by the in-progress cargo build.
+/// Locate the rlib for `crate_name` that contains Phase 87's size-probe
+/// symbols (any defined symbol starting with `symbol_prefix`), falling back
+/// to the newest matching rlib if none do.
 ///
-/// Uses `cargo metadata --format-version=1 --no-deps` to find the workspace target
-/// directory, then globs `{target}/<triple>/<profile>/deps/lib<crate_name>-*.rlib`
-/// (and the no-triple fallback for native builds). Of all candidates, returns the
-/// one with the most recent mtime — matching cargo's own incremental build
-/// semantics when multiple feature-flag combinations have been compiled.
-pub fn find_dep_rlib(crate_name: &str) -> Result<PathBuf, Error> {
+/// Uses `cargo metadata --format-version=1 --no-deps` to find the workspace
+/// target directory, then globs `{target}/<triple>/<profile>/deps/lib<crate_name>-*.rlib`
+/// (plus the no-triple fallback for native builds) and ranks the matches:
+///
+/// 1. Among rlibs that contain at least one symbol starting with
+///    `symbol_prefix`, pick the newest by mtime. This is the primary path —
+///    a cargo build with `--features rmw-zenoh` (etc.) produces an rlib
+///    that emits the `__NROS_SIZE_*` statics.
+/// 2. If no rlib contains any probe symbol, fall back to the newest rlib
+///    of any flavour. The caller's `extract_sizes` will then return an
+///    empty map and emit a `cargo:warning=`. Build proceeds without probe
+///    values (useful for `cargo check` without feature flags).
+pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let target_dir = cargo_target_dir()?;
     let triple = env::var("TARGET").ok();
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
@@ -87,7 +96,7 @@ pub fn find_dep_rlib(crate_name: &str) -> Result<PathBuf, Error> {
     }
     searched.push(target_dir.join(&profile).join("deps"));
 
-    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     let lib_prefix = format!("lib{crate_name}-");
     for dir in &searched {
         let read_dir = match std::fs::read_dir(dir) {
@@ -101,18 +110,28 @@ pub fn find_dep_rlib(crate_name: &str) -> Result<PathBuf, Error> {
                 continue;
             }
             let meta = entry.metadata()?;
-            let mtime = meta.modified()?;
-            match &best {
-                Some((best_time, _)) if *best_time >= mtime => {}
-                _ => best = Some((mtime, path)),
+            candidates.push((meta.modified()?, path));
+        }
+    }
+
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+
+    for (_, path) in &candidates {
+        if let Ok(sizes) = extract_sizes(path, symbol_prefix) {
+            if !sizes.is_empty() {
+                return Ok(path.clone());
             }
         }
     }
 
-    best.map(|(_, p)| p).ok_or_else(|| Error::RlibNotFound {
-        crate_name: crate_name.to_string(),
-        searched,
-    })
+    candidates
+        .into_iter()
+        .next()
+        .map(|(_, p)| p)
+        .ok_or_else(|| Error::RlibNotFound {
+            crate_name: crate_name.to_string(),
+            searched,
+        })
 }
 
 /// Extract the sizes of every defined symbol with the given prefix from an rlib.

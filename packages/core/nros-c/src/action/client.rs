@@ -7,7 +7,6 @@ use nros::GoalId;
 use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header};
 
 use super::common::*;
-use crate::config::ACTION_CLIENT_INTERNAL_OPAQUE_U64S;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
@@ -42,6 +41,13 @@ pub struct ActionClientInternal {
 }
 
 impl ActionClientInternal {
+    pub const fn new() -> Self {
+        Self {
+            arena_entry_index: -1,
+            executor_ptr: core::ptr::null_mut(),
+        }
+    }
+
     /// Get a mutable reference to the ActionClientCore in the executor arena.
     ///
     /// Returns `None` if not yet registered with the executor.
@@ -54,6 +60,12 @@ impl ActionClientInternal {
         }
         let exec = &mut *(self.executor_ptr as *mut crate::executor::CExecutor);
         unsafe { exec.action_client_core_mut(self.arena_entry_index as usize) }
+    }
+}
+
+impl Default for ActionClientInternal {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -100,8 +112,9 @@ pub struct nros_action_client_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque inline storage for internal implementation
-    pub _internal: [u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S],
+    /// Internal state (arena entry index + executor pointer). Phase 87.5:
+    /// typed `#[repr(C)]` field.
+    pub _internal: ActionClientInternal,
 }
 
 impl Default for nros_action_client_t {
@@ -119,7 +132,7 @@ impl Default for nros_action_client_t {
             result_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            _internal: [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S],
+            _internal: ActionClientInternal::new(),
         }
     }
 }
@@ -210,14 +223,7 @@ pub unsafe extern "C" fn nros_action_client_init(
     // Metadata only — no transport handles created here.
     // Transport handles are created in nros_executor_add_action_client,
     // which places the ActionClientCore in the executor's arena.
-    let internal = ActionClientInternal {
-        arena_entry_index: -1,
-        executor_ptr: core::ptr::null_mut(),
-    };
-    core::ptr::write(
-        client._internal.as_mut_ptr() as *mut ActionClientInternal,
-        internal,
-    );
+    client._internal = ActionClientInternal::new();
 
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
 
@@ -342,7 +348,7 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let internal = &mut client._internal;
     let uuid = &*goal_uuid;
     let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
@@ -465,7 +471,7 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let internal = &mut client._internal;
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
@@ -541,7 +547,7 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let internal = &mut client._internal;
     let goal_data = core::slice::from_raw_parts(goal, goal_len);
 
     // C serialize produces [CDR_HEADER][fields] — strip the header.
@@ -586,7 +592,7 @@ pub unsafe extern "C" fn nros_action_get_result_async(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let internal = &mut client._internal;
     let uuid = &*goal_uuid;
     let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
@@ -644,7 +650,7 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let internal = &mut client_ref._internal;
     let ctx = client_ref.context;
 
     let core = match unsafe { internal.arena_core_mut() } {
@@ -736,9 +742,10 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    // Drop the internal ActionClientCore in place
-    core::ptr::drop_in_place(client._internal.as_mut_ptr() as *mut ActionClientInternal);
-    client._internal = [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S];
+    // Reset the inline ActionClientInternal. The ActionClientCore
+    // (transport handles) lives in the executor's arena and is freed when
+    // the executor is destroyed.
+    client._internal = ActionClientInternal::new();
     client.feedback_callback = None;
     client.result_callback = None;
     client.context = ptr::null_mut();
@@ -857,7 +864,8 @@ mod verification {
             nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(cli.node.is_null());
-        assert_eq!(cli._internal, [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S]);
+        assert_eq!(cli._internal.arena_entry_index, -1);
+        assert!(cli._internal.executor_ptr.is_null());
         assert!(cli.feedback_callback.is_none());
         assert!(cli.result_callback.is_none());
     }

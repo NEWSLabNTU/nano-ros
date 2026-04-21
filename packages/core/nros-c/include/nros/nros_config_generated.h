@@ -5,17 +5,8 @@
 /** Inline opaque storage size (bytes) for nros_executor_t. */
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
-/** Inline opaque storage size (bytes) for nros_action_client_t._internal. */
-#define NROS_ACTION_CLIENT_STORAGE_SIZE 16
-
 /** Inline opaque storage size (bytes) for nros_action_server_t._internal. */
 #define NROS_ACTION_SERVER_STORAGE_SIZE 256
-
-/** Inline opaque storage size (bytes) for nros_client_t._internal. */
-#define NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE 24
-
-/** Inline opaque storage size (bytes) for nros_service_t._internal. */
-#define NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE 16
 
 /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
 * Values below are `size_of::<T>()` for each Rust type, extracted from
