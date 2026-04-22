@@ -82,18 +82,9 @@ fn generate_config(
     let executor_opaque_u64s = executor_bytes.div_ceil(8);
     let executor_storage_bytes = executor_opaque_u64s * 8;
 
-    // --- Action server storage upper bound ---
-    // Must be >= size_of::<ActionServerInternal>() for every supported
-    // target architecture. Validated at compile time by the assertion in
-    // opaque_sizes.rs.
-    //
-    // Phase 87.5: ActionClientInternal, ServiceClientInternal, and
-    // ServiceServerInternal are now `#[repr(C)]` and embedded directly
-    // in their outer `nros_*_t` types. Only `ActionServerInternal` still
-    // uses the opaque-storage pattern (deferred due to
-    // `Option<ActionServerRawHandle>` — needs a niche-free rewrite).
-    let action_server_storage_bytes = 256usize; // ActionServerInternal: ~64 bytes on ARM64
-    let action_server_opaque_u64s = action_server_storage_bytes.div_ceil(8);
+    // Phase 87.5 (full): all four `*Internal` shim types are now
+    // `#[repr(C)]` and embedded directly in their outer `nros_*_t`
+    // structs. No hand-math storage upper bounds needed.
 
     let contents = format!(
         "/// Maximum number of handles in an executor \
@@ -113,10 +104,7 @@ fn generate_config(
          /// Validated at compile time by `size_of::<Executor>()` assertion.\n\
          pub const EXECUTOR_OPAQUE_U64S: usize = {executor_opaque_u64s};\n\
          \n\
-         /// Inline opaque storage for `ActionServerInternal` inside `nros_action_server_t` (in u64 units).\n\
-         /// Conservative upper bound for a small struct with function pointers.\n\
-         /// Validated at compile time by assertion in opaque_sizes.rs.\n\
-         pub const ACTION_SERVER_INTERNAL_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n"
+         "
     );
 
     std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
@@ -136,6 +124,10 @@ fn generate_config(
     let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
     let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
     let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
+    let probe_action_server_internal = probed
+        .get("ACTION_SERVER_INTERNAL_SIZE")
+        .copied()
+        .unwrap_or(0) as usize;
 
     // Invariant during the transition: the existing hand-math upper bound for
     // Executor must envelope the exact Rust size. If this ever flips the build
@@ -157,9 +149,6 @@ fn generate_config(
          \n\
          /** Inline opaque storage size (bytes) for nros_executor_t. */\n\
          #define NROS_EXECUTOR_STORAGE_SIZE {executor_storage_bytes}\n\
-         \n\
-         /** Inline opaque storage size (bytes) for nros_action_server_t._internal. */\n\
-         #define NROS_ACTION_SERVER_STORAGE_SIZE {action_server_storage_bytes}\n\
          \n\
          /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─\n\
           * Values below are `size_of::<T>()` for each Rust type, extracted from\n\
@@ -184,6 +173,8 @@ fn generate_config(
          #define NROS_SESSION_SIZE {probe_session}\n\
          /** `size_of::<LifecyclePollingNodeCtx>()` */\n\
          #define NROS_LIFECYCLE_CTX_SIZE {probe_lifecycle_ctx}\n\
+         /** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */\n\
+         #define NROS_ACTION_SERVER_INTERNAL_SIZE {probe_action_server_internal}\n\
          \n\
          #endif /* NROS_CONFIG_GENERATED_H */\n"
     );

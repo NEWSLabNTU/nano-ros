@@ -48,6 +48,36 @@ mod rmw_sizes {
     export_size!(pub EXECUTOR_SIZE       = nros_node::Executor);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
+
+    // Layout-mirror struct for `nros_c::action::ActionServerInternal`.
+    // ActionServerInternal lives in the `nros-c` crate (it embeds C-API
+    // pointer types like `*mut nros_action_server_t`), so it can't be
+    // referenced from `nros` directly. This mirror has the same `#[repr(C)]`
+    // field shape — `*mut c_void` and `unsafe extern "C" fn(*mut c_void, ...)`
+    // pointer slots — and therefore the same byte size, since fn-pointer
+    // size is independent of parameter types. nros-c asserts at compile
+    // time that `size_of::<ActionServerInternal>() ==
+    // size_of::<ActionServerInternalLayout>()`.
+    use core::ffi::c_void;
+    type CGoalCallbackLayout =
+        unsafe extern "C" fn(*mut c_void, *const c_void, *const u8, usize, *mut c_void) -> i32;
+    type CCancelCallbackLayout =
+        Option<unsafe extern "C" fn(*const c_void, i32, *mut c_void) -> i32>;
+    type CAcceptedCallbackLayout =
+        Option<unsafe extern "C" fn(*mut c_void, *const c_void, *mut c_void)>;
+
+    #[repr(C)]
+    #[doc(hidden)]
+    pub struct ActionServerInternalLayout {
+        pub handle: nros_node::ActionServerRawHandle,
+        pub executor_ptr: *mut c_void,
+        pub c_goal_callback: CGoalCallbackLayout,
+        pub c_cancel_callback: CCancelCallbackLayout,
+        pub c_accepted_callback: CAcceptedCallbackLayout,
+        pub c_context: *mut c_void,
+        pub server_ptr: *mut c_void,
+    }
+    export_size!(pub ACTION_SERVER_INTERNAL_SIZE = ActionServerInternalLayout);
 }
 
 #[cfg(any(

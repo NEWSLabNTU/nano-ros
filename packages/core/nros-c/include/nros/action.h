@@ -285,8 +285,11 @@ typedef struct nros_action_server_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Inline opaque storage for internal implementation. */
-    _Alignas(8) uint8_t _internal[NROS_ACTION_SERVER_STORAGE_SIZE];
+    /** Inline opaque storage for `ActionServerInternal`.
+     *  Sized from `size_of::<ActionServerInternalLayout>()` via the Phase 87
+     *  probe (the layout-mirror struct in `nros::sizes` matches the real
+     *  ActionServerInternal byte-for-byte). */
+    _Alignas(8) uint8_t _internal[NROS_ACTION_SERVER_INTERNAL_SIZE];
 } nros_action_server_t;
 
 /* ===================================================================

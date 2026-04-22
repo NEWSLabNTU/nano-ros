@@ -7,7 +7,6 @@ use nros::GoalId;
 use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header};
 
 use super::common::*;
-use crate::config::ACTION_SERVER_INTERNAL_OPAQUE_U64S;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
@@ -63,8 +62,9 @@ pub struct nros_action_server_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque inline storage for internal implementation
-    pub _internal: [u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S],
+    /// Internal state — set by `nros_executor_add_action_server`.
+    /// Phase 87.5: typed `#[repr(C)]` field, no longer an opaque blob.
+    pub _internal: ActionServerInternal,
 }
 
 impl Default for nros_action_server_t {
@@ -82,7 +82,7 @@ impl Default for nros_action_server_t {
             accepted_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            _internal: [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S],
+            _internal: ActionServerInternal::invalid_default(),
         }
     }
 }
@@ -95,14 +95,20 @@ impl Default for nros_action_server_t {
 ///
 /// Holds the action server handle and C callback pointers needed by
 /// the goal/cancel trampolines.
-pub(crate) struct ActionServerInternal {
-    /// Handle returned by executor registration.
-    /// `None` until registration completes (set immediately after).
-    pub(crate) handle: Option<nros_node::ActionServerRawHandle>,
+///
+/// Phase 87.5: `#[repr(C)]` so cbindgen sees this struct directly.
+/// `handle` was `Option<ActionServerRawHandle>` previously; now it is
+/// always present, with the sentinel `INVALID_ENTRY_INDEX` indicating
+/// "not registered yet". Use `is_handle_set()` to check.
+#[repr(C)]
+pub struct ActionServerInternal {
+    /// Handle returned by executor registration. `entry_index ==
+    /// INVALID_ENTRY_INDEX` until registration completes.
+    pub handle: nros_node::ActionServerRawHandle,
     /// Pointer to the internal Rust executor (`CExecutor`).
-    pub(crate) executor_ptr: *mut c_void,
+    pub executor_ptr: *mut c_void,
     /// C goal callback from init. Required.
-    pub(crate) c_goal_callback: unsafe extern "C" fn(
+    pub c_goal_callback: unsafe extern "C" fn(
         *mut nros_action_server_t,
         *const nros_goal_handle_t,
         *const u8,
@@ -110,13 +116,54 @@ pub(crate) struct ActionServerInternal {
         *mut c_void,
     ) -> nros_goal_response_t,
     /// C cancel callback from init (may be None).
-    pub(crate) c_cancel_callback: nros_cancel_callback_t,
+    pub c_cancel_callback: nros_cancel_callback_t,
     /// C accepted callback from init (may be None).
-    pub(crate) c_accepted_callback: nros_accepted_callback_t,
+    pub c_accepted_callback: nros_accepted_callback_t,
     /// C user context from init.
-    pub(crate) c_context: *mut c_void,
+    pub c_context: *mut c_void,
     /// Pointer back to the C action server struct.
-    pub(crate) server_ptr: *mut nros_action_server_t,
+    pub server_ptr: *mut nros_action_server_t,
+}
+
+impl ActionServerInternal {
+    /// `true` once `handle` has been populated by executor registration.
+    #[inline]
+    pub fn is_handle_set(&self) -> bool {
+        !self.handle.is_invalid()
+    }
+
+    /// Construct a zero-initialised internal — sentinel handle, null pointers,
+    /// no callbacks. Used for the default state of `nros_action_server_t._internal`.
+    pub fn invalid_default() -> Self {
+        Self {
+            handle: nros_node::ActionServerRawHandle::invalid(),
+            executor_ptr: ptr::null_mut(),
+            c_goal_callback: dummy_goal_callback,
+            c_cancel_callback: None,
+            c_accepted_callback: None,
+            c_context: ptr::null_mut(),
+            server_ptr: ptr::null_mut(),
+        }
+    }
+}
+
+impl Default for ActionServerInternal {
+    fn default() -> Self {
+        Self::invalid_default()
+    }
+}
+
+/// Stub for the required `c_goal_callback` field when the internal is in
+/// its uninitialised state. Never called — the dispatch path checks
+/// `is_handle_set()` first.
+unsafe extern "C" fn dummy_goal_callback(
+    _server: *mut nros_action_server_t,
+    _goal: *const nros_goal_handle_t,
+    _data: *const u8,
+    _len: usize,
+    _ctx: *mut c_void,
+) -> nros_goal_response_t {
+    nros_goal_response_t::NROS_GOAL_REJECT
 }
 
 /// Build a stack-local `nros_goal_handle_t` from an arena-supplied UUID.
@@ -230,7 +277,7 @@ pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
 /// The server must have been registered with the executor (state = INITIALIZED
 /// and `_internal` written via `ptr::write`).
 unsafe fn get_internal(server: *const nros_action_server_t) -> &'static ActionServerInternal {
-    &*((*server)._internal.as_ptr() as *const ActionServerInternal)
+    &(*server)._internal
 }
 
 // ============================================================================
@@ -238,7 +285,15 @@ unsafe fn get_internal(server: *const nros_action_server_t) -> &'static ActionSe
 // ============================================================================
 
 /// Get a zero-initialized action server.
+///
+/// `improper_ctypes_definitions` is silenced because
+/// `ActionServerRawHandle` (transitively in `_internal.handle`) has a
+/// function-pointer field whose *parameter* signature includes
+/// `&mut dyn FnMut(...)`. Function pointers are FFI-safe themselves;
+/// only invoking the field with a Rust trait object is non-FFI, and
+/// no C caller does that.
 #[unsafe(no_mangle)]
+#[allow(improper_ctypes_definitions)]
 pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_server_t {
     nros_action_server_t::default()
 }
@@ -332,7 +387,7 @@ pub unsafe extern "C" fn nros_action_server_init(
     server.node = node;
 
     // RMW entity creation is deferred to nros_executor_add_action_server()
-    server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
+    server._internal = ActionServerInternal::invalid_default();
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -353,10 +408,10 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
     validate_not_null!(server, goal, feedback);
 
     let internal = get_internal(server);
-    let handle = match internal.handle {
-        Some(h) => h,
-        None => return NROS_RET_NOT_INIT,
-    };
+    if !internal.is_handle_set() {
+        return NROS_RET_NOT_INIT;
+    }
+    let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
@@ -388,10 +443,10 @@ pub unsafe extern "C" fn nros_action_succeed(
     validate_not_null!(server, goal);
 
     let internal = get_internal(server);
-    let handle = match internal.handle {
-        Some(h) => h,
-        None => return NROS_RET_NOT_INIT,
-    };
+    if !internal.is_handle_set() {
+        return NROS_RET_NOT_INIT;
+    }
+    let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
@@ -431,10 +486,10 @@ pub unsafe extern "C" fn nros_action_abort(
     validate_not_null!(server, goal);
 
     let internal = get_internal(server);
-    let handle = match internal.handle {
-        Some(h) => h,
-        None => return NROS_RET_NOT_INIT,
-    };
+    if !internal.is_handle_set() {
+        return NROS_RET_NOT_INIT;
+    }
+    let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
@@ -472,10 +527,10 @@ pub unsafe extern "C" fn nros_action_canceled(
     validate_not_null!(server, goal);
 
     let internal = get_internal(server);
-    let handle = match internal.handle {
-        Some(h) => h,
-        None => return NROS_RET_NOT_INIT,
-    };
+    if !internal.is_handle_set() {
+        return NROS_RET_NOT_INIT;
+    }
+    let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
@@ -514,9 +569,10 @@ pub unsafe extern "C" fn nros_action_execute(
     validate_not_null!(server, goal);
 
     let internal = get_internal(server);
-    let Some(handle) = internal.handle else {
+    if !internal.is_handle_set() {
         return NROS_RET_NOT_INIT;
-    };
+    }
+    let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
@@ -542,9 +598,10 @@ pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
         return 0;
     }
     let internal = get_internal(server);
-    let Some(handle) = internal.handle else {
+    if !internal.is_handle_set() {
         return 0;
-    };
+    }
+    let handle = internal.handle;
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     handle.active_goal_count(executor)
 }
@@ -568,9 +625,10 @@ pub unsafe extern "C" fn nros_action_get_goal_status(
     validate_not_null!(server, goal, status);
 
     let internal = get_internal(server);
-    let Some(handle) = internal.handle else {
+    if !internal.is_handle_set() {
         return NROS_RET_NOT_INIT;
-    };
+    }
+    let handle = internal.handle;
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_core::GoalId {
         uuid: (*goal).uuid.uuid,
@@ -610,9 +668,9 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
         nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
     );
 
-    // Drop the internal implementation in place
-    core::ptr::drop_in_place(server._internal.as_mut_ptr() as *mut ActionServerInternal);
-    server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
+    // Reset the internal back to its sentinel (no Drop impl needed —
+    // the arena owns the actual action server).
+    server._internal = ActionServerInternal::invalid_default();
 
     server.goal_callback = None;
     server.cancel_callback = None;
@@ -795,7 +853,8 @@ mod verification {
             srv.state,
             nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
         );
-        assert_eq!(srv._internal, [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S]);
+        assert!(srv._internal.handle.is_invalid());
+        assert!(srv._internal.executor_ptr.is_null());
         assert!(srv.node.is_null());
         assert!(srv.goal_callback.is_none());
     }

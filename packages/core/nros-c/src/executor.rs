@@ -904,9 +904,11 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         };
 
         // Create the internal struct (handle filled after registration).
-        // Written directly into the server's inline `_internal` storage — no heap allocation.
-        let internal = ActionServerInternal {
-            handle: None,
+        // Phase 87.5: ActionServerInternal is now a typed `#[repr(C)]` field,
+        // not an opaque blob — assign by value.
+        let server_mut = &mut *server;
+        server_mut._internal = ActionServerInternal {
+            handle: nros_node::ActionServerRawHandle::invalid(),
             executor_ptr: opaque_ptr,
             c_goal_callback,
             c_cancel_callback: server_ref.cancel_callback,
@@ -914,13 +916,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
             c_context: server_ref.context,
             server_ptr: server,
         };
-
-        let server_mut = &mut *server;
-        core::ptr::write(
-            server_mut._internal.as_mut_ptr() as *mut ActionServerInternal,
-            internal,
-        );
-        let context = server_mut._internal.as_mut_ptr() as *mut core::ffi::c_void;
+        let context = (&mut server_mut._internal) as *mut ActionServerInternal as *mut core::ffi::c_void;
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, server_ref.node);
@@ -943,19 +939,13 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         match result {
             Ok(handle) => {
                 // Fill in the handle now that registration succeeded
-                let internal_ref =
-                    &mut *(server_mut._internal.as_mut_ptr() as *mut ActionServerInternal);
-                internal_ref.handle = Some(handle);
-
+                server_mut._internal.handle = handle;
                 executor.handle_count += 1;
                 NROS_RET_OK
             }
             Err(_) => {
-                // Registration failed — drop the internal and zero the storage
-                core::ptr::drop_in_place(
-                    server_mut._internal.as_mut_ptr() as *mut ActionServerInternal
-                );
-                server_mut._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
+                // Registration failed — reset the internal back to invalid.
+                server_mut._internal = ActionServerInternal::invalid_default();
                 NROS_RET_ERROR
             }
         }

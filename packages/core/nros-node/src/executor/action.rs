@@ -578,6 +578,7 @@ impl Executor {
 ///
 /// Returned by [`Executor::add_action_server_raw()`]. Provides methods
 /// to interact with the server using raw CDR bytes.
+#[repr(C)]
 #[allow(clippy::type_complexity)]
 pub struct ActionServerRawHandle {
     pub(crate) entry_index: usize,
@@ -597,6 +598,77 @@ impl Clone for ActionServerRawHandle {
 }
 
 impl Copy for ActionServerRawHandle {}
+
+/// Sentinel value indicating an `ActionServerRawHandle` is not bound to an
+/// arena entry yet. Used by Phase 87.5 to replace `Option<...>` with a
+/// `#[repr(C)]`-compatible inline field.
+///
+/// Function pointers are populated with `unreachable_*` stubs that panic
+/// if anyone is reckless enough to dispatch through an unbound handle —
+/// callers must check `entry_index == INVALID_ENTRY_INDEX` first.
+pub const INVALID_ENTRY_INDEX: usize = usize::MAX;
+
+impl ActionServerRawHandle {
+    /// Construct a sentinel handle representing "not registered yet".
+    ///
+    /// All function pointers are unreachable stubs; only valid use is
+    /// to populate `#[repr(C)]` storage that is later overwritten by a
+    /// real handle (or queried via `is_invalid()` to skip operations).
+    pub const fn invalid() -> Self {
+        unsafe fn unreachable_publish_feedback(
+            _: *mut u8,
+            _: &nros_core::GoalId,
+            _: *const u8,
+            _: usize,
+        ) -> Result<(), NodeError> {
+            unreachable!("ActionServerRawHandle::publish_feedback called on invalid handle")
+        }
+        unsafe fn unreachable_complete_goal(
+            _: *mut u8,
+            _: &nros_core::GoalId,
+            _: nros_core::GoalStatus,
+            _: *const u8,
+            _: usize,
+        ) {
+            unreachable!("ActionServerRawHandle::complete_goal called on invalid handle")
+        }
+        unsafe fn unreachable_set_goal_status(
+            _: *mut u8,
+            _: &nros_core::GoalId,
+            _: nros_core::GoalStatus,
+        ) {
+            unreachable!("ActionServerRawHandle::set_goal_status called on invalid handle")
+        }
+        unsafe fn unreachable_active_goal_count(_: *const u8) -> usize {
+            unreachable!("ActionServerRawHandle::active_goal_count called on invalid handle")
+        }
+        unsafe fn unreachable_for_each_active_goal(
+            _: *const u8,
+            _: &mut dyn FnMut(&RawActiveGoal),
+        ) {
+            unreachable!("ActionServerRawHandle::for_each_active_goal called on invalid handle")
+        }
+        Self {
+            entry_index: INVALID_ENTRY_INDEX,
+            publish_feedback_fn: unreachable_publish_feedback,
+            complete_goal_fn: unreachable_complete_goal,
+            set_goal_status_fn: unreachable_set_goal_status,
+            active_goal_count_fn: unreachable_active_goal_count,
+            for_each_active_goal_fn: unreachable_for_each_active_goal,
+        }
+    }
+
+    /// `true` if this handle is the sentinel returned by `Self::invalid()`.
+    pub const fn is_invalid(&self) -> bool {
+        self.entry_index == INVALID_ENTRY_INDEX
+    }
+}
+
+impl Default for ActionServerRawHandle {
+    fn default() -> Self {
+        Self::invalid()
+    }
+}
 
 impl ActionServerRawHandle {
     /// Get the [`HandleId`] for this action server.

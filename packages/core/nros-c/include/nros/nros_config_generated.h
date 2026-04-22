@@ -5,9 +5,6 @@
 /** Inline opaque storage size (bytes) for nros_executor_t. */
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
-/** Inline opaque storage size (bytes) for nros_action_server_t._internal. */
-#define NROS_ACTION_SERVER_STORAGE_SIZE 256
-
 /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
 * Values below are `size_of::<T>()` for each Rust type, extracted from
 * the compiled `nros` rlib by nros-sizes-build. They coexist with the
@@ -31,5 +28,7 @@
 #define NROS_SESSION_SIZE 0
 /** `size_of::<LifecyclePollingNodeCtx>()` */
 #define NROS_LIFECYCLE_CTX_SIZE 64
+/** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */
+#define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 
 #endif /* NROS_CONFIG_GENERATED_H */
