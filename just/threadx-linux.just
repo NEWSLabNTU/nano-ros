@@ -85,8 +85,20 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Run all ThreadX Linux tests (same as test)
-test-all verbose="": (test verbose)
+# Run all ThreadX Linux tests including networked E2E
+test-all verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --test threadx_linux --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+    e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        e2e_args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 ci: doctor test
