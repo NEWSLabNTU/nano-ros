@@ -36,11 +36,14 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 /// recompiling both Rust and C code.
 pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
 
-/// Upper-bound inline storage (in `u64`) for
-/// `nros_lifecycle_state_machine_t`. Sized generously for the largest
-/// supported target; a compile-time assertion in `opaque_sizes.rs` checks
-/// that the actual Rust type fits.
-pub const NROS_LIFECYCLE_CTX_OPAQUE_U64S: usize = 16;
+/// Inline storage (in `u64`) for `nros_lifecycle_state_machine_t`.
+///
+/// Phase 87: derived from the actual Rust `LifecyclePollingNodeCtx` size via
+/// `core::mem::size_of`, no longer a hand-coded upper bound. The C-side
+/// counterpart `NROS_LIFECYCLE_CTX_SIZE` (in `nros_config_generated.h`) is
+/// the same value in bytes.
+pub const NROS_LIFECYCLE_CTX_OPAQUE_U64S: usize =
+    core::mem::size_of::<nros_node::lifecycle::LifecyclePollingNodeCtx>().div_ceil(8);
 
 // Compile-time drift check: these literals must match the canonical values
 // exported from `nros_node::limits`.

@@ -51,8 +51,9 @@ typedef struct nros_publisher_t {
     /** Pointer to parent node. */
     const struct nros_node_t* node;
     /** Inline opaque storage for the RMW publisher handle.
+     *  Sized from `size_of::<RmwPublisher>()` via the Phase 87 probe.
      *  Avoids heap allocation — managed by nros_publisher_init/fini. */
-    uint64_t _opaque[NROS_PUBLISHER_OPAQUE_U64S];
+    _Alignas(8) uint8_t _opaque[NROS_PUBLISHER_SIZE];
 } nros_publisher_t;
 
 /* ===================================================================

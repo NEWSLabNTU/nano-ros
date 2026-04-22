@@ -55,8 +55,9 @@ typedef struct nros_support_t {
     /** Locator string length. */
     size_t locator_len;
     /** Inline opaque storage for the Rust middleware session.
+     *  Sized from `size_of::<RmwSession>()` via the Phase 87 probe.
      *  Avoids heap allocation — managed by nros_support_init/fini. */
-    uint64_t _opaque[NROS_SESSION_OPAQUE_U64S];
+    _Alignas(8) uint8_t _opaque[NROS_SESSION_SIZE];
 } nros_support_t;
 
 /* ===================================================================

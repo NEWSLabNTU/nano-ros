@@ -24,7 +24,9 @@
     feature = "rmw-cffi"
 ))]
 mod rmw_sizes {
-    use crate::internals::{RmwPublisher, RmwServiceClient, RmwServiceServer, RmwSubscriber};
+    use crate::internals::{
+        RmwPublisher, RmwServiceClient, RmwServiceServer, RmwSession, RmwSubscriber,
+    };
 
     macro_rules! export_size {
         ($vis:vis $name:ident = $ty:ty) => {
@@ -38,12 +40,14 @@ mod rmw_sizes {
         };
     }
 
+    export_size!(pub SESSION_SIZE        = RmwSession);
     export_size!(pub PUBLISHER_SIZE      = RmwPublisher);
     export_size!(pub SUBSCRIBER_SIZE     = RmwSubscriber);
     export_size!(pub SERVICE_CLIENT_SIZE = RmwServiceClient);
     export_size!(pub SERVICE_SERVER_SIZE = RmwServiceServer);
     export_size!(pub EXECUTOR_SIZE       = nros_node::Executor);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
+    export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
 }
 
 #[cfg(any(

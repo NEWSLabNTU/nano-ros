@@ -27,5 +27,9 @@
 #define NROS_SERVICE_CLIENT_SIZE 296
 /** `size_of::<RmwServiceServer>()` */
 #define NROS_SERVICE_SERVER_SIZE 296
+/** `size_of::<RmwSession>()` */
+#define NROS_SESSION_SIZE 0
+/** `size_of::<LifecyclePollingNodeCtx>()` */
+#define NROS_LIFECYCLE_CTX_SIZE 64
 
 #endif /* NROS_CONFIG_GENERATED_H */

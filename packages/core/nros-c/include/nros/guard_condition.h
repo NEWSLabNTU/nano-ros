@@ -55,8 +55,9 @@ typedef struct nros_guard_condition_t {
     const struct nros_support_t* _support;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
-    /** Inline opaque storage for the guard condition handle. */
-    uint64_t _guard_opaque[NROS_GUARD_HANDLE_OPAQUE_U64S];
+    /** Inline opaque storage for the guard condition handle.
+     *  Sized from `size_of::<GuardConditionHandle>()` via the Phase 87 probe. */
+    _Alignas(8) uint8_t _guard_opaque[NROS_GUARD_CONDITION_SIZE];
 } nros_guard_condition_t;
 
 /* ===================================================================

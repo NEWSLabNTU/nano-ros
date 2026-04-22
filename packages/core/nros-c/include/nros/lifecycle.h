@@ -90,8 +90,9 @@ typedef struct nros_lifecycle_state_machine_t {
     bool _opaque_initialized;
     /** @internal Padding; do not access. */
     uint8_t _opaque_pad[7];
-    /** @internal Storage for the underlying Rust state machine. */
-    uint64_t _opaque_storage[NROS_LIFECYCLE_CTX_OPAQUE_U64S];
+    /** @internal Storage for the underlying Rust state machine.
+     *  Sized from `size_of::<LifecyclePollingNodeCtx>()` via the Phase 87 probe. */
+    _Alignas(8) uint8_t _opaque_storage[NROS_LIFECYCLE_CTX_SIZE];
 } nros_lifecycle_state_machine_t;
 
 /* ===================================================================

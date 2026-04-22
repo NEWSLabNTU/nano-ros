@@ -134,6 +134,8 @@ fn generate_config(
     let probe_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
     let probe_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
     let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
 
     // Invariant during the transition: the existing hand-math upper bound for
     // Executor must envelope the exact Rust size. If this ever flips the build
@@ -178,6 +180,10 @@ fn generate_config(
          #define NROS_SERVICE_CLIENT_SIZE {probe_service_client}\n\
          /** `size_of::<RmwServiceServer>()` */\n\
          #define NROS_SERVICE_SERVER_SIZE {probe_service_server}\n\
+         /** `size_of::<RmwSession>()` */\n\
+         #define NROS_SESSION_SIZE {probe_session}\n\
+         /** `size_of::<LifecyclePollingNodeCtx>()` */\n\
+         #define NROS_LIFECYCLE_CTX_SIZE {probe_lifecycle_ctx}\n\
          \n\
          #endif /* NROS_CONFIG_GENERATED_H */\n"
     );

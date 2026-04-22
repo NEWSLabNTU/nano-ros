@@ -161,22 +161,83 @@ Implementation proceeds in four stages. Stages 1–2 are the probe
 infrastructure and can land as a single PR; Stages 3–4 are larger
 refactors with public-API surface area, each a separate PR.
 
-- [ ] **87.1** Create `nros-sizes-build` build-script utility
-- [ ] **87.2** Add `nros/src/sizes.rs` with `export_size!` macro + exports
-- [ ] **87.3** Update `nros-c/build.rs` and `nros-cpp/build.rs` to probe
+- [x] **87.1** Create `nros-sizes-build` build-script utility
+- [x] **87.2** Add `nros/src/sizes.rs` with `export_size!` macro + exports
+- [x] **87.3** Update `nros-c/build.rs` and `nros-cpp/build.rs` to probe
       `nros`'s rlib; run both hand-math and probe in parallel, assert
       equal, land once green
-- [ ] **87.4** Delete hand-math; probe is authoritative
-- [ ] **87.5** `#[repr(C)]` migration for `ActionServerInternal`,
-      `ActionClientInternal`, `ServiceClientInternal`,
-      `ServiceServerInternal` — cbindgen takes over their sizing
-- [ ] **87.6** Thin-wrapper refactor: delete `CppPublisher`,
-      `CppSubscription`, `CppService`, `CppActionServer`,
-      `CppActionClient`, `CppGuardCondition`; move metadata to C++
-      classes; one shared `#define` per Rust handle
+- [ ] **87.4** Delete hand-math; probe is authoritative — *partial*:
+      most C-side hand-math gone (Phase 87.5 deleted `*_INTERNAL_OPAQUE_U64S`),
+      but `EXECUTOR_OPAQUE_U64S` upper bound still hand-tuned in
+      `nros-c/build.rs` and `nros-cpp/build.rs` action storage (see 87.7
+      below for the publisher/session/guard/lifecycle leaks the audit
+      caught)
+- [x] **87.5** `#[repr(C)]` migration — *partial*: `ServiceServerInternal`,
+      `ServiceClientInternal`, `ActionClientInternal` done. `ActionServerInternal`
+      deferred until its `Option<ActionServerRawHandle>` field is rewritten
+      (research showed `#[repr(C)]` on `ActionServerRawHandle` itself is
+      actually accepted by rustc — function pointers are FFI-safe regardless
+      of trait-object parameters; what's needed is the niche-free `Option`
+      replacement).
+- [x] **87.6** Thin-wrapper refactor of `nros-cpp` — Publisher,
+      Subscription, Service, Client, GuardCondition done; ActionServer
+      and ActionClient still pending (1329-line `action.rs` with
+      pending-goal arrays + multi-callback state — biggest single
+      refactor in this phase).
 - [ ] **87.7** Remove `nros-c/include/nros/types.h` hand-maintained
-      sizes; headers become 100% generated
+      sizes; headers become 100% generated. **Expanded scope per audit:**
+      five `*_OPAQUE_U64S` macros still ship in `types.h`
+      (`NROS_SESSION_OPAQUE_U64S`, `NROS_PUBLISHER_OPAQUE_U64S`,
+      `NROS_SERVICE_CLIENT_OPAQUE_U64S` (now dead, not referenced),
+      `NROS_GUARD_HANDLE_OPAQUE_U64S`, `NROS_LIFECYCLE_CTX_OPAQUE_U64S`).
+      Four module headers still consume them — `publisher.h`, `init.h`,
+      `guard_condition.h`, `lifecycle.h`. SESSION and LIFECYCLE_CTX
+      aren't yet exported from `nros::sizes`; need to add.
 - [ ] **87.8** Verify across every target; update docs
+
+### Audit-driven follow-ups (added 2026-04-22)
+
+A code audit during Phase 87.6 caught additional non-SSoT sizes that
+weren't listed in the original work items but belong inside this
+phase's scope. Severities reflect drift risk.
+
+- [ ] **87.9 (HIGH)** `types.h` cleanup is bigger than 87.7 implied.
+      The `NROS_*_OPAQUE_U64S` macros in `types.h` still drive the
+      storage size for `nros_publisher_t._opaque`,
+      `nros_support_t._opaque`, `nros_guard_condition_t._guard_opaque`,
+      and `nros_lifecycle_state_machine_t._opaque_storage`. The
+      probed `NROS_PUBLISHER_SIZE` etc. exist in
+      `nros_config_generated.h` but aren't wired through. If
+      `RmwPublisher` (or `RmwSession`, `GuardConditionHandle`,
+      `LifecyclePollingNodeCtx`) grows, only the Rust-side
+      compile-time assert catches it — no runtime safety net,
+      memory corruption possible if the assert is bypassed (e.g.
+      stale .a + new C example).
+      **Fix:** add `SESSION_SIZE` and `LIFECYCLE_CTX_SIZE` to
+      `nros::sizes`, switch the four module headers to the probed
+      macros, delete the dead `*_OPAQUE_U64S` from `types.h`, and
+      drop the matching `PUBLISHER_OPAQUE_U64S` /
+      `SESSION_OPAQUE_U64S` / `GUARD_HANDLE_OPAQUE_U64S` consts from
+      `nros-c/src/opaque_sizes.rs`.
+- [ ] **87.10 (HIGH)** `zpico-platform-shim/build.rs` initialises
+      `socket_size = 16; endpoint_size = 8` *before* the C-header
+      probe runs. If the probe path errors out (missing toolchain,
+      missing header, etc.), the loud `cargo:warning=` fires but the
+      stale fallback still ships a broken ABI. Should hard-fail
+      instead of falling back silently — losing a probe is a build
+      bug, not a recoverable warning.
+- [ ] **87.11 (MED)** `nros-cpp/build.rs` C++ ActionServer/ActionClient
+      storage is still hand-math (action_server_bytes, action_client_bytes
+      arithmetic with magic `8 * ptr_bytes` "layout padding margin").
+      Rust-side `const _: () = assert!(...)` checks catch drift but
+      the formulas are fragile. Proper fix is the 87.6 thin-wrapper
+      refactor for ActionServer/ActionClient — once the wrappers are
+      gone, `NROS_CPP_ACTION_*_STORAGE_SIZE` collapses into
+      `NROS_ACTION_*_HANDLE_SIZE` from the probe.
+- [ ] **87.12 (LOW)** `zpico-platform-shim/build.rs:78–88` Zephyr path
+      returns `(ptr_size, ptr_size)` without compiling the probe — relies
+      on the zenoh-pico Zephyr headers using a fixed pointer-sized union
+      layout. Document the assumption (or probe properly when feasible).
 
 ### 87.1 — `nros-sizes-build` build-script utility
 
