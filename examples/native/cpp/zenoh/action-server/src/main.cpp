@@ -18,10 +18,16 @@ using Fibonacci = example_interfaces::action::Fibonacci;
 
 static volatile sig_atomic_t g_running = 1;
 
-// Shared state — the goal callback is stateless (required by freestanding
-// C++14 API) so it reaches the ActionServer + counter through globals.
-static nros::ActionServer<Fibonacci>* g_srv = nullptr;
-static int g_goal_count = 0;
+/// State that the goal callback needs to reach — held on the stack of
+/// `main` and handed to the ActionServer via the Phase 84.G9
+/// `set_goal_callback_with_ctx` overload. The older `set_goal_callback`
+/// path requires a stateless function pointer and forces file-scope
+/// globals; `_with_ctx` lets us pass a `void*` through each invocation
+/// so the callback reaches the server and counter without any globals.
+struct ServerState {
+    nros::ActionServer<Fibonacci>* srv;
+    int goal_count;
+};
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -34,16 +40,19 @@ static void signal_handler(int signum) {
 
 // ----------------------------------------------------------------------------
 // Goal callback — runs the Fibonacci computation inline, publishing
-// feedback and completing the goal before returning.
+// feedback and completing the goal before returning. Reaches the
+// ActionServer + counter through the `void* ctx` parameter (Phase 84.G9).
 // ----------------------------------------------------------------------------
 
-static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal) {
+static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal,
+                                  void* ctx) {
+    auto* state = static_cast<ServerState*>(ctx);
     if (goal.order < 0 || goal.order >= 64) {
         std::printf("Goal rejected: order=%d out of range\n", goal.order);
         return nros::GoalResponse::Reject;
     }
 
-    g_goal_count++;
+    state->goal_count++;
     std::printf("Goal accepted: order=%d\n", goal.order);
 
     int32_t a = 0;
@@ -59,7 +68,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
             for (uint32_t k = 0; k < result.sequence.length(); k++) {
                 fb.sequence.push_back(result.sequence[k]);
             }
-            g_srv->publish_feedback(uuid, fb);
+            state->srv->publish_feedback(uuid, fb);
         }
 
         int32_t next = a + b;
@@ -67,7 +76,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
         b = next;
     }
 
-    if (g_srv->complete_goal(uuid, result).ok()) {
+    if (state->srv->complete_goal(uuid, result).ok()) {
         std::printf("Goal completed: [");
         for (uint32_t i = 0; i < result.sequence.length(); i++) {
             if (i > 0) std::printf(", ");
@@ -127,9 +136,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Register the goal callback.
-    g_srv = &srv;
-    srv.set_goal_callback(on_goal);
+    // Register the goal callback with a ServerState context (Phase 84.G9) —
+    // no globals needed.
+    ServerState state{&srv, 0};
+    srv.set_goal_callback_with_ctx(on_goal, &state);
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
@@ -141,7 +151,7 @@ int main(int argc, char** argv) {
     }
 
     std::printf("\nShutting down...\n");
-    std::printf("Total goals handled: %d\n", g_goal_count);
+    std::printf("Total goals handled: %d\n", state.goal_count);
     nros::shutdown();
 
     std::printf("Goodbye!\n");

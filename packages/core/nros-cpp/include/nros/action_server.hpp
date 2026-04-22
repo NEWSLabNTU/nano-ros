@@ -96,8 +96,13 @@ template <typename A> class ActionServer {
 
     /// User-facing typed goal callback signature.
     using TypedGoalFn = GoalResponse (*)(const uint8_t uuid[16], const GoalType& goal);
+    /// User-facing typed goal callback signature with user context (Phase 84.G9).
+    using TypedGoalFnWithCtx = GoalResponse (*)(const uint8_t uuid[16], const GoalType& goal,
+                                                void* ctx);
     /// User-facing typed cancel callback signature.
     using TypedCancelFn = CancelResponse (*)(const uint8_t uuid[16]);
+    /// User-facing typed cancel callback signature with user context (Phase 84.G9).
+    using TypedCancelFnWithCtx = CancelResponse (*)(const uint8_t uuid[16], void* ctx);
     /// User-facing visitor signature for `for_each_active_goal`.
     using TypedVisitorFn = void (*)(const uint8_t uuid[16], GoalStatus status);
 
@@ -110,6 +115,23 @@ template <typename A> class ActionServer {
     template <typename F> Result set_goal_callback(F f) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         user_goal_fn_ = TypedGoalFn(f); // compile error if F is not convertible
+        user_goal_fn_ctx_ = nullptr;     // mutually exclusive with _with_ctx
+        user_goal_ctx_ = nullptr;
+        return install_callbacks();
+    }
+
+    /// Register a typed goal callback with a user context pointer.
+    ///
+    /// The bare function pointer is stored alongside a `void*` that is
+    /// forwarded to every invocation — lets callers reach stateful
+    /// objects without capturing lambdas or file-scope globals. Overrides
+    /// and is overridden by `set_goal_callback()` (the two modes are
+    /// mutually exclusive).
+    Result set_goal_callback_with_ctx(TypedGoalFnWithCtx f, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_goal_fn_ctx_ = f;
+        user_goal_ctx_ = ctx;
+        user_goal_fn_ = nullptr;
         return install_callbacks();
     }
 
@@ -119,6 +141,22 @@ template <typename A> class ActionServer {
     template <typename F> Result set_cancel_callback(F f) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         user_cancel_fn_ = TypedCancelFn(f); // compile error if F is not convertible
+        user_cancel_fn_ctx_ = nullptr;      // mutually exclusive with _with_ctx
+        user_cancel_ctx_ = nullptr;
+        return install_callbacks();
+    }
+
+    /// Register a cancel callback with a user context pointer.
+    ///
+    /// Mirrors `set_goal_callback_with_ctx` — the bare function pointer
+    /// receives a `void*` alongside each UUID so stateful cancel policies
+    /// don't need captured lambdas or global state. Mutually exclusive
+    /// with `set_cancel_callback()`.
+    Result set_cancel_callback_with_ctx(TypedCancelFnWithCtx f, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_cancel_fn_ctx_ = f;
+        user_cancel_ctx_ = ctx;
+        user_cancel_fn_ = nullptr;
         return install_callbacks();
     }
 
@@ -193,7 +231,10 @@ template <typename A> class ActionServer {
     // type in nros-cpp that registers its storage address externally.
     ActionServer(ActionServer&& other)
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
-          user_cancel_fn_(other.user_cancel_fn_), user_visitor_fn_(other.user_visitor_fn_),
+          user_goal_fn_ctx_(other.user_goal_fn_ctx_), user_goal_ctx_(other.user_goal_ctx_),
+          user_cancel_fn_(other.user_cancel_fn_),
+          user_cancel_fn_ctx_(other.user_cancel_fn_ctx_),
+          user_cancel_ctx_(other.user_cancel_ctx_), user_visitor_fn_(other.user_visitor_fn_),
           initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_action_server_relocate(other.storage_, storage_);
@@ -209,7 +250,11 @@ template <typename A> class ActionServer {
             }
             executor_ = other.executor_;
             user_goal_fn_ = other.user_goal_fn_;
+            user_goal_fn_ctx_ = other.user_goal_fn_ctx_;
+            user_goal_ctx_ = other.user_goal_ctx_;
             user_cancel_fn_ = other.user_cancel_fn_;
+            user_cancel_fn_ctx_ = other.user_cancel_fn_ctx_;
+            user_cancel_ctx_ = other.user_cancel_ctx_;
             user_visitor_fn_ = other.user_visitor_fn_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
@@ -224,8 +269,9 @@ template <typename A> class ActionServer {
     /// Default constructor — creates an uninitialized action server.
     /// Use `Node::create_action_server()` to initialize.
     ActionServer()
-        : executor_(nullptr), user_goal_fn_(nullptr), user_cancel_fn_(nullptr),
-          user_visitor_fn_(nullptr), initialized_(false) {}
+        : executor_(nullptr), user_goal_fn_(nullptr), user_goal_fn_ctx_(nullptr),
+          user_goal_ctx_(nullptr), user_cancel_fn_(nullptr), user_cancel_fn_ctx_(nullptr),
+          user_cancel_ctx_(nullptr), user_visitor_fn_(nullptr), initialized_(false) {}
 
   private:
     ActionServer(const ActionServer&) = delete;
@@ -242,34 +288,50 @@ template <typename A> class ActionServer {
     static int32_t goal_trampoline(const uint8_t goal_id[16], const uint8_t* data, size_t len,
                                    void* ctx) {
         auto* self = static_cast<ActionServer*>(ctx);
-        if (!self || self->user_goal_fn_ == nullptr) {
-            return static_cast<int32_t>(GoalResponse::Reject);
-        }
+        if (!self) return static_cast<int32_t>(GoalResponse::Reject);
         GoalType g;
         if (GoalType::ffi_deserialize(data, len, &g) != 0) {
             return static_cast<int32_t>(GoalResponse::Reject);
         }
-        return static_cast<int32_t>(self->user_goal_fn_(goal_id, g));
+        if (self->user_goal_fn_ctx_ != nullptr) {
+            return static_cast<int32_t>(
+                self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
+        }
+        if (self->user_goal_fn_ != nullptr) {
+            return static_cast<int32_t>(self->user_goal_fn_(goal_id, g));
+        }
+        return static_cast<int32_t>(GoalResponse::Reject);
     }
 
     static int32_t cancel_trampoline(const uint8_t goal_id[16], void* ctx) {
         auto* self = static_cast<ActionServer*>(ctx);
-        if (!self || self->user_cancel_fn_ == nullptr) {
-            return static_cast<int32_t>(CancelResponse::Accept);
+        if (!self) return static_cast<int32_t>(CancelResponse::Accept);
+        if (self->user_cancel_fn_ctx_ != nullptr) {
+            return static_cast<int32_t>(
+                self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
         }
-        return static_cast<int32_t>(self->user_cancel_fn_(goal_id));
+        if (self->user_cancel_fn_ != nullptr) {
+            return static_cast<int32_t>(self->user_cancel_fn_(goal_id));
+        }
+        return static_cast<int32_t>(CancelResponse::Accept);
     }
 
     Result install_callbacks() {
-        nros_cpp_goal_callback_t gcb = user_goal_fn_ ? &goal_trampoline : nullptr;
-        nros_cpp_cancel_callback_t ccb = user_cancel_fn_ ? &cancel_trampoline : nullptr;
+        bool goal_set = (user_goal_fn_ != nullptr) || (user_goal_fn_ctx_ != nullptr);
+        bool cancel_set = (user_cancel_fn_ != nullptr) || (user_cancel_fn_ctx_ != nullptr);
+        nros_cpp_goal_callback_t gcb = goal_set ? &goal_trampoline : nullptr;
+        nros_cpp_cancel_callback_t ccb = cancel_set ? &cancel_trampoline : nullptr;
         return Result(nros_cpp_action_server_set_callbacks(storage_, gcb, ccb, this));
     }
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
     void* executor_; // Executor context needed for feedback/result operations
     TypedGoalFn user_goal_fn_;
+    TypedGoalFnWithCtx user_goal_fn_ctx_;
+    void* user_goal_ctx_;
     TypedCancelFn user_cancel_fn_;
+    TypedCancelFnWithCtx user_cancel_fn_ctx_;
+    void* user_cancel_ctx_;
     TypedVisitorFn user_visitor_fn_;
     bool initialized_;
 };
