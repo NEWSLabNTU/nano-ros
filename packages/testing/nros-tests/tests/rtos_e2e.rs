@@ -621,14 +621,21 @@ fn test_rtos_pubsub_e2e(
     ensure_ready(&listener_boot, "Waiting for messages", platform);
 
     // Let the talker run a bit and drain its output to avoid pipe back-pressure.
-    let _talker_out = talker
-        .wait_for_output(Duration::from_secs(15))
-        .unwrap_or_default();
+    // NuttX C needs a longer window: cold QEMU boot + 5s app sleep + session
+    // open can eat >15 s before the first publish, and parallel retries from
+    // earlier flaky tests load the host further.
+    let talker_window = match (platform, lang) {
+        (Platform::Nuttx, Lang::C) => Duration::from_secs(45),
+        _ => Duration::from_secs(15),
+    };
+    let _talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
 
     // Collect more listener output to capture "Received:" lines.
-    let final_out = listener
-        .wait_for_output(Duration::from_secs(30))
-        .unwrap_or_default();
+    let listener_window = match (platform, lang) {
+        (Platform::Nuttx, Lang::C) => Duration::from_secs(90),
+        _ => Duration::from_secs(30),
+    };
+    let final_out = listener.wait_for_output(listener_window).unwrap_or_default();
     let full_listener = format!("{}{}", listener_boot, final_out);
 
     talker.kill();
@@ -703,9 +710,15 @@ fn test_rtos_service_e2e(
         std::thread::sleep(platform.stabilization_delay());
     }
 
-    let client_out = client
-        .wait_for_output(Duration::from_secs(60))
-        .unwrap_or_default();
+    // NuttX C service is slower: 4 nros_client_call round-trips over
+    // QEMU slirp + zenoh-pico TCP are routinely in the 40–60 s range,
+    // and the first call can time out if the server queryable isn't
+    // fully registered yet (cold-host runs). Give extra headroom.
+    let client_timeout = match (platform, lang) {
+        (Platform::Nuttx, Lang::C) => Duration::from_secs(180),
+        _ => Duration::from_secs(60),
+    };
+    let client_out = client.wait_for_output(client_timeout).unwrap_or_default();
 
     server.kill();
     client.kill();
@@ -791,9 +804,13 @@ fn test_rtos_action_e2e(
 
     // Some platforms (NuttX C action, FreeRTOS C action) need a longer
     // overall window because each failed send_goal retries several times.
+    // NuttX C action is especially slow: QEMU boot + 5s network wait +
+    // session open + goal round-trip + 11 feedback messages (order=10) +
+    // result round-trip routinely takes ~130s on a loaded host, so the
+    // 120s budget used to fail occasionally; bump to 180s.
     let client_timeout = match (platform, lang) {
         (Platform::Freertos, Lang::C) => Duration::from_secs(90),
-        (Platform::Nuttx, Lang::C) => Duration::from_secs(120),
+        (Platform::Nuttx, Lang::C) => Duration::from_secs(240),
         _ => Duration::from_secs(60),
     };
     let client_out = client.wait_for_output(client_timeout).unwrap_or_default();

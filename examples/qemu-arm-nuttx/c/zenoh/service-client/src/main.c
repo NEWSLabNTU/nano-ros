@@ -110,6 +110,11 @@ void app_main(void) {
     int success_count = 0;
 
     printf("Calling service %d times...\n\n", num_cases);
+    // NuttX libc full-buffers stdout when the output is a pipe (as under
+    // QEMU serial capture). Flush before each blocking nros_client_call
+    // so the test harness sees "Response:" lines as they arrive rather
+    // than all at once when the client exits.
+    fflush(stdout);
 
     for (int i = 0; i < num_cases; i++) {
         example_interfaces_srv_add_two_ints_request request;
@@ -135,8 +140,7 @@ void app_main(void) {
             example_interfaces_srv_add_two_ints_response response;
             if (example_interfaces_srv_add_two_ints_response_deserialize(
                     &response, resp_buf, resp_len) == 0) {
-                printf("Call [%d]: %lld + %lld = %lld\n",
-                       i + 1,
+                printf("Response: %lld + %lld = %lld\n",
                        (long long)request.a,
                        (long long)request.b,
                        (long long)response.sum);
@@ -145,9 +149,13 @@ void app_main(void) {
         } else {
             fprintf(stderr, "Call [%d]: Failed with error %d\n", i + 1, ret);
         }
+        fflush(stdout);
+        fflush(stderr);
     }
 
     printf("\n%d/%d calls succeeded\n", success_count, num_cases);
+    printf("All service calls completed.\n");
+    fflush(stdout);
 
     nros_executor_fini(&app.executor);
     nros_client_fini(&app.client);

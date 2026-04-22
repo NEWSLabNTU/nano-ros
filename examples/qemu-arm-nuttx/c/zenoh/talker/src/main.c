@@ -153,6 +153,9 @@ void app_main(void) {
     nros_executor_add_timer(&app.executor, &app.timer);
 
     printf("Publishing messages...\n\n");
+    // See rationale in timer_callback (line 60). Flush here too so the
+    // readiness marker is captured before the spin loop begins.
+    fflush(stdout);
     nros_executor_spin_period(&app.executor, 100000000ULL);
 
     nros_executor_fini(&app.executor);

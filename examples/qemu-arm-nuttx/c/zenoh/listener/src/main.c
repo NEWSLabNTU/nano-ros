@@ -46,6 +46,8 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
     } else {
         fprintf(stderr, "Failed to deserialize message\n");
     }
+    fflush(stdout);
+    fflush(stderr);
 }
 
 void app_main(void) {
@@ -121,6 +123,9 @@ void app_main(void) {
         NROS_EXECUTOR_ON_NEW_DATA);
 
     printf("Waiting for messages...\n\n");
+    // NuttX libc full-buffers stdout under the test harness's pipe.
+    // See action-server for rationale.
+    fflush(stdout);
     nros_executor_spin_period(&app.executor, 100000000ULL);
 
     nros_executor_fini(&app.executor);

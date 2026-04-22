@@ -59,6 +59,7 @@ static bool service_callback(const uint8_t* request_data,
            (long long)request.a,
            (long long)request.b,
            (long long)response.sum);
+    fflush(stdout);
 
     int32_t len = example_interfaces_srv_add_two_ints_response_serialize(
         &response, response_data, response_capacity);
@@ -141,6 +142,9 @@ void app_main(void) {
     nros_executor_add_service(&app.executor, &app.service);
 
     printf("Waiting for requests...\n\n");
+    // NuttX libc full-buffers stdout under the test harness's pipe.
+    // See action-server for rationale.
+    fflush(stdout);
     nros_executor_spin_period(&app.executor, 100000000ULL);
 
     nros_executor_fini(&app.executor);

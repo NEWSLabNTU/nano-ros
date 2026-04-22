@@ -124,6 +124,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
             printf("  Goal SUCCEEDED\n");
         }
     }
+    fflush(stdout);
 }
 
 void app_main(void) {
@@ -207,6 +208,11 @@ void app_main(void) {
     }
 
     printf("Waiting for goals...\n\n");
+    // NuttX libc full-buffers stdout under the test harness's pipe, so
+    // without this flush the test never sees the "Waiting for goals"
+    // readiness marker — the spin loop below never returns and never
+    // triggers an implicit flush.
+    fflush(stdout);
     nros_executor_spin_period(&app.executor, 100000000ULL);
 
     nros_executor_fini(&app.executor);

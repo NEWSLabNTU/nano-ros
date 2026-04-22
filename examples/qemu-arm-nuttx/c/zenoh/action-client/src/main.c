@@ -120,6 +120,11 @@ void app_main(void) {
     }
 
     printf("Sending goal: order=%d\n", goal.order);
+    // NuttX libc full-buffers stdout when the output is a pipe (as under
+    // QEMU serial capture). Flush before each blocking call so the test
+    // harness sees progress while the call spins. See the similar fflushes
+    // already present in the talker example.
+    fflush(stdout);
 
     nros_goal_uuid_t goal_uuid;
     ret = nros_action_send_goal(
@@ -134,6 +139,7 @@ void app_main(void) {
            goal_uuid.uuid[2], goal_uuid.uuid[3]);
 
     printf("Waiting for result...\n\n");
+    fflush(stdout);
 
     nros_goal_status_t final_status;
     uint8_t result_buf[512];
@@ -163,6 +169,7 @@ void app_main(void) {
     } else {
         fprintf(stderr, "Failed to get result: %d\n", ret);
     }
+    fflush(stdout);
 
 cleanup:
     nros_executor_fini(&app.executor);
