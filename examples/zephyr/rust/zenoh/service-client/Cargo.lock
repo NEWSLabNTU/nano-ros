@@ -582,6 +582,7 @@ dependencies = [
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "nros-serdes",
+ "paste",
 ]
 
 [[package]]
