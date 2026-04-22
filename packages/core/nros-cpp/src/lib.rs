@@ -183,36 +183,11 @@ const fn u64s_for<T>() -> usize {
 // stores `RmwServiceServer` / `RmwServiceClient` handles directly, sized
 // via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE` from the
 // `nros` probe.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<action::CppActionServer>();
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
-pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<action::CppActionClient>();
-
-// Without RMW backend: placeholders for workspace-level check.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = 1;
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
-pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = 1;
+// Phase 87.11: `CPP_ACTION_SERVER_OPAQUE_U64S` and
+// `CPP_ACTION_CLIENT_OPAQUE_U64S` removed. ActionServer/ActionClient
+// storage sizes are now sourced from `nros::sizes::CppActionServerLayout`
+// / `CppActionClientLayout` via the probe; see action.rs for the
+// layout-mirror equality asserts.
 
 // Phase 87.6: `CPP_GUARD_HANDLE_OPAQUE_U64S` removed — the C++
 // `nros::GuardCondition` class sizes its `storage_` from

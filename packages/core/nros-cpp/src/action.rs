@@ -15,7 +15,12 @@ use crate::{
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
-use crate::{CPP_ACTION_CLIENT_OPAQUE_U64S, CPP_ACTION_SERVER_OPAQUE_U64S};
+// Phase 87.11: opaque storage sizes are now driven by layout-mirror
+// structs in `nros::sizes` (see `CppActionServerLayout` /
+// `CppActionClientLayout`). The asserts below ensure the real
+// `CppActionServer` / `CppActionClient` layouts stay byte-equivalent
+// to the mirrors — any field-shape change here must be paired with an
+// update in `packages/core/nros/src/sizes.rs`.
 
 // ============================================================================
 // Action Server
@@ -57,11 +62,16 @@ pub(crate) struct CppActionServer {
     _type_hash_len: usize,
 }
 
-// Compile-time assertion: inline storage must fit CppActionServer.
+// Layout-mirror equivalence (Phase 87.11): the real `CppActionServer`
+// must have the same byte size as `nros::sizes::CppActionServerLayout`,
+// which is what `NROS_CPP_ACTION_SERVER_SIZE` is sized to. Any field
+// shape change here requires a paired update in
+// `packages/core/nros/src/sizes.rs::CppActionServerLayout`.
 const _: () = assert!(
     core::mem::size_of::<CppActionServer>()
-        <= CPP_ACTION_SERVER_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_ACTION_SERVER_OPAQUE_U64S too small for CppActionServer"
+        == core::mem::size_of::<nros::sizes::CppActionServerLayout>(),
+    "CppActionServer size diverges from nros::sizes::CppActionServerLayout — \
+     update the layout mirror to track any field-shape change"
 );
 
 /// Goal callback trampoline — forwards to the user's registered callback
@@ -506,11 +516,13 @@ unsafe fn cpp_arena_core_mut<'a>(
     }
 }
 
-// Compile-time assertion: inline storage must fit CppActionClient.
+// Layout-mirror equivalence (Phase 87.11). See the matching assert
+// above for `CppActionServer`.
 const _: () = assert!(
     core::mem::size_of::<CppActionClient>()
-        <= CPP_ACTION_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_ACTION_CLIENT_OPAQUE_U64S too small for CppActionClient"
+        == core::mem::size_of::<nros::sizes::CppActionClientLayout>(),
+    "CppActionClient size diverges from nros::sizes::CppActionClientLayout — \
+     update the layout mirror to track any field-shape change"
 );
 
 // C++ action client callback trampolines for the arena entry.

@@ -10,20 +10,9 @@
 use std::env;
 use std::path::PathBuf;
 
-/// Get the target pointer size in bytes from `CARGO_CFG_TARGET_POINTER_WIDTH`.
-fn target_pointer_bytes() -> usize {
-    let width: usize = env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
-        .unwrap_or_else(|_| "64".to_string())
-        .parse()
-        .unwrap_or(64);
-    width / 8
-}
-
-/// Round `n` up to the next multiple of `align`.
-#[allow(clippy::manual_div_ceil)]
-const fn align_up(n: usize, align: usize) -> usize {
-    (n + align - 1) / align * align
-}
+// Phase 87.11: `target_pointer_bytes()` and `align_up()` removed —
+// nros-cpp's storage sizes are now sourced from `nros::sizes` probes
+// instead of pointer-width hand-math.
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -86,69 +75,22 @@ fn generate_config(
     let opaque_u64s = total_bytes.div_ceil(8);
     let storage_bytes = opaque_u64s * 8;
 
-    // ── Target-aware struct layout ─────────────────────────────────────
-    //
-    // Compute struct sizes using the TARGET pointer width (not the host's).
-    // build.rs runs on the host, but `CARGO_CFG_TARGET_POINTER_WIDTH` tells
-    // us the cross-compilation target. This avoids the bug where 8-byte
-    // host `usize` underestimates sizes for 4-byte ARM targets.
-    let ptr_bytes = target_pointer_bytes();
-
-    // PendingGoal { goal_id: GoalId(16), data: [u8; DEFAULT_RX_BUF_SIZE], data_len: usize, occupied: bool }
-    // Rust lays out fields in declaration order for non-repr(C) structs,
-    // but may reorder for alignment. Compute a safe upper bound using the
-    // struct's natural alignment (= alignment of its most-aligned field).
-    //
-    // All size constants below are sourced from `nros-node` (rx_buf via
-    // Cargo links metadata, layout caps via `nros_node::limits`). The 256
-    // here is `MAX_ACTION_NAME_LEN` / `MAX_TYPE_NAME_LEN` and also acts
-    // as an upper bound for `MAX_TYPE_HASH_LEN` (128).
-    let action_buf_size = dep_usize("DEP_NROS_NODE_RX_BUF_SIZE");
-    let max_pending_goals = 4usize; // = nros_node::limits::MAX_CONCURRENT_GOALS
-    let pending_goal_size = align_up(16 + action_buf_size + ptr_bytes + 1, ptr_bytes);
-    // CppActionServer { handle: Option<Handle>, pending: [PendingGoal; MAX_CONCURRENT_GOALS],
-    //                    action_name: [u8; MAX_ACTION_NAME_LEN], _len: usize, ×3 for name/type/hash }
-    let handle_size = align_up(ptr_bytes + 4, ptr_bytes); // Option<ActionServerRawHandle> ~ usize + tag
-    let name_field_size = 256 + ptr_bytes; // MAX_ACTION_NAME_LEN + usize len
-    // Add margin for Rust's flexible (non-repr(C)) struct layout — the compiler
-    // may add inter-field padding that differs from our estimate. The compile-time
-    // assertion in action.rs catches any undercount.
-    let layout_padding = 8 * ptr_bytes;
-    let action_server_bytes = align_up(
-        handle_size
-            + (pending_goal_size * max_pending_goals)
-            + 3 * name_field_size
-            + layout_padding,
-        8, // align to u64 for storage
-    );
-    let action_server_opaque_u64s = action_server_bytes.div_ceil(8);
-    let action_server_storage = action_server_opaque_u64s * 8;
-
-    // CppActionClient { callbacks: CppActionClientCallbacks, arena_entry_index: i32,
-    //                    executor_ptr: *mut, action_name: [u8; MAX_ACTION_NAME_LEN], _action_name_len: usize }
-    // CppActionClientCallbacks = 3 Option<fn> + context ptr
-    // Each Option<fn> is 2 × ptr_bytes (function pointer + discriminant, aligned)
-    let action_client_callbacks = 3 * (2 * ptr_bytes) + ptr_bytes;
-    let action_client_bytes = align_up(
-        action_client_callbacks + 4 + ptr_bytes + 256 + ptr_bytes + 8 * ptr_bytes, // fields + layout padding (256 = MAX_ACTION_NAME_LEN)
-        8,
-    );
-    let action_client_opaque_u64s = action_client_bytes.div_ceil(8);
-    let action_client_storage = action_client_opaque_u64s * 8;
-
-    // ── Publisher / Subscription / Service / GuardCondition sizes ──────
-    //
-    // Upper bounds derived from the same field-layout math used for
-    // action server/client. CppPublisher / CppSubscription / etc. are
-    // declared in publisher.rs / subscription.rs / service.rs /
-    // guard_condition.rs; lib.rs has compile-time asserts that catch
-    // any undercount, so these numbers are safe upper bounds.
-    //
-    // Field sizes come from `nros_node::limits`:
-    //   MAX_TOPIC_LEN = 256, MAX_SERVICE_NAME_LEN = 256, MAX_TYPE_NAME_LEN = 256,
-    //   MAX_TYPE_HASH_LEN = 128.
-    let _rx_buf = action_buf_size; // DEP_NROS_NODE_RX_BUF_SIZE (unused after 87.6)
-    let _name_buf = 256usize; // MAX_TOPIC_LEN == MAX_SERVICE_NAME_LEN (unused after 87.6)
+    // Phase 87.11: action server/client storage sizes are now sourced
+    // from `nros::sizes::CppActionServerLayout` /
+    // `CppActionClientLayout` via the same probe path used for everything
+    // else. The probe values land in `nros_cpp_config_generated.h` as
+    // `NROS_CPP_ACTION_SERVER_SIZE` / `NROS_CPP_ACTION_CLIENT_SIZE`.
+    // Rust-side asserts in `nros-cpp/src/action.rs` ensure the layout
+    // mirror in `nros::sizes` stays byte-equivalent to the real
+    // `CppActionServer` / `CppActionClient`.
+    let action_server_storage = probed
+        .get("CPP_ACTION_SERVER_SIZE")
+        .copied()
+        .unwrap_or(0) as usize;
+    let action_client_storage = probed
+        .get("CPP_ACTION_CLIENT_SIZE")
+        .copied()
+        .unwrap_or(0) as usize;
 
     // Phase 87.6: Publisher is a thin wrapper — storage sized to
     // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from
@@ -171,17 +113,10 @@ fn generate_config(
          /// Validated at compile time by `size_of::<CppContext>()` assertion.\n\
          pub const CPP_EXECUTOR_OPAQUE_U64S: usize = {opaque_u64s};\n\
          \n\
-         /// Inline opaque storage for `CppActionServer` (in u64 units).\n\
-         pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n\
-         \n\
-         /// Inline opaque storage for `CppActionClient` (in u64 units).\n\
-         pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = {action_client_opaque_u64s};\n\
-         \n\
-         // Byte-value views of the C-side storage macros. lib.rs uses\n\
-         // these to assert at compile time that `size_of::<T>()` fits\n\
-         // within the generated C macro — if the Rust type grows past\n\
-         // the estimate, the build fails loudly instead of silently\n\
-         // overflowing caller-provided storage.\n\
+         // Phase 87.11: `CPP_ACTION_SERVER_OPAQUE_U64S` and\n\
+         // `CPP_ACTION_CLIENT_OPAQUE_U64S` removed. C++ ActionServer/\n\
+         // ActionClient storage now sized from `nros::sizes::CPP_ACTION_*_SIZE`\n\
+         // via the probe; see action.rs for the byte-equivalence asserts.\n\
 "
     );
 
