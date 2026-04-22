@@ -190,7 +190,12 @@ refactors with public-API surface area, each a separate PR.
       switched to probe-derived `NROS_*_SIZE`. `nros-c/include/nros/types.h`
       now transitively includes `nros_config_generated.h` so every
       consumer of any nros C header gets the probed macros automatically.
-- [ ] **87.8** Verify across every target; update docs
+- [x] **87.8** Verify across every target; update docs.
+      Cross-compile verified: `just freertos build` (thumbv7m-none-eabi),
+      `just nuttx build` (armv7a-none-eabi), `just threadx_riscv64 build`
+      (riscv64gc-unknown-none-elf), and the native posix build (12
+      C+C++ examples). Documentation added at
+      `book/src/internals/opaque-storage-sizing.md`.
 
 ### Audit-driven follow-ups (added 2026-04-22)
 
@@ -213,16 +218,14 @@ phase's scope. Severities reflect drift risk.
       sizes (16, 8) only used when headers are absent (workspace
       `cargo check` without RMW features) — never silently shipped
       with an incompatible ABI.
-- [ ] **87.11 (MED)** `nros-cpp/build.rs` C++ ActionServer/ActionClient
-      storage is still hand-math (action_server_bytes, action_client_bytes
-      arithmetic with magic `8 * ptr_bytes` "layout padding margin").
-      Proposed fix: same layout-mirror trick used for
-      `ActionServerInternal` in 87.5 — define
-      `nros::sizes::CppActionServerLayout` /
-      `CppActionClientLayout`, export their sizes, switch
-      `nros-cpp/build.rs` to use the probed values, add Rust-side
-      size_eq asserts. Or do the full 87.6 thin-wrapper refactor —
-      whichever lands first.
+- [x] **87.11 (MED)** Layout-mirror trick applied to
+      `nros::sizes::CppActionServerLayout` and
+      `CppActionClientLayout`. `nros-cpp/build.rs` hand-math gone;
+      probed values flow through `NROS_CPP_ACTION_*_STORAGE_SIZE`
+      macros. Rust-side byte-equivalence asserts in
+      `nros-cpp/src/action.rs` keep the mirrors honest (any field
+      change in the real wrappers must be paired with the layout
+      update in `nros/src/sizes.rs`).
 - [ ] **87.12 (LOW)** `zpico-platform-shim/build.rs:78–88` Zephyr path
       returns `(ptr_size, ptr_size)` without compiling the probe — relies
       on the zenoh-pico Zephyr headers using a fixed pointer-sized union

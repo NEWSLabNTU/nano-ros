@@ -59,6 +59,7 @@
 - [Formal Verification](./internals/verification.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
 - [Safety Protocol](./internals/safety.md)
+- [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
 - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
 - [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
 - [Creating Examples](./internals/creating-examples.md)
