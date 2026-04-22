@@ -287,6 +287,63 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - Trade-off: interrupt-driven reduces power consumption but adds latency jitter; tight-loop gives lowest latency for real-time
     - Board crates would implement a platform-specific `wait_for_event(timeout_ms)` hook
     - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (smoltcp/serial blocks), board crates
+- [ ] 77.19 — `nros-rmw-zenoh` ffi-sync poll loop: replace busy-loop with blocking `spin_once`
+    - Current: under the `ffi-sync` feature, `Zpico::poll(timeout_ms)` runs
+      `loop { ffi_guard(|| zpico_spin_once(0)); elapsed_ms?; }` with a
+      non-blocking 0-timeout `spin_once`, burning CPU until the deadline
+      or data arrival. This was written before `zpico_spin_once` had an
+      event-driven wake on POSIX/Zephyr/FreeRTOS/NuttX (77.16 / 77.17).
+    - Target: call `zpico_spin_once(remaining_ms)` inside the loop so the
+      binary-semaphore / sem_timedwait / condvar path wakes immediately
+      on data. Keep `ffi_guard` wrapping; only the inner timeout changes.
+    - **Files**: `packages/zpico/nros-rmw-zenoh/src/zpico.rs` (`poll`, around lines 623–636)
+- [ ] 77.20 — Deprecate / retire `zpico_poll()` FreeRTOS fixed-delay path
+    - Current: `zpico_poll()`'s FreeRTOS branch still uses `vTaskDelay(timeout_ms)`
+      (fixed-duration sleep; no early wake). 77.16 only updated
+      `zpico_spin_once`. Since the executor now drives everything through
+      `spin_once`, `zpico_poll` is a second-class entry point with worse
+      latency.
+    - Options:
+      - (a) Delete `zpico_poll` entirely — audit callers, migrate to
+        `zpico_spin_once`. Preferred if nothing depends on `poll`'s
+        subtly different "read-only, no keep-alive" semantics.
+      - (b) If (a) is too invasive, apply the same binary-semaphore wake
+        pattern from 77.16 so FreeRTOS `zpico_poll` wakes on data arrival.
+    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (lines ~1065–1073);
+      `packages/zpico/nros-rmw-zenoh/src/zpico.rs` (caller — may go away with (a))
+- [ ] 77.21 — ThreadX task "join": replace 1 ms polling loop with `tx_event_flags`
+    - Current: `packages/zpico/zpico-sys/c/platform/threadx/task.c:47–57` does
+      `while (1) { if (state == COMPLETED || TERMINATED) break; tx_thread_sleep(1); }`
+      because ThreadX doesn't expose a native `pthread_join`-equivalent.
+      Each unfinished task wastes 1 ms slices until completion.
+    - Target: have the task wrapper `tx_event_flags_set` on completion
+      and wait via `tx_event_flags_get(..., TX_WAIT_FOREVER)`. True
+      event-driven wake, no polling.
+    - **Files**: `packages/zpico/zpico-sys/c/platform/threadx/task.c`
+- [ ] 77.22 — Introduce `nros_platform::Yield` trait to unify per-platform yield
+      fallbacks used inside `socket_wait_event`
+    - Current: three near-identical hand-written 1-tick / 1 ms yields in
+      the platform shims, each with different units and no common home:
+      - `packages/core/nros-platform-posix/src/net.rs:493` — `libc::usleep(1000)`
+      - `packages/core/nros-platform-freertos/src/net.rs:541` — `vTaskDelay(1)`
+      - `packages/core/nros-platform-threadx/src/net.rs:430` — `tx_thread_sleep(1)`
+      Callers are not waiting for I/O readability — the background read
+      task handles that — they're just "let the scheduler run so the
+      real waiter can make progress". The intent is a *yield*, not a
+      timed sleep.
+    - Target: add a `Yield` capability (or a `fn yield_now(&self)` method
+      on an existing platform trait) to `nros-platform`, with per-backend
+      implementations that pick the idiomatic primitive:
+      - POSIX: `sched_yield()` (not `usleep(1000)`)
+      - FreeRTOS: `taskYIELD()` (cooperative) or `vTaskDelay(0)`
+      - ThreadX: `tx_thread_relinquish()`
+      - Zephyr: `k_yield()`
+      - Bare-metal: `core::hint::spin_loop()` or WFI (board-specific)
+    - Benefits: single tuning point; removes three unexplained magic
+      numbers; future 77.18 WFI work has a natural home.
+    - **Files**: new API in `packages/core/nros-platform/src/` + impls in
+      each `nros-platform-*` crate; call sites in `net.rs` under each
+      platform.
 
 ## Acceptance Criteria
 
