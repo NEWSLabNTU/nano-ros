@@ -238,6 +238,23 @@ Default features: `std` only. Platform features forwarded via Cargo `?` syntax.
 
 **Cross-cutting:** `unstable-zenoh-api` enables zero-copy receive (orthogonal to axes above).
 
+### Spin/Yield Wake Primitives (per platform)
+`zpico_spin_once` (event-driven wake on data arrival; 77.16 / 77.17 done):
+- POSIX / Zephyr: `_z_condvar_wait_until` on `g_spin_cv`
+- FreeRTOS: `xSemaphoreTake(g_spin_sem, pdMS_TO_TICKS(…))`
+- NuttX: `sem_timedwait(&g_spin_sem_posix, &abs_deadline)` (pthread condvar hangs on NuttX — Phase 55.12)
+- Bare-metal smoltcp / serial: single-thread `zp_read` loop (77.18 will add WFI)
+
+Cooperative yield (Phase 77.22 — planned `PlatformYield` trait):
+- POSIX / NuttX: `sched_yield()`
+- Zephyr: `k_yield()`
+- FreeRTOS: `vPortYield()` (C shim for `taskYIELD` macro)
+- ThreadX: `tx_thread_relinquish()`
+- Bare-metal default: `core::hint::spin_loop()` (pure CPU hint, safe everywhere)
+- Bare-metal opt-in: `cortex_m::asm::wfi()` via a board-crate `BoardIdle` trait — deep idle, requires board to arm an IRQ source or the CPU deadlocks. Precedent: STM32F4, MPS2-AN385 board crates already use `wfi()` in their idle loops.
+
+None of the RTOS yields are ISR-safe. `core::hint::spin_loop()` is.
+
 ### Board Crate Transport Features
 Board crates use Cargo features to select the communication transport:
 - **`ethernet`** (default for MPS2-AN385, STM32F4, ESP32-QEMU) or **`wifi`** (default for ESP32) — TCP/UDP via `zpico-smoltcp`

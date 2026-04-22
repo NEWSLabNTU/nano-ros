@@ -324,25 +324,57 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
       fallbacks used inside `socket_wait_event`
     - Current: three near-identical hand-written 1-tick / 1 ms yields in
       the platform shims, each with different units and no common home:
-      - `packages/core/nros-platform-posix/src/net.rs:493` — `libc::usleep(1000)`
-      - `packages/core/nros-platform-freertos/src/net.rs:541` — `vTaskDelay(1)`
-      - `packages/core/nros-platform-threadx/src/net.rs:430` — `tx_thread_sleep(1)`
+      - `packages/core/nros-platform-posix/src/net.rs:487–495` — `libc::usleep(1000)`
+      - `packages/core/nros-platform-freertos/src/net.rs:538–550` — `vTaskDelay(1)`
+      - `packages/core/nros-platform-threadx/src/net.rs:430` — `tx_thread_sleep(1)` (+ `src/ffi.rs:37–38`)
+      - (NuttX & Zephyr are close cousins — `select(.., 1 ms)` and
+        `k_usleep(1 ms)` respectively; roll them in at the same time)
       Callers are not waiting for I/O readability — the background read
       task handles that — they're just "let the scheduler run so the
       real waiter can make progress". The intent is a *yield*, not a
       timed sleep.
-    - Target: add a `Yield` capability (or a `fn yield_now(&self)` method
-      on an existing platform trait) to `nros-platform`, with per-backend
-      implementations that pick the idiomatic primitive:
-      - POSIX: `sched_yield()` (not `usleep(1000)`)
-      - FreeRTOS: `taskYIELD()` (cooperative) or `vTaskDelay(0)`
-      - ThreadX: `tx_thread_relinquish()`
-      - Zephyr: `k_yield()`
-      - Bare-metal: `core::hint::spin_loop()` or WFI (board-specific)
-    - Benefits: single tuning point; removes three unexplained magic
-      numbers; future 77.18 WFI work has a natural home.
-    - **Files**: new API in `packages/core/nros-platform/src/` + impls in
-      each `nros-platform-*` crate; call sites in `net.rs` under each
+    - Target: add a `PlatformYield` capability alongside `PlatformSleep`
+      in `packages/core/nros-platform/src/traits.rs`. Backend mapping
+      (survey result — all 7 platforms have a primitive):
+
+      | Backend             | Primitive                       | Header / API                |
+      |---------------------|---------------------------------|-----------------------------|
+      | POSIX               | `sched_yield()`                 | `<sched.h>` → `c_int`       |
+      | NuttX               | `sched_yield()`                 | POSIX-compliant             |
+      | Zephyr              | `k_yield()`                     | `<zephyr/kernel.h>`         |
+      | FreeRTOS            | `vPortYield()` (C shim for macro `taskYIELD()`) | `task.h` |
+      | ThreadX             | `tx_thread_relinquish()`        | `tx_api.h`                  |
+      | Bare-metal default  | `core::hint::spin_loop()`       | Rust intrinsic (no FFI)     |
+      | Bare-metal opt-in   | `cortex_m::asm::wfi()`          | via `BoardIdle` trait, board-crate opt-in |
+
+    - **Key subtlety — bare-metal has no real yield**: there's nothing
+      to yield *to*. `core::hint::spin_loop()` is a CPU hint (emits
+      `YIELD`/`PAUSE`/`WFE` per arch) — safe everywhere. `wfi` is deep
+      idle and requires a live IRQ source to wake the CPU; enabling it
+      on a board that hasn't armed an ethernet/timer IRQ deadlocks.
+      Therefore `PlatformYield` default is `spin_loop()`, and boards
+      that know their IRQ story override via a separate `BoardIdle`
+      hook. Precedent already exists:
+      - WFI usage (board-layer opt-in):
+        `packages/boards/nros-stm32f4/src/node.rs:96,167,173,190`,
+        `packages/boards/nros-mps2-an385/src/lib.rs:64,73`,
+        `packages/boards/nros-mps2-an385-freertos/build.rs:401,410,671`
+      - `spin_loop()` usage (safe default, proven on ESP32):
+        `packages/boards/nros-esp32/src/node.rs:126,136,151,157,163,170,252,370`,
+        `packages/boards/nros-esp32-qemu/src/node.rs:255`
+    - **Safety**: none of the RTOS yields are ISR-safe
+      (`tx_thread_relinquish`, `k_yield`, `taskYIELD` all panic /
+      error from ISR). Document the constraint on the trait; add a
+      debug-only `debug_assert!(!in_isr())` where backends can detect
+      ISR context.
+    - **Benefits**: single tuning point; removes three unexplained
+      magic numbers; aligns with existing `PlatformSleep` shape; gives
+      77.18 a natural home (board crate implements `BoardIdle::wait`
+      with `wfi` + smoltcp `poll_delay()`).
+    - **Files**: new `PlatformYield` trait in
+      `packages/core/nros-platform/src/traits.rs` (model after
+      `PlatformSleep` at line 50) + per-backend impls in each
+      `nros-platform-*` crate; call sites in `net.rs` under each
       platform.
 
 ## Acceptance Criteria
