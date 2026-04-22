@@ -302,7 +302,9 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete |
 | 85 | Test-suite consolidation & speedup (214 → ~80 tests, dedupe 4-platform RTOS matrix, shared build cache, replace sleeps with ready-probes) | Not Started |
 | 86 | `nros-lifecycle-msgs` codegen crate + REP-2002 lifecycle services (`~/change_state`, `~/get_state`, …) for C/Rust APIs | Complete (86.1–86.10; pinned `rmw_zenoh` interop test verifies acceptance) |
-| 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | Not Started |
+| 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | In Progress (87.1–87.3, 87.10–87.12 landed; 87.4–87.9 remaining) |
+| 88 | Unified leveled logging (`nros-log` crate with pluggable RTOS/host sinks; ROS-style named loggers + severity filtering) | Not Started |
+| 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Not Started |
 
 ## Quick Reference
 
