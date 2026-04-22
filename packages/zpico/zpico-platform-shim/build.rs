@@ -94,8 +94,15 @@ fn probe_sizes(
     //   _z_sys_net_endpoint_t = union { struct addrinfo *_iptcp; }
     //
     // Both collapse to pointer size on the target (8 bytes on 64-bit,
-    // 4 bytes on 32-bit). Skipping the probe is safe because the layouts
-    // are fixed and trivial.
+    // 4 bytes on 32-bit). Skipping the probe is safe IF AND ONLY IF the
+    // zenoh-pico Zephyr port keeps these layouts. If a future zenoh-pico
+    // version adds a non-pointer field to either union, the
+    // pass-by-value ABI for `_z_sys_net_socket_t` would silently corrupt.
+    //
+    // Audit hook (Phase 87.12 follow-up): if `zenoh-pico/include/zenoh-pico/
+    // system/platform/zephyr.h` is touched, re-verify these layouts. A
+    // proper Zephyr-aware probe would require running the build inside
+    // the west workspace; not currently in scope.
     if env::var("ZEPHYR_BASE").is_ok() {
         let ptr_size = if env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
             .ok()

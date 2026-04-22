@@ -226,10 +226,13 @@ phase's scope. Severities reflect drift risk.
       `nros-cpp/src/action.rs` keep the mirrors honest (any field
       change in the real wrappers must be paired with the layout
       update in `nros/src/sizes.rs`).
-- [ ] **87.12 (LOW)** `zpico-platform-shim/build.rs:78–88` Zephyr path
-      returns `(ptr_size, ptr_size)` without compiling the probe — relies
-      on the zenoh-pico Zephyr headers using a fixed pointer-sized union
-      layout. Document the assumption (or probe properly when feasible).
+- [x] **87.12 (LOW)** Zephyr probe-skip path documented with an audit
+      hook in `zpico-platform-shim/build.rs`. The `(ptr_size, ptr_size)`
+      shortcut stays — a proper Zephyr-aware probe would require
+      running inside the west workspace, which is out of scope. The
+      comment now flags the specific layout assumption (zenoh-pico
+      Zephyr unions = single pointer field) and points reviewers at
+      the file to re-verify if it changes.
 
 ### 87.1 — `nros-sizes-build` build-script utility
 
