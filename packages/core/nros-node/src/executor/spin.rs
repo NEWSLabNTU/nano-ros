@@ -1841,7 +1841,6 @@ impl Executor {
 
         Ok(())
     }
-
 }
 
 // ============================================================================
@@ -1993,9 +1992,7 @@ impl Executor {
     }
 
     /// Immutable access to the lifecycle state machine, if registered.
-    pub fn lifecycle_state_machine(
-        &self,
-    ) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
+    pub fn lifecycle_state_machine(&self) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
         self.lifecycle.as_ref().map(|lc| &lc.state_machine)
     }
 }

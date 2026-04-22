@@ -2,13 +2,12 @@
 // Package: lifecycle_msgs
 // Service: GetAvailableTransitions
 
-use nros_core::{RosMessage, RosService, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// GetAvailableTransitions request message
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct GetAvailableTransitionsRequest {
-}
+pub struct GetAvailableTransitionsRequest {}
 
 impl Serialize for GetAvailableTransitionsRequest {
     // Empty request - no fields to serialize
@@ -52,7 +51,8 @@ impl Deserialize for GetAvailableTransitionsResponse {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(Deserialize::deserialize(reader)?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },

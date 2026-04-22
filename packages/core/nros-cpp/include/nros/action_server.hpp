@@ -115,7 +115,7 @@ template <typename A> class ActionServer {
     template <typename F> Result set_goal_callback(F f) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         user_goal_fn_ = TypedGoalFn(f); // compile error if F is not convertible
-        user_goal_fn_ctx_ = nullptr;     // mutually exclusive with _with_ctx
+        user_goal_fn_ctx_ = nullptr;    // mutually exclusive with _with_ctx
         user_goal_ctx_ = nullptr;
         return install_callbacks();
     }
@@ -232,8 +232,7 @@ template <typename A> class ActionServer {
     ActionServer(ActionServer&& other)
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
           user_goal_fn_ctx_(other.user_goal_fn_ctx_), user_goal_ctx_(other.user_goal_ctx_),
-          user_cancel_fn_(other.user_cancel_fn_),
-          user_cancel_fn_ctx_(other.user_cancel_fn_ctx_),
+          user_cancel_fn_(other.user_cancel_fn_), user_cancel_fn_ctx_(other.user_cancel_fn_ctx_),
           user_cancel_ctx_(other.user_cancel_ctx_), user_visitor_fn_(other.user_visitor_fn_),
           initialized_(other.initialized_) {
         if (other.initialized_) {
@@ -294,8 +293,7 @@ template <typename A> class ActionServer {
             return static_cast<int32_t>(GoalResponse::Reject);
         }
         if (self->user_goal_fn_ctx_ != nullptr) {
-            return static_cast<int32_t>(
-                self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
+            return static_cast<int32_t>(self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
         }
         if (self->user_goal_fn_ != nullptr) {
             return static_cast<int32_t>(self->user_goal_fn_(goal_id, g));
@@ -307,8 +305,7 @@ template <typename A> class ActionServer {
         auto* self = static_cast<ActionServer*>(ctx);
         if (!self) return static_cast<int32_t>(CancelResponse::Accept);
         if (self->user_cancel_fn_ctx_ != nullptr) {
-            return static_cast<int32_t>(
-                self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
+            return static_cast<int32_t>(self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
         }
         if (self->user_cancel_fn_ != nullptr) {
             return static_cast<int32_t>(self->user_cancel_fn_(goal_id));

@@ -635,7 +635,9 @@ fn test_rtos_pubsub_e2e(
         (Platform::Nuttx, Lang::C) => Duration::from_secs(90),
         _ => Duration::from_secs(30),
     };
-    let final_out = listener.wait_for_output(listener_window).unwrap_or_default();
+    let final_out = listener
+        .wait_for_output(listener_window)
+        .unwrap_or_default();
     let full_listener = format!("{}{}", listener_boot, final_out);
 
     talker.kill();

@@ -2,13 +2,12 @@
 // Package: lifecycle_msgs
 // Service: GetState
 
-use nros_core::{RosMessage, RosService, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// GetState request message
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct GetStateRequest {
-}
+pub struct GetStateRequest {}
 
 impl Serialize for GetStateRequest {
     // Empty request - no fields to serialize

@@ -75,9 +75,10 @@ pub fn to_msg_state(state: InternalState) -> MsgState {
         InternalState::Inactive => (state_id::PRIMARY_STATE_INACTIVE, "inactive"),
         InternalState::Active => (state_id::PRIMARY_STATE_ACTIVE, "active"),
         InternalState::Finalized => (state_id::PRIMARY_STATE_FINALIZED, "finalized"),
-        InternalState::ErrorProcessing => {
-            (state_id::TRANSITION_STATE_ERRORPROCESSING, "errorprocessing")
-        }
+        InternalState::ErrorProcessing => (
+            state_id::TRANSITION_STATE_ERRORPROCESSING,
+            "errorprocessing",
+        ),
     };
     let mut msg = MsgState::default();
     msg.id = id;
@@ -130,7 +131,10 @@ pub fn from_msg_transition_id(id: u8, current: InternalState) -> Option<Internal
 
 /// Map a wire `Transition.label` back to an internal transition. `"shutdown"`
 /// resolves to the variant matching the current state, mirroring rclcpp.
-pub fn from_msg_transition_label(label: &str, current: InternalState) -> Option<InternalTransition> {
+pub fn from_msg_transition_label(
+    label: &str,
+    current: InternalState,
+) -> Option<InternalTransition> {
     match label {
         "configure" => Some(InternalTransition::Configure),
         "cleanup" => Some(InternalTransition::Cleanup),
@@ -266,7 +270,9 @@ pub fn handle_get_available_transitions(
     let current = sm.state();
     for t in ALL_TRANSITIONS.iter().copied() {
         if transition_start_state(t) == current && can_transition(current, t) {
-            let _ = response.available_transitions.push(build_transition_desc(t));
+            let _ = response
+                .available_transitions
+                .push(build_transition_desc(t));
         }
     }
     response
@@ -280,7 +286,9 @@ pub fn handle_get_transition_graph(
 ) -> Box<GetAvailableTransitionsResponse> {
     let mut response = Box::new(GetAvailableTransitionsResponse::default());
     for t in ALL_TRANSITIONS.iter().copied() {
-        let _ = response.available_transitions.push(build_transition_desc(t));
+        let _ = response
+            .available_transitions
+            .push(build_transition_desc(t));
     }
     response
 }
@@ -609,7 +617,9 @@ mod tests {
         round_trip(GetAvailableTransitionsRequest::default());
         let mut resp = GetAvailableTransitionsResponse::default();
         for trans in ALL_TRANSITIONS.iter().copied() {
-            let _ = resp.available_transitions.push(build_transition_desc(trans));
+            let _ = resp
+                .available_transitions
+                .push(build_transition_desc(trans));
         }
         round_trip(resp);
     }
@@ -709,11 +719,13 @@ mod tests {
 
         // SAFETY: callbacks have 'static lifetime; ctx is null (unused).
         unsafe {
-            sm.trigger_transition(InternalTransition::Configure).unwrap();
+            sm.trigger_transition(InternalTransition::Configure)
+                .unwrap();
             assert_eq!(sm.state(), InternalState::Inactive);
             sm.trigger_transition(InternalTransition::Activate).unwrap();
             assert_eq!(sm.state(), InternalState::Active);
-            sm.trigger_transition(InternalTransition::Deactivate).unwrap();
+            sm.trigger_transition(InternalTransition::Deactivate)
+                .unwrap();
             assert_eq!(sm.state(), InternalState::Inactive);
             sm.trigger_transition(InternalTransition::Cleanup).unwrap();
             assert_eq!(sm.state(), InternalState::Unconfigured);

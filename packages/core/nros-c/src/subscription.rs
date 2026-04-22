@@ -329,5 +329,4 @@ impl nros_subscription_t {
     pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
         self.handle_id = id.0;
     }
-
 }

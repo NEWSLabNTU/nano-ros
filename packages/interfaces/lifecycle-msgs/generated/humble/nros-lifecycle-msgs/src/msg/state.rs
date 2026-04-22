@@ -2,8 +2,8 @@
 // Package: lifecycle_msgs
 // Message: State
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub const PRIMARY_STATE_UNKNOWN: u8 = 0;
 pub const PRIMARY_STATE_UNCONFIGURED: u8 = 1;
 pub const PRIMARY_STATE_INACTIVE: u8 = 2;

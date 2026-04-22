@@ -92,14 +92,9 @@ mod rmw_sizes {
     // (and the same for CppActionClient) so any field-shape drift in the
     // real wrapper trips the build immediately.
 
-    type CppGoalCallbackLayout = unsafe extern "C" fn(
-        *const [u8; 16],
-        *const u8,
-        usize,
-        *mut c_void,
-    ) -> i32;
-    type CppCancelCallbackLayout =
-        unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
+    type CppGoalCallbackLayout =
+        unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void) -> i32;
+    type CppCancelCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
 
     #[repr(C)]
     #[doc(hidden)]
@@ -117,8 +112,7 @@ mod rmw_sizes {
     }
     export_size!(pub CPP_ACTION_SERVER_SIZE = CppActionServerLayout);
 
-    type CppActionGoalResponseCb =
-        Option<unsafe extern "C" fn(bool, *const [u8; 16], *mut c_void)>;
+    type CppActionGoalResponseCb = Option<unsafe extern "C" fn(bool, *const [u8; 16], *mut c_void)>;
     type CppActionFeedbackCb =
         Option<unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void)>;
     type CppActionResultCb =

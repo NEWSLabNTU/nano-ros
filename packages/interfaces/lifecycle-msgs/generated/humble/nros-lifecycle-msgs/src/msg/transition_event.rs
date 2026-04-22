@@ -2,8 +2,8 @@
 // Package: lifecycle_msgs
 // Message: TransitionEvent
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// TransitionEvent message type
 #[derive(Debug, Clone, Default, PartialEq)]

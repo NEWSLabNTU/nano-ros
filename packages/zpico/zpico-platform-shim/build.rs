@@ -104,11 +104,7 @@ fn probe_sizes(
     // proper Zephyr-aware probe would require running the build inside
     // the west workspace; not currently in scope.
     if env::var("ZEPHYR_BASE").is_ok() {
-        let ptr_size = if env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
-            .ok()
-            .as_deref()
-            == Some("32")
-        {
+        let ptr_size = if env::var("CARGO_CFG_TARGET_POINTER_WIDTH").ok().as_deref() == Some("32") {
             4
         } else {
             8

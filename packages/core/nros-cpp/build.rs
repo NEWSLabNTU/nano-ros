@@ -83,14 +83,8 @@ fn generate_config(
     // Rust-side asserts in `nros-cpp/src/action.rs` ensure the layout
     // mirror in `nros::sizes` stays byte-equivalent to the real
     // `CppActionServer` / `CppActionClient`.
-    let action_server_storage = probed
-        .get("CPP_ACTION_SERVER_SIZE")
-        .copied()
-        .unwrap_or(0) as usize;
-    let action_client_storage = probed
-        .get("CPP_ACTION_CLIENT_SIZE")
-        .copied()
-        .unwrap_or(0) as usize;
+    let action_server_storage = probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let action_client_storage = probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize;
 
     // Phase 87.6: Publisher is a thin wrapper — storage sized to
     // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from

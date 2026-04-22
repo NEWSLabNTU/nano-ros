@@ -29,7 +29,10 @@ pub enum Error {
     /// The metadata JSON was missing an expected field or had the wrong shape.
     MalformedMetadata(&'static str),
     /// No rlib matching `lib<name>-*.rlib` was found in any candidate `deps/` directory.
-    RlibNotFound { crate_name: String, searched: Vec<PathBuf> },
+    RlibNotFound {
+        crate_name: String,
+        searched: Vec<PathBuf>,
+    },
     /// I/O error reading a file from disk.
     Io(std::io::Error),
     /// The `object` crate could not parse the rlib or one of its members.
@@ -43,7 +46,10 @@ impl std::fmt::Display for Error {
             Error::MalformedMetadata(field) => {
                 write!(f, "cargo metadata missing or malformed field: {field}")
             }
-            Error::RlibNotFound { crate_name, searched } => {
+            Error::RlibNotFound {
+                crate_name,
+                searched,
+            } => {
                 write!(
                     f,
                     "no rlib matching lib{crate_name}-*.rlib found; searched: {searched:?}"
@@ -105,7 +111,9 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
         };
         for entry in read_dir.flatten() {
             let path = entry.path();
-            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else { continue };
+            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
             if !fname.starts_with(&lib_prefix) || !fname.ends_with(".rlib") {
                 continue;
             }

@@ -2,8 +2,8 @@
 // Package: lifecycle_msgs
 // Message: Transition
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub const TRANSITION_CREATE: u8 = 0;
 pub const TRANSITION_CONFIGURE: u8 = 1;
 pub const TRANSITION_CLEANUP: u8 = 2;

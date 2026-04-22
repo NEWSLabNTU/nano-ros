@@ -2,8 +2,8 @@
 // Package: lifecycle_msgs
 // Service: ChangeState
 
-use nros_core::{RosMessage, RosService, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// ChangeState request message
 #[derive(Debug, Clone, Default, PartialEq)]

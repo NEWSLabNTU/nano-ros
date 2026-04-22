@@ -516,9 +516,9 @@ fn test_bidirectional_native_zephyr_e2e() {
             "Native → Zephyr works ({} msgs), Zephyr → Native failed (0 msgs)",
             zephyr_received_count
         ),
-        (false, false) => panic!(
-            "Bidirectional communication failed — 0 messages in both directions"
-        ),
+        (false, false) => {
+            panic!("Bidirectional communication failed — 0 messages in both directions")
+        }
     }
 }
 

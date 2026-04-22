@@ -184,8 +184,7 @@ class Node {
             // deleted `CppPublisher` Rust wrapper). Copy + null-terminate
             // into the fixed-size buffer; truncation is silent.
             size_t topic_len = 0;
-            while (topic[topic_len] != '\0' &&
-                   topic_len + 1 < sizeof(out.topic_name_)) {
+            while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
                 out.topic_name_[topic_len] = topic[topic_len];
                 ++topic_len;
             }
@@ -215,8 +214,7 @@ class Node {
         if (ret == 0) {
             // Phase 87.6: topic name lives C++-side now.
             size_t topic_len = 0;
-            while (topic[topic_len] != '\0' &&
-                   topic_len + 1 < sizeof(out.topic_name_)) {
+            while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
                 out.topic_name_[topic_len] = topic[topic_len];
                 ++topic_len;
             }

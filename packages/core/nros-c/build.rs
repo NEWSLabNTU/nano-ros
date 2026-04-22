@@ -46,7 +46,10 @@ fn probe_nros_sizes() -> std::collections::HashMap<String, u64> {
     match nros_sizes_build::extract_sizes(&rlib, "__NROS_SIZE_") {
         Ok(map) => map,
         Err(e) => {
-            println!("cargo:warning=nros-c probe failed parsing {}: {e}", rlib.display());
+            println!(
+                "cargo:warning=nros-c probe failed parsing {}: {e}",
+                rlib.display()
+            );
             HashMap::new()
         }
     }

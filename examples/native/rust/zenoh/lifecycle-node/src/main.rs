@@ -84,9 +84,7 @@ fn main() {
     sm.register(LifecycleCallbackSlot::Cleanup, Some(on_cleanup));
     sm.register(LifecycleCallbackSlot::Shutdown, Some(on_shutdown));
 
-    info!(
-        "Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc."
-    );
+    info!("Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc.");
 
     // Spin indefinitely. Each spin_once drains the lifecycle services so
     // `ros2 lifecycle` queries round-trip.

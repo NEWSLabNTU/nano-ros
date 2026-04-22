@@ -16,8 +16,8 @@ use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::node::nros_node_t;
 use crate::service::{
-    client_response_trampoline, nros_client_state_t, nros_client_t,
-    nros_service_state_t, nros_service_t,
+    client_response_trampoline, nros_client_state_t, nros_client_t, nros_service_state_t,
+    nros_service_t,
 };
 use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
 use crate::support::{nros_support_state_t, nros_support_t};
@@ -916,7 +916,8 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
             c_context: server_ref.context,
             server_ptr: server,
         };
-        let context = (&mut server_mut._internal) as *mut ActionServerInternal as *mut core::ffi::c_void;
+        let context =
+            (&mut server_mut._internal) as *mut ActionServerInternal as *mut core::ffi::c_void;
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, server_ref.node);

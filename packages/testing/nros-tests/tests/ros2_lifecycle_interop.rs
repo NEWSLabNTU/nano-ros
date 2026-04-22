@@ -58,8 +58,8 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     // Start the nros lifecycle node.
     let mut cmd = Command::new(&lifecycle_node_binary);
     cmd.env("NROS_LOCATOR", &locator).env("RUST_LOG", "info");
-    let mut node = ManagedProcess::spawn_command(cmd, "lifecycle-node")
-        .expect("spawn lifecycle-node");
+    let mut node =
+        ManagedProcess::spawn_command(cmd, "lifecycle-node").expect("spawn lifecycle-node");
 
     // Wait for the node to register its lifecycle services and print the
     // "Ready." line.
