@@ -11,6 +11,7 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 #include "nros/future.hpp"
+#include "nros/stream.hpp"
 
 // FFI declarations (create is declared in node.hpp with full type info)
 extern "C" {
@@ -213,6 +214,35 @@ template <typename A> class ActionClient {
         return Result::success();
     }
 
+    /// Get a reference to the action client's feedback stream.
+    ///
+    /// The stream yields `FeedbackType` values across all currently-active
+    /// goals for this client — feedback is not goal-scoped at this layer.
+    /// Callers that need per-goal separation should use the callback API
+    /// (`set_callbacks(SendGoalOptions{ .feedback = … })`), which delivers
+    /// `(goal_id, bytes, len, ctx)` via an executor-driven trampoline.
+    ///
+    /// Usage (blocking):
+    /// ```cpp
+    /// FeedbackType fb;
+    /// NROS_TRY(client.feedback_stream().wait_next(executor.handle(), 500, fb));
+    /// ```
+    ///
+    /// Usage (non-blocking):
+    /// ```cpp
+    /// FeedbackType fb;
+    /// Result r = client.feedback_stream().try_next(fb);
+    /// if (r.ok()) { ... }
+    /// ```
+    Stream<FeedbackType>& feedback_stream() {
+        if (initialized_ && !feedback_stream_.is_valid()) {
+            feedback_stream_.bind(storage_, &nros_cpp_action_client_try_recv_feedback);
+        }
+        return feedback_stream_;
+    }
+
+    const Stream<FeedbackType>& feedback_stream() const { return feedback_stream_; }
+
     // =================================================================
     // Async (non-blocking) API — callbacks invoked during spin_once()
     // =================================================================
@@ -298,22 +328,26 @@ template <typename A> class ActionClient {
             nros_cpp_action_client_destroy(storage_);
             initialized_ = false;
         }
+        feedback_stream_ = Stream<FeedbackType>();
     }
 
     // Move semantics (non-copyable). Relocation goes through the
     // Rust-side `nros_cpp_action_client_relocate` FFI (Phase 84.C1).
+    // The feedback stream is rebound to the new storage afterwards.
     ActionClient(ActionClient&& other)
         : executor_(other.executor_), initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_action_client_relocate(other.storage_, storage_);
             other.initialized_ = false;
         }
+        other.feedback_stream_ = Stream<FeedbackType>();
     }
 
     ActionClient& operator=(ActionClient&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_action_client_destroy(storage_);
+                feedback_stream_ = Stream<FeedbackType>();
             }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
@@ -321,6 +355,7 @@ template <typename A> class ActionClient {
                 nros_cpp_action_client_relocate(other.storage_, storage_);
                 other.initialized_ = false;
             }
+            other.feedback_stream_ = Stream<FeedbackType>();
         }
         return *this;
     }
@@ -338,6 +373,7 @@ template <typename A> class ActionClient {
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
     void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
     bool initialized_;
+    Stream<FeedbackType> feedback_stream_;
 };
 
 } // namespace nros

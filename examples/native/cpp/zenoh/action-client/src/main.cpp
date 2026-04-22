@@ -81,12 +81,17 @@ int main(int argc, char** argv) {
     }
     std::printf("Goal sent: order=%d [OK]\n", order);
 
-    // Poll for feedback while waiting
+    // Poll for feedback while waiting — drain via the new Stream<T> API
+    // (Phase 84.G7) which aligns the feedback receive surface with
+    // Subscription<M>::stream() / Promise<T>::wait(). `try_recv_feedback`
+    // below is still supported for callers that want the bool-convertible
+    // helper.
+    auto& feedback = client.feedback_stream();
     for (int i = 0; i < 20; i++) {
         nros::spin_once(100);
 
         example_interfaces::action::Fibonacci::Feedback fb;
-        while (client.try_recv_feedback(fb)) {
+        while (feedback.try_next(fb).ok()) {
             std::printf("Feedback: sequence=[");
             for (uint32_t k = 0; k < fb.sequence.length(); k++) {
                 if (k > 0) std::printf(", ");
