@@ -213,6 +213,20 @@ typedef void (*nros_accepted_callback_t)(struct nros_action_server_t* server,
 
 /* --- Client struct --- */
 
+/**
+ * Internal state for an action client (Phase 87.5: typed inline field).
+ *
+ * Mirrors the Rust `ActionClientInternal` struct. Layout is fixed by
+ * `#[repr(C)]` on the Rust side; the executor sets these fields during
+ * registration.
+ */
+typedef struct nros_action_client_internal_t {
+    /** Arena entry index. -1 means not registered with any executor yet. */
+    int32_t arena_entry_index;
+    /** Pointer to the parent @ref nros_executor_t that owns the arena entry. */
+    void* executor_ptr;
+} nros_action_client_internal_t;
+
 /** Action client structure. */
 typedef struct nros_action_client_t {
     /** Current state. */
@@ -239,8 +253,8 @@ typedef struct nros_action_client_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Inline opaque storage for internal implementation. */
-    _Alignas(8) uint8_t _internal[NROS_ACTION_CLIENT_STORAGE_SIZE];
+    /** Internal state — set by @ref nros_executor_add_action_client. */
+    nros_action_client_internal_t _internal;
 } nros_action_client_t;
 
 /* --- Server struct --- */

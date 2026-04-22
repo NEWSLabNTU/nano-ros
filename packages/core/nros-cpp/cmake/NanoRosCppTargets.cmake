@@ -87,6 +87,55 @@ if(NOT TARGET NanoRos::NanoRosCpp)
   set_property(TARGET NanoRos::NanoRosCpp PROPERTY
     INTERFACE_COMPILE_FEATURES cxx_std_14)
 
+  # --- Rust multi-staticlib link fix ---------------------------------------
+  #
+  # nros-cpp apps typically link two Rust-produced static archives:
+  #   1. libnros_cpp_<rmw>.a      (this runtime, defines nros_cpp_publish_raw
+  #                                et al.)
+  #   2. lib<pkg>__nano_ros_cpp_ffi.a  (codegen glue, references the above)
+  #
+  # Each Rust staticlib bundles its own copy of libstd and its own
+  # panic-handler symbol (`__rustc::rust_begin_unwind`). Rust's default
+  # `codegen-units = 1` (forced by `lto = true`) also packs every FFI
+  # trampoline into one `.rcgu.o`, so GNU ld extracts *all* publish
+  # trampolines the moment it needs any one symbol from the codegen
+  # archive — even in service/action apps that never call publish.
+  #
+  # On single-pass ld (the GNU default), this creates a link-order
+  # fragility: when CMake orders `libnros_cpp_<rmw>.a` before the codegen
+  # archive (the common case for `example_interfaces`-only apps),
+  # `nros_cpp_publish_raw` can't be back-resolved. Symptoms:
+  #   undefined reference to `nros_cpp_publish_raw`
+  #
+  # The canonical GNU-ld remedy is `--start-group`/`--end-group`; because
+  # both Rust archives then contribute overlapping `rust_begin_unwind`
+  # definitions, we also need `--allow-multiple-definition`. This mirrors
+  # the pattern recommended by the Rust/CMake community for multi-
+  # staticlib builds (Chromium/Firefox collapse to one staticlib to avoid
+  # both issues; we don't have that option until codegen is consolidated).
+  #
+  # Scope: the flags go on `NanoRos::NanoRosCpp` so every consumer picks
+  # them up automatically. Gated on GNU-ld-compatible toolchains:
+  #   * Linux / embedded GNU toolchains (NuttX, FreeRTOS, ThreadX cross
+  #     compilers ship binutils ld) — flags emitted.
+  #   * lld — accepts `--start-group` as a no-op (it resolves cross-
+  #     archive refs in one pass) and `--allow-multiple-definition` works
+  #     natively; safe to emit.
+  #   * macOS ld64 — does not accept GNU-ld flags; skip.
+  #   * MSVC link.exe — resolves symbols globally; skip.
+  #
+  # We intentionally omit an explicit `--end-group`; ld auto-closes at
+  # end-of-command-line and emits a polite warning. Adding an explicit
+  # `--end-group` via `INTERFACE_LINK_OPTIONS` would land *before* the
+  # libraries (LINK_OPTIONS precedes LINK_LIBRARIES in CMake's link
+  # command template), defeating the group.
+  if(UNIX AND NOT APPLE)
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_LINK_OPTIONS
+        "LINKER:--start-group"
+        "LINKER:--allow-multiple-definition")
+  endif()
+
   # Propagate the platform compile definition so that generated C/C++ code
   # sees the correct NROS_PLATFORM_* macro.
   if(NANO_ROS_PLATFORM STREQUAL "posix")

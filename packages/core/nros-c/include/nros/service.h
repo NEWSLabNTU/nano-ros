@@ -56,6 +56,20 @@ typedef bool (*nros_service_callback_t)(const uint8_t* request_data, size_t requ
                                         uint8_t* response_data, size_t response_capacity,
                                         size_t* response_len, void* context);
 
+/**
+ * Internal state for a service server (Phase 87.5: typed inline field).
+ *
+ * Mirrors the Rust `ServiceServerInternal` struct. Layout is fixed by
+ * `#[repr(C)]` on the Rust side; the executor sets these fields during
+ * registration.
+ */
+typedef struct nros_service_server_internal_t {
+    /** Arena entry index. -1 means not registered with any executor yet. */
+    int32_t arena_entry_index;
+    /** Pointer to the parent @ref nros_executor_t that owns the arena entry. */
+    void* executor_ptr;
+} nros_service_server_internal_t;
+
 /** Service server structure. */
 typedef struct nros_service_t {
     /** Current state. */
@@ -78,8 +92,8 @@ typedef struct nros_service_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque inline storage for @c ServiceServerInternal. */
-    _Alignas(8) uint8_t _internal[NROS_SERVICE_SERVER_INTERNAL_STORAGE_SIZE];
+    /** Internal state — set by @ref nros_executor_add_service. */
+    nros_service_server_internal_t _internal;
 } nros_service_t;
 
 /* ===================================================================

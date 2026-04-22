@@ -39,6 +39,22 @@ typedef enum nros_client_state_t {
     NROS_CLIENT_STATE_SHUTDOWN = 3,
 } nros_client_state_t;
 
+/**
+ * Internal state for a service client (Phase 87.5: typed inline field).
+ *
+ * Mirrors the Rust `ServiceClientInternal` struct. Layout is fixed by
+ * `#[repr(C)]` on the Rust side; the executor sets these fields during
+ * registration. `timeout_ms` is settable via @ref nros_client_set_timeout.
+ */
+typedef struct nros_service_client_internal_t {
+    /** Arena entry index. -1 means not registered with any executor yet. */
+    int32_t arena_entry_index;
+    /** Pointer to the parent @ref nros_executor_t that owns the arena entry. */
+    void* executor_ptr;
+    /** Default timeout (milliseconds) used by @ref nros_client_call. */
+    uint32_t timeout_ms;
+} nros_service_client_internal_t;
+
 /** Service client structure. */
 typedef struct nros_client_t {
     /** Current state. */
@@ -61,9 +77,8 @@ typedef struct nros_client_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque inline storage for @c ServiceClientInternal.
-     *  Filled by nros_executor_add_client(). */
-    _Alignas(8) uint8_t _internal[NROS_SERVICE_CLIENT_INTERNAL_STORAGE_SIZE];
+    /** Internal state — set by @ref nros_executor_add_client. */
+    nros_service_client_internal_t _internal;
 } nros_client_t;
 
 /* ===================================================================
