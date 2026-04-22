@@ -613,17 +613,20 @@ bool nros_cpp_timer_is_cancelled(void *executor_handle, size_t handle_id);
 /**
  * Create an action server on a node.
  *
- * The server auto-accepts incoming goals and buffers them for polling
- * via `nros_cpp_action_server_try_recv_goal()`.
+ * Phase 87.6: this call only zero-initialises the storage. Names and
+ * executor registration happen in `nros_cpp_action_server_register`
+ * below, same as before — the split exists to avoid a FreeRTOS QEMU
+ * deadlock where eagerly declaring the five underlying entities blocks
+ * the session mutex.
  *
  * # Safety
- * All pointer parameters must be valid. `storage` must point to an
- * 8-byte-aligned buffer of at least `CPP_ACTION_SERVER_OPAQUE_U64S * 8` bytes.
+ * `storage` must point to an 8-byte-aligned buffer of at least
+ * `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` bytes.
  */
 nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
-                                             const char *action_name,
-                                             const char *type_name,
-                                             const char *type_hash,
+                                             const char *_action_name,
+                                             const char *_type_name,
+                                             const char *_type_hash,
                                              struct nros_cpp_qos_t _qos,
                                              void *storage);
 
@@ -639,7 +642,11 @@ nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
  * `storage` must point to a valid `CppActionServer` from create.
  * `executor_handle` must point to a valid `CppContext`.
  */
-nros_cpp_ret_t nros_cpp_action_server_register(void *storage, void *executor_handle);
+nros_cpp_ret_t nros_cpp_action_server_register(void *storage,
+                                               void *executor_handle,
+                                               const char *action_name,
+                                               const char *type_name,
+                                               const char *type_hash);
 
 /**
  * Register callbacks on the action server.

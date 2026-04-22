@@ -331,6 +331,9 @@ template <typename A> class ActionServer {
     void* user_cancel_ctx_;
     TypedVisitorFn user_visitor_fn_;
     bool initialized_;
+    // Phase 87.6: action name buffer moved C++-side. 256 matches
+    // nros_node::limits::MAX_ACTION_NAME_LEN.
+    char action_name_[256] = {};
 };
 
 } // namespace nros

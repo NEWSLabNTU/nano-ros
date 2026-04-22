@@ -7,7 +7,6 @@ use core::ffi::{c_char, c_void};
 use nros::GoalId;
 use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header};
 use nros_node::config::DEFAULT_RX_BUF_SIZE;
-use nros_node::limits::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
@@ -46,20 +45,16 @@ pub type CppCancelCallback =
 
 /// Internal state for the action server.
 ///
-/// Holds the arena handle, the user-registered callbacks, and just enough
-/// metadata for register-after-create. No C++-side goal queue — the arena
-/// in `nros-node` owns all lifecycle state.
+/// Holds the arena handle and the user-registered callbacks. Phase 87.6
+/// thin-wrapper refactor: the `action_name` / `type_name` / `type_hash`
+/// buffers moved to the C++ `nros::ActionServer<A>` class (passed to
+/// `nros_cpp_action_server_register` at registration time). No C++-side
+/// goal queue — the arena in `nros-node` owns all lifecycle state.
 pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
     goal_cb: Option<CppGoalCallback>,
     cancel_cb: Option<CppCancelCallback>,
     cb_ctx: *mut c_void,
-    action_name: [u8; MAX_ACTION_NAME_LEN],
-    _action_name_len: usize,
-    type_name: [u8; MAX_TYPE_NAME_LEN],
-    _type_name_len: usize,
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
-    _type_hash_len: usize,
 }
 
 // Layout-mirror equivalence (Phase 87.11): the real `CppActionServer`
@@ -141,27 +136,25 @@ unsafe extern "C" fn cancel_callback_trampoline(
 
 /// Create an action server on a node.
 ///
-/// The server auto-accepts incoming goals and buffers them for polling
-/// via `nros_cpp_action_server_try_recv_goal()`.
+/// Phase 87.6: this call only zero-initialises the storage. Names and
+/// executor registration happen in `nros_cpp_action_server_register`
+/// below, same as before — the split exists to avoid a FreeRTOS QEMU
+/// deadlock where eagerly declaring the five underlying entities blocks
+/// the session mutex.
 ///
 /// # Safety
-/// All pointer parameters must be valid. `storage` must point to an
-/// 8-byte-aligned buffer of at least `CPP_ACTION_SERVER_OPAQUE_U64S * 8` bytes.
+/// `storage` must point to an 8-byte-aligned buffer of at least
+/// `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_create(
     node: *const nros_cpp_node_t,
-    action_name: *const c_char,
-    type_name: *const c_char,
-    type_hash: *const c_char,
+    _action_name: *const c_char,
+    _type_name: *const c_char,
+    _type_hash: *const c_char,
     _qos: nros_cpp_qos_t,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if node.is_null()
-        || action_name.is_null()
-        || type_name.is_null()
-        || type_hash.is_null()
-        || storage.is_null()
-    {
+    if node.is_null() || storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -170,40 +163,12 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let act_str = match unsafe { cstr_to_str(action_name) } {
-        Some(s) => s,
-        None => return NROS_CPP_RET_INVALID_ARGUMENT,
-    };
-    let type_str = match unsafe { cstr_to_str(type_name) } {
-        Some(s) => s,
-        None => return NROS_CPP_RET_INVALID_ARGUMENT,
-    };
-    let hash_str = match unsafe { cstr_to_str(type_hash) } {
-        Some(s) => s,
-        None => return NROS_CPP_RET_INVALID_ARGUMENT,
-    };
-
-    // Store metadata only — transport handles are created in
-    // nros_cpp_action_server_register (called by Node::create_action_server).
-    let name_len = act_str.len().min(MAX_ACTION_NAME_LEN - 1);
-    let type_len = type_str.len().min(MAX_TYPE_NAME_LEN - 1);
-    let hash_len = hash_str.len().min(MAX_TYPE_HASH_LEN - 1);
-    let mut server = CppActionServer {
+    let server = CppActionServer {
         handle: None,
         goal_cb: None,
         cancel_cb: None,
         cb_ctx: core::ptr::null_mut(),
-        action_name: [0u8; MAX_ACTION_NAME_LEN],
-        _action_name_len: name_len,
-        type_name: [0u8; MAX_TYPE_NAME_LEN],
-        _type_name_len: type_len,
-        type_hash: [0u8; MAX_TYPE_HASH_LEN],
-        _type_hash_len: hash_len,
     };
-    server.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
-    server.type_name[..type_len].copy_from_slice(&type_str.as_bytes()[..type_len]);
-    server.type_hash[..hash_len].copy_from_slice(&hash_str.as_bytes()[..hash_len]);
-
     unsafe {
         core::ptr::write(storage as *mut CppActionServer, server);
     }
@@ -224,20 +189,34 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
 pub unsafe extern "C" fn nros_cpp_action_server_register(
     storage: *mut c_void,
     executor_handle: *mut c_void,
+    action_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
 ) -> nros_cpp_ret_t {
-    if storage.is_null() || executor_handle.is_null() {
+    if storage.is_null()
+        || executor_handle.is_null()
+        || action_name.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+    {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
     let server = unsafe { &mut *(storage as *mut CppActionServer) };
     let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
 
-    let act_str =
-        unsafe { core::str::from_utf8_unchecked(&server.action_name[..server._action_name_len]) };
-    let type_str =
-        unsafe { core::str::from_utf8_unchecked(&server.type_name[..server._type_name_len]) };
-    let hash_str =
-        unsafe { core::str::from_utf8_unchecked(&server.type_hash[..server._type_hash_len]) };
+    let act_str = match unsafe { cstr_to_str(action_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
 
     match ctx.executor.add_action_server_raw(
         act_str,
@@ -490,12 +469,12 @@ impl Default for CppActionClientCallbacks {
 ///
 /// Lightweight — the `ActionClientCore` lives in the executor's arena.
 /// This struct stores the arena entry index, executor pointer, and callbacks.
+/// Phase 87.6: the action_name buffer moved to the C++
+/// `nros::ActionClient<A>` class.
 pub(crate) struct CppActionClient {
     callbacks: CppActionClientCallbacks,
     arena_entry_index: i32,
     executor_ptr: *mut c_void,
-    action_name: [u8; MAX_ACTION_NAME_LEN],
-    _action_name_len: usize,
 }
 
 /// Get a mutable reference to an action client's core in the executor arena.
@@ -660,15 +639,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
         Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
     };
 
-    let name_len = act_str.len().min(MAX_ACTION_NAME_LEN - 1);
-    let mut client = CppActionClient {
+    let client = CppActionClient {
         callbacks: CppActionClientCallbacks::default(),
         arena_entry_index: handle.entry_index() as i32,
         executor_ptr: node_ref.executor,
-        action_name: [0u8; MAX_ACTION_NAME_LEN],
-        _action_name_len: name_len,
     };
-    client.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
 
     // Write directly into caller-provided storage — no heap allocation.
     unsafe {

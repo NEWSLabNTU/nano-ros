@@ -374,6 +374,8 @@ template <typename A> class ActionClient {
     void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
     bool initialized_;
     Stream<FeedbackType> feedback_stream_;
+    // Phase 87.6: action name buffer moved C++-side.
+    char action_name_[256] = {};
 };
 
 } // namespace nros

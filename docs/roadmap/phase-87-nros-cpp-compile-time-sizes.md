@@ -175,12 +175,12 @@ refactors with public-API surface area, each a separate PR.
       FFI-safe regardless of trait-object parameters) and replacing
       `Option<ActionServerRawHandle>` with always-present sentinel
       (`ActionServerRawHandle::invalid()` + `INVALID_ENTRY_INDEX`).
-- [ ] **87.6** Thin-wrapper refactor of `nros-cpp` — Publisher,
-      Subscription, Service, Client, GuardCondition done. ActionServer
-      and ActionClient pending — 1329-line `action.rs` with
-      pending-goal arrays + multi-callback state. Note: 87.11 below
-      delivers most of the size-savings via layout-mirror without the
-      full thin-wrapper refactor.
+- [x] **87.6** Thin-wrapper refactor of `nros-cpp` complete for all
+      seven types. ActionServer/ActionClient: action_name / type_name /
+      type_hash buffers moved to the C++ classes; storage drops from
+      736→72 bytes (ActionServer) and 312→48 bytes (ActionClient).
+      `nros_cpp_action_server_register` now takes the names as
+      parameters (instead of stashing them in the Rust struct).
 - [x] **87.7** Hand-maintained `*_OPAQUE_U64S` macros in
       `nros-c/include/nros/types.h` removed (`NROS_SESSION_OPAQUE_U64S`,
       `NROS_PUBLISHER_OPAQUE_U64S`,

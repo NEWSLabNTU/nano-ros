@@ -85,7 +85,9 @@ nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const
 nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
                                              const char* type_name, const char* type_hash,
                                              nros_cpp_qos_t qos, void* storage);
-nros_cpp_ret_t nros_cpp_action_server_register(void* storage, void* executor_handle);
+nros_cpp_ret_t nros_cpp_action_server_register(void* storage, void* executor_handle,
+                                               const char* action_name, const char* type_name,
+                                               const char* type_hash);
 
 nros_cpp_ret_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
                                              const char* type_name, const char* type_hash,
@@ -292,9 +294,21 @@ class Node {
             &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
         if (ret != 0) return Result(ret);
         // Register with executor — creates transport handles (3 queryables + 2 publishers).
-        // Deferred from create to avoid FreeRTOS QEMU deadlocks.
-        ret = nros_cpp_action_server_register(out.storage_, executor_handle_);
+        // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
+        // names are passed at register-time (buffers live on the C++
+        // `nros::ActionServer<A>` class, not in the Rust struct).
+        ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name,
+                                              A::TYPE_NAME, A::Goal::TYPE_HASH);
         if (ret == 0) {
+            // Phase 87.6: copy action_name into the C++-owned buffer for
+            // `get_action_name()` accessor.
+            size_t name_len = 0;
+            while (action_name[name_len] != '\0' &&
+                   name_len + 1 < sizeof(out.action_name_)) {
+                out.action_name_[name_len] = action_name[name_len];
+                ++name_len;
+            }
+            out.action_name_[name_len] = '\0';
             out.executor_ = executor_handle_;
             out.initialized_ = true;
         }
@@ -319,6 +333,14 @@ class Node {
         nros_cpp_ret_t ret = nros_cpp_action_client_create(
             &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
+            // Phase 87.6: action_name buffer lives C++-side now.
+            size_t name_len = 0;
+            while (action_name[name_len] != '\0' &&
+                   name_len + 1 < sizeof(out.action_name_)) {
+                out.action_name_[name_len] = action_name[name_len];
+                ++name_len;
+            }
+            out.action_name_[name_len] = '\0';
             out.executor_ = executor_handle_;
             out.initialized_ = true;
         }

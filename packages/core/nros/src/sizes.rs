@@ -96,19 +96,15 @@ mod rmw_sizes {
         unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void) -> i32;
     type CppCancelCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
 
+    // Phase 87.6 thin-wrapper: `action_name` / `type_name` / `type_hash`
+    // buffers moved to the C++ `nros::ActionServer<A>` class.
     #[repr(C)]
     #[doc(hidden)]
     pub struct CppActionServerLayout {
-        pub handle: nros_node::ActionServerRawHandle,
+        pub handle: Option<nros_node::ActionServerRawHandle>,
         pub goal_cb: Option<CppGoalCallbackLayout>,
         pub cancel_cb: Option<CppCancelCallbackLayout>,
         pub cb_ctx: *mut c_void,
-        pub action_name: [u8; nros_node::limits::MAX_ACTION_NAME_LEN],
-        pub _action_name_len: usize,
-        pub type_name: [u8; nros_node::limits::MAX_TYPE_NAME_LEN],
-        pub _type_name_len: usize,
-        pub type_hash: [u8; nros_node::limits::MAX_TYPE_HASH_LEN],
-        pub _type_hash_len: usize,
     }
     export_size!(pub CPP_ACTION_SERVER_SIZE = CppActionServerLayout);
 
@@ -127,14 +123,14 @@ mod rmw_sizes {
         pub context: *mut c_void,
     }
 
+    // Phase 87.6 thin-wrapper: `action_name` buffer moved to the C++
+    // `nros::ActionClient<A>` class.
     #[repr(C)]
     #[doc(hidden)]
     pub struct CppActionClientLayout {
         pub callbacks: CppActionClientCallbacksLayout,
         pub arena_entry_index: i32,
         pub executor_ptr: *mut c_void,
-        pub action_name: [u8; nros_node::limits::MAX_ACTION_NAME_LEN],
-        pub _action_name_len: usize,
     }
     export_size!(pub CPP_ACTION_CLIENT_SIZE = CppActionClientLayout);
 }
