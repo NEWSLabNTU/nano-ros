@@ -59,7 +59,7 @@ platforms (~7).
 - [ ] 89.3 — Category B: C++-on-RTOS `lang_3` failures (5 tests)
 - [ ] 89.4 — Category C: ESP32 QEMU suite (4 tests)
 - [x] 89.5 — Category D: QEMU RTIC suite (4 tests) — fix size-probe platform detection for bare-metal + smoltcp
-- [ ] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests)
+- [x] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests) — resolved by 89.5 size-probe fix
 - [ ] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests)
 - [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
 - [x] 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux per-case port split
@@ -314,39 +314,23 @@ stack garbage happened to sit after the IP in the caller frame).
 Still failing (different root cause, not size-probe): `test_qemu_serial_pubsub_e2e`
 — serial transport doesn't use the TCP endpoint path.
 
-### 89.6 — Category E: `nano2nano` RTIC/TLS timeouts
+### 89.6 — Category E: `nano2nano` RTIC/TLS timeouts — **Landed**
 
-Four tests, all time out at exactly 60 s:
+Resolved by the 89.5 size-probe fix. The three RTIC tests were
+blocked by the same bare-metal pass-by-value ABI corruption that
+killed Category D; fixing the size probe let their firmware connect
+to the native-side counterpart on the first try. The TLS test was
+also gated by the same failure path (the `bare-metal` smoltcp
+bridge feeds the TLS link).
 
-| Test | Duration |
-|---|---|
-| `test_rtic_pattern_action` | 60.0 s |
-| `test_rtic_pattern_communication` | 60.0 s |
-| `test_rtic_pattern_service` | 60.0 s |
-| `test_tls_talker_listener_communication` | 60.0 s |
+**Test results** (all 4 PASS, pre-fix all timed out at 60 s):
 
-**Observed**: The 60 s hard-ceiling hit means the test is blocked on
-some synchronisation point (usually `wait_for_output_pattern`) that
-never fires. This usually means the binary booted but never emitted
-the expected marker string — or didn't boot at all.
+- `test_rtic_pattern_communication` — 16.0 s
+- `test_rtic_pattern_action` — 17.6 s
+- `test_rtic_pattern_service` — 18.2 s
+- `test_tls_talker_listener_communication` — 15.3 s
 
-**Suspect**:
-- RTIC: linked to Category D. If RTIC binaries don't work, their
-  native-side `nano2nano` counterpart will never see a peer.
-- TLS: Phase 84 migrated `ZENOH_TLS_*` env vars to `NROS_TLS_*` but
-  this test may still set the old names.
-
-**Action**:
-
-1. Grep the four test bodies for the readiness markers being awaited
-   (`wait_for_output_pattern(...)` arg). For each marker, confirm the
-   example binary logs it at startup.
-2. For TLS: inspect `test_tls_talker_listener_communication` env setup
-   and verify it uses `NROS_LOCATOR` + `ZENOH_TLS_ROOT_CA_CERTIFICATE`
-   (TLS env vars weren't renamed in 84.E3 — double-check).
-3. **Files**:
-   - `packages/testing/nros-tests/tests/nano2nano.rs`
-   - (same upstream as Category D for the RTIC half).
+**Fix**: none required beyond 89.5 — pure cascade.
 
 ### 89.7 — Category F: Standalone failures
 
