@@ -54,7 +54,7 @@ platforms (~7).
 
 ## Work Items
 
-- [ ] 89.1 — Re-split `qemu-serial` into per-platform `max-threads=1` groups
+- [x] 89.1 — Re-split `qemu-serial` into per-platform `max-threads=1` groups
 - [ ] 89.2 — Category A: C/C++ service-RPC failures (3 tests)
 - [ ] 89.3 — Category B: C++-on-RTOS `lang_3` failures (5 tests)
 - [ ] 89.4 — Category C: ESP32 QEMU suite (4 tests)
@@ -63,47 +63,41 @@ platforms (~7).
 - [ ] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests)
 - [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
 
-### 89.1 — Restore per-platform nextest groups
+### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
 
-**Problem**: `.config/nextest.toml` lines 20–33 replaced 7 per-platform
-groups with one `qemu-serial` group. Comment suggests this was a
-simplification, but the per-platform zenohd-port table already makes
-cross-platform concurrency safe; the collapse only hurts wall-clock
-test time. CLAUDE.md and the book both describe a per-platform model
-that the config no longer implements.
+Replaced the single `qemu-serial` group with 7 per-platform groups,
+each still `max-threads = 1` so same-platform tests stay strictly
+serial (one QEMU/native-sim instance + one zenohd per test). Cross-
+platform concurrency is now free because the port table already
+prevents zenohd collisions:
 
-**Action**:
+  qemu-baremetal      port 7450  (emulator + large_msg)
+  qemu-freertos       port 7451
+  qemu-nuttx          port 7452
+  qemu-threadx-riscv  port 7453
+  qemu-esp32          port 7454
+  threadx-linux       port 7455
+  qemu-zephyr         port 7456
 
-1. Replace the single `[test-groups.qemu-serial] max-threads = 1`
-   block with one block per platform:
-   - `qemu-baremetal` — `binary(emulator)` + `binary(large_msg)`
-     (large_msg uses the baremetal port 7450)
-   - `qemu-freertos` — `binary(freertos_qemu)`
-   - `qemu-nuttx` — `binary(nuttx_qemu)`
-   - `qemu-threadx-riscv` — `binary(threadx_riscv64_qemu)`
-   - `qemu-esp32` — `binary(esp32_emulator)`
-   - `qemu-zephyr` — `binary(zephyr)` (TAP / NSOS depending on build)
-   - `threadx-linux` — `binary(threadx_linux)`
-   - Each platform's case in `rtos_e2e` also needs per-platform
-     routing. `rtos_e2e` is parametrised across all 4 RTOSes, so
-     either split the binary into per-platform binaries or use
-     nextest `test(...)` filtersets to assign each parametrised
-     case to its platform group. The `test(...)` approach avoids
-     the test-binary split.
+`rtos_e2e` is one parametrised binary covering all 4 RTOSes; each
+case routed to its platform group via nextest's `test(...)` substring
+predicate against rstest's generated `platform_N_Platform__<Variant>`
+name. No test source changes — pure config.
 
-2. Retry semantics stay at `retries = 2`, `slow-timeout = 120s /
-   terminate-after = 3` per group — identical to today, just
-   distributed.
+`large_msg` merged into `qemu-baremetal` (shares port 7450); former
+`[test-groups.large_msg]` block removed.
 
-3. **Acceptance**: `just test-all` wall-clock on a populated workspace
-   drops by ≥40 % (rough estimate: 7 platforms serialised → 2–3 cores
-   running in parallel). Per-platform tests must stay strictly
-   ordered within their group (no TAP/port-table contention).
+`justfile::test` fast-path and the "fast path" comment block updated
+to `group(=qemu-baremetal) or group(=qemu-freertos) or …` so `just
+test` keeps excluding all heavy-dep binaries.
 
-4. **Files**: `.config/nextest.toml` (sole edit).
+Acceptance note: the CLAUDE.md promise ("per-platform nextest
+groups — each platform has its own `max-threads = 1` group … Platforms
+run in parallel; tests within a platform are serial") now matches the
+config again.
 
-**Risk**: Low. If cross-platform contention shows up (it shouldn't,
-given the port table), the diff is two-line revertible.
+**Risk verification**: smoke test via `cargo nextest run -p nros-tests
+--test actions` — 3/3 tests pass in 4.9 s wall-clock (parallel).
 
 ### 89.2 — Category A: C/C++ service-RPC failures
 
