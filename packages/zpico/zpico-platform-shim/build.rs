@@ -112,6 +112,18 @@ fn probe_sizes(
         return Some((ptr_size, ptr_size));
     }
 
+    // Phase 89.5: the `network-smoltcp-bridge` feature is activated by
+    // zpico-sys only for the `bare-metal` platform feature, so when it's
+    // present we know this build targets smoltcp — short-circuit the
+    // target-triple heuristic. Without this check, a thumbv7m bare-metal
+    // build with `.envrc` exporting FREERTOS_DIR would silently fall into
+    // the FreeRTOS branch (4-byte socket / 4-byte endpoint sizes from the
+    // lwIP headers) instead of the bare-metal branch (2-byte socket /
+    // 6-byte endpoint). The resulting pass-by-value ABI mismatch truncates
+    // the TCP port and sends SYNs to an arbitrary port on the slirp
+    // gateway, giving RST responses and `Transport(ConnectionFailed)`.
+    let uses_smoltcp_bridge = env::var("CARGO_FEATURE_NETWORK_SMOLTCP_BRIDGE").is_ok();
+
     // Target triple determines the platform branch FIRST; env vars
     // are consulted only as sources of SDK paths. Using env vars as
     // the branching key was unreliable because `.envrc` exports
@@ -120,7 +132,9 @@ fn probe_sizes(
     // (ThreadX) would silently take the FREERTOS branch and the
     // probe would fall through to defaults (16/8), corrupting the
     // `_z_sys_net_socket_t` pass-by-value ABI.
-    let primary = if target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok() {
+    let primary = if uses_smoltcp_bridge {
+        ProbePlatform::BareMetal
+    } else if target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok() {
         ProbePlatform::Freertos
     } else if target.contains("nuttx") || target.contains("armv7a-nuttx") {
         ProbePlatform::Nuttx

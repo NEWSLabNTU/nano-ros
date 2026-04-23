@@ -58,7 +58,7 @@ platforms (~7).
 - [x] 89.2 — Category A: C/C++ service-RPC failures (3 tests) — wall-clock budget in blocking spin loops
 - [ ] 89.3 — Category B: C++-on-RTOS `lang_3` failures (5 tests)
 - [ ] 89.4 — Category C: ESP32 QEMU suite (4 tests)
-- [ ] 89.5 — Category D: QEMU RTIC suite (4 tests)
+- [x] 89.5 — Category D: QEMU RTIC suite (4 tests) — fix size-probe platform detection for bare-metal + smoltcp
 - [ ] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests)
 - [ ] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests)
 - [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
@@ -244,43 +244,75 @@ the ESP32 image is panicking during boot. Not a real pub/sub bug
    `packages/boards/nros-esp32-qemu/`,
    `examples/qemu-esp32-baremetal/`.
 
-### 89.5 — Category D: QEMU RTIC suite
+### 89.5 — Category D: QEMU RTIC suite — **Landed**
 
-Four tests in `emulator`:
+**Root cause**: ABI corruption in the `zpico-platform-shim` size probe.
 
-| Test | Duration |
-|---|---|
-| `test_qemu_rtic_action_e2e` | 16.5 s |
-| `test_qemu_rtic_mixed_priority_pubsub_e2e` | 16.0 s |
-| `test_qemu_rtic_pubsub_e2e` | 16.1 s |
-| `test_qemu_rtic_service_e2e` | 15.9 s |
+`_z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, …)`
+takes the endpoint struct **by value**. The Rust shim declares
+`ZSysNetEndpoint` as an opaque `[u8; NET_ENDPOINT_SIZE]` whose size
+is determined at build time by compiling a C size probe and reading
+the symbol sizes from the object file.
 
-**Observed**: Identical ~16 s timeout across all four RTIC tests.
-`emulator` binary hosts bare-metal MPS2-AN385 RTIC examples — they
-run on the QEMU bare-metal platform with slirp user-mode networking.
+For bare-metal builds (`thumbv7m-none-eabi`) the probe's heuristic
+keyed off `env::var("FREERTOS_DIR").is_ok()`:
 
-**Suspect**: either the RTIC binaries aren't being built (the RTIC
-suite predates Phase 82's service-client refactor and may still use
-pre-Phase-82 API), or the zenohd port-7450 instance started by the
-test framework isn't reachable from slirp after a recent change.
+```rust
+let primary = if target.contains("thumbv7m") && env::var("FREERTOS_DIR").is_ok() {
+    ProbePlatform::Freertos
+} else if target.contains("none") {
+    ProbePlatform::BareMetal
+} …
+```
 
-**Action**:
+`.envrc` exports `FREERTOS_DIR` globally whenever the FreeRTOS SDK
+is set up (default after `just setup`), so *every* bare-metal build
+took the FreeRTOS branch. That branch compiles the probe against
+lwIP headers, where `_z_sys_net_endpoint_t = int socket_fd` (4
+bytes). The real bare-metal layout is `{uint8_t _ip[4]; uint16_t
+_port}` (6 bytes).
 
-1. Build one RTIC binary manually:
-   ```bash
-   cd examples/qemu-arm-baremetal/rust/zenoh/rtic-talker
-   cargo build --release --target thumbv7m-none-eabi
-   ```
-   If this fails, Category D is a build-time API breakage.
-2. If build is OK, run:
-   ```bash
-   ./scripts/qemu/launch-mps2-an385.sh --binary <rtic-talker> --network slirp
-   ```
-   alongside `build/zenohd/zenohd --listen tcp/127.0.0.1:7450
-   --no-multicast-scouting` and capture the zenohd connection log.
-3. **Files**:
-   - `examples/qemu-arm-baremetal/rust/zenoh/rtic-*`
-   - `packages/testing/nros-tests/tests/emulator.rs`
+Result: when the firmware called `_z_open_tcp(sock, rep, tout)`, the
+`rep` argument passed by value was only 4 bytes — the IP octets
+arrived intact, but the port bytes (high half of the `(_ip, _port)`
+pair) got whatever was adjacent on the caller's stack. Every SYN
+went to an arbitrary port on `10.0.2.2`; slirp RSTed; the firmware
+panicked at `Executor::open()` with `Transport(ConnectionFailed)`.
+
+This matches the pre-fix pcap exactly: firmware configured for
+`tcp/10.0.2.2:7450` sent SYNs to `10.0.2.2:57244` (or whatever
+stack garbage happened to sit after the IP in the caller frame).
+
+**Fix** (1 file):
+
+- `packages/zpico/zpico-platform-shim/build.rs` — check the
+  `CARGO_FEATURE_NETWORK_SMOLTCP_BRIDGE` env var *first*. That
+  feature is activated only by `zpico-sys/bare-metal`, so its
+  presence is a definitive signal that the binary targets smoltcp
+  (not FreeRTOS/lwIP), regardless of what SDK paths happen to be
+  in the ambient environment.
+
+**Before / after sizes** (thumbv7m bare-metal):
+
+| | Before | After |
+|---|---|---|
+| `NET_SOCKET_SIZE` | 4 (FreeRTOS lwIP `int`) | 2 (bare-metal `{int8_t, bool}`) |
+| `NET_ENDPOINT_SIZE` | 4 (FreeRTOS lwIP `int`) | 6 (bare-metal `{u8[4], u16}`) |
+
+**Test results** (all 4 PASS where they were FAIL before):
+
+- `test_qemu_rtic_pubsub_e2e` — 45.5 s
+- `test_qemu_rtic_mixed_priority_pubsub_e2e` — 45.8 s
+- `test_qemu_rtic_service_e2e` — 25.4 s
+- `test_qemu_rtic_action_e2e` — 23.5 s
+
+**Bonus Category F fixes** (same root cause, also PASS now):
+
+- `test_qemu_zenoh_large_publish` (89.7 Category F)
+- `test_nros_dds_to_ros2`, `test_ros2_to_nros_dds` (89.7 dds group)
+
+Still failing (different root cause, not size-probe): `test_qemu_serial_pubsub_e2e`
+— serial transport doesn't use the TCP endpoint path.
 
 ### 89.6 — Category E: `nano2nano` RTIC/TLS timeouts
 
