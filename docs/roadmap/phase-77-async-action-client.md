@@ -287,16 +287,22 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - Trade-off: interrupt-driven reduces power consumption but adds latency jitter; tight-loop gives lowest latency for real-time
     - Board crates would implement a platform-specific `wait_for_event(timeout_ms)` hook
     - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (smoltcp/serial blocks), board crates
-- [ ] 77.19 — `nros-rmw-zenoh` ffi-sync poll loop: replace busy-loop with blocking `spin_once`
-    - Current: under the `ffi-sync` feature, `Zpico::poll(timeout_ms)` runs
-      `loop { ffi_guard(|| zpico_spin_once(0)); elapsed_ms?; }` with a
-      non-blocking 0-timeout `spin_once`, burning CPU until the deadline
-      or data arrival. This was written before `zpico_spin_once` had an
-      event-driven wake on POSIX/Zephyr/FreeRTOS/NuttX (77.16 / 77.17).
-    - Target: call `zpico_spin_once(remaining_ms)` inside the loop so the
-      binary-semaphore / sem_timedwait / condvar path wakes immediately
-      on data. Keep `ffi_guard` wrapping; only the inner timeout changes.
-    - **Files**: `packages/zpico/nros-rmw-zenoh/src/zpico.rs` (`poll`, around lines 623–636)
+- [x] 77.19 — `nros-rmw-zenoh` ffi-sync poll loop: replace busy-loop with blocking `spin_once`
+    - Was: `loop { ffi_guard(|| zpico_spin_once(0)); elapsed_ms?; }`,
+      tight-looping a non-blocking 0-timeout spin until deadline or data.
+    - Now: `loop { ffi_guard(|| zpico_spin_once(remaining_ms)); … }`.
+      On POSIX/Zephyr/FreeRTOS/NuttX the event-driven wake from 77.16 /
+      77.17 returns the inner call immediately on data arrival; on
+      polled-smoltcp / polled-serial bare-metal the inner call's own
+      tight loop handles the timeout (no second layer of busy-waiting).
+    - Note: the critical section is now held for up to `remaining_ms`
+      per iteration. The only active `ffi-sync` consumer today is
+      bare-metal RTIC mixed-priority, and those examples always call
+      `spin_once(0)` (single pass, loop body never fires), so this is
+      benign. A future consumer calling with `timeout_ms > 0` on a
+      cortex-m RTIC target would hold IRQs off for the duration and
+      should split the wait from the zpico-state touch.
+    - **Files**: `packages/zpico/nros-rmw-zenoh/src/zpico.rs`
 - [ ] 77.20 — Deprecate / retire `zpico_poll()` FreeRTOS fixed-delay path
     - Current: `zpico_poll()`'s FreeRTOS branch still uses `vTaskDelay(timeout_ms)`
       (fixed-duration sleep; no early wake). 77.16 only updated

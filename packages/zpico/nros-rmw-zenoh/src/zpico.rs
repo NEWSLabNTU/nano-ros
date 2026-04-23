@@ -606,8 +606,28 @@ impl Context {
     ///
     /// Number of events processed, or error
     pub fn spin_once(&self, timeout_ms: u32) -> Result<i32> {
-        // When FFI guard is enabled, decompose blocking spin_once into a
-        // loop of non-blocking guarded calls to keep critical sections short.
+        // When FFI guard is enabled, each `zpico_spin_once` call must
+        // run inside a `critical_section::with()` to serialise against
+        // mixed-priority tasks that also touch zenoh-pico globals.
+        //
+        // Phase 77.19 — the inner call is now `zpico_spin_once(remaining_ms)`
+        // instead of a busy `zpico_spin_once(0)` tight-loop. On platforms
+        // that have event-driven wake primitives (POSIX condvar, Zephyr
+        // condvar, FreeRTOS binary semaphore, NuttX `sem_timedwait` — all
+        // landed in 77.16 / 77.17), this returns immediately on data
+        // arrival instead of burning CPU until the deadline. On
+        // polled-smoltcp / polled-serial bare-metal the inner call is
+        // still a tight loop but the outer loop no longer adds a second
+        // layer of busy-waiting on top.
+        //
+        // The critical section is held for up to `remaining_ms` per
+        // iteration, which is fine today because the only active
+        // `ffi-sync` consumer is bare-metal RTIC mixed-priority, and
+        // those examples always call with `timeout_ms == 0` (single pass,
+        // never enters the loop). If a future consumer calls with
+        // `timeout_ms > 0` on a cortex-m RTIC target, this will hold
+        // IRQs off for that duration and should be revisited (split the
+        // wait and the zpico-state touch into separate CS regions).
         #[cfg(feature = "ffi-sync")]
         {
             let ret = ffi_guard(|| unsafe { zpico_spin_once(0) });
@@ -617,16 +637,18 @@ impl Context {
             if ret > 0 || timeout_ms == 0 {
                 return Ok(ret);
             }
-            // Loop with guarded non-blocking spin_once calls until timeout
+            // Loop with guarded blocking spin_once calls until timeout
             let mut clock = [0u8; 16];
             unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
             loop {
                 let elapsed =
                     unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
-                if elapsed >= timeout_ms as core::ffi::c_ulong {
+                let elapsed_u32 = elapsed as u32;
+                if elapsed_u32 >= timeout_ms {
                     return Ok(0);
                 }
-                let ret = ffi_guard(|| unsafe { zpico_spin_once(0) });
+                let remaining_ms = timeout_ms - elapsed_u32;
+                let ret = ffi_guard(|| unsafe { zpico_spin_once(remaining_ms) });
                 if ret < 0 {
                     return Err(ZpicoError::from_code(ret));
                 }
