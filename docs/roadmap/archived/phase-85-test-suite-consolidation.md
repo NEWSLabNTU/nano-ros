@@ -5,7 +5,13 @@
 that's ~70% smaller and ~40% faster to run, without sacrificing any
 platform coverage.
 
-**Status**: Not Started
+**Status**: Complete (2026-04-24). Work items 85.1–85.10 landed;
+85.11 abandoned (UX-break churn not justified by the payoff — the
+exclusion-list fix in 85.7 already achieves the practical goal of
+making `just test` fast and well-defined). Residual test-count growth
+(214 → 260 as new phases added coverage) and the "<100 functions"
+acceptance target are carried forward by
+[Phase 89 — test-suite triage and parallelism](./phase-89-test-suite-triage-and-parallelism.md).
 **Priority**: Medium — the suite isn't broken, but the duplication is
 compounding: every new platform / transport has to be added in three
 places (build helper, build test, E2E test), every bug fix that changes
@@ -13,6 +19,8 @@ a sleep-based wait has to be replicated across four platform files, and
 the per-file `OnceCell` caches rebuild the same cross-compiled binaries
 multiple times per nextest run.
 **Depends on**: None — can land in parallel with Phase 80 and Phase 84.
+**Successor**: Phase 89 inherits the <100-functions target and any
+remaining sleep-based pacing.
 
 ## Overview
 
@@ -184,10 +192,18 @@ that each just call `build_X()` and assert the binary exists).
     [filterset docs](https://nexte.st/docs/filtersets/reference/).
   - **Doesn't do**: rename / UX changes. See 85.11.
 
-- [ ] 85.11 — `just test` / `just test-all` / `just ci` rename pass
+- [~] 85.11 — `just test` / `just test-all` / `just ci` rename pass —
+      **abandoned 2026-04-24**
+  - **Rationale for abandonment**: the practical goal of 85.11 (make
+    `just test` fast and well-defined) was already achieved by 85.7's
+    drift-fix — `just test` now runs the fast nextest profile via the
+    group-excluding filterset, and `just test-all` runs the full
+    matrix. The rename was UX polish on top of a working setup, with
+    a real downside (muscle-memory break + coordination with any
+    downstream CI that invokes `just test`). Not worth the churn.
   - **Files**: `justfile`, `just/*.just`, downstream CI workflows,
     any contributor docs that reference `just test`.
-  - **Goal** (unchanged from the original 85.7 proposal): rename
+  - **Original goal** (kept for archival context): rename
     `just test` → `just test-fast` (host / POSIX only, the current
     fast-profile scope), `just test-all` → `just test` (the new
     default that also covers QEMU platforms). `just ci` uses
@@ -378,22 +394,36 @@ them to stop silently passing.
 
 ## Acceptance Criteria
 
-- [ ] `just test` (post-85.7 rename: `just test-fast`) completes in at
-      least 15 % less wall time than the current baseline on a clean
-      checkout.
-- [ ] `just test-all` (post-rename: `just test`) completes in at least
-      30 % less wall time than the current baseline.
-- [ ] Total integration test function count drops from 214 to under 100
-      (Group A alone should bring it to ~140; Group B to ~80).
-- [ ] No platform coverage lost: every (platform, language, variant)
+- [~] `just test` wall time reduced ≥15 % — **carried to Phase 89**.
+      Baseline not captured before 85.1 landed (phase doc's own
+      self-caveat); post-85 count drifted back up as new phases
+      added coverage, so a bare-number comparison is no longer
+      meaningful. Subjective: `just test` is materially faster than
+      pre-85 because of 85.2 (sleep → ready-probe) and 85.3 (64
+      build-only tests deleted).
+- [~] `just test-all` wall time reduced ≥30 % — **carried to Phase 89**
+      for the same reasons as above.
+- [~] Total integration test function count <100 — **not met; carried
+      to Phase 89**. Count is 260 as of 2026-04-24 (vs. 214 baseline
+      / <100 target). Phase 85 did achieve the *mechanical*
+      consolidation (60+ build-only tests gone, 32-body RTOS E2E
+      matrix collapsed to one parametrised file), but phases 84 / 86
+      / 87 outran the reduction by adding new coverage. Further
+      reduction requires different techniques (deduplication across
+      transports, parallelisation) tracked by Phase 89.
+- [x] No platform coverage lost: every (platform, language, variant)
       combination currently tested still has at least one passing
-      assertion in the new suite.
-- [ ] `rg 'sleep\(Duration::from_secs\([2-9]' packages/testing/nros-tests/`
-      returns zero results outside of intentional pacing in long-lived
-      E2E fixtures.
-- [ ] Single source of truth: adding a new RTOS platform is a one-line
+      assertion in the new suite. (Verified by 85.4 + 85.8.)
+- [~] `rg 'sleep\(Duration::from_secs\([2-9]'` returns zero results
+      outside of intentional pacing in long-lived E2E fixtures —
+      **mostly met; three stragglers carried to Phase 89**:
+      `tests/ros2_lifecycle_interop.rs:75` (2 s),
+      `tests/zero_copy.rs:85` and `:145` (3 s each). The fixture
+      sleep in `src/fixtures/zenohd_router.rs:152` and the doc-comment
+      sleep in `src/process.rs:123` are both exempt.
+- [x] Single source of truth: adding a new RTOS platform is a one-line
       entry in `nros_tests::platform` + one `start_X_virt` fixture
-      helper, not a new test `.rs` file.
+      helper, not a new test `.rs` file. (85.4 + 85.5.)
 
 ## Notes & Caveats
 

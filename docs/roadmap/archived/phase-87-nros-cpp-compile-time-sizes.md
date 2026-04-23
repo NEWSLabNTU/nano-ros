@@ -5,7 +5,8 @@ with values sourced from Rust's `core::mem::size_of`. The `nros` umbrella
 crate owns the size constants; `nros-c` / `nros-cpp` read them at build
 time by probing `nros`'s compiled rlib via the `object` crate.
 
-**Status**: Not Started
+**Status**: Complete (all work items 87.1–87.12 landed; acceptance
+criteria met across all targets)
 **Priority**: Medium — unblocks 3 NuttX rtos_e2e cases that currently
 trip a compile-time assert on 32-bit targets, and removes an entire
 class of drift bug across 4 build scripts.
@@ -464,26 +465,30 @@ everything into the generated `nros_config_generated.h`. Keep
 
 ## Acceptance criteria
 
-- [ ] `packages/core/nros-c/build.rs` and
+- [x] `packages/core/nros-c/build.rs` and
       `packages/core/nros-cpp/build.rs` contain **zero** target-specific
       struct-layout math. The only numeric constants they compute are
       `sizes["FOO_SIZE"].div_ceil(8)` / `.next_multiple_of(8)` kind of
-      mechanical unit conversions.
-- [ ] `packages/core/nros/src/sizes.rs` is the only place in the tree
+      mechanical unit conversions. (87.4 + 87.11 removed the last of
+      the hand-math from `nros-cpp/build.rs`; the remaining code is
+      probe plumbing and unit conversions only.)
+- [x] `packages/core/nros/src/sizes.rs` is the only place in the tree
       where a size-bearing type's identity appears in a `size_of` or
-      `[u8; _]` context.
-- [ ] `NROS_PUBLISHER_OPAQUE_U64S` (C) and `NROS_PUBLISHER_SIZE` (C++
+      `[u8; _]` context. (11 exports as of 87.11; layout-mirror pattern
+      documented for types that can't be referenced directly.)
+- [x] `NROS_PUBLISHER_OPAQUE_U64S` (C) and `NROS_PUBLISHER_SIZE` (C++
       thin-wrapper result) derive from the same underlying const
-      `nros::sizes::PUBLISHER_SIZE`.
-- [ ] `types.h` ships zero hand-written `#define *_OPAQUE_U64S` or
-      `*_STORAGE_SIZE` lines.
-- [ ] The 3 NuttX C / C++ rtos_e2e cases that fail today with
+      `nros::sizes::PUBLISHER_SIZE`. (87.6 + 87.7.)
+- [x] `types.h` ships zero hand-written `#define *_OPAQUE_U64S` or
+      `*_STORAGE_SIZE` lines. (87.7 + 87.9; five macros removed.)
+- [x] The 3 NuttX C / C++ rtos_e2e cases that fail today with
       "STORAGE_SIZE too small" build past that assertion (runtime
-      behaviour out of scope).
-- [ ] If cbindgen upstream [#252](https://github.com/mozilla/cbindgen/issues/252)
+      behaviour out of scope). (Verified in 87.8.)
+- [x] If cbindgen upstream [#252](https://github.com/mozilla/cbindgen/issues/252)
       ever ships, the architecture requires no restructure — the
       `export_size!` macro's const line is what cbindgen would pick up;
-      the probe step degrades to a no-op.
+      the probe step degrades to a no-op. (Architectural; true by
+      construction.)
 
 ## Design notes
 

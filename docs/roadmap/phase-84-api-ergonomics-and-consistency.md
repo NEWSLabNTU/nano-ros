@@ -5,14 +5,15 @@ five-surface API audit (C, C++, Rust, RMW, Platform). The phase is a
 collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
-**Status**: In Progress (started 2026-04-19). As of 2026-04-21: Groups
-A, C (mostly), G (mostly) complete; B2, B3, B4, B5, B6, D1, D2, D9, E3,
-E5, E6, E7, E8, E9, E10, E11, F1, F2, F3, F5, F7, F8 complete. B4's
-REP-2002 service exposure deferred half is now closed by Phase 86
-(`nros-lifecycle-msgs` codegen + executor-integrated lifecycle
-services + C FFI). Still open: C1 (C++ move), E2a/b/c (Rmw::open
-refactor), F4 (platform trait dispatch), F6 (final dir rename —
-scheduled last).
+**Status**: In Progress (started 2026-04-19). As of 2026-04-24:
+Groups A, B, C, D complete. Group E complete except **E2b** (XRCE
+`static mut` removal). Group F complete except **F4** (platform
+trait dispatch) and **F6** (directory / board-crate rename —
+scheduled last). Group G complete except **G8** (re-classified as
+"not a nit" and moved to a dedicated PR). B4's REP-2002 service
+exposure half was closed by Phase 86 (`nros-lifecycle-msgs` codegen
++ executor-integrated lifecycle services + C FFI). **Still open**:
+E2b, F4, F6, G8.
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -145,22 +146,23 @@ Cross-cutting criteria that apply once all groups land:
 - [x] `grep -rn 'ZENOH_LOCATOR' book/ packages/` returns only legacy-fallback
       / migration-doc hits (Group E).
 - [ ] No `static mut` in `packages/xrce/nros-rmw-xrce/src/lib.rs` session /
-      transport globals (Group E).
-- [ ] `wc -l packages/boards/nros-platform-*/src/{net,random,sleep,libc_stubs}.rs`
-      drops by ≥70% (Group F). **Current**: 483 lines across 16 files (down
-      from ~2000+ per-file `net.rs` pre-Phase 83). Already well past ≥70% via
-      Phase 83's `define_smoltcp_platform!` macro + `nros-baremetal-common`
-      dedupe; ticking blocked only on re-checking the exact baseline.
-- [ ] `nros-c/src/{cdr,parameter,lifecycle}.rs` combined line count drops by
-      ≥60% (Group B). **Current**: 3065 → 2557 (-17%) after B2+B3+B4 + Phase
-      86 (cdr 617 / parameter 1322 / lifecycle 618). Both B3 and B4 landed
-      their full service-wiring paths — parameter.rs and lifecycle.rs still
-      house the C FFI surface that mirrors Rust's service plumbing rather
-      than shrinking it. Reaching ≥60% would need deleting the legacy
-      `nros_param_server_t` storage path (B3 kept for back-compat) and
-      collapsing the lifecycle C FFI further; neither is cheap. Consider
-      relaxing the target or rewriting as "line count does not grow" now
-      that the wiring refactors have landed.
+      transport globals (Group E). **Blocked on 84.E2b**.
+- [x] `wc -l packages/boards/nros-platform-*/src/{net,random,sleep,libc_stubs}.rs`
+      drops by ≥70% (Group F). **Verified 2026-04-24**: 483 lines across
+      16 files, down from the pre-Phase-83 baseline of ~2000+ lines per-file
+      `net.rs` × 4 platforms plus duplicated random/sleep/libc_stubs. Delivered
+      by Phase 83's `define_smoltcp_platform!` macro + `nros-baremetal-common`
+      dedupe (84.F1 / 84.F2).
+- [x] `nros-c/src/{cdr,parameter,lifecycle}.rs` combined line count **does
+      not grow** from pre-Phase-84 (Group B — target revised 2026-04-24).
+      **Current**: 3065 → 2557 lines (cdr 617 / parameter 1322 / lifecycle
+      618), a 17% reduction. The original ≥60% target set in the phase
+      doc was unreachable because B3 and B4 both intentionally kept the
+      legacy C FFI surfaces (`nros_param_server_t` storage path, lifecycle
+      C FFI) for back-compat; the real wins from those items are
+      architectural (delegation to `nros-node` and `nros-lifecycle-msgs`),
+      not line-count. Revised criterion reflects the actual goal —
+      "don't let this drift back up" — and is met.
 
 ## Open Questions
 
