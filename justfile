@@ -192,7 +192,7 @@ test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
-    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=ros2-interop) or group(=xrce_ros2_interop))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
     args=(--workspace --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)

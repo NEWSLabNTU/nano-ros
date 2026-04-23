@@ -776,11 +776,15 @@ fn test_qemu_rtic_pubsub_e2e() {
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Pubsub))
+            .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        wait_for_port(
+            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Pubsub),
+            Duration::from_secs(5)
+        ),
         "zenohd not reachable on platform port"
     );
 
@@ -895,11 +899,15 @@ fn test_qemu_rtic_service_e2e() {
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Service))
+            .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        wait_for_port(
+            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Service),
+            Duration::from_secs(5)
+        ),
         "zenohd not reachable on platform port"
     );
 
@@ -964,11 +972,15 @@ fn test_qemu_rtic_action_e2e() {
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Action))
+            .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        wait_for_port(
+            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Action),
+            Duration::from_secs(5)
+        ),
         "zenohd not reachable on platform port"
     );
 

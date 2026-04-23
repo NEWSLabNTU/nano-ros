@@ -64,6 +64,8 @@ platforms (~7).
 - [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
 - [x] 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux per-case port split
 - [x] 89.10 — Within-platform parallelism, tier 2: per-variant zenohd ports for slirp QEMU platforms
+- [x] 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim
+- [x] 89.Baremetal — Within-platform parallelism, tier 2 extension: bare-metal MPS2-AN385 RTIC
 - [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
 
 ### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
@@ -410,11 +412,82 @@ anyway.
 each concurrent QEMU instance is ~100–200 MB; 9 parallel
 QEMUs on a 3-platform run peak at ~1.5 GB).
 
-**Deferred**: Zephyr wasn't split — its locator is in Kconfig
-(`CONFIG_NROS_ZENOH_LOCATOR` per `prj.conf`), so splitting
-would need per-example prj.conf churn. The `qemu-zephyr`
-group stays `max-threads = 1`. Fix in a follow-up once someone
-needs it.
+**Zephyr**: split in a follow-up (see 89.Zephyr below). Kconfig
+locator churn turned out to be trivial since each example already
+maps 1:1 to a single variant (listener/talker → pubsub,
+service-* → service, action-* → action).
+
+### 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim — **Landed**
+
+**Same recipe as 89.10**, applied to Zephyr native_sim (NSOS,
+Phase 81). NSOS offloads BSD sockets straight to the host kernel,
+so per-variant host zenohd ports are all the isolation needed.
+
+**What landed**:
+- Example locator ports bumped per variant in-tree:
+  service-* examples → `7466`, action-* examples →
+  `7476` (Rust `src/lib.rs`, C/C++ `prj.conf`).
+- `packages/testing/nros-tests/tests/zephyr.rs`: 22 call sites
+  routed through `platform::ZEPHYR.zenohd_port_for(variant)`.
+- `.config/nextest.toml::[test-groups.qemu-zephyr]
+  max-threads = 3` (zenoh variants). XRCE tests share a
+  hardcoded Agent port (2018, baked into firmware via Kconfig)
+  and stay serial in a new `qemu-zephyr-xrce` group
+  (`max-threads = 1`). The XRCE override is placed BEFORE the
+  generic `binary(zephyr)` override so nextest's first-match-wins
+  routing assigns the 2 XRCE tests to the serial group.
+- `justfile` fast-path excludes both `qemu-zephyr` and
+  `qemu-zephyr-xrce`.
+
+**Expected speedup**: 3× on Zephyr zenoh variants (25 tests
+across 3 variants → 3 concurrent `native_sim` processes at a
+time), XRCE unchanged.
+
+### 89.Baremetal — Within-platform parallelism, tier 2 extension: MPS2-AN385 RTIC — **Landed**
+
+**Same recipe as 89.10**, applied to the bare-metal QEMU
+MPS2-AN385 RTIC suite. Slirp gives each QEMU instance an
+isolated `10.0.2.0/24`, so per-variant host zenohd ports
+are sufficient for service/action concurrency.
+
+**What landed**:
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-service-{server,client}/config.toml`
+  → `tcp/10.0.2.2:7460` (Service, offset +10).
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-action-{server,client}/config.toml`
+  → `tcp/10.0.2.2:7470` (Action, offset +20).
+- `packages/testing/nros-tests/tests/emulator.rs`: 6 call sites
+  (router start + `wait_for_port` × 3 tests) routed through
+  `platform::BAREMETAL.zenohd_port_for(variant)`.
+- `.config/nextest.toml`: `[test-groups.qemu-baremetal]
+  max-threads = 3` (service/action variants). Three port-7450
+  sharers — basic pubsub, mixed-priority pubsub, and the
+  `large_msg` binary — stay serial in a new
+  `qemu-baremetal-shared` group (`max-threads = 1`). The
+  shared override is placed BEFORE the generic
+  `binary(emulator) or binary(large_msg)` override so
+  nextest's first-match-wins routing picks the shared group
+  for the three collision-prone tests.
+- `justfile` fast-path excludes both `qemu-baremetal` and
+  `qemu-baremetal-shared`.
+
+**Not done (deliberate)**: mixed-priority pubsub and `large_msg`
+were *not* promoted to a 4th/5th `TestVariant` offset. They
+are platform-specific specialty tests that don't generalize;
+keeping the shared sub-group localizes the "port 7450
+collision" concern to nextest config instead of polluting the
+cross-platform enum.
+
+**Expected speedup**: up to 3× on the bare-metal suite
+(service || action || one-of-the-three-port-7450 tests run
+concurrently).
+
+**Note**: The underlying baremetal RTIC QEMU tests
+(pubsub/mixed/service/action/serial/large_publish) are
+currently failing with `Transport(ConnectionFailed)` at
+firmware init — this is Phase 89.5 / 89.7 pre-existing
+breakage, independent of the port split. The split is a
+no-op for correctness until that lands; it just unlocks
+parallel execution for when those tests are fixed.
 
 ### 89.11 — (Optional) Runtime locator override on RTOS
 

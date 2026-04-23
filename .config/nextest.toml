@@ -28,9 +28,16 @@ store-failure-output = true
 # rstest emits `platform_N_Platform__<Variant>` in each case's test
 # name, which nextest's `test(...)` substring predicate matches.
 #
-# `large_msg` shares port 7450 with the baremetal suite, so it
-# belongs in `qemu-baremetal`.
+# Phase 89.Baremetal — service/action use per-variant host ports
+# (`BAREMETAL.zenohd_port + 10/20`), so they can run concurrently
+# with pubsub. The basic pubsub e2e, the mixed-priority pubsub
+# e2e, and the `large_msg` binary all keep port 7450 and share
+# the serial `qemu-baremetal-shared` sub-group. Overall cap = 3
+# (service || action || one-of-the-three-port-7450 tests).
 [test-groups.qemu-baremetal]
+max-threads = 3
+
+[test-groups.qemu-baremetal-shared]
 max-threads = 1
 
 # Phase 89.10 — slirp-isolated QEMU platforms can run the three rtos_e2e
@@ -61,7 +68,15 @@ max-threads = 1
 [test-groups.threadx-linux]
 max-threads = 3
 
+# Phase 89.Zephyr — Zephyr native_sim uses NSOS (Phase 81) which offloads BSD
+# sockets to the host kernel, so per-variant host zenohd ports (base + 0/10/20)
+# are sufficient to run pubsub/service/action concurrently. XRCE tests share
+# a hardcoded Agent port (2018, baked into firmware via Kconfig) and must
+# stay serial — they live in `qemu-zephyr-xrce`.
 [test-groups.qemu-zephyr]
+max-threads = 3
+
+[test-groups.qemu-zephyr-xrce]
 max-threads = 1
 
 # Native C / C++ API tests share the same `target/release/libnros_c.a`
@@ -90,8 +105,20 @@ max-threads = 1
 # matching platform group. Slow-timeout + retries stay identical to
 # the former single `qemu-serial` block.
 
-# QEMU bare-metal (MPS2-AN385) — port 7450. `large_msg` shares this
-# port, so it lives in the same group.
+# QEMU bare-metal (MPS2-AN385).
+#
+# Port-7450 sharers: basic pubsub e2e, mixed-priority pubsub e2e, and
+# the `large_msg` binary all keep the base port. This override comes
+# BEFORE the generic `binary(emulator) or binary(large_msg)` rule so
+# nextest's first-match-wins routing assigns them to the serial
+# `qemu-baremetal-shared` group. Service/action use offset ports
+# (7460/7470) and stay in the parallel `qemu-baremetal` group.
+[[profile.default.overrides]]
+filter = "(binary(emulator) and (test(rtic_pubsub_e2e) or test(mixed_priority_pubsub_e2e))) or binary(large_msg)"
+test-group = "qemu-baremetal-shared"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
 [[profile.default.overrides]]
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"
@@ -136,6 +163,17 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 # Zephyr native_sim (NSOS, Phase 81) — port 7456.
+#
+# XRCE tests within the zephyr binary share a hardcoded Agent port (2018,
+# baked into firmware via Kconfig), so they must stay serial. This override
+# comes BEFORE the generic `binary(zephyr)` rule so nextest's first-match-wins
+# routing assigns them to `qemu-zephyr-xrce` instead of the parallel group.
+[[profile.default.overrides]]
+filter = "binary(zephyr) and test(xrce)"
+test-group = "qemu-zephyr-xrce"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "qemu-zephyr"
@@ -204,13 +242,15 @@ fail-fast = true
 # https://github.com/nextest-rs/nextest/pull/3273.
 #
 # Groups currently excluded from the fast path:
-#   * qemu-baremetal       — MPS2-AN385 + large_msg stress
+#   * qemu-baremetal       — MPS2-AN385, service/action variants
+#   * qemu-baremetal-shared — MPS2-AN385 port-7450 sharers (basic pubsub, mixed-priority pubsub, large_msg)
 #   * qemu-freertos        — FreeRTOS on MPS2-AN385
 #   * qemu-nuttx           — NuttX on MPS2-AN385
 #   * qemu-threadx-riscv   — ThreadX on QEMU RV64
 #   * qemu-esp32           — ESP32-C3 on Espressif QEMU
 #   * threadx-linux        — ThreadX Linux sim + veth bridge
-#   * qemu-zephyr          — Zephyr native_sim (NSOS)
+#   * qemu-zephyr          — Zephyr native_sim (NSOS), zenoh variants
+#   * qemu-zephyr-xrce     — Zephyr native_sim, XRCE variant (shared Agent port)
 #   * ros2-interop         — needs ROS 2 CLI on PATH
 #   * xrce_ros2_interop    — needs XRCE Agent + ROS 2
 #

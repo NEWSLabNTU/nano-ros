@@ -29,7 +29,7 @@ fn run() -> Result<(), NodeError> {
     // asynchronously after IPv4 assignment.
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
-    let config = ExecutorConfig::new("tcp/127.0.0.1:7456");
+    let config = ExecutorConfig::new("tcp/127.0.0.1:7466");
     let mut executor: Executor = Executor::open(&config)?;
 
     executor.add_service::<AddTwoInts, _>("/add_two_ints", |req| {
