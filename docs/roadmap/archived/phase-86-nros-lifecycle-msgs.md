@@ -8,6 +8,9 @@ Rust APIs can register the REP-2002 lifecycle services (`~/change_state`,
 
 **Status**: Complete (all work items + acceptance criteria landed; live
 `ros2 lifecycle` interop verified against a pinned `rmw_zenoh_cpp`).
+Post-landing verification (2026-04-24): all 24 `lifecycle_services`
+unit + integration tests still pass after Phase 87 storage-size
+refactors and a repo-wide `cargo fmt` pass — no regressions.
 **Priority**: Medium — the state machine already exists in
 `nros-node::lifecycle`; this phase is about surfacing it to ROS 2 tooling
 (`ros2 lifecycle set`, `ros2 lifecycle get`, `ros2 lifecycle nodes`).
