@@ -143,11 +143,7 @@ unsafe extern "C" fn transport_read(
         };
         ConcretePlatform::udp_set_recv_timeout(SOCK.as_ptr() as *const c_void, timeout_ms);
 
-        let n = ConcretePlatform::udp_read(
-            SOCK.as_ptr() as *const c_void,
-            buffer,
-            length,
-        );
+        let n = ConcretePlatform::udp_read(SOCK.as_ptr() as *const c_void, buffer, length);
         if n == usize::MAX {
             // Timeout or error — not an error for XRCE (timeout returns 0)
             0
