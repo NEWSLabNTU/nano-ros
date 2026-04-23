@@ -30,8 +30,6 @@ use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "ethernet")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 #[cfg(feature = "ethernet")]
-use nros_platform_esp32_qemu::clock;
-#[cfg(feature = "ethernet")]
 use nros_smoltcp::SmoltcpBridge;
 
 // Static storage for network objects (initialized by init_hardware, must
@@ -62,7 +60,15 @@ fn init_ethernet(config: &Config) {
         base_addr: openeth_smoltcp::ESP32C3_BASE,
         mac_addr: config.mac_addr,
     };
-    let mut eth = unsafe { OpenEth::new(openeth_config) };
+    // Construct the driver directly in static storage. OpenEth::init() writes
+    // the addresses of its internal DMA buffers (tx_buf/rx_buf, which live
+    // inside the struct) into hardware TX/RX descriptors — so it MUST be
+    // called after the struct has reached its final address. Calling init()
+    // before the move left the descriptors pointing at stale stack memory,
+    // causing QEMU to transmit all-zero frames.
+    let eth_value = unsafe { OpenEth::new(openeth_config) };
+    unsafe { ETH_DEVICE.write(eth_value) };
+    let eth = unsafe { ETH_DEVICE.assume_init_mut() };
     eth.init();
 
     let mac = eth.mac_address();
@@ -70,10 +76,6 @@ fn init_ethernet(config: &Config) {
         "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
     );
-
-    // Move into static storage so pointers remain valid after this function returns
-    unsafe { ETH_DEVICE.write(eth) };
-    let eth = unsafe { ETH_DEVICE.assume_init_mut() };
 
     // Create smoltcp interface
     esp_println::println!("");
@@ -132,6 +134,13 @@ fn init_ethernet(config: &Config) {
         );
 
         nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
+
+        // Register the network poll as the sleep callback so busy-wait
+        // sleep polls the network stack to avoid missing packets during
+        // zenoh-pico's connect handshake.
+        nros_platform_esp32_qemu::sleep::set_poll_callback(
+            crate::network::smoltcp_network_poll,
+        );
     }
 
     esp_println::println!("Ethernet ready.");
@@ -182,7 +191,13 @@ pub fn init_hardware(config: &Config) {
     // Step 2: Set up heap allocator (smaller than WiFi BSP - no WiFi overhead)
     esp_alloc::heap_allocator!(size: 64 * 1024);
 
-    // Step 3: Initialize hardware RNG (for zenoh-pico session ID)
+    // Step 3: Register the monotonic clock with the shared busy-wait sleep
+    // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
+    // no-ops and zenoh-pico's connect handshake polls the network zero
+    // times → Transport(ConnectionFailed).
+    nros_platform_esp32_qemu::sleep::init_clock();
+
+    // Step 4: Initialize hardware RNG (for zenoh-pico session ID)
     let rng = Rng::new();
     let rng_seed = rng.random();
     random::seed(rng_seed);
