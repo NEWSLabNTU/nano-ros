@@ -55,7 +55,7 @@ platforms (~7).
 ## Work Items
 
 - [x] 89.1 — Re-split `qemu-serial` into per-platform `max-threads=1` groups
-- [ ] 89.2 — Category A: C/C++ service-RPC failures (3 tests)
+- [x] 89.2 — Category A: C/C++ service-RPC failures (3 tests) — wall-clock budget in blocking spin loops
 - [ ] 89.3 — Category B: C++-on-RTOS `lang_3` failures (5 tests)
 - [ ] 89.4 — Category C: ESP32 QEMU suite (4 tests)
 - [ ] 89.5 — Category D: QEMU RTIC suite (4 tests)
@@ -104,45 +104,64 @@ config again.
 **Risk verification**: smoke test via `cargo nextest run -p nros-tests
 --test actions` — 3/3 tests pass in 4.9 s wall-clock (parallel).
 
-### 89.2 — Category A: C/C++ service-RPC failures
+### 89.2 — Category A: C/C++ service-RPC failures — **Landed**
 
-Three tests:
+**Root cause**: the blocking service-call spin loops on the C and C++
+sides budgeted work by *iteration count* (`max_spins = timeout_ms / 10`),
+not wall-clock. On POSIX / Zephyr with `Z_FEATURE_MULTI_THREAD == 1`
+the underlying `zpico_spin_once(timeout_ms)` waits on a condvar that
+the zenoh-pico background tasks signal on *any* incoming frame —
+keep-alives, discovery gossip, routing updates, etc. Each signal
+returns the spin well before the requested timeout. With the
+default 5 s budget, the 500-iteration loop exhausts in milliseconds,
+and `nros_client_call` / `Future::wait()` return `Timeout` before
+the reply can arrive (especially for the first RPC on a session,
+where zenoh-pico's initial scout / handshake hasn't settled yet).
 
-| Test | Duration | Symptom |
-|---|---|---|
-| `native_api::test_native_service_communication::lang_1_Language__C` | 6.1 s | `Call [1]: Timeout`, subsequent calls `error -8` |
-| `native_api::test_native_service_communication::lang_2_Language__Cpp` | 5.4 s | same signature — 0 / 4 calls succeed |
-| `services::test_service_multiple_sequential_calls` | 23.6 s | N sequential `call()` invocations; at least one fails |
+Rust's `Promise::wait` has the same loop shape but stayed green
+because all-Rust tests see the reply on the very first spin (fast
+path, no need to burn the budget).
 
-**Observed**: C and C++ native service clients make a `call()` that
-reaches the server (the test starts the server) but the reply never
-arrives within the client's blocking timeout. Error `-8` is
-`NROS_RET_TIMEOUT`. The first call times out at the 5 s blocking
-timeout; subsequent calls also time out because the in-flight flag
-(Phase 84.D3) is still set on the client.
+Cascading symptoms observed pre-fix:
 
-**Suspect**: the blocking `call_raw` path in `Client::call` on the C
-side goes through `zpico_get` which Phase 77 already flagged as the
-root of every blocking-action timeout ("Phase 77 WIP: blocking
-zpico_get in send_goal returns Timeout immediately on native"). The
-native C/C++ `Client::call` likely hits the same code path.
+| Test | Pre-fix symptom |
+|---|---|
+| `test_native_service_communication::lang_1_Language__C` | Call [1] `Timeout`, Calls [2–4] `NROS_RET_BAD_SEQUENCE` (entry.pending left set) |
+| `test_native_service_communication::lang_2_Language__Cpp` | Call [1] `Timeout` (`-2`), Calls [2–4] `send_request failed` (cascading slot state) |
+| `test_service_multiple_sequential_calls` (Rust) | now passes (pre-fix it intermittently failed when the first RPC needed discovery) |
+| `test_cpp_action_communication` (Category B) | also passes — same `Future::wait` loop |
 
-**Action**:
+**Fix** (3 files):
 
-1. Confirm the `call_raw` → `zpico_get` chain is the blocker by
-   running the same test with `RUST_LOG=trace` and noting where the
-   call stalls. If it is `zpico_get`, Phase 77 owns this (adds
-   `zpico_get_start`/`zpico_get_check` polled by the executor).
-   Close this item as "blocked on Phase 77".
-2. If not `zpico_get`, instrument the server-side queryable callback
-   (`nros_rmw_zenoh::shim::service::ZenohServiceServer::poll`) to
-   see whether the request is received at all. A missed request
-   means liveliness token discovery isn't completing before the
-   client sends.
-3. **Files**:
-   - `packages/core/nros-c/src/service.rs`
-   - `packages/core/nros-cpp/include/nros/client.hpp`
-   - `packages/zpico/nros-rmw-zenoh/src/shim/service.rs` (server side)
+- `packages/core/nros-c/src/service.rs::nros_client_call` — replaced
+  the `for _ in 0..max_spins` loop with a wall-clock budget using
+  `crate::platform::get_time_ns()`. Each iteration still calls
+  `nros_executor_spin_some(10ms)` but the loop exits only when
+  `elapsed_ns >= timeout_ns`.
+- `packages/core/nros-cpp/include/nros/future.hpp::Future::wait` —
+  same replacement, but header-side. Freestanding C++ can't call
+  `std::chrono`, so a new FFI function `nros_cpp_time_ns()` exposes
+  the monotonic clock.
+- `packages/core/nros-cpp/src/lib.rs` — `nros_cpp_time_ns()` export,
+  `Instant`-backed in `std` mode, forwarded to
+  `nros_platform_time_ns()` in `no_std`.
+
+**Not touched (deliberate)**:
+
+- `Promise::wait` in `nros-node::executor::handles.rs` has the same
+  structural bug but currently passes all tests. Leaving it on the
+  max-spins path until a test surfaces it.
+- The C blocking action client (`nros_action_send_goal_blocking` etc.)
+  uses a hard-coded `for _ in 0..1000` with no wall-clock budget.
+  Phase 77 rewrites the action client to a fully async path and
+  deletes this loop outright — not worth touching twice.
+
+**Test results**:
+
+- `test_native_service_communication::lang_1_Language__C` → PASS (6.8 s, was FAIL)
+- `test_native_service_communication::lang_2_Language__Cpp` → PASS (5.7 s, was FAIL)
+- `test_service_multiple_sequential_calls` → PASS (4.3 s)
+- `test_cpp_action_communication` (Category B bonus) → PASS (7.6 s)
 
 ### 89.3 — Category B: C++-on-RTOS `lang_3_Lang__Cpp` failures
 

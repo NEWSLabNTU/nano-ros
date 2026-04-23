@@ -13,6 +13,9 @@
 extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/// Monotonic time in nanoseconds. Used by Future::wait() to budget its
+/// spin loop by wall-clock, not iteration count (Phase 89.2).
+uint64_t nros_cpp_time_ns(void);
 }
 
 namespace nros {
@@ -75,11 +78,16 @@ template <typename T> class Future {
     Result wait(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
         if (slot_ < 0) return Result(ErrorCode::Error);
         if (poll_ms == 0) poll_ms = 1;
-        uint32_t elapsed = 0;
-        while (elapsed < timeout_ms) {
-            uint32_t step = poll_ms;
-            if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
-            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+        // Phase 89.2: budget by wall-clock. Accumulating `step` per iteration
+        // breaks when the underlying `zpico_spin_once` returns early on a
+        // signaled condvar (keep-alives, discovery gossip) — the 500-step
+        // default-timeout loop can then collapse into milliseconds and
+        // return ErrorCode::Timeout before the reply has a chance to land.
+        const uint64_t start_ns = nros_cpp_time_ns();
+        const uint64_t budget_ns = static_cast<uint64_t>(timeout_ms) * 1000000ULL;
+        while (true) {
+            nros_cpp_ret_t ret =
+                nros_cpp_spin_once(executor_handle, static_cast<int32_t>(poll_ms));
             // Transient conditions: keep polling. Anything else propagates.
             // - Ok (0): nothing to dispatch this round.
             // - Timeout (-2): spin_once returned after its timeout — normal.
@@ -89,7 +97,8 @@ template <typename T> class Future {
                 return Result(ret);
             }
             if (is_ready()) return try_take(out);
-            elapsed += step;
+            const uint64_t now_ns = nros_cpp_time_ns();
+            if (now_ns - start_ns >= budget_ns) break;
         }
         return Result(ErrorCode::Timeout);
     }

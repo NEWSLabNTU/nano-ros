@@ -250,6 +250,16 @@ const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
  */
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
+/**
+ * Get current monotonic time in nanoseconds.
+ *
+ * Used by `nros::Future::wait()` (header-side) to budget its spin loop by
+ * wall-clock rather than iteration count, so that an early-returning
+ * `spin_once` on a signaled condvar doesn't collapse the nominal timeout
+ * into microseconds. Phase 89.2.
+ */
+uint64_t nros_cpp_time_ns(void);
+
 extern void *pvPortMalloc(uint32_t size);
 
 extern void vPortFree(void *ptr);

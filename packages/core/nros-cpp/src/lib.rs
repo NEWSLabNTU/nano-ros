@@ -612,6 +612,30 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     NROS_CPP_RET_OK
 }
 
+/// Get current monotonic time in nanoseconds.
+///
+/// Used by `nros::Future::wait()` (header-side) to budget its spin loop by
+/// wall-clock rather than iteration count, so that an early-returning
+/// `spin_once` on a signaled condvar doesn't collapse the nominal timeout
+/// into microseconds. Phase 89.2.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_time_ns() -> u64 {
+    #[cfg(feature = "std")]
+    {
+        use std::time::Instant;
+        static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        let epoch = EPOCH.get_or_init(Instant::now);
+        Instant::now().duration_since(*epoch).as_nanos() as u64
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        unsafe extern "C" {
+            fn nros_platform_time_ns() -> u64;
+        }
+        unsafe { nros_platform_time_ns() }
+    }
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================

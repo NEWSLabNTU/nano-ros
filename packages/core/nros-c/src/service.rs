@@ -924,9 +924,17 @@ pub unsafe extern "C" fn nros_client_call(
     // transports (smoltcp/NuttX), drive_io reads from the socket. On
     // multi-threaded (POSIX), the background thread handles I/O and
     // the waker signals reply_ready when the response arrives.
+    //
+    // Phase 89.2: wall-clock budgeting instead of `max_spins = timeout_ms/10`.
+    // On multi-threaded zpico backends (POSIX/Zephyr) the condvar-wait in
+    // `zpico_spin_once(10)` can return early on any incoming frame
+    // (keep-alives, discovery gossip, …), so a pure iteration count can
+    // burn through the nominal timeout in milliseconds and return TIMEOUT
+    // before the reply actually has a chance to arrive. Budget by the clock.
     let executor = executor_ptr as *mut nros_executor_t;
-    let max_spins = (timeout_ms / 10).max(1);
-    for _ in 0..max_spins {
+    let start_ns = crate::platform::get_time_ns();
+    let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
+    loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
         if BLK_DONE >= 0 {
             client_ref.response_callback = orig_cb;
@@ -937,6 +945,10 @@ pub unsafe extern "C" fn nros_client_call(
             core::ptr::copy_nonoverlapping(BLK_BUF.as_ptr(), response_data, BLK_LEN);
             *response_len = BLK_LEN;
             return NROS_RET_OK;
+        }
+        let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+        if elapsed_ns >= timeout_ns {
+            break;
         }
     }
     client_ref.response_callback = orig_cb;
