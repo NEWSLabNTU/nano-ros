@@ -176,10 +176,14 @@ _test-summary:
 # Run standard tests (fast path — skips heavy external-dep binaries).
 #
 # The exclusion keys off nextest test-groups: any binary assigned to
-# `qemu-serial`, `ros2-interop`, `xrce_ros2_interop`, or `large_msg`
-# in `.config/nextest.toml` is skipped. When a new heavy test binary
+# `qemu-{baremetal,freertos,nuttx,threadx-riscv,esp32,zephyr}`,
+# `threadx-linux`, `ros2-interop`, or `xrce_ros2_interop` in
+# `.config/nextest.toml` is skipped. When a new heavy test binary
 # lands, assign it to one of those groups via an override entry and
-# this recipe will pick it up automatically.
+# this recipe will pick it up automatically. (The former single
+# `qemu-serial` group was split into per-platform groups in
+# Phase 89.1 so platforms run in parallel; `large_msg` merged into
+# `qemu-baremetal` since it shares the 7450 port.)
 #
 # `group(...)` is a CLI-only filter predicate (nextest 0.9.133+), so
 # the list lives here rather than under a `[profile.fast]`
@@ -188,7 +192,7 @@ test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
-    exclude='not (group(=qemu-serial) or group(=ros2-interop) or group(=xrce_ros2_interop) or group(=large_msg))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=ros2-interop) or group(=xrce_ros2_interop))'
     args=(--workspace --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
