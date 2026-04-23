@@ -303,8 +303,7 @@ class Node {
             // Phase 87.6: copy action_name into the C++-owned buffer for
             // `get_action_name()` accessor.
             size_t name_len = 0;
-            while (action_name[name_len] != '\0' &&
-                   name_len + 1 < sizeof(out.action_name_)) {
+            while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
                 out.action_name_[name_len] = action_name[name_len];
                 ++name_len;
             }
@@ -335,8 +334,7 @@ class Node {
         if (ret == 0) {
             // Phase 87.6: action_name buffer lives C++-side now.
             size_t name_len = 0;
-            while (action_name[name_len] != '\0' &&
-                   name_len + 1 < sizeof(out.action_name_)) {
+            while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
                 out.action_name_[name_len] = action_name[name_len];
                 ++name_len;
             }
