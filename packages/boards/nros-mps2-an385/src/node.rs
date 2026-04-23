@@ -296,6 +296,12 @@ pub fn init_hardware(config: &Config) {
     // time. See docs/reference/qemu-icount.md.
     nros_platform_mps2_an385::clock::init_hardware_timer();
 
+    // Register the monotonic clock with the shared busy-wait sleep loop
+    // in `nros-baremetal-common`. Without this, `sleep_ms` silently
+    // no-ops and any zenoh-pico / zpico path that relies on it (including
+    // the poll callback invoked from sleep) never runs.
+    nros_platform_mps2_an385::sleep::init_clock();
+
     // Enable DWT cycle counter for timing measurements
     nros_platform_mps2_an385::timing::CycleCounter::enable();
 

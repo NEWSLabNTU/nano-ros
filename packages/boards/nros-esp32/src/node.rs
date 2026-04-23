@@ -101,7 +101,13 @@ pub fn init_hardware(config: &NodeConfig) {
     // Serial also needs heap for zenoh-pico internal allocations.
     esp_alloc::heap_allocator!(size: 100 * 1024);
 
-    // Step 3: Initialize hardware RNG (for zenoh-pico session ID)
+    // Step 3: Register the monotonic clock with the shared busy-wait sleep
+    // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
+    // no-ops and any zenoh-pico / zpico path that relies on it (including
+    // the poll callback invoked from sleep) never runs.
+    nros_platform_esp32::sleep::init_clock();
+
+    // Step 4: Initialize hardware RNG (for zenoh-pico session ID)
     let rng = Rng::new();
     let rng_seed = rng.random();
     random::seed(rng_seed);
@@ -305,6 +311,13 @@ pub fn init_hardware(config: &NodeConfig) {
             );
 
             nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
+
+            // Register the network poll as the sleep callback so busy-wait
+            // sleep polls the network stack to avoid missing packets during
+            // zenoh-pico's connect handshake.
+            nros_platform_esp32::sleep::set_poll_callback(
+                crate::network::smoltcp_network_poll,
+            );
         }
 
         // Prevent wifi_controller and radio_controller from being dropped

@@ -233,6 +233,12 @@ unsafe fn setup_hardware(
     // Initialize DWT-based clock
     clock::init(sysclk_hz);
 
+    // Register the monotonic clock with the shared busy-wait sleep loop
+    // in `nros-baremetal-common`. Without this, `sleep_ms` silently
+    // no-ops and any zenoh-pico / zpico path that relies on it (including
+    // the poll callback invoked from sleep) never runs.
+    nros_platform_stm32f4::sleep::init_clock();
+
     #[cfg(feature = "ethernet")]
     {
         defmt::info!(
@@ -389,6 +395,13 @@ unsafe fn setup_hardware(
             );
 
             nros_smoltcp::set_poll_callback(
+                crate::network::smoltcp_network_poll,
+            );
+
+            // Register the network poll as the sleep callback so busy-wait
+            // sleep polls the network stack to avoid missing packets during
+            // zenoh-pico's connect handshake.
+            nros_platform_stm32f4::sleep::set_poll_callback(
                 crate::network::smoltcp_network_poll,
             );
         }
