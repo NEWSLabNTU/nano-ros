@@ -62,9 +62,9 @@ platforms (~7).
 - [ ] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests)
 - [ ] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests)
 - [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
-- [ ] 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux per-case `(port, veth, guest-ip)` matrix
-- [ ] 89.10 — Within-platform parallelism, tier 2: per-case firmware build matrix for slirp QEMU platforms
-- [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's build matrix
+- [x] 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux per-case port split
+- [x] 89.10 — Within-platform parallelism, tier 2: per-variant zenohd ports for slirp QEMU platforms
+- [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
 
 ### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
 
@@ -334,86 +334,43 @@ whether the flake reproduces independently. If yes, add a
 per-platform `wait_for_output_pattern` poll interval bump on NuttX
 matching the pattern used for Zephyr native_sim.
 
-### 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux
+### 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux — **Landed** (commit `5fd6c228`)
 
 **Motivation**: 89.1 lifted cross-platform parallelism, but each
-platform group is still `max-threads = 1` — within FreeRTOS,
-`pubsub` / `service` / `action` cases still run sequentially.
+platform group was still `max-threads = 1` — within FreeRTOS,
+`pubsub` / `service` / `action` cases still ran sequentially.
 ThreadX-Linux is the lowest-cost path to within-platform
-parallelism because its binaries are **native processes** that
-already read their network configuration from a TOML file; no
-firmware rebuild is needed, just parameter plumbing.
+parallelism because its binaries are **native processes** and
+nsos-netx (the NetX Duo BSD-socket shim) offloads straight to the
+host kernel, ignoring the legacy `interface` / `ip` / `netmask` /
+`gateway` fields (see `packages/boards/nros-threadx-linux/c/
+app_define.c:50`). The only thing that actually matters for
+cross-test isolation is the host zenohd port.
 
-**Current (shared-namespace) problem**: ThreadX-Linux uses veth
-pairs on the host's network namespace (unlike the slirp-isolated
-QEMU platforms). Two concurrent `pubsub` and `service` tests
-would collide on:
+**What shipped**: the per-case veth / guest-IP matrix that the
+original plan proposed turned out to be unnecessary because
+nsos-netx ignores those fields entirely. The smaller fix that
+actually ships:
 
-- veth interface names (`veth-tx0`, `veth-tx1` — created by
-  `sudo ./scripts/qemu/setup-network.sh`)
-- Guest IPs (`192.0.2.21`, `192.0.2.22`, `192.0.2.23` — baked
-  in `examples/threadx-linux/*/config.toml`)
-- Host zenohd port (`7455` in `nros_tests::platform::THREADX_LINUX`)
+- `nros_tests::platform`: `PlatformConfig::zenohd_port_for(variant)`
+  returns `base + (0 | 10 | 20)` for pubsub / service / action.
+- `examples/threadx-linux/{rust,c,cpp}/zenoh/{service-*,action-*}
+  /config.toml`: locator bumped to 7465 (service) / 7475 (action).
+  Rust configs also got per-case `interface` / `ip` for readability;
+  these values are inert under NSOS but keep the intent legible.
+- `rtos_e2e::Platform::zenoh_router_start(variant)` threads the
+  current rstest variant through to the port lookup.
+- `.config/nextest.toml::[test-groups.threadx-linux] max-threads = 3`.
 
-All three need a per-case suffix for concurrent runs to be safe.
+**Not done**: no changes to `scripts/qemu/setup-network.sh`, no
+per-case veth names, no env-var override path. None of those
+were needed — the shared tap/veth pool already has 10 devices
+(`0..9`) and NSOS bypasses the L2 routing anyway.
 
-**Action**:
+**Expected speedup**: 3× on ThreadX-Linux (per-case `rtos_e2e`
+entries now run concurrently within the group).
 
-1. Extend `nros_tests::platform` with a `PlatformCaseConfig`:
-   ```rust
-   pub struct PlatformCaseConfig {
-       pub port: u16,
-       pub veth_host: &'static str,
-       pub veth_guest: &'static str,
-       pub guest_ip: &'static str,
-       pub host_ip: &'static str,
-   }
-   pub const THREADX_LINUX_PUBSUB:  PlatformCaseConfig = …;  // 7455, veth-tx-ps-0..1,  192.0.2.21/22, 192.0.2.2
-   pub const THREADX_LINUX_SERVICE: PlatformCaseConfig = …;  // 7465, veth-tx-svc-0..1, 192.0.2.31/32, 192.0.2.12
-   pub const THREADX_LINUX_ACTION:  PlatformCaseConfig = …;  // 7475, veth-tx-act-0..1, 192.0.2.41/42, 192.0.2.22
-   ```
-2. Rewrite `scripts/qemu/setup-network.sh` (the ThreadX-Linux
-   half) to accept a `--case {pubsub,service,action}` flag that
-   provisions exactly that case's veth pair + host bridge-leg
-   IP, rather than the single fixed `qemu-br` today. `just
-   setup-network` calls the script three times.
-3. Teach the ThreadX-Linux example binaries to honour
-   `NROS_LOCATOR` + `NROS_GUEST_IP` / `NROS_GATEWAY_IP` env vars
-   (override `config.toml`) so the harness can parameterise at
-   spawn time. The `Config::from_toml` parser already has a
-   precedence hook for env overrides in other boards — mirror
-   that.
-4. Update `rtos_e2e::Platform::zenohd_port` to dispatch on
-   `(Platform, Case)` rather than `Platform`. Pass `Case` via
-   a new `#[values]` axis on the rstest fixture or via a
-   platform-plus-case helper.
-5. Flip `[test-groups.threadx-linux] max-threads = 1` → `= 3`
-   in `.config/nextest.toml`. Acceptance: three ThreadX-Linux
-   tests run concurrently without veth name / IP / port
-   collisions.
-
-**Expected speedup**: 3× on ThreadX-Linux — saves roughly
-`(3 cases × 3 langs × ~20 s)` ≈ 60 s off `just test-all` for
-that platform alone.
-
-**Files**:
-- `packages/testing/nros-tests/src/platform.rs`
-- `packages/testing/nros-tests/tests/rtos_e2e.rs`
-- `packages/boards/nros-threadx-linux/src/config.rs`
-- `scripts/qemu/setup-network.sh`
-- `examples/threadx-linux/*/config.toml` (the compiled
-  default — keep it valid but document that env overrides win)
-- `.config/nextest.toml` (single `max-threads` flip)
-
-**Risk**: Moderate. ThreadX-Linux network setup is root-owning
-by design; getting the per-case veth pairs provisioned
-correctly by a single `sudo just setup-network` call is the
-main surface area. A misconfigured bridge routing will cause
-silent "no messages" timeouts, so add a preflight check in
-the fixture that asserts the veth pair for the expected case
-exists and its IPs are assigned.
-
-### 89.10 — Within-platform parallelism, tier 2: slirp QEMU platforms
+### 89.10 — Within-platform parallelism, tier 2: slirp QEMU platforms — **Landed** (commit `5fd6c228`)
 
 **Motivation**: Slirp-networked QEMU platforms (FreeRTOS, NuttX,
 ThreadX-RV64, ESP32) have full per-instance NAT isolation (`qemu
@@ -423,87 +380,41 @@ instances**. The one shared resource is the host-side port that
 slirp forwards guest `10.0.2.2:port` to (`127.0.0.1:port`). If
 two concurrent QEMU instances both try to reach the same host
 port, both end up at the single host zenohd instance on that
-port — which is exactly the `max-threads = 1` constraint the
-group imposes today.
+port — which was exactly the `max-threads = 1` constraint the
+group imposed.
 
-**Different guest IPs per case buy nothing on slirp platforms**
-because slirp already isolates per-QEMU. The cost that's worth
-paying is **different zenohd ports per case**, which requires
-the firmware to know which port to target.
+**What shipped** — simpler than the original plan expected.
+Each example already maps 1:1 to a single variant (listener
+/ talker → pubsub, `service-*` → service, `action-*` →
+action), so there's no need for per-case build variants. All
+that was needed: bump the port in the existing per-example
+`config.toml` to `base + variant_offset`.
 
-**Current compile-time baking problem**: Every RTOS's locator
-comes from a compile-time source:
+- `examples/qemu-arm-{freertos,nuttx}/*/zenoh/{service,action}-*/config
+  .toml` — locator port bumped.
+- `examples/qemu-riscv64-threadx/*/zenoh/{service,action}-*/config.toml`
+  — same.
+- ESP32 skipped — no service / action examples yet.
+- `nros_tests::platform::PlatformConfig::zenohd_port_for(variant)`
+  computes the right port for each case.
+- `.config/nextest.toml::[test-groups.qemu-{freertos,nuttx,
+  threadx-riscv}] max-threads = 3` — three concurrent rtos_e2e
+  cases per platform.
 
-- FreeRTOS / NuttX / ThreadX-RV64: `Config::from_toml(config.toml)`
-  at build time (not runtime)
-- ESP32: same pattern via `nros-esp32-qemu::Config`
-- Zephyr: `CONFIG_NROS_ZENOH_LOCATOR` Kconfig string
-
-So "per-case port" on slirp QEMU platforms requires **either**:
-
-- **(A)** Building three firmware variants per platform — one
-  pubsub binary, one service binary, one action binary — each
-  with a different baked-in port. The test harness picks the
-  right binary based on `(platform, case)`.
-- **(B)** A runtime locator override path at firmware boot
-  (89.11 below).
-
-**Action for (A)**:
-
-1. Extend the `build_*` cache in `nros-tests/src/fixtures/binaries/`:
-   ```rust
-   pub fn build_freertos_listener(case: Case) -> TestResult<&'static Path> {
-       static CACHE: OnceLock<HashMap<Case, &'static Path>> = OnceLock::new();
-       // Build one binary per case with config-<case>.toml
-       …
-   }
-   ```
-2. Add `config-pubsub.toml` / `config-service.toml` / `config
-   -action.toml` alongside each example's existing `config.toml`.
-   Only the `[zenoh] locator` line varies — everything else stays
-   identical.
-3. Extend the port table:
-   ```rust
-   FREERTOS_PUBSUB.port  = 7451   (was FREERTOS.port)
-   FREERTOS_SERVICE.port = 7461
-   FREERTOS_ACTION.port  = 7471
-   NUTTX_PUBSUB.port  = 7452
-   NUTTX_SERVICE.port = 7462
-   NUTTX_ACTION.port  = 7472
-   THREADX_RV64_{PUBSUB,SERVICE,ACTION}.port = 7453 / 7463 / 7473
-   ESP32_{PUBSUB,SERVICE,ACTION}.port         = 7454 / 7464 / 7474
-   ```
-4. Flip each platform's `[test-groups.qemu-*] max-threads = 1`
-   → `= 3` in `.config/nextest.toml`.
+**Not done**: no per-case build matrix, no new `config-*.toml`
+files, no change to `build_*` fixture caches. The compile-time
+baking is fine because each binary is only used by one variant
+anyway.
 
 **Expected speedup**: 3× per platform (bounded by host RAM —
-each concurrent QEMU instance is ~100–200 MB; 12 parallel
-QEMUs on a 4-platform run peak at ~2 GB).
+each concurrent QEMU instance is ~100–200 MB; 9 parallel
+QEMUs on a 3-platform run peak at ~1.5 GB).
 
-**Expected cost**: 3× firmware build time (one-time, amortised
-across test runs if caching works), and 3× build artifacts per
-example (12 per action-only example, N × 3 for the matrix).
-Cache invalidation complexity increases — each case's binary
-has to rebuild when its `config-<case>.toml` changes.
-
-**Files**:
-- `packages/testing/nros-tests/src/platform.rs`
-- `packages/testing/nros-tests/src/fixtures/binaries/{freertos,nuttx,threadx_riscv64,esp32}.rs`
-- `packages/testing/nros-tests/tests/rtos_e2e.rs`
-- `examples/qemu-arm-freertos/*/config-{pubsub,service,action}.toml`
-  (×3 per existing example)
-- `examples/qemu-arm-nuttx/*/config-*.toml`
-- `examples/qemu-riscv64-threadx/*/config-*.toml`
-- `examples/qemu-esp32-baremetal/*/config-*.toml`
-- `.config/nextest.toml` (flip `max-threads` on 4 groups)
-
-**Risk**: Moderate. The build matrix inflates cache size and
-first-build wall-clock. If 89.11 lands later, this whole section
-becomes redundant — a rebuild path swap back to single-firmware
-is straightforward but still churn. **Measure first**: if the
-actual bottleneck is per-test QEMU cold-boot (~20 s) rather than
-zenoh handshake, 3× parallel QEMU instances may not proportionally
-speed things up on a host with limited cores.
+**Deferred**: Zephyr wasn't split — its locator is in Kconfig
+(`CONFIG_NROS_ZENOH_LOCATOR` per `prj.conf`), so splitting
+would need per-example prj.conf churn. The `qemu-zephyr`
+group stays `max-threads = 1`. Fix in a follow-up once someone
+needs it.
 
 ### 89.11 — (Optional) Runtime locator override on RTOS
 
