@@ -220,13 +220,9 @@ pub extern "C" fn z_time_elapsed_s(time: *const u64) -> c_ulong {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_get_time_since_epoch(t: *mut ZTimeSinceEpoch) -> i8 {
-    let epoch = nros_platform::TimeSinceEpoch {
-        secs: P::time_since_epoch_secs(),
-        nanos: P::time_since_epoch_nanos(),
-    };
     unsafe {
-        (*t).secs = epoch.secs;
-        (*t).nanos = epoch.nanos;
+        (*t).secs = P::time_since_epoch_secs();
+        (*t).nanos = P::time_since_epoch_nanos();
     }
     0
 }

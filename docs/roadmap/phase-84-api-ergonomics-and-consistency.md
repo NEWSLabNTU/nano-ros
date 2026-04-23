@@ -6,14 +6,16 @@ collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
 **Status**: In Progress (started 2026-04-19). As of 2026-04-24:
-Groups A, B, C, D complete. Group E complete except **E2b** (XRCE
-`static mut` removal). Group F complete except **F4** (platform
-trait dispatch) and **F6** (directory / board-crate rename —
-scheduled last). Group G complete except **G8** (re-classified as
-"not a nit" and moved to a dedicated PR). B4's REP-2002 service
-exposure half was closed by Phase 86 (`nros-lifecycle-msgs` codegen
-+ executor-integrated lifecycle services + C FFI). **Still open**:
-E2b, F4, F6, G8.
+Groups A, B, C, D, E complete. Group F complete except **F4**
+(platform trait dispatch) and **F6** (directory / board-crate
+rename — scheduled last). Group G complete except **G8**
+(re-classified as "not a nit" and moved to a dedicated PR). B4's
+REP-2002 service exposure half was closed by Phase 86
+(`nros-lifecycle-msgs` codegen + executor-integrated lifecycle
+services + C FFI). E2b landed as two PRs (E2b.1 state struct +
+SharedCell; E2b.2 args-threaded callbacks); E2b.3 (multi-session
+`Box`-owned state) abandoned to preserve alloc-free XRCE support
+on Zephyr. **Still open**: F4, F6, G8.
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -93,7 +95,71 @@ the real implementation first.
 
 - [x] 84.E1 — XRCE backend: explicit `try_recv_raw_with_info` override that makes the "no per-sample info yet" gap visible in code (behaviour matches the trait default of `(len, None)`, but the override carries a doc comment explaining the missing plumbing and pointing at the follow-up). `safety-e2e` feature wiring added to `nros-rmw-xrce` + cascaded through `nros-node` and `nros` so users opting into `safety-e2e` with XRCE now get a clean feature graph (validation result reports `crc_valid: None` until sample info is plumbed through the callback). `nros-rmw` also re-exports `MessageInfo` so third-party backends don't need a direct `nros-core` dep to implement the trait.
 - [x] 84.E2a — **Landed**. `Rmw::open` is now `fn open(self, config: &RmwConfig)` — consumes `self`. All four in-repo backends (`ZenohRmw`, `XrceRmw`, `DdsRmw`, `CffiRmw`) implement `Default`, so the canonical call site is `BackendRmw::default().open(&config)`. `XrceRmw::with_agent([u8; 4], u16)` added as a forward-compat factory constructor (the existing locator-string init hook still carries the actual agent address; `with_agent` is wired for backends that want to move to factory-level configuration). Callers updated in `Executor::open` (all 4 cfg-gated blocks), `nros::open_session` (same 4), and `nros-tests/tests/rmw.rs` (6 call sites). The `RmwLegacy` blanket-impl shim and `backend: ConcreteRmw` field on `ExecutorConfig` described in the original spec were **not** added — no in-repo third-party backend needs the deprecation shim, and the cfg-gated selection in `Executor::open` already handles backend multiplexing without a typed field.
-- [ ] 84.E2b — **Deferred** (genuinely separate PR). Moving `static mut TRANSPORT / SESSION / INITIALIZED / OUTPUT_RELIABLE / INPUT_RELIABLE / OUTPUT_RELIABLE_BUF / INPUT_RELIABLE_BUF` from module globals into `XrceSession` fields requires rewriting every XRCE FFI callback (`topic_callback`, `request_callback`, `reply_callback`) to dispatch via the `void* args` context parameter instead of accessing the globals directly. That's ~200 LOC of careful C-FFI-boundary work plus a multi-session regression test. E2a's trait shape is compatible with the future migration — `open(self, …)` consuming the factory lets a backend move state into the returned `Session` — so this can land later without breaking callers.
+- [x] 84.E2b — **Complete** (landed 2026-04-24 as two PRs). The 11
+      module globals (`TRANSPORT`, `SESSION`, `OUTPUT_RELIABLE`,
+      `INPUT_RELIABLE`, `PARTICIPANT_ID`, `NEXT_ENTITY_ID`,
+      `INITIALIZED`, `OUTPUT_RELIABLE_BUF`, `INPUT_RELIABLE_BUF`,
+      `SUBSCRIBER_SLOTS`, `SERVICE_SERVER_SLOTS`,
+      `SERVICE_CLIENT_SLOTS`) are now typed fields of
+      `XrceSessionState`, held at module scope behind a
+      `SharedCell<T>` (`UnsafeCell<T>` + hand-rolled `Sync`).
+      Callbacks reach the state through their `args: *mut c_void`
+      parameter, installed by `XrceRmw::open`. `static mut` is gone
+      from the crate (the `#![allow(static_mut_refs)]` attribute
+      was removed). E2a delivered the compatible trait shape
+      (`open(self, …)` consumes the factory) so multi-session
+      remains architecturally reachable but is **not** part of this
+      phase — the stretch PR (E2b.3) was abandoned to preserve
+      alloc-free support, see below. Sub-PRs:
+
+      - [x] **E2b.1 — state struct + no-op migration.** Defined
+        `XrceSessionState` holding all 11 fields, wrapped it in a
+        `SharedCell<T>` (`UnsafeCell<T>` + hand-rolled `Sync` impl
+        justified by the existing `ffi_guard` discipline), collapsed
+        the 11 `static mut` declarations into one
+        `static STATE: SharedCell<XrceSessionState>`, and rewrote
+        107 call sites to go through an `unsafe fn state()`
+        accessor. Behaviour byte-identical (single-session; module
+        storage); only `static mut` is gone. The
+        `#![allow(static_mut_refs)]` attribute was removed. 14 XRCE
+        E2E + 5 C XRCE API tests pass post-change.
+      - [x] **E2b.2 — args-threaded callbacks.** Added
+        `unsafe fn state_from_args(args)` helper; the three
+        callbacks (`topic_callback`, `request_callback`,
+        `reply_callback`) now reach the state through their `args`
+        parameter and no longer touch the module accessor. Pointer
+        is installed by `XrceRmw::open` via
+        `state() as *mut XrceSessionState as *mut c_void`. Still
+        single-session (state still lives at module scope behind
+        `SharedCell`); the callback API is now decoupled from the
+        global so E2b.3 only has to move the state's storage site.
+      - [~] **E2b.3 — `Box`-owned state under `alloc` feature —
+        abandoned 2026-04-24.** Rationale: moving
+        `XrceSessionState` into `Box<XrceSessionState>` would force
+        alloc on the Zephyr XRCE path (see
+        `examples/zephyr/rust/xrce/talker/Cargo.toml` — uses
+        `default-features = false, features = ["rmw-xrce",
+        "platform-zephyr"]`, no global allocator registered). A
+        feature-gated Box path would work but maintains two
+        storage shapes with diverging `Drop` semantics; the only
+        in-repo customer needing multi-session is a hypothetical
+        multi-agent test harness that can trivially run as separate
+        processes today. When a concrete user materializes, reopen
+        under an `alloc`-gated path — PR 2's decoupled callbacks
+        already isolate the callback surface from the storage
+        site, so the migration is mechanical:
+
+        - Add `XrceSession { #[cfg(feature = "alloc")] state:
+          alloc::boxed::Box<XrceSessionState> }`
+        - `XrceRmw::open` branches on cfg: alloc path
+          `Box::new(XrceSessionState::zeroed())`, no-alloc path
+          keeps the module `SharedCell`
+        - Callbacks already take `args` → nothing to change there
+        - Add multi-session regression test behind `alloc`
+
+      Scope landed: E2b.1 (~380 lines touched, zero net growth)
+      and E2b.2 (~100 lines touched). Abandoned E2b.3 would have
+      added ~260 new lines + the feature split.
 - [x] 84.E2c — **Landed**. `book/src/porting/custom-rmw.md` now documents the Phase 84.E2 factory shape: every backend is a value type, implements `Default`, and consumes `self` in `open` so pre-open state moves into the `Session`. Includes the "each backend reads its own env vars via `<Backend>::from_env()`" convention and an explicit "no `static mut` session-global state" guideline (multi-session test is the acceptance check).
 - [x] 84.E3 — Rename `ZENOH_LOCATOR` / `ZENOH_MODE` env vars to `NROS_LOCATOR` / `NROS_SESSION_MODE`; accept legacy names with a deprecation warning. Update `book/src/reference/environment-variables.md`.
 - [x] 84.E4 — Add `properties: &'a [(&'a str, &'a str)]` to `RmwConfig` so backend-specific config (TLS certs, multicast scouting, XRCE agent port) has a uniform channel
@@ -110,7 +176,107 @@ the real implementation first.
 - [x] 84.F1 — Dedupe `net.rs` across 4 bare-metal platform crates via a `nros_smoltcp::define_smoltcp_platform!(PlatformZst)` macro. Each platform's 502-line `net.rs` collapses to a single 8-line file that invokes the macro; the body lives once in `nros-smoltcp::platform_macro`. Net result: 2008 lines → 577 lines (~70% reduction). The macro emits the same five `impl crate::PlatformZst { ... }` blocks (TCP / UDP / socket helpers / multicast stubs) so the existing `zpico-platform-shim` inherent-method dispatch keeps working unchanged. Took the macro approach instead of the audit's "extract a `zpico-smoltcp-platform` crate" because `nros-smoltcp` is already a dep of every bare-metal platform crate, so a new crate would have been pure overhead.
 - [x] 84.F2 — Extract `nros-baremetal-common` crate for the shared `xorshift32` RNG (`random.rs`, 70 lines × 4), `sleep.rs` (44 lines × 4), and libc stubs (`libc_stubs.rs`, 247 lines × 2). New crate at `packages/drivers/nros-baremetal-common/`. Each platform crate's `random.rs` becomes a 5-line `pub use`; `sleep.rs` becomes a 12-line wrapper that registers the platform's `clock::clock_ms` via `set_clock_fn` (the shared sleep module uses a function-pointer atomic to call the right clock); `libc_stubs.rs` becomes a 4-8 line note (the actual `#[unsafe(no_mangle)]` symbols are gated behind a `libc-stubs` Cargo feature in `nros-baremetal-common`, enabled only by MPS2-AN385 and STM32F4 — ESP32 / ESP32-QEMU don't enable it because esp-hal already provides them). Net savings: 950 duplicated lines → 511 lines (~46% reduction).
 - [x] 84.F3 — Split timing API into **`MonotonicClock::now() -> core::time::Duration`** (portable, available on every platform) and **`CycleCounter`** (raw u32 cycles, only on platforms with real hardware cycle counters — MPS2/STM32F4 via DWT). ESP32 and ESP32-QEMU dropped the fake `CycleCounter` and keep only `MonotonicClock`. Board-crate re-exports updated (`nros-mps2-an385` / `nros-stm32f4` re-export both; `nros-esp32` / `nros-esp32-qemu` re-export only `MonotonicClock`). No in-repo example uses `CycleCounter::measure()` so no example migration was needed. Platform-api / custom-platform docs will gain content in a follow-up (the split is documented inline in each platform's `timing.rs`).
-- [ ] 84.F4 — Platform traits in `packages/core/nros-platform/src/traits.rs` become a real contract: actually `impl PlatformClock`, `PlatformAlloc`, `PlatformUdp`, … on each platform ZST and have `zpico-platform-shim` / `xrce-platform-shim` dispatch via `<P as PlatformClock>::clock_ms()` rather than inherent methods. Renaming / adding a trait method now produces a compile error at every platform instead of silent link failure. Expect churn across all ~9 platform crates; do one crate at a time.
+- [ ] 84.F4 — Platform traits in `packages/core/nros-platform/src/traits.rs`
+      become a real contract: actually `impl PlatformClock`,
+      `PlatformAlloc`, `PlatformUdp`, … on each platform ZST and have
+      `zpico-platform-shim` / `xrce-platform-shim` dispatch via
+      `<P as PlatformClock>::clock_ms()` rather than inherent methods.
+      Renaming / adding a trait method now produces a compile error at
+      every platform instead of silent link failure. Expect churn
+      across all ~9 platform crates; do one crate at a time.
+
+      Current reality (audited 2026-04-24): **zero** `impl PlatformX for _`
+      blocks exist in the tree. Every platform uses inherent methods;
+      the traits in `nros-platform/src/traits.rs` are documentation-only.
+      Shims do name-based dispatch (`P::clock_ms()`, 66 such call sites
+      in `zpico-platform-shim/src/shim.rs`). Renaming a trait method
+      today silently breaks nothing at compile time.
+
+      Trait ↔ inherent naming audit: ~60 % of names align, ~35 % need
+      one side renamed (`PlatformTcp::open` vs `P::tcp_open`;
+      `PlatformUdp::open` vs `P::udp_open`;
+      `PlatformSocketHelpers::set_non_blocking` vs
+      `P::socket_set_non_blocking`), and `PlatformTime::time_since_epoch()
+      -> TimeSinceEpoch` has a shape mismatch vs the inherent's two
+      separate `time_since_epoch_secs()` / `time_since_epoch_nanos()`
+      functions used by the shim.
+
+      Three decisions pinned before migration starts (2026-04-24):
+
+      1. **Drop `tcp_` / `udp_` / `socket_` prefixes from inherent
+         method names.** The trait name already namespaces the
+         method; `<P as PlatformTcp>::open(...)` reads naturally. ~40
+         shim call sites need rewriting; ~45 inherent methods need
+         renaming.
+      2. **Change `PlatformTime` to match the shipped inherents.**
+         Replace `time_since_epoch() -> TimeSinceEpoch` with
+         `time_since_epoch_secs() -> u32` and
+         `time_since_epoch_nanos() -> u32`. The struct form isn't
+         used anywhere; current shim calls the two-function form.
+      3. **Bare-metal platforms implement `PlatformThreading` with
+         success-returning nops.** Same behaviour as today; avoids the
+         bigger refactor of splitting the trait into
+         `PlatformMutex` / `PlatformCondvar` / `PlatformTask`
+         (deferred to Phase 80 or later).
+
+      Sub-PR sequence:
+
+      - [x] **F4.1 — freeze trait definitions**. Updated
+            `packages/core/nros-platform/src/traits.rs`:
+            (a) replaced `PlatformTime::time_since_epoch() ->
+            TimeSinceEpoch` with `time_since_epoch_secs() -> u32`
+            and `time_since_epoch_nanos() -> u32`; removed the
+            `TimeSinceEpoch` struct (unused outside the shim;
+            `zpico-platform-shim::ZTimeSinceEpoch` is its own FFI
+            struct and stays);
+            (b) added a module-level naming-convention note
+            documenting the "unprefixed methods, dispatch via
+            qualified path" rule and the three sub-namespace
+            exceptions (`PlatformThreading`'s `mutex_*` / `condvar_*`
+            / `task_*`; `PlatformUdpMulticast`'s `mcast_*`; the two
+            `close` methods on `PlatformTcp` vs
+            `PlatformSocketHelpers`);
+            (c) expanded docstrings on `PlatformTcp` and
+            `PlatformSocketHelpers` to call out the dispatch
+            pattern. `TimeSinceEpoch` removal had one caller
+            (`_z_get_time_since_epoch` in zpico-platform-shim) —
+            switched to writing `secs` / `nanos` directly to the
+            output struct, no behaviour change. No platform crates
+            touched — the traits remain unused until F4.2 starts
+            wiring them. Workspace compile clean; 14 XRCE E2E
+            tests pass post-change.
+      - [ ] **F4.2 — implement `PlatformClock` + `PlatformAlloc` on
+            every platform**. ~5 methods total, 9 platforms. Both
+            shims switch from `P::clock_ms()` /
+            `P::alloc(...)` to `<P as PlatformClock>::clock_ms()`
+            etc. Pilot for the mechanics — this is where bugs in the
+            trait shape (if any) surface.
+      - [ ] **F4.3 — implement `PlatformSleep` + `PlatformRandom` +
+            `PlatformTime`**. Zenoh-pico consumer only; XRCE shim
+            doesn't use these. 9 platforms still, but smaller-
+            per-trait method counts.
+      - [ ] **F4.4 — implement network traits**
+            (`PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`,
+            `PlatformUdpMulticast`, `PlatformNetworkPoll`). Where
+            the naming-reconciliation crunch lands: ~40 inherent
+            method renames across 9 platforms, ~40 shim call-site
+            rewrites. Activates `PlatformUdp::listen` for any
+            platform that overrides it.
+      - [ ] **F4.5 — implement `PlatformThreading`**. ~20-method
+            trait. POSIX, Zephyr, FreeRTOS, NuttX, ThreadX implement
+            real threading. Bare-metal platforms (mps2-an385,
+            stm32f4, esp32-qemu when QEMU isn't running SMP,
+            nros-platform-cffi) implement with success-returning
+            nops — semantic no-op matching today's behaviour.
+      - [ ] **F4.6 — implement `PlatformLibc`**. Bare-metal only (4
+            platforms: mps2-an385, stm32f4, esp32, esp32-qemu — ESP32
+            implementations forward to esp-hal's stubs). RTOS
+            platforms with a C runtime skip this trait.
+
+      Acceptance (per sub-PR): `just ci` green + relevant platform
+      tests pass. Acceptance (whole F4): `grep -rn "P::[a-z_]*(" shim`
+      returns **zero** non-trait-qualified dispatch calls in
+      `zpico-platform-shim` and `xrce-platform-shim`.
 - [x] 84.F5 — Landed via a new `nros_smoltcp::NetworkState<D>` generic holder. The struct keeps the `(Interface, SocketSet, Device)` triple in `AtomicPtr` fields (no more `static mut`), exposes `set` / `clear` / `poll` / `poll_via_ref` methods (the `_via_ref` variant covers STM32F4's `for<'a> &'a mut EthernetDMA: Device` quirk), and is `unsafe impl Sync`. Each board's `network.rs` is now ~35 lines of wiring instead of ~63 lines of hand-rolled globals. Board total 254 → 148 lines (-42%), and the 12 `static mut` globals are gone. Board-side net lines (`boards/nros-platform-*/src/net.rs`) were already covered by the `define_smoltcp_platform!` macro in Phase 83.
 - [ ] 84.F6 — **Deferred to the end of Phase 84**: directory-layout cleanup + board-crate rename. Target layout:
       - `packages/platforms/` — OS-level platform crates (`posix`, `freertos`, `nuttx`, `threadx`, `zephyr`) and bare-metal platform crates (current `packages/boards/nros-platform-*` move here, keeping the `nros-platform-*` name since these are implementer-facing).
@@ -145,8 +311,9 @@ Cross-cutting criteria that apply once all groups land:
 - [x] `cargo test --doc -p nros` passes in CI (Group A). Verified 2026-04-20: 1 passed, 4 ignored, 0 failed.
 - [x] `grep -rn 'ZENOH_LOCATOR' book/ packages/` returns only legacy-fallback
       / migration-doc hits (Group E).
-- [ ] No `static mut` in `packages/xrce/nros-rmw-xrce/src/lib.rs` session /
-      transport globals (Group E). **Blocked on 84.E2b**.
+- [x] No `static mut` in `packages/xrce/nros-rmw-xrce/src/lib.rs` session /
+      transport globals (Group E). Delivered by 84.E2b.1 (module
+      attribute `#![allow(static_mut_refs)]` also removed).
 - [x] `wc -l packages/boards/nros-platform-*/src/{net,random,sleep,libc_stubs}.rs`
       drops by ≥70% (Group F). **Verified 2026-04-24**: 483 lines across
       16 files, down from the pre-Phase-83 baseline of ~2000+ lines per-file

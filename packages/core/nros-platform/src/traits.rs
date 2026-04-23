@@ -4,6 +4,40 @@
 //! implementations pick which traits to implement based on what the
 //! hardware/RTOS provides. RMW shim crates declare trait bounds for
 //! the capabilities they need.
+//!
+//! # Naming convention
+//!
+//! Method names drop redundant prefixes when the trait name already
+//! supplies the namespace — e.g., `PlatformTcp::open` rather than
+//! `PlatformTcp::tcp_open`. Dispatch is always through a qualified
+//! path (`<ConcretePlatform as PlatformTcp>::open(...)`), so
+//! trait-to-trait collisions (PlatformTcp::open vs PlatformUdp::open)
+//! are disambiguated at the call site without needing a prefix on the
+//! trait method itself.
+//!
+//! Three categories still keep sub-namespace prefixes internally:
+//!
+//! * `PlatformThreading` — `mutex_*`, `condvar_*`, `task_*` because the
+//!   trait bundles three independent primitive families and unprefixed
+//!   `init` / `drop` would be ambiguous *within* the trait itself.
+//! * `PlatformUdpMulticast` — `mcast_*` because these methods have
+//!   different signatures from `PlatformUdp`'s same-name methods; keeping
+//!   the prefix makes call sites that use both traits self-documenting.
+//! * The `close` method appears on both `PlatformTcp` and
+//!   `PlatformSocketHelpers` — the first is TCP teardown, the second is
+//!   zenoh-pico's generic "shutdown + close" helper. Both live unprefixed
+//!   in their respective traits; call sites disambiguate via the
+//!   qualified path.
+//!
+//! # Status (Phase 84.F4)
+//!
+//! The platform ZSTs (`PosixPlatform`, `ZephyrPlatform`, etc.) do **not**
+//! currently implement these traits — every platform exposes its methods
+//! as *inherent* `impl Platform { fn foo() {} }` blocks, and shim crates
+//! dispatch by name match. 84.F4 migrates each platform to `impl
+//! PlatformX for Platform { fn foo() {} }` one trait at a time, with the
+//! shims switching to `<P as PlatformX>::foo()`. Until that work is
+//! complete the traits here are a target specification.
 
 use core::ffi::{c_int, c_void};
 
@@ -80,23 +114,28 @@ pub trait PlatformRandom {
 // Wall-clock time (for logging, not timing-critical)
 // ============================================================================
 
-/// Time since epoch.
-#[repr(C)]
-pub struct TimeSinceEpoch {
-    pub secs: u32,
-    pub nanos: u32,
-}
-
 /// Wall-clock / system time.
 ///
 /// Used for logging timestamps and `z_time_now_as_str()`.
 /// On bare-metal without an RTC, return monotonic time or zeros.
+///
+/// The two-function `time_since_epoch_*` split (instead of returning a
+/// struct) was chosen to match the shape that zenoh-pico's C headers
+/// want across the FFI boundary — zpico-platform-shim forwards each
+/// of these directly to a `_z_time_*` symbol, so collapsing them into
+/// a Rust struct would require the shim to decompose the struct on
+/// every call.
 pub trait PlatformTime {
     /// Returns system time in milliseconds.
     fn time_now_ms() -> u64;
 
-    /// Returns time since epoch.
-    fn time_since_epoch() -> TimeSinceEpoch;
+    /// Seconds component of wall-clock time since the Unix epoch.
+    fn time_since_epoch_secs() -> u32;
+
+    /// Sub-second nanoseconds component of wall-clock time since the
+    /// Unix epoch (i.e. the nanosecond remainder after the seconds are
+    /// stripped; always in `0..1_000_000_000`).
+    fn time_since_epoch_nanos() -> u32;
 }
 
 // ============================================================================
@@ -205,6 +244,9 @@ pub trait PlatformNetworkPoll {
 /// auto-detected from C headers at build time (see Phase 80 design).
 ///
 /// Read functions return `usize::MAX` on error. Send returns `usize::MAX` on error.
+///
+/// Method names are unprefixed — the trait already namespaces them. Shims
+/// dispatch via `<ConcretePlatform as PlatformTcp>::open(...)` etc.
 pub trait PlatformTcp {
     /// Resolve address + port strings into an endpoint handle.
     fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8;
@@ -260,6 +302,12 @@ pub trait PlatformUdp {
 // ============================================================================
 
 /// Socket helper operations called by zenoh-pico's transport layer.
+///
+/// Unprefixed method names: dispatch via
+/// `<ConcretePlatform as PlatformSocketHelpers>::set_non_blocking(...)`.
+/// Note that the `close` method here is the socket-layer close (shutdown +
+/// close) used by zenoh-pico's generic helpers; `PlatformTcp::close` is the
+/// TCP-specific close. Both exist because zenoh-pico's C surface has both.
 pub trait PlatformSocketHelpers {
     /// Set socket to non-blocking mode.
     fn set_non_blocking(sock: *const c_void) -> i8;
