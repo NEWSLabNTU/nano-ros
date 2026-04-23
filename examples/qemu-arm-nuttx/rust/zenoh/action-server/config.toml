@@ -7,5 +7,5 @@ gateway = "10.0.2.2"
 prefix = 24
 
 [zenoh]
-locator = "tcp/10.0.2.2:7452"
+locator = "tcp/10.0.2.2:7472"
 domain_id = 0

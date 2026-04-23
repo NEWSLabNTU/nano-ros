@@ -33,20 +33,33 @@ store-failure-output = true
 [test-groups.qemu-baremetal]
 max-threads = 1
 
+# Phase 89.10 — slirp-isolated QEMU platforms can run the three rtos_e2e
+# cases (pubsub/service/action) concurrently because (a) slirp gives each
+# QEMU instance a fully isolated 10.0.2.0/24 so guest IPs can't collide
+# across concurrent tests, and (b) each case targets a different host
+# zenohd port (base + 0/10/20) so the host routers don't collide either.
+# `max-threads = 3` caps at the three cases.
 [test-groups.qemu-freertos]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-nuttx]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-threadx-riscv]
-max-threads = 1
+max-threads = 3
 
+# ESP32 examples are pubsub-only today (no service/action variants), so the
+# per-variant port split doesn't help — keep serial until service/action
+# examples land.
 [test-groups.qemu-esp32]
 max-threads = 1
 
+# Phase 89.9 — ThreadX Linux is native-process + nsos-netx (NSOS offloads
+# BSD sockets straight to host kernel, ignoring the legacy `interface`/
+# `ip` fields), so per-case port splitting is sufficient for concurrent
+# pubsub/service/action runs.
 [test-groups.threadx-linux]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-zephyr]
 max-threads = 1

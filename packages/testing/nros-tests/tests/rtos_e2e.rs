@@ -113,23 +113,36 @@ impl RtosProcess {
 // =============================================================================
 
 impl Platform {
-    fn zenohd_port(self) -> u16 {
+    /// Per-platform base port. Phase 89.9/89.10 splits the router port
+    /// further by test variant so `pubsub`, `service`, and `action` on the
+    /// same platform can run concurrently — see [`zenohd_port_for`].
+    fn zenohd_base(self) -> &'static platform::PlatformConfig {
         match self {
-            Platform::Freertos => platform::FREERTOS.zenohd_port,
-            Platform::Nuttx => platform::NUTTX.zenohd_port,
-            Platform::ThreadxLinux => platform::THREADX_LINUX.zenohd_port,
-            Platform::ThreadxRiscv64 => platform::THREADX_RISCV.zenohd_port,
+            Platform::Freertos => &platform::FREERTOS,
+            Platform::Nuttx => &platform::NUTTX,
+            Platform::ThreadxLinux => &platform::THREADX_LINUX,
+            Platform::ThreadxRiscv64 => &platform::THREADX_RISCV,
         }
     }
 
-    fn zenoh_router_start(self) -> TestResult<ZenohRouter> {
+    fn zenohd_port_for(self, variant: Variant) -> u16 {
+        let pv = match variant {
+            Variant::Pubsub => platform::TestVariant::Pubsub,
+            Variant::Service => platform::TestVariant::Service,
+            Variant::Action => platform::TestVariant::Action,
+        };
+        self.zenohd_base().zenohd_port_for(pv)
+    }
+
+    fn zenoh_router_start(self, variant: Variant) -> TestResult<ZenohRouter> {
         // ThreadX Linux is bridge-networked (veth pairs), so zenohd must
         // bind to 0.0.0.0 to be reachable from the bridged simulation
         // interface. The QEMU-based platforms use slirp and reach zenohd
         // via the slirp gateway (10.0.2.2) forwarded to host localhost.
+        let port = self.zenohd_port_for(variant);
         match self {
-            Platform::ThreadxLinux => ZenohRouter::start_on("0.0.0.0", self.zenohd_port()),
-            _ => ZenohRouter::start(self.zenohd_port()),
+            Platform::ThreadxLinux => ZenohRouter::start_on("0.0.0.0", port),
+            _ => ZenohRouter::start(port),
         }
     }
 
@@ -572,7 +585,7 @@ fn test_rtos_pubsub_e2e(
     let (talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
 
     let _zenohd = platform
-        .zenoh_router_start()
+        .zenoh_router_start(Variant::Pubsub)
         .expect("Failed to start zenohd");
 
     eprintln!(
@@ -681,7 +694,7 @@ fn test_rtos_service_e2e(
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Service);
 
     let _zenohd = platform
-        .zenoh_router_start()
+        .zenoh_router_start(Variant::Service)
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] service: starting server/client...", platform, lang);
@@ -777,7 +790,7 @@ fn test_rtos_action_e2e(
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Action);
 
     let _zenohd = platform
-        .zenoh_router_start()
+        .zenoh_router_start(Variant::Action)
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] action: starting server/client...", platform, lang);
