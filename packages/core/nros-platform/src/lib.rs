@@ -27,7 +27,6 @@
 
 mod board;
 mod resolve;
-mod traits;
 
 pub use board::BoardConfig;
 
@@ -44,4 +43,7 @@ pub use board::BoardConfig;
     feature = "platform-zephyr",
 ))]
 pub use resolve::ConcretePlatform;
-pub use traits::*;
+
+// Re-export every trait from the split-out `nros-platform-api` crate so
+// existing `use nros_platform::PlatformClock;` imports keep working.
+pub use nros_platform_api::*;

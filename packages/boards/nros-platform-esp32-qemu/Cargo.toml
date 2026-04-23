@@ -13,6 +13,7 @@ name = "nros_platform_esp32_qemu"
 default = []
 
 [dependencies]
+nros-platform-api = { path = "../../core/nros-platform-api" }
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32c3", "unstable"] }
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

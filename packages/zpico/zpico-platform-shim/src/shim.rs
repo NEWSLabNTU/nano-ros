@@ -1,6 +1,8 @@
 use core::ffi::{c_char, c_ulong, c_void};
 
-use nros_platform::ConcretePlatform;
+use nros_platform::{
+    ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
+};
 
 type P = ConcretePlatform;
 
@@ -41,14 +43,14 @@ pub struct ZSysNetEndpoint {
 #[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_now() -> usize {
-    P::clock_ms() as usize
+    <P as PlatformClock>::clock_ms() as usize
 }
 
 #[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_us(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
-    let now = P::clock_ms();
+    let now = <P as PlatformClock>::clock_ms();
     (now.wrapping_sub(prev) * 1000) as c_ulong
 }
 
@@ -56,7 +58,7 @@ pub extern "C" fn z_clock_elapsed_us(time: *const usize) -> c_ulong {
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_ms(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
-    let now = P::clock_ms();
+    let now = <P as PlatformClock>::clock_ms();
     now.wrapping_sub(prev) as c_ulong
 }
 
@@ -64,7 +66,7 @@ pub extern "C" fn z_clock_elapsed_ms(time: *const usize) -> c_ulong {
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_s(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
-    let now = P::clock_ms();
+    let now = <P as PlatformClock>::clock_ms();
     (now.wrapping_sub(prev) / 1000) as c_ulong
 }
 
@@ -98,7 +100,7 @@ pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: c_ulong) {
 // smoltcp_init/cleanup/poll are only needed when ZPICO_SMOLTCP is defined.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
-    P::clock_ms()
+    <P as PlatformClock>::clock_ms()
 }
 
 // ============================================================================
@@ -106,17 +108,17 @@ pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_malloc(size: usize) -> *mut c_void {
-    P::alloc(size)
+    <P as PlatformAlloc>::alloc(size)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-    P::realloc(ptr, size)
+    <P as PlatformAlloc>::realloc(ptr, size)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_free(ptr: *mut c_void) {
-    P::dealloc(ptr)
+    <P as PlatformAlloc>::dealloc(ptr)
 }
 
 // ============================================================================
@@ -125,19 +127,19 @@ pub extern "C" fn z_free(ptr: *mut c_void) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_sleep_us(time: usize) -> i8 {
-    P::sleep_us(time);
+    <P as PlatformSleep>::sleep_us(time);
     0
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_sleep_ms(time: usize) -> i8 {
-    P::sleep_ms(time);
+    <P as PlatformSleep>::sleep_ms(time);
     0
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_sleep_s(time: usize) -> i8 {
-    P::sleep_s(time);
+    <P as PlatformSleep>::sleep_s(time);
     0
 }
 
@@ -147,27 +149,27 @@ pub extern "C" fn z_sleep_s(time: usize) -> i8 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_random_u8() -> u8 {
-    P::random_u8()
+    <P as PlatformRandom>::random_u8()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_random_u16() -> u16 {
-    P::random_u16()
+    <P as PlatformRandom>::random_u16()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_random_u32() -> u32 {
-    P::random_u32()
+    <P as PlatformRandom>::random_u32()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_random_u64() -> u64 {
-    P::random_u64()
+    <P as PlatformRandom>::random_u64()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_random_fill(buf: *mut c_void, len: usize) {
-    P::random_fill(buf, len)
+    <P as PlatformRandom>::random_fill(buf, len)
 }
 
 // ============================================================================
@@ -182,7 +184,7 @@ pub struct ZTimeSinceEpoch {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_now() -> u64 {
-    P::time_now_ms()
+    <P as PlatformTime>::time_now_ms()
 }
 
 #[unsafe(no_mangle)]
@@ -200,29 +202,29 @@ pub extern "C" fn z_time_now_as_str(buf: *mut c_char, _buflen: c_ulong) -> *cons
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_us(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
-    let now = P::time_now_ms();
+    let now = <P as PlatformTime>::time_now_ms();
     (now.wrapping_sub(prev) * 1000) as c_ulong
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_ms(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
-    let now = P::time_now_ms();
+    let now = <P as PlatformTime>::time_now_ms();
     now.wrapping_sub(prev) as c_ulong
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_s(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
-    let now = P::time_now_ms();
+    let now = <P as PlatformTime>::time_now_ms();
     (now.wrapping_sub(prev) / 1000) as c_ulong
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_get_time_since_epoch(t: *mut ZTimeSinceEpoch) -> i8 {
     unsafe {
-        (*t).secs = P::time_since_epoch_secs();
-        (*t).nanos = P::time_since_epoch_nanos();
+        (*t).secs = <P as PlatformTime>::time_since_epoch_secs();
+        (*t).nanos = <P as PlatformTime>::time_since_epoch_nanos();
     }
     0
 }

@@ -16,6 +16,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use core::ffi::c_void;
+use nros_platform_api::{PlatformAlloc, PlatformClock};
 
 mod ffi;
 pub mod net;
@@ -28,9 +29,9 @@ pub struct FreeRtosPlatform;
 // Clock — xTaskGetTickCount
 // ============================================================================
 
-impl FreeRtosPlatform {
+impl nros_platform_api::PlatformClock for FreeRtosPlatform {
     #[inline]
-    pub fn clock_ms() -> u64 {
+    fn clock_ms() -> u64 {
         let ticks = unsafe { ffi::xTaskGetTickCount() };
         // portTICK_PERIOD_MS is typically 1 for configTICK_RATE_HZ=1000.
         // We assume 1ms ticks; board crates can override if different.
@@ -38,8 +39,8 @@ impl FreeRtosPlatform {
     }
 
     #[inline]
-    pub fn clock_us() -> u64 {
-        Self::clock_ms() * 1000
+    fn clock_us() -> u64 {
+        <Self as PlatformClock>::clock_ms() * 1000
     }
 }
 
@@ -47,30 +48,31 @@ impl FreeRtosPlatform {
 // Memory — pvPortMalloc / vPortFree
 // ============================================================================
 
-impl FreeRtosPlatform {
+impl nros_platform_api::PlatformAlloc for FreeRtosPlatform {
     #[inline]
-    pub fn alloc(size: usize) -> *mut c_void {
+    fn alloc(size: usize) -> *mut c_void {
         unsafe { ffi::pvPortMalloc(size) }
     }
 
     #[inline]
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+        use nros_platform_api::PlatformAlloc;
         // FreeRTOS has no realloc — allocate new, copy, free old.
         if ptr.is_null() {
-            return Self::alloc(size);
+            return <Self as PlatformAlloc>::alloc(size);
         }
-        let new_ptr = Self::alloc(size);
+        let new_ptr = <Self as PlatformAlloc>::alloc(size);
         if !new_ptr.is_null() {
             // We don't know the old size, so copy `size` bytes (caller's
             // responsibility to ensure old allocation >= size).
             unsafe { core::ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, size) };
-            Self::dealloc(ptr);
+            <Self as PlatformAlloc>::dealloc(ptr);
         }
         new_ptr
     }
 
     #[inline]
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         unsafe { ffi::vPortFree(ptr) }
     }
 }
@@ -79,20 +81,22 @@ impl FreeRtosPlatform {
 // Sleep — vTaskDelay
 // ============================================================================
 
-impl FreeRtosPlatform {
+impl nros_platform_api::PlatformSleep for FreeRtosPlatform {
     #[inline]
-    pub fn sleep_us(us: usize) {
-        Self::sleep_ms(us.div_ceil(1000));
+    fn sleep_us(us: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_ms(us.div_ceil(1000));
     }
 
     #[inline]
-    pub fn sleep_ms(ms: usize) {
+    fn sleep_ms(ms: usize) {
         unsafe { ffi::vTaskDelay(ms as u32) };
     }
 
     #[inline]
-    pub fn sleep_s(s: usize) {
-        Self::sleep_ms(s * 1000);
+    fn sleep_s(s: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_ms(s * 1000);
     }
 }
 
@@ -131,21 +135,21 @@ fn next_u32() -> u32 {
     }
 }
 
-impl FreeRtosPlatform {
-    pub fn random_u8() -> u8 {
+impl nros_platform_api::PlatformRandom for FreeRtosPlatform {
+    fn random_u8() -> u8 {
         (next_u32() & 0xFF) as u8
     }
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         (next_u32() & 0xFFFF) as u16
     }
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         next_u32()
     }
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         ((next_u32() as u64) << 32) | next_u32() as u64
     }
 
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         if buf.is_null() {
             return;
         }
@@ -169,18 +173,18 @@ impl FreeRtosPlatform {
 // Time — monotonic (no RTC)
 // ============================================================================
 
-impl FreeRtosPlatform {
+impl nros_platform_api::PlatformTime for FreeRtosPlatform {
     #[inline]
-    pub fn time_now_ms() -> u64 {
-        Self::clock_ms()
+    fn time_now_ms() -> u64 {
+        <Self as PlatformClock>::clock_ms()
     }
     #[inline]
-    pub fn time_since_epoch_secs() -> u32 {
-        (Self::clock_ms() / 1000) as u32
+    fn time_since_epoch_secs() -> u32 {
+        (<Self as PlatformClock>::clock_ms() / 1000) as u32
     }
     #[inline]
-    pub fn time_since_epoch_nanos() -> u32 {
-        ((Self::clock_ms() % 1000) * 1_000_000) as u32
+    fn time_since_epoch_nanos() -> u32 {
+        ((<Self as PlatformClock>::clock_ms() % 1000) * 1_000_000) as u32
     }
 }
 

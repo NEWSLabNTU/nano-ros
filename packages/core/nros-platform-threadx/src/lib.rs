@@ -18,6 +18,8 @@
 
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicPtr, Ordering};
+#[allow(unused_imports)]
+use nros_platform_api::{PlatformAlloc, PlatformClock};
 
 mod ffi;
 pub mod net;
@@ -47,9 +49,9 @@ pub extern "C" fn nros_platform_threadx_set_byte_pool(pool: *mut c_void) {
 // Clock — tx_time_get
 // ============================================================================
 
-impl ThreadxPlatform {
+impl nros_platform_api::PlatformClock for ThreadxPlatform {
     #[inline]
-    pub fn clock_ms() -> u64 {
+    fn clock_ms() -> u64 {
         // ThreadX ticks — assumes 100 ticks/sec (TX_TIMER_TICKS_PER_SECOND=100)
         // Board crates can adjust if tick rate differs.
         let ticks = unsafe { ffi::tx_time_get() };
@@ -57,8 +59,8 @@ impl ThreadxPlatform {
     }
 
     #[inline]
-    pub fn clock_us() -> u64 {
-        Self::clock_ms() * 1000
+    fn clock_us() -> u64 {
+        <Self as nros_platform_api::PlatformClock>::clock_ms() * 1000
     }
 }
 
@@ -66,9 +68,9 @@ impl ThreadxPlatform {
 // Memory — tx_byte_allocate / tx_byte_release
 // ============================================================================
 
-impl ThreadxPlatform {
+impl nros_platform_api::PlatformAlloc for ThreadxPlatform {
     #[inline]
-    pub fn alloc(size: usize) -> *mut c_void {
+    fn alloc(size: usize) -> *mut c_void {
         let pool = BYTE_POOL.load(Ordering::Acquire);
         if pool.is_null() {
             return core::ptr::null_mut();
@@ -84,20 +86,21 @@ impl ThreadxPlatform {
     }
 
     #[inline]
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+        use nros_platform_api::PlatformAlloc;
         if ptr.is_null() {
-            return Self::alloc(size);
+            return <Self as PlatformAlloc>::alloc(size);
         }
-        let new_ptr = Self::alloc(size);
+        let new_ptr = <Self as PlatformAlloc>::alloc(size);
         if !new_ptr.is_null() {
             unsafe { core::ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, size) };
-            Self::dealloc(ptr);
+            <Self as PlatformAlloc>::dealloc(ptr);
         }
         new_ptr
     }
 
     #[inline]
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         if !ptr.is_null() {
             unsafe { ffi::tx_byte_release(ptr) };
         }
@@ -108,22 +111,24 @@ impl ThreadxPlatform {
 // Sleep — tx_thread_sleep
 // ============================================================================
 
-impl ThreadxPlatform {
+impl nros_platform_api::PlatformSleep for ThreadxPlatform {
     #[inline]
-    pub fn sleep_us(us: usize) {
-        Self::sleep_ms(us.div_ceil(1000));
+    fn sleep_us(us: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_ms(us.div_ceil(1000));
     }
 
     #[inline]
-    pub fn sleep_ms(ms: usize) {
+    fn sleep_ms(ms: usize) {
         // Convert ms to ticks (100 Hz = 10ms per tick)
         let ticks = (ms as u32).div_ceil(10);
         unsafe { ffi::tx_thread_sleep(ticks) };
     }
 
     #[inline]
-    pub fn sleep_s(s: usize) {
-        Self::sleep_ms(s * 1000);
+    fn sleep_s(s: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_ms(s * 1000);
     }
 }
 
@@ -154,21 +159,21 @@ fn next_u32() -> u32 {
     }
 }
 
-impl ThreadxPlatform {
-    pub fn random_u8() -> u8 {
+impl nros_platform_api::PlatformRandom for ThreadxPlatform {
+    fn random_u8() -> u8 {
         (next_u32() & 0xFF) as u8
     }
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         (next_u32() & 0xFFFF) as u16
     }
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         next_u32()
     }
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         ((next_u32() as u64) << 32) | next_u32() as u64
     }
 
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         if buf.is_null() {
             return;
         }
@@ -192,18 +197,18 @@ impl ThreadxPlatform {
 // Time — monotonic (no RTC)
 // ============================================================================
 
-impl ThreadxPlatform {
+impl nros_platform_api::PlatformTime for ThreadxPlatform {
     #[inline]
-    pub fn time_now_ms() -> u64 {
-        Self::clock_ms()
+    fn time_now_ms() -> u64 {
+        <Self as PlatformClock>::clock_ms()
     }
     #[inline]
-    pub fn time_since_epoch_secs() -> u32 {
-        (Self::clock_ms() / 1000) as u32
+    fn time_since_epoch_secs() -> u32 {
+        (<Self as PlatformClock>::clock_ms() / 1000) as u32
     }
     #[inline]
-    pub fn time_since_epoch_nanos() -> u32 {
-        ((Self::clock_ms() % 1000) * 1_000_000) as u32
+    fn time_since_epoch_nanos() -> u32 {
+        ((<Self as PlatformClock>::clock_ms() % 1000) * 1_000_000) as u32
     }
 }
 

@@ -7,5 +7,6 @@ repository.workspace = true
 description = "nros platform implementation for ThreadX (calls ThreadX C APIs via FFI)"
 
 [dependencies]
+nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Bindgen-generated NetX Duo BSD socket FFI (struct nx_bsd_sockaddr_in, nx_bsd_* functions)
 threadx-netx-sys = { path = "../../drivers/threadx-netx-sys" }

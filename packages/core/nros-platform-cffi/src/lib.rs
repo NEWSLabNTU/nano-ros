@@ -131,92 +131,97 @@ pub struct CffiPlatform;
 // are written in nros-platform's resolve module via a wrapper, or the shim
 // crates call these methods directly.
 
-impl CffiPlatform {
-    // -- Clock --
+impl nros_platform_api::PlatformClock for CffiPlatform {
     #[inline]
-    pub fn clock_ms() -> u64 {
+    fn clock_ms() -> u64 {
         unsafe { (get_vtable().clock_ms)() }
     }
 
     #[inline]
-    pub fn clock_us() -> u64 {
+    fn clock_us() -> u64 {
         unsafe { (get_vtable().clock_us)() }
     }
+}
 
-    // -- Alloc --
+impl nros_platform_api::PlatformAlloc for CffiPlatform {
     #[inline]
-    pub fn alloc(size: usize) -> *mut c_void {
+    fn alloc(size: usize) -> *mut c_void {
         unsafe { (get_vtable().alloc)(size) }
     }
 
     #[inline]
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         unsafe { (get_vtable().realloc)(ptr, size) }
     }
 
     #[inline]
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         unsafe { (get_vtable().dealloc)(ptr) }
     }
+}
 
-    // -- Sleep --
+impl nros_platform_api::PlatformSleep for CffiPlatform {
     #[inline]
-    pub fn sleep_us(us: usize) {
+    fn sleep_us(us: usize) {
         unsafe { (get_vtable().sleep_us)(us) }
     }
 
     #[inline]
-    pub fn sleep_ms(ms: usize) {
+    fn sleep_ms(ms: usize) {
         unsafe { (get_vtable().sleep_ms)(ms) }
     }
 
     #[inline]
-    pub fn sleep_s(s: usize) {
+    fn sleep_s(s: usize) {
         unsafe { (get_vtable().sleep_s)(s) }
     }
+}
 
-    // -- Random --
+impl nros_platform_api::PlatformRandom for CffiPlatform {
     #[inline]
-    pub fn random_u8() -> u8 {
+    fn random_u8() -> u8 {
         unsafe { (get_vtable().random_u8)() }
     }
 
     #[inline]
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         unsafe { (get_vtable().random_u16)() }
     }
 
     #[inline]
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         unsafe { (get_vtable().random_u32)() }
     }
 
     #[inline]
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         unsafe { (get_vtable().random_u64)() }
     }
 
     #[inline]
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         unsafe { (get_vtable().random_fill)(buf, len) }
     }
+}
 
-    // -- Time --
+impl nros_platform_api::PlatformTime for CffiPlatform {
     #[inline]
-    pub fn time_now_ms() -> u64 {
+    fn time_now_ms() -> u64 {
         unsafe { (get_vtable().time_now_ms)() }
     }
 
     #[inline]
-    pub fn time_since_epoch_secs() -> u32 {
+    fn time_since_epoch_secs() -> u32 {
         unsafe { (get_vtable().time_since_epoch_secs)() }
     }
 
     #[inline]
-    pub fn time_since_epoch_nanos() -> u32 {
+    fn time_since_epoch_nanos() -> u32 {
         unsafe { (get_vtable().time_since_epoch_nanos)() }
     }
+}
 
+impl CffiPlatform {
     // -- Threading --
     #[inline]
     pub fn task_init(

@@ -42,6 +42,7 @@ members = [
     "packages/verification/nros-ghost-types",
     # Unified platform abstraction
     "packages/core/nros-platform",
+    "packages/core/nros-platform-api",
     "packages/core/nros-platform-cffi",
     "packages/core/nros-platform-posix",
     "packages/core/nros-platform-nuttx",

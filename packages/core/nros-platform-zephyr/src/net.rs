@@ -24,6 +24,8 @@
 use core::ffi::c_void;
 
 use crate::ZephyrPlatform;
+#[allow(unused_imports)]
+use nros_platform_api::PlatformSleep;
 
 // ============================================================================
 // Zephyr POSIX / BSD socket API — manually-declared bindings.

@@ -12,6 +12,9 @@
 pub mod net;
 
 use core::ffi::c_void;
+use nros_platform_api::{
+    PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
+};
 use nros_platform_posix::PosixPlatform;
 
 /// NuttX platform type.
@@ -24,71 +27,86 @@ pub struct NuttxPlatform;
 // System primitives — delegate to PosixPlatform
 // ============================================================================
 
-impl NuttxPlatform {
+impl PlatformClock for NuttxPlatform {
     #[inline]
-    pub fn clock_ms() -> u64 {
+    fn clock_ms() -> u64 {
         PosixPlatform::clock_ms()
     }
     #[inline]
-    pub fn clock_us() -> u64 {
+    fn clock_us() -> u64 {
         PosixPlatform::clock_us()
     }
+}
+
+impl PlatformAlloc for NuttxPlatform {
     #[inline]
-    pub fn alloc(size: usize) -> *mut c_void {
+    fn alloc(size: usize) -> *mut c_void {
         PosixPlatform::alloc(size)
     }
     #[inline]
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         PosixPlatform::realloc(ptr, size)
     }
     #[inline]
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         PosixPlatform::dealloc(ptr)
     }
+}
+
+impl PlatformSleep for NuttxPlatform {
     #[inline]
-    pub fn sleep_us(us: usize) {
+    fn sleep_us(us: usize) {
         PosixPlatform::sleep_us(us)
     }
     #[inline]
-    pub fn sleep_ms(ms: usize) {
+    fn sleep_ms(ms: usize) {
         PosixPlatform::sleep_ms(ms)
     }
     #[inline]
-    pub fn sleep_s(s: usize) {
+    fn sleep_s(s: usize) {
         PosixPlatform::sleep_s(s)
     }
+}
+
+impl PlatformRandom for NuttxPlatform {
     #[inline]
-    pub fn random_u8() -> u8 {
+    fn random_u8() -> u8 {
         PosixPlatform::random_u8()
     }
     #[inline]
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         PosixPlatform::random_u16()
     }
     #[inline]
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         PosixPlatform::random_u32()
     }
     #[inline]
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         PosixPlatform::random_u64()
     }
     #[inline]
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         PosixPlatform::random_fill(buf, len)
     }
+}
+
+impl PlatformTime for NuttxPlatform {
     #[inline]
-    pub fn time_now_ms() -> u64 {
+    fn time_now_ms() -> u64 {
         PosixPlatform::time_now_ms()
     }
     #[inline]
-    pub fn time_since_epoch_secs() -> u32 {
+    fn time_since_epoch_secs() -> u32 {
         PosixPlatform::time_since_epoch_secs()
     }
     #[inline]
-    pub fn time_since_epoch_nanos() -> u32 {
+    fn time_since_epoch_nanos() -> u32 {
         PosixPlatform::time_since_epoch_nanos()
     }
+}
+
+impl NuttxPlatform {
     #[inline]
     pub fn task_init(
         task: *mut c_void,

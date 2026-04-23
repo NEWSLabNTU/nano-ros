@@ -35,13 +35,13 @@ fn clock_monotonic() -> libc::timespec {
     ts
 }
 
-impl PosixPlatform {
-    pub fn clock_ms() -> u64 {
+impl nros_platform_api::PlatformClock for PosixPlatform {
+    fn clock_ms() -> u64 {
         let ts = clock_monotonic();
         ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000
     }
 
-    pub fn clock_us() -> u64 {
+    fn clock_us() -> u64 {
         let ts = clock_monotonic();
         ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1_000
     }
@@ -51,16 +51,16 @@ impl PosixPlatform {
 // Alloc — system malloc/realloc/free
 // ============================================================================
 
-impl PosixPlatform {
-    pub fn alloc(size: usize) -> *mut c_void {
+impl nros_platform_api::PlatformAlloc for PosixPlatform {
+    fn alloc(size: usize) -> *mut c_void {
         unsafe { libc::malloc(size) }
     }
 
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         unsafe { libc::realloc(ptr, size) }
     }
 
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         unsafe { libc::free(ptr) }
     }
 }
@@ -69,8 +69,8 @@ impl PosixPlatform {
 // Sleep — nanosleep
 // ============================================================================
 
-impl PosixPlatform {
-    pub fn sleep_us(us: usize) {
+impl nros_platform_api::PlatformSleep for PosixPlatform {
+    fn sleep_us(us: usize) {
         let ts = libc::timespec {
             tv_sec: (us / 1_000_000) as libc::time_t,
             tv_nsec: ((us % 1_000_000) * 1_000) as libc::c_long,
@@ -80,12 +80,14 @@ impl PosixPlatform {
         }
     }
 
-    pub fn sleep_ms(ms: usize) {
-        Self::sleep_us(ms * 1_000);
+    fn sleep_ms(ms: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_us(ms * 1_000);
     }
 
-    pub fn sleep_s(s: usize) {
-        Self::sleep_us(s * 1_000_000);
+    fn sleep_s(s: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_us(s * 1_000_000);
     }
 }
 
@@ -94,6 +96,7 @@ impl PosixPlatform {
 // ============================================================================
 
 impl PosixPlatform {
+    #[inline]
     fn fill_random(buf: *mut u8, len: usize) {
         // Use getrandom(2) on Linux, fall back to /dev/urandom
         #[cfg(target_os = "linux")]
@@ -114,32 +117,34 @@ impl PosixPlatform {
             }
         }
     }
+}
 
-    pub fn random_u8() -> u8 {
+impl nros_platform_api::PlatformRandom for PosixPlatform {
+    fn random_u8() -> u8 {
         let mut v = 0u8;
         Self::fill_random(&mut v as *mut u8, 1);
         v
     }
 
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         let mut v = 0u16;
         Self::fill_random(&mut v as *mut u16 as *mut u8, 2);
         v
     }
 
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         let mut v = 0u32;
         Self::fill_random(&mut v as *mut u32 as *mut u8, 4);
         v
     }
 
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         let mut v = 0u64;
         Self::fill_random(&mut v as *mut u64 as *mut u8, 8);
         v
     }
 
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         Self::fill_random(buf as *mut u8, len);
     }
 }
@@ -148,8 +153,8 @@ impl PosixPlatform {
 // Time — clock_gettime(CLOCK_REALTIME)
 // ============================================================================
 
-impl PosixPlatform {
-    pub fn time_now_ms() -> u64 {
+impl nros_platform_api::PlatformTime for PosixPlatform {
+    fn time_now_ms() -> u64 {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
@@ -160,7 +165,7 @@ impl PosixPlatform {
         ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000
     }
 
-    pub fn time_since_epoch_secs() -> u32 {
+    fn time_since_epoch_secs() -> u32 {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
@@ -171,7 +176,7 @@ impl PosixPlatform {
         ts.tv_sec as u32
     }
 
-    pub fn time_since_epoch_nanos() -> u32 {
+    fn time_since_epoch_nanos() -> u32 {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,

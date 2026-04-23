@@ -1349,6 +1349,7 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-cffi",
  "nros-platform-esp32",
  "nros-platform-esp32-qemu",
@@ -1362,9 +1363,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-platform-api"
+version = "0.1.0"
+
+[[package]]
 name = "nros-platform-cffi"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "portable-atomic",
 ]
 
@@ -1374,6 +1380,7 @@ version = "0.1.0"
 dependencies = [
  "esp-hal",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1384,6 +1391,7 @@ version = "0.1.0"
 dependencies = [
  "esp-hal",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1393,6 +1401,7 @@ name = "nros-platform-freertos"
 version = "0.1.0"
 dependencies = [
  "freertos-lwip-sys",
+ "nros-platform-api",
 ]
 
 [[package]]
@@ -1401,6 +1410,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1409,6 +1419,7 @@ dependencies = [
 name = "nros-platform-nuttx"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-posix",
  "nuttx-sys",
 ]
@@ -1418,6 +1429,7 @@ name = "nros-platform-posix"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "nros-platform-api",
 ]
 
 [[package]]
@@ -1427,6 +1439,7 @@ dependencies = [
  "cortex-m",
  "defmt 0.3.100",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1435,12 +1448,16 @@ dependencies = [
 name = "nros-platform-threadx"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "threadx-netx-sys",
 ]
 
 [[package]]
 name = "nros-platform-zephyr"
 version = "0.1.0"
+dependencies = [
+ "nros-platform-api",
+]
 
 [[package]]
 name = "nros-rcl-interfaces"

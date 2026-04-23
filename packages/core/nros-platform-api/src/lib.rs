@@ -1,9 +1,23 @@
-//! Platform capability sub-traits.
+//! Platform capability sub-traits for nros.
+//!
+//! This crate exists to break the dependency cycle between
+//! `nros-platform` (which depends on every platform crate via its
+//! feature-gated `ConcretePlatform` resolver) and the platform crates
+//! themselves (which need to implement these traits on their ZSTs).
+//! It contains only trait definitions — no implementations, no
+//! dependencies — so platform crates can take a build-time dep on it
+//! without creating a cycle back through `nros-platform`.
+//!
+//! `nros-platform` re-exports everything from this crate, so downstream
+//! code that writes `use nros_platform::PlatformClock;` continues to
+//! work unchanged.
 //!
 //! Each trait covers an independent system capability. Platform
 //! implementations pick which traits to implement based on what the
 //! hardware/RTOS provides. RMW shim crates declare trait bounds for
 //! the capabilities they need.
+
+#![no_std]
 //!
 //! # Naming convention
 //!

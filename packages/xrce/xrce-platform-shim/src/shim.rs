@@ -1,4 +1,4 @@
-use nros_platform::ConcretePlatform;
+use nros_platform::{ConcretePlatform, PlatformClock};
 
 type P = ConcretePlatform;
 
@@ -9,13 +9,13 @@ type P = ConcretePlatform;
 /// Monotonic millisecond clock for XRCE-DDS session timeouts.
 #[unsafe(no_mangle)]
 pub extern "C" fn uxr_millis() -> i64 {
-    P::clock_ms() as i64
+    <P as PlatformClock>::clock_ms() as i64
 }
 
 /// Monotonic nanosecond clock for XRCE-DDS time synchronization.
 #[unsafe(no_mangle)]
 pub extern "C" fn uxr_nanos() -> i64 {
-    P::clock_us() as i64 * 1000
+    <P as PlatformClock>::clock_us() as i64 * 1000
 }
 
 // ============================================================================
@@ -28,5 +28,5 @@ pub extern "C" fn uxr_nanos() -> i64 {
 #[cfg(feature = "smoltcp")]
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
-    P::clock_ms()
+    <P as PlatformClock>::clock_ms()
 }

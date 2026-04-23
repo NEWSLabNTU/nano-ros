@@ -7,5 +7,6 @@ repository.workspace = true
 description = "nros platform implementation for NuttX (POSIX-compatible, delegates to nros-platform-posix)"
 
 [dependencies]
+nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix" }
 nuttx-sys = { path = "../../drivers/nuttx-sys" }

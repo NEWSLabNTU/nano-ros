@@ -27,6 +27,9 @@ alloc = []
 threading = []
 
 [dependencies]
+# Trait definitions live in this standalone crate so platform crates can
+# impl them without creating a cycle back through nros-platform.
+nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix", optional = true }
 nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
 nros-platform-mps2-an385 = { version = "0.1.0", path = "../../boards/nros-platform-mps2-an385", optional = true }

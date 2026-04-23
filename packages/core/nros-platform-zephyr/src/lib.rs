@@ -30,6 +30,10 @@
 
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
+#[allow(unused_imports)]
+use nros_platform_api::{
+    PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
+};
 
 mod ffi;
 mod net;
@@ -41,19 +45,19 @@ pub struct ZephyrPlatform;
 // Clock — k_uptime_get (monotonic, milliseconds since boot)
 // ============================================================================
 
-impl ZephyrPlatform {
+impl nros_platform_api::PlatformClock for ZephyrPlatform {
     #[inline]
-    pub fn clock_ms() -> u64 {
+    fn clock_ms() -> u64 {
         // k_uptime_get is a static inline in Zephyr headers; we go through
         // a real-symbol wrapper (see zephyr/nros_platform_zephyr_shims.c).
         unsafe { ffi::nros_zephyr_uptime_ms() as u64 }
     }
 
     #[inline]
-    pub fn clock_us() -> u64 {
+    fn clock_us() -> u64 {
         // Zephyr's sub-ms precision requires cycle counter; ms * 1000 is fine
         // for zenoh-pico's use of clock_us (protocol timing, not profiling).
-        Self::clock_ms() * 1000
+        <Self as nros_platform_api::PlatformClock>::clock_ms() * 1000
     }
 }
 
@@ -61,32 +65,33 @@ impl ZephyrPlatform {
 // Memory — k_malloc / k_free from Zephyr's kernel heap
 // ============================================================================
 
-impl ZephyrPlatform {
+impl nros_platform_api::PlatformAlloc for ZephyrPlatform {
     #[inline]
-    pub fn alloc(size: usize) -> *mut c_void {
+    fn alloc(size: usize) -> *mut c_void {
         unsafe { ffi::k_malloc(size) }
     }
 
-    pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+        use nros_platform_api::PlatformAlloc;
         // Zephyr has no k_realloc. Matches zenoh-pico's zephyr/system.c which
         // returned NULL — but that breaks any code that actually uses realloc.
         // Allocate-copy-free instead; caller is responsible for not reading
         // past the old allocation.
         if ptr.is_null() {
-            return Self::alloc(size);
+            return <Self as PlatformAlloc>::alloc(size);
         }
-        let new_ptr = Self::alloc(size);
+        let new_ptr = <Self as PlatformAlloc>::alloc(size);
         if !new_ptr.is_null() {
             unsafe {
                 core::ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, size);
             }
-            Self::dealloc(ptr);
+            <Self as PlatformAlloc>::dealloc(ptr);
         }
         new_ptr
     }
 
     #[inline]
-    pub fn dealloc(ptr: *mut c_void) {
+    fn dealloc(ptr: *mut c_void) {
         unsafe { ffi::k_free(ptr) }
     }
 }
@@ -95,8 +100,8 @@ impl ZephyrPlatform {
 // Sleep — k_msleep / k_usleep
 // ============================================================================
 
-impl ZephyrPlatform {
-    pub fn sleep_us(us: usize) {
+impl nros_platform_api::PlatformSleep for ZephyrPlatform {
+    fn sleep_us(us: usize) {
         // k_usleep's lower bound is one tick; zenoh-pico accepts the rounding.
         let mut rem = us as i32;
         while rem > 0 {
@@ -104,15 +109,16 @@ impl ZephyrPlatform {
         }
     }
 
-    pub fn sleep_ms(ms: usize) {
+    fn sleep_ms(ms: usize) {
         let mut rem = ms as i32;
         while rem > 0 {
             rem = unsafe { ffi::nros_zephyr_msleep(rem) };
         }
     }
 
-    pub fn sleep_s(s: usize) {
-        Self::sleep_ms(s * 1000);
+    fn sleep_s(s: usize) {
+        use nros_platform_api::PlatformSleep;
+        <Self as PlatformSleep>::sleep_ms(s * 1000);
     }
 }
 
@@ -120,26 +126,26 @@ impl ZephyrPlatform {
 // Random — Zephyr sys_rand32_get / sys_rand_get
 // ============================================================================
 
-impl ZephyrPlatform {
-    pub fn random_u8() -> u8 {
+impl nros_platform_api::PlatformRandom for ZephyrPlatform {
+    fn random_u8() -> u8 {
         (unsafe { ffi::sys_rand32_get() } & 0xFF) as u8
     }
 
-    pub fn random_u16() -> u16 {
+    fn random_u16() -> u16 {
         (unsafe { ffi::sys_rand32_get() } & 0xFFFF) as u16
     }
 
-    pub fn random_u32() -> u32 {
+    fn random_u32() -> u32 {
         unsafe { ffi::sys_rand32_get() }
     }
 
-    pub fn random_u64() -> u64 {
+    fn random_u64() -> u64 {
         let hi = unsafe { ffi::sys_rand32_get() } as u64;
         let lo = unsafe { ffi::sys_rand32_get() } as u64;
         (hi << 32) | lo
     }
 
-    pub fn random_fill(buf: *mut c_void, len: usize) {
+    fn random_fill(buf: *mut c_void, len: usize) {
         // sys_rand_get is a static inline in Zephyr headers; go through the
         // real-symbol wrapper.
         unsafe { ffi::nros_zephyr_rand_fill(buf, len) }
@@ -150,20 +156,20 @@ impl ZephyrPlatform {
 // Time (wall clock) — no RTC, fall back to monotonic
 // ============================================================================
 
-impl ZephyrPlatform {
+impl nros_platform_api::PlatformTime for ZephyrPlatform {
     #[inline]
-    pub fn time_now_ms() -> u64 {
-        Self::clock_ms()
+    fn time_now_ms() -> u64 {
+        <Self as PlatformClock>::clock_ms()
     }
 
     #[inline]
-    pub fn time_since_epoch_secs() -> u32 {
-        (Self::clock_ms() / 1000) as u32
+    fn time_since_epoch_secs() -> u32 {
+        (<Self as PlatformClock>::clock_ms() / 1000) as u32
     }
 
     #[inline]
-    pub fn time_since_epoch_nanos() -> u32 {
-        ((Self::clock_ms() % 1000) * 1_000_000) as u32
+    fn time_since_epoch_nanos() -> u32 {
+        ((<Self as PlatformClock>::clock_ms() % 1000) * 1_000_000) as u32
     }
 }
 

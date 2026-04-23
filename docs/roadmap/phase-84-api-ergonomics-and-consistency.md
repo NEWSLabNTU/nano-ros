@@ -245,16 +245,28 @@ the real implementation first.
             touched — the traits remain unused until F4.2 starts
             wiring them. Workspace compile clean; 14 XRCE E2E
             tests pass post-change.
-      - [ ] **F4.2 — implement `PlatformClock` + `PlatformAlloc` on
-            every platform**. ~5 methods total, 9 platforms. Both
-            shims switch from `P::clock_ms()` /
-            `P::alloc(...)` to `<P as PlatformClock>::clock_ms()`
-            etc. Pilot for the mechanics — this is where bugs in the
-            trait shape (if any) surface.
-      - [ ] **F4.3 — implement `PlatformSleep` + `PlatformRandom` +
-            `PlatformTime`**. Zenoh-pico consumer only; XRCE shim
-            doesn't use these. 9 platforms still, but smaller-
-            per-trait method counts.
+      - [x] **F4.2 — implement `PlatformClock` + `PlatformAlloc` on
+            every platform**. Landed alongside an **extraction PR**
+            that couldn't be avoided: the traits were moved from
+            `nros-platform` into a new `nros-platform-api` crate so
+            platform crates can implement them without creating a
+            dep cycle back through `nros-platform`. `nros-platform`
+            now re-exports everything from `nros-platform-api`
+            unchanged, so `use nros_platform::PlatformClock;`
+            callers keep working. All 10 platform ZSTs implement
+            `PlatformClock` + `PlatformAlloc` (9 ports plus
+            `nros-platform-cffi`'s vtable-backed variant); both
+            `zpico-platform-shim` and `xrce-platform-shim` dispatch
+            via `<P as PlatformClock>::clock_ms()` / `<P as
+            PlatformAlloc>::alloc(...)` etc. Pilot validated the
+            approach — 14 XRCE E2E tests + workspace compile pass.
+      - [x] **F4.3 — implement `PlatformSleep` + `PlatformRandom` +
+            `PlatformTime`**. All 10 platform ZSTs now implement
+            these three traits. zpico-platform-shim dispatches via
+            qualified paths (`<P as PlatformSleep>::sleep_us(...)`,
+            etc.). XRCE shim doesn't call these and is unchanged.
+            Workspace compile + 14 XRCE E2E + native zenoh tests
+            pass.
       - [ ] **F4.4 — implement network traits**
             (`PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`,
             `PlatformUdpMulticast`, `PlatformNetworkPoll`). Where

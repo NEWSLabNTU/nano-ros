@@ -7,5 +7,6 @@ repository.workspace = true
 description = "nros platform implementation for FreeRTOS (calls FreeRTOS C APIs via FFI)"
 
 [dependencies]
+nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Bindgen-generated lwIP BSD socket FFI (struct timeval, addrinfo, lwip_* functions)
 freertos-lwip-sys = { path = "../../drivers/freertos-lwip-sys" }

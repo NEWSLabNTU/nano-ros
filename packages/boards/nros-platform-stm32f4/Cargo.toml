@@ -13,6 +13,7 @@ name = "nros_platform_stm32f4"
 default = []
 
 [dependencies]
+nros-platform-api = { path = "../../core/nros-platform-api" }
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"
