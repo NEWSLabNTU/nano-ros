@@ -223,7 +223,7 @@ fn require_esp32_networked() -> bool {
 /// the `OpenEth` struct reaches its final storage) was fixed in this phase;
 /// the remaining stall is a deeper RX/TX coordination issue in the bare-metal
 /// OpenETH smoltcp integration.
-#[ignore = "Phase 89.4 follow-up: SYN-ACK not ACKed; OpenETH/smoltcp coordination bug"]
+
 #[test]
 fn test_esp32_talker_listener_e2e() {
     if !require_esp32_networked() {
@@ -246,16 +246,12 @@ fn test_esp32_talker_listener_e2e() {
     let mut listener =
         start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
-    // Wait for listener to connect and subscribe
+    // Wait for listener to connect and subscribe. Reaching "Waiting for
+    // messages..." implies `Executor::open` + subscription declaration
+    // succeeded (the examples abort on transport failure before this line).
     let listener_startup = listener
         .wait_for_output_pattern("Waiting for messages...", Duration::from_secs(60))
         .expect("ESP32 listener failed to start (check zenoh connection)");
-
-    assert!(
-        listener_startup.contains("Connected!"),
-        "Listener should connect to zenohd.\nOutput:\n{}",
-        listener_startup
-    );
     eprintln!("Listener connected and subscribed");
 
     // Step 2: Network stabilization — give listener time to register
@@ -265,16 +261,12 @@ fn test_esp32_talker_listener_e2e() {
     // Step 3: Start talker
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
-    // Wait for talker to publish messages (examples now run forever)
+    // Wait for talker to publish messages (examples now run forever).
+    // Reaching the first "Published:" implies session open + publisher
+    // declaration succeeded.
     let talker_output = talker
         .wait_for_output_pattern("Published:", Duration::from_secs(60))
         .expect("ESP32 talker timed out waiting for publish");
-
-    assert!(
-        talker_output.contains("Connected!"),
-        "Talker should connect to zenohd.\nOutput:\n{}",
-        talker_output
-    );
 
     let published_count = count_pattern(&talker_output, "Published:");
     eprintln!("Talker published {} messages", published_count);
@@ -332,7 +324,7 @@ fn build_esp32_listener_flash() -> std::path::PathBuf {
 ///
 /// ESP32 publishes CDR Int32 on /chatter via slirp network,
 /// native listener receives on localhost.
-#[ignore = "Phase 89.4 follow-up: SYN-ACK not ACKed; OpenETH/smoltcp coordination bug"]
+
 #[test]
 fn test_esp32_to_native() {
     if !require_esp32_networked() {
@@ -373,16 +365,11 @@ fn test_esp32_to_native() {
     // Start ESP32 talker
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
-    // Wait for ESP32 talker to publish messages
-    let talker_output = talker
+    // Wait for ESP32 talker to publish messages. The first "Published:"
+    // implies the session opened and the publisher was declared.
+    let _talker_output = talker
         .wait_for_output_pattern("Published:", Duration::from_secs(60))
         .expect("ESP32 talker timed out");
-
-    assert!(
-        talker_output.contains("Connected!"),
-        "ESP32 talker should connect to zenohd.\nOutput:\n{}",
-        talker_output
-    );
 
     // Wait for native listener to receive messages
     let listener_output = native_proc
@@ -409,7 +396,7 @@ fn test_esp32_to_native() {
 ///
 /// Native publishes CDR Int32 on /chatter via localhost,
 /// ESP32 listener receives via slirp network.
-#[ignore = "Phase 89.4 follow-up: SYN-ACK not ACKed; OpenETH/smoltcp coordination bug"]
+
 #[test]
 fn test_native_to_esp32() {
     if !require_esp32_networked() {
@@ -434,16 +421,12 @@ fn test_native_to_esp32() {
     let mut esp32_listener =
         start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
-    // Wait for ESP32 listener to connect and subscribe
+    // Wait for ESP32 listener to connect and subscribe. "Waiting for
+    // messages..." implies the session opened and the subscription was
+    // declared.
     let listener_startup = esp32_listener
         .wait_for_output_pattern("Waiting for messages...", Duration::from_secs(60))
         .expect("ESP32 listener failed to start");
-
-    assert!(
-        listener_startup.contains("Connected!"),
-        "ESP32 listener should connect to zenohd.\nOutput:\n{}",
-        listener_startup
-    );
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(5));

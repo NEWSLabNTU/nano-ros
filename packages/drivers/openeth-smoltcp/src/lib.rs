@@ -48,6 +48,16 @@ pub const DMA_BUF_SIZE: usize = 1600;
 /// Number of TX descriptors (RX descriptors follow immediately after in the BD table)
 const TX_BD_COUNT: usize = 1;
 
+/// Number of RX descriptors.
+///
+/// QEMU's `open_eth` model does not honour the `WR` (wrap) bit on a
+/// single-descriptor RX ring — after filling the one slot it tries
+/// the next descriptor, finds E=0 (uninitialised RAM), and drops the
+/// frame instead of wrapping back. A multi-slot ring avoids that:
+/// each delivered frame uses a different slot, and the driver rotates
+/// through the ring. Four slots match the ESP-IDF reference driver.
+const RX_BD_COUNT: usize = 4;
+
 /// Driver error types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -82,8 +92,10 @@ pub struct OpenEth {
     mac_addr: [u8; 6],
     /// Static DMA buffer for TX descriptor
     tx_buf: [u8; DMA_BUF_SIZE],
-    /// Static DMA buffer for RX descriptor
-    rx_buf: [u8; DMA_BUF_SIZE],
+    /// Static DMA buffers for the RX descriptor ring (one per slot).
+    rx_bufs: [[u8; DMA_BUF_SIZE]; RX_BD_COUNT],
+    /// Index of the RX descriptor hardware will fill next.
+    next_rx_idx: usize,
     /// Internal receive buffer (copied from DMA after poll)
     rx_frame: [u8; MAX_FRAME_SIZE],
     /// Length of received frame in rx_frame (0 = empty)
@@ -102,7 +114,8 @@ impl OpenEth {
             base: config.base_addr,
             mac_addr: config.mac_addr,
             tx_buf: [0; DMA_BUF_SIZE],
-            rx_buf: [0; DMA_BUF_SIZE],
+            rx_bufs: [[0; DMA_BUF_SIZE]; RX_BD_COUNT],
+            next_rx_idx: 0,
             rx_frame: [0; MAX_FRAME_SIZE],
             rx_frame_len: 0,
         }
@@ -152,26 +165,43 @@ impl OpenEth {
             write_volatile((tx_bd_addr + 4) as *mut u32, tx_buf_ptr);
         }
 
-        // Step 5: Configure RX descriptor (starts after TX descriptors)
-        let rx_bd_addr = self.base + regs::offset::BD_BASE + (TX_BD_COUNT * 8);
-        let rx_buf_ptr = self.rx_buf.as_ptr() as u32;
-        // word0: empty (E=1, ready for HW), wrap bit set (last RX descriptor)
-        unsafe {
-            write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | regs::rx_bd::WR);
-            write_volatile((rx_bd_addr + 4) as *mut u32, rx_buf_ptr);
+        // Step 5: Configure the RX descriptor ring (starts after TX
+        // descriptors). Each slot gets `E=1` (ready for HW); only the
+        // last slot gets the `WR` wrap bit so HW loops back to the
+        // first RX descriptor after filling the last one.
+        let rx_bd_base = self.base + regs::offset::BD_BASE + (TX_BD_COUNT * 8);
+        for i in 0..RX_BD_COUNT {
+            let rx_bd_addr = rx_bd_base + i * 8;
+            let rx_buf_ptr = self.rx_bufs[i].as_ptr() as u32;
+            let wrap = if i == RX_BD_COUNT - 1 {
+                regs::rx_bd::WR
+            } else {
+                0
+            };
+            unsafe {
+                write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap);
+                write_volatile((rx_bd_addr + 4) as *mut u32, rx_buf_ptr);
+            }
         }
+        self.next_rx_idx = 0;
 
         // Step 6: Clear any pending interrupts
         self.write_reg(regs::offset::INT_SOURCE, 0x7F);
         // Disable all interrupts (we poll)
         self.write_reg(regs::offset::INT_MASK, 0);
 
-        // Step 7: Enable TX and RX with full duplex, CRC, and pad
+        // Step 7: Enable TX and RX with full duplex, CRC, pad, and
+        // promiscuous mode. QEMU's `open_eth` model applies MAC-filter
+        // acceptance lazily and can drop unicast frames even after the
+        // MAC registers have been written — forcing PRO makes the NIC
+        // accept every frame slirp delivers, which is fine for a QEMU
+        // sim and matches ESP-IDF's own openeth workaround.
         let moder = regs::moder::TXEN
             | regs::moder::RXEN
             | regs::moder::FULLD
             | regs::moder::CRCEN
-            | regs::moder::PAD;
+            | regs::moder::PAD
+            | regs::moder::PRO;
         self.write_reg(regs::offset::MODER, moder);
     }
 
@@ -208,39 +238,43 @@ impl OpenEth {
             return true;
         }
 
-        // Read RX descriptor word0
-        let rx_bd_addr = self.base + regs::offset::BD_BASE + (TX_BD_COUNT * 8);
-        let word0 = unsafe { read_volatile(rx_bd_addr as *const u32) };
-
-        // Check if frame has been received (E bit cleared by hardware)
-        if (word0 & regs::rx_bd::E) != 0 {
-            return false;
-        }
-
-        // Extract length from descriptor
-        let len = ((word0 & regs::rx_bd::LEN_MASK) >> regs::rx_bd::LEN_SHIFT) as usize;
-
-        // Validate length (must include at least Ethernet header, may include CRC)
-        if len < 14 || len > DMA_BUF_SIZE {
-            // Re-arm the descriptor and skip this frame
-            unsafe {
-                write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | regs::rx_bd::WR);
+        // Search the ring for a delivered frame, starting from next_rx_idx.
+        // Strict-sequential advance is the spec, but we scan defensively in
+        // case HW's internal index drifted (observed on QEMU open_eth).
+        let rx_bd_base = self.base + regs::offset::BD_BASE + (TX_BD_COUNT * 8);
+        let start = self.next_rx_idx;
+        for step in 0..RX_BD_COUNT {
+            let idx = (start + step) % RX_BD_COUNT;
+            let rx_bd_addr = rx_bd_base + idx * 8;
+            let word0 = unsafe { read_volatile(rx_bd_addr as *const u32) };
+            if (word0 & regs::rx_bd::E) != 0 {
+                continue;
             }
-            return false;
+
+            // Frame delivered to this slot.
+            let len = ((word0 & regs::rx_bd::LEN_MASK) >> regs::rx_bd::LEN_SHIFT) as usize;
+            let wrap = if idx == RX_BD_COUNT - 1 {
+                regs::rx_bd::WR
+            } else {
+                0
+            };
+
+            if len < 14 || len > DMA_BUF_SIZE {
+                unsafe { write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap); }
+                self.next_rx_idx = (idx + 1) % RX_BD_COUNT;
+                continue;
+            }
+
+            let frame_len = if len > 4 { len - 4 } else { len };
+            let frame_len = frame_len.min(MAX_FRAME_SIZE);
+            self.rx_frame[..frame_len].copy_from_slice(&self.rx_bufs[idx][..frame_len]);
+            self.rx_frame_len = frame_len;
+
+            unsafe { write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap); }
+            self.next_rx_idx = (idx + 1) % RX_BD_COUNT;
+            return true;
         }
-
-        // Copy frame from DMA buffer to internal buffer (strip 4-byte CRC if present)
-        let frame_len = if len > 4 { len - 4 } else { len };
-        let frame_len = frame_len.min(MAX_FRAME_SIZE);
-        self.rx_frame[..frame_len].copy_from_slice(&self.rx_buf[..frame_len]);
-        self.rx_frame_len = frame_len;
-
-        // Re-arm the RX descriptor for next frame
-        unsafe {
-            write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | regs::rx_bd::WR);
-        }
-
-        true
+        false
     }
 
     /// Transmit a frame from the internal TX buffer.
@@ -446,21 +480,21 @@ mod tests {
 
     #[test]
     fn test_openeth_struct_size() {
-        // Verify the struct fits in reasonable stack space
-        // base(8) + mac(6) + tx_buf(1600) + rx_buf(1600) + rx_frame(1536) + rx_frame_len(8)
+        // Verify the struct fits in reasonable stack space.
+        // Layout: base + mac + tx_buf + rx_bufs[RX_BD_COUNT] + next_rx_idx + rx_frame + rx_frame_len.
         let size = core::mem::size_of::<OpenEth>();
-        // Should be under 8KB (reasonable for embedded stack)
+        let min_buffer_bytes = DMA_BUF_SIZE + DMA_BUF_SIZE * RX_BD_COUNT + MAX_FRAME_SIZE;
+        // Allow up to 16 KB — a 4-slot RX ring at DMA_BUF_SIZE=1600 alone is 6400 bytes.
         assert!(
-            size < 8192,
-            "OpenEth is {} bytes, expected < 8192",
+            size < 16384,
+            "OpenEth is {} bytes, expected < 16384",
             size
         );
-        // Should be at least the sum of buffer sizes
         assert!(
-            size >= DMA_BUF_SIZE * 2 + MAX_FRAME_SIZE,
+            size >= min_buffer_bytes,
             "OpenEth is {} bytes, expected >= {}",
             size,
-            DMA_BUF_SIZE * 2 + MAX_FRAME_SIZE
+            min_buffer_bytes
         );
     }
 

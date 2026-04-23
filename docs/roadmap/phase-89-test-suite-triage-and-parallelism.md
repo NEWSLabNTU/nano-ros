@@ -218,10 +218,12 @@ Triage summary (pre-fix, 4 failing tests — all fast-fail in 1.3–6.4 s):
 
 | Test | Duration | Status after 89.4 |
 |---|---|---|
-| `test_esp32_qemu_talker_boots` | 1.3 s | ✅ **passes** |
-| `test_esp32_talker_listener_e2e` | 2.4 s | `#[ignore]` (see follow-up) |
-| `test_esp32_to_native` | 6.4 s | `#[ignore]` (see follow-up) |
-| `test_native_to_esp32` | 1.5 s | `#[ignore]` (see follow-up) |
+| `test_esp32_qemu_talker_boots` | 1.3 s | ✅ **passes** (0.8 s) |
+| `test_esp32_talker_listener_e2e` | 2.4 s | ✅ **passes** (6.4 s) |
+| `test_esp32_to_native` | 6.4 s | ✅ **passes** (6.4 s) |
+| `test_native_to_esp32` | 1.5 s | ✅ **passes** (6.9 s) |
+
+Full `esp32_emulator` suite: 20.7 s wall-clock, 9/9 pass.
 
 **Root cause of the 1–6 s fast-fail**: `build/esp32-zenoh-pico/
 libzenohpico.a` missing → `require_zenoh_pico_riscv()` returned
@@ -262,22 +264,42 @@ and networking problems, not skips:
    request → ARP reply → SYN, where previously only the
    all-zeros frame appeared.
 
-**Remaining bug (deferred as 89.4 follow-up)**: even after the
-DMA fix, slirp's SYN-ACK reaches the guest but the ESP32 side's
-smoltcp never emits the final ACK, so the 3-way handshake stalls
-and `zpico_open` returns `Transport(ConnectionFailed)`. The three
-networked tests are `#[ignore]`d with a precise reason string;
-the handshake stall is likely either a smoltcp/open_eth RX descriptor
-re-arm issue or a TX `RD`-bit clear expectation that QEMU's
-open_eth model doesn't honour. Non-trivial to root-cause without
-further instrumentation; out of scope for Phase 89's triage remit.
+4. **QEMU `open_eth` queued-packet flush bug** (found via
+   `third-party/esp32/qemu/hw/net/opencores_eth.c`). QEMU's model
+   only flushes queued ingress packets when `MODER_RXEN` transitions
+   0→1 (see `open_eth_moder_host_write` → `open_eth_notify_can_
+   receive` → `qemu_flush_queued_packets`). Once the guest is
+   busy-looping after init, slirp-generated frames (SYN-ACK, TCP
+   ACK, keep-alives) that arrive after the initial flush sit in
+   QEMU's internal netdev queue **indefinitely** — the host's
+   filter-dump pcap shows them but the NIC never writes them to
+   any RX descriptor. ARP reply slipped through because it was
+   generated synchronously while the first MODER write was still
+   in flight, but everything after that stalled. Fixed by
+   toggling `MODER.RXEN` (clear→set) every 8th `smoltcp_
+   network_poll` call — two MMIO writes, drains the queue.
+   Also extended the OpenETH driver to a 4-slot RX ring (ESP-IDF
+   reference count); single-slot rings exhibited the same stall
+   in standalone tests.
+
+Remaining deliberate scope: the driver could alternatively
+register for the OpenETH RX IRQ (INT_SOURCE bit 2, RXF) and do
+the flush from an ISR. The busy-poll toggle is simpler and
+matches how zpico already drives the smoltcp bridge; the IRQ
+path can be added later if some platform needs it.
 
 **Files touched**:
 - `packages/testing/nros-tests/tests/esp32_emulator.rs`
-  (boot-banner pattern, three `#[ignore]` attributes).
+  (boot-banner pattern; remove stale `Connected!` assertions that
+  the examples never emit; drop the earlier `#[ignore]` attrs).
 - `packages/boards/nros-esp32-qemu/src/node.rs`
   (`init_clock`, `sleep::set_poll_callback`, re-ordered
   `OpenEth::new` / `ETH_DEVICE.write` / `init`).
+- `packages/boards/nros-esp32-qemu/src/network.rs`
+  (RXEN-toggle flush workaround in `smoltcp_network_poll`).
+- `packages/drivers/openeth-smoltcp/src/lib.rs`
+  (4-slot RX ring + rotating `next_rx_idx`; promiscuous mode;
+  updated struct-size test to reflect the ring growth).
 
 ### 89.5 — Category D: QEMU RTIC suite — **Landed**
 
