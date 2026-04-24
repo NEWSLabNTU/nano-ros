@@ -39,10 +39,6 @@ fn test_esp32_qemu_talker_builds() {
         nros_tests::skip!("riscv32 target not available");
     }
 
-    if !require_zenoh_pico_riscv() {
-        nros_tests::skip!("zenoh-pico riscv build not available");
-    }
-
     let result = build_esp32_qemu_talker();
     match result {
         Ok(binary) => {
@@ -73,10 +69,6 @@ fn test_esp32_qemu_talker_builds() {
 fn test_esp32_qemu_listener_builds() {
     if !require_riscv32_target() {
         nros_tests::skip!("riscv32 target not available");
-    }
-
-    if !require_zenoh_pico_riscv() {
-        nros_tests::skip!("zenoh-pico riscv build not available");
     }
 
     let result = build_esp32_qemu_listener();
@@ -118,9 +110,6 @@ fn test_esp32_qemu_talker_boots() {
         nros_tests::skip!("riscv32 target not available");
     }
 
-    if !require_zenoh_pico_riscv() {
-        nros_tests::skip!("zenoh-pico riscv build not available");
-    }
     if !require_qemu_riscv32() {
         nros_tests::skip!("qemu-system-riscv32 not available");
     }
@@ -191,9 +180,6 @@ fn build_esp32_flash_images() -> (std::path::PathBuf, std::path::PathBuf) {
 /// Check all prerequisites for networked ESP32 tests
 fn require_esp32_networked() -> bool {
     if !require_riscv32_target() {
-        return false;
-    }
-    if !require_zenoh_pico_riscv() {
         return false;
     }
     if !require_qemu_riscv32() {

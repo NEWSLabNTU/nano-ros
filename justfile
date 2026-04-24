@@ -54,7 +54,7 @@ build: \
     build-workspace build-workspace-embedded \
     native::build \
     freertos::build threadx_linux::build threadx_riscv64::build \
-    build-zenohd qemu::build-zenoh-pico esp32::build-zenoh-pico
+    build-zenohd qemu::build-zenoh-pico
     @echo "All builds completed!"
 
 # Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
