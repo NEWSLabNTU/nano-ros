@@ -5,7 +5,18 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ESP32 prerequisites: Espressif QEMU + RISC-V zenoh-pico static lib.
+# Install ESP32 prerequisites: Espressif QEMU fork (required by every
+# networked ESP32 test — the stock Debian/Ubuntu `qemu-system-riscv32`
+# does not know the `esp32c3` machine model).
+#
+# Post-84.F4 the standalone `build/esp32-zenoh-pico/libzenohpico.a`
+# artefact is no longer consumed by any example or integration test —
+# `zpico-sys/build.rs::build_zenoh_pico_embedded` cross-compiles
+# zenoh-pico + platform shim in one `cc::Build` pass during the
+# example's own cargo build. The standalone `just esp32
+# build-zenoh-pico` recipe is still available for anyone who wants to
+# verify that cross-compile path independently, but it isn't part of
+# `setup` / `doctor` any more.
 setup:
     #!/usr/bin/env bash
     set -e
@@ -13,11 +24,6 @@ setup:
         echo "qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
     else
         ./scripts/esp32/install-espressif-qemu.sh
-    fi
-    if [ -f build/esp32-zenoh-pico/libzenohpico.a ]; then
-        echo "zenoh-pico RISC-V already built: build/esp32-zenoh-pico/libzenohpico.a"
-    else
-        ./scripts/esp32/build-zenoh-pico.sh
     fi
 
 # Diagnose ESP32 install status (read-only).
@@ -29,12 +35,6 @@ doctor:
         echo "  [OK] qemu-system-riscv32"
     else
         echo "  [MISSING] qemu-system-riscv32 (run: just esp32 setup)"
-        fail=1
-    fi
-    if [ -f build/esp32-zenoh-pico/libzenohpico.a ]; then
-        echo "  [OK] zenoh-pico riscv: build/esp32-zenoh-pico/libzenohpico.a"
-    else
-        echo "  [MISSING] zenoh-pico riscv (run: just esp32 setup)"
         fail=1
     fi
     if rustup target list --installed 2>/dev/null | grep -q '^riscv32imc-unknown-none-elf$'; then
