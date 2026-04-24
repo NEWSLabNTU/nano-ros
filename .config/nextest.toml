@@ -46,14 +46,50 @@ max-threads = 1
 # across concurrent tests, and (b) each case targets a different host
 # zenohd port (base + 0/10/20) so the host routers don't collide either.
 # `max-threads = 3` caps at the three cases.
+#
+# Phase 89.12 #15-17 — same-variant-different-language tests (e.g., pubsub
+# Rust/C/C++) share the SAME host zenohd port because the port is keyed
+# off variant only. `ZenohRouter::start_on` calls `kill_listeners_on_port`
+# before launching, so two same-variant tests running concurrently would
+# kill each other's zenohd mid-session. The per-variant sub-groups below
+# (`qemu-freertos-pubsub`, `-service`, `-action`) enforce max-threads=1
+# within a variant while still allowing cross-variant parallelism via
+# the outer `qemu-freertos` group.
 [test-groups.qemu-freertos]
 max-threads = 3
+
+[test-groups.qemu-freertos-pubsub]
+max-threads = 1
+
+[test-groups.qemu-freertos-service]
+max-threads = 1
+
+[test-groups.qemu-freertos-action]
+max-threads = 1
 
 [test-groups.qemu-nuttx]
 max-threads = 3
 
+[test-groups.qemu-nuttx-pubsub]
+max-threads = 1
+
+[test-groups.qemu-nuttx-service]
+max-threads = 1
+
+[test-groups.qemu-nuttx-action]
+max-threads = 1
+
 [test-groups.qemu-threadx-riscv]
 max-threads = 3
+
+[test-groups.qemu-threadx-riscv-pubsub]
+max-threads = 1
+
+[test-groups.qemu-threadx-riscv-service]
+max-threads = 1
+
+[test-groups.qemu-threadx-riscv-action]
+max-threads = 1
 
 # ESP32 examples are pubsub-only today (no service/action variants), so the
 # per-variant port split doesn't help — keep serial until service/action
@@ -67,6 +103,16 @@ max-threads = 1
 # pubsub/service/action runs.
 [test-groups.threadx-linux]
 max-threads = 3
+
+# Same-variant serialization (see qemu-freertos comment above).
+[test-groups.threadx-linux-pubsub]
+max-threads = 1
+
+[test-groups.threadx-linux-service]
+max-threads = 1
+
+[test-groups.threadx-linux-action]
+max-threads = 1
 
 # Phase 89.Zephyr — Zephyr native_sim uses NSOS (Phase 81) which offloads BSD
 # sockets to the host kernel, so per-variant host zenohd ports (base + 0/10/20)
@@ -122,6 +168,88 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# Phase 89.12 #15-17 — Per-variant serialization for rtos_e2e. These overrides
+# MUST come before the generic per-platform rules so nextest's first-match-wins
+# routing picks them up first. The three pubsub/service/action language cases
+# share a zenohd port (keyed off variant only), so same-variant tests cannot run
+# concurrently without `ZenohRouter::start_on` killing each other's router.
+
+# FreeRTOS per-variant — must come before qemu-freertos.
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_1_Platform__Freertos)"
+test-group = "qemu-freertos-pubsub"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_1_Platform__Freertos)"
+test-group = "qemu-freertos-service"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_1_Platform__Freertos)"
+test-group = "qemu-freertos-action"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# NuttX per-variant — must come before qemu-nuttx.
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_2_Platform__Nuttx)"
+test-group = "qemu-nuttx-pubsub"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_2_Platform__Nuttx)"
+test-group = "qemu-nuttx-service"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_2_Platform__Nuttx)"
+test-group = "qemu-nuttx-action"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# ThreadX-RISC-V per-variant — must come before qemu-threadx-riscv.
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64)"
+test-group = "qemu-threadx-riscv-pubsub"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_4_Platform__ThreadxRiscv64)"
+test-group = "qemu-threadx-riscv-service"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_4_Platform__ThreadxRiscv64)"
+test-group = "qemu-threadx-riscv-action"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# ThreadX-Linux per-variant — must come before threadx-linux.
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux)"
+test-group = "threadx-linux-pubsub"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_3_Platform__ThreadxLinux)"
+test-group = "threadx-linux-service"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_3_Platform__ThreadxLinux)"
+test-group = "threadx-linux-action"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
