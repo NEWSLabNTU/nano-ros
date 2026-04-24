@@ -6,7 +6,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <cstring>
+#include <string.h>  // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
@@ -126,7 +126,7 @@ template <typename M> class Subscription {
     Subscription(Subscription&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_subscription_relocate(other.storage_, storage_);
-            std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
+            ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
             stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
             other.initialized_ = false;
         }
@@ -142,7 +142,7 @@ template <typename M> class Subscription {
             }
             if (other.initialized_) {
                 nros_cpp_subscription_relocate(other.storage_, storage_);
-                std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
+                ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
                 stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
                 initialized_ = true;
                 other.initialized_ = false;

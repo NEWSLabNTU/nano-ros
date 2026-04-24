@@ -279,7 +279,17 @@ cty = "0.2"
 
 [profile.release]
 opt-level = "s"      # Optimize for size
-lto = true           # Link-time optimization
+# `lto = true` makes rustc emit each rlib's codegen units as LLVM
+# bitcode .rcgu.o members. The `nros-sizes-build` probe parses rlib
+# members as ELF objects via the `object` crate, which cannot read
+# bitcode, so every `__NROS_SIZE_*` symbol comes back as 0 — see
+# Phase 89.3. With `lto = "off"` the rlib contains native objects
+# and the probe recovers the correct `size_of::<T>()` values, which
+# nros-cpp uses to size `alignas(…) uint8_t storage_[…]` buffers
+# for ActionClient / ActionServer / Executor. The binary-size cost
+# is small in practice and can be revisited by a future sizes-probe
+# that reads bitcode directly.
+lto = "off"
 codegen-units = 1    # Better optimization
 panic = "abort"      # Smaller binary, no unwinding
 

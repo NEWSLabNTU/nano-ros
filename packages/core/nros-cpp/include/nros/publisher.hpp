@@ -6,7 +6,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <cstring>
+#include <string.h>  // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
@@ -81,7 +81,7 @@ template <typename M> class Publisher {
     Publisher(Publisher&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_publisher_relocate(other.storage_, storage_);
-            std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
+            ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
             other.initialized_ = false;
         }
     }
@@ -94,7 +94,7 @@ template <typename M> class Publisher {
             }
             if (other.initialized_) {
                 nros_cpp_publisher_relocate(other.storage_, storage_);
-                std::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
+                ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
                 initialized_ = true;
                 other.initialized_ = false;
             }

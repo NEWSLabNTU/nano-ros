@@ -56,7 +56,7 @@ platforms (~7).
 
 - [x] 89.1 — Re-split `qemu-serial` into per-platform `max-threads=1` groups
 - [x] 89.2 — Category A: C/C++ service-RPC failures (3 tests) — wall-clock budget in blocking spin loops
-- [ ] 89.3 — Category B: C++-on-RTOS `lang_3` failures (5 tests)
+- [x] 89.3 — Category B: C++-on-RTOS `lang_3` failures (6 tests) — size-probe LTO bitcode, zero-sized C++ wrapper storage, nros_platform_time_ns link, Zephyr minimal libcpp `<cstring>`, stale readiness marker
 - [x] 89.4 — Category C: ESP32 QEMU suite (4 tests)
 - [x] 89.5 — Category D: QEMU RTIC suite (4 tests) — fix size-probe platform detection for bare-metal + smoltcp
 - [x] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests) — resolved by 89.5 size-probe fix
@@ -163,54 +163,100 @@ Cascading symptoms observed pre-fix:
 - `test_service_multiple_sequential_calls` → PASS (4.3 s)
 - `test_cpp_action_communication` (Category B bonus) → PASS (7.6 s)
 
-### 89.3 — Category B: C++-on-RTOS `lang_3_Lang__Cpp` failures
+### 89.3 — Category B: C++-on-RTOS `lang_3_Lang__Cpp` failures — **Landed**
 
-Five tests:
+Triage summary (pre-fix, 6 failing tests across every RTOS + native):
 
-| Test | Duration |
-|---|---|
-| `rtos_e2e::test_rtos_action_e2e::platform_1_Platform__Freertos::lang_3_Lang__Cpp` | 45.5 s |
-| `rtos_e2e::test_rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64::lang_3_Lang__Cpp` | 15.8 s |
-| `rtos_e2e::test_rtos_service_e2e::platform_1_Platform__Freertos::lang_3_Lang__Cpp` | 49.8 s |
-| `rtos_e2e::test_rtos_service_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp` | 41.2 s |
-| `zephyr::test_zephyr_cpp_action_server_to_client_e2e` | 15.3 s |
-| `native_api::test_cpp_action_communication` | 22.5 s |
+| Test | Pre-fix | Status after 89.3 |
+|---|---|---|
+| `native_api::test_cpp_action_communication` | 22.5 s FAIL | ✅ **passes** (4.4 s) |
+| `rtos_e2e::test_rtos_action_e2e::platform_1_Platform__Freertos::lang_3_Lang__Cpp` | 45.5 s FAIL | ✅ (42.8 s) |
+| `rtos_e2e::test_rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64::lang_3_Lang__Cpp` | 15.8 s FAIL | ✅ (96.9 s) |
+| `rtos_e2e::test_rtos_service_e2e::platform_1_Platform__Freertos::lang_3_Lang__Cpp` | 49.8 s FAIL | ✅ (42.8 s) |
+| `rtos_e2e::test_rtos_service_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp` | 41.2 s FAIL | ✅ (67.1 s) |
+| `zephyr::test_zephyr_cpp_action_server_to_client_e2e` | 15.3 s FAIL | ✅ (36.7 s) |
 
-**Observed**: C++ E2E tests across FreeRTOS, ThreadX-RV64, ThreadX-Linux,
-Zephyr, and native all fail. Rust counterparts (`lang_1_Lang__Rust`)
-on the same platforms pass (with one NuttX-Rust flake, see 89.8). The
-C `lang_2_Lang__C` cases generally pass.
+Full 18-case regression run (all C++ tests across all C++-capable
+platforms): 18/18 pass, 97 s wall-clock. No Rust / C regressions.
 
-**Suspect**: The C++ API's blocking patterns are more conservative
-than Rust/C — `ActionClient::send_goal` + `get_result` still block
-through `zpico_get` on some paths that the async variants sidestepped.
-Phase 77 explicitly noted:
-> "The C++ action client hangs during `create_action_server` on
->  FreeRTOS QEMU (zenoh-pico deadlock when declaring 5 entities)"
+Five distinct bugs stacked on top of each other; fixing one surfaced
+the next. Peeled in dependency order:
 
-The FreeRTOS + ThreadX Linux service failures are likely the same
-deadlock class. The ThreadX-RV64 pubsub failure is different —
-probably the post-Phase-85.10 ABI size probe succeeded at build time
-but some C++-side cbindgen / storage-size assertion now trips.
+1. **Size-probe silently returned zero on release builds.** The
+   workspace `[profile.release]` has `lto = true`. With full LTO
+   rustc writes each rlib's codegen-unit object (`*.rcgu.o`) as
+   **LLVM bitcode** instead of a native ELF. `nros-sizes-build`
+   parses rlib members through the `object` crate (ELF/Mach-O/COFF
+   only), so it silently returned `0` for every `__NROS_SIZE_*`
+   symbol — which cascaded into the generated
+   `nros_cpp_config_generated.h`:
 
-**Action**:
+   ```c
+   #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 0   // should be 48
+   #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 0   // should be 72
+   #define NROS_*_SIZE                         0   // etc.
+   ```
 
-1. Tag each failure with its exact stall point (install log probe at
-   `create_action_server`, `create_service_client`, `call`, etc.).
-2. For the FreeRTOS / ThreadX-Linux deadlocks: wait for Phase 77.x
-   (async action client) and then rerun — most should flip to green
-   automatically when blocking `zpico_get` disappears.
-3. For the ThreadX-RV64 pubsub C++ failure: run the Phase 87 probe
-   output against the ThreadX-RV64 target and verify
-   `NROS_CPP_*_STORAGE_SIZE` macros match the compiled layout. If
-   they don't, either fix the probe for RV64 or extend Phase 87's
-   layout-mirror checks (87.11) to RV64.
-4. **Files**:
-   - `examples/qemu-arm-freertos/cpp/zenoh/action-client/`
-   - `examples/threadx-linux/cpp/zenoh/service-client/`
-   - `examples/qemu-riscv64-threadx/cpp/zenoh/talker/`
-   - `examples/zephyr/cpp/zenoh/action-client/`
-   - `packages/core/nros-cpp/build.rs` (probe)
+   Result: the C++ `ActionClient<A>` / `ActionServer<A>` wrapper
+   classes reserved `alignas(8) uint8_t storage_[0]` bytes of inline
+   storage. `nros_cpp_action_client_create` wrote the `CppActionClient`
+   Rust struct (16 bytes) into zero-byte storage, corrupting adjacent
+   stack / struct fields and reading garbage for
+   `arena_entry_index` (`26979` in one run). Every C++ action-client
+   call then found `action_client_core_mut` returned `None` and
+   bailed out as `NROS_CPP_RET_ERROR` — the misleading "Goal
+   REJECTED by server" banner users saw.
+
+   **Fix**: disable LTO in the workspace release profile
+   (`lto = "off"`). Native object files land in rlibs again, the
+   probe recovers real `size_of::<T>()` values, storage sizes land
+   at 48 / 72, and the C++ wrappers allocate real memory. A more
+   surgical fix — teach `nros-sizes-build` to parse bitcode — can
+   replace the LTO-off workaround later if release binary size
+   matters.
+
+2. **`nros_platform_time_ns` is `static inline` in the platform
+   headers**, so `extern "C" fn nros_platform_time_ns()` from
+   `nros-cpp/src/lib.rs::nros_cpp_time_ns` (added by 89.2) has no
+   linker-visible definition on any RTOS build. FreeRTOS / ThreadX
+   C++ examples failed with `undefined reference to nros_cpp_time_ns`
+   (the C++ side refers to the Rust symbol, which in turn needs a
+   non-existent C symbol). **Fix**: redirect the no-std
+   `nros_cpp_time_ns` path to `z_clock_now()` (zpico-platform-shim's
+   non-inline monotonic-ms primitive) scaled to ns.
+
+3. **`<cstring>` is missing from Zephyr's minimal C++ stdlib**
+   (`CONFIG_CPP=y, CONFIG_STD_CPP14=y` enables the minimal-libcpp
+   that ships with Zephyr 3.7). `publisher.hpp` / `subscription.hpp`
+   used `std::memcpy` via `<cstring>`; all C++ Zephyr builds failed
+   at preprocessor. **Fix**: switch to `<string.h>` + `::memcpy`,
+   which is guaranteed by every C library Zephyr exposes.
+
+4. **C++ `send_goal` / `get_result` used iteration-count spin
+   budgets** (`for _ in 0..1000`), the exact bug 89.2 fixed for
+   service clients. On multi-threaded zpico backends
+   `spin_once(10)` returns early on every incoming frame, so the
+   nominal 10 s budget collapsed to milliseconds before the
+   server's goal-accept response could arrive. **Fix**: rewrite
+   the two loops in `nros-cpp/src/action.rs` to wall-clock
+   budgeting via the existing `nros_cpp_time_ns()` helper, mirroring
+   the 89.2 pattern.
+
+5. **Stale readiness marker on ThreadX-Linux C++ service server**.
+   `rtos_e2e::ensure_ready` waits for `"Waiting for requests"`;
+   `examples/threadx-linux/cpp/zenoh/service-server/src/main.cpp`
+   only printed `"Service server ready"`. Server *was* handling
+   RPCs correctly (the test captured `Request [1]..[4]` in the
+   failure dump) — the readiness check just never matched.
+   **Fix**: add the canonical marker string to the server example.
+
+**Files touched**:
+- `Cargo.toml` — `[profile.release]` `lto = "off"` with explanatory comment.
+- `packages/core/nros-cpp/src/action.rs` — wall-clock budgets on `send_goal`, `get_result`.
+- `packages/core/nros-cpp/src/lib.rs` — no-std `nros_cpp_time_ns` via `z_clock_now`.
+- `packages/core/nros-cpp/include/nros/publisher.hpp` — `<string.h>` + `::memcpy`.
+- `packages/core/nros-cpp/include/nros/subscription.hpp` — same.
+- `examples/threadx-linux/cpp/zenoh/service-server/src/main.cpp` — emit `"Waiting for requests"`.
 
 ### 89.4 — Category C: ESP32 QEMU suite — **Landed**
 

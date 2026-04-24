@@ -629,10 +629,17 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
     }
     #[cfg(not(feature = "std"))]
     {
+        // On no_std builds we can't use `nros_platform_time_ns()` — that
+        // symbol is a `static inline` in `nros/platform/<rtos>.h`, so it
+        // never emits linker-visible storage and the example binaries
+        // can't resolve an extern "C" reference from this crate. Fall
+        // back to `z_clock_now()`, which zpico-platform-shim exposes on
+        // every RTOS backend as a proper `#[no_mangle]` extern "C" fn
+        // returning a monotonic millisecond count. Scale up to ns.
         unsafe extern "C" {
-            fn nros_platform_time_ns() -> u64;
+            fn z_clock_now() -> usize;
         }
-        unsafe { nros_platform_time_ns() }
+        (unsafe { z_clock_now() } as u64).saturating_mul(1_000_000)
     }
 }
 

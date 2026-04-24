@@ -721,9 +721,19 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     client.callbacks.goal_response = Some(blocking_goal_cb);
     client.callbacks.context = core::ptr::null_mut();
 
-    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
+    // Spin executor until flag set or timeout (10 s wall-clock).
+    //
+    // Phase 89.3: wall-clock budgeting instead of `for _ in 0..1000`
+    // (same class of bug fixed for service clients in 89.2). On
+    // multi-threaded zpico backends (POSIX/Zephyr), `spin_once(10)`
+    // returns early on any incoming frame (keep-alives, discovery
+    // gossip, interest messages) — a 1000-iteration budget collapses
+    // to milliseconds of real time and the goal-response callback
+    // never has a chance to fire before we return Error.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
-    for _ in 0..1000 {
+    let start_ns = crate::nros_cpp_time_ns();
+    let timeout_ns: u64 = 10_000_000_000; // 10 s
+    loop {
         let _ = ctx
             .executor
             .spin_once(core::time::Duration::from_millis(10));
@@ -737,6 +747,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
             } else {
                 NROS_CPP_RET_ERROR
             };
+        }
+        let elapsed_ns = crate::nros_cpp_time_ns().saturating_sub(start_ns);
+        if elapsed_ns >= timeout_ns {
+            break;
         }
     }
     // Restore original callback on timeout
@@ -831,9 +845,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     client.callbacks.result = Some(blocking_result_cb);
     client.callbacks.context = core::ptr::null_mut();
 
-    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
+    // Spin executor until flag set or timeout (10 s wall-clock).
+    //
+    // Phase 89.3: wall-clock budgeting — see the explanation on
+    // `send_goal` above for why `for _ in 0..1000` is insufficient on
+    // multi-threaded zpico backends.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
-    for _ in 0..1000 {
+    let start_ns = crate::nros_cpp_time_ns();
+    let timeout_ns: u64 = 10_000_000_000; // 10 s
+    loop {
         let _ = ctx
             .executor
             .spin_once(core::time::Duration::from_millis(10));
@@ -854,6 +874,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
                 return NROS_CPP_RET_OK;
             }
             return NROS_CPP_RET_ERROR;
+        }
+        let elapsed_ns = crate::nros_cpp_time_ns().saturating_sub(start_ns);
+        if elapsed_ns >= timeout_ns {
+            break;
         }
     }
     client.callbacks.result = orig_cb;
