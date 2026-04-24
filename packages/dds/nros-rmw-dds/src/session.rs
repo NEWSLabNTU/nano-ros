@@ -6,10 +6,24 @@ use crate::publisher::DdsPublisher;
 use crate::service::{DdsServiceClient, DdsServiceServer};
 use crate::subscriber::DdsSubscriber;
 
+// Phase 71.4: when an `alloc`-only (no-std) platform is active we own
+// an `NrosPlatformRuntime` that `drive_io()` drains on every spin.
+// On `std + platform-posix` the stock dust-dds UDP transport spawns
+// its own OS threads and does not need external driving, so we skip
+// the runtime field entirely.
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use crate::runtime::NrosPlatformRuntime;
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use alloc::sync::Arc;
+
 /// DDS session backed by a dust-dds `DomainParticipant`.
 pub struct DdsSession {
     #[cfg(feature = "std")]
     participant: dust_dds::domain::domain_participant::DomainParticipant,
+    /// Cooperative runtime driven by `drive_io()`; only present on the
+    /// no_std path where dust-dds has no background threads.
+    #[cfg(all(feature = "alloc", not(feature = "std")))]
+    runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
     _domain_id: u32,
 }
 
@@ -21,6 +35,25 @@ impl DdsSession {
     ) -> Self {
         Self {
             participant,
+            _domain_id: domain_id,
+        }
+    }
+
+    /// Constructor used by the no_std path (Phase 71.2 transport).
+    ///
+    /// Currently unreachable at runtime — `DdsRmw::open()` still returns
+    /// `ConnectionFailed` on `!std` until the nros-platform UDP transport
+    /// (71.2) lands — but the constructor lives here so the field shape
+    /// is frozen and the transport PR is purely about filling in the
+    /// factory.
+    #[cfg(all(feature = "alloc", not(feature = "std")))]
+    #[allow(dead_code)]
+    pub(crate) fn new_nostd(
+        runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+        domain_id: u32,
+    ) -> Self {
+        Self {
+            runtime,
             _domain_id: domain_id,
         }
     }
@@ -284,6 +317,15 @@ impl Session for DdsSession {
     }
 
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        // Phase 71.4: on the no_std path, drive the cooperative runtime
+        // once per spin so background RTPS tasks (receive loops,
+        // heartbeat timers) make progress. On `std + platform-posix`
+        // the stock dust-dds transport uses its own OS threads and
+        // `drive_io` stays a pure no-op.
+        #[cfg(all(feature = "alloc", not(feature = "std")))]
+        {
+            self.runtime.drive();
+        }
         Ok(())
     }
 }
