@@ -359,13 +359,49 @@ typedef struct {
   - [x] 80.12.9 — Migrate all 6 C XRCE examples to `nros_support_init_named()`, remove `xrce_zephyr_init`
   - [x] 80.12.10 — Delete `xrce-smoltcp` crate (replaced by nros-smoltcp via PlatformUdp)
   - [x] 80.12.11 — Strip `xrce_zephyr.c` to L4 wait only (transport callbacks + clock symbols removed)
-- [ ] 80.14 — RMW-agnostic serial transport via nros-platform
-  - [ ] 80.14.1 — Add `PlatformSerial` trait to nros-platform (`open`, `close`, `read`, `write`, `configure`)
-  - [ ] 80.14.2 — Implement `PlatformSerial` on PosixPlatform (extract from `posix_serial.rs` — PTY/termios)
-  - [ ] 80.14.3 — Create `platform_serial.rs` in nros-rmw-xrce (XRCE callbacks → `ConcretePlatform::serial_*()`)
-  - [ ] 80.14.4 — Wire zpico serial transport through `PlatformSerial` (replace `zpico-serial` direct libc)
-  - [ ] 80.14.5 — Remove `posix_serial.rs` from nros-rmw-xrce
-  - [ ] 80.14.6 — Verify serial XRCE tests pass
+- [x] 80.14 — RMW-agnostic serial transport via nros-platform
+  - [x] 80.14.1 — Added `PlatformSerial` trait to `nros-platform-api`
+        (`open(path)`, `close()`, `read(buf, len, timeout_ms)`,
+        `write(buf, len)`, `configure(baudrate)`). `read` returns
+        `0` on timeout (not an error); both XRCE and zenoh-pico
+        tolerate it. Documented in the trait rustdoc along with the
+        single-active-device-per-process invariant.
+  - [x] 80.14.2 — Implemented `PlatformSerial` on `PosixPlatform`.
+        New `nros-platform-posix::serial` module, gated
+        `#[cfg(not(target_os = "nuttx"))]` (same libc-availability
+        carve-out as `net`). Baudrates supported:
+        `9_600, 19_200, 38_400, 57_600, 115_200, 230_400, 460_800,
+        921_600`.
+  - [x] 80.14.3 — New `nros-rmw-xrce::platform_serial` module
+        (replaces `posix_serial`). XRCE callbacks dispatch via
+        `<ConcretePlatform as PlatformSerial>::*` — platform-agnostic
+        from the XRCE backend's perspective. Public entry point:
+        `init_platform_serial_transport(device_path)`. Backwards-
+        compatible `nros::init_posix_serial(pty_path)` wrapper
+        updated to call the new path.
+  - [~] 80.14.4 — **Rescoped / deferred**. Original wording
+        ("replace `zpico-serial` direct libc") was inaccurate:
+        zpico-serial does not use libc — it exposes a `SerialPort`
+        trait that board crates implement against their UART
+        peripheral, with per-port RX ring buffers. That's already a
+        clean platform-layer abstraction, just not named
+        `PlatformSerial`. Wiring it through `PlatformSerial` would
+        be one layer of indirection reshuffle (SerialPort on a
+        board's UART driver → `PlatformSerial` on the board's
+        platform ZST → zpico-serial dispatches through
+        `ConcretePlatform`) without a clear architectural win. Two
+        live users — `nros-mps2-an385` and `nros-stm32f4` — each
+        register a UART via `zpico_serial::register_port`; leaving
+        that path unchanged. Revisit when a third bare-metal serial
+        consumer materialises and the `SerialPort`-vs-
+        `PlatformSerial` split starts costing something.
+  - [x] 80.14.5 — Deleted `nros-rmw-xrce::posix_serial` (replaced by
+        `platform_serial`). Call sites in `nros` / `nros-node`
+        switched to `nros_rmw_xrce::platform_serial::init_platform_serial_transport`.
+  - [x] 80.14.6 — Verified: 3/3 XRCE serial tests pass
+        (`test_xrce_serial_listener_starts`, `_talker_starts`,
+        `_communication`); full 14/14 XRCE suite also passes post-
+        change.
 - [ ] 80.13 — Update documentation
   - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
   - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification

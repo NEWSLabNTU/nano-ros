@@ -96,7 +96,7 @@ impl Executor {
             }
             #[cfg(feature = "posix-serial")]
             unsafe {
-                nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
+                nros_rmw_xrce::platform_serial::init_platform_serial_transport(config.locator);
             }
 
             let rmw_config = nros_rmw::RmwConfig {

@@ -20,7 +20,17 @@ platform-nuttx = ["xrce-sys/nuttx", "platform-udp", "nros-platform/platform-nutt
 platform-threadx = ["xrce-sys/threadx", "platform-udp", "nros-platform/platform-threadx"]
 # Backward compat alias (posix-udp → platform-posix)
 posix-udp = ["platform-posix"]
+# Phase 80.14: serial transport via PlatformSerial. The `libc` dep is
+# no longer needed (termios lives in nros-platform-posix's `serial`
+# module now) but kept in the feature list for back-compat in case a
+# downstream user enabled `posix-serial` expecting `libc` to be
+# activated transitively.
 posix-serial = ["platform-posix", "dep:libc"]
+# Phase 80.14 alias — the platform-routed name. Prefer this over
+# `posix-serial` in new code; serial now routes via PlatformSerial
+# and the underlying device is whatever the active ConcretePlatform
+# provides (PTY on POSIX, board-specific UART on bare-metal).
+platform-serial = ["posix-serial"]
 ffi-sync = ["dep:critical-section"]
 # E2E safety protocol (CRC-32 + sequence tracking). Forwards to nros-rmw.
 # When enabled, `Subscriber::try_recv_validated` is available; XRCE does

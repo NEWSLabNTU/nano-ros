@@ -38,8 +38,10 @@ mod naming;
 #[cfg(feature = "platform-udp")]
 pub mod platform_udp;
 
+// Phase 80.14: serial transport now routes through `PlatformSerial`.
+// The old `posix_serial` module is gone; `platform_serial` replaces it.
 #[cfg(feature = "posix-serial")]
-pub mod posix_serial;
+pub mod platform_serial;
 
 use atomic_waker::AtomicWaker;
 use core::ffi::{c_char, c_int, c_void};

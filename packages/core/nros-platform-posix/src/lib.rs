@@ -14,6 +14,11 @@
 #[cfg(not(target_os = "nuttx"))]
 pub mod net;
 
+// PTY / UART serial transport via termios. Same NuttX carve-out as `net` —
+// NuttX's libc patch doesn't expose all the termios bits we use.
+#[cfg(not(target_os = "nuttx"))]
+pub mod serial;
+
 use core::ffi::c_void;
 use core::ptr;
 

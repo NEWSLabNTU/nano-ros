@@ -280,7 +280,7 @@ pub mod internals {
         #[cfg(feature = "xrce-serial")]
         pub unsafe fn init_posix_serial(pty_path: &str) {
             unsafe {
-                nros_rmw_xrce::posix_serial::init_posix_serial_transport(pty_path);
+                nros_rmw_xrce::platform_serial::init_platform_serial_transport(pty_path);
             }
         }
     }
@@ -363,7 +363,7 @@ pub mod internals {
 
             #[cfg(feature = "xrce-serial")]
             unsafe {
-                nros_rmw_xrce::posix_serial::init_posix_serial_transport(locator);
+                nros_rmw_xrce::platform_serial::init_platform_serial_transport(locator);
             }
 
             let config = nros_rmw::RmwConfig {

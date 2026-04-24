@@ -408,3 +408,48 @@ pub trait PlatformUdpMulticast {
         endpoint: *const c_void,
     ) -> usize;
 }
+
+// ============================================================================
+// Serial (UART / PTY)
+// ============================================================================
+
+/// Serial (byte-stream) transport.
+///
+/// Used by XRCE-DDS's HDLC-framed serial transport and by zenoh-pico's
+/// serial link layer. Platform implementations single-instance the
+/// underlying device — one active port per process — matching the
+/// shape of both RMW backends.
+///
+/// `path` in `open()` is platform-specific: a null-terminated UTF-8
+/// device path on POSIX (e.g., `/dev/ttyUSB0` or a PTY), or a
+/// board-defined port identifier on bare-metal (typically parsed by
+/// the platform's internal handler). Callers pass the locator string
+/// from their config unchanged; interpretation is the platform's job.
+///
+/// Read/write return `usize::MAX` on error. Read with
+/// `timeout_ms == 0` should block indefinitely; positive values are
+/// the poll/select deadline in milliseconds. Returning `0` from
+/// `read()` indicates "no data within timeout" and is **not** an
+/// error — both XRCE and zenoh-pico tolerate timeout-zero reads.
+pub trait PlatformSerial {
+    /// Open the serial device identified by `path`. Returns 0 on
+    /// success, -1 on error.
+    fn open(path: *const u8) -> i8;
+
+    /// Close the active serial device.
+    fn close();
+
+    /// Configure baud rate (in bits per second). Returns 0 on success,
+    /// -1 on error. Called after `open()`; implementations may choose
+    /// to apply the baud rate during `open()` instead and make this a
+    /// no-op.
+    fn configure(baudrate: u32) -> i8;
+
+    /// Read up to `len` bytes into `buf`. Returns the number of bytes
+    /// read, `0` on timeout, or `usize::MAX` on hard error.
+    fn read(buf: *mut u8, len: usize, timeout_ms: u32) -> usize;
+
+    /// Write `len` bytes from `buf`. Returns bytes written, or
+    /// `usize::MAX` on error.
+    fn write(buf: *const u8, len: usize) -> usize;
+}
