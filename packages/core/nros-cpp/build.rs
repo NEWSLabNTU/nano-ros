@@ -205,7 +205,31 @@ fn generate_config(
     );
     let include_dir = manifest_dir.join("include/nros");
     std::fs::create_dir_all(&include_dir).ok();
-    std::fs::write(include_dir.join("nros_cpp_config_generated.h"), cpp_header).unwrap();
+    let header_path = include_dir.join("nros_cpp_config_generated.h");
+    // Phase 77.24: if the probe silently returned 0 (LTO bitcode rlib),
+    // keep the checked-in committed header rather than clobbering it
+    // with zeros. `action_server_storage` / `action_client_storage` are
+    // safe even on probe failure because `nros-cpp/build.rs` has the
+    // hand-math fallback for those two — the `NROS_*_SIZE` macros on
+    // the other hand have no fallback and would silently produce
+    // `_opaque[0]` arrays.
+    let probe_failed = probe_executor == 0;
+    if probe_failed && header_path.exists() {
+        println!(
+            "cargo:warning=nros-cpp: probe returned all-zero sizes (LTO \
+             bitcode rlib?); keeping existing committed header at {}",
+            header_path.display()
+        );
+    } else if probe_failed {
+        panic!(
+            "nros-cpp: probe returned all-zero sizes and no committed \
+             header exists at {}. Run a non-LTO build (e.g. debug \
+             profile) once to seed the header.",
+            header_path.display()
+        );
+    } else {
+        std::fs::write(header_path, cpp_header).unwrap();
+    }
 }
 
 /// Phase 77.23: target pointer width in bytes, for hand-math fallback

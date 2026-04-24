@@ -438,8 +438,8 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - **Files**:
       - `packages/core/nros-sizes-build/src/lib.rs`
       - `packages/core/nros-cpp/build.rs`
-- [ ] 77.24 — Make the `nros-sizes-build` probe LTO-resilient (or
-      make probe failure fatal)
+- [x] 77.24 — Guard against the silent-zero-probe landmine
+      (stopgap; true LTO-resilient probe still pending)
     - **Context**: the release profile (`lto = true`,
       `codegen-units = 1`) makes rustc emit only LLVM bitcode for
       rlib member objects. `object::parse` can't read bitcode, so
@@ -482,6 +482,21 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - **Recommended order**: (a) first so the latent bug surfaces
       in CI, then (c) (lowest-impact workaround, doesn't touch the
       workspace LTO setting).
+    - **Landed (stopgap)**: `nros-c/build.rs` and `nros-cpp/build.rs`
+      now gate the `include/nros/*_config_generated.h` write on
+      `probe_executor != 0`. When the probe silently returns 0 for
+      every entry (the LTO-bitcode failure mode) the committed
+      header is preserved and a `cargo:warning=` is emitted
+      explaining the situation; when no committed header exists the
+      build panics with a message directing the user to a non-LTO
+      profile. This closes the landmine (zeros never land in
+      `_Alignas(8) uint8_t _opaque[NROS_*_SIZE]`) without forcing an
+      immediate LTO-policy change. A real fix — option (c)
+      (symbol-name-encoded sizes) or option (d) (dedicated non-LTO
+      probe build) — is still open and should be filed as 77.25 once
+      someone has the bandwidth.
+    - **Files**: `packages/core/nros-c/build.rs`,
+      `packages/core/nros-cpp/build.rs`.
 
 ## Acceptance Criteria
 

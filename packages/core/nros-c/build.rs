@@ -182,7 +182,44 @@ fn generate_config(
          #endif /* NROS_CONFIG_GENERATED_H */\n"
     );
     let config_header_path = manifest_dir.join("include/nros/nros_config_generated.h");
-    std::fs::write(config_header_path, c_header).unwrap();
+    let probe_failed = probe_executor == 0; // see write_header_preserve_nonzero below
+    write_header_preserve_nonzero(&config_header_path, &c_header, "nros-c", probe_failed);
+}
+
+/// Phase 77.24: write `c_header` to `path`, but only if the probe produced
+/// meaningful sizes. When the workspace's fat-LTO release profile is
+/// active, `nros-sizes-build` can't extract symbol sizes from the
+/// bitcode-only rlib — the probe returns 0 for every entry and writing
+/// zeros would corrupt the checked-in header (which acts as the
+/// last-known-good snapshot). In that case keep the existing committed
+/// file and warn the consumer instead. `probe_failed` is passed in by
+/// the caller because only it knows which probe keys are expected to be
+/// populated. See Phase 77.24 in
+/// `docs/roadmap/phase-77-async-action-client.md`.
+fn write_header_preserve_nonzero(
+    path: &std::path::Path,
+    new_contents: &str,
+    crate_label: &str,
+    probe_failed: bool,
+) {
+    if probe_failed && path.exists() {
+        println!(
+            "cargo:warning={crate_label}: probe returned all-zero sizes \
+             (LTO bitcode rlib?); keeping existing committed header at {}",
+            path.display()
+        );
+        return;
+    }
+    if probe_failed {
+        panic!(
+            "{crate_label}: probe returned all-zero sizes and no committed \
+             header exists at {}. Run a non-LTO build (e.g. debug profile) \
+             once to seed the header, or switch the workspace release \
+             profile to `lto = false`.",
+            path.display()
+        );
+    }
+    std::fs::write(path, new_contents).unwrap();
 }
 
 /// Generate `include/nros/nros_generated.h` using cbindgen.
