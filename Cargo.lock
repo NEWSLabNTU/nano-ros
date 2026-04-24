@@ -1496,7 +1496,9 @@ dependencies = [
  "dust_dds",
  "heapless",
  "nros-core",
+ "nros-platform",
  "nros-rmw",
+ "spin",
 ]
 
 [[package]]

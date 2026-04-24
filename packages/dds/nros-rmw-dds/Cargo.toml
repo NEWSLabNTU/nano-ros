@@ -9,14 +9,29 @@ publish = false  # depends on unpublished dust-dds fork
 
 [features]
 default = []
-std = ["nros-rmw/std", "dust_dds/std", "dust_dds/rtps_udp_transport"]
 
-# Platform selection (forwarded to dust-dds runtime)
-platform-posix = ["std"]
-platform-zephyr = []
-platform-freertos = []
-platform-nuttx = []
-platform-threadx = []
+# Core capability flags. `std` enables the stock dust-dds UDP transport
+# (3 OS threads per participant); `alloc` is required on every platform
+# because dust-dds is `no_std + alloc`, not alloc-free (see Phase 71 doc
+# — "Alloc-free claim").
+std = ["alloc", "nros-rmw/std", "dust_dds/std", "dust_dds/rtps_udp_transport"]
+alloc = []
+
+# Platform selection — mirrors nros-rmw-zenoh's Cargo.toml shape. Exactly
+# one platform feature must be enabled. `platform-posix` implies `std`
+# because dust-dds's stock UDP transport is the easiest path on POSIX.
+# The remaining platforms plug `NrosPlatformRuntime<ConcretePlatform>`
+# (Phase 71.3) into dust-dds's `DdsRuntime` trait and use nros-platform
+# primitives for clock / sleep / sockets.
+platform-posix    = ["std", "alloc", "nros-platform/platform-posix"]
+platform-zephyr   = ["alloc", "nros-platform/platform-zephyr"]
+platform-freertos = ["alloc", "nros-platform/platform-freertos"]
+platform-nuttx    = ["alloc", "nros-platform/platform-nuttx"]
+platform-threadx  = ["alloc", "nros-platform/platform-threadx"]
+# `platform-bare-metal` intentionally omitted for now — Phase 71.6 /
+# 71.7 will add an opt-in `#[global_allocator]` on the supported board
+# crates before this feature makes sense. Until that lands, bare-metal
+# users should stay on `rmw-zenoh` or `rmw-xrce`.
 
 # ROS edition (controls topic name/type hash format)
 ros-humble = []
@@ -28,5 +43,9 @@ safety-e2e = ["nros-rmw/safety-e2e"]
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
 dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dcps", "rtps"] }
 heapless = { workspace = true }
+# `spin` provides the no_std Mutex used by `NrosPlatformRuntime`'s task
+# queue. `std` builds use `std::sync::Mutex` instead (see runtime.rs).
+spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }

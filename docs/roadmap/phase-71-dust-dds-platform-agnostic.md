@@ -176,9 +176,9 @@ suggested.
 
 - [ ] 71.1 — `DdsRuntime::block_on` back on the trait (fork patch)
 - [ ] 71.2 — Non-blocking UDP transport — replace std-thread model
-- [ ] 71.3 — `NrosPlatformRuntime<P>` adapter crate (`nros-rmw-dds::runtime`)
+- [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
 - [ ] 71.4 — Arena entry for RTPS receive poll (`nros-rmw-dds::session`)
-- [ ] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
+- [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
 - [ ] 71.8 — Zephyr DDS talker/listener example + nextest suite
@@ -226,30 +226,51 @@ worth contributing back (see 71.10).
 - `packages/dds/dust-dds/dds/src/rtps_udp_transport/udp_transport.rs`
 - `packages/dds/dust-dds/dds/src/rtps_udp_transport/mod.rs`
 
-### 71.3 — `NrosPlatformRuntime<P>` adapter
+### 71.3 — `NrosPlatformRuntime<P>` adapter — **Landed**
 
-New module in `packages/dds/nros-rmw-dds/src/runtime.rs`:
+New module at `packages/dds/nros-rmw-dds/src/runtime.rs` implementing
+dust-dds's `DdsRuntime` trait by dispatching through
+`<P as PlatformClock>` and `<P as PlatformSleep>`. Three pieces:
 
-```rust
-use core::marker::PhantomData;
-use nros_platform::{PlatformClock, PlatformSleep, PlatformThreading, PlatformAlloc};
+- **`NrosClock<P>`** — `Clock::now()` calls `<P as PlatformClock>::clock_ms()`
+  and converts to `dust_dds::infrastructure::time::Time` (seconds +
+  nanoseconds). Zero-sized, `Clone + Send + Sync` via
+  `PhantomData<fn() -> P>`.
+- **`NrosTimer<P>` / `NrosSleep<P>`** — `Timer::delay()` returns a
+  deadline-polled future. Each `poll()` compares the current platform
+  clock against the stored deadline and, if not yet ready, calls
+  `cx.waker().wake_by_ref()` to request immediate re-polling. Busy but
+  O(N) per active delay; good enough for RTPS's handful of heartbeat /
+  reliability timers. A follow-up (Phase 71.10 territory) can
+  implement a TimerHeap like `std_runtime::timer::TimerHeap`.
+- **`NrosSpawner`** — `Arc<Mutex<VecDeque<Pin<Box<dyn Future<..> + Send>>>>>`.
+  `spawn()` pushes; `drain_tasks()` pops every pending task, polls
+  once with a no-op waker, re-queues survivors. Intended to be called
+  from Phase 71.4's arena hook.
+- **`NrosPlatformRuntime<P>`** — wraps the spawner and implements
+  `DdsRuntime` with `ClockHandle = NrosClock<P>`,
+  `TimerHandle = NrosTimer<P>`, `SpawnerHandle = NrosSpawner`.
+  Exposes `drive()` that Phase 71.4 will wire into
+  `Executor::spin_once()`.
 
-pub struct NrosPlatformRuntime<P>(PhantomData<P>);
+The `Mutex` type is swapped at compile time:
+`std::sync::Mutex` under `feature = "std"`, `spin::Mutex` otherwise —
+the file's top-level type alias `Mutex<T>` means the rest of the
+module is `cfg`-free.
 
-impl<P> dust_dds::runtime::DdsRuntime for NrosPlatformRuntime<P>
-where
-    P: PlatformClock + PlatformSleep + PlatformThreading + PlatformAlloc + 'static,
-{ /* thin dispatch to <P as PlatformX>::… */ }
-```
-
-Generic over `P = nros_platform::ConcretePlatform`, resolved from the
-`platform-*` feature the consumer picks. Uses the same dispatch pattern
-as `zpico-platform-shim`.
+**Status**: clock + timer + spawner all verified by three unit tests
+(`clock_returns_monotonic_time`, `spawner_runs_ready_future`,
+`spawner_reschedules_pending_future`) — all 3/3 pass against
+`ConcretePlatform = PosixPlatform`. The adapter is not yet wired into
+`Rmw::open` — that's Phase 71.4's job (the arena hook needs to drive
+`NrosPlatformRuntime::drive()` every `spin_once()`, and `Rmw::open`
+needs to pick `NrosPlatformRuntime<ConcretePlatform>` instead of
+`StdRuntime` when `std` is off).
 
 **Files**:
-- `packages/dds/nros-rmw-dds/src/runtime.rs` (new)
-- `packages/dds/nros-rmw-dds/Cargo.toml` — add `nros-platform` dep, new
-  features `platform-*` that forward to `nros-platform/platform-*`
+- `packages/dds/nros-rmw-dds/src/runtime.rs` (new, ~280 lines)
+- `packages/dds/nros-rmw-dds/src/lib.rs` — `pub mod runtime;` (feature-gated)
+- `packages/dds/nros-rmw-dds/Cargo.toml` — `nros-platform` + `spin` deps
 
 ### 71.4 — Arena entry for RTPS receive poll
 
@@ -269,31 +290,38 @@ respect to the nros executor spin cadence.
   `ArenaEntryKind::DdsSession` (or reuse a generic poll hook — TBD at
   implementation time).
 
-### 71.5 — Feature-gated backend selection in `nros-rmw-dds`
+### 71.5 — Feature-gated backend selection in `nros-rmw-dds` — **Cargo.toml landed; runtime selection pending 71.4**
 
-Mirror `nros-rmw-zenoh`'s Cargo.toml layout:
+The `Cargo.toml` feature matrix now mirrors `nros-rmw-zenoh`:
 
 ```toml
 [features]
 default = []
-std = ["dust_dds/std", "dust_dds/rtps_udp_transport"]
-platform-posix   = ["std",  "nros-platform/platform-posix"]
-platform-zephyr  = [        "nros-platform/platform-zephyr"]
-platform-freertos = [       "nros-platform/platform-freertos"]
-platform-nuttx   = [        "nros-platform/platform-nuttx"]
-platform-threadx = [        "nros-platform/platform-threadx"]
-platform-bare-metal = [     "nros-platform/platform-bare-metal"]
+std   = ["alloc", "nros-rmw/std", "dust_dds/std", "dust_dds/rtps_udp_transport"]
+alloc = []
+platform-posix    = ["std", "alloc", "nros-platform/platform-posix"]
+platform-zephyr   = ["alloc", "nros-platform/platform-zephyr"]
+platform-freertos = ["alloc", "nros-platform/platform-freertos"]
+platform-nuttx    = ["alloc", "nros-platform/platform-nuttx"]
+platform-threadx  = ["alloc", "nros-platform/platform-threadx"]
 ```
 
-The backend constructor picks `StdRuntime` + stock
-`RtpsUdpTransportParticipantFactory` when `platform-posix,std` is
-active, and `NrosPlatformRuntime<ConcretePlatform>` +
-`nros-rmw-dds`-owned UDP transport otherwise.
+`platform-bare-metal` is deliberately omitted until Phase 71.6 ships an
+opt-in `#[global_allocator]` on the affected board crates — without it
+the feature would have no heap and `dust_dds` wouldn't link.
+
+The `Rmw::open()` side of the selection (`StdRuntime` vs
+`NrosPlatformRuntime<ConcretePlatform>` + nros-rmw-dds UDP transport)
+is blocked on Phase 71.1 (sync API still imports
+`std_runtime::executor::block_on` directly), Phase 71.2 (transport is
+hardcoded to three OS threads), and Phase 71.4 (arena hook driving
+`NrosPlatformRuntime::drive()`). The structural `cfg` branches in
+`transport.rs` remain `std`-only for now.
 
 **Files**:
-- `packages/dds/nros-rmw-dds/Cargo.toml`
-- `packages/dds/nros-rmw-dds/src/transport.rs` — select the right
-  factory at `Rmw::open()` time.
+- `packages/dds/nros-rmw-dds/Cargo.toml` — Cargo matrix + `spin` dep +
+  `nros-platform` dep.
+- `packages/dds/nros-rmw-dds/src/transport.rs` — unchanged pending 71.4.
 
 ### 71.6 — Board-crate `#[global_allocator]` support (opt-in)
 

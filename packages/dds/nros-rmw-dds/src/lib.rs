@@ -12,6 +12,8 @@ extern crate alloc;
 
 mod publisher;
 mod raw_type;
+#[cfg(feature = "alloc")]
+pub mod runtime;
 mod service;
 mod session;
 mod subscriber;
