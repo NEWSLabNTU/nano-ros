@@ -459,42 +459,80 @@ impl ServiceClientTrait for ZenohServiceClient {
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
         let context = unsafe { &*self.context };
 
-        // Phase 89.12 #14: transient retry. On multi-threaded zpico
-        // backends (POSIX, Zephyr, NuttX, FreeRTOS+lwIP) a z_get call
-        // issued while zenoh-pico is mid-finalization of a *previous*
-        // query (the dropper callback for the prior get_check is
-        // enqueued but hasn't run yet) can fail intermittently. The
-        // most common surface is the Rust action client flow:
+        // Phase 89.12 #14 + Phase 89.13 flake fix: retry `zpico_get_start`
+        // with a bounded wall-clock budget to cover two distinct race
+        // classes on multi-threaded zpico backends (POSIX / Zephyr /
+        // NuttX / FreeRTOS+lwIP):
         //
-        //   let (_, mut p) = client.send_goal(&g)?;   // z_get #1
-        //   ... p.try_recv() sees the accept reply ...
-        //   let r = client.get_result(&id)?;          // z_get #2 — flaked here
+        // 1. **Dropper-pending race** (tens of microseconds). A z_get
+        //    issued while zenoh-pico is mid-finalization of a *previous*
+        //    query — the dropper callback for the prior get_check is
+        //    enqueued but hasn't run yet — can be transiently rejected
+        //    by the session's pending-query table. Typical surface:
+        //        let (_, mut p) = client.send_goal(&g)?;
+        //        ... p.try_recv() sees the accept reply ...
+        //        let r = client.get_result(&id)?;  // flaked here
+        //    Resolves within a few μs once the scheduler runs the
+        //    lease / read tasks.
         //
-        // `zpico_get_start` scans for a free slot (and reclaims zombie
-        // slots whose dropper has since fired), so slot exhaustion
-        // isn't the cause. The race lives inside `z_get` itself: if
-        // the previous reply's dropper is enqueued in a multi-threaded
-        // zenoh-pico session but not yet run, the session's pending-
-        // query table can briefly reject the new query.
+        // 2. **Cold-boot discovery race** (hundreds of milliseconds).
+        //    On NuttX QEMU cold start, the Rust client boots in
+        //    parallel with the server (the test harness can't delay
+        //    the in-guest client, and the pubsub shape already
+        //    requires parallel launch). The first `call()` can fire
+        //    before zenoh-pico has discovered the server's queryable
+        //    via router gossip. 3 tight retries all hit the same
+        //    unresolved state within microseconds — the test saw
+        //    `Application error: ServiceRequestFailed` as the first
+        //    call on NuttX Rust service / action E2E.
         //
-        // Three retries with the caller's natural polling cadence is
-        // enough in practice — the prior dropper fires within a few
-        // microseconds once the scheduler runs the lease/read tasks
-        // again. No explicit sleep here: the caller's retry budget is
-        // bounded by its outer `spin_once` loop.
-        const MAX_ATTEMPTS: u32 = 3;
+        // 800 ms total budget on std covers both cases comfortably
+        // (cold-boot discovery empirically lands in 200–600 ms on
+        // QEMU NuttX). Between attempts, yield ~5 ms via
+        // `thread::sleep` so zenoh-pico's background pthread(s) can
+        // advance the session state — spin-looping here starves the
+        // lease / read task on single-core QEMU hosts. On no_std
+        // fallback we keep the original tight 3-retry count: bare
+        // metal / single-threaded zpico has no parallel progress to
+        // wait on, and the dropper-pending race there is the only
+        // reproducible failure mode.
         let mut last_err = None;
-        for _ in 0..MAX_ATTEMPTS {
-            match context.get_start(
-                &self.keyexpr[..=self.keyexpr_len],
-                request,
-                self.timeout_ms,
-            ) {
-                Ok(handle) => {
-                    self.pending_handle = Some(handle);
-                    return Ok(());
+        #[cfg(feature = "std")]
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(800);
+            loop {
+                match context.get_start(
+                    &self.keyexpr[..=self.keyexpr_len],
+                    request,
+                    self.timeout_ms,
+                ) {
+                    Ok(handle) => {
+                        self.pending_handle = Some(handle);
+                        return Ok(());
+                    }
+                    Err(e) => last_err = Some(e),
                 }
-                Err(e) => last_err = Some(e),
+                if std::time::Instant::now() >= deadline {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            const MAX_ATTEMPTS: u32 = 3;
+            for _ in 0..MAX_ATTEMPTS {
+                match context.get_start(
+                    &self.keyexpr[..=self.keyexpr_len],
+                    request,
+                    self.timeout_ms,
+                ) {
+                    Ok(handle) => {
+                        self.pending_handle = Some(handle);
+                        return Ok(());
+                    }
+                    Err(e) => last_err = Some(e),
+                }
             }
         }
         Err(TransportError::from(last_err.unwrap()))
