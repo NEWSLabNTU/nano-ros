@@ -681,8 +681,13 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-stm32f4",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-stm32f4"
@@ -691,6 +696,7 @@ dependencies = [
  "cortex-m",
  "defmt 0.3.100",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -736,6 +742,7 @@ dependencies = [
 name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "smoltcp",
 ]
 

@@ -582,14 +582,20 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-freertos",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-freertos"
 version = "0.1.0"
 dependencies = [
  "freertos-lwip-sys",
+ "nros-platform-api",
 ]
 
 [[package]]

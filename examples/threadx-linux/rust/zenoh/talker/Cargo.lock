@@ -501,13 +501,19 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-threadx",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-threadx"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "threadx-netx-sys",
 ]
 

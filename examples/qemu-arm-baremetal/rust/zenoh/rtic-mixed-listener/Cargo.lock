@@ -564,8 +564,13 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-mps2-an385",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-mps2-an385"
@@ -573,6 +578,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -620,6 +626,7 @@ dependencies = [
 name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "smoltcp",
 ]
 
