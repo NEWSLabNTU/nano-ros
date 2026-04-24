@@ -158,19 +158,6 @@ impl ZenohSession {
         self.context.uses_polling()
     }
 
-    /// Poll for incoming data and process callbacks
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout_ms` - Maximum time to wait for data (0 = non-blocking)
-    ///
-    /// # Returns
-    ///
-    /// Number of events processed, or error
-    pub fn poll(&self, timeout_ms: u32) -> Result<i32, TransportError> {
-        self.context.poll(timeout_ms).map_err(TransportError::from)
-    }
-
     /// Combined poll and keepalive operation
     ///
     /// This is the recommended way to drive the session. Call this

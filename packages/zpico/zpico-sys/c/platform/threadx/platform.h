@@ -50,6 +50,10 @@ typedef struct {
     uint8_t threadx_stack[Z_TASK_STACK_SIZE];
     void *(*_fun)(void *);   /* Real entry function (full pointer width) */
     void  *_arg;             /* Real argument (full pointer width) */
+    /* Phase 77.21: replaces the `tx_thread_sleep(1)` polling loop in
+     * `_z_task_join`. Trampoline sets bit 0 after `_fun` returns; join
+     * waits on it via `tx_event_flags_get(..., TX_WAIT_FOREVER)`. */
+    TX_EVENT_FLAGS_GROUP done_flags;
 } _z_task_t;
 
 typedef void *z_task_attr_t;  // Not used

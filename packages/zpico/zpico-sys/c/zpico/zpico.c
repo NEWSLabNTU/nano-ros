@@ -620,7 +620,7 @@ int32_t zpico_open(void) {
 
     // Start background tasks only in multi-threaded mode
     // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
-    // explicitly via zpico_poll() / zpico_spin_once()
+    // explicitly via zpico_spin_once()
 #if Z_FEATURE_MULTI_THREAD == 1
 #if defined(ZENOH_FREERTOS_LWIP)
     g_spin_sem = xSemaphoreCreateBinary();
@@ -1066,75 +1066,9 @@ static int get_session_fd(void) {
 #endif
 
 // ============================================================================
-// Polling Implementation
+// Polling Implementation (zpico_poll — deleted in Phase 77.20; use
+// zpico_spin_once() instead, which adds keep-alive handling)
 // ============================================================================
-
-int32_t zpico_poll(uint32_t timeout_ms) {
-    if (!g_session_open) {
-        return ZPICO_ERR_SESSION;
-    }
-
-#ifdef ZPICO_SMOLTCP
-    // smoltcp: use single_read=true to avoid the _z_zbuf_reset() in the
-    // single_read=false path, which discards remaining data when multiple
-    // zenoh messages arrive in a single TCP read (e.g., keep-alive + reply).
-    // With single_read=true, the zbuf accumulates data across calls and
-    // processes one complete message per call.
-    zp_read_options_t opts;
-    opts.single_read = true;
-    uint64_t start = smoltcp_clock_now_ms();
-    int ret;
-    do {
-        ret = zp_read(z_session_loan_mut(&g_session), &opts);
-        if (ret == 0) break;  // Data processed
-        if (timeout_ms == 0) break;
-    } while (smoltcp_clock_now_ms() - start < timeout_ms);
-    return ret;
-
-#elif defined(ZENOH_FREERTOS_LWIP)
-    // FreeRTOS+lwIP: background read task handles data. Use vTaskDelay()
-    // instead of select() to yield CPU time. lwIP's select() can interact
-    // poorly with the background read task calling recv() on the same socket.
-    extern void vTaskDelay(unsigned long);
-    if (timeout_ms > 0) {
-        vTaskDelay(timeout_ms);
-    }
-    return 0;
-
-#elif Z_FEATURE_MULTI_THREAD == 1
-    // Multi-threaded (Zephyr/POSIX): background read task handles data.
-    // Wait on condvar — see zpico_spin_once() for the rationale.
-    if (timeout_ms > 0) {
-#ifdef ZENOH_NUTTX
-        usleep((useconds_t)timeout_ms * 1000);
-#else
-        z_clock_t deadline = z_clock_now();
-        z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
-        _z_mutex_lock(&g_spin_mutex);
-        _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
-        _z_mutex_unlock(&g_spin_mutex);
-#endif
-    }
-    return 0;
-
-#else
-    // Single-threaded (not smoltcp): use select() then zp_read()
-    int fd = get_session_fd();
-    if (fd >= 0 && timeout_ms > 0) {
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(fd, &read_fds);
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
-        if (result <= 0) {
-            return (result == 0) ? ZPICO_ERR_TIMEOUT : result;
-        }
-    }
-    return zp_read(z_session_loan_mut(&g_session), NULL);
-#endif
-}
 
 int32_t zpico_spin_once(uint32_t timeout_ms) {
     if (!g_session_open) {

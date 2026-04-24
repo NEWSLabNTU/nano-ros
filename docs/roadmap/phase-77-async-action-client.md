@@ -303,29 +303,38 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
       cortex-m RTIC target would hold IRQs off for the duration and
       should split the wait from the zpico-state touch.
     - **Files**: `packages/zpico/nros-rmw-zenoh/src/zpico.rs`
-- [ ] 77.20 — Deprecate / retire `zpico_poll()` FreeRTOS fixed-delay path
-    - Current: `zpico_poll()`'s FreeRTOS branch still uses `vTaskDelay(timeout_ms)`
-      (fixed-duration sleep; no early wake). 77.16 only updated
-      `zpico_spin_once`. Since the executor now drives everything through
-      `spin_once`, `zpico_poll` is a second-class entry point with worse
-      latency.
-    - Options:
-      - (a) Delete `zpico_poll` entirely — audit callers, migrate to
-        `zpico_spin_once`. Preferred if nothing depends on `poll`'s
-        subtly different "read-only, no keep-alive" semantics.
-      - (b) If (a) is too invasive, apply the same binary-semaphore wake
-        pattern from 77.16 so FreeRTOS `zpico_poll` wakes on data arrival.
-    - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (lines ~1065–1073);
-      `packages/zpico/nros-rmw-zenoh/src/zpico.rs` (caller — may go away with (a))
-- [ ] 77.21 — ThreadX task "join": replace 1 ms polling loop with `tx_event_flags`
-    - Current: `packages/zpico/zpico-sys/c/platform/threadx/task.c:47–57` does
-      `while (1) { if (state == COMPLETED || TERMINATED) break; tx_thread_sleep(1); }`
-      because ThreadX doesn't expose a native `pthread_join`-equivalent.
-      Each unfinished task wastes 1 ms slices until completion.
-    - Target: have the task wrapper `tx_event_flags_set` on completion
-      and wait via `tx_event_flags_get(..., TX_WAIT_FOREVER)`. True
-      event-driven wake, no polling.
-    - **Files**: `packages/zpico/zpico-sys/c/platform/threadx/task.c`
+- [x] 77.20 — Deprecate / retire `zpico_poll()` FreeRTOS fixed-delay path
+    - Option (a): deleted outright. Audit showed the only callers were
+      `nros-rmw-zenoh`'s internal `Context::poll` / `Session::poll`
+      wrappers and the `zpico-sys/ffi.rs` stub — nothing external relied
+      on the "read-only, no keep-alive" semantics. Deletion sites:
+      - `packages/zpico/zpico-sys/c/zpico/zpico.c` — dropped the
+        `zpico_poll()` function body (the one with `vTaskDelay(timeout_ms)`
+        on FreeRTOS+lwIP and friends).
+      - `packages/zpico/zpico-sys/src/{lib.rs,ffi.rs}` — removed the
+        extern decl and the no-platform stub.
+      - `packages/zpico/zpico-sys/cbindgen.toml` — removed from the export
+        allow-list (regenerated `zpico.h` no longer declares it).
+      - `packages/zpico/nros-rmw-zenoh/src/zpico.rs` — deleted
+        `Context::poll` and dropped the `zpico_poll` import.
+      - `packages/zpico/nros-rmw-zenoh/src/shim/session.rs` — deleted
+        `Session::poll`.
+    - Callers use `zpico_spin_once` directly via `RmwSession::drive_io`.
+- [x] 77.21 — ThreadX task "join": replace 1 ms polling loop with `tx_event_flags`
+    - `packages/zpico/zpico-sys/c/platform/threadx/platform.h` — added a
+      `TX_EVENT_FLAGS_GROUP done_flags` field to `_z_task_t`.
+    - `packages/zpico/zpico-sys/c/platform/threadx/task.c`:
+      - `_z_task_init` calls `tx_event_flags_create(&task->done_flags,
+        "zdone")` before `tx_thread_create`; cleanup on failure via
+        `tx_event_flags_delete`.
+      - `_z_task_trampoline` signals `_Z_TASK_DONE_FLAG` (bit 0) via
+        `tx_event_flags_set(..., TX_OR)` after the user `_fun` returns.
+      - `_z_task_join` waits with `tx_event_flags_get(..., TX_OR_CLEAR,
+        ..., TX_WAIT_FOREVER)` — one system call, true event-driven
+        wake, no polling.
+      - `_z_task_free` deletes the flags group before `z_free`.
+    - Tested against all 6 ThreadX-RV64 rtos_e2e cases
+      (Rust/C × pubsub/service/action).
 - [ ] 77.22 — Introduce `nros_platform::Yield` trait to unify per-platform yield
       fallbacks used inside `socket_wait_event`
     - Current: three near-identical hand-written 1-tick / 1 ms yields in

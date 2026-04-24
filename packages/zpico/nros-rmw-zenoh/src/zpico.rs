@@ -66,7 +66,7 @@ use zpico_sys::{
     zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
-    zpico_is_open, zpico_open, zpico_poll, zpico_publish, zpico_publish_with_attachment,
+    zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_query_reply, zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
     zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
 };
@@ -537,60 +537,6 @@ impl Context {
             handle,
             _ctx: PhantomData,
         })
-    }
-
-    /// Poll for incoming data and process callbacks
-    ///
-    /// For threaded backends (POSIX, Zephyr), this is a no-op as background
-    /// tasks handle polling automatically.
-    ///
-    /// For polling backends (smoltcp), this must be called regularly.
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout_ms` - Maximum time to wait for data (0 = non-blocking)
-    ///
-    /// # Returns
-    ///
-    /// Number of events processed, or error
-    pub fn poll(&self, timeout_ms: u32) -> Result<i32> {
-        // When FFI guard is enabled, decompose blocking poll into a loop
-        // of non-blocking guarded calls to keep critical sections short.
-        #[cfg(feature = "ffi-sync")]
-        {
-            let ret = ffi_guard(|| unsafe { zpico_poll(0) });
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
-            if ret > 0 || timeout_ms == 0 {
-                return Ok(ret);
-            }
-            // Loop with guarded non-blocking polls until timeout
-            let mut clock = [0u8; 16];
-            unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
-            loop {
-                let elapsed =
-                    unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
-                if elapsed >= timeout_ms as core::ffi::c_ulong {
-                    return Ok(0);
-                }
-                let ret = ffi_guard(|| unsafe { zpico_poll(0) });
-                if ret < 0 {
-                    return Err(ZpicoError::from_code(ret));
-                }
-                if ret > 0 {
-                    return Ok(ret);
-                }
-            }
-        }
-        #[cfg(not(feature = "ffi-sync"))]
-        {
-            let ret = unsafe { zpico_poll(timeout_ms) };
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
-            Ok(ret)
-        }
     }
 
     /// Combined poll and keepalive operation

@@ -351,30 +351,11 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Poll for incoming data and process callbacks.
-    ///
-    /// For threaded backends (Zephyr, POSIX), this is a no-op as background
-    /// tasks handle polling automatically.
-    ///
-    /// For polling backends (smoltcp), this must be called regularly to
-    /// process network data and dispatch callbacks.
-    ///
-    /// # Parameters
-    /// * `timeout_ms` - Maximum time to wait for data (0 = non-blocking)
-    ///
-    /// # Returns
-    /// Number of events processed, or negative on error.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_poll(_timeout_ms: u32) -> i32 {
-        0
-    }
-
     /// Combined poll and keepalive operation.
     ///
-    /// This is equivalent to calling zpico_poll() and performing any
-    /// necessary keepalive operations. For threaded backends, this is just
-    /// a brief poll. For polling backends, this handles both network I/O
-    /// and zenoh protocol maintenance.
+    /// For threaded backends, this is just a brief poll. For polling
+    /// backends, this handles both network I/O and zenoh protocol
+    /// maintenance (keep-alives).
     ///
     /// # Parameters
     /// * `timeout_ms` - Maximum time to wait (0 = non-blocking)

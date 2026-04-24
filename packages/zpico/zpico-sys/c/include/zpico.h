@@ -355,29 +355,11 @@ int32_t zpico_subscribe_zero_copy(const char *_keyexpr,
 int32_t zpico_undeclare_subscriber(int32_t _handle);
 
 /**
- * Poll for incoming data and process callbacks.
- *
- * For threaded backends (Zephyr, POSIX), this is a no-op as background
- * tasks handle polling automatically.
- *
- * For polling backends (smoltcp), this must be called regularly to
- * process network data and dispatch callbacks.
- *
- * # Parameters
- * * `timeout_ms` - Maximum time to wait for data (0 = non-blocking)
- *
- * # Returns
- * Number of events processed, or negative on error.
- */
-int32_t zpico_poll(uint32_t _timeout_ms);
-
-/**
  * Combined poll and keepalive operation.
  *
- * This is equivalent to calling zpico_poll() and performing any
- * necessary keepalive operations. For threaded backends, this is just
- * a brief poll. For polling backends, this handles both network I/O
- * and zenoh protocol maintenance.
+ * For threaded backends, this is just a brief poll. For polling
+ * backends, this handles both network I/O and zenoh protocol
+ * maintenance (keep-alives).
  *
  * # Parameters
  * * `timeout_ms` - Maximum time to wait (0 = non-blocking)

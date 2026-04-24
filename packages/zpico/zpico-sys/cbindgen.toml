@@ -96,7 +96,6 @@ include = [
     "zpico_declare_subscriber",
     "zpico_undeclare_subscriber",
     # zpico API - Polling
-    "zpico_poll",
     "zpico_spin_once",
     "zpico_uses_polling",
     # zpico API - ZenohId
