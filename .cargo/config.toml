@@ -1,0 +1,11 @@
+# Phase 77.25: v0 symbol mangling is required for the nros-sizes-build
+# probe to work under the workspace's fat-LTO release profile. The v0
+# scheme encodes const-generic values (including `size_of::<T>()`
+# results) into the mangled symbol name — names survive LTO-only
+# rlibs while object-file symbol sizes don't, which is the exact gap
+# that produced the silent 0-byte `NROS_*_SIZE` macros tracked in
+# 77.23/77.24. v0 has been stable since Rust 1.60; the only
+# user-visible effect is slightly cleaner demangled output in
+# backtraces.
+[build]
+rustflags = ["-C", "symbol-mangling-version=v0"]

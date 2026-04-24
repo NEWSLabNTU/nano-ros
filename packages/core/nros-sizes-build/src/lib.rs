@@ -94,13 +94,25 @@ impl From<object::Error> for Error {
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let target_dir = cargo_target_dir()?;
     let triple = env::var("TARGET").ok();
+    let host = env::var("HOST").ok();
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
+    // Phase 77.25: under cross-compile, the target-triple rlib may not
+    // exist yet when this build script runs (regular deps are compiled
+    // in parallel with build scripts), but the host-triple rlib almost
+    // certainly does (it's a build-dep — see nros-c / nros-cpp
+    // Cargo.toml). We MUST NOT read host-rlib sizes when the
+    // downstream consumer is building for a different target, because
+    // pointer-size-dependent structs (e.g. anything holding *mut)
+    // would give wrong values. Only search the host deps dir when
+    // target == host.
     let mut searched = Vec::new();
     if let Some(triple) = triple.as_deref() {
         searched.push(target_dir.join(triple).join(&profile).join("deps"));
     }
-    searched.push(target_dir.join(&profile).join("deps"));
+    if triple.as_deref() == host.as_deref() {
+        searched.push(target_dir.join(&profile).join("deps"));
+    }
 
     let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     let lib_prefix = format!("lib{crate_name}-");
@@ -162,6 +174,7 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
     let data = std::fs::read(rlib)?;
     let archive = ArchiveFile::parse(&*data)?;
     let mut out: HashMap<String, u64> = HashMap::new();
+    let mut saw_bitcode = false;
 
     for member in archive.members() {
         let member = member?;
@@ -177,7 +190,16 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
         let member_data = member.data(&*data)?;
         let object = match ObjectFile::parse(member_data) {
             Ok(o) => o,
-            Err(_) => continue,
+            Err(_) => {
+                // Fat LTO makes rustc emit LLVM bitcode (`BC\xC0\xDE` or
+                // `\xDE\xC0\x17\x0B` Mach-O embedded) instead of ELF/COFF
+                // objects. `object` can't read bitcode. Flag for the v0
+                // fallback below.
+                if member_data.starts_with(b"BC\xC0\xDE") {
+                    saw_bitcode = true;
+                }
+                continue;
+            }
         };
 
         for symbol in object.symbols() {
@@ -197,7 +219,112 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
         }
     }
 
+    // Phase 77.25: if nothing came out of the ELF path and the rlib
+    // contains bitcode members, fall back to rustc's bundled `llvm-nm`
+    // which *can* read bitcode symbol names. The nros sizes module
+    // emits `__nros_size_NAME<const N: usize>` monomorphisations —
+    // their v0-mangled symbol names contain both the NAME and the
+    // const-generic value N (the `size_of::<T>()` result). A single
+    // regex captures `NAME` and `N` from the demangled output.
+    if out.is_empty() && saw_bitcode {
+        if let Ok(from_bitcode) = extract_sizes_via_llvm_nm(rlib) {
+            return Ok(from_bitcode);
+        }
+    }
+
     Ok(out)
+}
+
+/// Phase 77.25: bitcode-aware extraction via `rustc`-bundled `llvm-nm`.
+///
+/// Invokes `$(rustc --print sysroot)/lib/rustlib/$TRIPLE/bin/llvm-nm
+/// --demangle` against the rlib, then regex-matches lines like
+/// `nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>` — the
+/// capture groups are the NAME and the const-generic SIZE value.
+/// Returns an empty map on any failure (probe consumers treat that
+/// the same as a probe miss — 77.24's stopgap covers it).
+fn extract_sizes_via_llvm_nm(rlib: &Path) -> Result<HashMap<String, u64>, Error> {
+    let sysroot = rustc_sysroot()?;
+    let triple = rustc_host_triple()?;
+    let llvm_nm = sysroot
+        .join("lib/rustlib")
+        .join(&triple)
+        .join("bin/llvm-nm");
+    if !llvm_nm.exists() {
+        return Err(Error::CargoMetadata(format!(
+            "llvm-nm not found at {}",
+            llvm_nm.display()
+        )));
+    }
+
+    let output = Command::new(&llvm_nm)
+        .arg("--demangle")
+        .arg(rlib)
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    if !output.status.success() {
+        return Err(Error::CargoMetadata(
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    // Match `::__nros_size_<NAME>::<<SIZE>>` near the end of a line.
+    // Example: "nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>"
+    let mut out = HashMap::new();
+    for line in text.lines() {
+        let Some(marker_idx) = line.find("::__nros_size_") else {
+            continue;
+        };
+        let after = &line[marker_idx + "::__nros_size_".len()..];
+        // `after` now looks like "PUBLISHER_SIZE::<48>"
+        let Some((name, tail)) = after.split_once("::<") else {
+            continue;
+        };
+        let Some(num_str) = tail.strip_suffix('>') else {
+            continue;
+        };
+        let Ok(size) = num_str.trim().parse::<u64>() else {
+            continue;
+        };
+        out.entry(name.to_string()).or_insert(size);
+    }
+    Ok(out)
+}
+
+fn rustc_sysroot() -> Result<PathBuf, Error> {
+    let output = Command::new(env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+        .args(["--print", "sysroot"])
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    if !output.status.success() {
+        return Err(Error::CargoMetadata(
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ));
+    }
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&output.stdout).trim(),
+    ))
+}
+
+fn rustc_host_triple() -> Result<String, Error> {
+    // Prefer the triple the current build is compiling *for*
+    // (matters for cross-compile); fall back to rustc -vV.
+    if let Ok(t) = env::var("TARGET") {
+        return Ok(t);
+    }
+    let output = Command::new(env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+        .arg("-vV")
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if let Some(rest) = line.strip_prefix("host: ") {
+            return Ok(rest.trim().to_string());
+        }
+    }
+    Err(Error::CargoMetadata(
+        "could not determine rustc host triple".into(),
+    ))
 }
 
 /// Parse `cargo metadata --format-version=1 --no-deps` and return `target_directory`.

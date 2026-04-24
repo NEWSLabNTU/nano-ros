@@ -507,6 +507,69 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - **Files**: `packages/core/nros-c/build.rs`,
       `packages/core/nros-cpp/build.rs`.
 
+- [x] 77.25 — LTO-resilient size probe via v0 mangling + build-dep
+      ordering
+    - **Context**: 77.24 only protects the committed header from
+      being clobbered — the probe itself still returns 0 under
+      `lto = true`. That means every CI build emits
+      `cargo:warning=` spam and any size drift between
+      the live Rust types and the committed macros goes
+      unnoticed until a runtime crash (the 77.23 failure mode).
+    - **Approach** (option (c) from 77.24, stable-Rust only):
+      - Switch `export_size!` in `nros/src/sizes.rs` from a static
+        `[u8; N]` (size lives only in the symbol's object-file size,
+        which LTO bitcode drops) to a monomorphized function
+        reference: `pub fn marker<const N: usize>() {}` + a
+        `#[used] static FOO: fn() = marker::<{ size_of::<T>() }>`.
+        With v0 symbol mangling the instantiated function's mangled
+        name contains `Kj<hex>_` for the const-generic value — that
+        survives LTO because the linker needs the symbol name.
+      - Add a workspace-wide `.cargo/config.toml` setting
+        `rustflags = ["-C", "symbol-mangling-version=v0"]`. v0 is
+        the forward-looking default (stable since 1.60); the only
+        user-visible change is prettier demangled output in
+        backtraces.
+      - In `nros-sizes-build::extract_sizes`, shell out to rustc's
+        bundled `llvm-nm --demangle` (at
+        `$(rustc --print sysroot)/lib/rustlib/$TRIPLE/bin/llvm-nm`)
+        against the rlib. The demangled line looks like
+        `nros::sizes::marker::<48>` — a single regex captures the
+        const value. Fall back to the current `object::parse`
+        path first so non-LTO builds stay on the fast path.
+    - **Non-goals**: no change to the workspace LTO setting
+      itself; no new build-time sub-compilation of `nros`.
+    - **Files** (expected):
+      - `.cargo/config.toml` (new)
+      - `packages/core/nros/src/sizes.rs` (macro rewrite)
+      - `packages/core/nros-sizes-build/src/lib.rs`
+        (bitcode-aware extraction path)
+    - **Landed**:
+      - `.cargo/config.toml` — `rustflags = ["-C",
+        "symbol-mangling-version=v0"]` workspace-wide.
+      - `packages/core/nros/src/sizes.rs` — `export_size!` now
+        also emits a `fn __nros_size_NAME<const N: usize>()` +
+        `#[used] static __NROS_SIZE_FN_NAME: fn() = ...::<{$name}>`
+        pair alongside the legacy `[u8; N]` static. The
+        monomorphisation's v0-mangled symbol name contains both
+        the NAME and the const-generic SIZE value.
+      - `packages/core/nros-sizes-build/src/lib.rs` — when
+        `object::parse` can't read an rlib member and the member
+        starts with bitcode magic (`BC\xC0\xDE`), fall back to
+        shelling out to rustc's bundled `llvm-nm --demangle` and
+        regex-parse `NAME::<SIZE>` out of the demangled output.
+        Also: cross-compile safety — only search the host deps
+        dir when `TARGET == HOST`, so an embedded ARM build
+        doesn't accidentally consume host pointer widths.
+      - `packages/core/nros-cpp/Cargo.toml` and
+        `packages/core/nros-c/Cargo.toml` — add `nros` to
+        `[build-dependencies]` so its rlib exists when the probe
+        runs (regular deps compile in parallel with build scripts,
+        which left the rlib missing on clean builds).
+    - **Verified**: clean Corrosion build of `cargo-build_nros_cpp`
+      now prints no probe warnings, and `NROS_EXECUTOR_SIZE=16784`
+      /  `NROS_PUBLISHER_SIZE=48` (etc.) land correctly.
+      `test_cpp_action_communication` still passes (~4.5 s).
+
 ## Acceptance Criteria
 
 - [x] Single `ActionClientCore` per action client, owned by the executor arena

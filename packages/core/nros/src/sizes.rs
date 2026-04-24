@@ -28,6 +28,21 @@ mod rmw_sizes {
         RmwPublisher, RmwServiceClient, RmwServiceServer, RmwSession, RmwSubscriber,
     };
 
+    // Phase 77.25: per-name v0-mangled markers so the probe works
+    // under fat LTO. Each call to `export_size!(NAME = Ty)` expands to
+    // a distinct generic fn `__nros_size_NAME<const N: usize>` plus a
+    // monomorphised fn-pointer static. The monomorphisation's v0
+    // mangled symbol name contains both the name ("NAME") *and* the
+    // const-generic value (the size) — e.g. demangles as
+    // `nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>`.
+    // Symbol names survive LTO because the linker still needs them,
+    // even when the object file is LLVM bitcode and `object::parse`
+    // can't read symbol byte sizes. The original `__NROS_SIZE_<NAME>`
+    // static kept for backwards-compat is also emitted for consumers
+    // that still walk the legacy path.
+    #[doc(hidden)]
+    pub mod _size_markers {}
+
     macro_rules! export_size {
         ($vis:vis $name:ident = $ty:ty) => {
             $vis const $name: usize = core::mem::size_of::<$ty>();
@@ -36,6 +51,16 @@ mod rmw_sizes {
                 #[unsafe(no_mangle)]
                 #[doc(hidden)]
                 pub static [<__NROS_SIZE_ $name>]: [u8; $name] = [0u8; $name];
+
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                #[inline(never)]
+                pub fn [<__nros_size_ $name>]<const N: usize>() -> usize { N }
+
+                #[used]
+                #[doc(hidden)]
+                pub static [<__NROS_SIZE_FN_ $name>]: fn() -> usize =
+                    [<__nros_size_ $name>]::<{ $name }>;
             }
         };
     }

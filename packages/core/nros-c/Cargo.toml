@@ -65,6 +65,9 @@ panic-halt = { version = "1", optional = true }
 [build-dependencies]
 cbindgen = "0.29"
 nros-sizes-build = { workspace = true }
+# Phase 77.25: same reason as nros-cpp — force nros to compile before
+# this build.rs runs so the size probe has a rlib to read.
+nros = { version = "0.1.0", path = "../nros", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cbindgen)'] }

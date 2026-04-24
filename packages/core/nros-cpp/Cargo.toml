@@ -53,6 +53,12 @@ panic-halt = { version = "1", optional = true }
 [build-dependencies]
 cbindgen = "0.29"
 nros-sizes-build = { workspace = true }
+# Phase 77.25: nros is listed as a build-dep (not only as a regular
+# dep) so the host rlib is compiled *before* this build script runs.
+# Without this, `nros-sizes-build`'s probe ran against a missing rlib
+# on clean builds and silently returned 0 for every `NROS_*_SIZE`
+# macro — see Phase 77.23 / 77.24 for the downstream damage.
+nros = { version = "0.1.0", path = "../nros", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)'] }
