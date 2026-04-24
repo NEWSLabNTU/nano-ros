@@ -210,6 +210,22 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
         }
     }
 
+    // Corrosion (CMake) invokes cargo with `--target-dir <custom>` which
+    // doesn't export `CARGO_TARGET_DIR`, and `cargo metadata` returns the
+    // workspace default rather than the active `--target-dir`. Derive the
+    // real target dir from `OUT_DIR`, which cargo sets to
+    // `<target>/<triple>/<profile>/build/<pkg>-<hash>/out` for every build
+    // script. `ancestors().nth(5)` steps back through out → <pkg-hash> →
+    // build → <profile> → <triple> → <target>.
+    if let Ok(out) = env::var("OUT_DIR") {
+        let out = PathBuf::from(out);
+        if let Some(target) = out.ancestors().nth(5)
+            && target.join("CACHEDIR.TAG").exists()
+        {
+            return Ok(target.to_path_buf());
+        }
+    }
+
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest_dir = env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| Error::MalformedMetadata("CARGO_MANIFEST_DIR"))?;

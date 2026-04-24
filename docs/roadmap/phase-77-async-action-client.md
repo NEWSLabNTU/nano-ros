@@ -383,6 +383,106 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
       `nros-platform-*` crate; call sites in `net.rs` under each
       platform.
 
+- [x] 77.23 — C++ action/service: `send_goal` returns -1 before the
+      server callback runs — root cause was 0-byte opaque storage
+      (surfaced by Phase 89.3 triage)
+    - **Surface**: `native_api::test_cpp_action_communication` was the
+      lead repro; the C++ `lang_3` variants of
+      `rtos_e2e::test_rtos_{action,service}_e2e` and
+      `zephyr::test_zephyr_cpp_action_server_to_client_e2e` are
+      likely aliases that will need re-measurement.
+    - **Root cause**: `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` and
+      `NROS_CPP_ACTION_CLIENT_STORAGE_SIZE` in
+      `nros_cpp_config_generated.h` were both **0**. The C++
+      `ActionServer<A>` / `ActionClient<A>` classes define
+      `alignas(8) uint8_t storage_[NROS_CPP_ACTION_*_STORAGE_SIZE]`,
+      so `storage_` became a zero-size array and the next field
+      (`executor_` / `user_goal_fn_ctx_`) aliased where Rust wrote
+      the `CppActionServer` / `CppActionClient` struct. When
+      `install_callbacks()` later called
+      `nros_cpp_action_server_set_callbacks(storage_, &goal_trampoline, …)`,
+      `goal_trampoline` got written into the same byte range as
+      `user_goal_fn_ctx_`, so the trampoline recursed on itself
+      instead of calling the user's `on_goal` — the arena saw
+      `accepted=false` and the client's blocking wrapper returned -1.
+      (Debug printed `user_fn_ctx=0x55555555f37a`, which nm resolved
+      to `goal_trampoline` at `0xb37a + base_0x555555554000`.)
+    - **Fix**: two-part patch (one cosmetic, one substantive):
+      - `packages/core/nros-sizes-build/src/lib.rs` — the probe's
+        `cargo_target_dir()` was ignoring Corrosion's
+        `--target-dir`, so it looked under `target/...` while the
+        rlib actually lived under
+        `build/cmake-zenoh/cargo/nano-ros_*/...`. Fixed by deriving
+        the target dir from `OUT_DIR.ancestors().nth(5)`
+        (`<target>/<triple>/<profile>/build/<pkg-hash>/out`) when
+        `CARGO_TARGET_DIR` is unset and falling back to
+        `cargo metadata`. This makes the probe reach the correct
+        rlib, but its `extract_sizes` still returns nothing because
+        the workspace's fat-LTO profile emits **bitcode-only**
+        rlibs (`*.rcgu.o` is LLVM IR, not ELF; `object::parse`
+        errors out). Cargo rejects per-package `lto` overrides, so
+        the probe still can't extract byte sizes at build time —
+        captured as 77.24 below.
+      - `packages/core/nros-cpp/build.rs` — corrected the
+        hand-math fallbacks (previously `ptr_bytes * 4` for the
+        server, which collapses `Option<ActionServerRawHandle>` to
+        a single pointer; the real struct is 6-ptr
+        `ActionServerRawHandle` + 3-ptr tail = 9*ptr = 72 bytes on
+        64-bit). The client fallback was already correct
+        (`5*ptr + 8` = 48 on 64-bit).
+    - **Result**: `test_cpp_action_communication` now passes 3/3
+      consecutive runs at ~4.5 s (was failing at 7.7 s with
+      Rust `cpp_arena_core_mut` returning `None` because
+      `arena_entry_index` and `executor_ptr` were being read from
+      the aliased `/fibonacci` topic-name buffer).
+    - **Files**:
+      - `packages/core/nros-sizes-build/src/lib.rs`
+      - `packages/core/nros-cpp/build.rs`
+- [ ] 77.24 — Make the `nros-sizes-build` probe LTO-resilient (or
+      make probe failure fatal)
+    - **Context**: the release profile (`lto = true`,
+      `codegen-units = 1`) makes rustc emit only LLVM bitcode for
+      rlib member objects. `object::parse` can't read bitcode, so
+      `extract_sizes` silently returns an empty map for every
+      downstream consumer (`nros-cpp`, `nros-c`,
+      `zpico-platform-shim`) while the rlib itself is found. Hand-
+      math fallbacks cover this in `nros-cpp/build.rs` today
+      (77.23), but **every `NROS_*_SIZE` macro in
+      `nros_config_generated.h` (nros-c) is 0** — the consequence
+      is that `_Alignas(8) uint8_t _opaque[NROS_PUBLISHER_SIZE]` in
+      `publisher.h` (and friends) is a zero-size flexible array,
+      which would corrupt adjacent memory if C code ever depended
+      on that storage. Today no C pubsub test trips it because the
+      RMW publisher is small enough that nothing downstream reads
+      past the end of the `nros_publisher_t` struct, but this is
+      a landmine.
+    - **Options** (pick one):
+      - (a) Make probe failure a hard build error in every
+        consumer's `build.rs`. That mirrors what 87.10 did for
+        `zpico-platform-shim` and forces the issue to surface at
+        build time rather than runtime. Downside: CI (and `just
+        test-all`) breaks everywhere until a probe fix lands.
+      - (b) In `nros-sizes-build`, add a bitcode-aware extraction
+        path — either invoke `rustc --print sysroot`'s bundled
+        `llvm-nm` (which can parse the bitcode; confirmed) and
+        parse its textual output, or use `llvm-sys` to walk the
+        module. Symbol *sizes* aren't encoded in bitcode at
+        `llvm-nm` granularity, so we'd need a different channel
+        (see (c)).
+      - (c) Encode the size in the *symbol name* rather than
+        symbol storage: e.g. add an auxiliary
+        `__NROS_SIZE_PUBLISHER_AT_<size>_MARKER` static alongside
+        the existing one, and have the probe parse `<size>` out of
+        the name. Symbol names survive LTO, so this works even
+        with the current bitcode rlib.
+      - (d) Invoke `cargo rustc -p nros -- -C lto=off
+        --emit=obj=<path>` from consumer build scripts to get a
+        real ELF object for size extraction. Correct but doubles
+        the `nros` compile for every build.
+    - **Recommended order**: (a) first so the latent bug surfaces
+      in CI, then (c) (lowest-impact workaround, doesn't touch the
+      workspace LTO setting).
+
 ## Acceptance Criteria
 
 - [x] Single `ActionClientCore` per action client, owned by the executor arena

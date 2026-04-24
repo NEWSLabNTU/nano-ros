@@ -83,8 +83,35 @@ fn generate_config(
     // Rust-side asserts in `nros-cpp/src/action.rs` ensure the layout
     // mirror in `nros::sizes` stays byte-equivalent to the real
     // `CppActionServer` / `CppActionClient`.
-    let action_server_storage = probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize;
-    let action_client_storage = probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    //
+    // Phase 77.23: fat LTO (workspace release profile) makes `nros`
+    // emit bitcode-only rlibs, so `object::parse` returns no symbols
+    // and the probe silently yields 0 for every entry. Until the probe
+    // learns to read bitcode (or the workspace LTO policy changes),
+    // fall back to hand-math for the action storage values — they
+    // drive C++ opaque-storage arrays and cannot be 0 or the
+    // `ActionClient<A>::storage_[0]` array aliases into the next
+    // field, causing memory corruption at `send_goal` time.
+    let ptr_bytes = target_pointer_bytes();
+    // CppActionServerLayout real size (verified against probe with LTO
+    // disabled, see below): on 64-bit it is 72 bytes — inner
+    // `Option<ActionServerRawHandle>` niche-optimises into
+    // `ActionServerRawHandle` (which is `usize + 5 fn pointers` = 6*ptr =
+    // 48 bytes), then +3 pointer-sized fields (goal_cb, cancel_cb,
+    // cb_ctx). On 32-bit that's 6*4 + 3*4 = 36 bytes.
+    let action_server_fallback = ptr_bytes * 9; // 9*ptr = 72 on 64-bit, 36 on 32-bit
+    // CppActionClientLayout: 4-pointer callbacks (32 on 64-bit, 16 on
+    // 32-bit) + i32 + pad + *mut c_void. Alignment pads to 8 on 64-bit.
+    let action_client_fallback = ptr_bytes * 5 + if ptr_bytes == 8 { 8 } else { 4 };
+
+    let action_server_storage = non_zero_or(
+        probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
+        action_server_fallback,
+    );
+    let action_client_storage = non_zero_or(
+        probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
+        action_client_fallback,
+    );
 
     // Phase 87.6: Publisher is a thin wrapper — storage sized to
     // `size_of::<RmwPublisher>()` via `NROS_PUBLISHER_SIZE` (probed from
@@ -179,6 +206,21 @@ fn generate_config(
     let include_dir = manifest_dir.join("include/nros");
     std::fs::create_dir_all(&include_dir).ok();
     std::fs::write(include_dir.join("nros_cpp_config_generated.h"), cpp_header).unwrap();
+}
+
+/// Phase 77.23: target pointer width in bytes, for hand-math fallback
+/// when the rlib probe returns 0 (see `generate_config`).
+fn target_pointer_bytes() -> usize {
+    match env::var("CARGO_CFG_TARGET_POINTER_WIDTH").ok().as_deref() {
+        Some("32") => 4,
+        Some("64") => 8,
+        _ => core::mem::size_of::<*const ()>(),
+    }
+}
+
+/// Phase 77.23: return `probe` if non-zero, else the hand-math fallback.
+fn non_zero_or(probe: usize, fallback: usize) -> usize {
+    if probe != 0 { probe } else { fallback }
 }
 
 /// Read a usize from a `DEP_*` environment variable (Cargo `links` metadata).
