@@ -48,48 +48,55 @@ max-threads = 1
 # `max-threads = 3` caps at the three cases.
 #
 # Phase 89.12 #15-17 — same-variant-different-language tests (e.g., pubsub
-# Rust/C/C++) share the SAME host zenohd port because the port is keyed
-# off variant only. `ZenohRouter::start_on` calls `kill_listeners_on_port`
-# before launching, so two same-variant tests running concurrently would
-# kill each other's zenohd mid-session. The per-variant sub-groups below
-# (`qemu-freertos-pubsub`, `-service`, `-action`) enforce max-threads=1
-# within a variant while still allowing cross-variant parallelism via
-# the outer `qemu-freertos` group.
+# Rust/C/C++) used to share the SAME host zenohd port (keyed off variant
+# only), forcing max-threads=1 within a variant via dedicated sub-groups.
+#
+# Phase 89.13 — FreeRTOS migrated to per-(variant, lang) host ports
+# (`PlatformConfig::lang_stride = 100`). C gets Rust+100, C++ gets
+# Rust+200, so no two same-variant tests share a port. Lifting
+# `qemu-freertos-{pubsub,service,action}` to `max-threads = 3` enables
+# true 9-way parallelism (3 variants × 3 languages). Other RTOS variants
+# remain on `lang_stride = 0` and keep their per-variant max-threads=1
+# until migrated.
 [test-groups.qemu-freertos]
-max-threads = 3
+max-threads = 9
 
 [test-groups.qemu-freertos-pubsub]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-freertos-service]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-freertos-action]
-max-threads = 1
-
-[test-groups.qemu-nuttx]
 max-threads = 3
+
+# Phase 89.13 — NuttX / ThreadX-RISC-V migrated to per-(variant, lang) host
+# ports (`lang_stride = 100`). Each (variant, lang) pair now owns a unique
+# zenohd port, so same-variant Rust/C/C++ tests no longer need serialization.
+# Outer cap of 9 = 3 variants × 3 languages.
+[test-groups.qemu-nuttx]
+max-threads = 9
 
 [test-groups.qemu-nuttx-pubsub]
-max-threads = 1
-
-[test-groups.qemu-nuttx-service]
-max-threads = 1
-
-[test-groups.qemu-nuttx-action]
-max-threads = 1
-
-[test-groups.qemu-threadx-riscv]
 max-threads = 3
 
+[test-groups.qemu-nuttx-service]
+max-threads = 3
+
+[test-groups.qemu-nuttx-action]
+max-threads = 3
+
+[test-groups.qemu-threadx-riscv]
+max-threads = 9
+
 [test-groups.qemu-threadx-riscv-pubsub]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-threadx-riscv-service]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-threadx-riscv-action]
-max-threads = 1
+max-threads = 3
 
 # ESP32 examples are pubsub-only today (no service/action variants), so the
 # per-variant port split doesn't help — keep serial until service/action
@@ -101,18 +108,20 @@ max-threads = 1
 # BSD sockets straight to host kernel, ignoring the legacy `interface`/
 # `ip` fields), so per-case port splitting is sufficient for concurrent
 # pubsub/service/action runs.
+#
+# Phase 89.13 — migrated to per-(variant, lang) ports (`lang_stride = 100`).
+# NSOS ignores the veth interface, so language-level parallelism is safe.
 [test-groups.threadx-linux]
+max-threads = 9
+
+[test-groups.threadx-linux-pubsub]
 max-threads = 3
 
-# Same-variant serialization (see qemu-freertos comment above).
-[test-groups.threadx-linux-pubsub]
-max-threads = 1
-
 [test-groups.threadx-linux-service]
-max-threads = 1
+max-threads = 3
 
 [test-groups.threadx-linux-action]
-max-threads = 1
+max-threads = 3
 
 # Phase 89.Zephyr — Zephyr native_sim uses NSOS (Phase 81) which offloads BSD
 # sockets to the host kernel, so per-variant host zenohd ports (base + 0/10/20)

@@ -9,6 +9,14 @@
 //! `+ 20` for action. Ports 7450–7479 are all in the IANA unassigned
 //! range.
 //!
+//! Phase 89.13 (pilot on FreeRTOS): further split each (variant) port by
+//! language, so same-variant Rust / C / C++ tests can also run in parallel.
+//! The per-language offset is controlled by `PlatformConfig::lang_stride`:
+//! platforms that have had their example `config.toml` files migrated set
+//! `lang_stride = 100` (Rust=+0, C=+100, C++=+200); un-migrated platforms
+//! keep `lang_stride = 0` so all three language binaries still target the
+//! Rust port (and must stay serialized via per-variant nextest sub-groups).
+//!
 //! Slirp-networked QEMU platforms (FreeRTOS, NuttX, ThreadX-RV64, ESP32)
 //! isolate guest IPs per QEMU instance automatically — only the shared
 //! host port matters. Bridge-networked platforms (ThreadX Linux sim)
@@ -40,18 +48,51 @@ impl TestVariant {
     }
 }
 
+/// Language binding of the example under test. Used together with
+/// [`PlatformConfig::lang_stride`] to derive a unique host zenohd port
+/// per (variant × language) combination on migrated platforms.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TestLang {
+    /// Rust example (lang multiplier 0).
+    Rust,
+    /// C example (lang multiplier 1).
+    C,
+    /// C++ example (lang multiplier 2).
+    Cpp,
+}
+
+impl TestLang {
+    /// Multiplier applied to `PlatformConfig::lang_stride` when computing
+    /// the per-(variant, lang) port.
+    pub const fn index(self) -> u16 {
+        match self {
+            TestLang::Rust => 0,
+            TestLang::C => 1,
+            TestLang::Cpp => 2,
+        }
+    }
+}
+
 /// Per-platform test configuration.
 pub struct PlatformConfig {
     pub name: &'static str,
-    /// Base port for pubsub tests. Service tests use `zenohd_port + 10`,
-    /// action tests use `zenohd_port + 20` (see [`TestVariant`]).
+    /// Base port for pubsub / Rust tests. Service tests use `zenohd_port + 10`,
+    /// action tests use `zenohd_port + 20` (see [`TestVariant`]). Non-Rust
+    /// languages add `TestLang::index() * lang_stride` on top — see
+    /// [`Self::zenohd_port_for`].
     pub zenohd_port: u16,
+    /// Stride between per-language ports within the same variant. `0`
+    /// means the platform hasn't had its example `config.toml` files
+    /// migrated to the (variant, lang) scheme yet — all three languages
+    /// share the Rust port (and must stay serialized at the test-group
+    /// level). Migrated platforms use `100` so C = Rust+100, C++ = Rust+200.
+    pub lang_stride: u16,
 }
 
 impl PlatformConfig {
-    /// Compute the zenohd port for a specific test variant.
-    pub const fn zenohd_port_for(&self, variant: TestVariant) -> u16 {
-        self.zenohd_port + variant.port_offset()
+    /// Compute the zenohd port for a specific (variant, language) combination.
+    pub const fn zenohd_port_for(&self, variant: TestVariant, lang: TestLang) -> u16 {
+        self.zenohd_port + variant.port_offset() + lang.index() * self.lang_stride
     }
 }
 
@@ -59,40 +100,85 @@ impl PlatformConfig {
 pub const BAREMETAL: PlatformConfig = PlatformConfig {
     name: "baremetal",
     zenohd_port: 7450,
+    lang_stride: 0,
 };
 
 /// FreeRTOS QEMU ARM (MPS2-AN385, lwIP).
+///
+/// Phase 89.13 pilot: migrated to per-(variant, lang) ports. The 9 slots are:
+///
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7451 | 7551 | 7651 |
+/// | Service | 7461 | 7561 | 7661 |
+/// | Action  | 7471 | 7571 | 7671 |
 pub const FREERTOS: PlatformConfig = PlatformConfig {
     name: "freertos",
     zenohd_port: 7451,
+    lang_stride: 100,
 };
 
 /// NuttX QEMU ARM (virt, Cortex-A7).
+///
+/// Phase 89.13: migrated to per-(variant, lang) ports.
+///
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7452 | 7552 | 7652 |
+/// | Service | 7462 | 7562 | 7662 |
+/// | Action  | 7472 | 7572 | 7672 |
 pub const NUTTX: PlatformConfig = PlatformConfig {
     name: "nuttx",
     zenohd_port: 7452,
+    lang_stride: 100,
 };
 
 /// ThreadX QEMU RISC-V 64 (virt, virtio-net).
+///
+/// Phase 89.13: migrated to per-(variant, lang) ports.
+///
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7453 | 7553 | 7653 |
+/// | Service | 7463 | 7563 | 7663 |
+/// | Action  | 7473 | 7573 | 7673 |
+///
+/// C++ service/action are skipped — examples not implemented — but the
+/// port slots remain reserved for future use.
 pub const THREADX_RISCV: PlatformConfig = PlatformConfig {
     name: "threadx-riscv",
     zenohd_port: 7453,
+    lang_stride: 100,
 };
 
 /// ESP32-C3 QEMU (Espressif fork, open_eth).
 pub const ESP32: PlatformConfig = PlatformConfig {
     name: "esp32",
     zenohd_port: 7454,
+    lang_stride: 0,
 };
 
 /// ThreadX Linux simulation (veth pairs).
+///
+/// Phase 89.13: migrated to per-(variant, lang) ports. NSOS offloads BSD
+/// sockets to the host kernel (bypassing the legacy veth `interface`/`ip`
+/// fields in `config.toml`), so only the zenohd port matters for
+/// cross-test isolation.
+///
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7455 | 7555 | 7655 |
+/// | Service | 7465 | 7565 | 7665 |
+/// | Action  | 7475 | 7575 | 7675 |
 pub const THREADX_LINUX: PlatformConfig = PlatformConfig {
     name: "threadx-linux",
     zenohd_port: 7455,
+    lang_stride: 100,
 };
 
 /// Zephyr (native_sim or QEMU).
 pub const ZEPHYR: PlatformConfig = PlatformConfig {
     name: "zephyr",
     zenohd_port: 7456,
+    lang_stride: 0,
 };

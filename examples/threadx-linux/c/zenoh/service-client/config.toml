@@ -8,5 +8,5 @@ netmask = "255.255.255.0"
 interface = "veth-tx1"
 
 [zenoh]
-locator = "tcp/127.0.0.1:7465"
+locator = "tcp/127.0.0.1:7565"
 domain_id = 0

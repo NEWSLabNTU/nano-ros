@@ -5,7 +5,7 @@ gateway = "10.0.2.2"
 netmask = "255.255.255.0"
 
 [zenoh]
-locator = "tcp/10.0.2.2:7451"
+locator = "tcp/10.0.2.2:7551"
 domain_id = 0
 
 # Scheduling (normalized 0–31 scale, higher = more important).
