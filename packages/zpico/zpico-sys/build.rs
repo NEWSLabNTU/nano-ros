@@ -429,7 +429,18 @@ fn main() {
         } else {
             build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config, &link_features)
         };
-        if backend_count > 0 && !use_zephyr && !use_freertos {
+        // `build_c_shim` only knows about `use_posix` and `use_bare_metal`; for
+        // `use_nuttx` / `use_threadx` features the native path has no meaningful
+        // shim to emit (the shim C layer is cross-compiled from the
+        // target-specific build functions below) and leaving them in would
+        // compile `zpico.c` with no platform define selected, which fails
+        // immediately because `zenoh-pico/system/common/platform.h` needs one
+        // of `ZENOH_LINUX` / `ZENOH_NUTTX` / etc. to route to a real platform.
+        // Bug pre-84.F4 was silent because all nuttx/threadx consumers went
+        // through the embedded branches (different Cargo targets); post-F4
+        // every feature combo reaches the host via feature unification so
+        // the miss surfaces as `error: unknown type '_z_sys_net_socket_t'`.
+        if backend_count > 0 && !use_zephyr && !use_freertos && !use_nuttx && !use_threadx {
             build_c_shim(
                 &c_dir,
                 &include_dir,
