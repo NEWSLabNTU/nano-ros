@@ -485,12 +485,14 @@ impl PosixPlatform {
     }
 
     pub fn socket_wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8 {
-        // For multi-threaded POSIX, this uses select() on peer sockets.
-        // The full implementation requires access to the peer list internals
-        // which are zenoh-pico C types. For now, delegate to z_sleep_ms(1)
-        // which yields the thread — same approach as the bare-metal poll.
+        // Phase 77.22: delegate to `PlatformYield::yield_now()`. The
+        // caller isn't waiting for I/O readability — the background
+        // read task handles that — it just needs the scheduler to
+        // run. `sched_yield(2)` is the smallest primitive that
+        // satisfies the intent.
         let _ = (peers, mutex);
-        unsafe { libc::usleep(1000) }; // 1ms yield
+        use nros_platform_api::PlatformYield;
+        <Self as PlatformYield>::yield_now();
         0
     }
 }

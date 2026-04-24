@@ -55,6 +55,9 @@ unsafe extern "C" {
     /// Real-symbol wrapper around `sys_rand_get(dst, len)`.
     pub fn nros_zephyr_rand_fill(dst: *mut c_void, len: usize);
 
+    /// Real-symbol wrapper around `k_yield()` (Phase 77.22).
+    pub fn nros_zephyr_yield();
+
     // ---- POSIX: threads ----
 
     pub fn pthread_create(

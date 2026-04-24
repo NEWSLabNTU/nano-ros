@@ -101,6 +101,28 @@ impl nros_platform_api::PlatformSleep for FreeRtosPlatform {
 }
 
 // ============================================================================
+// Yield — 1-tick vTaskDelay (approximation)
+// ============================================================================
+
+impl nros_platform_api::PlatformYield for FreeRtosPlatform {
+    #[inline]
+    fn yield_now() {
+        // FreeRTOS's true cooperative yield is the C macro `taskYIELD()`
+        // (which expands to `portYIELD()` — a port-specific inline asm
+        // that triggers PendSV on Cortex-M). Calling a macro from Rust
+        // FFI would need a one-line C shim compiled against FreeRTOS
+        // headers (deferred — see Phase 77.22 note).
+        //
+        // `vTaskDelay(1)` blocks for one scheduler tick, which is
+        // effectively a yield: the scheduler picks the highest-priority
+        // ready task; if only the caller is runnable it resumes after
+        // the tick. `vTaskDelay(0)` is a documented no-op in FreeRTOS,
+        // so we pass 1.
+        unsafe { ffi::vTaskDelay(1) };
+    }
+}
+
+// ============================================================================
 // Random — xorshift (same as bare-metal)
 // ============================================================================
 

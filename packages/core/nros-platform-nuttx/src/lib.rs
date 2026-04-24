@@ -13,7 +13,7 @@ pub mod net;
 
 use core::ffi::c_void;
 use nros_platform_api::{
-    PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
+    PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime, PlatformYield,
 };
 use nros_platform_posix::PosixPlatform;
 
@@ -65,6 +65,16 @@ impl PlatformSleep for NuttxPlatform {
     #[inline]
     fn sleep_s(s: usize) {
         PosixPlatform::sleep_s(s)
+    }
+}
+
+impl PlatformYield for NuttxPlatform {
+    #[inline]
+    fn yield_now() {
+        // NuttX is POSIX-compliant — `sched_yield(2)` is the native
+        // cooperative yield and the smallest primitive that matches
+        // the `socket_wait_event` intent.
+        PosixPlatform::yield_now()
     }
 }
 

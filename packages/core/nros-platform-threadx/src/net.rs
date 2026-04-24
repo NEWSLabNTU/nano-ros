@@ -427,7 +427,10 @@ impl ThreadxPlatform {
     }
 
     pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
-        unsafe { crate::ffi::tx_thread_sleep(1) };
+        // Phase 77.22: delegate to `PlatformYield::yield_now()`
+        // (`tx_thread_relinquish` instead of `tx_thread_sleep(1)`).
+        use nros_platform_api::PlatformYield;
+        <Self as PlatformYield>::yield_now();
         0
     }
 }

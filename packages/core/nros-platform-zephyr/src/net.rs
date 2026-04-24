@@ -638,9 +638,11 @@ impl ZephyrPlatform {
     }
 
     pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
-        // Multi-threaded platform — yield ~1 ms so the Zephyr scheduler
-        // can run the read tasks. Matches the posix backend's approach.
-        Self::sleep_ms(1);
+        // Phase 77.22: delegate to `PlatformYield::yield_now()` (`k_yield`)
+        // instead of `k_msleep(1)`. The caller just needs to run the
+        // scheduler, not actually sleep.
+        use nros_platform_api::PlatformYield;
+        <Self as PlatformYield>::yield_now();
         0
     }
 }

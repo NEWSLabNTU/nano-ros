@@ -97,6 +97,19 @@ impl nros_platform_api::PlatformSleep for PosixPlatform {
 }
 
 // ============================================================================
+// Yield — sched_yield(2)
+// ============================================================================
+
+impl nros_platform_api::PlatformYield for PosixPlatform {
+    #[inline]
+    fn yield_now() {
+        unsafe {
+            libc::sched_yield();
+        }
+    }
+}
+
+// ============================================================================
 // Random — /dev/urandom via getrandom(2) or read()
 // ============================================================================
 

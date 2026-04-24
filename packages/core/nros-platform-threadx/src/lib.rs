@@ -133,6 +133,20 @@ impl nros_platform_api::PlatformSleep for ThreadxPlatform {
 }
 
 // ============================================================================
+// Yield — tx_thread_relinquish
+// ============================================================================
+
+impl nros_platform_api::PlatformYield for ThreadxPlatform {
+    #[inline]
+    fn yield_now() {
+        // `tx_thread_relinquish` is ThreadX's native cooperative yield:
+        // move the current thread to the end of its priority ready list
+        // and run the scheduler. Not ISR-safe.
+        unsafe { ffi::tx_thread_relinquish() };
+    }
+}
+
+// ============================================================================
 // Random — xorshift (same as bare-metal)
 // ============================================================================
 

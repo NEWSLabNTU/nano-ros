@@ -49,6 +49,9 @@ pub struct NrosPlatformVtable {
     pub sleep_ms: unsafe extern "C" fn(ms: usize),
     pub sleep_s: unsafe extern "C" fn(s: usize),
 
+    // -- Yield (Phase 77.22) --
+    pub yield_now: unsafe extern "C" fn(),
+
     // -- Random --
     pub random_u8: unsafe extern "C" fn() -> u8,
     pub random_u16: unsafe extern "C" fn() -> u16,
@@ -174,6 +177,13 @@ impl nros_platform_api::PlatformSleep for CffiPlatform {
     #[inline]
     fn sleep_s(s: usize) {
         unsafe { (get_vtable().sleep_s)(s) }
+    }
+}
+
+impl nros_platform_api::PlatformYield for CffiPlatform {
+    #[inline]
+    fn yield_now() {
+        unsafe { (get_vtable().yield_now)() }
     }
 }
 

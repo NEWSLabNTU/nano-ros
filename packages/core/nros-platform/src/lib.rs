@@ -14,6 +14,7 @@
 //! - [`PlatformClock`] — monotonic clock (required by all backends)
 //! - [`PlatformAlloc`] — heap allocation (zenoh-pico only)
 //! - [`PlatformSleep`] — sleep / delay (zenoh-pico only)
+//! - [`PlatformYield`] — cooperative yield (zenoh-pico `socket_wait_event`)
 //! - [`PlatformRandom`] — pseudo-random number generation (zenoh-pico only)
 //! - [`PlatformTime`] — wall-clock time (zenoh-pico only)
 //! - [`PlatformThreading`] — tasks, mutexes, condvars (multi-threaded platforms)

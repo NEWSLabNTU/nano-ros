@@ -107,6 +107,42 @@ pub trait PlatformSleep {
 }
 
 // ============================================================================
+// Cooperative yield
+// ============================================================================
+
+/// Scheduler yield primitive.
+///
+/// Used inside `socket_wait_event` and similar "let another task make
+/// progress" points where the caller isn't actually waiting for I/O
+/// readability — the background read task already owns that — it just
+/// needs to relinquish the CPU so the real waiter can run.
+///
+/// Prior to Phase 77.22 each backend hand-rolled its own 1-ms busy
+/// sleep (`libc::usleep(1000)`, `vTaskDelay(1)`, `tx_thread_sleep(1)`,
+/// `k_usleep(1000)`, `select(.., 1 ms)`) — all with slightly different
+/// units and no common home.
+///
+/// **ISR-safety**: on the hosted-RTOS backends (FreeRTOS / NuttX /
+/// Zephyr / ThreadX) the underlying primitives panic or error when
+/// invoked from an ISR. Don't call `yield_now()` from an interrupt
+/// handler.
+///
+/// **Bare-metal has no real yield**: there's nothing to yield *to*.
+/// The default bare-metal impl is `core::hint::spin_loop()` (a pure
+/// CPU hint: emits `YIELD` / `PAUSE` / `WFE` depending on the arch,
+/// safe everywhere). Board crates that have armed an IRQ source may
+/// opt in to deep idle (`wfi`) via a separate `BoardIdle` hook — not
+/// part of this trait because calling `wfi` without an IRQ source
+/// deadlocks.
+pub trait PlatformYield {
+    /// Relinquish the CPU long enough for another task / thread to run.
+    ///
+    /// Non-blocking in the sleep sense — returns as soon as the
+    /// scheduler has had an opportunity to pick a different runnable.
+    fn yield_now();
+}
+
+// ============================================================================
 // Random number generation
 // ============================================================================
 

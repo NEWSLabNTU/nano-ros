@@ -123,6 +123,20 @@ impl nros_platform_api::PlatformSleep for ZephyrPlatform {
 }
 
 // ============================================================================
+// Yield — k_yield (via the nros_zephyr_yield shim)
+// ============================================================================
+
+impl nros_platform_api::PlatformYield for ZephyrPlatform {
+    #[inline]
+    fn yield_now() {
+        // Zephyr's native cooperative yield. Not ISR-safe —
+        // `socket_wait_event` is called from the zenoh-pico session
+        // task, which is a regular thread.
+        unsafe { ffi::nros_zephyr_yield() };
+    }
+}
+
+// ============================================================================
 // Random — Zephyr sys_rand32_get / sys_rand_get
 // ============================================================================
 

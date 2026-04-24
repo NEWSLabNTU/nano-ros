@@ -33,6 +33,13 @@ void nros_zephyr_rand_fill(void *dst, size_t len) {
     sys_rand_get(dst, len);
 }
 
+/* Phase 77.22: cooperative yield. k_yield is declared `static inline`
+ * in <zephyr/kernel.h>, so wrap it here to get a real callable symbol.
+ */
+void nros_zephyr_yield(void) {
+    k_yield();
+}
+
 /* ── BSD socket wrappers ────────────────────────────────────────────
  *
  * On native_sim, glibc's getaddrinfo/freeaddrinfo symbols override

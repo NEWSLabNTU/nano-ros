@@ -37,6 +37,10 @@ unsafe extern "C" {
     #[link_name = "_tx_thread_sleep"]
     pub fn tx_thread_sleep(ticks: u32) -> u32;
 
+    // Cooperative yield (Phase 77.22)
+    #[link_name = "_tx_thread_relinquish"]
+    pub fn tx_thread_relinquish();
+
     // Threads
     #[link_name = "_tx_thread_create"]
     pub fn tx_thread_create(

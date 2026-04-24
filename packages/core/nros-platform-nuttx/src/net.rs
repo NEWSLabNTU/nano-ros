@@ -463,20 +463,10 @@ impl NuttxPlatform {
     }
 
     pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
-        // Brief yield via select with short timeout
-        let mut tv = timeval {
-            tv_sec: 0,
-            tv_usec: 1000 as _,
-        };
-        unsafe {
-            select(
-                0,
-                core::ptr::null_mut(),
-                core::ptr::null_mut(),
-                core::ptr::null_mut(),
-                &mut tv,
-            )
-        };
+        // Phase 77.22: delegate to `PlatformYield::yield_now()`
+        // (`sched_yield(2)` on NuttX, same as POSIX).
+        use nros_platform_api::PlatformYield;
+        <Self as PlatformYield>::yield_now();
         0
     }
 }

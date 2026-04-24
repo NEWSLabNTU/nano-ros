@@ -335,7 +335,7 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
       - `_z_task_free` deletes the flags group before `z_free`.
     - Tested against all 6 ThreadX-RV64 rtos_e2e cases
       (Rust/C × pubsub/service/action).
-- [ ] 77.22 — Introduce `nros_platform::Yield` trait to unify per-platform yield
+- [x] 77.22 — Introduce `nros_platform::PlatformYield` trait to unify per-platform yield
       fallbacks used inside `socket_wait_event`
     - Current: three near-identical hand-written 1-tick / 1 ms yields in
       the platform shims, each with different units and no common home:

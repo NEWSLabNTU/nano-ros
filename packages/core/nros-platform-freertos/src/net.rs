@@ -536,17 +536,11 @@ impl FreeRtosPlatform {
     }
 
     pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
-        // FreeRTOS: yield to allow other tasks (including network) to run
-        unsafe {
-            vTaskDelay(1);
-        }
+        // Phase 77.22: delegate to the unified `PlatformYield::yield_now()`.
+        use nros_platform_api::PlatformYield;
+        <Self as PlatformYield>::yield_now();
         0
     }
-}
-
-// vTaskDelay FFI
-unsafe extern "C" {
-    fn vTaskDelay(ticks: u32);
 }
 
 // ============================================================================
