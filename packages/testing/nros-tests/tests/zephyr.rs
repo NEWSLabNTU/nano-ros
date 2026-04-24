@@ -101,8 +101,14 @@ fn test_zephyr_talker_to_listener_e2e() {
     let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr listener");
 
-    // Give listener time to connect and create subscriber
-    std::thread::sleep(Duration::from_secs(1));
+    // Give listener time to connect and create subscriber. Under parallel
+    // load (full zephyr.rs suite running simultaneously) the native_sim
+    // cold-boot + `Executor::open` + subscription-declaration propagation
+    // to the zenohd router regularly slips past 1 s, and the talker's
+    // first publish lands before the subscription is visible to zenohd —
+    // which silently drops the message because zenoh doesn't buffer for
+    // unseen peers (Phase 89.12 flake).
+    std::thread::sleep(Duration::from_secs(3));
 
     // Start talker
     eprintln!("Starting Zephyr talker...");
@@ -835,8 +841,12 @@ fn test_zephyr_action_e2e() {
     let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr action server");
 
-    // Give server time to connect and set up queryables
-    std::thread::sleep(Duration::from_secs(2));
+    // Give server time to connect and set up queryables. Bumped from
+    // 2 s to 4 s to handle parallel-load Zephyr native_sim cold-boot
+    // variance (Phase 89.12 flake). Paired with the `max-threads = 2`
+    // qemu-zephyr group setting this is reliable across repeated
+    // full-suite runs.
+    std::thread::sleep(Duration::from_secs(4));
 
     // Start action client
     eprintln!("Starting Zephyr action client...");
@@ -846,12 +856,15 @@ fn test_zephyr_action_e2e() {
     // Wait for action communication
     eprintln!("Waiting for action communication...");
 
-    // Wait for output from both
+    // Wait for output from both. Bumped to 20 s so the client's
+    // blocking `get_result.wait(…, 10 s)` has headroom over its
+    // own 10 s Promise budget once cold-boot + feedback drain
+    // eat into the window under load.
     let server_output = server
-        .wait_for_output(Duration::from_secs(10))
+        .wait_for_output(Duration::from_secs(20))
         .unwrap_or_default();
     let client_output = client
-        .wait_for_output(Duration::from_secs(10))
+        .wait_for_output(Duration::from_secs(20))
         .unwrap_or_default();
 
     // Kill processes
@@ -1555,9 +1568,14 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     eprintln!("C++ Talker binary: {}", talker_binary.display());
     eprintln!("C++ Listener binary: {}", listener_binary.display());
 
-    // Start listener first (subscriber must be ready before publisher)
+    // Start listener first (subscriber must be ready before publisher).
+    // Under the 3-way parallel qemu-zephyr group, native_sim cold boot
+    // + subscription-declaration propagation to zenohd regularly slips
+    // past 1 s (Phase 89.12 flake). 3 s paired with the
+    // `max-threads = 2` Zephyr group setting is stable across repeated
+    // full-suite runs.
     let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_secs(3));
 
     // Start talker
     let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim).unwrap();
@@ -1703,9 +1721,12 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     // Build Zephyr C++ listener
     let listener_binary = get_zephyr_cpp_listener_native_sim();
 
-    // Start Zephyr listener first
+    // Start Zephyr listener first. 3 s paired with `max-threads = 2`
+    // qemu-zephyr group is enough for native_sim cold boot +
+    // subscription declaration to reach zenohd under full-suite
+    // parallel load (Phase 89.12 flake).
     let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_secs(3));
 
     // Start native talker (connects to zenohd)
     let mut talker_cmd = std::process::Command::new(&native_talker);

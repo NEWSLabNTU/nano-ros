@@ -852,10 +852,11 @@ The remaining 8 still need owners.
 | ~~7~~ | ~~NuttX `lang_2_C` action~~ | ~~same~~ | **Fixed** — flaky-green (FLAKY 2/3 on cold-boot). |
 | 8  | `test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C`               | cross-build, fails after 3 retries at ~98 s                                                          | Possibly cured by the same `build_c_shim` guard as NuttX — re-verify with a fresh run since `b3f853f2` also added `!use_threadx` to the same guard.                                                                                                                               |
 | 9  | `test_zephyr_action_e2e`                                                                   | runtime — see 89.3 doc                                                                               | 89.3 was "Landed" but this case still red; re-check                                                                                                                                                                                                                               |
-| 10 | `test_zephyr_cpp_action_server_to_client_e2e`                                              | `nros_cpp_init` → `-100` (TRANSPORT_ERROR) in both server and client                                 | 89.3 was supposed to close this (the zero-sized-storage fix), but it's re-opening on top of F4. Possibly C++ opaque-storage sizes reverted.                                                                                                                                       |
-| 11 | `test_zephyr_cpp_service_server_to_client_e2e`                                             | same `-100` in both roles                                                                            | same as #10                                                                                                                                                                                                                                                                       |
-| 12 | `test_zephyr_native_server_zephyr_client`                                                  | runtime fail, passes in isolation                                                                    | Parallel-load flake                                                                                                                                                                                                                                                               |
-| 13 | `test_zephyr_talker_to_listener_e2e`                                                       | TRY 1 FAIL, recovers                                                                                 | Flake                                                                                                                                                                                                                                                                             |
+| ~~9~~ | ~~`test_zephyr_action_e2e`~~ | ~~runtime — see 89.3 doc~~ | **Fixed** by bumping server-start sleep to 4 s + client output window to 20 s + dropping qemu-zephyr max-threads from 3 → 1 (see "Zephyr flake round-up" below). |
+| ~~10~~ | ~~`test_zephyr_cpp_action_server_to_client_e2e`~~ | ~~`nros_cpp_init` → `-100`~~ | **Already green** at time of check — resolved upstream (77.23/77.24 + my 89.3 + Cargo.toml `lto=off`); no 89.12-specific change. |
+| ~~11~~ | ~~`test_zephyr_cpp_service_server_to_client_e2e`~~ | ~~same `-100`~~ | **Already green**, same as #10. |
+| ~~12~~ | ~~`test_zephyr_native_server_zephyr_client`~~ | ~~runtime fail, passes in isolation~~ | **Fixed** by `max-threads = 1` on qemu-zephyr (no test-side change needed — was load-sensitive only). |
+| ~~13~~ | ~~`test_zephyr_talker_to_listener_e2e`~~ | ~~TRY 1 FAIL, recovers~~ | **Fixed** by bumping listener-start sleep 1 s → 3 s + `max-threads = 1`. Same fix applies to `test_zephyr_cpp_talker_to_listener_e2e` and `test_native_talker_to_zephyr_cpp_listener`. |
 | 14 | `test_rtos_*_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust` and `lang_3_Lang__Cpp` | 89.3/89.8 territory; originally closed, still occasionally red                                       | Cascade from F4 build matrix; re-run after the NuttX / Zephyr root causes are fixed                                                                                                                                                                                               |
 
 **Repro commands**:
@@ -903,3 +904,56 @@ cargo nextest run -E 'test(test_zephyr_cpp_service) or test(test_zephyr_cpp_acti
 - Investigations still pending:
   `packages/zpico/zpico-sys/build.rs::build_zenoh_pico_nuttx`,
   `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+
+#### Zephyr flake round-up (covers items #9, #12, #13, and two
+spill-overs found while triaging)
+
+Current `zephyr.rs` suite state pre-fix: 27/27 pass with retries
+but 3–5 tests flake on `TRY 1` every run (deterministic under
+`max-threads = 3`), depending on which pair lands in the parallel
+batch with the action E2E. Post-fix: 27/27 pass deterministically
+at ~275 s wall-clock (vs ~118 s flaky pre-fix).
+
+Root cause (empirical): the `[test-groups.qemu-zephyr]
+max-threads = 3` setting from Phase 89.Zephyr stacks three
+`native_sim` processes + three `zenohd` routers + the test
+harness on one host. When the scheduler unluckily co-schedules
+three long-running IO-heavy tests (`_talker_to_listener_e2e`,
+`_cpp_talker_to_listener_e2e`, `_native_talker_to_zephyr_cpp_listener`,
+`_action_e2e`) the per-test CPU share drops enough that either:
+(a) the listener's subscription declaration propagates to
+zenohd *after* the talker's first publish (zenoh doesn't buffer
+for unseen peers, message is dropped); or (b) the action
+client's `get_result` reply misses the 10 s `Promise::wait`
+budget after cold-boot + feedback drain ate into it.
+
+Failure signatures observed:
+- `Talker published but listener didn't receive (timing issue?)`
+- `Listener received only N messages (expected ≥ 3)`
+- `Talker published but Zephyr got only 0 messages (expected ≥ 2)`
+- `Action test failed: … client_completed=false`
+- `Server didn't receive goal`
+
+Fix:
+- `.config/nextest.toml::[test-groups.qemu-zephyr] max-threads =
+  1`. Trades suite speed (~118 s at max=3 → ~275 s at max=1) for
+  determinism. The pubsub / service / action variants using
+  different zenohd ports no longer helps here because the
+  bottleneck is host CPU share, not port collisions.
+- `test_zephyr_talker_to_listener_e2e` /
+  `test_zephyr_cpp_talker_to_listener_e2e` /
+  `test_native_talker_to_zephyr_cpp_listener`: listener-start
+  sleep 1 s → 3 s. Covers cold-boot variance even at
+  max-threads = 1.
+- `test_zephyr_action_e2e`: server-start sleep 2 s → 4 s and
+  each `wait_for_output` 10 s → 20 s so the client's blocking
+  `get_result.wait(…, 10 s)` has headroom.
+
+Verified: 3 consecutive full-`zephyr.rs` runs post-fix at
+~275 s each, 0 flakes. `test_zephyr_native_server_zephyr_client`
+(#12) was greened purely by `max-threads = 1` — no test-side
+change was needed.
+
+**Files touched (89.12 Zephyr sub-item)**:
+- `.config/nextest.toml`
+- `packages/testing/nros-tests/tests/zephyr.rs`

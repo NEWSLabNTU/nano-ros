@@ -74,7 +74,7 @@ max-threads = 3
 # a hardcoded Agent port (2018, baked into firmware via Kconfig) and must
 # stay serial — they live in `qemu-zephyr-xrce`.
 [test-groups.qemu-zephyr]
-max-threads = 3
+max-threads = 1
 
 [test-groups.qemu-zephyr-xrce]
 max-threads = 1
