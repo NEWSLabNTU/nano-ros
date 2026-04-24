@@ -379,22 +379,32 @@ typedef struct {
         `init_platform_serial_transport(device_path)`. Backwards-
         compatible `nros::init_posix_serial(pty_path)` wrapper
         updated to call the new path.
-  - [~] 80.14.4 — **Rescoped / deferred**. Original wording
-        ("replace `zpico-serial` direct libc") was inaccurate:
-        zpico-serial does not use libc — it exposes a `SerialPort`
-        trait that board crates implement against their UART
-        peripheral, with per-port RX ring buffers. That's already a
-        clean platform-layer abstraction, just not named
-        `PlatformSerial`. Wiring it through `PlatformSerial` would
-        be one layer of indirection reshuffle (SerialPort on a
-        board's UART driver → `PlatformSerial` on the board's
-        platform ZST → zpico-serial dispatches through
-        `ConcretePlatform`) without a clear architectural win. Two
-        live users — `nros-mps2-an385` and `nros-stm32f4` — each
-        register a UART via `zpico_serial::register_port`; leaving
-        that path unchanged. Revisit when a third bare-metal serial
-        consumer materialises and the `SerialPort`-vs-
-        `PlatformSerial` split starts costing something.
+  - [x] 80.14.4a — **Handle-indexed `PlatformSerial` (prep for
+        bare-metal migration)**. Reshaped `PlatformSerial` to carry
+        an associated `Handle` type + `INVALID` sentinel +
+        `is_valid(h)` predicate so one platform impl can service
+        many concurrent devices. POSIX sets `Handle = i32` (the
+        libc FD); bare-metal (once 80.14.4b lands) will set
+        `Handle = u8` (port-table index). Single-session consumers
+        like XRCE stash the handle in a local `SharedCell` between
+        `init_platform_serial_transport` and the transport
+        callbacks. The reshape happens now — while POSIX is the
+        only impl — so migrating the two board crates in 80.14.4b
+        doesn't have to re-negotiate the trait shape at the same
+        time as changing the bare-metal driver plumbing. Verified:
+        3/3 XRCE serial + 14/14 full XRCE suite still green.
+  - [ ] 80.14.4b — **zpico-serial → `PlatformSerial`**: delete
+        `zpico_serial::SerialPort` + `register_port`; migrate
+        `nros-mps2-an385` + `nros-stm32f4` from the trait-object
+        port-table to `impl PlatformSerial for {Board}Platform`
+        with a static port table stored on the platform side;
+        route `zpico_serial`'s internal read/write through
+        `<ConcretePlatform as PlatformSerial>::*(handle, ...)`.
+        Sketched in the phase-80 design notes. Defer-pending-
+        hardware: wants a real mps2-an385 / stm32f4 smoke test
+        before merge, not just `cargo check --target
+        thumbv7m-none-eabi` — the static port table relocation
+        has runtime implications the compile step can't catch.
   - [x] 80.14.5 — Deleted `nros-rmw-xrce::posix_serial` (replaced by
         `platform_serial`). Call sites in `nros` / `nros-node`
         switched to `nros_rmw_xrce::platform_serial::init_platform_serial_transport`.

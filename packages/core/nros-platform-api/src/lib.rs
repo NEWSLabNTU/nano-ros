@@ -415,10 +415,23 @@ pub trait PlatformUdpMulticast {
 
 /// Serial (byte-stream) transport.
 ///
-/// Used by XRCE-DDS's HDLC-framed serial transport and by zenoh-pico's
-/// serial link layer. Platform implementations single-instance the
-/// underlying device — one active port per process — matching the
-/// shape of both RMW backends.
+/// Used by XRCE-DDS's HDLC-framed serial transport and (once the
+/// bare-metal migration lands) by zenoh-pico's serial link layer.
+///
+/// # Handle model
+///
+/// `open()` returns a platform-defined [`Handle`](PlatformSerial::Handle)
+/// — an FD on POSIX, a port-table index on bare-metal, whatever the
+/// impl wants. Every other method takes the handle back. This lets a
+/// single platform impl service multiple concurrent devices (e.g.,
+/// `zpico-serial`'s two-port table) without the trait constraining
+/// the impl to a single active device.
+///
+/// Single-device platforms return the same handle forever and ignore
+/// it internally; `INVALID` gives a well-defined "no live handle"
+/// sentinel for shims that stash the current handle in a `static`.
+///
+/// # Path conventions
 ///
 /// `path` in `open()` is platform-specific: a null-terminated UTF-8
 /// device path on POSIX (e.g., `/dev/ttyUSB0` or a PTY), or a
@@ -426,30 +439,47 @@ pub trait PlatformUdpMulticast {
 /// the platform's internal handler). Callers pass the locator string
 /// from their config unchanged; interpretation is the platform's job.
 ///
-/// Read/write return `usize::MAX` on error. Read with
-/// `timeout_ms == 0` should block indefinitely; positive values are
-/// the poll/select deadline in milliseconds. Returning `0` from
-/// `read()` indicates "no data within timeout" and is **not** an
-/// error — both XRCE and zenoh-pico tolerate timeout-zero reads.
+/// # I/O conventions
+///
+/// Read / write return `usize::MAX` on hard error. Read with
+/// `timeout_ms == 0` should block for a platform-chosen default;
+/// positive values are the poll/select deadline in milliseconds.
+/// Returning `0` from `read()` indicates "no data within timeout" and
+/// is **not** an error — both XRCE and zenoh-pico tolerate
+/// timeout-zero reads.
 pub trait PlatformSerial {
-    /// Open the serial device identified by `path`. Returns 0 on
-    /// success, -1 on error.
-    fn open(path: *const u8) -> i8;
+    /// Platform-specific handle type. POSIX returns the FD (`i32`);
+    /// bare-metal returns a port-table index (`u8`). Must be `Copy`
+    /// so shims can stash it in a `static`.
+    type Handle: Copy;
 
-    /// Close the active serial device.
-    fn close();
+    /// Sentinel handle meaning "not a live device". Shims initialise
+    /// their cached handle to this and compare against it to detect
+    /// "transport not yet opened" states.
+    const INVALID: Self::Handle;
+
+    /// Returns `true` if `h` is a live handle (not [`INVALID`](Self::INVALID)
+    /// and points at a device that was opened and not yet closed).
+    fn is_valid(h: Self::Handle) -> bool;
+
+    /// Open the serial device identified by `path`. Returns a live
+    /// handle on success, [`INVALID`](Self::INVALID) on failure.
+    fn open(path: *const u8) -> Self::Handle;
+
+    /// Close the given handle. No-op if already closed or invalid.
+    fn close(h: Self::Handle);
 
     /// Configure baud rate (in bits per second). Returns 0 on success,
     /// -1 on error. Called after `open()`; implementations may choose
     /// to apply the baud rate during `open()` instead and make this a
     /// no-op.
-    fn configure(baudrate: u32) -> i8;
+    fn configure(h: Self::Handle, baudrate: u32) -> i8;
 
     /// Read up to `len` bytes into `buf`. Returns the number of bytes
     /// read, `0` on timeout, or `usize::MAX` on hard error.
-    fn read(buf: *mut u8, len: usize, timeout_ms: u32) -> usize;
+    fn read(h: Self::Handle, buf: *mut u8, len: usize, timeout_ms: u32) -> usize;
 
     /// Write `len` bytes from `buf`. Returns bytes written, or
     /// `usize::MAX` on error.
-    fn write(buf: *const u8, len: usize) -> usize;
+    fn write(h: Self::Handle, buf: *const u8, len: usize) -> usize;
 }
