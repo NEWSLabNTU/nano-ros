@@ -7,16 +7,10 @@ default:
 
 # Install ESP32 prerequisites: Espressif QEMU fork (required by every
 # networked ESP32 test — the stock Debian/Ubuntu `qemu-system-riscv32`
-# does not know the `esp32c3` machine model).
-#
-# Post-84.F4 the standalone `build/esp32-zenoh-pico/libzenohpico.a`
-# artefact is no longer consumed by any example or integration test —
-# `zpico-sys/build.rs::build_zenoh_pico_embedded` cross-compiles
-# zenoh-pico + platform shim in one `cc::Build` pass during the
-# example's own cargo build. The standalone `just esp32
-# build-zenoh-pico` recipe is still available for anyone who wants to
-# verify that cross-compile path independently, but it isn't part of
-# `setup` / `doctor` any more.
+# doesn't know the `esp32c3` machine model). Post-84.F4 zenoh-pico
+# itself is cross-compiled by `zpico-sys/build.rs` during the
+# example's cargo build; no standalone library build step is needed
+# or wired up anywhere in the project.
 setup:
     #!/usr/bin/env bash
     set -e
@@ -132,22 +126,14 @@ test-all verbose="": (test verbose)
 # CI: doctor + test
 ci: doctor test
 
-# Build zenoh-pico for ESP32-C3 (RISC-V RV32IMC)
-build-zenoh-pico:
-    @./scripts/esp32/build-zenoh-pico.sh
-
-# Clean zenoh-pico RISC-V build
-clean-zenoh-pico:
-    ./scripts/esp32/build-zenoh-pico.sh --clean
-
 # Clean ESP32 build artifacts
-clean: clean-zenoh-pico
+clean:
     #!/usr/bin/env bash
     for ex in talker listener; do
         rm -rf "examples/esp32/rust/zenoh/$ex/target"
         rm -rf "examples/qemu-esp32-baremetal/rust/zenoh/$ex/target"
     done
-    rm -rf build/esp32-qemu
+    rm -rf build/esp32-qemu build/esp32-zenoh-pico
     echo "ESP32 build artifacts cleaned"
 
 # =============================================================================

@@ -60,17 +60,10 @@ pub fn require_riscv32_target() -> bool {
     true
 }
 
-// Removed: `is_zenoh_pico_riscv_available` / `require_zenoh_pico_riscv`
-// used to gate ESP32 tests on the standalone
-// `build/esp32-zenoh-pico/libzenohpico.a`, produced by
-// `scripts/esp32/build-zenoh-pico.sh`. Phase 84.F4 folded that build
-// into `zpico-sys/build.rs::build_zenoh_pico_embedded` (via `cc::Build`
-// on the `riscv32imc-unknown-none-elf` target) — see the comment at
-// `packages/zpico/zpico-sys/build.rs:1387` ("This replaces the external
-// scripts/{qemu,esp32}/build-zenoh-pico.sh shell scripts"). The
-// standalone artefact is no longer read by any example's cargo build,
-// so the precondition was vestigial and only served to skip-panic the
-// test when the shell-script path hadn't been run.
+// `require_zenoh_pico_riscv` removed — Phase 84.F4 replaced the
+// standalone `build/esp32-zenoh-pico/libzenohpico.a` path with
+// `zpico-sys/build.rs::build_zenoh_pico_embedded`, which cross-
+// compiles zenoh-pico during the example's cargo build.
 
 /// Check if espflash is available
 pub fn is_espflash_available() -> bool {
