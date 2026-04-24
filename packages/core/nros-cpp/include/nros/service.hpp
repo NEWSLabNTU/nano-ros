@@ -135,4 +135,27 @@ template <typename S> class Service {
 
 } // namespace nros
 
+// Phase 84.G8: out-of-line definition of Node::create_service<S>().
+#include "nros/node.hpp"
+
+namespace nros {
+
+template <typename S>
+Result Node::create_service(Service<S>& out, const char* service_name, const QoS& qos) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.depth = qos.depth();
+    nros_cpp_ret_t ret = nros_cpp_service_server_create(
+        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
+    if (ret == 0) {
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+} // namespace nros
+
 #endif // NROS_CPP_SERVICE_HPP

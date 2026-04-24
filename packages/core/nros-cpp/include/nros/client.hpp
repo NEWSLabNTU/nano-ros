@@ -136,4 +136,28 @@ template <typename S> class Client {
 
 } // namespace nros
 
+// Phase 84.G8: out-of-line definition of Node::create_client<S>().
+#include "nros/node.hpp"
+
+namespace nros {
+
+template <typename S>
+Result Node::create_client(Client<S>& out, const char* service_name, const QoS& qos) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.depth = qos.depth();
+    nros_cpp_ret_t ret = nros_cpp_service_client_create(
+        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
+    if (ret == 0) {
+        out.executor_ = executor_handle_;
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+} // namespace nros
+
 #endif // NROS_CPP_CLIENT_HPP

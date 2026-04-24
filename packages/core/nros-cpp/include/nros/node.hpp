@@ -10,12 +10,15 @@
 #include "nros/result.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
-#include "nros/publisher.hpp"
-#include "nros/subscription.hpp"
-#include "nros/service.hpp"
-#include "nros/client.hpp"
-#include "nros/action_server.hpp"
-#include "nros/action_client.hpp"
+// Phase 84.G8: heavy entity headers (publisher / subscription / service /
+// client / action_server / action_client) are no longer pulled in here.
+// Each entity header provides the out-of-line definition of its
+// corresponding `Node::create_X<T>()` template and includes `node.hpp`
+// itself. Consumers that #include `nros/nros.hpp` (the umbrella) still
+// get every entity + every create method via that path; consumers that
+// only want lightweight Node access can include this header directly
+// and pay for only the light entities (timer, guard_condition,
+// executor) below.
 #include "nros/timer.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
@@ -99,6 +102,17 @@ nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
 namespace nros {
 
+// Phase 84.G8: forward declarations of the heavy entity class
+// templates. Full definitions live in the corresponding `*.hpp`,
+// which also provide the out-of-line `Node::create_X<>` template
+// bodies — consumers only pay for the entities they #include.
+template <typename M> class Publisher;
+template <typename M> class Subscription;
+template <typename S> class Service;
+template <typename S> class Client;
+template <typename A> class ActionServer;
+template <typename A> class ActionClient;
+
 /// Initialize an nros session.
 ///
 /// Opens a middleware connection. Must be called before creating nodes.
@@ -172,29 +186,7 @@ class Node {
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
     Result create_publisher(Publisher<M>& out, const char* topic,
-                            const QoS& qos = QoS::default_profile()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
-                                                       ffi_qos, out.storage_);
-        if (ret == 0) {
-            // Phase 87.6: topic name lives C++-side now (was inside the
-            // deleted `CppPublisher` Rust wrapper). Copy + null-terminate
-            // into the fixed-size buffer; truncation is silent.
-            size_t topic_len = 0;
-            while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
-                out.topic_name_[topic_len] = topic[topic_len];
-                ++topic_len;
-            }
-            out.topic_name_[topic_len] = '\0';
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                            const QoS& qos = QoS::default_profile());
 
     /// Create a subscription for a topic.
     ///
@@ -204,27 +196,7 @@ class Node {
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
     Result create_subscription(Subscription<M>& out, const char* topic,
-                               const QoS& qos = QoS::default_profile()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME,
-                                                          M::TYPE_HASH, ffi_qos, out.storage_);
-        if (ret == 0) {
-            // Phase 87.6: topic name lives C++-side now.
-            size_t topic_len = 0;
-            while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
-                out.topic_name_[topic_len] = topic[topic_len];
-                ++topic_len;
-            }
-            out.topic_name_[topic_len] = '\0';
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                               const QoS& qos = QoS::default_profile());
 
     /// Create a service server.
     ///
@@ -234,20 +206,7 @@ class Node {
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
     Result create_service(Service<S>& out, const char* service_name,
-                          const QoS& qos = QoS::services()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_service_server_create(
-            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
-        if (ret == 0) {
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                          const QoS& qos = QoS::services());
 
     /// Create a service client.
     ///
@@ -257,21 +216,7 @@ class Node {
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
     Result create_client(Client<S>& out, const char* service_name,
-                         const QoS& qos = QoS::services()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_service_client_create(
-            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
-        if (ret == 0) {
-            out.executor_ = executor_handle_;
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                         const QoS& qos = QoS::services());
 
     /// Create an action server.
     ///
@@ -283,36 +228,7 @@ class Node {
     /// @param qos          QoS profile (default: services preset).
     template <typename A>
     Result create_action_server(ActionServer<A>& out, const char* action_name,
-                                const QoS& qos = QoS::services()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_action_server_create(
-            &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
-        if (ret != 0) return Result(ret);
-        // Register with executor — creates transport handles (3 queryables + 2 publishers).
-        // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
-        // names are passed at register-time (buffers live on the C++
-        // `nros::ActionServer<A>` class, not in the Rust struct).
-        ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name,
-                                              A::TYPE_NAME, A::Goal::TYPE_HASH);
-        if (ret == 0) {
-            // Phase 87.6: copy action_name into the C++-owned buffer for
-            // `get_action_name()` accessor.
-            size_t name_len = 0;
-            while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
-                out.action_name_[name_len] = action_name[name_len];
-                ++name_len;
-            }
-            out.action_name_[name_len] = '\0';
-            out.executor_ = executor_handle_;
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                                const QoS& qos = QoS::services());
 
     /// Create an action client.
     ///
@@ -322,28 +238,7 @@ class Node {
     /// @param qos          QoS profile (default: services preset).
     template <typename A>
     Result create_action_client(ActionClient<A>& out, const char* action_name,
-                                const QoS& qos = QoS::services()) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        nros_cpp_qos_t ffi_qos;
-        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-        ffi_qos.depth = qos.depth();
-        nros_cpp_ret_t ret = nros_cpp_action_client_create(
-            &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
-        if (ret == 0) {
-            // Phase 87.6: action_name buffer lives C++-side now.
-            size_t name_len = 0;
-            while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
-                out.action_name_[name_len] = action_name[name_len];
-                ++name_len;
-            }
-            out.action_name_[name_len] = '\0';
-            out.executor_ = executor_handle_;
-            out.initialized_ = true;
-        }
-        return Result(ret);
-    }
+                                const QoS& qos = QoS::services());
 
     /// Create a repeating timer.
     ///

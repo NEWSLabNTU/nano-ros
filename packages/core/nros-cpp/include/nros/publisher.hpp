@@ -119,4 +119,39 @@ template <typename M> class Publisher {
 
 } // namespace nros
 
+// Phase 84.G8: out-of-line definition of Node::create_publisher<M>().
+// Placed here so consumers only pay for this template when they actually
+// use publishers — including `nros/node.hpp` alone no longer drags in
+// every entity's code path.
+#include "nros/node.hpp"
+
+namespace nros {
+
+template <typename M>
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.depth = qos.depth();
+    nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
+                                                   ffi_qos, out.storage_);
+    if (ret == 0) {
+        // Phase 87.6: topic name lives C++-side now (was inside the
+        // deleted `CppPublisher` Rust wrapper). Copy + null-terminate
+        // into the fixed-size buffer; truncation is silent.
+        size_t topic_len = 0;
+        while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
+            out.topic_name_[topic_len] = topic[topic_len];
+            ++topic_len;
+        }
+        out.topic_name_[topic_len] = '\0';
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+} // namespace nros
+
 #endif // NROS_CPP_PUBLISHER_HPP

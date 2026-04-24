@@ -6,18 +6,18 @@ collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
 **Status**: In Progress (started 2026-04-19). As of 2026-04-24:
-Groups A, B, C, D, E complete. Group F complete except **F6**
-(directory / board-crate rename — scheduled last). Group G complete
-except **G8** (re-classified as "not a nit" and moved to a
-dedicated PR). B4's REP-2002 service exposure half was closed by
-Phase 86 (`nros-lifecycle-msgs` codegen + executor-integrated
-lifecycle services + C FFI). E2b landed as two PRs (E2b.1 state
-struct + SharedCell; E2b.2 args-threaded callbacks); E2b.3
-(multi-session `Box`-owned state) abandoned to preserve alloc-free
-XRCE support on Zephyr. F4 landed as six sub-PRs (F4.1 trait
-freeze; F4.2 Clock+Alloc; F4.3 Sleep+Random+Time; F4.4 network
-traits; F4.5 Threading; F4.6 Libc+NetworkPoll documentary). **Still
-open**: F6, G8.
+Groups A, B, C, D, E, G complete. Group F complete except **F6**
+(directory / board-crate rename — scheduled last). B4's REP-2002
+service exposure half was closed by Phase 86 (`nros-lifecycle-msgs`
+codegen + executor-integrated lifecycle services + C FFI). E2b
+landed as two PRs (E2b.1 state struct + SharedCell; E2b.2
+args-threaded callbacks); E2b.3 (multi-session `Box`-owned state)
+abandoned to preserve alloc-free XRCE support on Zephyr. F4 landed
+as six sub-PRs (F4.1 trait freeze; F4.2 Clock+Alloc; F4.3
+Sleep+Random+Time; F4.4 network traits; F4.5 Threading; F4.6
+Libc+NetworkPoll documentary). G8 landed 2026-04-24 as the
+per-entity header-split that moves each `Node::create_X<T>`
+template definition next to its entity class. **Still open**: F6.
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -341,7 +341,7 @@ Small wins worth rolling into the PRs of adjacent groups.
 - [x] 84.G5 — C API: add missing array-parameter function declarations to `parameter.h`. The Rust implementations already exist via the `impl_param_array!` macro (byte/bool/integer/double/string variants, declare/get/set), but were never exposed in any C header — making the `NROS_PARAMETER_*_ARRAY` enum values effectively unreachable. 15 function declarations added; no Rust changes needed.
 - [x] 84.G6 — C API: `nros_executor_trigger_one` now reads `*(size_t*)context` instead of casting `context as usize`. Callers point at a real `size_t`, which is typed and UB-free on CHERI / strict-alignment targets.
 - [x] 84.G7 — **Landed** (2026-04-22). `ActionClient<A>::feedback_stream()` returns `Stream<FeedbackType>&`, mirroring `Subscription<M>::stream()` — lazy-bound on first call, rebound on move (Phase 84.C1 relocation), wraps the existing `nros_cpp_action_client_try_recv_feedback` FFI so no new arena plumbing was needed (Phase 77 already unified the feedback path through a single arena core). Feedback is not goal-scoped at this layer; the stream yields `FeedbackType` values across all active goals for the client, matching `try_recv_feedback`. Callers that need per-goal separation should use the `SendGoalOptions::feedback` callback, which receives `(goal_id, bytes, len, ctx)`. `examples/native/cpp/zenoh/action-client` updated to demonstrate the new shape. Commit `15540374` — 2 files, +43/-2.
-- [ ] 84.G8 — **Deferred** (not a nit): splitting `node.hpp` into a lean interface + a full-entities variant is a real header-surgery refactor that needs careful auditing of every entity's template instantiation. Belongs in a dedicated PR.
+- [x] 84.G8 — **Landed** (2026-04-24). `node.hpp` now carries only the forward declarations and member-template *declarations* of the six heavy `create_X<T>()` entries (publisher, subscription, service, client, action_server, action_client). Each entity header (`publisher.hpp`, `subscription.hpp`, …) provides the corresponding out-of-line `template <typename T> Result Node::create_X(...)` *definition* after its own class body, guarded by `#include "nros/node.hpp"`. Non-templated `create_timer` / `create_timer_oneshot` / `create_guard_condition` stay inline in `node.hpp` because their light entity headers (timer.hpp, guard_condition.hpp) were already cheap. The umbrella `nros.hpp` now pulls in every entity header explicitly so `#include <nros/nros.hpp>` still gives the full API. Verified: consumers that include only `nros/node.hpp` compile to a 648-byte object (no template instantiations pulled in from entity code); `test_cpp_action_communication`, `test_cpp_action_goal_rejection`, `test_cpp_rust_pubsub_interop`, `test_cpp_rust_service_interop`, and both `::lang_2_Language__Cpp` variants of `test_native_talker_listener_communication` / `test_native_service_communication` still pass.
 - [x] 84.G9 — **Landed** (2026-04-22). Added `ActionServer<A>::set_goal_callback_with_ctx(TypedGoalFnWithCtx, void*)` plus the parallel `set_cancel_callback_with_ctx(TypedCancelFnWithCtx, void*)` — the standard "fn + `void*` context" escape hatch used by every other C callback boundary in the project. Each slot (goal / cancel) has two mutually-exclusive modes: setting one variant clears the other; trampolines prefer the `_with_ctx` slot when set. The existing `set_goal_callback<F>(F)` templated overload with its stateless-callable `static_assert` (from 84.C6) is unchanged. `examples/native/cpp/zenoh/action-server/main.cpp` migrated to `set_goal_callback_with_ctx` + a stack-allocated `ServerState` to demonstrate global-free callback state and exercise the new trampoline at runtime in `test_native_action_server_starts::Cpp`. Commit `45767b22` — 2 files, +97/-25.
 
 ## Acceptance Criteria

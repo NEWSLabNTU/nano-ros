@@ -338,4 +338,43 @@ template <typename A> class ActionServer {
 
 } // namespace nros
 
+// Phase 84.G8: out-of-line definition of Node::create_action_server<A>().
+#include "nros/node.hpp"
+
+namespace nros {
+
+template <typename A>
+Result Node::create_action_server(ActionServer<A>& out, const char* action_name, const QoS& qos) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.depth = qos.depth();
+    nros_cpp_ret_t ret = nros_cpp_action_server_create(
+        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
+    if (ret != 0) return Result(ret);
+    // Register with executor — creates transport handles (3 queryables + 2 publishers).
+    // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
+    // names are passed at register-time (buffers live on the C++
+    // `nros::ActionServer<A>` class, not in the Rust struct).
+    ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name,
+                                          A::TYPE_NAME, A::Goal::TYPE_HASH);
+    if (ret == 0) {
+        // Phase 87.6: copy action_name into the C++-owned buffer for
+        // `get_action_name()` accessor.
+        size_t name_len = 0;
+        while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {
+            out.action_name_[name_len] = action_name[name_len];
+            ++name_len;
+        }
+        out.action_name_[name_len] = '\0';
+        out.executor_ = executor_handle_;
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+} // namespace nros
+
 #endif // NROS_CPP_ACTION_SERVER_HPP

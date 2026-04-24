@@ -10,7 +10,17 @@
 #include "nros/qos.hpp"
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
-#include "nros/node.hpp" // includes publisher, subscription, service, client, action headers
+// Phase 84.G8: node.hpp no longer pulls in the heavy entity headers —
+// each entity header carries its own out-of-line `Node::create_X<>()`
+// template definition. The umbrella pulls in every entity explicitly so
+// `#include <nros/nros.hpp>` still yields the full API.
+#include "nros/node.hpp"
+#include "nros/publisher.hpp"
+#include "nros/subscription.hpp"
+#include "nros/service.hpp"
+#include "nros/client.hpp"
+#include "nros/action_server.hpp"
+#include "nros/action_client.hpp"
 
 namespace nros {
 
