@@ -780,8 +780,9 @@ platform-trait refactor landed and my Phase 77.20 / 77.21 / 77.22 /
   * environment-dependent gates whose skip conditions were
     under-strict.
 
-Two fixable items are already in (commits `6fa02fbd`, `fdaee2db`).
-The remaining 14 still need owners.
+Six of the 14 are now green or flaky-green (commits `6fa02fbd`,
+`fdaee2db`, `b3f853f2`, and the NuttX cascade-reset commit below).
+The remaining 8 still need owners.
 
 **Fixed in this pass**:
 
@@ -802,25 +803,60 @@ The remaining 14 still need owners.
   `fdaee2db` switches the probe to `-machine help` + grep for
   `esp32c3` so the four ESP32 tests now skip cleanly with the
   correct reason when the Espressif fork isn't installed.
+- NuttX `lang_2_C` build (#5–7): `zpico-sys/build.rs` fell off the
+  end of `build_c_shim` on HOST builds whenever the `nuttx` or
+  `threadx` feature was active — it only recognised `use_posix` /
+  `use_bare_metal`, so the shim was compiled without any `ZENOH_*`
+  platform define and `zenoh-pico/link.h`'s reference to
+  `_z_sys_net_socket_t` couldn't resolve. Pre-84.F4 the feature
+  graph didn't reach zpico-sys on the host, so the miss was silent;
+  post-F4 it surfaces on every NuttX consumer. Guard added
+  (`!use_nuttx && !use_threadx`) to the native-branch call site.
+  Commit `b3f853f2`. All three NuttX C tests now build and
+  pubsub/service/action all eventually pass (still flaky-green on
+  cold-boot — see below).
+- NuttX `lang_2_C` service/action cascade: `nros_client_call`
+  and `nros_action_send_goal`/`_get_result` all used an iteration-
+  count-based spin loop (`for _ in 0..N { spin_some(10ms) }`) that
+  89.2 already fixed for the service path on POSIX. On NuttX QEMU
+  the first call can legitimately exceed 5s while the server-side
+  queryable propagates; the service client then left `entry.pending
+  = true` and every subsequent call bounced off `NROS_RET_BAD_SEQUENCE`,
+  cascading the whole 4-call burst to 0 responses.
+  Two fixes in one commit:
+    * `nros_client_call` timeout path now clears `entry.pending`
+      and `entry.reply_ready` so the next blocking call can proceed
+      (symmetric to the Rust `Promise::try_recv` in-flight reset).
+    * `nros_action_send_goal` and `nros_action_get_result` converted
+      from iteration-count to wall-clock budget (15 s / 30 s
+      respectively), matching 89.2 for the service client.
+    * NuttX C service-client example raises its per-call timeout to
+      15 s via `nros_client_set_timeout(&client, 15000)` so the
+      first-RPC cold-boot round-trip fits inside one call.
+  Remaining cold-boot variance on NuttX QEMU means service/action
+  can still need the 2nd or 3rd retry under `retries = 2`, but the
+  tests are now flaky-green (FLAKY 3/3 for service, FLAKY 2/3 for
+  action) instead of consistently failing. Further tightening would
+  need a readiness handshake on the wire (out of scope for 89.12).
 
 **Still open — NOT caused by my 77.22 changes**:
 
-| # | Test | Symptom | Suspected root cause |
-|---|---|---|---|
-| 1 | `test_esp32_qemu_talker_boots` | `skip!` panic — Espressif QEMU fork missing on this host | Environment; install via `./scripts/esp32/install-espressif-qemu.sh` |
-| 2 | `test_esp32_talker_listener_e2e` | same | same |
-| 3 | `test_esp32_to_native` | same | same |
-| 4 | `test_native_to_esp32` | same | same |
-| 5 | `test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | `zpico-sys` cross-build: `error: unknown type '_z_sys_net_socket_t'` at `zenoh-pico/link/link.h:114` | 84.F4 refactor of zpico-sys NuttX build includes: `ZENOH_GENERIC` + `ZENOH_NUTTX` defines both set, `zenoh_generic_platform.h` falls through to `bare-metal/platform.h`, but `ZENOH_NUTTX` should route through zenoh-pico's `platform/unix.h`. Include-chain regression from F4. |
-| 6 | `test_rtos_service_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | same build error | same |
-| 7 | `test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | same build error | same |
-| 8 | `test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C` | cross-build, fails after 3 retries at ~98 s | Distinct from #5–7 — ThreadX RV64 C toolchain path; needs its own repro |
-| 9 | `test_zephyr_action_e2e` | runtime — see 89.3 doc | 89.3 was "Landed" but this case still red; re-check |
-| 10 | `test_zephyr_cpp_action_server_to_client_e2e` | `nros_cpp_init` → `-100` (TRANSPORT_ERROR) in both server and client | 89.3 was supposed to close this (the zero-sized-storage fix), but it's re-opening on top of F4. Possibly C++ opaque-storage sizes reverted. |
-| 11 | `test_zephyr_cpp_service_server_to_client_e2e` | same `-100` in both roles | same as #10 |
-| 12 | `test_zephyr_native_server_zephyr_client` | runtime fail, passes in isolation | Parallel-load flake |
-| 13 | `test_zephyr_talker_to_listener_e2e` | TRY 1 FAIL, recovers | Flake |
-| 14 | `test_rtos_*_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust` and `lang_3_Lang__Cpp` | 89.3/89.8 territory; originally closed, still occasionally red | Cascade from F4 build matrix; re-run after the NuttX / Zephyr root causes are fixed |
+| #  | Test                                                                                       | Symptom                                                                                              | Suspected root cause                                                                                                                                                                                                                                                              |
+|----|--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1  | `test_esp32_qemu_talker_boots`                                                             | `skip!` panic — Espressif QEMU fork missing on this host                                             | Environment; install via `./scripts/esp32/install-espressif-qemu.sh`                                                                                                                                                                                                              |
+| 2  | `test_esp32_talker_listener_e2e`                                                           | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
+| 3  | `test_esp32_to_native`                                                                     | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
+| 4  | `test_native_to_esp32`                                                                     | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
+| ~~5~~ | ~~NuttX `lang_2_C` pubsub~~ | ~~zpico-sys cross-build error~~ | **Fixed by `b3f853f2` + cascade-reset commit below.** |
+| ~~6~~ | ~~NuttX `lang_2_C` service~~ | ~~same~~ | **Fixed** — flaky-green (FLAKY 3/3 on cold-boot). |
+| ~~7~~ | ~~NuttX `lang_2_C` action~~ | ~~same~~ | **Fixed** — flaky-green (FLAKY 2/3 on cold-boot). |
+| 8  | `test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C`               | cross-build, fails after 3 retries at ~98 s                                                          | Possibly cured by the same `build_c_shim` guard as NuttX — re-verify with a fresh run since `b3f853f2` also added `!use_threadx` to the same guard.                                                                                                                               |
+| 9  | `test_zephyr_action_e2e`                                                                   | runtime — see 89.3 doc                                                                               | 89.3 was "Landed" but this case still red; re-check                                                                                                                                                                                                                               |
+| 10 | `test_zephyr_cpp_action_server_to_client_e2e`                                              | `nros_cpp_init` → `-100` (TRANSPORT_ERROR) in both server and client                                 | 89.3 was supposed to close this (the zero-sized-storage fix), but it's re-opening on top of F4. Possibly C++ opaque-storage sizes reverted.                                                                                                                                       |
+| 11 | `test_zephyr_cpp_service_server_to_client_e2e`                                             | same `-100` in both roles                                                                            | same as #10                                                                                                                                                                                                                                                                       |
+| 12 | `test_zephyr_native_server_zephyr_client`                                                  | runtime fail, passes in isolation                                                                    | Parallel-load flake                                                                                                                                                                                                                                                               |
+| 13 | `test_zephyr_talker_to_listener_e2e`                                                       | TRY 1 FAIL, recovers                                                                                 | Flake                                                                                                                                                                                                                                                                             |
+| 14 | `test_rtos_*_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust` and `lang_3_Lang__Cpp` | 89.3/89.8 territory; originally closed, still occasionally red                                       | Cascade from F4 build matrix; re-run after the NuttX / Zephyr root causes are fixed                                                                                                                                                                                               |
 
 **Repro commands**:
 

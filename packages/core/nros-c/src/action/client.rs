@@ -314,8 +314,17 @@ pub unsafe extern "C" fn nros_action_send_goal(
     }
     client_ref.goal_response_callback = Some(blocking_goal_cb);
 
-    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
-    for _ in 0..1000 {
+    // Phase 89.12: wall-clock budget — same fix as 89.2 for the service
+    // client. The old `for _ in 0..1000` loop assumed each
+    // `spin_some(10ms)` actually spent ~10 ms, but on multi-threaded
+    // zpico backends the inner condvar can wake on any incoming frame
+    // (keep-alives, discovery gossip) and 1000 iterations exhaust in
+    // milliseconds. On NuttX QEMU cold-boot the server-side goal
+    // response easily slides past that window — budget by the clock.
+    const ACTION_BLOCKING_TIMEOUT_MS: u64 = 15_000;
+    let start_ns = crate::platform::get_time_ns();
+    let timeout_ns: u64 = ACTION_BLOCKING_TIMEOUT_MS.saturating_mul(1_000_000);
+    loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
         let flag = BLOCKING_ACCEPTED;
         if flag >= 0 {
@@ -326,6 +335,10 @@ pub unsafe extern "C" fn nros_action_send_goal(
             } else {
                 NROS_RET_ERROR
             };
+        }
+        let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+        if elapsed_ns >= timeout_ns {
+            break;
         }
     }
     client_ref.goal_response_callback = orig_cb;
@@ -417,8 +430,13 @@ pub unsafe extern "C" fn nros_action_get_result(
     }
     client_ref.result_callback = Some(blk_result_cb);
 
-    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
-    for _ in 0..1000 {
+    // Phase 89.12: wall-clock budget (same fix as the send_goal side).
+    // Actions can legitimately run for several seconds; 30 s gives
+    // room for a Fibonacci-10 feedback stream + result over QEMU slirp.
+    const ACTION_RESULT_TIMEOUT_MS: u64 = 30_000;
+    let start_ns = crate::platform::get_time_ns();
+    let timeout_ns: u64 = ACTION_RESULT_TIMEOUT_MS.saturating_mul(1_000_000);
+    loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
         let rlen = BLK_RESULT_LEN;
         if rlen >= 0 {
@@ -446,6 +464,10 @@ pub unsafe extern "C" fn nros_action_get_result(
             payload[..data_len].copy_from_slice(&BLK_RESULT_BUF[..data_len]);
             *result_len = output_len;
             return NROS_RET_OK;
+        }
+        let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+        if elapsed_ns >= timeout_ns {
+            break;
         }
     }
     client_ref.result_callback = orig_cb;

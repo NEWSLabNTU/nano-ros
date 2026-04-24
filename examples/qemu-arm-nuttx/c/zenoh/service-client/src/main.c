@@ -103,6 +103,14 @@ void app_main(void) {
         return;
     }
 
+    // Phase 89.12: bump the per-call timeout to 15 s. NuttX QEMU boots
+    // both server and client in parallel, and the cold-path zenoh
+    // handshake + queryable-declaration propagation over QEMU slirp
+    // routinely exceeds the 5 s default on the FIRST call, cascading
+    // the whole 4-call burst to 0 responses. 15 s gives the cold
+    // session time to settle.
+    nros_client_set_timeout(&app.client, 15000);
+
     struct { int64_t a; int64_t b; } test_cases[] = {
         {5, 3}, {10, 20}, {100, 200}, {-5, 10}
     };

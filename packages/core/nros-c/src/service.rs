@@ -953,6 +953,40 @@ pub unsafe extern "C" fn nros_client_call(
     }
     client_ref.response_callback = orig_cb;
     client_ref.context = orig_ctx;
+
+    // Phase 89.12: clear `entry.pending` (set by `nros_client_send_request_async`
+    // at line ~763) so the next `nros_client_call` doesn't bounce off
+    // NROS_RET_BAD_SEQUENCE. Without this, a single slow-first-RPC
+    // timeout cascades every subsequent blocking call on the same
+    // client — which is exactly what NuttX `lang_2_C` rtos_e2e flakes
+    // hit on QEMU cold-boot: call [1] times out because the server
+    // queryable isn't ready, calls [2–4] all return BAD_SEQUENCE, the
+    // test sees 0 responses and fails even though the server came up
+    // fine. Symmetrical to the RAII-style reset on Rust's `Promise`
+    // drop path (handles.rs::Promise::try_recv clears `in_flight` on
+    // successful reception) — we reset here on the timeout path.
+    //
+    // Semantic note: if the late reply for the timed-out call arrives
+    // before the caller fires another request, it will be picked up
+    // by the next `nros_client_try_recv_response` / spin dispatch.
+    // That's a known "stale reply" quirk of single-slot clients; the
+    // caller either tolerates it (match on returned seq) or resets
+    // the slot explicitly. The previous behaviour — silently jamming
+    // every subsequent call — was strictly worse.
+    let internal = &mut client_ref._internal;
+    if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        if let Some(entry) =
+            exec.service_client_entry_mut(internal.arena_entry_index as usize)
+        {
+            entry.pending = false;
+            entry
+                .reply_ready
+                .store(false, core::sync::atomic::Ordering::Release);
+        }
+    }
+
     NROS_RET_TIMEOUT
 }
 
