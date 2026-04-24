@@ -6,16 +6,18 @@ collection of independently-landable groups, each with a bounded blast
 radius. It is not a single monolithic refactor.
 
 **Status**: In Progress (started 2026-04-19). As of 2026-04-24:
-Groups A, B, C, D, E complete. Group F complete except **F4**
-(platform trait dispatch) and **F6** (directory / board-crate
-rename — scheduled last). Group G complete except **G8**
-(re-classified as "not a nit" and moved to a dedicated PR). B4's
-REP-2002 service exposure half was closed by Phase 86
-(`nros-lifecycle-msgs` codegen + executor-integrated lifecycle
-services + C FFI). E2b landed as two PRs (E2b.1 state struct +
-SharedCell; E2b.2 args-threaded callbacks); E2b.3 (multi-session
-`Box`-owned state) abandoned to preserve alloc-free XRCE support
-on Zephyr. **Still open**: F4, F6, G8.
+Groups A, B, C, D, E complete. Group F complete except **F6**
+(directory / board-crate rename — scheduled last). Group G complete
+except **G8** (re-classified as "not a nit" and moved to a
+dedicated PR). B4's REP-2002 service exposure half was closed by
+Phase 86 (`nros-lifecycle-msgs` codegen + executor-integrated
+lifecycle services + C FFI). E2b landed as two PRs (E2b.1 state
+struct + SharedCell; E2b.2 args-threaded callbacks); E2b.3
+(multi-session `Box`-owned state) abandoned to preserve alloc-free
+XRCE support on Zephyr. F4 landed as six sub-PRs (F4.1 trait
+freeze; F4.2 Clock+Alloc; F4.3 Sleep+Random+Time; F4.4 network
+traits; F4.5 Threading; F4.6 Libc+NetworkPoll documentary). **Still
+open**: F6, G8.
 **Priority**: Medium — no single finding blocks users, but the debt is
 compounding and several items (thin-wrapper violations, documentation drift,
 silent footguns) are already surfacing in issues / example debugging sessions.
@@ -267,28 +269,58 @@ the real implementation first.
             etc.). XRCE shim doesn't call these and is unchanged.
             Workspace compile + 14 XRCE E2E + native zenoh tests
             pass.
-      - [ ] **F4.4 — implement network traits**
+      - [x] **F4.4 — implement network traits**
             (`PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`,
-            `PlatformUdpMulticast`, `PlatformNetworkPoll`). Where
-            the naming-reconciliation crunch lands: ~40 inherent
-            method renames across 9 platforms, ~40 shim call-site
-            rewrites. Activates `PlatformUdp::listen` for any
-            platform that overrides it.
-      - [ ] **F4.5 — implement `PlatformThreading`**. ~20-method
-            trait. POSIX, Zephyr, FreeRTOS, NuttX, ThreadX implement
-            real threading. Bare-metal platforms (mps2-an385,
-            stm32f4, esp32-qemu when QEMU isn't running SMP,
-            nros-platform-cffi) implement with success-returning
-            nops — semantic no-op matching today's behaviour.
-      - [ ] **F4.6 — implement `PlatformLibc`**. Bare-metal only (4
-            platforms: mps2-an385, stm32f4, esp32, esp32-qemu — ESP32
-            implementations forward to esp-hal's stubs). RTOS
-            platforms with a C runtime skip this trait.
+            `PlatformUdpMulticast`). All 9 networking platforms
+            implement these via delegation — inherent methods on
+            the platform ZSTs kept as implementation detail, trait
+            impls at the bottom of each `net.rs` forward to the
+            inherent methods. `zpico-platform-shim` dispatches
+            through `<P as PlatformTcp>::open(...)` etc. (method
+            names dropped the `tcp_` / `udp_` / `socket_` prefixes
+            per the F4.1 naming convention; multicast kept its
+            `mcast_*` prefix). Bare-metal platforms get their trait
+            impls through `nros_smoltcp::define_smoltcp_platform!`
+            which was rewritten to emit trait impls directly.
+            `nros-smoltcp` now depends on `nros-platform-api` and
+            re-exports the four network traits so the macro can
+            reach them via `$crate::PlatformTcp` etc.
+            `PlatformNetworkPoll` is documentary only — bare-metal
+            platforms call `SmoltcpBridge::poll_network()` inline
+            from TCP/UDP send/recv bodies.
+      - [x] **F4.5 — implement `PlatformThreading`**. All 10 platform
+            ZSTs implement the 22-method trait via delegation to
+            their pre-existing inherent methods. POSIX / Zephyr /
+            FreeRTOS / NuttX / ThreadX have real threading; bare-
+            metal platforms (mps2-an385, stm32f4, esp32, esp32-qemu)
+            have success-returning nops; cffi dispatches via the C
+            vtable. Trait signatures reconciled with shipped
+            inherents: the draft `TaskHandle` / `MutexHandle` /
+            `CondvarHandle` typed-opaque wrappers were dropped in
+            favour of `*mut c_void` (every shipped impl already
+            used `*mut c_void` internally; typed wrappers would
+            have required a pointless cast at every impl site).
+            `zpico-platform-shim` now dispatches all 22 threading
+            entry points via `<P as PlatformThreading>::*`.
+      - [x] **F4.6 — `PlatformLibc` + `PlatformNetworkPoll` marked
+            documentary**. Audit found these traits are never
+            dispatched through by either shim — libc stubs are
+            resolved at link time from
+            `nros-baremetal-common`'s `#[unsafe(no_mangle)] extern
+            "C"` symbols (controlled by its `libc-stubs` feature);
+            network polling is called inline from TCP/UDP trait
+            bodies. Rather than add dead trait impls on every
+            bare-metal platform, the traits remain in the API
+            surface with a docstring explaining the link-level
+            dispatch and noting that a future shim refactor could
+            wire them through. Zero platform crates implement
+            these traits today — deliberately.
 
       Acceptance (per sub-PR): `just ci` green + relevant platform
       tests pass. Acceptance (whole F4): `grep -rn "P::[a-z_]*(" shim`
       returns **zero** non-trait-qualified dispatch calls in
-      `zpico-platform-shim` and `xrce-platform-shim`.
+      `zpico-platform-shim` and `xrce-platform-shim`. **Verified
+      2026-04-24**: only one residual `P::` is in a doc comment.
 - [x] 84.F5 — Landed via a new `nros_smoltcp::NetworkState<D>` generic holder. The struct keeps the `(Interface, SocketSet, Device)` triple in `AtomicPtr` fields (no more `static mut`), exposes `set` / `clear` / `poll` / `poll_via_ref` methods (the `_via_ref` variant covers STM32F4's `for<'a> &'a mut EthernetDMA: Device` quirk), and is `unsafe impl Sync`. Each board's `network.rs` is now ~35 lines of wiring instead of ~63 lines of hand-rolled globals. Board total 254 → 148 lines (-42%), and the 12 `static mut` globals are gone. Board-side net lines (`boards/nros-platform-*/src/net.rs`) were already covered by the `define_smoltcp_platform!` macro in Phase 83.
 - [ ] 84.F6 — **Deferred to the end of Phase 84**: directory-layout cleanup + board-crate rename. Target layout:
       - `packages/platforms/` — OS-level platform crates (`posix`, `freertos`, `nuttx`, `threadx`, `zephyr`) and bare-metal platform crates (current `packages/boards/nros-platform-*` move here, keeping the `nros-platform-*` name since these are implementer-facing).

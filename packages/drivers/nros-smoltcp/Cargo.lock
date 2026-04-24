@@ -46,9 +46,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "nros-platform-api"
+version = "0.1.0"
+
+[[package]]
 name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "smoltcp",
 ]
 

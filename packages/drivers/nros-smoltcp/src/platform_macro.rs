@@ -9,9 +9,9 @@
 //! same five `impl` blocks (TCP, UDP, socket helpers, multicast stubs)
 //! that the platform shim then dispatches to via inherent-method calls.
 
-/// Emit smoltcp-backed `PlatformTcp` / `PlatformUdp` /
-/// `PlatformSocketHelpers` / `PlatformUdpMulticast` inherent methods on
-/// the given platform ZST.
+/// Emit `PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`, and
+/// `PlatformUdpMulticast` trait impls on the given platform ZST,
+/// backed by a `SmoltcpBridge` on the caller side.
 ///
 /// Usage:
 /// ```ignore
@@ -19,10 +19,16 @@
 /// nros_smoltcp::define_smoltcp_platform!(Mps2An385Platform);
 /// ```
 ///
-/// All five blocks (TCP / UDP / socket helpers / multicast) are emitted
-/// in a single invocation. The dispatch model stays inherent-method
-/// (`Self::tcp_open(...)`) so the existing `zpico-platform-shim`
-/// forwarding works unchanged.
+/// All four trait impls are emitted by a single invocation. Shims
+/// dispatch via the usual qualified path
+/// (`<ConcretePlatform as PlatformTcp>::open(...)`).
+///
+/// Phase 84.F4.4 changed this macro from inherent-method output to
+/// trait-impl output; method names lost their `tcp_` / `udp_` /
+/// `socket_` prefixes because the trait name already namespaces them.
+/// `PlatformUdpMulticast` kept the `mcast_*` prefix because the trait
+/// and the Tcp/Udp `open` / `read` etc. would otherwise collide at
+/// the call site and hurt readability.
 #[macro_export]
 macro_rules! define_smoltcp_platform {
     ($plat:ident) => {
@@ -89,8 +95,8 @@ macro_rules! __define_smoltcp_platform_impl {
 
             // ---- TCP ----
 
-            impl crate::$plat {
-                pub fn tcp_create_endpoint(
+            impl $crate::PlatformTcp for crate::$plat {
+                fn create_endpoint(
                     ep: *mut c_void,
                     address: *const u8,
                     port: *const u8,
@@ -101,9 +107,9 @@ macro_rules! __define_smoltcp_platform_impl {
                     parse_endpoint(ep, address, port)
                 }
 
-                pub fn tcp_free_endpoint(_ep: *mut c_void) {}
+                fn free_endpoint(_ep: *mut c_void) {}
 
-                pub fn tcp_open(
+                fn open(
                     sock: *mut c_void,
                     endpoint: *const c_void,
                     timeout_ms: u32,
@@ -164,11 +170,11 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
                 }
 
-                pub fn tcp_listen(_sock: *mut c_void, _endpoint: *const c_void) -> i8 {
+                fn listen(_sock: *mut c_void, _endpoint: *const c_void) -> i8 {
                     -1
                 }
 
-                pub fn tcp_close(sock: *mut c_void) {
+                fn close(sock: *mut c_void) {
                     if sock.is_null() {
                         return;
                     }
@@ -183,7 +189,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
                 }
 
-                pub fn tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+                fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
                     let sock = unsafe { &*(sock as *const Socket) };
                     if sock._handle < 0 || buf.is_null() || len == 0 {
                         return usize::MAX;
@@ -208,7 +214,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     0
                 }
 
-                pub fn tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+                fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
                     let sock = unsafe { &*(sock as *const Socket) };
                     if sock._handle < 0 || buf.is_null() {
                         return usize::MAX;
@@ -248,7 +254,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     total
                 }
 
-                pub fn tcp_send(sock: *const c_void, buf: *const u8, len: usize) -> usize {
+                fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize {
                     let sock = unsafe { &*(sock as *const Socket) };
                     if sock._handle < 0 || buf.is_null() {
                         return usize::MAX;
@@ -292,8 +298,8 @@ macro_rules! __define_smoltcp_platform_impl {
 
             // ---- UDP ----
 
-            impl crate::$plat {
-                pub fn udp_create_endpoint(
+            impl $crate::PlatformUdp for crate::$plat {
+                fn create_endpoint(
                     ep: *mut c_void,
                     address: *const u8,
                     port: *const u8,
@@ -304,9 +310,9 @@ macro_rules! __define_smoltcp_platform_impl {
                     parse_endpoint(ep, address, port)
                 }
 
-                pub fn udp_free_endpoint(_ep: *mut c_void) {}
+                fn free_endpoint(_ep: *mut c_void) {}
 
-                pub fn udp_open(
+                fn open(
                     sock: *mut c_void,
                     endpoint: *const c_void,
                     _timeout_ms: u32,
@@ -341,7 +347,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     0
                 }
 
-                pub fn udp_close(sock: *mut c_void) {
+                fn close(sock: *mut c_void) {
                     if sock.is_null() {
                         return;
                     }
@@ -356,7 +362,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
                 }
 
-                pub fn udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+                fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
                     let sock = unsafe { &*(sock as *const Socket) };
                     if sock._handle < 0 || buf.is_null() || len == 0 {
                         return usize::MAX;
@@ -383,7 +389,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     }
                 }
 
-                pub fn udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+                fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
                     let sock = unsafe { &*(sock as *const Socket) };
                     if sock._handle < 0 || buf.is_null() {
                         return usize::MAX;
@@ -419,7 +425,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     total
                 }
 
-                pub fn udp_send(
+                fn send(
                     sock: *const c_void,
                     buf: *const u8,
                     len: usize,
@@ -462,7 +468,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     total
                 }
 
-                pub fn udp_set_recv_timeout(_sock: *const c_void, timeout_ms: u32) {
+                fn set_recv_timeout(_sock: *const c_void, timeout_ms: u32) {
                     unsafe {
                         UDP_RECV_TIMEOUT_MS = if timeout_ms == 0 {
                             SOCKET_TIMEOUT_MS
@@ -475,20 +481,21 @@ macro_rules! __define_smoltcp_platform_impl {
 
             // ---- Socket helpers ----
 
-            impl crate::$plat {
-                pub fn socket_set_non_blocking(_sock: *const c_void) -> i8 {
+            impl $crate::PlatformSocketHelpers for crate::$plat {
+                fn set_non_blocking(_sock: *const c_void) -> i8 {
                     0
                 }
 
-                pub fn socket_accept(_sock_in: *const c_void, _sock_out: *mut c_void) -> i8 {
+                fn accept(_sock_in: *const c_void, _sock_out: *mut c_void) -> i8 {
                     -1
                 }
 
-                pub fn socket_close(sock: *mut c_void) {
-                    Self::tcp_close(sock);
+                fn close(sock: *mut c_void) {
+                    // Reuse the TCP close path (both types carry Socket bytes).
+                    <crate::$plat as $crate::PlatformTcp>::close(sock);
                 }
 
-                pub fn socket_wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
+                fn wait_event(_peers: *mut c_void, _mutex: *mut c_void) -> i8 {
                     SmoltcpBridge::poll_network();
                     0
                 }
@@ -496,8 +503,8 @@ macro_rules! __define_smoltcp_platform_impl {
 
             // ---- UDP multicast stubs (not supported on bare-metal) ----
 
-            impl crate::$plat {
-                pub fn mcast_open(
+            impl $crate::PlatformUdpMulticast for crate::$plat {
+                fn mcast_open(
                     _sock: *mut c_void,
                     _endpoint: *const c_void,
                     _lep: *mut c_void,
@@ -507,7 +514,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     -1
                 }
 
-                pub fn mcast_listen(
+                fn mcast_listen(
                     _sock: *mut c_void,
                     _endpoint: *const c_void,
                     _timeout_ms: u32,
@@ -517,7 +524,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     -1
                 }
 
-                pub fn mcast_close(
+                fn mcast_close(
                     _sockrecv: *mut c_void,
                     _socksend: *mut c_void,
                     _rep: *const c_void,
@@ -525,7 +532,7 @@ macro_rules! __define_smoltcp_platform_impl {
                 ) {
                 }
 
-                pub fn mcast_read(
+                fn mcast_read(
                     _sock: *const c_void,
                     _buf: *mut u8,
                     _len: usize,
@@ -535,7 +542,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     usize::MAX
                 }
 
-                pub fn mcast_read_exact(
+                fn mcast_read_exact(
                     _sock: *const c_void,
                     _buf: *mut u8,
                     _len: usize,
@@ -545,7 +552,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     usize::MAX
                 }
 
-                pub fn mcast_send(
+                fn mcast_send(
                     _sock: *const c_void,
                     _buf: *const u8,
                     _len: usize,

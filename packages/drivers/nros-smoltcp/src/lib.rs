@@ -24,6 +24,11 @@ mod network_state;
 mod platform_macro;
 pub mod util;
 
+// Re-export the network traits so `define_smoltcp_platform!` can reach them
+// via `$crate::Platform*` without the caller crate needing a direct
+// `nros-platform-api` import just to drive the macro.
+pub use nros_platform_api::{PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast};
+
 pub use network_state::NetworkState;
 
 pub use bridge::{

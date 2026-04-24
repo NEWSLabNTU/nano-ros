@@ -155,39 +155,18 @@ pub trait PlatformTime {
 // ============================================================================
 // Threading (multi-threaded platforms only)
 // ============================================================================
-
-/// Opaque task handle.
-///
-/// Platform implementations define the actual layout. Must be
-/// at least `size_of::<*mut c_void>()` bytes for a handle/pointer.
-#[repr(C)]
-pub struct TaskHandle {
-    _opaque: [u8; 64],
-}
-
-/// Task creation attributes.
-#[repr(C)]
-pub struct TaskAttr {
-    _opaque: [u8; 64],
-}
-
-/// Opaque mutex handle.
-#[repr(C)]
-pub struct MutexHandle {
-    _opaque: [u8; 32],
-}
-
-/// Opaque recursive mutex handle.
-#[repr(C)]
-pub struct RecursiveMutexHandle {
-    _opaque: [u8; 32],
-}
-
-/// Opaque condition variable handle.
-#[repr(C)]
-pub struct CondvarHandle {
-    _opaque: [u8; 48],
-}
+//
+// Handle types are opaque `*mut c_void` to match the shape zenoh-pico
+// passes across the FFI boundary. The original draft had typed wrappers
+// (`TaskHandle`, `MutexHandle`, ...) but every shipped platform used
+// `*mut c_void` internally and the shim never materialised the typed
+// forms — keeping them in the trait would have required a pointless
+// cast at every impl site. (F4.1 / F4.5 decision, 2026-04-24.)
+//
+// Mutex / condvar / task method names keep their sub-namespace prefix
+// (`mutex_*`, `condvar_*`, `task_*`) because the trait bundles three
+// independent primitive families and unprefixed `init` / `drop` would
+// be ambiguous *within* the trait itself.
 
 /// Threading primitives: tasks, mutexes, and condition variables.
 ///
@@ -198,49 +177,55 @@ pub trait PlatformThreading {
 
     /// Spawn a new task. Returns 0 on success, -1 on failure.
     fn task_init(
-        task: *mut TaskHandle,
-        attr: *mut TaskAttr,
+        task: *mut c_void,
+        attr: *mut c_void,
         entry: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
         arg: *mut c_void,
     ) -> i8;
 
-    fn task_join(task: *mut TaskHandle) -> i8;
-    fn task_detach(task: *mut TaskHandle) -> i8;
-    fn task_cancel(task: *mut TaskHandle) -> i8;
+    fn task_join(task: *mut c_void) -> i8;
+    fn task_detach(task: *mut c_void) -> i8;
+    fn task_cancel(task: *mut c_void) -> i8;
     fn task_exit();
-    fn task_free(task: *mut *mut TaskHandle);
+    fn task_free(task: *mut *mut c_void);
 
     // -- Mutex --
 
-    fn mutex_init(m: *mut MutexHandle) -> i8;
-    fn mutex_drop(m: *mut MutexHandle) -> i8;
-    fn mutex_lock(m: *mut MutexHandle) -> i8;
-    fn mutex_try_lock(m: *mut MutexHandle) -> i8;
-    fn mutex_unlock(m: *mut MutexHandle) -> i8;
+    fn mutex_init(m: *mut c_void) -> i8;
+    fn mutex_drop(m: *mut c_void) -> i8;
+    fn mutex_lock(m: *mut c_void) -> i8;
+    fn mutex_try_lock(m: *mut c_void) -> i8;
+    fn mutex_unlock(m: *mut c_void) -> i8;
 
     // -- Recursive mutex --
 
-    fn mutex_rec_init(m: *mut RecursiveMutexHandle) -> i8;
-    fn mutex_rec_drop(m: *mut RecursiveMutexHandle) -> i8;
-    fn mutex_rec_lock(m: *mut RecursiveMutexHandle) -> i8;
-    fn mutex_rec_try_lock(m: *mut RecursiveMutexHandle) -> i8;
-    fn mutex_rec_unlock(m: *mut RecursiveMutexHandle) -> i8;
+    fn mutex_rec_init(m: *mut c_void) -> i8;
+    fn mutex_rec_drop(m: *mut c_void) -> i8;
+    fn mutex_rec_lock(m: *mut c_void) -> i8;
+    fn mutex_rec_try_lock(m: *mut c_void) -> i8;
+    fn mutex_rec_unlock(m: *mut c_void) -> i8;
 
     // -- Condition variables --
 
-    fn condvar_init(cv: *mut CondvarHandle) -> i8;
-    fn condvar_drop(cv: *mut CondvarHandle) -> i8;
-    fn condvar_signal(cv: *mut CondvarHandle) -> i8;
-    fn condvar_signal_all(cv: *mut CondvarHandle) -> i8;
-    fn condvar_wait(cv: *mut CondvarHandle, m: *mut MutexHandle) -> i8;
+    fn condvar_init(cv: *mut c_void) -> i8;
+    fn condvar_drop(cv: *mut c_void) -> i8;
+    fn condvar_signal(cv: *mut c_void) -> i8;
+    fn condvar_signal_all(cv: *mut c_void) -> i8;
+    fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
 
     /// Wait with absolute timeout (milliseconds since boot).
-    fn condvar_wait_until(cv: *mut CondvarHandle, m: *mut MutexHandle, abstime: u64) -> i8;
+    fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 }
 
 /// Network poll callback for bare-metal platforms using smoltcp.
 ///
 /// Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX).
+///
+/// **Dispatch model**: currently documentary only — bare-metal platforms
+/// drive their `SmoltcpBridge::poll_network()` from timer ISRs and from
+/// the `PlatformTcp` / `PlatformUdp` send/receive bodies directly.
+/// Kept in the API surface for consistency with the other capability
+/// traits; may become dispatch-active in a follow-up phase.
 pub trait PlatformNetworkPoll {
     /// Poll the network stack to process pending I/O.
     fn network_poll();
@@ -340,6 +325,27 @@ pub trait PlatformSocketHelpers {
 /// Standard C library functions needed by zenoh-pico on bare-metal targets.
 ///
 /// Platforms with a C runtime (RTOS, POSIX) do NOT need to implement this.
+///
+/// # Dispatch model (Phase 84.F4.6)
+///
+/// This trait is **documentary only** — it is NOT dispatched through by
+/// `zpico-platform-shim` or `xrce-platform-shim`. The C libraries resolve
+/// these symbols (`strlen`, `memcpy`, `errno`, ...) at link time directly
+/// from `#[unsafe(no_mangle)] extern "C" fn` definitions in
+/// `nros-baremetal-common`, which bare-metal platform crates pull in
+/// via the `libc-stubs` feature:
+///
+/// ```text
+///   nros-baremetal-common = { ..., features = ["libc-stubs"] }
+/// ```
+///
+/// The trait is retained in this API surface so that a future shim
+/// refactor could route libc through typed Rust methods without
+/// changing consumers. Today, implementing `PlatformLibc` on a platform
+/// ZST would be pure documentation; the actual contract — "the linker
+/// can resolve `strlen` etc." — is enforced at link time, not at
+/// compile time. No platform crate implements this trait in the
+/// current tree.
 pub trait PlatformLibc {
     fn strlen(s: *const u8) -> usize;
     fn strcmp(s1: *const u8, s2: *const u8) -> c_int;

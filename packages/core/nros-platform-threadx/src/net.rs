@@ -494,3 +494,138 @@ impl ThreadxPlatform {
         usize::MAX
     }
 }
+
+// ============================================================================
+// Trait impls (Phase 84.F4.4)
+// ============================================================================
+//
+// Delegate to the inherent methods above. Every shim dispatch goes through
+// these traits (`<ConcretePlatform as PlatformTcp>::open(...)`) so a
+// trait-method rename or addition produces a compile error here instead of
+// a silent link failure. The inherent methods are kept (rather than
+// collapsed into the trait bodies) so that internal `Self::tcp_read` /
+// `Self::udp_send` / ... calls in this file keep working unchanged.
+
+impl nros_platform_api::PlatformTcp for ThreadxPlatform {
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        Self::tcp_create_endpoint(ep, address, port)
+    }
+    fn free_endpoint(ep: *mut c_void) {
+        Self::tcp_free_endpoint(ep)
+    }
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::tcp_open(sock, endpoint, timeout_ms)
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8 {
+        Self::tcp_listen(sock, endpoint)
+    }
+    fn close(sock: *mut c_void) {
+        Self::tcp_close(sock)
+    }
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        Self::tcp_read(sock, buf, len)
+    }
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        Self::tcp_read_exact(sock, buf, len)
+    }
+    fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize {
+        Self::tcp_send(sock, buf, len)
+    }
+}
+
+impl nros_platform_api::PlatformUdp for ThreadxPlatform {
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        Self::udp_create_endpoint(ep, address, port)
+    }
+    fn free_endpoint(ep: *mut c_void) {
+        Self::udp_free_endpoint(ep)
+    }
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_open(sock, endpoint, timeout_ms)
+    }
+    fn close(sock: *mut c_void) {
+        Self::udp_close(sock)
+    }
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        Self::udp_read(sock, buf, len)
+    }
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        Self::udp_read_exact(sock, buf, len)
+    }
+    fn send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize {
+        Self::udp_send(sock, buf, len, endpoint)
+    }
+    fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        Self::udp_set_recv_timeout(sock, timeout_ms)
+    }
+}
+
+impl nros_platform_api::PlatformSocketHelpers for ThreadxPlatform {
+    fn set_non_blocking(sock: *const c_void) -> i8 {
+        Self::socket_set_non_blocking(sock)
+    }
+    fn accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8 {
+        Self::socket_accept(sock_in, sock_out)
+    }
+    fn close(sock: *mut c_void) {
+        Self::socket_close(sock)
+    }
+    fn wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8 {
+        Self::socket_wait_event(peers, mutex)
+    }
+}
+
+impl nros_platform_api::PlatformUdpMulticast for ThreadxPlatform {
+    fn mcast_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+    ) -> i8 {
+        Self::mcast_open(sock, endpoint, lep, timeout_ms, iface)
+    }
+    fn mcast_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+        join: *const u8,
+    ) -> i8 {
+        Self::mcast_listen(sock, endpoint, timeout_ms, iface, join)
+    }
+    fn mcast_close(
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
+        rep: *const c_void,
+        lep: *const c_void,
+    ) {
+        Self::mcast_close(sockrecv, socksend, rep, lep)
+    }
+    fn mcast_read(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize {
+        Self::mcast_read(sock, buf, len, lep, addr)
+    }
+    fn mcast_read_exact(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize {
+        Self::mcast_read_exact(sock, buf, len, lep, addr)
+    }
+    fn mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize {
+        Self::mcast_send(sock, buf, len, endpoint)
+    }
+}

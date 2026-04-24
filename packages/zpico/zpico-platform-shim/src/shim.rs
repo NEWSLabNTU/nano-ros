@@ -1,7 +1,9 @@
 use core::ffi::{c_char, c_ulong, c_void};
 
 use nros_platform::{
-    ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
+    ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep,
+    PlatformSocketHelpers, PlatformTcp, PlatformThreading, PlatformTime, PlatformUdp,
+    PlatformUdpMulticast,
 };
 
 type P = ConcretePlatform;
@@ -278,37 +280,37 @@ pub extern "C" fn _z_task_init(
     fun: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
     arg: *mut c_void,
 ) -> i8 {
-    P::task_init(task as *mut c_void, attr as *mut c_void, fun, arg)
+    <P as PlatformThreading>::task_init(task as *mut c_void, attr as *mut c_void, fun, arg)
 }
 
 #[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_join(task: *mut ZTask) -> i8 {
-    P::task_join(task as *mut c_void)
+    <P as PlatformThreading>::task_join(task as *mut c_void)
 }
 
 #[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_detach(task: *mut ZTask) -> i8 {
-    P::task_detach(task as *mut c_void)
+    <P as PlatformThreading>::task_detach(task as *mut c_void)
 }
 
 #[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_cancel(task: *mut ZTask) -> i8 {
-    P::task_cancel(task as *mut c_void)
+    <P as PlatformThreading>::task_cancel(task as *mut c_void)
 }
 
 #[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_exit() {
-    P::task_exit()
+    <P as PlatformThreading>::task_exit()
 }
 
 #[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_free(task: *mut *mut ZTask) {
-    P::task_free(task as *mut *mut c_void)
+    <P as PlatformThreading>::task_free(task as *mut *mut c_void)
 }
 
 // ============================================================================
@@ -317,27 +319,27 @@ pub extern "C" fn _z_task_free(task: *mut *mut ZTask) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_init(m: *mut ZMutex) -> i8 {
-    P::mutex_init(m as *mut c_void)
+    <P as PlatformThreading>::mutex_init(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_drop(m: *mut ZMutex) -> i8 {
-    P::mutex_drop(m as *mut c_void)
+    <P as PlatformThreading>::mutex_drop(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_lock(m: *mut ZMutex) -> i8 {
-    P::mutex_lock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_lock(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_try_lock(m: *mut ZMutex) -> i8 {
-    P::mutex_try_lock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_try_lock(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_unlock(m: *mut ZMutex) -> i8 {
-    P::mutex_unlock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_unlock(m as *mut c_void)
 }
 
 // ============================================================================
@@ -346,27 +348,27 @@ pub extern "C" fn _z_mutex_unlock(m: *mut ZMutex) -> i8 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_init(m: *mut ZMutexRec) -> i8 {
-    P::mutex_rec_init(m as *mut c_void)
+    <P as PlatformThreading>::mutex_rec_init(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_drop(m: *mut ZMutexRec) -> i8 {
-    P::mutex_rec_drop(m as *mut c_void)
+    <P as PlatformThreading>::mutex_rec_drop(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_lock(m: *mut ZMutexRec) -> i8 {
-    P::mutex_rec_lock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_rec_lock(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_try_lock(m: *mut ZMutexRec) -> i8 {
-    P::mutex_rec_try_lock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_rec_try_lock(m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_unlock(m: *mut ZMutexRec) -> i8 {
-    P::mutex_rec_unlock(m as *mut c_void)
+    <P as PlatformThreading>::mutex_rec_unlock(m as *mut c_void)
 }
 
 // ============================================================================
@@ -375,27 +377,27 @@ pub extern "C" fn _z_mutex_rec_unlock(m: *mut ZMutexRec) -> i8 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_init(cv: *mut ZCondvar) -> i8 {
-    P::condvar_init(cv as *mut c_void)
+    <P as PlatformThreading>::condvar_init(cv as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_drop(cv: *mut ZCondvar) -> i8 {
-    P::condvar_drop(cv as *mut c_void)
+    <P as PlatformThreading>::condvar_drop(cv as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_signal(cv: *mut ZCondvar) -> i8 {
-    P::condvar_signal(cv as *mut c_void)
+    <P as PlatformThreading>::condvar_signal(cv as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_signal_all(cv: *mut ZCondvar) -> i8 {
-    P::condvar_signal_all(cv as *mut c_void)
+    <P as PlatformThreading>::condvar_signal_all(cv as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_wait(cv: *mut ZCondvar, m: *mut ZMutex) -> i8 {
-    P::condvar_wait(cv as *mut c_void, m as *mut c_void)
+    <P as PlatformThreading>::condvar_wait(cv as *mut c_void, m as *mut c_void)
 }
 
 #[unsafe(no_mangle)]
@@ -405,7 +407,7 @@ pub extern "C" fn _z_condvar_wait_until(
     abstime: *const usize, // z_clock_t = TickType_t (u32) on FreeRTOS, void* on bare-metal
 ) -> i8 {
     let t = unsafe { *abstime } as u64;
-    P::condvar_wait_until(cv as *mut c_void, m as *mut c_void, t)
+    <P as PlatformThreading>::condvar_wait_until(cv as *mut c_void, m as *mut c_void, t)
 }
 
 // (socket_stubs module removed — replaced by `network` feature forwarders)
@@ -428,17 +430,17 @@ mod net_tcp {
         s_address: *const u8,
         s_port: *const u8,
     ) -> i8 {
-        P::tcp_create_endpoint(ep as *mut c_void, s_address, s_port)
+        <P as PlatformTcp>::create_endpoint(ep as *mut c_void, s_address, s_port)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_free_endpoint_tcp(ep: *mut ZSysNetEndpoint) {
-        P::tcp_free_endpoint(ep as *mut c_void);
+        <P as PlatformTcp>::free_endpoint(ep as *mut c_void);
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_open_tcp(sock: *mut ZSysNetSocket, rep: ZSysNetEndpoint, tout: u32) -> i8 {
-        P::tcp_open(
+        <P as PlatformTcp>::open(
             sock as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
             tout,
@@ -447,7 +449,7 @@ mod net_tcp {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_listen_tcp(sock: *mut ZSysNetSocket, rep: ZSysNetEndpoint) -> i8 {
-        P::tcp_listen(
+        <P as PlatformTcp>::listen(
             sock as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
         )
@@ -455,22 +457,22 @@ mod net_tcp {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_close_tcp(sock: *mut ZSysNetSocket) {
-        P::tcp_close(sock as *mut c_void);
+        <P as PlatformTcp>::close(sock as *mut c_void);
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_read_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
-        P::tcp_read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+        <P as PlatformTcp>::read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_read_exact_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
-        P::tcp_read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+        <P as PlatformTcp>::read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_send_tcp(sock: ZSysNetSocket, ptr: *const u8, len: usize) -> usize {
-        P::tcp_send(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+        <P as PlatformTcp>::send(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 }
 
@@ -484,12 +486,12 @@ mod net_udp {
         s_address: *const u8,
         s_port: *const u8,
     ) -> i8 {
-        P::udp_create_endpoint(ep as *mut c_void, s_address, s_port)
+        <P as PlatformUdp>::create_endpoint(ep as *mut c_void, s_address, s_port)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_free_endpoint_udp(ep: *mut ZSysNetEndpoint) {
-        P::udp_free_endpoint(ep as *mut c_void);
+        <P as PlatformUdp>::free_endpoint(ep as *mut c_void);
     }
 
     #[unsafe(no_mangle)]
@@ -498,7 +500,7 @@ mod net_udp {
         rep: ZSysNetEndpoint,
         tout: u32,
     ) -> i8 {
-        P::udp_open(
+        <P as PlatformUdp>::open(
             sock as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
             tout,
@@ -521,12 +523,12 @@ mod net_udp {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_close_udp_unicast(sock: *mut ZSysNetSocket) {
-        P::udp_close(sock as *mut c_void);
+        <P as PlatformUdp>::close(sock as *mut c_void);
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_read_udp_unicast(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
-        P::udp_read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+        <P as PlatformUdp>::read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 
     #[unsafe(no_mangle)]
@@ -535,7 +537,7 @@ mod net_udp {
         ptr: *mut u8,
         len: usize,
     ) -> usize {
-        P::udp_read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+        <P as PlatformUdp>::read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 
     #[unsafe(no_mangle)]
@@ -545,7 +547,7 @@ mod net_udp {
         len: usize,
         rep: ZSysNetEndpoint,
     ) -> usize {
-        P::udp_send(
+        <P as PlatformUdp>::send(
             &sock as *const ZSysNetSocket as *const c_void,
             ptr,
             len,
@@ -560,7 +562,7 @@ mod net_helpers {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_set_non_blocking(sock: *const ZSysNetSocket) -> i8 {
-        P::socket_set_non_blocking(sock as *const c_void)
+        <P as PlatformSocketHelpers>::set_non_blocking(sock as *const c_void)
     }
 
     #[unsafe(no_mangle)]
@@ -568,17 +570,17 @@ mod net_helpers {
         sock_in: *const ZSysNetSocket,
         sock_out: *mut ZSysNetSocket,
     ) -> i8 {
-        P::socket_accept(sock_in as *const c_void, sock_out as *mut c_void)
+        <P as PlatformSocketHelpers>::accept(sock_in as *const c_void, sock_out as *mut c_void)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
-        P::socket_close(sock as *mut c_void);
+        <P as PlatformSocketHelpers>::close(sock as *mut c_void);
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_wait_event(peers: *mut c_void, mutex: *mut ZMutex) -> i8 {
-        P::socket_wait_event(peers, mutex as *mut c_void)
+        <P as PlatformSocketHelpers>::wait_event(peers, mutex as *mut c_void)
     }
 }
 
@@ -598,7 +600,7 @@ mod net_mcast {
         tout: u32,
         iface: *const u8,
     ) -> i8 {
-        P::mcast_open(
+        <P as PlatformUdpMulticast>::mcast_open(
             sock as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
             lep as *mut c_void,
@@ -615,7 +617,7 @@ mod net_mcast {
         iface: *const u8,
         join: *const u8,
     ) -> i8 {
-        P::mcast_listen(
+        <P as PlatformUdpMulticast>::mcast_listen(
             sock as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
             tout,
@@ -631,7 +633,7 @@ mod net_mcast {
         rep: ZSysNetEndpoint,
         lep: ZSysNetEndpoint,
     ) {
-        P::mcast_close(
+        <P as PlatformUdpMulticast>::mcast_close(
             sockrecv as *mut c_void,
             socksend as *mut c_void,
             &rep as *const ZSysNetEndpoint as *const c_void,
@@ -647,7 +649,7 @@ mod net_mcast {
         lep: ZSysNetEndpoint,
         addr: *mut c_void, // *mut _z_slice_t
     ) -> usize {
-        P::mcast_read(
+        <P as PlatformUdpMulticast>::mcast_read(
             &sock as *const ZSysNetSocket as *const c_void,
             ptr,
             len,
@@ -664,7 +666,7 @@ mod net_mcast {
         lep: ZSysNetEndpoint,
         addr: *mut c_void,
     ) -> usize {
-        P::mcast_read_exact(
+        <P as PlatformUdpMulticast>::mcast_read_exact(
             &sock as *const ZSysNetSocket as *const c_void,
             ptr,
             len,
@@ -680,7 +682,7 @@ mod net_mcast {
         len: usize,
         rep: ZSysNetEndpoint,
     ) -> usize {
-        P::mcast_send(
+        <P as PlatformUdpMulticast>::mcast_send(
             &sock as *const ZSysNetSocket as *const c_void,
             ptr,
             len,

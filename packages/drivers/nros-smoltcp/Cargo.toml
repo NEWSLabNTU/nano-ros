@@ -12,6 +12,7 @@ name = "nros_smoltcp"
 default = []
 
 [dependencies]
+nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
 ] }
