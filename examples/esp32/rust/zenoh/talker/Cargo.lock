@@ -1231,8 +1231,13 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-esp32",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-esp32"
@@ -1240,6 +1245,7 @@ version = "0.1.0"
 dependencies = [
  "esp-hal",
  "nros-baremetal-common",
+ "nros-platform-api",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1285,6 +1291,7 @@ dependencies = [
 name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "smoltcp",
 ]
 

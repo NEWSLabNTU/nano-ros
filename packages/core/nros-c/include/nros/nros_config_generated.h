@@ -6,12 +6,12 @@
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
 /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
- * Values below are `size_of::<T>()` for each Rust type, extracted from
- * the compiled `nros` rlib by nros-sizes-build. They coexist with the
- * hand-math macros above during the Phase 87.3 transition; once
- * downstream consumers are migrated (Phase 87.4/87.6) the hand-math
- * macros are deleted.
- */
+* Values below are `size_of::<T>()` for each Rust type, extracted from
+* the compiled `nros` rlib by nros-sizes-build. They coexist with the
+* hand-math macros above during the Phase 87.3 transition; once
+* downstream consumers are migrated (Phase 87.4/87.6) the hand-math
+* macros are deleted.
+*/
 /** `size_of::<nros_node::Executor>()` */
 #define NROS_EXECUTOR_SIZE 16784
 /** `size_of::<nros_node::GuardConditionHandle>()` */

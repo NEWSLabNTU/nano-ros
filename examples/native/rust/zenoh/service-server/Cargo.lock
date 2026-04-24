@@ -475,14 +475,20 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-posix",
 ]
+
+[[package]]
+name = "nros-platform-api"
+version = "0.1.0"
 
 [[package]]
 name = "nros-platform-posix"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "nros-platform-api",
 ]
 
 [[package]]
