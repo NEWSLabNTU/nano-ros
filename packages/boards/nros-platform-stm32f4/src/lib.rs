@@ -12,6 +12,7 @@ pub mod net;
 pub mod phy;
 pub mod pins;
 pub mod random;
+pub mod serial;
 pub mod sleep;
 pub mod timing;
 

@@ -393,18 +393,45 @@ typedef struct {
         doesn't have to re-negotiate the trait shape at the same
         time as changing the bare-metal driver plumbing. Verified:
         3/3 XRCE serial + 14/14 full XRCE suite still green.
-  - [ ] 80.14.4b — **zpico-serial → `PlatformSerial`**: delete
-        `zpico_serial::SerialPort` + `register_port`; migrate
-        `nros-mps2-an385` + `nros-stm32f4` from the trait-object
-        port-table to `impl PlatformSerial for {Board}Platform`
-        with a static port table stored on the platform side;
-        route `zpico_serial`'s internal read/write through
-        `<ConcretePlatform as PlatformSerial>::*(handle, ...)`.
-        Sketched in the phase-80 design notes. Defer-pending-
-        hardware: wants a real mps2-an385 / stm32f4 smoke test
-        before merge, not just `cargo check --target
-        thumbv7m-none-eabi` — the static port table relocation
-        has runtime implications the compile step can't catch.
+  - [x] 80.14.4b — **`PlatformSerial` surface on bare-metal**
+        (minimal-scope). Both `nros-platform-mps2-an385` and
+        `nros-platform-stm32f4` now implement
+        `PlatformSerial`, backed by a fn-pointer vtable that the
+        corresponding board crate (`nros-mps2-an385` /
+        `nros-stm32f4`) populates during `init_serial()`. The
+        board-side fn pointers dispatch to the same UART the
+        board hands to `zpico_serial::register_port`; both paths
+        share state. Shape: `Handle = u8`, single-port,
+        `handle == 0` is the live UART.
+
+        **What this does:**
+        `<Mps2An385Platform as PlatformSerial>::read/write(0, ...)`
+        now delivers / consumes bytes from the board's UART.
+        Future RMWs (a hypothetical zenoh-over-UART test harness,
+        a second XRCE transport, etc.) can use the trait without
+        negotiating with `zpico-serial`.
+
+        **What this does *not* do:**
+        `zpico-serial` still uses its own `SerialPort` +
+        `register_port` path internally. A deeper migration
+        (delete `SerialPort`, route `zpico_serial` through
+        `PlatformSerial`, centralise the RX ring buffer) is a
+        follow-up (tracked as 80.14.4c if it ever lands —
+        requires a real hardware smoke test since the port-table
+        ownership moves).
+
+        Also fixed a latent F4.4 bug uncovered by this work:
+        `zpico-platform-shim`'s per-module network dispatch
+        (`net_tcp`, `net_udp`, `net_helpers`, `net_mcast`) wasn't
+        importing the trait names into module scope — worked on
+        paths where top-level `use` happened to resolve via the
+        feature-active platform, failed on `--features serial`
+        only builds. Each module now explicitly imports the trait
+        it dispatches through.
+
+        Verified: mps2-an385 with both `ethernet` and `serial`
+        features, stm32f4 with `serial`, all build clean on their
+        respective bare-metal targets; workspace check clean.
   - [x] 80.14.5 — Deleted `nros-rmw-xrce::posix_serial` (replaced by
         `platform_serial`). Call sites in `nros` / `nros-node`
         switched to `nros_rmw_xrce::platform_serial::init_platform_serial_transport`.

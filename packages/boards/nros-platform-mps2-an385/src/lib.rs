@@ -15,6 +15,7 @@ pub mod libc_stubs;
 pub mod memory;
 pub mod net;
 pub mod random;
+pub mod serial;
 pub mod sleep;
 pub mod threading;
 pub mod time;

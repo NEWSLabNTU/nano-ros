@@ -49,6 +49,56 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 #[cfg(feature = "serial")]
 static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit();
 
+// ---- PlatformSerial vtable shims (Phase 80.14.4b) ----
+//
+// Fn-pointer glue so that `nros_platform_mps2_an385::Mps2An385Platform`
+// implements `nros_platform_api::PlatformSerial`. Dispatches to the
+// same `UART_DEVICE` that `zpico-serial::register_port(0, ...)` uses,
+// so the two paths (legacy `SerialPort` and new `PlatformSerial`)
+// share state. Single-port; `handle == 0` is the live UART.
+
+#[cfg(feature = "serial")]
+#[allow(static_mut_refs)]
+unsafe fn plat_serial_open(_path: *const u8) -> u8 {
+    // Board crate opened the UART during `init_serial`; `open` is a
+    // no-op that returns the fixed handle.
+    0
+}
+#[cfg(feature = "serial")]
+unsafe fn plat_serial_close(_h: u8) {
+    // No-op: the UART is torn down with the board crate, not per-session.
+}
+#[cfg(feature = "serial")]
+unsafe fn plat_serial_configure(_h: u8, _baudrate: u32) -> i8 {
+    // Baud rate was set by CmsdkUart::new + enable during init_serial.
+    // Runtime reconfiguration not supported for this board.
+    -1
+}
+#[cfg(feature = "serial")]
+#[allow(static_mut_refs)]
+unsafe fn plat_serial_read(h: u8, buf: *mut u8, len: usize, _timeout_ms: u32) -> usize {
+    if h != 0 {
+        return usize::MAX;
+    }
+    unsafe {
+        use zpico_serial::SerialPort;
+        let slice = core::slice::from_raw_parts_mut(buf, len);
+        UART_DEVICE.assume_init_mut().read(slice)
+    }
+}
+#[cfg(feature = "serial")]
+#[allow(static_mut_refs)]
+unsafe fn plat_serial_write(h: u8, buf: *const u8, len: usize) -> usize {
+    if h != 0 {
+        return usize::MAX;
+    }
+    unsafe {
+        use zpico_serial::SerialPort;
+        let slice = core::slice::from_raw_parts(buf, len);
+        UART_DEVICE.assume_init_mut().write(slice)
+    }
+}
+
 // ---- Semihosting helpers ----
 
 /// Get host wall-clock time via ARM semihosting SYS_TIME (0x11).
@@ -261,6 +311,19 @@ fn init_serial(config: &Config) {
     unsafe {
         UART_DEVICE.write(uart);
         zpico_serial::register_port(0, UART_DEVICE.assume_init_mut());
+
+        // Also register the PlatformSerial vtable so future RMWs can
+        // use `<Mps2An385Platform as PlatformSerial>::*(handle, ...)`
+        // without going through zpico-serial's `SerialPort` path.
+        nros_platform_mps2_an385::serial::register_serial_vtable(
+            nros_platform_mps2_an385::serial::SerialVTable {
+                open: plat_serial_open,
+                close: plat_serial_close,
+                configure: plat_serial_configure,
+                read: plat_serial_read,
+                write: plat_serial_write,
+            },
+        );
     }
 
     // Seed RNG with host wall-clock time via semihosting to generate unique

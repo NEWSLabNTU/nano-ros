@@ -111,12 +111,70 @@ pub fn init_hardware(
             stm32f4_usart::init_usart(config.usart_index, config.baudrate)
         };
 
-        // Store in static so the reference lives forever
+        // Store in static so the reference lives forever.
         static mut SERIAL_PORT: Option<stm32f4_usart::Stm32f4Usart> = None;
+
+        // PlatformSerial vtable shims (Phase 80.14.4b) — fn-pointer
+        // glue so `nros_platform_stm32f4::Stm32f4Platform` satisfies
+        // `nros_platform_api::PlatformSerial`. Dispatches to the same
+        // `SERIAL_PORT` that `zpico-serial::register_port(0, ...)` uses;
+        // the two paths share state. `handle == 0` is the live UART.
+        unsafe fn plat_serial_open(_path: *const u8) -> u8 { 0 }
+        unsafe fn plat_serial_close(_h: u8) {}
+        unsafe fn plat_serial_configure(_h: u8, _baudrate: u32) -> i8 { -1 }
+        #[allow(static_mut_refs)]
+        unsafe fn plat_serial_read(
+            h: u8,
+            buf: *mut u8,
+            len: usize,
+            _timeout_ms: u32,
+        ) -> usize {
+            if h != 0 {
+                return usize::MAX;
+            }
+            unsafe {
+                use zpico_serial::SerialPort;
+                let port = match SERIAL_PORT.as_mut() {
+                    Some(p) => p,
+                    None => return usize::MAX,
+                };
+                let slice = core::slice::from_raw_parts_mut(buf, len);
+                port.read(slice)
+            }
+        }
+        #[allow(static_mut_refs)]
+        unsafe fn plat_serial_write(h: u8, buf: *const u8, len: usize) -> usize {
+            if h != 0 {
+                return usize::MAX;
+            }
+            unsafe {
+                use zpico_serial::SerialPort;
+                let port = match SERIAL_PORT.as_mut() {
+                    Some(p) => p,
+                    None => return usize::MAX,
+                };
+                let slice = core::slice::from_raw_parts(buf, len);
+                port.write(slice)
+            }
+        }
+
         #[allow(static_mut_refs)]
         unsafe {
             SERIAL_PORT = Some(usart);
             zpico_serial::register_port(0, SERIAL_PORT.as_mut().unwrap());
+
+            // Register the PlatformSerial vtable so future RMWs can use
+            // `<Stm32f4Platform as PlatformSerial>::*(handle, ...)`
+            // without going through zpico-serial.
+            nros_platform_stm32f4::serial::register_serial_vtable(
+                nros_platform_stm32f4::serial::SerialVTable {
+                    open: plat_serial_open,
+                    close: plat_serial_close,
+                    configure: plat_serial_configure,
+                    read: plat_serial_read,
+                    write: plat_serial_write,
+                },
+            );
         }
 
         defmt::info!("USART{} registered as serial port 0", config.usart_index);
