@@ -12,15 +12,23 @@ use std::process::{Command, Stdio};
 // Guard Functions
 // =============================================================================
 
-/// Check if qemu-system-riscv32 (Espressif fork) is available
+/// Check if qemu-system-riscv32 (Espressif fork) is available.
+///
+/// The stock Debian/Ubuntu `qemu-system-riscv32` (QEMU ≤ 8.x) is *not*
+/// sufficient — it doesn't know about the `esp32c3` machine model and
+/// fails at launch with "unsupported machine type". Probe for the
+/// model specifically instead of the binary's mere existence.
 pub fn is_qemu_riscv32_available() -> bool {
-    Command::new("qemu-system-riscv32")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    let output = Command::new("qemu-system-riscv32")
+        .args(["-machine", "help"])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let text = String::from_utf8_lossy(&o.stdout);
+            text.contains("esp32c3")
+        }
+        _ => false,
+    }
 }
 
 /// Skip test if qemu-system-riscv32 is not available
