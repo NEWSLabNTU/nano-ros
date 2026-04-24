@@ -175,15 +175,25 @@ suggested.
 ## Work Items
 
 - [x] 71.1 — `block_on` on `NrosPlatformRuntime` (no fork patch needed)
-- [ ] 71.2 — Non-blocking UDP transport — replace std-thread model
+- [ ] 71.2 — Non-blocking UDP transport
 - [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
-- [ ] 71.4 — Arena entry for RTPS receive poll (`nros-rmw-dds::session`)
+- [~] 71.4 — `drive_io()` drives the runtime (skeleton landed; no background tasks spawned yet — waiting on 71.2)
 - [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
 - [ ] 71.8 — Zephyr DDS talker/listener example + nextest suite
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
-- [ ] 71.10 — (Optional) Upstream `block_on` + non-blocking transport to dust-dds
+- [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
+
+**Foundation landed, transport + embedded examples pending.** Items
+71.1, 71.3, 71.4 (skeleton), 71.5 give us the runtime adapter, the
+block_on shim, the `DdsSession::drive_io()` wire-up, and the feature
+matrix. Items 71.2 (the new UDP transport), 71.6 (allocator),
+71.7/71.8 (QEMU + Zephyr examples), 71.9 (interop test) each open
+cleanly against this skeleton. 71.10 (upstream) is only worth
+attempting if someone wants the non-blocking UDP transport upstream
+— since the nros path can live in `nros-rmw-dds` without fork
+changes, upstreaming is no longer on the critical path.
 
 ### 71.1 — `block_on` on `NrosPlatformRuntime` — **Landed** (no fork patch needed)
 
@@ -244,27 +254,48 @@ Covered by two new unit tests (`block_on_resolves_ready_future`,
 
 ### 71.2 — Non-blocking UDP transport
 
-`dust_dds::rtps_udp_transport::RtpsUdpTransportParticipantFactory`
-today spawns three `std::thread::spawn` recv loops per participant and
-uses `block_on(sender.send())` inside each. Replace with:
+Biggest remaining item. Two implementation paths on the table:
 
-1. Non-blocking sockets (`set_nonblocking(true)` on POSIX, `recv` with
-   zero timeout on `PlatformUdp`).
-2. A single `poll_recv()` function that tries each socket, returns
-   `Option<(Locator, Bytes)>`, and is called from the spawner's task
-   queue (nros platform) or from a dedicated recv task (std platform,
-   unchanged).
+**Path A — fork-patch `rtps_udp_transport`.** Replace the three
+`std::thread::spawn` recv loops in
+`dust-dds/dds/src/rtps_udp_transport/udp_transport.rs` with a
+non-blocking driver. Smallest code change (the rest of the transport
+— locator handling, multicast join, `MessageWriter::write_message` —
+stays). But this path is `std`-only (uses `std::net::UdpSocket` +
+`socket2::Socket`), so it only buys the cooperative-execution
+property on POSIX; no_std still needs a second transport.
 
-On POSIX this means swapping the 3× thread model for 1× thread driving
-`poll()` or `mio::Poll`. On nros platforms it means not spawning threads
-at all — `recv` is polled cooperatively from `spin_once()` (71.4).
+**Path B — new `nros-rmw-dds::transport_nros` module.** Implement
+`dust_dds::transport::TransportParticipantFactory` from scratch on
+top of `PlatformUdp` + `PlatformUdpMulticast`. Covers every nros
+platform (POSIX, Zephyr, NuttX, FreeRTOS, ThreadX, bare-metal via
+`SmoltcpBridge`). The catch is that `PlatformUdp`'s socket handle is
+an opaque `*mut c_void` whose size is derived by `zpico-platform-shim`
+from the platform's `_z_sys_net_socket_t` — we'd need a sibling
+`dds-platform-shim` (size-probed at build time) or direct
+`PlatformUdp` usage with a manual size reservation.
 
-This is the one substantial delta against upstream dust-dds and is
-worth contributing back (see 71.10).
+**Recommended split**:
 
-**Files**:
+1. **71.2.a** — Path A for native testing. ~150 LOC fork patch; lets
+   `test_dds_talker_listener_communication` use the cooperative
+   runtime end-to-end and unblocks 71.9 (cross-vendor interop test)
+   without also needing an embedded path.
+
+2. **71.2.b** — Path B for embedded. Lives in `nros-rmw-dds`, no
+   fork change, reuses `SmoltcpBridge` on bare-metal. ~400 LOC.
+   Unblocks 71.7 / 71.8.
+
+3. **71.2.c** — Drop Path A in favour of Path B once Path B is stable
+   on POSIX too (collapses the matrix to a single transport).
+
+**Files (Path A)**:
 - `packages/dds/dust-dds/dds/src/rtps_udp_transport/udp_transport.rs`
-- `packages/dds/dust-dds/dds/src/rtps_udp_transport/mod.rs`
+
+**Files (Path B)**:
+- `packages/dds/nros-rmw-dds/src/transport_nros.rs` (new)
+- `packages/dds/nros-rmw-dds/build.rs` (size-probe for the platform
+  socket handle, mirrors `zpico-platform-shim/build.rs`)
 
 ### 71.3 — `NrosPlatformRuntime<P>` adapter — **Landed**
 
@@ -312,23 +343,35 @@ needs to pick `NrosPlatformRuntime<ConcretePlatform>` instead of
 - `packages/dds/nros-rmw-dds/src/lib.rs` — `pub mod runtime;` (feature-gated)
 - `packages/dds/nros-rmw-dds/Cargo.toml` — `nros-platform` + `spin` deps
 
-### 71.4 — Arena entry for RTPS receive poll
+### 71.4 — `DdsSession::drive_io()` drives the runtime — **Skeleton landed**
 
-Mirrors the existing `zpico-platform-shim` dispatch hook: add an arena
-entry to `nros_node::Executor` that, on each `spin_once()`, drains the
-dust-dds runtime's task queue once and polls each participant's recv
-sockets with a short timeout.
+`DdsSession` now owns an `Arc<NrosPlatformRuntime<ConcretePlatform>>`
+on the `alloc + !std` path, and its `Session::drive_io()` impl calls
+`runtime.drive()` each spin:
 
-This is the key to unifying the model across platforms — dust-dds does
-not own any threads on our side, and DDS progress is deterministic with
-respect to the nros executor spin cadence.
+```rust
+fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+    #[cfg(all(feature = "alloc", not(feature = "std")))]
+    { self.runtime.drive(); }
+    Ok(())
+}
+```
+
+The hook is wired through the existing `nros_rmw::Session` trait that
+`nros_node::Executor` already calls once per `spin_once()` — no new
+`ArenaEntryKind` is needed. On `std + platform-posix` the stock
+dust-dds transport keeps its OS threads; `drive_io()` stays a no-op
+there.
+
+**Currently effective**: no. Background tasks (RTPS recv loops,
+reliability timers) are only spawned into the runtime once 71.2's
+transport lands. Until then the queue is permanently empty and
+`drive()` does zero work. This commit is the wire-up that 71.2 will
+activate.
 
 **Files**:
-- `packages/dds/nros-rmw-dds/src/session.rs` — `drive_io()` actually
-  does something now; currently a no-op (`std_runtime` runs threads).
-- `packages/core/nros-node/src/executor/` — possibly a new
-  `ArenaEntryKind::DdsSession` (or reuse a generic poll hook — TBD at
-  implementation time).
+- `packages/dds/nros-rmw-dds/src/session.rs` — `runtime` field +
+  `new_nostd()` constructor + `drive_io()` body.
 
 ### 71.5 — Feature-gated backend selection in `nros-rmw-dds` — **Cargo.toml landed; runtime selection pending 71.4**
 
