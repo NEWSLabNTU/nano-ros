@@ -67,6 +67,7 @@ platforms (~7).
 - [x] 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim
 - [x] 89.Baremetal — Within-platform parallelism, tier 2 extension: bare-metal MPS2-AN385 RTIC
 - [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
+- [ ] 89.12 — Post-77.22 `just test-all` re-triage (14 failing tests after the Phase 84.F4 platform-trait refactor landed and my Phase 77.20–77.22 / 89.5 / 89.6 fixes merged — partially regressions, partially the same originals Phase 89.2–89.8 had already closed which have re-opened on top of F4)
 
 ### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
 
@@ -767,3 +768,102 @@ from runtime-configurable strings.
   skips hide real regressions (cf. the
   `test_native_service_communication::lang_1_Language__C` case that
   slipped under the radar before Phase 84.G3's verification pass).
+
+### 89.12 — Post-77.22 `just test-all` re-triage
+
+**Context**: `just test-all` run on `main` after the Phase 84.F4
+platform-trait refactor landed and my Phase 77.20 / 77.21 / 77.22 /
+89.5 / 89.6 fixes merged on top. 662/676 passed (5 flaky, 14 failed,
+9 skipped). The failing set is a mix of:
+  * original 89.x categories that 84.F4 silently re-opened;
+  * new build-system regressions introduced by 84.F4 itself;
+  * environment-dependent gates whose skip conditions were
+    under-strict.
+
+Two fixable items are already in (commits `6fa02fbd`, `fdaee2db`).
+The remaining 14 still need owners.
+
+**Fixed in this pass**:
+
+- `test_generate_c_with_dependencies` (c-codegen, submodule
+  `packages/codegen`) — test asserted the pre-F4 flat
+  `#include <std_msgs.h>` form; the generator in
+  `cargo-nano-ros/src/lib.rs::generate_umbrella_header` now emits
+  the nested `<std_msgs/std_msgs.h>` path (deliberately, per its
+  own comment — the flat form only works when every package
+  directory is on the include path, which CMake doesn't guarantee).
+  Submodule commit `b172ea1`; superproject pointer updated by
+  `6fa02fbd`.
+- `is_qemu_riscv32_available` (`packages/testing/nros-tests/src/esp32.rs`)
+  — the probe only checked `qemu-system-riscv32 --version`, which
+  matches the stock Debian/Ubuntu QEMU that has *no* `esp32c3`
+  machine model. So the skip guard passed, the tests ran, and each
+  failed with a cryptic `unsupported machine type`. Commit
+  `fdaee2db` switches the probe to `-machine help` + grep for
+  `esp32c3` so the four ESP32 tests now skip cleanly with the
+  correct reason when the Espressif fork isn't installed.
+
+**Still open — NOT caused by my 77.22 changes**:
+
+| # | Test | Symptom | Suspected root cause |
+|---|---|---|---|
+| 1 | `test_esp32_qemu_talker_boots` | `skip!` panic — Espressif QEMU fork missing on this host | Environment; install via `./scripts/esp32/install-espressif-qemu.sh` |
+| 2 | `test_esp32_talker_listener_e2e` | same | same |
+| 3 | `test_esp32_to_native` | same | same |
+| 4 | `test_native_to_esp32` | same | same |
+| 5 | `test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | `zpico-sys` cross-build: `error: unknown type '_z_sys_net_socket_t'` at `zenoh-pico/link/link.h:114` | 84.F4 refactor of zpico-sys NuttX build includes: `ZENOH_GENERIC` + `ZENOH_NUTTX` defines both set, `zenoh_generic_platform.h` falls through to `bare-metal/platform.h`, but `ZENOH_NUTTX` should route through zenoh-pico's `platform/unix.h`. Include-chain regression from F4. |
+| 6 | `test_rtos_service_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | same build error | same |
+| 7 | `test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C` | same build error | same |
+| 8 | `test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C` | cross-build, fails after 3 retries at ~98 s | Distinct from #5–7 — ThreadX RV64 C toolchain path; needs its own repro |
+| 9 | `test_zephyr_action_e2e` | runtime — see 89.3 doc | 89.3 was "Landed" but this case still red; re-check |
+| 10 | `test_zephyr_cpp_action_server_to_client_e2e` | `nros_cpp_init` → `-100` (TRANSPORT_ERROR) in both server and client | 89.3 was supposed to close this (the zero-sized-storage fix), but it's re-opening on top of F4. Possibly C++ opaque-storage sizes reverted. |
+| 11 | `test_zephyr_cpp_service_server_to_client_e2e` | same `-100` in both roles | same as #10 |
+| 12 | `test_zephyr_native_server_zephyr_client` | runtime fail, passes in isolation | Parallel-load flake |
+| 13 | `test_zephyr_talker_to_listener_e2e` | TRY 1 FAIL, recovers | Flake |
+| 14 | `test_rtos_*_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust` and `lang_3_Lang__Cpp` | 89.3/89.8 territory; originally closed, still occasionally red | Cascade from F4 build matrix; re-run after the NuttX / Zephyr root causes are fixed |
+
+**Repro commands**:
+
+```bash
+# Full run (≈ 7 min):
+just test-all
+
+# Target the NuttX build regression in isolation:
+cargo nextest run -E 'test(test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C)'
+
+# ESP32 (needs Espressif QEMU — will cleanly skip if missing):
+cargo nextest run -E 'binary(esp32_emulator)'
+
+# Zephyr C++ service/action:
+cargo nextest run -E 'test(test_zephyr_cpp_service) or test(test_zephyr_cpp_action)'
+```
+
+**Action plan**:
+
+1. **NuttX `lang_2_C` build** (#5–7): bisect from `149ccf73`
+   (Phase 84.F4.2) forward. The `zenoh-pico/link/link.h` can't find
+   `_z_sys_net_socket_t`; `zenoh-pico/system/common/platform.h`
+   should route `ZENOH_NUTTX` to `platform/unix.h` and expose the
+   type, so the regression is either an include-ordering change
+   or a missing define. Start with `packages/zpico/zpico-sys/build.rs
+   ::build_zenoh_pico_nuttx` — compare against a pre-F4 checkout.
+2. **ThreadX RV64 C service** (#8): distinct cross-build; gather
+   the full compiler log before assuming it overlaps with #5–7.
+3. **Zephyr C++ E2E** (#10, #11): re-verify the 89.3 opaque-storage
+   sizes. `nros_cpp_init → -100` in *both* server and client
+   suggests the zpico session can't open at all, which is usually
+   a locator/discovery / Kconfig mismatch rather than a C++ wrapper
+   bug. Check `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+   for a stale zero-sized storage commit.
+4. **Flakes** (#12, #13, #14): rerun with `NEXTEST_RETRIES=3` and
+   see if anything still fails at retry 3. If yes, escalate into
+   its own triage item; if no, accept as load-sensitive and move
+   on.
+
+**Files**:
+- Submodule `packages/codegen`
+  (`cargo-nano-ros/tests/test_generate_c.rs`)
+- `packages/testing/nros-tests/src/esp32.rs`
+- Investigations still pending:
+  `packages/zpico/zpico-sys/build.rs::build_zenoh_pico_nuttx`,
+  `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
