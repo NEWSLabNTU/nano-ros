@@ -4,11 +4,16 @@ use nros_platform::{
     ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep,
     PlatformThreading, PlatformTime,
 };
-// `PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`, and
-// `PlatformUdpMulticast` are only used inside the feature-gated
-// `mod net_*` submodules — their `use super::{…}` lines bring them
-// into scope locally, so importing them at this top level would be
-// an unused-imports warning when the `network` feature is disabled.
+// The four network traits live at the parent scope so the inner
+// `mod net_*` submodules can reach them via `use super::{…}`. They
+// are only USED inside those submodules, all of which are
+// `#[cfg(feature = "network")]`, so the imports themselves must be
+// gated too — otherwise the compiler warns on unused imports when
+// `network` is disabled.
+#[cfg(feature = "network")]
+use nros_platform::{
+    PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
+};
 
 type P = ConcretePlatform;
 
