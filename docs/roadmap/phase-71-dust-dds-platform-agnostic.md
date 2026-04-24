@@ -174,7 +174,7 @@ suggested.
 
 ## Work Items
 
-- [ ] 71.1 — `DdsRuntime::block_on` back on the trait (fork patch)
+- [x] 71.1 — `block_on` on `NrosPlatformRuntime` (no fork patch needed)
 - [ ] 71.2 — Non-blocking UDP transport — replace std-thread model
 - [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
 - [ ] 71.4 — Arena entry for RTPS receive poll (`nros-rmw-dds::session`)
@@ -185,22 +185,62 @@ suggested.
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream `block_on` + non-blocking transport to dust-dds
 
-### 71.1 — `DdsRuntime::block_on` back on the trait
+### 71.1 — `block_on` on `NrosPlatformRuntime` — **Landed** (no fork patch needed)
 
-Sync `DomainParticipantFactory`, `DataWriter`, `DataReader`, etc. in the
-fork currently import `dust_dds::std_runtime::executor::block_on`
-directly. Reintroduce `fn block_on<T>(f: impl Future<Output = T>) -> T`
-on the `DdsRuntime` trait (it was present in v0.14, removed in v0.15
-upstream — we're keeping the fork closer to v0.14 on this point).
+The original framing assumed the sync API had to be patched to make
+`block_on` pluggable. Re-reading `dust-dds/dds/src/lib.rs` showed that
+the entire sync API (`dds/`) and `std_runtime` module are already
+`#[cfg(feature = "std")]`-gated:
 
-The default `StdRuntime` impl continues to use `thread::park` /
-`unpark`; our new `NrosPlatformRuntime` spins `Executor::spin_once()`
-until the future resolves (same shape as `nros_node::Promise::wait`).
+```rust
+#[cfg(feature = "std")]
+mod dds;
+#[cfg(feature = "std")]
+pub use dds::*;
+...
+#[cfg(feature = "std")]
+pub mod std_runtime;
+```
+
+— so on `no_std`, the sync API and its `std_runtime::executor::block_on`
+call are simply not in the build. The no_std path already has to use
+the async API (`dds_async::*`) anyway, which needs its own `block_on`
+to collapse each async call back to a sync caller. That's what
+`NrosPlatformRuntime::block_on()` (inherent method, not a trait method)
+provides:
+
+```rust
+impl<P: PlatformClock + PlatformSleep + 'static> NrosPlatformRuntime<P> {
+    pub fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
+        let waker = noop_waker();
+        let mut cx  = Context::from_waker(&waker);
+        let mut f   = core::pin::pin!(future);
+        loop {
+            if let Poll::Ready(v) = f.as_mut().poll(&mut cx) { return v; }
+            self.spawner.drain_tasks();                 // drive background
+            <P as PlatformSleep>::sleep_ms(1);          // yield to OS / RTOS
+        }
+    }
+}
+```
+
+Key properties:
+- No fork patch — every dust-dds file that imports
+  `std_runtime::executor::block_on` stays exactly as-is (those files
+  only get compiled in `std` builds anyway).
+- Drives both the caller's future and the background spawner queue on
+  every iteration, so spawned tasks (future RTPS receive loops,
+  reliability timers) can make progress while `block_on` is waiting.
+- Yields to the platform scheduler via `<P as PlatformSleep>::sleep_ms(1)`
+  — no thread parking, no condvar. Matches the zpico side's
+  cooperative driving semantics.
+
+Covered by two new unit tests (`block_on_resolves_ready_future`,
+`block_on_drives_spawned_side_task`). Both pass.
 
 **Files**:
-- `packages/dds/dust-dds/dds/src/runtime.rs` — reintroduce trait method
-- `packages/dds/dust-dds/dds/src/dds/**/*.rs` — replace direct
-  `std_runtime::executor::block_on` calls with `R::block_on(...)`
+- `packages/dds/nros-rmw-dds/src/runtime.rs` — inherent method +
+  2 tests. No fork changes.
 
 ### 71.2 — Non-blocking UDP transport
 

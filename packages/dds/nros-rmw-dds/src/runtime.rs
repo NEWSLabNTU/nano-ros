@@ -297,6 +297,47 @@ impl<P> NrosPlatformRuntime<P> {
     }
 }
 
+impl<P> NrosPlatformRuntime<P>
+where
+    P: PlatformClock + PlatformSleep + 'static,
+{
+    /// Phase 71.1 — block on a future until it resolves, driving the
+    /// spawner's background task queue on each iteration.
+    ///
+    /// Unlike `dust_dds::std_runtime::executor::block_on`, this does **not**
+    /// park the OS thread; it yields back to the platform via
+    /// `<P as PlatformSleep>::sleep_ms(1)` whenever all tasks returned
+    /// `Pending`. That keeps the CPU cool on POSIX and lets cooperative
+    /// RTOSes (Zephyr, FreeRTOS) give time to other threads. Same
+    /// semantics as `zpico::Context::zpico_get` on the ZPICO side —
+    /// drive the runtime cooperatively, never block on a condvar.
+    ///
+    /// Used by `nros-rmw-dds` to wrap dust-dds's async API (`dds_async`)
+    /// on every non-POSIX platform. On `std + platform-posix` we fall
+    /// through to `dust_dds::std_runtime::executor::block_on` for
+    /// compatibility with the stock transport's OS-thread model.
+    pub fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
+        use core::pin::pin;
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        let mut f = pin!(future);
+        loop {
+            // Poll the caller's future first; if it's already ready we
+            // don't need to drive any background work.
+            if let Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                return v;
+            }
+            // Drive background tasks (RTPS receive loops, reliability
+            // timers, etc.) once per iteration.
+            self.spawner.drain_tasks();
+            // Yield to the platform scheduler so we don't starve
+            // co-resident threads (POSIX) or ISR handlers (RTOS).
+            <P as PlatformSleep>::sleep_ms(1);
+        }
+    }
+}
+
 impl<P> Default for NrosPlatformRuntime<P> {
     fn default() -> Self {
         Self::new()
@@ -362,6 +403,71 @@ mod tests {
         s.drain_tasks();
         assert!(flag.load(Ordering::SeqCst));
         assert!(s.is_empty());
+    }
+
+    #[test]
+    fn block_on_resolves_ready_future() {
+        let rt: NrosPlatformRuntime<ConcretePlatform> = NrosPlatformRuntime::new();
+        let v = rt.block_on(async { 42u32 });
+        assert_eq!(v, 42);
+    }
+
+    #[test]
+    fn block_on_drives_spawned_side_task() {
+        use alloc::sync::Arc;
+        use core::sync::atomic::{AtomicU32, Ordering};
+        let rt: NrosPlatformRuntime<ConcretePlatform> = NrosPlatformRuntime::new();
+        let counter = Arc::new(AtomicU32::new(0));
+        // Background task that pings twice then completes.
+        {
+            let c = counter.clone();
+            let s = rt.spawner();
+            s.spawn(async move {
+                for _ in 0..2 {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    // yield once per iteration
+                    struct YieldOnce(bool);
+                    impl Future for YieldOnce {
+                        type Output = ();
+                        fn poll(
+                            mut self: Pin<&mut Self>,
+                            cx: &mut Context<'_>,
+                        ) -> Poll<()> {
+                            if self.0 {
+                                Poll::Ready(())
+                            } else {
+                                self.0 = true;
+                                cx.waker().wake_by_ref();
+                                Poll::Pending
+                            }
+                        }
+                    }
+                    YieldOnce(false).await;
+                }
+            });
+        }
+        // Foreground future that completes after the background task has
+        // incremented the counter at least twice.
+        let counter_fg = counter.clone();
+        rt.block_on(async move {
+            while counter_fg.load(Ordering::SeqCst) < 2 {
+                struct YieldOnce(bool);
+                impl Future for YieldOnce {
+                    type Output = ();
+                    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+                        if self.0 {
+                            Poll::Ready(())
+                        } else {
+                            self.0 = true;
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
+                        }
+                    }
+                }
+                YieldOnce(false).await;
+            }
+        });
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 
     #[test]
