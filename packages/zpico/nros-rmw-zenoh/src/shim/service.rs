@@ -459,12 +459,45 @@ impl ServiceClientTrait for ZenohServiceClient {
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
         let context = unsafe { &*self.context };
 
-        let handle = context
-            .get_start(&self.keyexpr[..=self.keyexpr_len], request, self.timeout_ms)
-            .map_err(TransportError::from)?;
-
-        self.pending_handle = Some(handle);
-        Ok(())
+        // Phase 89.12 #14: transient retry. On multi-threaded zpico
+        // backends (POSIX, Zephyr, NuttX, FreeRTOS+lwIP) a z_get call
+        // issued while zenoh-pico is mid-finalization of a *previous*
+        // query (the dropper callback for the prior get_check is
+        // enqueued but hasn't run yet) can fail intermittently. The
+        // most common surface is the Rust action client flow:
+        //
+        //   let (_, mut p) = client.send_goal(&g)?;   // z_get #1
+        //   ... p.try_recv() sees the accept reply ...
+        //   let r = client.get_result(&id)?;          // z_get #2 — flaked here
+        //
+        // `zpico_get_start` scans for a free slot (and reclaims zombie
+        // slots whose dropper has since fired), so slot exhaustion
+        // isn't the cause. The race lives inside `z_get` itself: if
+        // the previous reply's dropper is enqueued in a multi-threaded
+        // zenoh-pico session but not yet run, the session's pending-
+        // query table can briefly reject the new query.
+        //
+        // Three retries with the caller's natural polling cadence is
+        // enough in practice — the prior dropper fires within a few
+        // microseconds once the scheduler runs the lease/read tasks
+        // again. No explicit sleep here: the caller's retry budget is
+        // bounded by its outer `spin_once` loop.
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut last_err = None;
+        for _ in 0..MAX_ATTEMPTS {
+            match context.get_start(
+                &self.keyexpr[..=self.keyexpr_len],
+                request,
+                self.timeout_ms,
+            ) {
+                Ok(handle) => {
+                    self.pending_handle = Some(handle);
+                    return Ok(());
+                }
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(TransportError::from(last_err.unwrap()))
     }
 
     fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
