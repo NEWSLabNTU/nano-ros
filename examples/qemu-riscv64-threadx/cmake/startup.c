@@ -47,6 +47,37 @@ void *memmove(void *d, const void *s, __SIZE_TYPE__ n) {
     return d;
 }
 
+/* ---- nros-c platform stubs (NROS_PLATFORM_BAREMETAL) ----
+ *
+ * libnros_c_zenoh_threadx_riscv64.a is built no_std, so its Rust code
+ * calls the four `nros_platform_*` symbols via FFI instead of using
+ * `std::time::Instant` / `std::thread::sleep`. ThreadX supplies
+ * tx_time_get() (ticks since startup, 100 Hz by default — see
+ * `TX_TIMER_TICKS_PER_SECOND` in tx_user.h) and tx_thread_sleep(ticks).
+ * GCC __atomic_* builtins cover the atomic-bool pair. The C/C++
+ * examples link this TU, so these strong definitions satisfy the
+ * archive's undefined references at link time. Rust ThreadX RISC-V
+ * examples don't pull in nros-c, so they don't need these. */
+
+uint64_t nros_platform_time_ns(void) {
+    /* tx_time_get() returns ULONG ticks; one tick = 10ms at 100 Hz. */
+    return (uint64_t)tx_time_get() * (1000000000ULL / TX_TIMER_TICKS_PER_SECOND);
+}
+
+void nros_platform_sleep_ns(uint64_t ns) {
+    uint64_t ticks = ns / (1000000000ULL / TX_TIMER_TICKS_PER_SECOND);
+    if (ticks == 0 && ns > 0) ticks = 1;
+    tx_thread_sleep((ULONG)ticks);
+}
+
+void nros_platform_atomic_store_bool(_Bool *ptr, _Bool value) {
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+
+_Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
+
 /* ---- UART output for printf ---- */
 extern int uart_putc(int ch);
 
