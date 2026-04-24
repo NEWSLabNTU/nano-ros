@@ -934,26 +934,86 @@ Failure signatures observed:
 - `Action test failed: … client_completed=false`
 - `Server didn't receive goal`
 
-Fix:
-- `.config/nextest.toml::[test-groups.qemu-zephyr] max-threads =
-  1`. Trades suite speed (~118 s at max=3 → ~275 s at max=1) for
-  determinism. The pubsub / service / action variants using
-  different zenohd ports no longer helps here because the
-  bottleneck is host CPU share, not port collisions.
-- `test_zephyr_talker_to_listener_e2e` /
-  `test_zephyr_cpp_talker_to_listener_e2e` /
-  `test_native_talker_to_zephyr_cpp_listener`: listener-start
-  sleep 1 s → 3 s. Covers cold-boot variance even at
-  max-threads = 1.
-- `test_zephyr_action_e2e`: server-start sleep 2 s → 4 s and
-  each `wait_for_output` 10 s → 20 s so the client's blocking
-  `get_result.wait(…, 10 s)` has headroom.
+Fix (revised — readiness-based, preserves parallelism):
 
-Verified: 3 consecutive full-`zephyr.rs` runs post-fix at
-~275 s each, 0 flakes. `test_zephyr_native_server_zephyr_client`
-(#12) was greened purely by `max-threads = 1` — no test-side
-change was needed.
+- **`nros_tests::zephyr::ZephyrProcess::wait_for_pattern`**
+  (`packages/testing/nros-tests/src/zephyr.rs`). New method backed
+  by a background stdout-reader thread that accumulates output
+  into `Arc<Mutex<String>>`. Callers poll for a specific
+  readiness marker (e.g. `"Waiting for messages"`,
+  `"Action server ready"`) before advancing. Replaces the fixed
+  pre-fix sleeps that couldn't keep up with `max-threads = 2` /
+  `3` cold-boot variance. Subsequent `wait_for_output` /
+  `wait_for_pattern` calls keep seeing new output because the
+  reader thread never exits until the child process dies.
+
+- **`test_zephyr_talker_to_listener_e2e`**,
+  **`test_zephyr_cpp_talker_to_listener_e2e`**,
+  **`test_native_talker_to_zephyr_cpp_listener`**: start listener,
+  `wait_for_pattern("Waiting for messages", 30 s)` before
+  starting the talker, then `wait_for_pattern("Published: 3", …)`
+  + `wait_for_pattern("Received: 3", …)` instead of a blind
+  8-second sleep.
+
+- **`test_zephyr_action_e2e`**: start server,
+  `wait_for_pattern("Action server ready", 30 s)` before
+  starting the client. Also bumped the Zephyr Rust action
+  client's `result_promise.wait(…)` from 10 s → 30 s (in
+  `examples/zephyr/rust/zenoh/action-client/src/lib.rs`) so
+  the `get_result` RPC still has budget after feedback drain
+  on a loaded host. Test harness early-exits when the client
+  prints `"Action client finished"`.
+
+- **`packages/core/nros-node/src/executor/handles.rs::WaitBudget`**:
+  on `!std + rmw-zenoh` the budget now ticks against
+  `z_clock_now()` instead of falling back to the iteration
+  counter. Relevant because Zephyr Rust examples are `no_std`
+  with `rmw-zenoh` — the previous iteration-count fallback let
+  `Promise::wait` collapse to milliseconds when a signalling
+  background thread returned from `spin_once` before the 10 ms
+  budget.
+
+- **Phase 89.13 migration — per-(variant, lang) zenohd ports on
+  Zephyr**. `ZEPHYR.lang_stride = 100` in
+  `packages/testing/nros-tests/src/platform.rs` so C++ examples
+  get `+200` on top of the per-variant offset. Zephyr C zenoh
+  examples get `+100` (no Zephyr C zenoh tests exist today, but
+  the prj.conf locators are updated for consistency with the
+  scheme). Rust vs. C++ same-variant pairs no longer share a
+  zenohd port, so they can run in parallel. Unlike `rtos_e2e`
+  (one test per (variant, lang)), the `zephyr` binary has
+  multiple tests per (variant, lang) — they still share a single
+  port and are serialized by six `qemu-zephyr-{variant}-{rust,cpp}`
+  sub-groups × `max-threads = 1`. Outer `qemu-zephyr` is lifted
+  to `max-threads = 6` (3 variants × 2 langs), with the existing
+  `qemu-zephyr-xrce` sub-group keeping Agent-port 2018 serial.
+
+- **`.config/nextest.toml::[test-groups.qemu-zephyr] max-threads =
+  6`** (was `2` pre-89.13). Six concurrent slots because each
+  (variant, lang) now owns its own zenohd port, so the zenoh-pico
+  `z_declare_subscriber -128` pressure no longer scales with
+  raw process count — it scales with how many tests genuinely
+  contend for the same router. If CPU contention turns out to
+  be a limit again, this can be lowered without touching
+  sub-group definitions.
+
+Verified: three consecutive full `zephyr.rs` runs post-fix, each
+pass with at most one TRY 1 flake recovered on TRY 2.
+`test_zephyr_native_server_zephyr_client` (#12) was greened
+purely by readiness-based probing — no test-side change was
+needed.
 
 **Files touched (89.12 Zephyr sub-item)**:
 - `.config/nextest.toml`
-- `packages/testing/nros-tests/tests/zephyr.rs`
+- `packages/testing/nros-tests/src/platform.rs` (Phase 89.13 —
+  `ZEPHYR.lang_stride = 100`)
+- `packages/testing/nros-tests/src/zephyr.rs` (new
+  `wait_for_pattern`)
+- `packages/testing/nros-tests/tests/zephyr.rs` (readiness probes
+  + `TestLang::Cpp` threading for C++ tests)
+- `packages/core/nros-node/src/executor/handles.rs` (no_std
+  `WaitBudget` uses `z_clock_now`)
+- `examples/zephyr/rust/zenoh/action-client/src/lib.rs`
+  (`get_result` wait budget 10 s → 30 s)
+- `examples/zephyr/c/zenoh/*/prj.conf` (`+100` locator shift)
+- `examples/zephyr/cpp/zenoh/*/prj.conf` (`+200` locator shift)

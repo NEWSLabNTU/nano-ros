@@ -105,7 +105,11 @@ fn run() -> Result<(), NodeError> {
     // Get final result using the Promise pattern
     let mut result_promise = action_client.get_result(&goal_id)?;
 
-    match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+    // 30 s budget — generous enough that the get_result reply still
+    // lands even when the Zephyr native_sim executing this client is
+    // sharing a loaded host with 2 other concurrent native_sim
+    // processes (Phase 89.12 `max-threads = 3` parallel load).
+    match result_promise.wait(&mut executor, core::time::Duration::from_millis(30000)) {
         Ok((status, result)) => {
             info!(
                 "Result: status={:?}, sequence={:?}",

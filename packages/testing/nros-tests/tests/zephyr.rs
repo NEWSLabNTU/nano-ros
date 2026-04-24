@@ -98,17 +98,26 @@ fn test_zephyr_talker_to_listener_e2e() {
 
     // Start listener first (so it creates its subscriber before talker publishes)
     eprintln!("Starting Zephyr listener...");
-    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
+    let listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr listener");
 
-    // Give listener time to connect and create subscriber. Under parallel
-    // load (full zephyr.rs suite running simultaneously) the native_sim
-    // cold-boot + `Executor::open` + subscription-declaration propagation
-    // to the zenohd router regularly slips past 1 s, and the talker's
-    // first publish lands before the subscription is visible to zenohd —
-    // which silently drops the message because zenoh doesn't buffer for
-    // unseen peers (Phase 89.12 flake).
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for listener to reach subscriber readiness before starting
+    // talker. Under parallel load the native_sim cold-boot +
+    // `Executor::open` + subscription-declaration propagation to the
+    // zenohd router regularly slips past any fixed sleep; polling the
+    // actual output marker is the robust fix (Phase 89.12).
+    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    if !listener_ready.contains("Waiting for messages") {
+        panic!(
+            "Zephyr listener didn't reach readiness within 30 s.\nOutput:\n{}",
+            listener_ready
+        );
+    }
+    // Small additional delay so the subscription declaration can
+    // reach the router even after the listener's log line was
+    // emitted.
+    std::thread::sleep(Duration::from_millis(500));
+    let mut listener = listener;
 
     // Start talker
     eprintln!("Starting Zephyr talker...");
@@ -118,12 +127,19 @@ fn test_zephyr_talker_to_listener_e2e() {
     // Wait for communication
     eprintln!("Waiting for Zephyr talker → listener communication...");
 
-    // Wait for output from both
+    // Probe for the talker's 3rd publish + the listener's 3rd
+    // Received marker, early-exiting as soon as both have emitted
+    // enough output. Under `max-threads = 3` parallel load the
+    // native_sim cold-boot + session open can take >8 s, so the
+    // old fixed-8 s `wait_for_output` regularly missed the first
+    // couple of publishes. 30 s cap is comfortable headroom.
+    let _ = talker.wait_for_pattern("Published: 3", Duration::from_secs(30));
+    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(8))
+        .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(8))
+        .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     // Kill processes
@@ -838,15 +854,26 @@ fn test_zephyr_action_e2e() {
 
     // Start action server first
     eprintln!("Starting Zephyr action server...");
-    let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
+    let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr action server");
 
-    // Give server time to connect and set up queryables. Bumped from
-    // 2 s to 4 s to handle parallel-load Zephyr native_sim cold-boot
-    // variance (Phase 89.12 flake). Paired with the `max-threads = 2`
-    // qemu-zephyr group setting this is reliable across repeated
-    // full-suite runs.
-    std::thread::sleep(Duration::from_secs(4));
+    // Wait for server to declare its queryables before starting the
+    // client. Under parallel load this replaces a fixed sleep that
+    // would otherwise race `client.send_goal()` against a
+    // still-initialising queryable (Phase 89.12 flake). The
+    // readiness marker is any of the "ready" / "Queryable" strings
+    // the Zephyr action server example emits after
+    // `create_action_server` returns — match on the common substring
+    // "Action server ready".
+    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(30));
+    if !server_ready.contains("Action server ready") {
+        panic!(
+            "Zephyr action server didn't reach readiness within 30 s.\nOutput:\n{}",
+            server_ready
+        );
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let mut server = server;
 
     // Start action client
     eprintln!("Starting Zephyr action client...");
@@ -856,15 +883,16 @@ fn test_zephyr_action_e2e() {
     // Wait for action communication
     eprintln!("Waiting for action communication...");
 
-    // Wait for output from both. Bumped to 20 s so the client's
-    // blocking `get_result.wait(…, 10 s)` has headroom over its
-    // own 10 s Promise budget once cold-boot + feedback drain
-    // eat into the window under load.
+    // Wait for the client to print the action-completion marker
+    // (early-exits as soon as the action completes; falls back to a
+    // 40 s cap so a stuck client still returns and surfaces the
+    // failure). 40 s is enough headroom for the client's 30 s
+    // `get_result.wait(…)` under `max-threads = 3` parallelism.
+    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(40));
+    // Server output can stop shortly after the client finishes —
+    // give the reader a few seconds to drain any trailing feedback.
     let server_output = server
-        .wait_for_output(Duration::from_secs(20))
-        .unwrap_or_default();
-    let client_output = client
-        .wait_for_output(Duration::from_secs(20))
+        .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
 
     // Kill processes
@@ -1558,7 +1586,7 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
 
     eprintln!("Starting zenohd router...");
     let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
+        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
             .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
@@ -1569,19 +1597,28 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     eprintln!("C++ Listener binary: {}", listener_binary.display());
 
     // Start listener first (subscriber must be ready before publisher).
-    // Under the 3-way parallel qemu-zephyr group, native_sim cold boot
-    // + subscription-declaration propagation to zenohd regularly slips
-    // past 1 s (Phase 89.12 flake). 3 s paired with the
-    // `max-threads = 2` Zephyr group setting is stable across repeated
-    // full-suite runs.
-    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(3));
+    // Probe for the listener's output readiness marker so we don't
+    // race the publisher against a still-cold_booting native_sim
+    // under full-suite parallel load (Phase 89.12 flake).
+    let listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
+    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    if !listener_ready.contains("Waiting for messages") {
+        panic!(
+            "Zephyr C++ listener didn't reach readiness within 30 s.\nOutput:\n{}",
+            listener_ready
+        );
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let mut listener = listener;
 
     // Start talker
     let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim).unwrap();
 
-    // Wait for messages to flow
-    std::thread::sleep(Duration::from_secs(8));
+    // Probe for the 3rd publish + 3rd Received, early-exiting
+    // instead of a fixed 8 s wait that couldn't keep up with
+    // `max-threads = 3` parallel cold-boot variance.
+    let _ = talker.wait_for_pattern("Published: 3", Duration::from_secs(30));
+    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
 
     // Collect outputs
     let talker_output = talker
@@ -1629,7 +1666,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     }
 
     let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
+        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
             .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
@@ -1651,7 +1688,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         "NROS_LOCATOR",
         format!(
             "tcp/127.0.0.1:{}",
-            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
         ),
     );
     listener_cmd.env("RUST_LOG", "info");
@@ -1705,7 +1742,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     }
 
     let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
+        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
             .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
@@ -1721,12 +1758,19 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     // Build Zephyr C++ listener
     let listener_binary = get_zephyr_cpp_listener_native_sim();
 
-    // Start Zephyr listener first. 3 s paired with `max-threads = 2`
-    // qemu-zephyr group is enough for native_sim cold boot +
-    // subscription declaration to reach zenohd under full-suite
-    // parallel load (Phase 89.12 flake).
-    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(3));
+    // Start Zephyr listener first; wait for its subscription-ready
+    // output marker so the native talker doesn't race a still-booting
+    // subscriber (Phase 89.12 flake).
+    let listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
+    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    if !listener_ready.contains("Waiting for messages") {
+        panic!(
+            "Zephyr C++ listener didn't reach readiness within 30 s.\nOutput:\n{}",
+            listener_ready
+        );
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let mut listener = listener;
 
     // Start native talker (connects to zenohd)
     let mut talker_cmd = std::process::Command::new(&native_talker);
@@ -1734,7 +1778,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         "NROS_LOCATOR",
         format!(
             "tcp/127.0.0.1:{}",
-            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
         ),
     );
     talker_cmd.env("RUST_LOG", "info");
@@ -1742,14 +1786,16 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         nros_tests::fixtures::ManagedProcess::spawn_command(talker_cmd, "native-talker")
             .expect("Failed to start native talker");
 
-    // Wait for messages
-    std::thread::sleep(Duration::from_secs(8));
+    // Probe for the 3rd Received on the Zephyr side (early-exits
+    // instead of the old 8 s+3 s blind sleep that couldn't keep
+    // up with parallel-load variance).
+    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
 
     let talker_output = talker
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(3))
+        .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     eprintln!("\n=== Native talker output ===\n{}", talker_output);
@@ -1805,7 +1851,7 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
 
     eprintln!("Starting zenohd router...");
     let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust))
+        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Cpp))
             .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
@@ -1891,7 +1937,7 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
 
     eprintln!("Starting zenohd router...");
     let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust))
+        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Cpp))
             .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 

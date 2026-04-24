@@ -37,8 +37,23 @@ const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
 struct WaitBudget {
     #[cfg(feature = "std")]
     deadline: std::time::Instant,
-    #[cfg(not(feature = "std"))]
+    // For no_std + rmw-zenoh, we can get real wall-clock milliseconds
+    // via `z_clock_now()` (exported unconditionally by
+    // `zpico-platform-shim`). This is the same primitive nros-cpp
+    // uses in Phase 89.3. The fallback `remaining: u64` counter is
+    // only reached on builds that have neither `std` nor
+    // `rmw-zenoh`, which in practice means a hypothetical pure
+    // rmw-xrce no_std build — that path is load-sensitive but
+    // has no active test triggering it today.
+    #[cfg(all(not(feature = "std"), feature = "rmw-zenoh"))]
+    deadline_ms: u64,
+    #[cfg(all(not(feature = "std"), not(feature = "rmw-zenoh")))]
     remaining: u64,
+}
+
+#[cfg(all(not(feature = "std"), feature = "rmw-zenoh"))]
+unsafe extern "C" {
+    fn z_clock_now() -> usize;
 }
 
 impl WaitBudget {
@@ -49,7 +64,15 @@ impl WaitBudget {
                 deadline: std::time::Instant::now() + _timeout,
             }
         }
-        #[cfg(not(feature = "std"))]
+        #[cfg(all(not(feature = "std"), feature = "rmw-zenoh"))]
+        {
+            let now_ms = unsafe { z_clock_now() } as u64;
+            let ms = _timeout.as_millis().min(u64::MAX as u128) as u64;
+            Self {
+                deadline_ms: now_ms.saturating_add(ms),
+            }
+        }
+        #[cfg(all(not(feature = "std"), not(feature = "rmw-zenoh")))]
         {
             Self {
                 remaining: _max_iterations,
@@ -62,7 +85,12 @@ impl WaitBudget {
         {
             std::time::Instant::now() < self.deadline
         }
-        #[cfg(not(feature = "std"))]
+        #[cfg(all(not(feature = "std"), feature = "rmw-zenoh"))]
+        {
+            let now_ms = unsafe { z_clock_now() } as u64;
+            now_ms < self.deadline_ms
+        }
+        #[cfg(all(not(feature = "std"), not(feature = "rmw-zenoh")))]
         {
             if self.remaining == 0 {
                 false

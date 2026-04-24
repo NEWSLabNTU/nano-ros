@@ -128,7 +128,35 @@ max-threads = 3
 # are sufficient to run pubsub/service/action concurrently. XRCE tests share
 # a hardcoded Agent port (2018, baked into firmware via Kconfig) and must
 # stay serial — they live in `qemu-zephyr-xrce`.
+#
+# Phase 89.13 — migrated to per-(variant, lang) host ports
+# (`ZEPHYR.lang_stride = 100`): C++ tests get +200 on top of the
+# per-variant offset so Rust/C++ same-variant pairs no longer share
+# a zenohd port. Unlike `rtos_e2e` (one test per (variant, lang)),
+# the `zephyr` binary has MULTIPLE tests per (variant, lang) — they
+# still share a single port and must stay serial WITHIN their
+# (variant, lang) sub-group. The six sub-groups × max=1 × outer
+# max=6 give us full cross-slot parallelism while keeping within-slot
+# serialization. Overall cap = 6 (3 variants × 2 langs).
 [test-groups.qemu-zephyr]
+max-threads = 6
+
+[test-groups.qemu-zephyr-pubsub-rust]
+max-threads = 1
+
+[test-groups.qemu-zephyr-pubsub-cpp]
+max-threads = 1
+
+[test-groups.qemu-zephyr-service-rust]
+max-threads = 1
+
+[test-groups.qemu-zephyr-service-cpp]
+max-threads = 1
+
+[test-groups.qemu-zephyr-action-rust]
+max-threads = 1
+
+[test-groups.qemu-zephyr-action-cpp]
 max-threads = 1
 
 [test-groups.qemu-zephyr-xrce]
@@ -299,7 +327,7 @@ test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# Zephyr native_sim (NSOS, Phase 81) — port 7456.
+# Zephyr native_sim (NSOS, Phase 81) — base port 7456, lang_stride = 100.
 #
 # XRCE tests within the zephyr binary share a hardcoded Agent port (2018,
 # baked into firmware via Kconfig), so they must stay serial. This override
@@ -311,6 +339,49 @@ test-group = "qemu-zephyr-xrce"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# Phase 89.13 — Zephyr per-(variant, lang) sub-groups. Ordered most-specific
+# first so nextest's first-match-wins picks the right slot. C++ E2E tests
+# must match BEFORE the Rust patterns (the `cpp` substring bucket catches
+# them), and variant-specific matches must precede the pubsub fall-through.
+[[profile.default.overrides]]
+filter = "binary(zephyr) and test(cpp_service_server_to_client)"
+test-group = "qemu-zephyr-service-cpp"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(zephyr) and test(cpp_action_server_to_client)"
+test-group = "qemu-zephyr-action-cpp"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(zephyr) and (test(cpp_talker_to_listener_e2e) or test(cpp_talker_to_native_listener) or test(native_talker_to_zephyr_cpp_listener))"
+test-group = "qemu-zephyr-pubsub-cpp"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(zephyr) and (test(native_server_zephyr_client) or test(zephyr_server_native_client))"
+test-group = "qemu-zephyr-service-rust"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(zephyr) and test(zephyr_action_e2e)"
+test-group = "qemu-zephyr-action-rust"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+[[profile.default.overrides]]
+filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e))"
+test-group = "qemu-zephyr-pubsub-rust"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# Fall-through: smoke tests, build tests, availability_checks share the
+# outer `qemu-zephyr` cap. None of these allocate a zenohd router, so
+# they only contribute to CPU load.
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "qemu-zephyr"

@@ -177,8 +177,20 @@ pub const THREADX_LINUX: PlatformConfig = PlatformConfig {
 };
 
 /// Zephyr (native_sim or QEMU).
+///
+/// Phase 89.13: migrated to per-(variant, lang) ports.
+///
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7456 | 7556 | 7656 |
+/// | Service | 7466 | 7566 | 7666 |
+/// | Action  | 7476 | 7576 | 7676 |
+///
+/// Only Rust + C++ zenoh tests currently exist on Zephyr; the C column
+/// is reserved for future zenoh-backed C examples. XRCE tests share a
+/// hardcoded Agent port (2018) and are unaffected by this split.
 pub const ZEPHYR: PlatformConfig = PlatformConfig {
     name: "zephyr",
     zenohd_port: 7456,
-    lang_stride: 0,
+    lang_stride: 100,
 };

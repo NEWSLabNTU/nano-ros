@@ -229,7 +229,8 @@ test_zephyr_to_native() {
     log_info "Starting zenoh router..."
     pkill -x zenohd 2>/dev/null || true
     sleep 1
-    "$ZENOHD" --listen tcp/127.0.0.1:7456 --no-multicast-scouting > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
+    # Zephyr C pubsub examples use port 7556 (lang_stride = 100, C = Rust+100).
+    "$ZENOHD" --listen tcp/127.0.0.1:7556 --no-multicast-scouting > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
     local zenohd_pid=$!
     register_pid $zenohd_pid
     sleep 2

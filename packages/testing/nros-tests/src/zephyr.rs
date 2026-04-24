@@ -4,7 +4,6 @@
 
 use crate::process::{kill_process_group, set_new_process_group};
 use crate::{TestError, TestResult, project_root};
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -48,6 +47,18 @@ impl ZephyrPlatform {
 pub struct ZephyrProcess {
     handle: Child,
     platform: ZephyrPlatform,
+    // Accumulated stdout, grown by the background reader spawned in
+    // `start()`. `wait_for_pattern()` polls this buffer for a readiness
+    // marker (e.g. "Waiting for messages"), replacing the old fixed
+    // sleeps that couldn't keep up with parallel-load cold-boot
+    // variance. `wait_for_output()` returns the final snapshot and
+    // signals the reader to stop.
+    output: std::sync::Arc<std::sync::Mutex<String>>,
+    reader_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    // Joined via Drop when the process is killed; held here so the
+    // thread outlives any `wait_for_pattern` / `wait_for_output` call.
+    #[allow(dead_code)]
+    reader_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 /// Atomic counter to ensure each Zephyr process gets a unique seed
@@ -70,7 +81,7 @@ impl ZephyrProcess {
             )));
         }
 
-        let handle = match platform {
+        let mut handle = match platform {
             ZephyrPlatform::NativeSim => {
                 // native_sim runs directly
                 // Each process needs a unique --seed to prevent ephemeral port conflicts
@@ -112,7 +123,72 @@ impl ZephyrProcess {
             }
         };
 
-        Ok(Self { handle, platform })
+        // Spawn a background reader that accumulates stdout into a
+        // shared buffer. Subsequent `wait_for_pattern()` calls poll
+        // this buffer; `wait_for_output()` returns its final snapshot.
+        let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let reader_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader_thread = {
+            let output = output.clone();
+            let reader_done = reader_done.clone();
+            let mut stdout = handle.stdout.take().ok_or_else(|| {
+                TestError::ProcessFailed("No stdout on spawned process".to_string())
+            })?;
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let mut buf = [0u8; 4096];
+                loop {
+                    match stdout.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let chunk = String::from_utf8_lossy(&buf[..n]);
+                            if let Ok(mut guard) = output.lock() {
+                                guard.push_str(&chunk);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                reader_done.store(true, std::sync::atomic::Ordering::Release);
+            })
+        };
+
+        Ok(Self {
+            handle,
+            platform,
+            output,
+            reader_done,
+            reader_thread: Some(reader_thread),
+        })
+    }
+
+    /// Wait until `pattern` appears in the process's accumulated stdout,
+    /// or until `timeout` elapses.
+    ///
+    /// Returns the output seen so far (whether or not the pattern
+    /// matched), so callers can inspect it either way.
+    ///
+    /// Unlike `wait_for_output`, this does NOT stop the reader thread —
+    /// subsequent calls to `wait_for_pattern` or `wait_for_output` keep
+    /// seeing new output as it arrives.
+    pub fn wait_for_pattern(&self, pattern: &str, timeout: Duration) -> String {
+        let deadline = Instant::now() + timeout;
+        loop {
+            {
+                let guard = self.output.lock().expect("output mutex poisoned");
+                if guard.contains(pattern) {
+                    return guard.clone();
+                }
+                if self.reader_done.load(std::sync::atomic::Ordering::Acquire) {
+                    // Process exited; no more output is coming.
+                    return guard.clone();
+                }
+            }
+            if Instant::now() >= deadline {
+                return self.output.lock().expect("output mutex poisoned").clone();
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     /// Get the platform this process is running on
@@ -132,79 +208,51 @@ impl ZephyrProcess {
     /// # Returns
     /// The collected stdout as a string
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
-        use std::sync::mpsc;
-        use std::thread;
+        let start = Instant::now();
+        let deadline = start + timeout;
+        let mut markers_seen = false;
 
-        let mut stdout = self
-            .handle
-            .stdout
-            .take()
-            .ok_or_else(|| TestError::ProcessFailed("No stdout".to_string()))?;
-
-        // Spawn a thread to read stdout (avoids blocking)
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
-            let mut output = String::new();
-            let mut buffer = [0u8; 4096];
-            loop {
-                match stdout.read(&mut buffer) {
-                    Ok(0) => break, // EOF
-                    Ok(n) => {
-                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
-                        // Send partial output
-                        let _ = tx.send(output.clone());
-                    }
-                    Err(_) => break,
+        while Instant::now() < deadline {
+            // Check for completion/error markers in the accumulated
+            // output. This short-circuits the wait when a Zephyr app
+            // emits a known terminal string.
+            {
+                let guard = self.output.lock().expect("output mutex poisoned");
+                if guard.contains("Failed to create context")
+                    || guard.contains("session error")
+                    || guard.contains("SUCCESS")
+                    || guard.contains("COMPLETE")
+                {
+                    markers_seen = true;
+                    break;
                 }
             }
-        });
 
-        // Wait for output with timeout
-        let start = Instant::now();
-        let mut last_output = String::new();
-
-        while start.elapsed() < timeout {
-            // Check if process exited
+            // If the reader has signalled EOF the process ended; no
+            // more output is coming.
+            if self.reader_done.load(std::sync::atomic::Ordering::Acquire) {
+                break;
+            }
             if let Ok(Some(_)) = self.handle.try_wait() {
-                // Process exited, collect any remaining output
-                while let Ok(output) = rx.recv_timeout(Duration::from_millis(50)) {
-                    last_output = output;
-                }
+                // Process exited — give the reader a moment to drain
+                // the last buffered bytes, then return.
+                std::thread::sleep(Duration::from_millis(100));
                 break;
             }
 
-            // Wait for new output with bounded timeout
-            let remaining = timeout.saturating_sub(start.elapsed());
-            let wait = remaining.min(Duration::from_millis(500));
-            match rx.recv_timeout(wait) {
-                Ok(output) => {
-                    last_output = output;
-
-                    // Check for completion/error markers (Zephyr outputs error and stops)
-                    if last_output.contains("Failed to create context")
-                        || last_output.contains("session error")
-                        || last_output.contains("SUCCESS")
-                        || last_output.contains("COMPLETE")
-                    {
-                        // Drain any trailing output
-                        while let Ok(output) = rx.recv_timeout(Duration::from_millis(50)) {
-                            last_output = output;
-                        }
-                        break;
-                    }
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-            }
+            std::thread::sleep(Duration::from_millis(50));
         }
 
-        // Kill the process if still running
+        // Kill the process if still running. The reader thread exits
+        // on stdout EOF, which the kill will cause.
         kill_process_group(&mut self.handle);
+        let _ = markers_seen;
 
-        if last_output.is_empty() {
+        let guard = self.output.lock().expect("output mutex poisoned");
+        if guard.is_empty() {
             Err(TestError::Timeout)
         } else {
-            Ok(last_output)
+            Ok(guard.clone())
         }
     }
 
