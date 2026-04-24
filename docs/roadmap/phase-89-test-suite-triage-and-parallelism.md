@@ -60,8 +60,8 @@ platforms (~7).
 - [x] 89.4 — Category C: ESP32 QEMU suite (4 tests)
 - [x] 89.5 — Category D: QEMU RTIC suite (4 tests) — fix size-probe platform detection for bare-metal + smoltcp
 - [x] 89.6 — Category E: `nano2nano` RTIC/TLS timeouts (4 tests) — resolved by 89.5 size-probe fix
-- [ ] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests)
-- [ ] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes)
+- [x] 89.7 — Category F: Standalone failures — `qemu_serial_pubsub`, `large_publish`, `dds` (3 tests) — shim trait-import fix for serial; other two cascaded green via 89.5
+- [x] 89.8 — Category G: Flake reduction for `rtos_action_e2e` (2/3 flakes) — wall-clock budget in Promise/Subscription/FeedbackStream `wait*` loops
 - [x] 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux per-case port split
 - [x] 89.10 — Within-platform parallelism, tier 2: per-variant zenohd ports for slirp QEMU platforms
 - [x] 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim
@@ -435,44 +435,77 @@ bridge feeds the TLS link).
 
 **Fix**: none required beyond 89.5 — pure cascade.
 
-### 89.7 — Category F: Standalone failures
+### 89.7 — Category F: Standalone failures — **Landed**
 
-| Test | Category | Duration |
+| Test | Pre-fix | Status after 89.7 |
 |---|---|---|
-| `emulator::test_qemu_serial_pubsub_e2e` | serial-over-PTY | 7.8 s |
-| `large_msg::test_qemu_zenoh_large_publish` | fragmented message reception | 10.2 s |
-| `dds_api::test_dds_talker_listener_communication` | Cyclone DDS backend | 60.0 s (timeout) |
+| `emulator::test_qemu_serial_pubsub_e2e` | 7.8 s FAIL (build err) | ✅ **passes** (14.4 s) |
+| `large_msg::test_qemu_zenoh_large_publish` | 10.2 s FAIL | ✅ **passes** (1.5 s) — resolved by 89.5 |
+| `dds_api::test_dds_talker_listener_communication` | 60.0 s (timeout) | ✅ **passes** (26.3 s) — resolved by 89.5 |
 
-**Observed**:
+Two of the three tests were already green by the time I got here —
+89.5's `zpico-platform-shim` size-probe fix (fat-LTO → native
+objects) also cascaded into unblocking the large-message and DDS
+paths, since both rely on `_z_sys_net_endpoint_t` passing the right
+number of bytes by value across the Rust-C FFI.
 
-- `qemu_serial_pubsub_e2e` — short runtime suggests early failure;
-  probably `socat` PTY pair setup or `zpico-serial` framing.
-- `large_publish` — 10 s is one `wait_for_output_pattern` cycle; the
-  listener likely isn't receiving the reassembled fragmented
-  message. Phase 80 (unified network interface) touched this surface
-  recently.
-- `dds_api` — 60 s timeout suggests Cyclone DDS isn't discovering
-  the peer. `dds-rs` setup might be missing; this is a
-  nice-to-have backend, not a blocker.
+The one that needed its own fix was `qemu_serial_pubsub_e2e` — it
+failed at build time because `zpico-platform-shim/src/shim.rs`
+referenced the freshly-introduced `PlatformTcp` / `PlatformUdp` /
+`PlatformSocketHelpers` / `PlatformUdpMulticast` traits inside the
+`#[cfg(feature = "network")]` submodules but the traits were only
+imported at the parent module level — `mod net_tcp { use super::{P,
+ZSysNetEndpoint, …}; }` didn't pull them in, so every `<P as
+PlatformTcp>::…` call was "cannot find trait in scope". Fixed by
+adding the trait names to each submodule's `use super::{…}` line
+and removing the now-redundant top-level imports (they were both
+"used inside submodule" AND "unused at top level" and the compiler
+refused to satisfy both).
 
-**Action**: Each sub-item is a separate ~1-day investigation. Start
-with serial (smallest scope), then large_publish (owned by
-Phase 80), then DDS (punt to Phase 71).
+**Files**:
+- `packages/zpico/zpico-platform-shim/src/shim.rs`
 
-### 89.8 — Category G: Flake reduction
+### 89.8 — Category G: Flake reduction — **Landed**
 
-| Test | Outcome |
-|---|---|
-| `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust` | 2/3 passed → nominally green, counted as flake |
+The NuttX Rust action flake reproduces at roughly 1 in 10 repro
+runs (confirmed — ran the test in a standalone loop until a
+`TRY 1 FAIL` appeared, then the `TRY 2 PASS` recovered). Root
+cause is the iteration-count spin-budget pattern the 89.2 commit
+note explicitly flagged:
 
-Probably a timing race in goal → feedback delivery on NuttX. Not a
-hard blocker — passes on retry — but worth fixing once Category B
-is done (the two failure modes likely share infrastructure).
+> *"Not touched (deliberate):*
+>  *— Promise::wait in nros-node has the same structural bug but*
+>  *currently passes all tests. Left on max_spins until a test*
+>  *surfaces it."*
 
-**Action**: After 89.3 lands, re-run NuttX action suite 10× to see
-whether the flake reproduces independently. If yes, add a
-per-platform `wait_for_output_pattern` poll interval bump on NuttX
-matching the pattern used for Zephyr native_sim.
+The NuttX Rust action E2E is that surfacing test. On POSIX /
+Zephyr / NuttX (any platform that uses a multi-threaded zpico),
+`executor.spin_once(10ms)` returns early on every inbound frame
+(zenoh-pico keep-alives, discovery gossip, interest messages
+from the router's read task). A `1000 × 10 ms` iteration budget
+therefore collapses to milliseconds of real time before the
+`send_goal` reply has had a chance to arrive; the wait returns
+`Timeout`, the client test assertion sees `accepted=false,
+completed=false`, and the run fails. Under host load the race
+is rarer, so the test nominally passes 2/3 — the canonical
+"flaky test" shape.
+
+**Fix**: rewrite the three iteration-count spin loops in
+`packages/core/nros-node/src/executor/handles.rs`
+(`Promise::wait`, `Subscription::wait_next`,
+`FeedbackStream::wait_next`, and the stream-feature
+`wait_next` for per-goal feedback) against a `WaitBudget`
+helper that uses `std::time::Instant` on std builds and falls
+back to the iteration count on no_std. Every path keeps the
+existing invariant of at least one spin cycle even for a
+zero-timeout. Same fix pattern as 89.2 (service client, C) and
+89.3 (action client, C++).
+
+**Verification**: 15 solo runs of the NuttX Rust action test
+post-fix with zero flakes (vs ~1/10 pre-fix).
+
+**Files**:
+- `packages/core/nros-node/src/executor/handles.rs`
 
 ### 89.9 — Within-platform parallelism, tier 1: ThreadX-Linux — **Landed** (commit `5fd6c228`)
 

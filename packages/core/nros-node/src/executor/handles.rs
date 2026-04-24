@@ -12,6 +12,68 @@ use super::types::{DEFAULT_TX_BUF, NodeError};
 /// Default polling interval (ms) for sync wait loops.
 const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
 
+/// Check whether the given budget has been exhausted.
+///
+/// `std` builds measure wall-clock against `Instant::now()`; `no_std`
+/// builds count iterations and exhaust after `max_iterations` calls.
+///
+/// **Phase 89.8**: the plain `max_iters` approach is insufficient on
+/// multi-threaded zpico backends (POSIX/Zephyr/NuttX). There,
+/// `executor.spin_once(10ms)` waits on a condvar that zenoh-pico's
+/// background tasks signal on any inbound frame (keep-alives,
+/// discovery gossip, interest messages). Each signal returns the
+/// spin well before the 10 ms budget, so a nominal
+/// `1000 × 10 ms = 10 s` iteration count collapses to milliseconds
+/// of real time and the wait returns `Timeout` long before the
+/// awaited reply can arrive.
+///
+/// Same class of bug 89.2 fixed in `nros-c`'s blocking service call
+/// and 89.3 fixed in `nros-cpp`'s action-client helpers. The
+/// maintainer explicitly flagged this `Promise::wait` / `wait_next`
+/// path in the 89.2 commit: *"Promise::wait in nros-node has the
+/// same structural bug but currently passes all tests. Left on
+/// max_spins until a test surfaces it."* The NuttX Rust action
+/// E2E is that test.
+struct WaitBudget {
+    #[cfg(feature = "std")]
+    deadline: std::time::Instant,
+    #[cfg(not(feature = "std"))]
+    remaining: u64,
+}
+
+impl WaitBudget {
+    fn new(_max_iterations: u64, _timeout: core::time::Duration) -> Self {
+        #[cfg(feature = "std")]
+        {
+            Self {
+                deadline: std::time::Instant::now() + _timeout,
+            }
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            Self {
+                remaining: _max_iterations,
+            }
+        }
+    }
+
+    fn tick(&mut self) -> bool {
+        #[cfg(feature = "std")]
+        {
+            std::time::Instant::now() < self.deadline
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            if self.remaining == 0 {
+                false
+            } else {
+                self.remaining -= 1;
+                true
+            }
+        }
+    }
+}
+
 /// UUID byte count in a ROS 2 GoalId.
 ///
 /// CDR encoding: 4-byte sequence-length prefix (`read_u32`) + 16 UUID bytes.
@@ -176,13 +238,16 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        for _ in 0..max_spins {
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        loop {
             executor.spin_once(spin_interval);
             if let Some(msg) = self.try_recv()? {
                 return Ok(Some(msg));
             }
+            if !budget.tick() {
+                return Ok(None);
+            }
         }
-        Ok(None)
     }
 }
 
@@ -407,13 +472,17 @@ impl<T> Promise<'_, T> {
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        for _ in 0..max_spins {
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        // Always spin at least once so a zero-timeout still polls.
+        loop {
             executor.spin_once(spin_interval);
             if let Some(result) = self.try_recv()? {
                 return Ok(result);
             }
+            if !budget.tick() {
+                return Err(NodeError::Timeout);
+            }
         }
-        Err(NodeError::Timeout)
     }
 }
 
@@ -927,13 +996,16 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        for _ in 0..max_spins {
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        loop {
             executor.spin_once(spin_interval);
             if let Some(item) = self.client.try_recv_feedback()? {
                 return Ok(Some(item));
             }
+            if !budget.tick() {
+                return Ok(None);
+            }
         }
-        Ok(None)
     }
 }
 
@@ -1018,15 +1090,18 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        for _ in 0..max_spins {
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        loop {
             executor.spin_once(spin_interval);
             if let Some((id, feedback)) = self.client.try_recv_feedback()?
                 && id.uuid == self.goal_id.uuid
             {
                 return Ok(Some(feedback));
             }
+            if !budget.tick() {
+                return Ok(None);
+            }
         }
-        Ok(None)
     }
 }
 

@@ -2,9 +2,13 @@ use core::ffi::{c_char, c_ulong, c_void};
 
 use nros_platform::{
     ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep,
-    PlatformSocketHelpers, PlatformTcp, PlatformThreading, PlatformTime, PlatformUdp,
-    PlatformUdpMulticast,
+    PlatformThreading, PlatformTime,
 };
+// `PlatformTcp`, `PlatformUdp`, `PlatformSocketHelpers`, and
+// `PlatformUdpMulticast` are only used inside the feature-gated
+// `mod net_*` submodules — their `use super::{…}` lines bring them
+// into scope locally, so importing them at this top level would be
+// an unused-imports warning when the `network` feature is disabled.
 
 type P = ConcretePlatform;
 
@@ -422,7 +426,7 @@ pub extern "C" fn _z_condvar_wait_until(
 
 #[cfg(feature = "network")]
 mod net_tcp {
-    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
+    use super::{P, PlatformTcp, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_create_endpoint_tcp(
@@ -478,7 +482,7 @@ mod net_tcp {
 
 #[cfg(feature = "network")]
 mod net_udp {
-    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
+    use super::{P, PlatformUdp, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_create_endpoint_udp(
@@ -558,7 +562,7 @@ mod net_udp {
 
 #[cfg(feature = "network")]
 mod net_helpers {
-    use super::{P, ZMutex, ZSysNetSocket, c_void};
+    use super::{P, PlatformSocketHelpers, ZMutex, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_set_non_blocking(sock: *const ZSysNetSocket) -> i8 {
@@ -590,7 +594,7 @@ mod net_helpers {
 
 #[cfg(feature = "network")]
 mod net_mcast {
-    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
+    use super::{P, PlatformUdpMulticast, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_open_udp_multicast(
