@@ -70,7 +70,7 @@ pub fn is_zenoh_pico_riscv_available() -> bool {
 pub fn require_zenoh_pico_riscv() -> bool {
     if !is_zenoh_pico_riscv_available() {
         eprintln!("Skipping test: libzenohpico.a (RISC-V) not found");
-        eprintln!("Build with: just build-zenoh-pico-riscv");
+        eprintln!("Build with: just esp32 build-zenoh-pico");
         return false;
     }
     true
