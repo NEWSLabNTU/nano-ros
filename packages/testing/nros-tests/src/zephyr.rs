@@ -428,14 +428,69 @@ pub fn get_or_build_zephyr_example(
         ZephyrPlatform::QemuArm => workspace.join(format!("{}/zephyr/zephyr.elf", build_dir)),
     };
 
-    // If binary exists and we're not forcing a rebuild, use it
-    if !force_build && binary_path.exists() {
+    // If binary exists and we're not forcing a rebuild, check that it's
+    // fresher than the example's sources before reusing it. Without this
+    // staleness check, a `prj.conf` edit (e.g. the 89.Zephyr per-variant
+    // port split) leaves tests using a cached binary that still has the
+    // old `CONFIG_NROS_ZENOH_LOCATOR` baked in — binary connects to
+    // port 7456 while the test starts zenohd on 7466, test reports
+    // `Transport(ConnectionFailed)` or `Init failed: -100` with no
+    // hint that the culprit is a stale build.
+    if !force_build && binary_path.exists() && !is_binary_stale(&binary_path, example_name) {
         eprintln!("Using existing Zephyr binary: {}", binary_path.display());
         return Ok(binary_path);
     }
 
+    if binary_path.exists() {
+        eprintln!(
+            "Zephyr binary out-of-date vs sources, rebuilding: {}",
+            binary_path.display()
+        );
+    }
+
     // Otherwise, build it
     build_zephyr_example(example_name, platform)
+}
+
+/// Return true if the built binary is older than any of the example's
+/// source inputs (`prj.conf`, `CMakeLists.txt`, every file under `src/`).
+fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
+    let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
+        // Can't stat the binary — assume stale so we rebuild and get a
+        // real error instead of reusing something mysterious.
+        return true;
+    };
+
+    let example_dir = project_root()
+        .join("examples")
+        .join(example_path_for_name(example_name));
+
+    // `prj.conf` and `CMakeLists.txt` are the common edit points; src/
+    // covers main.c / main.cpp / Cargo.toml drift.
+    let candidates = [
+        example_dir.join("prj.conf"),
+        example_dir.join("CMakeLists.txt"),
+    ];
+    for p in &candidates {
+        if let Ok(src_mtime) = p.metadata().and_then(|m| m.modified())
+            && src_mtime > binary_mtime
+        {
+            return true;
+        }
+    }
+
+    // Walk src/ one level deep — sufficient for every example we ship.
+    if let Ok(iter) = std::fs::read_dir(example_dir.join("src")) {
+        for entry in iter.flatten() {
+            if let Ok(src_mtime) = entry.metadata().and_then(|m| m.modified())
+                && src_mtime > binary_mtime
+            {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Build a Zephyr example using west (cached)
