@@ -67,7 +67,7 @@ platforms (~7).
 - [x] 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim
 - [x] 89.Baremetal — Within-platform parallelism, tier 2 extension: bare-metal MPS2-AN385 RTIC
 - [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
-- [ ] 89.12 — Post-77.22 `just test-all` re-triage (14 failing tests after the Phase 84.F4 platform-trait refactor landed and my Phase 77.20–77.22 / 89.5 / 89.6 fixes merged — partially regressions, partially the same originals Phase 89.2–89.8 had already closed which have re-opened on top of F4)
+- [x] 89.12 — Post-77.22 `just test-all` re-triage (14 failing tests after the Phase 84.F4 platform-trait refactor landed and my Phase 77.20–77.22 / 89.5 / 89.6 fixes merged — partially regressions, partially the same originals Phase 89.2–89.8 had already closed which have re-opened on top of F4). All 14 verified green on 2026-04-26.
 - [ ] 89.14 — Residual issues after 89.13 NuttX C++ enablement: ThreadX-RISC-V cmake symlink race, NuttX C action test slowness, NuttX C++ first-try flakiness
 
 ### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
@@ -840,25 +840,24 @@ The remaining 8 still need owners.
   action) instead of consistently failing. Further tightening would
   need a readiness handshake on the wire (out of scope for 89.12).
 
-**Still open — NOT caused by my 77.22 changes**:
+**Status — all 14 originals now closed** (re-verified 2026-04-26):
 
-| #  | Test                                                                                       | Symptom                                                                                              | Suspected root cause                                                                                                                                                                                                                                                              |
-|----|--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1  | `test_esp32_qemu_talker_boots`                                                             | `skip!` panic — Espressif QEMU fork missing on this host                                             | Environment; install via `./scripts/esp32/install-espressif-qemu.sh`                                                                                                                                                                                                              |
-| 2  | `test_esp32_talker_listener_e2e`                                                           | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
-| 3  | `test_esp32_to_native`                                                                     | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
-| 4  | `test_native_to_esp32`                                                                     | same                                                                                                 | same                                                                                                                                                                                                                                                                              |
-| ~~5~~ | ~~NuttX `lang_2_C` pubsub~~ | ~~zpico-sys cross-build error~~ | **Fixed by `b3f853f2` + cascade-reset commit below.** |
-| ~~6~~ | ~~NuttX `lang_2_C` service~~ | ~~same~~ | **Fixed** — flaky-green (FLAKY 3/3 on cold-boot). |
-| ~~7~~ | ~~NuttX `lang_2_C` action~~ | ~~same~~ | **Fixed** — flaky-green (FLAKY 2/3 on cold-boot). |
-| 8  | `test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C`               | cross-build, fails after 3 retries at ~98 s                                                          | Possibly cured by the same `build_c_shim` guard as NuttX — re-verify with a fresh run since `b3f853f2` also added `!use_threadx` to the same guard.                                                                                                                               |
-| 9  | `test_zephyr_action_e2e`                                                                   | runtime — see 89.3 doc                                                                               | 89.3 was "Landed" but this case still red; re-check                                                                                                                                                                                                                               |
-| ~~9~~ | ~~`test_zephyr_action_e2e`~~ | ~~runtime — see 89.3 doc~~ | **Fixed** by bumping server-start sleep to 4 s + client output window to 20 s + dropping qemu-zephyr max-threads from 3 → 1 (see "Zephyr flake round-up" below). |
-| ~~10~~ | ~~`test_zephyr_cpp_action_server_to_client_e2e`~~ | ~~`nros_cpp_init` → `-100`~~ | **Already green** at time of check — resolved upstream (77.23/77.24 + my 89.3 + Cargo.toml `lto=off`); no 89.12-specific change. |
-| ~~11~~ | ~~`test_zephyr_cpp_service_server_to_client_e2e`~~ | ~~same `-100`~~ | **Already green**, same as #10. |
-| ~~12~~ | ~~`test_zephyr_native_server_zephyr_client`~~ | ~~runtime fail, passes in isolation~~ | **Fixed** by `max-threads = 1` on qemu-zephyr (no test-side change needed — was load-sensitive only). |
-| ~~13~~ | ~~`test_zephyr_talker_to_listener_e2e`~~ | ~~TRY 1 FAIL, recovers~~ | **Fixed** by bumping listener-start sleep 1 s → 3 s + `max-threads = 1`. Same fix applies to `test_zephyr_cpp_talker_to_listener_e2e` and `test_native_talker_to_zephyr_cpp_listener`. |
-| 14 | `test_rtos_*_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust` and `lang_3_Lang__Cpp` | 89.3/89.8 territory; originally closed, still occasionally red                                       | Cascade from F4 build matrix; re-run after the NuttX / Zephyr root causes are fixed                                                                                                                                                                                               |
+| #  | Test                                                                                       | Status                                                                                                                                                                                                                                                                            |
+|----|--------------------------------------------------------------------------------------------|---|
+| ~~1~~ | ~~`test_esp32_qemu_talker_boots`~~                                                      | **Green** on 2026-04-26 — Espressif QEMU fork now installed (env fix). 9/9 in `binary(esp32_emulator)` pass. |
+| ~~2~~ | ~~`test_esp32_talker_listener_e2e`~~                                                    | **Green**, same env fix.                                                                                                                                                                                                                                                          |
+| ~~3~~ | ~~`test_esp32_to_native`~~                                                              | **Green**, same env fix.                                                                                                                                                                                                                                                          |
+| ~~4~~ | ~~`test_native_to_esp32`~~                                                              | **Green**, same env fix.                                                                                                                                                                                                                                                          |
+| ~~5~~ | ~~NuttX `lang_2_C` pubsub~~                                                             | **Fixed** by `b3f853f2` + cascade-reset commit below.                                                                                                                                                                                                                             |
+| ~~6~~ | ~~NuttX `lang_2_C` service~~                                                            | **Fixed** — flaky-green (FLAKY 3/3 on cold-boot).                                                                                                                                                                                                                                 |
+| ~~7~~ | ~~NuttX `lang_2_C` action~~                                                             | **Fixed** — flaky-green (FLAKY 2/3 on cold-boot).                                                                                                                                                                                                                                 |
+| ~~8~~ | ~~`test_rtos_service_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C`~~        | **Green** on 2026-04-26 — verified with `cargo nextest run -E 'test(...lang_2_Lang__C)'`, passes in 62 s, no retry. The `b3f853f2` `build_c_shim` guard's `!use_threadx` extension cured the cross-build, as suspected.                                                          |
+| ~~9~~ | ~~`test_zephyr_action_e2e`~~                                                            | **Fixed** by bumping server-start sleep to 4 s + client output window to 20 s + dropping qemu-zephyr max-threads from 3 → 1 (see "Zephyr flake round-up" below).                                                                                                                  |
+| ~~10~~ | ~~`test_zephyr_cpp_action_server_to_client_e2e`~~                                      | **Already green** at time of check — resolved upstream (77.23/77.24 + my 89.3 + Cargo.toml `lto=off`); no 89.12-specific change.                                                                                                                                                  |
+| ~~11~~ | ~~`test_zephyr_cpp_service_server_to_client_e2e`~~                                     | **Already green**, same as #10.                                                                                                                                                                                                                                                   |
+| ~~12~~ | ~~`test_zephyr_native_server_zephyr_client`~~                                          | **Fixed** by `max-threads = 1` on qemu-zephyr (no test-side change needed — was load-sensitive only).                                                                                                                                                                             |
+| ~~13~~ | ~~`test_zephyr_talker_to_listener_e2e`~~                                               | **Fixed** by bumping listener-start sleep 1 s → 3 s + `max-threads = 1`. Same fix applies to `test_zephyr_cpp_talker_to_listener_e2e` and `test_native_talker_to_zephyr_cpp_listener`.                                                                                            |
+| ~~14~~ | ~~`test_rtos_*_e2e::platform_1_Platform__Freertos::{lang_1_Lang__Rust, lang_3_Lang__Cpp}`~~ | **Green** on 2026-04-26 — full FreeRTOS rtos_e2e matrix (3 langs × 3 variants = 9/9) passes with **zero retries** in a single nextest run. The cascade from 84.F4 has settled now that NuttX/Zephyr root causes are resolved. |
 
 **Repro commands**:
 
@@ -876,35 +875,26 @@ cargo nextest run -E 'binary(esp32_emulator)'
 cargo nextest run -E 'test(test_zephyr_cpp_service) or test(test_zephyr_cpp_action)'
 ```
 
-**Action plan**:
+**Action plan** — *historical, retained for traceability*. All four
+investigations either landed (1, 4) or were obviated by environment
+fixes / upstream commits (2, 3). Re-verification on 2026-04-26
+confirms zero open items in the original 14.
 
-1. **NuttX `lang_2_C` build** (#5–7): bisect from `149ccf73`
-   (Phase 84.F4.2) forward. The `zenoh-pico/link/link.h` can't find
-   `_z_sys_net_socket_t`; `zenoh-pico/system/common/platform.h`
-   should route `ZENOH_NUTTX` to `platform/unix.h` and expose the
-   type, so the regression is either an include-ordering change
-   or a missing define. Start with `packages/zpico/zpico-sys/build.rs
-   ::build_zenoh_pico_nuttx` — compare against a pre-F4 checkout.
-2. **ThreadX RV64 C service** (#8): distinct cross-build; gather
-   the full compiler log before assuming it overlaps with #5–7.
-3. **Zephyr C++ E2E** (#10, #11): re-verify the 89.3 opaque-storage
-   sizes. `nros_cpp_init → -100` in *both* server and client
-   suggests the zpico session can't open at all, which is usually
-   a locator/discovery / Kconfig mismatch rather than a C++ wrapper
-   bug. Check `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
-   for a stale zero-sized storage commit.
-4. **Flakes** (#12, #13, #14): rerun with `NEXTEST_RETRIES=3` and
-   see if anything still fails at retry 3. If yes, escalate into
-   its own triage item; if no, accept as load-sensitive and move
-   on.
+1. ~~**NuttX `lang_2_C` build** (#5–7)~~ — landed via `b3f853f2`
+   `build_c_shim` guard.
+2. ~~**ThreadX RV64 C service** (#8)~~ — verified green; same
+   `b3f853f2` guard cured the cross-build.
+3. ~~**Zephyr C++ E2E** (#10, #11)~~ — already green at first
+   re-check (resolved upstream by 77.23/77.24 + 89.3 + Cargo.toml
+   `lto=off`).
+4. ~~**Flakes** (#12, #13, #14)~~ — Zephyr flakes addressed via
+   the Zephyr round-up below; FreeRTOS rtos_e2e (#14) verified
+   stable across all 9 cells.
 
-**Files**:
-- Submodule `packages/codegen`
-  (`cargo-nano-ros/tests/test_generate_c.rs`)
+**Files** (already landed):
+- Submodule `packages/codegen` (`cargo-nano-ros/tests/test_generate_c.rs`)
 - `packages/testing/nros-tests/src/esp32.rs`
-- Investigations still pending:
-  `packages/zpico/zpico-sys/build.rs::build_zenoh_pico_nuttx`,
-  `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+- `packages/zpico/zpico-sys/build.rs::build_c_shim` (`!use_nuttx && !use_threadx` guard)
 
 #### Zephyr flake round-up (covers items #9, #12, #13, and two
 spill-overs found while triaging)
