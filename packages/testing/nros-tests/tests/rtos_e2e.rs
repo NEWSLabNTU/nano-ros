@@ -275,24 +275,23 @@ impl Platform {
     /// Per-(lang, variant) skip reason, or `None` if the combination is
     /// expected to run on this platform.
     fn skip_reason(self, lang: Lang, variant: Variant) -> Option<&'static str> {
-        // Phase 89.13 sweep: turn on the cases where the example +
-        // builder exist and the dependency-codegen path is wired
-        // correctly. Keep NuttX C++ skipped — the cmake macro for
-        // NuttX (`nuttx_build_example`) doesn't generate dependency
-        // umbrella headers (`unique_identifier_msgs.hpp` etc.) when
-        // the per-example build dir is fresh, so the C++ build
-        // fails with `fatal error: unique_identifier_msgs/...`. Real
-        // bug, but in build infrastructure rather than the example.
-        // Tracked separately.
+        // Phase 89.13 sweep: NuttX C++ now BUILDS clean (cmake's
+        // INTERFACE_LINK_LIBRARIES graph carries the codegen-target
+        // closure, the per-package FFI staticlibs cross-compile to
+        // armv7a-nuttx-eabihf, and main.cpp is forced to hardfloat
+        // ABI to match the link closure). The remaining gap is a
+        // runtime init failure — `nros::init(...)` returns
+        // NROS_CPP_RET_INVALID_ARGUMENT (-3) on every NuttX boot,
+        // even though the binary embeds the correct locator string
+        // and `Node::global_storage()` resolves to a non-zero static
+        // buffer. Same nros-cpp init path works on FreeRTOS /
+        // ThreadX. Likely missing platform-init step or feature gate
+        // specific to nros-cpp + NuttX; needs separate investigation.
         match (self, lang, variant) {
-            (Platform::Nuttx, Lang::Cpp, Variant::Pubsub) => {
-                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
-            }
-            (Platform::Nuttx, Lang::Cpp, Variant::Service) => {
-                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
-            }
-            (Platform::Nuttx, Lang::Cpp, Variant::Action) => {
-                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
+            (Platform::Nuttx, Lang::Cpp, Variant::Pubsub)
+            | (Platform::Nuttx, Lang::Cpp, Variant::Service)
+            | (Platform::Nuttx, Lang::Cpp, Variant::Action) => {
+                Some("nros_cpp_init returns INVALID_ARGUMENT (-3) on NuttX — Phase 89.13 follow-up")
             }
             _ => None,
         }

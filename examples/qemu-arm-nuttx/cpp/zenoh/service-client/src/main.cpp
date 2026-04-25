@@ -12,8 +12,11 @@
 #define APP_DOMAIN_ID 0
 #endif
 
+extern "C" int sleep(unsigned int);
 extern "C" void app_main(void) {
     printf("nros C++ Service Client (NuttX)\n");
+    // Wait for NuttX networking to come up (mirrors the C examples).
+    sleep(5);
     nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
 

@@ -23,6 +23,16 @@ fn main() {
         .file(&main_src)
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
+        // armv7a-nuttx-eabihf is hardfloat — the rest of the link-time
+        // closure (Rust-emitted code, NuttX kernel libs) all use the
+        // VFP register-passing ABI, so cc-rs's default softfloat for
+        // `-march=armv7-a` would trip ld with `uses VFP register
+        // arguments, … does not`. Force hardfloat to match the triple.
+        // Also pin the CPU/FPU to the same flags the existing C examples
+        // use under their cmake-driven path.
+        .flag("-mcpu=cortex-a7")
+        .flag("-mfloat-abi=hard")
+        .flag("-mfpu=vfpv3-d16")
         .warnings(false);
 
     if is_cpp {
@@ -34,12 +44,35 @@ fn main() {
         build.include(&nros_c_include);
     }
 
-    // Additional include directories from CMake (semicolon-separated)
+    // Additional include directories. Two paths:
+    //   * `APP_INCLUDE_DIRS` (semicolon-separated env var) — legacy
+    //     callers that build the include list directly in cmake.
+    //   * `APP_INCLUDE_DIRS_FILE` (newline-separated file) — the
+    //     `nuttx_build_example(LINK_INTERFACES …)` path, which
+    //     materialises the cmake link-graph closure via
+    //     `file(GENERATE)`. File-based passing avoids the
+    //     `cmake -E env` ambiguity around `;` (it's both list-sep and
+    //     a valid path char).
     if let Ok(include_dirs) = env::var("APP_INCLUDE_DIRS") {
         for dir in include_dirs.split(';') {
             if !dir.is_empty() {
                 build.include(dir);
             }
+        }
+    }
+    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
+        match std::fs::read_to_string(&includes_file) {
+            Ok(contents) => {
+                for line in contents.lines() {
+                    let dir = line.trim();
+                    if !dir.is_empty() {
+                        build.include(dir);
+                    }
+                }
+            }
+            Err(e) => panic!(
+                "APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"
+            ),
         }
     }
 
@@ -126,6 +159,45 @@ fn main() {
     println!("cargo:rerun-if-changed={}", linker_script.display());
     println!("cargo:rerun-if-env-changed=APP_MAIN_CPP");
     println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS");
+    println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS_FILE");
+    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
+        println!("cargo:rerun-if-changed={includes_file}");
+    }
+    println!("cargo:rerun-if-env-changed=APP_FFI_LIBS_FILE");
+    if let Ok(ffi_libs_file) = env::var("APP_FFI_LIBS_FILE") {
+        println!("cargo:rerun-if-changed={ffi_libs_file}");
+        // Each line is an absolute path to a `lib<name>.a` static lib.
+        // Forward to rustc as a link search dir + a -l static link.
+        // Avoids `undefined reference to nros_cpp_serialize_…` from the
+        // Rust FFI glue that the `<pkg>__nano_ros_cpp` interface library
+        // would normally drag in via cmake's regular link graph.
+        match std::fs::read_to_string(&ffi_libs_file) {
+            Ok(contents) => {
+                for line in contents.lines() {
+                    let path = line.trim();
+                    if path.is_empty() {
+                        continue;
+                    }
+                    let lib_path = std::path::Path::new(path);
+                    let dir = lib_path
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    let stem = lib_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .and_then(|s| s.strip_prefix("lib"))
+                        .unwrap_or_else(|| {
+                            panic!("FFI lib path {path} has no `lib<name>.a` shape")
+                        });
+                    println!("cargo:rustc-link-search=native={}", dir.display());
+                    println!("cargo:rustc-link-lib=static={stem}");
+                }
+            }
+            Err(e) => panic!(
+                "APP_FFI_LIBS_FILE={ffi_libs_file} not readable: {e}"
+            ),
+        }
+    }
     println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
 }

@@ -12,9 +12,7 @@ nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
 # Build NuttX kernel ELF with this C++ source
 nuttx_build_example(nuttx_cpp_talker
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    INCLUDE_DIRS "${std_msgs_INCLUDE_DIRS}"
-                 "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp"
+    LINK_INTERFACES std_msgs__nano_ros_cpp
     COMPILE_DEFS "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
                  "APP_DOMAIN_ID=${NROS_CONFIG_DOMAIN_ID}"
 )
-add_dependencies(nuttx_cpp_talker_build std_msgs__nano_ros_cpp_gen)

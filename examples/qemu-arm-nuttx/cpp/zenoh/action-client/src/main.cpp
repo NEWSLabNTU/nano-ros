@@ -65,8 +65,11 @@ static void result_cb(const uint8_t goal_id[16], int status,
     g_result_received = true;
 }
 
+extern "C" int sleep(unsigned int);
 extern "C" void app_main(void) {
     printf("nros C++ Action Client (NuttX) [async]\n");
+    // Wait for NuttX networking to come up (mirrors the C examples).
+    sleep(5);
     nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
 
