@@ -38,10 +38,6 @@ struct NoListener;
 impl DomainParticipantListener for NoListener {}
 
 #[test]
-#[ignore = "Phase 71 follow-up: block_on currently hangs while driving \
-            DomainParticipantFactoryAsync::create_participant; tracked as \
-            part of the 71.8 Zephyr E2E debugging since the same code \
-            path runs there. Re-enable once the hang is root-caused."]
 fn create_participant_via_cooperative_runtime() {
     // Use a high domain id to avoid colliding with any DDS daemons on
     // the dev box. The RTPS PSM ports for domain 200 land at 7400 +

@@ -488,6 +488,18 @@ impl FreeRtosPlatform {
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         unsafe { lwip_socket_thread_init() };
         let sock = unsafe { &*(sock as *const Socket) };
+        // lwIP's `SO_RCVTIMEO` with `{0, 0}` means "no timeout — block
+        // forever". Cooperative DDS recv loops (Phase 71.2) call this
+        // with `0` to mean non-blocking; honour that via fcntl.
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = lwip_fcntl(sock._socket, F_GETFL as c_int, 0);
+                if flags >= 0 {
+                    lwip_fcntl(sock._socket, F_SETFL as c_int, flags | O_NONBLOCK as c_int);
+                }
+            }
+            return;
+        }
         let tv = timeval {
             tv_sec: (timeout_ms / 1000) as _,
             tv_usec: ((timeout_ms % 1000) * 1000) as _,

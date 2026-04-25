@@ -409,6 +409,22 @@ impl NuttxPlatform {
 
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         let sock = unsafe { &*(sock as *const Socket) };
+        // POSIX `SO_RCVTIMEO` with `{0, 0}` means "no timeout — block
+        // forever". Cooperative DDS recv loops (Phase 71.2) call this
+        // with `0` to mean non-blocking; honour that via fcntl.
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = fcntl(sock._fd, F_GETFL as _, 0);
+                if flags >= 0 {
+                    fcntl(
+                        sock._fd,
+                        F_SETFL as _,
+                        flags | O_NONBLOCK as core::ffi::c_int,
+                    );
+                }
+            }
+            return;
+        }
         let tv = timeval {
             tv_sec: (timeout_ms / 1000) as _,
             tv_usec: ((timeout_ms % 1000) * 1000) as _,

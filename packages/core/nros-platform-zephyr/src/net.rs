@@ -594,6 +594,18 @@ impl ZephyrPlatform {
 
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         let sock = unsafe { &*(sock as *const Socket) };
+        // POSIX `SO_RCVTIMEO` with `{0, 0}` means "no timeout — block
+        // forever". Cooperative DDS recv loops (Phase 71.2) call this
+        // with `0` to mean non-blocking; honour that via fcntl.
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = c::fcntl(sock._fd, c::F_GETFL, 0);
+                if flags >= 0 {
+                    c::fcntl(sock._fd, c::F_SETFL, flags | c::O_NONBLOCK);
+                }
+            }
+            return;
+        }
         let tv = timeval {
             tv_sec: (timeout_ms / 1000) as i64,
             tv_usec: ((timeout_ms % 1000) * 1000) as i64,

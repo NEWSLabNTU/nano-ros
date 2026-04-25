@@ -432,8 +432,13 @@ impl ThreadxPlatform {
 
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         let sock = unsafe { &*(sock as *const Socket) };
-        // NetX BSD takes INT milliseconds, not struct timeval
-        let tv_ms: INT = timeout_ms as INT;
+        // NetX BSD takes INT milliseconds, not struct timeval. NetX
+        // doesn't support `O_NONBLOCK` via fcntl/ioctl on UDP sockets,
+        // so when callers pass `timeout_ms = 0` (cooperative recv-loop
+        // poll style — Phase 71.2) we use the smallest representable
+        // timeout instead. 1 ms costs at most one extra tick of latency
+        // per failed read.
+        let tv_ms: INT = if timeout_ms == 0 { 1 } else { timeout_ms as INT };
         unsafe {
             nx_bsd_setsockopt(
                 sock._fd,

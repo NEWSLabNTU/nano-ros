@@ -461,6 +461,20 @@ impl PosixPlatform {
 
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         let sock = unsafe { &*(sock as *const Socket) };
+        // POSIX `SO_RCVTIMEO` with `{0, 0}` means "no timeout — block
+        // forever", which is the opposite of what callers expect when
+        // they pass `timeout_ms = 0`. The cooperative DDS recv loops
+        // (Phase 71.2) call this with `0` to request non-blocking
+        // reads — translate that into an `fcntl(O_NONBLOCK)` instead.
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = libc::fcntl(sock._fd, libc::F_GETFL, 0);
+                if flags >= 0 {
+                    libc::fcntl(sock._fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+            return;
+        }
         let tv = libc::timeval {
             tv_sec: (timeout_ms / 1000) as libc::time_t,
             tv_usec: ((timeout_ms % 1000) * 1000) as libc::suseconds_t,
