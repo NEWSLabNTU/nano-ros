@@ -11,18 +11,22 @@ use crate::subscriber::DdsSubscriber;
 // On `std + platform-posix` the stock dust-dds UDP transport spawns
 // its own OS threads and does not need external driving, so we skip
 // the runtime field entirely.
-#[cfg(all(feature = "alloc", not(feature = "std")))]
+#[cfg(feature = "nostd-runtime")]
 use crate::runtime::NrosPlatformRuntime;
-#[cfg(all(feature = "alloc", not(feature = "std")))]
+#[cfg(feature = "nostd-runtime")]
 use alloc::sync::Arc;
 
 /// DDS session backed by a dust-dds `DomainParticipant`.
 pub struct DdsSession {
     #[cfg(feature = "std")]
     participant: dust_dds::domain::domain_participant::DomainParticipant,
+    /// Async participant — used on the no_std path. Methods are
+    /// driven through `runtime.block_on(...)`.
+    #[cfg(feature = "nostd-runtime")]
+    participant_async: dust_dds::dds_async::domain_participant::DomainParticipantAsync,
     /// Cooperative runtime driven by `drive_io()`; only present on the
     /// no_std path where dust-dds has no background threads.
-    #[cfg(all(feature = "alloc", not(feature = "std")))]
+    #[cfg(feature = "nostd-runtime")]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
     _domain_id: u32,
 }
@@ -40,19 +44,14 @@ impl DdsSession {
     }
 
     /// Constructor used by the no_std path (Phase 71.2 transport).
-    ///
-    /// Currently unreachable at runtime — `DdsRmw::open()` still returns
-    /// `ConnectionFailed` on `!std` until the nros-platform UDP transport
-    /// (71.2) lands — but the constructor lives here so the field shape
-    /// is frozen and the transport PR is purely about filling in the
-    /// factory.
-    #[cfg(all(feature = "alloc", not(feature = "std")))]
-    #[allow(dead_code)]
+    #[cfg(feature = "nostd-runtime")]
     pub(crate) fn new_nostd(
         runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+        participant_async: dust_dds::dds_async::domain_participant::DomainParticipantAsync,
         domain_id: u32,
     ) -> Self {
         Self {
+            participant_async,
             runtime,
             _domain_id: domain_id,
         }
@@ -322,7 +321,7 @@ impl Session for DdsSession {
         // heartbeat timers) make progress. On `std + platform-posix`
         // the stock dust-dds transport uses its own OS threads and
         // `drive_io` stays a pure no-op.
-        #[cfg(all(feature = "alloc", not(feature = "std")))]
+        #[cfg(feature = "nostd-runtime")]
         {
             self.runtime.drive();
         }

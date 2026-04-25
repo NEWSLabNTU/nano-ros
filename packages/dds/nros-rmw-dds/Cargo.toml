@@ -24,10 +24,16 @@ alloc = []
 # (Phase 71.3) into dust-dds's `DdsRuntime` trait and use nros-platform
 # primitives for clock / sleep / sockets.
 platform-posix    = ["std", "alloc", "nros-platform/platform-posix"]
-platform-zephyr   = ["alloc", "nros-platform/platform-zephyr"]
-platform-freertos = ["alloc", "nros-platform/platform-freertos"]
-platform-nuttx    = ["alloc", "nros-platform/platform-nuttx"]
-platform-threadx  = ["alloc", "nros-platform/platform-threadx"]
+platform-zephyr   = ["nostd-runtime", "nros-platform/platform-zephyr"]
+platform-freertos = ["nostd-runtime", "nros-platform/platform-freertos"]
+platform-nuttx    = ["nostd-runtime", "nros-platform/platform-nuttx"]
+platform-threadx  = ["nostd-runtime", "nros-platform/platform-threadx"]
+
+# Internal — set by every `platform-*` feature that uses
+# `NrosPlatformRuntime` + `NrosUdpTransportFactory` (i.e. every
+# platform except `platform-posix`, which keeps using dust-dds's stock
+# threaded transport).
+nostd-runtime = ["alloc"]
 # `platform-bare-metal` intentionally omitted for now — Phase 71.6 /
 # 71.7 will add an opt-in `#[global_allocator]` on the supported board
 # crates before this feature makes sense. Until that lands, bare-metal

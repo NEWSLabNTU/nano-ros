@@ -273,9 +273,25 @@ fn noop_waker() -> Waker {
 /// Generic over `P` so test fixtures can pin a specific platform ZST;
 /// the shipped configuration uses `P = nros_platform::ConcretePlatform`
 /// resolved from the `platform-*` Cargo feature.
+///
+/// `Clone` is intentionally cheap — only the spawner's `Arc` is
+/// cloned. Cloning the runtime gives every clone access to the same
+/// task queue, which is the right semantics for both
+/// `DomainParticipantFactoryAsync::new(runtime, ...)` (consumes one
+/// clone) and `runtime.block_on(...)` (uses another clone to drive
+/// the same task queue from a different call site).
 pub struct NrosPlatformRuntime<P> {
     spawner: NrosSpawner,
     _p: PhantomData<fn() -> P>,
+}
+
+impl<P> Clone for NrosPlatformRuntime<P> {
+    fn clone(&self) -> Self {
+        Self {
+            spawner: self.spawner.clone(),
+            _p: PhantomData,
+        }
+    }
 }
 
 impl<P> NrosPlatformRuntime<P> {
