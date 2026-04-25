@@ -18,6 +18,8 @@ mod service;
 mod session;
 mod subscriber;
 mod transport;
+#[cfg(feature = "alloc")]
+pub mod transport_nros;
 
 pub use publisher::DdsPublisher;
 pub use service::{DdsServiceClient, DdsServiceServer};

@@ -175,7 +175,7 @@ suggested.
 ## Work Items
 
 - [x] 71.1 — `block_on` on `NrosPlatformRuntime` (no fork patch needed)
-- [ ] 71.2 — Non-blocking UDP transport
+- [~] 71.2 — Non-blocking UDP transport (Path B skeleton landed; SPDP join + recv tasks pending)
 - [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
 - [~] 71.4 — `drive_io()` drives the runtime (skeleton landed; no background tasks spawned yet — waiting on 71.2)
 - [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
@@ -252,9 +252,63 @@ Covered by two new unit tests (`block_on_resolves_ready_future`,
 - `packages/dds/nros-rmw-dds/src/runtime.rs` — inherent method +
   2 tests. No fork changes.
 
-### 71.2 — Non-blocking UDP transport
+### 71.2 — Non-blocking UDP transport — **Path B started**
 
-Biggest remaining item. Two implementation paths on the table:
+Path B chosen (Path A would be std-only and require fork surgery for
+the same end-state). The skeleton lives in
+`packages/dds/nros-rmw-dds/src/transport_nros.rs`:
+
+* `NrosUdpTransportFactory<P>` — implements
+  `dust_dds::transport::TransportParticipantFactory`. Holds an
+  `Arc<NrosPlatformRuntime<P>>` for spawning recv tasks and a
+  configurable fragment size (defaults to 1344 to match dust-dds's
+  stock builder). Generic over `P` so it picks up any platform that
+  implements `PlatformUdp + PlatformUdpMulticast`.
+* `NrosMessageWriter<P>` — implements `WriteMessage`. Holds one
+  outbound socket protected by `spin::Mutex`. `write_message`
+  iterates the locator list, formats each as a null-terminated IPv4
+  endpoint string (`"a.b.c.d\0"` + `"port\0"`), calls
+  `<P as PlatformUdp>::create_endpoint` + `send` + `free_endpoint`.
+  Returns a Ready future immediately — the actual send is
+  synchronous because `PlatformUdp::send` is non-blocking under the
+  contract.
+* `OpaqueSocket` / `OpaqueEndpoint` — `[u8; 64]` `repr(C, align(8))`
+  buffers covering every shipped platform's `_z_sys_net_socket_t` /
+  `_z_sys_net_endpoint_t` (largest currently observed: 16 bytes;
+  smallest: 2 bytes on smoltcp). A follow-up commit can wire in
+  `zpico-platform-shim`'s build-time size probe to make these exact
+  rather than over-allocated.
+
+**What still needs to be done (subsequent commits)**:
+
+1. Bind the default unicast socket to a known port and discover the
+   bound port via the platform's `getsockname` analogue, populating
+   `default_unicast_locator_list`.
+2. Open metatraffic unicast + multicast sockets (SPDP/SEDP), join
+   the `239.255.0.1:7400+250*domain_id` group via
+   `<P as PlatformUdpMulticast>::mcast_listen`.
+3. Spawn three recv tasks onto the runtime spawner that loop
+   `<P as PlatformUdp>::read` / `mcast_read` and forward bytes into
+   the `data_channel_sender`. `set_recv_timeout(0)` first so each
+   read is non-blocking; the spawner's `drain_tasks()` re-schedules
+   the loops on every `Executor::spin_once()`.
+4. Plumb the factory into `DdsRmw::open()` on `!std` so the no_std
+   path actually constructs a participant.
+
+**Tests in this commit**: `locator_to_cstring_roundtrip`,
+`factory_default_fragment_size_is_1344`. Both pass. End-to-end
+verification waits on items 1–3 above.
+
+**Files**:
+- `packages/dds/nros-rmw-dds/src/transport_nros.rs` (new, ~330 LOC)
+- `packages/dds/nros-rmw-dds/src/lib.rs` — `pub mod transport_nros;`
+
+The original Path A vs Path B note is kept below for reference, but
+71.2 is now committed as Path B exclusively.
+
+#### Path notes (historical — Path B chosen)
+
+Two implementation paths considered:
 
 **Path A — fork-patch `rtps_udp_transport`.** Replace the three
 `std::thread::spawn` recv loops in
