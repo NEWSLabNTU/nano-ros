@@ -482,6 +482,52 @@ impl ZephyrPlatform {
         0
     }
 
+    /// Phase 71.21 — bind a UDP socket for inbound use via Zephyr's
+    /// POSIX socket shim.
+    pub fn udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        let ai = unsafe { &*rep._iptcp };
+
+        let fd = unsafe { c::socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._fd = fd };
+
+        let one: core::ffi::c_int = 1;
+        unsafe {
+            c::setsockopt(
+                fd,
+                c::SOL_SOCKET,
+                c::SO_REUSEADDR,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<core::ffi::c_int>() as socklen_t,
+            );
+        }
+
+        let tv = timeval {
+            tv_sec: (timeout_ms / 1000) as i64,
+            tv_usec: ((timeout_ms % 1000) * 1000) as i64,
+        };
+        unsafe {
+            c::setsockopt(
+                fd,
+                c::SOL_SOCKET,
+                c::SO_RCVTIMEO,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<timeval>() as socklen_t,
+            );
+        }
+
+        if unsafe { c::bind(fd, ai.ai_addr, ai.ai_addrlen) } < 0 {
+            unsafe { c::close(fd) };
+            unsafe { (*sock)._fd = -1 };
+            return -1;
+        }
+        0
+    }
+
     pub fn udp_close(sock: *mut c_void) {
         let sock = sock as *mut Socket;
         unsafe {
@@ -776,6 +822,9 @@ impl nros_platform_api::PlatformUdp for ZephyrPlatform {
     }
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         Self::udp_set_recv_timeout(sock, timeout_ms)
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_listen(sock, endpoint, timeout_ms)
     }
 }
 

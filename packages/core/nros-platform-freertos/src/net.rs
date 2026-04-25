@@ -376,6 +376,53 @@ impl FreeRtosPlatform {
         0
     }
 
+    /// Phase 71.21 — bind a UDP socket for inbound use via lwIP.
+    pub fn udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { lwip_socket_thread_init() };
+
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        let ai = unsafe { &*rep._iptcp };
+
+        let fd = unsafe { lwip_socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._socket = fd };
+
+        let one: c_int = 1;
+        unsafe {
+            lwip_setsockopt(
+                fd,
+                SOL_SOCKET as c_int,
+                SO_REUSEADDR as c_int,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<c_int>() as u32,
+            );
+        }
+
+        let tv = timeval {
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
+        };
+        unsafe {
+            lwip_setsockopt(
+                fd,
+                SOL_SOCKET as c_int,
+                SO_RCVTIMEO as c_int,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<timeval>() as u32,
+            );
+        }
+
+        if unsafe { lwip_bind(fd, ai.ai_addr, ai.ai_addrlen) } < 0 {
+            unsafe { lwip_close(fd) };
+            unsafe { (*sock)._socket = -1 };
+            return -1;
+        }
+        0
+    }
+
     pub fn udp_close(sock: *mut c_void) {
         unsafe { lwip_socket_thread_init() };
         let sock = sock as *mut Socket;
@@ -668,6 +715,9 @@ impl nros_platform_api::PlatformUdp for FreeRtosPlatform {
     }
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         Self::udp_set_recv_timeout(sock, timeout_ms)
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_listen(sock, endpoint, timeout_ms)
     }
 }
 

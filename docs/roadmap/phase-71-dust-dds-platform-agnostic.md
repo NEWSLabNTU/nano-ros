@@ -209,8 +209,9 @@ split into independently-landable items below; once they're done,
 71.4.b's port to the async API gives us an end-to-end no_std pubsub
 on every nros platform.
 
-- [ ] 71.20 — Add `PlatformUdp::bind(sock, endpoint, timeout) -> i8`
-- [ ] 71.21 — Per-platform `PlatformUdp::bind` implementations (×6)
+- [x] 71.20 — `PlatformUdp::listen` (bind) used as the bind primitive — already
+       on the trait surface as a default `-1` stub
+- [x] 71.21 — Per-platform `PlatformUdp::listen` implementations (×6)
 - [ ] 71.22 — Replace `[u8; 64]` opaque buffers with size-probed
        `nros-rmw-dds`-owned types
 - [ ] 71.23 — Per-platform SDK / Kconfig profile for DDS
@@ -221,7 +222,76 @@ on every nros platform.
 - [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
 - [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
 
-#### 71.20 — Add `PlatformUdp::bind`
+#### 71.20 / 71.21 — bind primitive — **Landed**
+
+Discovered while implementing that `PlatformUdp::listen` was already
+on the trait surface as a default `-1` stub (originally added for
+zenoh-pico's UDP server-mode locators). It has the right signature
+for our needs — `(sock, endpoint, timeout_ms) -> i8`. So no new
+trait method was needed; just the per-platform overrides.
+
+71.21 implementations (`udp_listen` helper + trait override):
+
+* `nros-platform-posix` — `libc::socket` + `SO_REUSEADDR` +
+  `SO_RCVTIMEO` + `bind(2)`. Verified by the new
+  `bind_unicast_then_send_then_recv_roundtrip_posix` unit test which
+  binds on port 47411 and round-trips a datagram via loopback.
+* `nros-platform-zephyr` — same shape via the Zephyr POSIX socket
+  shim (`c::socket` + `c::setsockopt(SO_REUSEADDR/SO_RCVTIMEO)` +
+  `c::bind`).
+* `nros-platform-freertos` — lwIP `lwip_socket` +
+  `lwip_setsockopt` + `lwip_bind`.
+* `nros-platform-nuttx` — NuttX BSD socket layer (`socket`,
+  `setsockopt`, `bind`).
+* `nros-platform-threadx` — NetX BSD layer (`nx_bsd_socket`,
+  `nx_bsd_setsockopt`, `nx_bsd_bind`). Replaces the connect-style
+  `udp_open` for inbound use.
+* `nros-smoltcp::define_smoltcp_platform!` — adds a new
+  `SmoltcpBridge::udp_set_local_port(handle, port)` primitive that
+  records `entry.local_port` on the bridge's UDP socket table; the
+  next `do_poll()` sees `socket.is_open() == false` and calls
+  `socket.bind(port)`. The `listen()` impl in the macro reserves a
+  handle via `udp_open()` then immediately calls
+  `udp_set_local_port(handle, ep._port)` so the bind happens on the
+  RTPS PSM port rather than an ephemeral one.
+
+`bind_unicast` in `nros-rmw-dds::transport_nros` now calls
+`<P as PlatformUdp>::listen(sock, ep, 0)` instead of `open` — the
+DDS recv loops finally bind to deterministic ports on every
+platform.
+
+Verification (host):
+* `cargo check` clean for `nros-platform-{posix,zephyr,freertos,
+  nuttx,threadx}`.
+* `cargo check --target thumbv7m-none-eabi --manifest-path
+  packages/boards/nros-platform-mps2-an385/Cargo.toml` clean.
+* `cargo test -p nros-rmw-dds --features platform-posix --lib`:
+  10/10 pass (was 9; the new POSIX bind round-trip test is the
+  10th).
+* `cargo nextest run -p nros-tests --test dds_api`: 5/5 pass —
+  std + posix path unaffected.
+
+QEMU + cross-compile per-platform validation is 71.25.
+
+**Files**:
+- `packages/core/nros-platform-posix/src/net.rs`
+- `packages/core/nros-platform-zephyr/src/net.rs`
+- `packages/core/nros-platform-freertos/src/net.rs`
+- `packages/core/nros-platform-nuttx/src/net.rs`
+- `packages/core/nros-platform-threadx/src/net.rs`
+- `packages/drivers/nros-smoltcp/src/bridge.rs`
+  (new `udp_set_local_port`)
+- `packages/drivers/nros-smoltcp/src/platform_macro.rs`
+  (`listen()` override on the smoltcp platform)
+- `packages/dds/nros-rmw-dds/src/transport_nros.rs`
+  (`bind_unicast` calls `listen` + new round-trip unit test)
+
+#### 71.20 — Add `PlatformUdp::bind` — historical (kept for context)
+
+The original draft of this item proposed a new trait method.
+Re-reading the trait surface during implementation showed
+`PlatformUdp::listen` already had the right signature, so no
+trait extension was needed.
 
 The trait gains one method:
 

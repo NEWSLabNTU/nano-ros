@@ -477,6 +477,50 @@ macro_rules! __define_smoltcp_platform_impl {
                         };
                     }
                 }
+
+                /// Phase 71.21 — bind a UDP socket to the endpoint's
+                /// local port so the smoltcp UDP socket listens on a
+                /// known port (required by DDS RTPS PSM §9.6.1.4).
+                ///
+                /// The smoltcp `UdpSocket::bind()` happens lazily in
+                /// the bridge's poll loop; here we just record
+                /// `entry.local_port` via `udp_set_local_port`. Until
+                /// the next poll the socket isn't yet bound, but the
+                /// recv loop in `nros-rmw-dds::transport_nros` yields
+                /// repeatedly anyway so the bind happens before the
+                /// first read attempt.
+                fn listen(
+                    sock: *mut c_void,
+                    endpoint: *const c_void,
+                    _timeout_ms: u32,
+                ) -> i8 {
+                    if sock.is_null() || endpoint.is_null() {
+                        return -1;
+                    }
+                    let sock = sock as *mut Socket;
+                    let rep = unsafe { &*(endpoint as *const Endpoint) };
+
+                    unsafe {
+                        (*sock)._handle = -1;
+                        (*sock)._connected = false;
+                    }
+
+                    let handle = SmoltcpBridge::udp_open();
+                    if handle < 0 {
+                        return -1;
+                    }
+
+                    if SmoltcpBridge::udp_set_local_port(handle, rep._port) < 0 {
+                        SmoltcpBridge::udp_close(handle);
+                        return -1;
+                    }
+
+                    unsafe {
+                        (*sock)._handle = handle as i8;
+                        (*sock)._connected = false;
+                    }
+                    0
+                }
             }
 
             // ---- Socket helpers ----

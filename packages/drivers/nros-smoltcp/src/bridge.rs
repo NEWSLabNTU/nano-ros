@@ -716,6 +716,27 @@ impl SmoltcpBridge {
         }
     }
 
+    /// Phase 71.21 — bind a UDP socket to a specific local port.
+    ///
+    /// Stamps the entry's `local_port` so the next `do_poll()` calls
+    /// `socket.bind(port)` on the underlying smoltcp UDP socket.
+    /// Required by DDS, which needs a deterministic SPDP/SEDP source
+    /// port (see RTPS PSM §9.6.1.4 — the multicast metatraffic port
+    /// `7400 + 250·domain_id` and the unicast variants).
+    pub fn udp_set_local_port(handle: i32, local_port: u16) -> i32 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return -1;
+        }
+        unsafe {
+            let entry = &mut UDP_SOCKET_TABLE[handle as usize];
+            if !entry.allocated {
+                return -1;
+            }
+            entry.local_port = local_port;
+            0
+        }
+    }
+
     /// Set the remote endpoint for a UDP socket. Returns 0 on success, -1 on error.
     pub fn udp_set_remote(handle: i32, ip: &[u8; 4], port: u16) -> i32 {
         if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {

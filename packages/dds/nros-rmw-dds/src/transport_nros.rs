@@ -418,8 +418,13 @@ impl<P> NrosUdpTransportFactory<P> {
     }
 }
 
-/// Bind a unicast UDP socket to `0.0.0.0:port` and return the
-/// initialised opaque socket. Returns `None` on bind failure.
+/// Bind a unicast UDP socket to `0.0.0.0:port` for inbound RTPS
+/// traffic. Calls `<P as PlatformUdp>::listen` (Phase 71.20), which
+/// is the trait method specifically for the bind-then-recv flow that
+/// `udp_open` doesn't cover (open is connect-style for zenoh-pico's
+/// outbound queries; listen does an explicit `bind(2)`).
+///
+/// Returns `None` on bind failure.
 fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
     let addr = b"0.0.0.0\0".as_ptr();
     let port_str = port_cstring(port as u32);
@@ -428,7 +433,10 @@ fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
         return None;
     }
     let mut sock = OpaqueSocket::new();
-    let rc = <P as PlatformUdp>::open(sock.as_mut_ptr(), ep.as_ptr(), 0);
+    // Pass `timeout_ms = 0` — recv is set non-blocking by the recv
+    // loop's `set_recv_timeout(0)` call before any read happens, so
+    // the bind-time timeout is irrelevant.
+    let rc = <P as PlatformUdp>::listen(sock.as_mut_ptr(), ep.as_ptr(), 0);
     <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
     if rc < 0 { None } else { Some(sock) }
 }
@@ -591,6 +599,61 @@ mod tests {
         let a = loc.address();
         assert_eq!(&a[0..12], &[0u8; 12]);
         assert_eq!(&a[12..16], &[192, 168, 1, 7]);
+    }
+
+    #[test]
+    fn bind_unicast_then_send_then_recv_roundtrip_posix() {
+        // Phase 71.24 host-side validation. Picks a high port to avoid
+        // colliding with any other RTPS-on-loopback test that might be
+        // running concurrently.
+        let port: u16 = 47411;
+        let bound = bind_unicast::<ConcretePlatform>(port);
+        assert!(
+            bound.is_some(),
+            "bind_unicast should succeed on POSIX loopback"
+        );
+        let mut bound = bound.unwrap();
+
+        // Outbound socket — uses udp_open (connect-style; no bind).
+        let target = b"127.0.0.1\0";
+        let port_str = port_cstring(port as u32);
+        let mut ep = OpaqueEndpoint::new();
+        assert_eq!(
+            <ConcretePlatform as PlatformUdp>::create_endpoint(
+                ep.as_mut_ptr(),
+                target.as_ptr(),
+                port_str.as_ptr(),
+            ),
+            0
+        );
+        let mut send_sock = OpaqueSocket::new();
+        assert_eq!(
+            <ConcretePlatform as PlatformUdp>::open(send_sock.as_mut_ptr(), ep.as_ptr(), 0),
+            0
+        );
+
+        let payload = b"phase-71-bind-roundtrip";
+        let n = <ConcretePlatform as PlatformUdp>::send(
+            send_sock.as_ptr(),
+            payload.as_ptr(),
+            payload.len(),
+            ep.as_ptr(),
+        );
+        assert_eq!(n, payload.len(), "send should report full datagram");
+
+        // Set the bound socket's recv timeout high enough that the
+        // packet arrives even on a loaded host — the recv loop in
+        // production would set it to 0 and yield repeatedly.
+        <ConcretePlatform as PlatformUdp>::set_recv_timeout(bound.as_ptr(), 500);
+        let mut buf = [0u8; 64];
+        let got =
+            <ConcretePlatform as PlatformUdp>::read(bound.as_ptr(), buf.as_mut_ptr(), buf.len());
+        assert!(got >= payload.len(), "recv should return at least {} bytes, got {}", payload.len(), got);
+        assert_eq!(&buf[..payload.len()], payload);
+
+        <ConcretePlatform as PlatformUdp>::close(send_sock.as_mut_ptr());
+        <ConcretePlatform as PlatformUdp>::close(bound.as_mut_ptr());
+        <ConcretePlatform as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
     }
 
     #[test]

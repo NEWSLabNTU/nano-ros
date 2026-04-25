@@ -338,6 +338,72 @@ impl PosixPlatform {
         }
     }
 
+    /// Phase 71.21 — bind a UDP socket for inbound use.
+    ///
+    /// Differs from `udp_open` in that this calls `bind(2)` after
+    /// `socket(2)`. `udp_open` is for zenoh-pico-style outbound-only
+    /// usage where the local port is ephemeral and never observed
+    /// by peers; DDS needs the local port to be the deterministic
+    /// RTPS PSM port so peers can address replies back.
+    pub fn udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        let ai = unsafe { &*rep._iptcp };
+
+        let fd = unsafe { libc::socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._fd = fd };
+
+        // SO_REUSEADDR — multiple participants on the same host need
+        // to share metatraffic ports without `EADDRINUSE`.
+        let one: libc::c_int = 1;
+        unsafe {
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_REUSEADDR,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            );
+        }
+
+        // SO_RCVTIMEO — `timeout_ms = 0` requests a non-blocking recv,
+        // matching the contract `transport_nros::unicast_recv_loop`
+        // expects (`set_recv_timeout(0)` first, then loop).
+        let tv = libc::timeval {
+            tv_sec: (timeout_ms / 1000) as libc::time_t,
+            tv_usec: ((timeout_ms % 1000) * 1000) as libc::suseconds_t,
+        };
+        unsafe {
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<libc::timeval>() as libc::socklen_t,
+            );
+        }
+
+        // bind(2)
+        let mut it = rep._iptcp;
+        while !it.is_null() {
+            let ai = unsafe { &*it };
+            let ret = unsafe { libc::bind(fd, ai.ai_addr, ai.ai_addrlen) };
+            if ret == 0 {
+                return 0;
+            }
+            it = ai.ai_next;
+        }
+
+        unsafe {
+            libc::close(fd);
+            (*sock)._fd = -1;
+        }
+        -1
+    }
+
     pub fn udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
         let sock = unsafe { &*(sock as *const Socket) };
         let mut raddr: libc::sockaddr_storage = unsafe { core::mem::zeroed() };
@@ -1064,6 +1130,9 @@ impl nros_platform_api::PlatformUdp for PosixPlatform {
     }
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         Self::udp_set_recv_timeout(sock, timeout_ms)
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_listen(sock, endpoint, timeout_ms)
     }
 }
 

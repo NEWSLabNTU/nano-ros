@@ -335,6 +335,59 @@ impl ThreadxPlatform {
         0
     }
 
+    /// Phase 71.21 — bind a UDP socket for inbound use via NetX BSD.
+    pub fn udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+
+        let fd = unsafe { nx_bsd_socket(AF_INET as INT, SOCK_DGRAM as INT, IPPROTO_UDP as INT) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._fd = fd };
+
+        let one: INT = 1;
+        unsafe {
+            nx_bsd_setsockopt(
+                fd,
+                SOL_SOCKET as INT,
+                SO_REUSEADDR as INT,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<INT>() as INT,
+            );
+        }
+
+        if timeout_ms > 0 {
+            let tv_ms: INT = timeout_ms as INT;
+            unsafe {
+                nx_bsd_setsockopt(
+                    fd,
+                    SOL_SOCKET as INT,
+                    SO_RCVTIMEO as INT,
+                    &tv_ms as *const _ as *const c_void,
+                    core::mem::size_of::<INT>() as INT,
+                );
+            }
+        }
+
+        let addr = ep_to_sockaddr(rep);
+        if unsafe {
+            nx_bsd_bind(
+                fd,
+                &addr as *const nx_bsd_sockaddr_in as *mut nx_bsd_sockaddr,
+                core::mem::size_of::<nx_bsd_sockaddr_in>() as INT,
+            )
+        } < 0
+        {
+            unsafe {
+                nx_bsd_soc_close(fd);
+                (*sock)._fd = -1;
+            }
+            return -1;
+        }
+        0
+    }
+
     pub fn udp_close(sock: *mut c_void) {
         Self::tcp_close(sock);
     }
@@ -560,6 +613,9 @@ impl nros_platform_api::PlatformUdp for ThreadxPlatform {
     }
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         Self::udp_set_recv_timeout(sock, timeout_ms)
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_listen(sock, endpoint, timeout_ms)
     }
 }
 
