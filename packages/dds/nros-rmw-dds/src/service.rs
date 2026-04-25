@@ -23,7 +23,6 @@ pub struct DdsServiceServer {
 }
 
 impl DdsServiceServer {
-    #[cfg(feature = "std")]
     pub(crate) fn new(request_reader: DdsSubscriber, reply_writer: DdsPublisher) -> Self {
         Self {
             request_reader,
@@ -90,7 +89,6 @@ pub struct DdsServiceClient {
 }
 
 impl DdsServiceClient {
-    #[cfg(feature = "std")]
     pub(crate) fn new(request_writer: DdsPublisher, reply_reader: DdsSubscriber) -> Self {
         Self {
             request_writer,

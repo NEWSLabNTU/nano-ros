@@ -180,7 +180,7 @@ suggested.
 - [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
 - [x] 71.4 — `drive_io()` drives the runtime + `Rmw::open` no_std path
 - [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
-- [ ] 71.4.b — Port `DdsPublisher` / `DdsSubscriber` / `DdsService*` from
+- [x] 71.4.b — Port `DdsPublisher` / `DdsSubscriber` / `DdsService*` from
        sync to async dust-dds API + block_on wrap, unblocking actual no_std
        end-to-end pubsub
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
@@ -393,24 +393,21 @@ spawned onto the runtime), `DdsSession::drive_io()` driving the
 spawner from `Executor::spin_once()`, and `DdsRmw::open()`
 constructing a `DomainParticipantAsync` on every nros platform.
 
-**What's missing for an end-to-end no_std pubsub** is split into
-two streams:
+**What's missing for an end-to-end no_std pubsub** has narrowed to
+**71.20–71.27** — closing the `PlatformUdp` gap. The trait was
+designed for zenoh-pico's outbound-only UDP and lacks `bind`;
+the `bind_unicast` helper in `transport_nros.rs` calls
+`PlatformUdp::open` today and gets a non-bound socket. 71.20
+adds the trait method, 71.21 implements it on six platforms,
+71.22–71.27 cover size-probed buffers / SDK config / per-platform
+smoke tests / smoltcp multicast / E2E pubsub tests.
 
-1. **71.4.b** — port `DdsPublisher` / `DdsSubscriber` /
-   `DdsServiceServer` / `DdsServiceClient` from the sync dust-dds
-   API (`#[cfg(feature = "std")]`) to `dds_async::*` + `block_on`,
-   so the `Session` trait methods stop returning `ConnectionFailed`.
-
-2. **71.20–71.27** — close the `PlatformUdp` gap. The trait was
-   designed for zenoh-pico's outbound-only UDP and lacks `bind`;
-   the `bind_unicast` helper in `transport_nros.rs` calls
-   `PlatformUdp::open` today and gets a non-bound socket. 71.20
-   adds the trait method, 71.21 implements it on six platforms,
-   71.22–71.27 cover size-probed buffers / SDK config / per-platform
-   smoke tests / smoltcp multicast / E2E pubsub tests.
-
-Both streams must land before 71.6 / 71.7 / 71.8 / 71.9 are
-exercisable.
+71.4.b is now landed — `DdsPublisher` / `DdsSubscriber` /
+`DdsServiceServer` / `DdsServiceClient` all support both the
+sync dust-dds API (`std + platform-posix`) and the async API
+(every other platform via `nostd-runtime`). The
+`Session::create_*` methods construct the right variant per
+platform feature.
 
 ### 71.1 — `block_on` on `NrosPlatformRuntime` — **Landed** (no fork patch needed)
 

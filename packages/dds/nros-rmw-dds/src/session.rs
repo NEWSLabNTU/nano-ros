@@ -16,6 +16,46 @@ use crate::runtime::NrosPlatformRuntime;
 #[cfg(feature = "nostd-runtime")]
 use alloc::sync::Arc;
 
+// ---------------------------------------------------------------------------
+// No-listener ZSTs — dust-dds's async create_* methods take
+// `Option<impl XListener + Send + 'static>`, so `None::<()>` doesn't
+// compile (the unit type doesn't impl the listener traits). One ZST per
+// listener trait satisfies the bound at the call site without wiring
+// any callbacks.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "nostd-runtime")]
+mod no_listener {
+    use crate::raw_type::RawCdrPayload;
+    use core::marker::PhantomData;
+
+    pub struct NoTopicListener;
+    impl dust_dds::dds_async::topic_listener::TopicListener for NoTopicListener {}
+
+    pub struct NoPublisherListener;
+    impl dust_dds::dds_async::publisher_listener::PublisherListener for NoPublisherListener {}
+
+    pub struct NoSubscriberListener;
+    impl dust_dds::dds_async::subscriber_listener::SubscriberListener for NoSubscriberListener {}
+
+    pub struct NoDataWriterListener<Foo>(PhantomData<fn() -> Foo>);
+    impl<Foo: 'static>
+        dust_dds::dds_async::data_writer_listener::DataWriterListener<Foo>
+        for NoDataWriterListener<Foo>
+    {
+    }
+
+    pub struct NoDataReaderListener<Foo>(PhantomData<fn() -> Foo>);
+    impl<Foo: 'static>
+        dust_dds::dds_async::data_reader_listener::DataReaderListener<Foo>
+        for NoDataReaderListener<Foo>
+    {
+    }
+
+    pub type NoDataWriterListenerRaw = NoDataWriterListener<RawCdrPayload>;
+    pub type NoDataReaderListenerRaw = NoDataReaderListener<RawCdrPayload>;
+}
+
 /// DDS session backed by a dust-dds `DomainParticipant`.
 pub struct DdsSession {
     #[cfg(feature = "std")]
@@ -105,7 +145,48 @@ impl Session for DdsSession {
             Ok(DdsPublisher::new(writer))
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(feature = "nostd-runtime")]
+        {
+            use crate::raw_type::RawCdrPayload;
+            use dust_dds::infrastructure::qos::QosKind;
+            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::type_support::TypeSupport;
+            use no_listener::*;
+
+            let dds_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    topic.name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::PublisherCreationFailed)?;
+
+            let publisher = self
+                .runtime
+                .block_on(self.participant_async.create_publisher(
+                    QosKind::Default,
+                    None::<NoPublisherListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::PublisherCreationFailed)?;
+
+            let writer = self
+                .runtime
+                .block_on(publisher.create_datawriter::<RawCdrPayload>(
+                    &dds_topic,
+                    QosKind::Default,
+                    None::<NoDataWriterListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::PublisherCreationFailed)?;
+
+            return Ok(DdsPublisher::new_async(writer, self.runtime.clone()));
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = (topic, _qos);
             Err(TransportError::PublisherCreationFailed)
@@ -152,7 +233,48 @@ impl Session for DdsSession {
             Ok(DdsSubscriber::new(reader))
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(feature = "nostd-runtime")]
+        {
+            use crate::raw_type::RawCdrPayload;
+            use dust_dds::infrastructure::qos::QosKind;
+            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::type_support::TypeSupport;
+            use no_listener::*;
+
+            let dds_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    topic.name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::SubscriberCreationFailed)?;
+
+            let subscriber = self
+                .runtime
+                .block_on(self.participant_async.create_subscriber(
+                    QosKind::Default,
+                    None::<NoSubscriberListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::SubscriberCreationFailed)?;
+
+            let reader = self
+                .runtime
+                .block_on(subscriber.create_datareader::<RawCdrPayload>(
+                    &dds_topic,
+                    QosKind::Default,
+                    None::<NoDataReaderListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::SubscriberCreationFailed)?;
+
+            return Ok(DdsSubscriber::new_async(reader, self.runtime.clone()));
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = (topic, _qos);
             Err(TransportError::SubscriberCreationFailed)
@@ -228,7 +350,83 @@ impl Session for DdsSession {
             ))
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(feature = "nostd-runtime")]
+        {
+            use crate::raw_type::RawCdrPayload;
+            use dust_dds::infrastructure::qos::QosKind;
+            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::type_support::TypeSupport;
+            use no_listener::*;
+
+            let req_topic_name =
+                alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
+            let req_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    &req_topic_name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+
+            let reply_topic_name =
+                alloc::format!("rr{}Reply", service.name.trim_start_matches('/'));
+            let reply_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    &reply_topic_name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+
+            let subscriber = self
+                .runtime
+                .block_on(self.participant_async.create_subscriber(
+                    QosKind::Default,
+                    None::<NoSubscriberListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+            let request_reader = self
+                .runtime
+                .block_on(subscriber.create_datareader::<RawCdrPayload>(
+                    &req_topic,
+                    QosKind::Default,
+                    None::<NoDataReaderListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+
+            let publisher = self
+                .runtime
+                .block_on(self.participant_async.create_publisher(
+                    QosKind::Default,
+                    None::<NoPublisherListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+            let reply_writer = self
+                .runtime
+                .block_on(publisher.create_datawriter::<RawCdrPayload>(
+                    &reply_topic,
+                    QosKind::Default,
+                    None::<NoDataWriterListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+
+            return Ok(DdsServiceServer::new(
+                DdsSubscriber::new_async(request_reader, self.runtime.clone()),
+                DdsPublisher::new_async(reply_writer, self.runtime.clone()),
+            ));
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = service;
             Err(TransportError::ServiceServerCreationFailed)
@@ -304,7 +502,83 @@ impl Session for DdsSession {
             ))
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(feature = "nostd-runtime")]
+        {
+            use crate::raw_type::RawCdrPayload;
+            use dust_dds::infrastructure::qos::QosKind;
+            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::type_support::TypeSupport;
+            use no_listener::*;
+
+            let req_topic_name =
+                alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
+            let req_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    &req_topic_name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+
+            let reply_topic_name =
+                alloc::format!("rr{}Reply", service.name.trim_start_matches('/'));
+            let reply_topic = self
+                .runtime
+                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
+                    &reply_topic_name,
+                    RawCdrPayload::get_type_name(),
+                    QosKind::Default,
+                    None::<NoTopicListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+
+            let publisher = self
+                .runtime
+                .block_on(self.participant_async.create_publisher(
+                    QosKind::Default,
+                    None::<NoPublisherListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+            let request_writer = self
+                .runtime
+                .block_on(publisher.create_datawriter::<RawCdrPayload>(
+                    &req_topic,
+                    QosKind::Default,
+                    None::<NoDataWriterListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+
+            let subscriber = self
+                .runtime
+                .block_on(self.participant_async.create_subscriber(
+                    QosKind::Default,
+                    None::<NoSubscriberListener>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+            let reply_reader = self
+                .runtime
+                .block_on(subscriber.create_datareader::<RawCdrPayload>(
+                    &reply_topic,
+                    QosKind::Default,
+                    None::<NoDataReaderListenerRaw>,
+                    NO_STATUS,
+                ))
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+
+            return Ok(DdsServiceClient::new(
+                DdsPublisher::new_async(request_writer, self.runtime.clone()),
+                DdsSubscriber::new_async(reply_reader, self.runtime.clone()),
+            ));
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = service;
             Err(TransportError::ServiceClientCreationFailed)

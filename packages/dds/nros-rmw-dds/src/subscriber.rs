@@ -2,10 +2,23 @@
 
 use nros_rmw::{Subscriber, TransportError};
 
-/// DDS subscriber backed by a dust-dds `DataReader`.
+#[cfg(feature = "nostd-runtime")]
+use alloc::sync::Arc;
+
+#[cfg(feature = "nostd-runtime")]
+use crate::runtime::NrosPlatformRuntime;
+
+/// DDS subscriber backed by a dust-dds `DataReader` (`std + posix`) or a
+/// `DataReaderAsync` driven through `NrosPlatformRuntime::block_on()`
+/// (every other platform).
 pub struct DdsSubscriber {
     #[cfg(feature = "std")]
     reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
+    #[cfg(feature = "nostd-runtime")]
+    reader_async:
+        dust_dds::dds_async::data_reader::DataReaderAsync<crate::raw_type::RawCdrPayload>,
+    #[cfg(feature = "nostd-runtime")]
+    runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
 }
 
 impl DdsSubscriber {
@@ -14,6 +27,19 @@ impl DdsSubscriber {
         reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
     ) -> Self {
         Self { reader }
+    }
+
+    #[cfg(feature = "nostd-runtime")]
+    pub(crate) fn new_async(
+        reader_async: dust_dds::dds_async::data_reader::DataReaderAsync<
+            crate::raw_type::RawCdrPayload,
+        >,
+        runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+    ) -> Self {
+        Self {
+            reader_async,
+            runtime,
+        }
     }
 }
 
@@ -26,29 +52,58 @@ impl Subscriber for DdsSubscriber {
             use dust_dds::infrastructure::sample_info::{
                 ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
             };
-            match self
+            return match self
                 .reader
                 .take(1, ANY_SAMPLE_STATE, ANY_VIEW_STATE, ANY_INSTANCE_STATE)
             {
                 Ok(samples) => {
-                    if let Some(sample) = samples.into_iter().next() {
-                        if let Some(payload) = sample.data {
-                            let len = payload.data.len();
-                            if len > buf.len() {
-                                return Err(TransportError::MessageTooLarge);
-                            }
-                            buf[..len].copy_from_slice(&payload.data);
-                            return Ok(Some(len));
+                    if let Some(sample) = samples.into_iter().next()
+                        && let Some(payload) = sample.data
+                    {
+                        let len = payload.data.len();
+                        if len > buf.len() {
+                            return Err(TransportError::MessageTooLarge);
                         }
+                        buf[..len].copy_from_slice(&payload.data);
+                        return Ok(Some(len));
                     }
                     Ok(None)
                 }
                 Err(dust_dds::infrastructure::error::DdsError::NoData) => Ok(None),
                 Err(_) => Err(TransportError::PollFailed),
-            }
+            };
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(feature = "nostd-runtime")]
+        {
+            use dust_dds::infrastructure::sample_info::{
+                ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
+            };
+            return match self.runtime.block_on(self.reader_async.take(
+                1,
+                ANY_SAMPLE_STATE,
+                ANY_VIEW_STATE,
+                ANY_INSTANCE_STATE,
+            )) {
+                Ok(samples) => {
+                    if let Some(sample) = samples.into_iter().next()
+                        && let Some(payload) = sample.data
+                    {
+                        let len = payload.data.len();
+                        if len > buf.len() {
+                            return Err(TransportError::MessageTooLarge);
+                        }
+                        buf[..len].copy_from_slice(&payload.data);
+                        return Ok(Some(len));
+                    }
+                    Ok(None)
+                }
+                Err(dust_dds::infrastructure::error::DdsError::NoData) => Ok(None),
+                Err(_) => Err(TransportError::PollFailed),
+            };
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = buf;
             Err(TransportError::PollFailed)
