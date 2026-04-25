@@ -656,6 +656,14 @@ mod tests {
         <ConcretePlatform as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
     }
 
+    // Note: a multicast bind/send/recv roundtrip test was attempted
+    // here but POSIX's `mcast_listen` requires a real interface name
+    // (it walks `getifaddrs` looking for an exact match), and
+    // `bind_multicast` passes NULL because the bare-metal / RTOS
+    // backends don't use named interfaces. The proper validation for
+    // SPDP join is the per-platform QEMU E2E test (Phase 71.27),
+    // not a host-side unit test.
+
     #[test]
     fn factory_default_fragment_size_is_1344() {
         let rt = Arc::new(NrosPlatformRuntime::<ConcretePlatform>::new());
