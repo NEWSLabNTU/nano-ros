@@ -107,6 +107,22 @@ void app_main(void) {
         return;
     }
 
+    // Race 3 fix (Phase 89.13): probe the action server's send_goal
+    // queryable liveliness token before the first send_goal so we
+    // don't race the queryable's declare-ack from the router on cold
+    // boot. See the service-client example for the full rationale.
+    ret = nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Action server /fibonacci not visible after 10s — bailing (ret=%d)\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+    printf("Action server discovered — sending goal\n");
+    fflush(stdout);
+
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);
     goal.order = 10;

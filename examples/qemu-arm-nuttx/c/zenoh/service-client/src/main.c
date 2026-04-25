@@ -103,13 +103,28 @@ void app_main(void) {
         return;
     }
 
-    // Phase 89.12: bump the per-call timeout to 15 s. NuttX QEMU boots
-    // both server and client in parallel, and the cold-path zenoh
-    // handshake + queryable-declaration propagation over QEMU slirp
-    // routinely exceeds the 5 s default on the FIRST call, cascading
-    // the whole 4-call burst to 0 responses. 15 s gives the cold
-    // session time to settle.
-    nros_client_set_timeout(&app.client, 15000);
+    // Race 3 fix (Phase 89.13): gate the first nros_client_call on
+    // liveliness-token discovery instead of inflating the per-call
+    // timeout. NuttX QEMU boots client and server in parallel, so the
+    // first request can race the queryable's declare-ack from the
+    // router. wait_for_service issues a z_liveliness_get and spins
+    // the executor cooperatively until either a matching token
+    // reports back or the budget expires.
+    ret = nros_client_wait_for_service(&app.client, 10000);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Service /add_two_ints not visible after 10s — bailing (ret=%d)\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_client_fini(&app.client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+    printf("Server discovered — sending requests\n");
+    fflush(stdout);
+
+    // Default 5 s per-call timeout is now sufficient: discovery is no
+    // longer absorbed into the first call's budget.
+    nros_client_set_timeout(&app.client, 5000);
 
     struct { int64_t a; int64_t b; } test_cases[] = {
         {5, 3}, {10, 20}, {100, 200}, {-5, 10}
