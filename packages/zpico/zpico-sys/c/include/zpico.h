@@ -512,6 +512,19 @@ int32_t zpico_get_start(const char *_keyexpr,
 int32_t zpico_get_check(int32_t _handle, uint8_t *_reply_buf, uintptr_t _reply_buf_size);
 
 /**
+ * Start a non-blocking liveliness query (for wait_for_service).
+ */
+int32_t zpico_liveliness_get_start(const char *_keyexpr, uint32_t _timeout_ms);
+
+/**
+ * Poll a pending liveliness query.
+ *
+ * Returns 1 on first matching token reply, 0 if still pending, -9 on
+ * timeout (dropper fired without replies), other negative on error.
+ */
+int32_t zpico_liveliness_get_check(int32_t _handle);
+
+/**
  * Register a reply waker callback for async service client support.
  */
 void zpico_set_reply_waker(void (*_func)(int32_t));

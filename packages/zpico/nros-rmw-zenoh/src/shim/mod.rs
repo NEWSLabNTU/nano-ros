@@ -547,6 +547,34 @@ impl Ros2Liveliness {
         key
     }
 
+    /// Build a wildcard liveliness keyexpr matching any service-server token
+    /// for the given service.
+    ///
+    /// Format: `@ros2_lv/<domain_id>/*/0/11/SS/%/*/*/<service>/<type>/*/*`
+    /// — wildcards on zid, namespace, node, type_hash, and qos. Used by
+    /// `Client::wait_for_service` to discover any matching server before
+    /// the first request, mirroring `rclcpp::ClientBase::wait_for_service`.
+    pub fn service_server_keyexpr_wildcard<const N: usize>(
+        domain_id: u32,
+        service: &ServiceInfo,
+    ) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let service_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(service.name);
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/*/{}/{}/%/*/*/{}/{}/*/*",
+                LIVELINESS_PREFIX,
+                domain_id,
+                PROTO_VERSION_TOPIC,
+                ENTITY_SERVICE_SERVER,
+                service_mangled.as_str(),
+                service.type_name,
+            ),
+        );
+        key
+    }
+
     /// Mangle a topic name by replacing '/' with '%'
     fn mangle_topic_name<const N: usize>(topic: &str) -> heapless::String<N> {
         let mut mangled = heapless::String::new();

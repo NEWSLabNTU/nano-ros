@@ -201,6 +201,13 @@ unsafe extern "C" {
     ) -> i32;
     pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
 
+    // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).
+    pub fn zpico_liveliness_get_start(
+        keyexpr: *const core::ffi::c_char,
+        timeout_ms: u32,
+    ) -> i32;
+    pub fn zpico_liveliness_get_check(handle: i32) -> i32;
+
     // Reply waker callback (for async service client)
     pub fn zpico_set_reply_waker(func: Option<unsafe extern "C" fn(i32)>);
 

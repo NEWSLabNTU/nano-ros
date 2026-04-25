@@ -394,6 +394,18 @@ pub struct ZenohServiceClient {
     keyexpr: [u8; 257],
     /// Length of valid keyexpr
     keyexpr_len: usize,
+    /// Wildcard liveliness keyexpr matching any service-server token for
+    /// this service (null-terminated). Used by `start_server_discovery`.
+    discovery_keyexpr: [u8; 257],
+    /// Length of valid `discovery_keyexpr`.
+    discovery_keyexpr_len: usize,
+    /// Latched result of the most recent `start_server_discovery`/poll
+    /// pair. Set to `Some(true)` once the first liveliness reply arrives
+    /// so subsequent `is_server_ready` calls can answer without a round
+    /// trip. Reset to `None` when discovery hasn't been started.
+    server_seen: bool,
+    /// Slot handle of an in-flight liveliness query (None if idle).
+    discovery_handle: Option<i32>,
     /// Liveliness token for ROS 2 graph discovery (kept alive for client lifetime)
     _liveliness: Option<super::LivelinessToken>,
     /// Reference to context for making queries
@@ -425,12 +437,28 @@ impl ZenohServiceClient {
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
 
+        // Build the wildcard liveliness keyexpr we'll query in
+        // `start_server_discovery`. Null-terminate for the C shim.
+        let liv: heapless::String<KEYEXPR_STRING_SIZE> =
+            super::Ros2Liveliness::service_server_keyexpr_wildcard(service.domain_id, service);
+        let mut discovery_buf = [0u8; KEYEXPR_BUFFER_SIZE];
+        let liv_bytes = liv.as_bytes();
+        if liv_bytes.len() >= discovery_buf.len() {
+            return Err(TransportError::InvalidConfig);
+        }
+        discovery_buf[..liv_bytes.len()].copy_from_slice(liv_bytes);
+        discovery_buf[liv_bytes.len()] = 0;
+
         #[cfg(feature = "std")]
         log::debug!("Service client keyexpr: {}", key.as_str());
 
         Ok(Self {
             keyexpr: keyexpr_buf,
             keyexpr_len: bytes.len(),
+            discovery_keyexpr: discovery_buf,
+            discovery_keyexpr_len: liv_bytes.len(),
+            server_seen: false,
+            discovery_handle: None,
             _liveliness: liveliness,
             context: context as *const Context,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
@@ -557,6 +585,64 @@ impl ServiceClientTrait for ZenohServiceClient {
                 Err(TransportError::from(e))
             }
         }
+    }
+
+    fn start_server_discovery(&mut self, timeout_ms: u32) -> Result<(), Self::Error> {
+        // Idempotent: a previous query in flight is fine — let it run.
+        if self.discovery_handle.is_some() {
+            return Ok(());
+        }
+        // Already proven the server is visible; no need to re-query.
+        if self.server_seen {
+            return Ok(());
+        }
+        let context = unsafe { &*self.context };
+        let handle = context
+            .liveliness_get_start(
+                &self.discovery_keyexpr[..=self.discovery_keyexpr_len],
+                timeout_ms,
+            )
+            .map_err(TransportError::from)?;
+        self.discovery_handle = Some(handle);
+        Ok(())
+    }
+
+    fn poll_server_discovery(&mut self) -> Result<Option<bool>, Self::Error> {
+        // Latched success: once we've seen a token, the server is "ready"
+        // for the rest of this client's lifetime. ROS 2's discovery model
+        // doesn't require us to re-prove a server's existence on every
+        // call (rclcpp's `service_is_ready` snapshot semantic); if the
+        // server later goes away, individual `call()`s will time out at
+        // the reply side.
+        if self.server_seen {
+            return Ok(Some(true));
+        }
+        let handle = match self.discovery_handle {
+            Some(h) => h,
+            None => return Ok(Some(false)),
+        };
+        let context = unsafe { &*self.context };
+        match context.liveliness_get_check(handle) {
+            Ok(true) => {
+                self.discovery_handle = None;
+                self.server_seen = true;
+                Ok(Some(true))
+            }
+            Ok(false) => Ok(None),
+            Err(crate::zpico::ZpicoError::Timeout) => {
+                // Dropper fired with no replies — no server seen.
+                self.discovery_handle = None;
+                Ok(Some(false))
+            }
+            Err(e) => {
+                self.discovery_handle = None;
+                Err(TransportError::from(e))
+            }
+        }
+    }
+
+    fn is_server_ready(&self) -> bool {
+        self.server_seen
     }
 }
 

@@ -434,6 +434,93 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     pub fn reset_in_flight(&mut self) {
         self.in_flight = false;
     }
+
+    /// Block until at least one matching service server is discoverable on
+    /// the network, or `timeout` elapses.
+    ///
+    /// Returns `Ok(true)` if a matching server reported back inside the
+    /// budget; `Ok(false)` on timeout (no server visible). Mirrors
+    /// `rclcpp::ClientBase::wait_for_service` and
+    /// `rclpy.client.Client.wait_for_service`.
+    ///
+    /// On the Zenoh backend this issues a `z_liveliness_get` against the
+    /// matching server's wildcarded liveliness keyexpr; the executor is
+    /// spun cooperatively while the query is in flight so other
+    /// subscribers / timers continue to make progress. Backends without
+    /// liveliness discovery answer `Ok(true)` immediately (default trait
+    /// impl in `nros-rmw`), so the call is a no-op cost when discovery
+    /// isn't supported.
+    ///
+    /// Recommended usage — gate the first `call()` on this:
+    ///
+    /// ```ignore
+    /// let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
+    /// if !client.wait_for_service(&mut executor, Duration::from_secs(5))? {
+    ///     return Err(NodeError::Timeout);
+    /// }
+    /// let mut promise = client.call(&request)?;
+    /// ```
+    ///
+    /// Once the server is observed, the result is latched: subsequent
+    /// `service_is_ready` checks return `true` without another round
+    /// trip. This matches `rclcpp`'s snapshot semantic — discovery isn't
+    /// re-proven on every call.
+    pub fn wait_for_service(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<bool, NodeError> {
+        // Already proven once — don't re-query.
+        if self.handle.is_server_ready() {
+            return Ok(true);
+        }
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let max_spins =
+            (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        // Per-query budget. A liveliness_get is a single-shot probe of the
+        // router's current token list; if the server hasn't declared its
+        // token yet when our query arrives, the router replies "no
+        // matching tokens" and the query terminates. We loop, re-issuing
+        // shorter probes until either a matching token is observed or the
+        // outer wall-clock budget expires. 1 s per probe balances "see
+        // freshly-declared tokens quickly" against "burn fewer FFI
+        // round-trips on a healthy network".
+        const PROBE_TIMEOUT_MS: u32 = 1000;
+        loop {
+            self.handle
+                .start_server_discovery(PROBE_TIMEOUT_MS)
+                .map_err(|_| NodeError::ServiceRequestFailed)?;
+            // Drain this probe to completion (token reply or empty FINAL).
+            loop {
+                executor.spin_once(spin_interval);
+                match self
+                    .handle
+                    .poll_server_discovery()
+                    .map_err(|_| NodeError::ServiceRequestFailed)?
+                {
+                    Some(true) => return Ok(true),
+                    Some(false) => break, // probe finished empty — re-issue
+                    None => {}            // still in flight
+                }
+                if !budget.tick() {
+                    return Ok(false);
+                }
+            }
+            if !budget.tick() {
+                return Ok(false);
+            }
+        }
+    }
+
+    /// Snapshot whether a matching service server is currently visible.
+    ///
+    /// Non-blocking. Matches `rclcpp::ClientBase::service_is_ready` and
+    /// `rclpy.client.Client.service_is_ready`. Backends without liveliness
+    /// discovery return `true` (assume always reachable).
+    pub fn service_is_ready(&self) -> bool {
+        self.handle.is_server_ready()
+    }
 }
 
 // ============================================================================
@@ -913,6 +1000,69 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Explicitly clear the "send_goal reply in flight" flag (Phase 84.D3).
     pub fn reset_send_goal_in_flight(&mut self) {
         self.core.in_flight_send_goal = false;
+    }
+
+    /// Block until the action server's send-goal queryable is discoverable
+    /// on the network, or `timeout` elapses.
+    ///
+    /// Returns `Ok(true)` on discovery, `Ok(false)` on timeout. Mirrors
+    /// `rclcpp_action::Client::wait_for_action_server`.
+    ///
+    /// Implementation: probes the action's `send_goal` service-server
+    /// liveliness keyexpr via the same primitive as
+    /// [`Client::wait_for_service`]. Once that service is reachable the
+    /// remaining four action entities (cancel queryable + feedback /
+    /// status / result publishers) are also reachable in practice — they
+    /// were declared by the same server in one batch.
+    pub fn wait_for_action_server(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<bool, NodeError> {
+        if self.core.send_goal_client.is_server_ready() {
+            return Ok(true);
+        }
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let max_spins =
+            (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        // See `Client::wait_for_service` for the re-probe rationale: a
+        // single liveliness_get samples the router's current token list
+        // and terminates; we loop with shorter per-probe timeouts so the
+        // outer budget covers servers that come up after we start
+        // waiting.
+        const PROBE_TIMEOUT_MS: u32 = 1000;
+        loop {
+            self.core
+                .send_goal_client
+                .start_server_discovery(PROBE_TIMEOUT_MS)
+                .map_err(|_| NodeError::ServiceRequestFailed)?;
+            loop {
+                executor.spin_once(spin_interval);
+                match self
+                    .core
+                    .send_goal_client
+                    .poll_server_discovery()
+                    .map_err(|_| NodeError::ServiceRequestFailed)?
+                {
+                    Some(true) => return Ok(true),
+                    Some(false) => break,
+                    None => {}
+                }
+                if !budget.tick() {
+                    return Ok(false);
+                }
+            }
+            if !budget.tick() {
+                return Ok(false);
+            }
+        }
+    }
+
+    /// Snapshot whether the action server is currently visible.
+    /// Mirrors `rclcpp_action::Client::action_server_is_ready`.
+    pub fn action_server_is_ready(&self) -> bool {
+        self.core.send_goal_client.is_server_ready()
     }
 
     /// Explicitly clear the "cancel reply in flight" flag (Phase 84.D3).

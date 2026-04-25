@@ -552,6 +552,24 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Start a non-blocking liveliness query (for wait_for_service).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_get_start(
+        _keyexpr: *const c_char,
+        _timeout_ms: u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// Poll a pending liveliness query.
+    ///
+    /// Returns 1 on first matching token reply, 0 if still pending, -9 on
+    /// timeout (dropper fired without replies), other negative on error.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_get_check(_handle: i32) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Register a reply waker callback for async service client support.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_set_reply_waker(_func: Option<unsafe extern "C" fn(i32)>) {}

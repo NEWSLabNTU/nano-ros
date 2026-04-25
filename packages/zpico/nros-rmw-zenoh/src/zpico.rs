@@ -763,6 +763,44 @@ impl Context {
             Err(ZpicoError::from_code(ret))
         }
     }
+
+    /// Start a non-blocking liveliness query.
+    ///
+    /// Returns a slot handle on success that can be polled with
+    /// [`liveliness_get_check()`](Self::liveliness_get_check).
+    /// `keyexpr` must be a null-terminated byte slice.
+    pub fn liveliness_get_start(&self, keyexpr: &[u8], timeout_ms: u32) -> Result<i32> {
+        let ret = ffi_guard(|| unsafe {
+            zpico_sys::zpico_liveliness_get_start(keyexpr.as_ptr().cast(), timeout_ms)
+        });
+
+        if ret < 0 {
+            return Err(ZpicoError::from_code(ret));
+        }
+        Ok(ret)
+    }
+
+    /// Poll a pending liveliness query.
+    ///
+    /// Returns `Ok(true)` once at least one matching liveliness token has
+    /// reported back, `Ok(false)` while the query is still in flight with
+    /// no replies yet. Returns `Err(ZpicoError::Timeout)` when the query
+    /// dropper fired without seeing any matching token (no server visible
+    /// within the timeout).
+    pub fn liveliness_get_check(&self, handle: i32) -> Result<bool> {
+        let ret =
+            ffi_guard(|| unsafe { zpico_sys::zpico_liveliness_get_check(handle) });
+
+        if ret == 1 {
+            Ok(true)
+        } else if ret == 0 {
+            Ok(false)
+        } else if ret == -9 {
+            Err(ZpicoError::Timeout)
+        } else {
+            Err(ZpicoError::from_code(ret))
+        }
+    }
 }
 
 #[cfg(any(

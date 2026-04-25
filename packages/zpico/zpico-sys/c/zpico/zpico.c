@@ -1647,6 +1647,106 @@ int32_t zpico_get_start(const char *keyexpr,
     return slot;
 }
 
+/* Non-blocking liveliness query.
+ *
+ * Used by `Client::wait_for_service` (and the action-client equivalent) to
+ * implement rclcpp-style server discovery: issue a `z_liveliness_get` against
+ * the server's wildcarded liveliness keyexpr, then poll `zpico_liveliness_get_check`
+ * until either at least one matching token reports back or the dropper fires
+ * empty-handed.
+ *
+ * Reuses the same `g_pending_gets` slot pool as `zpico_get_start` — a slot is
+ * just a (received_flag, dropper_done_flag, payload_buf) triple, agnostic to
+ * whether the caller will read the payload. The reply handler still copies
+ * the (typically empty) liveliness token bytes into the slot's buffer; we
+ * never read them. Only `received` matters.
+ *
+ * Returns the slot handle on success, ZPICO_ERR_* on failure.
+ */
+int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
+    if (!g_session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+
+    int32_t slot = -1;
+    for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
+        if (g_pending_gets[i].in_use && g_pending_gets[i].ctx.done) {
+            g_pending_gets[i].in_use = false;
+        }
+        if (!g_pending_gets[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return ZPICO_ERR_FULL;
+    }
+
+    pending_get_slot_t *ps = &g_pending_gets[slot];
+    ps->ctx.len = 0;
+    ps->ctx.received = false;
+    ps->ctx.done = false;
+    ps->in_use = true;
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        ps->in_use = false;
+        return ZPICO_ERR_KEYEXPR;
+    }
+
+    z_liveliness_get_options_t opts;
+    z_liveliness_get_options_default(&opts);
+    opts.timeout_ms = (uint64_t)timeout_ms;
+
+    z_owned_closure_reply_t callback;
+    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
+
+    z_result_t zret = z_liveliness_get(z_session_loan(&g_session),
+                                        z_view_keyexpr_loan(&ke),
+                                        z_move(callback), &opts);
+    if (zret < 0) {
+        ps->in_use = false;
+        return ZPICO_ERR_GENERIC;
+    }
+    return slot;
+}
+
+/* Check status of a pending liveliness query.
+ *
+ * Unlike `zpico_get_check`, the caller doesn't care about the reply payload —
+ * just whether *any* matching liveliness token responded. Liveliness tokens
+ * carry an empty (0-byte) payload, which `zpico_get_check` would otherwise
+ * report as "still pending" (its return value `0` is overloaded).
+ *
+ * Returns:
+ *   1 — at least one token reply seen, server is discoverable.
+ *   0 — query still in flight, no replies yet.
+ *  -9 — dropper fired with no replies (timeout, no matching server).
+ *   ZPICO_ERR_INVALID — handle out of range or slot not in use.
+ */
+int32_t zpico_liveliness_get_check(int32_t handle) {
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    pending_get_slot_t *ps = &g_pending_gets[handle];
+    if (!ps->in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    if (ps->ctx.received) {
+        if (ps->ctx.done) {
+            ps->in_use = false;
+        }
+        return 1;
+    }
+    if (ps->ctx.done) {
+        ps->in_use = false;
+        return -9;  /* ZPICO_ERR_TIMEOUT */
+    }
+    return 0;
+}
+
 int32_t zpico_get_check(int32_t handle,
                               uint8_t *reply_buf, size_t reply_buf_size) {
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {

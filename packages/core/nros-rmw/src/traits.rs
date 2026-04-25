@@ -1109,6 +1109,50 @@ pub trait ServiceClientTrait {
     /// Default: no-op (backends that don't support waking simply ignore this).
     fn register_waker(&self, _waker: &core::task::Waker) {}
 
+    /// Begin a server-discovery query on this client (non-blocking).
+    ///
+    /// Models `rclcpp::ClientBase::wait_for_service` machinery: the backend
+    /// fires off a discovery probe (typically a Zenoh liveliness query
+    /// against the matching server's wildcarded liveliness keyexpr) and
+    /// the caller polls [`poll_server_discovery`](Self::poll_server_discovery)
+    /// to collect the result.
+    ///
+    /// Default impl: no-op success. Backends without a discovery channel
+    /// (or those that always assume the server is reachable) can leave
+    /// this default and have `poll_server_discovery` return
+    /// `Ok(Some(true))` immediately.
+    fn start_server_discovery(&mut self, _timeout_ms: u32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Poll an in-flight server-discovery query.
+    ///
+    /// - `Ok(Some(true))` — at least one matching server has reported
+    ///   back; safe to send the first request.
+    /// - `Ok(Some(false))` — discovery query finished without finding
+    ///   any matching server (timeout / no-replies).
+    /// - `Ok(None)` — query still in flight.
+    /// - `Err(_)` — transport-level failure unrelated to server presence.
+    ///
+    /// Default impl: returns `Ok(Some(true))` (i.e., "server is always
+    /// assumed reachable"). The Zenoh backend overrides this with a
+    /// liveliness-token check.
+    fn poll_server_discovery(&mut self) -> Result<Option<bool>, Self::Error> {
+        Ok(Some(true))
+    }
+
+    /// Synchronous, non-blocking check of whether a matching server is
+    /// currently visible.
+    ///
+    /// Mirrors `rclcpp::ClientBase::service_is_ready`. Backends that lack
+    /// discovery should keep the default `true` so existing call sites
+    /// don't regress.
+    ///
+    /// Default impl: always `true`.
+    fn is_server_ready(&self) -> bool {
+        true
+    }
+
     /// Call a service with typed messages (blocking).
     ///
     /// **Deprecated — do not call.** The default body returns `Timeout`
