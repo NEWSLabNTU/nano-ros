@@ -189,6 +189,202 @@ suggested.
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 
+### Sub-phase 71.20–71.27 — Complete `PlatformUdp` for dust-dds across every platform
+
+While auditing the Path B transport against POSIX's
+`udp_open` we discovered that the existing `PlatformUdp` trait was
+designed entirely around zenoh-pico's outbound-only UDP usage:
+`open(sock, endpoint, timeout)` creates a socket fd from the endpoint
+metadata but **never calls `bind(2)`** — only the multicast path
+(`PlatformUdpMulticast::mcast_listen`) does an explicit bind. That's
+fine for zenoh-pico (every `z_get` opens a fresh ephemeral port) but
+breaks DDS, which needs deterministic local-port binds for
+SPDP/SEDP discovery and for peers to know where to send unicast
+samples. The `bind_unicast` helper in `transport_nros.rs` calls
+`PlatformUdp::open` today and gets a non-bound socket; recv loops
+attached to those sockets receive nothing.
+
+Closing the gap touches every platform implementation. The work is
+split into independently-landable items below; once they're done,
+71.4.b's port to the async API gives us an end-to-end no_std pubsub
+on every nros platform.
+
+- [ ] 71.20 — Add `PlatformUdp::bind(sock, endpoint, timeout) -> i8`
+- [ ] 71.21 — Per-platform `PlatformUdp::bind` implementations (×6)
+- [ ] 71.22 — Replace `[u8; 64]` opaque buffers with size-probed
+       `nros-rmw-dds`-owned types
+- [ ] 71.23 — Per-platform SDK / Kconfig profile for DDS
+- [ ] 71.24 — Host-side `PlatformUdp` validation suite
+       (POSIX loopback unit tests)
+- [ ] 71.25 — Per-platform QEMU smoke binary
+       (bind → recvfrom → assert)
+- [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
+- [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
+
+#### 71.20 — Add `PlatformUdp::bind`
+
+The trait gains one method:
+
+```rust
+pub trait PlatformUdp {
+    // ... existing methods ...
+
+    /// Bind a fresh UDP socket to `endpoint` for receiving.
+    ///
+    /// `endpoint` is the LOCAL address to bind (typically
+    /// `0.0.0.0:<port>` rendered via `create_endpoint`). After a
+    /// successful return, `read()` and `read_exact()` deliver
+    /// datagrams sent to that port; `send()` chooses the source port
+    /// to match.
+    ///
+    /// Distinct from `open()` which only creates a socket fd from
+    /// the endpoint metadata without binding — that one stays in
+    /// place for outbound zenoh-pico usage. Returns 0 on success,
+    /// negative on failure.
+    fn bind(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+}
+```
+
+Default impl returning `-1` so platforms that haven't migrated yet
+fail loudly rather than silently no-op:
+
+```rust
+fn bind(_sock: *mut c_void, _endpoint: *const c_void, _timeout_ms: u32) -> i8 {
+    -1
+}
+```
+
+**Files**:
+- `packages/core/nros-platform-api/src/lib.rs` — new method on
+  `PlatformUdp` with default `-1`.
+
+#### 71.21 — Per-platform implementations of `PlatformUdp::bind`
+
+Six impls; each one is small (~10 lines) but has to thread through
+the platform's actual networking stack:
+
+| Platform | File | Sketch |
+|---|---|---|
+| POSIX | `nros-platform-posix/src/net.rs` | `libc::socket` + `libc::bind` + `SO_REUSEADDR` + `SO_RCVTIMEO`; pattern in existing `tcp_listen` |
+| Zephyr | `nros-platform-zephyr/src/net.rs` | `zsock_socket` + `zsock_bind`; needs `CONFIG_POSIX_API=y` from 71.23 |
+| FreeRTOS+lwIP | `nros-platform-freertos/src/net.rs` | lwIP `lwip_bind`; needs `LWIP_SO_RCVTIMEO=1` |
+| NuttX | `nros-platform-nuttx/src/net.rs` | `socket` + `bind` via NuttX libc |
+| ThreadX+NetX | `nros-platform-threadx/src/net.rs` | NetX BSD `bind` from `<nxd_bsd.h>` |
+| Bare-metal smoltcp | `nros-smoltcp/src/platform_macro.rs` | `SmoltcpBridge::create_udp_socket` + bind via socket's `bind(IpEndpoint)`; the bridge already exposes the primitive |
+
+Each of these has to round-trip a localhost loopback test (71.24)
+before being marked done.
+
+#### 71.22 — Size-probed opaque types
+
+Today `transport_nros.rs` uses `[u8; 64]` for both `OpaqueSocket`
+and `OpaqueEndpoint` — comfortably over the largest observed
+platform (POSIX 16 bytes, Zephyr 8 bytes, smoltcp 2 bytes), but
+wasteful. `zpico-platform-shim/build.rs` already has a working
+`cc::Build`-based size probe driven by the platform's
+`_z_sys_net_socket_t` / `_z_sys_net_endpoint_t`.
+
+Two choices:
+- **A** — `nros-rmw-dds` re-runs that build script (copy
+  `zpico-platform-shim/build.rs` into `nros-rmw-dds/build.rs`).
+  Adds ~150 LOC of build script per crate.
+- **B** — Factor the size-probe types out of `zpico-platform-shim`
+  into a shared `nros-net-shim` crate that both `zpico` and
+  `nros-rmw-dds` depend on. Cleaner long-term but requires
+  rearranging `zpico-platform-shim`'s `pub`-visibility surface.
+
+Recommended: **B**. The `ZSysNetSocket` / `ZSysNetEndpoint` names
+become `NetSocket` / `NetEndpoint` after the move; `zpico` keeps its
+existing names as aliases.
+
+#### 71.23 — Per-platform SDK / Kconfig profile for DDS
+
+DDS over UDP multicast needs IGMP and adequate RX queue depth on
+every RTOS. Concrete deltas per platform:
+
+| Platform | Required configuration |
+|---|---|
+| POSIX | none |
+| Zephyr | `CONFIG_POSIX_API=y`, `CONFIG_NET_IPV4_IGMP=y`, `CONFIG_NET_SOCKETS_POLL_MAX≥6`, `CONFIG_NET_PKT_{RX,TX}_COUNT≥32`, `CONFIG_NET_BUF_RX_COUNT≥256`, `CONFIG_NET_BUF_DATA_SIZE≥512` |
+| FreeRTOS+lwIP | `LWIP_IGMP=1`, `LWIP_SO_RCVTIMEO=1`, `LWIP_BROADCAST=1`, `IP_REASSEMBLY=1` (RTPS fragments), `MEMP_NUM_NETBUF≥32` |
+| NuttX | `CONFIG_NET_IGMP=y`, `CONFIG_NET_BROADCAST=y`, `CONFIG_NET_UDP_NRECVS≥4`, `CONFIG_NET_RECV_TIMEO=y` |
+| ThreadX+NetX | `NX_ENABLE_IGMP_VERSION2`, NetX BSD layer init for SO_RCVTIMEO |
+| Bare-metal smoltcp | smoltcp `MulticastConfig::Strict`; bridge config exposes `Interface::join_multicast_group(IpAddress::v4(239,255,0,1))` |
+
+Each profile lives in the matching board crate's `prj.conf` /
+`FreeRTOSConfig.h` / Kconfig fragment. Documented in
+`book/src/user-guide/rmw-backends.md`.
+
+#### 71.24 — Host-side `PlatformUdp` validation suite
+
+POSIX-only unit-test crate that exercises the contract dust-dds
+expects:
+
+```rust
+#[test]
+fn bind_recvfrom_loopback() {
+    let bound = bind_to(7411);          // <P as PlatformUdp>::bind
+    let outbound = open_to(7411);
+    send_to(outbound, b"hello", "127.0.0.1", 7411);
+    set_recv_timeout(bound, 100);
+    let buf = recv(bound);
+    assert_eq!(buf, b"hello");
+}
+```
+
+Lives in `packages/dds/nros-rmw-dds/tests/platform_udp_*.rs`. For
+non-host platforms (Zephyr, FreeRTOS, etc.) this becomes a "compile
++ run in QEMU" test (71.25).
+
+#### 71.25 — Per-platform QEMU smoke binary
+
+For each cross-compile platform, ship a `tests/`-style binary
+shaped like:
+
+```
+fn main() {
+    let bound = <ConcretePlatform as PlatformUdp>::bind(...);
+    let outbound = <ConcretePlatform as PlatformUdp>::open(...);
+    send(outbound, "hello");
+    let buf = recv(bound);
+    assert_eq!(buf, "hello");
+    println!("[OK] PlatformUdp roundtrip");
+}
+```
+
+Run it under each platform's QEMU configuration (Zephyr native_sim,
+qemu-arm-freertos, qemu-arm-nuttx, qemu-riscv64-threadx, MPS2-AN385
+bare-metal, ESP32-QEMU). Pattern matches existing
+`tests/qemu-*` scripts.
+
+#### 71.26 — Bare-metal smoltcp multicast audit
+
+smoltcp 0.x supports IGMP v1/v2 via `Interface::join_multicast_group`
+and `MulticastConfig::Strict`. Three checks:
+
+1. `nros-smoltcp::SmoltcpBridge` exposes a multicast-join API
+   (currently it doesn't — only TCP / UDP unicast).
+2. `define_smoltcp_platform!` macro's `PlatformUdpMulticast` impl
+   wires `mcast_listen` through to the new bridge API.
+3. End-to-end test on MPS2-AN385 + ESP32-QEMU: subscribe to
+   `239.255.0.1:7400`, receive an SPDP packet from a host-side
+   sender.
+
+If smoltcp's IGMP support proves too restrictive (e.g. no
+multicast-loopback), document the limitation and have the
+bare-metal target fall back to unicast-only DDS over slirp (peers
+send to `10.0.2.2:7411` directly).
+
+#### 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
+
+Two QEMU instances (talker + listener) on each platform exchanging
+RTPS data. Each platform gets its own nextest binary mirroring the
+existing zenoh `rtos_e2e` shape (4-platform `#[rstest]` matrix).
+Acceptance: a `RawCdrPayload` round-trips both ways within 30 s.
+
+Runs in `just <platform> test` per the existing per-platform
+nextest groups (Phase 89.1's per-platform parallelism).
+
 **Foundation + transport + open path landed.** Items 71.1–71.5 give
 us a complete chain: `NrosPlatformRuntime<P>` (clock + timer +
 spawner + block_on), `NrosUdpTransportFactory<P>` (3 sockets bound
@@ -197,14 +393,24 @@ spawned onto the runtime), `DdsSession::drive_io()` driving the
 spawner from `Executor::spin_once()`, and `DdsRmw::open()`
 constructing a `DomainParticipantAsync` on every nros platform.
 
-What's missing for an end-to-end no_std pubsub is **71.4.b**:
-porting `DdsPublisher` / `DdsSubscriber` / `DdsServiceServer` /
-`DdsServiceClient` from the sync dust-dds API
-(`#[cfg(feature = "std")]`) to `dds_async::*` + `block_on` so the
-`Session` trait methods (`create_publisher` etc.) actually return
-something other than `ConnectionFailed` on the `nostd-runtime` path.
-That's the next concrete chunk; 71.6 / 71.7 / 71.8 / 71.9 unlock
-once it lands.
+**What's missing for an end-to-end no_std pubsub** is split into
+two streams:
+
+1. **71.4.b** — port `DdsPublisher` / `DdsSubscriber` /
+   `DdsServiceServer` / `DdsServiceClient` from the sync dust-dds
+   API (`#[cfg(feature = "std")]`) to `dds_async::*` + `block_on`,
+   so the `Session` trait methods stop returning `ConnectionFailed`.
+
+2. **71.20–71.27** — close the `PlatformUdp` gap. The trait was
+   designed for zenoh-pico's outbound-only UDP and lacks `bind`;
+   the `bind_unicast` helper in `transport_nros.rs` calls
+   `PlatformUdp::open` today and gets a non-bound socket. 71.20
+   adds the trait method, 71.21 implements it on six platforms,
+   71.22–71.27 cover size-probed buffers / SDK config / per-platform
+   smoke tests / smoltcp multicast / E2E pubsub tests.
+
+Both streams must land before 71.6 / 71.7 / 71.8 / 71.9 are
+exercisable.
 
 ### 71.1 — `block_on` on `NrosPlatformRuntime` — **Landed** (no fork patch needed)
 
