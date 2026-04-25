@@ -215,9 +215,17 @@ impl<'a> Node<'a> {
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 
+        // Each underlying ServiceInfo / TopicInfo also carries the
+        // node identity so the Zenoh shim declares a liveliness token
+        // for it. Without `with_node_name` the shim's
+        // `declare_entity_liveliness` short-circuits (`node_name.and_then`
+        // → None) and `wait_for_action_server` has nothing to find.
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info)
@@ -229,7 +237,9 @@ impl<'a> Node<'a> {
             "action_msgs::srv::dds_::CancelGoal_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id)
+        .with_node_name(&self.name)
+        .with_namespace(&self.namespace);
         let cancel_goal_server = self
             .session
             .create_service_server(&cancel_goal_info)
@@ -237,7 +247,10 @@ impl<'a> Node<'a> {
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let get_result_server = self
             .session
             .create_service_server(&get_result_info)
@@ -245,7 +258,10 @@ impl<'a> Node<'a> {
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
@@ -257,7 +273,9 @@ impl<'a> Node<'a> {
             "action_msgs::msg::dds_::GoalStatusArray_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id)
+        .with_node_name(&self.name)
+        .with_namespace(&self.namespace);
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
@@ -304,9 +322,17 @@ impl<'a> Node<'a> {
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 
+        // Mirror `create_action_server_sized`: thread node identity through
+        // each underlying ServiceInfo / TopicInfo so the Zenoh shim
+        // declares the matching client-side liveliness tokens (and so the
+        // discovery wildcard built from `send_goal_info` ends up in the
+        // same domain as the server's tokens).
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let send_goal_client = self
             .session
             .create_service_client(&send_goal_info)
@@ -318,7 +344,9 @@ impl<'a> Node<'a> {
             "action_msgs::srv::dds_::CancelGoal_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id)
+        .with_node_name(&self.name)
+        .with_namespace(&self.namespace);
         let cancel_goal_client = self
             .session
             .create_service_client(&cancel_goal_info)
@@ -326,7 +354,10 @@ impl<'a> Node<'a> {
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let get_result_client = self
             .session
             .create_service_client(&get_result_info)
@@ -334,7 +365,10 @@ impl<'a> Node<'a> {
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
+                .with_domain(self.domain_id)
+                .with_node_name(&self.name)
+                .with_namespace(&self.namespace);
         let feedback_subscriber = self
             .session
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
