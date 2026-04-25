@@ -275,24 +275,24 @@ impl Platform {
     /// Per-(lang, variant) skip reason, or `None` if the combination is
     /// expected to run on this platform.
     fn skip_reason(self, lang: Lang, variant: Variant) -> Option<&'static str> {
+        // Phase 89.13 sweep: turn on the cases where the example +
+        // builder exist and the dependency-codegen path is wired
+        // correctly. Keep NuttX C++ skipped — the cmake macro for
+        // NuttX (`nuttx_build_example`) doesn't generate dependency
+        // umbrella headers (`unique_identifier_msgs.hpp` etc.) when
+        // the per-example build dir is fresh, so the C++ build
+        // fails with `fatal error: unique_identifier_msgs/...`. Real
+        // bug, but in build infrastructure rather than the example.
+        // Tracked separately.
         match (self, lang, variant) {
             (Platform::Nuttx, Lang::Cpp, Variant::Pubsub) => {
-                Some("NuttX C/C++ blocked by upstream libc missing _SC_HOST_NAME_MAX")
+                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
             }
             (Platform::Nuttx, Lang::Cpp, Variant::Service) => {
-                Some("NuttX C/C++ blocked by upstream libc missing _SC_HOST_NAME_MAX")
+                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
             }
             (Platform::Nuttx, Lang::Cpp, Variant::Action) => {
-                Some("NuttX C++ action example not implemented (Phase 77 follow-up)")
-            }
-            (Platform::ThreadxLinux, Lang::Cpp, Variant::Action) => {
-                Some("ThreadX Linux C++ action example not implemented (Phase 69.7 follow-up)")
-            }
-            (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Service) => {
-                Some("ThreadX RISC-V C++ service example not implemented")
-            }
-            (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Action) => {
-                Some("ThreadX RISC-V C++ action example not implemented (Phase 69.8 follow-up)")
+                Some("NuttX cmake macro doesn't run dependency umbrella codegen — Phase 89.13 follow-up")
             }
             _ => None,
         }
@@ -459,16 +459,14 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
             first_builder: threadx_riscv64::build_rv64_c_action_server,
             second_builder: threadx_riscv64::build_rv64_c_action_client,
         },
-        // ThreadX RISC-V — C++ (only Pubsub is wired; Service/Action are
-        // skip_reason-gated, but map builders to talker/listener to keep
-        // the match total for the Rust compiler).
+        // ThreadX RISC-V — C++
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Pubsub) => BinaryPair {
             first_builder: threadx_riscv64::build_rv64_cpp_talker,
             second_builder: threadx_riscv64::build_rv64_cpp_listener,
         },
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Service) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_cpp_talker,
-            second_builder: threadx_riscv64::build_rv64_cpp_listener,
+            first_builder: threadx_riscv64::build_rv64_cpp_service_server,
+            second_builder: threadx_riscv64::build_rv64_cpp_service_client,
         },
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Action) => BinaryPair {
             first_builder: threadx_riscv64::build_rv64_cpp_action_server,

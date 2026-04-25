@@ -162,11 +162,9 @@ static RV64_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-// C++ action E2E tests for RISC-V ThreadX are queued (Phase 69.8
-// follow-up); the builders stay ready.
-#[allow(dead_code)]
+static RV64_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static RV64_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-#[allow(dead_code)]
 static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
@@ -334,7 +332,22 @@ pub fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-#[allow(dead_code)]
+pub fn build_rv64_cpp_service_server() -> TestResult<&'static Path> {
+    RV64_CPP_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_cmake_example("cpp", "service-server", "riscv64_threadx_cpp_service_server")
+        })
+        .map(|p| p.as_path())
+}
+
+pub fn build_rv64_cpp_service_client() -> TestResult<&'static Path> {
+    RV64_CPP_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_cmake_example("cpp", "service-client", "riscv64_threadx_cpp_service_client")
+        })
+        .map(|p| p.as_path())
+}
+
 pub fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
     RV64_CPP_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
@@ -343,7 +356,6 @@ pub fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-#[allow(dead_code)]
 pub fn build_rv64_cpp_action_client() -> TestResult<&'static Path> {
     RV64_CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
