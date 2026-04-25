@@ -262,6 +262,150 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
     NROS_RET_OK
 }
 
+/// Block until the action server's send-goal queryable is discoverable
+/// on the network, or `timeout_ms` elapses.
+///
+/// Mirrors `rclcpp_action::Client::wait_for_action_server` and the
+/// public Rust `ActionClient::wait_for_action_server`. Internally
+/// probes the action's `send_goal` service-server liveliness keyexpr
+/// (the goal queryable is the load-bearing entity for the first
+/// `nros_action_send_goal` call) via the same primitive as the
+/// service-client equivalent. See
+/// `packages/core/nros-c/src/service.rs::nros_client_wait_for_service`
+/// for the re-probe rationale.
+///
+/// # Returns
+/// * `NROS_RET_OK` — server visible.
+/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
+/// * `NROS_RET_ERROR` — transport-level failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
+    client: *mut nros_action_client_t,
+    executor: *mut crate::executor::nros_executor_t,
+    timeout_ms: u32,
+) -> nros_ret_t {
+    validate_not_null!(client, executor);
+
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        let client_ref = &mut *client;
+        if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+            return NROS_RET_NOT_INIT;
+        }
+        let internal = &mut client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return NROS_RET_NOT_INIT;
+        }
+        // Note: action clients store an opaque pointer into
+        // `executor._opaque` (see `nros_executor_add_action_client`),
+        // not to the outer `nros_executor_t`, so we can't recover the
+        // wrapper from `internal.executor_ptr`. Take `executor` as a
+        // separate argument — same convention as
+        // `nros_action_send_goal`.
+        let exec_t = &mut *executor;
+        if exec_t.in_dispatch {
+            return NROS_RET_REENTRANT;
+        }
+
+        // Latched fast-path.
+        {
+            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
+                Some(c) => c,
+                None => return NROS_RET_NOT_INIT,
+            };
+            if core.is_server_ready() {
+                return NROS_RET_OK;
+            }
+        }
+
+        const PROBE_TIMEOUT_MS: u32 = 1000;
+        let start_ns = crate::platform::get_time_ns();
+        let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
+        loop {
+            {
+                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
+                    Some(c) => c,
+                    None => return NROS_RET_NOT_INIT,
+                };
+                if let Err(_) = core.start_server_discovery(PROBE_TIMEOUT_MS) {
+                    return NROS_RET_ERROR;
+                }
+            }
+
+            loop {
+                crate::executor::nros_executor_spin_some(executor, 10_000_000);
+
+                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
+                    Some(c) => c,
+                    None => return NROS_RET_NOT_INIT,
+                };
+                match core.poll_server_discovery() {
+                    Ok(Some(true)) => return NROS_RET_OK,
+                    Ok(Some(false)) => break,
+                    Ok(None) => {}
+                    Err(_) => return NROS_RET_ERROR,
+                }
+
+                let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+                if elapsed_ns >= timeout_ns {
+                    return NROS_RET_TIMEOUT;
+                }
+            }
+
+            let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+            if elapsed_ns >= timeout_ns {
+                return NROS_RET_TIMEOUT;
+            }
+        }
+    }
+
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = (client, executor, timeout_ms);
+        NROS_RET_OK
+    }
+}
+
+/// Non-blocking snapshot of action-server visibility. Mirrors
+/// `rclcpp_action::Client::action_server_is_ready`. Takes `executor`
+/// for the same reason as
+/// [`nros_action_client_wait_for_action_server`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
+    client: *const nros_action_client_t,
+    executor: *mut crate::executor::nros_executor_t,
+) -> bool {
+    if client.is_null() || executor.is_null() {
+        return false;
+    }
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        let client_ref = &*client;
+        if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+            return false;
+        }
+        let internal = &client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return false;
+        }
+        let exec_t = &mut *executor;
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        match exec.action_client_core_mut(internal.arena_entry_index as usize) {
+            Some(core) => core.is_server_ready(),
+            None => false,
+        }
+    }
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = (client, executor);
+        true
+    }
+}
+
 /// Send a goal request.
 #[unsafe(no_mangle)]
 /// Send a goal (blocking convenience).

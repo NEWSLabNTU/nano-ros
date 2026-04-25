@@ -21,7 +21,7 @@
 /** `size_of::<RmwSubscriber>()` */
 #define NROS_SUBSCRIBER_SIZE 16
 /** `size_of::<RmwServiceClient>()` */
-#define NROS_SERVICE_CLIENT_SIZE 288
+#define NROS_SERVICE_CLIENT_SIZE 556
 /** `size_of::<RmwServiceServer>()` */
 #define NROS_SERVICE_SERVER_SIZE 280
 /** `size_of::<RmwSession>()` */

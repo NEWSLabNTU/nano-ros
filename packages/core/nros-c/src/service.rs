@@ -709,6 +709,158 @@ pub unsafe extern "C" fn nros_client_set_timeout(
     NROS_RET_OK
 }
 
+/// Block until a matching service server is discoverable, or `timeout_ms`
+/// elapses. Mirrors `rclcpp::ClientBase::wait_for_service` and the
+/// public Rust `Client::wait_for_service`.
+///
+/// The client must already have been registered with the executor via
+/// `nros_executor_add_client`. Internally fires liveliness queries
+/// against the matching service-server's wildcard liveliness keyexpr
+/// and spins the executor cooperatively while the probe is in flight.
+/// 1-second per-probe timeout, looped until either a token reply lands
+/// or the outer wall-clock budget expires — see the Rust API for the
+/// rationale (a single liveliness_get samples the router's current
+/// token list and terminates, so a server that comes up after we
+/// start waiting needs to be re-probed).
+///
+/// # Returns
+/// * `NROS_RET_OK` — server is visible (proceed with `nros_client_call`).
+/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
+/// * `NROS_RET_ERROR` — transport-level failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_wait_for_service(
+    client: *mut nros_client_t,
+    timeout_ms: u32,
+) -> nros_ret_t {
+    validate_not_null!(client);
+
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        use nros_rmw::ServiceClientTrait;
+
+        let client_ref = &mut *client;
+        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+            return NROS_RET_NOT_INIT;
+        }
+        let internal = &mut client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        if exec_t.in_dispatch {
+            return NROS_RET_REENTRANT;
+        }
+        let executor = exec_t as *mut nros_executor_t;
+
+        // Latched fast-path: if a previous wait already proved the
+        // server is reachable, don't re-probe.
+        {
+            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
+                Some(e) => e,
+                None => return NROS_RET_NOT_INIT,
+            };
+            if entry.handle.is_server_ready() {
+                return NROS_RET_OK;
+            }
+        }
+
+        // Per-probe / outer budget. Mirrors `Client::wait_for_service` in
+        // packages/core/nros-node/src/executor/handles.rs.
+        const PROBE_TIMEOUT_MS: u32 = 1000;
+        let start_ns = crate::platform::get_time_ns();
+        let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
+        loop {
+            // Re-borrow each iteration to avoid holding `entry` across
+            // the executor spin (which itself touches the arena).
+            {
+                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize)
+                {
+                    Some(e) => e,
+                    None => return NROS_RET_NOT_INIT,
+                };
+                if let Err(_) = entry.handle.start_server_discovery(PROBE_TIMEOUT_MS) {
+                    return NROS_RET_ERROR;
+                }
+            }
+
+            // Drain this probe to completion (token reply or empty FINAL).
+            loop {
+                crate::executor::nros_executor_spin_some(executor, 10_000_000);
+
+                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize)
+                {
+                    Some(e) => e,
+                    None => return NROS_RET_NOT_INIT,
+                };
+                match entry.handle.poll_server_discovery() {
+                    Ok(Some(true)) => return NROS_RET_OK,
+                    Ok(Some(false)) => break, // probe finished empty — re-issue
+                    Ok(None) => {}            // still in flight
+                    Err(_) => return NROS_RET_ERROR,
+                }
+
+                let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+                if elapsed_ns >= timeout_ns {
+                    return NROS_RET_TIMEOUT;
+                }
+            }
+
+            let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
+            if elapsed_ns >= timeout_ns {
+                return NROS_RET_TIMEOUT;
+            }
+        }
+    }
+
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = (client, timeout_ms);
+        NROS_RET_OK
+    }
+}
+
+/// Non-blocking snapshot of whether a matching service server is
+/// currently visible. Mirrors `rclcpp::ClientBase::service_is_ready`
+/// and rcl's `rcl_service_server_is_available`. Returns `false` when
+/// the client isn't registered with an executor or the backend lacks
+/// liveliness discovery (in which case use `nros_client_wait_for_service`
+/// instead, which handles those cases conservatively).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client_t) -> bool {
+    if client.is_null() {
+        return false;
+    }
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    {
+        use nros_rmw::ServiceClientTrait;
+
+        let client_ref = &*client;
+        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+            return false;
+        }
+        let internal = &client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return false;
+        }
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
+            Some(entry) => entry.handle.is_server_ready(),
+            None => false,
+        }
+    }
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    {
+        let _ = client;
+        true
+    }
+}
+
 /// Send a service request asynchronously (Phase 82).
 ///
 /// Non-blocking. The reply is delivered via the registered
