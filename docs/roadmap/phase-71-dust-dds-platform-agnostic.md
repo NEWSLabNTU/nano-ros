@@ -279,25 +279,35 @@ the same end-state). The skeleton lives in
   `zpico-platform-shim`'s build-time size probe to make these exact
   rather than over-allocated.
 
-**What still needs to be done (subsequent commits)**:
+**Landed in follow-up**: items 1–3 below all done in the second
+71.2 commit.
 
-1. Bind the default unicast socket to a known port and discover the
-   bound port via the platform's `getsockname` analogue, populating
-   `default_unicast_locator_list`.
-2. Open metatraffic unicast + multicast sockets (SPDP/SEDP), join
-   the `239.255.0.1:7400+250*domain_id` group via
-   `<P as PlatformUdpMulticast>::mcast_listen`.
-3. Spawn three recv tasks onto the runtime spawner that loop
-   `<P as PlatformUdp>::read` / `mcast_read` and forward bytes into
-   the `data_channel_sender`. `set_recv_timeout(0)` first so each
-   read is non-blocking; the spawner's `drain_tasks()` re-schedules
-   the loops on every `Executor::spin_once()`.
+1. ✅ RTPS port formulas (PSM 9.6.1.4) — `port_metatraffic_multicast`,
+   `port_metatraffic_unicast`, `port_default_unicast`. Tested.
+2. ✅ Three socket binds (`bind_unicast`, `bind_unicast` again,
+   `bind_multicast` joining `239.255.0.1`). Locator lists populated
+   for each successfully-bound socket.
+3. ✅ Three async recv loops (`unicast_recv_loop`,
+   `multicast_recv_loop`) spawned onto `runtime.spawner_handle()`.
+   Each calls `set_recv_timeout(0)` once and loops
+   `read()`/`mcast_read()` + `YieldOnce` to give the cooperative
+   spawner control. Datagrams are wrapped as `Arc<[u8]>` and pushed
+   through the dust-dds `MpscSender`.
+
+**Still pending**:
+
 4. Plumb the factory into `DdsRmw::open()` on `!std` so the no_std
-   path actually constructs a participant.
+   path actually constructs a participant — currently the factory
+   is reachable only via direct construction in tests.
 
-**Tests in this commit**: `locator_to_cstring_roundtrip`,
-`factory_default_fragment_size_is_1344`. Both pass. End-to-end
-verification waits on items 1–3 above.
+**Tests in this commit**: 9 unit tests pass:
+* `locator_to_cstring_roundtrip`
+* `factory_default_fragment_size_is_1344`
+* `rtps_port_formulas_match_spec`
+* `ipv4_locator_layout_matches_dust_dds`
+* (5 runtime tests carried over)
+
+End-to-end verification waits on item 4 above.
 
 **Files**:
 - `packages/dds/nros-rmw-dds/src/transport_nros.rs` (new, ~330 LOC)

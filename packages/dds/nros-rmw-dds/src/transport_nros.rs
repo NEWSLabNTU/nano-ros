@@ -60,6 +60,8 @@ use core::ffi::c_void;
 use core::future::Future;
 use core::pin::Pin;
 
+use dust_dds::dcps::channels::mpsc::MpscSender;
+use dust_dds::runtime::Spawner;
 use dust_dds::transport::{
     interface::{RtpsTransportParticipant, TransportParticipantFactory, WriteMessage},
     types::{LOCATOR_KIND_UDP_V4, Locator},
@@ -67,6 +69,54 @@ use dust_dds::transport::{
 use nros_platform::{PlatformUdp, PlatformUdpMulticast};
 
 use crate::runtime::NrosPlatformRuntime;
+
+// ---------------------------------------------------------------------------
+// RTPS well-known port formulas (PSM RTPS-UDP §9.6.1.4)
+// ---------------------------------------------------------------------------
+
+/// PB — port base.
+const PB: u32 = 7400;
+/// DG — domain gain.
+const DG: u32 = 250;
+/// PG — participant gain.
+const PG: u32 = 2;
+/// d0 — multicast metatraffic offset.
+const D0: u32 = 0;
+/// d1 — unicast metatraffic offset.
+const D1: u32 = 10;
+/// d2 — multicast user-data offset (unused — nano-ros sends user data unicast).
+#[allow(dead_code)]
+const D2: u32 = 1;
+/// d3 — unicast user-data offset.
+const D3: u32 = 11;
+
+/// Multicast metatraffic port (SPDP listen).
+fn port_metatraffic_multicast(domain_id: u32) -> u16 {
+    (PB + DG * domain_id + D0) as u16
+}
+
+/// Unicast metatraffic port (SEDP).
+fn port_metatraffic_unicast(domain_id: u32, participant_id: u32) -> u16 {
+    (PB + DG * domain_id + D1 + PG * participant_id) as u16
+}
+
+/// Unicast default-channel user-data port.
+fn port_default_unicast(domain_id: u32, participant_id: u32) -> u16 {
+    (PB + DG * domain_id + D3 + PG * participant_id) as u16
+}
+
+/// SPDP multicast group `239.255.0.1` as a `[u8; 16]` IPv6-mapped
+/// representation matching dust-dds's `Locator::address` shape.
+const SPDP_MULTICAST_ADDRESS: [u8; 16] =
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 239, 255, 0, 1];
+
+/// Build an `Ipv4` locator from an explicit `[a, b, c, d]` address +
+/// port, using the IPv6-mapped layout that RTPS / dust-dds expects.
+fn ipv4_locator(addr: [u8; 4], port: u32) -> Locator {
+    let mut full = [0u8; 16];
+    full[12..16].copy_from_slice(&addr);
+    Locator::new(LOCATOR_KIND_UDP_V4, port, full)
+}
 
 // ---------------------------------------------------------------------------
 // Opaque buffers
@@ -223,6 +273,101 @@ where
 }
 
 // ---------------------------------------------------------------------------
+// Yield-once helper
+// ---------------------------------------------------------------------------
+
+/// Future that returns `Pending` on first poll (with `wake_by_ref()` to
+/// re-schedule immediately) and `Ready` on subsequent polls. Used by
+/// the recv loops below to give the cooperative spawner one tick of
+/// headroom between each non-blocking `read()` attempt.
+struct YieldOnce(bool);
+
+impl YieldOnce {
+    fn new() -> Self {
+        Self(false)
+    }
+}
+
+impl Future for YieldOnce {
+    type Output = ();
+
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<()> {
+        if self.0 {
+            core::task::Poll::Ready(())
+        } else {
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            core::task::Poll::Pending
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recv loops — spawned onto the runtime spawner, polled by drive_io
+// ---------------------------------------------------------------------------
+
+/// Maximum RTPS datagram payload — leaves headroom under typical 65 KiB
+/// IP datagram limits. Matches `MAX_DATAGRAM_SIZE` in the stock
+/// dust-dds UDP transport.
+const RECV_BUF_SIZE: usize = 65507;
+
+async fn unicast_recv_loop<P>(sock: OpaqueSocket, sender: MpscSender<Arc<[u8]>>)
+where
+    P: PlatformUdp + 'static,
+{
+    // Make every read non-blocking so the loop yields cooperatively.
+    <P as PlatformUdp>::set_recv_timeout(sock.as_ptr(), 0);
+    // SAFETY: alloc is available (we're behind `feature = "alloc"`),
+    // and 64 KiB is comfortably within any platform's heap budget for
+    // a transport built on dust-dds.
+    let mut buf = alloc::vec![0u8; RECV_BUF_SIZE];
+    loop {
+        let n = <P as PlatformUdp>::read(sock.as_ptr(), buf.as_mut_ptr(), buf.len());
+        if n != usize::MAX && n > 0 {
+            // Best-effort send into the MpscSender. If the receiver is
+            // dropped (participant teardown), `send` returns Err and
+            // we exit the loop.
+            if sender.send(Arc::from(&buf[..n])).await.is_err() {
+                break;
+            }
+        }
+        YieldOnce::new().await;
+    }
+}
+
+async fn multicast_recv_loop<P>(
+    sock: OpaqueSocket,
+    local_ep: OpaqueEndpoint,
+    sender: MpscSender<Arc<[u8]>>,
+) where
+    P: PlatformUdpMulticast + 'static,
+{
+    // PlatformUdpMulticast doesn't expose `set_recv_timeout` — most
+    // implementations make `mcast_read` non-blocking when the listen
+    // side was opened with `timeout_ms = 0`.
+    let mut buf = alloc::vec![0u8; RECV_BUF_SIZE];
+    let mut sender_addr = OpaqueEndpoint::new();
+    loop {
+        let n = <P as PlatformUdpMulticast>::mcast_read(
+            sock.as_ptr(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            local_ep.as_ptr(),
+            sender_addr.as_mut_ptr(),
+        );
+        if n != usize::MAX && n > 0 {
+            if sender.send(Arc::from(&buf[..n])).await.is_err() {
+                break;
+            }
+        }
+        YieldOnce::new().await;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Factory skeleton
 // ---------------------------------------------------------------------------
 
@@ -232,15 +377,25 @@ where
 /// the canonical instantiation is
 /// `NrosUdpTransportFactory<nros_platform::ConcretePlatform>`.
 ///
-/// **Status**: skeleton — `create_participant` allocates a default
-/// unicast socket and a `NrosMessageWriter` but does not yet open
-/// metatraffic sockets, join the SPDP multicast group, or spawn recv
-/// tasks. Subsequent commits will fill those in. Sufficient to compile
-/// and demonstrate the wire-up pattern; not yet capable of receiving
-/// data.
+/// `create_participant` does the full RTPS bind sequence:
+/// * default unicast socket bound to `port_default_unicast` (RTPS
+///   PSM 9.6.1.4 formula),
+/// * metatraffic unicast socket bound to `port_metatraffic_unicast`,
+/// * metatraffic multicast socket joining `239.255.0.1` on
+///   `port_metatraffic_multicast`.
+///
+/// Each of the three sockets gets a recv loop spawned onto the
+/// runtime's `Spawner`, draining datagrams into the
+/// `data_channel_sender` whenever `Executor::spin_once()` calls
+/// `runtime.drive()`.
+///
+/// `participant_id` is configurable on the builder (default 0). For
+/// multi-participant nodes, allocate fresh ids at each call site so
+/// the unicast ports don't collide.
 pub struct NrosUdpTransportFactory<P> {
     runtime: Arc<NrosPlatformRuntime<P>>,
     fragment_size: usize,
+    participant_id: u32,
 }
 
 impl<P> NrosUdpTransportFactory<P> {
@@ -248,6 +403,7 @@ impl<P> NrosUdpTransportFactory<P> {
         Self {
             runtime,
             fragment_size: 1344,
+            participant_id: 0,
         }
     }
 
@@ -255,40 +411,131 @@ impl<P> NrosUdpTransportFactory<P> {
         self.fragment_size = size;
         self
     }
+
+    pub fn with_participant_id(mut self, id: u32) -> Self {
+        self.participant_id = id;
+        self
+    }
+}
+
+/// Bind a unicast UDP socket to `0.0.0.0:port` and return the
+/// initialised opaque socket. Returns `None` on bind failure.
+fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
+    let addr = b"0.0.0.0\0".as_ptr();
+    let port_str = port_cstring(port as u32);
+    let mut ep = OpaqueEndpoint::new();
+    if <P as PlatformUdp>::create_endpoint(ep.as_mut_ptr(), addr, port_str.as_ptr()) < 0 {
+        return None;
+    }
+    let mut sock = OpaqueSocket::new();
+    let rc = <P as PlatformUdp>::open(sock.as_mut_ptr(), ep.as_ptr(), 0);
+    <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
+    if rc < 0 { None } else { Some(sock) }
+}
+
+/// Open + join the SPDP multicast group on `239.255.0.1:port`.
+/// Returns the (recv socket, local endpoint) pair, or `None` on
+/// failure.
+fn bind_multicast<P: PlatformUdpMulticast + PlatformUdp + 'static>(
+    port: u16,
+) -> Option<(OpaqueSocket, OpaqueEndpoint)> {
+    let local_addr = b"0.0.0.0\0".as_ptr();
+    let port_str = port_cstring(port as u32);
+    let mut local_ep = OpaqueEndpoint::new();
+    if <P as PlatformUdp>::create_endpoint(local_ep.as_mut_ptr(), local_addr, port_str.as_ptr())
+        < 0
+    {
+        return None;
+    }
+    let join = b"239.255.0.1\0".as_ptr();
+    let mut sock = OpaqueSocket::new();
+    let rc = <P as PlatformUdpMulticast>::mcast_listen(
+        sock.as_mut_ptr(),
+        local_ep.as_ptr(),
+        0,
+        core::ptr::null(),
+        join,
+    );
+    if rc < 0 {
+        <P as PlatformUdp>::free_endpoint(local_ep.as_mut_ptr());
+        return None;
+    }
+    Some((sock, local_ep))
 }
 
 impl<P> TransportParticipantFactory for NrosUdpTransportFactory<P>
 where
-    P: PlatformUdp + PlatformUdpMulticast + Send + 'static,
+    P: PlatformUdp + PlatformUdpMulticast + Send + Sync + 'static,
 {
     fn create_participant(
         &self,
         domain_id: i32,
-        _data_channel_sender: dust_dds::dcps::channels::mpsc::MpscSender<Arc<[u8]>>,
+        data_channel_sender: MpscSender<Arc<[u8]>>,
     ) -> impl Future<Output = RtpsTransportParticipant> + Send {
-        let _ = self.runtime.clone();
+        let runtime = self.runtime.clone();
         let fragment_size = self.fragment_size;
+        let participant_id = self.participant_id;
         async move {
-            // Default unicast socket — bound by the platform to an
-            // ephemeral port. Phase 71.2.b follow-up will discover the
-            // bound port via the platform's `getsockname` analogue and
-            // populate `default_unicast_locator_list` accordingly.
-            let mut send_sock = OpaqueSocket::new();
-            let dummy_ep = OpaqueEndpoint::new();
-            let _ =
-                <P as PlatformUdp>::open(send_sock.as_mut_ptr(), dummy_ep.as_ptr(), 0);
-            let writer = NrosMessageWriter::<P>::new(send_sock);
+            let domain = domain_id as u32;
 
-            // SPDP / SEDP locator lists are placeholders for now.
-            // Filling them in (and joining the SPDP multicast group on
-            // 239.255.0.1:7400+250*domain_id) is Phase 71.2.b follow-up.
-            let _ = domain_id;
+            // ---- Default unicast (user data) ------------------------
+            let default_uc_port = port_default_unicast(domain, participant_id);
+            let default_uc_sock = bind_unicast::<P>(default_uc_port);
+            let default_unicast_locator_list = if default_uc_sock.is_some() {
+                alloc::vec![ipv4_locator([127, 0, 0, 1], default_uc_port as u32)]
+            } else {
+                Vec::new()
+            };
+
+            // ---- Metatraffic unicast (SEDP) -------------------------
+            let metatraffic_uc_port = port_metatraffic_unicast(domain, participant_id);
+            let metatraffic_uc_sock = bind_unicast::<P>(metatraffic_uc_port);
+            let metatraffic_unicast_locator_list = if metatraffic_uc_sock.is_some() {
+                alloc::vec![ipv4_locator([127, 0, 0, 1], metatraffic_uc_port as u32)]
+            } else {
+                Vec::new()
+            };
+
+            // ---- Metatraffic multicast (SPDP) -----------------------
+            let metatraffic_mc_port = port_metatraffic_multicast(domain);
+            let metatraffic_mc_pair = bind_multicast::<P>(metatraffic_mc_port);
+            let metatraffic_multicast_locator_list = if metatraffic_mc_pair.is_some() {
+                alloc::vec![ipv4_locator(
+                    [239, 255, 0, 1],
+                    metatraffic_mc_port as u32
+                )]
+            } else {
+                Vec::new()
+            };
+            let _ = SPDP_MULTICAST_ADDRESS;
+
+            // ---- Spawn recv loops -----------------------------------
+            let spawner = runtime.spawner_handle();
+            if let Some(sock) = default_uc_sock {
+                spawner.spawn(unicast_recv_loop::<P>(sock, data_channel_sender.clone()));
+            }
+            if let Some(sock) = metatraffic_uc_sock {
+                spawner.spawn(unicast_recv_loop::<P>(sock, data_channel_sender.clone()));
+            }
+            if let Some((sock, lep)) = metatraffic_mc_pair {
+                spawner.spawn(multicast_recv_loop::<P>(
+                    sock,
+                    lep,
+                    data_channel_sender.clone(),
+                ));
+            }
+
+            // ---- Outbound writer ------------------------------------
+            let mut send_sock = OpaqueSocket::new();
+            let send_ep = OpaqueEndpoint::new();
+            let _ = <P as PlatformUdp>::open(send_sock.as_mut_ptr(), send_ep.as_ptr(), 0);
+            let writer = NrosMessageWriter::<P>::new(send_sock);
 
             RtpsTransportParticipant {
                 message_writer: Box::new(writer),
-                default_unicast_locator_list: Vec::new(),
-                metatraffic_unicast_locator_list: Vec::new(),
-                metatraffic_multicast_locator_list: Vec::new(),
+                default_unicast_locator_list,
+                metatraffic_unicast_locator_list,
+                metatraffic_multicast_locator_list,
                 default_multicast_locator_list: Vec::new(),
                 fragment_size,
             }
@@ -315,6 +562,35 @@ mod tests {
         let s = locator_address_cstring(&loc).unwrap();
         assert_eq!(&s, b"127.0.0.1\0");
         assert_eq!(&port_cstring(7400), b"7400\0");
+    }
+
+    #[test]
+    fn rtps_port_formulas_match_spec() {
+        // RTPS PSM 9.6.1.4: PB=7400, DG=250, PG=2, d0=0, d1=10, d3=11.
+        // domain 0, participant 0:
+        //   metatraffic multicast = 7400
+        //   metatraffic unicast   = 7410
+        //   default unicast       = 7411
+        assert_eq!(port_metatraffic_multicast(0), 7400);
+        assert_eq!(port_metatraffic_unicast(0, 0), 7410);
+        assert_eq!(port_default_unicast(0, 0), 7411);
+        // domain 1, participant 2:
+        //   mc = 7400 + 250 + 0      = 7650
+        //   uc = 7400 + 250 + 10 + 4 = 7664
+        //   du = 7400 + 250 + 11 + 4 = 7665
+        assert_eq!(port_metatraffic_multicast(1), 7650);
+        assert_eq!(port_metatraffic_unicast(1, 2), 7664);
+        assert_eq!(port_default_unicast(1, 2), 7665);
+    }
+
+    #[test]
+    fn ipv4_locator_layout_matches_dust_dds() {
+        let loc = ipv4_locator([192, 168, 1, 7], 7411);
+        assert_eq!(loc.kind(), LOCATOR_KIND_UDP_V4);
+        assert_eq!(loc.port(), 7411);
+        let a = loc.address();
+        assert_eq!(&a[0..12], &[0u8; 12]);
+        assert_eq!(&a[12..16], &[192, 168, 1, 7]);
     }
 
     #[test]
