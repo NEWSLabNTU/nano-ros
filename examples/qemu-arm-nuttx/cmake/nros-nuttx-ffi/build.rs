@@ -36,6 +36,19 @@ fn main() {
         .warnings(false);
 
     if is_cpp {
+        // The NuttX flat-build kernel ELF is statically linked and has no
+        // dynamic linker / GOT-init startup. cc-rs defaults to `-fPIC`,
+        // which causes g++ to emit `R_ARM_GOT_BREL` relocations for
+        // COMDAT statics (e.g. `Node::GlobalStorageHolder<>::storage`).
+        // The static linker leaves those GOT slots zero in a `-static`
+        // binary, so accessors return 0 at runtime and `nros::init`
+        // fails with INVALID_ARGUMENT. Disable PIC for C++ only — the
+        // C examples don't have COMDAT statics and rely on cc-rs's
+        // default PIC for their NuttX kernel-symbol references.
+        build.pic(false);
+    }
+
+    if is_cpp {
         let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
         build.include(&nros_cpp_include);
         build.flag("-std=c++14");

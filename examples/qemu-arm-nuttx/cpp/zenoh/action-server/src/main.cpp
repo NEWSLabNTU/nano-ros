@@ -1,6 +1,7 @@
 /// @file main.cpp
 /// @brief C++ action server — Fibonacci on /fibonacci (NuttX QEMU, callback-based)
 
+#include <cstdint>
 #include <cstdio>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
@@ -61,6 +62,14 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
 extern "C" int sleep(unsigned int);
 extern "C" void app_main(void) {
     printf("nros C++ Action Server (NuttX)\n");
+
+    // Re-seed /dev/urandom (see talker for rationale). Unique seed per example.
+    if (FILE* urandom = fopen("/dev/urandom", "wb")) {
+        const uint8_t seed[4] = {10, 0, 2, 44};
+        fwrite(seed, 1, sizeof(seed), urandom);
+        fclose(urandom);
+    }
+
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
     nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);

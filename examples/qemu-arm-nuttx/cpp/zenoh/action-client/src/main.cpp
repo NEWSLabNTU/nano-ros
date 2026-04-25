@@ -3,6 +3,7 @@
 // Uses the callback-based async API. For the Future-based alternative,
 // see the native/cpp/zenoh/action-client example.
 
+#include <cstdint>
 #include <cstdio>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
@@ -68,6 +69,14 @@ static void result_cb(const uint8_t goal_id[16], int status,
 extern "C" int sleep(unsigned int);
 extern "C" void app_main(void) {
     printf("nros C++ Action Client (NuttX) [async]\n");
+
+    // Re-seed /dev/urandom (see talker for rationale). Unique seed per example.
+    if (FILE* urandom = fopen("/dev/urandom", "wb")) {
+        const uint8_t seed[4] = {10, 0, 2, 45};
+        fwrite(seed, 1, sizeof(seed), urandom);
+        fclose(urandom);
+    }
+
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
     nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);

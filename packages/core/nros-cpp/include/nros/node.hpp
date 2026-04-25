@@ -350,15 +350,33 @@ class Node {
     friend void* global_handle();
 
     // Global executor inline storage for init/shutdown free functions.
+    //
+    // Use a template-static-member trick instead of a function-local static.
+    // Function-local statics need __cxa_guard_acquire/release on first-call
+    // initialisation; on NuttX the resulting guard logic returns NULL for
+    // the storage pointer (observed empirically with LTO on armv7a-nuttx-eabihf,
+    // even with constant-initialisation `= {}`). A template static member is
+    // emitted into .bss like a file-scope variable and gets COMDAT-folded by
+    // the linker, sidestepping the guarded-init path entirely.
+    template <int = 0> struct GlobalStorageHolder {
+        alignas(8) static uint8_t storage[NROS_CPP_EXECUTOR_STORAGE_SIZE];
+        static bool initialized;
+    };
     static uint8_t* global_storage() {
-        alignas(8) static uint8_t storage[NROS_CPP_EXECUTOR_STORAGE_SIZE] = {};
-        return storage;
+        return GlobalStorageHolder<>::storage;
     }
     static bool& global_initialized() {
-        static bool init = false;
-        return init;
+        return GlobalStorageHolder<>::initialized;
     }
 };
+
+// Out-of-class definitions for Node::GlobalStorageHolder<> — the template
+// machinery means these get emitted as COMDAT symbols, so multiple TUs
+// including this header all collapse to a single .bss allocation.
+template <int N>
+alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORAGE_SIZE] = {};
+template <int N>
+bool Node::GlobalStorageHolder<N>::initialized = false;
 
 // -- Free function implementations --
 

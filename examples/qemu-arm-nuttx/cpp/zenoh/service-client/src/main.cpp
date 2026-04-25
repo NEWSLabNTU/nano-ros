@@ -1,6 +1,7 @@
 /// @file main.cpp
 /// @brief C++ service client — AddTwoInts (NuttX QEMU, async Future)
 
+#include <cstdint>
 #include <cstdio>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
@@ -15,6 +16,14 @@
 extern "C" int sleep(unsigned int);
 extern "C" void app_main(void) {
     printf("nros C++ Service Client (NuttX)\n");
+
+    // Re-seed /dev/urandom (see talker for rationale). Unique seed per example.
+    if (FILE* urandom = fopen("/dev/urandom", "wb")) {
+        const uint8_t seed[4] = {10, 0, 2, 43};
+        fwrite(seed, 1, sizeof(seed), urandom);
+        fclose(urandom);
+    }
+
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
     nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);

@@ -157,6 +157,7 @@ function(nuttx_build_example name main_cpp)
             cargo build --release
         WORKING_DIRECTORY "${_FFI_CRATE_DIR}"
         DEPENDS "${main_cpp}" ${_ARG_SOURCES} "${_includes_file}" "${_ffi_libs_file}"
+                "${_FFI_CRATE_DIR}/build.rs" "${_FFI_CRATE_DIR}/Cargo.toml"
         COMMENT "Building NuttX C++ example: ${name}"
         VERBATIM
     )
