@@ -397,6 +397,9 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "build-xrce-rs-listener",
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "build-xrce-c-talker",
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "build-xrce-c-listener",
+        // DDS examples (Phase 71.8)
+        "zephyr-dds-rs-talker" | "dds-rs-talker" => "build-dds-rs-talker",
+        "zephyr-dds-rs-listener" | "dds-rs-listener" => "build-dds-rs-listener",
         _ => "build",
     }
 }
@@ -443,6 +446,9 @@ fn example_path_for_name(example_name: &str) -> String {
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "zephyr/rust/xrce/listener".to_string(),
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "zephyr/c/xrce/talker".to_string(),
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "zephyr/c/xrce/listener".to_string(),
+        // DDS examples (Phase 71.8)
+        "zephyr-dds-rs-talker" | "dds-rs-talker" => "zephyr/rust/dds/talker".to_string(),
+        "zephyr-dds-rs-listener" | "dds-rs-listener" => "zephyr/rust/dds/listener".to_string(),
         // For any other name, assume it's a path relative to examples/
         _ => example_name.to_string(),
     }

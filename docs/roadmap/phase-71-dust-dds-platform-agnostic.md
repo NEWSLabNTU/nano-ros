@@ -186,10 +186,11 @@ suggested.
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
 - [~] 71.8 — Zephyr DDS talker/listener example + nextest suite
-       (scaffolding + Kconfig/CMake wiring + native_sim build & run green;
-       talker reaches steady-state publish on Zephyr, listener boots and
-       waits for messages. Pubsub interop test still TODO; first need
-       talker↔listener nextest harness on a single platform.)
+       Scaffolding + Kconfig/CMake wiring + native_sim build & run green.
+       `test_zephyr_dds_rust_talker_boots` / `..._listener_boots` (boot
+       smoke) checked in. Talker↔listener interop test still TODO and
+       blocked on Zephyr `mcast_listen` (still the pre-Phase-71 `-1`
+       stub, so SPDP discovery doesn't run on the Zephyr side).
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 

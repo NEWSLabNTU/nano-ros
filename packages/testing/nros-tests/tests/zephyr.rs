@@ -1988,3 +1988,106 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         );
     }
 }
+
+// =============================================================================
+// Zephyr DDS (dust-dds) Tests — Phase 71.8
+// =============================================================================
+
+/// Get or build Zephyr DDS talker for native_sim.
+fn get_zephyr_dds_talker_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-dds-rs-talker", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-rs-talker binary")
+}
+
+/// Get or build Zephyr DDS listener for native_sim.
+fn get_zephyr_dds_listener_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-dds-rs-listener", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-rs-listener binary")
+}
+
+/// Test: Zephyr DDS talker boots through the cooperative
+/// `NrosPlatformRuntime<ZephyrPlatform>` + `NrosUdpTransportFactory`
+/// path and reaches steady-state publishing.
+///
+/// This is a *boot* smoke test — it does NOT exercise discovery/pubsub
+/// across two participants because Zephyr's `mcast_listen` is still
+/// the `-1` stub from the pre-Phase-71 zenoh-pico era. SPDP-multicast
+/// support on Zephyr is its own work item; once that lands, a full
+/// talker → listener interop test belongs alongside this one.
+///
+/// What this proves:
+/// * `NROS_RMW_DDS=y` Kconfig wires `rmw-dds,platform-zephyr` features
+///   correctly.
+/// * dust-dds + nros-rmw-dds compile and link clean against
+///   zephyr-lang-rust on `native_sim/native/64`.
+/// * `Executor::open()` → `DdsRmw::open()` → cooperative `block_on`
+///   `create_participant` returns successfully (the hang fixed in
+///   commit `5fad3f1b`).
+/// * The participant's spin loop drives the publisher; the timer
+///   callback fires and `publish_raw` runs end-to-end without
+///   panicking.
+#[test]
+fn test_zephyr_dds_rust_talker_boots() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let talker_binary = get_zephyr_dds_talker_native_sim();
+    eprintln!("Talker binary: {}", talker_binary.display());
+
+    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr DDS talker");
+
+    // Wait for the participant to be created and the timer to fire at
+    // least once. `Published: 0` means: socket bound, participant
+    // built, executor spin running, publish_raw returned.
+    let output = talker.wait_for_pattern("Published: 0", Duration::from_secs(15));
+    let _ = talker.kill();
+
+    eprintln!("\n=== Talker output ===\n{}", output);
+
+    if !output.contains("Published: 0") {
+        panic!(
+            "Zephyr DDS talker never reached steady-state publish.\n\
+             Looked-for marker: \"Published: 0\".\n\
+             This usually means `block_on(create_participant)` is hanging\n\
+             again — see commit 5fad3f1b for the previous root-cause and\n\
+             docs/roadmap/phase-71-dust-dds-platform-agnostic.md (71.8).\n\
+             Output:\n{}",
+            output
+        );
+    }
+}
+
+/// Test: Zephyr DDS listener boots, builds the subscriber, and parks
+/// in `Executor::spin` waiting for messages.
+///
+/// Like the talker boot test above, this is single-process — it does
+/// not validate inbound traffic because Zephyr SPDP discovery isn't
+/// implemented yet (mcast_listen stub).
+#[test]
+fn test_zephyr_dds_rust_listener_boots() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let listener_binary = get_zephyr_dds_listener_native_sim();
+    eprintln!("Listener binary: {}", listener_binary.display());
+
+    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr DDS listener");
+
+    let output = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(15));
+    let _ = listener.kill();
+
+    eprintln!("\n=== Listener output ===\n{}", output);
+
+    if !output.contains("Waiting for messages") {
+        panic!(
+            "Zephyr DDS listener never reached subscriber readiness.\n\
+             Looked-for marker: \"Waiting for messages\".\n\
+             Output:\n{}",
+            output
+        );
+    }
+}
