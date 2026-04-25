@@ -443,49 +443,73 @@ impl Executor {
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
 
+        // Thread node identity through each underlying ServiceInfo /
+        // TopicInfo so the Zenoh shim declares a liveliness token for
+        // each entity. Without `with_node_name`,
+        // `declare_entity_liveliness` short-circuits and
+        // `wait_for_action_server` has nothing to find — same fix as
+        // `Node::create_action_server_sized` (commit ea5e80b4).
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_domain(0);
+        let mut send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            send_goal_info = send_goal_info.with_node_name(&node_name);
+        }
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let cancel_goal_info = ServiceInfo::new(
+        let mut cancel_goal_info = ServiceInfo::new(
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
             type_hash,
         )
-        .with_domain(0);
+        .with_namespace(&ns);
+        if !node_name.is_empty() {
+            cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
+        }
         let cancel_goal_server = self
             .session
             .create_service_server(&cancel_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_domain(0);
+        let mut get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            get_result_info = get_result_info.with_node_name(&node_name);
+        }
         let get_result_server = self
             .session
             .create_service_server(&get_result_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_domain(0);
+        let mut feedback_topic =
+            TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            feedback_topic = feedback_topic.with_node_name(&node_name);
+        }
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
-        let status_topic = TopicInfo::new(
+        let mut status_topic = TopicInfo::new(
             &status_keyexpr,
             "action_msgs::msg::dds_::GoalStatusArray_",
             type_hash,
         )
-        .with_domain(0);
+        .with_namespace(&ns);
+        if !node_name.is_empty() {
+            status_topic = status_topic.with_node_name(&node_name);
+        }
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
@@ -864,41 +888,57 @@ impl Executor {
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
 
-        // Create send_goal service client
+        // Mirror `add_action_server_raw_sized`: thread node identity
+        // through each underlying ServiceInfo / TopicInfo so the
+        // client's per-entity liveliness tokens are declared and the
+        // server-discovery wildcard built from `send_goal_info`
+        // shares a domain with the matching server tokens.
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_domain(0);
+        let mut send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            send_goal_info = send_goal_info.with_node_name(&node_name);
+        }
         let send_goal_client = self
             .session
             .create_service_client(&send_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
-        // Create cancel_goal service client
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let cancel_goal_info = ServiceInfo::new(
+        let mut cancel_goal_info = ServiceInfo::new(
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
             type_hash,
         )
-        .with_domain(0);
+        .with_namespace(&ns);
+        if !node_name.is_empty() {
+            cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
+        }
         let cancel_goal_client = self
             .session
             .create_service_client(&cancel_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
-        // Create get_result service client
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_domain(0);
+        let mut get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            get_result_info = get_result_info.with_node_name(&node_name);
+        }
         let get_result_client = self
             .session
             .create_service_client(&get_result_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
-        // Create feedback subscriber
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_domain(0);
+        let mut feedback_topic =
+            TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            feedback_topic = feedback_topic.with_node_name(&node_name);
+        }
         let feedback_sub = self
             .session
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
