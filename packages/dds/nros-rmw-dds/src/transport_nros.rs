@@ -482,22 +482,45 @@ where
     ) -> impl Future<Output = RtpsTransportParticipant> + Send {
         let runtime = self.runtime.clone();
         let fragment_size = self.fragment_size;
-        let participant_id = self.participant_id;
+        let start_pid = self.participant_id;
         async move {
             let domain = domain_id as u32;
 
-            // ---- Default unicast (user data) ------------------------
-            let default_uc_port = port_default_unicast(domain, participant_id);
-            let default_uc_sock = bind_unicast::<P>(default_uc_port);
+            // ---- Auto-increment participant_id until both unicast
+            // ports are free. RTPS PSM 9.6.1.4 reserves 120 ids per
+            // domain; cap at 32 to keep the search bounded. Multiple
+            // participants on the same host (talker + listener test,
+            // or two participants in one process) need different ids
+            // so their unicast bind(2) calls don't `EADDRINUSE`.
+            let mut participant_id = start_pid;
+            let mut default_uc_port;
+            let mut default_uc_sock;
+            let mut metatraffic_uc_port;
+            let mut metatraffic_uc_sock;
+            loop {
+                default_uc_port = port_default_unicast(domain, participant_id);
+                metatraffic_uc_port = port_metatraffic_unicast(domain, participant_id);
+                default_uc_sock = bind_unicast::<P>(default_uc_port);
+                if default_uc_sock.is_some() {
+                    metatraffic_uc_sock = bind_unicast::<P>(metatraffic_uc_port);
+                    if metatraffic_uc_sock.is_some() {
+                        break;
+                    }
+                    // metatraffic port collided — release default and
+                    // retry with the next id.
+                    default_uc_sock = None;
+                }
+                if participant_id >= start_pid + 32 {
+                    metatraffic_uc_sock = None;
+                    break;
+                }
+                participant_id += 1;
+            }
             let default_unicast_locator_list = if default_uc_sock.is_some() {
                 alloc::vec![ipv4_locator([127, 0, 0, 1], default_uc_port as u32)]
             } else {
                 Vec::new()
             };
-
-            // ---- Metatraffic unicast (SEDP) -------------------------
-            let metatraffic_uc_port = port_metatraffic_unicast(domain, participant_id);
-            let metatraffic_uc_sock = bind_unicast::<P>(metatraffic_uc_port);
             let metatraffic_unicast_locator_list = if metatraffic_uc_sock.is_some() {
                 alloc::vec![ipv4_locator([127, 0, 0, 1], metatraffic_uc_port as u32)]
             } else {
