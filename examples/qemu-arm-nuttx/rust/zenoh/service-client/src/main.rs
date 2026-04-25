@@ -17,7 +17,24 @@ fn main() {
 
         println!("Creating service client: /add_two_ints (AddTwoInts)");
         let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
-        println!("Client ready");
+        println!("Client created — waiting for server discovery...");
+
+        // Race-3 fix: gate the first `call()` on liveliness-token discovery.
+        // On a multi-threaded zenoh-pico backend (NuttX), the client and
+        // server boot in parallel and the first request can otherwise race
+        // the router-side propagation of the server's queryable.
+        // `wait_for_service` issues a `z_liveliness_get` and lets the
+        // executor cooperatively spin until either a matching token reports
+        // back or the timeout expires.
+        let server_seen = client.wait_for_service(
+            &mut executor,
+            core::time::Duration::from_secs(10),
+        )?;
+        if !server_seen {
+            eprintln!("Service /add_two_ints not visible after 10s — bailing");
+            return Err(NodeError::Timeout);
+        }
+        println!("Server discovered — sending requests");
         println!();
 
         let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];

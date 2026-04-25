@@ -17,7 +17,20 @@ fn main() {
 
         println!("Creating action client: /fibonacci (Fibonacci)");
         let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;
-        println!("Client ready");
+        println!("Client created — waiting for action server discovery...");
+
+        // Race-3 fix (action variant): probe the server's send_goal queryable
+        // via liveliness before the first send_goal. See the service-client
+        // example for the full rationale.
+        let server_seen = client.wait_for_action_server(
+            &mut executor,
+            core::time::Duration::from_secs(10),
+        )?;
+        if !server_seen {
+            eprintln!("Action server /fibonacci not visible after 10s — bailing");
+            return Err(NodeError::Timeout);
+        }
+        println!("Action server discovered — sending goal");
         println!();
 
         let goal = FibonacciGoal { order: 10 };
