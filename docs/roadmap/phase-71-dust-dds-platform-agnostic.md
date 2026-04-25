@@ -175,25 +175,36 @@ suggested.
 ## Work Items
 
 - [x] 71.1 — `block_on` on `NrosPlatformRuntime` (no fork patch needed)
-- [~] 71.2 — Non-blocking UDP transport (Path B skeleton landed; SPDP join + recv tasks pending)
+- [x] 71.2 — Non-blocking UDP transport (`NrosUdpTransportFactory`,
+       Path B): bind, SPDP multicast join, recv loops spawned to runtime
 - [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
-- [~] 71.4 — `drive_io()` drives the runtime (skeleton landed; no background tasks spawned yet — waiting on 71.2)
+- [x] 71.4 — `drive_io()` drives the runtime + `Rmw::open` no_std path
 - [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
+- [ ] 71.4.b — Port `DdsPublisher` / `DdsSubscriber` / `DdsService*` from
+       sync to async dust-dds API + block_on wrap, unblocking actual no_std
+       end-to-end pubsub
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
 - [ ] 71.8 — Zephyr DDS talker/listener example + nextest suite
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 
-**Foundation landed, transport + embedded examples pending.** Items
-71.1, 71.3, 71.4 (skeleton), 71.5 give us the runtime adapter, the
-block_on shim, the `DdsSession::drive_io()` wire-up, and the feature
-matrix. Items 71.2 (the new UDP transport), 71.6 (allocator),
-71.7/71.8 (QEMU + Zephyr examples), 71.9 (interop test) each open
-cleanly against this skeleton. 71.10 (upstream) is only worth
-attempting if someone wants the non-blocking UDP transport upstream
-— since the nros path can live in `nros-rmw-dds` without fork
-changes, upstreaming is no longer on the critical path.
+**Foundation + transport + open path landed.** Items 71.1–71.5 give
+us a complete chain: `NrosPlatformRuntime<P>` (clock + timer +
+spawner + block_on), `NrosUdpTransportFactory<P>` (3 sockets bound
+to the RTPS PSM 9.6.1.4 ports + SPDP multicast join + recv loops
+spawned onto the runtime), `DdsSession::drive_io()` driving the
+spawner from `Executor::spin_once()`, and `DdsRmw::open()`
+constructing a `DomainParticipantAsync` on every nros platform.
+
+What's missing for an end-to-end no_std pubsub is **71.4.b**:
+porting `DdsPublisher` / `DdsSubscriber` / `DdsServiceServer` /
+`DdsServiceClient` from the sync dust-dds API
+(`#[cfg(feature = "std")]`) to `dds_async::*` + `block_on` so the
+`Session` trait methods (`create_publisher` etc.) actually return
+something other than `ConnectionFailed` on the `nostd-runtime` path.
+That's the next concrete chunk; 71.6 / 71.7 / 71.8 / 71.9 unlock
+once it lands.
 
 ### 71.1 — `block_on` on `NrosPlatformRuntime` — **Landed** (no fork patch needed)
 
