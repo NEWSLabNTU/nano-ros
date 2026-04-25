@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr DDS Talker Example (Rust) — Phase 71
+#
+# RTPS DDS publisher running on Zephyr RTOS via nros + dust-dds.
+# Uses the cooperative `NrosPlatformRuntime<ZephyrPlatform>` driven from
+# `Executor::spin_once()` — no OS threads, no router, no agent.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2024"
+description = "nros DDS talker for Zephyr RTOS"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+# nros unified API — DDS backend via dust-dds, no_std + alloc.
+nros = { version = "*", default-features = false, features = ["rmw-dds", "platform-zephyr"] }
+
+std_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

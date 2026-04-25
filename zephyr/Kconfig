@@ -63,6 +63,15 @@ config NROS_RMW_XRCE
       Use Micro-XRCE-DDS as the RMW transport backend.
       Connects to a Micro-XRCE-DDS Agent over UDP sockets.
 
+config NROS_RMW_DDS
+    bool "DDS (dust-dds)"
+    depends on NET_SOCKETS && POSIX_API
+    help
+      Use dust-dds (pure-Rust RTPS DDS) as the RMW transport backend.
+      Speaks RTPS directly to other DDS participants (CycloneDDS,
+      Fast-DDS, dust-dds) — no router or agent required.
+      Phase 71 — see docs/roadmap/phase-71-dust-dds-platform-agnostic.md.
+
 endchoice
 
 # =============================================================================
@@ -326,6 +335,22 @@ config NROS_XRCE_AGENT_PORT
       UDP port of the Micro-XRCE-DDS Agent.
 
 endif # NROS_RMW_XRCE
+
+# =============================================================================
+# DDS (dust-dds) Transport Configuration
+# =============================================================================
+
+if NROS_RMW_DDS
+
+config NROS_DDS_DOMAIN_ID
+    int "ROS 2 / DDS domain ID"
+    default 0
+    range 0 232
+    help
+      DDS domain id used to derive the RTPS PSM port set (PB=7400, DG=250).
+      Mirrors the ROS_DOMAIN_ID environment variable on POSIX builds.
+
+endif # NROS_RMW_DDS
 
 # C API executor limits are derived from the Rust executor limits below.
 # NROS_EXECUTOR_MAX_CBS controls the total handle count for both APIs.

@@ -146,6 +146,23 @@ elseif(CONFIG_NROS_RMW_XRCE)
         ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/include
     )
 
+elseif(CONFIG_NROS_RMW_DDS)
+    # -------------------------------------------------------------------------
+    # DDS (dust-dds) platform support — Phase 71.8
+    # -------------------------------------------------------------------------
+    # dust-dds itself is pure-Rust (no C shim), but the example wrapper
+    # `nros::platform::zephyr::wait_for_network` calls `zpico_zephyr_wait_network`
+    # — a generic L4-readiness helper that lives in the zpico-zephyr crate
+    # but is actually backend-agnostic. Pull it in for DDS too.
+    zephyr_library_sources(
+        ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c
+    )
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include)
+    # zpico_zephyr.c #includes "zpico.h" for the session-init helpers we
+    # don't use under DDS, but the header is still parsed; expose the
+    # zpico-sys include dir so the compile succeeds.
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include)
+
 endif() # RMW backend
 
 # =============================================================================
@@ -183,6 +200,8 @@ if(CONFIG_NROS_C_API)
         set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
         set(_nros_features "rmw-xrce,platform-zephyr,ros-humble")
+    elseif(CONFIG_NROS_RMW_DDS)
+        set(_nros_features "rmw-dds,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
@@ -216,6 +235,8 @@ if(CONFIG_NROS_CPP_API)
         set(_nros_cpp_features "rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
         set(_nros_cpp_features "rmw-xrce,platform-zephyr,ros-humble")
+    elseif(CONFIG_NROS_RMW_DDS)
+        set(_nros_cpp_features "rmw-dds,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)

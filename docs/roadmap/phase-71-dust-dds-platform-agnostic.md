@@ -185,7 +185,11 @@ suggested.
        end-to-end pubsub
 - [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
-- [ ] 71.8 — Zephyr DDS talker/listener example + nextest suite
+- [~] 71.8 — Zephyr DDS talker/listener example + nextest suite
+       (scaffolding + clean Kconfig/CMake wiring + native_sim build green;
+       runtime currently hangs in `block_on(create_participant)` —
+       same hang reproduces on POSIX, see `cooperative_pubsub_posix.rs`
+       which is `#[ignore]` until the hang is root-caused)
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 

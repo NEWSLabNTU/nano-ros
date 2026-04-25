@@ -55,3 +55,11 @@ heapless = { workspace = true }
 # `spin` provides the no_std Mutex used by `NrosPlatformRuntime`'s task
 # queue. `std` builds use `std::sync::Mutex` instead (see runtime.rs).
 spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
+
+[dev-dependencies]
+# Phase 71 — host-side end-to-end validation drives `NrosPlatformRuntime`
+# and `NrosUdpTransportFactory` directly with `PosixPlatform`, bypassing
+# `Rmw::open()` (which on `platform-posix` uses dust-dds's stock threaded
+# transport). Lets us run the same code path the no_std platforms run,
+# on Linux, without QEMU.
+nros-platform-posix = { version = "0.1.0", path = "../../core/nros-platform-posix" }

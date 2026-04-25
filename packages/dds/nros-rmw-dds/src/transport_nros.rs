@@ -534,9 +534,26 @@ where
             }
 
             // ---- Outbound writer ------------------------------------
+            // `udp_open` builds the socket from the endpoint's
+            // `ai_family` (resolved by `create_endpoint`), so we need a
+            // real placeholder rather than a zero-initialised endpoint —
+            // otherwise platforms that deref `_iptcp` (e.g. POSIX) crash.
+            // `0.0.0.0:0` resolves to an unbound IPv4 DGRAM socket, which
+            // is exactly what `send` needs (per-call sendto with the
+            // real destination supplied each time).
             let mut send_sock = OpaqueSocket::new();
-            let send_ep = OpaqueEndpoint::new();
-            let _ = <P as PlatformUdp>::open(send_sock.as_mut_ptr(), send_ep.as_ptr(), 0);
+            let mut send_ep = OpaqueEndpoint::new();
+            let any_addr = b"0.0.0.0\0".as_ptr();
+            let any_port = port_cstring(0);
+            if <P as PlatformUdp>::create_endpoint(
+                send_ep.as_mut_ptr(),
+                any_addr,
+                any_port.as_ptr(),
+            ) >= 0
+            {
+                let _ = <P as PlatformUdp>::open(send_sock.as_mut_ptr(), send_ep.as_ptr(), 0);
+                <P as PlatformUdp>::free_endpoint(send_ep.as_mut_ptr());
+            }
             let writer = NrosMessageWriter::<P>::new(send_sock);
 
             RtpsTransportParticipant {
