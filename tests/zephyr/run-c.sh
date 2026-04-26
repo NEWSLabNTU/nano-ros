@@ -26,59 +26,21 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
 
 # =============================================================================
-# Utilities (self-contained)
+# Utilities (shared via tests/lib/common.sh)
 # =============================================================================
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# shellcheck source=../lib/common.sh
+source "$PROJECT_ROOT/tests/lib/common.sh"
 
-# Logging functions
-log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_success() { echo -e "${GREEN}[PASS]${NC} $*"; }
-log_warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error()   { echo -e "${RED}[FAIL]${NC} $*"; }
-log_header()  { echo -e "\n${CYAN}=== $* ===${NC}"; }
+init_test_tmpdir "nano-ros-zephyr-test"
 
-# Temp directory for this test run
-TEST_TMPDIR="$(mktemp -d /tmp/nano-ros-zephyr-test.XXXXXX)"
-
-# Get a temp file path
-tmpfile() {
-    echo "$TEST_TMPDIR/$1"
-}
-
-# PIDs for cleanup
-declare -a CLEANUP_PIDS=()
-
-# Register a PID for cleanup
-register_pid() {
-    CLEANUP_PIDS+=("$1")
-}
-
-# Cleanup function - kills all registered processes
+# Cleanup function - kills all registered processes and removes tmpdir.
 cleanup() {
     log_info "Cleaning up..."
-
-    # Kill registered PIDs
-    for pid in "${CLEANUP_PIDS[@]}"; do
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
-        fi
-    done
-
+    cleanup_pids
     # Also kill by name as fallback
     pkill -x zenohd 2>/dev/null || true
-
-    # Clean up temp directory
-    if [ -n "$TEST_TMPDIR" ] && [ -d "$TEST_TMPDIR" ]; then
-        rm -rf "$TEST_TMPDIR"
-    fi
-
+    cleanup_test_tmpdir
     CLEANUP_PIDS=()
 }
 
