@@ -66,7 +66,11 @@ platforms (~7).
 - [x] 89.10 — Within-platform parallelism, tier 2: per-variant zenohd ports for slirp QEMU platforms
 - [x] 89.Zephyr — Within-platform parallelism, tier 2 extension: Zephyr native_sim
 - [x] 89.Baremetal — Within-platform parallelism, tier 2 extension: bare-metal MPS2-AN385 RTIC
-- [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
+- [~] 89.11 — Runtime locator override on RTOS — **dropped 2026-04-26**. The
+      design only paid off for parallelising QEMU test slots; on real
+      devices the locator is either pinned at build time (known fleet)
+      or unnecessary because zenoh scouting/DHCP discovers the router.
+      Test-only ergonomic gain doesn't justify ~500 LOC × N RTOSes.
 - [x] 89.12 — Post-77.22 `just test-all` re-triage (14 failing tests after the Phase 84.F4 platform-trait refactor landed and my Phase 77.20–77.22 / 89.5 / 89.6 fixes merged — partially regressions, partially the same originals Phase 89.2–89.8 had already closed which have re-opened on top of F4). All 14 verified green on 2026-04-26.
 - [x] 89.14 — Residual issues after 89.13 NuttX C++ enablement: ThreadX-RISC-V cmake symlink race, NuttX C action test slowness, NuttX C++ first-try flakiness — all landed/closed 2026-04-26
 
@@ -662,62 +666,28 @@ breakage, independent of the port split. The split is a
 no-op for correctness until that lands; it just unlocks
 parallel execution for when those tests are fixed.
 
-### 89.11 — (Optional) Runtime locator override on RTOS
+### 89.11 — Runtime locator override on RTOS — **Dropped 2026-04-26**
 
-**Motivation**: Collapses 89.10's 3× firmware build matrix back
-to a single firmware per example. Unlocks per-test locator
-configuration without rebuilds, and future-proofs any further
-port fan-out (e.g. per-test unique ephemeral ports à la the
-`ZenohRouter::start_unique` pattern).
+Originally proposed to collapse 89.10's 3× firmware build matrix
+back to one firmware per example by injecting the locator at
+QEMU launch (via `fw_cfg`, semihosting argv, or UART). Sketched
+~500 LOC per RTOS for an `nros_platform::runtime_config::load_locator`
+trait + per-platform readers + harness wiring.
 
-**Mechanism options** (pick one per platform):
+**Why dropped**: the design only paid off for parallelising QEMU
+test slots; on real devices the locator is either pinned at
+build time (known fleet) or unnecessary because zenoh scouting /
+DHCP discovers the router. A test-only ergonomic gain doesn't
+justify ~500 LOC × N RTOSes plus a "why didn't my override
+apply" debugging surface area. 89.10's compile-time per-(variant,
+lang) port split already gives the parallelism we need; the
+extra `target/` directories per port are cheap with cargo
+incremental builds.
 
-- **(a)** QEMU `-fw_cfg name=opt/nros/locator,string=tcp/10.0.2.2:7471`:
-  QEMU writes the string into a known firmware config ROM
-  region. Boot code reads it via the `fw_cfg` interface
-  (memory-mapped on ARM virt / RV64 virt, semihosted on M3).
-  One-time per-platform boot-code addition; works for FreeRTOS
-  / NuttX / ThreadX-RV64. Won't work on MPS2-AN385 without a
-  semihosting fallback.
-- **(b)** Semihosting argv: QEMU passes the locator as a kernel
-  command-line string; the firmware's cold-boot reads it via
-  `SYS_GET_CMDLINE` semihosting call. Works on MPS2-AN385
-  (M3 semihosting already enabled for `-semihosting-config`),
-  needs minor additions on other platforms.
-- **(c)** Serial-console reader: firmware waits on UART for up
-  to `N` ms at boot for a `LOCATOR=…\n` line, falls back to
-  the `config.toml` default on timeout. Most portable but
-  requires test-harness UART writes.
-
-**Scope**: One new `nros_platform::runtime_config` trait with a
-`load_locator() -> Option<&'static str>` hook, plus per-platform
-implementations. Each RTOS's `Config::from_toml` precedence
-order becomes: **runtime hook > env var (native only) > TOML
-default**. The Zephyr side drops in cleanly via
-`CONFIG_NROS_LOCATOR_FROM_FW_CFG=y`.
-
-**Expected payoff**: Single firmware, same 3× parallelism as
-89.10. Pays back the upfront infrastructure cost if more
-per-test config fan-out is wanted later (e.g. per-test domain
-IDs, per-test QoS profiles, per-test topic names for shared
-namespace tests).
-
-**Cost**: ~500 LOC per RTOS for the runtime config reader; plus
-a debugging surface area for "why did my override not apply"
-issues that the compile-time path doesn't have.
-
-**Files**:
-- `packages/core/nros-platform/src/runtime_config.rs` (new)
-- Per-RTOS implementation in `packages/core/nros-platform-{freertos,nuttx,threadx,zephyr}/src/runtime_config.rs`
-- QEMU invocation updates in `packages/testing/nros-tests/src/qemu.rs`
-  (add `-fw_cfg` or `-append` lines)
-- Per-example boot code hook in `examples/qemu-*/src/main.rs`
-  (call runtime-config before `Config::from_toml`)
-
-**Defer unless**: 89.10 ships and the ongoing maintenance cost
-of the 3× build matrix becomes a real problem, or someone wants
-another axis of per-test config fan-out that would also benefit
-from runtime-configurable strings.
+If a future axis of per-test config fan-out (per-test domain
+IDs, per-test QoS profiles, per-test topic names) shows up, the
+trait shape above is straightforward to re-derive — but until
+then this stays out of the active list.
 
 ## Acceptance Criteria
 
@@ -748,9 +718,7 @@ from runtime-configurable strings.
       ThreadX-Linux fan-out shrinks by a factor of ~3.
 - [ ] 89.10: each of the 4 slirp QEMU platforms runs its three
       `(pubsub, service, action)` cases concurrently in its group.
-- [ ] 89.11 (if taken): single firmware per example serves all
-      three cases via runtime locator override; 89.10's per-case
-      `config-*.toml` scaffolding deleted.
+- 89.11: dropped (see work-items list / sub-section).
 
 ## Notes & Caveats
 
