@@ -230,9 +230,54 @@ test verbose="": build-zenohd
         echo "All standard tests passed!"
     fi
 
+# Pre-build native cargo example fixtures used by test bodies.
+#
+# nano2nano + native_api tests historically called `cargo build --release`
+# inside the test body via `nros_tests::fixtures::build_example`. Under
+# full-matrix `just test-all` load, those embedded builds compete with
+# concurrent QEMU + zenohd processes for cores; a 14 s test stretches to
+# 125 s because compile + readiness-pattern + zenoh propagation all share
+# a saturated CPU.
+#
+# This recipe builds the fixtures up front (serial cargo invocations,
+# cooperating with cargo's internal job control instead of fighting it).
+# Setting `NROS_TESTS_REQUIRE_PREBUILT=1` for the nextest run then makes
+# `build_example` skip its embedded `cargo build` and just verify the
+# binary is on disk. Direct `cargo nextest run …` (no env var) keeps the
+# build-on-demand fallback for dev convenience.
+build-test-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building native test fixtures..."
+    examples=(
+        native/rust/zenoh/talker
+        native/rust/zenoh/listener
+        native/rust/zenoh/rtic-talker
+        native/rust/zenoh/rtic-listener
+        native/rust/zenoh/rtic-service-server
+        native/rust/zenoh/rtic-service-client
+        native/rust/zenoh/rtic-action-server
+        native/rust/zenoh/rtic-action-client
+    )
+    for ex in "${examples[@]}"; do
+        echo "  → $ex"
+        ( cd "examples/$ex" && cargo build --release --quiet ) &
+    done
+    wait
+    # The TLS variants live in the same talker/listener crates but with a
+    # different feature set, hence their own --target-dir. Used by
+    # `test_tls_talker_listener_communication`.
+    echo "  → native/rust/zenoh/{talker,listener} (--features link-tls)"
+    ( cd examples/native/rust/zenoh/talker && \
+      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+    ( cd examples/native/rust/zenoh/listener && \
+      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+    wait
+    echo "Done."
+
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
-test-all verbose="": build-zenohd
+test-all verbose="": build-zenohd build-test-fixtures
     #!/usr/bin/env bash
     set +e
     failed=0
@@ -241,7 +286,7 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    NROS_TESTS_REQUIRE_PREBUILT=1 cargo nextest run "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
     if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then

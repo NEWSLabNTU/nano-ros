@@ -199,6 +199,34 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 ///
 /// # Returns
 /// Path to the built binary
+/// `just test-all` (and any other prebuild-driven harness) sets
+/// `NROS_TESTS_REQUIRE_PREBUILT=1` so each test process skips its
+/// embedded `cargo build` and just verifies the binary's there. The
+/// build phase is moved to `just build-test-fixtures`, which keeps
+/// it serial-with-host-CPU instead of competing with N parallel
+/// QEMU/zenohd processes during the nextest run. Without the env var
+/// (i.e. direct `cargo nextest run …`) the historical build-on-demand
+/// path stays put for dev convenience.
+///
+/// Returns `Some(Ok(path))` if prebuilt-mode is on and the binary
+/// exists, `Some(Err(...))` if prebuilt-mode is on and the binary is
+/// missing, or `None` if prebuilt-mode is off (caller should proceed
+/// with the on-demand build).
+fn prebuilt_only(binary_path: &Path) -> Option<TestResult<PathBuf>> {
+    if std::env::var("NROS_TESTS_REQUIRE_PREBUILT").is_err() {
+        return None;
+    }
+    if binary_path.exists() {
+        Some(Ok(binary_path.to_path_buf()))
+    } else {
+        Some(Err(TestError::BuildFailed(format!(
+            "Test fixture binary not prebuilt: {}\n\
+             Run `just build-test-fixtures` (or unset NROS_TESTS_REQUIRE_PREBUILT) before retrying.",
+            binary_path.display()
+        ))))
+    }
+}
+
 pub fn build_example(
     name: &str,
     binary_name: &str,
@@ -213,6 +241,16 @@ pub fn build_example(
             "Example directory not found: {}",
             example_dir.display()
         )));
+    }
+
+    let binary_path = if let Some(target) = target {
+        example_dir.join(format!("target/{}/release/{}", target, binary_name))
+    } else {
+        example_dir.join(format!("target/release/{}", binary_name))
+    };
+
+    if let Some(result) = prebuilt_only(&binary_path) {
+        return result;
     }
 
     eprintln!("Building {}...", name);
@@ -244,13 +282,6 @@ pub fn build_example(
             String::from_utf8_lossy(&output.stdout).to_string(),
         ));
     }
-
-    // Determine binary path using the actual binary name
-    let binary_path = if let Some(target) = target {
-        example_dir.join(format!("target/{}/release/{}", target, binary_name))
-    } else {
-        example_dir.join(format!("target/release/{}", binary_name))
-    };
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -370,6 +401,11 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/talker");
             let target_dir = example_dir.join("target-tls");
+            let binary_path = target_dir.join("release/talker");
+
+            if let Some(result) = prebuilt_only(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/talker (link-tls)...");
 
@@ -395,7 +431,6 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/talker");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found after build: {}",
@@ -418,6 +453,11 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-tls");
+            let binary_path = target_dir.join("release/listener");
+
+            if let Some(result) = prebuilt_only(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/listener (link-tls)...");
 
@@ -443,7 +483,6 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/listener");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found after build: {}",
