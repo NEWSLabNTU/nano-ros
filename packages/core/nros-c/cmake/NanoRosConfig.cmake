@@ -32,6 +32,12 @@ Functions
 
 get_filename_component(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 
+# Phase 91.E1a: expose per-RTOS cmake modules (nros-threadx,
+# nros-rtos-helpers, future nros-freertos / nros-nuttx) on the cmake
+# module path so per-platform example support files can do
+# `include(nros-threadx)` after `find_package(NanoRos CONFIG)`.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCppTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosGenerateInterfaces.cmake")

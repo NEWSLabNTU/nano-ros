@@ -100,5 +100,20 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosConfig.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCTargets.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosReadConfig.cmake"
+    # Phase 91.E1a: per-RTOS cmake support modules. Per-platform example
+    # support files (examples/<plat>/cmake/<plat>-support.cmake) reach
+    # these via include(nros-threadx) etc. once `find_package(NanoRos)`
+    # has put this directory on cmake's module path.
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-rtos-helpers.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-threadx.cmake"
+    DESTINATION lib/cmake/NanoRos
+)
+
+# Helper script that nros_threadx_strip_builtins() invokes (RISC-V
+# soft-float / hard-float compiler_builtins workaround). Ships next to
+# the cmake modules so the function can resolve it via
+# CMAKE_CURRENT_LIST_DIR at install time.
+install(PROGRAMS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/strip-compiler-builtins.sh"
     DESTINATION lib/cmake/NanoRos
 )
