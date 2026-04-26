@@ -149,31 +149,6 @@ fn ipv4_locator(addr: [u8; 4], port: u32) -> Locator {
     Locator::new(LOCATOR_KIND_UDP_V4, port, full)
 }
 
-/// Format `[a, b, c, d]` as a NUL-terminated dotted-quad C string into
-/// `buf` (must be ≥ 16 bytes). Returns a `*const u8` that stays valid
-/// while `buf` is in scope.
-fn format_ipv4_cstring<P>(addr: &[u8; 4], buf: &mut [u8; 16]) -> *const u8 {
-    use core::fmt::Write;
-    struct Wr<'a> {
-        buf: &'a mut [u8; 16],
-        len: usize,
-    }
-    impl Write for Wr<'_> {
-        fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            let bytes = s.as_bytes();
-            let cap = self.buf.len() - 1 - self.len;
-            let take = bytes.len().min(cap);
-            self.buf[self.len..self.len + take].copy_from_slice(&bytes[..take]);
-            self.len += take;
-            Ok(())
-        }
-    }
-    let mut w = Wr { buf, len: 0 };
-    let _ = core::write!(w, "{}.{}.{}.{}", addr[0], addr[1], addr[2], addr[3]);
-    w.buf[w.len] = 0;
-    let _ = ::core::marker::PhantomData::<fn() -> P>;
-    buf.as_ptr()
-}
 
 // ---------------------------------------------------------------------------
 // Opaque buffers
@@ -259,10 +234,16 @@ fn port_cstring(port: u32) -> Vec<u8> {
 /// (the factory creates one and `Box`es it into the participant), so
 /// `Clone` is unneeded and we don't implement it.
 pub struct NrosMessageWriter<P> {
-    /// Reusable outbound socket — dust-dds calls `write_message`
-    /// from the spawner thread, never concurrently with itself
-    /// (the underlying `MpscSender` serialises sends via the runtime).
+    /// Reusable outbound socket for unicast destinations.
     sock: spin::Mutex<OpaqueSocket>,
+    /// Optional outbound socket for IPv4 multicast destinations.
+    /// On Zephyr, the IP stack only forwards multicast TX through a
+    /// socket that has joined the destination group via
+    /// `IP_ADD_MEMBERSHIP`. A separate unbound socket silently drops
+    /// outbound mcast (Phase 92.5 diagnosis). We share the
+    /// metatraffic-multicast recv-loop's socket fd here — it has
+    /// IGMP-joined `239.255.0.1` and can both recv *and* send.
+    mcast_sock: Option<spin::Mutex<OpaqueSocket>>,
     _p: core::marker::PhantomData<fn() -> P>,
 }
 
@@ -270,12 +251,23 @@ impl<P> NrosMessageWriter<P>
 where
     P: PlatformUdp + 'static,
 {
-    fn new(sock: OpaqueSocket) -> Self {
+    fn new(sock: OpaqueSocket, mcast_sock: Option<OpaqueSocket>) -> Self {
         Self {
             sock: spin::Mutex::new(sock),
+            mcast_sock: mcast_sock.map(spin::Mutex::new),
             _p: core::marker::PhantomData,
         }
     }
+}
+
+/// Returns `true` if the locator targets an IPv4 multicast group
+/// (`224.0.0.0/4`). Used by the writer to choose between the unicast
+/// and the IGMP-joined send sockets.
+fn is_ipv4_multicast(loc: &Locator) -> bool {
+    let addr = loc.address();
+    // RTPS IPv6-mapped layout: octets 12..16 hold the IPv4 address.
+    let v4_first = addr[12];
+    (224..=239).contains(&v4_first)
 }
 
 // SAFETY: `OpaqueSocket` is `[u8; 64]` plus alignment — the underlying
@@ -315,7 +307,17 @@ where
             if rc < 0 {
                 continue;
             }
-            let sock = self.sock.lock();
+            // Pick the right socket based on destination class.
+            // Multicast destinations *must* go through the
+            // IGMP-joined socket on Zephyr; unicast goes through the
+            // dedicated send socket on every platform.
+            let mcast = is_ipv4_multicast(loc);
+            let active_sock = if mcast {
+                self.mcast_sock.as_ref().unwrap_or(&self.sock)
+            } else {
+                &self.sock
+            };
+            let sock = active_sock.lock();
             let _ = <P as PlatformUdp>::send(
                 sock.as_ptr(),
                 datagram.as_ptr(),
@@ -377,16 +379,10 @@ where
 {
     // Make every read non-blocking so the loop yields cooperatively.
     <P as PlatformUdp>::set_recv_timeout(sock.as_ptr(), 0);
-    // SAFETY: alloc is available (we're behind `feature = "alloc"`),
-    // and 64 KiB is comfortably within any platform's heap budget for
-    // a transport built on dust-dds.
     let mut buf = alloc::vec![0u8; RECV_BUF_SIZE];
     loop {
         let n = <P as PlatformUdp>::read(sock.as_ptr(), buf.as_mut_ptr(), buf.len());
         if n != usize::MAX && n > 0 {
-            // Best-effort send into the MpscSender. If the receiver is
-            // dropped (participant teardown), `send` returns Err and
-            // we exit the loop.
             if sender.send(Arc::from(&buf[..n])).await.is_err() {
                 break;
             }
@@ -605,6 +601,18 @@ where
             if let Some(sock) = metatraffic_uc_sock {
                 spawner.spawn(unicast_recv_loop::<P>(sock, data_channel_sender.clone()));
             }
+            // Capture a clone of the mcast socket bytes (the kernel fd
+            // value, opaque to us) before handing the original off to
+            // the recv loop. `OpaqueSocket` is `[u8; 64]` so this is a
+            // raw byte copy; both halves end up referring to the same
+            // underlying kernel fd. UDP semantics make concurrent
+            // recvfrom + sendto safe on the same fd.
+            let mcast_send_sock_for_writer: Option<OpaqueSocket> =
+                metatraffic_mc_pair.as_ref().map(|(s, _)| {
+                    let mut copy = OpaqueSocket::new();
+                    copy.bytes.copy_from_slice(&s.bytes);
+                    copy
+                });
             if let Some((sock, lep)) = metatraffic_mc_pair {
                 spawner.spawn(multicast_recv_loop::<P>(
                     sock,
@@ -614,30 +622,29 @@ where
             }
 
             // ---- Outbound writer ------------------------------------
-            // For IPv4 multicast TX, Zephyr's sendto needs the socket
-            // to have a known source interface. An unbound socket
-            // (0.0.0.0:0) gives sendto no source iface, so multicast
-            // destinations like 239.255.0.1 fail with -1. Bind the
-            // send socket to the local advertised IP (with port 0 for
-            // ephemeral) so the IP stack picks the right iface.
+            // The send socket is unbound — every `write_message` call
+            // does sendto() with the per-call destination locator.
+            //
+            // Zephyr's `getaddrinfo` rejects port "0" with EAI_NONAME
+            // (Phase 92.5 diagnosis: `port < 1 || port > 65535` ->
+            // EAI_NONAME), so we use port 1 as a placeholder. The
+            // socket is never bind(2)-ed; the placeholder endpoint
+            // exists only to satisfy `udp_open`'s `ai_family`-derived
+            // `socket(2)` call.
             let mut send_sock = OpaqueSocket::new();
             let mut send_ep = OpaqueEndpoint::new();
-            // `LOCAL_IPV4` is set at build time from CONFIG_NET_CONFIG_MY_IPV4_ADDR
-            // (Phase 92.5). Format as a dotted-quad C string here.
-            let mut local_addr_buf = [0u8; 16];
-            let local_addr =
-                format_ipv4_cstring::<P>(&LOCAL_IPV4, &mut local_addr_buf);
-            let any_port = port_cstring(0);
+            let any_addr = b"0.0.0.0\0".as_ptr();
+            let placeholder_port = port_cstring(1);
             if <P as PlatformUdp>::create_endpoint(
                 send_ep.as_mut_ptr(),
-                local_addr,
-                any_port.as_ptr(),
+                any_addr,
+                placeholder_port.as_ptr(),
             ) >= 0
             {
-                let _ = <P as PlatformUdp>::listen(send_sock.as_mut_ptr(), send_ep.as_ptr(), 1);
+                let _ = <P as PlatformUdp>::open(send_sock.as_mut_ptr(), send_ep.as_ptr(), 0);
                 <P as PlatformUdp>::free_endpoint(send_ep.as_mut_ptr());
             }
-            let writer = NrosMessageWriter::<P>::new(send_sock);
+            let writer = NrosMessageWriter::<P>::new(send_sock, mcast_send_sock_for_writer);
 
             RtpsTransportParticipant {
                 message_writer: Box::new(writer),

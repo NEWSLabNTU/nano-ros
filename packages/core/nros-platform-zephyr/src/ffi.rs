@@ -58,6 +58,9 @@ unsafe extern "C" {
     /// Real-symbol wrapper around `k_yield()` (Phase 77.22).
     pub fn nros_zephyr_yield();
 
+    /// Read Zephyr's per-thread `errno` value. Phase 92.5 diagnostic.
+    pub fn nros_zephyr_errno() -> i32;
+
     // ---- POSIX: threads ----
 
     pub fn pthread_create(

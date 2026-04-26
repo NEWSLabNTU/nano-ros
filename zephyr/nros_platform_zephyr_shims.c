@@ -156,3 +156,14 @@ int nros_zephyr_task_create(pthread_t *thread,
 }
 
 #endif /* CONFIG_POSIX_API || CONFIG_PTHREAD */
+
+/* ── errno read helper (Phase 92.5 diagnostic) ──────────────────────
+ *
+ * Zephyr's `errno` is thread-local and lives behind a per-thread
+ * pointer that's only accessible through the `errno` macro. Rust
+ * callers can't expand the macro, so wrap it here.
+ */
+#include <errno.h>
+int nros_zephyr_errno(void) {
+    return errno;
+}

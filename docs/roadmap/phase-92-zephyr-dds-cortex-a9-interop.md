@@ -170,20 +170,41 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
        the right struct with `imr_ifindex = 0`. Listener now
        successfully joins the SPDP multicast group.
 
-       **Remaining 92.5 blocker — multicast TX from Zephyr**:
-       Talker calls `sendto(send_sock, dgram, 239.255.0.1:7400)` →
-       returns `-1`. Three diagnostics confirmed:
-       * `write_message` is reached, locator list contains
-         `239.255.0.1:7400` ✓
-       * Send socket bound to `192.0.2.1:0` (instead of 0.0.0.0:0
-         placeholder) ✓
-       * Host-side mcast watcher only sees IPv6 link-local (MLD/NS)
-         frames — no IPv4 multicast leaving the talker.
+       **Multicast TX fixed (option-2 from earlier diagnosis)**: route
+       SPDP / multicast-destined writes through the same socket that
+       performed `IP_ADD_MEMBERSHIP`. Zephyr's IP layer apparently
+       requires that association — sending to `239.255.0.1` from an
+       unbound socket "succeeds" (sendto returns the byte count) but
+       the frame never leaves the wire. Adding a `mcast_sock` field
+       to `NrosMessageWriter` and routing destinations in
+       `224.0.0.0/4` through it produces real IPv4-multicast traffic
+       on the host mcast group (verified with a Python watcher: 4
+       SPDP frames in 10s with `dst=239.255.0.1, dport=7400`).
 
-       Most likely cause: Zephyr's outbound multicast routing needs
-       `IP_MULTICAST_IF` setsockopt on the send socket, OR the send
-       socket needs to be the same one that did `IP_ADD_MEMBERSHIP`.
-       Investigation needs another session.
+       **Verified working at the wire**:
+       * Talker → mcast: `cargo:rustc-env=NROS_LOCAL_IPV4_BYTES`
+         resolves to `192,0,2,1`; outbound SPDP carries
+         `dst=239.255.0.1`, `dport=7400`, payload 236 bytes ✓
+       * Listener mcast RX: `[mcast_recv_loop] HIT N: 236 bytes` —
+         all SPDP frames captured ✓
+       * Bidirectional discovery: listener mcast hits=6, talker mcast
+         hits=5 over 25 s ✓
+       * Bidirectional metatraffic-unicast TX: both talker and
+         listener invoke `sendto(192.0.2.X:7410, …)` with success
+         (ret = 204 / 224 / 68 bytes) — the SEDP / heartbeat /
+         ack-nack chain ✓
+
+       **Remaining blocker — unicast frames don't reach the peer**:
+       `unicast_recv_loop` HIT count is 0 on both sides despite
+       sendto returning success. dust-dds therefore never matches the
+       reader/writer pair, so no sample-data UC sends to port 7411
+       happen. Most likely a Zephyr ARP failure or QEMU GEM
+       emulation quirk dropping the unicast Ethernet frames despite
+       promiscuous-mode (broadcast ARP requests may not be
+       traversing the QEMU mcast netdev). Investigation needs
+       another session — natural next step is enabling Zephyr's
+       `net arp` shell command to inspect the cache, or hardcoding
+       static ARP entries on both guests.
 
        **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers
