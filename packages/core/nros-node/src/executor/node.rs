@@ -61,6 +61,65 @@ impl<'a> Node<'a> {
         self.session
     }
 
+    // ------------------------------------------------------------------
+    // Routing-info builders (Phase 91.F)
+    //
+    // Every `create_*` below threads the same node identity (domain_id +
+    // name + namespace) into a TopicInfo / ServiceInfo / ActionInfo. The
+    // shape repeats verbatim ~12 times across this file. Centralised
+    // here so a future change to the routing-info shape (e.g. adding a
+    // `with_security_context`) updates one site instead of twelve, and
+    // so the per-`create_*` function bodies focus on the parts that
+    // actually differ between them.
+    // ------------------------------------------------------------------
+
+    // Associated fns (NOT `&self` methods) so the returned `*Info`
+    // value's borrow tracks only the explicit `&str` arguments, not
+    // the whole `Node`. A `&self` form would block the immediately-
+    // following `self.session.create_*(&info, …)` mut borrow on the
+    // `name` / `namespace` reborrow held inside the returned `*Info`,
+    // because going through a method call hides the field-disjoint
+    // path that lets `&self.name` + `&mut self.session` coexist.
+    fn topic_info<'b>(
+        domain_id: u32,
+        node_name: &'b str,
+        namespace: &'b str,
+        topic_name: &'b str,
+        type_name: &'b str,
+        type_hash: &'b str,
+    ) -> TopicInfo<'b> {
+        TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(domain_id)
+            .with_node_name(node_name)
+            .with_namespace(namespace)
+    }
+
+    fn service_info<'b>(
+        domain_id: u32,
+        node_name: &'b str,
+        namespace: &'b str,
+        service_name: &'b str,
+        type_name: &'b str,
+        type_hash: &'b str,
+    ) -> ServiceInfo<'b> {
+        ServiceInfo::new(service_name, type_name, type_hash)
+            .with_domain(domain_id)
+            .with_node_name(node_name)
+            .with_namespace(namespace)
+    }
+
+    fn action_info<'b>(
+        domain_id: u32,
+        action_name: &'b str,
+        type_name: &'b str,
+        type_hash: &'b str,
+    ) -> ActionInfo<'b> {
+        // Action root only needs the domain — per-channel ServiceInfo /
+        // TopicInfo derived from action_info.{send_goal,cancel_goal,...}_key()
+        // carry the full node identity via service_info() / topic_info().
+        ActionInfo::new(action_name, type_name, type_hash).with_domain(domain_id)
+    }
+
     // -- Publishers --
 
     /// Create a publisher for the given topic.
@@ -77,10 +136,9 @@ impl<'a> Node<'a> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
-        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
-            .with_domain(self.domain_id)
-            .with_node_name(&self.name)
-            .with_namespace(&self.namespace);
+        let topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            topic_name, M::TYPE_NAME, M::TYPE_HASH);
         let handle = self
             .session
             .create_publisher(&topic, qos)
@@ -115,10 +173,9 @@ impl<'a> Node<'a> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
-        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
-            .with_domain(self.domain_id)
-            .with_node_name(&self.name)
-            .with_namespace(&self.namespace);
+        let topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            topic_name, M::TYPE_NAME, M::TYPE_HASH);
         let handle = self
             .session
             .create_subscriber(&topic, qos)
@@ -145,10 +202,9 @@ impl<'a> Node<'a> {
         &mut self,
         service_name: &str,
     ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
-        let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-            .with_domain(self.domain_id)
-            .with_node_name(&self.name)
-            .with_namespace(&self.namespace);
+        let info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
         let handle = self
             .session
             .create_service_server(&info)
@@ -174,10 +230,9 @@ impl<'a> Node<'a> {
         &mut self,
         service_name: &str,
     ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
-        let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-            .with_domain(self.domain_id)
-            .with_node_name(&self.name)
-            .with_namespace(&self.namespace);
+        let info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
         let handle = self
             .session
             .create_service_client(&info)
@@ -212,8 +267,8 @@ impl<'a> Node<'a> {
         &mut self,
         action_name: &str,
     ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError> {
-        let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
-            .with_domain(self.domain_id);
+        let action_info = Self::action_info(
+            self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
         // Each underlying ServiceInfo / TopicInfo also carries the
         // node identity so the Zenoh shim declares a liveliness token
@@ -221,61 +276,49 @@ impl<'a> Node<'a> {
         // `declare_entity_liveliness` short-circuits (`node_name.and_then`
         // → None) and `wait_for_action_server` has nothing to find.
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let send_goal_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            &send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let cancel_goal_info = ServiceInfo::new(
+        let cancel_goal_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_node_name(&self.name)
-        .with_namespace(&self.namespace);
+            A::ACTION_HASH);
         let cancel_goal_server = self
             .session
             .create_service_server(&cancel_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let get_result_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            &get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let get_result_server = self
             .session
             .create_service_server(&get_result_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let feedback_topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            &feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
-        let status_topic = TopicInfo::new(
+        let status_topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
             &status_keyexpr,
             "action_msgs::msg::dds_::GoalStatusArray_",
-            A::ACTION_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_node_name(&self.name)
-        .with_namespace(&self.namespace);
+            A::ACTION_HASH);
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
@@ -319,8 +362,8 @@ impl<'a> Node<'a> {
         &mut self,
         action_name: &str,
     ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError> {
-        let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
-            .with_domain(self.domain_id);
+        let action_info = Self::action_info(
+            self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
         // Mirror `create_action_server_sized`: thread node identity through
         // each underlying ServiceInfo / TopicInfo so the Zenoh shim
@@ -328,47 +371,38 @@ impl<'a> Node<'a> {
         // discovery wildcard built from `send_goal_info` ends up in the
         // same domain as the server's tokens).
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let send_goal_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            &send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let send_goal_client = self
             .session
             .create_service_client(&send_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let cancel_goal_info = ServiceInfo::new(
+        let cancel_goal_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH,
-        )
-        .with_domain(self.domain_id)
-        .with_node_name(&self.name)
-        .with_namespace(&self.namespace);
+            A::ACTION_HASH);
         let cancel_goal_client = self
             .session
             .create_service_client(&cancel_goal_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let get_result_info = Self::service_info(
+            self.domain_id, &self.name, &self.namespace,
+            &get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let get_result_client = self
             .session
             .create_service_client(&get_result_info)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH)
-                .with_domain(self.domain_id)
-                .with_node_name(&self.name)
-                .with_namespace(&self.namespace);
+        let feedback_topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            &feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
         let feedback_subscriber = self
             .session
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
