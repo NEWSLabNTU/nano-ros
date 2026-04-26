@@ -7,7 +7,7 @@
 # Name must be "rustapp" for zephyr-lang-rust integration
 name = "rustapp"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 description = "nros service server for Zephyr RTOS"
 license = "Apache-2.0"
 
@@ -32,3 +32,10 @@ default = []
 opt-level = "s"
 lto = true
 debug = false
+
+# Phase 92.4a — same shape as samples/philosophers. zephyr-build at
+# build-dep level wires Kconfig values into Rust `cfg` flags, which
+# is required for embedded ARM (Cortex-A) targets; native_sim doesn't
+# need it but stays compatible.
+[build-dependencies]
+zephyr-build = "0.1.0"

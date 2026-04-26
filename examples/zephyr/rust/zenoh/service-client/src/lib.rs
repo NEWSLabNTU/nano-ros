@@ -10,7 +10,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
 use nros::{ExecutorConfig, Executor, NodeError};
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 extern "C" fn rust_main() {
     unsafe {
         zephyr::set_logger().ok();

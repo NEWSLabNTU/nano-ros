@@ -23,7 +23,7 @@ type NrosExecutor = nros::Executor;
 /// Static storage for the Embassy executor (lives for the program lifetime).
 static EMBASSY: StaticCell<zephyr::embassy::Executor> = StaticCell::new();
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 extern "C" fn rust_main() {
     unsafe {
         zephyr::set_logger().ok();
