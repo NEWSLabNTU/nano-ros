@@ -13,8 +13,14 @@ use std::time::{Duration, Instant};
 pub enum ZephyrPlatform {
     /// Native simulator (x86_64, runs directly on host)
     NativeSim,
-    /// QEMU ARM Cortex-M3 emulation
+    /// QEMU ARM Cortex-M3 emulation (Stellaris LM3S6965)
     QemuArm,
+    /// QEMU ARM Cortex-A9 emulation (Xilinx Zynq-7000) with the
+    /// Xilinx GEM ethernet driver wired into the Zephyr native IP
+    /// stack. Phase 92 — the platform real DDS-on-Zephyr deployments
+    /// run on (Zynq, STM32-Eth, NXP-MAC all use the same Cortex-A9
+    /// + Zephyr stack code path).
+    QemuCortexA9,
 }
 
 impl ZephyrPlatform {
@@ -23,6 +29,7 @@ impl ZephyrPlatform {
         match self {
             ZephyrPlatform::NativeSim => "native_sim/native/64",
             ZephyrPlatform::QemuArm => "qemu_cortex_m3",
+            ZephyrPlatform::QemuCortexA9 => "qemu_cortex_a9",
         }
     }
 }
@@ -121,6 +128,14 @@ impl ZephyrProcess {
                 set_new_process_group(&mut cmd);
                 cmd.spawn()?
             }
+            ZephyrPlatform::QemuCortexA9 => {
+                // For Cortex-A9 the test must call `start_qemu_a9_mcast`
+                // instead so it can supply a virtual-L2 mcast group.
+                // Calling the bare `start` API doesn't make sense here.
+                return Err(TestError::ProcessFailed(String::from(
+                    "ZephyrPlatform::QemuCortexA9 requires `start_qemu_a9_mcast` (Phase 92)",
+                )));
+            }
         };
 
         // Spawn a background reader that accumulates stdout into a
@@ -156,6 +171,106 @@ impl ZephyrProcess {
         Ok(Self {
             handle,
             platform,
+            output,
+            reader_done,
+            reader_thread: Some(reader_thread),
+        })
+    }
+
+    /// Launch a Zephyr `qemu_cortex_a9` binary with QEMU's
+    /// `-netdev socket,mcast=…` networking. Two instances launched
+    /// with the same `mcast_addr:port` share a virtual L2 broadcast
+    /// domain on the host (no `sudo`, no TAP), so SPDP/SEDP/ARP all
+    /// flow between them. Phase 92.5 talker↔listener interop runs
+    /// over this.
+    ///
+    /// `mac` must be unique per instance — Zephyr's GEM driver uses
+    /// the DTS `local-mac-address`, but QEMU still wants its `-nic
+    /// mac=` to match for ARP/IGMP plumbing on the host side.
+    pub fn start_qemu_a9_mcast(
+        binary: &Path,
+        mcast_addr_port: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Zephyr binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        // Locate the SDK-bundled qemu-system-xilinx-aarch64 — same
+        // path the upstream zephyr-lang-rust samples/philosophers
+        // build uses via `west build -t run`. Falling back to the
+        // PATH version is fine for dev hosts.
+        let qemu = std::env::var("QEMU_BIN").unwrap_or_else(|_| {
+            let sdk = "/home/aeon/repos/nano-ros/scripts/zephyr/sdk/zephyr-sdk-0.16.8";
+            format!("{sdk}/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-xilinx-aarch64")
+        });
+        let dtb = std::env::var("ZEPHYR_FDT_ZYNQ7000S").unwrap_or_else(|_| {
+            let ws = zephyr_workspace_path()
+                .map(|p| p.join("zephyr/boards/qemu/cortex_a9/fdt-zynq7000s.dtb"))
+                .unwrap_or_default();
+            ws.to_string_lossy().into_owned()
+        });
+
+        let mut cmd = Command::new(&qemu);
+        cmd.args([
+            "-nographic",
+            "-machine",
+            "arm-generic-fdt-7series",
+            "-dtb",
+            dtb.as_str(),
+            "-nic",
+            &format!("socket,model=cadence_gem,mcast={mcast_addr_port},mac={mac}"),
+            "-chardev",
+            "stdio,id=con,mux=on",
+            "-serial",
+            "chardev:con",
+            "-mon",
+            "chardev=con,mode=readline",
+            "-device",
+        ])
+        .arg(format!(
+            "loader,file={},cpu-num=0",
+            binary.to_string_lossy()
+        ))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let mut handle = cmd.spawn()?;
+
+        let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let reader_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader_thread = {
+            let output = output.clone();
+            let reader_done = reader_done.clone();
+            let mut stdout = handle.stdout.take().ok_or_else(|| {
+                TestError::ProcessFailed("No stdout on spawned process".to_string())
+            })?;
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let mut buf = [0u8; 4096];
+                loop {
+                    match stdout.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let chunk = String::from_utf8_lossy(&buf[..n]);
+                            if let Ok(mut guard) = output.lock() {
+                                guard.push_str(&chunk);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                reader_done.store(true, std::sync::atomic::Ordering::Release);
+            })
+        };
+
+        Ok(Self {
+            handle,
+            platform: ZephyrPlatform::QemuCortexA9,
             output,
             reader_done,
             reader_thread: Some(reader_thread),
@@ -400,6 +515,9 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "build-dds-rs-talker",
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "build-dds-rs-listener",
+        // Phase 92 — same examples on qemu_cortex_a9
+        "zephyr-dds-rs-talker-a9" => "build-dds-a9-talker",
+        "zephyr-dds-rs-listener-a9" => "build-dds-a9-listener",
         _ => "build",
     }
 }
@@ -449,6 +567,9 @@ fn example_path_for_name(example_name: &str) -> String {
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "zephyr/rust/dds/talker".to_string(),
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "zephyr/rust/dds/listener".to_string(),
+        // Phase 92 — same source, qemu_cortex_a9 build dir alias
+        "zephyr-dds-rs-talker-a9" => "zephyr/rust/dds/talker".to_string(),
+        "zephyr-dds-rs-listener-a9" => "zephyr/rust/dds/listener".to_string(),
         // For any other name, assume it's a path relative to examples/
         _ => example_name.to_string(),
     }
@@ -479,7 +600,9 @@ pub fn get_or_build_zephyr_example(
     // Determine binary path based on platform
     let binary_path = match platform {
         ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
-        ZephyrPlatform::QemuArm => workspace.join(format!("{}/zephyr/zephyr.elf", build_dir)),
+        ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
+            workspace.join(format!("{}/zephyr/zephyr.elf", build_dir))
+        }
     };
 
     // If binary exists and we're not forcing a rebuild, check that it's
@@ -597,7 +720,9 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
 
     let binary_path = match platform {
         ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
-        ZephyrPlatform::QemuArm => workspace.join(format!("{}/zephyr/zephyr.elf", build_dir)),
+        ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
+            workspace.join(format!("{}/zephyr/zephyr.elf", build_dir))
+        }
     };
 
     // Default contract: tests don't compile fixtures. Run

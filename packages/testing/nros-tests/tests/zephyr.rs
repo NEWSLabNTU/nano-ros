@@ -2091,3 +2091,138 @@ fn test_zephyr_dds_rust_listener_boots() {
         );
     }
 }
+
+// =============================================================================
+// Zephyr DDS Talker↔Listener Interop on qemu_cortex_a9 — Phase 92.5
+// =============================================================================
+//
+// Two QEMU Zynq-7000 guests connected by `-netdev socket,mcast=…`
+// share a virtual L2 segment on the host (no sudo, no TAP). DDS
+// SPDP/SEDP/data flow over Zephyr's native IP stack with real IGMP,
+// real ARP, and the Xilinx GEM ethernet driver — same code path
+// production DDS-on-Zephyr deployments will run on real silicon
+// (Zynq, STM32-Eth, NXP-MAC).
+//
+// Phase 92's structural fixes that make this test possible:
+//   1. zephyr-lang-rust Cortex-A9/A7 target case (upstream patch)
+//   2. Zynq SoC SLCR MMU region (upstream patch)
+//   3. nros-rmw-dds locator from CONFIG_NET_CONFIG_MY_IPV4_ADDR
+//   4. mcast TX through the IGMP-joined fd (transport_nros)
+//   5. ip_mreqn struct (Zephyr requires the 12-byte form)
+//   6. Distinct DTS local-mac-address per guest (default DTS shares
+//      00:00:00:01:02:03 → ARP self-loop drops)
+
+fn get_zephyr_dds_talker_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-talker-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-talker-a9 binary")
+}
+
+fn get_zephyr_dds_listener_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-listener-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-listener-a9 binary")
+}
+
+/// Pick a per-test mcast (group, port) so concurrent runs don't
+/// share the same virtual L2 segment. Group is fixed
+/// (`230.0.0.1` — host-local admin scope); port hashes the test's
+/// PID into the dynamic range. Each test gets a unique port.
+fn pick_mcast_addr_port() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let pid = std::process::id() as u64;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    let port = 49000 + (pid.wrapping_mul(2654435761).wrapping_add(nanos) % 1000);
+    format!("230.0.0.1:{port}")
+}
+
+/// Talker → listener pubsub interop on `qemu_cortex_a9`.
+///
+/// Builds both binaries (cached after first run), launches them as
+/// two QEMU instances joined to the same host-side multicast group,
+/// then waits up to ~30 s of wall-clock for the listener to print
+/// `Received: 5` (5 distinct samples of the talker's `Int32`
+/// counter — pubs/sec is much higher in sim time so this happens
+/// quickly once the SPDP/SEDP discovery handshake completes).
+#[test]
+fn test_zephyr_dds_rust_talker_to_listener_a9_e2e() {
+    if !require_zephyr() {
+        return;
+    }
+    if !nros_tests::zephyr::is_west_available() {
+        nros_tests::skip!("west command not available");
+    }
+
+    let talker_bin = get_zephyr_dds_talker_a9();
+    let listener_bin = get_zephyr_dds_listener_a9();
+    let mcast = pick_mcast_addr_port();
+    eprintln!("mcast group/port = {mcast}");
+
+    // Listener first so it's ready to receive when the talker boots.
+    let mut listener = ZephyrProcess::start_qemu_a9_mcast(
+        &listener_bin,
+        &mcast,
+        "02:00:00:00:00:02",
+    )
+    .expect("Failed to start qemu_cortex_a9 listener");
+
+    let listener_ready =
+        listener.wait_for_pattern("Waiting for messages", Duration::from_secs(20));
+    if !listener_ready.contains("Waiting for messages") {
+        let _ = listener.kill();
+        panic!(
+            "qemu_cortex_a9 listener didn't reach subscriber readiness\n\
+             Output:\n{}",
+            listener_ready
+        );
+    }
+
+    let mut talker = ZephyrProcess::start_qemu_a9_mcast(
+        &talker_bin,
+        &mcast,
+        "02:00:00:00:00:01",
+    )
+    .expect("Failed to start qemu_cortex_a9 talker");
+
+    // 30 s wall-clock is generous — actual sim-time discovery takes
+    // a couple of seconds, then the listener's recv burst is
+    // immediate. If we don't see Received: 5 by then, something
+    // regressed.
+    let listener_out =
+        listener.wait_for_pattern("Received: 5", Duration::from_secs(30));
+    let talker_out = talker
+        .wait_for_pattern("Published: 5", Duration::from_secs(5));
+    let _ = talker.kill();
+    let _ = listener.kill();
+
+    eprintln!("\n=== Talker tail ===");
+    for line in talker_out.lines().rev().take(5).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+    eprintln!("\n=== Listener tail ===");
+    for line in listener_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+
+    if !listener_out.contains("Received: 5") {
+        panic!(
+            "qemu_cortex_a9 listener received fewer than 5 samples \
+             from the talker — interop regression.\n\
+             Discovery is the most likely culprit (SPDP via mcast \
+             then SEDP via unicast). Check Phase 92.5 doc + \
+             nros-rmw-dds/transport_nros.rs for the mcast-fd routing \
+             and Zephyr ARP/MAC plumbing.\n\
+             Listener tail:\n{}",
+            listener_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+        );
+    }
+}
