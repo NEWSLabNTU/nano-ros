@@ -21,8 +21,9 @@
 //!
 //! # Compile-time resolution
 //!
-//! Exactly one platform feature must be enabled. The [`ConcretePlatform`]
-//! type alias resolves to the active backend, eliminating generic parameters.
+//! Exactly one platform feature must be enabled. The `ConcretePlatform`
+//! type alias (gated on any `platform-*` feature) resolves to the active
+//! backend, eliminating generic parameters.
 
 #![no_std]
 

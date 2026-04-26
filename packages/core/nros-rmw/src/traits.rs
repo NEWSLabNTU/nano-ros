@@ -1212,7 +1212,7 @@ pub trait Transport {
 /// configuration (agent addresses, serial ports, TLS CA slots)
 /// inside the factory value and hand that over to the session at
 /// `open` time. All in-repo backends also implement
-/// [`Default`](core::default::Default); most callers spell this as
+/// [`Default`]; most callers spell this as
 /// `BackendRmw::default().open(&config)`.
 pub trait Rmw {
     /// Session type returned by [`open`](Rmw::open)

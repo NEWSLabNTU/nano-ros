@@ -259,9 +259,13 @@ fn write_header_preserve_nonzero(
     probe_failed: bool,
 ) {
     if probe_failed && path.exists() {
-        println!(
-            "cargo:warning={crate_label}: probe returned all-zero sizes \
-             (LTO bitcode rlib?); keeping existing committed header at {}",
+        // Expected on `cargo doc` / `cargo check --workspace` (LTO bitcode
+        // rlib has no readable layout) — fall back to the committed header.
+        // Use `eprintln!` so this doesn't surface as a yellow `warning:`
+        // line on every workspace build (Phase 77.24 stopgap).
+        eprintln!(
+            "{crate_label}: probe returned all-zero sizes (LTO bitcode rlib?); \
+             keeping existing committed header at {}",
             path.display()
         );
         return;

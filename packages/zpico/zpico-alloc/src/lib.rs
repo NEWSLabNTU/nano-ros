@@ -6,7 +6,7 @@
 //!
 //! ## Slab fast-path
 //!
-//! Allocations ≤ [`SLAB_SLOT_SIZE`] bytes are served from a small slab cache
+//! Allocations ≤ `SLAB_SLOT_SIZE` (64) bytes are served from a small slab cache
 //! (8 slots × 64 bytes = 512 bytes) with O(1) bitmap-based alloc/free. This
 //! targets zenoh-pico's per-message string field allocations (short-lived
 //! `z_malloc` + `z_free` pairs during CDR parsing). Larger allocations fall

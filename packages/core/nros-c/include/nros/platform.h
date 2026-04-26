@@ -12,11 +12,15 @@
  *   NROS_PLATFORM_CUSTOM    - User provides all platform functions
  *
  * Example usage:
+ * @code
  *   #define NROS_PLATFORM_ZEPHYR
  *   #include <nros/init.h>
+ * @endcode
  *
  * Or via compiler flag:
+ * @code
  *   gcc -DNROS_PLATFORM_POSIX -c main.c
+ * @endcode
  *
  * Copyright 2024 nros contributors
  * Licensed under Apache-2.0

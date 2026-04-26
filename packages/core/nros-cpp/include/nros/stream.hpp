@@ -56,7 +56,7 @@ template <typename T> class Stream {
     /// @param timeout_ms       Maximum wait time in milliseconds.
     /// @param out              Output object (filled on success).
     /// @param poll_ms          Per-iteration spin_once timeout in ms
-    ///                         (default 10). See `Future<T>::wait` for
+    ///                         (default 10). See `Future::wait` for
     ///                         the trade-off between latency and wakeup
     ///                         frequency.
     /// @return Result::success(), ErrorCode::Timeout, or error.

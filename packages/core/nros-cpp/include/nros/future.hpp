@@ -22,7 +22,7 @@ namespace nros {
 
 /// Single-shot deferred result for request/response operations.
 ///
-/// Returned by `Client<S>::send_request()`. The future is consumed
+/// Returned by Client<S>::send_request. The future is consumed
 /// when the result is taken -- move-only, single-shot.
 ///
 /// Usage:

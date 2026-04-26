@@ -352,9 +352,12 @@ fn main() {
     .count();
 
     if backend_count == 0 {
-        // No backend selected - just build zenoh-pico and generate bindings
-        // This allows building for testing header generation
-        println!("cargo:warning=No platform backend selected. Building minimal configuration.");
+        // No backend selected — build only enough to regenerate `zpico.h`
+        // (cbindgen) and the size probe. Reached on plain `cargo doc`,
+        // `cargo check --workspace`, etc. — perfectly normal, so emit
+        // an `eprintln!` instead of `cargo:warning` (the latter surfaces
+        // as a yellow `warning: …` line on every workspace build).
+        eprintln!("zpico-sys: no platform backend selected; minimal build (header-only).");
     }
 
     if backend_count > 1 {

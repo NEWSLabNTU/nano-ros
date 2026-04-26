@@ -215,9 +215,13 @@ fn generate_config(
     // `_opaque[0]` arrays.
     let probe_failed = probe_executor == 0;
     if probe_failed && header_path.exists() {
-        println!(
-            "cargo:warning=nros-cpp: probe returned all-zero sizes (LTO \
-             bitcode rlib?); keeping existing committed header at {}",
+        // Expected on `cargo doc` / `cargo check --workspace` (LTO bitcode
+        // rlib has no readable layout) — fall back to the committed header.
+        // `eprintln!` rather than `cargo:warning` so this doesn't surface
+        // as a yellow warning on every workspace build (Phase 77.24 stopgap).
+        eprintln!(
+            "nros-cpp: probe returned all-zero sizes (LTO bitcode rlib?); \
+             keeping existing committed header at {}",
             header_path.display()
         );
     } else if probe_failed {

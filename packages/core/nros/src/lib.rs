@@ -192,7 +192,8 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 ///
 /// Each submodule is gated on the matching `platform-*` feature and exposes
 /// thin wrappers for init hooks that users must call before opening an
-/// [`Executor`]. Other platforms either don't need these (POSIX) or provide
+/// `Executor` (gated on any `rmw-*` feature). Other platforms either don't
+/// need these (POSIX) or provide
 /// them through their board crate (FreeRTOS, NuttX, ThreadX, bare-metal).
 pub mod platform {
     /// Zephyr-specific init helpers.

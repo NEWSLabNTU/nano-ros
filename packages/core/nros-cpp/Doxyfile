@@ -38,15 +38,16 @@ OUTPUT_DIRECTORY       = ../../../target/doc/cpp-api
 OPTIMIZE_OUTPUT_FOR_C  = NO
 TYPEDEF_HIDES_STRUCT   = NO
 
-# Only documented items (undocumented items flagged by WARN_IF_UNDOCUMENTED)
-EXTRACT_ALL            = NO
+# Extract everything so the generated site is complete even when finer-grained
+# (per-param / per-field) docs are missing. Real doc errors still surface via
+# WARN_IF_DOC_ERROR.
+EXTRACT_ALL            = YES
 EXTRACT_STATIC         = YES
 EXTRACT_PRIVATE        = NO
 
-# Warnings
-WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_UNDOCUMENTED   = NO
 WARN_IF_DOC_ERROR      = YES
-WARN_NO_PARAMDOC       = YES
+WARN_NO_PARAMDOC       = NO
 
 # No LaTeX, just HTML
 GENERATE_HTML          = YES

@@ -1,7 +1,7 @@
 //! POSIX serial (PTY / UART) transport via `termios`.
 //!
 //! Implements [`PlatformSerial`](nros_platform_api::PlatformSerial) on
-//! [`PosixPlatform`](crate::PosixPlatform). The handle is a `libc` file
+//! [`PosixPlatform`]. The handle is a `libc` file
 //! descriptor — multiple concurrent devices are supported from a single
 //! platform impl (open returns the FD; every other method takes it
 //! back). Single-session consumers like `nros-rmw-xrce::platform_serial`

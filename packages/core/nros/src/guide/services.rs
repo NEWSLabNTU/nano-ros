@@ -1,6 +1,6 @@
 //! # Service Calls and Promise API
 //!
-//! `client.call(&request)` returns a [`Promise`](crate::Promise) immediately — no blocking.
+//! `client.call(&request)` returns a `Promise` immediately — no blocking.
 //! The reply can be polled with `try_recv()` or `.await`ed.
 //!
 //! ## Sync polling (no async runtime)

@@ -1,6 +1,6 @@
 //! Embedded executor with build-time configured arena.
 //!
-//! Provides [`Executor`] and [`Node`] that work with the compile-time
+//! Provides `Executor` and `Node` that work with the compile-time
 //! selected RMW backend (zenoh, XRCE-DDS, or C FFI).
 //!
 //! # Example
