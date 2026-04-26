@@ -148,7 +148,38 @@ macro reason).
 
 ### Group E — Example boilerplate consolidation
 
-- [ ] 91.E1 — Extract `examples/threadx-linux/cmake/threadx-support.cmake` and `examples/qemu-riscv64-threadx/cmake/threadx-riscv64-support.cmake` shared sections (kernel-source compile rules, NetX library rules, include collection) into a `cmake/threadx-common.cmake` shipped under the project's `cmake/` dir. Per CLAUDE.md the example tree must remain portable — so the shared module must live inside the `examples/` portable subtree, not at project root, **or** be exported with the cmake install (Phase 75)
+**Group E cmake design — three-layer abstraction (applies to E1).**
+
+A naive 2-file dedup of the two ThreadX support files would buy ~80
+lines but leave the next platform port reinventing the boilerplate
+from scratch. Designing for N future platforms instead, the structure
+is:
+
+| Layer | What it does | Where it lives |
+|---|---|---|
+| 1. Cross-RTOS primitives (`nros-rtos-helpers.cmake`) | `nros_validate_vars`, `nros_build_rtos_static_lib`, `nros_compose_platform_target` — pure mechanics, knows no specific RTOS | shipped via `find_package(NanoRos)` install (Phase 75) |
+| 2. Per-RTOS module (`nros-threadx.cmake`, `nros-freertos.cmake`, …) | `nros_<rtos>_build_kernel`, `nros_<rtos>_build_netstack_*`, `nros_<rtos>_compose_platform`, plus optional `nros_<rtos>_setup_picolibc` / `setup_rust_lld` / `strip_builtins` for ports that need them. Encodes RTOS-specific quirks (port subdirs, source globs, kernel-flavored asserts) once. | shipped via the same install |
+| 3. Per-platform orchestrator (`<plat>-support.cmake`) | 10–20 lines: set platform-specific knobs (port subdir, libs, link script), call layer-2 functions | stays in `examples/<plat>/cmake/` (CLAUDE.md "examples must remain portable") |
+
+A new platform port becomes "copy a 15-line layer-3 file, change the
+port subdir and link libs". A new RTOS becomes "write `nros-<rtos>.cmake`
+using the layer-1 primitives" (~80 % mechanical).
+
+**Naming convention.** Layer-1 functions: `nros_<verb>_<noun>`. Layer-2:
+`nros_<rtos>_<verb>_<noun>`. Long but unambiguous; clear namespace
+separation keeps cmake's flat function namespace from collapsing into
+a soup of `build_kernel` collisions when more RTOSes land.
+
+**Variable convention.** Long-term we want `NROS_<RTOS>_<COMPONENT>_DIR`
+(e.g. `NROS_THREADX_KERNEL_DIR`) instead of the per-file `THREADX_DIR`,
+`NETX_DIR`, `FREERTOS_DIR`, `LWIP_DIR`, `NUTTX_DIR` zoo. **Not done in
+E1** — that's a backward-compat-breaking rename and warrants its own
+deprecation pass. New layer-2 functions should accept both forms during
+a transition.
+
+- [ ] 91.E1a — Layer 1 (`nros-rtos-helpers.cmake`) + layer 2 ThreadX (`nros-threadx.cmake`) shipped via the cmake install. Rewrite `examples/threadx-linux/cmake/threadx-support.cmake` (88 lines) and `examples/qemu-riscv64-threadx/cmake/threadx-riscv64-support.cmake` (213 lines) as thin orchestrators on top of them. Validates the design against the file with the most variation (RISC-V's assembly excludes / picolibc / rust-lld plumbing). **Acceptance**: `just threadx_linux build-fixtures` and `just threadx_riscv64 build-fixtures` succeed before/after the refactor with equivalent artefacts (build-fixtures recipes from upstream commit `0e5e03a1` make this easy to verify).
+- [ ] 91.E1b — Layer 2 FreeRTOS (`nros-freertos.cmake`) + rewrite `examples/qemu-arm-freertos/cmake/freertos-support.cmake`. Separate PR; if E1a's design needs adjustment after touching another RTOS, this is where it surfaces.
+- [ ] 91.E1c — Layer 2 NuttX (`nros-nuttx.cmake`) + rewrite `examples/qemu-arm-nuttx/cmake/nuttx-support.cmake`. NuttX is awkward because it leans on kconfig more than cmake; `nros-nuttx.cmake` may end up thinner than the others or just expose a different shape (e.g. invoke NuttX's own build).
 - [ ] 91.E2 — Same for the C++ example startup boilerplate across `examples/threadx-linux/cpp/zenoh/talker/`, `examples/qemu-arm-nuttx/cpp/zenoh/talker/`, `examples/qemu-riscv64-threadx/cpp/zenoh/talker/`. Candidate: ship a `nros::examples::pubsub_helpers` header (header-only) in `nros-cpp/include/nros/examples/`, gated by an opt-in macro so production users don't link it
 - [x] 91.E3 — Created `tests/lib/common.sh` exposing colors (RED/GREEN/YELLOW/BLUE/CYAN/NC), 5 log functions (`log_info`/`log_success`/`log_warn`/`log_error`/`log_header`), `register_pid`/`cleanup_pids`, and `init_test_tmpdir`/`cleanup_test_tmpdir`/`tmpfile`. `tests/c-msg-gen-tests.sh` was rewritten to source it (renamed `info`/`warn`/`error` → `log_info`/`log_warn`/`log_error` at 16 call sites). `tests/zephyr/run-c.sh` was rewritten to source it (dropped 60+ lines of inlined helpers; cleanup function now delegates to `cleanup_pids`/`cleanup_test_tmpdir`). Both scripts pass `bash -n`; helper smoke-tested independently
 - [x] 91.E4 — Added `_nextest-platform <test_name> [verbose]` private recipe to root justfile. Refactored `just/freertos.just`, `just/nuttx.just`, `just/threadx-linux.just`, `just/threadx-riscv64.just` `test` recipes to call it via `just _nextest-platform <name> '{{verbose}}'` after their pre-flight checks. Cross-module dispatch verified by running `just nuttx test` end-to-end (3/3 nuttx_qemu tests pass). The `test-all` recipes have additional pre-build / network-setup steps and weren't collapsed in this pass — leaving them for a future cleanup if the duplication grows
