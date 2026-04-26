@@ -98,6 +98,18 @@ pub use nros_rmw::{
     TopicInfo, TransportConfig, TransportError,
 };
 
+// Re-export RMW protocol traits so thin wrappers (nros-c, nros-cpp) can
+// pull them through nros-node instead of going around it. Phase 91.B.
+pub use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Session, Subscriber};
+
+// Re-export action protocol types from nros-core. Same motivation as the
+// RMW trait re-exports above — keeps thin wrappers off the
+// nros-core::* path. Phase 91.B5.
+pub use nros_core::{CancelResponse, GoalId, GoalResponse, GoalStatus};
+
+// Re-export lifecycle protocol types. Phase 91.B2.
+pub use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
+
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
