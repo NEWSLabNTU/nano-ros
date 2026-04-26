@@ -13,6 +13,11 @@ use nros_rmw_zenoh::keyexpr::TopicKeyExpr;
 use std::thread;
 use std::time::Duration;
 
+/// Locator for the zenohd router that the `#[ignore]`d tests below connect to.
+/// Tests requiring this router must be invoked manually after starting:
+/// `zenohd --listen tcp/127.0.0.1:7447`
+const ROUTER_LOCATOR: &str = "tcp/127.0.0.1:7447";
+
 /// Test that we can open and close a session in peer mode
 /// (doesn't require a router).
 /// Multicast scouting is disabled to avoid contention under parallel test load.
@@ -82,7 +87,7 @@ fn test_cdr_int32_format() {
 fn test_pubsub_loopback() {
     // Connect to router as client
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
     };
@@ -91,7 +96,7 @@ fn test_pubsub_loopback() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen tcp/127.0.0.1:7447");
+            eprintln!("Start a router with: zenohd --listen {}", ROUTER_LOCATOR);
             panic!("Failed to connect to zenoh router");
         }
     };
@@ -169,7 +174,7 @@ fn test_pubsub_loopback() {
 fn test_pubsub_separate_sessions() {
     // Connect to router as client
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
     };
@@ -237,7 +242,7 @@ fn test_pubsub_separate_sessions() {
 #[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_multiple_publishers() {
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
     };
@@ -269,7 +274,7 @@ fn test_multiple_publishers() {
 #[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_multiple_subscribers() {
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
     };
@@ -309,7 +314,7 @@ fn test_transport_config_with_properties() {
     ];
 
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: props,
     };
@@ -435,7 +440,7 @@ fn test_session_explicit_props_override_env() {
 #[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_pubsub_loopback_with_scouting_disabled() {
     let config = TransportConfig {
-        locator: Some("tcp/127.0.0.1:7447"),
+        locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
     };
@@ -444,7 +449,7 @@ fn test_pubsub_loopback_with_scouting_disabled() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen tcp/127.0.0.1:7447");
+            eprintln!("Start a router with: zenohd --listen {}", ROUTER_LOCATOR);
             panic!("Failed to connect to zenoh router");
         }
     };
