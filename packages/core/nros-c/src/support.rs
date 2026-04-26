@@ -127,20 +127,12 @@ pub unsafe extern "C" fn nros_support_init_named(
     // Store domain ID
     support.domain_id = domain_id;
 
-    // Copy locator string if provided
+    // Copy locator string if provided (helper handles the null branch
+    // gracefully — but the legacy `else` branch installs a backend-default
+    // locator instead of leaving the field empty, so the explicit
+    // null-check stays).
     if !locator.is_null() {
-        let mut len = 0usize;
-        let locator_ptr = locator as *const u8;
-        while len < MAX_LOCATOR_LEN - 1 {
-            let c = *locator_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            support.locator[len] = c;
-            len += 1;
-        }
-        support.locator[len] = 0;
-        support.locator_len = len;
+        support.locator_len = crate::util::copy_cstr_into(locator, &mut support.locator);
     } else {
         // Backend-dependent default locator
         #[cfg(feature = "rmw-zenoh")]

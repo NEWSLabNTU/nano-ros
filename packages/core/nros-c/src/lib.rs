@@ -110,6 +110,7 @@ mod opaque_sizes;
 mod parameter;
 mod platform;
 mod qos;
+mod util;
 
 pub use cdr::*;
 pub use clock::*;

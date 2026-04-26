@@ -161,54 +161,18 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    // Copy topic name
-    let topic_ptr = topic_name as *const u8;
-    let mut len = 0usize;
-    while len < MAX_TOPIC_LEN - 1 {
-        let c = *topic_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        subscription.topic_name[len] = c;
-        len += 1;
-    }
-    if len == 0 {
+    // Copy topic name (required — empty rejected)
+    subscription.topic_name_len =
+        crate::util::copy_cstr_into(topic_name, &mut subscription.topic_name);
+    if subscription.topic_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    subscription.topic_name[len] = 0;
-    subscription.topic_name_len = len;
 
-    // Copy type name
-    if !type_info.type_name.is_null() {
-        let type_ptr = type_info.type_name as *const u8;
-        len = 0;
-        while len < MAX_TYPE_NAME_LEN - 1 {
-            let c = *type_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            subscription.type_name[len] = c;
-            len += 1;
-        }
-        subscription.type_name[len] = 0;
-        subscription.type_name_len = len;
-    }
-
-    // Copy type hash
-    if !type_info.type_hash.is_null() {
-        let hash_ptr = type_info.type_hash as *const u8;
-        len = 0;
-        while len < MAX_TYPE_HASH_LEN - 1 {
-            let c = *hash_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            subscription.type_hash[len] = c;
-            len += 1;
-        }
-        subscription.type_hash[len] = 0;
-        subscription.type_hash_len = len;
-    }
+    // Copy type name + hash (both optional — null sources leave dst untouched)
+    subscription.type_name_len =
+        crate::util::copy_cstr_into(type_info.type_name, &mut subscription.type_name);
+    subscription.type_hash_len =
+        crate::util::copy_cstr_into(type_info.type_hash, &mut subscription.type_hash);
 
     // Store callback and context
     subscription.callback = callback;

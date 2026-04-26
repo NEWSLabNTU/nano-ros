@@ -105,36 +105,14 @@ pub unsafe extern "C" fn nros_node_init(
         return NROS_RET_NOT_INIT;
     }
 
-    // Copy name
-    let name_ptr = name as *const u8;
-    let mut len = 0usize;
-    while len < MAX_NAME_LEN - 1 {
-        let c = *name_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        node.name[len] = c;
-        len += 1;
-    }
-    if len == 0 {
+    // Copy name (required — empty rejected)
+    node.name_len = crate::util::copy_cstr_into(name, &mut node.name);
+    if node.name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    node.name[len] = 0;
-    node.name_len = len;
 
-    // Copy namespace
-    let ns_ptr = namespace_ as *const u8;
-    len = 0;
-    while len < MAX_NAMESPACE_LEN - 1 {
-        let c = *ns_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        node.namespace[len] = c;
-        len += 1;
-    }
-    node.namespace[len] = 0;
-    node.namespace_len = len;
+    // Copy namespace (required by validate above; empty allowed)
+    node.namespace_len = crate::util::copy_cstr_into(namespace_, &mut node.namespace);
 
     // Store support reference
     node.support = support;

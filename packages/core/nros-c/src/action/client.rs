@@ -168,54 +168,18 @@ pub unsafe extern "C" fn nros_action_client_init(
     );
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    // Copy action name
-    let name_ptr = action_name as *const u8;
-    let mut len = 0usize;
-    while len < MAX_ACTION_NAME_LEN - 1 {
-        let c = *name_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        client.action_name[len] = c;
-        len += 1;
-    }
-    if len == 0 {
+    // Copy action name (required — empty rejected)
+    client.action_name_len =
+        crate::util::copy_cstr_into(action_name, &mut client.action_name);
+    if client.action_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    client.action_name[len] = 0;
-    client.action_name_len = len;
 
-    // Copy type name
-    if !type_info.type_name.is_null() {
-        let type_ptr = type_info.type_name as *const u8;
-        len = 0;
-        while len < MAX_TYPE_NAME_LEN - 1 {
-            let c = *type_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            client.type_name[len] = c;
-            len += 1;
-        }
-        client.type_name[len] = 0;
-        client.type_name_len = len;
-    }
-
-    // Copy type hash
-    if !type_info.type_hash.is_null() {
-        let hash_ptr = type_info.type_hash as *const u8;
-        len = 0;
-        while len < MAX_TYPE_HASH_LEN - 1 {
-            let c = *hash_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            client.type_hash[len] = c;
-            len += 1;
-        }
-        client.type_hash[len] = 0;
-        client.type_hash_len = len;
-    }
+    // Copy type name + hash (both optional — null sources leave dst untouched)
+    client.type_name_len =
+        crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
+    client.type_hash_len =
+        crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer
     client.node = node;

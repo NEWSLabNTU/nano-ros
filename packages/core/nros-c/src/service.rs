@@ -189,54 +189,18 @@ pub unsafe extern "C" fn nros_service_init(
     );
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    // Copy service name
-    let name_ptr = service_name as *const u8;
-    let mut len = 0usize;
-    while len < MAX_SERVICE_NAME_LEN - 1 {
-        let c = *name_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        service.service_name[len] = c;
-        len += 1;
-    }
-    if len == 0 {
+    // Copy service name (required — empty rejected)
+    service.service_name_len =
+        crate::util::copy_cstr_into(service_name, &mut service.service_name);
+    if service.service_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    service.service_name[len] = 0;
-    service.service_name_len = len;
 
-    // Copy type name
-    if !type_info.type_name.is_null() {
-        let type_ptr = type_info.type_name as *const u8;
-        len = 0;
-        while len < MAX_TYPE_NAME_LEN - 1 {
-            let c = *type_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            service.type_name[len] = c;
-            len += 1;
-        }
-        service.type_name[len] = 0;
-        service.type_name_len = len;
-    }
-
-    // Copy type hash
-    if !type_info.type_hash.is_null() {
-        let hash_ptr = type_info.type_hash as *const u8;
-        len = 0;
-        while len < MAX_TYPE_HASH_LEN - 1 {
-            let c = *hash_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            service.type_hash[len] = c;
-            len += 1;
-        }
-        service.type_hash[len] = 0;
-        service.type_hash_len = len;
-    }
+    // Copy type name + hash (both optional — null sources leave dst untouched)
+    service.type_name_len =
+        crate::util::copy_cstr_into(type_info.type_name, &mut service.type_name);
+    service.type_hash_len =
+        crate::util::copy_cstr_into(type_info.type_hash, &mut service.type_hash);
 
     // Store callback and context
     service.callback = callback;
@@ -562,54 +526,17 @@ pub unsafe extern "C" fn nros_client_init(
     );
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    // Copy service name
-    let name_ptr = service_name as *const u8;
-    let mut len = 0usize;
-    while len < MAX_SERVICE_NAME_LEN - 1 {
-        let c = *name_ptr.add(len);
-        if c == 0 {
-            break;
-        }
-        client.service_name[len] = c;
-        len += 1;
-    }
-    if len == 0 {
+    // Copy service name (required — empty rejected)
+    client.service_name_len = crate::util::copy_cstr_into(service_name, &mut client.service_name);
+    if client.service_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    client.service_name[len] = 0;
-    client.service_name_len = len;
 
-    // Copy type name
-    if !type_info.type_name.is_null() {
-        let type_ptr = type_info.type_name as *const u8;
-        len = 0;
-        while len < MAX_TYPE_NAME_LEN - 1 {
-            let c = *type_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            client.type_name[len] = c;
-            len += 1;
-        }
-        client.type_name[len] = 0;
-        client.type_name_len = len;
-    }
-
-    // Copy type hash
-    if !type_info.type_hash.is_null() {
-        let hash_ptr = type_info.type_hash as *const u8;
-        len = 0;
-        while len < MAX_TYPE_HASH_LEN - 1 {
-            let c = *hash_ptr.add(len);
-            if c == 0 {
-                break;
-            }
-            client.type_hash[len] = c;
-            len += 1;
-        }
-        client.type_hash[len] = 0;
-        client.type_hash_len = len;
-    }
+    // Copy type name + hash (both optional — null sources leave dst untouched)
+    client.type_name_len =
+        crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
+    client.type_hash_len =
+        crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer + zero callback fields
     client.node = node;
