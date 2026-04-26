@@ -1,0 +1,62 @@
+# Doxyfile for nros C++ API documentation
+#
+# Usage: doxygen packages/core/nros-cpp/Doxyfile
+# Or:    just doc-cpp
+
+PROJECT_NAME           = "nros C++ API"
+PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems (C++ headers)"
+
+# Input: hand-written per-module headers
+# Exclude nros_cpp_config_generated.h (internal storage-size probe artifact).
+INPUT                  = include/nros/nros.hpp \
+                         include/nros/node.hpp \
+                         include/nros/publisher.hpp \
+                         include/nros/subscription.hpp \
+                         include/nros/service.hpp \
+                         include/nros/client.hpp \
+                         include/nros/action_server.hpp \
+                         include/nros/action_client.hpp \
+                         include/nros/executor.hpp \
+                         include/nros/timer.hpp \
+                         include/nros/guard_condition.hpp \
+                         include/nros/future.hpp \
+                         include/nros/stream.hpp \
+                         include/nros/qos.hpp \
+                         include/nros/result.hpp \
+                         include/nros/config.hpp \
+                         include/nros/span.hpp \
+                         include/nros/fixed_string.hpp \
+                         include/nros/fixed_sequence.hpp \
+                         include/nros/std_compat.hpp
+RECURSIVE              = NO
+FILE_PATTERNS          = *.hpp
+
+# Output alongside C API + rustdoc under target/doc/
+OUTPUT_DIRECTORY       = ../../../target/doc/cpp-api
+
+# C++-optimised output
+OPTIMIZE_OUTPUT_FOR_C  = NO
+TYPEDEF_HIDES_STRUCT   = NO
+
+# Only documented items (undocumented items flagged by WARN_IF_UNDOCUMENTED)
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = NO
+
+# Warnings
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+# No LaTeX, just HTML
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# Preprocessing: expand NROS_PUBLIC so Doxygen sees the declarations
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = NROS_PUBLIC=
+
+# Sort members alphabetically within their sections
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES

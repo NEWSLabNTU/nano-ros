@@ -863,8 +863,20 @@ doc-c-check:
         -x c /dev/null
     echo "All C headers are syntactically correct."
 
-# Generate all documentation (Rust + C + book)
-doc: doc-rust doc-c
+# Generate C++ API documentation (Doxygen).
+doc-cpp:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v doxygen &>/dev/null; then
+        echo "WARNING: doxygen not found — skipping C++ API docs."
+        echo "Install with: sudo apt install doxygen"
+        exit 0
+    fi
+    (cd packages/core/nros-cpp && doxygen Doxyfile)
+    echo "C++ API docs generated: target/doc/cpp-api/html/index.html"
+
+# Generate all documentation (Rust + C + C++ + book).
+doc: doc-rust doc-c doc-cpp
 
 # Build the mdbook user guide
 book:
@@ -873,6 +885,23 @@ book:
 # Serve the mdbook with live reload
 book-serve:
     mdbook serve book/ --open
+
+# Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
+# Mirrors the deploy-book.yml workflow so contributors can preview the
+# full deployed site (book + native API docs) locally.
+book-with-api:
+    #!/usr/bin/env bash
+    set -e
+    just doc-rust
+    just doc-c
+    just doc-cpp
+    mdbook build book
+    mkdir -p book/book/api
+    rm -rf book/book/api/rust book/book/api/c book/book/api/cpp
+    cp -r target/doc                 book/book/api/rust
+    cp -r target/doc/c-api/html      book/book/api/c
+    cp -r target/doc/cpp-api/html    book/book/api/cpp
+    echo "Built: book/book/index.html (open with xdg-open book/book/index.html)"
 
 # Clean all build artifacts created by `just build`
 clean: native::clean zephyr::clean clean-zenohd

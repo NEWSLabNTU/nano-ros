@@ -5,6 +5,16 @@ on:
     branches: [main]
     paths:
       - "book/**"
+      - "packages/core/nros/**"
+      - "packages/core/nros-rmw/**"
+      - "packages/core/nros-platform-api/**"
+      - "packages/core/nros-c/include/**"
+      - "packages/core/nros-c/Doxyfile"
+      - "packages/core/nros-c/docs/**"
+      - "packages/core/nros-cpp/include/**"
+      - "packages/core/nros-cpp/Doxyfile"
+      - "packages/zpico/nros-rmw-zenoh/src/**"
+      - ".github/workflows/deploy-book.yml"
 
   workflow_dispatch:
 
@@ -14,6 +24,8 @@ jobs:
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v2
@@ -25,10 +37,51 @@ jobs:
           curl -sSL https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz \
             | tar xz -C /usr/local/bin
 
-      - name: Build book
+      - name: Install Doxygen + Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: Install Rust toolchain
+        # tools/rust-toolchain.toml pins the workspace channel; reuse it so
+        # rustdoc output matches the in-repo `cargo doc` invocation.
+        run: |
+          rustup show
+          rustup component add rust-docs --toolchain $(awk '/^channel/ {gsub(/"/,"",$3); print $3; exit}' tools/rust-toolchain.toml) || true
+
+      - name: Build mdBook
         env:
           MDBOOK_OUTPUT__HTML__SITE_URL: /nano-ros-book/
         run: mdbook build book
+
+      - name: Build rustdoc
+        # User-facing crates only — internal platform/board/driver crates are
+        # not part of the public API surface and would just bloat the deploy.
+        run: |
+          cargo doc --no-deps \
+            -p nros \
+            -p nros-rmw \
+            -p nros-platform-api \
+            -p nros-rmw-zenoh
+
+      - name: Build Doxygen — C
+        run: |
+          cd packages/core/nros-c
+          doxygen Doxyfile
+
+      - name: Build Doxygen — C++
+        run: |
+          cd packages/core/nros-cpp
+          doxygen Doxyfile
+
+      - name: Stage API docs into book output
+        # Lay native API docs alongside the mdBook so all the
+        # `../api/<lang>/...` links from book/src/reference/*.md resolve.
+        run: |
+          mkdir -p book/book/api
+          cp -r target/doc       book/book/api/rust
+          cp -r target/doc/c-api/html   book/book/api/c
+          cp -r target/doc/cpp-api/html book/book/api/cpp
 
       - name: Setup deploy key
         uses: webfactory/ssh-agent@v0.9.1
