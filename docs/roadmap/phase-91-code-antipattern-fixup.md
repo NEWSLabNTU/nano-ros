@@ -8,7 +8,7 @@ cbindgen). The audit found two categories essentially clean (magic
 numbers, manual size math) and four with concrete debt that should land
 as small, independently-mergeable PRs.
 
-**Status**: In Progress (Groups A, B, D, E3, E4 complete; E1/E2/F/G/C remaining)
+**Status**: In Progress (Groups A, B, C, D, E3, E4 complete; E1/E2/F/G remaining)
 **Priority**: Medium — none of these block users today, but several are
 direct repeat findings against phases that were marked Complete (Phase 83
 "thin-wrapper compliance"; Phase 87 "cbindgen-driven headers" per the
@@ -84,16 +84,62 @@ After this group: `git grep -nE 'use (nros_rmw|nros_core)::' packages/core/nros-
 
 ### Group C — Wire `nros_generated.h` into the public include path
 
-The cbindgen output exists, is byte-correct, and is currently used only as
-a drift detector. Either delete it as dead code, or actually use it. This
-phase picks "use it" because Phase 87 made the same decision for
-`nros_config_generated.h` (size constants) and that path is healthy.
+Cbindgen output is now the single source of truth for nros-c's C API
+surface. Each public struct, enum, callback typedef, and function
+declaration is generated from the Rust `#[repr(C)]` / `unsafe extern "C"`
+definition and mirrored exactly. Drift between Rust and C is caught at
+cbindgen-run time (every cargo build).
 
-- [ ] 91.C1 — Decide: delete `cbindgen` invocation entirely (revert the build-time cost), or commit to consuming `nros_generated.h`. Default: consume. Open a discussion issue if there is dissent before starting C2 work
-- [ ] 91.C2 — Convert `nros-c/include/nros/executor.h` to `#include "nros/nros_generated.h"` and forward-declare only what cbindgen doesn't emit (callback typedefs, public functions). Delete the in-file `typedef struct nros_executor_t { ... }` (lines 85–119)
-- [ ] 91.C3 — Same migration for `init.h`, `publisher.h`, `subscription.h`, `service.h`, `client.h`, `node.h`, `timer.h`, `guard_condition.h`, `lifecycle.h`, `action.h`. Each file: drop the duplicate struct body, drop the duplicate enum body, keep the docstrings (move to the Rust source so cbindgen carries them through), keep the function declarations and callback typedefs
-- [ ] 91.C4 — Update `CLAUDE.md` "cbindgen header generation" paragraph to reflect the decision in 91.C1. If "use it" — keep current wording. If "drop it" — remove the para and note that hand-written headers + size-only generated header is the model
-- [ ] 91.C5 — Add a CI check that fails if a per-module header redefines a struct that also appears in `nros_generated.h` (one-shot `grep` in CI)
+The path here zigzagged: an earlier attempt dropped cbindgen entirely
+(option B) on the (correct) observation that the existing output
+referenced undefined macros. On the (correct) pushback that cbindgen's
+field-exact mirroring is a stronger SSoT guarantee than what
+size-only asserts could replace, the option-B commits were dropped
+unpushed and option A was redone properly.
+
+- [x] 91.C1 — Chose option A (consume cbindgen output). Three blockers
+  fixed in `nros-c/build.rs` + `cbindgen.toml`:
+  1. cbindgen-emitted `*_OPAQUE_U64S` placeholders had wrong values
+     (cbindgen ran without RMW features so `u64s_for::<T>()` returned
+     placeholder 1). Suppressed via `[export.exclude]`; build.rs now
+     emits the real values into `nros_config_generated.h`.
+  2. `EXECUTOR_OPAQUE_U64S` / `GUARD_HANDLE_OPAQUE_U64S` /
+     `NROS_LIFECYCLE_CTX_OPAQUE_U64S` were referenced but not defined
+     anywhere C-visible. Same fix as (1).
+  3. cbindgen-emitted `ActionServerInternal` references
+     `nros_node::ActionServerRawHandle` as a typed inline field, but
+     `parse_deps = false` means cbindgen can't see its body. Added
+     `ACTION_SERVER_RAW_HANDLE_SIZE` to `nros::sizes` (probed) and
+     `build.rs` emits a typedef-compatible opaque definition into
+     `nros_config_generated.h` so the cbindgen output is fully
+     self-contained when included from C / C++.
+  Plus: forward declarations of `nros_*_t` struct tags injected into
+  the cbindgen header preamble so callback typedefs that reference them
+  through parameter lists don't trip `-Werror=incompatible-pointer-types`
+- [x] 91.C2 — `executor.h` migrated. Now a thin shim (file-header +
+  `#include "nros/types.h"`); the typed `nros_executor_t` body comes
+  from cbindgen
+- [x] 91.C3 — Same migration for `init.h`, `publisher.h`,
+  `subscription.h`, `service.h`, `client.h`, `node.h`, `timer.h`,
+  `guard_condition.h`, `lifecycle.h`, `action.h`, plus `clock.h`
+  (which had the same duplication). `parameter.h` is a hybrid: types
+  come from cbindgen but its `paste!`-generated FFI function
+  declarations stay hand-written because cbindgen's `[parse.expand]`
+  needs nightly Rust to see them. Re-enable when the project moves
+  to nightly
+- [x] 91.C4 — `CLAUDE.md` "cbindgen header generation" paragraph
+  retained — it now matches reality
+- [N/A] 91.C5 — CI grep for redefined structs is moot because per-module
+  headers no longer have any struct bodies to grep for. If they later
+  drift, the `#include` brings cbindgen's definition in and any duplicate
+  in the per-module header would be a hard compile error, caught
+  immediately
+
+After this group: per-module headers shrink by ~3127 lines total
+(typical file: 95% reduction), `types.h` becomes a 26-line shim, and
+the only per-module header still carrying hand-written FFI function
+declarations is `parameter.h` (with a comment explaining the `paste!`
+macro reason).
 
 ### Group D — Platform crate deduplication
 
