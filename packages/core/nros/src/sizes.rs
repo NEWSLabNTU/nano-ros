@@ -73,6 +73,13 @@ mod rmw_sizes {
     export_size!(pub EXECUTOR_SIZE       = nros_node::Executor);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
+    // Phase 91.C: nros-c's `ActionServerInternal` embeds this nros-node
+    // type as a typed field. cbindgen (which can't recurse into deps)
+    // emits the field as `ActionServerRawHandle handle;` referencing a
+    // type it cannot define. nros-c's build.rs reads this size and emits
+    // an opaque type-compatible declaration into nros_config_generated.h
+    // so the cbindgen output is self-contained.
+    export_size!(pub ACTION_SERVER_RAW_HANDLE_SIZE = nros_node::ActionServerRawHandle);
 
     // Layout-mirror struct for `nros_c::action::ActionServerInternal`.
     // ActionServerInternal lives in the `nros-c` crate (it embeds C-API
