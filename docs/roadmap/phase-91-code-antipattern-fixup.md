@@ -8,7 +8,7 @@ cbindgen). The audit found two categories essentially clean (magic
 numbers, manual size math) and four with concrete debt that should land
 as small, independently-mergeable PRs.
 
-**Status**: In Progress (Groups A, B, C, D, E1, E3, E4 complete; E2 dropped by design; F/G remaining)
+**Status**: In Progress (Groups A, B, C, D, E1, E3, E4, F complete; E2 dropped by design; G remaining)
 **Priority**: Medium — none of these block users today, but several are
 direct repeat findings against phases that were marked Complete (Phase 83
 "thin-wrapper compliance"; Phase 87 "cbindgen-driven headers" per the
@@ -186,7 +186,7 @@ a transition.
 
 ### Group F — `nros-node` service/client setup symmetry
 
-- [ ] 91.F1 — `node.rs:136–162` (`create_service_*`) and `node.rs:165–192` (`create_client_*`) are structurally parallel: ServiceInfo construction, session method call, buffer allocation, error mapping. Extract the shared body into a `fn build_service_handle<S, F>(info, allocator, finalize: F)` helper. Bar for landing: zero behaviour change, both functions reduce to ~10 lines each
+- [x] 91.F1 — Implemented as F-broad rather than the originally-narrow service/client-only scope. The audit-flagged `service_info` chain repeated verbatim 12× across `node.rs` (publisher, subscription, service × 2, action root × 2, action server's 5 sub-channels, action client's 4 sub-channels). Added three associated functions on `Node` (`topic_info`, `service_info`, `action_info`) that take field refs explicitly and return the appropriate `*Info<'b>`; all 12 call sites now go through them. Net LOC change is +34 (helpers add ~50 lines; each call site collapses by ~1 line × 12). The win is structural, not LOC — future changes to the routing-info shape (e.g. adding `with_security_context`) update one place. Implementation note recorded in the commit message: helpers are *associated fns* not `&self` methods, because `&self` forms block the immediately-following `self.session.create_*(…)` mut borrow through the `name` / `namespace` reborrow held inside the returned `*Info`.
 
 ### Group G — Documentation truth-up
 
