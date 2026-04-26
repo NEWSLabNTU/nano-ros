@@ -588,6 +588,18 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
     }
 
     let build_dir = build_dir_for_example(example_name);
+
+    let binary_path = match platform {
+        ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
+        ZephyrPlatform::QemuArm => workspace.join(format!("{}/zephyr/zephyr.elf", build_dir)),
+    };
+
+    // Default contract: tests don't compile fixtures. Run
+    // `just build-test-fixtures` first (or NROS_TESTS_BUILD_ON_DEMAND=1).
+    if let Some(result) = crate::fixtures::require_prebuilt_binary(&binary_path) {
+        return result;
+    }
+
     eprintln!(
         "Building {} for {} (build dir: {})...",
         example_name,
@@ -660,12 +672,6 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
             stdout, stderr
         )));
     }
-
-    // Determine binary path based on platform
-    let binary_path = match platform {
-        ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
-        ZephyrPlatform::QemuArm => workspace.join(format!("{}/zephyr/zephyr.elf", build_dir)),
-    };
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(

@@ -69,6 +69,16 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
+    let binary_path = example_dir.join(format!(
+        "target/riscv64gc-unknown-none-elf/release/{}",
+        binary_name
+    ));
+
+    // Default contract: tests don't compile fixtures.
+    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
+        return result;
+    }
+
     eprintln!("Building qemu-riscv64-threadx/rust/zenoh/{}...", name);
 
     // RISC-V board crate needs its own config dirs (not the Linux sim defaults).
@@ -89,11 +99,6 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
             String::from_utf8_lossy(&output.stdout).to_string(),
         ));
     }
-
-    let binary_path = example_dir.join(format!(
-        "target/riscv64gc-unknown-none-elf/release/{}",
-        binary_name
-    ));
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -181,12 +186,19 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
+    let build_dir = example_dir.join("build");
+    let binary_path = build_dir.join(binary_name);
+
+    // Default contract: tests don't compile fixtures.
+    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
+        return result;
+    }
+
     eprintln!(
         "Building qemu-riscv64-threadx/{}/zenoh/{} (CMake)...",
         lang, name
     );
 
-    let build_dir = example_dir.join("build");
     // Clean stale build to avoid cmake cache conflicts.
     let _ = std::fs::remove_dir_all(&build_dir);
     std::fs::create_dir_all(&build_dir).ok();
@@ -265,7 +277,6 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
-    let binary_path = build_dir.join(binary_name);
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
             "Binary not found: {}",

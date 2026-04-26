@@ -199,21 +199,22 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 ///
 /// # Returns
 /// Path to the built binary
-/// `just test-all` (and any other prebuild-driven harness) sets
-/// `NROS_TESTS_REQUIRE_PREBUILT=1` so each test process skips its
-/// embedded `cargo build` and just verifies the binary's there. The
-/// build phase is moved to `just build-test-fixtures`, which keeps
-/// it serial-with-host-CPU instead of competing with N parallel
-/// QEMU/zenohd processes during the nextest run. Without the env var
-/// (i.e. direct `cargo nextest run …`) the historical build-on-demand
-/// path stays put for dev convenience.
+/// Verify a test-fixture binary was prebuilt — the default contract.
+/// Tests must not compile fixtures inside their bodies; the build phase
+/// belongs to `just build-test-fixtures`, which sequences cargo/cmake/west
+/// invocations cooperatively instead of letting them race with the host's
+/// QEMU + zenohd test load. Builds inside test bodies historically
+/// stretched a 14 s test to 125 s on a saturated host.
 ///
-/// Returns `Some(Ok(path))` if prebuilt-mode is on and the binary
-/// exists, `Some(Err(...))` if prebuilt-mode is on and the binary is
-/// missing, or `None` if prebuilt-mode is off (caller should proceed
-/// with the on-demand build).
-fn prebuilt_only(binary_path: &Path) -> Option<TestResult<PathBuf>> {
-    if std::env::var("NROS_TESTS_REQUIRE_PREBUILT").is_err() {
+/// Returns:
+/// * `Some(Ok(path))` if the binary exists at the expected path.
+/// * `Some(Err(...))` if the binary is missing (test fails fast with a
+///   clear "run `just build-test-fixtures`" message).
+/// * `None` if `NROS_TESTS_BUILD_ON_DEMAND=1` is set — the dev escape
+///   hatch for direct `cargo nextest run …` flows. The caller then
+///   falls back to the historical embedded-build path.
+pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> Option<TestResult<PathBuf>> {
+    if std::env::var("NROS_TESTS_BUILD_ON_DEMAND").is_ok() {
         return None;
     }
     if binary_path.exists() {
@@ -221,7 +222,8 @@ fn prebuilt_only(binary_path: &Path) -> Option<TestResult<PathBuf>> {
     } else {
         Some(Err(TestError::BuildFailed(format!(
             "Test fixture binary not prebuilt: {}\n\
-             Run `just build-test-fixtures` (or unset NROS_TESTS_REQUIRE_PREBUILT) before retrying.",
+             Run `just build-test-fixtures` (or set NROS_TESTS_BUILD_ON_DEMAND=1 \
+             to opt into in-test cargo/cmake invocations).",
             binary_path.display()
         ))))
     }
@@ -249,7 +251,7 @@ pub fn build_example(
         example_dir.join(format!("target/release/{}", binary_name))
     };
 
-    if let Some(result) = prebuilt_only(&binary_path) {
+    if let Some(result) = require_prebuilt_binary(&binary_path) {
         return result;
     }
 
@@ -403,7 +405,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/talker");
 
-            if let Some(result) = prebuilt_only(&binary_path) {
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
                 return result;
             }
 
@@ -455,7 +457,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/listener");
 
-            if let Some(result) = prebuilt_only(&binary_path) {
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
                 return result;
             }
 

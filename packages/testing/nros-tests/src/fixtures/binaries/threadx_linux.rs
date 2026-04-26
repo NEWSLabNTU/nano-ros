@@ -58,6 +58,13 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
+    let binary_path = example_dir.join(format!("target/release/{}", binary_name));
+
+    // Default contract: tests don't compile fixtures.
+    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
+        return result;
+    }
+
     eprintln!("Building threadx-linux/rust/zenoh/{}...", name);
 
     let output = duct::cmd!("cargo", "build", "--release")
@@ -73,8 +80,6 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
             String::from_utf8_lossy(&output.stdout).to_string(),
         ));
     }
-
-    let binary_path = example_dir.join(format!("target/release/{}", binary_name));
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -154,9 +159,16 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
+    let build_dir = example_dir.join("build");
+    let binary_path = build_dir.join(binary_name);
+
+    // Default contract: tests don't compile fixtures.
+    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
+        return result;
+    }
+
     eprintln!("Building threadx-linux/{}/zenoh/{} (CMake)...", lang, name);
 
-    let build_dir = example_dir.join("build");
     std::fs::create_dir_all(&build_dir).ok();
 
     let prefix_path = format!(
@@ -223,8 +235,6 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
             String::from_utf8_lossy(&output.stdout)
         )));
     }
-
-    let binary_path = build_dir.join(binary_name);
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
