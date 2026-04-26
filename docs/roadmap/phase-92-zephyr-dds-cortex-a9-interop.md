@@ -194,17 +194,34 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
          (ret = 204 / 224 / 68 bytes) — the SEDP / heartbeat /
          ack-nack chain ✓
 
-       **Remaining blocker — unicast frames don't reach the peer**:
-       `unicast_recv_loop` HIT count is 0 on both sides despite
-       sendto returning success. dust-dds therefore never matches the
-       reader/writer pair, so no sample-data UC sends to port 7411
-       happen. Most likely a Zephyr ARP failure or QEMU GEM
-       emulation quirk dropping the unicast Ethernet frames despite
-       promiscuous-mode (broadcast ARP requests may not be
-       traversing the QEMU mcast netdev). Investigation needs
-       another session — natural next step is enabling Zephyr's
-       `net arp` shell command to inspect the cache, or hardcoding
-       static ARP entries on both guests.
+       **ARP root-cause + fix landed**: ARP debug logging on both
+       guests, plus a host-side packet capture showed *18 ARP
+       requests, 0 replies* over a 25 s run. Detailed inspection
+       revealed both guests advertising the **same** Ethernet
+       source MAC `00:00:00:01:02:03` — the default value baked
+       into `boards/qemu/cortex_a9/qemu_cortex_a9.dts`'s
+       `local-mac-address`. Zephyr's ARP handler in
+       `subsys/net/l2/ethernet/arp.c` deliberately drops requests
+       whose `src_hwaddr` matches the local link address (treats
+       them as self-loops), so neither side ever replied. The
+       `qemu-system-arm -nic mac=` flag had no effect because the
+       Zephyr GEM driver ignores the host-side QEMU MAC and uses
+       the DTS value.
+
+       Fix: per-instance `local-mac-address` overrides in each
+       example's `boards/qemu_cortex_a9.overlay` —
+       talker = `02:00:00:00:00:01`,
+       listener = `02:00:00:00:00:02`.
+
+- [x] 92.5 — Talker↔listener interop via QEMU mcast netdev
+       **GREEN**. Verified end-to-end: talker publishes 4960
+       messages, listener receives 4956 (lost only the first 3
+       during the SPDP/SEDP discovery handshake), all over Zephyr's
+       native IP stack with real IGMP and real ARP on the Xilinx
+       GEM driver. Same code path real Zephyr DDS deployments will
+       run on Zynq / STM32-Eth / NXP-MAC silicon.
+
+- [ ] 92.5 (originally) — superseded by the above
 
        **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers

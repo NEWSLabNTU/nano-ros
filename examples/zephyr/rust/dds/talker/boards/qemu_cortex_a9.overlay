@@ -10,4 +10,12 @@
 
 &gem0 {
     promiscuous-mode;
+    /* Override the default `local-mac-address = [00 00 00 01 02 03]`
+     * so the talker has a unique MAC from the listener — otherwise
+     * Zephyr's ARP handler drops every incoming request where
+     * `src_hwaddr == net_if_get_link_addr(iface)` (which fires when
+     * both guests share the default DTS MAC).
+     * Phase 92.5 — pairs with the listener overlay's distinct MAC.
+     */
+    local-mac-address = [02 00 00 00 00 01];
 };

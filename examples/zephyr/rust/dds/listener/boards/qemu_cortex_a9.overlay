@@ -3,4 +3,6 @@
 
 &gem0 {
     promiscuous-mode;
+    /* Distinct MAC from talker — see talker's overlay for rationale. */
+    local-mac-address = [02 00 00 00 00 02];
 };
