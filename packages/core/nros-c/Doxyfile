@@ -35,8 +35,10 @@ RECURSIVE              = NO
 FILE_PATTERNS          = *.h *.md
 USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
 
-# Output alongside rustdoc under target/doc/
-OUTPUT_DIRECTORY       = ../../../target/doc/c-api
+# Output to a sibling tree of target/doc/ so it doesn't pollute the rustdoc
+# crate directory listing (`book/book/api/rust/` was getting `c-api/` and
+# `cpp-api/` subdirs under it before this).
+OUTPUT_DIRECTORY       = ../../../target/doxygen/c
 
 # C-optimised output
 OPTIMIZE_OUTPUT_FOR_C  = YES

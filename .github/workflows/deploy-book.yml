@@ -55,10 +55,17 @@ jobs:
         run: mdbook build book
 
       - name: Build rustdoc
-        # User-facing crates only — internal platform/board/driver crates are
-        # not part of the public API surface and would just bloat the deploy.
+        # User-facing crates only — internal platform/board/driver crates
+        # are not part of the public API surface and would just bloat the
+        # deploy. Wipe target/doc/ first so prior workspace cargo-doc
+        # artefacts (if any cache hit) don't leak into the deployed tree.
+        # Pass an rmw + platform feature combo so the rmw-gated re-exports
+        # (`nros::Executor`, `nros::Promise`, etc.) actually appear in the
+        # rendered output — the reference stubs deep-link into them.
         run: |
+          rm -rf target/doc target/doxygen
           cargo doc --no-deps \
+            --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
             -p nros \
             -p nros-rmw \
             -p nros-platform-api \
@@ -66,22 +73,32 @@ jobs:
 
       - name: Build Doxygen — C
         run: |
+          mkdir -p target/doxygen/c
           cd packages/core/nros-c
           doxygen Doxyfile
 
       - name: Build Doxygen — C++
         run: |
+          mkdir -p target/doxygen/cpp
           cd packages/core/nros-cpp
           doxygen Doxyfile
 
       - name: Stage API docs into book output
         # Lay native API docs alongside the mdBook so all the
         # `../api/<lang>/...` links from book/src/reference/*.md resolve.
+        # rustdoc has no top-level `index.html` for multi-`-p` invocations,
+        # so stage a tiny redirect to the umbrella crate.
         run: |
           mkdir -p book/book/api
-          cp -r target/doc       book/book/api/rust
-          cp -r target/doc/c-api/html   book/book/api/c
-          cp -r target/doc/cpp-api/html book/book/api/cpp
+          cp -r target/doc                 book/book/api/rust
+          cp -r target/doxygen/c/html      book/book/api/c
+          cp -r target/doxygen/cpp/html    book/book/api/cpp
+          cat > book/book/api/rust/index.html <<'HTML'
+          <!doctype html>
+          <meta http-equiv="refresh" content="0; url=nros/index.html">
+          <link rel="canonical" href="nros/index.html">
+          <p>Redirecting to <a href="nros/index.html">nros</a>…</p>
+          HTML
 
       - name: Setup deploy key
         uses: webfactory/ssh-agent@v0.9.1

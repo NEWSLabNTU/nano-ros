@@ -848,8 +848,9 @@ doc-c:
         echo "Generated header not found, building nros-c first..."
         cargo build -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
     fi
+    mkdir -p target/doxygen/c
     (cd packages/core/nros-c && doxygen Doxyfile)
-    echo "C API docs generated: target/doc/c-api/html/index.html"
+    echo "C API docs generated: target/doxygen/c/html/index.html"
 
 # Verify hand-written C headers are syntactically correct.
 # Signature drift against Rust is caught at link time by `just test-c`.
@@ -872,8 +873,9 @@ doc-cpp:
         echo "Install with: sudo apt install doxygen"
         exit 0
     fi
+    mkdir -p target/doxygen/cpp
     (cd packages/core/nros-cpp && doxygen Doxyfile)
-    echo "C++ API docs generated: target/doc/cpp-api/html/index.html"
+    echo "C++ API docs generated: target/doxygen/cpp/html/index.html"
 
 # Generate all documentation (Rust + C + C++ + book).
 doc: doc-rust doc-c doc-cpp
@@ -881,18 +883,41 @@ doc: doc-rust doc-c doc-cpp
 # Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
 # Mirrors the deploy-book.yml workflow so contributors can preview the
 # full deployed site (book + native API docs) locally.
+#
+# `target/doc/` is wiped before `cargo doc` so prior `cargo doc --workspace`
+# runs don't leak into the deployed rustdoc tree (everything under
+# target/doc/ gets copied verbatim).
 book:
     #!/usr/bin/env bash
     set -e
-    just doc-rust
+    rm -rf target/doc target/doxygen
+    # `nros::Executor`, `nros::Promise`, `nros::Node`, etc. only re-export
+    # under `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds, rmw-cffi))`. Pass an
+    # rmw + platform feature combo so the deployed rustdoc actually shows
+    # the public-facing types (otherwise the reference stub's
+    # `[Executor](struct.Executor.html)` link 404s).
+    cargo doc --no-deps \
+        --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
+        -p nros \
+        -p nros-rmw \
+        -p nros-platform-api \
+        -p nros-rmw-zenoh
     just doc-c
     just doc-cpp
     mdbook build book
     mkdir -p book/book/api
     rm -rf book/book/api/rust book/book/api/c book/book/api/cpp
     cp -r target/doc                 book/book/api/rust
-    cp -r target/doc/c-api/html      book/book/api/c
-    cp -r target/doc/cpp-api/html    book/book/api/cpp
+    cp -r target/doxygen/c/html      book/book/api/c
+    cp -r target/doxygen/cpp/html    book/book/api/cpp
+    # rustdoc has no top-level index when invoked with multiple `-p`; stage
+    # a tiny redirect so visiting `api/rust/` lands on the umbrella crate.
+    cat > book/book/api/rust/index.html <<'HTML'
+    <!doctype html>
+    <meta http-equiv="refresh" content="0; url=nros/index.html">
+    <link rel="canonical" href="nros/index.html">
+    <p>Redirecting to <a href="nros/index.html">nros</a>…</p>
+    HTML
     echo "Built: book/book/index.html (open with xdg-open book/book/index.html)"
 
 # Serve mdBook with live reload (book chapters only — does not rebuild

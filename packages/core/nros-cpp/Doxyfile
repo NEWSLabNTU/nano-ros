@@ -31,8 +31,9 @@ INPUT                  = include/nros/nros.hpp \
 RECURSIVE              = NO
 FILE_PATTERNS          = *.hpp
 
-# Output alongside C API + rustdoc under target/doc/
-OUTPUT_DIRECTORY       = ../../../target/doc/cpp-api
+# Output to a sibling tree of target/doc/ so it doesn't pollute the rustdoc
+# crate directory listing.
+OUTPUT_DIRECTORY       = ../../../target/doxygen/cpp
 
 # C++-optimised output
 OPTIMIZE_OUTPUT_FOR_C  = NO

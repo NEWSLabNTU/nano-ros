@@ -524,6 +524,11 @@ impl ServiceClientTrait for ZenohServiceClient {
         // metal / single-threaded zpico has no parallel progress to
         // wait on, and the dropper-pending race there is the only
         // reproducible failure mode.
+        // rustc warns "value assigned to `last_err` is never read" because
+        // only the *last* assignment in the loop is observable, and the
+        // happy path exits via `return Ok(())`. Suppress — the value IS
+        // read on the timeout/exhaustion fallthrough at the bottom.
+        #[allow(unused_assignments)]
         let mut last_err = None;
         #[cfg(feature = "std")]
         {
