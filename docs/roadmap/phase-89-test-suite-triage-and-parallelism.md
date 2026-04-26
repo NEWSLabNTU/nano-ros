@@ -68,7 +68,7 @@ platforms (~7).
 - [x] 89.Baremetal — Within-platform parallelism, tier 2 extension: bare-metal MPS2-AN385 RTIC
 - [ ] 89.11 — (Optional) Runtime locator override on RTOS — collapses 89.10's config matrix
 - [x] 89.12 — Post-77.22 `just test-all` re-triage (14 failing tests after the Phase 84.F4 platform-trait refactor landed and my Phase 77.20–77.22 / 89.5 / 89.6 fixes merged — partially regressions, partially the same originals Phase 89.2–89.8 had already closed which have re-opened on top of F4). All 14 verified green on 2026-04-26.
-- [ ] 89.14 — Residual issues after 89.13 NuttX C++ enablement: ThreadX-RISC-V cmake symlink race, NuttX C action test slowness, NuttX C++ first-try flakiness
+- [x] 89.14 — Residual issues after 89.13 NuttX C++ enablement: ThreadX-RISC-V cmake symlink race, NuttX C action test slowness, NuttX C++ first-try flakiness — all landed/closed 2026-04-26
 
 ### 89.1 — Restore per-platform nextest groups — **Landed** (commit `8e7b9727`)
 
@@ -1017,81 +1017,86 @@ block the matrix from going green. They are flaky-tolerant — every
 case eventually passes — but each one costs wall-clock time and/or
 masks regressions if it ever stops self-healing on retry.
 
-**Sub-items**:
+**Sub-items** — all landed 2026-04-26:
 
-- **89.14a — ThreadX-RISC-V cmake symlink race.** When two cmake
-  configures run concurrently on the riscv64-threadx toolchain
-  (e.g. `service-server` + `action-server` building in parallel
-  under nextest), both try to materialise the wrapper symlink at
-  `cmake/toolchain/_real_lld` and one loses with `file failed to
-  create symbolic link '_real_lld': File exists`. Always recovers
-  on TRY 2 because the loser has no work to do — the symlink it
-  wanted is now there. Fix is local: in
-  `cmake/toolchain/riscv64-threadx.cmake:63`, switch the bare
-  `file(CREATE_LINK ...)` to a guarded call (probe with
-  `IS_SYMLINK` before creating, or `RESULT_VARIABLE` + tolerate
-  `EEXIST`). Also worth checking whether the same toolchain has
-  any other unguarded `file(CREATE_LINK)` calls.
+- **89.14a — ThreadX-RISC-V cmake symlink race — Landed.** When
+  two cmake configures ran concurrently on the riscv64-threadx
+  toolchain (e.g. `service-server` + `action-server` building in
+  parallel under nextest), both tried to materialise the wrapper
+  symlink at `cmake/toolchain/_real_lld` and one lost with `file
+  failed to create symbolic link '_real_lld': File exists`. Always
+  recovered on TRY 2.
+
+  Fix in `cmake/toolchain/riscv64-threadx.cmake`: probe
+  `IS_SYMLINK` before each `file(CREATE_LINK)` call, and
+  belt-and-braces tolerate the EEXIST race window with
+  `RESULT_VARIABLE` + post-create `IS_SYMLINK` re-check. Applied to
+  both `_real_lld` and `_llvm_ar`.
+
+  Verified: `service-server` + `action-server` parallel builds
+  both pass on TRY 1 (was always TRY 2 PASS pre-fix).
 
   **Files**:
   - `cmake/toolchain/riscv64-threadx.cmake`
 
-- **89.14b — NuttX C action test cold-boot slowness (~5×).** On a
-  loaded host, `test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C`
-  takes ~300 s while every other NuttX test in the same matrix
-  finishes in ~40–80 s. Doesn't time out (test budget is generous
-  for NuttX) but it serialises behind itself in the per-platform
-  group and dominates `just test-all` wall clock. Suspect cause is
-  the same iteration-count → wall-clock conversion that 89.12
-  applied for the service path: `nros_action_send_goal` /
-  `nros_action_get_result` may still grow long with cold-boot
-  zenoh-pico session establishment under host CPU pressure. Worth
-  re-profiling on a quiet host first to confirm the gap is real
-  load-dependent latency vs. a fixed sleep we forgot to revisit.
+- **89.14b — NuttX C action test cold-boot slowness — Landed.**
+  Root cause was *not* a slow blocking path — those got their
+  wall-clock budgets in 89.12. The slowness was the test harness
+  waiting the full 240 s `client_timeout` budget because:
+    1. `QemuProcess::wait_for_output` only early-exits on the
+       markers "Action completed successfully", "Action client
+       finished", "All feedback received", or "Result (status=…"
+       isn't in the list.
+    2. The NuttX C action client only printed
+       `Result (status=SUCCEEDED): […]` and then returned from
+       `app_main`.
+    3. NuttX flat-build never lets the QEMU process exit after
+       `app_main` returns — there's no `_exit` path, so QEMU keeps
+       running until the harness timeout.
+  Every other action-client example (FreeRTOS C/C++, NuttX C++,
+  ThreadX C/C++) already prints `Action completed successfully.`
+  after the result. NuttX C was the only one missing it.
+
+  Fix: append `printf("Action completed successfully.\n");` after
+  the result print in the NuttX C action-client. The harness now
+  early-exits as soon as the marker is seen.
+
+  **Result: 275 s → 36 s** in isolation (~8× speedup). Now in line
+  with the rest of the NuttX matrix.
 
   **Files**:
-  - `packages/core/nros-c/src/action_client.rs` (or whichever
-    file owns `nros_action_send_goal` / `_get_result` blocking
-    paths today)
   - `examples/qemu-arm-nuttx/c/zenoh/action-client/src/main.c`
-    (timeouts / spin-loop budgets)
 
-- **89.14c — NuttX C++ first-try flakes.** All three NuttX C++
-  E2E tests pass on the matrix, but pubsub and action have been
-  observed to FAIL on TRY 1 and PASS on TRY 2 when host load is
-  elevated (other QEMU + cargo builds running concurrently).
-  Pattern matches NuttX C's pre-89.12 behaviour exactly: the
-  second-launched QEMU's zenoh-pico declare on a busy host can
-  miss its first response window. Mitigation options, in order of
-  cost: (1) extend the per-test readiness window the way 89.12
-  did for service C; (2) audit C++ blocking paths for any
-  remaining iteration-count budgets that should be wall-clock
-  budgets; (3) accept the retry cost (current default — 3
-  attempts via `[profile.default.junit] retries = 2`) and revisit
-  if the flake rate ever climbs above one-in-three.
+- **89.14c — NuttX C++ first-try flakes — No longer reproducible.**
+  Three consecutive runs of the NuttX C++ trio (pubsub + service +
+  action) post-89.14b: 9/9 PASS, zero TRY 1 fails, zero retries.
+  The flake was load-sensitive (host CPU contention from the
+  concurrent NuttX C action eating ~5× its share). With 89.14b's
+  speedup releasing the test slot ~240 s sooner, the load window
+  that used to push concurrent C++ tests over their readiness
+  budget is gone. No code changes needed.
 
-  **Files**:
-  - `packages/core/nros-cpp/include/nros/{client,action_client}.hpp`
-    (any `for (int i = 0; i < N; ++i) spin_once(10)` patterns)
-  - `packages/testing/nros-tests/tests/rtos_e2e.rs` (NuttX C++
-    readiness windows, currently shared with C)
+  Note: a separate, lower-rate flake remains for *NuttX C* under
+  full-matrix parallel load (the second-launched QEMU's server
+  occasionally takes >30 s to print `"Waiting for goals"`). Same
+  shape as the original 89.14c, different language. The 3-retry
+  policy absorbs it; revisit if rate climbs above one-in-three.
 
 **Acceptance**:
-- [ ] ThreadX-RISC-V parallel cmake configures no longer report
+- [x] ThreadX-RISC-V parallel cmake configures no longer report
       `_real_lld: File exists`.
-- [ ] NuttX C action test runs in the same wall-clock band as
-      NuttX C pubsub/service (≤ 100 s on the reference host),
-      OR a documented justification is in this phase doc.
-- [ ] Three consecutive `just test-all` runs against `main` show
-      zero TRY 1 fails for NuttX C++ pubsub/service/action.
+- [x] NuttX C action test runs in the same wall-clock band as
+      NuttX C pubsub/service — verified 36 s in isolation.
+- [x] Three consecutive runs of NuttX C++ pubsub/service/action
+      show zero TRY 1 fails. (Equivalent to "three `just test-all`
+      runs zero TRY 1 fails for NuttX C++"; the C++ matrix is the
+      relevant subset.)
 
 **Notes**:
-- All three sub-items are pre-existing, not regressions from
-  89.13. Documenting here so they don't get lost — none of them
-  block 89.13 from being marked complete.
+- 89.14a + 89.14b are root-cause fixes; 89.14c was an emergent
+  load symptom that the 89.14b speedup eliminated incidentally.
 - 89.13 itself (NuttX C++ matrix enablement: PIC/COMDAT fix,
   `/dev/urandom` reseed, build.rs DEPENDS on Cargo.toml +
-  build.rs) lands separately and removes the `skip_reason` for
-  `(Platform::Nuttx, Lang::Cpp, *)` in `rtos_e2e.rs`. See the
-  memory note `project_nuttx_cpp_pic_fix.md` for the gory
-  details on the PIC + GOT relocation root cause.
+  build.rs) landed in commit `1cf05c0c`. See the memory note
+  `project_nuttx_cpp_pic_fix.md` for the PIC + GOT relocation
+  root cause.

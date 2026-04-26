@@ -180,6 +180,13 @@ void app_main(void) {
         } else {
             printf("(deserialize failed)\n");
         }
+        // Marker that `QemuProcess::wait_for_output` early-exits on,
+        // matching every other action-client example (FreeRTOS C/C++,
+        // NuttX C++, ThreadX C/C++). Without this the test harness
+        // sits at the 240s NuttX-C action timeout because NuttX's
+        // flat-build kernel never lets the QEMU process exit after
+        // app_main returns.
+        printf("Action completed successfully.\n");
     } else if (ret == NROS_RET_TIMEOUT) {
         fprintf(stderr, "Timeout waiting for result\n");
     } else {

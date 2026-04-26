@@ -60,10 +60,33 @@ if(_RUST_LLD)
     # compiler_builtins from .a archives before calling rust-lld.
     get_filename_component(_lld_dir "${_RUST_LLD}" DIRECTORY)
     set(_wrapper_dir "${CMAKE_CURRENT_LIST_DIR}")
-    file(CREATE_LINK "${_RUST_LLD}" "${_wrapper_dir}/_real_lld" SYMBOLIC)
+
+    # Race-tolerant symlink creation: nextest can fire multiple cmake
+    # configures in parallel against this same toolchain file (e.g.
+    # service-server + action-server building concurrently). Bare
+    # `file(CREATE_LINK ... SYMBOLIC)` fails the second configure with
+    # "File exists" and aborts the build. Skip if the symlink is already
+    # present (the target is identical for every configure that uses
+    # this toolchain), and tolerate the EEXIST race window between the
+    # `IS_SYMLINK` probe and the create call.
+    if(NOT IS_SYMLINK "${_wrapper_dir}/_real_lld")
+        file(CREATE_LINK "${_RUST_LLD}" "${_wrapper_dir}/_real_lld"
+            SYMBOLIC RESULT _real_lld_result)
+        if(NOT _real_lld_result STREQUAL "0"
+                AND NOT IS_SYMLINK "${_wrapper_dir}/_real_lld")
+            message(FATAL_ERROR
+                "Failed to create _real_lld symlink: ${_real_lld_result}")
+        endif()
+    endif()
     find_program(_LLVM_AR_TC llvm-ar PATHS "${_lld_dir}" NO_DEFAULT_PATH)
-    if(_LLVM_AR_TC)
-        file(CREATE_LINK "${_LLVM_AR_TC}" "${_wrapper_dir}/_llvm_ar" SYMBOLIC)
+    if(_LLVM_AR_TC AND NOT IS_SYMLINK "${_wrapper_dir}/_llvm_ar")
+        file(CREATE_LINK "${_LLVM_AR_TC}" "${_wrapper_dir}/_llvm_ar"
+            SYMBOLIC RESULT _llvm_ar_result)
+        if(NOT _llvm_ar_result STREQUAL "0"
+                AND NOT IS_SYMLINK "${_wrapper_dir}/_llvm_ar")
+            message(FATAL_ERROR
+                "Failed to create _llvm_ar symlink: ${_llvm_ar_result}")
+        endif()
     endif()
 
     set(_lld_wrapper "${_wrapper_dir}/riscv64-lld-wrapper.sh")
