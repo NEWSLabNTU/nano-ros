@@ -18,7 +18,7 @@
 * 87.6 switches nros::Publisher<M> etc. to use NROS_PUBLISHER_SIZE
 * directly (thin-wrapper refactor).
 */
-#define NROS_EXECUTOR_SIZE 16784
+#define NROS_EXECUTOR_SIZE 16776
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 48
 #define NROS_SUBSCRIBER_SIZE 24

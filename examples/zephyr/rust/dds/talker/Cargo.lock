@@ -849,6 +849,7 @@ dependencies = [
  "nros",
  "std_msgs",
  "zephyr",
+ "zephyr-build",
 ]
 
 [[package]]

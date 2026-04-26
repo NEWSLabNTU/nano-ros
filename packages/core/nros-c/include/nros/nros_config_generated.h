@@ -13,7 +13,7 @@
 * macros are deleted.
 */
 /** `size_of::<nros_node::Executor>()` */
-#define NROS_EXECUTOR_SIZE 16784
+#define NROS_EXECUTOR_SIZE 16776
 /** `size_of::<nros_node::GuardConditionHandle>()` */
 #define NROS_GUARD_CONDITION_SIZE 8
 /** `size_of::<RmwPublisher>()` */
@@ -21,7 +21,7 @@
 /** `size_of::<RmwSubscriber>()` */
 #define NROS_SUBSCRIBER_SIZE 24
 /** `size_of::<RmwServiceClient>()` */
-#define NROS_SERVICE_CLIENT_SIZE 568
+#define NROS_SERVICE_CLIENT_SIZE 296
 /** `size_of::<RmwServiceServer>()` */
 #define NROS_SERVICE_SERVER_SIZE 296
 /** `size_of::<RmwSession>()` */
