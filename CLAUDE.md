@@ -150,6 +150,15 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - Always use leading `/` (e.g., `/target/` not `target/`)
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
 
+### Examples are Standalone Projects
+**Each example under `examples/` is a self-contained starting template that users are expected to copy out of the nano-ros source tree** and adapt for their own application — different RTOS port, different message types, different topology. The example tree is pedagogical: every example shows the full call sequence (`nros::init` → `create_node` → `create_publisher` → spin loop) explicitly so a copied-out example reads as a complete, runnable project without needing the nano-ros internals on hand.
+
+Implications:
+- **No shared example-only helpers in `nros-cpp` / `nros-c`.** A copied-out example must build against the public `find_package(NanoRos)` surface alone. Hiding boilerplate behind `nros::examples::*` headers (or similar) breaks the copy-out workflow because the helper would either travel with the example (coupling) or have to be rewritten back in (zero benefit). The boilerplate **is** the lesson.
+- **`*_DIR` env vars / `-D` injection are the SDK-path contract.** External SDK locations (`THREADX_DIR`, `NETX_DIR`, `FREERTOS_DIR`, `LWIP_DIR`, `NUTTX_DIR`, `NUTTX_APPS_DIR`, …) are passed in by the user's build script when they're outside the nano-ros tree. The same env vars are auto-resolved by the in-tree justfile recipes for the convenience of contributors, but the example's cmake files must accept them as the *only* discovery mechanism (env or `-D`, never project-tree heuristics).
+- **Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` must build in isolation.** No reliance on the workspace's `Cargo.toml`, no walk-up to project root for cmake includes (other than the example's own `cmake/` subdir), no `[patch.crates-io]` that points outside the example.
+- **Per-platform `cmake/<plat>-support.cmake` files are part of the example tree.** They live next to the example, not at project root, so they travel with a copied-out example. Layer-2 cmake modules (`nros-threadx.cmake`, `nros-freertos.cmake`, `nros-nuttx.cmake`) ship via `find_package(NanoRos)` — copied-out examples reach them through the install prefix the user passes, same as any other `find_package` consumer.
+
 ### CMake Path Convention for Examples
 Examples must work when copied outside the nano-ros project tree. **Never hard-code project-relative paths in example CMakeLists.txt or support cmake files.** This means:
 - No `set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/...")` in example cmake files
