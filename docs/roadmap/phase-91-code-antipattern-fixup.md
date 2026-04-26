@@ -8,7 +8,7 @@ cbindgen). The audit found two categories essentially clean (magic
 numbers, manual size math) and four with concrete debt that should land
 as small, independently-mergeable PRs.
 
-**Status**: In Progress (Groups A, B, C, D, E1, E3, E4, F complete; E2 dropped by design; G remaining)
+**Status**: Complete (Groups A, B, C, D, E1, E3, E4, F, G; E2 dropped by design)
 **Priority**: Medium — none of these block users today, but several are
 direct repeat findings against phases that were marked Complete (Phase 83
 "thin-wrapper compliance"; Phase 87 "cbindgen-driven headers" per the
@@ -190,8 +190,8 @@ a transition.
 
 ### Group G — Documentation truth-up
 
-- [ ] 91.G1 — Update `CLAUDE.md` Phase table: Phase 83 is currently marked Complete but the audit found 11 live `nros_rmw` / `nros_core` imports. Either re-open Phase 83 (preferred), or add a "follow-up" footnote pointing at this phase
-- [ ] 91.G2 — Update `CLAUDE.md` "C API" paragraph if 91.C1 chooses to drop cbindgen — the "auto-generated from Rust `#[repr(C)]` types … `nros_generated.h` is included by thin per-module header stubs" sentence is currently aspirational, not descriptive
+- [x] 91.G1 — Phase 83 row in `CLAUDE.md`'s Phase table now carries an explicit footnote noting that Phase 91.B closed 11 follow-up `use nros_rmw::*` / `use nros_core::*` import sites missed in the original landing. Phase 91 row updated from "Not Started" → "Complete (A/B/C/D/E1/E3/E4/F)" with the E2 by-design no-op recorded.
+- [x] 91.G2 — Closed by Phase 91.C's option-A landing: the cbindgen output is now actually consumed (per-module headers `#include "nros/types.h"` which transitively pulls `nros_generated.h`), so the original CLAUDE.md description finally matches reality. Updated in commit `f19e7b2b`.
 
 ## Acceptance Criteria
 

@@ -308,13 +308,13 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 80 | Unified network interface for nros-platform | Not Started |
 | 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Complete (27/27 Zephyr tests pass) |
 | 82 | Blocking service client must take an executor | Complete |
-| 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete |
+| 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete (Phase 91.B closed 11 follow-up `use nros_rmw::*` / `use nros_core::*` import sites missed in the original landing) |
 | 85 | Test-suite consolidation & speedup (214 → ~80 tests, dedupe 4-platform RTOS matrix, shared build cache, replace sleeps with ready-probes) | Complete (85.11 abandoned; test-count + wall-time targets carried to Phase 89) |
 | 86 | `nros-lifecycle-msgs` codegen crate + REP-2002 lifecycle services (`~/change_state`, `~/get_state`, …) for C/Rust APIs | Complete (86.1–86.10; pinned `rmw_zenoh` interop test verifies acceptance) |
 | 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | Complete |
 | 88 | Unified leveled logging (`nros-log` crate with pluggable RTOS/host sinks; ROS-style named loggers + severity filtering) | Not Started |
 | 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Complete (archived; 89.11 dropped, all others landed; clean `just test-all` → 675/675 pass) |
-| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, hand-written C struct mirrors, hardcoded test ports/paths, platform `seed()` dedup) | Not Started |
+| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (A/B/C/D/E1/E3/E4/F; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
 
 ## Quick Reference
 
