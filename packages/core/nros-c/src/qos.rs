@@ -86,8 +86,8 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
 
 impl nros_qos_t {
     /// Convert to nros QosSettings
-    pub(crate) fn to_qos_settings(self) -> nros_rmw::QosSettings {
-        use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
+    pub(crate) fn to_qos_settings(self) -> nros_node::QosSettings {
+        use nros_node::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
 
         let reliability = match self.reliability {
             nros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT => {
@@ -108,7 +108,7 @@ impl nros_qos_t {
             nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
         };
 
-        nros_rmw::QosSettings {
+        nros_node::QosSettings {
             reliability,
             durability,
             history,
