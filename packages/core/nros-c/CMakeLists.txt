@@ -107,6 +107,7 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-rtos-helpers.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-threadx.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-freertos.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-nuttx.cmake"
     DESTINATION lib/cmake/NanoRos
 )
 
