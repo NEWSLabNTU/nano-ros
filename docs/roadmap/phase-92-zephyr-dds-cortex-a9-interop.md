@@ -98,11 +98,47 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
        prints "nros Zephyr DDS Talker" / "Board: qemu_cortex_a9",
        waits for L4 connectivity (times out as expected — alone),
        then hits a fresh `DATA ABORT` inside
-       `compiler_builtins::memcpy` with src=NULL. Indicates a real
-       Rust-level bug somewhere in the DDS init path on ARMv7-A
-       (likely platform-zephyr's `c::addrinfo` layout or alignment
-       not matching the Zephyr-side `zsock_addrinfo` for 32-bit ARM).
-       Bisecting this is the unresolved part of 92.4.
+       `compiler_builtins::memcpy` with **dst=NULL**, src=0x100000
+       (FLASH base — vector table), n=60.
+
+       **Diagnostic findings** (with `CONFIG_EXTRA_EXCEPTION_INFO=y`
+       + `CONFIG_FAULT_DUMP=2` + gdb attached to QEMU):
+       * Faulting PC: `0x1f4b58` — inside
+         `compiler_builtins::mem::impls::copy_forward::copy_forward_aligned_words`
+         at `str r5, [lr], #4` — memcpy uses `lr` as the running
+         destination pointer, lr=0 means dst was NULL.
+       * Saved registers at fault: r0=0 (dst), r1=0x100000 (src),
+         r2=0x3c (n), r5=0xe59ff018 (an ARM `ldr pc, [pc, #0x18]`
+         instruction word — confirms src is reading vector table at
+         flash base).
+       * Original LR clobbered (memcpy's standard prologue uses lr
+         as a working register). Caller stack at psp=0x2ad02c is on
+         z_arm_sys_stack near the top with mostly zeros — the call
+         site doesn't have a normal user-thread stack frame visible.
+       * Idle thread's saved psp = `z_idle_stacks+8128` — confirms
+         we were running on the kernel-level sys stack at fault, not
+         a thread stack.
+
+       The pattern matches a Zephyr-internal call path doing a
+       second vector-table relocation (`memcpy(0x0, _vector_start,
+       _vector_end - _vector_start)`) that fires after kernel bring-
+       up. Our SoC patch maps 0x0–0x1000 with `MPERM_R | MPERM_X`
+       (read+execute, no write), so the memcpy succeeds the first
+       time but faults if anything tries again. Prime suspect:
+       interrupt path or panic-handler trying to refresh VBAR.
+
+       **Verified non-issues**:
+       * Cargo dependency closure — minimal (zephyr+log only) builds
+         hit the same pattern.
+       * `c::addrinfo` Rust layout — matches `zsock_addrinfo` field
+         offsets on both 32-bit ARM and 64-bit native.
+       * SLCR MMU region — present, GEM driver clock setup completes
+         (no abort during `eth_xlnx_gem_configure_clocks`).
+
+       **Next step**: bisect what re-triggers the vector-table copy.
+       The Network-L4-timeout `<err>` log line fires in zpico_zephyr.c
+       2 seconds before the abort; possibly a Zephyr fatal-error
+       handler invoked by the Rust panic propagation path.
 
        **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers
