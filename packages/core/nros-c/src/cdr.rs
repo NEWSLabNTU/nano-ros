@@ -1,12 +1,12 @@
 //! CDR serialization helpers for generated C message types.
 //!
-//! Thin FFI wrappers over [`nros_core::CdrWriter`] / [`nros_core::CdrReader`].
+//! Thin FFI wrappers over [`nros_node::CdrWriter`] / [`nros_node::CdrReader`].
 //! The public `extern "C"` surface is preserved for the generated C message
 //! code: the write/read helpers take a `(cursor, end, origin)` triple, and
 //! advance `cursor` on success.
 
 use core::ffi::c_char;
-use nros_core::{CdrReader, CdrWriter, DeserError, SerError};
+use nros_node::{CdrReader, CdrWriter, DeserError, SerError};
 
 // ===========================================================================
 // Bridge helpers

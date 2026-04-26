@@ -110,6 +110,12 @@ pub use nros_core::{CancelResponse, GoalId, GoalResponse, GoalStatus};
 // Re-export lifecycle protocol types. Phase 91.B2.
 pub use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 
+// Re-export CDR ser/de types so the C-side serialization helpers in
+// nros-c/src/cdr.rs don't have to reach past nros-node either. These
+// are themselves re-exports from nros-serdes via nros-core; collecting
+// them here keeps the import boundary uniform. Phase 91.B6.
+pub use nros_core::{CdrReader, CdrWriter, DeserError, SerError};
+
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
