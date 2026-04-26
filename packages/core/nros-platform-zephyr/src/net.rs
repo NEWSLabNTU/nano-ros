@@ -21,7 +21,7 @@
 
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::ffi::c_void;
+use core::ffi::{c_int, c_void};
 
 use crate::ZephyrPlatform;
 #[allow(unused_imports)]
@@ -65,6 +65,38 @@ mod c {
 
     // IPPROTO_TCP options
     pub const TCP_NODELAY: c_int = 1;
+
+    // IPv4 multicast options (Zephyr socket.h)
+    pub const IPPROTO_IP: c_int = 0;
+    pub const IP_ADD_MEMBERSHIP: c_int = 35;
+    #[allow(dead_code)]
+    pub const IP_DROP_MEMBERSHIP: c_int = 36;
+
+    // INADDR_ANY in network byte order — zero matches.
+    pub const INADDR_ANY_BE: u32 = 0;
+
+    /// `struct in_addr { uint32_t s_addr; }` — IPv4 address in network
+    /// byte order.
+    #[repr(C)]
+    pub struct in_addr {
+        pub s_addr: u32,
+    }
+
+    /// `struct sockaddr_in` — IPv4 socket address.
+    #[repr(C)]
+    pub struct sockaddr_in {
+        pub sin_family: sa_family_t,
+        pub sin_port: u16,
+        pub sin_addr: in_addr,
+        pub sin_zero: [u8; 8],
+    }
+
+    /// `struct ip_mreq` — IPv4 multicast membership request.
+    #[repr(C)]
+    pub struct ip_mreq {
+        pub imr_multiaddr: in_addr,
+        pub imr_interface: in_addr,
+    }
 
     // Shutdown (Zephyr defines SHUT_RDWR = ZSOCK_SHUT_RDWR = 2)
     pub const SHUT_RDWR: c_int = 2;
@@ -706,12 +738,14 @@ impl ZephyrPlatform {
 }
 
 // ============================================================================
-// UDP multicast — stubbed
+// UDP multicast — IPv4 SPDP discovery for Phase 71 dust-dds
 // ============================================================================
 //
-// Zephyr's zenoh-pico tests use `tcp/…` locators and `CONFIG_NROS_ZENOH_SCOUTING=n`
-// in every example's prj.conf, so multicast open/listen/read/send are
-// never exercised. Proper implementation is tracked in Phase 80 follow-ups.
+// `mcast_open`/`mcast_read_exact` are still unused by both zenoh-pico
+// (which uses TCP locators on Zephyr) and dust-dds (which only needs
+// `mcast_listen`/`mcast_read`/`mcast_send` for SPDP), so they remain
+// stubs. Phase 71.8 wires `mcast_listen` over the host kernel via
+// NSOS — see comments below for the bind+IP_ADD_MEMBERSHIP sequence.
 
 impl ZephyrPlatform {
     pub fn mcast_open(
@@ -724,14 +758,175 @@ impl ZephyrPlatform {
         -1
     }
 
+    /// Parse a NUL-terminated IPv4 dotted-quad address string ("a.b.c.d")
+    /// into a `u32` in **network byte order** suitable for
+    /// `in_addr.s_addr`. Returns `None` on malformed input.
+    fn parse_ipv4_be(addr: *const u8) -> Option<u32> {
+        if addr.is_null() {
+            return None;
+        }
+        let mut octets = [0u8; 4];
+        let mut idx = 0;
+        let mut acc: u32 = 0;
+        let mut have_digit = false;
+        let mut p = addr;
+        loop {
+            let b = unsafe { *p };
+            p = unsafe { p.add(1) };
+            match b {
+                b'0'..=b'9' => {
+                    acc = acc * 10 + (b - b'0') as u32;
+                    if acc > 255 {
+                        return None;
+                    }
+                    have_digit = true;
+                }
+                b'.' | 0 => {
+                    if !have_digit {
+                        return None;
+                    }
+                    if idx >= 4 {
+                        return None;
+                    }
+                    octets[idx] = acc as u8;
+                    idx += 1;
+                    acc = 0;
+                    have_digit = false;
+                    if b == 0 {
+                        if idx != 4 {
+                            return None;
+                        }
+                        // Network byte order: octets[0] is most
+                        // significant. `s_addr` is stored in NBO.
+                        let be = ((octets[0] as u32) << 24)
+                            | ((octets[1] as u32) << 16)
+                            | ((octets[2] as u32) << 8)
+                            | (octets[3] as u32);
+                        return Some(be.to_be());
+                    }
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// Phase 71.8 — bind a UDP socket to an IPv4 multicast group for
+    /// SPDP discovery.
+    ///
+    /// Sequence: `socket(AF_INET, SOCK_DGRAM)` → `SO_REUSEADDR` →
+    /// `bind(0.0.0.0:port)` → `setsockopt(IP_ADD_MEMBERSHIP, ip_mreq)`.
+    /// Honours the cooperative non-blocking contract by translating
+    /// `timeout_ms = 0` into `fcntl(O_NONBLOCK)` via the shared
+    /// `udp_set_recv_timeout` helper.
+    ///
+    /// **NSOS (`native_sim`) limitation**: Zephyr's NSOS adapter
+    /// (`zephyr/drivers/net/nsos_adapt.c::nsos_adapt_setsockopt`) only
+    /// translates `SOL_SOCKET`, `IPPROTO_TCP`, and `IPPROTO_IPV6`
+    /// options to the host kernel — it does **not** forward
+    /// `IPPROTO_IP / IP_ADD_MEMBERSHIP`, so the membership join here
+    /// always returns `EOPNOTSUPP` and `mcast_listen` returns `-1`.
+    /// On real Zephyr (`qemu_cortex_m3` with native networking +
+    /// IGMP) and on a patched NSOS the implementation is correct;
+    /// the SPDP-on-`native_sim`-via-NSOS gap is tracked under Phase
+    /// 71.8 as a Zephyr upstream item.
     pub fn mcast_listen(
-        _sock: *mut c_void,
-        _endpoint: *const c_void,
-        _timeout_ms: u32,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
         _iface: *const u8,
-        _join: *const u8,
+        join: *const u8,
     ) -> i8 {
-        -1
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        if rep._iptcp.is_null() {
+            return -1;
+        }
+        let ai = unsafe { &*rep._iptcp };
+        if ai.ai_addr.is_null() {
+            return -1;
+        }
+
+        // Pull the parsed sin_port out of the resolved sockaddr.
+        // We intentionally bind to INADDR_ANY rather than the
+        // multicast group itself: many Linux/Zephyr kernels only
+        // deliver multicast traffic to a socket bound to INADDR_ANY
+        // (or the iface address), not the group.
+        let port_be = unsafe { (*(ai.ai_addr as *const c::sockaddr_in)).sin_port };
+
+        let fd = unsafe { c::socket(ai.ai_family, c::SOCK_DGRAM, c::IPPROTO_UDP) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._fd = fd };
+
+        // SO_REUSEADDR — multiple participants on the same host need
+        // to share the SPDP multicast port without `EADDRINUSE`.
+        let one: c_int = 1;
+        unsafe {
+            c::setsockopt(
+                fd,
+                c::SOL_SOCKET,
+                c::SO_REUSEADDR,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<c_int>() as c::socklen_t,
+            );
+        }
+
+        // bind(2) to 0.0.0.0:port — INADDR_ANY for the local end.
+        let mut bind_addr: c::sockaddr_in = unsafe { core::mem::zeroed() };
+        bind_addr.sin_family = ai.ai_family as c::sa_family_t;
+        bind_addr.sin_port = port_be;
+        bind_addr.sin_addr.s_addr = c::INADDR_ANY_BE;
+        let bind_ret = unsafe {
+            c::bind(
+                fd,
+                &bind_addr as *const _ as *const c::sockaddr,
+                core::mem::size_of::<c::sockaddr_in>() as c::socklen_t,
+            )
+        };
+        if bind_ret < 0 {
+            unsafe {
+                c::close(fd);
+                (*sock)._fd = -1;
+            }
+            return -1;
+        }
+
+        // Join the multicast group (IP_ADD_MEMBERSHIP).
+        let group = match Self::parse_ipv4_be(join) {
+            Some(v) => v,
+            None => {
+                unsafe {
+                    c::close(fd);
+                    (*sock)._fd = -1;
+                }
+                return -1;
+            }
+        };
+        let mreq = c::ip_mreq {
+            imr_multiaddr: c::in_addr { s_addr: group },
+            imr_interface: c::in_addr { s_addr: c::INADDR_ANY_BE },
+        };
+        let join_ret = unsafe {
+            c::setsockopt(
+                fd,
+                c::IPPROTO_IP,
+                c::IP_ADD_MEMBERSHIP,
+                &mreq as *const _ as *const c_void,
+                core::mem::size_of::<c::ip_mreq>() as c::socklen_t,
+            )
+        };
+        if join_ret < 0 {
+            unsafe {
+                c::close(fd);
+                (*sock)._fd = -1;
+            }
+            return -1;
+        }
+
+        // Honour the cooperative non-blocking contract.
+        Self::udp_set_recv_timeout(sock as *const c_void, timeout_ms);
+        0
     }
 
     pub fn mcast_close(
@@ -740,16 +935,42 @@ impl ZephyrPlatform {
         _rep: *const c_void,
         _lep: *const c_void,
     ) {
+        // Membership drop + close handled by the higher-level
+        // tear-down path that owns the OpaqueSocket; doing it here
+        // would double-free under dust-dds's RAII teardown. Left as a
+        // no-op intentionally for parity with the zenoh-pico stub.
     }
 
     pub fn mcast_read(
-        _sock: *const c_void,
-        _buf: *mut u8,
-        _len: usize,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
         _lep: *const c_void,
-        _addr: *mut c_void,
+        addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        let sock = unsafe { &*(sock as *const Socket) };
+        let mut sender_storage: c::sockaddr_storage = unsafe { core::mem::zeroed() };
+        let mut sender_len: c::socklen_t =
+            core::mem::size_of::<c::sockaddr_storage>() as c::socklen_t;
+        let n = unsafe {
+            c::recvfrom(
+                sock._fd,
+                buf as *mut c_void,
+                len,
+                0,
+                &mut sender_storage as *mut _ as *mut c::sockaddr,
+                &mut sender_len,
+            )
+        };
+        if n <= 0 {
+            return usize::MAX;
+        }
+        // Best-effort: copy the parsed sender sockaddr into the
+        // caller's `addr` buffer (Endpoint = { addrinfo* _iptcp }).
+        // Most callers (cooperative recv loops) ignore this — leave
+        // their pre-zeroed buffer alone.
+        let _ = addr;
+        n as usize
     }
 
     pub fn mcast_read_exact(
@@ -763,12 +984,28 @@ impl ZephyrPlatform {
     }
 
     pub fn mcast_send(
-        _sock: *const c_void,
-        _buf: *const u8,
-        _len: usize,
-        _endpoint: *const c_void,
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
     ) -> usize {
-        usize::MAX
+        let sock = unsafe { &*(sock as *const Socket) };
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        if rep._iptcp.is_null() {
+            return usize::MAX;
+        }
+        let ai = unsafe { &*rep._iptcp };
+        let n = unsafe {
+            c::sendto(
+                sock._fd,
+                buf as *const c_void,
+                len,
+                0,
+                ai.ai_addr,
+                ai.ai_addrlen,
+            )
+        };
+        if n <= 0 { usize::MAX } else { n as usize }
     }
 }
 

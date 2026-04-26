@@ -188,9 +188,22 @@ suggested.
 - [~] 71.8 — Zephyr DDS talker/listener example + nextest suite
        Scaffolding + Kconfig/CMake wiring + native_sim build & run green.
        `test_zephyr_dds_rust_talker_boots` / `..._listener_boots` (boot
-       smoke) checked in. Talker↔listener interop test still TODO and
-       blocked on Zephyr `mcast_listen` (still the pre-Phase-71 `-1`
-       stub, so SPDP discovery doesn't run on the Zephyr side).
+       smoke) checked in. **Zephyr `mcast_listen` / `mcast_read` /
+       `mcast_send` are now implemented** — they pass the
+       cooperative driver and don't crash, but `IP_ADD_MEMBERSHIP`
+       returns `EOPNOTSUPP` on `native_sim` because Zephyr's NSOS
+       driver only forwards `SOL_SOCKET` / `IPPROTO_TCP` /
+       `IPPROTO_IPV6` setsockopt options to the host kernel — there
+       is no `IPPROTO_IP` case in `nsos_adapt_setsockopt`. Talker↔
+       listener interop on `native_sim` therefore still falls back to
+       "talker publishes into the void." Two paths to close this:
+       * Patch upstream Zephyr's `nsos_adapt.c` / `nsos_sockets.c` /
+         `nsos_socket.h` to forward `IP_ADD_MEMBERSHIP` (3 small
+         additions). Out-of-scope for nano-ros itself; document under
+         `scripts/zephyr/`.
+       * Switch the interop test to `qemu_cortex_m3` (real Zephyr IP
+         stack with native IGMP). Trades the NSOS gap for the QEMU
+         networking-stack setup the existing zenoh tests already use.
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 
