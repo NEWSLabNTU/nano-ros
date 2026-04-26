@@ -1401,7 +1401,6 @@ mod verification {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::support::{nros_support_get_zero_initialized, nros_support_state_t};
 
     #[test]
     fn test_trigger_any_matches_behavior() {

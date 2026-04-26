@@ -370,7 +370,7 @@ mod tests {
     fn test_guard_condition_is_valid_null() {
         unsafe {
             let result = nros_guard_condition_is_valid(ptr::null());
-            assert_eq!(result, 0);
+            assert!(!result);
         }
     }
 
@@ -379,7 +379,7 @@ mod tests {
         unsafe {
             let guard = nros_guard_condition_get_zero_initialized();
             let result = nros_guard_condition_is_valid(&guard);
-            assert_eq!(result, 0);
+            assert!(!result);
         }
     }
 
@@ -447,7 +447,7 @@ mod tests {
             guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             let result = nros_guard_condition_is_valid(&guard);
-            assert_eq!(result, 1);
+            assert!(result);
         }
     }
 
