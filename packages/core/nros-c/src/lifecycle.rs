@@ -8,10 +8,10 @@
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 
-use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 use nros_node::lifecycle::{
     LifecycleCallbackFnCtx, LifecycleCallbackSlot, LifecycleError, LifecyclePollingNodeCtx,
 };
+use nros_node::{LifecycleState, LifecycleTransition, TransitionResult};
 
 use crate::constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S;
 use crate::error::*;
