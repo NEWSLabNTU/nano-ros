@@ -1,0 +1,13 @@
+/* Phase 92 — qemu_cortex_a9 DT overlay
+ *
+ * Enable promiscuous-mode on the Xilinx GEM ethernet so multicast
+ * frames (RTPS SPDP on 239.255.0.1) reach the IP stack. Without this
+ * the hardware filter drops multicast packets unless the multicast-
+ * hash table is explicitly programmed for the destination group —
+ * Zephyr's `eth_xlnx_gem` driver doesn't manage that hash, so promisc
+ * is the practical knob.
+ */
+
+&gem0 {
+    promiscuous-mode;
+};

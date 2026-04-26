@@ -1,0 +1,6 @@
+/* Phase 92 — qemu_cortex_a9 DT overlay (listener)
+ * See talker side for rationale. */
+
+&gem0 {
+    promiscuous-mode;
+};

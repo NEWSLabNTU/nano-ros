@@ -135,10 +135,39 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
        * SLCR MMU region — present, GEM driver clock setup completes
          (no abort during `eth_xlnx_gem_configure_clocks`).
 
-       **Next step**: bisect what re-triggers the vector-table copy.
-       The Network-L4-timeout `<err>` log line fires in zpico_zephyr.c
-       2 seconds before the abort; possibly a Zephyr fatal-error
-       handler invoked by the Rust panic propagation path.
+       **Resolution (2026-04-26)**: QEMU `-d exec` instruction
+       trace + gdb attach confirmed the root cause is **stack
+       overflow on the main thread**. Trace excerpt:
+
+           sys_clock_set_timeout / z_add_timeout / z_tick_sleep
+           / arch_swap / z_arm_cortex_r_svc / z_arm_svc / z_arm_do_swap
+           ... z_arm_int_exit
+           [PC=0x00000000]            ← rfeia sp! popped PC=0
+           z_arm_reset                ← vector table at 0 dispatched
+           ... relocate_vector_table → memcpy(0, _vector_start, 60)
+           DATA ABORT (write to R|X-only mapping at 0)
+
+       dust-dds setup overflowed the 32 KiB main stack, clobbering
+       the saved interrupt-return PC on the SVC stack. Bumping
+       `CONFIG_MAIN_STACK_SIZE` from 32 KiB → 128 KiB and enabling
+       `CONFIG_HW_STACK_PROTECTION=y` + `CONFIG_STACK_SENTINEL=y`
+       fixed it. **Talker now reaches steady-state Publish on
+       qemu_cortex_a9** (Published: 0..18 in 120 ms sim time).
+
+       **Listener also boots** and parks on "Waiting for messages on
+       /chatter".
+
+       **Next blocker (92.5)**: cross-guest unicast routing.
+       `transport_nros.rs:520` hardcodes `[127, 0, 0, 1]` in the
+       advertised unicast locators. On native_sim this works because
+       both processes share the host kernel's loopback. On
+       qemu_cortex_a9 the two guests have distinct interfaces
+       (192.0.2.1 / 192.0.2.2); SPDP multicast discovery reaches the
+       peer, but the SEDP unicast reply goes to 127.0.0.1 on each
+       guest's own loopback and never crosses. Fix: replace the
+       hardcoded loopback with the actual interface IP — needs a
+       `<P as Platform...>::local_ipv4()` shim or a Kconfig string
+       passed through the build env.
 
        **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers
