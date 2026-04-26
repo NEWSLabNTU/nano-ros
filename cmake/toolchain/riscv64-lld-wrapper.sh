@@ -5,11 +5,27 @@
 #
 # The wrapper finds all .a arguments, strips objects with soft-float ABI
 # (16-hex-char hash prefix from compiler_builtins), then calls rust-lld.
+#
+# Tool paths come from the environment (NROS_RUST_LLD / NROS_LLVM_AR),
+# set by the riscv64-threadx cmake toolchain. Earlier revisions resolved
+# them as siblings of this script via SCRIPT_DIR/_real_lld /
+# SCRIPT_DIR/_llvm_ar — those symlinks lived in the in-source toolchain
+# directory and raced when two cmake configures ran concurrently against
+# different build dirs.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RUST_LLD="$SCRIPT_DIR/_real_lld"
-LLVM_AR="$SCRIPT_DIR/_llvm_ar"
+RUST_LLD="${NROS_RUST_LLD}"
+LLVM_AR="${NROS_LLVM_AR}"
 STRIP_SCRIPT="$SCRIPT_DIR/../../cmake/strip-compiler-builtins.sh"
+
+if [ -z "$RUST_LLD" ]; then
+    echo "$0: NROS_RUST_LLD not set in environment" >&2
+    exit 1
+fi
+if [ -z "$LLVM_AR" ]; then
+    echo "$0: NROS_LLVM_AR not set in environment" >&2
+    exit 1
+fi
 
 # Strip soft-float compiler_builtins AND Rust mem functions from .a files.
 # Rust's compiler_builtins provides memset/memcpy/memmove but they can be
