@@ -12,7 +12,7 @@ use log::{error, info};
 use nros::{Executor, ExecutorConfig, NodeError, TimerDuration};
 use std_msgs::msg::Int32;
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 extern "C" fn rust_main() {
     unsafe {
         zephyr::set_logger().ok();

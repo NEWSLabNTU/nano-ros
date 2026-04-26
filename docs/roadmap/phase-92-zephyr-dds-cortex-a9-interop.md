@@ -75,7 +75,36 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
 
 - [~] 92.4 — Build talker + listener for qemu_cortex_a9
        `west build -b qemu_cortex_a9` succeeds for both binaries.
-       **Bisection results (2026-04-26):** the silent boot is *not* a
+
+       **Issue cascade — three Zephyr workspace fixes total**:
+
+       1. ✅ **zephyr-lang-rust** missing Cortex-A9 case. Fixed in
+          `modules/lang/rust/CMakeLists.txt` + `modules/lang/rust/Kconfig`
+          (~6 LOC each, additive). Toolchain works.
+       2. ✅ **Cargo manifest shape**. Edition-2024 / no-build.rs / no
+          `zephyr-build` produces silent boot on ARMv7-A (native_sim
+          masks it). Migrated DDS examples to `samples/philosophers`
+          shape (edition 2021 + `[build-dependencies] zephyr-build` +
+          `build.rs` calling `export_bool_kconfig`). 92.4a tracks the
+          repo-wide migration of remaining Zephyr Rust examples.
+       3. ✅ **Zynq-7000 SoC missing SLCR MMU region**. Without it,
+          `eth_xlnx_gem_configure_clocks` data-aborts on
+          `sys_read32(0xf8000140)`. Fixed in
+          `soc/xlnx/zynq7000/xc7zxxxs/soc.c` by adding a flat MMU
+          entry for the SLCR DT node.
+
+       **Current state** (2026-04-26 evening): talker boots through
+       Zephyr, prints banner, gets IPv4 address, reaches Rust main,
+       prints "nros Zephyr DDS Talker" / "Board: qemu_cortex_a9",
+       waits for L4 connectivity (times out as expected — alone),
+       then hits a fresh `DATA ABORT` inside
+       `compiler_builtins::memcpy` with src=NULL. Indicates a real
+       Rust-level bug somewhere in the DDS init path on ARMv7-A
+       (likely platform-zephyr's `c::addrinfo` layout or alignment
+       not matching the Zephyr-side `zsock_addrinfo` for 32-bit ARM).
+       Bisecting this is the unresolved part of 92.4.
+
+       **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers
        config (no networking, no POSIX, no nros, just `zephyr` +
        `printkln`) and the binary still didn't boot when:
