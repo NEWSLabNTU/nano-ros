@@ -314,7 +314,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | Complete |
 | 88 | Unified leveled logging (`nros-log` crate with pluggable RTOS/host sinks; ROS-style named loggers + severity filtering) | Not Started |
 | 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Complete (archived; 89.11 dropped, all others landed; clean `just test-all` → 675/675 pass) |
-| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (A/B/C/D/E1/E3/E4/F; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
+| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (archived; A/B/C/D/E1/E3/E4/F/G; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
 | 93 | C and C++ Doxygen completion (C++ mainpage, `@defgroup` taxonomy, per-function `@param`/`@return`, template-concept docs, error-code reference) | Complete |
 
 ## Quick Reference
