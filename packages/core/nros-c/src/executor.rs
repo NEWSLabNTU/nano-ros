@@ -1054,7 +1054,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 /// # Safety
 /// `context` must point to a valid `nros_action_client_t`.
 unsafe extern "C" fn goal_response_trampoline(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_node::GoalId,
     accepted: bool,
     context: *mut core::ffi::c_void,
 ) {
@@ -1072,7 +1072,7 @@ unsafe extern "C" fn goal_response_trampoline(
 /// # Safety
 /// `context` must point to a valid `nros_action_client_t`.
 unsafe extern "C" fn feedback_trampoline(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_node::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut core::ffi::c_void,
@@ -1091,8 +1091,8 @@ unsafe extern "C" fn feedback_trampoline(
 /// # Safety
 /// `context` must point to a valid `nros_action_client_t`.
 unsafe extern "C" fn result_trampoline(
-    goal_id: *const nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: *const nros_node::GoalId,
+    status: nros_node::GoalStatus,
     result_data: *const u8,
     result_len: usize,
     context: *mut core::ffi::c_void,
@@ -1103,9 +1103,9 @@ unsafe extern "C" fn result_trampoline(
             uuid: (*goal_id).uuid,
         };
         let c_status = match status {
-            nros_core::GoalStatus::Succeeded => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-            nros_core::GoalStatus::Canceled => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-            nros_core::GoalStatus::Aborted => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+            nros_node::GoalStatus::Succeeded => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+            nros_node::GoalStatus::Canceled => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+            nros_node::GoalStatus::Aborted => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
             _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
         };
         cb(&uuid, c_status, result_data, result_len, client.context);

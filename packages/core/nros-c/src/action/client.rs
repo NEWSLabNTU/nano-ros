@@ -507,7 +507,7 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
 
     let internal = &mut client._internal;
     let uuid = &*goal_uuid;
-    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+    let goal_id = nros_node::GoalId { uuid: uuid.uuid };
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
@@ -760,7 +760,7 @@ pub unsafe extern "C" fn nros_action_get_result_async(
 
     let internal = &mut client._internal;
     let uuid = &*goal_uuid;
-    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+    let goal_id = nros_node::GoalId { uuid: uuid.uuid };
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,

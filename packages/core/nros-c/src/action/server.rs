@@ -12,7 +12,7 @@ use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 
 /// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
-/// See [`nros_core::GoalId`] encoding in `CLAUDE.md`.
+/// See [`nros_node::GoalId`] encoding in `CLAUDE.md`.
 const GOAL_ID_SEQ_PREFIX_LEN: usize = 4;
 
 /// Bytes of CDR framing that precede the goal payload in a send_goal request:
@@ -172,7 +172,7 @@ unsafe extern "C" fn dummy_goal_callback(
 /// user callbacks a `*const nros_goal_handle_t` that's valid for the
 /// duration of the callback. Users copy the handle by value if they need
 /// the UUID beyond the callback's lifetime.
-unsafe fn handle_from_goal_id(goal_id: *const nros_core::GoalId) -> nros_goal_handle_t {
+unsafe fn handle_from_goal_id(goal_id: *const nros_node::GoalId) -> nros_goal_handle_t {
     nros_goal_handle_t {
         uuid: nros_goal_uuid_t {
             uuid: (*goal_id).uuid,
@@ -187,11 +187,11 @@ unsafe fn handle_from_goal_id(goal_id: *const nros_core::GoalId) -> nros_goal_ha
 /// request, len, ctx)`. The handle lives on this stack frame; users that
 /// need to reference the goal later copy it by value.
 pub(crate) unsafe extern "C" fn goal_callback_trampoline(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_node::GoalId,
     goal_data: *const u8,
     goal_len: usize,
     context: *mut c_void,
-) -> nros_core::GoalResponse {
+) -> nros_node::GoalResponse {
     let internal = &*(context as *const ActionServerInternal);
     let goal_handle = handle_from_goal_id(goal_id);
 
@@ -221,11 +221,11 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     );
 
     match c_response {
-        nros_goal_response_t::NROS_GOAL_REJECT => nros_core::GoalResponse::Reject,
+        nros_goal_response_t::NROS_GOAL_REJECT => nros_node::GoalResponse::Reject,
         nros_goal_response_t::NROS_GOAL_ACCEPT_AND_EXECUTE => {
-            nros_core::GoalResponse::AcceptAndExecute
+            nros_node::GoalResponse::AcceptAndExecute
         }
-        nros_goal_response_t::NROS_GOAL_ACCEPT_AND_DEFER => nros_core::GoalResponse::AcceptAndDefer,
+        nros_goal_response_t::NROS_GOAL_ACCEPT_AND_DEFER => nros_node::GoalResponse::AcceptAndDefer,
     }
 }
 
@@ -235,7 +235,7 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
 /// the accept reply to the client. Forwards to the user's
 /// `c_accepted_callback` with a stack-local handle.
 pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_node::GoalId,
     context: *mut c_void,
 ) {
     let internal = &*(context as *const ActionServerInternal);
@@ -251,23 +251,23 @@ pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
 /// Status transitions (CANCELING, etc.) are performed by the arena in
 /// `ActionServerCore`; this trampoline only translates the ABI.
 pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
-    goal_id: *const nros_core::GoalId,
-    _status: nros_core::GoalStatus,
+    goal_id: *const nros_node::GoalId,
+    _status: nros_node::GoalStatus,
     context: *mut c_void,
-) -> nros_core::CancelResponse {
+) -> nros_node::CancelResponse {
     let internal = &*(context as *const ActionServerInternal);
 
     let Some(cb) = internal.c_cancel_callback else {
         // No cancel callback — accept by default.
-        return nros_core::CancelResponse::Ok;
+        return nros_node::CancelResponse::Ok;
     };
 
     let goal_handle = handle_from_goal_id(goal_id);
     let c_response = cb(internal.server_ptr, &goal_handle, internal.c_context);
     // C: REJECT=0, ACCEPT=1 ; Rust: Ok=0 (accepted), Rejected=1
     match c_response {
-        nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_core::CancelResponse::Ok,
-        nros_cancel_response_t::NROS_CANCEL_REJECT => nros_core::CancelResponse::Rejected,
+        nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_node::CancelResponse::Ok,
+        nros_cancel_response_t::NROS_CANCEL_REJECT => nros_node::CancelResponse::Rejected,
     }
 }
 
@@ -414,7 +414,7 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
     let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
     let data = core::slice::from_raw_parts(feedback, feedback_len);
@@ -449,7 +449,7 @@ pub unsafe extern "C" fn nros_action_succeed(
     let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -466,7 +466,7 @@ pub unsafe extern "C" fn nros_action_succeed(
     handle.complete_goal_raw(
         executor,
         &goal_id,
-        nros_core::GoalStatus::Succeeded,
+        nros_node::GoalStatus::Succeeded,
         result_fields,
     );
 
@@ -492,7 +492,7 @@ pub unsafe extern "C" fn nros_action_abort(
     let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn nros_action_abort(
     handle.complete_goal_raw(
         executor,
         &goal_id,
-        nros_core::GoalStatus::Aborted,
+        nros_node::GoalStatus::Aborted,
         result_fields,
     );
 
@@ -533,7 +533,7 @@ pub unsafe extern "C" fn nros_action_canceled(
     let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -548,7 +548,7 @@ pub unsafe extern "C" fn nros_action_canceled(
     handle.complete_goal_raw(
         executor,
         &goal_id,
-        nros_core::GoalStatus::Canceled,
+        nros_node::GoalStatus::Canceled,
         result_fields,
     );
 
@@ -575,10 +575,10 @@ pub unsafe extern "C" fn nros_action_execute(
     let handle = internal.handle;
 
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
-    handle.set_goal_status(executor, &goal_id, nros_core::GoalStatus::Executing);
+    handle.set_goal_status(executor, &goal_id, nros_node::GoalStatus::Executing);
     NROS_RET_OK
 }
 
@@ -630,7 +630,7 @@ pub unsafe extern "C" fn nros_action_get_goal_status(
     }
     let handle = internal.handle;
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_core::GoalId {
+    let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
     match handle.goal_status(executor, &goal_id) {
@@ -642,9 +642,9 @@ pub unsafe extern "C" fn nros_action_get_goal_status(
     }
 }
 
-/// Map a `nros_core::GoalStatus` to its `nros_goal_status_t` equivalent.
-fn goal_status_from_core(status: nros_core::GoalStatus) -> nros_goal_status_t {
-    use nros_core::GoalStatus;
+/// Map a `nros_node::GoalStatus` to its `nros_goal_status_t` equivalent.
+fn goal_status_from_core(status: nros_node::GoalStatus) -> nros_goal_status_t {
+    use nros_node::GoalStatus;
     match status {
         GoalStatus::Unknown => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
         GoalStatus::Accepted => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
