@@ -74,20 +74,28 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
        binary's PID so concurrent runs of different tests don't bleed.
 
 - [~] 92.4 — Build talker + listener for qemu_cortex_a9
-       `west build -b qemu_cortex_a9` succeeds for both binaries
-       (release profile, ~14 MB RAM, 0 errors). Boot banner does NOT
-       appear when launched via `qemu-system-xilinx-aarch64` —
-       suggests pre-kernel-init crash. Comparison points:
-       * `zephyr-lang-rust/samples/philosophers` (no networking,
-         no nros) boots clean.
-       * Our talker / listener with the prj.conf as shipped (POSIX_API,
-         NETWORKING, nros + nros-rmw-dds) goes silent.
-       Bisecting which prj.conf option triggers the silent crash is
-       the unresolved part. Likely candidates: `CONFIG_NETWORKING=y`
-       triggering Xilinx GEM init that hits a Zephyr/QEMU edge case;
-       `CONFIG_POSIX_API=y` interacting with the ARMv7-A SVC stack;
-       or some interaction between the `arm-zephyr-eabi` GCC and
-       Rust's `armv7a-none-eabi` link layout.
+       `west build -b qemu_cortex_a9` succeeds for both binaries.
+       **Bisection results (2026-04-26):** the silent boot is *not* a
+       prj.conf issue. Reduced the talker to a near-philosophers
+       config (no networking, no POSIX, no nros, just `zephyr` +
+       `printkln`) and the binary still didn't boot when:
+       * the example's `Cargo.toml` declared `edition = "2024"`, OR
+       * the example used a hand-rolled `extern "C" { fn printk(...); }`
+         shim instead of `zephyr::printkln!`.
+       After matching `samples/philosophers`'s Cargo.toml exactly
+       (`edition = "2021"`, `[build-dependencies] zephyr-build`, plus
+       a `build.rs` calling `zephyr_build::export_bool_kconfig()`),
+       and switching the source to `zephyr::printkln!`, **rust_main
+       runs**. So the breaker is somewhere in the
+       (edition-2024 / non-zephyr-build / non-printkln) corner that
+       all the existing `examples/zephyr/rust/{zenoh,xrce}/…` Cargo
+       manifests inherit. Open question: does this break
+       `qemu_cortex_a9` only, or does native_sim happen to mask it?
+       Native_sim still boots fine with the original config, so the
+       interaction is ARMv7-A-specific. Cosmetic: even when
+       rust_main runs, the Zephyr boot banner (`*** Booting Zephyr
+       OS build v3.7.0 ***`) doesn't appear — suspect chardev mux
+       buffering on qemu-system-xilinx-aarch64.
 
 - [ ] 92.5 — Talker↔listener interop validation
        Two QEMU instances on the same mcast group; listener's stdout
