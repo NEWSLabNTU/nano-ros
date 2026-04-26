@@ -5,7 +5,7 @@
  * Create service servers with nros_service_init(), take incoming
  * requests with nros_service_take_request(), and send responses with
  * nros_service_send_response().  For executor-driven dispatch, register
- * a @ref nros_service_callback_t at init time.
+ * a `nros_service_callback_t` at init time.
  */
 
 #ifndef NROS_SERVICE_H

@@ -34,7 +34,7 @@ extern "C" {
 
 /**
  * @brief Get a zero-initialized parameter server.
- * @return Zero-initialized @ref nros_param_server_t.
+ * @return Zero-initialized `nros_param_server_t`.
  */
 NROS_PUBLIC struct nros_param_server_t nros_param_server_get_zero_initialized(void);
 
@@ -316,7 +316,7 @@ NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t* server, const 
  *
  * @param server Pointer to an initialized parameter server.
  * @param name   Parameter name.
- * @return Parameter type, or @ref NROS_PARAMETER_NOT_SET if not found.
+ * @return Parameter type, or `NROS_PARAMETER_NOT_SET` if not found.
  */
 NROS_PUBLIC
 enum nros_parameter_type_t nros_param_get_type(const struct nros_param_server_t* server,

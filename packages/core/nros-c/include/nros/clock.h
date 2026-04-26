@@ -3,7 +3,7 @@
  * @brief Clock and time utilities.
  *
  * Provides clocks for reading wall-clock or monotonic time, and
- * arithmetic helpers for @ref nros_time_t and @ref nros_duration_t.
+ * arithmetic helpers for `nros_time_t` and `nros_duration_t`.
  */
 
 #ifndef NROS_CLOCK_H

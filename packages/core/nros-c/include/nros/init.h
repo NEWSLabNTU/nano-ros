@@ -2,7 +2,7 @@
  * @file init.h
  * @brief Library initialisation and support context.
  *
- * The support context (@ref nros_support_t) is the entry point for all
+ * The support context (`nros_support_t`) is the entry point for all
  * nros operations.  It manages the middleware session (zenoh-pico) and
  * must be initialised before any nodes, publishers, or subscriptions
  * are created.
