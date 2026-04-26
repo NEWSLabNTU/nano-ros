@@ -159,7 +159,7 @@ pub unsafe extern "C" fn nros_support_init_named(
     // Initialize the middleware session
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::SessionMode;
+        use nros_node::SessionMode;
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 

@@ -231,7 +231,7 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     // Create the internal publisher
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::{Session, TopicInfo};
+        use nros_node::{Session, TopicInfo};
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -330,7 +330,7 @@ pub unsafe extern "C" fn nros_publish_raw(
 
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::Publisher;
+        use nros_node::Publisher;
 
         let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
