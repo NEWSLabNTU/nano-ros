@@ -8,7 +8,7 @@ cbindgen). The audit found two categories essentially clean (magic
 numbers, manual size math) and four with concrete debt that should land
 as small, independently-mergeable PRs.
 
-**Status**: In Progress (Groups A, D, E3, E4 complete; E1/E2/F/B/G/C remaining)
+**Status**: In Progress (Groups A, B, D, E3, E4 complete; E1/E2/F/G/C remaining)
 **Priority**: Medium — none of these block users today, but several are
 direct repeat findings against phases that were marked Complete (Phase 83
 "thin-wrapper compliance"; Phase 87 "cbindgen-driven headers" per the
@@ -68,12 +68,19 @@ These are the 11 audit-confirmed sites where `nros-c` imports `nros_rmw` /
 its own PR: add a small surface to `nros-node`, then collapse the
 `nros-c`-side import.
 
-- [ ] 91.B1 — `nros-c/src/qos.rs:90` `to_qos_settings()` calls `nros_rmw::Qos*Policy` enums directly. Either move QoS conversion behind `nros-node` (preferred — `nros-node` already exposes a `QosSettings`) or re-export the enums from `nros-node::qos` to keep the import line one hop shallower
-- [ ] 91.B2 — `nros-c/src/lifecycle.rs:11` re-exports `LifecycleState` / `LifecycleTransition` / `TransitionResult` constants from `nros_core::lifecycle`. Phase 84.B4 moved the state-machine body to `nros_node::lifecycle`; these constants should follow
-- [ ] 91.B3 — `nros-c/src/publisher.rs:234,333` and `support.rs:162` reach into `nros_rmw::{Session, TopicInfo, Publisher, SessionMode}` from cfg-gated blocks. The cfg-block predates the unified `Executor::open` path; route through `nros_node::session` instead
-- [ ] 91.B4 — `nros-c/src/service.rs:{740,840,885,952}` four call sites use `nros_rmw::ServiceClientTrait` directly for `call_raw`. `nros-node`'s `Client::call` is the public interface; either expose a `call_raw` shim on `nros-node`'s `Client` or build a small `ServiceClientShim` in `nros-node` that `nros-c` can pin to
-- [ ] 91.B5 — `nros-c/src/action/server.rs:647` test-only `use nros_core::GoalStatus`. Re-export `GoalStatus` from `nros-node::action` so the test depends on the same path production code uses
-- [ ] 91.B6 — Collapse the ~14 hand-rolled `while len < MAX_*_LEN - 1 { ... }` C-string-copy loops (verified call sites: `publisher.rs:175,193,209`, `subscription.rs:167,185,201`, `node.rs:111,128`, `support.rs:134`, `service.rs:195,213,229,568,586,602`, `action/server.rs:336,354,370`, `action/client.rs:174,192`) into a single `fn copy_cstr<const N: usize>(src: *const c_char, dst: &mut [u8; N]) -> Result<usize, nros_ret_t>` helper in `nros-c/src/util.rs`. No behaviour change; pure DRY
+Implemented as a sequence: one *prep* commit adding all needed re-exports
+to `nros-node` (route is established once, then each per-file migration
+becomes a clean rename PR).
+
+- [x] 91.B-prep — Added `pub use nros_rmw::{Session, Publisher, Subscriber, ServiceClientTrait, ServiceServerTrait}`, `pub use nros_core::{CancelResponse, GoalId, GoalResponse, GoalStatus}`, `pub use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionResult}`, and (closer) `pub use nros_core::{CdrReader, CdrWriter, DeserError, SerError}` to `nros-node`. Pure additive; no caller renamed yet
+- [x] 91.B1 — `nros-c/src/qos.rs` migrated: `nros_rmw::{QosSettings, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy}` → `nros_node::*`. Pure path rename
+- [x] 91.B2 — `nros-c/src/lifecycle.rs:11` migrated: `nros_core::lifecycle::*` → `nros_node::*`. Pure path rename
+- [x] 91.B3 — `nros-c/src/publisher.rs:{234,333}` (`Session`, `TopicInfo`, `Publisher`) and `support.rs:162` (`SessionMode`) migrated to `nros_node::*`. Pure path rename
+- [x] 91.B4 — `nros-c/src/service.rs:{740,840,885,952}` (`ServiceClientTrait`) migrated to `nros_node::*`. Pure path rename
+- [x] 91.B5 — Migrated *all* (~30 sites, not just the audit-flagged test-only one): `nros_core::{GoalId, GoalStatus, GoalResponse, CancelResponse}` → `nros_node::*` across `executor.rs`, `action/server.rs`, `action/client.rs`. The audit's narrow read of B5 (one test-only `use`) was the tip of a much wider iceberg
+- [x] 91.B6 — Collapsed 15 hand-rolled `while len < MAX_*_LEN - 1 { ... }` C-string-copy loops across `publisher.rs`, `subscription.rs`, `node.rs`, `support.rs`, `service.rs`, `action/server.rs`, `action/client.rs` into a single `pub(crate) unsafe fn copy_cstr_into<const N: usize>(src, dst) -> usize` helper in new `nros-c/src/util.rs`. Required-string sites still check `if len == 0 { return INVALID_ARGUMENT; }`; optional-string sites just call it. Net: ~270 lines removed, ~50 added; the 5 init paths taking a TopicInfo-style triple now read in 6 lines instead of ~50
+
+After this group: `git grep -nE 'use (nros_rmw|nros_core)::' packages/core/nros-c/src/` returns **zero** hits — Group B's acceptance criterion is fully met.
 
 ### Group C — Wire `nros_generated.h` into the public include path
 
