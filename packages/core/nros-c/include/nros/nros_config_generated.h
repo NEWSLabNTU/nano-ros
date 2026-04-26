@@ -13,22 +13,22 @@
 * macros are deleted.
 */
 /** `size_of::<nros_node::Executor>()` */
-#define NROS_EXECUTOR_SIZE 16656
+#define NROS_EXECUTOR_SIZE 16784
 /** `size_of::<nros_node::GuardConditionHandle>()` */
-#define NROS_GUARD_CONDITION_SIZE 4
+#define NROS_GUARD_CONDITION_SIZE 8
 /** `size_of::<RmwPublisher>()` */
 #define NROS_PUBLISHER_SIZE 48
 /** `size_of::<RmwSubscriber>()` */
-#define NROS_SUBSCRIBER_SIZE 16
+#define NROS_SUBSCRIBER_SIZE 24
 /** `size_of::<RmwServiceClient>()` */
-#define NROS_SERVICE_CLIENT_SIZE 556
+#define NROS_SERVICE_CLIENT_SIZE 568
 /** `size_of::<RmwServiceServer>()` */
-#define NROS_SERVICE_SERVER_SIZE 280
+#define NROS_SERVICE_SERVER_SIZE 296
 /** `size_of::<RmwSession>()` */
 #define NROS_SESSION_SIZE 0
 /** `size_of::<LifecyclePollingNodeCtx>()` */
-#define NROS_LIFECYCLE_CTX_SIZE 32
+#define NROS_LIFECYCLE_CTX_SIZE 64
 /** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */
-#define NROS_ACTION_SERVER_INTERNAL_SIZE 48
+#define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 
 #endif /* NROS_CONFIG_GENERATED_H */
