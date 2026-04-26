@@ -110,12 +110,69 @@ fn port_default_unicast(domain_id: u32, participant_id: u32) -> u16 {
 const SPDP_MULTICAST_ADDRESS: [u8; 16] =
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 239, 255, 0, 1];
 
+/// Local interface IPv4 advertised in SPDP unicast locators. Set at
+/// build time via the `NROS_LOCAL_IPV4` env var (default `127.0.0.1`,
+/// which keeps the host-loopback test path on native_sim working
+/// unchanged). For Zephyr embedded targets, the
+/// `nros_cargo_build` CMake helper passes `CONFIG_NET_CONFIG_MY_IPV4_ADDR`
+/// through this env so each guest advertises its own iface IP.
+/// Phase 92.5 — without this, peer SEDP/data sends go to localhost on
+/// every guest and never cross.
+const LOCAL_IPV4: [u8; 4] = {
+    let s = env!("NROS_LOCAL_IPV4_BYTES");
+    let bytes = s.as_bytes();
+    // Tiny no-`alloc` parser: split by commas, parse each octet.
+    let mut out = [0u8; 4];
+    let mut i = 0;
+    let mut acc: u32 = 0;
+    let mut idx = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b',' {
+            out[idx] = acc as u8;
+            idx += 1;
+            acc = 0;
+        } else {
+            acc = acc * 10 + (b - b'0') as u32;
+        }
+        i += 1;
+    }
+    out[idx] = acc as u8;
+    out
+};
+
 /// Build an `Ipv4` locator from an explicit `[a, b, c, d]` address +
 /// port, using the IPv6-mapped layout that RTPS / dust-dds expects.
 fn ipv4_locator(addr: [u8; 4], port: u32) -> Locator {
     let mut full = [0u8; 16];
     full[12..16].copy_from_slice(&addr);
     Locator::new(LOCATOR_KIND_UDP_V4, port, full)
+}
+
+/// Format `[a, b, c, d]` as a NUL-terminated dotted-quad C string into
+/// `buf` (must be ≥ 16 bytes). Returns a `*const u8` that stays valid
+/// while `buf` is in scope.
+fn format_ipv4_cstring<P>(addr: &[u8; 4], buf: &mut [u8; 16]) -> *const u8 {
+    use core::fmt::Write;
+    struct Wr<'a> {
+        buf: &'a mut [u8; 16],
+        len: usize,
+    }
+    impl Write for Wr<'_> {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let bytes = s.as_bytes();
+            let cap = self.buf.len() - 1 - self.len;
+            let take = bytes.len().min(cap);
+            self.buf[self.len..self.len + take].copy_from_slice(&bytes[..take]);
+            self.len += take;
+            Ok(())
+        }
+    }
+    let mut w = Wr { buf, len: 0 };
+    let _ = core::write!(w, "{}.{}.{}.{}", addr[0], addr[1], addr[2], addr[3]);
+    w.buf[w.len] = 0;
+    let _ = ::core::marker::PhantomData::<fn() -> P>;
+    buf.as_ptr()
 }
 
 // ---------------------------------------------------------------------------
@@ -517,12 +574,12 @@ where
                 participant_id += 1;
             }
             let default_unicast_locator_list = if default_uc_sock.is_some() {
-                alloc::vec![ipv4_locator([127, 0, 0, 1], default_uc_port as u32)]
+                alloc::vec![ipv4_locator(LOCAL_IPV4, default_uc_port as u32)]
             } else {
                 Vec::new()
             };
             let metatraffic_unicast_locator_list = if metatraffic_uc_sock.is_some() {
-                alloc::vec![ipv4_locator([127, 0, 0, 1], metatraffic_uc_port as u32)]
+                alloc::vec![ipv4_locator(LOCAL_IPV4, metatraffic_uc_port as u32)]
             } else {
                 Vec::new()
             };
@@ -557,24 +614,27 @@ where
             }
 
             // ---- Outbound writer ------------------------------------
-            // `udp_open` builds the socket from the endpoint's
-            // `ai_family` (resolved by `create_endpoint`), so we need a
-            // real placeholder rather than a zero-initialised endpoint —
-            // otherwise platforms that deref `_iptcp` (e.g. POSIX) crash.
-            // `0.0.0.0:0` resolves to an unbound IPv4 DGRAM socket, which
-            // is exactly what `send` needs (per-call sendto with the
-            // real destination supplied each time).
+            // For IPv4 multicast TX, Zephyr's sendto needs the socket
+            // to have a known source interface. An unbound socket
+            // (0.0.0.0:0) gives sendto no source iface, so multicast
+            // destinations like 239.255.0.1 fail with -1. Bind the
+            // send socket to the local advertised IP (with port 0 for
+            // ephemeral) so the IP stack picks the right iface.
             let mut send_sock = OpaqueSocket::new();
             let mut send_ep = OpaqueEndpoint::new();
-            let any_addr = b"0.0.0.0\0".as_ptr();
+            // `LOCAL_IPV4` is set at build time from CONFIG_NET_CONFIG_MY_IPV4_ADDR
+            // (Phase 92.5). Format as a dotted-quad C string here.
+            let mut local_addr_buf = [0u8; 16];
+            let local_addr =
+                format_ipv4_cstring::<P>(&LOCAL_IPV4, &mut local_addr_buf);
             let any_port = port_cstring(0);
             if <P as PlatformUdp>::create_endpoint(
                 send_ep.as_mut_ptr(),
-                any_addr,
+                local_addr,
                 any_port.as_ptr(),
             ) >= 0
             {
-                let _ = <P as PlatformUdp>::open(send_sock.as_mut_ptr(), send_ep.as_ptr(), 0);
+                let _ = <P as PlatformUdp>::listen(send_sock.as_mut_ptr(), send_ep.as_ptr(), 1);
                 <P as PlatformUdp>::free_endpoint(send_ep.as_mut_ptr());
             }
             let writer = NrosMessageWriter::<P>::new(send_sock);

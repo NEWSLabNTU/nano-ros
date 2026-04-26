@@ -78,6 +78,17 @@ function(nros_set_cargo_env_from_kconfig)
     # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
     # C API limits are derived from MAX_CBS via Cargo `links` metadata.
     set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+
+    # DDS / RTPS — forward the static IPv4 address Zephyr's net_config
+    # is using as the participant's advertised unicast locator
+    # (Phase 92.5). nros-rmw-dds/build.rs reads this and embeds it
+    # into the binary so SPDP announcements carry the right address.
+    if(CONFIG_NROS_RMW_DDS AND CONFIG_NET_CONFIG_MY_IPV4_ADDR)
+        set(ENV{NROS_LOCAL_IPV4} "${CONFIG_NET_CONFIG_MY_IPV4_ADDR}")
+        message(STATUS "nros: NROS_LOCAL_IPV4=${CONFIG_NET_CONFIG_MY_IPV4_ADDR}")
+    else()
+        message(STATUS "nros: NROS_LOCAL_IPV4 default (DDS=${CONFIG_NROS_RMW_DDS} IP='${CONFIG_NET_CONFIG_MY_IPV4_ADDR}')")
+    endif()
 endfunction()
 
 # =============================================================================

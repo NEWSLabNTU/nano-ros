@@ -91,11 +91,15 @@ mod c {
         pub sin_zero: [u8; 8],
     }
 
-    /// `struct ip_mreq` — IPv4 multicast membership request.
+    /// `struct ip_mreqn` — IPv4 multicast membership request *with*
+    /// an interface index. Zephyr's `ipv4_multicast_group()` accepts
+    /// only this 12-byte form (it `optlen != sizeof(ip_mreqn)`-rejects
+    /// the shorter Linux `ip_mreq`).
     #[repr(C)]
-    pub struct ip_mreq {
+    pub struct ip_mreqn {
         pub imr_multiaddr: in_addr,
-        pub imr_interface: in_addr,
+        pub imr_address: in_addr,
+        pub imr_ifindex: c_int,
     }
 
     // Shutdown (Zephyr defines SHUT_RDWR = ZSOCK_SHUT_RDWR = 2)
@@ -903,9 +907,10 @@ impl ZephyrPlatform {
                 return -1;
             }
         };
-        let mreq = c::ip_mreq {
+        let mreq = c::ip_mreqn {
             imr_multiaddr: c::in_addr { s_addr: group },
-            imr_interface: c::in_addr { s_addr: c::INADDR_ANY_BE },
+            imr_address: c::in_addr { s_addr: c::INADDR_ANY_BE },
+            imr_ifindex: 0,
         };
         let join_ret = unsafe {
             c::setsockopt(
@@ -913,7 +918,7 @@ impl ZephyrPlatform {
                 c::IPPROTO_IP,
                 c::IP_ADD_MEMBERSHIP,
                 &mreq as *const _ as *const c_void,
-                core::mem::size_of::<c::ip_mreq>() as c::socklen_t,
+                core::mem::size_of::<c::ip_mreqn>() as c::socklen_t,
             )
         };
         if join_ret < 0 {

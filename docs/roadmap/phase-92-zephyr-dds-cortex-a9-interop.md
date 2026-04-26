@@ -157,17 +157,33 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
        **Listener also boots** and parks on "Waiting for messages on
        /chatter".
 
-       **Next blocker (92.5)**: cross-guest unicast routing.
-       `transport_nros.rs:520` hardcodes `[127, 0, 0, 1]` in the
-       advertised unicast locators. On native_sim this works because
-       both processes share the host kernel's loopback. On
-       qemu_cortex_a9 the two guests have distinct interfaces
-       (192.0.2.1 / 192.0.2.2); SPDP multicast discovery reaches the
-       peer, but the SEDP unicast reply goes to 127.0.0.1 on each
-       guest's own loopback and never crosses. Fix: replace the
-       hardcoded loopback with the actual interface IP — needs a
-       `<P as Platform...>::local_ipv4()` shim or a Kconfig string
-       passed through the build env.
+       **92.5 — partially landed**: locator IPv4 now sourced at build
+       time from `CONFIG_NET_CONFIG_MY_IPV4_ADDR` via a new
+       `nros-rmw-dds/build.rs` (reads the path supplied by Zephyr's
+       `DOTCONFIG` env var since `rust_cargo_application()` doesn't
+       forward arbitrary env vars to cargo). Talker advertises
+       192.0.2.1, listener 192.0.2.2.
+
+       **Mcast IGMP join fix**: Zephyr's `ipv4_multicast_group()`
+       requires the 12-byte `struct ip_mreqn` (not the Linux 8-byte
+       `ip_mreq`). Fixed `nros-platform-zephyr` mcast_listen to use
+       the right struct with `imr_ifindex = 0`. Listener now
+       successfully joins the SPDP multicast group.
+
+       **Remaining 92.5 blocker — multicast TX from Zephyr**:
+       Talker calls `sendto(send_sock, dgram, 239.255.0.1:7400)` →
+       returns `-1`. Three diagnostics confirmed:
+       * `write_message` is reached, locator list contains
+         `239.255.0.1:7400` ✓
+       * Send socket bound to `192.0.2.1:0` (instead of 0.0.0.0:0
+         placeholder) ✓
+       * Host-side mcast watcher only sees IPv6 link-local (MLD/NS)
+         frames — no IPv4 multicast leaving the talker.
+
+       Most likely cause: Zephyr's outbound multicast routing needs
+       `IP_MULTICAST_IF` setsockopt on the send socket, OR the send
+       socket needs to be the same one that did `IP_ADD_MEMBERSHIP`.
+       Investigation needs another session.
 
        **Bisection results (2026-04-26):** the silent boot was *not* a
        prj.conf issue. Reduced the talker to a near-philosophers

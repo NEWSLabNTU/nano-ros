@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 description = "DDS/RTPS RMW backend for nros (via dust-dds)"
 publish = false  # depends on unpublished dust-dds fork
+build = "build.rs"
 
 [features]
 default = []
