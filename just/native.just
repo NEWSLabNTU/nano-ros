@@ -36,6 +36,70 @@ build:
     done
     echo "All examples built!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building native test fixtures..."
+    # Talker is built with `--features param-services` so the params tests
+    # see "Counter start value: 0" when the talker reads its declared param.
+    # Same binary path as the default-feature talker, just feature-augmented.
+    echo "  → native/rust/zenoh/talker (--features param-services)"
+    ( cd examples/native/rust/zenoh/talker && \
+      cargo build --release --features param-services --quiet )
+    examples=(
+        native/rust/zenoh/listener
+        native/rust/zenoh/lifecycle-node
+        native/rust/zenoh/custom-msg
+        native/rust/zenoh/service-server
+        native/rust/zenoh/service-client
+        native/rust/zenoh/action-server
+        native/rust/zenoh/action-client
+        native/rust/zenoh/rtic-talker
+        native/rust/zenoh/rtic-listener
+        native/rust/zenoh/rtic-service-server
+        native/rust/zenoh/rtic-service-client
+        native/rust/zenoh/rtic-action-server
+        native/rust/zenoh/rtic-action-client
+        native/rust/zenoh/stress-test
+        native/rust/zenoh/fairness-bench
+        native/rust/xrce/talker
+        native/rust/xrce/listener
+        native/rust/xrce/service-server
+        native/rust/xrce/service-client
+        native/rust/xrce/action-server
+        native/rust/xrce/action-client
+        native/rust/xrce/large-msg-test
+        native/rust/xrce/serial-talker
+        native/rust/xrce/serial-listener
+        native/rust/xrce/stress-test
+        native/rust/dds/talker
+        native/rust/dds/listener
+    )
+    for ex in "${examples[@]}"; do
+        echo "  → $ex"
+        ( cd "examples/$ex" && cargo build --release --quiet ) &
+    done
+    wait
+    echo "  → native/rust/zenoh/{talker,listener} (--features link-tls)"
+    ( cd examples/native/rust/zenoh/talker && \
+      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+    ( cd examples/native/rust/zenoh/listener && \
+      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+    wait
+    echo "  → native/rust/zenoh/{talker,listener} (--features safety-e2e)"
+    ( cd examples/native/rust/zenoh/talker && \
+      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
+    ( cd examples/native/rust/zenoh/listener && \
+      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
+    wait
+    echo "  → native/rust/zenoh/listener (--features unstable-zenoh-api)"
+    ( cd examples/native/rust/zenoh/listener && \
+      cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
+    echo "  → native/rust/zenoh/stress-test (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
+    ( cd examples/native/rust/zenoh/stress-test && \
+      ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )
+
 # Format all Rust examples (auto-discovered, parallel)
 format:
     #!/usr/bin/env bash

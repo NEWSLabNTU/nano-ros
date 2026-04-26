@@ -551,6 +551,11 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/talker");
             let target_dir = example_dir.join("target-safety");
+            let binary_path = target_dir.join("release/talker");
+
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/talker (safety-e2e)...");
 
@@ -576,7 +581,6 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/talker");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found after build: {}",
@@ -599,6 +603,11 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-safety");
+            let binary_path = target_dir.join("release/listener");
+
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/listener (safety-e2e)...");
 
@@ -624,7 +633,6 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/listener");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found after build: {}",
@@ -663,6 +671,11 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-zero-copy");
+            let binary_path = target_dir.join("release/listener");
+
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/listener (zero-copy)...");
 
@@ -688,7 +701,6 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/listener");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found after build: {}",
@@ -1300,6 +1312,11 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/zenoh/stress-test");
             let target_dir = example_dir.join("target-large-buf");
+            let binary_path = target_dir.join("release/zenoh-stress-test");
+
+            if let Some(result) = require_prebuilt_binary(&binary_path) {
+                return result;
+            }
 
             eprintln!("Building native/rust/zenoh/stress-test (large-buf)...");
 
@@ -1324,7 +1341,6 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = target_dir.join("release/zenoh-stress-test");
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Binary not found: {}",

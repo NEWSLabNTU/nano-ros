@@ -67,6 +67,45 @@ build:
     done
     echo "ThreadX Linux examples built!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+# Mirrors the cmake -D set used by the test fixture builders in
+# `nros_tests::fixtures::binaries::threadx_linux::build_cmake_example`.
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if [ -z "${THREADX_DIR:-}" ] && [ ! -d third-party/threadx/kernel ]; then
+        echo "ThreadX-Linux skip: THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
+    fi
+    echo "Building ThreadX-Linux test fixtures..."
+    root="$(pwd)"
+    cmake_pfx="$root/build/install"
+    threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
+    nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
+    config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-threadx-linux/config}"
+    app_define="$root/packages/boards/nros-threadx-linux/c/app_define.c"
+    rust_examples=(talker listener service-server service-client action-server action-client)
+    for ex in "${rust_examples[@]}"; do
+        echo "  → threadx-linux/rust/$ex"
+        ( cd "examples/threadx-linux/rust/zenoh/$ex" && cargo build --release --quiet )
+    done
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            dir="examples/threadx-linux/$lang/zenoh/$ex"
+            [ ! -d "$dir" ] && continue
+            echo "  → threadx-linux/$lang/$ex (cmake)"
+            cmake -S "$dir" -B "$dir/build" \
+                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
+                -DNANO_ROS_PLATFORM=threadx_linux \
+                -DTHREADX_DIR="$threadx_dir" \
+                -DNSOS_NETX_DIR="$nsos_netx_dir" \
+                -DTHREADX_CONFIG_DIR="$config_dir" \
+                -DTHREADX_APP_DEFINE="$app_define" \
+                -DCMAKE_BUILD_TYPE=Release > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
+
 # Run ThreadX Linux integration tests
 test verbose="":
     #!/usr/bin/env bash

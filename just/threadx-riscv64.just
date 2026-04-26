@@ -90,6 +90,52 @@ build:
     done
     echo "ThreadX QEMU RISC-V examples built!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+# Mirrors the cmake -D set used by the test fixture builders in
+# `nros_tests::fixtures::binaries::threadx_riscv64::build_cmake_example`.
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+        echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
+    fi
+    echo "Building ThreadX-RV64 test fixtures..."
+    root="$(pwd)"
+    cmake_pfx="$root/build/install"
+    toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
+    threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
+    netx_dir="${NETX_DIR:-$root/third-party/threadx/netxduo}"
+    config_dir="$root/packages/boards/nros-threadx-qemu-riscv64/config"
+    board_dir="$root/packages/boards/nros-threadx-qemu-riscv64/c"
+    virtio_dir="$root/packages/drivers/virtio-net-netx"
+    rust_examples=(talker listener service-server service-client action-server action-client)
+    for ex in "${rust_examples[@]}"; do
+        echo "  → threadx-rv64/rust/$ex"
+        # threadx-netx-sys/build.rs needs the rv64-specific NetX port headers,
+        # not the threadx-linux defaults exported by the top-level justfile.
+        ( cd "examples/qemu-riscv64-threadx/rust/zenoh/$ex" && \
+          THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+          cargo build --release --quiet )
+    done
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → threadx-rv64/$lang/$ex (cmake)"
+            dir="examples/qemu-riscv64-threadx/$lang/zenoh/$ex"
+            cmake -S "$dir" -B "$dir/build" \
+                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
+                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                -DNANO_ROS_PLATFORM=threadx_riscv64 \
+                -DTHREADX_DIR="$threadx_dir" \
+                -DNETX_DIR="$netx_dir" \
+                -DTHREADX_CONFIG_DIR="$config_dir" \
+                -DTHREADX_BOARD_DIR="$board_dir" \
+                -DVIRTIO_DRIVER_DIR="$virtio_dir" \
+                -DCMAKE_BUILD_TYPE=Release > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
+
 # Run ThreadX QEMU RISC-V 64 integration tests
 test verbose="":
     #!/usr/bin/env bash

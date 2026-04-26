@@ -78,6 +78,34 @@ build:
     done
     echo "FreeRTOS QEMU examples built!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
+    fi
+    echo "Building FreeRTOS test fixtures..."
+    rust_examples=(talker listener service-server service-client action-server action-client)
+    for ex in "${rust_examples[@]}"; do
+        echo "  → freertos/rust/$ex"
+        ( cd "examples/qemu-arm-freertos/rust/zenoh/$ex" && cargo build --release --quiet )
+    done
+    cmake_pfx="$(pwd)/build/install"
+    toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → freertos/$lang/$ex (cmake)"
+            dir="examples/qemu-arm-freertos/$lang/zenoh/$ex"
+            cmake -S "$dir" -B "$dir/build" \
+                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
+                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                -DCMAKE_BUILD_TYPE=Release > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
+
 # Run FreeRTOS QEMU integration tests
 test verbose="":
     #!/usr/bin/env bash

@@ -18,6 +18,25 @@ build:
     # Also build qemu-smoltcp-bridge (library in packages/reference/)
     (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
 
+# Build all example binaries used as test fixtures (bare-metal Rust).
+# Skips cleanly if the ARM cross-toolchain is missing.
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
+    fi
+    echo "Building QEMU bare-metal test fixtures..."
+    for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
+                       -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+        dir="$(dirname "$toml")"
+        echo "  → $dir"
+        ( cd "$dir" && cargo build --release --quiet )
+    done
+    # qemu-smoltcp-bridge: native lib that bridges QEMU's serial port to a
+    # smoltcp socket, used by some serial-mode bare-metal tests.
+    ( cd packages/reference/qemu-smoltcp-bridge && cargo build --release --quiet )
+
 # Run all QEMU tests (non-networked)
 test verbose="":
     #!/usr/bin/env bash

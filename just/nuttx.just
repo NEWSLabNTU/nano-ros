@@ -56,6 +56,39 @@ build:
     done
     echo "NuttX QEMU examples built!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
+    fi
+    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
+        echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    fi
+    echo "Building NuttX test fixtures..."
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    cmake_pfx="$(pwd)/build/install"
+    rust_examples=(talker listener service-server service-client action-server action-client)
+    for ex in "${rust_examples[@]}"; do
+        echo "  → nuttx/rust/$ex"
+        ( cd "examples/qemu-arm-nuttx/rust/zenoh/$ex" && \
+          CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
+          cargo build --release --quiet )
+    done
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → nuttx/$lang/$ex (cmake)"
+            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
+            cmake -S "$dir" -B "$dir/build" \
+                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
+                -DNUTTX_DIR="$nuttx_dir" \
+                -DCMAKE_BUILD_TYPE=Release > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
+
 # Run NuttX QEMU integration tests
 test verbose="":
     #!/usr/bin/env bash

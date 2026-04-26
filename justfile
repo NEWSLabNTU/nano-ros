@@ -33,6 +33,7 @@ mod threadx_riscv64 'just/threadx-riscv64.just'
 mod zephyr 'just/zephyr.just'
 mod esp32 'just/esp32.just'
 mod qemu 'just/qemu-baremetal.just'
+mod stm32f4 'just/stm32f4.just'
 mod native 'just/native.just'
 mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
@@ -242,203 +243,16 @@ test verbose="": build-zenohd
 #
 # Direct `cargo nextest run …` flows can opt back into in-test
 # building via `NROS_TESTS_BUILD_ON_DEMAND=1`.
-build-test-fixtures: _build-fixtures-native _build-fixtures-freertos _build-fixtures-nuttx _build-fixtures-threadx-linux _build-fixtures-threadx-rv64 _build-fixtures-zephyr
+build-test-fixtures:
+    just native build-fixtures
+    just qemu build-fixtures
+    just freertos build-fixtures
+    just nuttx build-fixtures
+    just threadx_linux build-fixtures
+    just threadx_riscv64 build-fixtures
+    just zephyr build-fixtures
+    just stm32f4 build-fixtures
     @echo "All test fixtures built."
-
-# Native cargo examples (nano2nano, native_api, lifecycle, custom-msg, …).
-_build-fixtures-native:
-    #!/usr/bin/env bash
-    set -e
-    echo "Building native test fixtures..."
-    examples=(
-        native/rust/zenoh/talker
-        native/rust/zenoh/listener
-        native/rust/zenoh/lifecycle-node
-        native/rust/zenoh/custom-msg
-        native/rust/zenoh/service-server
-        native/rust/zenoh/service-client
-        native/rust/zenoh/action-server
-        native/rust/zenoh/action-client
-        native/rust/zenoh/rtic-talker
-        native/rust/zenoh/rtic-listener
-        native/rust/zenoh/rtic-service-server
-        native/rust/zenoh/rtic-service-client
-        native/rust/zenoh/rtic-action-server
-        native/rust/zenoh/rtic-action-client
-    )
-    for ex in "${examples[@]}"; do
-        echo "  → $ex"
-        ( cd "examples/$ex" && cargo build --release --quiet ) &
-    done
-    wait
-    echo "  → native/rust/zenoh/{talker,listener} (--features link-tls)"
-    ( cd examples/native/rust/zenoh/talker && \
-      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
-    ( cd examples/native/rust/zenoh/listener && \
-      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
-    wait
-    echo "  → native/rust/zenoh/{talker,listener} (--features safety-e2e)"
-    ( cd examples/native/rust/zenoh/talker && \
-      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
-    ( cd examples/native/rust/zenoh/listener && \
-      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
-    wait
-    echo "  → native/rust/zenoh/listener (--features unstable-zenoh-api)"
-    ( cd examples/native/rust/zenoh/listener && \
-      cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
-
-# FreeRTOS QEMU ARM examples (Rust + C + C++).
-_build-fixtures-freertos:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
-    fi
-    echo "Building FreeRTOS test fixtures..."
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → freertos/rust/$ex"
-        ( cd "examples/qemu-arm-freertos/rust/zenoh/$ex" && cargo build --release --quiet )
-    done
-    cmake_pfx="$(pwd)/build/install"
-    toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
-    cmake_examples=(talker listener service-server service-client action-server action-client)
-    for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → freertos/$lang/$ex (cmake)"
-            dir="examples/qemu-arm-freertos/$lang/zenoh/$ex"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
-        done
-    done
-
-# NuttX QEMU ARM examples (Rust + C + C++).
-_build-fixtures-nuttx:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
-    fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
-    fi
-    echo "Building NuttX test fixtures..."
-    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    cmake_pfx="$(pwd)/build/install"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → nuttx/rust/$ex"
-        ( cd "examples/qemu-arm-nuttx/rust/zenoh/$ex" && \
-          CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-          cargo build --release --quiet )
-    done
-    cmake_examples=(talker listener service-server service-client action-server action-client)
-    for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → nuttx/$lang/$ex (cmake)"
-            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                -DNUTTX_DIR="$nuttx_dir" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
-        done
-    done
-
-# ThreadX Linux sim examples (Rust + C + C++).
-_build-fixtures-threadx-linux:
-    #!/usr/bin/env bash
-    set -e
-    if [ -z "${THREADX_DIR:-}" ] && [ ! -d third-party/threadx/kernel ]; then
-        echo "ThreadX-Linux skip: THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
-    fi
-    echo "Building ThreadX-Linux test fixtures..."
-    cmake_pfx="$(pwd)/build/install"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → threadx-linux/rust/$ex"
-        ( cd "examples/threadx-linux/rust/zenoh/$ex" && cargo build --release --quiet )
-    done
-    cmake_examples=(talker listener service-server service-client)
-    for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → threadx-linux/$lang/$ex (cmake)"
-            dir="examples/threadx-linux/$lang/zenoh/$ex"
-            [ ! -d "$dir" ] && continue
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
-        done
-    done
-
-# ThreadX QEMU RISC-V64 examples (Rust + C + C++).
-_build-fixtures-threadx-rv64:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
-        echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
-    fi
-    echo "Building ThreadX-RV64 test fixtures..."
-    cmake_pfx="$(pwd)/build/install"
-    toolchain="$(pwd)/cmake/toolchain/riscv64-threadx.cmake"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → threadx-rv64/rust/$ex"
-        ( cd "examples/qemu-riscv64-threadx/rust/zenoh/$ex" && cargo build --release --quiet )
-    done
-    cmake_examples=(talker listener service-server service-client action-server action-client)
-    for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → threadx-rv64/$lang/$ex (cmake)"
-            dir="examples/qemu-riscv64-threadx/$lang/zenoh/$ex"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
-        done
-    done
-
-# Zephyr native_sim + QEMU examples driven via west.
-_build-fixtures-zephyr:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr skip: west not found"; exit 0
-    fi
-    workspace="$(realpath ../nano-ros-workspace 2>/dev/null || echo "")"
-    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr skip: ../nano-ros-workspace not set up (run \`just zephyr setup\`)"
-        exit 0
-    fi
-    echo "Building Zephyr test fixtures..."
-    cmake_pfx="$(pwd)/build/install"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → zephyr/rust/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/rust/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    for ex in talker listener; do
-        echo "  → zephyr/cpp/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    for ex in service-server service-client action-server action-client; do
-        echo "  → zephyr/cpp/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
-    done
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen

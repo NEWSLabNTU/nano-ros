@@ -60,6 +60,59 @@ build:
     done
     echo "Zephyr Rust examples built successfully!"
 
+# Build all example binaries used as test fixtures (Rust + C + C++).
+build-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr skip: west not found"; exit 0
+    fi
+    workspace="$(realpath ../nano-ros-workspace 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr skip: ../nano-ros-workspace not set up (run \`just zephyr setup\`)"
+        exit 0
+    fi
+    echo "Building Zephyr test fixtures..."
+    cmake_pfx="$(pwd)/build/install"
+    rust_examples=(talker listener service-server service-client action-server action-client)
+    for ex in "${rust_examples[@]}"; do
+        echo "  → zephyr/rust/$ex"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/rust/zenoh/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
+    for ex in talker listener; do
+        echo "  → zephyr/cpp/$ex"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
+    for ex in service-server service-client action-server action-client; do
+        echo "  → zephyr/cpp/$ex"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
+    done
+    # Zephyr XRCE-DDS examples (talker + listener for both Rust and C).
+    # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
+    for ex in talker listener; do
+        echo "  → zephyr/rust/xrce/$ex"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-xrce-rs-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/rust/xrce/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
+    for ex in talker listener; do
+        echo "  → zephyr/c/xrce/$ex"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-xrce-c-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/c/xrce/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
+
 # Build Zephyr C examples
 build-c:
     #!/usr/bin/env bash
