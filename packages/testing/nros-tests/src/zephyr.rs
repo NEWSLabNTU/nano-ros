@@ -611,6 +611,19 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         "-DCMAKE_PREFIX_PATH={}",
         root.join("build/install").display()
     );
+
+    // Pre-create the per-build XDG cache directory. Zephyr's
+    // `find_appropriate_cache_directory` (cmake/modules/user_cache.cmake)
+    // probes XDG_CACHE_HOME with `dir_is_writeable.py`, which uses
+    // `os.access(path, W_OK)` — that returns False for a non-existent
+    // path. So an unset-up `XDG_CACHE_HOME=<workspace>/<build>-cache`
+    // silently falls through to `$HOME/.cache/zephyr`, which all
+    // parallel tests then share, causing the picolibc try_compile race.
+    // Materialising the dir here keeps each `west build` on its own
+    // toolchain capability database.
+    let xdg_cache = workspace.join(format!("{}-cache", build_dir));
+    let _ = std::fs::create_dir_all(&xdg_cache);
+
     let output = Command::new("west")
         .args([
             "build",
@@ -626,6 +639,14 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         .current_dir(&workspace)
         .env("ZEPHYR_BASE", workspace.join("zephyr"))
         .env("PATH", &path_env)
+        // Per-build XDG cache dir so the Zephyr toolchain capability
+        // database (~/.cache/zephyr/ToolchainCapabilityDatabase) and
+        // the picolibc try_compile temp don't race when multiple
+        // `west build` invocations run concurrently under nextest. The
+        // shared cache caused fast TRY 1/2/3 failures with
+        // `ninja: error: loading 'build.ninja': No such file or directory`
+        // during picolibc.cmake's `try_compile`. Pre-created above.
+        .env("XDG_CACHE_HOME", &xdg_cache)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

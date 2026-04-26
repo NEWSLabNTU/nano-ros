@@ -582,6 +582,7 @@ dependencies = [
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "nros-serdes",
+ "paste",
 ]
 
 [[package]]
@@ -627,12 +628,20 @@ dependencies = [
 name = "nros-platform"
 version = "0.1.0"
 dependencies = [
+ "nros-platform-api",
  "nros-platform-zephyr",
 ]
 
 [[package]]
+name = "nros-platform-api"
+version = "0.1.0"
+
+[[package]]
 name = "nros-platform-zephyr"
 version = "0.1.0"
+dependencies = [
+ "nros-platform-api",
+]
 
 [[package]]
 name = "nros-rmw"

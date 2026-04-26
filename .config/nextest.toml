@@ -136,10 +136,26 @@ max-threads = 3
 # the `zephyr` binary has MULTIPLE tests per (variant, lang) — they
 # still share a single port and must stay serial WITHIN their
 # (variant, lang) sub-group. The six sub-groups × max=1 × outer
-# max=6 give us full cross-slot parallelism while keeping within-slot
-# serialization. Overall cap = 6 (3 variants × 2 langs).
+# max=N give us cross-slot parallelism while keeping within-slot
+# serialization.
+#
+# Phase 89.14 follow-up: dropped the outer cap from 6 → 1.
+# Even with per-build `XDG_CACHE_HOME` redirection (each `west build`
+# gets its own toolchain capability database + ccache), parallel
+# cmake configures consistently corrupt the per-test
+# `<build>/Kconfig/soc/Kconfig.soc` file with truncated `osource`
+# lines, plus race in picolibc.cmake's `try_compile` (ninja
+# `recompact` on a not-yet-emitted build.ninja). The `file(WRITE)` /
+# `file(APPEND)` calls in `zephyr/cmake/modules/hwm_v2.cmake` aren't
+# crash-safe under host I/O pressure when 3+ cmake processes are
+# all writing to (different but I/O-pressured) output dirs. Drop
+# the outer cap to 1 — costs wall-clock but eliminates the flakes.
+# The per-(variant, lang) sub-groups (`qemu-zephyr-*`) are already
+# `max-threads = 1`, so this only changes the smoke/build/availability
+# tests in the fall-through. Tune up if/when the parallel cmake
+# state corruption is fixed upstream in Zephyr.
 [test-groups.qemu-zephyr]
-max-threads = 6
+max-threads = 1
 
 [test-groups.qemu-zephyr-pubsub-rust]
 max-threads = 1
@@ -391,6 +407,19 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(native_api)"
 test-group = "native_api"
+# Phase 89.14 follow-up: tests in `native_api` build native cargo example
+# binaries (talker/listener/rtic-action) inside the test body. On a cold
+# `target/`, those builds easily exceed the 60 s default ceiling because
+# multiple parallel tests contend on the same target dir. 5×60 s = 300 s
+# accommodates cold-start with concurrent cargo invocations.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Phase 89.14 follow-up: same rationale as native_api — `nano2nano` tests
+# build native examples (rtic-action-server/client, link-tls talker, etc.)
+# inside the test body and cold-start under load can blow past 60 s.
+[[profile.default.overrides]]
+filter = "binary(nano2nano)"
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [[profile.default.overrides]]
 filter = "binary(xrce)"
