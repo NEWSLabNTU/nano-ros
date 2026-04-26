@@ -737,7 +737,7 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
 
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::ServiceClientTrait;
+        use nros_node::ServiceClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -837,7 +837,7 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
     }
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::ServiceClientTrait;
+        use nros_node::ServiceClientTrait;
 
         let client_ref = &*client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -882,7 +882,7 @@ pub unsafe extern "C" fn nros_client_send_request_async(
 
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::ServiceClientTrait;
+        use nros_node::ServiceClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -949,7 +949,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
 
     #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        use nros_rmw::ServiceClientTrait;
+        use nros_node::ServiceClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
