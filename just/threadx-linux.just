@@ -79,11 +79,7 @@ test verbose="":
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just threadx-linux setup"
         exit 1
     fi
-    args=(-p nros-tests --test threadx_linux --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${args[@]}"
+    just _nextest-platform threadx_linux '{{verbose}}'
 
 # Run all ThreadX Linux tests including networked E2E
 test-all verbose="":

@@ -90,11 +90,7 @@ test verbose="":
         echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
         exit 1
     fi
-    args=(-p nros-tests --test freertos_qemu --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${args[@]}"
+    just _nextest-platform freertos_qemu '{{verbose}}'
 
 # Run all FreeRTOS tests including networked E2E
 test-all verbose="":

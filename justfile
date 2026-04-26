@@ -126,6 +126,19 @@ test-unit verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Shared helper: run a single nros-tests integration test binary with the
+# standard verbose-flag handling. Used by per-platform `test` / `test-all`
+# recipes in just/<platform>.just so the args/verbose boilerplate lives in
+# one place.
+_nextest-platform test_name verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --test {{test_name}} --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.
 # This catches drift between rustdoc examples and the real API.

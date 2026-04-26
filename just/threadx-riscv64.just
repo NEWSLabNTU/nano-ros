@@ -105,11 +105,7 @@ test verbose="":
     rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
     export THREADX_CONFIG_DIR="$rv_config"
     export NETX_CONFIG_DIR="$rv_config"
-    args=(-p nros-tests --test threadx_riscv64_qemu --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${args[@]}"
+    just _nextest-platform threadx_riscv64_qemu '{{verbose}}'
 
 # Run all ThreadX RISC-V tests including networked E2E
 test-all verbose="":

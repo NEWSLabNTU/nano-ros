@@ -64,11 +64,7 @@ test verbose="":
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just nuttx setup"
         exit 1
     fi
-    args=(-p nros-tests --test nuttx_qemu --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${args[@]}"
+    just _nextest-platform nuttx_qemu '{{verbose}}'
 
 # Run all NuttX tests including networked E2E
 test-all verbose="":
