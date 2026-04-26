@@ -1,0 +1,145 @@
+# Phase 91: Code Antipattern Fixup
+
+**Goal**: Resolve the antipatterns surfaced by the April 2026 cross-cutting
+code audit. Six antipattern categories were swept (hardcoded paths /
+references to the source tree, magic numbers, manual size math, non-thin
+C/C++ wrappers, duplicated functions, C/C++ mirrors not backed by
+cbindgen). The audit found two categories essentially clean (magic
+numbers, manual size math) and four with concrete debt that should land
+as small, independently-mergeable PRs.
+
+**Status**: In Progress (Groups A, D, E3, E4 complete; E1/E2/F/B/G/C remaining)
+**Priority**: Medium — none of these block users today, but several are
+direct repeat findings against phases that were marked Complete (Phase 83
+"thin-wrapper compliance"; Phase 87 "cbindgen-driven headers" per the
+CLAUDE.md narrative). Letting the gap widen invites the same audit to
+re-fire in three months.
+**Depends on**: None. Group B (thin-wrapper follow-ups) overlaps in spirit
+with Phase 84 Group B; if the Phase 84 backlog reopens, fold these items
+in there instead of duplicating.
+
+## Overview
+
+The audit ran six parallel sweeps with the explicit framing "find concrete
+antipatterns, don't speculate." Findings:
+
+| Category | Status |
+|---|---|
+| Hardcoded paths / source-tree refs | Debt — 4 `/tmp/` sites in test code, 11+ port-7447 literals in zenoh integration tests |
+| Magic numbers | Clean — buffer sizes, port table, CDR constants, stack sizes all named |
+| Manual size math | Mostly clean — two documented fallbacks (Phase 77.23 LTO probe failure + Phase 87 transitional executor upper bound), both compile-time-asserted |
+| Non-thin C/C++ wrappers | Debt — `nros-c` directly imports `nros_rmw` / `nros_core` from 7 sites; `~14` repeated string-copy loops; hand-defined entity structs |
+| Duplicated / similar functions | Debt — platform `seed()` copy across freertos+threadx; ThreadX cmake support files; C++ example startup boilerplate; service/client setup parallels in `nros-node` |
+| C/C++ mirrors not backed by cbindgen | Debt — `nros_generated.h` is generated for "drift detection" only; real per-module headers (`executor.h`, `publisher.h`, `service.h`, `node.h`, `subscription.h`, `timer.h`, `client.h`, `lifecycle.h`, `init.h`, `guard_condition.h`) hand-define every entity struct |
+
+Two surprising results worth recording:
+
+1. **`nros_generated.h` is dead code from the consumer's perspective.** It is
+   produced by `cbindgen` during `cargo build` (per `nros-c/build.rs:225`
+   and `cbindgen.toml`), `.gitignore`d, and not `#include`d anywhere — the
+   `Doxyfile` (`Doxyfile:10`) explicitly excludes it as an "internal cbindgen
+   artifact for drift detection." This is the opposite of the model
+   described in `CLAUDE.md` ("`nros_generated.h` is included by thin
+   per-module header stubs"). Either CLAUDE.md should reflect reality
+   (cbindgen-as-a-linter) or the per-module headers should actually source
+   their struct definitions from the generated file. This phase picks the
+   latter.
+2. **Phase 83's "thin wrapper" claim is partially false.** The audit found
+   `use nros_rmw::*` / `use nros_core::*` imports inside `nros-c` at 11
+   distinct call sites (verified: `cdr.rs:9`, `qos.rs:90`, `lifecycle.rs:11`,
+   `publisher.rs:234,333`, `support.rs:162`, `service.rs:740,840,885,952`,
+   `action/server.rs:647`). These should funnel through `nros-node` per the
+   stated principle. Phase 84.B2 already moved the bulk of CDR to
+   `nros-serdes`; the remaining 11 sites are smaller surgical extractions.
+
+## Work Items
+
+### Group A — Hardcoded paths and ports
+
+- [x] 91.A1 — Replaced 3 `PathBuf::from("/tmp/test*")` sites in `cache.rs` with `tempfile::tempdir()` (already a dep). The remaining `PathBuf::from("/nonexistent/path")` in `test_is_valid_output_missing` is intentional — that test exists to prove `is_valid` returns false on a missing dir
+- [x] 91.A2 — Added `const ROUTER_LOCATOR: &str = "tcp/127.0.0.1:7447"` and replaced 6 in-body locator literals + 1 `eprintln!` setup hint. Remaining 5 occurrences are inside `#[ignore = "..."]` attributes (Rust attributes don't accept const substitution) and 1 doc comment. All 4 non-router tests pass; the 5 router-required tests stay properly `#[ignore]`d
+- [x] 91.A3 — Confirmed: vendored upstream `/tmp/serial_fifo` literals stay as-is. Recorded as upstream debt; no fork
+- [x] 91.A4 — Verified: `nuttx-support.cmake:39` uses `NanoRos_DIR` install-prefix from `find_package` — portable, no change needed. `freertos-support.cmake:23–32` does default `FREERTOS_DIR`/`LWIP_DIR` to `${_NROS_ROOT}/third-party/...` (env-var override always wins, so in-tree builds work). Technically violates the relocatable-example rule but only triggers when env var is unset. Left as-is for this phase; flagged for cmake-helper consolidation in Group E1
+
+### Group B — `nros-c` thin-wrapper follow-ups (extends Phase 83 / 84.B)
+
+These are the 11 audit-confirmed sites where `nros-c` imports `nros_rmw` /
+`nros_core` directly instead of going through `nros-node`. Each item lands
+its own PR: add a small surface to `nros-node`, then collapse the
+`nros-c`-side import.
+
+- [ ] 91.B1 — `nros-c/src/qos.rs:90` `to_qos_settings()` calls `nros_rmw::Qos*Policy` enums directly. Either move QoS conversion behind `nros-node` (preferred — `nros-node` already exposes a `QosSettings`) or re-export the enums from `nros-node::qos` to keep the import line one hop shallower
+- [ ] 91.B2 — `nros-c/src/lifecycle.rs:11` re-exports `LifecycleState` / `LifecycleTransition` / `TransitionResult` constants from `nros_core::lifecycle`. Phase 84.B4 moved the state-machine body to `nros_node::lifecycle`; these constants should follow
+- [ ] 91.B3 — `nros-c/src/publisher.rs:234,333` and `support.rs:162` reach into `nros_rmw::{Session, TopicInfo, Publisher, SessionMode}` from cfg-gated blocks. The cfg-block predates the unified `Executor::open` path; route through `nros_node::session` instead
+- [ ] 91.B4 — `nros-c/src/service.rs:{740,840,885,952}` four call sites use `nros_rmw::ServiceClientTrait` directly for `call_raw`. `nros-node`'s `Client::call` is the public interface; either expose a `call_raw` shim on `nros-node`'s `Client` or build a small `ServiceClientShim` in `nros-node` that `nros-c` can pin to
+- [ ] 91.B5 — `nros-c/src/action/server.rs:647` test-only `use nros_core::GoalStatus`. Re-export `GoalStatus` from `nros-node::action` so the test depends on the same path production code uses
+- [ ] 91.B6 — Collapse the ~14 hand-rolled `while len < MAX_*_LEN - 1 { ... }` C-string-copy loops (verified call sites: `publisher.rs:175,193,209`, `subscription.rs:167,185,201`, `node.rs:111,128`, `support.rs:134`, `service.rs:195,213,229,568,586,602`, `action/server.rs:336,354,370`, `action/client.rs:174,192`) into a single `fn copy_cstr<const N: usize>(src: *const c_char, dst: &mut [u8; N]) -> Result<usize, nros_ret_t>` helper in `nros-c/src/util.rs`. No behaviour change; pure DRY
+
+### Group C — Wire `nros_generated.h` into the public include path
+
+The cbindgen output exists, is byte-correct, and is currently used only as
+a drift detector. Either delete it as dead code, or actually use it. This
+phase picks "use it" because Phase 87 made the same decision for
+`nros_config_generated.h` (size constants) and that path is healthy.
+
+- [ ] 91.C1 — Decide: delete `cbindgen` invocation entirely (revert the build-time cost), or commit to consuming `nros_generated.h`. Default: consume. Open a discussion issue if there is dissent before starting C2 work
+- [ ] 91.C2 — Convert `nros-c/include/nros/executor.h` to `#include "nros/nros_generated.h"` and forward-declare only what cbindgen doesn't emit (callback typedefs, public functions). Delete the in-file `typedef struct nros_executor_t { ... }` (lines 85–119)
+- [ ] 91.C3 — Same migration for `init.h`, `publisher.h`, `subscription.h`, `service.h`, `client.h`, `node.h`, `timer.h`, `guard_condition.h`, `lifecycle.h`, `action.h`. Each file: drop the duplicate struct body, drop the duplicate enum body, keep the docstrings (move to the Rust source so cbindgen carries them through), keep the function declarations and callback typedefs
+- [ ] 91.C4 — Update `CLAUDE.md` "cbindgen header generation" paragraph to reflect the decision in 91.C1. If "use it" — keep current wording. If "drop it" — remove the para and note that hand-written headers + size-only generated header is the model
+- [ ] 91.C5 — Add a CI check that fails if a per-module header redefines a struct that also appears in `nros_generated.h` (one-shot `grep` in CI)
+
+### Group D — Platform crate deduplication
+
+- [x] 91.D1 — Added `pub mod xorshift32` to `nros-platform-api` exposing `step`, `next`, `seed`, `random_fill`, and `DEFAULT_SEED`. Migrated freertos and threadx platform crates to call into the helpers; each crate keeps its own `static mut RNG_STATE` (callers own the state cell). Net: ~30 lines of duplicated logic removed per platform. 7 new unit tests in the api crate cover step determinism, seed-zero fallback, null-buf no-op, and length correctness — all pass. C-callable seeders (`nros_platform_freertos_seed_rng`, `nros_platform_threadx_seed_rng`) keep their existing symbol names so `startup.c` / `app_define.c` don't need rebuilds
+- [x] 91.D2 — Surveyed the remaining four `PlatformRandom` impls: `posix` uses libc `fill_random` (no dup), `nuttx` delegates to `PosixPlatform` (no dup), `zephyr` calls `sys_rand32_get` (no dup), `cffi` forwards through a vtable (no dup). `yield_now` impls are all platform-specific syscall wrappers (`sched_yield`, `tx_thread_relinquish`, `k_yield`, `taskYIELD` shim, vtable forward) — no duplication. The audit's hypothesis was right: only freertos+threadx had the xorshift copy
+
+### Group E — Example boilerplate consolidation
+
+- [ ] 91.E1 — Extract `examples/threadx-linux/cmake/threadx-support.cmake` and `examples/qemu-riscv64-threadx/cmake/threadx-riscv64-support.cmake` shared sections (kernel-source compile rules, NetX library rules, include collection) into a `cmake/threadx-common.cmake` shipped under the project's `cmake/` dir. Per CLAUDE.md the example tree must remain portable — so the shared module must live inside the `examples/` portable subtree, not at project root, **or** be exported with the cmake install (Phase 75)
+- [ ] 91.E2 — Same for the C++ example startup boilerplate across `examples/threadx-linux/cpp/zenoh/talker/`, `examples/qemu-arm-nuttx/cpp/zenoh/talker/`, `examples/qemu-riscv64-threadx/cpp/zenoh/talker/`. Candidate: ship a `nros::examples::pubsub_helpers` header (header-only) in `nros-cpp/include/nros/examples/`, gated by an opt-in macro so production users don't link it
+- [x] 91.E3 — Created `tests/lib/common.sh` exposing colors (RED/GREEN/YELLOW/BLUE/CYAN/NC), 5 log functions (`log_info`/`log_success`/`log_warn`/`log_error`/`log_header`), `register_pid`/`cleanup_pids`, and `init_test_tmpdir`/`cleanup_test_tmpdir`/`tmpfile`. `tests/c-msg-gen-tests.sh` was rewritten to source it (renamed `info`/`warn`/`error` → `log_info`/`log_warn`/`log_error` at 16 call sites). `tests/zephyr/run-c.sh` was rewritten to source it (dropped 60+ lines of inlined helpers; cleanup function now delegates to `cleanup_pids`/`cleanup_test_tmpdir`). Both scripts pass `bash -n`; helper smoke-tested independently
+- [x] 91.E4 — Added `_nextest-platform <test_name> [verbose]` private recipe to root justfile. Refactored `just/freertos.just`, `just/nuttx.just`, `just/threadx-linux.just`, `just/threadx-riscv64.just` `test` recipes to call it via `just _nextest-platform <name> '{{verbose}}'` after their pre-flight checks. Cross-module dispatch verified by running `just nuttx test` end-to-end (3/3 nuttx_qemu tests pass). The `test-all` recipes have additional pre-build / network-setup steps and weren't collapsed in this pass — leaving them for a future cleanup if the duplication grows
+
+### Group F — `nros-node` service/client setup symmetry
+
+- [ ] 91.F1 — `node.rs:136–162` (`create_service_*`) and `node.rs:165–192` (`create_client_*`) are structurally parallel: ServiceInfo construction, session method call, buffer allocation, error mapping. Extract the shared body into a `fn build_service_handle<S, F>(info, allocator, finalize: F)` helper. Bar for landing: zero behaviour change, both functions reduce to ~10 lines each
+
+### Group G — Documentation truth-up
+
+- [ ] 91.G1 — Update `CLAUDE.md` Phase table: Phase 83 is currently marked Complete but the audit found 11 live `nros_rmw` / `nros_core` imports. Either re-open Phase 83 (preferred), or add a "follow-up" footnote pointing at this phase
+- [ ] 91.G2 — Update `CLAUDE.md` "C API" paragraph if 91.C1 chooses to drop cbindgen — the "auto-generated from Rust `#[repr(C)]` types … `nros_generated.h` is included by thin per-module header stubs" sentence is currently aspirational, not descriptive
+
+## Acceptance Criteria
+
+- [ ] Group A: zero `/tmp/test*` literals in `packages/codegen/`; zero hardcoded `7447` literals outside the platform port table or doc-comment examples
+- [ ] Group B: `git grep -nE 'use (nros_rmw|nros_core)::' packages/core/nros-c/src/` returns either 0 hits or only the items explicitly recorded as "kept by design" in this doc
+- [ ] Group B6: `git grep -c 'while len < MAX_' packages/core/nros-c/src/` ≤ 1 (the helper itself)
+- [ ] Group C: per the 91.C1 decision — either no `nros_generated.h` is produced, or every per-module header `#include`s it and contains zero `typedef struct nros_xxx { ...fields... }` bodies
+- [ ] Group D: `pub fn seed(value: u32)` defined in exactly one platform crate
+- [ ] Group E: `tests/lib/common.sh` sourced by both `run-c.sh` and `c-msg-gen-tests.sh`; the duplicated cmake helper module is referenced by both ThreadX example trees
+- [ ] All of `just ci`, `just test-all`, and `just verify` pass (no test deletions to make this true — fix the underlying issue or `#[ignore]` with a tracked ticket)
+
+## Notes
+
+- **What the audit explicitly did not find.** Magic-number antipatterns and
+  manual-size-math antipatterns are recorded as clean (or with documented,
+  compile-time-asserted exceptions). No work items in this phase target
+  them. If a future audit re-fires those categories, look at
+  `nros-c/src/opaque_sizes.rs`, `nros-cpp/build.rs`, and
+  `nros-c/build.rs:76–86` first — those are the "watched" sites.
+- **Vendored third-party code is out of scope.** The `/tmp/serial_fifo`
+  literals in `packages/xrce/xrce-sys/micro-xrce-dds-client/` are upstream;
+  do not patch them in-tree. If serial-FIFO test isolation becomes a real
+  problem on shared CI, fix it via process-scoped temp paths, not by
+  forking the upstream tree.
+- **Group C is the highest-stakes item.** Touching every public
+  per-module header in `nros-c` is an ABI-adjacent change. Run the full
+  C/C++ example matrix (`just native test-all`, `just freertos test-all`,
+  `just nuttx test-all`, `just threadx_linux test-all`,
+  `just threadx_riscv64 test-all`, `just zephyr test-all`) before merging
+  C2. The `lifecycle.h` migration in particular interacts with Phase 84.B4
+  / Phase 86.4.
+- **Order of operations.** A → D → E → F → B → G → C. Group C is last
+  because the cbindgen consumption decision (91.C1) wants to land after the
+  thin-wrapper imports are minimised — otherwise the generated header has
+  to mirror types that are about to move.

@@ -305,6 +305,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | Complete |
 | 88 | Unified leveled logging (`nros-log` crate with pluggable RTOS/host sinks; ROS-style named loggers + severity filtering) | Not Started |
 | 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Not Started |
+| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, hand-written C struct mirrors, hardcoded test ports/paths, platform `seed()` dedup) | Not Started |
 
 ## Quick Reference
 
