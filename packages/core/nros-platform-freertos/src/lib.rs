@@ -123,14 +123,14 @@ impl nros_platform_api::PlatformYield for FreeRtosPlatform {
 }
 
 // ============================================================================
-// Random — xorshift (same as bare-metal)
+// Random — xorshift (shared helpers from nros_platform_api::xorshift32)
 // ============================================================================
 
-static mut RNG_STATE: u32 = 0x12345678;
+static mut RNG_STATE: u32 = nros_platform_api::xorshift32::DEFAULT_SEED;
 
 /// Seed the PRNG.
 pub fn seed(value: u32) {
-    unsafe { RNG_STATE = if value == 0 { 0x12345678 } else { value } }
+    unsafe { nros_platform_api::xorshift32::seed(&raw mut RNG_STATE, value) }
 }
 
 /// C-callable version for FreeRTOS startup.c to seed the platform RNG.
@@ -147,14 +147,7 @@ pub extern "C" fn nros_platform_freertos_seed_rng(value: u32) {
 }
 
 fn next_u32() -> u32 {
-    unsafe {
-        let mut x = RNG_STATE;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        RNG_STATE = x;
-        x
-    }
+    unsafe { nros_platform_api::xorshift32::next(&raw mut RNG_STATE) }
 }
 
 impl nros_platform_api::PlatformRandom for FreeRtosPlatform {
@@ -172,21 +165,8 @@ impl nros_platform_api::PlatformRandom for FreeRtosPlatform {
     }
 
     fn random_fill(buf: *mut c_void, len: usize) {
-        if buf.is_null() {
-            return;
-        }
-        let ptr = buf as *mut u8;
-        let mut offset = 0;
-        let mut remaining = len;
-        while remaining >= 4 {
-            let bytes = next_u32().to_ne_bytes();
-            unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.add(offset), 4) };
-            offset += 4;
-            remaining -= 4;
-        }
-        if remaining > 0 {
-            let bytes = next_u32().to_ne_bytes();
-            unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.add(offset), remaining) };
+        unsafe {
+            nros_platform_api::xorshift32::random_fill(&raw mut RNG_STATE, buf as *mut u8, len)
         }
     }
 }
