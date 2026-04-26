@@ -878,18 +878,10 @@ doc-cpp:
 # Generate all documentation (Rust + C + C++ + book).
 doc: doc-rust doc-c doc-cpp
 
-# Build the mdbook user guide
-book:
-    mdbook build book/
-
-# Serve the mdbook with live reload
-book-serve:
-    mdbook serve book/ --open
-
 # Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
 # Mirrors the deploy-book.yml workflow so contributors can preview the
 # full deployed site (book + native API docs) locally.
-book-with-api:
+book:
     #!/usr/bin/env bash
     set -e
     just doc-rust
@@ -902,6 +894,11 @@ book-with-api:
     cp -r target/doc/c-api/html      book/book/api/c
     cp -r target/doc/cpp-api/html    book/book/api/cpp
     echo "Built: book/book/index.html (open with xdg-open book/book/index.html)"
+
+# Serve mdBook with live reload (book chapters only — does not rebuild
+# rustdoc/Doxygen API docs; use `just book` for the full deployed view).
+book-serve:
+    mdbook serve book/ --open
 
 # Clean all build artifacts created by `just build`
 clean: native::clean zephyr::clean clean-zenohd
