@@ -67,6 +67,13 @@ build:
     echo "Zephyr Rust examples built successfully!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+#
+# `west build` is ~3 s of pure overhead per example even on a no-op
+# rebuild (python startup + cmake reconfigure walk), so we run all the
+# per-example invocations in parallel. Each example has its own build-
+# directory (`-d build-<id>`), and the test harness already proves
+# concurrent west builds against the same workspace are safe — see the
+# per-build XDG_CACHE_HOME setup in `nros_tests::zephyr::build_zephyr_example`.
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -83,103 +90,108 @@ build-fixtures:
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     echo "Building Zephyr test fixtures..."
     cmake_pfx="$(pwd)/build/install"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → zephyr/rust/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/rust/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    nros_root="$(pwd)"
+
+    # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
+    entries=(
+      # Zenoh Rust (native_sim)
+      "native_sim/native/64|build-talker|zephyr/rust/zenoh/talker|0"
+      "native_sim/native/64|build-listener|zephyr/rust/zenoh/listener|0"
+      "native_sim/native/64|build-service-server|zephyr/rust/zenoh/service-server|0"
+      "native_sim/native/64|build-service-client|zephyr/rust/zenoh/service-client|0"
+      "native_sim/native/64|build-action-server|zephyr/rust/zenoh/action-server|0"
+      "native_sim/native/64|build-action-client|zephyr/rust/zenoh/action-client|0"
+      # Zenoh C++ (native_sim) — talker/listener required, service+action best-effort
+      "native_sim/native/64|build-cpp-talker|zephyr/cpp/zenoh/talker|0"
+      "native_sim/native/64|build-cpp-listener|zephyr/cpp/zenoh/listener|0"
+      "native_sim/native/64|build-cpp-service-server|zephyr/cpp/zenoh/service-server|1"
+      "native_sim/native/64|build-cpp-service-client|zephyr/cpp/zenoh/service-client|1"
+      "native_sim/native/64|build-cpp-action-server|zephyr/cpp/zenoh/action-server|1"
+      "native_sim/native/64|build-cpp-action-client|zephyr/cpp/zenoh/action-client|1"
+      # Phase 95.A — XRCE Rust full 6-set (build dirs match `nros_tests::zephyr`)
+      "native_sim/native/64|build-xrce-rs-talker|zephyr/rust/xrce/talker|0"
+      "native_sim/native/64|build-xrce-rs-listener|zephyr/rust/xrce/listener|0"
+      "native_sim/native/64|build-xrce-rs-service-server|zephyr/rust/xrce/service-server|0"
+      "native_sim/native/64|build-xrce-rs-service-client|zephyr/rust/xrce/service-client|0"
+      "native_sim/native/64|build-xrce-rs-action-server|zephyr/rust/xrce/action-server|0"
+      "native_sim/native/64|build-xrce-rs-action-client|zephyr/rust/xrce/action-client|0"
+      # XRCE C
+      "native_sim/native/64|build-xrce-c-talker|zephyr/c/xrce/talker|0"
+      "native_sim/native/64|build-xrce-c-listener|zephyr/c/xrce/listener|0"
+      # Phase 95.C — XRCE C++ full 6-set
+      "native_sim/native/64|build-xrce-cpp-talker|zephyr/cpp/xrce/talker|0"
+      "native_sim/native/64|build-xrce-cpp-listener|zephyr/cpp/xrce/listener|0"
+      "native_sim/native/64|build-xrce-cpp-service-server|zephyr/cpp/xrce/service-server|0"
+      "native_sim/native/64|build-xrce-cpp-service-client|zephyr/cpp/xrce/service-client|0"
+      "native_sim/native/64|build-xrce-cpp-action-server|zephyr/cpp/xrce/action-server|0"
+      "native_sim/native/64|build-xrce-cpp-action-client|zephyr/cpp/xrce/action-client|0"
+      # Phase 71.8 DDS native_sim boot smoke (best-effort)
+      "native_sim/native/64|build-dds-rs-talker|zephyr/rust/dds/talker|1"
+      "native_sim/native/64|build-dds-rs-listener|zephyr/rust/dds/listener|1"
+      # Phase 92 + 95.B — DDS Rust full 7-set on qemu_cortex_a9 (real IGMP/GEM/ARP)
+      "qemu_cortex_a9|build-dds-a9-talker|zephyr/rust/dds/talker|0"
+      "qemu_cortex_a9|build-dds-a9-listener|zephyr/rust/dds/listener|0"
+      "qemu_cortex_a9|build-dds-a9-service-server|zephyr/rust/dds/service-server|0"
+      "qemu_cortex_a9|build-dds-a9-service-client|zephyr/rust/dds/service-client|0"
+      "qemu_cortex_a9|build-dds-a9-action-server|zephyr/rust/dds/action-server|0"
+      "qemu_cortex_a9|build-dds-a9-action-client|zephyr/rust/dds/action-client|0"
+      "qemu_cortex_a9|build-dds-a9-async-service-client|zephyr/rust/dds/async-service-client|0"
+      # Phase 95.D — DDS C++ full 6-set on both native_sim and qemu_cortex_a9
+      "native_sim/native/64|build-dds-cpp-talker|zephyr/cpp/dds/talker|0"
+      "native_sim/native/64|build-dds-cpp-listener|zephyr/cpp/dds/listener|0"
+      "native_sim/native/64|build-dds-cpp-service-server|zephyr/cpp/dds/service-server|0"
+      "native_sim/native/64|build-dds-cpp-service-client|zephyr/cpp/dds/service-client|0"
+      "native_sim/native/64|build-dds-cpp-action-server|zephyr/cpp/dds/action-server|0"
+      "native_sim/native/64|build-dds-cpp-action-client|zephyr/cpp/dds/action-client|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-talker|zephyr/cpp/dds/talker|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-listener|zephyr/cpp/dds/listener|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-service-server|zephyr/cpp/dds/service-server|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-service-client|zephyr/cpp/dds/service-client|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-action-server|zephyr/cpp/dds/action-server|0"
+      "qemu_cortex_a9|build-dds-cpp-a9-action-client|zephyr/cpp/dds/action-client|0"
+      # Phase 95.E — DDS C full 6-set on both native_sim and qemu_cortex_a9
+      "native_sim/native/64|build-dds-c-talker|zephyr/c/dds/talker|0"
+      "native_sim/native/64|build-dds-c-listener|zephyr/c/dds/listener|0"
+      "native_sim/native/64|build-dds-c-service-server|zephyr/c/dds/service-server|0"
+      "native_sim/native/64|build-dds-c-service-client|zephyr/c/dds/service-client|0"
+      "native_sim/native/64|build-dds-c-action-server|zephyr/c/dds/action-server|0"
+      "native_sim/native/64|build-dds-c-action-client|zephyr/c/dds/action-client|0"
+      "qemu_cortex_a9|build-dds-c-a9-talker|zephyr/c/dds/talker|0"
+      "qemu_cortex_a9|build-dds-c-a9-listener|zephyr/c/dds/listener|0"
+      "qemu_cortex_a9|build-dds-c-a9-service-server|zephyr/c/dds/service-server|0"
+      "qemu_cortex_a9|build-dds-c-a9-service-client|zephyr/c/dds/service-client|0"
+      "qemu_cortex_a9|build-dds-c-a9-action-server|zephyr/c/dds/action-server|0"
+      "qemu_cortex_a9|build-dds-c-a9-action-client|zephyr/c/dds/action-client|0"
+    )
+
+    pids=()
+    failures=()
+    for entry in "${entries[@]}"; do
+        IFS='|' read -r board build_dir src best_effort <<< "$entry"
+        echo "  → zephyr/$src (-d $build_dir, $board)"
+        (
+          cd "$workspace"
+          if west build -b "$board" -d "$build_dir" -p auto \
+                "$nros_root/examples/$src" \
+                -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null 2>&1; then
+              exit 0
+          else
+              [ "$best_effort" = "1" ] && exit 0 || exit 1
+          fi
+        ) &
+        pids+=("$!:$src")
     done
-    for ex in talker listener; do
-        echo "  → zephyr/cpp/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    for entry in "${pids[@]}"; do
+        pid="${entry%%:*}"
+        src="${entry#*:}"
+        if ! wait "$pid"; then
+            failures+=("$src")
+        fi
     done
-    for ex in service-server service-client action-server action-client; do
-        echo "  → zephyr/cpp/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/zenoh/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
-    done
-    # Zephyr XRCE-DDS examples (talker + listener for both Rust and C).
-    # Phase 95.A: Rust xrce gains svc + action coverage.
-    # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
-    for ex in talker listener service-server service-client action-server action-client; do
-        echo "  → zephyr/rust/xrce/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-xrce-rs-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/rust/xrce/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    for ex in talker listener; do
-        echo "  → zephyr/c/xrce/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-xrce-c-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/c/xrce/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    # Phase 95.C — Zephyr cpp/xrce examples (full 6-set: talker, listener,
-    # svc x2, action x2). xrce-rmw flavour of cpp/zenoh examples.
-    for ex in talker listener service-server service-client action-server action-client; do
-        echo "  → zephyr/cpp/xrce/$ex"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-xrce-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/xrce/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    # Phase 95.D + 95.E — Zephyr cpp/dds and c/dds examples (full
-    # 6-set each). DDS RMW backend on Zephyr; cortex_a9 path is the
-    # canonical interop target (Phase 71.6 + dual-feature struct fix
-    # unblocked these).
-    for ex in talker listener service-server service-client action-server action-client; do
-        echo "  → zephyr/cpp/dds/$ex (native_sim)"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-dds-cpp-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-        echo "  → zephyr/cpp/dds/$ex (qemu_cortex_a9)"
-        ( cd "$workspace" && \
-          west build -b qemu_cortex_a9 -d "build-dds-cpp-a9-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/cpp/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    for ex in talker listener service-server service-client action-server action-client; do
-        echo "  → zephyr/c/dds/$ex (native_sim)"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-dds-c-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/c/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-        echo "  → zephyr/c/dds/$ex (qemu_cortex_a9)"
-        ( cd "$workspace" && \
-          west build -b qemu_cortex_a9 -d "build-dds-c-a9-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/c/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
-    # Phase 71.8 — Zephyr DDS Rust talker + listener (native_sim, boot smoke).
-    # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
-    for ex in talker listener; do
-        echo "  → zephyr/rust/dds/$ex (native_sim)"
-        ( cd "$workspace" && \
-          west build -b native_sim/native/64 -d "build-dds-rs-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
-    done
-    # Phase 92 + 95.B — Zephyr DDS Rust pubsub + svc/action/async-svc
-    # (qemu_cortex_a9, real IGMP / GEM / ARP). cortex-a9-rust-patch.sh
-    # above guarantees the workspace has the zephyr-lang-rust + Zynq
-    # SoC patches; failure here means a real regression.
-    for ex in talker listener service-server service-client \
-              action-server action-client async-service-client; do
-        echo "  → zephyr/rust/dds/$ex (qemu_cortex_a9)"
-        ( cd "$workspace" && \
-          west build -b qemu_cortex_a9 -d "build-dds-a9-$ex" -p auto \
-            "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
-    done
+    if [ ${#failures[@]} -gt 0 ]; then
+        printf '  ✗ failed: %s\n' "${failures[@]}"
+        exit 1
+    fi
 
 # Build Zephyr C examples
 build-c:
