@@ -104,8 +104,8 @@ support cmake — no cross-cell sharing.
 - [x] 95.F2 — Native dds-rust service-client
 - [x] 95.F3 — Native dds-rust action-server
 - [x] 95.F4 — Native dds-rust action-client
-- [ ] 95.G1–6 — Native c-dds: talker, listener, svc-server, svc-client, action-server, action-client
-- [ ] 95.H1–6 — Native cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client
+- [~] 95.G1–6 — Native c-dds: blocked on per-RMW install prefix (Phase 78) — `find_package(NanoRos)` ships one RMW per install dir; switching to DDS needs a parallel install or a per-RMW component layout.
+- [~] 95.H1–6 — Native cpp-dds: blocked on the same per-RMW install prefix issue as 95.G.
 - [ ] 95.I — `just test-all` integration (all new tests pass)
 - [ ] 95.J — Coverage matrix verification (this doc's table flips to all-✅)
 
@@ -225,6 +225,18 @@ All cells in scope flip to ✅. Out-of-scope cells (`async-*`,
 * **Zephyr DDS surface.** Reuses Phase 92's `qemu_cortex_a9` build
   path. `native_sim` DDS (Phase 71.8 `[~]`) is not required for this
   phase — cortex_a9 is the canonical Zephyr DDS target.
+* **G/H native c-dds + cpp-dds blocked.** Native C/C++ examples
+  consume the install prefix produced by `just install-local` via
+  `find_package(NanoRos)`. That prefix is built with a single RMW
+  backend selection (currently rmw-zenoh by default). Building a
+  native c-dds or cpp-dds example needs either (a) a parallel
+  `build/install-dds/` prefix and a way to point each example at
+  the right one, or (b) Phase 78's colcon build type which would
+  layer per-RMW components into a single prefix
+  (`nros.<lang>.<platform>` package decomposition). Defer until
+  Phase 78 lands or the user explicitly asks for a per-RMW
+  install-prefix workaround.
+
 * **E zephyr/c-dds blocked.** Two prerequisite issues block this group:
 
   1. **`qemu_cortex_a9` lacks `#[global_allocator]` for nros-c.** The
