@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr DDS Async Service Client Example (Rust) — Phase 95.B
+#
+# Demonstrates the background spin pattern using Embassy executor with
+# Zephyr's kernel-backed waking (k_sem). Single-threaded cooperative
+# concurrency — spin_async() runs as a background Embassy task while the
+# main task .awaits Promises directly.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2021"
+description = "nros DDS async service client for Zephyr RTOS (Embassy background spin)"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Zephyr support with kernel-backed Embassy executor (k_sem waking)
+zephyr = { version = "0.1.0", features = ["executor-zephyr"] }
+log = "0.4"
+
+# nros unified API — DDS backend via dust-dds, no_std + alloc.
+nros = { version = "*", default-features = false, features = ["rmw-dds", "platform-zephyr"] }
+
+example_interfaces = { version = "*", default-features = false }
+
+# Embassy task macro + Spawner type (no arch-* features — executor-zephyr provides __pender).
+# `task-arena-size-32768` bumps the per-executor arena from 4 KiB default
+# to 32 KiB — dust-dds futures are heavier than zenoh-pico's.
+embassy-executor = { version = "0.7", default-features = false, features = ["task-arena-size-131072"] }
+
+# StaticCell for Embassy executor storage
+static_cell = "2"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+# Phase 92.4a — same shape as samples/philosophers. zephyr-build at
+# build-dep level wires Kconfig values into Rust `cfg` flags, which
+# is required for embedded ARM (Cortex-A) targets; native_sim doesn't
+# need it but stays compatible.
+[build-dependencies]
+zephyr-build = "0.1.0"

@@ -1,0 +1,21 @@
+/* Phase 92 — qemu_cortex_a9 DT overlay
+ *
+ * Enable promiscuous-mode on the Xilinx GEM ethernet so multicast
+ * frames (RTPS SPDP on 239.255.0.1) reach the IP stack. Without this
+ * the hardware filter drops multicast packets unless the multicast-
+ * hash table is explicitly programmed for the destination group —
+ * Zephyr's `eth_xlnx_gem` driver doesn't manage that hash, so promisc
+ * is the practical knob.
+ */
+
+&gem0 {
+    promiscuous-mode;
+    /* Override the default `local-mac-address = [00 00 00 01 02 03]`
+     * so the talker has a unique MAC from the listener — otherwise
+     * Zephyr's ARP handler drops every incoming request where
+     * `src_hwaddr == net_if_get_link_addr(iface)` (which fires when
+     * both guests share the default DTS MAC).
+     * Phase 92.5 — pairs with the listener overlay's distinct MAC.
+     */
+    local-mac-address = [02 00 00 00 00 21];
+};

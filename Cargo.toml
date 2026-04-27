@@ -145,6 +145,11 @@ exclude = [
     # Zephyr DDS examples (Phase 71.8 — require Zephyr workspace)
     "examples/zephyr/rust/dds/talker",
     "examples/zephyr/rust/dds/listener",
+    "examples/zephyr/rust/dds/service-server",
+    "examples/zephyr/rust/dds/service-client",
+    "examples/zephyr/rust/dds/action-server",
+    "examples/zephyr/rust/dds/action-client",
+    "examples/zephyr/rust/dds/async-service-client",
     # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)

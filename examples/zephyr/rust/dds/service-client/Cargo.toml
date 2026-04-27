@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr DDS Service Client Example (Rust) — Phase 71
+#
+# RTPS DDS service client running on Zephyr RTOS via nros + dust-dds.
+# Uses the cooperative `NrosPlatformRuntime<ZephyrPlatform>` driven from
+# `Executor::spin_once()` — no OS threads, no router, no agent.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration.
+# `edition = "2021"` matches `samples/philosophers` — Phase 92.4
+# bisection showed the edition-2024 / no-build.rs / no-zephyr-build
+# combination produces silent boot on `qemu_cortex_a9` (ARMv7-A);
+# native_sim happens to mask it.
+name = "rustapp"
+version = "0.1.0"
+edition = "2021"
+description = "nros DDS service client for Zephyr RTOS"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+# nros unified API — DDS backend via dust-dds, no_std + alloc.
+nros = { version = "*", default-features = false, features = ["rmw-dds", "platform-zephyr"] }
+
+example_interfaces = { version = "*", default-features = false }
+
+# zephyr-build wires Kconfig values into Rust `cfg` flags. Required
+# at *build*-dep level for the qemu_cortex_a9 boot path to work
+# end-to-end (Phase 92.4). Mirrors `samples/philosophers/Cargo.toml`.
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

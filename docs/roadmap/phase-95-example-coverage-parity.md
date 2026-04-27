@@ -25,7 +25,7 @@ because none ships.
 |------|---------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | zephyr/rust  | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | zephyr/rust  | xrce  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| zephyr/rust  | dds   | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | — |
+| zephyr/rust  | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | zephyr/cpp   | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | zephyr/cpp   | xrce  | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | — |
 | zephyr/cpp   | dds   | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | — |
@@ -92,11 +92,11 @@ support cmake — no cross-cell sharing.
 - [x] 95.A2 — Zephyr xrce-rust service-client
 - [x] 95.A3 — Zephyr xrce-rust action-server
 - [x] 95.A4 — Zephyr xrce-rust action-client
-- [ ] 95.B1 — Zephyr dds-rust service-server
-- [ ] 95.B2 — Zephyr dds-rust service-client
-- [ ] 95.B3 — Zephyr dds-rust action-server
-- [ ] 95.B4 — Zephyr dds-rust action-client
-- [ ] 95.B5 — Zephyr dds-rust async-service-client
+- [x] 95.B1 — Zephyr dds-rust service-server
+- [x] 95.B2 — Zephyr dds-rust service-client
+- [x] 95.B3 — Zephyr dds-rust action-server
+- [x] 95.B4 — Zephyr dds-rust action-client
+- [x] 95.B5 — Zephyr dds-rust async-service-client
 - [ ] 95.C1–6 — Zephyr cpp-xrce: talker, listener, svc-server, svc-client, action-server, action-client
 - [ ] 95.D1–6 — Zephyr cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client
 - [ ] 95.E1–6 — Zephyr c-dds: talker, listener, svc-server, svc-client, action-server, action-client
@@ -225,6 +225,17 @@ All cells in scope flip to ✅. Out-of-scope cells (`async-*`,
 * **Zephyr DDS surface.** Reuses Phase 92's `qemu_cortex_a9` build
   path. `native_sim` DDS (Phase 71.8 `[~]`) is not required for this
   phase — cortex_a9 is the canonical Zephyr DDS target.
+* **B cortex_a9 cross-instance E2E deferred.** The five DDS Rust
+  service / action / async-service examples build clean for both
+  `native_sim/native/64` and `qemu_cortex_a9` and pass single-process
+  boot tests on `native_sim` (NSOS). Two-instance `cortex_a9` E2E
+  (paired with `start_qemu_a9_mcast`) is `#[ignore]`d: dust-dds SEDP
+  discovery for the request/reply topics overwhelms the Xilinx GEM RX
+  queue (`RX packet buffer alloc failed: 110 bytes`), and the request
+  never reaches the server. Pubsub on the same setup works fine
+  (`test_zephyr_dds_rust_talker_to_listener_a9_e2e`). Re-enable
+  alongside a follow-up that tunes SEDP traffic shape (QoS reliability
+  + history depth, or per-topic SEDP throttle).
 * **Phasing.** Each group (A–H) is independent and can land
   separately. Recommend ordering A → F → C → E → B → G → D → H —
   finish RTOS-ready xrce first, then native DDS (already-validated

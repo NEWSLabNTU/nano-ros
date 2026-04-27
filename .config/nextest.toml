@@ -407,7 +407,7 @@ retries = 2
 # collide on the host-side mcast (group, port) tuple. Match BEFORE
 # the generic `binary(zephyr)` fall-through.
 [[profile.default.overrides]]
-filter = "binary(zephyr) and (test(dds_rust_talker_boots) or test(dds_rust_listener_boots) or test(dds_rust_talker_to_listener_a9_e2e))"
+filter = "binary(zephyr) and (test(dds_rust_talker_boots) or test(dds_rust_listener_boots) or test(dds_rust_talker_to_listener_a9_e2e) or test(dds_rust_service_a9_e2e) or test(dds_rust_action_a9_e2e) or test(dds_rust_async_service_a9_e2e))"
 test-group = "qemu-zephyr-dds"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

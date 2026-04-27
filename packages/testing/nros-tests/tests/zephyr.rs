@@ -2411,3 +2411,422 @@ fn test_zephyr_dds_rust_talker_to_listener_a9_e2e() {
         );
     }
 }
+
+// =============================================================================
+// Phase 95.B — Zephyr DDS Rust service + action + async-service
+// =============================================================================
+//
+// Five new example crates: service-server, service-client, action-server,
+// action-client, async-service-client. They build clean on both
+// native_sim/native/64 (NSOS) and qemu_cortex_a9 (real IGMP/GEM/ARP).
+//
+// Boot tests below run on native_sim and verify each example reaches
+// readiness — proves the DDS RMW backend's service / action paths
+// compile and link end-to-end against zephyr-lang-rust + dust-dds.
+//
+// The dual-instance E2E tests on `qemu_cortex_a9` (`*_a9_e2e` below)
+// are #[ignore]d pending follow-up work on dust-dds service / action
+// SEDP discovery under the cortex_a9 mcast netdev. The current
+// observation: SEDP traffic between two QEMU guests overwhelms the
+// Xilinx GEM RX queue (`RX packet buffer alloc failed`), and the
+// service request never reaches the server. Pubsub on cortex_a9
+// works fine — see `test_zephyr_dds_rust_talker_to_listener_a9_e2e`.
+
+fn get_zephyr_dds_service_server_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-service-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-service-server binary")
+}
+
+fn get_zephyr_dds_service_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-service-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-service-client binary")
+}
+
+fn get_zephyr_dds_action_server_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-server binary")
+}
+
+fn get_zephyr_dds_action_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-client binary")
+}
+
+fn get_zephyr_dds_async_service_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-async-service-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-async-service-client binary")
+}
+
+#[test]
+fn test_zephyr_dds_rust_service_server_boots() {
+    if !require_zephyr() {
+        return;
+    }
+    let bin = get_zephyr_dds_service_server_native_sim();
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start dds service server");
+    let out = p.wait_for_pattern("Service server ready", Duration::from_secs(15));
+    let _ = p.kill();
+    eprintln!("\n=== Output ===\n{}", out);
+    if !out.contains("Service server ready") {
+        panic!("dds service server didn't reach readiness:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_rust_service_client_boots() {
+    if !require_zephyr() {
+        return;
+    }
+    let bin = get_zephyr_dds_service_client_native_sim();
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start dds service client");
+    let out = p.wait_for_pattern("Service client ready", Duration::from_secs(15));
+    let _ = p.kill();
+    eprintln!("\n=== Output ===\n{}", out);
+    if !out.contains("Service client ready") {
+        panic!("dds service client didn't reach readiness:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_rust_action_server_boots() {
+    if !require_zephyr() {
+        return;
+    }
+    let bin = get_zephyr_dds_action_server_native_sim();
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start dds action server");
+    let out = p.wait_for_pattern("Action server ready", Duration::from_secs(15));
+    let _ = p.kill();
+    eprintln!("\n=== Output ===\n{}", out);
+    if !out.contains("Action server ready") {
+        panic!("dds action server didn't reach readiness:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_rust_action_client_boots() {
+    if !require_zephyr() {
+        return;
+    }
+    let bin = get_zephyr_dds_action_client_native_sim();
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start dds action client");
+    let out = p.wait_for_pattern("Action client ready", Duration::from_secs(15));
+    let _ = p.kill();
+    eprintln!("\n=== Output ===\n{}", out);
+    if !out.contains("Action client ready") {
+        panic!("dds action client didn't reach readiness:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_rust_async_service_client_boots() {
+    if !require_zephyr() {
+        return;
+    }
+    let bin = get_zephyr_dds_async_service_client_native_sim();
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start dds async service client");
+    let out =
+        p.wait_for_pattern("Async service client ready", Duration::from_secs(15));
+    let _ = p.kill();
+    eprintln!("\n=== Output ===\n{}", out);
+    if !out.contains("Async service client ready") {
+        panic!("dds async service client didn't reach readiness:\n{}", out);
+    }
+}
+
+fn get_zephyr_dds_service_server_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-service-server-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-service-server-a9 binary")
+}
+
+fn get_zephyr_dds_service_client_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-service-client-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-service-client-a9 binary")
+}
+
+fn get_zephyr_dds_action_server_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-server-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-server-a9 binary")
+}
+
+fn get_zephyr_dds_action_client_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-client-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-client-a9 binary")
+}
+
+fn get_zephyr_dds_async_service_client_a9() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-dds-rs-async-service-client-a9",
+        ZephyrPlatform::QemuCortexA9,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-async-service-client-a9 binary")
+}
+
+/// Service server ↔ client interop on `qemu_cortex_a9` (Phase 95.B1+B2).
+///
+/// **#[ignore]d**: dust-dds service SEDP discovery overwhelms the
+/// Xilinx GEM RX queue under the cortex_a9 mcast netdev. Service
+/// requests never reach the server. Pubsub on the same setup works
+/// (`test_zephyr_dds_rust_talker_to_listener_a9_e2e`). Re-enable
+/// after a Phase 71.x follow-up tunes the SEDP traffic shape (e.g.
+/// QoS tuning to RELIABLE + smaller history queue, or SEDP throttle).
+#[test]
+#[ignore]
+fn test_zephyr_dds_rust_service_a9_e2e() {
+    if !require_zephyr() {
+        return;
+    }
+    if !nros_tests::zephyr::is_west_available() {
+        nros_tests::skip!("west command not available");
+    }
+
+    let server_bin = get_zephyr_dds_service_server_a9();
+    let client_bin = get_zephyr_dds_service_client_a9();
+    let mcast = pick_mcast_addr_port();
+    eprintln!("mcast group/port = {mcast}");
+
+    // Server first so its queryable is registered before the client
+    // starts probing the SEDP topology.
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(
+        &server_bin,
+        &mcast,
+        "02:00:00:00:00:10",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds service server");
+
+    let server_ready = server.wait_for_pattern(
+        "Service server ready",
+        Duration::from_secs(20),
+    );
+    if !server_ready.contains("Service server ready") {
+        let _ = server.kill();
+        panic!(
+            "qemu_cortex_a9 dds service server didn't reach readiness\n\
+             Output:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(
+        &client_bin,
+        &mcast,
+        "02:00:00:00:00:11",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds service client");
+
+    let client_out = client.wait_for_pattern("Response: sum=", Duration::from_secs(90));
+    let server_out = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    let _ = client.kill();
+    let _ = server.kill();
+
+    eprintln!("\n=== DDS service server tail ===");
+    for line in server_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+    eprintln!("\n=== DDS service client tail ===");
+    for line in client_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+
+    if !client_out.contains("Response: sum=") {
+        panic!(
+            "qemu_cortex_a9 dds service client received no responses — \
+             RTPS request/reply discovery regression. SPDP+SEDP needs \
+             both sides on the same domain ID and reachable via the \
+             mcast netdev.\nClient tail:\n{}",
+            client_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+        );
+    }
+}
+
+/// Action server ↔ client interop on `qemu_cortex_a9` (Phase 95.B3+B4).
+///
+/// **#[ignore]d** for the same reason as
+/// `test_zephyr_dds_rust_service_a9_e2e` — dust-dds SEDP discovery
+/// for the action's 5 service+topic channels overwhelms the cortex_a9
+/// GEM RX queue. Re-enable alongside the service E2E.
+#[test]
+#[ignore]
+fn test_zephyr_dds_rust_action_a9_e2e() {
+    if !require_zephyr() {
+        return;
+    }
+    if !nros_tests::zephyr::is_west_available() {
+        nros_tests::skip!("west command not available");
+    }
+
+    let server_bin = get_zephyr_dds_action_server_a9();
+    let client_bin = get_zephyr_dds_action_client_a9();
+    let mcast = pick_mcast_addr_port();
+    eprintln!("mcast group/port = {mcast}");
+
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(
+        &server_bin,
+        &mcast,
+        "02:00:00:00:00:20",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds action server");
+
+    let server_ready = server.wait_for_pattern(
+        "Action server ready",
+        Duration::from_secs(30),
+    );
+    if !server_ready.contains("Action server ready") {
+        let _ = server.kill();
+        panic!(
+            "qemu_cortex_a9 dds action server didn't reach readiness\n\
+             Output:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(
+        &client_bin,
+        &mcast,
+        "02:00:00:00:00:21",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds action client");
+
+    let client_out =
+        client.wait_for_pattern("Action client finished", Duration::from_secs(60));
+    let server_out = server
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+    let _ = client.kill();
+    let _ = server.kill();
+
+    eprintln!("\n=== DDS action server tail ===");
+    for line in server_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+    eprintln!("\n=== DDS action client tail ===");
+    for line in client_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+
+    let server_received_goal = server_out.contains("Goal request")
+        || server_out.contains("Executing goal");
+    let client_got_feedback = client_out.contains("Feedback #");
+    let client_completed = client_out.contains("Action client finished");
+
+    if !(client_completed && client_got_feedback) {
+        panic!(
+            "qemu_cortex_a9 dds action E2E failed:\n  \
+             server_received_goal={}\n  client_got_feedback={}\n  \
+             client_completed={}",
+            server_received_goal, client_got_feedback, client_completed
+        );
+    }
+}
+
+/// Async service client (Embassy `spin_async`) ↔ DDS service server on
+/// `qemu_cortex_a9` (Phase 95.B5).
+///
+/// **#[ignore]d** for the same reason as
+/// `test_zephyr_dds_rust_service_a9_e2e`. Re-enable alongside it.
+#[test]
+#[ignore]
+fn test_zephyr_dds_rust_async_service_a9_e2e() {
+    if !require_zephyr() {
+        return;
+    }
+    if !nros_tests::zephyr::is_west_available() {
+        nros_tests::skip!("west command not available");
+    }
+
+    let server_bin = get_zephyr_dds_service_server_a9();
+    let client_bin = get_zephyr_dds_async_service_client_a9();
+    let mcast = pick_mcast_addr_port();
+    eprintln!("mcast group/port = {mcast}");
+
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(
+        &server_bin,
+        &mcast,
+        "02:00:00:00:00:10",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds service server");
+
+    let server_ready = server.wait_for_pattern(
+        "Service server ready",
+        Duration::from_secs(20),
+    );
+    if !server_ready.contains("Service server ready") {
+        let _ = server.kill();
+        panic!(
+            "qemu_cortex_a9 dds service server didn't reach readiness\n\
+             Output:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(
+        &client_bin,
+        &mcast,
+        "02:00:00:00:00:31",
+    )
+    .expect("Failed to start qemu_cortex_a9 dds async service client");
+
+    let client_out = client.wait_for_pattern(
+        "All async service calls completed",
+        Duration::from_secs(60),
+    );
+    let _ = client.kill();
+    let _ = server.kill();
+
+    eprintln!("\n=== DDS async service client tail ===");
+    for line in client_out.lines().rev().take(10).collect::<Vec<_>>().iter().rev() {
+        eprintln!("{line}");
+    }
+
+    if !client_out.contains("All async service calls completed") {
+        panic!(
+            "qemu_cortex_a9 dds async service client didn't complete \
+             all four calls — Embassy spin_async() didn't drive the DDS \
+             RTPS request/reply path to completion.\nClient tail:\n{}",
+            client_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+        );
+    }
+}

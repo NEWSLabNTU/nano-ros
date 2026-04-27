@@ -131,11 +131,12 @@ build-fixtures:
             "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
             -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
     done
-    # Phase 92 — Zephyr DDS Rust talker + listener (qemu_cortex_a9,
-    # real IGMP / GEM / ARP). cortex-a9-rust-patch.sh above guarantees
-    # the workspace has the zephyr-lang-rust + Zynq SoC patches; failure
-    # here means a real regression.
-    for ex in talker listener; do
+    # Phase 92 + 95.B — Zephyr DDS Rust pubsub + svc/action/async-svc
+    # (qemu_cortex_a9, real IGMP / GEM / ARP). cortex-a9-rust-patch.sh
+    # above guarantees the workspace has the zephyr-lang-rust + Zynq
+    # SoC patches; failure here means a real regression.
+    for ex in talker listener service-server service-client \
+              action-server action-client async-service-client; do
         echo "  → zephyr/rust/dds/$ex (qemu_cortex_a9)"
         ( cd "$workspace" && \
           west build -b qemu_cortex_a9 -d "build-dds-a9-$ex" -p auto \

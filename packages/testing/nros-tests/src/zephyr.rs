@@ -528,9 +528,31 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "build-dds-rs-talker",
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "build-dds-rs-listener",
+        // Phase 95.B — DDS Rust svc + action + async-svc on native_sim
+        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => {
+            "build-dds-rs-service-server"
+        }
+        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => {
+            "build-dds-rs-service-client"
+        }
+        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => {
+            "build-dds-rs-action-server"
+        }
+        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
+            "build-dds-rs-action-client"
+        }
+        "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
+            "build-dds-rs-async-service-client"
+        }
         // Phase 92 — same examples on qemu_cortex_a9
         "zephyr-dds-rs-talker-a9" => "build-dds-a9-talker",
         "zephyr-dds-rs-listener-a9" => "build-dds-a9-listener",
+        // Phase 95.B — DDS Rust svc + action + async-svc on qemu_cortex_a9
+        "zephyr-dds-rs-service-server-a9" => "build-dds-a9-service-server",
+        "zephyr-dds-rs-service-client-a9" => "build-dds-a9-service-client",
+        "zephyr-dds-rs-action-server-a9" => "build-dds-a9-action-server",
+        "zephyr-dds-rs-action-client-a9" => "build-dds-a9-action-client",
+        "zephyr-dds-rs-async-service-client-a9" => "build-dds-a9-async-service-client",
         _ => "build",
     }
 }
@@ -593,9 +615,33 @@ fn example_path_for_name(example_name: &str) -> String {
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "zephyr/rust/dds/talker".to_string(),
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "zephyr/rust/dds/listener".to_string(),
+        // Phase 95.B — DDS Rust svc + action + async-svc on native_sim
+        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => {
+            "zephyr/rust/dds/service-server".to_string()
+        }
+        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => {
+            "zephyr/rust/dds/service-client".to_string()
+        }
+        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => {
+            "zephyr/rust/dds/action-server".to_string()
+        }
+        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
+            "zephyr/rust/dds/action-client".to_string()
+        }
+        "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
+            "zephyr/rust/dds/async-service-client".to_string()
+        }
         // Phase 92 — same source, qemu_cortex_a9 build dir alias
         "zephyr-dds-rs-talker-a9" => "zephyr/rust/dds/talker".to_string(),
         "zephyr-dds-rs-listener-a9" => "zephyr/rust/dds/listener".to_string(),
+        // Phase 95.B — DDS Rust svc + action + async-svc on qemu_cortex_a9
+        "zephyr-dds-rs-service-server-a9" => "zephyr/rust/dds/service-server".to_string(),
+        "zephyr-dds-rs-service-client-a9" => "zephyr/rust/dds/service-client".to_string(),
+        "zephyr-dds-rs-action-server-a9" => "zephyr/rust/dds/action-server".to_string(),
+        "zephyr-dds-rs-action-client-a9" => "zephyr/rust/dds/action-client".to_string(),
+        "zephyr-dds-rs-async-service-client-a9" => {
+            "zephyr/rust/dds/async-service-client".to_string()
+        }
         // For any other name, assume it's a path relative to examples/
         _ => example_name.to_string(),
     }
