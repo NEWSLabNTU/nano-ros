@@ -51,6 +51,8 @@ build:
         echo "Run: ./scripts/zephyr/setup.sh"
         exit 1
     fi
+    # Apply Cortex-A9 patches (idempotent; no-op if already applied).
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
     echo "Building Zephyr Rust examples in $WORKSPACE..."
     NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
@@ -72,6 +74,9 @@ build-fixtures:
         echo "Zephyr skip: ../nano-ros-workspace not set up (run \`just zephyr setup\`)"
         exit 0
     fi
+    # Apply Cortex-A9 patches (idempotent; required for the
+    # build-dds-a9-{talker,listener} entries below).
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     echo "Building Zephyr test fixtures..."
     cmake_pfx="$(pwd)/build/install"
     rust_examples=(talker listener service-server service-client action-server action-client)
@@ -121,18 +126,16 @@ build-fixtures:
             "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
             -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
     done
-    # Phase 92 — Zephyr DDS Rust talker + listener (qemu_cortex_a9, real
-    # IGMP / GEM / ARP). Skipped if the workspace doesn't have the
-    # Zynq SoC patch + Cortex-A9 zephyr-lang-rust tweaks (Phase 92.1
-    # / 92.4 — see docs/roadmap/phase-92-…). Use `|| true` so a
-    # missing patch doesn't fail the whole fixture build for users who
-    # only run native_sim tests.
+    # Phase 92 — Zephyr DDS Rust talker + listener (qemu_cortex_a9,
+    # real IGMP / GEM / ARP). cortex-a9-rust-patch.sh above guarantees
+    # the workspace has the zephyr-lang-rust + Zynq SoC patches; failure
+    # here means a real regression.
     for ex in talker listener; do
         echo "  → zephyr/rust/dds/$ex (qemu_cortex_a9)"
         ( cd "$workspace" && \
           west build -b qemu_cortex_a9 -d "build-dds-a9-$ex" -p auto \
             "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
-            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
     done
 
 # Build Zephyr C examples

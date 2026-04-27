@@ -333,6 +333,11 @@ ln -sf "$NANO_ROS_ROOT" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 log_info "Fetching Zephyr and modules (this may take a while)..."
 west update
 
+# Apply Cortex-A9 Rust patches (Phase 92.1 / 92.4 — required for
+# qemu_cortex_a9 DDS interop builds; idempotent, no-op on re-runs).
+log_info "Applying Cortex-A9 Rust patches..."
+bash "$NANO_ROS_ROOT/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
+
 # Install Zephyr Python dependencies
 log_info "Installing Zephyr Python dependencies..."
 pip3 install --user -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
