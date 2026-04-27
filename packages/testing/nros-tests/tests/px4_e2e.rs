@@ -9,7 +9,7 @@
 //! ## Preconditions
 //!
 //! - `third-party/px4/PX4-Autopilot` submodule populated recursively
-//!   (run `just px4 setup-autopilot-recursive`).
+//!   (run `just px4 setup`).
 //! - `third-party/px4/px4-rs` submodule populated (run `just px4 setup`).
 //! - PX4 SITL build prerequisites installed (cmake, ninja, gcc, py3).
 //! - `PX4_AUTOPILOT_DIR` env var (optional; defaults to vendored submodule).
@@ -70,7 +70,7 @@ fn ensure_px4_autopilot_dir() -> PathBuf {
     assert!(
         submodule.join("Tools").is_dir(),
         "PX4-Autopilot submodule not populated at {}. \
-         Run `just px4 setup-autopilot-recursive` (or set PX4_AUTOPILOT_DIR \
+         Run `just px4 setup` (or set PX4_AUTOPILOT_DIR \
          to your own PX4 checkout).",
         submodule.display()
     );

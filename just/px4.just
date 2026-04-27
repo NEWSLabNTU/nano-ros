@@ -5,18 +5,14 @@ default:
 
 # Initialise PX4 submodules (shallow). Includes:
 #   third-party/px4/px4-rs           — Rust framework for PX4 modules
-#   third-party/px4/PX4-Autopilot    — PX4 firmware tree (top-level only)
-# The PX4-Autopilot tree has its own ~50 sub-submodules; we DO NOT init
-# them by default because most contributors don't need them. Run
-# `just px4 setup-autopilot-recursive` to fetch them when building SITL.
+#   third-party/px4/PX4-Autopilot    — PX4 firmware tree (recursive)
+# PX4-Autopilot has ~50 own sub-submodules (cmake, mavlink, ecl, …).
+# All cloned shallow; total ~500 MB. Required for `just px4 build-sitl`
+# and `just px4 test-sitl`.
 setup:
     git submodule update --init --depth 1 --recommend-shallow \
         third-party/px4/px4-rs \
         third-party/px4/PX4-Autopilot
-
-# Recursively init PX4-Autopilot's own submodules. Required before
-# `just px4 build-sitl`. Heavy: ~500 MB shallow, ~50 sub-submodules.
-setup-autopilot-recursive: setup
     git -C third-party/px4/PX4-Autopilot submodule update --init \
         --depth 1 --recommend-shallow --recursive
 
@@ -60,8 +56,9 @@ build:
     cargo build -p nros-rmw-uorb -p nros-px4 --features std
 
 # Build PX4 SITL with the nano-ros uORB examples linked in via
-# EXTERNAL_MODULES_LOCATION. Requires `just px4 setup-autopilot-recursive`.
-# Cold build ~10 min; warm <2 s (ninja "no work to do").
+# EXTERNAL_MODULES_LOCATION. Cold build ~10 min; warm <2 s (ninja
+# "no work to do"). Requires `just px4 setup` to have populated
+# PX4-Autopilot recursively.
 build-sitl:
     #!/usr/bin/env bash
     set -e
@@ -69,7 +66,7 @@ build-sitl:
     EXT_DIR="$(pwd)/examples/px4/rust/uorb"
     if [ ! -d "$PX4_DIR/Tools" ]; then
         echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
-        echo "Run: just px4 setup-autopilot-recursive"
+        echo "Run: just px4 setup"
         exit 1
     fi
     echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
