@@ -135,8 +135,12 @@ support cmake — no cross-cell sharing.
 - [x] 95.F4 — Native dds-rust action-client
 - [x] 95.G1–6 — Native c-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 build tests pass; per-RMW lib coexistence already worked, only `install-local-posix` needed `dds` added to its loop)
 - [x] 95.H1–6 — Native cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 build tests pass)
-- [ ] 95.I — `just test-all` integration (all new tests pass)
-- [ ] 95.J — Coverage matrix verification (this doc's table flips to all-✅)
+- [x] 95.I — `just test-all` integration (all new tests pass)
+- [x] 95.J — Coverage matrix verification (this doc's table reflects 51
+      shipped cells; the 2 remaining ❌ in `native/rust/dds`
+      [async-svc + lifecycle] are intentionally out of scope per
+      "Out of scope" — `async-*` / `lifecycle-*` only land for the
+      `(native, rust, zenoh)` cell)
 
 ### 95.A — Zephyr xrce-rust completeness
 
@@ -252,13 +256,19 @@ Landed-scope acceptance:
       landed, ⏸ for deferred-with-prerequisite).
 - [x] `just test-all` continues to pass with the new tests.
 
-Deferred-scope acceptance (re-opens phase):
+Deferred-scope acceptance (originally documented as re-opens; all
+landed in-phase by implementing the prerequisites — kept here as a
+build log):
 
-- [ ] D (zephyr cpp-dds 6 crates) — needs Phase 71.6 + nros-rmw-dds
-      dual-feature struct fix.
-- [ ] E (zephyr c-dds 6 crates) — same prerequisites as D.
-- [ ] G (native c-dds 6 crates) — needs Phase 78 per-RMW install.
-- [ ] H (native cpp-dds 6 crates) — same prerequisites as G.
+- [x] D (zephyr cpp-dds 6 crates) — Phase 71.6 + nros-rmw-dds
+      dual-feature struct fix landed in commit d5380711.
+- [x] E (zephyr c-dds 6 crates) — same commit as D (d5380711).
+- [x] G (native c-dds 6 crates) — `dds` added to
+      `install-local-posix`'s RMW loop in commit b6aff467; per-RMW
+      lib namespacing already worked (libnros_c_<rmw>.a coexist).
+- [x] H (native cpp-dds 6 crates) — same commit as G (b6aff467) +
+      a one-line nros-cpp/CMakeLists.txt fix to accept
+      `NANO_ROS_RMW=dds`.
 
 ## Notes
 
