@@ -239,17 +239,27 @@ on every nros platform.
        (bind → recvfrom → assert)
 - [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
 - [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
-- [ ] 71.28 — Service request/reply SEDP discovery (blocks Phase 95
-       cross-process E2E for native dds + cortex_a9 dds). dust-dds
-       service path uses `QosKind::Default` (BestEffort, KEEP_LAST
-       depth 1); request_DataReader on the server never sees the
-       client's request_DataWriter, even on localhost. Pubsub on
-       the same configuration works fine. Suspected fix: tune the
-       service-topic QoS to `Reliable + KeepLast(N>=10)` and verify
-       the SEDP topic-name format (`rq<svc>Request` /
-       `rr<svc>Reply`) matches what dust-dds publishes via SEDP.
-       Re-enable the four `#[ignore]`d tests this would close:
-       `test_zephyr_dds_rust_service_a9_e2e`,
+- [~] 71.28 — Service request/reply SEDP discovery (blocks Phase 95
+       cross-process E2E for native dds + cortex_a9 dds). **QoS step
+       landed**: `nros-rmw-dds/src/session.rs` now sets
+       `Reliable + KeepLast(10)` on all four service DataReaders /
+       DataWriters (request reader + reply writer on the server,
+       request writer + reply reader on the client) via two new
+       helpers `service_reader_qos()` / `service_writer_qos()`.
+       Matches ROS 2 service convention. **Still doesn't unblock the
+       E2E tests** — server still doesn't see the request even with
+       Reliable QoS, on localhost. Remaining work: instrument
+       `DdsServiceServer::has_request` to log whether the
+       request_DataReader's matched_publication count is non-zero
+       after SEDP. If matching never happens, the bug is in the
+       SEDP topic announcement (topic-name format / type-name
+       string mismatch — dust-dds uses `nros::RawCdrPayload` for
+       all four service topics, which may not be how dust-dds
+       expects services to look on the wire). If matching happens
+       but data doesn't flow, the bug is on the read side
+       (`try_recv_raw` poll cadence vs the runtime's drive_io
+       schedule). Re-enable the five `#[ignore]`d tests this would
+       close: `test_zephyr_dds_rust_service_a9_e2e`,
        `test_zephyr_dds_rust_action_a9_e2e`,
        `test_zephyr_dds_rust_async_service_a9_e2e`,
        `test_dds_service_server_client_e2e`,
@@ -262,7 +272,11 @@ on every nros platform.
        service. Pubsub doesn't trigger this because it has fewer
        discovery topics. Likely a `eth_xlnx_gem` driver-side bug
        (ring buffer not draining fast enough) or a need for a
-       deeper Zephyr `net_buf` reservation.
+       deeper Zephyr `net_buf` reservation. **Not yet attempted** —
+       blocked behind 71.28 since the symptom only appears when
+       service / action SEDP traffic is generated, and 71.28's
+       discovery isn't reaching the server in the first place.
+       Pick up after 71.28 closes so the symptom is reproducible.
 
 #### 71.20 / 71.21 — bind primitive — **Landed**
 

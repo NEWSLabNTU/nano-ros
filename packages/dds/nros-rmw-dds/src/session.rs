@@ -98,6 +98,48 @@ impl DdsSession {
     }
 }
 
+// Phase 71.28 — Service request/reply QoS.
+//
+// dust-dds DataReader/DataWriter default to `BestEffort + KeepLast(1)`,
+// which is fine for high-rate pubsub (lose a sample, the next one
+// reaches you anyway) but breaks request/reply: a single dropped
+// request packet means the client times out and the server never
+// sees the call. ROS 2 service convention is `Reliable +
+// KeepLast(N)` on both sides; mirror that here.
+fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
+    use dust_dds::infrastructure::qos_policy::{
+        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy,
+        ReliabilityQosPolicyKind,
+    };
+    use dust_dds::infrastructure::time::{Duration, DurationKind};
+    let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
+    q.reliability = ReliabilityQosPolicy {
+        kind: ReliabilityQosPolicyKind::Reliable,
+        max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
+    };
+    q.history = HistoryQosPolicy {
+        kind: HistoryQosPolicyKind::KeepLast(10),
+    };
+    q
+}
+
+fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
+    use dust_dds::infrastructure::qos_policy::{
+        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy,
+        ReliabilityQosPolicyKind,
+    };
+    use dust_dds::infrastructure::time::{Duration, DurationKind};
+    let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();
+    q.reliability = ReliabilityQosPolicy {
+        kind: ReliabilityQosPolicyKind::Reliable,
+        max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
+    };
+    q.history = HistoryQosPolicy {
+        kind: HistoryQosPolicyKind::KeepLast(10),
+    };
+    q
+}
+
 impl Session for DdsSession {
     type Error = TransportError;
     type PublisherHandle = DdsPublisher;
@@ -325,7 +367,7 @@ impl Session for DdsSession {
             let request_reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &req_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_reader_qos()),
                     None::<()>,
                     NO_STATUS,
                 )
@@ -338,7 +380,7 @@ impl Session for DdsSession {
             let reply_writer = publisher
                 .create_datawriter::<RawCdrPayload>(
                     &reply_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_writer_qos()),
                     None::<()>,
                     NO_STATUS,
                 )
@@ -396,7 +438,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &req_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_reader_qos()),
                     None::<NoDataReaderListenerRaw>,
                     NO_STATUS,
                 ))
@@ -414,7 +456,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(publisher.create_datawriter::<RawCdrPayload>(
                     &reply_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_writer_qos()),
                     None::<NoDataWriterListenerRaw>,
                     NO_STATUS,
                 ))
@@ -477,7 +519,7 @@ impl Session for DdsSession {
             let request_writer = publisher
                 .create_datawriter::<RawCdrPayload>(
                     &req_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_writer_qos()),
                     None::<()>,
                     NO_STATUS,
                 )
@@ -490,7 +532,7 @@ impl Session for DdsSession {
             let reply_reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &reply_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_reader_qos()),
                     None::<()>,
                     NO_STATUS,
                 )
@@ -548,7 +590,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(publisher.create_datawriter::<RawCdrPayload>(
                     &req_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_writer_qos()),
                     None::<NoDataWriterListenerRaw>,
                     NO_STATUS,
                 ))
@@ -566,7 +608,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &reply_topic,
-                    QosKind::Default,
+                    QosKind::Specific(service_reader_qos()),
                     None::<NoDataReaderListenerRaw>,
                     NO_STATUS,
                 ))
