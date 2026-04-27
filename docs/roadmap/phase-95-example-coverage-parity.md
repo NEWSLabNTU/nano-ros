@@ -98,7 +98,7 @@ support cmake — no cross-cell sharing.
 - [x] 95.B4 — Zephyr dds-rust action-client
 - [x] 95.B5 — Zephyr dds-rust async-service-client
 - [x] 95.C1–6 — Zephyr cpp-xrce: talker, listener, svc-server, svc-client, action-server, action-client
-- [ ] 95.D1–6 — Zephyr cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client
+- [~] 95.D1–6 — Zephyr cpp-dds: blocked on same prerequisites as 95.E (Phase 71.6 + nros-rmw-dds dual-feature). See 95.E note below.
 - [~] 95.E1–6 — Zephyr c-dds: blocked on Phase 71.6 (board-crate `#[global_allocator]`) + nros-rmw-dds dual-feature struct bug. See note below.
 - [x] 95.F1 — Native dds-rust service-server
 - [x] 95.F2 — Native dds-rust service-client
