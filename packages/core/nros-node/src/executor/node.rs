@@ -178,7 +178,10 @@ impl<'a> Node<'a> {
             .session
             .create_publisher(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
-        Ok(crate::executor::handles::EmbeddedRawPublisher { handle })
+        Ok(crate::executor::handles::EmbeddedRawPublisher {
+            handle,
+            arena: crate::executor::handles::TxArena::new(),
+        })
     }
 
     // -- Subscriptions --

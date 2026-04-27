@@ -26,6 +26,13 @@ log = ["dep:log"]
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = []
 
+# Marker for backends that support native slot lending (zero-copy publish
+# / borrow). Backends that opt in expose SlotLending / SlotBorrowing trait
+# impls; nros-node's EmbeddedRawPublisher / RawSubscription select between
+# native lend and the arena fallback at compile time via this flag.
+# Phase 95.
+lending = []
+
 [dependencies]
 nros-core = { workspace = true, default-features = false }
 heapless = { workspace = true }

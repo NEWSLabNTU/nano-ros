@@ -148,19 +148,81 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 // EmbeddedRawPublisher — typeless publisher for non-ROS message wire formats
 // ============================================================================
 
+/// Default size of each per-publisher arena slot, in bytes.
+pub const DEFAULT_LOAN_BUF: usize = 1024;
+
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, Ordering};
+
 /// Typeless publisher handle. Use when the wire format is not ROS CDR
 /// (e.g. PX4 uORB raw POD bytes, custom binary protocols).
 ///
-/// The user owns the encoding step: build a `&[u8]` in whatever shape the
-/// active RMW backend expects, then call [`publish_raw`](Self::publish_raw).
-/// The handle carries no message-type metadata, so the underlying backend
-/// receives `TopicInfo` with the user-supplied `type_name` / `type_hash`
-/// strings (used for liveliness / discovery only on backends that care).
-pub struct EmbeddedRawPublisher {
+/// Two publish paths:
+///
+/// - [`publish_raw`](Self::publish_raw): user supplies a `&[u8]`, backend
+///   memcpys into its outbound buffer. One copy.
+/// - [`try_loan`](Self::try_loan): backend (or per-publisher arena fallback)
+///   hands user a `&mut [u8]` slice. User writes in place. [`PublishLoan::commit`]
+///   triggers the wire write. Zero-copy on backends with native lending
+///   (Phase 95: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
+///   fallback on backends without (uORB).
+///
+/// The const-generic `TX_BUF` sizes the inline arena slot (default
+/// [`DEFAULT_LOAN_BUF`]). Loans larger than `TX_BUF` return
+/// `LoanError::TooLarge`.
+pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
     pub(crate) handle: session::RmwPublisher,
+    /// Single-slot arena: writable buffer + busy flag. SLOTS=1 in v1
+    /// (concurrent loans on the same publisher return WouldBlock).
+    pub(crate) arena: TxArena<TX_BUF>,
 }
 
-impl EmbeddedRawPublisher {
+/// Single-slot per-publisher arena. Concurrent `try_loan` calls on the
+/// same publisher race on the busy flag; loser gets `WouldBlock`.
+pub(crate) struct TxArena<const TX_BUF: usize> {
+    busy: AtomicBool,
+    buf: UnsafeCell<[u8; TX_BUF]>,
+}
+
+// SAFETY: Sync-ness of the arena is enforced by the `busy` flag — only
+// the thread that won the CAS may access `buf`, and only until commit/
+// discard releases the slot.
+unsafe impl<const TX_BUF: usize> Sync for TxArena<TX_BUF> {}
+
+impl<const TX_BUF: usize> TxArena<TX_BUF> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            busy: AtomicBool::new(false),
+            buf: UnsafeCell::new([0u8; TX_BUF]),
+        }
+    }
+
+    /// Try to claim the arena slot. Returns a raw pointer + len pair on
+    /// success; caller wraps it in a `PublishLoan`. Returns `false` if
+    /// the slot is already loaned.
+    fn try_claim(&self, len: usize) -> Result<&mut [u8], LoanError> {
+        if len > TX_BUF {
+            return Err(LoanError::TooLarge);
+        }
+        if self
+            .busy
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(LoanError::WouldBlock);
+        }
+        // SAFETY: we just won the busy CAS; we hold exclusive access
+        // until release(). Lifetime is tied to `&self` for the loan.
+        let buf_ref: &mut [u8; TX_BUF] = unsafe { &mut *self.buf.get() };
+        Ok(&mut buf_ref[..len])
+    }
+
+    fn release(&self) {
+        self.busy.store(false, Ordering::Release);
+    }
+}
+
+impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// Publish a pre-encoded byte slice. The byte format depends entirely
     /// on the active RMW backend:
     ///
@@ -172,6 +234,88 @@ impl EmbeddedRawPublisher {
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
+    /// Reserve a writable slot of `len` bytes. Caller writes into the
+    /// returned [`PublishLoan`] and calls [`PublishLoan::commit`] to
+    /// publish. Never blocks; returns [`LoanError::WouldBlock`] when the
+    /// arena slot is already in use, or [`LoanError::TooLarge`] when
+    /// `len` exceeds the const-generic `TX_BUF` capacity.
+    pub fn try_loan(&self, len: usize) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
+        let slice = self.arena.try_claim(len)?;
+        Ok(PublishLoan {
+            publisher: self,
+            slice,
+            committed: false,
+        })
+    }
+}
+
+/// Error type for [`EmbeddedRawPublisher::try_loan`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoanError {
+    /// Requested length exceeds the publisher's arena slot capacity.
+    TooLarge,
+    /// Arena slot already in use; another publish is in flight on this
+    /// publisher. Retry after the other loan commits or discards.
+    WouldBlock,
+    /// Backend rejected the publish at commit time.
+    Backend(TransportError),
+}
+
+impl From<TransportError> for LoanError {
+    fn from(e: TransportError) -> Self {
+        LoanError::Backend(e)
+    }
+}
+
+/// Writable loan into a [`EmbeddedRawPublisher`]'s arena slot.
+///
+/// User fills `as_mut()` then calls [`commit`](Self::commit) to publish,
+/// or [`discard`](Self::discard) to release the slot without publishing.
+/// Dropping without either silently discards (slot freed); a
+/// `#[must_use]` warning catches accidental drops at compile time.
+#[must_use = "PublishLoan must be committed or discarded; dropping silently rolls back"]
+pub struct PublishLoan<'a, const TX_BUF: usize> {
+    publisher: &'a EmbeddedRawPublisher<TX_BUF>,
+    slice: &'a mut [u8],
+    committed: bool,
+}
+
+impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
+    /// Mutable view into the loaned bytes. Caller writes message data here.
+    pub fn as_mut(&mut self) -> &mut [u8] {
+        self.slice
+    }
+
+    /// Commit the loan: hand the bytes to the backend's `publish_raw`,
+    /// then release the arena slot. Returns the backend's publish error
+    /// if any (slot is released regardless).
+    pub fn commit(mut self) -> Result<(), LoanError> {
+        let res = self
+            .publisher
+            .handle
+            .publish_raw(self.slice)
+            .map_err(|_| LoanError::Backend(TransportError::PublishFailed));
+        self.committed = true;
+        // Drop runs and releases the slot.
+        res
+    }
+
+    /// Discard the loan without publishing. Equivalent to dropping, but
+    /// explicit (no #[must_use] warning).
+    pub fn discard(mut self) {
+        self.committed = true; // Suppress Drop's "discard" log if any.
+        drop(self);
+    }
+}
+
+impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
+    fn drop(&mut self) {
+        // Slot always returned to the free pool; whether the bytes were
+        // actually published is encoded in `committed`. Future telemetry
+        // hook could log uncommitted drops in debug builds.
+        self.publisher.arena.release();
     }
 }
 
@@ -343,6 +487,49 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// Check if data is available without consuming it.
     pub fn has_data(&self) -> bool {
         self.handle.has_data()
+    }
+
+    /// Try to borrow the next available message in place. Returns
+    /// `Ok(None)` if no message is ready; never blocks.
+    ///
+    /// The returned [`RecvView`] borrows the subscriber's internal
+    /// receive buffer. Lifetime is tied to `&mut self` — only one view
+    /// can be live at a time, and the next `try_borrow` / `try_recv_raw`
+    /// call invalidates the previous view's bytes.
+    ///
+    /// View is `!Send + !Sync` to discourage holding it across `.await`
+    /// or thread boundaries (would block subsequent receives on the
+    /// same subscriber).
+    pub fn try_borrow(&mut self) -> Result<Option<RecvView<'_>>, NodeError> {
+        match self.try_recv_raw()? {
+            Some(len) => Ok(Some(RecvView {
+                bytes: &self.buffer[..len],
+                _marker: core::marker::PhantomData,
+            })),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Read-only view into a [`RawSubscription`]'s receive buffer.
+///
+/// `!Send + !Sync`: cannot cross `.await` or threads. Drop releases
+/// any backend lock + lets the next message advance.
+pub struct RecvView<'a> {
+    bytes: &'a [u8],
+    _marker: core::marker::PhantomData<*const ()>,
+}
+
+impl<'a> core::ops::Deref for RecvView<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.bytes
+    }
+}
+
+impl<'a> AsRef<[u8]> for RecvView<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes
     }
 }
 

@@ -507,7 +507,7 @@ pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    Node, Promise, RawActiveGoal, RawSubscription, Subscription,
+    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, Subscription,
 };
 
 #[cfg(all(

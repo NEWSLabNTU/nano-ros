@@ -236,6 +236,14 @@ pub enum TransportError {
     Timeout,
     /// Invalid configuration
     InvalidConfig,
+    /// Resource (slot, buffer, queue) momentarily unavailable. Retry.
+    /// Phase 95: returned by `try_loan` when arena slots are full and
+    /// by `try_borrow` when no message is ready (alternative to
+    /// `Ok(None)` for backends that prefer the error variant).
+    WouldBlock,
+    /// Requested allocation exceeds backend capacity. Phase 95:
+    /// `try_loan(len)` returns this when `len` > arena slot size.
+    TooLarge,
     /// Failed to start background tasks
     TaskStartFailed,
     /// Failed to poll for incoming messages
@@ -985,6 +993,70 @@ pub struct ServiceRequest<'a> {
     pub data: &'a [u8],
     /// Sequence number for request/response matching
     pub sequence_number: i64,
+}
+
+// ============================================================================
+// Phase 95 — zero-copy raw API: SlotLending / SlotBorrowing
+// ============================================================================
+//
+// Backends that can lend a slot directly into their outbound buffer
+// (zenoh-pico w/ unstable-zenoh-api, XRCE-DDS via uxr_prepare_output_stream,
+// full DDS w/ SHM transport) implement these traits. Backends that cannot
+// (uORB, default zenoh-pico) do NOT impl them — `EmbeddedRawPublisher` then
+// falls back to its per-publisher arena and memcpys at commit time. Both
+// paths land at `Publisher::publish_raw` for the actual wire write; only
+// the user-side copy is eliminated when lending is available.
+//
+// Selection is **compile-time** via the `lending` Cargo feature. Each
+// backend crate forwards its own `lending` feature to `nros-rmw/lending`
+// when it can satisfy the trait. nros-node's `rmw-lending` aggregates.
+// User opting `nros/rmw-lending` w/ a non-lending backend (e.g. uORB)
+// gets a clear compile error from the unsatisfied trait bound on the
+// concrete `RmwPublisher`.
+
+/// Backend can lend a writable slot into its outbound buffer.
+///
+/// The returned slot's lifetime is tied to `&self`; user fills it in
+/// place, then calls [`commit_slot`](Self::commit_slot) to publish.
+/// Dropping the slot without commit is a no-op (slot returned to free
+/// pool); concurrent loan attempts that would exceed backend capacity
+/// return [`TransportError::WouldBlock`] — never block.
+#[cfg(feature = "lending")]
+pub trait SlotLending: Publisher {
+    /// Backend-owned writable slot. Holds a `&'a mut [u8]` and any
+    /// state needed for commit_slot.
+    type Slot<'a>: AsMut<[u8]> + 'a
+    where
+        Self: 'a;
+
+    /// Reserve a writable slot of `len` bytes from the backend's
+    /// outbound buffer. Returns `Ok(None)` if the backend has no slot
+    /// available (full); never blocks.
+    fn try_lend_slot(&self, len: usize) -> Result<Option<Self::Slot<'_>>, Self::Error>;
+
+    /// Commit a previously-lent slot. Consumes the slot and triggers
+    /// the actual wire write. Returns `Err` on backend send failure;
+    /// the slot's bytes are lost in that case (caller must re-lend +
+    /// re-fill to retry).
+    fn commit_slot(&self, slot: Self::Slot<'_>) -> Result<(), Self::Error>;
+}
+
+/// Backend can lend a read-only view into its receive buffer.
+///
+/// The returned view's lifetime is tied to `&mut self` (subscriber-
+/// exclusive); dropping the view releases any backend lock and lets
+/// the next message advance into the buffer.
+#[cfg(feature = "lending")]
+pub trait SlotBorrowing: Subscriber {
+    /// Backend-owned read-only view. Holds a `&'a [u8]` and any state
+    /// needed to release the borrow on Drop.
+    type View<'a>: AsRef<[u8]> + 'a
+    where
+        Self: 'a;
+
+    /// Try to borrow the next available message in place. Returns
+    /// `Ok(None)` if no message is ready; never blocks.
+    fn try_borrow(&mut self) -> Result<Option<Self::View<'_>>, Self::Error>;
 }
 
 /// Service server trait for handling requests.
