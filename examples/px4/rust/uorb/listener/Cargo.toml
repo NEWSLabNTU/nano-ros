@@ -1,0 +1,29 @@
+[package]
+name = "px4-rs-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "PX4 nano-ros listener example — subscribes SensorPing via uORB"
+
+[lib]
+crate-type = ["staticlib"]
+doctest = false
+
+[dependencies]
+nros-rmw-uorb        = { path = "../../../../../packages/px4/nros-rmw-uorb", default-features = false }
+px4-log              = { path = "../../../../../third-party/px4-rs/crates/px4-log" }
+px4-sys              = { path = "../../../../../third-party/px4-rs/crates/px4-sys" }
+px4-uorb             = { path = "../../../../../third-party/px4-rs/crates/px4-uorb" }
+px4-workqueue        = { path = "../../../../../third-party/px4-rs/crates/px4-workqueue" }
+px4-workqueue-macros = { path = "../../../../../third-party/px4-rs/crates/px4-workqueue-macros" }
+px4-msg-macros       = { path = "../../../../../third-party/px4-rs/crates/px4-msg-macros" }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = "fat"
+strip = "symbols"
+
+[profile.dev]
+panic = "abort"

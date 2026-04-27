@@ -1,0 +1,33 @@
+[package]
+name = "px4-rs-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "PX4 nano-ros talker example — publishes SensorPing via uORB"
+
+[lib]
+crate-type = ["staticlib"]
+doctest = false
+
+[dependencies]
+# Relative paths from this Cargo.toml. When this example is copied out
+# of the nano-ros tree into PX4-Autopilot's EXTERNAL_MODULES_LOCATION,
+# rewrite these to point at your nano-ros + px4-rs checkouts.
+nros-rmw-uorb        = { path = "../../../../../packages/px4/nros-rmw-uorb", default-features = false }
+px4-log              = { path = "../../../../../third-party/px4-rs/crates/px4-log" }
+px4-sys              = { path = "../../../../../third-party/px4-rs/crates/px4-sys" }
+px4-uorb             = { path = "../../../../../third-party/px4-rs/crates/px4-uorb" }
+px4-workqueue        = { path = "../../../../../third-party/px4-rs/crates/px4-workqueue" }
+px4-workqueue-macros = { path = "../../../../../third-party/px4-rs/crates/px4-workqueue-macros" }
+px4-msg-macros       = { path = "../../../../../third-party/px4-rs/crates/px4-msg-macros" }
+
+# Required for #[no_std] staticlib linked into PX4 — no eh_personality.
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = "fat"
+strip = "symbols"
+
+[profile.dev]
+panic = "abort"
