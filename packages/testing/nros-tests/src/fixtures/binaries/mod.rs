@@ -1912,6 +1912,93 @@ pub fn dds_listener_binary() -> PathBuf {
         .to_path_buf()
 }
 
+// Phase 95.F — Native DDS service + action examples ---------------------------
+
+static DDS_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static DDS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static DDS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static DDS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_dds_service_server() -> TestResult<&'static Path> {
+    DDS_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/dds/service-server",
+                "service-server",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+pub fn build_dds_service_client() -> TestResult<&'static Path> {
+    DDS_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/dds/service-client",
+                "service-client",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+pub fn build_dds_action_server() -> TestResult<&'static Path> {
+    DDS_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/dds/action-server",
+                "action-server",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+pub fn build_dds_action_client() -> TestResult<&'static Path> {
+    DDS_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/dds/action-client",
+                "action-client",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+#[rstest::fixture]
+pub fn dds_service_server_binary() -> PathBuf {
+    build_dds_service_server()
+        .expect("Failed to build native-dds-service-server")
+        .to_path_buf()
+}
+
+#[rstest::fixture]
+pub fn dds_service_client_binary() -> PathBuf {
+    build_dds_service_client()
+        .expect("Failed to build native-dds-service-client")
+        .to_path_buf()
+}
+
+#[rstest::fixture]
+pub fn dds_action_server_binary() -> PathBuf {
+    build_dds_action_server()
+        .expect("Failed to build native-dds-action-server")
+        .to_path_buf()
+}
+
+#[rstest::fixture]
+pub fn dds_action_client_binary() -> PathBuf {
+    build_dds_action_client()
+        .expect("Failed to build native-dds-action-client")
+        .to_path_buf()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

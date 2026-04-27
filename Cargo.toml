@@ -85,6 +85,10 @@ exclude = [
     # Native DDS examples
     "examples/native/rust/dds/talker",
     "examples/native/rust/dds/listener",
+    "examples/native/rust/dds/service-server",
+    "examples/native/rust/dds/service-client",
+    "examples/native/rust/dds/action-server",
+    "examples/native/rust/dds/action-client",
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm-baremetal/rust/zenoh/talker",
     "examples/qemu-arm-baremetal/rust/zenoh/listener",

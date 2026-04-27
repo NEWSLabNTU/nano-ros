@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_dds_action_server</name>
+  <version>0.1.0</version>
+  <description>nano-ros native DDS action server example</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>example_interfaces</depend>
+  <depend>action_msgs</depend>
+  <depend>unique_identifier_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

@@ -1,0 +1,17 @@
+[package]
+name = "native-dds-service-client"
+version = "0.1.0"
+edition = "2024"
+description = "Example ROS 2 service client using nros + DDS RMW"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "service-client"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-dds", "platform-posix"] }
+example_interfaces = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
