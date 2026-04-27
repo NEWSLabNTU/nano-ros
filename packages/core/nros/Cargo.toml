@@ -18,6 +18,7 @@ std = [
     "nros-rmw-zenoh?/std",
     "nros-rmw-xrce?/std",
     "nros-rmw-dds?/std",
+    "nros-rmw-uorb?/std",
     "nros-params/std",
     "nros-serdes/std",
 ]
@@ -35,6 +36,7 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds", "nros-node/rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
+rmw-uorb = ["dep:nros-rmw-uorb", "nros-node/rmw-uorb"]
 
 # Platform (select one; forwarded to RMW backends which forward to -sys crates)
 platform-posix = [
@@ -136,6 +138,7 @@ nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", defau
 nros-rmw-xrce = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
 nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }

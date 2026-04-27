@@ -100,6 +100,14 @@ compile_error!("`rmw-zenoh` and `rmw-xrce` are mutually exclusive — select one
 compile_error!("`rmw-cffi` and `rmw-zenoh` are mutually exclusive.");
 #[cfg(all(feature = "rmw-cffi", feature = "rmw-xrce"))]
 compile_error!("`rmw-cffi` and `rmw-xrce` are mutually exclusive.");
+#[cfg(all(feature = "rmw-uorb", feature = "rmw-zenoh"))]
+compile_error!("`rmw-uorb` and `rmw-zenoh` are mutually exclusive.");
+#[cfg(all(feature = "rmw-uorb", feature = "rmw-xrce"))]
+compile_error!("`rmw-uorb` and `rmw-xrce` are mutually exclusive.");
+#[cfg(all(feature = "rmw-uorb", feature = "rmw-dds"))]
+compile_error!("`rmw-uorb` and `rmw-dds` are mutually exclusive.");
+#[cfg(all(feature = "rmw-uorb", feature = "rmw-cffi"))]
+compile_error!("`rmw-uorb` and `rmw-cffi` are mutually exclusive.");
 
 // At most one platform.
 #[cfg(any(
@@ -319,6 +327,17 @@ pub mod internals {
     #[cfg(feature = "rmw-dds")]
     pub type RmwServiceClient = nros_rmw_dds::DdsServiceClient;
 
+    #[cfg(feature = "rmw-uorb")]
+    pub type RmwSession = nros_rmw_uorb::UorbSession;
+    #[cfg(feature = "rmw-uorb")]
+    pub type RmwPublisher = nros_rmw_uorb::UorbPublisher;
+    #[cfg(feature = "rmw-uorb")]
+    pub type RmwSubscriber = nros_rmw_uorb::UorbSubscriber;
+    #[cfg(feature = "rmw-uorb")]
+    pub type RmwServiceServer = nros_rmw_uorb::UorbServiceServer;
+    #[cfg(feature = "rmw-uorb")]
+    pub type RmwServiceClient = nros_rmw_uorb::UorbServiceClient;
+
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
@@ -331,7 +350,8 @@ pub mod internals {
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
-        feature = "rmw-cffi"
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
     ))]
     pub fn open_session(
         locator: &str,
@@ -406,6 +426,7 @@ pub mod internals {
             not(feature = "rmw-zenoh"),
             not(feature = "rmw-xrce"),
             not(feature = "rmw-dds"),
+            not(feature = "rmw-uorb"),
         ))]
         {
             use nros_rmw::Rmw;
@@ -422,6 +443,29 @@ pub mod internals {
                 .open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
         }
+
+        #[cfg(all(
+            feature = "rmw-uorb",
+            not(feature = "rmw-zenoh"),
+            not(feature = "rmw-xrce"),
+            not(feature = "rmw-dds"),
+            not(feature = "rmw-cffi"),
+        ))]
+        {
+            use nros_rmw::Rmw;
+
+            let config = nros_rmw::RmwConfig {
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                namespace: "",
+                properties: &[],
+            };
+            nros_rmw_uorb::UorbRmw::default()
+                .open(&config)
+                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        }
     }
 
     /// Drive middleware I/O for pull-based backends.
@@ -435,7 +479,8 @@ pub mod internals {
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
-        feature = "rmw-cffi"
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
     ))]
     pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
         use nros_rmw::Session;
@@ -455,7 +500,8 @@ pub use nros_node::{
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
     feature = "rmw-dds",
-    feature = "rmw-cffi"
+    feature = "rmw-cffi",
+    feature = "rmw-uorb"
 ))]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
@@ -470,7 +516,8 @@ pub use nros_node::{
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
-        feature = "rmw-cffi"
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
     )
 ))]
 pub use nros_node::SpinPeriodResult;
@@ -531,7 +578,8 @@ pub mod prelude {
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
-        feature = "rmw-cffi"
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
     ))]
     pub use crate::{
         EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
@@ -547,7 +595,8 @@ pub mod prelude {
             feature = "rmw-zenoh",
             feature = "rmw-xrce",
             feature = "rmw-dds",
-            feature = "rmw-cffi"
+            feature = "rmw-cffi",
+            feature = "rmw-uorb"
         )
     ))]
     pub use crate::SpinPeriodResult;

@@ -1259,6 +1259,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-dds",
+ "nros-rmw-uorb",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "nros-serdes",
