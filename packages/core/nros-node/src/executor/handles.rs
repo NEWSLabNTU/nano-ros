@@ -249,6 +249,41 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             committed: false,
         })
     }
+
+    /// Sync blocking loan with timeout. Spins the executor until the
+    /// arena slot is free or `timeout` elapses.
+    ///
+    /// Useful when you publish from a sync context that owns the
+    /// executor and want to block on a busy arena (rare — single-slot
+    /// arena means contention only when concurrent task tries the same
+    /// publisher, in which case the offending other task should have
+    /// committed promptly).
+    pub fn loan_with_timeout(
+        &self,
+        len: usize,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
+        if len > TX_BUF {
+            return Err(LoanError::TooLarge);
+        }
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        loop {
+            match self.try_loan(len) {
+                Ok(loan) => return Ok(loan),
+                Err(LoanError::WouldBlock) => {
+                    executor.spin_once(spin_interval);
+                    if !budget.tick() {
+                        return Err(LoanError::WouldBlock);
+                    }
+                }
+                Err(other) => return Err(other),
+            }
+        }
+    }
 }
 
 /// Error type for [`EmbeddedRawPublisher::try_loan`].
@@ -507,6 +542,68 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
                 _marker: core::marker::PhantomData,
             })),
             None => Ok(None),
+        }
+    }
+
+    /// Async-await on the next message, returning a [`RecvView`].
+    /// Mirrors the `Subscription::recv` pattern but typeless.
+    ///
+    /// Backend wake source: `Subscriber::register_waker`. Same race-
+    /// safe register-then-check ordering as `Subscription::recv`.
+    pub async fn borrow(&mut self) -> Result<RecvView<'_>, NodeError> {
+        // Loop until try_borrow returns Some. Poll-and-register pattern
+        // identical to Subscription::recv. The borrow returned by
+        // try_borrow ties RecvView's lifetime to &mut self for the rest
+        // of this fn body, so there's no lifetime trick needed.
+        loop {
+            // SAFETY-of-pattern: we register the waker BEFORE we check
+            // for data so any concurrent backend callback that fires
+            // between try_borrow returning None and the waker landing
+            // wakes us, not the previous waker (or nowhere).
+            core::future::poll_fn(|cx| {
+                self.handle.register_waker(cx.waker());
+                if self.has_data() {
+                    core::task::Poll::Ready(())
+                } else {
+                    core::task::Poll::Pending
+                }
+            })
+            .await;
+            if let Some(view) = self.try_borrow()? {
+                // Re-borrow to hand the view out with a fresh lifetime
+                // tied to the outer &mut self.
+                let len = view.as_ref().len();
+                return Ok(RecvView {
+                    bytes: &self.buffer[..len],
+                    _marker: core::marker::PhantomData,
+                });
+            }
+            // Spurious wake — loop and re-register.
+        }
+    }
+
+    /// Sync blocking borrow with timeout. Spins the executor until a
+    /// message is available or `timeout` elapses.
+    ///
+    /// Returns `Ok(Some(view))` on success, `Ok(None)` on timeout.
+    /// The view's lifetime is tied to `&mut self`.
+    pub fn borrow_with_timeout(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<Option<RecvView<'_>>, NodeError> {
+        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+        let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
+        let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let mut budget = WaitBudget::new(max_spins, timeout);
+        loop {
+            executor.spin_once(spin_interval);
+            if self.has_data() {
+                return self.try_borrow();
+            }
+            if !budget.tick() {
+                return Ok(None);
+            }
         }
     }
 }
