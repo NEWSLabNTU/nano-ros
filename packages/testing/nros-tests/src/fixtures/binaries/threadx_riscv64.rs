@@ -73,41 +73,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         "target/riscv64gc-unknown-none-elf/release/{}",
         binary_name
     ));
-
-    // Default contract: tests don't compile fixtures.
-    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
-        return result;
-    }
-
-    eprintln!("Building qemu-riscv64-threadx/rust/zenoh/{}...", name);
-
-    // RISC-V board crate needs its own config dirs (not the Linux sim defaults).
-    let rv_config = root.join("packages/boards/nros-threadx-qemu-riscv64/config");
-
-    let output = duct::cmd!("cargo", "build", "--release")
-        .dir(&example_dir)
-        .env("THREADX_CONFIG_DIR", &rv_config)
-        .env("NETX_CONFIG_DIR", &rv_config)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    super::require_prebuilt_binary(&binary_path)
 }
 
 pub fn build_threadx_rv64_talker() -> TestResult<&'static Path> {
@@ -188,103 +154,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
     let build_dir = example_dir.join("build");
     let binary_path = build_dir.join(binary_name);
-
-    // Default contract: tests don't compile fixtures.
-    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
-        return result;
-    }
-
-    eprintln!(
-        "Building qemu-riscv64-threadx/{}/zenoh/{} (CMake)...",
-        lang, name
-    );
-
-    // Clean stale build to avoid cmake cache conflicts.
-    let _ = std::fs::remove_dir_all(&build_dir);
-    std::fs::create_dir_all(&build_dir).ok();
-
-    let prefix_path = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let toolchain = format!(
-        "-DCMAKE_TOOLCHAIN_FILE={}",
-        root.join("cmake/toolchain/riscv64-threadx.cmake").display()
-    );
-    let threadx_dir = std::env::var("THREADX_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/kernel")
-            .display()
-            .to_string()
-    });
-    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/netxduo")
-            .display()
-            .to_string()
-    });
-    let config_dir = root
-        .join("packages/boards/nros-threadx-qemu-riscv64/config")
-        .display()
-        .to_string();
-    let board_dir = root
-        .join("packages/boards/nros-threadx-qemu-riscv64/c")
-        .display()
-        .to_string();
-    let virtio_dir = root
-        .join("packages/drivers/virtio-net-netx")
-        .display()
-        .to_string();
-
-    let output = duct::cmd!(
-        "cmake",
-        "-S",
-        &example_dir,
-        "-B",
-        &build_dir,
-        &prefix_path,
-        &toolchain,
-        "-DNANO_ROS_PLATFORM=threadx_riscv64",
-        &format!("-DTHREADX_DIR={threadx_dir}"),
-        &format!("-DNETX_DIR={netx_dir}"),
-        &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
-        &format!("-DTHREADX_BOARD_DIR={board_dir}"),
-        &format!("-DVIRTIO_DRIVER_DIR={virtio_dir}"),
-        "-DCMAKE_BUILD_TYPE=Release"
-    )
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake configure failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let output = duct::cmd!("cmake", "--build", &build_dir, "--", "-j4")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake build failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    super::require_prebuilt_binary(&binary_path)
 }
 
 pub fn build_rv64_c_talker() -> TestResult<&'static Path> {

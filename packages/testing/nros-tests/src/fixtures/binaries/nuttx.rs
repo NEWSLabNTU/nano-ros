@@ -91,42 +91,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         "target/armv7a-nuttx-eabihf/release/{}",
         binary_name
     ));
-
-    // Default contract: tests don't compile fixtures.
-    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
-        return result;
-    }
-
-    eprintln!("Building qemu-arm-nuttx/rust/zenoh/{}...", name);
-
-    // cc-rs doesn't recognize armv7a-nuttx-eabihf (Tier 3) and falls back to
-    // the host `cc`, which fails on ARM flags. Set the target-specific CC so
-    // cc-rs uses the ARM cross-compiler. Also unset RUSTUP_TOOLCHAIN so the
-    // example's pinned nightly wins over the harness's stable default.
-    let output = duct::cmd!("cargo", "build", "--release")
-        .dir(&example_dir)
-        .env("CC_armv7a_nuttx_eabi", "arm-none-eabi-gcc")
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    super::require_prebuilt_binary(&binary_path)
 }
 
 pub fn build_nuttx_talker() -> TestResult<&'static Path> {
@@ -196,73 +161,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
     let build_dir = example_dir.join("build");
     let binary_path = build_dir.join(binary_name);
-
-    // Default contract: tests don't compile fixtures.
-    if let Some(result) = super::require_prebuilt_binary(&binary_path) {
-        return result;
-    }
-
-    eprintln!("Building qemu-arm-nuttx/{}/zenoh/{} (CMake)...", lang, name);
-
-    std::fs::create_dir_all(&build_dir).ok();
-
-    let prefix_path = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let nuttx_dir = std::env::var("NUTTX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/nuttx/nuttx").display().to_string());
-
-    // Corrosion invokes cargo internally. Unset RUSTUP_TOOLCHAIN so the
-    // example tree's rust-toolchain.toml pinned nightly wins over stable
-    // inherited from the nextest harness.
-    let output = duct::cmd!(
-        "cmake",
-        "-S",
-        &example_dir,
-        "-B",
-        &build_dir,
-        &prefix_path,
-        &format!("-DNUTTX_DIR={nuttx_dir}"),
-        "-DCMAKE_BUILD_TYPE=Release"
-    )
-    .env_remove("RUSTUP_TOOLCHAIN")
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake configure failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    let output = duct::cmd!("cmake", "--build", &build_dir)
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "cmake build failed:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        )));
-    }
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    super::require_prebuilt_binary(&binary_path)
 }
 
 pub fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {

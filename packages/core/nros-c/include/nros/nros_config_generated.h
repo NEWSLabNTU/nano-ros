@@ -23,7 +23,7 @@
 /** `size_of::<RmwSubscriber>()` */
 #define NROS_SUBSCRIBER_SIZE 24
 /** `size_of::<RmwServiceClient>()` */
-#define NROS_SERVICE_CLIENT_SIZE 296
+#define NROS_SERVICE_CLIENT_SIZE 568
 /** `size_of::<RmwServiceServer>()` */
 #define NROS_SERVICE_SERVER_SIZE 296
 /** `size_of::<RmwSession>()` */
@@ -63,7 +63,7 @@
 extern "C" {
 #endif
 typedef struct ActionServerRawHandle {
-uint64_t _opaque[0];
+uint64_t _opaque[6];
 } ActionServerRawHandle;
 #ifdef __cplusplus
 }

@@ -199,40 +199,28 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 ///
 /// # Returns
 /// Path to the built binary
-/// Verify a test-fixture binary was prebuilt — the default contract.
+/// Verify a test-fixture binary was prebuilt — the only contract.
 /// Tests must not compile fixtures inside their bodies; the build phase
 /// belongs to `just build-test-fixtures`, which sequences cargo/cmake/west
 /// invocations cooperatively instead of letting them race with the host's
 /// QEMU + zenohd test load. Builds inside test bodies historically
 /// stretched a 14 s test to 125 s on a saturated host.
-///
-/// Returns:
-/// * `Some(Ok(path))` if the binary exists at the expected path.
-/// * `Some(Err(...))` if the binary is missing (test fails fast with a
-///   clear "run `just build-test-fixtures`" message).
-/// * `None` if `NROS_TESTS_BUILD_ON_DEMAND=1` is set — the dev escape
-///   hatch for direct `cargo nextest run …` flows. The caller then
-///   falls back to the historical embedded-build path.
-pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> Option<TestResult<PathBuf>> {
-    if std::env::var("NROS_TESTS_BUILD_ON_DEMAND").is_ok() {
-        return None;
-    }
+pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
     if binary_path.exists() {
-        Some(Ok(binary_path.to_path_buf()))
+        Ok(binary_path.to_path_buf())
     } else {
-        Some(Err(TestError::BuildFailed(format!(
+        Err(TestError::BuildFailed(format!(
             "Test fixture binary not prebuilt: {}\n\
-             Run `just build-test-fixtures` (or set NROS_TESTS_BUILD_ON_DEMAND=1 \
-             to opt into in-test cargo/cmake invocations).",
+             Run `just build-test-fixtures` first.",
             binary_path.display()
-        ))))
+        )))
     }
 }
 
 pub fn build_example(
     name: &str,
     binary_name: &str,
-    features: Option<&[&str]>,
+    _features: Option<&[&str]>,
     target: Option<&str>,
 ) -> TestResult<PathBuf> {
     let root = project_root();
@@ -251,48 +239,7 @@ pub fn build_example(
         example_dir.join(format!("target/release/{}", binary_name))
     };
 
-    if let Some(result) = require_prebuilt_binary(&binary_path) {
-        return result;
-    }
-
-    eprintln!("Building {}...", name);
-
-    let mut args = vec!["build", "--release"];
-
-    if let Some(target) = target {
-        args.push("--target");
-        args.push(target);
-    }
-
-    let features_str: String;
-    if let Some(features) = features {
-        features_str = features.join(",");
-        args.push("--features");
-        args.push(&features_str);
-    }
-
-    let output = cmd("cargo", &args)
-        .dir(&example_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    require_prebuilt_binary(&binary_path)
 }
 
 /// Build native-rs-talker with param-services feature (cached)
@@ -404,43 +351,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/talker");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/talker");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/talker (link-tls)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--features",
-                "link-tls",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found after build: {}",
-                    binary_path.display()
-                )));
-            }
-
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -456,43 +367,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/listener");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/listener (link-tls)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--features",
-                "link-tls",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found after build: {}",
-                    binary_path.display()
-                )));
-            }
-
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -552,43 +427,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/talker");
             let target_dir = example_dir.join("target-safety");
             let binary_path = target_dir.join("release/talker");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/talker (safety-e2e)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--features",
-                "safety-e2e",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found after build: {}",
-                    binary_path.display()
-                )));
-            }
-
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -604,43 +443,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-safety");
             let binary_path = target_dir.join("release/listener");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/listener (safety-e2e)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--features",
-                "safety-e2e",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found after build: {}",
-                    binary_path.display()
-                )));
-            }
-
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -672,43 +475,7 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/listener");
             let target_dir = example_dir.join("target-zero-copy");
             let binary_path = target_dir.join("release/listener");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/listener (zero-copy)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--features",
-                "unstable-zenoh-api",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found after build: {}",
-                    binary_path.display()
-                )));
-            }
-
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -1313,41 +1080,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/zenoh/stress-test");
             let target_dir = example_dir.join("target-large-buf");
             let binary_path = target_dir.join("release/zenoh-stress-test");
-
-            if let Some(result) = require_prebuilt_binary(&binary_path) {
-                return result;
-            }
-
-            eprintln!("Building native/rust/zenoh/stress-test (large-buf)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--target-dir",
-                target_dir.to_str().unwrap()
-            )
-            .env("ZPICO_SUBSCRIBER_BUFFER_SIZE", "8192")
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            if !binary_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Binary not found: {}",
-                    binary_path.display()
-                )));
-            }
-            Ok(binary_path)
+            require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
 }

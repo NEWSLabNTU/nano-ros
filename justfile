@@ -233,16 +233,12 @@ test verbose="": build-zenohd
 
 # Pre-build every example binary the test suite reaches.
 #
-# The contract is: tests only verify a binary exists at a known path,
-# never compile (`require_prebuilt_binary` short-circuits each fixture
-# builder by default). This recipe is the build phase. Splitting the
-# build phase from the test phase lets cargo/cmake use full host
-# parallelism without competing with N concurrent QEMU + zenohd
-# processes during the nextest run, which used to stretch a 14 s
-# test out to 125 s under load.
-#
-# Direct `cargo nextest run …` flows can opt back into in-test
-# building via `NROS_TESTS_BUILD_ON_DEMAND=1`.
+# The contract is: tests only verify a binary exists at a known path —
+# they never compile fixtures themselves. This recipe is the build
+# phase. Splitting the build phase from the test phase lets cargo/cmake
+# use full host parallelism without competing with N concurrent QEMU +
+# zenohd processes during the nextest run, which used to stretch a 14 s
+# test out to 125 s under load. Run this before `just test-all`.
 build-test-fixtures:
     just native build-fixtures
     just qemu build-fixtures
@@ -256,7 +252,9 @@ build-test-fixtures:
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
-test-all verbose="": build-zenohd build-test-fixtures
+#
+# Fixtures are NOT auto-built — run `just build-test-fixtures` first.
+test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
