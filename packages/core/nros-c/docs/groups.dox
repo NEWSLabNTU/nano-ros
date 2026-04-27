@@ -72,6 +72,9 @@
  * reject, periodic feedback, cancel, and final result. Servers expose
  * accept and execute callbacks; clients receive feedback and result
  * callbacks.
+ *
+ * @see @ref grp_service for one-shot RPC (no feedback / cancel)
+ * @see @ref grp_executor for executor-driven dispatch
  */
 
 /**
@@ -90,6 +93,10 @@
  * nros_executor_add_subscription(&exec, &sub);
  * nros_executor_spin_period(&exec, 10000000ULL);
  * @endcode
+ *
+ * @see @ref grp_pubsub for callback-driven subscriptions
+ * @see @ref grp_service for callback-driven service servers
+ * @see @ref grp_action for callback-driven action servers
  */
 
 /**
@@ -98,6 +105,9 @@
  *
  * `nros_time_t` is an absolute instant, `nros_duration_t` is a span;
  * helpers convert between nanoseconds, milliseconds, and seconds.
+ *
+ * @see @ref grp_executor for `nros_executor_spin_period` (uses
+ *      `nros_duration_t` ticks)
  */
 
 /**
@@ -107,6 +117,8 @@
  * Static-pool parameter table backing the `~/get_parameters`,
  * `~/set_parameters`, etc. services. Parameter sizes are bounded by
  * `NROS_MAX_PARAMETERS` and friends — see @ref configuration.
+ *
+ * @see @ref grp_service for the underlying RPC machinery
  */
 
 /**
@@ -116,6 +128,9 @@
  * Optional lifecycle state machine and matching services
  * (`~/change_state`, `~/get_state`, …) built on the
  * `nros-lifecycle-msgs` codegen crate.
+ *
+ * @see @ref grp_node for the underlying node entity
+ * @see @ref grp_service for the lifecycle-managing services
  */
 
 /**
@@ -125,6 +140,9 @@
  * Low-level helpers used by generated message types. You should not
  * need to call these directly — `nano_ros_generate_interfaces()` emits
  * fully serialised types.
+ *
+ * @see @ref grp_pubsub for `nros_publish_raw` / `nros_subscription_take`
+ *      (the consumers of CDR-encoded buffers)
  */
 
 /**
@@ -133,6 +151,9 @@
  *
  * Reliability (`BEST_EFFORT` / `RELIABLE`), durability, history,
  * and depth.
+ *
+ * @see @ref grp_pubsub — every publisher/subscription accepts a QoS
+ *      profile via the `_with_qos` init variant
  */
 
 /**
@@ -141,6 +162,8 @@
  *
  * Every fallible function returns `nros_ret_t`. See @ref error_codes
  * for the full table.
+ *
+ * @see @ref troubleshooting for symptom-driven diagnostics
  */
 
 /**

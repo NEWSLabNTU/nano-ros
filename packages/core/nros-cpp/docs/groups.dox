@@ -53,6 +53,9 @@
  * `S` is a generated service type that exposes nested `Request` and
  * `Response` types. Servers dispatch via the executor; clients return
  * a `nros::Future<typename S::Response>` from `async_send_request`.
+ *
+ * @see @ref grp_action for long-running calls with feedback / cancel
+ * @see @ref grp_executor for callback-driven service dispatch
  */
 
 /**
@@ -67,6 +70,9 @@
  *       `zpico_get` path on `send_goal` and `get_result`; Phase 77 is
  *       migrating them to a non-blocking executor-polled path. See the
  *       project CLAUDE.md for status.
+ *
+ * @see @ref grp_service for one-shot RPC (no feedback / cancel)
+ * @see @ref grp_executor for the executor that drives action callbacks
  */
 
 /**
@@ -77,6 +83,9 @@
  * `nros::Timer` fires on a periodic interval; `nros::GuardCondition`
  * is a cross-thread wake source. `nros::Future<T>` and `nros::Stream<T>`
  * are the futures/streams returned by service and action clients.
+ *
+ * @see @ref grp_pubsub, @ref grp_service, @ref grp_action — every
+ *      entity dispatches through the executor
  */
 
 /**
@@ -91,6 +100,9 @@
  * Builder-style helpers to set reliability, durability, history, depth.
  * Defaults are `BEST_EFFORT` reliability + `VOLATILE` durability +
  * depth `10`.
+ *
+ * @see @ref grp_pubsub — every `Node::create_publisher` /
+ *      `create_subscription` accepts a QoS profile
  */
 
 /**
@@ -98,6 +110,8 @@
  * @brief Result/ErrorCode and the `NROS_TRY` macro.
  *
  * See @ref error_codes for the full code table and recovery guidance.
+ *
+ * @see @ref troubleshooting for symptom-driven diagnostics
  */
 
 /**

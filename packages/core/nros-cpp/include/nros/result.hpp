@@ -20,14 +20,24 @@ namespace nros {
 ///
 /// Values match the Rust `nros_cpp_ret_t` constants in nros-cpp.
 enum class ErrorCode : int32_t {
+    /// Success.
     Ok = 0,
+    /// Generic failure not covered by a more specific code.
     Error = -1,
+    /// Operation deadline elapsed before completion.
     Timeout = -2,
+    /// Null pointer, empty topic name, or out-of-range value.
     InvalidArgument = -3,
+    /// `nros::init()` was never called or the entity is in a default
+    /// state. See `is_valid()` on entity classes.
     NotInitialized = -4,
+    /// Static pool exhausted (executor slots, subscription buffers, …).
     Full = -5,
+    /// Transient — no data ready yet (non-blocking take). Retry later.
     TryAgain = -6,
+    /// A blocking call was made from inside a callback.
     Reentrant = -7,
+    /// Underlying zenoh-pico / DDS transport rejected the operation.
     TransportError = -100,
 };
 
@@ -37,8 +47,11 @@ enum class ErrorCode : int32_t {
 /// for early return on error.
 class Result {
   public:
+    /// Default-construct a success.
     constexpr Result() : code_(ErrorCode::Ok) {}
+    /// Construct from a typed code.
     constexpr Result(ErrorCode code) : code_(code) {}
+    /// Construct from a raw FFI return value (`int32_t`).
     constexpr Result(int32_t raw) : code_(static_cast<ErrorCode>(raw)) {}
 
     /// Returns true if the operation succeeded.

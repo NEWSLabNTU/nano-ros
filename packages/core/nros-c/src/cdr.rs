@@ -79,6 +79,10 @@ where
 // Write functions
 // ===========================================================================
 
+/// Write a CDR-encoded `bool` (1 byte) and advance the cursor.
+///
+/// Returns 0 on success, -1 if the cursor would overrun `end` or any
+/// pointer is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_bool(
     ptr: *mut *mut u8,
@@ -89,6 +93,8 @@ pub unsafe extern "C" fn nros_cdr_write_bool(
     with_writer(ptr, end, origin, |w| w.write_bool(value))
 }
 
+/// Write a CDR-encoded `uint8_t` and advance the cursor. See
+/// [`nros_cdr_write_bool`] for the buffer contract.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u8(
     ptr: *mut *mut u8,
@@ -99,6 +105,7 @@ pub unsafe extern "C" fn nros_cdr_write_u8(
     with_writer(ptr, end, origin, |w| w.write_u8(value))
 }
 
+/// Write a CDR-encoded `int8_t` and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i8(
     ptr: *mut *mut u8,
@@ -109,6 +116,8 @@ pub unsafe extern "C" fn nros_cdr_write_i8(
     with_writer(ptr, end, origin, |w| w.write_i8(value))
 }
 
+/// Write a CDR-encoded `uint16_t` (2 bytes, little-endian, 2-byte
+/// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u16(
     ptr: *mut *mut u8,
@@ -119,6 +128,7 @@ pub unsafe extern "C" fn nros_cdr_write_u16(
     with_writer(ptr, end, origin, |w| w.write_u16(value))
 }
 
+/// Write a CDR-encoded `int16_t` and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i16(
     ptr: *mut *mut u8,
@@ -129,6 +139,8 @@ pub unsafe extern "C" fn nros_cdr_write_i16(
     with_writer(ptr, end, origin, |w| w.write_i16(value))
 }
 
+/// Write a CDR-encoded `uint32_t` (4 bytes, little-endian, 4-byte
+/// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u32(
     ptr: *mut *mut u8,
@@ -139,6 +151,7 @@ pub unsafe extern "C" fn nros_cdr_write_u32(
     with_writer(ptr, end, origin, |w| w.write_u32(value))
 }
 
+/// Write a CDR-encoded `int32_t` and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i32(
     ptr: *mut *mut u8,
@@ -149,6 +162,8 @@ pub unsafe extern "C" fn nros_cdr_write_i32(
     with_writer(ptr, end, origin, |w| w.write_i32(value))
 }
 
+/// Write a CDR-encoded `uint64_t` (8 bytes, little-endian, 8-byte
+/// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_u64(
     ptr: *mut *mut u8,
@@ -159,6 +174,7 @@ pub unsafe extern "C" fn nros_cdr_write_u64(
     with_writer(ptr, end, origin, |w| w.write_u64(value))
 }
 
+/// Write a CDR-encoded `int64_t` and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_i64(
     ptr: *mut *mut u8,
@@ -169,6 +185,8 @@ pub unsafe extern "C" fn nros_cdr_write_i64(
     with_writer(ptr, end, origin, |w| w.write_i64(value))
 }
 
+/// Write a CDR-encoded IEEE-754 `float` (4-byte aligned) and advance
+/// the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_f32(
     ptr: *mut *mut u8,
@@ -179,6 +197,8 @@ pub unsafe extern "C" fn nros_cdr_write_f32(
     with_writer(ptr, end, origin, |w| w.write_f32(value))
 }
 
+/// Write a CDR-encoded IEEE-754 `double` (8-byte aligned) and advance
+/// the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_write_f64(
     ptr: *mut *mut u8,
@@ -240,6 +260,11 @@ fn write_string_payload(w: &mut CdrWriter<'_>, data: &[u8]) -> Result<(), SerErr
 // Read functions
 // ===========================================================================
 
+/// Read a CDR-encoded `bool` (1 byte) into `*value` and advance the
+/// cursor.
+///
+/// Returns 0 on success, -1 if the cursor would overrun `end`, the
+/// payload is malformed, or any pointer is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_bool(
     ptr: *mut *const u8,
@@ -256,6 +281,8 @@ pub unsafe extern "C" fn nros_cdr_read_bool(
     })
 }
 
+/// Read a CDR-encoded `uint8_t` into `*value` and advance the cursor.
+/// See [`nros_cdr_read_bool`] for the buffer contract.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u8(
     ptr: *mut *const u8,
@@ -272,6 +299,7 @@ pub unsafe extern "C" fn nros_cdr_read_u8(
     })
 }
 
+/// Read a CDR-encoded `int8_t` into `*value` and advance the cursor.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i8(
     ptr: *mut *const u8,
@@ -288,6 +316,7 @@ pub unsafe extern "C" fn nros_cdr_read_i8(
     })
 }
 
+/// Read a CDR-encoded `uint16_t` (2-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u16(
     ptr: *mut *const u8,
@@ -304,6 +333,7 @@ pub unsafe extern "C" fn nros_cdr_read_u16(
     })
 }
 
+/// Read a CDR-encoded `int16_t` into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i16(
     ptr: *mut *const u8,
@@ -320,6 +350,7 @@ pub unsafe extern "C" fn nros_cdr_read_i16(
     })
 }
 
+/// Read a CDR-encoded `uint32_t` (4-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u32(
     ptr: *mut *const u8,
@@ -336,6 +367,7 @@ pub unsafe extern "C" fn nros_cdr_read_u32(
     })
 }
 
+/// Read a CDR-encoded `int32_t` into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i32(
     ptr: *mut *const u8,
@@ -352,6 +384,7 @@ pub unsafe extern "C" fn nros_cdr_read_i32(
     })
 }
 
+/// Read a CDR-encoded `uint64_t` (8-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_u64(
     ptr: *mut *const u8,
@@ -368,6 +401,7 @@ pub unsafe extern "C" fn nros_cdr_read_u64(
     })
 }
 
+/// Read a CDR-encoded `int64_t` into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_i64(
     ptr: *mut *const u8,
@@ -384,6 +418,7 @@ pub unsafe extern "C" fn nros_cdr_read_i64(
     })
 }
 
+/// Read a CDR-encoded IEEE-754 `float` into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_f32(
     ptr: *mut *const u8,
@@ -400,6 +435,7 @@ pub unsafe extern "C" fn nros_cdr_read_f32(
     })
 }
 
+/// Read a CDR-encoded IEEE-754 `double` into `*value`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cdr_read_f64(
     ptr: *mut *const u8,
