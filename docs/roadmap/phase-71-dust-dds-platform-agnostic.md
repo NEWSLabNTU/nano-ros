@@ -291,11 +291,28 @@ on every nros platform.
             session.rs code so the next investigator doesn't have
             to re-discover this dead end. (Actually reverted —
             see commit history.)
-         2. Instrument `DataReader::get_matched_publications()`
+         2. ~~Instrument `DataReader::get_matched_publications()`
             after a 5-second wait — 0 = SEDP didn't match for
-            service topics specifically, ≥ 1 = `take()` is wrong.
-            This is the next un-tried step; do it before further
-            QoS guessing.
+            service topics specifically, ≥ 1 = `take()` is wrong.~~
+            **Tried in this session — matched_publications == 2**
+            on the server's request_reader from poll #0 onward.
+            SEDP matching works. The bug is therefore that
+            `DataReader::take(1, ANY_*, ANY_*, ANY_*)` returns
+            either `Err(NoData)` or `Ok(empty Vec)` for the
+            duration of the test, even though a matched writer is
+            actively calling `write(payload)` (which returns Ok).
+            **Combined with the tshark finding that no user
+            entityKey DATA submessages reach the wire**, the
+            bug isolates to the dust-dds writer side: the writer
+            is matched at SEDP but is not actually emitting wire
+            DATA submessages on its matched-publication channel.
+            Suspected upstream cause: dust-dds's
+            `DataWriter::write` enqueues into a per-instance
+            history buffer; for the service-shape topic pattern
+            (single instance, KeepLast(10)) the writer's RTPS
+            `BestEffortWriterProxy` / `ReliableWriterProxy` may
+            not be wired to flush the queue under the std runtime
+            in the same way pubsub's gets driven.
          3. Compare to pubsub on the *same* QoS shape: temporarily
             change the pubsub talker example to use Reliable +
             KeepLast(10) + TransientLocal. If pubsub still works,
