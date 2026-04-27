@@ -316,7 +316,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Complete (archived; 89.11 dropped, all others landed; clean `just test-all` → 675/675 pass) |
 | 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (archived; A/B/C/D/E1/E3/E4/F/G; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
 | 92 | Zephyr DDS talker↔listener interop on `qemu_cortex_a9` (real IP stack, IGMP, GEM driver — same code path production DDS-on-Zephyr deployments use) | Complete (archived; `scripts/zephyr/cortex-a9-rust-patch.sh` ships the upstream Zephyr workspace patches, wired into `just zephyr setup` / `build` / `build-fixtures`; interop test passes 6.16 s end-to-end) |
-| 93 | C and C++ Doxygen completion (C++ mainpage, `@defgroup` taxonomy, per-function `@param`/`@return`, template-concept docs, error-code reference) | Complete |
+| 93 | C and C++ Doxygen completion + RMW/platform porting surface (Groups A–G user-facing C/C++; Groups H–L extend to RMW + platform trait contracts, platform vtable C header, *-cffi Doxygen sites, porting-guide C path, rustdoc deploy of porter crates) | In Progress (A–G done; H–L open) |
 
 ## Quick Reference
 

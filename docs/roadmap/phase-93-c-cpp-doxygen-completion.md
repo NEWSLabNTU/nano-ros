@@ -7,7 +7,7 @@ but a user landing on either site faces blank or alphabet-soup index
 pages, undocumented opaque types, and per-function reference stubs with
 no `@param` / `@return` blocks. Close those gaps.
 
-**Status**: Complete (Groups A–G landed; cbindgen-forwarded docstrings cover the cbindgen-emitted decls so per-function C sweep was unnecessary)
+**Status**: In Progress (Groups A–G landed for the user-facing C/C++ surface; Groups H–L extend coverage to the RMW and platform layers — the porting surface — and are still open)
 **Priority**: Medium — `just book` already produces a deployable site
 (Phase 65), and `just doc-c` / `just doc-cpp` already wire Doxygen into
 CI (`deploy-book.yml`). What is missing is the *content* the generators
@@ -276,6 +276,137 @@ the remaining utility-class gaps:
       `nros::ErrorCode`. Same structure. Linked from C++ mainpage and
       `nros-cpp/docs/troubleshooting.md`.
 
+## Groups H–L: RMW + Platform Porting Surface (Phase 93 extension)
+
+Groups A–G covered the user-facing C/C++ API. The follow-up audit
+identified an equally important — and worse-documented — *porter*
+surface: the RMW backend trait + C vtable, and the platform abstraction
+trait + C vtable. nano-ros is "Rust native" for these layers, but the
+C FFI shims (`nros-rmw-cffi`, `nros-platform-cffi`) exist precisely so
+C/C++ porters can stand up new backends without writing Rust. Today
+that path is half-finished.
+
+### Status quo (April 2026 RMW/platform audit)
+
+| Surface | Existing artefact | Quality |
+|---|---|---|
+| Rust crate-level docs (`nros-rmw`, `nros-platform-api`, …) | `lib.rs:1–~50` `//!` blocks | Architectural overviews are present and clear. |
+| Rust trait-method docs (`Publisher::publish_raw`, `Session::create_publisher`, `Subscriber::try_recv_raw`, `PlatformThreading::*`) | one-line `///` per method | **No threading contract, no buffer-lifetime contract, no calling pattern.** Pitfalls about recursive mutexes / poll-driven clocks live only in `book/src/porting/custom-platform.md` "Pitfalls", not on the trait. |
+| RMW C header (`packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`) | Hand-written, 81 lines, complete | Good — every vtable slot has a return-value convention; covers all 13 fn pointers. |
+| Platform C header | **Does not exist.** | A C porter must hand-mirror `NrosPlatformVtable` (~60 fn pointers, ~90 lines of Rust struct in `nros-platform-cffi/src/lib.rs:37–96`) into a `.h` by hand. `book/src/porting/custom-platform.md:207` admits this and points the porter at the Rust source. |
+| Doxygen sites for `nros-rmw-cffi` / `nros-platform-cffi` | **None.** Neither has a `Doxyfile`. | The deployed book has no porter-facing C reference at all. |
+| `book/src/porting/custom-platform.md` | 1856 words; Rust skeleton complete | C-path skeleton is half-baked — placeholder `/* ... */` for ~40 of ~60 fields. |
+| `book/src/porting/custom-rmw.md` | 1895 words; Rust skeleton complete | **No C-path section at all.** |
+| `book/src/porting/custom-board.md` | 1278 words | Adequate; assumes custom-platform already done. |
+| Cbindgen config in either `*-cffi` crate | None | No `cbindgen.toml`, no `build.rs` — the RMW header is hand-maintained. |
+
+The biggest concrete blocker for a C-only porter is the missing
+**platform vtable header**. The second biggest is **trait-method
+contracts** (threading / buffer lifetime / call ordering) that are
+documented only in pitfalls lists rather than on the trait itself.
+
+### Group H — Rust trait contracts on RMW + platform traits
+
+Add `# Thread Safety`, `# Calling pattern`, `# Buffer lifetime`,
+`# Errors` sections to the trait-method rustdoc. Promote pitfalls
+that are currently buried in the porting guide into trait-level
+docs so they show up in rustdoc on hover.
+
+- [ ] 93.H1 — `nros-rmw/src/traits.rs`: per-method docs on `RmwSession`,
+      `Publisher`, `Subscriber`, `ServiceServer`, `ServiceClient`. Cover:
+      (a) which side of the FFI may invoke the method, (b) whether
+      multiple threads may invoke concurrently, (c) buffer ownership
+      on raw send/recv, (d) blocking vs non-blocking semantics, (e)
+      what `drive_io` is allowed to do.
+- [ ] 93.H2 — `nros-platform-api/src/lib.rs` + traits: per-method
+      docs on `PlatformClock`, `PlatformAlloc`, `PlatformSleep`,
+      `PlatformThreading` (mutex/condvar/task), `PlatformTcp`,
+      `PlatformUdp`, `PlatformRandom`. Promote the recursive-mutex
+      requirement and the deterministic-PRNG note from
+      `custom-platform.md` Pitfalls into the trait-level docs.
+- [ ] 93.H3 — Crate-level `//!` blocks on `nros-rmw`, `nros-platform`,
+      `nros-platform-api` get a "When you should be reading this"
+      paragraph and a back-link to the porting guide for orientation.
+
+### Group I — Platform C FFI header (the missing piece)
+
+This unblocks a real C-only platform port and removes the apologetic
+"A C header is not yet auto-generated" line from
+`custom-platform.md:207`.
+
+- [ ] 93.I1 — Decision call: cbindgen-generated header
+      (`packages/core/nros-platform-cffi/cbindgen.toml` + `build.rs`)
+      vs hand-written. Recommendation: **cbindgen** — the platform
+      vtable is large (~60 fn pointers across 11 traits), drift is
+      certain, and Phase 91.E has already established cbindgen as the
+      single source of truth for the user-facing C surface. Reuse the
+      same toolchain.
+- [ ] 93.I2 — Add `packages/core/nros-platform-cffi/cbindgen.toml`
+      (mirror `nros-c/cbindgen.toml`). Add a `build.rs` that emits
+      `include/nros/platform_vtable.h` on every build.
+- [ ] 93.I3 — Doc-comment every field of `NrosPlatformVtable` in
+      `nros-platform-cffi/src/lib.rs` — return-value conventions,
+      null-pointer semantics, blocking allowance — so the cbindgen
+      output mirrors the quality of `rmw_vtable.h`.
+- [ ] 93.I4 — Replace the half-baked C skeleton in
+      `book/src/porting/custom-platform.md:200–307` with a complete
+      template that links into the generated `platform_vtable.h`.
+      Drop the "A C header is not yet auto-generated" line.
+
+### Group J — Doxygen sites for the *-cffi crates
+
+Build a porter-facing Doxygen site that mirrors the C / C++ ones, but
+focused on the vtable surfaces.
+
+- [ ] 93.J1 — Add `packages/core/nros-rmw-cffi/Doxyfile` with INPUT
+      = `include/nros/rmw_vtable.h` + a hand-written `docs/mainpage.md`
+      narrating what an RMW backend is, when to write one, and how the
+      vtable maps onto the Rust `RmwSession` trait.
+- [ ] 93.J2 — Add `packages/core/nros-platform-cffi/Doxyfile` with
+      INPUT = the cbindgen-emitted `include/nros/platform_vtable.h` (from
+      Group I) + a hand-written `docs/mainpage.md` narrating the
+      platform contract and its 11 sub-traits.
+- [ ] 93.J3 — Wire both into the `just book` recipe and the
+      `.github/workflows/deploy-book.yml` deploy job. Stage outputs
+      under `book/book/api/rmw-cffi/` and `book/book/api/platform-cffi/`.
+- [ ] 93.J4 — Cross-link from `book/src/porting/custom-rmw.md` and
+      `custom-platform.md` to the new Doxygen sites so a porter clicks
+      from "here's how to start" straight into the function-by-function
+      reference.
+
+### Group K — Porting guide C-path completion
+
+- [ ] 93.K1 — `book/src/porting/custom-platform.md`: replace the
+      `/* ... */` placeholders with a full C skeleton (all ~60 vtable
+      slots stubbed with `static int my_…(…) { return -1; }`), built
+      from the Group I header. Add a "minimum viable port" section
+      listing the smallest set of traits a host can stub before
+      `nros::init()` will return.
+- [ ] 93.K2 — `book/src/porting/custom-rmw.md`: add a C-path section
+      mirroring the Rust one. Include a `static struct nros_rmw_vtable
+      my_rmw = { … };` template and a `nros_rmw_cffi_register(&my_rmw)`
+      call site.
+- [ ] 93.K3 — Add a "lifecycle / threading contract" subsection to
+      both guides referencing the new trait-level rustdoc from
+      Group H, so the porter has one canonical place to learn the
+      rules.
+
+### Group L — Rustdoc deploy of porter crates
+
+The `deploy-book.yml` `cargo doc` invocation already builds `nros`,
+`nros-rmw`, `nros-platform-api`, `nros-rmw-zenoh`. The remaining
+porter-facing crates (`nros-platform-cffi`, `nros-rmw-cffi`,
+`nros-rmw-xrce`, `nros-platform-{posix,zephyr,freertos,nuttx,threadx}`)
+should also publish so a Rust porter can reach them from the live
+site.
+
+- [ ] 93.L1 — Add the cffi crates and platform-impl crates to the
+      `cargo doc -p …` list in `.github/workflows/deploy-book.yml`.
+      Include `--no-deps` to keep the deploy small.
+- [ ] 93.L2 — Update the rustdoc redirect index
+      (`book/book/api/rust/index.html`) to surface the new top-level
+      crates.
+
 ## Acceptance Criteria
 
 - [x] `just book` produces sites where `book/book/api/c/index.html` and
@@ -295,6 +426,24 @@ the remaining utility-class gaps:
       from each side's mainpage and troubleshooting page.
 - [x] No regression: `just book` finishes without warnings;
       `just check` continues to pass.
+
+### Acceptance criteria — Groups H–L (porting surface)
+
+- [ ] Every public trait method on `nros-rmw` and `nros-platform-api`
+      carries a `///` block covering thread safety, calling pattern,
+      buffer ownership (where applicable), and blocking allowance.
+- [ ] `packages/core/nros-platform-cffi/include/nros/platform_vtable.h`
+      exists, is auto-generated by cbindgen, and is committed (or
+      reproduced on every build).
+- [ ] `book/book/api/rmw-cffi/index.html` and
+      `book/book/api/platform-cffi/index.html` render via `just book`
+      with a written mainpage and a complete vtable reference.
+- [ ] `book/src/porting/custom-rmw.md` has a C-path section parallel
+      to its Rust skeleton; `custom-platform.md` no longer carries
+      placeholder `/* ... */` fields and links to the deployed
+      `platform_vtable.h` Doxygen page.
+- [ ] `cargo doc` deploy in `deploy-book.yml` builds the porter-facing
+      crates; rustdoc landing surfaces them.
 
 ## Notes
 
@@ -323,3 +472,11 @@ the remaining utility-class gaps:
   list need a corresponding update to `.github/workflows/deploy-book.yml`
   if any new guide markdown file lives outside the `docs/` subdir
   already on the path-trigger list.
+- **Why H–L stay in Phase 93** rather than spinning into a new phase:
+  the work is the same kind (Doxygen + rustdoc + porting markdown)
+  and reuses the same infrastructure (`just book`, `deploy-book.yml`,
+  cbindgen pipeline). Splitting into a separate phase would duplicate
+  the design notes about the docs pipeline and add a phase-number
+  ceremony with no real boundary. If the scope of H–L grows
+  (e.g., a new doc generator, a separate site target) it can be
+  extracted then.
