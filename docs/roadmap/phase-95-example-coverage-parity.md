@@ -24,11 +24,23 @@ forthcoming G/H commit (this change).
 
 The cross-instance / cross-process E2E tests for B (cortex_a9), C
 (cpp/xrce dual instance), and F (native dds svc/action) remain
-`#[ignore]`d because they all hit two unrelated SEDP-discovery /
+`#[ignore]`d because they all hit unrelated SEDP-discovery /
 session-demux issues in the underlying RMW backends — the example
-crates themselves all build and reach readiness. Those E2Es belong
-to a separate dust-dds / xrce-cpp-API follow-up phase, not Phase
-95.
+crates themselves all build and reach readiness. Those E2Es are
+tracked in **Phase 96** (`docs/roadmap/phase-96-phase-95-followups.md`)
+and **Phase 71.28 / 71.29** (`docs/roadmap/phase-71-dust-dds-platform-
+agnostic.md`):
+
+* **Phase 71.28** — dust-dds service request/reply SEDP discovery
+  (blocks B-cortex_a9 + F-native cross-process service / action E2E).
+* **Phase 71.29** — Cortex-A9 Xilinx GEM RX queue tuning under SEDP
+  burst (observed alongside 71.28).
+* **Phase 96.1** — `nros::Subscription::try_recv()` demux on a
+  shared XRCE Agent (blocks C-cpp/xrce dual-instance E2E; rust +
+  c xrce shapes work fine on the same agent, so the bug is on the
+  cpp-API session shape).
+* **Phase 96.2** — `test_talker_param_declaration` flake fix
+  (pre-existing native zenoh test, unrelated to Phase 95).
 
 **Priority**: Medium. Examples are the primary onboarding surface — a
 user copying out a Zephyr xrce example for a service node hits a wall

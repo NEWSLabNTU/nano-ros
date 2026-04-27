@@ -239,6 +239,30 @@ on every nros platform.
        (bind → recvfrom → assert)
 - [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
 - [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
+- [ ] 71.28 — Service request/reply SEDP discovery (blocks Phase 95
+       cross-process E2E for native dds + cortex_a9 dds). dust-dds
+       service path uses `QosKind::Default` (BestEffort, KEEP_LAST
+       depth 1); request_DataReader on the server never sees the
+       client's request_DataWriter, even on localhost. Pubsub on
+       the same configuration works fine. Suspected fix: tune the
+       service-topic QoS to `Reliable + KeepLast(N>=10)` and verify
+       the SEDP topic-name format (`rq<svc>Request` /
+       `rr<svc>Reply`) matches what dust-dds publishes via SEDP.
+       Re-enable the four `#[ignore]`d tests this would close:
+       `test_zephyr_dds_rust_service_a9_e2e`,
+       `test_zephyr_dds_rust_action_a9_e2e`,
+       `test_zephyr_dds_rust_async_service_a9_e2e`,
+       `test_dds_service_server_client_e2e`,
+       `test_dds_action_server_client_e2e`.
+- [ ] 71.29 — Cortex-A9 GEM RX queue tuning under SEDP burst
+       (separate from 71.28 but observed alongside): even with
+       `CONFIG_NET_PKT_RX_COUNT=256` / `CONFIG_NET_BUF_RX_COUNT=512`,
+       the Xilinx GEM driver logs `RX packet buffer alloc failed:
+       110 bytes` during the SEDP traffic burst that opens a
+       service. Pubsub doesn't trigger this because it has fewer
+       discovery topics. Likely a `eth_xlnx_gem` driver-side bug
+       (ring buffer not draining fast enough) or a need for a
+       deeper Zephyr `net_buf` reservation.
 
 #### 71.20 / 71.21 — bind primitive — **Landed**
 
