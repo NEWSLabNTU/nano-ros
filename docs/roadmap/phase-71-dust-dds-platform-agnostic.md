@@ -240,26 +240,41 @@ on every nros platform.
 - [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
 - [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
 - [~] 71.28 — Service request/reply SEDP discovery (blocks Phase 95
-       cross-process E2E for native dds + cortex_a9 dds). **QoS step
-       landed**: `nros-rmw-dds/src/session.rs` now sets
-       `Reliable + KeepLast(10)` on all four service DataReaders /
-       DataWriters (request reader + reply writer on the server,
-       request writer + reply reader on the client) via two new
-       helpers `service_reader_qos()` / `service_writer_qos()`.
-       Matches ROS 2 service convention. **Still doesn't unblock the
-       E2E tests** — server still doesn't see the request even with
-       Reliable QoS, on localhost. Remaining work: instrument
-       `DdsServiceServer::has_request` to log whether the
-       request_DataReader's matched_publication count is non-zero
-       after SEDP. If matching never happens, the bug is in the
-       SEDP topic announcement (topic-name format / type-name
-       string mismatch — dust-dds uses `nros::RawCdrPayload` for
-       all four service topics, which may not be how dust-dds
-       expects services to look on the wire). If matching happens
-       but data doesn't flow, the bug is on the read side
-       (`try_recv_raw` poll cadence vs the runtime's drive_io
-       schedule). Re-enable the five `#[ignore]`d tests this would
-       close: `test_zephyr_dds_rust_service_a9_e2e`,
+       cross-process E2E for native dds + cortex_a9 dds).
+
+       **Step 1 landed — Reliable QoS**: `nros-rmw-dds/src/session.rs`
+       now sets `Reliable + KeepLast(10)` on all four service
+       DataReaders / DataWriters (request reader + reply writer on
+       the server, request writer + reply reader on the client) via
+       two helpers `service_reader_qos()` / `service_writer_qos()`.
+       Matches ROS 2 service convention.
+
+       **Step 2 confirmed — topic names match**: temporary println
+       diagnostic confirmed both server and client create the same
+       topic name (`rqadd_two_intsRequest`, `rradd_two_intsReply`)
+       and use the same type name (`nros::RawCdrPayload`). So the
+       bug isn't a string mismatch on either name.
+
+       **Bug isolated**: with the QoS + naming both correct, the
+       client's `request_writer.write(payload)` returns Ok, but the
+       server's `request_reader.take(1, ...)` returns `NoData` for
+       18 seconds straight (4 million polls). Pubsub on the same
+       backend works, so the participant + UDP transport are fine.
+       The breakage is between **publishing on the writer** and
+       **delivering to the matched reader** — the in-process dust-dds
+       routing or SEDP matching for service-shape topics is not
+       hooking up the pair. Pubsub uses a single topic with one
+       writer + one reader; service uses two topics each with one
+       writer / one reader on opposite participants. The
+       hypothesised next step: instrument
+       `DataReader::get_matched_publications()` after a 5-second
+       wait — if it returns 0, dust-dds isn't matching the service
+       writer/reader pair via SEDP. If it returns ≥ 1, the bug is in
+       `take()` returning NoData despite a matched publication
+       (history depth, `take` API misuse, etc.).
+
+       Re-enable the five `#[ignore]`d tests this would close:
+       `test_zephyr_dds_rust_service_a9_e2e`,
        `test_zephyr_dds_rust_action_a9_e2e`,
        `test_zephyr_dds_rust_async_service_a9_e2e`,
        `test_dds_service_server_client_e2e`,
