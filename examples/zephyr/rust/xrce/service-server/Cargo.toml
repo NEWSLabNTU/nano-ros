@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr XRCE Service Server Example (Rust)
+#
+# A ROS 2 compatible service server running on Zephyr RTOS using the
+# XRCE-DDS backend.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2021"
+description = "nros XRCE service server for Zephyr RTOS"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Zephyr support from zephyr-lang-rust module
+zephyr = "0.1.0"
+log = "0.4"
+
+# nros unified API (patched to local via .cargo/config.toml)
+nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+
+# Generated message types (patched to local via .cargo/config.toml)
+example_interfaces = { version = "*", default-features = false }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+# Phase 92.4a — same shape as samples/philosophers. zephyr-build at
+# build-dep level wires Kconfig values into Rust `cfg` flags, which
+# is required for embedded ARM (Cortex-A) targets; native_sim doesn't
+# need it but stays compatible.
+[build-dependencies]
+zephyr-build = "0.1.0"

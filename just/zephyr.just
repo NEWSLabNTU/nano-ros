@@ -106,8 +106,9 @@ build-fixtures:
             -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
     done
     # Zephyr XRCE-DDS examples (talker + listener for both Rust and C).
+    # Phase 95.A: Rust xrce gains svc + action coverage.
     # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
-    for ex in talker listener; do
+    for ex in talker listener service-server service-client action-server action-client; do
         echo "  → zephyr/rust/xrce/$ex"
         ( cd "$workspace" && \
           west build -b native_sim/native/64 -d "build-xrce-rs-$ex" -p auto \
@@ -193,10 +194,10 @@ build-xrce:
     echo "Building Zephyr XRCE examples in $WORKSPACE..."
     NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
-    echo "  Building zephyr/rust/xrce/talker -> build-xrce-rs-talker/"
-    west build -b native_sim/native/64 -d build-xrce-rs-talker -p auto $NROS/examples/zephyr/rust/xrce/talker
-    echo "  Building zephyr/rust/xrce/listener -> build-xrce-rs-listener/"
-    west build -b native_sim/native/64 -d build-xrce-rs-listener -p auto $NROS/examples/zephyr/rust/xrce/listener
+    for ex in talker listener service-server service-client action-server action-client; do
+        echo "  Building zephyr/rust/xrce/$ex -> build-xrce-rs-$ex/"
+        west build -b native_sim/native/64 -d build-xrce-rs-$ex -p auto $NROS/examples/zephyr/rust/xrce/$ex
+    done
     echo "  Building zephyr/c/xrce/talker -> build-xrce-c-talker/"
     west build -b native_sim/native/64 -d build-xrce-c-talker -p auto $NROS/examples/zephyr/c/xrce/talker
     echo "  Building zephyr/c/xrce/listener -> build-xrce-c-listener/"

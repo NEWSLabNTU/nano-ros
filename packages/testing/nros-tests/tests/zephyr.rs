@@ -1444,6 +1444,191 @@ fn test_zephyr_xrce_c_talker_listener() {
 }
 
 // =============================================================================
+// Zephyr XRCE Rust Service + Action E2E Tests (Phase 95.A)
+// =============================================================================
+
+fn get_zephyr_xrce_rs_service_server_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-xrce-rs-service-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-xrce-rs-service-server binary")
+}
+
+fn get_zephyr_xrce_rs_service_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-xrce-rs-service-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-xrce-rs-service-client binary")
+}
+
+fn get_zephyr_xrce_rs_action_server_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-xrce-rs-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-xrce-rs-action-server binary")
+}
+
+fn get_zephyr_xrce_rs_action_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example(
+        "zephyr-xrce-rs-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-xrce-rs-action-client binary")
+}
+
+/// Test: Zephyr XRCE Rust service server → Zephyr XRCE Rust service client
+///
+/// E2E integration test for XRCE service path on Zephyr:
+/// 1. Starts MicroXRCEAgent on port 2018
+/// 2. Runs server + client (both native_sim)
+/// 3. Verifies the client receives at least one response
+#[test]
+fn test_zephyr_xrce_rust_service_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    eprintln!("Starting XRCE Agent on port 2018...");
+    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    std::thread::sleep(Duration::from_millis(500));
+
+    let server_binary = get_zephyr_xrce_rs_service_server_native_sim();
+    let client_binary = get_zephyr_xrce_rs_service_client_native_sim();
+
+    eprintln!("XRCE service server binary: {}", server_binary.display());
+    eprintln!("XRCE service client binary: {}", client_binary.display());
+
+    eprintln!("Starting Zephyr XRCE service server...");
+    let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE service server");
+    std::thread::sleep(Duration::from_secs(3));
+
+    eprintln!("Starting Zephyr XRCE service client...");
+    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE service client");
+
+    let client_output = client
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    let server_output = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+
+    let _ = client.kill();
+    let _ = server.kill();
+
+    eprintln!("\n=== XRCE service server output ===\n{}", server_output);
+    eprintln!("\n=== XRCE service client output ===\n{}", client_output);
+
+    let response_count = count_pattern(&client_output, "Response: sum=");
+    let request_count = count_pattern(&server_output, " + ");
+
+    if response_count >= 1 {
+        eprintln!(
+            "\nSUCCESS: XRCE service client got {} responses, server handled {} requests",
+            response_count, request_count
+        );
+    } else if request_count > 0 {
+        panic!(
+            "Server handled {} requests but client got 0 responses (timing/agent issue?)",
+            request_count
+        );
+    } else {
+        panic!(
+            "XRCE service E2E failed:\n  client_responses={}\n  server_requests={}",
+            response_count, request_count
+        );
+    }
+}
+
+/// Test: Zephyr XRCE Rust action server → Zephyr XRCE Rust action client
+///
+/// E2E integration test for XRCE action path on Zephyr:
+/// 1. Starts MicroXRCEAgent on port 2018
+/// 2. Runs Fibonacci server + client (both native_sim)
+/// 3. Verifies "Action client finished" marker
+#[test]
+fn test_zephyr_xrce_rust_action_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    eprintln!("Starting XRCE Agent on port 2018...");
+    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    std::thread::sleep(Duration::from_millis(500));
+
+    let server_binary = get_zephyr_xrce_rs_action_server_native_sim();
+    let client_binary = get_zephyr_xrce_rs_action_client_native_sim();
+
+    eprintln!("XRCE action server binary: {}", server_binary.display());
+    eprintln!("XRCE action client binary: {}", client_binary.display());
+
+    eprintln!("Starting Zephyr XRCE action server...");
+    let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE action server");
+
+    let server_ready =
+        server.wait_for_pattern("Action server ready", Duration::from_secs(30));
+    if !server_ready.contains("Action server ready") {
+        panic!(
+            "Zephyr XRCE action server didn't reach readiness within 30s.\nOutput:\n{}",
+            server_ready
+        );
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let mut server = server;
+
+    eprintln!("Starting Zephyr XRCE action client...");
+    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE action client");
+
+    let client_output =
+        client.wait_for_pattern("Action client finished", Duration::from_secs(60));
+    let server_output = server
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+
+    let _ = server.kill();
+    let _ = client.kill();
+
+    eprintln!("\n=== XRCE action server output ===\n{}", server_output);
+    eprintln!("\n=== XRCE action client output ===\n{}", client_output);
+
+    let server_received_goal = server_output.contains("Goal request")
+        || server_output.contains("Executing goal");
+    let client_got_feedback = client_output.contains("Feedback #");
+    let client_completed = client_output.contains("Action client finished")
+        || client_output.contains("Result:");
+
+    if client_completed && client_got_feedback {
+        eprintln!("\nSUCCESS: XRCE action client received feedback and completed");
+    } else if server_received_goal {
+        panic!(
+            "Server received goal but client didn't complete:\n  feedback={}\n  completed={}",
+            client_got_feedback, client_completed
+        );
+    } else {
+        panic!(
+            "XRCE action E2E failed:\n  server_received_goal={}\n  client_feedback={}\n  client_completed={}",
+            server_received_goal, client_got_feedback, client_completed
+        );
+    }
+}
+
+// =============================================================================
 // Cross-Platform Service Tests
 // =============================================================================
 

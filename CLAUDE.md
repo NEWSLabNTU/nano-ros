@@ -317,6 +317,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (archived; A/B/C/D/E1/E3/E4/F/G; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
 | 92 | Zephyr DDS talker↔listener interop on `qemu_cortex_a9` (real IP stack, IGMP, GEM driver — same code path production DDS-on-Zephyr deployments use) | Complete (archived; `scripts/zephyr/cortex-a9-rust-patch.sh` ships the upstream Zephyr workspace patches, wired into `just zephyr setup` / `build` / `build-fixtures`; interop test passes 6.16 s end-to-end) |
 | 93 | C and C++ Doxygen completion + RMW/platform porting surface (Groups A–G user-facing C/C++; Groups H–L RMW + platform trait contracts, platform vtable C header, *-cffi Doxygen sites, porting-guide C path, rustdoc deploy of porter crates) | Complete |
+| 95 | Example coverage parity — close the `(platform × lang × backend × use-case)` matrix on already-supported backends: Zephyr xrce-rust svc/action, Zephyr dds-rust svc/action/async, Zephyr cpp/c-dds + cpp-xrce, native dds rust/c/cpp svc/action (52 new crates, mechanical ports of zenoh examples) | Not Started |
 
 ## Quick Reference
 

@@ -510,6 +510,19 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         // XRCE examples
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => "build-xrce-rs-talker",
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "build-xrce-rs-listener",
+        // Phase 95.A — XRCE Rust svc + action coverage
+        "zephyr-xrce-rs-service-server" | "xrce-rs-service-server" => {
+            "build-xrce-rs-service-server"
+        }
+        "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => {
+            "build-xrce-rs-service-client"
+        }
+        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => {
+            "build-xrce-rs-action-server"
+        }
+        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => {
+            "build-xrce-rs-action-client"
+        }
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "build-xrce-c-talker",
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "build-xrce-c-listener",
         // DDS examples (Phase 71.8)
@@ -562,6 +575,19 @@ fn example_path_for_name(example_name: &str) -> String {
         // XRCE examples
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => "zephyr/rust/xrce/talker".to_string(),
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "zephyr/rust/xrce/listener".to_string(),
+        // Phase 95.A — XRCE Rust svc + action coverage
+        "zephyr-xrce-rs-service-server" | "xrce-rs-service-server" => {
+            "zephyr/rust/xrce/service-server".to_string()
+        }
+        "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => {
+            "zephyr/rust/xrce/service-client".to_string()
+        }
+        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => {
+            "zephyr/rust/xrce/action-server".to_string()
+        }
+        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => {
+            "zephyr/rust/xrce/action-client".to_string()
+        }
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "zephyr/c/xrce/talker".to_string(),
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "zephyr/c/xrce/listener".to_string(),
         // DDS examples (Phase 71.8)

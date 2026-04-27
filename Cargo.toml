@@ -138,6 +138,10 @@ exclude = [
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)
     "examples/zephyr/rust/xrce/talker",
     "examples/zephyr/rust/xrce/listener",
+    "examples/zephyr/rust/xrce/service-server",
+    "examples/zephyr/rust/xrce/service-client",
+    "examples/zephyr/rust/xrce/action-server",
+    "examples/zephyr/rust/xrce/action-client",
     # Zephyr DDS examples (Phase 71.8 — require Zephyr workspace)
     "examples/zephyr/rust/dds/talker",
     "examples/zephyr/rust/dds/listener",
