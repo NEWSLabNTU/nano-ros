@@ -145,10 +145,21 @@ fn px4_sitl_talker_listener_round_trip() {
     // px4-sitl-tests' wait_for_log takes a &str pattern (compiled
     // internally to a Regex). Match the px4-log output shape from
     // examples/px4/rust/uorb/listener/src/lib.rs.
-    let recv_pat = r"recv: ts=\d+ seq=\d+ value=";
-    let line = sitl
-        .wait_for_log(recv_pat, RECV_TIMEOUT)
-        .expect("listener never logged a recv line");
+    // px4-sitl-tests wait_for_log uses substring match, NOT regex.
+    // Match a literal prefix that the listener prints once per delivered
+    // message (see examples/px4/rust/uorb/listener/src/lib.rs).
+    let recv_pat = "recv: ts=";
+    let line = match sitl.wait_for_log(recv_pat, RECV_TIMEOUT) {
+        Ok(line) => line,
+        Err(e) => {
+            // Dump full daemon log so we can see what actually happened
+            // (modules-started? recv'd 0 messages? other errors?).
+            let snapshot = sitl.log_snapshot();
+            panic!(
+                "wait_for_log timed out: {e:?}\n=== daemon log snapshot ===\n{snapshot}\n=== end snapshot ==="
+            );
+        }
+    };
     assert!(
         line.contains("recv:"),
         "matched line did not contain 'recv:': {line}"

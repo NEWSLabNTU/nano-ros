@@ -22,7 +22,7 @@ use px4_workqueue::task;
 module!("nros_talker");
 panic_handler!();
 
-#[px4_message("../SensorPing.msg")]
+#[px4_message("../msg/SensorPing.msg")]
 pub struct SensorPing;
 
 #[task(wq = "lp_default")]
