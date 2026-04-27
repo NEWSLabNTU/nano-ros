@@ -323,24 +323,39 @@ on every nros platform.
             and the other a read side, with both topics carrying
             the same `nros::RawCdrPayload` type name.
 
-            **Suspected cause** (concrete, ready for someone with
-            dust-dds expertise): SEDP matching may be by type name
-            alone in dust-dds, so the server's request_reader gets
-            mistakenly matched against both the client's
-            request_writer (correct) and the *server's own*
-            reply_writer (wrong) — `matched_publications=2`
-            confirms two matches where only one is expected. The
-            cross-matched reply_writer never publishes (server
-            hasn't replied), so the reader's history stays empty
-            and `take()` returns NoData. To verify, look at
-            dust-dds's SEDP match logic in
-            `dds/src/dcps/.../discovery/` (`add_matched_writer`,
-            `is_matched`) and confirm whether topic_name is
-            checked alongside type_name. Quick fix path:
-            differentiate per-topic type names
-            (`nros::RawCdrRequest` for `rq*` topics,
-            `nros::RawCdrReply` for `rr*`) so SEDP can't cross-match
-            even if the bug is elsewhere.
+            **Differentiated type names experiment** (also tried
+            in this session): swapped the type_name passed to
+            `create_topic` for service request/reply topics from
+            `nros::RawCdrPayload` to `nros::RawCdrRequest` /
+            `nros::RawCdrReply`. **Same failure mode** — reverted.
+            So the cross-match-by-type-name hypothesis is **wrong**;
+            even with strictly distinct type names per topic, the
+            request still doesn't reach the server. The
+            `matched_publications=2` reading must have a
+            different explanation (count is dust-dds-specific
+            bookkeeping, not literally "two cross-matched
+            writers").
+
+            **Where the bug actually sits is still open.** Data so
+            far:
+              * SEDP matches the request topic (matched_count ≥ 1).
+              * Client's writer.write() returns Ok in app thread.
+              * Wire shows zero user-entityKey DATA submessages.
+              * Pubsub on the same backend + same QoS shape works.
+              * Differentiating type names per topic doesn't fix it.
+              * Slash topic prefix doesn't fix it.
+              * TransientLocal durability doesn't fix it.
+            Next investigator should reproduce at the dust-dds
+            layer directly: add a unit test in
+            `packages/dds/dust-dds/dds/src/tests/` that creates two
+            participants on the same domain, one with two
+            writers on two distinct topics, the other with two
+            readers on the same two topics, and writes/reads. If
+            that fails inside dust-dds, the bug is reproducible
+            without nros-rmw-dds. If it passes, the bug is in how
+            nros-rmw-dds drives the std runtime (`block_on`-on-
+            thread-pool vs the cooperative `NrosPlatformRuntime`
+            for nostd).
          4. Bisect via dust-dds's `interoperability_tests/cyclone_dds`
             to confirm dust-dds-to-dust-dds service shape works
             against an external implementation.
