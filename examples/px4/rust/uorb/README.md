@@ -53,5 +53,5 @@ broker instead of real uORB).
   — full PX4 integration guide
 - [`docs/design/px4-rmw-uorb.md`](../../../../../docs/design/px4-rmw-uorb.md)
   — design rationale
-- `third-party/px4-rs/examples/heartbeat/` — comparable px4-rs-only
+- `third-party/px4/px4-rs/examples/heartbeat/` — comparable px4-rs-only
   example

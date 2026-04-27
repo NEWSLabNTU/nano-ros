@@ -3,49 +3,78 @@ set working-directory := '..'
 default:
     @just --list --justfile {{ source_file() }}
 
-# Symlink third-party/px4-rs → $PX4_RS_DIR (default: ~/repos/px4-rs).
-# px4-rs is not packaged on crates.io yet; the symlink keeps Cargo path
-# dependencies stable while letting users override the source location.
+# Initialise PX4 submodules (shallow). Includes:
+#   third-party/px4/px4-rs           — Rust framework for PX4 modules
+#   third-party/px4/PX4-Autopilot    — PX4 firmware tree (top-level only)
+# The PX4-Autopilot tree has its own ~50 sub-submodules; we DO NOT init
+# them by default because most contributors don't need them. Run
+# `just px4 setup-autopilot-recursive` to fetch them when building SITL.
 setup:
-    #!/usr/bin/env bash
-    set -e
-    SRC="${PX4_RS_DIR:-$HOME/repos/px4-rs}"
-    DST="third-party/px4-rs"
-    if [ ! -d "$SRC/crates/px4-uorb" ]; then
-        echo "ERROR: px4-rs not found at $SRC"
-        echo "Set PX4_RS_DIR or clone https://github.com/.../px4-rs to $SRC"
-        exit 1
-    fi
-    if [ -L "$DST" ] && [ "$(readlink "$DST")" = "$SRC" ]; then
-        echo "px4-rs already linked: $DST -> $SRC"
-        exit 0
-    fi
-    ln -sfn "$SRC" "$DST"
-    echo "Linked $DST -> $SRC"
+    git submodule update --init --depth 1 --recommend-shallow \
+        third-party/px4/px4-rs \
+        third-party/px4/PX4-Autopilot
 
-# Diagnose px4-rs install status.
+# Recursively init PX4-Autopilot's own submodules. Required before
+# `just px4 build-sitl`. Heavy: ~500 MB shallow, ~50 sub-submodules.
+setup-autopilot-recursive: setup
+    git -C third-party/px4/PX4-Autopilot submodule update --init \
+        --depth 1 --recommend-shallow --recursive
+
+# Diagnose PX4 install status (read-only).
 doctor:
     #!/usr/bin/env bash
     set +e
     fail=0
-    DST="third-party/px4-rs"
-    if [ -L "$DST" ] && [ -d "$DST/crates/px4-uorb" ]; then
-        TARGET=$(readlink "$DST")
-        echo "  [OK] px4-rs symlink: $DST -> $TARGET"
+    if [ -d "third-party/px4/px4-rs/crates" ]; then
+        echo "  [OK] px4-rs submodule populated"
     else
-        echo "  [MISSING] $DST symlink (run: just px4 setup)"
+        echo "  [MISSING] third-party/px4/px4-rs (run: just px4 setup)"
         fail=1
     fi
-    if [ -d "${PX4_AUTOPILOT_DIR:-}/Tools/setup" ]; then
-        echo "  [OK] PX4-Autopilot: $PX4_AUTOPILOT_DIR"
+    if [ -d "third-party/px4/PX4-Autopilot/Tools" ]; then
+        echo "  [OK] PX4-Autopilot submodule populated"
     else
-        echo "  [INFO] PX4-Autopilot not set — SITL integration tests will be skipped (set PX4_AUTOPILOT_DIR)"
+        echo "  [MISSING] third-party/px4/PX4-Autopilot (run: just px4 setup)"
+        fail=1
+    fi
+    for tool in cmake ninja gcc python3; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            echo "  [OK] $tool"
+        else
+            echo "  [MISSING] $tool — install via your package manager"
+            fail=1
+        fi
+    done
+    if command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "  [OK] arm-none-eabi-gcc (target build available)"
+    else
+        echo "  [INFO] arm-none-eabi-gcc not installed — only SITL host build available"
+    fi
+    if [ -n "${PX4_AUTOPILOT_DIR:-}" ]; then
+        echo "  [INFO] PX4_AUTOPILOT_DIR set to $PX4_AUTOPILOT_DIR (overrides submodule)"
     fi
     exit $fail
 
 # Build the px4 RMW + board crates (host-mock std mode).
 build:
     cargo build -p nros-rmw-uorb -p nros-px4 --features std
+
+# Build PX4 SITL with the nano-ros uORB examples linked in via
+# EXTERNAL_MODULES_LOCATION. Requires `just px4 setup-autopilot-recursive`.
+# Cold build ~10 min; warm <2 s (ninja "no work to do").
+build-sitl:
+    #!/usr/bin/env bash
+    set -e
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    EXT_DIR="$(pwd)/examples/px4/rust/uorb"
+    if [ ! -d "$PX4_DIR/Tools" ]; then
+        echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
+        echo "Run: just px4 setup-autopilot-recursive"
+        exit 1
+    fi
+    echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
+    make -C "$PX4_DIR" px4_sitl_default \
+        EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
 # Check formatting + clippy on px4 crates.
 check:
@@ -56,15 +85,9 @@ check:
 test:
     cargo test -p nros-rmw-uorb --features std --lib
 
-# Run E2E test against PX4 SITL. Requires PX4_AUTOPILOT_DIR.
-test-sitl:
-    #!/usr/bin/env bash
-    set -e
-    if [ -z "${PX4_AUTOPILOT_DIR:-}" ]; then
-        echo "ERROR: PX4_AUTOPILOT_DIR must be set for SITL tests"
-        exit 1
-    fi
+# Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
+test-sitl: build-sitl
     cargo nextest run -p nros-tests --features px4-sitl --test px4_e2e
 
-# Combined CI: check + unit tests (SITL gated separately).
+# Combined CI: check + unit tests (SITL gated separately via test-sitl).
 ci: check test

@@ -25,11 +25,12 @@ nros-core = { workspace = true }
 heapless = { workspace = true }
 phf = { version = "0.11", default-features = false }
 
-# px4-rs crates — populated via `just px4 setup` (symlink at third-party/px4-rs)
-px4-sys = { path = "../../../third-party/px4-rs/crates/px4-sys" }
-px4-uorb = { path = "../../../third-party/px4-rs/crates/px4-uorb" }
-px4-workqueue = { path = "../../../third-party/px4-rs/crates/px4-workqueue" }
-px4-log = { path = "../../../third-party/px4-rs/crates/px4-log" }
+# px4-rs crates — vendored as a submodule under third-party/px4/px4-rs.
+# Run `just px4 setup` to populate.
+px4-sys = { path = "../../../third-party/px4/px4-rs/crates/px4-sys" }
+px4-uorb = { path = "../../../third-party/px4/px4-rs/crates/px4-uorb" }
+px4-workqueue = { path = "../../../third-party/px4/px4-rs/crates/px4-workqueue" }
+px4-log = { path = "../../../third-party/px4/px4-rs/crates/px4-log" }
 
 [build-dependencies]
 phf_codegen = "0.11"

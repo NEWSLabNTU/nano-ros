@@ -52,3 +52,9 @@
 [submodule "third-party/zenoh/rmw_zenoh"]
 	path = third-party/zenoh/rmw_zenoh
 	url = https://github.com/ros2/rmw_zenoh.git
+[submodule "third-party/px4/px4-rs"]
+	path = third-party/px4/px4-rs
+	url = https://github.com/jerry73204/px4-rs.git
+[submodule "third-party/px4/PX4-Autopilot"]
+	path = third-party/px4/PX4-Autopilot
+	url = https://github.com/PX4/PX4-Autopilot.git

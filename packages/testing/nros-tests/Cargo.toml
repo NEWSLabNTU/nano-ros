@@ -18,8 +18,13 @@ once_cell = "1.20"
 # Async support for waiting
 parking_lot = "0.12"
 
-# Optional regex for PX4 SITL log-line waits (gated by px4-sitl feature).
-regex = { version = "1.10", optional = true }
+# px4-rs's SITL test fixture (Px4Sitl::boot_in, shell, wait_for_log, Drop
+# = SIGTERM process group). Path dep into the vendored submodule. Only
+# pulled in via the `px4-sitl` feature. Note: px4-sitl-tests is excluded
+# from px4-rs's own workspace; it works as a normal Cargo path dep.
+# Pulls in regex transitively for the wait_for_log impl, so we don't
+# declare regex separately here.
+px4-sitl-tests = { path = "../../../third-party/px4/px4-rs/tests/sitl", optional = true }
 
 # Non-blocking I/O for process output capture
 [target.'cfg(unix)'.dependencies]
@@ -47,7 +52,7 @@ trigger-test = ["dep:nros-node", "nros-core", "nros-serdes"]
 # PX4 SITL E2E test (requires PX4_AUTOPILOT_DIR + working PX4 build env).
 # Test FAILS (does not silently skip) if PX4_AUTOPILOT_DIR is unset; this
 # matches the project-wide "no silent skip" rule from CLAUDE.md.
-px4-sitl = ["dep:regex"]
+px4-sitl = ["dep:px4-sitl-tests"]
 
 [lib]
 name = "nros_tests"

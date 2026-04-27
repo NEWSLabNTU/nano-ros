@@ -1624,7 +1624,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "predicates",
- "regex",
+ "px4-sitl-tests",
  "rstest",
  "tempfile",
  "thiserror",
@@ -1848,6 +1848,16 @@ version = "0.1.0"
 dependencies = [
  "log",
  "px4-sys",
+]
+
+[[package]]
+name = "px4-sitl-tests"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "regex",
+ "rstest",
+ "thiserror",
 ]
 
 [[package]]

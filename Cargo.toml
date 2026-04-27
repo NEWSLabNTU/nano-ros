@@ -233,10 +233,11 @@ exclude = [
     "examples/px4/rust/uorb/listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
-    # px4-rs is a sibling project with its own workspace; symlinked under
-    # third-party/ for path-dependency resolution. Excluded so cargo doesn't
-    # try to absorb its crates into nano-ros's workspace.
-    "third-party/px4-rs",
+    # PX4 vendored sources (submodules under third-party/px4/). Each has
+    # its own workspace / build system; excluded so cargo doesn't try to
+    # absorb their crates into nano-ros's workspace.
+    "third-party/px4/px4-rs",
+    "third-party/px4/PX4-Autopilot",
 ]
 
 [workspace.package]
