@@ -265,13 +265,40 @@ on every nros platform.
        routing or SEDP matching for service-shape topics is not
        hooking up the pair. Pubsub uses a single topic with one
        writer + one reader; service uses two topics each with one
-       writer / one reader on opposite participants. The
-       hypothesised next step: instrument
-       `DataReader::get_matched_publications()` after a 5-second
-       wait — if it returns 0, dust-dds isn't matching the service
-       writer/reader pair via SEDP. If it returns ≥ 1, the bug is in
-       `take()` returning NoData despite a matched publication
-       (history depth, `take` API misuse, etc.).
+       writer / one reader on opposite participants.
+
+       **Tshark capture analysis** (`tshark -i lo -f "udp" -w …`,
+       no sudo needed; dumpcap on this machine has cap_net_raw):
+       during an 18 s service E2E, lo capture shows 513 RTPS
+       packets. DATA-submessage breakdown by writer entityId:
+         * 0x000100 (SPDPbuiltinParticipantWriter): 21 — both
+           participants' SPDP announcements flow.
+         * 0x000002 (SEDPbuiltinPublicationsWriter): 144.
+         * 0x000003 (SEDPbuiltinSubscriptionsWriter): 48.
+         * 0x000004 (SEDPbuiltinTopicsWriter): 48.
+       **No DATA submessages on a user-defined writer entityKey.**
+       Client's `request_writer.write(payload)` returns Ok in app
+       thread but never emits a wire DATA submessage. So the bug
+       is upstream of the wire: dust-dds either buffers
+       indefinitely waiting for a matched reader (Volatile
+       Durability, no late-match retention) or SEDP matching
+       silently failed for a service-specific reason. Concrete
+       next steps in priority order:
+         1. Set `DurabilityQosPolicy::TransientLocal` on the
+            request/reply writers so they retain history across
+            late-matching readers.
+         2. Instrument `DataReader::get_matched_publications()`
+            after a 5-second wait — 0 = SEDP didn't match, ≥ 1 =
+            `take()` is wrong.
+         3. Bisect via dust-dds's interoperability_tests/cyclone_dds
+            to confirm dust-dds-to-dust-dds service shape works
+            against an external implementation.
+
+       **Slash naming experiment** (tried in this session):
+       changed topic format from `rq{name}Request` to
+       `rq/{name}Request` (matching ROS 2's standard
+       `rq/<svc>Request` convention) — same failure mode. Topic
+       naming is not the bug. Reverted.
 
        Re-enable the five `#[ignore]`d tests this would close:
        `test_zephyr_dds_rust_service_a9_e2e`,
