@@ -1047,15 +1047,26 @@ pub trait ServiceServerTrait {
     {
         use nros_core::{CdrReader, CdrWriter};
 
-        // First, try to receive a request and extract necessary data
-        let (data_len, sequence_number) = match self.try_recv_request(req_buf)? {
-            Some(request) => (request.data.len(), request.sequence_number),
+        // First, try to receive a request and extract necessary data.
+        // Capture the data slice's offset within `req_buf` so we can
+        // re-borrow it after the `ServiceRequest` (which holds a
+        // borrow into `req_buf`) is dropped. Some backends prepend a
+        // header (DDS: 8-byte sequence number) and place the CDR
+        // payload at a non-zero offset in the buffer; others (zenoh)
+        // put it at offset 0. Reading from offset 0 unconditionally
+        // would feed the prefix bytes to the CDR deserializer and
+        // silently corrupt the request.
+        let buf_start = req_buf.as_ptr() as usize;
+        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+            Some(request) => {
+                let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
+                (offset, request.data.len(), request.sequence_number)
+            }
             None => return Ok(false),
         };
 
-        // Now we can work with req_buf directly since ServiceRequest has been dropped
-        // Deserialize request
-        let mut reader = CdrReader::new_with_header(&req_buf[..data_len])
+        // Deserialize request from the captured offset.
+        let mut reader = CdrReader::new_with_header(&req_buf[data_offset..data_offset + data_len])
             .map_err(|_| TransportError::DeserializationError)?;
         let req = S::Request::deserialize(&mut reader)
             .map_err(|_| TransportError::DeserializationError)?;
@@ -1093,12 +1104,16 @@ pub trait ServiceServerTrait {
     {
         use nros_core::{CdrReader, CdrWriter};
 
-        let (data_len, sequence_number) = match self.try_recv_request(req_buf)? {
-            Some(request) => (request.data.len(), request.sequence_number),
+        let buf_start = req_buf.as_ptr() as usize;
+        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+            Some(request) => {
+                let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
+                (offset, request.data.len(), request.sequence_number)
+            }
             None => return Ok(false),
         };
 
-        let mut reader = CdrReader::new_with_header(&req_buf[..data_len])
+        let mut reader = CdrReader::new_with_header(&req_buf[data_offset..data_offset + data_len])
             .map_err(|_| TransportError::DeserializationError)?;
         let req = S::Request::deserialize(&mut reader)
             .map_err(|_| TransportError::DeserializationError)?;

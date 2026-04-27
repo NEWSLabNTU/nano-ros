@@ -160,18 +160,14 @@ fn test_dds_action_client_builds() {
 
 /// E2E: DDS service server + client over RTPS (peer-to-peer, no broker).
 ///
-/// **#[ignore]d**: dust-dds service request/reply SEDP discovery does
-/// not match between two RTPS participants (server's request_DataReader
-/// never sees the client's request_DataWriter, even on localhost).
-/// Pubsub on the same configuration works fine
-/// (`test_dds_talker_listener_communication`). Re-enable after a
-/// Phase 71.x follow-up that tunes service-topic QoS (reliability +
-/// history) and verifies the SEDP topic name format
-/// (`rq<svc>Request` / `rr<svc>Reply`) matches what dust-dds
-/// publishes via SEDP. The same #[ignore] applies to the
-/// `test_zephyr_dds_rust_*_a9_e2e` cousins (Phase 95.B).
+/// Re-enabled by Phase 71.28: bug was a slice-offset bug in
+/// `nros-rmw::ServiceServerTrait::handle_request` (re-borrowed
+/// `req_buf` from offset 0 after the `ServiceRequest` was dropped,
+/// but DDS prepends an 8-byte sequence-number prefix and places the
+/// CDR payload at offset 8 — feeding prefix bytes to the CDR
+/// deserializer corrupted the request). Fixed by capturing the data
+/// offset before the borrow ended.
 #[rstest]
-#[ignore]
 fn test_dds_service_server_client_e2e(
     dds_service_server_binary: PathBuf,
     dds_service_client_binary: PathBuf,
@@ -211,11 +207,11 @@ fn test_dds_service_server_client_e2e(
 
 /// E2E: DDS action server + client (Fibonacci) over RTPS.
 ///
-/// **#[ignore]d** for the same reason as
+/// Re-enabled by Phase 71.28 alongside
 /// `test_dds_service_server_client_e2e` — the action's 5-channel
-/// service+pubsub composition fails at the same SEDP step.
+/// service+pubsub composition was hitting the same
+/// `handle_request` slice-offset bug.
 #[rstest]
-#[ignore]
 fn test_dds_action_server_client_e2e(
     dds_action_server_binary: PathBuf,
     dds_action_client_binary: PathBuf,

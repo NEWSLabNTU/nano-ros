@@ -701,8 +701,12 @@ impl<
             None => return Ok(None),
         };
 
-        // Deserialize the goal from the buffer (GoalId already extracted by core)
-        let mut reader = CdrReader::new_with_header(&self.core.goal_buffer()[..raw_req.data_len])
+        // Deserialize the goal from the buffer at the offset captured
+        // by the core (DDS prepends an 8-byte seq prefix; zenoh uses 0).
+        let buf = self.core.goal_buffer();
+        let start = raw_req.data_offset;
+        let end = start + raw_req.data_len;
+        let mut reader = CdrReader::new_with_header(&buf[start..end])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
         // Skip past the GoalId (CDR length prefix + UUID bytes)
         let _ = reader.read_u32();

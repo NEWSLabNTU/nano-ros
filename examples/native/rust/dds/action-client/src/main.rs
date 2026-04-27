@@ -37,6 +37,13 @@ fn main() {
         .expect("Failed to create action client");
     info!("Action client created: /fibonacci");
 
+    // Allow time for SPDP/SEDP discovery on all 5 action channels
+    // (send_goal/cancel_goal/get_result services + feedback/status pubs).
+    // Without this, the immediate send_goal write happens before the
+    // server's matching DataReader is discovered and is silently
+    // dropped at the writer.
+    std::thread::sleep(std::time::Duration::from_secs(3));
+
     // Create goal
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);

@@ -45,7 +45,11 @@ pub struct RawGoalRequest {
     pub goal_id: GoalId,
     /// Sequence number for the service reply.
     pub sequence_number: i64,
-    /// Total length of valid CDR data in the goal buffer.
+    /// Offset into the goal buffer where the CDR payload begins.
+    /// Backends may prepend a sequence-number header (DDS) or place
+    /// the payload at offset 0 (zenoh).
+    pub data_offset: usize,
+    /// Length of valid CDR data starting at `data_offset`.
     pub data_len: usize,
 }
 
@@ -123,6 +127,12 @@ impl<
     /// Returns the parsed GoalId, sequence number, and data length.
     /// The full CDR data (including GoalId) remains in `goal_buffer`.
     pub fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
+        // Capture buf base ptr before borrowing through `try_recv_request`
+        // so we can recover the data offset after the borrow ends.
+        // DDS-style backends place a sequence-number prefix before the
+        // CDR payload; reading the buffer from offset 0 unconditionally
+        // would feed the prefix bytes to the deserializer.
+        let buf_start = self.goal_buffer.as_ptr() as usize;
         let request = self
             .send_goal_server
             .try_recv_request(&mut self.goal_buffer)
@@ -133,19 +143,22 @@ impl<
             None => return Ok(None),
         };
 
+        let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
         #[allow(clippy::drop_non_drop)]
         drop(request);
 
-        let mut reader = CdrReader::new_with_header(&self.goal_buffer[..data_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+        let mut reader =
+            CdrReader::new_with_header(&self.goal_buffer[data_offset..data_offset + data_len])
+                .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
         let goal_id = read_goal_id(&mut reader)?;
 
         Ok(Some(RawGoalRequest {
             goal_id,
             sequence_number,
+            data_offset,
             data_len,
         }))
     }
@@ -271,6 +284,7 @@ impl<
         &mut self,
         cancel_handler: impl FnOnce(&GoalId, GoalStatus) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
+        let buf_start = self.cancel_buffer.as_ptr() as usize;
         let request = self
             .cancel_goal_server
             .try_recv_request(&mut self.cancel_buffer)
@@ -281,13 +295,15 @@ impl<
             None => return Ok(None),
         };
 
+        let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
         #[allow(clippy::drop_non_drop)]
         drop(request);
 
-        let mut reader = CdrReader::new_with_header(&self.cancel_buffer[..data_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+        let mut reader =
+            CdrReader::new_with_header(&self.cancel_buffer[data_offset..data_offset + data_len])
+                .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
         let goal_id = read_goal_id(&mut reader)?;
 
@@ -338,6 +354,7 @@ impl<
         &mut self,
         default_result_cdr: &[u8],
     ) -> Result<Option<GoalId>, NodeError> {
+        let buf_start = self.goal_buffer.as_ptr() as usize;
         let request = self
             .get_result_server
             .try_recv_request(&mut self.goal_buffer)
@@ -348,13 +365,15 @@ impl<
             None => return Ok(None),
         };
 
+        let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
         #[allow(clippy::drop_non_drop)]
         drop(request);
 
-        let mut reader = CdrReader::new_with_header(&self.goal_buffer[..data_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+        let mut reader =
+            CdrReader::new_with_header(&self.goal_buffer[data_offset..data_offset + data_len])
+                .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
         let goal_id = read_goal_id(&mut reader)?;
 

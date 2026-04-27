@@ -985,11 +985,13 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
         callback,
         context,
     } = entry;
-    let (data_len, seq_num) = match handle.try_recv_request(req_buffer) {
+    let buf_start = req_buffer.as_ptr() as usize;
+    let (data_offset, data_len, seq_num) = match handle.try_recv_request(req_buffer) {
         Ok(Some(request)) => {
+            let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
             let len = request.data.len();
             let seq = request.sequence_number;
-            (len, seq)
+            (offset, len, seq)
         }
         Ok(None) => return Ok(false),
         Err(_) => return Err(TransportError::ServiceReplyFailed),
@@ -998,7 +1000,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
     let mut resp_len: usize = 0;
     let ok = unsafe {
         (*callback)(
-            req_buffer.as_ptr(),
+            req_buffer.as_ptr().add(data_offset),
             data_len,
             reply_buffer.as_mut_ptr(),
             REPLY_BUF,

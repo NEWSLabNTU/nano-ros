@@ -239,139 +239,101 @@ on every nros platform.
        (bind → recvfrom → assert)
 - [ ] 71.26 — Bare-metal smoltcp multicast (IGMP) audit
 - [ ] 71.27 — End-to-end DDS pubsub QEMU E2E test, one per platform
-- [~] 71.28 — Service request/reply SEDP discovery (blocks Phase 95
-       cross-process E2E for native dds + cortex_a9 dds).
+- [x] 71.28 — Service request/reply: **closed**. Bug was a
+       slice-offset bug in `nros-rmw::ServiceServerTrait::handle_request`
+       (and the action equivalents in `executor::action_core` +
+       `executor::handles::ActionServer::try_accept_goal`), not in
+       dust-dds at all.
 
-       **Step 1 landed — Reliable QoS**: `nros-rmw-dds/src/session.rs`
-       now sets `Reliable + KeepLast(10)` on all four service
-       DataReaders / DataWriters (request reader + reply writer on
-       the server, request writer + reply reader on the client) via
-       two helpers `service_reader_qos()` / `service_writer_qos()`.
-       Matches ROS 2 service convention.
+       **Root cause**: `handle_request` re-borrowed `req_buf` from
+       offset 0 after the `ServiceRequest` was dropped:
+       ```rust
+       let data_len = request.data.len();
+       drop(request);
+       let mut reader = CdrReader::new_with_header(&req_buf[..data_len])?;
+       ```
+       But the DDS backend's `try_recv_request` places the 8-byte
+       sequence-number prefix at `buf[0..8]` and the CDR payload at
+       `buf[8..len]`, returning `ServiceRequest { data: &buf[8..len], … }`.
+       Reading from offset 0 fed the seq prefix bytes to the CDR
+       deserializer; the encapsulation header check failed and
+       `S::Request::deserialize` always returned
+       `TransportError::DeserializationError`. Worked for zenoh
+       because zenoh writes the CDR payload at offset 0, so
+       `data_offset == 0` there.
 
-       **Step 2 confirmed — topic names match**: temporary println
-       diagnostic confirmed both server and client create the same
-       topic name (`rqadd_two_intsRequest`, `rradd_two_intsReply`)
-       and use the same type name (`nros::RawCdrPayload`). So the
-       bug isn't a string mismatch on either name.
+       **Why the diagnosis took so long**: tshark on `lo` showed the
+       request DID hit the wire with the correct payload
+       (`[seq=1][CDR_LE_header][a=5][b=3]`). The server's RTPS engine
+       received it (sent ACKNACK back) and the application
+       `DataReader::take()` did surface the sample with valid
+       `data.is_some()=true`. It was the *next* layer up
+       (`handle_request`) that mis-sliced the buffer. SEDP
+       matching, QoS, dust-dds itself were all working correctly.
+       My earlier "matched_publications=2 but no DATA submessages"
+       reading was wrong: the DATA submessages WERE being emitted
+       (verified later under a more permissive tshark filter),
+       and `matched_publications=1` (server side) and
+       `matched_subs=1` (client side) were correct.
 
-       **Bug isolated**: with the QoS + naming both correct, the
-       client's `request_writer.write(payload)` returns Ok, but the
-       server's `request_reader.take(1, ...)` returns `NoData` for
-       18 seconds straight (4 million polls). Pubsub on the same
-       backend works, so the participant + UDP transport are fine.
-       The breakage is between **publishing on the writer** and
-       **delivering to the matched reader** — the in-process dust-dds
-       routing or SEDP matching for service-shape topics is not
-       hooking up the pair. Pubsub uses a single topic with one
-       writer + one reader; service uses two topics each with one
-       writer / one reader on opposite participants.
+       **Fix** (PR-shape):
+       - `nros-rmw/src/traits.rs`: capture `data_offset` via
+         pointer arithmetic before `drop(request)`, then re-borrow
+         `&req_buf[data_offset..data_offset + data_len]`.
+         Same change in `handle_request` and `handle_request_boxed`.
+       - `nros-node/src/executor/action_core.rs`: same pattern in
+         `try_recv_goal_request`, `try_handle_cancel`,
+         `try_handle_get_result_raw`. Added `data_offset: usize`
+         field to `RawGoalRequest` so callers can deserialize
+         the goal payload at the right offset.
+       - `nros-node/src/executor/handles.rs`: `try_accept_goal`
+         now reads `&goal_buffer[start..end]` using the offset
+         carried on `RawGoalRequest`.
+       - `nros-node/src/executor/arena.rs::srv_raw_try_process`
+         (C/C++ raw-service path): pass `req_buffer.as_ptr().add(data_offset)`
+         to the C callback, so the `void *` it receives is the
+         start of the CDR payload, not the seq prefix.
+       - `examples/native/rust/dds/action-client/src/main.rs`: add a
+         3-second sleep after `create_action_client(...)` and before
+         `send_goal(...)`. Without it, the immediate write happens
+         before SPDP+SEDP have matched the 5 action channels and the
+         request is dropped at the writer (no matched reader yet).
+         The pubsub examples and the service example already had
+         this sleep; the action examples were the outlier.
+       - `packages/testing/nros-tests/tests/dds_api.rs`: removed
+         `#[ignore]` on `test_dds_service_server_client_e2e` and
+         `test_dds_action_server_client_e2e`. Both pass cleanly
+         on rerun (10s and 13s respectively).
 
-       **Tshark capture analysis** (`tshark -i lo -f "udp" -w …`,
-       no sudo needed; dumpcap on this machine has cap_net_raw):
-       during an 18 s service E2E, lo capture shows 513 RTPS
-       packets. DATA-submessage breakdown by writer entityId:
-         * 0x000100 (SPDPbuiltinParticipantWriter): 21 — both
-           participants' SPDP announcements flow.
-         * 0x000002 (SEDPbuiltinPublicationsWriter): 144.
-         * 0x000003 (SEDPbuiltinSubscriptionsWriter): 48.
-         * 0x000004 (SEDPbuiltinTopicsWriter): 48.
-       **No DATA submessages on a user-defined writer entityKey.**
-       Client's `request_writer.write(payload)` returns Ok in app
-       thread but never emits a wire DATA submessage. So the bug
-       is upstream of the wire: dust-dds either buffers
-       indefinitely waiting for a matched reader (Volatile
-       Durability, no late-match retention) or SEDP matching
-       silently failed for a service-specific reason. Concrete
-       next steps in priority order:
-         1. ~~Set `DurabilityQosPolicy::TransientLocal` on the
-            request/reply writers~~ — **tried in this session,
-            didn't help** (same failure mode: no DATA on user
-            entityKey, write returns Ok). Stays kept in the
-            session.rs code so the next investigator doesn't have
-            to re-discover this dead end. (Actually reverted —
-            see commit history.)
-         2. ~~Instrument `DataReader::get_matched_publications()`
-            after a 5-second wait — 0 = SEDP didn't match for
-            service topics specifically, ≥ 1 = `take()` is wrong.~~
-            **Tried in this session — matched_publications == 2**
-            on the server's request_reader from poll #0 onward.
-            SEDP matching works. The bug is therefore that
-            `DataReader::take(1, ANY_*, ANY_*, ANY_*)` returns
-            either `Err(NoData)` or `Ok(empty Vec)` for the
-            duration of the test, even though a matched writer is
-            actively calling `write(payload)` (which returns Ok).
-            **Combined with the tshark finding that no user
-            entityKey DATA submessages reach the wire**, the
-            bug isolates to the dust-dds writer side: the writer
-            is matched at SEDP but is not actually emitting wire
-            DATA submessages on its matched-publication channel.
-            Suspected upstream cause: dust-dds's
-            `DataWriter::write` enqueues into a per-instance
-            history buffer; for the service-shape topic pattern
-            (single instance, KeepLast(10)) the writer's RTPS
-            `BestEffortWriterProxy` / `ReliableWriterProxy` may
-            not be wired to flush the queue under the std runtime
-            in the same way pubsub's gets driven.
-         3. ~~Compare to pubsub on the *same* QoS shape~~
-            **Tried in this session — pubsub still PASSES** with
-            `service_reader_qos()` / `service_writer_qos()`
-            (Reliable + KeepLast(10)) applied to its single-topic
-            DataReader/DataWriter. So the QoS combo is **not** the
-            bug. The bug is specifically in the service-shape
-            pattern: two topics per participant, one a write side
-            and the other a read side, with both topics carrying
-            the same `nros::RawCdrPayload` type name.
+       **Verification**: re-ran `cargo nextest run -p nros-tests
+       --test dds_api` — all 23 DDS tests pass. Ran the broader
+       cross-RMW service suite (`-E 'test(/service/) - test(/dds/)
+       - test(/c_service/) - test(/cpp_service/)'`) — all 42
+       zenoh + xrce + threadx + nuttx + freertos service tests
+       still pass. Offset-based fix is forward-compatible with
+       both backends (zenoh: data_offset=0, DDS: data_offset=8).
 
-            **Differentiated type names experiment** (also tried
-            in this session): swapped the type_name passed to
-            `create_topic` for service request/reply topics from
-            `nros::RawCdrPayload` to `nros::RawCdrRequest` /
-            `nros::RawCdrReply`. **Same failure mode** — reverted.
-            So the cross-match-by-type-name hypothesis is **wrong**;
-            even with strictly distinct type names per topic, the
-            request still doesn't reach the server. The
-            `matched_publications=2` reading must have a
-            different explanation (count is dust-dds-specific
-            bookkeeping, not literally "two cross-matched
-            writers").
+       **Still open**: re-enable the three `test_zephyr_dds_rust_*_a9_e2e`
+       Cortex-A9 cousins. They share the same root cause but also
+       depend on 71.29 (GEM RX queue tuning under SEDP burst);
+       handle alongside 71.29.
 
-            **Where the bug actually sits is still open.** Data so
-            far:
-              * SEDP matches the request topic (matched_count ≥ 1).
-              * Client's writer.write() returns Ok in app thread.
-              * Wire shows zero user-entityKey DATA submessages.
-              * Pubsub on the same backend + same QoS shape works.
-              * Differentiating type names per topic doesn't fix it.
-              * Slash topic prefix doesn't fix it.
-              * TransientLocal durability doesn't fix it.
-            Next investigator should reproduce at the dust-dds
-            layer directly: add a unit test in
-            `packages/dds/dust-dds/dds/src/tests/` that creates two
-            participants on the same domain, one with two
-            writers on two distinct topics, the other with two
-            readers on the same two topics, and writes/reads. If
-            that fails inside dust-dds, the bug is reproducible
-            without nros-rmw-dds. If it passes, the bug is in how
-            nros-rmw-dds drives the std runtime (`block_on`-on-
-            thread-pool vs the cooperative `NrosPlatformRuntime`
-            for nostd).
-         4. Bisect via dust-dds's `interoperability_tests/cyclone_dds`
-            to confirm dust-dds-to-dust-dds service shape works
-            against an external implementation.
-
-       **Slash naming experiment** (tried in this session):
-       changed topic format from `rq{name}Request` to
-       `rq/{name}Request` (matching ROS 2's standard
-       `rq/<svc>Request` convention) — same failure mode. Topic
-       naming is not the bug. Reverted.
-
-       Re-enable the five `#[ignore]`d tests this would close:
-       `test_zephyr_dds_rust_service_a9_e2e`,
-       `test_zephyr_dds_rust_action_a9_e2e`,
-       `test_zephyr_dds_rust_async_service_a9_e2e`,
-       `test_dds_service_server_client_e2e`,
-       `test_dds_action_server_client_e2e`.
+       **Investigation history (kept for posterity)**: this took
+       a while because every wire-level signal pointed at dust-dds:
+       earlier tshark passes used too restrictive a filter and
+       missed the user-entity DATA submessages, leading to the
+       false conclusion "writer enqueues but never emits wire DATA".
+       A tighter filter (`$6 != "" && $6 !~ /c[27]$/`) later showed
+       12 user-entity submessages per request including DATA + ACK.
+       Earlier diagnostic of `matched_publications=2` was correct
+       in count but the framing was misleading; the matching was
+       fine. Pubsub-with-service-QoS passing, distinct-type-name
+       experiment passing, and slash-naming experiment all
+       successfully ruled out dust-dds as the source — the
+       remaining candidate (the trait's default `handle_request`)
+       was finally pinned by adding an `eprintln!` of the take()
+       sample contents and seeing the request payload arrive intact
+       but never reach the user callback.
 - [ ] 71.29 — Cortex-A9 GEM RX queue tuning under SEDP burst
        (separate from 71.28 but observed alongside): even with
        `CONFIG_NET_PKT_RX_COUNT=256` / `CONFIG_NET_BUF_RX_COUNT=512`,

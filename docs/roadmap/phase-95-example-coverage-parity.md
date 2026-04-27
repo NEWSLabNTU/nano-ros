@@ -31,10 +31,15 @@ tracked in **Phase 96** (`docs/roadmap/phase-96-phase-95-followups.md`)
 and **Phase 71.28 / 71.29** (`docs/roadmap/phase-71-dust-dds-platform-
 agnostic.md`):
 
-* **Phase 71.28** — dust-dds service request/reply SEDP discovery
-  (blocks B-cortex_a9 + F-native cross-process service / action E2E).
-* **Phase 71.29** — Cortex-A9 Xilinx GEM RX queue tuning under SEDP
-  burst (observed alongside 71.28).
+* **Phase 71.28** — closed. Was a slice-offset bug in the generic
+  `nros-rmw::ServiceServerTrait::handle_request` (and its action
+  cousins), not a dust-dds SEDP issue. Native DDS service / action
+  cross-process E2Es (`test_dds_service_server_client_e2e`,
+  `test_dds_action_server_client_e2e`) now pass; they were
+  re-enabled in `packages/testing/nros-tests/tests/dds_api.rs`.
+* **Phase 71.29** — Cortex-A9 Xilinx GEM RX queue tuning still
+  open; the three `test_zephyr_dds_rust_*_a9_e2e` cousins remain
+  `#[ignore]`d behind it.
 * **Phase 96.1** — `nros::Subscription::try_recv()` demux on a
   shared XRCE Agent (blocks C-cpp/xrce dual-instance E2E; rust +
   c xrce shapes work fine on the same agent, so the bug is on the
