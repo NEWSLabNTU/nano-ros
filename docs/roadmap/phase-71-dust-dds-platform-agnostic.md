@@ -313,13 +313,34 @@ on every nros platform.
             `BestEffortWriterProxy` / `ReliableWriterProxy` may
             not be wired to flush the queue under the std runtime
             in the same way pubsub's gets driven.
-         3. Compare to pubsub on the *same* QoS shape: temporarily
-            change the pubsub talker example to use Reliable +
-            KeepLast(10) + TransientLocal. If pubsub still works,
-            service path is broken specifically by the
-            two-topics-per-participant pattern (or the
-            request/reply matching shape). If pubsub also breaks
-            with that QoS, the QoS combo is the bug.
+         3. ~~Compare to pubsub on the *same* QoS shape~~
+            **Tried in this session — pubsub still PASSES** with
+            `service_reader_qos()` / `service_writer_qos()`
+            (Reliable + KeepLast(10)) applied to its single-topic
+            DataReader/DataWriter. So the QoS combo is **not** the
+            bug. The bug is specifically in the service-shape
+            pattern: two topics per participant, one a write side
+            and the other a read side, with both topics carrying
+            the same `nros::RawCdrPayload` type name.
+
+            **Suspected cause** (concrete, ready for someone with
+            dust-dds expertise): SEDP matching may be by type name
+            alone in dust-dds, so the server's request_reader gets
+            mistakenly matched against both the client's
+            request_writer (correct) and the *server's own*
+            reply_writer (wrong) — `matched_publications=2`
+            confirms two matches where only one is expected. The
+            cross-matched reply_writer never publishes (server
+            hasn't replied), so the reader's history stays empty
+            and `take()` returns NoData. To verify, look at
+            dust-dds's SEDP match logic in
+            `dds/src/dcps/.../discovery/` (`add_matched_writer`,
+            `is_matched`) and confirm whether topic_name is
+            checked alongside type_name. Quick fix path:
+            differentiate per-topic type names
+            (`nros::RawCdrRequest` for `rq*` topics,
+            `nros::RawCdrReply` for `rr*`) so SEDP can't cross-match
+            even if the bug is elsewhere.
          4. Bisect via dust-dds's `interoperability_tests/cyclone_dds`
             to confirm dust-dds-to-dust-dds service shape works
             against an external implementation.
