@@ -1,0 +1,35 @@
+[package]
+name = "nros-rmw-uorb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PX4 uORB RMW backend for nano-ros"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+# Host-mock target (requires px4-rs std mock for testing without SITL)
+std = ["px4-uorb/std", "px4-workqueue/std", "px4-log/std", "alloc"]
+alloc = []
+# log forwarding via px4-log
+log = ["px4-log/log"]
+
+[dependencies]
+nros-rmw = { workspace = true }
+nros-core = { workspace = true }
+heapless = { workspace = true }
+phf = { version = "0.11", default-features = false }
+
+# px4-rs crates — populated via `just px4 setup` (symlink at third-party/px4-rs)
+px4-sys = { path = "../../../third-party/px4-rs/crates/px4-sys" }
+px4-uorb = { path = "../../../third-party/px4-rs/crates/px4-uorb" }
+px4-workqueue = { path = "../../../third-party/px4-rs/crates/px4-workqueue" }
+px4-log = { path = "../../../third-party/px4-rs/crates/px4-log" }
+
+[build-dependencies]
+phf_codegen = "0.11"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }

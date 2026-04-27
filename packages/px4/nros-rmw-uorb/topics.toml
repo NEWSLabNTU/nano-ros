@@ -1,0 +1,55 @@
+# ROS 2 topic name → uORB topic identifier mapping.
+#
+# Initial subset mirrored from PX4-Autopilot's
+# src/modules/uxrce_dds_client/dds_topics.yaml. Extend as needed.
+#
+# Format:
+#   [[topic]]
+#   ros = "/fmu/out/sensor_gyro"   # Full ROS 2 topic path
+#   uorb = "sensor_gyro"           # uORB topic name (matches orb_metadata::o_name)
+#   instance = 0                   # uORB instance index (default 0)
+
+[[topic]]
+ros = "/fmu/out/sensor_gyro"
+uorb = "sensor_gyro"
+instance = 0
+
+[[topic]]
+ros = "/fmu/out/sensor_accel"
+uorb = "sensor_accel"
+instance = 0
+
+[[topic]]
+ros = "/fmu/out/sensor_mag"
+uorb = "sensor_mag"
+instance = 0
+
+[[topic]]
+ros = "/fmu/out/vehicle_attitude"
+uorb = "vehicle_attitude"
+instance = 0
+
+[[topic]]
+ros = "/fmu/out/vehicle_local_position"
+uorb = "vehicle_local_position"
+instance = 0
+
+[[topic]]
+ros = "/fmu/out/vehicle_global_position"
+uorb = "vehicle_global_position"
+instance = 0
+
+[[topic]]
+ros = "/fmu/in/vehicle_command"
+uorb = "vehicle_command"
+instance = 0
+
+[[topic]]
+ros = "/fmu/in/offboard_control_mode"
+uorb = "offboard_control_mode"
+instance = 0
+
+[[topic]]
+ros = "/fmu/in/trajectory_setpoint"
+uorb = "trajectory_setpoint"
+instance = 0

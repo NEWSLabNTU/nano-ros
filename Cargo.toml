@@ -52,6 +52,9 @@ members = [
     # Platform shims for RMW backends
     "packages/zpico/zpico-platform-shim",
     "packages/xrce/xrce-platform-shim",
+    # PX4 RMW backend (uORB transport) + board crate
+    "packages/px4/nros-rmw-uorb",
+    "packages/px4/nros-px4",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks
@@ -226,6 +229,10 @@ exclude = [
     "examples/qemu-esp32-baremetal/rust/zenoh/listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
+    # px4-rs is a sibling project with its own workspace; symlinked under
+    # third-party/ for path-dependency resolution. Excluded so cargo doesn't
+    # try to absorb its crates into nano-ros's workspace.
+    "third-party/px4-rs",
 ]
 
 [workspace.package]

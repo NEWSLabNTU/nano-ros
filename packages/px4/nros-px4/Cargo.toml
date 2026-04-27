@@ -1,0 +1,25 @@
+[package]
+name = "nros-px4"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Board-style nano-ros entry point for PX4 modules"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+std = ["nros-rmw-uorb/std", "nros-node/std"]
+
+[dependencies]
+nros-rmw = { workspace = true }
+nros-rmw-uorb = { path = "../nros-rmw-uorb", default-features = false }
+nros-node = { workspace = true }
+nros-core = { workspace = true }
+heapless = { workspace = true }
+
+px4-sys = { path = "../../../third-party/px4-rs/crates/px4-sys" }
+px4-workqueue = { path = "../../../third-party/px4-rs/crates/px4-workqueue" }
+px4-log = { path = "../../../third-party/px4-rs/crates/px4-log" }

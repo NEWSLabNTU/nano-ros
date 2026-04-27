@@ -41,6 +41,7 @@ mod workspace 'just/workspace.just'
 mod verification 'just/verification.just'
 mod zenohd 'just/zenohd.just'
 mod rmw_zenoh 'just/rmw_zenoh.just'
+mod px4 'just/px4.just'
 
 default:
     @just --list

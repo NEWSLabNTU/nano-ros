@@ -21,6 +21,9 @@ __pycache__/
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace
 
+# px4-rs symlink (user-specific, created by: just px4 setup)
+/third-party/px4-rs
+
 # Generated message bindings in examples (recreated by: just generate-bindings)
 # NOTE: packages/interfaces/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
 examples/**/generated/

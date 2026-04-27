@@ -1,4 +1,4 @@
-# Phase 89 — PX4 RMW (nros-rmw-uorb) + nros-px4 board crate
+# Phase 90 — PX4 RMW (nros-rmw-uorb) + nros-px4 board crate
 
 **Goal**: Run nano-ros on PX4 Autopilot. Adds a uORB-based RMW and a
 board-equivalent crate that hosts the nano-ros `Executor` inside a PX4
@@ -47,7 +47,7 @@ is generated from a simple TOML file (committed, not runtime).
 
 ## Work items
 
-### 89.1 — Workspace wiring
+### 90.1 — Workspace wiring
 
 - [ ] Add `packages/px4/nros-rmw-uorb/` + `packages/px4/nros-px4/` to
       the nano-ros workspace
@@ -57,7 +57,7 @@ is generated from a simple TOML file (committed, not runtime).
 - [ ] `justfile` adds a `px4` module group (`just px4 setup/doctor/test`)
       following the pattern of `freertos`, `nuttx`, `threadx_linux`
 
-### 89.2 — `nros-rmw-uorb` skeleton
+### 90.2 — `nros-rmw-uorb` skeleton
 
 - [ ] Cargo crate with `nros-rmw` as dep, `px4-uorb` + `px4-workqueue`
       under `cfg(target_os = "nuttx")` or a feature flag
@@ -68,16 +68,16 @@ is generated from a simple TOML file (committed, not runtime).
       readiness bit + waker on the hosting WorkItem)
 - [ ] `Transport` / `Rmw` impls minimal enough to satisfy `nros-node`
 
-### 89.3 — ROS topic → uORB topic mapping
+### 90.3 — ROS topic → uORB topic mapping
 
 - [ ] `packages/px4/nros-rmw-uorb/topics.toml` — initial mapping copied
       from `uxrce_dds_client`'s `dds_topics.yaml` (compact subset for
       phase entry)
 - [ ] build.rs turns the TOML into a `phf::Map<&'static str,
-      &'static orb_metadata>`
+    &'static orb_metadata>`
 - [ ] Unknown topic name → `TransportError::InvalidTopic`, not panic
 
-### 89.4 — Service / Action semantics
+### 90.4 — Service / Action semantics
 
 - [ ] Document that first-cut `nros-rmw-uorb` supports **pub/sub and
       timers only** — services/actions return `Err(NotSupported)`
@@ -85,7 +85,7 @@ is generated from a simple TOML file (committed, not runtime).
       later phases can fill them in (likely over a paired request/reply
       uORB topic convention or an orthogonal RPC channel)
 
-### 89.5 — `nros-px4` board crate
+### 90.5 — `nros-px4` board crate
 
 - [ ] `Config` struct with fields: `wq_name`, `node_name`, `namespace`,
       `domain_id` (currently unused — kept for API compatibility)
@@ -97,7 +97,7 @@ is generated from a simple TOML file (committed, not runtime).
       callback into `nros-rmw-uorb` so uORB publishes trigger
       `ScheduleNow()`, spin on the executor inside `Run()`
 
-### 89.6 — First example
+### 90.6 — First example
 
 - [ ] `examples/px4/rust/uorb/listener/` — subscribes to a PX4 topic
       using ROS 2 naming, logs via `px4-log`
@@ -106,7 +106,7 @@ is generated from a simple TOML file (committed, not runtime).
 - [ ] CMake glue that copies `px4-rust`'s `px4_rust_module()` function
       (or imports it) — first shared example between the two projects
 
-### 89.7 — Integration test
+### 90.7 — Integration test
 
 - [ ] `packages/testing/nros-tests/tests/px4_e2e.rs` — spins up PX4 SITL
       (jmavsim or gazebo headless), loads the listener + talker modules,
@@ -117,7 +117,7 @@ is generated from a simple TOML file (committed, not runtime).
 - [ ] Test must **fail** (not skip) if SITL is unavailable but the
       feature is enabled — per the project-wide "no silent skip" rule
 
-### 89.8 — Docs
+### 90.8 — Docs
 
 - [ ] `book/src/getting-started/px4.md` — install, build, run
 - [ ] `docs/design/px4-rmw-uorb.md` — link to
@@ -159,7 +159,7 @@ is generated from a simple TOML file (committed, not runtime).
 - **Service/action semantics** — no obvious uORB-native mapping. May
   force us to layer a small RPC protocol on top of paired request/reply
   topics, or recommend users do services over XRCE while keeping pub/sub
-  native. Decide during 89.4.
+  native. Decide during 90.4.
 - **PX4 build integration** — Pictorus proves it works; our `px4-rs`
   phase 07 de-risks it before this phase starts.
 
