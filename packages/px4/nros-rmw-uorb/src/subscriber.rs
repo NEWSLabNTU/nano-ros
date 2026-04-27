@@ -6,21 +6,24 @@
 
 use nros_rmw::{Subscriber, TransportError};
 
+use crate::registry::lookup;
 use crate::topics::TopicEntry;
 
-/// Subscriber handle for one ROS 2 topic.
-///
-/// Holds the topic descriptor and the executor-supplied waker (set via
-/// [`Subscriber::register_waker`]). The actual `px4_uorb::Subscription<T>`
-/// is constructed lazily by the typed-trampoline registry (Phase 90.6).
+/// Subscriber handle for one ROS 2 topic. Holds the topic descriptor and
+/// ROS 2 name; the typed `px4_uorb::Subscription<T>` lives in the trampoline
+/// registry populated by [`crate::register`].
 #[derive(Debug)]
 pub struct UorbSubscriber {
     entry: TopicEntry,
+    ros_name: heapless::String<128>,
 }
 
 impl UorbSubscriber {
-    pub(crate) fn new(entry: TopicEntry) -> Result<Self, TransportError> {
-        Ok(Self { entry })
+    pub(crate) fn new(entry: TopicEntry, ros_name: &str) -> Result<Self, TransportError> {
+        let mut buf = heapless::String::new();
+        buf.push_str(ros_name)
+            .map_err(|_| TransportError::InvalidConfig)?;
+        Ok(Self { entry, ros_name: buf })
     }
 
     pub fn uorb_name(&self) -> &'static str {
@@ -35,14 +38,12 @@ impl UorbSubscriber {
 impl Subscriber for UorbSubscriber {
     type Error = TransportError;
 
-    fn has_data(&self) -> bool {
-        false
-    }
-
-    fn try_recv_raw(&mut self, _buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        // Phase 90.6 wires Subscription<T>::try_recv() via the typed-trampoline
-        // registry (same shape as publisher.rs). Until then there is no data.
-        Ok(None)
+    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+        let guard = lookup(self.ros_name.as_str())
+            .ok_or(TransportError::Backend(
+                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+            ))?;
+        guard.handle().try_recv(buf)
     }
 
     fn deserialization_error(&self) -> Self::Error {

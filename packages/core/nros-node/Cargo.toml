@@ -12,12 +12,13 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [features]
 default = ["std"]
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "log"]
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "nros-rmw-uorb?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
+rmw-uorb = ["dep:nros-rmw-uorb"]
 
 # XRCE transport refinements (forwarded to nros-rmw-xrce)
 platform-udp = ["nros-rmw-xrce?/platform-udp"]
@@ -66,6 +67,7 @@ nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
 nros-rmw-dds = { workspace = true, default-features = false, optional = true }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
+nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }

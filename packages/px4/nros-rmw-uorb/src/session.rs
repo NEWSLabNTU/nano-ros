@@ -66,7 +66,7 @@ impl Session for UorbSession {
         _qos: nros_rmw::QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         let entry = lookup_topic(topic.name).ok_or(TransportError::InvalidConfig)?;
-        UorbPublisher::new(entry)
+        UorbPublisher::new(entry, topic.name)
     }
 
     fn create_subscriber(
@@ -75,7 +75,7 @@ impl Session for UorbSession {
         _qos: nros_rmw::QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
         let entry = lookup_topic(topic.name).ok_or(TransportError::InvalidConfig)?;
-        UorbSubscriber::new(entry)
+        UorbSubscriber::new(entry, topic.name)
     }
 
     fn create_service_server(

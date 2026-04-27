@@ -16,7 +16,7 @@ std = ["nros-rmw-uorb/std", "nros-node/std"]
 [dependencies]
 nros-rmw = { workspace = true }
 nros-rmw-uorb = { path = "../nros-rmw-uorb", default-features = false }
-nros-node = { workspace = true }
+nros-node = { workspace = true, default-features = false, features = ["rmw-uorb"] }
 nros-core = { workspace = true }
 heapless = { workspace = true }
 

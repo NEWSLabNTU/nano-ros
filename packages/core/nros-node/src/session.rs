@@ -15,13 +15,16 @@ pub(crate) type ConcreteSession = nros_rmw_xrce::XrceSession;
 pub(crate) type ConcreteSession = nros_rmw_dds::DdsSession;
 #[cfg(feature = "rmw-cffi")]
 pub(crate) type ConcreteSession = nros_rmw_cffi::CffiSession;
+#[cfg(feature = "rmw-uorb")]
+pub(crate) type ConcreteSession = nros_rmw_uorb::UorbSession;
 #[cfg(all(
     test,
     not(any(
         feature = "rmw-zenoh",
         feature = "rmw-xrce",
         feature = "rmw-dds",
-        feature = "rmw-cffi"
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
     ))
 ))]
 pub(crate) type ConcreteSession = crate::mock::MockSession;

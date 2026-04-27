@@ -19,7 +19,8 @@ fn main() {
     let has_rmw = env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()
         || env::var("CARGO_FEATURE_RMW_XRCE").is_ok()
         || env::var("CARGO_FEATURE_RMW_DDS").is_ok()
-        || env::var("CARGO_FEATURE_RMW_CFFI").is_ok();
+        || env::var("CARGO_FEATURE_RMW_CFFI").is_ok()
+        || env::var("CARGO_FEATURE_RMW_UORB").is_ok();
     if has_rmw {
         println!("cargo:rustc-cfg=has_rmw");
     }

@@ -15,13 +15,18 @@
 extern crate alloc;
 
 mod publisher;
+mod registry;
 mod session;
 mod subscriber;
 mod service;
 mod topics;
 
 pub use publisher::UorbPublisher;
+pub use registry::register;
 pub use session::{UorbRmw, UorbSession};
 pub use subscriber::UorbSubscriber;
 pub use service::{UorbServiceClient, UorbServiceServer};
 pub use topics::{lookup_topic, TopicEntry};
+
+#[cfg(any(test, feature = "test-helpers"))]
+pub use registry::_reset;

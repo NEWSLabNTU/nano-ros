@@ -16,6 +16,8 @@ std = ["px4-uorb/std", "px4-workqueue/std", "px4-log/std", "alloc"]
 alloc = []
 # log forwarding via px4-log
 log = ["px4-log/log"]
+# Expose `_reset()` for downstream integration tests.
+test-helpers = []
 
 [dependencies]
 nros-rmw = { workspace = true }

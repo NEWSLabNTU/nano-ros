@@ -6,23 +6,27 @@
 
 use nros_rmw::{Publisher, TransportError};
 
+use crate::registry::lookup;
 use crate::topics::TopicEntry;
 
 /// Publisher handle for one ROS 2 topic.
 ///
-/// Ownership note: holds the topic descriptor only. The actual
-/// `px4_uorb::Publication<T>` is constructed lazily on first publish, keyed
-/// by the message type. This deferral is needed because the RMW trait
-/// surface is type-erased (`publish_raw(&[u8])`) while uORB requires a
-/// typed `Publication<T: UorbTopic>`.
+/// Holds the topic descriptor + a copy of the ROS 2 topic name (for
+/// registry lookup at publish time). The typed `px4_uorb::Publication<T>`
+/// lives in the [`crate::register`]-populated trampoline registry; this
+/// type only stores the lookup key.
 #[derive(Debug)]
 pub struct UorbPublisher {
     entry: TopicEntry,
+    ros_name: heapless::String<128>,
 }
 
 impl UorbPublisher {
-    pub(crate) fn new(entry: TopicEntry) -> Result<Self, TransportError> {
-        Ok(Self { entry })
+    pub(crate) fn new(entry: TopicEntry, ros_name: &str) -> Result<Self, TransportError> {
+        let mut buf = heapless::String::new();
+        buf.push_str(ros_name)
+            .map_err(|_| TransportError::InvalidConfig)?;
+        Ok(Self { entry, ros_name: buf })
     }
 
     /// uORB topic name (e.g. `"sensor_gyro"`) this publisher writes to.
@@ -39,13 +43,12 @@ impl UorbPublisher {
 impl Publisher for UorbPublisher {
     type Error = TransportError;
 
-    fn publish_raw(&self, _data: &[u8]) -> Result<(), Self::Error> {
-        // Phase 90.6 wires this through px4_uorb::Publication<T>::publish().
-        // The blocker: type-erased &[u8] vs typed Publication<T>. Solution
-        // sketch: emit a per-topic registry at codegen time that maps
-        // (topic, type_hash) → fn(&[u8]) -> Result trampoline. See
-        // docs/design/px4-rmw-uorb.md.
-        Err(TransportError::Backend("uORB: typed publish not yet wired"))
+    fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
+        let guard = lookup(self.ros_name.as_str())
+            .ok_or(TransportError::Backend(
+                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+            ))?;
+        guard.handle().publish(data)
     }
 
     fn buffer_error(&self) -> Self::Error {
