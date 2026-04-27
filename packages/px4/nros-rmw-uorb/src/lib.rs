@@ -15,17 +15,26 @@
 extern crate alloc;
 
 mod publisher;
+mod raw;
 mod registry;
 mod session;
 mod subscriber;
 mod service;
 mod topics;
 
-pub use publisher::UorbPublisher;
+// Direct typed API — primary entry point for PX4-shaped messages.
+pub use raw::{publication, subscription};
+
+// Trampoline registry — only needed for nros-node typed-Publisher integration.
 pub use registry::register;
+
+// nros-rmw trait impls (consumed by nros-node when feature `rmw-uorb` is on).
+pub use publisher::UorbPublisher;
 pub use session::{UorbRmw, UorbSession};
 pub use subscriber::UorbSubscriber;
 pub use service::{UorbServiceClient, UorbServiceServer};
+
+// Topic-mapping internals.
 pub use topics::{lookup_topic, TopicEntry};
 
 #[cfg(any(test, feature = "test-helpers"))]

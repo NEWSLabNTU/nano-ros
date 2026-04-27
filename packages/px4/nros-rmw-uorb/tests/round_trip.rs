@@ -14,7 +14,11 @@
 
 use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, Subscriber, TopicInfo};
 use nros_rmw_uorb::{register, UorbRmw};
-use px4_uorb::UorbTopic;
+use std::sync::Mutex;
+
+// Tests share the global registry + broker. Serialise them so a `_reset()`
+// in one test doesn't wipe state mid-execution of another.
+static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// Hand-rolled uORB topic stand-in. Real users get this from
 /// `#[px4_message(...)]`. We synthesise it here to keep the test
@@ -54,8 +58,10 @@ use fake_topic::{test_ping, TestPing};
 
 #[test]
 fn register_then_publish_subscribe_round_trips() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // Reset broker + registry between runs (tests share process state).
     px4_uorb::_reset_broker();
+    nros_rmw_uorb::_reset();
 
     register::<test_ping>("/test/ping", 0);
 
@@ -111,6 +117,7 @@ fn register_then_publish_subscribe_round_trips() {
 
 #[test]
 fn unregistered_topic_returns_backend_error() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
@@ -140,6 +147,7 @@ fn unregistered_topic_returns_backend_error() {
 
 #[test]
 fn topic_not_in_topics_toml_rejected_at_create() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
