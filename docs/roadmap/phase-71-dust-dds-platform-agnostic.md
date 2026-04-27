@@ -284,13 +284,26 @@ on every nros platform.
        Durability, no late-match retention) or SEDP matching
        silently failed for a service-specific reason. Concrete
        next steps in priority order:
-         1. Set `DurabilityQosPolicy::TransientLocal` on the
-            request/reply writers so they retain history across
-            late-matching readers.
+         1. ~~Set `DurabilityQosPolicy::TransientLocal` on the
+            request/reply writers~~ — **tried in this session,
+            didn't help** (same failure mode: no DATA on user
+            entityKey, write returns Ok). Stays kept in the
+            session.rs code so the next investigator doesn't have
+            to re-discover this dead end. (Actually reverted —
+            see commit history.)
          2. Instrument `DataReader::get_matched_publications()`
-            after a 5-second wait — 0 = SEDP didn't match, ≥ 1 =
-            `take()` is wrong.
-         3. Bisect via dust-dds's interoperability_tests/cyclone_dds
+            after a 5-second wait — 0 = SEDP didn't match for
+            service topics specifically, ≥ 1 = `take()` is wrong.
+            This is the next un-tried step; do it before further
+            QoS guessing.
+         3. Compare to pubsub on the *same* QoS shape: temporarily
+            change the pubsub talker example to use Reliable +
+            KeepLast(10) + TransientLocal. If pubsub still works,
+            service path is broken specifically by the
+            two-topics-per-participant pattern (or the
+            request/reply matching shape). If pubsub also breaks
+            with that QoS, the QoS combo is the bug.
+         4. Bisect via dust-dds's `interoperability_tests/cyclone_dds`
             to confirm dust-dds-to-dust-dds service shape works
             against an external implementation.
 
