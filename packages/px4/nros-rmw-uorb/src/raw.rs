@@ -63,7 +63,15 @@ pub fn subscription<T: UorbTopic>(
 ) -> Result<Subscription<T>, TransportError> {
     let entry = lookup_topic(ros_name).ok_or(TransportError::InvalidConfig)?;
     verify_meta_matches::<T>(entry.uorb_name)?;
-    Ok(Subscription::<T>::with_instance(instance))
+    // px4_uorb's `Subscription<T>::new()` defaults to instance 0; only call
+    // `with_instance` when the caller asked for a non-zero instance so we
+    // exercise the same code path as upstream gyro_watch / heartbeat
+    // examples for the common single-instance case.
+    if instance == 0 {
+        Ok(Subscription::<T>::new())
+    } else {
+        Ok(Subscription::<T>::with_instance(instance))
+    }
 }
 
 fn verify_meta_matches<T: UorbTopic>(expected_uorb_name: &str) -> Result<(), TransportError> {

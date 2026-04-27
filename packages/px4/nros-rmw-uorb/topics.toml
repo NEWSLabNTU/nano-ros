@@ -14,6 +14,13 @@ ros = "/fmu/out/sensor_gyro"
 uorb = "sensor_gyro"
 instance = 0
 
+# Used by the talker/listener examples in examples/px4/rust/uorb/.
+# Custom topic defined by examples/px4/rust/uorb/SensorPing.msg.
+[[topic]]
+ros = "/fmu/out/sensor_ping"
+uorb = "sensor_ping"
+instance = 0
+
 [[topic]]
 ros = "/fmu/out/sensor_accel"
 uorb = "sensor_accel"
