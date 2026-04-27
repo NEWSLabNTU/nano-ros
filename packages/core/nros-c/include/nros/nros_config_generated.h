@@ -2,6 +2,8 @@
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
+#include <stdint.h>
+
 /** Inline opaque storage size (bytes) for nros_executor_t. */
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
@@ -13,7 +15,7 @@
 * macros are deleted.
 */
 /** `size_of::<nros_node::Executor>()` */
-#define NROS_EXECUTOR_SIZE 16776
+#define NROS_EXECUTOR_SIZE 16784
 /** `size_of::<nros_node::GuardConditionHandle>()` */
 #define NROS_GUARD_CONDITION_SIZE 8
 /** `size_of::<RmwPublisher>()` */
@@ -30,5 +32,41 @@
 #define NROS_LIFECYCLE_CTX_SIZE 64
 /** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
+
+/* ── *_OPAQUE_U64S macros for cbindgen-emitted struct fields ──────
+* Phase 91.C1: cbindgen generates `uint64_t _opaque[N]` array fields
+* that reference these macros by name. The Rust definitions live in
+* src/opaque_sizes.rs / src/constants.rs and would either evaluate
+* to placeholder 1 (when cbindgen runs without an active RMW
+* feature) or fail to evaluate at all (when the value is a
+* `u64s_for::<T>()` / `size_of::<T>()` expression cbindgen can't
+* fold). build.rs emits the real, post-probe values here so the
+* cbindgen output is self-contained when included from C / C++.
+*/
+#define SESSION_OPAQUE_U64S 0
+#define PUBLISHER_OPAQUE_U64S 6
+#define EXECUTOR_OPAQUE_U64S 2216
+#define GUARD_HANDLE_OPAQUE_U64S 1
+#define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
+
+/* ── Type-compatible opaque definition of nros_node::ActionServerRawHandle ──
+* Phase 91.C1: cbindgen emits `ActionServerRawHandle handle;` as an
+* inline field of `ActionServerInternal` (parse_deps=false means it
+* doesn't recurse into nros-node to see the body). We provide a
+* size-equivalent opaque definition here so the cbindgen header is
+* self-contained. The nros-c Rust side still uses the typed
+* `nros_node::ActionServerRawHandle`; only the C side sees opaque
+* bytes — safe because the C API never lets callers reach into
+* `_internal.handle` directly.
+*/
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct ActionServerRawHandle {
+uint64_t _opaque[0];
+} ActionServerRawHandle;
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* NROS_CONFIG_GENERATED_H */
