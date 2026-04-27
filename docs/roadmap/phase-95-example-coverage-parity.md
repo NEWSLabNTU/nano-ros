@@ -99,7 +99,7 @@ support cmake — no cross-cell sharing.
 - [x] 95.B5 — Zephyr dds-rust async-service-client
 - [x] 95.C1–6 — Zephyr cpp-xrce: talker, listener, svc-server, svc-client, action-server, action-client
 - [ ] 95.D1–6 — Zephyr cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client
-- [ ] 95.E1–6 — Zephyr c-dds: talker, listener, svc-server, svc-client, action-server, action-client
+- [~] 95.E1–6 — Zephyr c-dds: blocked on Phase 71.6 (board-crate `#[global_allocator]`) + nros-rmw-dds dual-feature struct bug. See note below.
 - [x] 95.F1 — Native dds-rust service-server
 - [x] 95.F2 — Native dds-rust service-client
 - [x] 95.F3 — Native dds-rust action-server
@@ -225,6 +225,26 @@ All cells in scope flip to ✅. Out-of-scope cells (`async-*`,
 * **Zephyr DDS surface.** Reuses Phase 92's `qemu_cortex_a9` build
   path. `native_sim` DDS (Phase 71.8 `[~]`) is not required for this
   phase — cortex_a9 is the canonical Zephyr DDS target.
+* **E zephyr/c-dds blocked.** Two prerequisite issues block this group:
+
+  1. **`qemu_cortex_a9` lacks `#[global_allocator]` for nros-c.** The
+     Rust API path uses `zephyr-lang-rust`'s static allocator; the C
+     API path (`nros_cargo_build(PACKAGE nros-c)`) builds a plain
+     `staticlib` that needs its own allocator. Phase 71.6 tracks this
+     work — until that lands, `nros-c + rmw-dds + platform-zephyr`
+     fails to link with "no global memory allocator found".
+  2. **`nros-rmw-dds` struct fields don't handle simultaneous `std`
+     and `nostd-runtime` features.** `DdsPublisher`, `DdsSubscriber`,
+     `DdsSession` each have feature-gated fields (`writer` for `std`,
+     `writer_async` + `runtime` for `nostd-runtime`); when both
+     features are enabled (which happens on `native_sim` because the
+     Zephyr cmake auto-adds `,std` for the panic handler),
+     constructors fail E0063 "missing fields". Fix the structs to
+     carry all fields and have each constructor populate the
+     correct subset, OR drop the auto-`,std` for `nros-c + rmw-dds`.
+
+  Re-attempt this group after either prerequisite lands.
+
 * **C cpp/xrce dual-instance E2E deferred.** The 6 cpp/xrce examples
   (talker, listener, svc x2, action x2) build clean and individual
   boot smoke tests pass on `native_sim/native/64`. Two-instance E2E
