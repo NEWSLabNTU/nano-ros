@@ -16,6 +16,12 @@ if [ ! -f "$ARCHIVE" ]; then
     exit 1
 fi
 
+# System-installed libs (e.g. /usr/lib/gcc/.../libgcc.a) are read-only and
+# don't need stripping anyway — skip silently.
+if [ ! -w "$ARCHIVE" ]; then
+    exit 0
+fi
+
 # Snapshot original to detect no-op runs and preserve mtime — otherwise every
 # rebuild bumps the archive mtime and cmake relinks downstream targets.
 SNAPSHOT=$(mktemp)

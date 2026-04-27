@@ -31,7 +31,7 @@ fi
 # Rust's compiler_builtins provides memset/memcpy/memmove but they can be
 # buggy on RISC-V (recursive implementation). picolibc provides correct ones.
 for arg in "$@"; do
-    if [[ "$arg" == *.a ]] && [ -f "$arg" ]; then
+    if [[ "$arg" == *.a ]] && [ -f "$arg" ] && [ -w "$arg" ]; then
         bash "$STRIP_SCRIPT" "$LLVM_AR" "$arg" 2>/dev/null
         # Also remove Rust compiler_builtins mem functions (they have weak
         # linkage but lld picks them over picolibc due to archive processing
@@ -46,7 +46,7 @@ for arg in "$@"; do
             fi
         done
         if cmp -s "$arg" "$snap"; then
-            touch -r "$snap" "$arg"
+            touch -r "$snap" "$arg" 2>/dev/null || true
         fi
         rm -f "$snap"
     fi
