@@ -1,6 +1,12 @@
 // nros-cpp: QoS (Quality of Service) profiles
 // Freestanding C++ — no STL required
 
+/**
+ * @file qos.hpp
+ * @ingroup grp_qos
+ * @brief `nros::QoS` — reliability/durability/history settings.
+ */
+
 #ifndef NROS_CPP_QOS_HPP
 #define NROS_CPP_QOS_HPP
 

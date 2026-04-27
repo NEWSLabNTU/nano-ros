@@ -1,5 +1,6 @@
 /**
  * @file action.h
+ * @ingroup grp_action
  * @brief Action server and client API.
  *
  * Actions provide long-running goal-oriented communication with

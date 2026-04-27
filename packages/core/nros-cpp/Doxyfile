@@ -6,7 +6,7 @@
 PROJECT_NAME           = "nros C++ API"
 PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems (C++ headers)"
 
-# Input: hand-written per-module headers
+# Input: hand-written per-module headers + groups + Markdown guides.
 # Exclude nros_cpp_config_generated.h (internal storage-size probe artifact).
 INPUT                  = include/nros/nros.hpp \
                          include/nros/node.hpp \
@@ -27,9 +27,17 @@ INPUT                  = include/nros/nros.hpp \
                          include/nros/span.hpp \
                          include/nros/fixed_string.hpp \
                          include/nros/fixed_sequence.hpp \
-                         include/nros/std_compat.hpp
+                         include/nros/std_compat.hpp \
+                         docs/groups.dox \
+                         docs/mainpage.md \
+                         docs/getting-started.md \
+                         docs/configuration.md \
+                         docs/ros2-interop.md \
+                         docs/troubleshooting.md \
+                         docs/error-codes.md
 RECURSIVE              = NO
-FILE_PATTERNS          = *.hpp
+FILE_PATTERNS          = *.hpp *.dox *.md
+USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
 
 # Output to a sibling tree of target/doc/ so it doesn't pollute the rustdoc
 # crate directory listing.

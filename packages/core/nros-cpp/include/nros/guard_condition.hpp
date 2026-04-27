@@ -1,6 +1,12 @@
 // nros-cpp: Guard condition class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file guard_condition.hpp
+ * @ingroup grp_executor
+ * @brief `nros::GuardCondition` — cross-thread wake source.
+ */
+
 #ifndef NROS_CPP_GUARD_CONDITION_HPP
 #define NROS_CPP_GUARD_CONDITION_HPP
 

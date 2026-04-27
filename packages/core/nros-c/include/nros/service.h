@@ -1,5 +1,6 @@
 /**
  * @file service.h
+ * @ingroup grp_service
  * @brief Service server API.
  *
  * Create service servers with nros_service_init(), take incoming

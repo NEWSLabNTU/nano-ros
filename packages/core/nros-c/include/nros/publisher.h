@@ -1,5 +1,6 @@
 /**
  * @file publisher.h
+ * @ingroup grp_pubsub
  * @brief Topic publisher API.
  *
  * Create publishers with nros_publisher_init() and publish serialised

@@ -1,6 +1,12 @@
 // nros-cpp: Stream<T> -- multi-shot message receiver
 // Freestanding C++ -- no exceptions, no STL required
 
+/**
+ * @file stream.hpp
+ * @ingroup grp_executor
+ * @brief `nros::Stream<T>` — multi-shot message receiver.
+ */
+
 #ifndef NROS_CPP_STREAM_HPP
 #define NROS_CPP_STREAM_HPP
 

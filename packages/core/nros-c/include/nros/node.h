@@ -1,5 +1,6 @@
 /**
  * @file node.h
+ * @ingroup grp_node
  * @brief ROS 2 node creation and management.
  *
  * A node represents a participant in the ROS 2 graph.  Create one with

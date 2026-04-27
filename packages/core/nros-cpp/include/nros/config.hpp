@@ -7,6 +7,12 @@
 // that catch any undercount — the generated values are safe upper
 // bounds derived from `nros-node::limits` and the target pointer width.
 
+/**
+ * @file config.hpp
+ * @ingroup grp_support
+ * @brief Inline storage-size macros for opaque entity buffers.
+ */
+
 #ifndef NROS_CPP_CONFIG_HPP
 #define NROS_CPP_CONFIG_HPP
 

@@ -1,5 +1,6 @@
 /**
  * @file types.h
+ * @ingroup grp_types
  * @brief Shared types and constants for the nros C API.
  *
  * Phase 91.C1: this file is now a thin transitional shim. The actual

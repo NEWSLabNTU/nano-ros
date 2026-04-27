@@ -1,6 +1,12 @@
 // nros-cpp: Publisher class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file publisher.hpp
+ * @ingroup grp_pubsub
+ * @brief `nros::Publisher<M>` — typed topic publisher.
+ */
+
 #ifndef NROS_CPP_PUBLISHER_HPP
 #define NROS_CPP_PUBLISHER_HPP
 

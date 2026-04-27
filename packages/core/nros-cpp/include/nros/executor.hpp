@@ -1,6 +1,12 @@
 // nros-cpp: Executor class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file executor.hpp
+ * @ingroup grp_executor
+ * @brief `nros::Executor` — drives transport I/O and dispatches callbacks.
+ */
+
 #ifndef NROS_CPP_EXECUTOR_HPP
 #define NROS_CPP_EXECUTOR_HPP
 

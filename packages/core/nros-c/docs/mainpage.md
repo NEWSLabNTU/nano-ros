@@ -33,22 +33,24 @@ nros_support_fini(&support);
 
 ## API Modules
 
-| Header | Description |
-|--------|-------------|
-| @ref node.h | Node creation and lifecycle |
-| @ref publisher.h | Topic publishers |
-| @ref subscription.h | Topic subscribers |
-| @ref service.h | Service servers |
-| @ref client.h | Service clients |
-| @ref action.h | Action servers and clients |
-| @ref executor.h | Callback executor (polling) |
-| @ref timer.h | Periodic timers |
-| @ref guard_condition.h | Manual wake-up triggers |
-| @ref lifecycle.h | Node lifecycle state machine |
-| @ref parameter.h | Parameter services |
-| @ref cdr.h | CDR serialization helpers |
-| @ref clock.h | Clock and time types |
-| @ref init.h | Library initialisation |
+The API is organised into the following module groups (see the
+**Modules** tab in the sidebar for each group's contents):
+
+| Group | Description |
+|-------|-------------|
+| @ref grp_init       | Library initialisation, support context |
+| @ref grp_node       | Node creation and lifecycle |
+| @ref grp_pubsub     | Topic publishers and subscriptions |
+| @ref grp_service    | Service servers and clients |
+| @ref grp_action     | Action servers and clients |
+| @ref grp_executor   | Callback executor, timers, guard conditions |
+| @ref grp_clock      | Clock and time types |
+| @ref grp_parameter  | Parameter services |
+| @ref grp_lifecycle  | Node lifecycle state machine (REP-2002) |
+| @ref grp_cdr        | CDR serialisation helpers |
+| @ref grp_qos        | Quality-of-Service settings |
+| @ref grp_errors     | Return codes, see @ref error_codes |
+| @ref grp_types      | Shared types |
 
 ## Header Organisation
 
@@ -61,6 +63,10 @@ all module headers include automatically.
 
 An internal `nros_generated.h` (produced by cbindgen) is used for
 compile-time drift detection — it is not part of the public API.
+
+## Reference
+
+- @subpage error_codes — `nros_ret_t` reference with cause and recovery
 
 ## Guides
 

@@ -1,6 +1,12 @@
 // nros-cpp: Node class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file node.hpp
+ * @ingroup grp_node
+ * @brief `nros::Node` and global session helpers.
+ */
+
 #ifndef NROS_CPP_NODE_HPP
 #define NROS_CPP_NODE_HPP
 

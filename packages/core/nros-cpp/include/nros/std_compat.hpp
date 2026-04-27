@@ -6,6 +6,13 @@
 // B) std::string forwarding overloads for name parameters
 // C) std::chrono::milliseconds overloads for spin/timer durations
 
+/**
+ * @file std_compat.hpp
+ * @ingroup grp_support
+ * @brief `NROS_CPP_STD` opt-in conveniences — `std::function`,
+ *        `std::string`, `std::chrono` overloads.
+ */
+
 #ifndef NROS_CPP_STD_COMPAT_HPP
 #define NROS_CPP_STD_COMPAT_HPP
 

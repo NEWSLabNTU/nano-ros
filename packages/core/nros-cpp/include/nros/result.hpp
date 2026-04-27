@@ -1,6 +1,14 @@
 // nros-cpp: Result type for error handling
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file result.hpp
+ * @ingroup grp_errors
+ * @brief `nros::Result`, `nros::ErrorCode`, and the `NROS_TRY` macro.
+ *
+ * See @ref error_codes for the full code table and recovery guidance.
+ */
+
 #ifndef NROS_CPP_RESULT_HPP
 #define NROS_CPP_RESULT_HPP
 

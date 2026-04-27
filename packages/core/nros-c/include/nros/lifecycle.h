@@ -1,5 +1,6 @@
 /**
  * @file lifecycle.h
+ * @ingroup grp_lifecycle
  * @brief Node lifecycle state machine (REP-2002).
  *
  * Provides a state machine with callbacks for lifecycle transitions:

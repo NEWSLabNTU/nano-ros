@@ -6,9 +6,15 @@
 PROJECT_NAME           = "nros C API"
 PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems"
 
-# Input: hand-written per-module headers + mainpage
-# Exclude nros_generated.h (internal cbindgen artifact for drift detection)
+# Input: hand-written per-module headers + cbindgen-emitted decls +
+# groups + Markdown guides.
+#
+# Phase 93 E1: `nros_generated.h` is now part of the doc input. The
+# cbindgen-emitted decls are the real source of truth for entity types
+# and public functions; the per-module shim headers carry @file briefs
+# and `@addtogroup` blocks that pull related symbols into named groups.
 INPUT                  = include/nros/nros.h \
+                         include/nros/nros_generated.h \
                          include/nros/types.h \
                          include/nros/init.h \
                          include/nros/node.h \
@@ -26,13 +32,15 @@ INPUT                  = include/nros/nros.h \
                          include/nros/clock.h \
                          include/nros/visibility.h \
                          include/nros/platform.h \
+                         docs/groups.dox \
                          docs/mainpage.md \
                          docs/getting-started.md \
                          docs/configuration.md \
                          docs/ros2-interop.md \
-                         docs/troubleshooting.md
+                         docs/troubleshooting.md \
+                         docs/error-codes.md
 RECURSIVE              = NO
-FILE_PATTERNS          = *.h *.md
+FILE_PATTERNS          = *.h *.dox *.md
 USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
 
 # Output to a sibling tree of target/doc/ so it doesn't pollute the rustdoc

@@ -1,5 +1,6 @@
 /**
  * @file clock.h
+ * @ingroup grp_clock
  * @brief Clock and time utilities.
  *
  * Provides clocks for reading wall-clock or monotonic time, and

@@ -1,6 +1,12 @@
 // nros-cpp: Service client class
 // Freestanding C++ -- no exceptions, no STL required
 
+/**
+ * @file client.hpp
+ * @ingroup grp_service
+ * @brief `nros::Client<S>` — typed service client.
+ */
+
 #ifndef NROS_CPP_CLIENT_HPP
 #define NROS_CPP_CLIENT_HPP
 

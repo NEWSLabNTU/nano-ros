@@ -1,6 +1,12 @@
 // nros-cpp: Future<T> -- single-shot deferred result
 // Freestanding C++ -- no exceptions, no STL required
 
+/**
+ * @file future.hpp
+ * @ingroup grp_executor
+ * @brief `nros::Future<T>` — single-shot deferred result.
+ */
+
 #ifndef NROS_CPP_FUTURE_HPP
 #define NROS_CPP_FUTURE_HPP
 

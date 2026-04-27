@@ -1,6 +1,12 @@
 // nros-cpp: Action server class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file action_server.hpp
+ * @ingroup grp_action
+ * @brief `nros::ActionServer<A>` — typed action server.
+ */
+
 #ifndef NROS_CPP_ACTION_SERVER_HPP
 #define NROS_CPP_ACTION_SERVER_HPP
 

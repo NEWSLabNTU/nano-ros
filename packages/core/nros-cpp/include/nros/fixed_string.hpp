@@ -4,6 +4,12 @@
 // Memory layout is repr(C) compatible: identical to char[N].
 // Used by codegen-generated message structs for string fields.
 
+/**
+ * @file fixed_string.hpp
+ * @ingroup grp_support
+ * @brief `nros::FixedString<N>` — fixed-capacity null-terminated string.
+ */
+
 #ifndef NROS_CPP_FIXED_STRING_HPP
 #define NROS_CPP_FIXED_STRING_HPP
 

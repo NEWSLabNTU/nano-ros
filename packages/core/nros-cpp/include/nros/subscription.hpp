@@ -1,6 +1,12 @@
 // nros-cpp: Subscription class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file subscription.hpp
+ * @ingroup grp_pubsub
+ * @brief `nros::Subscription<M>` — typed topic subscriber.
+ */
+
 #ifndef NROS_CPP_SUBSCRIPTION_HPP
 #define NROS_CPP_SUBSCRIPTION_HPP
 

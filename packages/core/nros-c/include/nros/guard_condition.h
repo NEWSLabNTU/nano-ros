@@ -1,5 +1,6 @@
 /**
  * @file guard_condition.h
+ * @ingroup grp_executor
  * @brief Manual wake-up trigger API.
  *
  * Guard conditions provide a mechanism for signalling an executor from

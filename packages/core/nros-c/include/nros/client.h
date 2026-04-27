@@ -1,5 +1,6 @@
 /**
  * @file client.h
+ * @ingroup grp_service
  * @brief Service client API.
  *
  * Create service clients with nros_client_init() and call services

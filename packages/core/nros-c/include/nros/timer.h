@@ -1,5 +1,6 @@
 /**
  * @file timer.h
+ * @ingroup grp_executor
  * @brief Periodic timer API.
  *
  * Create timers with nros_timer_init() and register them with an

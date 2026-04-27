@@ -1,5 +1,8 @@
 # Troubleshooting {#troubleshooting}
 
+See @ref error_codes for the full `nros_ret_t` table with cause and
+recovery for each return code.
+
 ## Message Too Large / Truncated
 
 Messages pass through multiple buffer layers. A message must fit every

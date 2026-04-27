@@ -7,6 +7,12 @@
 // These types are used by generated borrowed message structs to reference
 // variable-length data in the CDR receive buffer without copying.
 
+/**
+ * @file span.hpp
+ * @ingroup grp_support
+ * @brief `nros::Span<T>` and `nros::StringView` — non-owning views.
+ */
+
 #ifndef NROS_CPP_SPAN_HPP
 #define NROS_CPP_SPAN_HPP
 

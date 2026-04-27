@@ -1,0 +1,146 @@
+/**
+ * @defgroup grp_init init
+ * @brief Library initialisation, the global session, and `nros::ok()`.
+ *
+ * `nros::init()` boots the transport; `nros::shutdown()` tears it down.
+ * `nros::ok()` reports whether the global session is alive (false after
+ * `shutdown` or after a fatal transport error).
+ *
+ * @code
+ * NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
+ * while (nros::ok()) nros::spin_once(100);
+ * nros::shutdown();
+ * @endcode
+ *
+ * @see @ref grp_node, @ref getting_started
+ */
+
+/**
+ * @defgroup grp_node node
+ * @brief Node creation and lifecycle (`nros::Node`).
+ *
+ * Mirrors `rclcpp::Node`. Created via `nros::create_node(node, name)`;
+ * publishers, subscriptions, services, and timers are bound to the
+ * node via its `create_*` member functions.
+ *
+ * @see @ref grp_pubsub, @ref grp_service, @ref grp_action
+ */
+
+/**
+ * @defgroup grp_pubsub pubsub
+ * @brief Typed publishers and subscriptions
+ * (`nros::Publisher<M>`, `nros::Subscription<M>`).
+ *
+ * `M` is a generated message type — see @ref message_concept for the
+ * required surface. The `publish` method serialises and forwards via
+ * the codegen-emitted `M::ffi_publish`.
+ *
+ * @code
+ * nros::Publisher<std_msgs::msg::Int32> pub;
+ * NROS_TRY(node.create_publisher(pub, "/chatter"));
+ * std_msgs::msg::Int32 m{}; m.data = 42;
+ * pub.publish(m);
+ * @endcode
+ *
+ * @see @ref grp_executor, @ref grp_qos
+ */
+
+/**
+ * @defgroup grp_service service
+ * @brief Service servers and clients
+ * (`nros::Service<S>`, `nros::Client<S>`).
+ *
+ * `S` is a generated service type that exposes nested `Request` and
+ * `Response` types. Servers dispatch via the executor; clients return
+ * a `nros::Future<typename S::Response>` from `async_send_request`.
+ */
+
+/**
+ * @defgroup grp_action action
+ * @brief Action servers and clients
+ * (`nros::ActionServer<A>`, `nros::ActionClient<A>`).
+ *
+ * REP-2010 action protocol with goal accept/reject, periodic feedback,
+ * cancel, and final result.
+ *
+ * @note `ActionServer` and `ActionClient` currently use a blocking
+ *       `zpico_get` path on `send_goal` and `get_result`; Phase 77 is
+ *       migrating them to a non-blocking executor-polled path. See the
+ *       project CLAUDE.md for status.
+ */
+
+/**
+ * @defgroup grp_executor executor
+ * @brief Callback dispatch, timers, guard conditions, futures, streams.
+ *
+ * `nros::Executor` polls the transport and dispatches ready callbacks.
+ * `nros::Timer` fires on a periodic interval; `nros::GuardCondition`
+ * is a cross-thread wake source. `nros::Future<T>` and `nros::Stream<T>`
+ * are the futures/streams returned by service and action clients.
+ */
+
+/**
+ * @defgroup grp_clock clock
+ * @brief Wall-clock and monotonic time helpers.
+ */
+
+/**
+ * @defgroup grp_qos qos
+ * @brief Quality-of-Service settings (`nros::QoS`).
+ *
+ * Builder-style helpers to set reliability, durability, history, depth.
+ * Defaults are `BEST_EFFORT` reliability + `VOLATILE` durability +
+ * depth `10`.
+ */
+
+/**
+ * @defgroup grp_errors errors
+ * @brief Result/ErrorCode and the `NROS_TRY` macro.
+ *
+ * See @ref error_codes for the full code table and recovery guidance.
+ */
+
+/**
+ * @defgroup grp_support support
+ * @brief Freestanding utility types
+ * (`Span`, `FixedString`, `FixedSequence`, `std_compat`).
+ *
+ * These are small replacements for `std::string_view`,
+ * `std::array`-with-length, and `std::vector` that work without the
+ * STL.
+ */
+
+/**
+ * @page message_concept The Message-Type Concept
+ *
+ * The `M` type parameter on `nros::Publisher<M>`,
+ * `nros::Subscription<M>`, etc. must satisfy the following concept
+ * (provided automatically by code generated via
+ * `nano_ros_generate_interfaces(... LANGUAGE CPP)`):
+ *
+ * @code
+ * struct M {
+ *     // ROS 2 fully-qualified type name, e.g. "std_msgs::msg::Int32"
+ *     static constexpr const char* TYPE_NAME = "...";
+ *
+ *     // RIHS01 type hash (Iron+) or "TypeHashNotSupported" (Humble)
+ *     static constexpr const char* TYPE_HASH = "...";
+ *
+ *     // Maximum serialised size for static pool sizing.
+ *     static constexpr size_t SERIALIZED_SIZE_MAX = ...;
+ *
+ *     // Generated FFI helpers: serialise + publish, take + deserialise.
+ *     static int32_t ffi_publish(void* publisher_storage, const M* msg);
+ *     static int32_t ffi_take(void* sub_storage, M* out);
+ *     // ... per-service variants for service/action types.
+ * };
+ * @endcode
+ *
+ * Likewise service types `S` expose nested `Request` and `Response`
+ * types (each itself satisfying the message-type concept) plus
+ * `S::TYPE_NAME` and `S::TYPE_HASH`. Action types `A` expose nested
+ * `Goal`, `Feedback`, and `Result`.
+ *
+ * **You should never write these by hand.** The codegen tool emits
+ * conformant C++ headers from `.msg` / `.srv` / `.action` files.
+ */

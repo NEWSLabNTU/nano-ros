@@ -1,6 +1,12 @@
 // nros-cpp: Timer class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file timer.hpp
+ * @ingroup grp_executor
+ * @brief `nros::Timer` — periodic callback driven by the executor.
+ */
+
 #ifndef NROS_CPP_TIMER_HPP
 #define NROS_CPP_TIMER_HPP
 

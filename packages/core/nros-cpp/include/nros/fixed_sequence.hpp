@@ -4,6 +4,12 @@
 // Memory layout is repr(C) compatible: identical to { uint32_t size; T data[N]; }.
 // Used by codegen-generated message structs for sequence fields.
 
+/**
+ * @file fixed_sequence.hpp
+ * @ingroup grp_support
+ * @brief `nros::FixedSequence<T,N>` — fixed-capacity sequence container.
+ */
+
 #ifndef NROS_CPP_FIXED_SEQUENCE_HPP
 #define NROS_CPP_FIXED_SEQUENCE_HPP
 

@@ -1,5 +1,6 @@
 /**
  * @file parameter.h
+ * @ingroup grp_parameter
  * @brief Parameter server API.
  *
  * Declare, get, and set typed parameters on a local parameter server.

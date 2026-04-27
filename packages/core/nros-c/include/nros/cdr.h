@@ -1,5 +1,6 @@
 /**
  * @file cdr.h
+ * @ingroup grp_cdr
  * @brief CDR serialization helpers.
  *
  * Low-level read/write functions for CDR (Common Data Representation)

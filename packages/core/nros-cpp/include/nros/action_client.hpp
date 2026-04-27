@@ -1,6 +1,12 @@
 // nros-cpp: Action client class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file action_client.hpp
+ * @ingroup grp_action
+ * @brief `nros::ActionClient<A>` — typed action client.
+ */
+
 #ifndef NROS_CPP_ACTION_CLIENT_HPP
 #define NROS_CPP_ACTION_CLIENT_HPP
 

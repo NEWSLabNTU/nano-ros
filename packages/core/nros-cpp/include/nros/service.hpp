@@ -1,6 +1,12 @@
 // nros-cpp: Service server class
 // Freestanding C++ — no exceptions, no STL required
 
+/**
+ * @file service.hpp
+ * @ingroup grp_service
+ * @brief `nros::Service<S>` — typed service server.
+ */
+
 #ifndef NROS_CPP_SERVICE_HPP
 #define NROS_CPP_SERVICE_HPP
 

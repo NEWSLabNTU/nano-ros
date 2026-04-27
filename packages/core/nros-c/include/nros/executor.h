@@ -1,5 +1,6 @@
 /**
  * @file executor.h
+ * @ingroup grp_executor
  * @brief Callback executor (polling) API.
  *
  * The executor drives middleware I/O and dispatches ready callbacks for

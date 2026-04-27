@@ -3,6 +3,12 @@
 //
 // Freestanding C++ compatible — no STL, no exceptions, no RTTI required.
 
+/**
+ * @file nros.hpp
+ * @ingroup grp_init
+ * @brief Umbrella header — pulls in every public C++ API surface.
+ */
+
 #ifndef NROS_CPP_HPP
 #define NROS_CPP_HPP
 

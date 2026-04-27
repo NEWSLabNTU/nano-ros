@@ -1,0 +1,153 @@
+/**
+ * @defgroup grp_init init
+ * @brief Library initialisation and the support context.
+ *
+ * Includes `nros_support_t` (the transport session anchor),
+ * `nros_init`/`nros_fini`, and the global session helpers.
+ *
+ * Typical lifecycle:
+ * @code
+ * nros_support_t support = nros_support_get_zero_initialized();
+ * nros_support_init(&support, "tcp/127.0.0.1:7447", 0);
+ * // ... use the API ...
+ * nros_support_fini(&support);
+ * @endcode
+ *
+ * @see @ref grp_node, @ref getting_started
+ */
+
+/**
+ * @defgroup grp_node node
+ * @brief Node creation and lifecycle.
+ *
+ * `nros_node_t` is the parent for publishers, subscriptions, services,
+ * clients, action servers, and action clients. Each entity is bound to
+ * a node at init time and torn down before the node itself.
+ *
+ * @code
+ * nros_node_t node = nros_node_get_zero_initialized();
+ * nros_node_init(&node, &support, "my_node", "/");
+ * // ... bind entities ...
+ * nros_node_fini(&node);
+ * @endcode
+ *
+ * @see @ref grp_pubsub, @ref grp_service, @ref grp_action
+ */
+
+/**
+ * @defgroup grp_pubsub pubsub
+ * @brief Topic publishers and subscriptions.
+ *
+ * `nros_publisher_t` sends typed (or raw-CDR) messages on a topic;
+ * `nros_subscription_t` receives them. Subscriptions can run with a
+ * callback registered on the executor, or be polled manually with
+ * `nros_subscription_take`.
+ *
+ * @code
+ * nros_publisher_t pub = nros_publisher_get_zero_initialized();
+ * nros_publisher_init(&pub, &node, &type_info, "/chatter");
+ * nros_publish_raw(&pub, cdr_buf, cdr_len);
+ * @endcode
+ *
+ * @see @ref grp_executor, @ref grp_qos
+ */
+
+/**
+ * @defgroup grp_service service
+ * @brief Service servers and clients.
+ *
+ * Provides request/response RPC via `nros_service_t` (server) and
+ * `nros_client_t` (caller). Servers register a
+ * `nros_service_callback_t` that the executor dispatches when a request
+ * arrives; clients can take responses synchronously or via callbacks.
+ *
+ * @see @ref grp_action for long-running calls with feedback
+ */
+
+/**
+ * @defgroup grp_action action
+ * @brief Action servers and clients.
+ *
+ * REP-2010 action protocol on top of services + topics: goal accept /
+ * reject, periodic feedback, cancel, and final result. Servers expose
+ * accept and execute callbacks; clients receive feedback and result
+ * callbacks.
+ */
+
+/**
+ * @defgroup grp_executor executor
+ * @brief Callback dispatch, timers, and guard conditions.
+ *
+ * `nros_executor_t` polls the transport, drains ready data from
+ * subscriptions/services/clients/actions, and invokes their registered
+ * callbacks. `nros_timer_t` fires on a wall-clock period;
+ * `nros_guard_condition_t` is an explicit wake source you can trigger
+ * from any thread.
+ *
+ * @code
+ * nros_executor_t exec = nros_executor_get_zero_initialized();
+ * nros_executor_init(&exec, &support, 4);
+ * nros_executor_add_subscription(&exec, &sub);
+ * nros_executor_spin_period(&exec, 10000000ULL);
+ * @endcode
+ */
+
+/**
+ * @defgroup grp_clock clock
+ * @brief Wall-clock and monotonic time.
+ *
+ * `nros_time_t` is an absolute instant, `nros_duration_t` is a span;
+ * helpers convert between nanoseconds, milliseconds, and seconds.
+ */
+
+/**
+ * @defgroup grp_parameter parameter
+ * @brief Parameter server (REP-2007 services).
+ *
+ * Static-pool parameter table backing the `~/get_parameters`,
+ * `~/set_parameters`, etc. services. Parameter sizes are bounded by
+ * `NROS_MAX_PARAMETERS` and friends — see @ref configuration.
+ */
+
+/**
+ * @defgroup grp_lifecycle lifecycle
+ * @brief Node lifecycle (REP-2002).
+ *
+ * Optional lifecycle state machine and matching services
+ * (`~/change_state`, `~/get_state`, …) built on the
+ * `nros-lifecycle-msgs` codegen crate.
+ */
+
+/**
+ * @defgroup grp_cdr cdr
+ * @brief CDR serialisation helpers.
+ *
+ * Low-level helpers used by generated message types. You should not
+ * need to call these directly — `nano_ros_generate_interfaces()` emits
+ * fully serialised types.
+ */
+
+/**
+ * @defgroup grp_qos qos
+ * @brief Quality-of-Service settings.
+ *
+ * Reliability (`BEST_EFFORT` / `RELIABLE`), durability, history,
+ * and depth.
+ */
+
+/**
+ * @defgroup grp_errors errors
+ * @brief Return codes and error helpers.
+ *
+ * Every fallible function returns `nros_ret_t`. See @ref error_codes
+ * for the full table.
+ */
+
+/**
+ * @defgroup grp_types types
+ * @brief Shared types (return codes, message-type info, opaque
+ * handles).
+ *
+ * Defined in `<nros/types.h>` and `nros_generated.h`; included
+ * transitively by every per-module header.
+ */

@@ -1,5 +1,6 @@
 /**
  * @file subscription.h
+ * @ingroup grp_pubsub
  * @brief Topic subscription API.
  *
  * Create subscriptions with nros_subscription_init() and receive

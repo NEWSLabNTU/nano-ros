@@ -1,5 +1,6 @@
 /**
  * @file init.h
+ * @ingroup grp_init
  * @brief Library initialisation and support context.
  *
  * The support context (`nros_support_t`) is the entry point for all
