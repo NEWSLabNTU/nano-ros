@@ -525,6 +525,21 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         }
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "build-xrce-c-talker",
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "build-xrce-c-listener",
+        // Phase 95.C — XRCE C++ talker/listener/svc/action coverage
+        "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => "build-xrce-cpp-talker",
+        "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => "build-xrce-cpp-listener",
+        "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => {
+            "build-xrce-cpp-service-server"
+        }
+        "zephyr-xrce-cpp-service-client" | "xrce-cpp-service-client" => {
+            "build-xrce-cpp-service-client"
+        }
+        "zephyr-xrce-cpp-action-server" | "xrce-cpp-action-server" => {
+            "build-xrce-cpp-action-server"
+        }
+        "zephyr-xrce-cpp-action-client" | "xrce-cpp-action-client" => {
+            "build-xrce-cpp-action-client"
+        }
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "build-dds-rs-talker",
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "build-dds-rs-listener",
@@ -612,6 +627,23 @@ fn example_path_for_name(example_name: &str) -> String {
         }
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "zephyr/c/xrce/talker".to_string(),
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "zephyr/c/xrce/listener".to_string(),
+        // Phase 95.C — XRCE C++ examples
+        "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => "zephyr/cpp/xrce/talker".to_string(),
+        "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => {
+            "zephyr/cpp/xrce/listener".to_string()
+        }
+        "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => {
+            "zephyr/cpp/xrce/service-server".to_string()
+        }
+        "zephyr-xrce-cpp-service-client" | "xrce-cpp-service-client" => {
+            "zephyr/cpp/xrce/service-client".to_string()
+        }
+        "zephyr-xrce-cpp-action-server" | "xrce-cpp-action-server" => {
+            "zephyr/cpp/xrce/action-server".to_string()
+        }
+        "zephyr-xrce-cpp-action-client" | "xrce-cpp-action-client" => {
+            "zephyr/cpp/xrce/action-client".to_string()
+        }
         // DDS examples (Phase 71.8)
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "zephyr/rust/dds/talker".to_string(),
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "zephyr/rust/dds/listener".to_string(),
