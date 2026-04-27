@@ -1999,6 +1999,58 @@ pub fn dds_action_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
+// Phase 95.G — Native C DDS examples ----------------------------------------
+
+pub fn build_dds_c_talker() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/talker", "c_talker")
+}
+
+pub fn build_dds_c_listener() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/listener", "c_listener")
+}
+
+pub fn build_dds_c_service_server() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/service-server", "c_service_server")
+}
+
+pub fn build_dds_c_service_client() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/service-client", "c_service_client")
+}
+
+pub fn build_dds_c_action_server() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/action-server", "c_action_server")
+}
+
+pub fn build_dds_c_action_client() -> TestResult<PathBuf> {
+    build_c_example("native/c/dds/action-client", "c_action_client")
+}
+
+// Phase 95.H — Native C++ DDS examples --------------------------------------
+
+pub fn build_dds_cpp_talker() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/talker", "cpp_talker")
+}
+
+pub fn build_dds_cpp_listener() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/listener", "cpp_listener")
+}
+
+pub fn build_dds_cpp_service_server() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/service-server", "cpp_service_server")
+}
+
+pub fn build_dds_cpp_service_client() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/service-client", "cpp_service_client")
+}
+
+pub fn build_dds_cpp_action_server() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/action-server", "cpp_action_server")
+}
+
+pub fn build_dds_cpp_action_client() -> TestResult<PathBuf> {
+    build_cpp_example("native/cpp/dds/action-client", "cpp_action_client")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

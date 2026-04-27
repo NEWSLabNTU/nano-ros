@@ -66,12 +66,16 @@ install-local: \
     threadx_linux::install threadx_riscv64::install
     @echo "Installed to $(pwd)/build/install"
 
-# Build POSIX host libraries + codegen tool (zenoh + xrce)
+# Build POSIX host libraries + codegen tool (zenoh + xrce + dds).
+# Phase 95.G/H — `dds` joins the loop now that nros-rmw-dds compiles
+# cleanly with `std + platform-posix` and the lib names are RMW-suffixed
+# (`libnros_c_dds.a` / `libnros_cpp_dds.a`), so all three coexist in
+# the install prefix.
 install-local-posix:
     #!/usr/bin/env bash
     set -e
     PREFIX="$(pwd)/build/install"
-    for rmw in zenoh xrce; do
+    for rmw in zenoh xrce dds; do
         echo "=== Building posix RMW=$rmw ==="
         cmake -S . -B "build/cmake-$rmw" \
             -DNANO_ROS_RMW="$rmw" \

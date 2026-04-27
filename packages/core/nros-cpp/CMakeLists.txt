@@ -19,8 +19,10 @@ if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_rmw_features rmw-xrce xrce-udp)
+elseif(NANO_ROS_RMW STREQUAL "dds")
+    set(_rmw_features rmw-dds)
 else()
-    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh or xrce)")
+    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh, xrce, or dds)")
 endif()
 
 # ---- Map platform to Cargo features ----

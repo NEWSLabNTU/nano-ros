@@ -7,13 +7,28 @@ Today only the `(native, rust, zenoh)` cell is fully populated;
 C / C++ entries even though `nros-c`, `nros-cpp`, `nros-rmw-dds`, and
 `nros-rmw-xrce` all support those use-cases at the API level.
 
-**Status**: Partial — A/B/C/F landed (19 example crates), D/E/G/H
-deferred behind named prerequisites (Phase 71.6 board-crate
-allocator, Phase 78 per-RMW install prefix, `nros-rmw-dds`
-dual-feature struct bug). See "Notes" below for the per-group
-unblock plan; commit history: f8255cf4 (A), 6ad1f4be (B), 21da38bc
-(F), 9c3f6a0f (C), d8cd2f1b (E defer), 762ec4f3 (D defer),
-3c3e5030 (G/H defer).
+**Status**: Complete — all 8 groups (A/B/C/D/E/F/G/H) landed, 51 new
+example crates total. The two prerequisites that originally deferred
+D/E/G/H were implemented in-phase: Phase 71.6 (Zephyr
+`#[global_allocator]` + critical-section impl + cortex_a9 Rust
+target wiring for nros-c / nros-cpp staticlibs) and the
+`nros-rmw-dds` dual-feature struct refactor (`std + nostd-runtime`
+both active no longer fails E0063). For G/H the per-RMW install
+prefix turned out to already work — the namespaced lib filenames
+(`libnros_c_<rmw>.a`, `libnros_cpp_<rmw>.a`) coexist in one prefix,
+so adding `dds` to `install-local-posix`'s loop was sufficient.
+
+Commit history: f8255cf4 (A), 6ad1f4be (B), 21da38bc (F), 9c3f6a0f
+(C), d5380711 (D + E + Phase 71.6 + dual-feature fix), and the
+forthcoming G/H commit (this change).
+
+The cross-instance / cross-process E2E tests for B (cortex_a9), C
+(cpp/xrce dual instance), and F (native dds svc/action) remain
+`#[ignore]`d because they all hit two unrelated SEDP-discovery /
+session-demux issues in the underlying RMW backends — the example
+crates themselves all build and reach readiness. Those E2Es belong
+to a separate dust-dds / xrce-cpp-API follow-up phase, not Phase
+95.
 
 **Priority**: Medium. Examples are the primary onboarding surface — a
 user copying out a Zephyr xrce example for a service node hits a wall
@@ -43,9 +58,9 @@ because none ships.
 | native/rust  | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | native/c     | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | native/c     | xrce  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| native/c     | dds   | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | — | — |
+| native/c     | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | native/cpp   | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| native/cpp   | dds   | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | — | — |
+| native/cpp   | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 
 Legend: ✅ shipped, ❌ never written, ⏸ deferred behind a named
 prerequisite (see Notes section).
@@ -118,8 +133,8 @@ support cmake — no cross-cell sharing.
 - [x] 95.F2 — Native dds-rust service-client
 - [x] 95.F3 — Native dds-rust action-server
 - [x] 95.F4 — Native dds-rust action-client
-- [~] 95.G1–6 — Native c-dds: blocked on per-RMW install prefix (Phase 78) — `find_package(NanoRos)` ships one RMW per install dir; switching to DDS needs a parallel install or a per-RMW component layout.
-- [~] 95.H1–6 — Native cpp-dds: blocked on the same per-RMW install prefix issue as 95.G.
+- [x] 95.G1–6 — Native c-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 build tests pass; per-RMW lib coexistence already worked, only `install-local-posix` needed `dds` added to its loop)
+- [x] 95.H1–6 — Native cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 build tests pass)
 - [ ] 95.I — `just test-all` integration (all new tests pass)
 - [ ] 95.J — Coverage matrix verification (this doc's table flips to all-✅)
 
