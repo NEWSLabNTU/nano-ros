@@ -1,0 +1,35 @@
+# Doxyfile for nros rmw-cffi vtable documentation
+#
+# Usage: doxygen packages/core/nros-rmw-cffi/Doxyfile
+# Or:    just doc-rmw-cffi
+
+PROJECT_NAME           = "nros rmw-cffi"
+PROJECT_BRIEF          = "C vtable for plugging a third-party RMW backend into nros"
+
+INPUT                  = include/nros/rmw_vtable.h \
+                         docs/mainpage.md
+
+RECURSIVE              = NO
+FILE_PATTERNS          = *.h *.md
+USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
+
+OUTPUT_DIRECTORY       = ../../../target/doxygen/rmw-cffi
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES

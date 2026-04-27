@@ -696,7 +696,27 @@ pub enum SessionMode {
     Peer,
 }
 
-/// Transport session trait
+/// Transport session trait — the per-process anchor an RMW backend
+/// gives to the executor.
+///
+/// # Threading
+///
+/// `&mut self` on every method means the executor serialises all
+/// session calls onto a single thread. A backend may rely on this
+/// — no internal locking is required for `create_*` / `close` /
+/// `drive_io`. **Publisher / subscriber / service handles created
+/// from the session, however, are typically used from worker
+/// threads** and must carry their own synchronisation (see the
+/// [`Publisher`] / [`Subscriber`] trait docs).
+///
+/// # Calling pattern
+///
+/// 1. Open the session (backend-specific factory; not on this trait).
+/// 2. `create_*` for every entity at startup. Creating entities mid-
+///    flight after `drive_io` has run is allowed but not common.
+/// 3. The executor calls `drive_io` periodically. Worker threads
+///    publish / receive in parallel.
+/// 4. `close` once at shutdown. Entities must be dropped first.
 pub trait Session {
     /// Error type for this session
     type Error;
@@ -709,33 +729,44 @@ pub trait Session {
     /// Service client handle type
     type ServiceClientHandle;
 
-    /// Create a publisher for a topic
+    /// Create a publisher bound to this session.
+    ///
+    /// May allocate transport resources (zenoh declarations, DDS
+    /// writers). Returns a handle that outlives the call but not the
+    /// session — drop the handle before `close()`.
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error>;
 
-    /// Create a subscriber for a topic
+    /// Create a subscriber bound to this session.
+    ///
+    /// Subscribers may start receiving immediately after creation if
+    /// the transport supports late-joining publishers. Late messages
+    /// are buffered up to the QoS depth.
     fn create_subscriber(
         &mut self,
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error>;
 
-    /// Create a service server
+    /// Create a service server bound to this session. Replies are
+    /// matched to requests by the sequence number returned from
+    /// [`ServiceServerTrait::try_recv_request`].
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceServerHandle, Self::Error>;
 
-    /// Create a service client
+    /// Create a service client bound to this session.
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceClientHandle, Self::Error>;
 
-    /// Close the session
+    /// Close the session, releasing transport resources. All entity
+    /// handles created from this session must already be dropped.
     fn close(&mut self) -> Result<(), Self::Error>;
 
     /// Drive transport I/O (poll network, dispatch callbacks).
@@ -757,12 +788,35 @@ pub trait Session {
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error>;
 }
 
-/// Publisher trait for sending messages
+/// Publisher trait for sending messages.
+///
+/// # Threading
+///
+/// `&self` on `publish_raw` — implementors must allow concurrent
+/// publishes from multiple threads. Internal locking (or lock-free
+/// queues) is the backend's responsibility.
+///
+/// # Buffer ownership
+///
+/// `data` in `publish_raw` is borrowed for the duration of the call.
+/// The backend must either send it inline or copy into its own
+/// buffer before returning — the slice is invalid after the call.
+///
+/// # Blocking
+///
+/// `publish_raw` is expected to be non-blocking on best-effort QoS
+/// and bounded-blocking on reliable QoS (waiting for outbound queue
+/// space). Backends should *not* block waiting for ack from a
+/// matched subscriber.
 pub trait Publisher {
     /// Error type for publish operations
     type Error;
 
-    /// Publish a serialized message
+    /// Publish a CDR-serialised message.
+    ///
+    /// Returns once the message has been handed to the transport
+    /// (queued or fired-and-forgotten depending on QoS). Does **not**
+    /// wait for delivery.
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error>;
 
     /// Publish a typed message (serializes automatically)
@@ -783,22 +837,48 @@ pub trait Publisher {
     fn serialization_error(&self) -> Self::Error;
 }
 
-/// Subscriber trait for receiving messages
+/// Subscriber trait for receiving messages.
+///
+/// # Threading
+///
+/// `&mut self` on `try_recv_raw` — the executor takes exclusive
+/// ownership of the subscriber for the duration of a receive. A
+/// backend that wants to allow concurrent receives must split into
+/// per-thread sub-handles internally.
+///
+/// # Buffer ownership
+///
+/// `buf` is caller-owned. The implementation copies the next ready
+/// message into `buf` and returns the byte count. The caller may
+/// re-use or drop `buf` immediately after the call.
+///
+/// # Blocking
+///
+/// `try_recv_raw` is **non-blocking**: returns `Ok(None)` (or
+/// equivalent for backends that map empty into a zero-length read)
+/// when no message is ready. Use [`Session::drive_io`] to wait for
+/// data; never sleep inside `try_recv_raw`.
 pub trait Subscriber {
     /// Error type for receive operations
     type Error;
 
-    /// Check if data is available without consuming it
+    /// Check if data is available without consuming it.
     ///
-    /// Returns true if the subscriber has data ready to be received.
-    /// This is a non-destructive check that does not consume the message.
-    /// Conservative default returns true (always assume data may be available).
+    /// Non-destructive — does not advance the receive cursor.
+    /// Conservative default returns `true` (always assume data may
+    /// be available); backends should override with a real check
+    /// to avoid spurious receive attempts.
     fn has_data(&self) -> bool {
         true
     }
 
-    /// Try to receive a raw message (non-blocking)
-    /// Returns None if no message is available
+    /// Try to receive one message into `buf`.
+    ///
+    /// Non-blocking. On success returns `Ok(Some(len))` where `len`
+    /// is the byte count written into `buf[..len]`. Returns
+    /// `Ok(None)` if no message is ready. If `buf` is too small the
+    /// backend may either truncate (and document it) or return an
+    /// error (preferred).
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 
     /// Try to receive a typed message (non-blocking)
@@ -907,28 +987,52 @@ pub struct ServiceRequest<'a> {
     pub sequence_number: i64,
 }
 
-/// Service server trait for handling requests
+/// Service server trait for handling requests.
+///
+/// # Threading
+///
+/// `&mut self` on `try_recv_request` and `send_reply` — the executor
+/// owns the server while a request is being handled. Handler bodies
+/// run synchronously on the executor thread; long handlers should
+/// dispatch work to a worker queue and reply later via the recorded
+/// `sequence_number`.
+///
+/// # Calling pattern
+///
+/// 1. Executor calls `try_recv_request(buf)`.
+/// 2. If `Some(req)` returned, decode, run handler, encode reply.
+/// 3. `send_reply(req.sequence_number, &reply_buf)`.
+///
+/// `sequence_number` is the canonical request → reply correlation
+/// token; backends derive it from the wire-level metadata (zenoh
+/// query id, DDS sample identity).
 pub trait ServiceServerTrait {
     /// Error type for service operations
     type Error;
 
-    /// Check if a request is available without consuming it
+    /// Check if a request is available without consuming it.
     ///
-    /// Returns true if the service server has a pending request.
-    /// This is a non-destructive check that does not consume the request.
-    /// Conservative default returns true (always assume a request may be available).
+    /// Non-destructive. Default returns `true` (always assume one
+    /// may be available); backends should override with a real
+    /// check.
     fn has_request(&self) -> bool {
         true
     }
 
-    /// Try to receive a service request (non-blocking)
-    /// The returned ServiceRequest references data in the provided buffer
+    /// Try to receive a service request into `buf` (non-blocking).
+    ///
+    /// On success returns a `ServiceRequest` that borrows from
+    /// `buf`. The borrow is released when the returned struct is
+    /// dropped — typically before `send_reply` is called, since
+    /// `send_reply` takes `&mut self`.
     fn try_recv_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error>;
 
-    /// Send a reply to a service request
+    /// Send a reply for the given sequence number. Non-blocking
+    /// from the application's perspective; the backend may queue
+    /// the reply for transport-level transmission.
     fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error>;
 
     /// Handle a service request with typed messages
@@ -1013,7 +1117,25 @@ pub trait ServiceServerTrait {
     }
 }
 
-/// Service client trait for sending requests
+/// Service client trait for sending requests.
+///
+/// # Threading
+///
+/// `&mut self` on every method — the client is single-owner. For
+/// fan-out request patterns, create one client per worker thread.
+///
+/// # Calling pattern
+///
+/// All in-tree backends route blocking waits through the executor:
+///
+/// 1. `send_request_raw(buf)` — non-blocking; returns once the
+///    request is queued for transmission.
+/// 2. The executor's `drive_io` runs.
+/// 3. `try_recv_reply_raw(buf)` — non-blocking; returns
+///    `Ok(Some(len))` when the reply is back.
+///
+/// The deprecated [`call_raw`](Self::call_raw) blocking path is
+/// kept for backwards compatibility but should not be called.
 pub trait ServiceClientTrait {
     /// Error type for service operations
     type Error;

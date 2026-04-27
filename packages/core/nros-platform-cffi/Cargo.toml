@@ -13,3 +13,6 @@ threading = []
 [dependencies]
 portable-atomic = { version = "1", default-features = false }
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+
+[build-dependencies]
+cbindgen = "0.29"

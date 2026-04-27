@@ -208,12 +208,31 @@ pub trait PlatformTime {
 
 /// Threading primitives: tasks, mutexes, and condition variables.
 ///
-/// For single-threaded platforms (bare-metal), all operations should be
-/// no-ops returning success (0), except `task_init` which should return -1.
+/// # Threading
+///
+/// Mutex / condvar operations must be safe under concurrent callers.
+/// **Recursive mutex (`mutex_rec_*`) must support same-thread
+/// re-entrancy** — zenoh-pico relies on this; a non-recursive mutex
+/// backing `mutex_rec_*` deadlocks under load.
+///
+/// # ISR-safety
+///
+/// **None of these methods are ISR-safe** on hosted RTOSes
+/// (FreeRTOS / NuttX / Zephyr / ThreadX) — the underlying primitives
+/// panic or error when invoked from an ISR. Only `core::hint::spin_loop()`
+/// in [`PlatformYield::yield_now`] is.
+///
+/// For single-threaded platforms (bare-metal), all operations should
+/// be no-ops returning `0`, except [`task_init`](Self::task_init)
+/// which should return `-1`.
 pub trait PlatformThreading {
     // -- Tasks --
 
-    /// Spawn a new task. Returns 0 on success, -1 on failure.
+    /// Spawn a new task. `task` is opaque caller-provided storage;
+    /// `attr` carries scheduling hints (priority, stack size) or
+    /// `null` for defaults; `entry` is the task entry point; `arg`
+    /// is forwarded to `entry`. Returns `0` on success, non-zero
+    /// on failure.
     fn task_init(
         task: *mut c_void,
         attr: *mut c_void,
@@ -221,37 +240,64 @@ pub trait PlatformThreading {
         arg: *mut c_void,
     ) -> i8;
 
+    /// Block until `task` exits. Cleans up the task storage on
+    /// success.
     fn task_join(task: *mut c_void) -> i8;
+    /// Mark `task` as detached — its storage is reclaimed on exit
+    /// without a join.
     fn task_detach(task: *mut c_void) -> i8;
+    /// Request `task` to terminate at the next cancellation point.
+    /// Cooperative.
     fn task_cancel(task: *mut c_void) -> i8;
+    /// Terminate the calling task immediately. Does not return.
     fn task_exit();
+    /// Free the task storage allocated by `task_init`.
     fn task_free(task: *mut *mut c_void);
 
     // -- Mutex --
 
+    /// Initialise a non-recursive mutex in caller-provided storage.
     fn mutex_init(m: *mut c_void) -> i8;
+    /// Tear down a non-recursive mutex.
     fn mutex_drop(m: *mut c_void) -> i8;
+    /// Lock; block if held.
     fn mutex_lock(m: *mut c_void) -> i8;
+    /// Try to lock; non-zero return immediately if held.
     fn mutex_try_lock(m: *mut c_void) -> i8;
+    /// Unlock; only the owning thread may call this.
     fn mutex_unlock(m: *mut c_void) -> i8;
 
     // -- Recursive mutex --
 
+    /// Initialise a *recursive* mutex (same-thread re-entrancy
+    /// permitted). Required by zenoh-pico.
     fn mutex_rec_init(m: *mut c_void) -> i8;
+    /// Tear down a recursive mutex.
     fn mutex_rec_drop(m: *mut c_void) -> i8;
+    /// Lock; re-entry from the owning thread must succeed.
     fn mutex_rec_lock(m: *mut c_void) -> i8;
+    /// Try to lock; same re-entry semantics as `mutex_rec_lock`.
     fn mutex_rec_try_lock(m: *mut c_void) -> i8;
+    /// Unlock; releases when the lock count returns to zero.
     fn mutex_rec_unlock(m: *mut c_void) -> i8;
 
     // -- Condition variables --
 
+    /// Initialise a condition variable in caller-provided storage.
     fn condvar_init(cv: *mut c_void) -> i8;
+    /// Tear down a condition variable.
     fn condvar_drop(cv: *mut c_void) -> i8;
+    /// Wake one waiter on the condition variable.
     fn condvar_signal(cv: *mut c_void) -> i8;
+    /// Wake all waiters on the condition variable.
     fn condvar_signal_all(cv: *mut c_void) -> i8;
+    /// Atomically release `m` and block on `cv`. The mutex is
+    /// re-acquired before this function returns.
     fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
 
-    /// Wait with absolute timeout (milliseconds since boot).
+    /// Wait with absolute monotonic deadline (milliseconds since
+    /// the [`PlatformClock::clock_ms`] epoch). Returns non-zero on
+    /// timeout.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 }
 

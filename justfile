@@ -877,8 +877,39 @@ doc-cpp:
     (cd packages/core/nros-cpp && doxygen Doxyfile)
     echo "C++ API docs generated: target/doxygen/cpp/html/index.html"
 
-# Generate all documentation (Rust + C + C++ + book).
-doc: doc-rust doc-c doc-cpp
+# Generate Doxygen for the RMW vtable (porter-facing).
+doc-rmw-cffi:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v doxygen &>/dev/null; then
+        echo "WARNING: doxygen not found — skipping rmw-cffi docs."
+        exit 0
+    fi
+    mkdir -p target/doxygen/rmw-cffi
+    (cd packages/core/nros-rmw-cffi && doxygen Doxyfile)
+    echo "rmw-cffi docs generated: target/doxygen/rmw-cffi/html/index.html"
+
+# Generate Doxygen for the platform vtable (porter-facing). Triggers a
+# build of nros-platform-cffi first so the cbindgen-emitted header
+# exists.
+doc-platform-cffi:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v doxygen &>/dev/null; then
+        echo "WARNING: doxygen not found — skipping platform-cffi docs."
+        exit 0
+    fi
+    header="packages/core/nros-platform-cffi/include/nros/platform_vtable.h"
+    if [ ! -f "$header" ]; then
+        echo "Generated header not found, building nros-platform-cffi first..."
+        cargo build -p nros-platform-cffi
+    fi
+    mkdir -p target/doxygen/platform-cffi
+    (cd packages/core/nros-platform-cffi && doxygen Doxyfile)
+    echo "platform-cffi docs generated: target/doxygen/platform-cffi/html/index.html"
+
+# Generate all documentation (Rust + C + C++ + cffi vtables + book).
+doc: doc-rust doc-c doc-cpp doc-rmw-cffi doc-platform-cffi
 
 # Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
 # Mirrors the deploy-book.yml workflow so contributors can preview the
@@ -896,20 +927,30 @@ book:
     # rmw + platform feature combo so the deployed rustdoc actually shows
     # the public-facing types (otherwise the reference stub's
     # `[Executor](struct.Executor.html)` link 404s).
+    # nros-rmw-xrce is mutually exclusive with nros-rmw-zenoh (compile-
+    # time mutex on `nros`), so it's not part of this invocation.
     cargo doc --no-deps \
         --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
         -p nros \
         -p nros-rmw \
+        -p nros-rmw-cffi \
+        -p nros-rmw-zenoh \
         -p nros-platform-api \
-        -p nros-rmw-zenoh
+        -p nros-platform-cffi \
+        -p nros-platform-posix
     just doc-c
     just doc-cpp
+    just doc-rmw-cffi
+    just doc-platform-cffi
     mdbook build book
     mkdir -p book/book/api
-    rm -rf book/book/api/rust book/book/api/c book/book/api/cpp
-    cp -r target/doc                 book/book/api/rust
-    cp -r target/doxygen/c/html      book/book/api/c
-    cp -r target/doxygen/cpp/html    book/book/api/cpp
+    rm -rf book/book/api/rust book/book/api/c book/book/api/cpp \
+           book/book/api/rmw-cffi book/book/api/platform-cffi
+    cp -r target/doc                          book/book/api/rust
+    cp -r target/doxygen/c/html               book/book/api/c
+    cp -r target/doxygen/cpp/html             book/book/api/cpp
+    cp -r target/doxygen/rmw-cffi/html        book/book/api/rmw-cffi
+    cp -r target/doxygen/platform-cffi/html   book/book/api/platform-cffi
     # rustdoc has no top-level index when invoked with multiple `-p`; stage
     # a tiny redirect so visiting `api/rust/` lands on the umbrella crate.
     cat > book/book/api/rust/index.html <<'HTML'

@@ -33,67 +33,152 @@ use portable_atomic::AtomicPtr;
 /// All function pointers are required. For capabilities the platform does
 /// not support (e.g., threading on bare-metal), provide stubs that return 0
 /// (success) for mutex/condvar ops and -1 for `task_init`.
+///
+/// # Return-value conventions
+///
+/// - `i8` returns: `0` = success, non-zero = error.
+/// - Pointer returns: `NULL` indicates allocation failure or
+///   not-implemented; non-`NULL` is the resource handle.
+/// - `clock_*` and `time_*` returns are absolute / monotonic counters and
+///   should never error — if the platform has no clock, return `0`.
+///
+/// # Threading
+///
+/// The vtable itself is registered once via
+/// [`nros_platform_cffi_register`] and is read concurrently by every
+/// nros entity. Function pointers must be safe to invoke from any
+/// thread. `mutex_*` / `condvar_*` operations must be safe under
+/// concurrent callers; `mutex_rec_*` must support recursive locking
+/// from the same thread (zenoh-pico re-enters the same mutex).
 #[repr(C)]
 pub struct NrosPlatformVtable {
     // -- Clock --
+    /// Monotonic milliseconds since some platform-defined epoch (boot,
+    /// program start, …). Never decreases. Wraps after ~584 million years.
     pub clock_ms: unsafe extern "C" fn() -> u64,
+    /// Monotonic microseconds since the same epoch as `clock_ms`. Used
+    /// for fine-grained spin / wait deadlines.
     pub clock_us: unsafe extern "C" fn() -> u64,
 
     // -- Alloc --
+    /// Allocate `size` bytes; return `NULL` on failure. May be called
+    /// from any thread once the platform is registered.
     pub alloc: unsafe extern "C" fn(size: usize) -> *mut c_void,
+    /// Resize the block at `ptr` to `size` bytes. Equivalent to libc
+    /// `realloc`: `NULL` ptr → fresh alloc; `0` size → free + return
+    /// `NULL`. Must preserve the contents up to `min(old, new)`.
     pub realloc: unsafe extern "C" fn(ptr: *mut c_void, size: usize) -> *mut c_void,
+    /// Free a previously allocated block. `NULL` is a no-op.
     pub dealloc: unsafe extern "C" fn(ptr: *mut c_void),
 
     // -- Sleep --
+    /// Sleep at least `us` microseconds. Spin if the platform clock has
+    /// no sub-millisecond timer.
     pub sleep_us: unsafe extern "C" fn(us: usize),
+    /// Sleep at least `ms` milliseconds.
     pub sleep_ms: unsafe extern "C" fn(ms: usize),
+    /// Sleep at least `s` seconds.
     pub sleep_s: unsafe extern "C" fn(s: usize),
 
     // -- Yield (Phase 77.22) --
+    /// Voluntarily yield the current task / thread. On bare-metal,
+    /// `core::hint::spin_loop()` is acceptable; on RTOSes use the
+    /// native cooperative-yield primitive (`k_yield`, `vPortYield`,
+    /// `tx_thread_relinquish`, `sched_yield`, …). **Must be ISR-safe**
+    /// only on bare-metal — RTOS yields are explicitly *not* safe from
+    /// an ISR.
     pub yield_now: unsafe extern "C" fn(),
 
     // -- Random --
+    /// Random `u8`. Should be cryptographically random where the
+    /// platform has an entropy source; otherwise a seeded PRNG is
+    /// acceptable. **Must be deterministic** within a single test
+    /// session for reproducibility.
     pub random_u8: unsafe extern "C" fn() -> u8,
+    /// Random `u16`. See `random_u8` notes.
     pub random_u16: unsafe extern "C" fn() -> u16,
+    /// Random `u32`. See `random_u8` notes.
     pub random_u32: unsafe extern "C" fn() -> u32,
+    /// Random `u64`. See `random_u8` notes.
     pub random_u64: unsafe extern "C" fn() -> u64,
+    /// Fill `len` bytes at `buf` with random data.
     pub random_fill: unsafe extern "C" fn(buf: *mut c_void, len: usize),
 
     // -- Time (wall clock) --
+    /// Wall-clock milliseconds since the Unix epoch, or `0` if the
+    /// platform has no real-time clock.
     pub time_now_ms: unsafe extern "C" fn() -> u64,
+    /// Whole seconds since the Unix epoch (truncated `time_now_ms`).
     pub time_since_epoch_secs: unsafe extern "C" fn() -> u32,
+    /// Sub-second nanosecond component of the wall clock (`0..1e9`).
     pub time_since_epoch_nanos: unsafe extern "C" fn() -> u32,
 
     // -- Threading --
+    /// Spawn a new task. `task` is opaque caller-provided storage
+    /// (size determined by the implementor); `attr` carries scheduling
+    /// hints (priority, stack size, …) or is `NULL` for defaults;
+    /// `entry` is the task entry point; `arg` is forwarded to `entry`.
+    /// Returns `0` on success, non-zero on failure.
     pub task_init: unsafe extern "C" fn(
         task: *mut c_void,
         attr: *mut c_void,
         entry: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
         arg: *mut c_void,
     ) -> i8,
+    /// Block until `task` exits. Cleans up the task storage on success.
     pub task_join: unsafe extern "C" fn(task: *mut c_void) -> i8,
+    /// Mark `task` as detached — its storage is reclaimed on exit
+    /// without a join.
     pub task_detach: unsafe extern "C" fn(task: *mut c_void) -> i8,
+    /// Request `task` to terminate at the next cancellation point.
+    /// Cooperative: a task that never reaches a cancel point will not
+    /// stop.
     pub task_cancel: unsafe extern "C" fn(task: *mut c_void) -> i8,
+    /// Terminate the calling task immediately. Does not return.
     pub task_exit: unsafe extern "C" fn(),
+    /// Free the task storage allocated by `task_init`. Called after
+    /// `task_join` or `task_detach + exit`.
     pub task_free: unsafe extern "C" fn(task: *mut *mut c_void),
 
+    /// Initialise a non-recursive mutex in the caller-provided storage.
     pub mutex_init: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Tear down a non-recursive mutex.
     pub mutex_drop: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Lock a non-recursive mutex; block if held.
     pub mutex_lock: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Try to lock; return non-zero immediately if the mutex is held.
     pub mutex_try_lock: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Unlock a non-recursive mutex held by the calling thread.
     pub mutex_unlock: unsafe extern "C" fn(m: *mut c_void) -> i8,
 
+    /// Initialise a *recursive* mutex (same-thread re-entrancy
+    /// permitted). Required by zenoh-pico.
     pub mutex_rec_init: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Tear down a recursive mutex.
     pub mutex_rec_drop: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Lock a recursive mutex. Re-entry from the owning thread must
+    /// succeed without deadlock.
     pub mutex_rec_lock: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Try to lock a recursive mutex; same re-entry semantics as
+    /// `mutex_rec_lock`.
     pub mutex_rec_try_lock: unsafe extern "C" fn(m: *mut c_void) -> i8,
+    /// Unlock a recursive mutex; only releases when the lock count
+    /// returns to zero.
     pub mutex_rec_unlock: unsafe extern "C" fn(m: *mut c_void) -> i8,
 
+    /// Initialise a condition variable in the caller-provided storage.
     pub condvar_init: unsafe extern "C" fn(cv: *mut c_void) -> i8,
+    /// Tear down a condition variable.
     pub condvar_drop: unsafe extern "C" fn(cv: *mut c_void) -> i8,
+    /// Wake one waiter on the condition variable.
     pub condvar_signal: unsafe extern "C" fn(cv: *mut c_void) -> i8,
+    /// Wake all waiters on the condition variable.
     pub condvar_signal_all: unsafe extern "C" fn(cv: *mut c_void) -> i8,
+    /// Atomically release `m` and block on `cv`. The mutex is
+    /// re-acquired before this function returns.
     pub condvar_wait: unsafe extern "C" fn(cv: *mut c_void, m: *mut c_void) -> i8,
+    /// Like `condvar_wait`, but with an absolute monotonic deadline
+    /// (in `clock_ms` units). Returns non-zero on timeout.
     pub condvar_wait_until:
         unsafe extern "C" fn(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8,
 }

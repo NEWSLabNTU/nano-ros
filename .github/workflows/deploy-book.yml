@@ -7,13 +7,17 @@ on:
       - "book/**"
       - "packages/core/nros/**"
       - "packages/core/nros-rmw/**"
+      - "packages/core/nros-rmw-cffi/**"
       - "packages/core/nros-platform-api/**"
+      - "packages/core/nros-platform-cffi/**"
+      - "packages/core/nros-platform-posix/**"
       - "packages/core/nros-c/include/**"
       - "packages/core/nros-c/Doxyfile"
       - "packages/core/nros-c/docs/**"
       - "packages/core/nros-cpp/include/**"
       - "packages/core/nros-cpp/Doxyfile"
       - "packages/zpico/nros-rmw-zenoh/src/**"
+      - "packages/xrce/nros-rmw-xrce/src/**"
       - ".github/workflows/deploy-book.yml"
 
   workflow_dispatch:
@@ -64,12 +68,18 @@ jobs:
         # rendered output — the reference stubs deep-link into them.
         run: |
           rm -rf target/doc target/doxygen
+          # nros-rmw-xrce is mutually exclusive with nros-rmw-zenoh
+          # (compile-time mutex on `nros`), so it cannot share this
+          # invocation.
           cargo doc --no-deps \
             --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
             -p nros \
             -p nros-rmw \
+            -p nros-rmw-cffi \
+            -p nros-rmw-zenoh \
             -p nros-platform-api \
-            -p nros-rmw-zenoh
+            -p nros-platform-cffi \
+            -p nros-platform-posix
 
       - name: Build Doxygen — C
         run: |
@@ -83,6 +93,21 @@ jobs:
           cd packages/core/nros-cpp
           doxygen Doxyfile
 
+      - name: Build Doxygen — RMW vtable (porter-facing)
+        run: |
+          mkdir -p target/doxygen/rmw-cffi
+          cd packages/core/nros-rmw-cffi
+          doxygen Doxyfile
+
+      - name: Build Doxygen — Platform vtable (porter-facing)
+        # cargo doc above already built nros-platform-cffi, which runs
+        # cbindgen and emits include/nros/platform_vtable.h. Doxygen
+        # consumes that header here.
+        run: |
+          mkdir -p target/doxygen/platform-cffi
+          cd packages/core/nros-platform-cffi
+          doxygen Doxyfile
+
       - name: Stage API docs into book output
         # Lay native API docs alongside the mdBook so all the
         # `../api/<lang>/...` links from book/src/reference/*.md resolve.
@@ -90,9 +115,11 @@ jobs:
         # so stage a tiny redirect to the umbrella crate.
         run: |
           mkdir -p book/book/api
-          cp -r target/doc                 book/book/api/rust
-          cp -r target/doxygen/c/html      book/book/api/c
-          cp -r target/doxygen/cpp/html    book/book/api/cpp
+          cp -r target/doc                          book/book/api/rust
+          cp -r target/doxygen/c/html               book/book/api/c
+          cp -r target/doxygen/cpp/html             book/book/api/cpp
+          cp -r target/doxygen/rmw-cffi/html        book/book/api/rmw-cffi
+          cp -r target/doxygen/platform-cffi/html   book/book/api/platform-cffi
           cat > book/book/api/rust/index.html <<'HTML'
           <!doctype html>
           <meta http-equiv="refresh" content="0; url=nros/index.html">

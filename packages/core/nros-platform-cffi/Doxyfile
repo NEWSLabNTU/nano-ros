@@ -1,0 +1,35 @@
+# Doxyfile for nros platform-cffi vtable documentation
+#
+# Usage: doxygen packages/core/nros-platform-cffi/Doxyfile
+# Or:    just doc-platform-cffi
+
+PROJECT_NAME           = "nros platform-cffi"
+PROJECT_BRIEF          = "C vtable for porting the nros platform abstraction in C"
+
+INPUT                  = include/nros/platform_vtable.h \
+                         docs/mainpage.md
+
+RECURSIVE              = NO
+FILE_PATTERNS          = *.h *.md
+USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
+
+OUTPUT_DIRECTORY       = ../../../target/doxygen/platform-cffi
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES

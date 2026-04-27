@@ -202,46 +202,128 @@ Applications then select your backend with
 
 ## C/C++ path
 
-If your transport library is C or C++, use `nros-rmw-cffi` -- a vtable of
-C function pointers that map one-to-one onto the Rust trait methods.
+If your transport library is C or C++, use `nros-rmw-cffi` — a vtable
+of C function pointers that map one-to-one onto the Rust trait methods.
+
+The hand-written header lives at
+`packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`. Browse the
+rendered reference at [/api/rmw-cffi/](../api/rmw-cffi/index.html) for
+per-field return-value, threading, and blocking conventions.
 
 ### 1. Fill in the vtable
-
-The vtable has 18 function pointers. Key signatures:
 
 ```c
 #include <nros/rmw_vtable.h>
 
-static void *my_open(const char *locator, uint8_t mode,
-                     uint32_t domain_id, const char *node_name);
-static int   my_close(void *session);
-static int   my_drive_io(void *session, int timeout_ms);
-static void *my_create_publisher(void *session, const char *topic,
-    const char *type_name, const char *type_hash,
-    uint32_t domain_id, const nros_cffi_qos_t *qos);
-static void  my_destroy_publisher(void *pub_handle);
-static int   my_publish_raw(void *pub_handle, const uint8_t *data, size_t len);
-// ... subscriber, service server, service client follow the same pattern.
+// -- Session lifecycle --
+static nros_rmw_handle_t my_open(const char *locator, uint8_t mode,
+                                 uint32_t domain_id, const char *node_name) {
+    /* connect, return non-NULL session handle (or NULL on failure). */
+}
+static int32_t my_close(nros_rmw_handle_t session) { /* ... */ }
+static int32_t my_drive_io(nros_rmw_handle_t session, int32_t timeout_ms) {
+    /* dispatch network I/O for up to timeout_ms; return 0 on success. */
+}
 
-static nros_rmw_vtable_t my_vtable = {
-    .open = my_open, .close = my_close, .drive_io = my_drive_io,
-    .create_publisher = my_create_publisher,
-    .destroy_publisher = my_destroy_publisher,
-    .publish_raw = my_publish_raw,
-    /* ... fill all 18 fields (see nros/rmw_vtable.h) ... */
+// -- Publisher --
+static nros_rmw_handle_t my_create_publisher(nros_rmw_handle_t session,
+        const char *topic, const char *type_name, const char *type_hash,
+        uint32_t domain_id, const nros_rmw_cffi_qos_t *qos) { /* ... */ }
+static void    my_destroy_publisher(nros_rmw_handle_t publisher) { /* ... */ }
+static int32_t my_publish_raw(nros_rmw_handle_t publisher,
+        const uint8_t *data, size_t len) { /* ... */ }
+
+// -- Subscriber --
+static nros_rmw_handle_t my_create_subscriber(nros_rmw_handle_t session,
+        const char *topic, const char *type_name, const char *type_hash,
+        uint32_t domain_id, const nros_rmw_cffi_qos_t *qos) { /* ... */ }
+static void    my_destroy_subscriber(nros_rmw_handle_t subscriber) { /* ... */ }
+static int32_t my_try_recv_raw(nros_rmw_handle_t subscriber,
+        uint8_t *buf, size_t buf_len) {
+    /* positive = bytes received, 0 = no data, negative = error. */
+}
+static int32_t my_has_data(nros_rmw_handle_t subscriber) { /* 1 = yes, 0 = no */ }
+
+// -- Service Server --
+static nros_rmw_handle_t my_create_service_server(nros_rmw_handle_t session,
+        const char *service, const char *type_name, const char *type_hash,
+        uint32_t domain_id) { /* ... */ }
+static void    my_destroy_service_server(nros_rmw_handle_t server) { /* ... */ }
+static int32_t my_try_recv_request(nros_rmw_handle_t server,
+        uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
+static int32_t my_has_request(nros_rmw_handle_t server) { /* 1 = yes, 0 = no */ }
+static int32_t my_send_reply(nros_rmw_handle_t server,
+        int64_t seq, const uint8_t *data, size_t len) { /* ... */ }
+
+// -- Service Client --
+static nros_rmw_handle_t my_create_service_client(nros_rmw_handle_t session,
+        const char *service, const char *type_name, const char *type_hash,
+        uint32_t domain_id) { /* ... */ }
+static void    my_destroy_service_client(nros_rmw_handle_t client) { /* ... */ }
+static int32_t my_call_raw(nros_rmw_handle_t client,
+        const uint8_t *request, size_t req_len,
+        uint8_t *reply_buf, size_t reply_buf_len) { /* ... */ }
+
+static const nros_rmw_vtable_t MY_RMW = {
+    .open                   = my_open,
+    .close                  = my_close,
+    .drive_io               = my_drive_io,
+    .create_publisher       = my_create_publisher,
+    .destroy_publisher      = my_destroy_publisher,
+    .publish_raw            = my_publish_raw,
+    .create_subscriber      = my_create_subscriber,
+    .destroy_subscriber     = my_destroy_subscriber,
+    .try_recv_raw           = my_try_recv_raw,
+    .has_data               = my_has_data,
+    .create_service_server  = my_create_service_server,
+    .destroy_service_server = my_destroy_service_server,
+    .try_recv_request       = my_try_recv_request,
+    .has_request            = my_has_request,
+    .send_reply             = my_send_reply,
+    .create_service_client  = my_create_service_client,
+    .destroy_service_client = my_destroy_service_client,
+    .call_raw               = my_call_raw,
 };
 ```
 
 ### 2. Register before opening a session
 
 ```c
-nros_rmw_cffi_register(&my_vtable);  // before any nros API call
+int main(void) {
+    nros_rmw_cffi_register(&MY_RMW);    // before any nros call
+    /* now use the nano-ros C or C++ API normally */
+}
 ```
 
-Build with `cargo build -p nros-c --features "rmw-cffi,platform-posix,ros-humble"`.
+Build the static library with the matching feature combo:
 
-All strings are null-terminated. Handles are opaque `void *`. Return
-convention: 0 = success/no data, positive = byte count, negative = error.
+```bash
+cargo build -p nros-c --features rmw-cffi,platform-posix,ros-humble
+```
+
+### 3. Lifecycle and threading contract
+
+The Rust traits behind this vtable
+([`nros_rmw::Session`](../api/rust/nros_rmw/index.html),
+[`Publisher`](../api/rust/nros_rmw/index.html), …) document the
+per-method contract: thread safety, buffer ownership, blocking
+allowance. The C vtable inherits the same rules:
+
+- The vtable itself is registered once and read concurrently. Function
+  pointers must be safe to invoke from any executor thread.
+- `drive_io` may block up to `timeout_ms`; it must not hold
+  application-visible locks across the wait.
+- `publish_raw`, `try_recv_raw`, and `send_reply` may run concurrently
+  from different executor threads — your backend handles serialisation.
+- `try_recv_raw` and `try_recv_request` are non-blocking: return
+  `0` if no data is ready. The executor will retry after `drive_io`.
+- `call_raw` is the deprecated blocking client path. In-tree backends
+  route blocking waits through the executor instead. Implement it as
+  a polling loop only if you need to support legacy callers.
+
+All strings are null-terminated. Handles are opaque `nros_rmw_handle_t`
+(`void*`). Return convention: `0` = success / no data, positive =
+byte count, negative = error.
 
 ---
 
