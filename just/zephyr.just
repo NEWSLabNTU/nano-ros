@@ -112,6 +112,28 @@ build-fixtures:
             "$(pwd)/../nano-ros/examples/zephyr/c/xrce/$ex" \
             -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
     done
+    # Phase 71.8 — Zephyr DDS Rust talker + listener (native_sim, boot smoke).
+    # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
+    for ex in talker listener; do
+        echo "  → zephyr/rust/dds/$ex (native_sim)"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-dds-rs-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
+    done
+    # Phase 92 — Zephyr DDS Rust talker + listener (qemu_cortex_a9, real
+    # IGMP / GEM / ARP). Skipped if the workspace doesn't have the
+    # Zynq SoC patch + Cortex-A9 zephyr-lang-rust tweaks (Phase 92.1
+    # / 92.4 — see docs/roadmap/phase-92-…). Use `|| true` so a
+    # missing patch doesn't fail the whole fixture build for users who
+    # only run native_sim tests.
+    for ex in talker listener; do
+        echo "  → zephyr/rust/dds/$ex (qemu_cortex_a9)"
+        ( cd "$workspace" && \
+          west build -b qemu_cortex_a9 -d "build-dds-a9-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/rust/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null ) || true
+    done
 
 # Build Zephyr C examples
 build-c:

@@ -178,6 +178,13 @@ max-threads = 1
 [test-groups.qemu-zephyr-xrce]
 max-threads = 1
 
+# Phase 92.6 — Zephyr DDS interop on qemu_cortex_a9. The talker↔listener
+# pair shares a host-side multicast group keyed off PID; running two
+# instances in parallel would risk (group, port) collisions across
+# concurrent test runs even with the per-PID hash. Cap at 1.
+[test-groups.qemu-zephyr-dds]
+max-threads = 1
+
 # Native C / C++ API tests share the same `target/release/libnros_c.a`
 # between zenoh and XRCE-DDS variants, so running them concurrently
 # causes library overwrites and link-time failures. c_xrce_api lives
@@ -392,6 +399,16 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e))"
 test-group = "qemu-zephyr-pubsub-rust"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# Phase 92.6 — Zephyr DDS Cortex-A9 interop. Boots + talker↔listener
+# share the qemu-zephyr-dds serial group so concurrent runs don't
+# collide on the host-side mcast (group, port) tuple. Match BEFORE
+# the generic `binary(zephyr)` fall-through.
+[[profile.default.overrides]]
+filter = "binary(zephyr) and (test(dds_rust_talker_boots) or test(dds_rust_listener_boots) or test(dds_rust_talker_to_listener_a9_e2e))"
+test-group = "qemu-zephyr-dds"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
