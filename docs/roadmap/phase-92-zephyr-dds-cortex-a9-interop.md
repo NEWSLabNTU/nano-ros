@@ -2,7 +2,7 @@
 
 **Goal**: Land a real talker→listener DDS pubsub interop test for the Zephyr `nros-rmw-dds` path that exercises Zephyr's native IP stack (the code path 95% of production Zephyr DDS deployments will run), without requiring `sudo` host setup or a vendored Zephyr SDK patch.
 
-**Status**: In Progress (92.1/92.2/92.3/92.4/92.5/92.6 done; blocked on `scripts/zephyr/cortex-a9-rust-patch.sh` setup script — see §Outstanding)
+**Status**: Complete (all sub-items done; `scripts/zephyr/cortex-a9-rust-patch.sh` shipped + wired into `just zephyr setup` / `build` / `build-fixtures`; interop test passes end-to-end)
 **Priority**: Medium
 **Depends on**: Phase 71.8 (cooperative DDS runtime + boot smoke tests landed)
 
@@ -268,38 +268,36 @@ This is also the **same code-path topology that real Zephyr DDS deployments use*
 
 ## Acceptance Criteria
 
-- [~] `cargo test -p nros-tests --test zephyr test_zephyr_dds_rust_talker_to_listener_a9_e2e` passes locally without `sudo`. Test infrastructure landed (92.3 + 92.6); end-to-end pass blocked on §Outstanding below.
-- [ ] Phase 71.8's roadmap entry can flip from `[~]` to `[x]`.
+- [x] `cargo test -p nros-tests --test zephyr test_zephyr_dds_rust_talker_to_listener_a9_e2e` passes locally without `sudo`. Verified end-to-end: 1/1 PASS in 6.16s after `just zephyr build-fixtures`.
+- [ ] Phase 71.8's roadmap entry can flip from `[~]` to `[x]` — pending cross-roadmap closeout.
 - [x] No regressions in the existing 27 Zephyr E2E tests (`just zephyr test`).
 - [x] The new test runs under a max-threads=1 nextest group so it can coexist with the rest of the Zephyr suite without mcast-group collisions.
 
-## Outstanding
+## Workspace patches (now reproducible)
 
-The interop test (`test_zephyr_dds_rust_talker_to_listener_a9_e2e`)
-will pass *automatically* once the qemu_cortex_a9 build dirs are
-populated. That depends on three upstream Zephyr workspace patches
-(documented as landed in 92.1 / 92.4 of an earlier workspace) being
-available as a reproducible setup script:
-
+The qemu_cortex_a9 build needs three things:
   1. `modules/lang/rust/CMakeLists.txt` + `Kconfig` — Cortex-A9/A7
      target case (without it `west build -b qemu_cortex_a9` fails
      with `Rust: Add support for other target`).
-  2. `soc/xlnx/zynq7000/xc7zxxxs/soc.c` — flat MMU entry for the
+  2. `zephyr/soc/xlnx/zynq7000/xc7zxxxs/soc.c` — flat MMU entry for the
      SLCR DT node (without it `eth_xlnx_gem_configure_clocks`
      data-aborts on the first `sys_read32(0xf8000140)`).
   3. The philosophers-style Cargo manifest shape (edition 2021 +
      `[build-dependencies] zephyr-build` + a `build.rs` calling
-     `export_bool_kconfig`) — already adopted by all 9 Zephyr Rust
-     examples in commit `f3436d68`.
+     `export_bool_kconfig`) — adopted by all 9 Zephyr Rust examples
+     in commit `f3436d68`.
 
-Items (1) and (2) need to land as `scripts/zephyr/cortex-a9-rust-patch.sh`
-(applied by `just zephyr setup`) so any contributor who runs the
-setup gets a workspace ready for `just zephyr build-fixtures` to
-populate `build-dds-a9-{talker,listener}`. Until then the Cortex-A9
-build silently skips (the `|| true` in build-fixtures keeps
-native_sim / xrce / zenoh consumers unblocked) and the interop test
-panics with "Test fixture binary not prebuilt" when run against a
-clean checkout.
+Items (1) and (2) ship as `scripts/zephyr/cortex-a9-rust-patch.sh`
+(idempotent, anchored python3 string-replace; fails loudly if upstream
+file shape drifts). The script is invoked from:
+  • `scripts/zephyr/setup.sh` — right after `west update`, so a fresh
+    `just zephyr setup` leaves the workspace ready for any example.
+  • `just zephyr build` — re-runs the patch (cheap) so existing
+    workspaces created before this script existed get the patches
+    without needing `just zephyr setup --force`.
+  • `just zephyr build-fixtures` — same. The build-dds-a9-* entries
+    no longer carry a `|| true` fallback; failure means a real
+    regression, not a workspace setup gap.
 
 ## Notes
 
