@@ -139,7 +139,11 @@ pub unsafe extern "C" fn nros_support_init_named(
         let default_locator = b"tcp/127.0.0.1:7447\0";
         #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
         let default_locator = b"127.0.0.1:2019\0";
-        #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+        // DDS doesn't use a locator string — discovery is via SPDP on the
+        // configured domain_id. Empty default is fine.
+        #[cfg(all(feature = "rmw-dds", not(feature = "rmw-zenoh"), not(feature = "rmw-xrce")))]
+        let default_locator = b"\0";
+        #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
         let default_locator = b"\0";
 
         let len = default_locator.len() - 1;
@@ -149,7 +153,7 @@ pub unsafe extern "C" fn nros_support_init_named(
     }
 
     // Initialize the middleware session
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
     {
         use nros_node::SessionMode;
 
@@ -198,7 +202,7 @@ pub unsafe extern "C" fn nros_support_init_named(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
     {
         NROS_RET_ERROR
     }
@@ -231,7 +235,7 @@ pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros
     }
 
     // Drop the inline RMW session
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
     {
         core::ptr::drop_in_place(support._opaque.as_mut_ptr() as *mut nros::internals::RmwSession);
     }

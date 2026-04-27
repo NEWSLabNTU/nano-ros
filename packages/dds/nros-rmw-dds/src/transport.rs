@@ -48,7 +48,7 @@ impl Rmw for DdsRmw {
             Ok(DdsSession::new(participant, config.domain_id))
         }
 
-        #[cfg(feature = "nostd-runtime")]
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::runtime::NrosPlatformRuntime;
             use crate::transport_nros::NrosUdpTransportFactory;

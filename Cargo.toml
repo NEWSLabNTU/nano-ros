@@ -154,6 +154,7 @@ exclude = [
     "examples/zephyr/rust/dds/action-server",
     "examples/zephyr/rust/dds/action-client",
     "examples/zephyr/rust/dds/async-service-client",
+    # No Cargo.toml in cpp/c examples (Zephyr cmake builds them)
     # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)

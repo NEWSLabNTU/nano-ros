@@ -1721,6 +1721,182 @@ fn test_zephyr_xrce_cpp_action_client_boots() {
 }
 
 // =============================================================================
+// Phase 95.D — Zephyr DDS C++ talker/listener/svc/action boot tests
+// =============================================================================
+
+#[test]
+fn test_zephyr_dds_cpp_talker_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-talker binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds talker");
+    let out = p.wait_for_pattern("nros Zephyr C++ Talker", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Talker") {
+        panic!("cpp/dds talker didn't print boot banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_cpp_listener_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-listener binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds listener");
+    let out = p.wait_for_pattern("nros Zephyr C++ Listener", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Listener") {
+        panic!("cpp/dds listener didn't print boot banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_cpp_service_server_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-service-server", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-service-server binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds service server");
+    let out = p.wait_for_pattern("nros Zephyr C++ Service Server", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Service Server") {
+        panic!("cpp/dds service server didn't print boot banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_cpp_service_client_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-service-client", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-service-client binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds service client");
+    let out = p.wait_for_pattern("nros Zephyr C++ Service Client", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Service Client") {
+        panic!("cpp/dds service client didn't print boot banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_cpp_action_server_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-action-server", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-action-server binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds action server");
+    let out = p.wait_for_pattern("nros Zephyr C++ Action Server", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Action Server") {
+        panic!("cpp/dds action server didn't print boot banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_cpp_action_client_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-action-client", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-cpp-action-client binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds action client");
+    let out = p.wait_for_pattern("nros Zephyr C++ Action Client", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("nros Zephyr C++ Action Client") {
+        panic!("cpp/dds action client didn't print boot banner:\n{}", out);
+    }
+}
+
+// =============================================================================
+// Phase 95.E — Zephyr DDS C talker/listener/svc/action boot tests
+// =============================================================================
+
+#[test]
+fn test_zephyr_dds_c_talker_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-talker", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-talker binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds talker");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds talker didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_listener_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-listener binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds listener");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds listener didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_service_server_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-service-server", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-service-server binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds service server");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds service server didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_service_client_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-service-client", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-service-client binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds service client");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds service client didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_action_server_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-action-server", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-action-server binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds action server");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds action server didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_action_client_boots() {
+    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    let bin = get_or_build_zephyr_example("zephyr-dds-c-action-client", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-dds-c-action-client binary");
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds action client");
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
+    let _ = p.kill();
+    if !out.contains("Booting Zephyr OS") {
+        panic!("c/dds action client didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+// =============================================================================
 // Phase 95.C — Zephyr XRCE C++ E2E tests (dual-instance, #[ignore]d)
 // =============================================================================
 

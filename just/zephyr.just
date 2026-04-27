@@ -131,6 +131,34 @@ build-fixtures:
             "$(pwd)/../nano-ros/examples/zephyr/cpp/xrce/$ex" \
             -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
     done
+    # Phase 95.D + 95.E — Zephyr cpp/dds and c/dds examples (full
+    # 6-set each). DDS RMW backend on Zephyr; cortex_a9 path is the
+    # canonical interop target (Phase 71.6 + dual-feature struct fix
+    # unblocked these).
+    for ex in talker listener service-server service-client action-server action-client; do
+        echo "  → zephyr/cpp/dds/$ex (native_sim)"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-dds-cpp-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/cpp/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+        echo "  → zephyr/cpp/dds/$ex (qemu_cortex_a9)"
+        ( cd "$workspace" && \
+          west build -b qemu_cortex_a9 -d "build-dds-cpp-a9-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/cpp/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
+    for ex in talker listener service-server service-client action-server action-client; do
+        echo "  → zephyr/c/dds/$ex (native_sim)"
+        ( cd "$workspace" && \
+          west build -b native_sim/native/64 -d "build-dds-c-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/c/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+        echo "  → zephyr/c/dds/$ex (qemu_cortex_a9)"
+        ( cd "$workspace" && \
+          west build -b qemu_cortex_a9 -d "build-dds-c-a9-$ex" -p auto \
+            "$(pwd)/../nano-ros/examples/zephyr/c/dds/$ex" \
+            -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null )
+    done
     # Phase 71.8 — Zephyr DDS Rust talker + listener (native_sim, boot smoke).
     # Build dirs match `nros_tests::zephyr::build_dir_for_example`.
     for ex in talker listener; do

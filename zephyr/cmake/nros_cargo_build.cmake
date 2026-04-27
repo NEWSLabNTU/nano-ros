@@ -34,6 +34,12 @@ function(nros_detect_rust_target)
         endif()
     elseif(CONFIG_SOC_SERIES_ESP32C3)
         set(NROS_RUST_TARGET "riscv32imc-unknown-none-elf" PARENT_SCOPE)
+    elseif(CONFIG_CPU_CORTEX_A9 OR CONFIG_CPU_CORTEX_A7 OR CONFIG_CPU_AARCH32_CORTEX_A)
+        # Cortex-A 32-bit (Phase 92's qemu_cortex_a9 + future Zynq /
+        # i.MX targets). The zephyr-lang-rust workspace patches set
+        # the same triple for the Rust API path; the C/C++ FFI must
+        # match so the codegen FFI staticlib links cleanly.
+        set(NROS_RUST_TARGET "armv7a-none-eabi" PARENT_SCOPE)
     else()
         message(WARNING "nros: Unknown Zephyr target, defaulting to host")
         set(NROS_RUST_TARGET "" PARENT_SCOPE)
@@ -150,11 +156,22 @@ function(nros_cargo_build)
         list(APPEND CARGO_ARGS ${TARGET_ARGS})
     endif()
 
+    # Tier-2/3 embedded targets (armv7a / thumbv* / riscv32) need a
+    # nightly toolchain with rust-src + build-std. The workspace's
+    # stable rust-toolchain.toml doesn't ship those targets, so
+    # override via RUSTUP_TOOLCHAIN and add `-Z build-std`.
+    set(_rustup_override "")
+    if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
+        set(_rustup_override RUSTUP_TOOLCHAIN=nightly-2026-04-11)
+        list(APPEND CARGO_ARGS -Z "build-std=core,alloc,compiler_builtins")
+    endif()
+
     # Pass both ZPICO_* and XRCE_* env vars — build.rs ignores vars it
     # doesn't consume, so it's safe to pass both sets unconditionally.
     add_custom_command(
         OUTPUT ${LIB_PATH}
         COMMAND ${CMAKE_COMMAND} -E env
+            ${_rustup_override}
             ZPICO_MAX_PUBLISHERS=$ENV{ZPICO_MAX_PUBLISHERS}
             ZPICO_MAX_SUBSCRIBERS=$ENV{ZPICO_MAX_SUBSCRIBERS}
             ZPICO_MAX_QUERYABLES=$ENV{ZPICO_MAX_QUERYABLES}

@@ -34,10 +34,10 @@ because none ships.
 | zephyr/rust  | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | zephyr/cpp   | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | zephyr/cpp   | xrce  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| zephyr/cpp   | dds   | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | — | — |
+| zephyr/cpp   | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | zephyr/c     | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | zephyr/c     | xrce  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| zephyr/c     | dds   | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | ⏸ | — | — |
+| zephyr/c     | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | native/rust  | zenoh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | native/rust  | xrce  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | native/rust  | dds   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
@@ -112,8 +112,8 @@ support cmake — no cross-cell sharing.
 - [x] 95.B4 — Zephyr dds-rust action-client
 - [x] 95.B5 — Zephyr dds-rust async-service-client
 - [x] 95.C1–6 — Zephyr cpp-xrce: talker, listener, svc-server, svc-client, action-server, action-client
-- [~] 95.D1–6 — Zephyr cpp-dds: blocked on same prerequisites as 95.E (Phase 71.6 + nros-rmw-dds dual-feature). See 95.E note below.
-- [~] 95.E1–6 — Zephyr c-dds: blocked on Phase 71.6 (board-crate `#[global_allocator]`) + nros-rmw-dds dual-feature struct bug. See note below.
+- [x] 95.D1–6 — Zephyr cpp-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 builds total: native_sim + cortex_a9; 6 boot smoke tests pass)
+- [x] 95.E1–6 — Zephyr c-dds: talker, listener, svc-server, svc-client, action-server, action-client (12 builds total: native_sim + cortex_a9; 6 boot smoke tests pass)
 - [x] 95.F1 — Native dds-rust service-server
 - [x] 95.F2 — Native dds-rust service-client
 - [x] 95.F3 — Native dds-rust action-server

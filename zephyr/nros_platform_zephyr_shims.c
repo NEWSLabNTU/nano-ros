@@ -167,3 +167,42 @@ int nros_zephyr_task_create(pthread_t *thread,
 int nros_zephyr_errno(void) {
     return errno;
 }
+
+/* ── critical-section wrappers (Phase 71.6) ────────────────────────
+ *
+ * Zephyr's `irq_lock()` / `irq_unlock()` are static inline macros with
+ * no exported symbols. nros-c / nros-cpp's Rust-side critical-section
+ * impl needs real linkable symbols to call, so wrap them here.
+ *
+ * Used by the C/C++ API path on platform-zephyr to satisfy
+ * `_critical_section_1_0_acquire` / `_critical_section_1_0_release`
+ * referenced from dust-dds + portable-atomic when the
+ * zephyr-lang-rust crate (which provides its own impl) isn't linked.
+ */
+unsigned int nros_zephyr_irq_lock(void) {
+    return irq_lock();
+}
+
+void nros_zephyr_irq_unlock(unsigned int key) {
+    irq_unlock(key);
+}
+
+/* ── nros_platform_time_ns / sleep_ns wrappers (Phase 71.6) ─────────
+ *
+ * `nros/platform/zephyr.h` declares these as `static inline` for C
+ * callers. Rust callers (nros-c on platform-zephyr) need real
+ * exported symbols to link against. Re-define them here as real
+ * functions; the inline path remains for direct-from-C use.
+ */
+uint64_t nros_platform_time_ns(void) {
+    int64_t ticks = k_uptime_ticks();
+    return (uint64_t)ticks * (1000000000ULL / CONFIG_SYS_CLOCK_TICKS_PER_SEC);
+}
+
+void nros_platform_sleep_ns(uint64_t ns) {
+    if (ns < 1000000) {
+        k_busy_wait((uint32_t)(ns / 1000));
+    } else {
+        k_sleep(K_NSEC(ns));
+    }
+}

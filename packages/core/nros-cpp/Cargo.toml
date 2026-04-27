@@ -30,12 +30,16 @@ link-udp-unicast = ["nros/link-udp-unicast"]
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
 
-# Platform backends (select one — orthogonal to RMW and ROS version)
+# Platform backends (select one — orthogonal to RMW and ROS version).
+# Embedded platforms imply `alloc` so the C++ FFI layer's `extern crate
+# alloc` and the per-platform `#[global_allocator]` modules in lib.rs
+# compile cleanly without the build script having to remember to pass
+# `,alloc` alongside `platform-<rtos>`.
 platform-posix = ["nros/platform-posix"]
-platform-zephyr = ["nros/platform-zephyr"]
-platform-freertos = ["nros/platform-freertos"]
-platform-nuttx = ["nros/platform-nuttx"]
-platform-threadx = ["nros/platform-threadx"]
+platform-zephyr = ["alloc", "nros/platform-zephyr", "dep:critical-section"]
+platform-freertos = ["alloc", "nros/platform-freertos"]
+platform-nuttx = ["alloc", "nros/platform-nuttx"]
+platform-threadx = ["alloc", "nros/platform-threadx"]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]
@@ -49,6 +53,9 @@ nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 panic-halt = { version = "1", optional = true }
+# critical-section impl provided by the Zephyr alloc module on
+# platform-zephyr. dust-dds + portable-atomic depend on it being set.
+critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }
 
 [build-dependencies]
 cbindgen = "0.29"

@@ -2,10 +2,10 @@
 
 use nros_rmw::{Subscriber, TransportError};
 
-#[cfg(feature = "nostd-runtime")]
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use alloc::sync::Arc;
 
-#[cfg(feature = "nostd-runtime")]
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
 
 /// DDS subscriber backed by a dust-dds `DataReader` (`std + posix`) or a
@@ -14,10 +14,10 @@ use crate::runtime::NrosPlatformRuntime;
 pub struct DdsSubscriber {
     #[cfg(feature = "std")]
     reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     reader_async:
         dust_dds::dds_async::data_reader::DataReaderAsync<crate::raw_type::RawCdrPayload>,
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
 }
 
@@ -29,7 +29,7 @@ impl DdsSubscriber {
         Self { reader }
     }
 
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     pub(crate) fn new_async(
         reader_async: dust_dds::dds_async::data_reader::DataReaderAsync<
             crate::raw_type::RawCdrPayload,
@@ -74,7 +74,7 @@ impl Subscriber for DdsSubscriber {
             };
         }
 
-        #[cfg(feature = "nostd-runtime")]
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use dust_dds::infrastructure::sample_info::{
                 ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,

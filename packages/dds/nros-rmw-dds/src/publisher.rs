@@ -2,10 +2,10 @@
 
 use nros_rmw::{Publisher, TransportError};
 
-#[cfg(feature = "nostd-runtime")]
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use alloc::sync::Arc;
 
-#[cfg(feature = "nostd-runtime")]
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
 
 /// DDS publisher backed by a dust-dds `DataWriter` (`std + posix`) or a
@@ -14,10 +14,10 @@ use crate::runtime::NrosPlatformRuntime;
 pub struct DdsPublisher {
     #[cfg(feature = "std")]
     writer: dust_dds::publication::data_writer::DataWriter<crate::raw_type::RawCdrPayload>,
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     writer_async:
         dust_dds::dds_async::data_writer::DataWriterAsync<crate::raw_type::RawCdrPayload>,
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
 }
 
@@ -29,7 +29,7 @@ impl DdsPublisher {
         Self { writer }
     }
 
-    #[cfg(feature = "nostd-runtime")]
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     pub(crate) fn new_async(
         writer_async: dust_dds::dds_async::data_writer::DataWriterAsync<
             crate::raw_type::RawCdrPayload,
@@ -58,7 +58,7 @@ impl Publisher for DdsPublisher {
                 .map_err(|_| TransportError::PublishFailed)
         }
 
-        #[cfg(feature = "nostd-runtime")]
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::raw_type::RawCdrPayload;
             let payload = RawCdrPayload {

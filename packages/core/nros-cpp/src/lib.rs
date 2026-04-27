@@ -54,6 +54,65 @@ mod freertos_alloc {
     static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
 }
 
+// Zephyr global allocator: wraps Zephyr's k_malloc/k_free, backed by
+// CONFIG_HEAP_MEM_POOL_SIZE. Required for the C++ API path on Zephyr
+// targets that don't bring zephyr-lang-rust's static_alloc with them
+// (e.g. qemu_cortex_a9 with the DDS RMW backend). Phase 71.6.
+#[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-zephyr"))]
+mod zephyr_alloc {
+    use core::alloc::{GlobalAlloc, Layout};
+
+    unsafe extern "C" {
+        fn k_malloc(size: usize) -> *mut core::ffi::c_void;
+        fn k_free(ptr: *mut core::ffi::c_void);
+    }
+
+    struct ZephyrAllocator;
+
+    unsafe impl GlobalAlloc for ZephyrAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            unsafe { k_malloc(layout.size()) as *mut u8 }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+            unsafe { k_free(ptr as *mut core::ffi::c_void) }
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: ZephyrAllocator = ZephyrAllocator;
+
+    // Minimal panic handler for the no_std + platform-zephyr build.
+    #[panic_handler]
+    fn panic(_info: &core::panic::PanicInfo) -> ! {
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    // critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
+    // nros_zephyr_irq_unlock. dust-dds + portable-atomic require this on
+    // no_std targets when the zephyr-lang-rust crate (which provides
+    // its own impl) isn't linked in. Phase 71.6.
+    unsafe extern "C" {
+        fn nros_zephyr_irq_lock() -> u32;
+        fn nros_zephyr_irq_unlock(key: u32);
+    }
+
+    struct ZephyrCs;
+    critical_section::set_impl!(ZephyrCs);
+
+    unsafe impl critical_section::Impl for ZephyrCs {
+        unsafe fn acquire() -> critical_section::RawRestoreState {
+            unsafe { nros_zephyr_irq_lock() }
+        }
+
+        unsafe fn release(token: critical_section::RawRestoreState) {
+            unsafe { nros_zephyr_irq_unlock(token) }
+        }
+    }
+}
+
 // ThreadX global allocator: wraps z_malloc/z_free which delegate to
 // tx_byte_allocate/tx_byte_release via nros-platform-threadx.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-threadx"))]
@@ -629,17 +688,26 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
     }
     #[cfg(not(feature = "std"))]
     {
-        // On no_std builds we can't use `nros_platform_time_ns()` — that
-        // symbol is a `static inline` in `nros/platform/<rtos>.h`, so it
-        // never emits linker-visible storage and the example binaries
-        // can't resolve an extern "C" reference from this crate. Fall
-        // back to `z_clock_now()`, which zpico-platform-shim exposes on
-        // every RTOS backend as a proper `#[no_mangle]` extern "C" fn
-        // returning a monotonic millisecond count. Scale up to ns.
-        unsafe extern "C" {
-            fn z_clock_now() -> usize;
+        // Phase 71.6: nros_platform_zephyr_shims.c now exposes
+        // `nros_platform_time_ns` as a real linker-visible symbol on
+        // platform-zephyr (not a `static inline`). On platforms with
+        // zenoh-pico linked in, `z_clock_now()` is also available and
+        // gives the same monotonic ms count. Prefer the real symbol.
+        #[cfg(feature = "platform-zephyr")]
+        {
+            unsafe extern "C" {
+                fn nros_platform_time_ns() -> u64;
+            }
+            unsafe { nros_platform_time_ns() }
         }
-        (unsafe { z_clock_now() } as u64).saturating_mul(1_000_000)
+        #[cfg(not(feature = "platform-zephyr"))]
+        {
+            // Other RTOS backends still go through zpico-platform-shim.
+            unsafe extern "C" {
+                fn z_clock_now() -> usize;
+            }
+            (unsafe { z_clock_now() } as u64).saturating_mul(1_000_000)
+        }
     }
 }
 
