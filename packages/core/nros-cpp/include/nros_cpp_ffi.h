@@ -264,6 +264,14 @@ extern void *pvPortMalloc(uint32_t size);
 
 extern void vPortFree(void *ptr);
 
+extern void *k_malloc(size_t size);
+
+extern void k_free(void *ptr);
+
+extern uint32_t nros_zephyr_irq_lock(void);
+
+extern void nros_zephyr_irq_unlock(uint32_t key);
+
 extern void *z_malloc(size_t size);
 
 extern void z_free(void *ptr);

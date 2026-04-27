@@ -73,7 +73,7 @@ pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition
 // that the byte sizes match. Mismatch = the C-side
 // `NROS_ACTION_SERVER_INTERNAL_SIZE` macro is wrong, which would
 // silently corrupt the `nros_action_server_t` struct layout.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
 const _: () = assert!(
     size_of::<crate::action::ActionServerInternal>()
         == size_of::<nros::sizes::ActionServerInternalLayout>(),

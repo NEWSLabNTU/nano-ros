@@ -296,7 +296,7 @@ unsafe fn register(
 
 #[cfg(all(
     feature = "lifecycle-services",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce")
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")
 ))]
 mod service_backed {
     use super::*;
