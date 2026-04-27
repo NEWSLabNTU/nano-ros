@@ -35,3 +35,10 @@ px4-log = { path = "../../../third-party/px4-rs/crates/px4-log" }
 phf_codegen = "0.11"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Used by the typeless_api integration test to exercise the
+# create_publisher_raw / create_subscription_raw flow end-to-end through
+# Executor::open. Requires the rmw-uorb feature on nros-node so its
+# session::ConcreteSession resolves to UorbSession.
+nros-node = { workspace = true, default-features = false, features = ["std", "rmw-uorb"] }

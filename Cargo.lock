@@ -1545,6 +1545,7 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-core",
+ "nros-node",
  "nros-rmw",
  "phf",
  "phf_codegen",

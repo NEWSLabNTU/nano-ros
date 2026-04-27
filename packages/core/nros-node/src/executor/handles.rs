@@ -145,6 +145,37 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 }
 
 // ============================================================================
+// EmbeddedRawPublisher — typeless publisher for non-ROS message wire formats
+// ============================================================================
+
+/// Typeless publisher handle. Use when the wire format is not ROS CDR
+/// (e.g. PX4 uORB raw POD bytes, custom binary protocols).
+///
+/// The user owns the encoding step: build a `&[u8]` in whatever shape the
+/// active RMW backend expects, then call [`publish_raw`](Self::publish_raw).
+/// The handle carries no message-type metadata, so the underlying backend
+/// receives `TopicInfo` with the user-supplied `type_name` / `type_hash`
+/// strings (used for liveliness / discovery only on backends that care).
+pub struct EmbeddedRawPublisher {
+    pub(crate) handle: session::RmwPublisher,
+}
+
+impl EmbeddedRawPublisher {
+    /// Publish a pre-encoded byte slice. The byte format depends entirely
+    /// on the active RMW backend:
+    ///
+    /// - **zenoh / XRCE-DDS / DDS**: CDR-encoded payload including the
+    ///   4-byte CDR header.
+    /// - **uORB**: raw POD struct bytes (no header). Length must equal
+    ///   `size_of::<T::Msg>()` for the registered topic.
+    pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+        self.handle
+            .publish_raw(data)
+            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+}
+
+// ============================================================================
 // Subscription
 // ============================================================================
 
@@ -276,6 +307,42 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
                 return Ok(None);
             }
         }
+    }
+}
+
+// ============================================================================
+// RawSubscription — typeless subscription for non-ROS message wire formats
+// ============================================================================
+
+/// Typeless subscription handle. Counterpart of [`EmbeddedRawPublisher`].
+///
+/// The user owns the decoding step: call [`try_recv_raw`](Self::try_recv_raw)
+/// to fill an internal buffer with bytes whose format depends on the active
+/// RMW backend, then interpret them however is appropriate (memcpy, custom
+/// parser, …).
+pub struct RawSubscription<const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: [u8; RX_BUF],
+}
+
+impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
+    /// Try to receive raw bytes (non-blocking). Returns `Ok(Some(len))`
+    /// with the message length on success; the bytes live in
+    /// [`buffer`](Self::buffer) until the next call.
+    pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
+        self.handle
+            .try_recv_raw(&mut self.buffer)
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
+    /// Get the receive buffer (valid after [`try_recv_raw`](Self::try_recv_raw)).
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    /// Check if data is available without consuming it.
+    pub fn has_data(&self) -> bool {
+        self.handle.has_data()
     }
 }
 

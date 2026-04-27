@@ -505,9 +505,9 @@ pub use nros_node::{
 ))]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
-    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream, Node, Promise,
-    RawActiveGoal, Subscription,
+    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
+    EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
+    Node, Promise, RawActiveGoal, RawSubscription, Subscription,
 };
 
 #[cfg(all(

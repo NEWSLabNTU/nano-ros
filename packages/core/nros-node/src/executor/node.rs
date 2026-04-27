@@ -149,6 +149,38 @@ impl<'a> Node<'a> {
         })
     }
 
+    /// Create a typeless publisher for non-ROS wire formats (e.g. PX4 uORB
+    /// raw POD bytes, custom binary protocols). The caller supplies the
+    /// `type_name` and `type_hash` strings used by backends that need them
+    /// for liveliness/discovery; backends that don't (uORB) can pass any
+    /// stable string.
+    pub fn create_publisher_raw(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.create_publisher_raw_with_qos(topic_name, type_name, type_hash, QosSettings::default())
+    }
+
+    /// Typeless publisher with custom QoS.
+    pub fn create_publisher_raw_with_qos(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        let topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            topic_name, type_name, type_hash);
+        let handle = self
+            .session
+            .create_publisher(&topic, qos)
+            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
+        Ok(crate::executor::handles::EmbeddedRawPublisher { handle })
+    }
+
     // -- Subscriptions --
 
     /// Create a subscription for the given topic.
@@ -184,6 +216,38 @@ impl<'a> Node<'a> {
             handle,
             buffer: [0u8; RX_BUF],
             _phantom: PhantomData,
+        })
+    }
+
+    /// Create a typeless subscription. Caller decodes raw bytes themselves.
+    pub fn create_subscription_raw(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawSubscription, NodeError> {
+        self.create_subscription_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            topic_name, type_name, type_hash,
+        )
+    }
+
+    /// Typeless subscription with custom buffer size.
+    pub fn create_subscription_raw_sized<const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawSubscription<RX_BUF>, NodeError> {
+        let topic = Self::topic_info(
+            self.domain_id, &self.name, &self.namespace,
+            topic_name, type_name, type_hash);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        Ok(crate::executor::handles::RawSubscription {
+            handle,
+            buffer: [0u8; RX_BUF],
         })
     }
 
