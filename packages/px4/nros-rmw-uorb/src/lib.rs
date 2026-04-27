@@ -14,28 +14,41 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod publisher;
 mod raw;
-mod registry;
-mod session;
-mod subscriber;
-mod service;
 mod topics;
 
 // Direct typed API — primary entry point for PX4-shaped messages.
+// Available in both std and no_std builds.
 pub use raw::{publication, subscription};
 
-// Trampoline registry — only needed for nros-node typed-Publisher integration.
-pub use registry::register;
+// nros-rmw trait impls (UorbSession etc.) bridge nros-node's typed
+// Publisher<M>/Subscription<M> onto px4-uorb via the trampoline registry.
+// Both the impls and the registry are std-only — no_std consumers (real
+// PX4 module builds) must use the raw API above instead.
+#[cfg(feature = "std")]
+mod publisher;
+#[cfg(feature = "std")]
+mod registry;
+#[cfg(feature = "std")]
+mod service;
+#[cfg(feature = "std")]
+mod session;
+#[cfg(feature = "std")]
+mod subscriber;
 
-// nros-rmw trait impls (consumed by nros-node when feature `rmw-uorb` is on).
+#[cfg(feature = "std")]
 pub use publisher::UorbPublisher;
-pub use session::{UorbRmw, UorbSession};
-pub use subscriber::UorbSubscriber;
+#[cfg(feature = "std")]
+pub use registry::register;
+#[cfg(feature = "std")]
 pub use service::{UorbServiceClient, UorbServiceServer};
+#[cfg(feature = "std")]
+pub use session::{UorbRmw, UorbSession};
+#[cfg(feature = "std")]
+pub use subscriber::UorbSubscriber;
 
 // Topic-mapping internals.
 pub use topics::{lookup_topic, TopicEntry};
 
-#[cfg(any(test, feature = "test-helpers"))]
+#[cfg(all(feature = "std", any(test, feature = "test-helpers")))]
 pub use registry::_reset;

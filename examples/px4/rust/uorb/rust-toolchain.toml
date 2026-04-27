@@ -1,0 +1,10 @@
+# Pin nightly for the PX4 examples.
+#
+# `#[px4_workqueue::task]` expands to async fns that use
+# `type_alias_impl_trait` internally; the feature requires nightly until
+# stabilised. Matches the toolchain pinned in
+# `third-party/px4/px4-rs/rust-toolchain.toml` so the two trees stay
+# in lockstep.
+[toolchain]
+channel = "nightly-2025-10-01"
+components = ["rustfmt", "clippy", "rust-src"]

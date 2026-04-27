@@ -23,11 +23,11 @@
 //! `size_of::<T::Msg>()`. **Callers are responsible for using the
 //! same `.msg` definition both sides of the wire** — there is no CDR.
 
-#[cfg(not(feature = "std"))]
-compile_error!(
-    "nros-rmw-uorb registry currently requires `std`. \
-     no_std support tracked in Phase 90.2b."
-);
+// The trampoline registry uses std::sync::Mutex + std::collections::HashMap.
+// no_std consumers (PX4 module builds, RTOS targets) must use the direct
+// typed API in `raw.rs` (`publication::<T>` / `subscription::<T>`) instead.
+// Phase 90.2b tracks adding a no_std-friendly registry backed by
+// heapless::FnvIndexMap + critical_section if real demand arises.
 
 use std::boxed::Box;
 use std::collections::HashMap;

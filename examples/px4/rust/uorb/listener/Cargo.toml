@@ -1,5 +1,5 @@
 [package]
-name = "px4-rs-listener"
+name = "px4_rs_listener"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
