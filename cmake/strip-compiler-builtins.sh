@@ -16,8 +16,13 @@ if [ ! -f "$ARCHIVE" ]; then
     exit 1
 fi
 
+# Snapshot original to detect no-op runs and preserve mtime — otherwise every
+# rebuild bumps the archive mtime and cmake relinks downstream targets.
+SNAPSHOT=$(mktemp)
+cp -p "$ARCHIVE" "$SNAPSHOT"
+
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR" "$SNAPSHOT"' EXIT
 
 count=0
 for obj in $("$LLVM_AR" t "$ARCHIVE"); do
@@ -46,4 +51,11 @@ if [ -x "$LLVM_OBJCOPY" ]; then
     if [ $localized -gt 0 ]; then
         echo "Localized $localized mem symbols in $(basename "$ARCHIVE")"
     fi
+fi
+
+# Restore mtime if the archive ended up byte-identical to the snapshot. Makes
+# the script idempotent under cmake's mtime-driven dep tracking, so a no-op
+# rerun no longer triggers downstream relinks.
+if cmp -s "$ARCHIVE" "$SNAPSHOT"; then
+    touch -r "$SNAPSHOT" "$ARCHIVE"
 fi

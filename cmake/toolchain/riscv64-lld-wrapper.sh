@@ -33,14 +33,22 @@ fi
 for arg in "$@"; do
     if [[ "$arg" == *.a ]] && [ -f "$arg" ]; then
         bash "$STRIP_SCRIPT" "$LLVM_AR" "$arg" 2>/dev/null
-        # Also remove Rust compiler_builtins mem functions (they have weak linkage
-        # but lld picks them over picolibc due to archive processing order)
+        # Also remove Rust compiler_builtins mem functions (they have weak
+        # linkage but lld picks them over picolibc due to archive processing
+        # order). Snapshot first / restore mtime if no change so a no-op rerun
+        # doesn't bump the archive mtime and trigger downstream relinks.
+        snap=$(mktemp)
+        cp -p "$arg" "$snap"
         for sym in memset memcpy memmove memcmp bcmp strlen; do
             obj=$("$LLVM_AR" t "$arg" 2>/dev/null | grep "compiler_builtins.*mem\|compiler_builtins.*$sym" | head -1)
             if [ -n "$obj" ]; then
                 "$LLVM_AR" d "$arg" "$obj" 2>/dev/null || true
             fi
         done
+        if cmp -s "$arg" "$snap"; then
+            touch -r "$snap" "$arg"
+        fi
+        rm -f "$snap"
     fi
 done
 
