@@ -16,6 +16,10 @@ setup *ARGS:
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
+        # Re-apply Cortex-A9 patches anyway: idempotent, and ensures
+        # workspaces created before the patch script existed get the
+        # tweaks without needing --force (which re-downloads ~1 GB).
+        bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
     else
         ./scripts/zephyr/setup.sh $ARGS
     fi
