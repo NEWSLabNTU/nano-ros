@@ -173,6 +173,11 @@ function(nros_freertos_build_lwip)
         # IPv4
         "${LWIP_DIR}/src/core/ipv4/etharp.c"
         "${LWIP_DIR}/src/core/ipv4/icmp.c"
+        # Phase 97.1.kconfig.freertos — `LWIP_IGMP=1` is set in
+        # lwipopts.h to support RTPS SPDP multicast. Without igmp.c
+        # here, `igmp_init` / `igmp_joingroup` / `igmp_leavegroup`
+        # end up undefined at link time.
+        "${LWIP_DIR}/src/core/ipv4/igmp.c"
         "${LWIP_DIR}/src/core/ipv4/ip4.c"
         "${LWIP_DIR}/src/core/ipv4/ip4_addr.c"
         "${LWIP_DIR}/src/core/ipv4/ip4_frag.c"
