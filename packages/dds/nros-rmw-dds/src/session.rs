@@ -44,14 +44,10 @@ mod no_listener {
     {
     }
 
-    pub struct NoDataReaderListener<Foo>(PhantomData<fn() -> Foo>);
-    impl<Foo: 'static> dust_dds::dds_async::data_reader_listener::DataReaderListener<Foo>
-        for NoDataReaderListener<Foo>
-    {
-    }
-
     pub type NoDataWriterListenerRaw = NoDataWriterListener<RawCdrPayload>;
-    pub type NoDataReaderListenerRaw = NoDataReaderListener<RawCdrPayload>;
+    // No reader-listener variant: every reader callsite passes a real
+    // `DataAvailableListener` (the waker bridge) rather than `None`, so
+    // `NoDataReaderListener` was structurally unreachable.
 }
 
 /// DDS session backed by a dust-dds `DomainParticipant`.
@@ -105,10 +101,11 @@ impl DdsSession {
 // sees the call. ROS 2 service convention is `Reliable +
 // KeepLast(N)` on both sides; mirror that here.
 // `service_reader_qos` / `service_writer_qos` are only invoked from
-// the `cfg(feature = "std")` create_service_{server,client} paths.
-// Gate the helpers on the same cfg so no_std builds (where the
-// callers vanish) don't emit "function never used" warnings.
-#[cfg(feature = "std")]
+// the create_service_{server,client} paths, both of which are gated
+// on `cfg(any(feature = "std", feature = "nostd-runtime"))`. Gate
+// the helpers on the same cfg so the bare-no-std fallback (which
+// has no callers) doesn't emit "function never used" warnings.
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
 fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     use dust_dds::infrastructure::qos_policy::{
         HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
@@ -125,7 +122,7 @@ fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     q
 }
 
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
 fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
     use dust_dds::infrastructure::qos_policy::{
         HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
