@@ -322,12 +322,26 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         `nx_igmp_multicast_interface_join` which queues an IGMP
         membership report through virtio-net-netx and stalls the
         cooperative poll loop. `mcast_listen` treats the setsockopt
-        rc as best-effort to tolerate this. Resolving needs a
-        no_std RISC-V trace channel (board crate's `uart_putc` is
-        link-available; an opt-in `debug-uart` feature on
-        `nros-rmw-dds` mirroring `debug-cortex-m-semihosting`
-        would surface where in dust-dds the cooperative runtime
-        deadlocks). Follow-up.
+        rc as best-effort to tolerate this.
+
+        Web research narrowed the search to the dust-dds /
+        cooperative-runtime side: NetX Duo auto-maps mcast IPs to
+        their `01:00:5E:..` Ethernet addresses *before* the driver
+        sees the frame
+        ([Eclipse ThreadX, ch.3](https://github.com/eclipse-threadx/rtos-docs/blob/main/rtos-docs/netx-duo/chapter3.md)),
+        and QEMU virtio-net runs in `promisc=1` by default when
+        `VIRTIO_NET_F_CTRL_VQ` is unset (our driver advertises
+        only `MAC | STATUS`), so neither L2 mapping nor RX
+        filtering can be the blocker. The remaining suspects are
+        (a) virtio-net-netx TX completion under TCG (the driver's
+        100k-iter busy-wait may complete before QEMU TCG actually
+        flushes the descriptor) and (b) the same dust-dds nostd-
+        runtime SEDP loop that hits the threadx-linux slice on
+        loopback. Resolving needs the no_std RISC-V trace channel
+        (board crate's `uart_putc` is link-available; an opt-in
+        `debug-uart` feature on `nros-rmw-dds` mirroring
+        `debug-cortex-m-semihosting` would surface the deadlock
+        site). Follow-up.
 - [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
       Discovery + bind path lands green: SPDP multicast crosses
       between the two ThreadX-Linux processes through the
@@ -385,14 +399,32 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       The same `nros-rmw-dds` cooperative runtime ships green on
       QEMU-networked targets (FreeRTOS, NuttX) where higher
       latency caps the SEDP retry rate; loopback exposes the
-      unbounded-poll-loop problem. Resolving needs either a
-      dust-dds-side fix on the `nostd-runtime` SEDP reliability
-      heartbeat / max_blocking_time, or moving the ThreadX-Linux
-      slice to the threaded `rtps_udp_transport` path (blocked on
-      socket2's NetX-libc compatibility — same issue the Phase
-      97.4.nuttx slice paid). Infrastructure (mcast / unicast /
-      IGMP, sockopt translation, byte pool, debug traces) all
-      ship green.
+      unbounded-poll-loop problem.
+
+      Web research findings:
+      - dust-dds hardcodes a 200 ms `heartbeat_period` in
+        `rtps/stateful_writer.rs:38`. On QEMU-networked latency
+        the AckNack reflex is naturally rate-limited by RTT;
+        loopback uncaps it.
+      - DeepWiki on
+        [dust-dds RTPS](https://deepwiki.com/s2e-systems/dust-dds/9-rtps-protocol-and-transport)
+        confirms SEDP is reliable / transient-local — heartbeat /
+        AckNack loops until the writer "eventually receives a pure
+        acknowledgement", which presupposes a network where the
+        reader can finish processing samples before its AckNack
+        crosses the writer's next heartbeat.
+      - Known dust-dds <-> external-DDS interop loop scenarios
+        (Cyclone <-> RTI), see
+        [Eclipse Cyclone DDS docs](https://cyclonedds.io/docs/cyclonedds/0.10.2/config/ddsi_concepts.html).
+
+      Cleanest fix is moving the slice to dust-dds's threaded
+      `rtps_udp_transport` (socket2). Currently blocked because
+      `nros-rmw-dds`'s `platform-threadx` feature hard-couples
+      `nostd-runtime`; opening up a `platform-threadx,std` axis
+      would let ThreadX-Linux take the threaded path while the
+      no_std qemu-riscv64-threadx slice keeps the cooperative
+      one. Infrastructure (mcast / unicast / IGMP / sockopt
+      translation / byte pool / debug traces) all ship green.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on
