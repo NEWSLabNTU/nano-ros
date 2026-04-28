@@ -1315,6 +1315,46 @@ int32_t zpico_publish_with_attachment(int32_t handle,
     return ZPICO_OK;
 }
 
+// Phase 95.F — zero-copy publish via z_bytes_from_static_buf.
+// Aliases the payload pointer instead of copying. Caller guarantees
+// `data` outlives the call (z_publisher_put consumes the alias
+// synchronously on posix/embedded transports). Attachment is still
+// copied (small, fixed size).
+int32_t zpico_publish_with_attachment_aliased(int32_t handle,
+                                                    const uint8_t *data, size_t len,
+                                                    const uint8_t *attachment,
+                                                    size_t attachment_len) {
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    // Alias the payload — no copy. zenoh-pico writes directly from
+    // the caller-supplied buffer.
+    z_owned_bytes_t payload;
+    if (z_bytes_from_static_buf(&payload, data, len) < 0) {
+        return ZPICO_ERR_PUBLISH;
+    }
+
+    z_publisher_put_options_t options;
+    z_publisher_put_options_default(&options);
+
+    z_owned_bytes_t attachment_bytes;
+    if (attachment != NULL && attachment_len > 0) {
+        if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
+            z_bytes_drop(z_bytes_move(&payload));
+            return ZPICO_ERR_PUBLISH;
+        }
+        options.attachment = z_bytes_move(&attachment_bytes);
+    }
+
+    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
+                        z_bytes_move(&payload), &options) < 0) {
+        return ZPICO_ERR_PUBLISH;
+    }
+
+    return ZPICO_OK;
+}
+
 // ============================================================================
 // Queryable Implementation (for ROS 2 Services)
 // ============================================================================

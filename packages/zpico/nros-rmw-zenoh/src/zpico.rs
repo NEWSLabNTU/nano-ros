@@ -67,8 +67,9 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
-    zpico_query_reply, zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
-    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_spin_once,
+    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
+    zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -882,6 +883,41 @@ impl<'a> Publisher<'a> {
 
         let ret = ffi_guard(|| unsafe {
             zpico_publish_with_attachment(self.handle, data.as_ptr(), data.len(), att_ptr, att_len)
+        });
+        if ret < 0 {
+            return Err(ZpicoError::from_code(ret));
+        }
+        Ok(())
+    }
+
+    /// Phase 95.F — zero-copy publish via z_bytes_from_static_buf.
+    ///
+    /// Identical to [`publish_with_attachment`] but ALIASES the
+    /// payload pointer instead of copying. Caller MUST guarantee
+    /// `data` outlives the call (zenoh-pico's posix/embedded
+    /// transports consume the alias synchronously before
+    /// `z_publisher_put` returns).
+    ///
+    /// Used by the SlotLending impl on ZenohPublisher to back the
+    /// EmbeddedRawPublisher::try_loan zero-copy path.
+    pub fn publish_with_attachment_aliased(
+        &self,
+        data: &[u8],
+        attachment: Option<&[u8]>,
+    ) -> Result<()> {
+        let (att_ptr, att_len) = match attachment {
+            Some(att) => (att.as_ptr(), att.len()),
+            None => (core::ptr::null(), 0),
+        };
+
+        let ret = ffi_guard(|| unsafe {
+            zpico_publish_with_attachment_aliased(
+                self.handle,
+                data.as_ptr(),
+                data.len(),
+                att_ptr,
+                att_len,
+            )
         });
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));

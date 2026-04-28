@@ -30,6 +30,10 @@ pub struct ZenohPublisher {
     timestamp_counter: AtomicSeqCounter,
     /// Liveliness token for ROS 2 graph discovery (kept alive for publisher lifetime)
     _liveliness: Option<LivelinessToken>,
+    /// Phase 95.F: per-publisher TX arena for SlotLending. Exists only
+    /// when the `lending` feature is on.
+    #[cfg(feature = "lending")]
+    pub(super) lend_arena: lending::LendArena,
 }
 
 impl ZenohPublisher {
@@ -76,6 +80,8 @@ impl ZenohPublisher {
             sequence_counter: AtomicSeqCounter::new(0),
             timestamp_counter: AtomicSeqCounter::new(0),
             _liveliness: liveliness,
+            #[cfg(feature = "lending")]
+            lend_arena: lending::LendArena::new(),
         })
     }
 
@@ -168,3 +174,136 @@ impl Publisher for ZenohPublisher {
         TransportError::SerializationError
     }
 }
+
+// ============================================================================
+// Phase 95.F — ZenohPublisher SlotLending (zero-copy publish)
+// ============================================================================
+
+#[cfg(feature = "lending")]
+mod lending {
+    use super::*;
+    use core::cell::UnsafeCell;
+    use core::sync::atomic::{AtomicBool, Ordering as CoreOrdering};
+
+    /// Per-publisher TX arena slot capacity.
+    pub const ZENOH_TX_BUF: usize = 1024;
+
+    /// Backend-owned arena for a `ZenohPublisher`. Single-slot;
+    /// concurrent loans return Err(WouldBlock).
+    pub(super) struct LendArena {
+        busy: AtomicBool,
+        buf: UnsafeCell<[u8; ZENOH_TX_BUF]>,
+    }
+
+    // SAFETY: `busy` flag enforces exclusive access; only the loan
+    // holder may mutate `buf` until commit/discard.
+    unsafe impl Sync for LendArena {}
+
+    impl LendArena {
+        pub(super) const fn new() -> Self {
+            Self {
+                busy: AtomicBool::new(false),
+                buf: UnsafeCell::new([0u8; ZENOH_TX_BUF]),
+            }
+        }
+
+        pub(super) fn try_claim(&self, len: usize) -> Result<&mut [u8], TransportError> {
+            if len > ZENOH_TX_BUF {
+                return Err(TransportError::TooLarge);
+            }
+            if self
+                .busy
+                .compare_exchange(
+                    false,
+                    true,
+                    CoreOrdering::AcqRel,
+                    CoreOrdering::Acquire,
+                )
+                .is_err()
+            {
+                return Err(TransportError::WouldBlock);
+            }
+            // SAFETY: busy CAS won; exclusive access until release.
+            let buf_ref: &mut [u8; ZENOH_TX_BUF] = unsafe { &mut *self.buf.get() };
+            Ok(&mut buf_ref[..len])
+        }
+
+        pub(super) fn release(&self) {
+            self.busy.store(false, CoreOrdering::Release);
+        }
+    }
+
+    /// Backend-lent writable slot into ZenohPublisher's arena. Lifetime
+    /// tied to `&'a ZenohPublisher` so it can't outlive the underlying
+    /// zenoh session.
+    pub struct ZenohSlot<'a> {
+        bytes: &'a mut [u8],
+        publisher: &'a ZenohPublisher,
+    }
+
+    impl<'a> AsMut<[u8]> for ZenohSlot<'a> {
+        fn as_mut(&mut self) -> &mut [u8] {
+            self.bytes
+        }
+    }
+
+    impl<'a> Drop for ZenohSlot<'a> {
+        fn drop(&mut self) {
+            // Always release the arena slot. commit_slot also calls
+            // release indirectly via ownership transfer + drop.
+            self.publisher.lend_arena.release();
+        }
+    }
+
+    impl ZenohPublisher {
+        // Wire the arena into the constructor — see Phase 95.F note in
+        // `new()` for why this lives outside the main impl block.
+        pub(super) const fn lend_arena_init() -> LendArena {
+            LendArena::new()
+        }
+    }
+
+    impl nros_rmw::SlotLending for ZenohPublisher {
+        type Slot<'a>
+            = ZenohSlot<'a>
+        where
+            Self: 'a;
+
+        fn try_lend_slot(
+            &self,
+            len: usize,
+        ) -> Result<Option<Self::Slot<'_>>, TransportError> {
+            match self.lend_arena.try_claim(len) {
+                Ok(bytes) => Ok(Some(ZenohSlot {
+                    bytes,
+                    publisher: self,
+                })),
+                Err(TransportError::WouldBlock) => Ok(None),
+                Err(e) => Err(e),
+            }
+        }
+
+        fn commit_slot(&self, slot: Self::Slot<'_>) -> Result<(), TransportError> {
+            // Build the RMW attachment as in publish_raw.
+            #[allow(clippy::useless_conversion)]
+            let seq: i64 =
+                (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
+            let ts = self.current_timestamp();
+            let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
+            self.serialize_attachment(seq, ts, &mut att_buf);
+
+            // Aliased publish: zenoh-pico calls z_bytes_from_static_buf
+            // — no payload copy. Bytes consumed synchronously by
+            // z_publisher_put before return on posix/embedded.
+            let res = self
+                .publisher
+                .publish_with_attachment_aliased(slot.bytes, Some(&att_buf))
+                .map_err(TransportError::from);
+            // slot drops here, releasing the arena.
+            res
+        }
+    }
+}
+
+#[cfg(feature = "lending")]
+pub use lending::{ZenohSlot, ZENOH_TX_BUF};

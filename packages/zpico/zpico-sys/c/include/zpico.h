@@ -172,6 +172,10 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
                                    void *ctx);
 
 /**
+ * Phase 95.F: zero-copy publish via z_bytes_from_static_buf.
+ * Caller guarantees `data` outlives the call.
+ */
+/**
  * Initialize zenoh configuration with client mode and connect locator.
  *
  * # Parameters
