@@ -394,9 +394,17 @@ zero-latency event-driven regardless).
       panic). Capacity is `MAX_TOPICS = 32` const, recompile to bump.
 - [x] Drop `cfg(feature = "std")` gates from registry, publisher,
       subscriber, park, service, session — all build no_std now.
-- [x] `extern crate alloc` is unconditional (registry needs `Box`).
-      Real PX4 NuttX has an allocator; bare-metal users must wire a
-      `#[global_allocator]`.
+- [x] `extern crate alloc` + the registry/Session/park/service
+      module tree are gated behind the `alloc` feature so
+      standalone PX4 module examples that only use the direct
+      typed API (`raw.rs`) stay alloc-free (no
+      `#[global_allocator]` required). nros-node's `rmw-uorb`
+      feature implies `alloc` so `Executor` users keep working.
+- [x] Cross-build verified for every PX4 target triple via
+      `just px4 build-targets`: `thumbv7m-none-eabi` (M3),
+      `thumbv7em-none-eabihf` (M4F / Pixhawk 4),
+      `thumbv8m.main-none-eabihf` (M7 / STM32H7). Now part of
+      `just px4 ci`.
 - [x] Std builds activate `critical-section/std` so the global impl
       is available without the user wiring one. Real PX4 modules get
       a `critical_section` impl via px4-sys (interrupt-disable on

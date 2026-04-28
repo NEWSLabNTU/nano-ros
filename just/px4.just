@@ -55,6 +55,22 @@ doctor:
 build:
     cargo build -p nros-rmw-uorb -p nros-px4 --features std
 
+# Cross-build nros-rmw-uorb for every PX4 target triple in
+# `cmake/px4-rust.cmake`. Pre-flight check that Phase 90.2b's
+# no_std + alloc registry path actually links on the platforms
+# real PX4 modules deploy to: STM32F1/F4 (M3), Pixhawk 4 (M4F),
+# STM32H7 / NXP RT117x (M7).
+build-targets:
+    @echo "→ thumbv7m-none-eabi (Cortex-M3)"
+    cargo build -p nros-rmw-uorb \
+        --target thumbv7m-none-eabi --no-default-features --features alloc
+    @echo "→ thumbv7em-none-eabihf (Cortex-M4F / Pixhawk 4)"
+    cargo build -p nros-rmw-uorb \
+        --target thumbv7em-none-eabihf --no-default-features --features alloc
+    @echo "→ thumbv8m.main-none-eabihf (Cortex-M7 / STM32H7)"
+    cargo build -p nros-rmw-uorb \
+        --target thumbv8m.main-none-eabihf --no-default-features --features alloc
+
 # Build PX4 SITL with the nano-ros uORB examples linked in via
 # EXTERNAL_MODULES_LOCATION. Cold build ~10 min; warm <2 s (ninja
 # "no work to do"). Requires `just px4 setup` to have populated
@@ -101,4 +117,4 @@ test-sitl: build-sitl
     cargo nextest run -p nros-tests --features px4-sitl --test px4_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
-ci: check test
+ci: check test build-targets
