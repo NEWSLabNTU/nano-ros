@@ -1,0 +1,11 @@
+# NuttX QEMU ARM DDS listener — network configuration
+# Distinct IP from talker so two QEMU instances on the same mcast
+# segment don't collide on ARP.
+
+[network]
+ip = "10.0.2.31"
+gateway = "10.0.2.2"
+prefix = 24
+
+[zenoh]
+domain_id = 0

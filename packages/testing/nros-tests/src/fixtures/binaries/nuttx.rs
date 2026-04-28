@@ -131,6 +131,43 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 }
 
 // =============================================================================
+// NuttX DDS variant (Phase 97.4.nuttx)
+// =============================================================================
+
+static NUTTX_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+fn build_dds_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-arm-nuttx/rust/dds/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "NuttX DDS example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    let binary_path = example_dir.join(format!(
+        "target/armv7a-nuttx-eabihf/release/{}",
+        binary_name
+    ));
+    super::require_prebuilt_binary(&binary_path)
+}
+
+pub fn build_nuttx_dds_talker() -> TestResult<&'static Path> {
+    NUTTX_DDS_TALKER_BINARY
+        .get_or_try_init(|| build_dds_rust_example("talker", "nuttx-rs-dds-talker"))
+        .map(|p| p.as_path())
+}
+
+pub fn build_nuttx_dds_listener() -> TestResult<&'static Path> {
+    NUTTX_DDS_LISTENER_BINARY
+        .get_or_try_init(|| build_dds_rust_example("listener", "nuttx-rs-dds-listener"))
+        .map(|p| p.as_path())
+}
+
+// =============================================================================
 // C / C++ binary builders (CMake, via corrosion + nuttx_build_example)
 // =============================================================================
 

@@ -46,6 +46,9 @@ fn main() {
         .allowlist_type("sockaddr_in6")
         .allowlist_type("sockaddr_storage")
         .allowlist_type("linger")
+        // Phase 97.4.nuttx — IGMP join via setsockopt
+        .allowlist_type("ip_mreq")
+        .allowlist_type("in_addr")
         // Socket functions
         .allowlist_function("socket")
         .allowlist_function("connect")
@@ -85,6 +88,12 @@ fn main() {
         .allowlist_var("F_SETFL")
         .allowlist_var("SHUT_RDWR")
         .allowlist_var("MSG_NOSIGNAL")
+        // Phase 97.4.nuttx — IGMP + RTPS literal-only resolution
+        .allowlist_var("IP_ADD_MEMBERSHIP")
+        .allowlist_var("IP_DROP_MEMBERSHIP")
+        .allowlist_var("INADDR_ANY")
+        .allowlist_var("IPPROTO_IP")
+        .allowlist_var("AI_NUMERICHOST")
         // No layout tests
         .layout_tests(false)
         .derive_debug(false)

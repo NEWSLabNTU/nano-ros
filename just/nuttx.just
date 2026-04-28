@@ -76,6 +76,14 @@ build-fixtures:
           CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
           cargo build --release --quiet )
     done
+    # Phase 97.4.nuttx — DDS variants alongside zenoh.
+    dds_examples=(talker listener)
+    for ex in "${dds_examples[@]}"; do
+        echo "  → nuttx/rust/dds/$ex"
+        ( cd "examples/qemu-arm-nuttx/rust/dds/$ex" && \
+          CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
+          cargo build --release --quiet )
+    done
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do

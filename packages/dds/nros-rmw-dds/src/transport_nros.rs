@@ -52,16 +52,26 @@
 
 extern crate alloc;
 
-// Phase 97.4 debug — semihosting print macro for Cortex-M FreeRTOS /
-// bare-metal bring-up. No-op when the feature is off so std builds
-// don't pull in cortex-m-semihosting.
+// Phase 97.4 debug — print macro for bring-up. Cortex-M flavour uses
+// semihosting; std-capable platforms (NuttX, ThreadX-Linux, native_sim)
+// use eprintln. Both gated behind the same feature so production builds
+// stay silent.
 #[cfg(feature = "debug-cortex-m-semihosting")]
 macro_rules! dbg_log {
     ($($arg:tt)*) => {
         cortex_m_semihosting::hprintln!("[nros-rmw-dds] {}", format_args!($($arg)*));
     };
 }
-#[cfg(not(feature = "debug-cortex-m-semihosting"))]
+#[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
+extern crate std;
+
+#[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
+macro_rules! dbg_log {
+    ($($arg:tt)*) => {
+        std::eprintln!("[nros-rmw-dds] {}", format_args!($($arg)*));
+    };
+}
+#[cfg(all(not(feature = "debug-cortex-m-semihosting"), not(feature = "debug-stderr")))]
 macro_rules! dbg_log {
     ($($arg:tt)*) => {{
         let _ = format_args!($($arg)*);

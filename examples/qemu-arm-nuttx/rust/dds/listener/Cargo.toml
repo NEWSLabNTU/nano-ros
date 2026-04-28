@@ -1,0 +1,31 @@
+[package]
+name = "nuttx-rs-dds-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS listener example on QEMU NuttX ARM (Phase 97.4.nuttx)"
+
+[[bin]]
+name = "nuttx-rs-dds-listener"
+test = false
+bench = false
+
+[dependencies]
+nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# `alloc` (not `std`) so the dust-dds `nostd-runtime` path is selected
+# instead of the `rtps_udp_transport` socket2 path. See the talker's
+# Cargo.toml for the full rationale.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-nuttx", "ros-humble"] }
+# Phase 97.4 debug — surfaces the per-bind / per-write_message trace
+# through `eprintln!`. Off by default; toggle via Cargo
+# `--no-default-features` if a clean release is needed.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+std_msgs = { version = "*", default-features = false }
+# See talker Cargo.toml for the rationale on the std-backed
+# critical-section impl.
+critical-section = { version = "1.2", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "s"
+lto = true

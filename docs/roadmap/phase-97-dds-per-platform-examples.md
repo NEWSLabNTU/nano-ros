@@ -248,7 +248,52 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         `nros-platform-freertos` — gated, off by default; turns
         on a step-by-step Cortex-M semihosting trace through every
         bind / write / recv for the next platform's bring-up.
-- [ ] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
+- [x] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
+      `test_nuttx_dds_rust_talker_to_listener_e2e` passes end-to-end
+      (~83 s) on QEMU `-M virt -cpu cortex-a7` + NuttX POSIX socket
+      stack + virtio-net-device. Path:
+      - Talker + listener crates at
+        `examples/qemu-arm-nuttx/rust/dds/{talker,listener}/`.
+      - `QemuProcess::start_nuttx_virt_mcast` launcher (no
+        `localaddr` — same lesson as the FreeRTOS slice).
+      - `build_nuttx_dds_{talker,listener}` fixtures in
+        `nros-tests/src/fixtures/binaries/nuttx.rs`.
+      - `.config/nextest.toml` extends `qemu-nuttx` test-group
+        filter to include `binary(nuttx_qemu_dds)`.
+
+      Bring-up debt closed in this slice (delta vs Phase 97.4.freertos):
+      - `nros-platform-nuttx::net.rs` `mcast_*` real impls (was
+        stub-returning -1) — `IP_ADD_MEMBERSHIP` + `O_NONBLOCK`
+        fcntl, same shape as the FreeRTOS path.
+      - `udp_create_endpoint` `AI_NUMERICHOST` flag.
+      - `nuttx-config/defconfig` — `CONFIG_NET_IGMP=y` +
+        `CONFIG_NET_IGMPv2=y`.
+      - `nuttx-sys` bindgen allowlist — `IP_ADD_MEMBERSHIP`,
+        `IP_DROP_MEMBERSHIP`, `INADDR_ANY`, `IPPROTO_IP`,
+        `AI_NUMERICHOST`, `ip_mreq`, `in_addr`.
+      - `nros-board-nuttx-qemu-arm::node.rs` — `apply_ip_config`
+        helper that drives `SIOCSIFADDR / SIOCSIFNETMASK /
+        SIOCSIFDSTADDR` from `Config.ip / prefix / gateway` so
+        sibling QEMU guests don't both default to the
+        `CONFIG_NETINIT_IPADDR` baked into `defconfig`. The ioctl
+        request numbers use NuttX's `_SIOC(N) = 0x0700|N` encoding
+        — *not* the Linux `0x89xx` range that a quick port from
+        glibc would use.
+      - `NROS_LOCAL_IPV4` per-example via `.cargo/config.toml`,
+        same role as the FreeRTOS slice (SPDP unicast locator +
+        dust-dds GUID-prefix host_id seed).
+      - Examples select `alloc` (not `std`) on `nros` so the
+        dust-dds `nostd-runtime` path is taken instead of the
+        `rtps_udp_transport` socket2 path that fails to compile
+        against the NuttX-flavoured libc (no `SO_REUSEPORT`,
+        `IovLen`, …). The example pulls `critical-section/std`
+        directly to satisfy `_critical_section_1_0_*` references
+        emitted by dust-dds's `MpscReceiverFuture` poll path.
+      - New `debug-stderr` feature on `nros-rmw-dds` mirrors
+        `debug-cortex-m-semihosting` for std-capable platforms
+        (NuttX, ThreadX-Linux, native_sim) — same trace points,
+        routed through `eprintln!` instead of Cortex-M
+        semihosting.
 - [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
       talker↔listener.
 - [ ] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.

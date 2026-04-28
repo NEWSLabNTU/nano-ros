@@ -127,6 +127,9 @@ exclude = [
     "examples/qemu-arm-nuttx/rust/zenoh/service-client",
     "examples/qemu-arm-nuttx/rust/zenoh/action-server",
     "examples/qemu-arm-nuttx/rust/zenoh/action-client",
+    # NuttX DDS (Phase 97.4.nuttx)
+    "examples/qemu-arm-nuttx/rust/dds/talker",
+    "examples/qemu-arm-nuttx/rust/dds/listener",
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
     "examples/stm32f4/rust/zenoh/polling",

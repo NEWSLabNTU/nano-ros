@@ -16,6 +16,10 @@ default = []
 # the last-reached step. Off by default; enable from a bare-metal
 # / FreeRTOS example crate's Cargo.toml.
 debug-cortex-m-semihosting = ["dep:cortex-m-semihosting"]
+# Phase 97.4 debug — same trace as `debug-cortex-m-semihosting` but
+# routed through `eprintln!` for std-capable platforms (NuttX,
+# ThreadX-Linux, etc.) where Cortex-M semihosting isn't applicable.
+debug-stderr = []
 
 # Core capability flags. `std` enables the stock dust-dds UDP transport
 # (3 OS threads per participant); `alloc` is required on every platform

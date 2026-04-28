@@ -1,0 +1,14 @@
+# NuttX QEMU ARM DDS talker — network configuration
+# Used by nros-board-nuttx-qemu-arm board crate (Config::from_toml).
+#
+# Brokerless DDS over RTPS multicast — no zenoh router needed.
+# Talker joins domain 0 and announces via 239.255.0.1:7400+ on the
+# NuttX virtio-net interface configured below.
+
+[network]
+ip = "10.0.2.30"
+gateway = "10.0.2.2"
+prefix = 24
+
+[zenoh]
+domain_id = 0

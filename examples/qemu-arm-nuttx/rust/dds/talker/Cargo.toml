@@ -1,0 +1,39 @@
+[package]
+name = "nuttx-rs-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on QEMU NuttX ARM (Phase 97.4.nuttx)"
+
+[[bin]]
+name = "nuttx-rs-dds-talker"
+test = false
+bench = false
+
+[dependencies]
+nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# `alloc` (not `std`) so the dust-dds `nostd-runtime` path is selected
+# instead of the `rtps_udp_transport` socket2 path. NuttX's POSIX layer
+# *can* host the threaded transport, but the cooperative
+# `NrosUdpTransportFactory` lets pubsub share the executor with zenoh /
+# uORB code paths and dodges socket2's missing-NuttX-quirks (no
+# SO_REUSEPORT, no IovLen, …) that block compile-time.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-nuttx", "ros-humble"] }
+# Phase 97.4 debug — surfaces the per-bind / per-write_message trace
+# through `eprintln!`. Off by default; toggle via Cargo
+# `--no-default-features` if a clean release is needed.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+std_msgs = { version = "*", default-features = false }
+# `dust-dds` references `_critical_section_1_0_*` symbols from its
+# `MpscReceiverFuture` / `OneshotReceiver` poll paths. NuttX has
+# pthreads via newlib, so the std-backed impl from the
+# `critical-section` crate is the cheapest registration. Keep this
+# even though `nros[std]` is off — the `armv7a-nuttx-eabihf` target
+# *is* std-capable via build-std, the symbols just won't appear
+# unless the `std` feature is selected somewhere in the dep tree.
+critical-section = { version = "1.2", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "s"
+lto = true

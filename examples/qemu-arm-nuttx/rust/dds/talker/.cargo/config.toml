@@ -1,0 +1,29 @@
+[build]
+target = "armv7a-nuttx-eabihf"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.armv7a-nuttx-eabihf]
+linker = "arm-none-eabi-gcc"
+rustflags = [
+    "-C", "link-arg=-mcpu=cortex-a7",
+    "-C", "link-arg=-mfloat-abi=hard",
+    "-C", "link-arg=-mfpu=neon-vfpv4",
+]
+
+[env]
+CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
+CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
+# Phase 97.4.nuttx — advertise this guest's interface IPv4 in SPDP
+# unicast locators *and* seed the dust-dds GUID prefix so peers don't
+# self-filter each other. Must match `[network] ip` in config.toml.
+NROS_LOCAL_IPV4 = "10.0.2.30"
+
+[patch.crates-io]
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+std_msgs = { path = "generated/std_msgs" }
+libc = { path = "../../../../../third-party/nuttx/libc" }

@@ -322,7 +322,7 @@ retries = 2
 
 # NuttX QEMU — port 7452.
 [[profile.default.overrides]]
-filter = "binary(nuttx_qemu) or (binary(rtos_e2e) and test(Platform__Nuttx))"
+filter = "binary(nuttx_qemu) or binary(nuttx_qemu_dds) or (binary(rtos_e2e) and test(Platform__Nuttx))"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

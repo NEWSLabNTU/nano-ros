@@ -437,6 +437,50 @@ impl QemuProcess {
     ///
     /// # Returns
     /// A managed QEMU process
+    /// Phase 97.4.nuttx — same shape as `start_mps2_an385_mcast` but for
+    /// NuttX's `qemu-system-arm -M virt -cpu cortex-a7` machine and
+    /// virtio-net-device. Both sibling instances share the host
+    /// `-netdev socket,mcast=…` segment so SPDP / SEDP / pubsub frames
+    /// cross between them. Caller picks distinct MAC addrs.
+    pub fn start_nuttx_virt_mcast(
+        binary: &Path,
+        mcast_addr_port: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-M",
+            "virt",
+            "-cpu",
+            "cortex-a7",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-netdev",
+            &format!("socket,id=net0,mcast={mcast_addr_port}"),
+            "-device",
+            &format!("virtio-net-device,netdev=net0,mac={mac}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(

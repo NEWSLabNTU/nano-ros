@@ -267,6 +267,9 @@ impl NuttxPlatform {
         hints.ai_family = PF_UNSPEC as _;
         hints.ai_socktype = SOCK_DGRAM as _;
         hints.ai_protocol = IPPROTO_UDP as _;
+        // RTPS only ever passes numeric IP literals — skip the
+        // unconfigured DNS resolver and fail fast on parse error.
+        hints.ai_flags = AI_NUMERICHOST as _;
 
         let ret = unsafe {
             getaddrinfo(
@@ -539,50 +542,185 @@ impl NuttxPlatform {
 }
 
 // ============================================================================
-// UDP multicast (stubs — not supported on NuttX QEMU)
+// UDP multicast — Phase 97.4.nuttx
 // ============================================================================
+//
+// Same shape as the FreeRTOS / lwIP path:
+//   * `mcast_open` — opens a regular UDP socket aimed at the mcast
+//     group and stashes the destination endpoint in `lep` for the
+//     writer's reuse on send.
+//   * `mcast_listen` — `udp_listen` to bind, then setsockopt
+//     `IP_ADD_MEMBERSHIP` to actually join the IGMP group, then flip
+//     the socket to non-blocking when the caller asked for
+//     `timeout_ms = 0` (NuttX's `SO_RCVTIMEO {0,0}` means "block
+//     forever", same as lwIP).
+//   * `mcast_read{,_exact}` / `mcast_send` — delegate to the unicast
+//     helpers (NuttX's POSIX socket layer surfaces multicast through
+//     the same recvfrom/sendto API once IGMP membership is in place).
 
 impl NuttxPlatform {
     pub fn mcast_open(
-        _s: *mut c_void,
-        _e: *const c_void,
-        _l: *mut c_void,
-        _t: u32,
-        _i: *const u8,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
+        _iface: *const u8,
     ) -> i8 {
-        -1
+        if !lep.is_null() && !endpoint.is_null() {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    endpoint as *const u8,
+                    lep as *mut u8,
+                    core::mem::size_of::<Endpoint>(),
+                );
+            }
+        }
+        Self::udp_open(sock, endpoint, timeout_ms)
     }
+
     pub fn mcast_listen(
-        _s: *mut c_void,
-        _e: *const c_void,
-        _t: u32,
-        _i: *const u8,
-        _j: *const u8,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        _iface: *const u8,
+        join: *const u8,
     ) -> i8 {
-        -1
+        let rc = Self::udp_listen(sock, endpoint, timeout_ms);
+        if rc < 0 {
+            return rc;
+        }
+
+        let group = if !join.is_null() {
+            parse_ipv4_be(join)
+        } else {
+            0
+        };
+        if group == 0 {
+            return rc;
+        }
+
+        let sock_ref = unsafe { &*(sock as *const Socket) };
+        let fd = sock_ref._fd;
+        if fd < 0 {
+            return -1;
+        }
+        let mreq = ip_mreq {
+            imr_multiaddr: in_addr { s_addr: group },
+            imr_interface: in_addr { s_addr: 0 },
+        };
+        let setsockopt_rc = unsafe {
+            setsockopt(
+                fd,
+                IPPROTO_IP as _,
+                IP_ADD_MEMBERSHIP as _,
+                &mreq as *const _ as *const c_void,
+                core::mem::size_of::<ip_mreq>() as _,
+            )
+        };
+        if setsockopt_rc < 0 {
+            unsafe { close(fd) };
+            return -1;
+        }
+
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = fcntl(fd, F_GETFL as _, 0);
+                if flags >= 0 {
+                    fcntl(fd, F_SETFL as _, flags | O_NONBLOCK as core::ffi::c_int);
+                }
+            }
+        }
+        0
     }
-    pub fn mcast_close(_r: *mut c_void, _s: *mut c_void, _re: *const c_void, _le: *const c_void) {}
+
+    pub fn mcast_close(
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
+        _rep: *const c_void,
+        _lep: *const c_void,
+    ) {
+        if !sockrecv.is_null() {
+            Self::udp_close(sockrecv);
+        }
+        if !socksend.is_null() {
+            Self::udp_close(socksend);
+        }
+    }
+
     pub fn mcast_read(
-        _s: *const c_void,
-        _b: *mut u8,
-        _l: usize,
-        _le: *const c_void,
-        _a: *mut c_void,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        _lep: *const c_void,
+        _addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        Self::udp_read(sock, buf, len)
     }
+
     pub fn mcast_read_exact(
-        _s: *const c_void,
-        _b: *mut u8,
-        _l: usize,
-        _le: *const c_void,
-        _a: *mut c_void,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        _lep: *const c_void,
+        _addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        Self::udp_read_exact(sock, buf, len)
     }
-    pub fn mcast_send(_s: *const c_void, _b: *const u8, _l: usize, _e: *const c_void) -> usize {
-        usize::MAX
+
+    pub fn mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize {
+        Self::udp_send(sock, buf, len, endpoint)
     }
+}
+
+/// Parse a null-terminated dotted-quad ASCII string ("239.255.0.1\0")
+/// into a u32 in network byte order. Returns 0 on parse failure.
+fn parse_ipv4_be(s: *const u8) -> u32 {
+    if s.is_null() {
+        return 0;
+    }
+    let mut octets = [0u32; 4];
+    let mut idx = 0usize;
+    let mut current: u32 = 0;
+    let mut has_digit = false;
+    let mut p = s;
+    loop {
+        let ch = unsafe { *p };
+        match ch {
+            0 => {
+                if !has_digit || idx != 3 {
+                    return 0;
+                }
+                octets[3] = current;
+                break;
+            }
+            b'0'..=b'9' => {
+                current = current * 10 + (ch - b'0') as u32;
+                if current > 255 {
+                    return 0;
+                }
+                has_digit = true;
+            }
+            b'.' => {
+                if !has_digit || idx >= 3 {
+                    return 0;
+                }
+                octets[idx] = current;
+                idx += 1;
+                current = 0;
+                has_digit = false;
+            }
+            _ => return 0,
+        }
+        p = unsafe { p.add(1) };
+    }
+    // network byte order = big-endian; the s_addr field on POSIX is
+    // already stored in NBO so pack high-octet-first into the LSB.
+    (octets[0]) | (octets[1] << 8) | (octets[2] << 16) | (octets[3] << 24)
 }
 
 // ============================================================================
