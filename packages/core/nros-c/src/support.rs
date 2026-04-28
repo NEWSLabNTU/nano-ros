@@ -141,7 +141,11 @@ pub unsafe extern "C" fn nros_support_init_named(
         let default_locator = b"127.0.0.1:2019\0";
         // DDS doesn't use a locator string — discovery is via SPDP on the
         // configured domain_id. Empty default is fine.
-        #[cfg(all(feature = "rmw-dds", not(feature = "rmw-zenoh"), not(feature = "rmw-xrce")))]
+        #[cfg(all(
+            feature = "rmw-dds",
+            not(feature = "rmw-zenoh"),
+            not(feature = "rmw-xrce")
+        ))]
         let default_locator = b"\0";
         #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
         let default_locator = b"\0";

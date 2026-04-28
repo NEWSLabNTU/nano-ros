@@ -909,7 +909,9 @@ impl ZephyrPlatform {
         };
         let mreq = c::ip_mreqn {
             imr_multiaddr: c::in_addr { s_addr: group },
-            imr_address: c::in_addr { s_addr: c::INADDR_ANY_BE },
+            imr_address: c::in_addr {
+                s_addr: c::INADDR_ANY_BE,
+            },
             imr_ifindex: 0,
         };
         let join_ret = unsafe {

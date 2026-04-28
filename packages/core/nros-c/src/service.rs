@@ -190,8 +190,7 @@ pub unsafe extern "C" fn nros_service_init(
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy service name (required — empty rejected)
-    service.service_name_len =
-        crate::util::copy_cstr_into(service_name, &mut service.service_name);
+    service.service_name_len = crate::util::copy_cstr_into(service_name, &mut service.service_name);
     if service.service_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -533,10 +532,8 @@ pub unsafe extern "C" fn nros_client_init(
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
-    client.type_name_len =
-        crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
-    client.type_hash_len =
-        crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
+    client.type_name_len = crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
+    client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer + zero callback fields
     client.node = node;
@@ -1056,9 +1053,7 @@ pub unsafe extern "C" fn nros_client_call(
     if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
         let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
-        if let Some(entry) =
-            exec.service_client_entry_mut(internal.arena_entry_index as usize)
-        {
+        if let Some(entry) = exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             entry.pending = false;
             entry
                 .reply_ready

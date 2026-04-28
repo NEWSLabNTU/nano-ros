@@ -255,5 +255,4 @@ mod tests {
         let available = is_espflash_available();
         eprintln!("espflash available: {}", available);
     }
-
 }

@@ -331,17 +331,14 @@ pub unsafe extern "C" fn nros_action_server_init(
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy action name (required — empty rejected)
-    server.action_name_len =
-        crate::util::copy_cstr_into(action_name, &mut server.action_name);
+    server.action_name_len = crate::util::copy_cstr_into(action_name, &mut server.action_name);
     if server.action_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
-    server.type_name_len =
-        crate::util::copy_cstr_into(type_info.type_name, &mut server.type_name);
-    server.type_hash_len =
-        crate::util::copy_cstr_into(type_info.type_hash, &mut server.type_hash);
+    server.type_name_len = crate::util::copy_cstr_into(type_info.type_name, &mut server.type_name);
+    server.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut server.type_hash);
 
     // Store callbacks and context
     server.goal_callback = goal_callback;

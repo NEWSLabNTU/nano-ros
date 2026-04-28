@@ -209,8 +209,7 @@ impl NrosSpawner {
     /// push it back onto a second queue if it didn't complete. Intended
     /// to be called from the executor arena hook (Phase 71.4).
     pub fn drain_tasks(&self) {
-        let drained: VecDeque<BoxedTask> =
-            mutex_lock(&self.queue, |q| core::mem::take(q));
+        let drained: VecDeque<BoxedTask> = mutex_lock(&self.queue, |q| core::mem::take(q));
         let mut survivors: VecDeque<BoxedTask> = VecDeque::with_capacity(drained.len());
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
@@ -445,10 +444,7 @@ mod tests {
                     struct YieldOnce(bool);
                     impl Future for YieldOnce {
                         type Output = ();
-                        fn poll(
-                            mut self: Pin<&mut Self>,
-                            cx: &mut Context<'_>,
-                        ) -> Poll<()> {
+                        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
                             if self.0 {
                                 Poll::Ready(())
                             } else {
@@ -489,8 +485,8 @@ mod tests {
     #[test]
     fn spawner_reschedules_pending_future() {
         let s = NrosSpawner::new();
-        use core::sync::atomic::{AtomicU32, Ordering};
         use alloc::sync::Arc;
+        use core::sync::atomic::{AtomicU32, Ordering};
         let polls = Arc::new(AtomicU32::new(0));
         let polls_c = polls.clone();
         s.spawn(async move {

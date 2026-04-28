@@ -39,15 +39,13 @@ mod no_listener {
     impl dust_dds::dds_async::subscriber_listener::SubscriberListener for NoSubscriberListener {}
 
     pub struct NoDataWriterListener<Foo>(PhantomData<fn() -> Foo>);
-    impl<Foo: 'static>
-        dust_dds::dds_async::data_writer_listener::DataWriterListener<Foo>
+    impl<Foo: 'static> dust_dds::dds_async::data_writer_listener::DataWriterListener<Foo>
         for NoDataWriterListener<Foo>
     {
     }
 
     pub struct NoDataReaderListener<Foo>(PhantomData<fn() -> Foo>);
-    impl<Foo: 'static>
-        dust_dds::dds_async::data_reader_listener::DataReaderListener<Foo>
+    impl<Foo: 'static> dust_dds::dds_async::data_reader_listener::DataReaderListener<Foo>
         for NoDataReaderListener<Foo>
     {
     }
@@ -108,8 +106,7 @@ impl DdsSession {
 // KeepLast(N)` on both sides; mirror that here.
 fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     use dust_dds::infrastructure::qos_policy::{
-        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy,
-        ReliabilityQosPolicyKind,
+        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
     };
     use dust_dds::infrastructure::time::{Duration, DurationKind};
     let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
@@ -125,8 +122,7 @@ fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
 
 fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
     use dust_dds::infrastructure::qos_policy::{
-        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy,
-        ReliabilityQosPolicyKind,
+        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
     };
     use dust_dds::infrastructure::time::{Duration, DurationKind};
     let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();

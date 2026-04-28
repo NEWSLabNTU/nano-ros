@@ -96,11 +96,7 @@ macro_rules! __define_smoltcp_platform_impl {
             // ---- TCP ----
 
             impl $crate::PlatformTcp for crate::$plat {
-                fn create_endpoint(
-                    ep: *mut c_void,
-                    address: *const u8,
-                    port: *const u8,
-                ) -> i8 {
+                fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
                     if ep.is_null() || address.is_null() || port.is_null() {
                         return -1;
                     }
@@ -109,11 +105,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                 fn free_endpoint(_ep: *mut c_void) {}
 
-                fn open(
-                    sock: *mut c_void,
-                    endpoint: *const c_void,
-                    timeout_ms: u32,
-                ) -> i8 {
+                fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
                     if sock.is_null() || endpoint.is_null() {
                         return -1;
                     }
@@ -272,9 +264,8 @@ macro_rules! __define_smoltcp_platform_impl {
 
                         if SmoltcpBridge::tcp_can_send(handle) {
                             let remaining = len - total;
-                            let data = unsafe {
-                                ::core::slice::from_raw_parts(buf.add(total), remaining)
-                            };
+                            let data =
+                                unsafe { ::core::slice::from_raw_parts(buf.add(total), remaining) };
                             let sent = SmoltcpBridge::tcp_send(handle, data);
                             if sent > 0 {
                                 total += sent as usize;
@@ -299,11 +290,7 @@ macro_rules! __define_smoltcp_platform_impl {
             // ---- UDP ----
 
             impl $crate::PlatformUdp for crate::$plat {
-                fn create_endpoint(
-                    ep: *mut c_void,
-                    address: *const u8,
-                    port: *const u8,
-                ) -> i8 {
+                fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
                     if ep.is_null() || address.is_null() || port.is_null() {
                         return -1;
                     }
@@ -312,11 +299,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                 fn free_endpoint(_ep: *mut c_void) {}
 
-                fn open(
-                    sock: *mut c_void,
-                    endpoint: *const c_void,
-                    _timeout_ms: u32,
-                ) -> i8 {
+                fn open(sock: *mut c_void, endpoint: *const c_void, _timeout_ms: u32) -> i8 {
                     if sock.is_null() || endpoint.is_null() {
                         return -1;
                     }
@@ -449,11 +432,9 @@ macro_rules! __define_smoltcp_platform_impl {
 
                         if SmoltcpBridge::udp_can_send(handle) {
                             let remaining = len - total;
-                            let data = unsafe {
-                                ::core::slice::from_raw_parts(buf.add(total), remaining)
-                            };
-                            let sent =
-                                SmoltcpBridge::udp_send(handle, data, &rep._ip, rep._port);
+                            let data =
+                                unsafe { ::core::slice::from_raw_parts(buf.add(total), remaining) };
+                            let sent = SmoltcpBridge::udp_send(handle, data, &rep._ip, rep._port);
                             if sent > 0 {
                                 total += sent as usize;
                                 start = SmoltcpBridge::clock_now_ms();
@@ -489,11 +470,7 @@ macro_rules! __define_smoltcp_platform_impl {
                 /// recv loop in `nros-rmw-dds::transport_nros` yields
                 /// repeatedly anyway so the bind happens before the
                 /// first read attempt.
-                fn listen(
-                    sock: *mut c_void,
-                    endpoint: *const c_void,
-                    _timeout_ms: u32,
-                ) -> i8 {
+                fn listen(sock: *mut c_void, endpoint: *const c_void, _timeout_ms: u32) -> i8 {
                     if sock.is_null() || endpoint.is_null() {
                         return -1;
                     }

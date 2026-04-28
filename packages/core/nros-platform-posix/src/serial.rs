@@ -181,10 +181,6 @@ impl nros_platform_api::PlatformSerial for PosixPlatform {
             return usize::MAX;
         }
         let ret = unsafe { libc::write(h, buf as *const libc::c_void, len) };
-        if ret < 0 {
-            usize::MAX
-        } else {
-            ret as usize
-        }
+        if ret < 0 { usize::MAX } else { ret as usize }
     }
 }

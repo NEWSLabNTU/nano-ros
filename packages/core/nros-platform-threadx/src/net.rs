@@ -438,7 +438,11 @@ impl ThreadxPlatform {
         // poll style — Phase 71.2) we use the smallest representable
         // timeout instead. 1 ms costs at most one extra tick of latency
         // per failed read.
-        let tv_ms: INT = if timeout_ms == 0 { 1 } else { timeout_ms as INT };
+        let tv_ms: INT = if timeout_ms == 0 {
+            1
+        } else {
+            timeout_ms as INT
+        };
         unsafe {
             nx_bsd_setsockopt(
                 sock._fd,

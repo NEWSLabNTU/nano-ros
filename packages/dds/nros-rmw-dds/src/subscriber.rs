@@ -15,8 +15,7 @@ pub struct DdsSubscriber {
     #[cfg(feature = "std")]
     reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-    reader_async:
-        dust_dds::dds_async::data_reader::DataReaderAsync<crate::raw_type::RawCdrPayload>,
+    reader_async: dust_dds::dds_async::data_reader::DataReaderAsync<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
 }

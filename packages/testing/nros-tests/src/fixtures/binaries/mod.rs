@@ -1948,12 +1948,7 @@ pub fn build_dds_service_client() -> TestResult<&'static Path> {
 pub fn build_dds_action_server() -> TestResult<&'static Path> {
     DDS_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/dds/action-server",
-                "action-server",
-                None,
-                None,
-            )
+            build_example("native/rust/dds/action-server", "action-server", None, None)
         })
         .map(|p| p.as_path())
 }
@@ -1961,12 +1956,7 @@ pub fn build_dds_action_server() -> TestResult<&'static Path> {
 pub fn build_dds_action_client() -> TestResult<&'static Path> {
     DDS_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/dds/action-client",
-                "action-client",
-                None,
-                None,
-            )
+            build_example("native/rust/dds/action-client", "action-client", None, None)
         })
         .map(|p| p.as_path())
 }

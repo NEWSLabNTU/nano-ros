@@ -529,9 +529,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
     /// Poll the in-flight server-discovery probe started by
     /// [`start_server_discovery`](Self::start_server_discovery).
-    pub fn poll_server_discovery(
-        &mut self,
-    ) -> Result<Option<bool>, nros_rmw::TransportError> {
+    pub fn poll_server_discovery(&mut self) -> Result<Option<bool>, nros_rmw::TransportError> {
         use nros_rmw::ServiceClientTrait;
         self.send_goal_client.poll_server_discovery()
     }

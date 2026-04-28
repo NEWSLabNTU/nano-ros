@@ -11,9 +11,7 @@ use nros_platform::{
 // gated too — otherwise the compiler warns on unused imports when
 // `network` is disabled.
 #[cfg(feature = "network")]
-use nros_platform::{
-    PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
-};
+use nros_platform::{PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast};
 
 type P = ConcretePlatform;
 

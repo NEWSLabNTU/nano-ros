@@ -517,12 +517,8 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => {
             "build-xrce-rs-service-client"
         }
-        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => {
-            "build-xrce-rs-action-server"
-        }
-        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => {
-            "build-xrce-rs-action-client"
-        }
+        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => "build-xrce-rs-action-server",
+        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => "build-xrce-rs-action-client",
         "zephyr-xrce-c-talker" | "xrce-c-talker" => "build-xrce-c-talker",
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "build-xrce-c-listener",
         // Phase 95.C — XRCE C++ talker/listener/svc/action coverage
@@ -570,18 +566,10 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         "zephyr-dds-rs-talker" | "dds-rs-talker" => "build-dds-rs-talker",
         "zephyr-dds-rs-listener" | "dds-rs-listener" => "build-dds-rs-listener",
         // Phase 95.B — DDS Rust svc + action + async-svc on native_sim
-        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => {
-            "build-dds-rs-service-server"
-        }
-        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => {
-            "build-dds-rs-service-client"
-        }
-        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => {
-            "build-dds-rs-action-server"
-        }
-        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
-            "build-dds-rs-action-client"
-        }
+        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => "build-dds-rs-service-server",
+        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => "build-dds-rs-service-client",
+        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => "build-dds-rs-action-server",
+        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => "build-dds-rs-action-client",
         "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
             "build-dds-rs-async-service-client"
         }
@@ -655,9 +643,7 @@ fn example_path_for_name(example_name: &str) -> String {
         "zephyr-xrce-c-listener" | "xrce-c-listener" => "zephyr/c/xrce/listener".to_string(),
         // Phase 95.C — XRCE C++ examples
         "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => "zephyr/cpp/xrce/talker".to_string(),
-        "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => {
-            "zephyr/cpp/xrce/listener".to_string()
-        }
+        "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => "zephyr/cpp/xrce/listener".to_string(),
         "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => {
             "zephyr/cpp/xrce/service-server".to_string()
         }
@@ -671,9 +657,7 @@ fn example_path_for_name(example_name: &str) -> String {
             "zephyr/cpp/xrce/action-client".to_string()
         }
         // Phase 95.D — DDS C++ (native_sim + qemu_cortex_a9 — same source dir)
-        "zephyr-dds-cpp-talker" | "zephyr-dds-cpp-talker-a9" => {
-            "zephyr/cpp/dds/talker".to_string()
-        }
+        "zephyr-dds-cpp-talker" | "zephyr-dds-cpp-talker-a9" => "zephyr/cpp/dds/talker".to_string(),
         "zephyr-dds-cpp-listener" | "zephyr-dds-cpp-listener-a9" => {
             "zephyr/cpp/dds/listener".to_string()
         }
@@ -690,12 +674,8 @@ fn example_path_for_name(example_name: &str) -> String {
             "zephyr/cpp/dds/action-client".to_string()
         }
         // Phase 95.E — DDS C (native_sim + qemu_cortex_a9 — same source dir)
-        "zephyr-dds-c-talker" | "zephyr-dds-c-talker-a9" => {
-            "zephyr/c/dds/talker".to_string()
-        }
-        "zephyr-dds-c-listener" | "zephyr-dds-c-listener-a9" => {
-            "zephyr/c/dds/listener".to_string()
-        }
+        "zephyr-dds-c-talker" | "zephyr-dds-c-talker-a9" => "zephyr/c/dds/talker".to_string(),
+        "zephyr-dds-c-listener" | "zephyr-dds-c-listener-a9" => "zephyr/c/dds/listener".to_string(),
         "zephyr-dds-c-service-server" | "zephyr-dds-c-service-server-a9" => {
             "zephyr/c/dds/service-server".to_string()
         }

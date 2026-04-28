@@ -66,7 +66,9 @@ fn create_participant_via_cooperative_runtime() {
             None::<NoListener>,
             NO_STATUS,
         ))
-        .expect("create_participant should succeed via NrosPlatformRuntime + NrosUdpTransportFactory");
+        .expect(
+            "create_participant should succeed via NrosPlatformRuntime + NrosUdpTransportFactory",
+        );
 
     // Smoke check: the participant has the domain id we asked for.
     assert_eq!(participant.get_domain_id(), domain_id);

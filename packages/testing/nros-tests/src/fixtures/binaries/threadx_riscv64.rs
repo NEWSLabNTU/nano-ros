@@ -216,7 +216,11 @@ pub fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
 pub fn build_rv64_cpp_service_server() -> TestResult<&'static Path> {
     RV64_CPP_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-server", "riscv64_threadx_cpp_service_server")
+            build_cmake_example(
+                "cpp",
+                "service-server",
+                "riscv64_threadx_cpp_service_server",
+            )
         })
         .map(|p| p.as_path())
 }
@@ -224,7 +228,11 @@ pub fn build_rv64_cpp_service_server() -> TestResult<&'static Path> {
 pub fn build_rv64_cpp_service_client() -> TestResult<&'static Path> {
     RV64_CPP_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-client", "riscv64_threadx_cpp_service_client")
+            build_cmake_example(
+                "cpp",
+                "service-client",
+                "riscv64_threadx_cpp_service_client",
+            )
         })
         .map(|p| p.as_path())
 }

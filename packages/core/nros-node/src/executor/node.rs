@@ -137,8 +137,13 @@ impl<'a> Node<'a> {
         qos: QosSettings,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
         let topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            topic_name, M::TYPE_NAME, M::TYPE_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            topic_name,
+            M::TYPE_NAME,
+            M::TYPE_HASH,
+        );
         let handle = self
             .session
             .create_publisher(&topic, qos)
@@ -172,8 +177,13 @@ impl<'a> Node<'a> {
         qos: QosSettings,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
         let topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            topic_name, type_name, type_hash);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            topic_name,
+            type_name,
+            type_hash,
+        );
         let handle = self
             .session
             .create_publisher(&topic, qos)
@@ -209,8 +219,13 @@ impl<'a> Node<'a> {
         qos: QosSettings,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
         let topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            topic_name, M::TYPE_NAME, M::TYPE_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            topic_name,
+            M::TYPE_NAME,
+            M::TYPE_HASH,
+        );
         let handle = self
             .session
             .create_subscriber(&topic, qos)
@@ -242,8 +257,13 @@ impl<'a> Node<'a> {
         type_hash: &str,
     ) -> Result<crate::executor::handles::RawSubscription<RX_BUF>, NodeError> {
         let topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            topic_name, type_name, type_hash);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            topic_name,
+            type_name,
+            type_hash,
+        );
         let handle = self
             .session
             .create_subscriber(&topic, QosSettings::default())
@@ -270,8 +290,13 @@ impl<'a> Node<'a> {
         service_name: &str,
     ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            service_name,
+            Svc::SERVICE_NAME,
+            Svc::SERVICE_HASH,
+        );
         let handle = self
             .session
             .create_service_server(&info)
@@ -298,8 +323,13 @@ impl<'a> Node<'a> {
         service_name: &str,
     ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            service_name,
+            Svc::SERVICE_NAME,
+            Svc::SERVICE_HASH,
+        );
         let handle = self
             .session
             .create_service_client(&info)
@@ -334,8 +364,8 @@ impl<'a> Node<'a> {
         &mut self,
         action_name: &str,
     ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError> {
-        let action_info = Self::action_info(
-            self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
+        let action_info =
+            Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
         // Each underlying ServiceInfo / TopicInfo also carries the
         // node identity so the Zenoh shim declares a liveliness token
@@ -344,8 +374,13 @@ impl<'a> Node<'a> {
         // → None) and `wait_for_action_server` has nothing to find.
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            &send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &send_goal_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info)
@@ -353,10 +388,13 @@ impl<'a> Node<'a> {
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
+            self.domain_id,
+            &self.name,
+            &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH);
+            A::ACTION_HASH,
+        );
         let cancel_goal_server = self
             .session
             .create_service_server(&cancel_goal_info)
@@ -364,8 +402,13 @@ impl<'a> Node<'a> {
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            &get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &get_result_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let get_result_server = self
             .session
             .create_service_server(&get_result_info)
@@ -373,8 +416,13 @@ impl<'a> Node<'a> {
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            &feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &feedback_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
@@ -382,10 +430,13 @@ impl<'a> Node<'a> {
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
         let status_topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
+            self.domain_id,
+            &self.name,
+            &self.namespace,
             &status_keyexpr,
             "action_msgs::msg::dds_::GoalStatusArray_",
-            A::ACTION_HASH);
+            A::ACTION_HASH,
+        );
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
@@ -429,8 +480,8 @@ impl<'a> Node<'a> {
         &mut self,
         action_name: &str,
     ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError> {
-        let action_info = Self::action_info(
-            self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
+        let action_info =
+            Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
         // Mirror `create_action_server_sized`: thread node identity through
         // each underlying ServiceInfo / TopicInfo so the Zenoh shim
@@ -439,8 +490,13 @@ impl<'a> Node<'a> {
         // same domain as the server's tokens).
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            &send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &send_goal_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let send_goal_client = self
             .session
             .create_service_client(&send_goal_info)
@@ -448,10 +504,13 @@ impl<'a> Node<'a> {
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
+            self.domain_id,
+            &self.name,
+            &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH);
+            A::ACTION_HASH,
+        );
         let cancel_goal_client = self
             .session
             .create_service_client(&cancel_goal_info)
@@ -459,8 +518,13 @@ impl<'a> Node<'a> {
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info = Self::service_info(
-            self.domain_id, &self.name, &self.namespace,
-            &get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &get_result_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let get_result_client = self
             .session
             .create_service_client(&get_result_info)
@@ -468,8 +532,13 @@ impl<'a> Node<'a> {
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic = Self::topic_info(
-            self.domain_id, &self.name, &self.namespace,
-            &feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH);
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &feedback_keyexpr,
+            A::ACTION_NAME,
+            A::ACTION_HASH,
+        );
         let feedback_subscriber = self
             .session
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)

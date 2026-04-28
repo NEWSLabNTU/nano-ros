@@ -78,9 +78,10 @@ fn test_zephyr_talker_to_listener_e2e() {
     }
 
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!(
         "zenohd started on port {}",
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
@@ -227,9 +228,10 @@ fn test_zephyr_to_native_e2e() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     // Give zenohd time to start
@@ -253,7 +255,8 @@ fn test_zephyr_to_native_e2e() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -326,9 +329,10 @@ fn test_native_to_zephyr_e2e() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     // Give zenohd time to start
@@ -360,7 +364,8 @@ fn test_native_to_zephyr_e2e() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -432,9 +437,10 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -462,7 +468,8 @@ fn test_bidirectional_native_zephyr_e2e() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -488,7 +495,8 @@ fn test_bidirectional_native_zephyr_e2e() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -835,9 +843,10 @@ fn test_zephyr_action_e2e() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!(
         "zenohd started on port {}",
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust)
@@ -1101,9 +1110,10 @@ fn test_native_server_zephyr_client() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -1126,7 +1136,8 @@ fn test_native_server_zephyr_client() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -1580,8 +1591,7 @@ fn test_zephyr_xrce_rust_action_e2e() {
     let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE action server");
 
-    let server_ready =
-        server.wait_for_pattern("Action server ready", Duration::from_secs(30));
+    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(30));
     if !server_ready.contains("Action server ready") {
         panic!(
             "Zephyr XRCE action server didn't reach readiness within 30s.\nOutput:\n{}",
@@ -1595,8 +1605,7 @@ fn test_zephyr_xrce_rust_action_e2e() {
     let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE action client");
 
-    let client_output =
-        client.wait_for_pattern("Action client finished", Duration::from_secs(60));
+    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(60));
     let server_output = server
         .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
@@ -1607,11 +1616,11 @@ fn test_zephyr_xrce_rust_action_e2e() {
     eprintln!("\n=== XRCE action server output ===\n{}", server_output);
     eprintln!("\n=== XRCE action client output ===\n{}", client_output);
 
-    let server_received_goal = server_output.contains("Goal request")
-        || server_output.contains("Executing goal");
+    let server_received_goal =
+        server_output.contains("Goal request") || server_output.contains("Executing goal");
     let client_got_feedback = client_output.contains("Feedback #");
-    let client_completed = client_output.contains("Action client finished")
-        || client_output.contains("Result:");
+    let client_completed =
+        client_output.contains("Action client finished") || client_output.contains("Result:");
 
     if client_completed && client_got_feedback {
         eprintln!("\nSUCCESS: XRCE action client received feedback and completed");
@@ -1644,7 +1653,9 @@ fn test_zephyr_xrce_rust_action_e2e() {
 
 #[test]
 fn test_zephyr_xrce_cpp_talker_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_talker_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce talker");
@@ -1657,7 +1668,9 @@ fn test_zephyr_xrce_cpp_talker_boots() {
 
 #[test]
 fn test_zephyr_xrce_cpp_listener_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_listener_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce listener");
@@ -1670,7 +1683,9 @@ fn test_zephyr_xrce_cpp_listener_boots() {
 
 #[test]
 fn test_zephyr_xrce_cpp_service_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_service_server_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce service server");
@@ -1683,7 +1698,9 @@ fn test_zephyr_xrce_cpp_service_server_boots() {
 
 #[test]
 fn test_zephyr_xrce_cpp_service_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_service_client_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce service client");
@@ -1696,7 +1713,9 @@ fn test_zephyr_xrce_cpp_service_client_boots() {
 
 #[test]
 fn test_zephyr_xrce_cpp_action_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_action_server_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action server");
@@ -1709,7 +1728,9 @@ fn test_zephyr_xrce_cpp_action_server_boots() {
 
 #[test]
 fn test_zephyr_xrce_cpp_action_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_zephyr_xrce_cpp_action_client_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action client");
@@ -1726,9 +1747,12 @@ fn test_zephyr_xrce_cpp_action_client_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_talker_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-talker binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin =
+        get_or_build_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim, false)
+            .expect("Failed to get zephyr-dds-cpp-talker binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds talker");
     let out = p.wait_for_pattern("nros Zephyr C++ Talker", Duration::from_secs(10));
@@ -1740,9 +1764,12 @@ fn test_zephyr_dds_cpp_talker_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_listener_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-listener binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin =
+        get_or_build_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim, false)
+            .expect("Failed to get zephyr-dds-cpp-listener binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds listener");
     let out = p.wait_for_pattern("nros Zephyr C++ Listener", Duration::from_secs(10));
@@ -1754,9 +1781,15 @@ fn test_zephyr_dds_cpp_listener_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_service_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-service-server", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-service-server binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-service-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-service-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service server");
     let out = p.wait_for_pattern("nros Zephyr C++ Service Server", Duration::from_secs(10));
@@ -1768,9 +1801,15 @@ fn test_zephyr_dds_cpp_service_server_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_service_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-service-client", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-service-client binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-service-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-service-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service client");
     let out = p.wait_for_pattern("nros Zephyr C++ Service Client", Duration::from_secs(10));
@@ -1782,9 +1821,15 @@ fn test_zephyr_dds_cpp_service_client_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_action_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-action-server", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-action-server binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-action-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action server");
     let out = p.wait_for_pattern("nros Zephyr C++ Action Server", Duration::from_secs(10));
@@ -1796,9 +1841,15 @@ fn test_zephyr_dds_cpp_action_server_boots() {
 
 #[test]
 fn test_zephyr_dds_cpp_action_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-cpp-action-client", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-cpp-action-client binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-action-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action client");
     let out = p.wait_for_pattern("nros Zephyr C++ Action Client", Duration::from_secs(10));
@@ -1814,7 +1865,9 @@ fn test_zephyr_dds_cpp_action_client_boots() {
 
 #[test]
 fn test_zephyr_dds_c_talker_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
     let bin = get_or_build_zephyr_example("zephyr-dds-c-talker", ZephyrPlatform::NativeSim, false)
         .expect("Failed to get zephyr-dds-c-talker binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
@@ -1828,9 +1881,12 @@ fn test_zephyr_dds_c_talker_boots() {
 
 #[test]
 fn test_zephyr_dds_c_listener_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-c-listener binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin =
+        get_or_build_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim, false)
+            .expect("Failed to get zephyr-dds-c-listener binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds listener");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -1842,9 +1898,15 @@ fn test_zephyr_dds_c_listener_boots() {
 
 #[test]
 fn test_zephyr_dds_c_service_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-service-server", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-c-service-server binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-service-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-service-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds service server");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -1856,9 +1918,15 @@ fn test_zephyr_dds_c_service_server_boots() {
 
 #[test]
 fn test_zephyr_dds_c_service_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-service-client", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-c-service-client binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-service-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-service-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds service client");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -1870,9 +1938,15 @@ fn test_zephyr_dds_c_service_client_boots() {
 
 #[test]
 fn test_zephyr_dds_c_action_server_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-action-server", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-c-action-server binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-action-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action server");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -1884,9 +1958,15 @@ fn test_zephyr_dds_c_action_server_boots() {
 
 #[test]
 fn test_zephyr_dds_c_action_client_boots() {
-    if !require_zephyr() { nros_tests::skip!("Zephyr not available"); }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-action-client", ZephyrPlatform::NativeSim, false)
-        .expect("Failed to get zephyr-dds-c-action-client binary");
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-action-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action client");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -1990,10 +2070,13 @@ fn test_zephyr_xrce_cpp_talker_listener() {
     eprintln!("=== cpp/xrce talker output ===\n{}", talker_output);
     eprintln!("=== cpp/xrce listener output ===\n{}", listener_output);
 
-    let listener_received = listener_output.contains("Received") || listener_output.contains("data=");
+    let listener_received =
+        listener_output.contains("Received") || listener_output.contains("data=");
     if !listener_received {
-        panic!("cpp/xrce listener didn't receive any messages.\nTalker:\n{}\nListener:\n{}",
-            talker_output, listener_output);
+        panic!(
+            "cpp/xrce listener didn't receive any messages.\nTalker:\n{}\nListener:\n{}",
+            talker_output, listener_output
+        );
     }
     let count = count_pattern(&listener_output, "Received");
     eprintln!("SUCCESS: cpp/xrce listener got {} messages", count);
@@ -2042,11 +2125,15 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     let ok_count = count_pattern(&client_output, "[OK]");
     let request_count = count_pattern(&server_output, "Request");
     if ok_count >= 1 || client_output.contains("sum=") {
-        eprintln!("SUCCESS: cpp/xrce service got {} responses, {} requests handled",
-            ok_count, request_count);
+        eprintln!(
+            "SUCCESS: cpp/xrce service got {} responses, {} requests handled",
+            ok_count, request_count
+        );
     } else {
-        panic!("cpp/xrce service E2E failed (client OK={}, server requests={}).\nClient:\n{}\nServer:\n{}",
-            ok_count, request_count, client_output, server_output);
+        panic!(
+            "cpp/xrce service E2E failed (client OK={}, server requests={}).\nClient:\n{}\nServer:\n{}",
+            ok_count, request_count, client_output, server_output
+        );
     }
 }
 
@@ -2094,8 +2181,10 @@ fn test_zephyr_xrce_cpp_action_e2e() {
     if feedback >= 1 && completed {
         eprintln!("SUCCESS: cpp/xrce action got {} feedback frames", feedback);
     } else {
-        panic!("cpp/xrce action E2E failed (feedback={}, completed={}).\nClient:\n{}\nServer:\n{}",
-            feedback, completed, client_output, server_output);
+        panic!(
+            "cpp/xrce action E2E failed (feedback={}, completed={}).\nClient:\n{}\nServer:\n{}",
+            feedback, completed, client_output, server_output
+        );
     }
 }
 
@@ -2114,9 +2203,10 @@ fn test_zephyr_server_native_client() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
     std::thread::sleep(Duration::from_millis(500));
@@ -2147,7 +2237,8 @@ fn test_zephyr_server_native_client() {
             "NROS_LOCATOR",
             format!(
                 "tcp/127.0.0.1:{}",
-                platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
+                platform::ZEPHYR
+                    .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
             ),
         )
         .env("RUST_LOG", "info");
@@ -2241,9 +2332,10 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     }
 
     eprintln!("Starting zenohd router...");
-    let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
-            .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
+    )
+    .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let talker_binary = get_zephyr_cpp_talker_native_sim();
@@ -2321,9 +2413,10 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
-            .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
+    )
+    .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     // Build native Rust listener
@@ -2344,7 +2437,8 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         "NROS_LOCATOR",
         format!(
             "tcp/127.0.0.1:{}",
-            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
+            platform::ZEPHYR
+                .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
         ),
     );
     listener_cmd.env("RUST_LOG", "info");
@@ -2397,9 +2491,10 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp))
-            .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
+    )
+    .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     // Build native Rust talker
@@ -2434,7 +2529,8 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         "NROS_LOCATOR",
         format!(
             "tcp/127.0.0.1:{}",
-            platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
+            platform::ZEPHYR
+                .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp)
         ),
     );
     talker_cmd.env("RUST_LOG", "info");
@@ -2506,9 +2602,10 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
     }
 
     eprintln!("Starting zenohd router...");
-    let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Cpp))
-            .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Cpp),
+    )
+    .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_cpp_service_server_native_sim();
@@ -2592,9 +2689,10 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
     }
 
     eprintln!("Starting zenohd router...");
-    let _router =
-        ZenohRouter::start(platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Cpp))
-            .expect("Failed to start zenohd");
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Cpp),
+    )
+    .expect("Failed to start zenohd");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_cpp_action_server_native_sim();
@@ -2824,15 +2922,11 @@ fn test_zephyr_dds_rust_talker_to_listener_a9_e2e() {
     eprintln!("mcast group/port = {mcast}");
 
     // Listener first so it's ready to receive when the talker boots.
-    let mut listener = ZephyrProcess::start_qemu_a9_mcast(
-        &listener_bin,
-        &mcast,
-        "02:00:00:00:00:02",
-    )
-    .expect("Failed to start qemu_cortex_a9 listener");
+    let mut listener =
+        ZephyrProcess::start_qemu_a9_mcast(&listener_bin, &mcast, "02:00:00:00:00:02")
+            .expect("Failed to start qemu_cortex_a9 listener");
 
-    let listener_ready =
-        listener.wait_for_pattern("Waiting for messages", Duration::from_secs(20));
+    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(20));
     if !listener_ready.contains("Waiting for messages") {
         let _ = listener.kill();
         panic!(
@@ -2842,30 +2936,38 @@ fn test_zephyr_dds_rust_talker_to_listener_a9_e2e() {
         );
     }
 
-    let mut talker = ZephyrProcess::start_qemu_a9_mcast(
-        &talker_bin,
-        &mcast,
-        "02:00:00:00:00:01",
-    )
-    .expect("Failed to start qemu_cortex_a9 talker");
+    let mut talker = ZephyrProcess::start_qemu_a9_mcast(&talker_bin, &mcast, "02:00:00:00:00:01")
+        .expect("Failed to start qemu_cortex_a9 talker");
 
     // 30 s wall-clock is generous — actual sim-time discovery takes
     // a couple of seconds, then the listener's recv burst is
     // immediate. If we don't see Received: 5 by then, something
     // regressed.
-    let listener_out =
-        listener.wait_for_pattern("Received: 5", Duration::from_secs(30));
-    let talker_out = talker
-        .wait_for_pattern("Published: 5", Duration::from_secs(5));
+    let listener_out = listener.wait_for_pattern("Received: 5", Duration::from_secs(30));
+    let talker_out = talker.wait_for_pattern("Published: 5", Duration::from_secs(5));
     let _ = talker.kill();
     let _ = listener.kill();
 
     eprintln!("\n=== Talker tail ===");
-    for line in talker_out.lines().rev().take(5).collect::<Vec<_>>().iter().rev() {
+    for line in talker_out
+        .lines()
+        .rev()
+        .take(5)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== Listener tail ===");
-    for line in listener_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+    for line in listener_out
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -2878,7 +2980,12 @@ fn test_zephyr_dds_rust_talker_to_listener_a9_e2e() {
              nros-rmw-dds/transport_nros.rs for the mcast-fd routing \
              and Zephyr ARP/MAC plumbing.\n\
              Listener tail:\n{}",
-            listener_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+            listener_out
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
@@ -3020,8 +3127,7 @@ fn test_zephyr_dds_rust_async_service_client_boots() {
     let bin = get_zephyr_dds_async_service_client_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start dds async service client");
-    let out =
-        p.wait_for_pattern("Async service client ready", Duration::from_secs(15));
+    let out = p.wait_for_pattern("Async service client ready", Duration::from_secs(15));
     let _ = p.kill();
     eprintln!("\n=== Output ===\n{}", out);
     if !out.contains("Async service client ready") {
@@ -3099,17 +3205,10 @@ fn test_zephyr_dds_rust_service_a9_e2e() {
 
     // Server first so its queryable is registered before the client
     // starts probing the SEDP topology.
-    let mut server = ZephyrProcess::start_qemu_a9_mcast(
-        &server_bin,
-        &mcast,
-        "02:00:00:00:00:10",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds service server");
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(&server_bin, &mcast, "02:00:00:00:00:10")
+        .expect("Failed to start qemu_cortex_a9 dds service server");
 
-    let server_ready = server.wait_for_pattern(
-        "Service server ready",
-        Duration::from_secs(20),
-    );
+    let server_ready = server.wait_for_pattern("Service server ready", Duration::from_secs(20));
     if !server_ready.contains("Service server ready") {
         let _ = server.kill();
         panic!(
@@ -3119,12 +3218,8 @@ fn test_zephyr_dds_rust_service_a9_e2e() {
         );
     }
 
-    let mut client = ZephyrProcess::start_qemu_a9_mcast(
-        &client_bin,
-        &mcast,
-        "02:00:00:00:00:11",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds service client");
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(&client_bin, &mcast, "02:00:00:00:00:11")
+        .expect("Failed to start qemu_cortex_a9 dds service client");
 
     let client_out = client.wait_for_pattern("Response: sum=", Duration::from_secs(90));
     let server_out = server
@@ -3134,11 +3229,25 @@ fn test_zephyr_dds_rust_service_a9_e2e() {
     let _ = server.kill();
 
     eprintln!("\n=== DDS service server tail ===");
-    for line in server_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+    for line in server_out
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== DDS service client tail ===");
-    for line in client_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+    for line in client_out
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -3148,7 +3257,12 @@ fn test_zephyr_dds_rust_service_a9_e2e() {
              RTPS request/reply discovery regression. SPDP+SEDP needs \
              both sides on the same domain ID and reachable via the \
              mcast netdev.\nClient tail:\n{}",
-            client_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+            client_out
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
@@ -3174,17 +3288,10 @@ fn test_zephyr_dds_rust_action_a9_e2e() {
     let mcast = pick_mcast_addr_port();
     eprintln!("mcast group/port = {mcast}");
 
-    let mut server = ZephyrProcess::start_qemu_a9_mcast(
-        &server_bin,
-        &mcast,
-        "02:00:00:00:00:20",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds action server");
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(&server_bin, &mcast, "02:00:00:00:00:20")
+        .expect("Failed to start qemu_cortex_a9 dds action server");
 
-    let server_ready = server.wait_for_pattern(
-        "Action server ready",
-        Duration::from_secs(30),
-    );
+    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(30));
     if !server_ready.contains("Action server ready") {
         let _ = server.kill();
         panic!(
@@ -3194,15 +3301,10 @@ fn test_zephyr_dds_rust_action_a9_e2e() {
         );
     }
 
-    let mut client = ZephyrProcess::start_qemu_a9_mcast(
-        &client_bin,
-        &mcast,
-        "02:00:00:00:00:21",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds action client");
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(&client_bin, &mcast, "02:00:00:00:00:21")
+        .expect("Failed to start qemu_cortex_a9 dds action client");
 
-    let client_out =
-        client.wait_for_pattern("Action client finished", Duration::from_secs(60));
+    let client_out = client.wait_for_pattern("Action client finished", Duration::from_secs(60));
     let server_out = server
         .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
@@ -3210,16 +3312,30 @@ fn test_zephyr_dds_rust_action_a9_e2e() {
     let _ = server.kill();
 
     eprintln!("\n=== DDS action server tail ===");
-    for line in server_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+    for line in server_out
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== DDS action client tail ===");
-    for line in client_out.lines().rev().take(8).collect::<Vec<_>>().iter().rev() {
+    for line in client_out
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
-    let server_received_goal = server_out.contains("Goal request")
-        || server_out.contains("Executing goal");
+    let server_received_goal =
+        server_out.contains("Goal request") || server_out.contains("Executing goal");
     let client_got_feedback = client_out.contains("Feedback #");
     let client_completed = client_out.contains("Action client finished");
 
@@ -3253,17 +3369,10 @@ fn test_zephyr_dds_rust_async_service_a9_e2e() {
     let mcast = pick_mcast_addr_port();
     eprintln!("mcast group/port = {mcast}");
 
-    let mut server = ZephyrProcess::start_qemu_a9_mcast(
-        &server_bin,
-        &mcast,
-        "02:00:00:00:00:10",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds service server");
+    let mut server = ZephyrProcess::start_qemu_a9_mcast(&server_bin, &mcast, "02:00:00:00:00:10")
+        .expect("Failed to start qemu_cortex_a9 dds service server");
 
-    let server_ready = server.wait_for_pattern(
-        "Service server ready",
-        Duration::from_secs(20),
-    );
+    let server_ready = server.wait_for_pattern("Service server ready", Duration::from_secs(20));
     if !server_ready.contains("Service server ready") {
         let _ = server.kill();
         panic!(
@@ -3273,22 +3382,23 @@ fn test_zephyr_dds_rust_async_service_a9_e2e() {
         );
     }
 
-    let mut client = ZephyrProcess::start_qemu_a9_mcast(
-        &client_bin,
-        &mcast,
-        "02:00:00:00:00:31",
-    )
-    .expect("Failed to start qemu_cortex_a9 dds async service client");
+    let mut client = ZephyrProcess::start_qemu_a9_mcast(&client_bin, &mcast, "02:00:00:00:00:31")
+        .expect("Failed to start qemu_cortex_a9 dds async service client");
 
-    let client_out = client.wait_for_pattern(
-        "All async service calls completed",
-        Duration::from_secs(60),
-    );
+    let client_out =
+        client.wait_for_pattern("All async service calls completed", Duration::from_secs(60));
     let _ = client.kill();
     let _ = server.kill();
 
     eprintln!("\n=== DDS async service client tail ===");
-    for line in client_out.lines().rev().take(10).collect::<Vec<_>>().iter().rev() {
+    for line in client_out
+        .lines()
+        .rev()
+        .take(10)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -3297,7 +3407,12 @@ fn test_zephyr_dds_rust_async_service_a9_e2e() {
             "qemu_cortex_a9 dds async service client didn't complete \
              all four calls — Embassy spin_async() didn't drive the DDS \
              RTPS request/reply path to completion.\nClient tail:\n{}",
-            client_out.lines().rev().take(20).collect::<Vec<_>>().join("\n")
+            client_out
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }

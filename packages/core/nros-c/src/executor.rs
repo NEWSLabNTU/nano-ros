@@ -37,7 +37,12 @@ use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 pub(crate) type CExecutor = nros_node::Executor;
 
 // Compile-time assertion: inline opaque storage must fit the concrete Executor.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-dds"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-dds"
+))]
 const _: () = assert!(
     core::mem::size_of::<CExecutor>() <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
     "EXECUTOR_OPAQUE_U64S too small for Executor — increase NROS_EXECUTOR_ARENA_SIZE \

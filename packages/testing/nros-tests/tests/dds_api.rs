@@ -261,27 +261,51 @@ use nros_tests::fixtures::{
 };
 
 #[test]
-fn test_dds_c_talker_builds() { build_dds_c_talker().expect("c-dds-talker build"); }
+fn test_dds_c_talker_builds() {
+    build_dds_c_talker().expect("c-dds-talker build");
+}
 #[test]
-fn test_dds_c_listener_builds() { build_dds_c_listener().expect("c-dds-listener build"); }
+fn test_dds_c_listener_builds() {
+    build_dds_c_listener().expect("c-dds-listener build");
+}
 #[test]
-fn test_dds_c_service_server_builds() { build_dds_c_service_server().expect("c-dds-service-server build"); }
+fn test_dds_c_service_server_builds() {
+    build_dds_c_service_server().expect("c-dds-service-server build");
+}
 #[test]
-fn test_dds_c_service_client_builds() { build_dds_c_service_client().expect("c-dds-service-client build"); }
+fn test_dds_c_service_client_builds() {
+    build_dds_c_service_client().expect("c-dds-service-client build");
+}
 #[test]
-fn test_dds_c_action_server_builds() { build_dds_c_action_server().expect("c-dds-action-server build"); }
+fn test_dds_c_action_server_builds() {
+    build_dds_c_action_server().expect("c-dds-action-server build");
+}
 #[test]
-fn test_dds_c_action_client_builds() { build_dds_c_action_client().expect("c-dds-action-client build"); }
+fn test_dds_c_action_client_builds() {
+    build_dds_c_action_client().expect("c-dds-action-client build");
+}
 
 #[test]
-fn test_dds_cpp_talker_builds() { build_dds_cpp_talker().expect("cpp-dds-talker build"); }
+fn test_dds_cpp_talker_builds() {
+    build_dds_cpp_talker().expect("cpp-dds-talker build");
+}
 #[test]
-fn test_dds_cpp_listener_builds() { build_dds_cpp_listener().expect("cpp-dds-listener build"); }
+fn test_dds_cpp_listener_builds() {
+    build_dds_cpp_listener().expect("cpp-dds-listener build");
+}
 #[test]
-fn test_dds_cpp_service_server_builds() { build_dds_cpp_service_server().expect("cpp-dds-service-server build"); }
+fn test_dds_cpp_service_server_builds() {
+    build_dds_cpp_service_server().expect("cpp-dds-service-server build");
+}
 #[test]
-fn test_dds_cpp_service_client_builds() { build_dds_cpp_service_client().expect("cpp-dds-service-client build"); }
+fn test_dds_cpp_service_client_builds() {
+    build_dds_cpp_service_client().expect("cpp-dds-service-client build");
+}
 #[test]
-fn test_dds_cpp_action_server_builds() { build_dds_cpp_action_server().expect("cpp-dds-action-server build"); }
+fn test_dds_cpp_action_server_builds() {
+    build_dds_cpp_action_server().expect("cpp-dds-action-server build");
+}
 #[test]
-fn test_dds_cpp_action_client_builds() { build_dds_cpp_action_client().expect("cpp-dds-action-client build"); }
+fn test_dds_cpp_action_client_builds() {
+    build_dds_cpp_action_client().expect("cpp-dds-action-client build");
+}

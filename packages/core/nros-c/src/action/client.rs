@@ -169,17 +169,14 @@ pub unsafe extern "C" fn nros_action_client_init(
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy action name (required — empty rejected)
-    client.action_name_len =
-        crate::util::copy_cstr_into(action_name, &mut client.action_name);
+    client.action_name_len = crate::util::copy_cstr_into(action_name, &mut client.action_name);
     if client.action_name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
-    client.type_name_len =
-        crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
-    client.type_hash_len =
-        crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
+    client.type_name_len = crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
+    client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer
     client.node = node;

@@ -107,8 +107,7 @@ fn port_default_unicast(domain_id: u32, participant_id: u32) -> u16 {
 
 /// SPDP multicast group `239.255.0.1` as a `[u8; 16]` IPv6-mapped
 /// representation matching dust-dds's `Locator::address` shape.
-const SPDP_MULTICAST_ADDRESS: [u8; 16] =
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 239, 255, 0, 1];
+const SPDP_MULTICAST_ADDRESS: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 239, 255, 0, 1];
 
 /// Local interface IPv4 advertised in SPDP unicast locators. Set at
 /// build time via the `NROS_LOCAL_IPV4` env var (default `127.0.0.1`,
@@ -148,7 +147,6 @@ fn ipv4_locator(addr: [u8; 4], port: u32) -> Locator {
     full[12..16].copy_from_slice(&addr);
     Locator::new(LOCATOR_KIND_UDP_V4, port, full)
 }
-
 
 // ---------------------------------------------------------------------------
 // Opaque buffers
@@ -213,10 +211,7 @@ fn locator_address_cstring(loc: &Locator) -> Option<Vec<u8>> {
         return None;
     }
     let a = loc.address();
-    Some(
-        format!("{}.{}.{}.{}\0", a[12], a[13], a[14], a[15])
-            .into_bytes(),
-    )
+    Some(format!("{}.{}.{}.{}\0", a[12], a[13], a[14], a[15]).into_bytes())
 }
 
 fn port_cstring(port: u32) -> Vec<u8> {
@@ -299,11 +294,8 @@ where
             };
             let port = port_cstring(loc.port());
             let mut ep = OpaqueEndpoint::new();
-            let rc = <P as PlatformUdp>::create_endpoint(
-                ep.as_mut_ptr(),
-                addr.as_ptr(),
-                port.as_ptr(),
-            );
+            let rc =
+                <P as PlatformUdp>::create_endpoint(ep.as_mut_ptr(), addr.as_ptr(), port.as_ptr());
             if rc < 0 {
                 continue;
             }
@@ -350,10 +342,7 @@ impl YieldOnce {
 impl Future for YieldOnce {
     type Output = ();
 
-    fn poll(
-        mut self: Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<()> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<()> {
         if self.0 {
             core::task::Poll::Ready(())
         } else {
@@ -503,8 +492,7 @@ fn bind_multicast<P: PlatformUdpMulticast + PlatformUdp + 'static>(
     let local_addr = b"0.0.0.0\0".as_ptr();
     let port_str = port_cstring(port as u32);
     let mut local_ep = OpaqueEndpoint::new();
-    if <P as PlatformUdp>::create_endpoint(local_ep.as_mut_ptr(), local_addr, port_str.as_ptr())
-        < 0
+    if <P as PlatformUdp>::create_endpoint(local_ep.as_mut_ptr(), local_addr, port_str.as_ptr()) < 0
     {
         return None;
     }
@@ -584,10 +572,7 @@ where
             let metatraffic_mc_port = port_metatraffic_multicast(domain);
             let metatraffic_mc_pair = bind_multicast::<P>(metatraffic_mc_port);
             let metatraffic_multicast_locator_list = if metatraffic_mc_pair.is_some() {
-                alloc::vec![ipv4_locator(
-                    [239, 255, 0, 1],
-                    metatraffic_mc_port as u32
-                )]
+                alloc::vec![ipv4_locator([239, 255, 0, 1], metatraffic_mc_port as u32)]
             } else {
                 Vec::new()
             };
@@ -755,7 +740,12 @@ mod tests {
         let mut buf = [0u8; 64];
         let got =
             <ConcretePlatform as PlatformUdp>::read(bound.as_ptr(), buf.as_mut_ptr(), buf.len());
-        assert!(got >= payload.len(), "recv should return at least {} bytes, got {}", payload.len(), got);
+        assert!(
+            got >= payload.len(),
+            "recv should return at least {} bytes, got {}",
+            payload.len(),
+            got
+        );
         assert_eq!(&buf[..payload.len()], payload);
 
         <ConcretePlatform as PlatformUdp>::close(send_sock.as_mut_ptr());

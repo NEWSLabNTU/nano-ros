@@ -15,8 +15,7 @@ pub struct DdsPublisher {
     #[cfg(feature = "std")]
     writer: dust_dds::publication::data_writer::DataWriter<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-    writer_async:
-        dust_dds::dds_async::data_writer::DataWriterAsync<crate::raw_type::RawCdrPayload>,
+    writer_async: dust_dds::dds_async::data_writer::DataWriterAsync<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
 }

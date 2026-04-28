@@ -775,14 +775,17 @@ fn test_qemu_rtic_pubsub_e2e() {
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(
+        platform::BAREMETAL
+            .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
         wait_for_port(
-            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+            platform::BAREMETAL
+                .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
             Duration::from_secs(5)
         ),
         "zenohd not reachable on platform port"
@@ -898,14 +901,17 @@ fn test_qemu_rtic_service_e2e() {
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(
+        platform::BAREMETAL
+            .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
         wait_for_port(
-            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
+            platform::BAREMETAL
+                .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
             Duration::from_secs(5)
         ),
         "zenohd not reachable on platform port"
@@ -971,14 +977,17 @@ fn test_qemu_rtic_action_e2e() {
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust))
-            .expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(
+        platform::BAREMETAL
+            .zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
         wait_for_port(
-            platform::BAREMETAL.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
+            platform::BAREMETAL
+                .zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
             Duration::from_secs(5)
         ),
         "zenohd not reachable on platform port"

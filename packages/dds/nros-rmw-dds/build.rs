@@ -25,7 +25,10 @@ fn main() {
         .unwrap_or_else(|| "127.0.0.1".to_string());
     let octets: Vec<u8> = ip
         .split('.')
-        .map(|s| s.parse::<u8>().expect("NROS_LOCAL_IPV4 must be IPv4 dotted-quad"))
+        .map(|s| {
+            s.parse::<u8>()
+                .expect("NROS_LOCAL_IPV4 must be IPv4 dotted-quad")
+        })
         .collect();
     assert_eq!(
         octets.len(),
