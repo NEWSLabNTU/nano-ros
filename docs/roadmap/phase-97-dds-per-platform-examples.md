@@ -210,36 +210,44 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
 97.2.esp32-qemu.
 
 - [ ] **97.4.zephyr-native_sim** — blocked behind NSOS gap.
-- [~] **97.4.freertos** — qemu-arm-freertos talker↔listener.
-      Build / launch / network-init paths all land green:
+- [x] **97.4.freertos** — qemu-arm-freertos talker↔listener.
+      `test_freertos_dds_rust_talker_to_listener_e2e` passes
+      end-to-end (~83 s) on QEMU MPS2-AN385 + lwIP. Path:
       - Talker + listener crates at
-        `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`,
-        both build clean for `thumbv7m-none-eabi`.
-      - `QemuProcess::start_mps2_an385_mcast` launcher in
-        `nros-tests/src/qemu.rs` brings up two instances on a
-        shared `-netdev socket,mcast=…` segment.
-      - `nros-tests/src/fixtures/binaries/freertos.rs` exposes
-        `build_freertos_dds_{talker,listener}` `OnceCell` caches.
-      - `tests/freertos_qemu_dds.rs` integration test scaffolded.
-      - `just freertos build-fixtures` recipe builds DDS variants
-        alongside zenoh.
+        `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`.
+      - `QemuProcess::start_mps2_an385_mcast` launcher (no
+        `localaddr` — host kernel picks the primary iface so
+        sibling QEMUs deliver each other's mcasts).
+      - `build_freertos_dds_{talker,listener}` fixtures in
+        `nros-tests/src/fixtures/binaries/freertos.rs`.
       - `.config/nextest.toml` routes `freertos_qemu_dds` into the
-        existing `qemu-freertos` test-group with the matching
-        120s slow-timeout + 2 retries.
+        existing `qemu-freertos` test-group (120 s slow-timeout,
+        2 retries).
 
-      **Runtime smoke `#[ignore]`d** pending follow-up: with the
-      build infrastructure in place, the listener boots,
-      initialises lwIP, and prints "Network ready". Beyond that
-      `Executor::open()` hangs before reaching
-      "Subscribing to /chatter" — most likely a stall in
-      `NrosUdpTransportFactory::create_participant` on one of the
-      RTPS socket binds (`IP_ADD_MEMBERSHIP` setsockopt or the
-      multicast metatraffic port bind) when running under
-      lwIP-on-FreeRTOS. The Zephyr A9 path runs the same
-      `nros-rmw-dds` async transport against zsock_*; the gap is
-      lwIP-specific. Re-enable
-      `test_freertos_dds_rust_talker_to_listener_e2e` once the
-      runtime path matches.
+      Bring-up debt closed in this phase:
+      - `nros-platform-freertos::net.rs` `mcast_*` real impls
+        (was stub-returning -1) — `IP_ADD_MEMBERSHIP` setsockopt,
+        `O_NONBLOCK` fcntl for cooperative recv loops.
+      - `udp_create_endpoint` `AI_NUMERICHOST` flag (RTPS literals
+        skip the unconfigured DNS resolver).
+      - `lan9118_lwip.c` — `NETIF_FLAG_IGMP` + MAC_CR `MCPAS` so
+        IGMP-joined groups actually reach lwIP.
+      - `lwipopts.h` — `MEMP_NUM_NETDB` 1 → 16 (every
+        `udp_create_endpoint` allocates an `addrinfo`).
+      - `FreeRTOSConfig.h` — `configTOTAL_HEAP_SIZE` 256 → 2048 KB
+        (DcpsDomainParticipant builtin entities use ~512 KB).
+      - bindgen allowlist — `IP_ADD_MEMBERSHIP`, `ip_mreq`,
+        `in_addr`, `INADDR_ANY`, `AI_NUMERICHOST`.
+      - `NROS_LOCAL_IPV4` per-example via `.cargo/config.toml` so
+        each guest advertises its own iface IP in SPDP unicast
+        locators *and* uses those bytes as the dust-dds `host_id`
+        in the GUID prefix — without distinct prefixes both peers
+        would self-filter each other's SPDP and SEDP would never
+        close.
+      - `debug-cortex-m-semihosting` feature on `nros-rmw-dds` /
+        `nros-platform-freertos` — gated, off by default; turns
+        on a step-by-step Cortex-M semihosting trace through every
+        bind / write / recv for the next platform's bring-up.
 - [ ] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
 - [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
       talker↔listener.

@@ -133,7 +133,7 @@ const SPDP_MULTICAST_ADDRESS: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23
 /// through this env so each guest advertises its own iface IP.
 /// Phase 92.5 — without this, peer SEDP/data sends go to localhost on
 /// every guest and never cross.
-const LOCAL_IPV4: [u8; 4] = {
+pub(crate) const LOCAL_IPV4: [u8; 4] = {
     let s = env!("NROS_LOCAL_IPV4_BYTES");
     let bytes = s.as_bytes();
     // Tiny no-`alloc` parser: split by commas, parse each octet.

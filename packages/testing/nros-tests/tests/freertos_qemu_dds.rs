@@ -63,25 +63,16 @@ fn pick_mcast_addr_port() -> String {
     format!("230.10.0.{last}:{port}")
 }
 
-/// **#[ignore]d**: Phase 97.4.freertos runtime bring-up incomplete.
-/// Build, launch, and network-init paths all work — the listener
-/// boots, initialises lwIP, and prints "Network ready". Beyond that
-/// `Executor::open()` blocks before reaching
-/// "Subscribing to /chatter", suggesting
-/// `NrosUdpTransportFactory::create_participant` hangs on one of the
-/// SPDP / SEDP socket binds (most likely `IP_ADD_MEMBERSHIP` via
-/// lwIP `setsockopt` or the multicast metatraffic port bind).
+/// FreeRTOS QEMU MPS2-AN385 DDS pubsub end-to-end.
 ///
-/// Re-enable once the FreeRTOS runtime path matches the Zephyr A9
-/// path that ships green. The infrastructure (board crate decoupling,
-/// `critical_section::Impl`, `.ARM.extab` linker placement, IGMP-
-/// enabled lwIP, mcast-socket QEMU launcher, talker / listener
-/// crates, `just freertos build-fixtures` recipe entry, nros-tests
-/// binary fixtures, nextest test-group routing) is all in place —
-/// this test is the runtime smoke that gates flipping
-/// 97.4.freertos from `[~]` to `[x]`.
+/// Two QEMU instances on a shared host mcast L2 segment exchange SPDP /
+/// SEDP and pubsub `/chatter` (`std_msgs/Int32`) over the brokerless
+/// dust-dds RTPS path. Talker advertises 10.0.2.20, listener 10.0.2.21
+/// (set via `NROS_LOCAL_IPV4` in each example's `.cargo/config.toml`,
+/// also used as the GUID-prefix host_id so both peers' SPDPs are
+/// distinguishable — without this the dust-dds self-discovery filter
+/// dropped peer SPDPs and the SEDP handshake never closed).
 #[test]
-#[ignore]
 fn test_freertos_dds_rust_talker_to_listener_e2e() {
     if !require_freertos_dds() {
         nros_tests::skip!("FreeRTOS DDS prerequisites not available");

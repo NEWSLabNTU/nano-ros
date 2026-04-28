@@ -67,12 +67,15 @@ impl Rmw for DdsRmw {
             let runtime_arc = Arc::new(runtime.clone());
             let transport = NrosUdpTransportFactory::new(runtime_arc.clone());
 
-            // RTPS GUID prefix bytes — placeholders for now. A
-            // production deployment can derive `host_id` from the
-            // platform's MAC / hardware ID and `app_id` from the
-            // process / participant identity.
+            // RTPS GUID prefix bytes. `host_id` derived from the
+            // platform's local IPv4 (set via `NROS_LOCAL_IPV4` build
+            // env) so two QEMU / board instances on the same RTPS
+            // segment generate distinct GUID prefixes — without this,
+            // each peer's SPDP looks like its own and gets dropped by
+            // dust-dds's self-discovery filter, which kills SEDP and
+            // pubsub. `app_id` stays a 0-placeholder for now.
             let app_id = [0u8; 4];
-            let host_id = [0u8; 4];
+            let host_id = crate::transport_nros::LOCAL_IPV4;
             let factory =
                 DomainParticipantFactoryAsync::new(runtime.clone(), app_id, host_id, transport);
 
