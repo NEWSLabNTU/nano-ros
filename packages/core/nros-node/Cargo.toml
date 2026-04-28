@@ -20,7 +20,7 @@ rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb"]
 
-# Phase 95: backend native slot lending (zero-copy publish via
+# Phase 97: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
 # Backends without lending (uORB, default zenoh-pico, dds, cffi) don't
 # expose a `lending` feature; user enabling `rmw-lending` w/ such a

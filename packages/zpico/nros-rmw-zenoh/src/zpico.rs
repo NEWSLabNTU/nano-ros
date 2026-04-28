@@ -789,8 +789,7 @@ impl Context {
     /// dropper fired without seeing any matching token (no server visible
     /// within the timeout).
     pub fn liveliness_get_check(&self, handle: i32) -> Result<bool> {
-        let ret =
-            ffi_guard(|| unsafe { zpico_sys::zpico_liveliness_get_check(handle) });
+        let ret = ffi_guard(|| unsafe { zpico_sys::zpico_liveliness_get_check(handle) });
 
         if ret == 1 {
             Ok(true)
@@ -890,7 +889,7 @@ impl<'a> Publisher<'a> {
         Ok(())
     }
 
-    /// Phase 95.F — zero-copy publish via z_bytes_from_static_buf.
+    /// Phase 97.F — zero-copy publish via z_bytes_from_static_buf.
     ///
     /// Identical to [`publish_with_attachment`] but ALIASES the
     /// payload pointer instead of copying. Caller MUST guarantee

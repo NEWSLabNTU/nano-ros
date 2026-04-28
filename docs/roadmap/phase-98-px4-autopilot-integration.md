@@ -1,4 +1,4 @@
-# Phase 96 — PX4-Autopilot integration
+# Phase 98 — PX4-Autopilot integration
 
 **Goal:** Make `examples/px4/rust/uorb/{talker,listener}` (Phase 90.6)
 build and test against a real PX4 SITL binary, end-to-end. PX4-Autopilot
@@ -26,7 +26,7 @@ scaffold. The scaffold has two missing pieces:
 2. **Working `wait_for_log`** — the Phase 90.7 test stub returns
    "not implemented" instead of actually tailing px4 stdout.
 
-Phase 96 fixes both:
+Phase 98 fixes both:
 
 - PX4-Autopilot becomes a git submodule under `third-party/px4/PX4-Autopilot`
   (shallow clone). px4-rs moves from a user-supplied symlink at

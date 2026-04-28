@@ -237,11 +237,11 @@ pub enum TransportError {
     /// Invalid configuration
     InvalidConfig,
     /// Resource (slot, buffer, queue) momentarily unavailable. Retry.
-    /// Phase 95: returned by `try_loan` when arena slots are full and
+    /// Phase 97: returned by `try_loan` when arena slots are full and
     /// by `try_borrow` when no message is ready (alternative to
     /// `Ok(None)` for backends that prefer the error variant).
     WouldBlock,
-    /// Requested allocation exceeds backend capacity. Phase 95:
+    /// Requested allocation exceeds backend capacity. Phase 97:
     /// `try_loan(len)` returns this when `len` > arena slot size.
     TooLarge,
     /// Failed to start background tasks
@@ -996,7 +996,7 @@ pub struct ServiceRequest<'a> {
 }
 
 // ============================================================================
-// Phase 95 — zero-copy raw API: SlotLending / SlotBorrowing
+// Phase 97 — zero-copy raw API: SlotLending / SlotBorrowing
 // ============================================================================
 //
 // Backends that can lend a slot directly into their outbound buffer

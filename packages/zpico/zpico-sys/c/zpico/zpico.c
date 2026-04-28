@@ -1315,7 +1315,7 @@ int32_t zpico_publish_with_attachment(int32_t handle,
     return ZPICO_OK;
 }
 
-// Phase 95.F — zero-copy publish via z_bytes_from_static_buf.
+// Phase 97.F — zero-copy publish via z_bytes_from_static_buf.
 // Aliases the payload pointer instead of copying. Caller guarantees
 // `data` outlives the call (z_publisher_put consumes the alias
 // synchronously on posix/embedded transports). Attachment is still

@@ -30,7 +30,7 @@ pub struct ZenohPublisher {
     timestamp_counter: AtomicSeqCounter,
     /// Liveliness token for ROS 2 graph discovery (kept alive for publisher lifetime)
     _liveliness: Option<LivelinessToken>,
-    /// Phase 95.F: per-publisher TX arena for SlotLending. Exists only
+    /// Phase 97.F: per-publisher TX arena for SlotLending. Exists only
     /// when the `lending` feature is on.
     #[cfg(feature = "lending")]
     pub(super) lend_arena: lending::LendArena,
@@ -176,7 +176,7 @@ impl Publisher for ZenohPublisher {
 }
 
 // ============================================================================
-// Phase 95.F — ZenohPublisher SlotLending (zero-copy publish)
+// Phase 97.F — ZenohPublisher SlotLending (zero-copy publish)
 // ============================================================================
 
 #[cfg(feature = "lending")]
@@ -213,12 +213,7 @@ mod lending {
             }
             if self
                 .busy
-                .compare_exchange(
-                    false,
-                    true,
-                    CoreOrdering::AcqRel,
-                    CoreOrdering::Acquire,
-                )
+                .compare_exchange(false, true, CoreOrdering::AcqRel, CoreOrdering::Acquire)
                 .is_err()
             {
                 return Err(TransportError::WouldBlock);
@@ -256,7 +251,7 @@ mod lending {
     }
 
     impl ZenohPublisher {
-        // Wire the arena into the constructor — see Phase 95.F note in
+        // Wire the arena into the constructor — see Phase 97.F note in
         // `new()` for why this lives outside the main impl block.
         pub(super) const fn lend_arena_init() -> LendArena {
             LendArena::new()
@@ -269,10 +264,7 @@ mod lending {
         where
             Self: 'a;
 
-        fn try_lend_slot(
-            &self,
-            len: usize,
-        ) -> Result<Option<Self::Slot<'_>>, TransportError> {
+        fn try_lend_slot(&self, len: usize) -> Result<Option<Self::Slot<'_>>, TransportError> {
             match self.lend_arena.try_claim(len) {
                 Ok(bytes) => Ok(Some(ZenohSlot {
                     bytes,
@@ -286,8 +278,7 @@ mod lending {
         fn commit_slot(&self, slot: Self::Slot<'_>) -> Result<(), TransportError> {
             // Build the RMW attachment as in publish_raw.
             #[allow(clippy::useless_conversion)]
-            let seq: i64 =
-                (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
+            let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
             let ts = self.current_timestamp();
             let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
             self.serialize_attachment(seq, ts, &mut att_buf);
@@ -306,4 +297,4 @@ mod lending {
 }
 
 #[cfg(feature = "lending")]
-pub use lending::{ZenohSlot, ZENOH_TX_BUF};
+pub use lending::{ZENOH_TX_BUF, ZenohSlot};

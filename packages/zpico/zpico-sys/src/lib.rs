@@ -134,7 +134,7 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    /// Phase 95.F: zero-copy publish via z_bytes_from_static_buf.
+    /// Phase 97.F: zero-copy publish via z_bytes_from_static_buf.
     /// Caller guarantees `data` outlives the call.
     pub fn zpico_publish_with_attachment_aliased(
         handle: i32,
@@ -211,10 +211,7 @@ unsafe extern "C" {
     pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
 
     // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).
-    pub fn zpico_liveliness_get_start(
-        keyexpr: *const core::ffi::c_char,
-        timeout_ms: u32,
-    ) -> i32;
+    pub fn zpico_liveliness_get_start(keyexpr: *const core::ffi::c_char, timeout_ms: u32) -> i32;
     pub fn zpico_liveliness_get_check(handle: i32) -> i32;
 
     // Reply waker callback (for async service client)

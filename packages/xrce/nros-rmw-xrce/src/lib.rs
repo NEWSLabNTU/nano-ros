@@ -1272,7 +1272,7 @@ impl Publisher for XrcePublisher {
 }
 
 // ============================================================================
-// Phase 95.G — XrcePublisher SlotLending (native zero-copy publish)
+// Phase 97.G — XrcePublisher SlotLending (native zero-copy publish)
 // ============================================================================
 
 /// Backend-owned slot into XRCE-DDS's reliable output stream.
