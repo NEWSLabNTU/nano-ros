@@ -592,6 +592,40 @@ mod net_helpers {
 }
 
 // ============================================================================
+// Serial-build socket fallbacks
+// ============================================================================
+// Even on serial-only zpico-sys builds, peer.c unconditionally calls
+// `_z_socket_close` from `_z_transport_peer_unicast_clear`. The peer's
+// `_owns_socket` flag is false on serial transports so the call is a
+// no-op at runtime, but the linker still needs the symbol. Provide a
+// no-op stub when the `network` feature is off.
+#[cfg(all(feature = "active", not(feature = "network")))]
+mod net_helpers_stub {
+    use super::{ZMutex, ZSysNetSocket, c_void};
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_close(_sock: *mut ZSysNetSocket) {}
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_set_non_blocking(_sock: *const ZSysNetSocket) -> i8 {
+        0
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_accept(
+        _sock_in: *const ZSysNetSocket,
+        _sock_out: *mut ZSysNetSocket,
+    ) -> i8 {
+        -1
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutex) -> i8 {
+        0
+    }
+}
+
+// ============================================================================
 // Networking — UDP multicast forwarders (Phase 80)
 // ============================================================================
 

@@ -20,7 +20,8 @@ build:
                        -not -path '*/build/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
-                       -not -path '*/qemu-riscv64-threadx/*' | sort); do
+                       -not -path '*/qemu-riscv64-threadx/*' \
+                       -not -path '*/px4/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -129,7 +130,8 @@ check:
                        -not -path '*/build/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
-                       -not -path '*/qemu-riscv64-threadx/*' | sort); do
+                       -not -path '*/qemu-riscv64-threadx/*' \
+                       -not -path '*/px4/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""

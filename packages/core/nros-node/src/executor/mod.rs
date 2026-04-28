@@ -40,10 +40,10 @@ mod types;
 #[cfg(any(has_rmw, test))]
 pub mod action;
 
-// MockSession-based tests. Disabled when any rmw-* feature is
-// active because feature unification under `cargo test --workspace`
-// flips `ConcreteSession` to a real backend handle, breaking the
-// type signatures the tests expect.
+// MockSession-based tests. Disabled when any rmw-* feature is active because
+// feature unification under `cargo test --workspace` flips `ConcreteSession`
+// to a real backend handle (e.g. UorbSession when rmw-uorb is on transitively
+// via the workspace), breaking the type signatures the tests expect.
 #[cfg(all(
     test,
     not(any(

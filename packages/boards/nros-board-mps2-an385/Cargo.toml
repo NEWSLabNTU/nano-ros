@@ -50,8 +50,11 @@ default = ["ethernet", "rmw-zenoh"]
 rmw-zenoh = ["dep:zpico-platform-shim"]
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
-# Serial transport via CMSDK UART
-serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
+# Serial transport via CMSDK UART. Still needs zpico-platform-shim because
+# zpico-sys's peer.c references the `_z_socket_*` symbols even when the
+# transport is serial-only (the calls are no-ops at runtime via the
+# `_owns_socket` flag, but the linker still needs the symbols).
+serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:zpico-platform-shim"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
