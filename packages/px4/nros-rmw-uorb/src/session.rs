@@ -80,18 +80,19 @@ impl Session for UorbSession {
 
     fn create_service_server(
         &mut self,
-        _service: &ServiceInfo<'_>,
+        service: &ServiceInfo<'_>,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
-        // Phase 90.4: services not yet supported on uORB. Placeholder until
-        // a paired-topic request/reply protocol is defined.
-        Err(TransportError::Backend("uORB: services not yet supported"))
+        // Phase 90.4b: paired-topic protocol — caller must have already
+        // registered <name>/_request and <name>/_reply via
+        // nros_rmw_uorb::register::<T>(...).
+        UorbServiceServer::new(service.name)
     }
 
     fn create_service_client(
         &mut self,
-        _service: &ServiceInfo<'_>,
+        service: &ServiceInfo<'_>,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
-        Err(TransportError::Backend("uORB: services not yet supported"))
+        UorbServiceClient::new(service.name)
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {

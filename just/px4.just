@@ -87,13 +87,16 @@ check:
 # Run unit tests against the px4-rs std mock broker (no SITL required).
 # Includes nros-px4's run_async/pump host-mock tests (90.5b acceptance).
 #
-# Default-parallel mode is fine since px4-rs `3afaf2c2` migrated the
-# HRT mock to a single shared worker thread and added the SubCbInner
-# leak tracker. Earlier pins required `--test-threads=1` to avoid
-# `tcache_thread_shutdown: unaligned tcache chunk detected` at exit.
+# `--test-threads=1` avoids a residual race in the px4-uorb std mock
+# broker. The HRT worker fix in px4-rs `3afaf2c2` killed the
+# tcache_thread_shutdown crash, but parallel `nros-px4`
+# `run_async_pump.rs` tests still surface a "misaligned pointer
+# dereference" in `ffi.rs:notify()` — `topic.callbacks` snapshot
+# can race a concurrent Subscription Drop in another test thread.
+# Sequential tests sidestep it. Upstream fix tracked separately.
 test:
-    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests
-    cargo test -p nros-px4 --features test-helpers --tests
+    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests -- --test-threads=1
+    cargo test -p nros-px4 --features test-helpers --tests -- --test-threads=1
 
 # Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
 test-sitl: build-sitl

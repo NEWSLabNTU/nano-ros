@@ -38,7 +38,9 @@ mod subscriber;
 pub use park::{Park, park_until_event};
 pub use publisher::UorbPublisher;
 pub use registry::register;
-pub use service::{UorbServiceClient, UorbServiceServer};
+pub use service::{
+    UORB_SERVICE_PAYLOAD_MAX, UORB_SERVICE_TOPIC_BYTES, UorbServiceClient, UorbServiceServer,
+};
 pub use session::{UorbRmw, UorbSession};
 pub use subscriber::UorbSubscriber;
 
