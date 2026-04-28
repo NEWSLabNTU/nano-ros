@@ -47,7 +47,10 @@ global-allocator = ["alloc"]
 # already ships its impl through `nros-c`; consumers that depend on
 # both `nros-platform/critical-section` and `nros-c` need to set the
 # feature on only one to avoid double-registration.
-critical-section = ["nros-platform-freertos?/critical-section"]
+critical-section = [
+    "nros-platform-freertos?/critical-section",
+    "nros-platform-threadx?/critical-section",
+]
 
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can

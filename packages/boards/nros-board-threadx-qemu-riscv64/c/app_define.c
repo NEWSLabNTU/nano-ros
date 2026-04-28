@@ -30,7 +30,10 @@ extern void nros_platform_threadx_seed_rng(uint32_t value);
 TX_BYTE_POOL *zpico_threadx_byte_pool;
 
 /* ---- Sizing constants ---- */
-#define BYTE_POOL_SIZE          (512 * 1024)    /* 512 KB for all allocations */
+/* Phase 97.4.threadx-riscv64 — DDS DcpsDomainParticipant + builtin
+ * topics / readers / writers consume far more heap than zenoh-pico.
+ * Match the FreeRTOS bring-up's 2 MB headroom. */
+#define BYTE_POOL_SIZE          (2 * 1024 * 1024)
 #define PACKET_SIZE             1536
 #define PACKET_COUNT            30
 #define PACKET_POOL_SIZE        ((PACKET_SIZE + sizeof(NX_PACKET)) * PACKET_COUNT)

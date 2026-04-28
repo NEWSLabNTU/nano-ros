@@ -29,6 +29,12 @@
 /* Deferred processing — required for virtio-net interrupt-driven RX */
 #define NX_DRIVER_DEFERRED_PROCESSING
 
+/* Phase 97.4.threadx-riscv64 — IGMP for RTPS SPDP multicast on
+ * 239.255.0.1:7400+. NetX Duo gates `nx_igmp_*` and BSD's
+ * IP_ADD_MEMBERSHIP setsockopt on `NX_ENABLE_IGMPV2`; without it,
+ * setsockopt returns NX_NOT_ENABLED and SPDP can't join. */
+#define NX_ENABLE_IGMPV2
+
 /* Disable TCP/UDP/IP RX checksum verification.
  * QEMU virtio-net uses checksum offloading — packets delivered to the guest
  * may have partial or zero checksums (the host computes them after the tap

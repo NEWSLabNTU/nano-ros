@@ -331,7 +331,7 @@ retries = 2
 # slice, not `ThreadxLinux`, by using the trailing-underscore-free
 # `Platform__ThreadxRiscv64` marker.
 [[profile.default.overrides]]
-filter = "binary(threadx_riscv64_qemu) or (binary(rtos_e2e) and test(Platform__ThreadxRiscv64))"
+filter = "binary(threadx_riscv64_qemu) or binary(threadx_riscv64_qemu_dds) or (binary(rtos_e2e) and test(Platform__ThreadxRiscv64))"
 test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

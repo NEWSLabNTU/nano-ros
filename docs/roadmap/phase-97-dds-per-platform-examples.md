@@ -294,11 +294,29 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         (NuttX, ThreadX-Linux, native_sim) — same trace points,
         routed through `eprintln!` instead of Cortex-M
         semihosting.
-- [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
-      talker↔listener. Platform-side `mcast_*` impls landed in
-      `nros-platform-threadx::net.rs` (NetX Duo's BSD shim
-      `IP_ADD_MEMBERSHIP` + `nx_bsd_fcntl(O_NONBLOCK)`); example
-      crates and nros-tests fixture remain.
+- [~] **97.4.threadx-riscv64** — qemu-riscv64-threadx
+      talker↔listener. Build path lands green:
+      - Example crates at
+        `examples/qemu-riscv64-threadx/rust/dds/{talker,listener}/`,
+        both build clean for `riscv64gc-unknown-none-elf`.
+      - `nros-platform-threadx` `mcast_*` impls (NetX Duo's BSD
+        `IP_ADD_MEMBERSHIP` + `nx_bsd_fcntl(O_NONBLOCK)`).
+      - `nros-platform-threadx` `critical-section` feature with a
+        RISC-V impl that toggles `mstatus.MIE` via inline asm —
+        same shape as the FreeRTOS Cortex-M PRIMASK impl.
+      - `nx_user.h` enables `NX_ENABLE_IGMPV2` for the SPDP join.
+      - Board byte pool bumped 512 KB → 2 MB to host
+        `DcpsDomainParticipant` builtin entities.
+      - `QemuProcess::start_riscv64_virt_mcast` launcher.
+      - `build_threadx_rv64_dds_{talker,listener}` fixtures.
+      - `tests/threadx_riscv64_qemu_dds.rs` integration test
+        (currently fails — talker publishes ~600 messages, listener
+        reaches "Waiting for messages…", host-side tshark sees
+        zero frames cross between QEMU instances). The virtio-net
+        driver in the board crate appears to drop multicast TX or
+        NetX's IGMP join doesn't propagate through to the wire.
+        Runtime debug needs a board-side trace channel (no_std
+        RISC-V can't use `eprintln!`); follow-up work.
 - [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
       Build path lands green:
       - Example crates at

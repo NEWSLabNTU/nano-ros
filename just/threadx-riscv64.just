@@ -117,6 +117,14 @@ build-fixtures:
           THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           cargo build --release --quiet )
     done
+    # Phase 97.4.threadx-riscv64 — DDS variants alongside zenoh.
+    dds_examples=(talker listener)
+    for ex in "${dds_examples[@]}"; do
+        echo "  → threadx-rv64/rust/dds/$ex"
+        ( cd "examples/qemu-riscv64-threadx/rust/dds/$ex" && \
+          THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+          cargo build --release --quiet )
+    done
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do

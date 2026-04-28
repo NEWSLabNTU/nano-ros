@@ -1,0 +1,10 @@
+# ThreadX QEMU RISC-V DDS listener — network configuration
+
+[network]
+ip = "10.0.2.41"
+mac = "52:54:00:12:34:61"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[zenoh]
+domain_id = 0

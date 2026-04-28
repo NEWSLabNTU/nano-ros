@@ -544,6 +544,52 @@ impl QemuProcess {
     /// derived from the peer index (0x56 + index). These must match the
     /// firmware's `Config::default()` / `Config::listener()` presets in
     /// `nros-board-threadx-qemu-riscv64`.
+    /// Phase 97.4.threadx-riscv64 — sibling-mcast variant. Two
+    /// QEMU instances share `-netdev socket,mcast=…` so SPDP /
+    /// SEDP / pubsub frames cross between them on the host's
+    /// loopback / primary iface (no `localaddr` — same lesson as
+    /// the FreeRTOS slice).
+    pub fn start_riscv64_virt_mcast(
+        binary: &Path,
+        mcast_addr_port: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-riscv64");
+        cmd.args([
+            "-M",
+            "virt",
+            "-m",
+            "256M",
+            "-bios",
+            "none",
+            "-nographic",
+            "-global",
+            "virtio-mmio.force-legacy=false",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-netdev",
+            &format!("socket,id=net0,mcast={mcast_addr_port}"),
+            "-device",
+            &format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={mac}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(

@@ -6,7 +6,24 @@ license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for ThreadX (calls ThreadX C APIs via FFI)"
 
+[features]
+default = []
+# Phase 97.4.threadx — register a `critical_section::Impl` against
+# the active port's interrupt-disable primitive. dust-dds's
+# `MpscReceiverFuture` / `OneshotReceiver` poll paths reference
+# `_critical_section_1_0_*` symbols; on no_std ThreadX targets
+# (qemu-riscv64) the example crate enables this feature so the
+# symbols resolve at link time. ThreadX-Linux uses POSIX threads
+# and gets the std impl from the `critical-section` crate's `std`
+# feature instead, so this is opt-in.
+critical-section = ["dep:critical-section"]
+
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Bindgen-generated NetX Duo BSD socket FFI (struct nx_bsd_sockaddr_in, nx_bsd_* functions)
 threadx-netx-sys = { path = "../../drivers/threadx-netx-sys" }
+# Phase 97.4.threadx — `critical_section::Impl` for no_std ThreadX
+# targets. Restore-state is a `u8`; nesting depth is encoded as the
+# RISC-V `mstatus.MIE` bit so re-enabling only happens at the
+# outermost release.
+critical-section = { version = "1.2", optional = true, features = ["restore-state-u8"] }

@@ -28,6 +28,50 @@ pub mod net;
 pub struct ThreadxPlatform;
 
 // ============================================================================
+// Phase 97.4.threadx — `critical_section::Impl` for no_std targets
+// ============================================================================
+//
+// dust-dds's oneshot / mpsc channel poll paths reference
+// `_critical_section_1_0_acquire` / `_release` symbols. On
+// `qemu-riscv64-threadx` (the only ThreadX no_std target with DDS
+// today) we register a critical-section impl that toggles
+// `mstatus.MIE` — same shape as the FreeRTOS Cortex-M PRIMASK impl,
+// just on RISC-V. ThreadX-Linux gets POSIX threads, doesn't enable
+// this feature, and pulls `critical-section/std` instead.
+
+#[cfg(all(feature = "critical-section", target_arch = "riscv64"))]
+mod cs_impl_riscv {
+    struct ThreadxRiscvCs;
+    critical_section::set_impl!(ThreadxRiscvCs);
+
+    unsafe impl critical_section::Impl for ThreadxRiscvCs {
+        unsafe fn acquire() -> critical_section::RawRestoreState {
+            // mstatus.MIE = bit 3. Save prior value, then csrrc
+            // clears it (atomic-disable). Token = 1 if interrupts
+            // were enabled, 0 otherwise — `release` re-enables only
+            // at the outermost acquire so nested critical sections
+            // nest cleanly.
+            let prior: usize;
+            unsafe {
+                core::arch::asm!(
+                    "csrrci {0}, mstatus, 0x8",
+                    out(reg) prior,
+                );
+            }
+            if (prior & 0x8) != 0 { 1 } else { 0 }
+        }
+
+        unsafe fn release(token: critical_section::RawRestoreState) {
+            if token == 1 {
+                unsafe {
+                    core::arch::asm!("csrsi mstatus, 0x8");
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Byte pool registration (board crate must call this at init)
 // ============================================================================
 

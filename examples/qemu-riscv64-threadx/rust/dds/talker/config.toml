@@ -1,0 +1,11 @@
+# ThreadX QEMU RISC-V DDS talker — network configuration
+# Brokerless DDS over RTPS multicast — no zenoh router needed.
+
+[network]
+ip = "10.0.2.40"
+mac = "52:54:00:12:34:60"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[zenoh]
+domain_id = 0

@@ -1,0 +1,25 @@
+[package]
+name = "qemu-riscv64-threadx-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on QEMU RISC-V with ThreadX + NetX Duo (Phase 97.4.threadx-riscv64)"
+
+[[bin]]
+name = "qemu-riscv64-threadx-dds-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
+# `alloc` (not `std`) — bare-metal RISC-V target with no_std. The
+# nros-rmw-dds nostd-runtime path is the only option.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
+std_msgs = { version = "*", default-features = false }
+# Phase 97.4 debug — gated, off by default.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }
