@@ -26,7 +26,10 @@ impl UorbPublisher {
         let mut buf = heapless::String::new();
         buf.push_str(ros_name)
             .map_err(|_| TransportError::InvalidConfig)?;
-        Ok(Self { entry, ros_name: buf })
+        Ok(Self {
+            entry,
+            ros_name: buf,
+        })
     }
 
     /// uORB topic name (e.g. `"sensor_gyro"`) this publisher writes to.
@@ -44,10 +47,9 @@ impl Publisher for UorbPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
-        let guard = lookup(self.ros_name.as_str())
-            .ok_or(TransportError::Backend(
-                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-            ))?;
+        let guard = lookup(self.ros_name.as_str()).ok_or(TransportError::Backend(
+            "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+        ))?;
         guard.handle().publish(data)
     }
 

@@ -5,6 +5,13 @@
 
 mod config;
 mod run;
+#[cfg(feature = "std")]
+mod run_async;
 
 pub use config::Config;
 pub use run::run;
+#[cfg(feature = "std")]
+pub use run_async::{pump, run_async};
+
+#[cfg(all(feature = "std", any(test, feature = "test-helpers")))]
+pub use run_async::pump_until;

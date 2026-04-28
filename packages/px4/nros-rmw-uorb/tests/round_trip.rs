@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 //! End-to-end round-trip via the px4-uorb std mock broker.
 //!
 //! Verifies the typed-trampoline registry: a `register::<T>` call wires a
@@ -13,7 +14,7 @@
 #![cfg(feature = "std")]
 
 use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, Subscriber, TopicInfo};
-use nros_rmw_uorb::{register, UorbRmw};
+use nros_rmw_uorb::{UorbRmw, register};
 use std::sync::Mutex;
 
 // Tests share the global registry + broker. Serialise them so a `_reset()`
@@ -54,7 +55,7 @@ mod fake_topic {
     }
 }
 
-use fake_topic::{test_ping, TestPing};
+use fake_topic::{TestPing, test_ping};
 
 #[test]
 fn register_then_publish_subscribe_round_trips() {
@@ -65,7 +66,7 @@ fn register_then_publish_subscribe_round_trips() {
 
     register::<test_ping>("/test/ping", 0);
 
-    let mut session = UorbRmw::default()
+    let mut session = UorbRmw
         .open(&RmwConfig {
             locator: "",
             mode: nros_rmw::SessionMode::Peer,
@@ -121,7 +122,7 @@ fn unregistered_topic_returns_backend_error() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    let mut session = UorbRmw::default()
+    let mut session = UorbRmw
         .open(&RmwConfig {
             locator: "",
             mode: nros_rmw::SessionMode::Peer,
@@ -151,7 +152,7 @@ fn topic_not_in_topics_toml_rejected_at_create() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    let mut session = UorbRmw::default()
+    let mut session = UorbRmw
         .open(&RmwConfig {
             locator: "",
             mode: nros_rmw::SessionMode::Peer,

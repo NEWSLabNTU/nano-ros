@@ -76,11 +76,20 @@ build-sitl:
 # Check formatting + clippy on px4 crates.
 check:
     cargo fmt --check -p nros-rmw-uorb -p nros-px4
-    cargo clippy -p nros-rmw-uorb -p nros-px4 --features std --all-targets -- -D warnings
+    cargo clippy -p nros-rmw-uorb -p nros-px4 --features std,test-helpers --all-targets -- -D warnings
 
 # Run unit tests against the px4-rs std mock broker (no SITL required).
+# Includes nros-px4's run_async/pump host-mock tests (90.5b acceptance).
+#
+# --test-threads=1: the px4-rs std mock spawns background HRT + WQ
+# threads whose lifetimes outlast individual #[test] bodies. Running
+# tests in parallel races those threads against each other across
+# `_reset_broker()` boundaries, which manifests as "tcache_thread_shutdown:
+# unaligned tcache chunk detected" at process exit. Serialising
+# tests at the cargo level avoids the race.
 test:
-    cargo test -p nros-rmw-uorb --features std --lib
+    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests -- --test-threads=1
+    cargo test -p nros-px4 --features test-helpers --tests -- --test-threads=1
 
 # Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
 test-sitl: build-sitl

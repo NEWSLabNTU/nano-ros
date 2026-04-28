@@ -23,7 +23,10 @@ impl UorbSubscriber {
         let mut buf = heapless::String::new();
         buf.push_str(ros_name)
             .map_err(|_| TransportError::InvalidConfig)?;
-        Ok(Self { entry, ros_name: buf })
+        Ok(Self {
+            entry,
+            ros_name: buf,
+        })
     }
 
     pub fn uorb_name(&self) -> &'static str {
@@ -39,10 +42,9 @@ impl Subscriber for UorbSubscriber {
     type Error = TransportError;
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        let guard = lookup(self.ros_name.as_str())
-            .ok_or(TransportError::Backend(
-                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-            ))?;
+        let guard = lookup(self.ros_name.as_str()).ok_or(TransportError::Backend(
+            "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+        ))?;
         guard.handle().try_recv(buf)
     }
 

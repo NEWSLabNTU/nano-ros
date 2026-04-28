@@ -1,6 +1,7 @@
+#![allow(non_camel_case_types)]
 //! End-to-end loan/borrow API via the px4-uorb std mock broker.
 //!
-//! Mirror of `typeless_api.rs` but using the new Phase 95 zero-copy
+//! Mirror of `typeless_api.rs` but using the new Phase 97 zero-copy
 //! API: `try_loan` returns a writable `PublishLoan` slice; user fills
 //! in place; `commit` triggers the wire write. `try_borrow` returns a
 //! `RecvView` lent from the subscriber's internal buffer.
@@ -76,7 +77,10 @@ fn loan_borrow_round_trip_via_executor() {
     // Write the message bytes directly into the loan's slice. No
     // intermediate user buffer.
     let bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(&msg as *const Tick as *const u8, core::mem::size_of::<Tick>())
+        core::slice::from_raw_parts(
+            &msg as *const Tick as *const u8,
+            core::mem::size_of::<Tick>(),
+        )
     };
     loan.as_mut().copy_from_slice(bytes);
     loan.commit().expect("commit");
@@ -91,10 +95,9 @@ fn loan_borrow_round_trip_via_executor() {
         .expect("borrow ok")
         .expect("got data");
     assert_eq!(view.as_ref().len(), core::mem::size_of::<Tick>());
-    let recv: Tick =
-        unsafe { core::ptr::read_unaligned(view.as_ref().as_ptr() as *const Tick) };
+    let recv: Tick = unsafe { core::ptr::read_unaligned(view.as_ref().as_ptr() as *const Tick) };
     assert_eq!(recv, msg);
-    drop(view);
+    let _ = view;
 }
 
 #[test]

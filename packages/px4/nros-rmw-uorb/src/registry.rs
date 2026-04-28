@@ -41,8 +41,21 @@ use px4_uorb::UorbTopic;
 pub(crate) trait TopicHandle: Send + Sync {
     fn publish(&self, data: &[u8]) -> Result<(), TransportError>;
     fn try_recv(&self, buf: &mut [u8]) -> Result<Option<usize>, TransportError>;
-    /// Byte size of the underlying uORB message struct.
+    /// Byte size of the underlying uORB message struct. Used by
+    /// downstream consumers (test harnesses, future buffer-presize
+    /// hooks) to size receive buffers without re-deriving from
+    /// `T::Msg`.
+    #[allow(dead_code)]
     fn msg_size(&self) -> usize;
+    /// Force `orb_register_callback` to wire now. Idempotent. Called
+    /// once at registration time after the handle is boxed (heap
+    /// address stable). See [`register`].
+    fn eager_register(&self);
+    /// Register a single-slot waker on the subscription's
+    /// `AtomicWaker`. The next uORB publish on this topic fires the
+    /// waker. Used by [`crate::park_until_event`] to park a single
+    /// executor task on every active topic at once.
+    fn register_wake(&self, waker: &core::task::Waker);
 }
 
 static REGISTRY: OnceLock<Mutex<HashMap<&'static str, Box<dyn TopicHandle>>>> = OnceLock::new();
@@ -54,12 +67,32 @@ fn registry() -> &'static Mutex<HashMap<&'static str, Box<dyn TopicHandle>>> {
 /// Register a typed publisher/subscriber pair for `ros_name`.
 ///
 /// Idempotent: re-registering a name overwrites the prior entry.
+///
+/// Eagerly wires `orb_register_callback` so `register_wake` can fire
+/// even before the first `try_recv` happens. The Box's heap address is
+/// stable, so it's safe to call `eager_register` after boxing.
 pub fn register<T: UorbTopic>(ros_name: &'static str, instance: u8) {
     let handle = Box::new(Handle::<T>::new(instance));
+    handle.eager_register();
     registry()
         .lock()
         .expect("registry poisoned")
         .insert(ros_name, handle);
+}
+
+/// Iterate every registered handle and call `register_wake(waker)` on
+/// each. Used by [`crate::park_until_event`] so one executor task can
+/// be woken by any uORB publish across all topics it subscribes to.
+///
+/// Each per-topic `AtomicWaker` is single-slot; calling this from
+/// multiple parking awaiters concurrently would clobber. The current
+/// `nros_px4::run_async` design has exactly one executor task → one
+/// waker → safe.
+pub(crate) fn register_wake_on_all(waker: &core::task::Waker) {
+    let guard = registry().lock().expect("registry poisoned");
+    for handle in guard.values() {
+        handle.register_wake(waker);
+    }
 }
 
 /// Look up a previously-registered topic. Used by [`crate::UorbPublisher`]
@@ -70,7 +103,10 @@ pub(crate) fn lookup(ros_name: &str) -> Option<HandleGuard> {
     if !guard.contains_key(ros_name) {
         return None;
     }
-    Some(HandleGuard { _guard: guard, key: ros_name.to_string() })
+    Some(HandleGuard {
+        _guard: guard,
+        key: ros_name.to_string(),
+    })
 }
 
 /// RAII guard returning a `&dyn TopicHandle` for the duration of one
@@ -157,6 +193,17 @@ impl<T: UorbTopic> TopicHandle for Handle<T> {
 
     fn msg_size(&self) -> usize {
         core::mem::size_of::<T::Msg>()
+    }
+
+    fn eager_register(&self) {
+        // Forces ensure_registered() inside Subscription::try_recv. The
+        // returned message (if any) is intentionally discarded — at
+        // registration time the topic is fresh, no message expected.
+        let _ = self.sub.try_recv();
+    }
+
+    fn register_wake(&self, waker: &core::task::Waker) {
+        self.sub.register_waker(waker);
     }
 }
 

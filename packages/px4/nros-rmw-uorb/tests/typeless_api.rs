@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 //! End-to-end typeless API via nros-node.
 //!
 //! Exercises the user-intended flow: same `Executor` / `Node` shape as
@@ -91,10 +92,7 @@ fn typeless_api_round_trip_via_executor() {
     let _ = executor.spin_once(Duration::from_millis(0));
 
     // 6. Receive raw bytes and reinterpret.
-    let len = subscriber
-        .try_recv_raw()
-        .expect("recv")
-        .expect("got data");
+    let len = subscriber.try_recv_raw().expect("recv").expect("got data");
     assert_eq!(len, core::mem::size_of::<Imu>());
     let recv: Imu =
         unsafe { core::ptr::read_unaligned(subscriber.buffer().as_ptr() as *const Imu) };

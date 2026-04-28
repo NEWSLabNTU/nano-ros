@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 //! End-to-end typed pub/sub via the px4-uorb std mock broker.
 //!
 //! Mirror of `round_trip.rs` but using the **direct typed API**
@@ -58,7 +59,9 @@ fn typed_publish_subscribe_round_trips() {
 
 #[test]
 fn topic_not_in_topics_toml_rejected() {
-    let err = publication::<tick_topic>("/unknown/topic", 0).map(|_| ()).expect_err("must fail");
+    let err = publication::<tick_topic>("/unknown/topic", 0)
+        .map(|_| ())
+        .expect_err("must fail");
     assert!(matches!(err, nros_rmw::TransportError::InvalidConfig));
 }
 
@@ -66,7 +69,9 @@ fn topic_not_in_topics_toml_rejected() {
 fn topic_meta_name_mismatch_rejected() {
     // /fmu/out/sensor_accel is in topics.toml → uorb name "sensor_accel",
     // but tick_topic's metadata says "sensor_gyro". Must reject.
-    let err = publication::<tick_topic>("/fmu/out/sensor_accel", 0).map(|_| ()).expect_err("must fail");
+    let err = publication::<tick_topic>("/fmu/out/sensor_accel", 0)
+        .map(|_| ())
+        .expect_err("must fail");
     assert!(matches!(
         err,
         nros_rmw::TransportError::Backend(s) if s.contains("does not match")

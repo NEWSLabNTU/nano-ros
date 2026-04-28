@@ -166,7 +166,7 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_uorb::UorbRmw::default()
+            let session = nros_rmw_uorb::UorbRmw
                 .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);

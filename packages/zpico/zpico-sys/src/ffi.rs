@@ -554,10 +554,7 @@ mod cbindgen_stubs {
 
     /// Start a non-blocking liveliness query (for wait_for_service).
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_liveliness_get_start(
-        _keyexpr: *const c_char,
-        _timeout_ms: u32,
-    ) -> i32 {
+    pub extern "C" fn zpico_liveliness_get_start(_keyexpr: *const c_char, _timeout_ms: u32) -> i32 {
         -1 // stub: not available
     }
 

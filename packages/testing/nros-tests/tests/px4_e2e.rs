@@ -29,7 +29,7 @@
 //! `EXTERNAL_MODULES_LOCATION` at nano-ros's example modules — then
 //! hands the resulting build directory to [`Px4Sitl::boot_in`].
 //!
-//! See `docs/roadmap/phase-96-px4-autopilot-integration.md` for the
+//! See `docs/roadmap/phase-98-px4-autopilot-integration.md` for the
 //! design rationale.
 
 #![cfg(feature = "px4-sitl")]
@@ -104,10 +104,7 @@ fn build_sitl_with_nros_externals() -> PathBuf {
     let status = Command::new("make")
         .current_dir(&px4)
         .arg("px4_sitl_default")
-        .arg(format!(
-            "EXTERNAL_MODULES_LOCATION={}",
-            externals.display()
-        ))
+        .arg(format!("EXTERNAL_MODULES_LOCATION={}", externals.display()))
         .status()
         .expect("invoke make");
     assert!(
@@ -139,8 +136,7 @@ fn px4_sitl_talker_listener_round_trip() {
     // Brief gap so the listener subscription is in place before the
     // talker's first publish.
     std::thread::sleep(Duration::from_millis(500));
-    sitl.shell("nros_talker start")
-        .expect("start nros_talker");
+    sitl.shell("nros_talker start").expect("start nros_talker");
 
     // px4-sitl-tests' wait_for_log takes a &str pattern (compiled
     // internally to a Regex). Match the px4-log output shape from

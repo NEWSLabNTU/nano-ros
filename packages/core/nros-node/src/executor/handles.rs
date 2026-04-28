@@ -164,7 +164,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 /// - [`try_loan`](Self::try_loan): backend (or per-publisher arena fallback)
 ///   hands user a `&mut [u8]` slice. User writes in place. [`PublishLoan::commit`]
 ///   triggers the wire write. Zero-copy on backends with native lending
-///   (Phase 95: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
+///   (Phase 97: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
 ///   fallback on backends without (uORB).
 ///
 /// The const-generic `TX_BUF` sizes the inline arena slot (default
@@ -200,6 +200,12 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
     /// Try to claim the arena slot. Returns a raw pointer + len pair on
     /// success; caller wraps it in a `PublishLoan`. Returns `false` if
     /// the slot is already loaned.
+    ///
+    /// `&self` returning `&mut` is sound because the `busy` flag
+    /// gates exclusivity at runtime — the CAS in this function is
+    /// the only writer, and `release()` is only callable through the
+    /// loan's `Drop`.
+    #[allow(clippy::mut_from_ref)]
     fn try_claim(&self, len: usize) -> Result<&mut [u8], LoanError> {
         if len > TX_BUF {
             return Err(LoanError::TooLarge);
@@ -319,6 +325,7 @@ pub struct PublishLoan<'a, const TX_BUF: usize> {
 
 impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// Mutable view into the loaned bytes. Caller writes message data here.
+    #[allow(clippy::should_implement_trait)]
     pub fn as_mut(&mut self) -> &mut [u8] {
         self.slice
     }
@@ -826,8 +833,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             return Ok(true);
         }
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
-        let max_spins =
-            (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let max_spins = (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
         let mut budget = WaitBudget::new(max_spins, timeout);
         // Per-query budget. A liveliness_get is a single-shot probe of the
         // router's current token list; if the server hasn't declared its
@@ -1378,8 +1384,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
             return Ok(true);
         }
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
-        let max_spins =
-            (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
+        let max_spins = (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
         let mut budget = WaitBudget::new(max_spins, timeout);
         // See `Client::wait_for_service` for the re-probe rationale: a
         // single liveliness_get samples the router's current token list

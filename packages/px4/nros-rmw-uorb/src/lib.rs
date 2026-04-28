@@ -26,6 +26,8 @@ pub use raw::{publication, subscription};
 // Both the impls and the registry are std-only — no_std consumers (real
 // PX4 module builds) must use the raw API above instead.
 #[cfg(feature = "std")]
+mod park;
+#[cfg(feature = "std")]
 mod publisher;
 #[cfg(feature = "std")]
 mod registry;
@@ -36,6 +38,8 @@ mod session;
 #[cfg(feature = "std")]
 mod subscriber;
 
+#[cfg(feature = "std")]
+pub use park::{Park, park_until_event};
 #[cfg(feature = "std")]
 pub use publisher::UorbPublisher;
 #[cfg(feature = "std")]
@@ -48,7 +52,7 @@ pub use session::{UorbRmw, UorbSession};
 pub use subscriber::UorbSubscriber;
 
 // Topic-mapping internals.
-pub use topics::{lookup_topic, TopicEntry};
+pub use topics::{TopicEntry, lookup_topic};
 
 #[cfg(all(feature = "std", any(test, feature = "test-helpers")))]
 pub use registry::_reset;
