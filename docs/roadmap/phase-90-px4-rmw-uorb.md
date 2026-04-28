@@ -341,21 +341,45 @@ zero-latency event-driven regardless).
   - `pump_idles_on_quiescent_topics` — CPU < 200 ms over a 600 ms
     wall window (catches busy-loop regression)
 
-#### Limitations
+#### Status of earlier limitations
 
-- `run_async` is **std-only** because the trampoline registry uses
-  `HashMap` + `Mutex` + `OnceLock`. Real PX4 SITL builds modules
-  no_std. Practical impact: SITL E2E exercises Style C (raw API +
-  `#[task]`); the run_async path is host-mock-only until the no_std
-  registry (Phase 90.2b) lands.
-- Style B example crate (`run_async` + `Node` + `Subscription` via
-  registry) is **not authored** — would only run on host today, not
-  on SITL or real PX4. Re-evaluate after 90.2b.
-- The `tcache_thread_shutdown: unaligned tcache chunk detected`
-  error from running multiple `nros-px4` host-mock tests in parallel
-  is upstream px4-uorb mock fallout (leaked SubCbInner + thread tcache
-  cleanup race). Worked around with `--test-threads=1` in `just px4
-  test`. File a px4-rs issue to track the mock fix.
+- ~~`run_async` is std-only~~ — **resolved by Phase 90.2b** (see
+  below). Trampoline registry now uses `critical_section::Mutex<RefCell<heapless::Vec>>`
+  instead of `std::sync::Mutex<HashMap>` so the whole nros-rmw-uorb
+  surface (registry + UorbSession + UorbPublisher + UorbSubscriber +
+  park_until_event) is no_std + alloc compatible. Real PX4 NuttX
+  modules can use `Executor` + `Node` directly. `nros_px4::run_async`
+  itself remains std-only (Box::pin + std::thread::park + futures
+  executor) but a no_std variant is straightforward follow-up work.
+- ~~tcache_thread_shutdown crash with parallel tests~~ — **resolved
+  upstream** in `px4-rs/3afaf2c2`: HRT mock migrated to a single
+  shared worker thread; SubCbInner leak tracker added. `just px4
+  test` runs default-parallel again; `--test-threads=1` workaround
+  removed.
+
+### 90.2b — no_std + alloc registry ✅
+
+- [x] Replace `std::sync::Mutex<HashMap>` with
+      `critical_section::Mutex<RefCell<heapless::Vec<MAX_TOPICS>>>`
+- [x] Reshape `lookup` from guard-returning to closure-taking
+      (`lookup_with(name, |handle| ...)`) — required by
+      `critical_section::with`'s closure API
+- [x] `register::<T>(...)` returns `Result<(), TransportError>`
+      (full registry → `Backend("uORB registry full")` rather than
+      panic). Capacity is `MAX_TOPICS = 32` const, recompile to bump.
+- [x] Drop `cfg(feature = "std")` gates from registry, publisher,
+      subscriber, park, service, session — all build no_std now.
+- [x] `extern crate alloc` is unconditional (registry needs `Box`).
+      Real PX4 NuttX has an allocator; bare-metal users must wire a
+      `#[global_allocator]`.
+- [x] Std builds activate `critical-section/std` so the global impl
+      is available without the user wiring one. Real PX4 modules get
+      a `critical_section` impl via px4-sys (interrupt-disable on
+      NuttX).
+- [x] Tests pass on both `cargo check -p nros-rmw-uorb` (no_std)
+      and `cargo test --features std,test-helpers` (host).
+- [x] SITL E2E (`px4_sitl_talker_listener_round_trip`) still passes
+      (2.85 s).
 
 ### 90.10 — CLAUDE.md phase table ✅
 

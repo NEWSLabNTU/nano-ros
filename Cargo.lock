@@ -1602,6 +1602,7 @@ dependencies = [
 name = "nros-rmw-uorb"
 version = "0.1.0"
 dependencies = [
+ "critical-section",
  "heapless",
  "nros-core",
  "nros-node",

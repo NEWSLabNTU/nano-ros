@@ -6,7 +6,7 @@
 
 use nros_rmw::{Publisher, TransportError};
 
-use crate::registry::lookup;
+use crate::registry::lookup_with;
 use crate::topics::TopicEntry;
 
 /// Publisher handle for one ROS 2 topic.
@@ -47,10 +47,11 @@ impl Publisher for UorbPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
-        let guard = lookup(self.ros_name.as_str()).ok_or(TransportError::Backend(
-            "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-        ))?;
-        guard.handle().publish(data)
+        lookup_with(self.ros_name.as_str(), |handle| handle.publish(data)).ok_or(
+            TransportError::Backend(
+                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+            ),
+        )?
     }
 
     fn buffer_error(&self) -> Self::Error {

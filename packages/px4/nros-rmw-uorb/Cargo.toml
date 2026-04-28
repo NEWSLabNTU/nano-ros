@@ -11,8 +11,13 @@ doctest = false
 
 [features]
 default = []
-# Host-mock target (requires px4-rs std mock for testing without SITL)
-std = ["px4-uorb/std", "px4-workqueue/std", "px4-log/std", "alloc"]
+# Host-mock target (requires px4-rs std mock for testing without SITL).
+# Forwards to critical-section/std so its global impl is available
+# without the user wiring one up.
+std = ["px4-uorb/std", "px4-workqueue/std", "px4-log/std", "critical-section/std"]
+# Kept as a no-op for backwards compatibility — registry needs alloc
+# unconditionally now (Phase 90.2b), so it's always pulled in via
+# `extern crate alloc` regardless of this flag.
 alloc = []
 # log forwarding via px4-log
 log = ["px4-log/log"]
@@ -24,6 +29,10 @@ nros-rmw = { workspace = true }
 nros-core = { workspace = true }
 heapless = { workspace = true }
 phf = { version = "0.11", default-features = false }
+# Critical-section primitives for the no_std registry (Phase 90.2b).
+# Real PX4 modules supply a critical_section impl via px4-sys; on host
+# tests cargo selects the `std` impl through px4-workqueue/std.
+critical-section = "1"
 
 # px4-rs crates — vendored as a submodule under third-party/px4/px4-rs.
 # Run `just px4 setup` to populate.

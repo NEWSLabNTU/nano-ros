@@ -6,7 +6,7 @@
 
 use nros_rmw::{Subscriber, TransportError};
 
-use crate::registry::lookup;
+use crate::registry::lookup_with;
 use crate::topics::TopicEntry;
 
 /// Subscriber handle for one ROS 2 topic. Holds the topic descriptor and
@@ -42,10 +42,11 @@ impl Subscriber for UorbSubscriber {
     type Error = TransportError;
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        let guard = lookup(self.ros_name.as_str()).ok_or(TransportError::Backend(
-            "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-        ))?;
-        guard.handle().try_recv(buf)
+        lookup_with(self.ros_name.as_str(), |handle| handle.try_recv(buf)).ok_or(
+            TransportError::Backend(
+                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
+            ),
+        )?
     }
 
     fn deserialization_error(&self) -> Self::Error {

@@ -64,7 +64,7 @@ fn register_then_publish_subscribe_round_trips() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    register::<test_ping>("/test/ping", 0);
+    register::<test_ping>("/test/ping", 0).expect("register");
 
     let mut session = UorbRmw
         .open(&RmwConfig {
@@ -81,7 +81,7 @@ fn register_then_publish_subscribe_round_trips() {
     // — but topics.toml maps ROS 2 → uORB names. For this test we hand-craft
     // a TopicInfo whose `name` is in the map. Use `/fmu/out/sensor_gyro` as
     // a stand-in: register the same key with our fake topic for the test.
-    register::<test_ping>("/fmu/out/sensor_gyro", 0);
+    register::<test_ping>("/fmu/out/sensor_gyro", 0).expect("register");
 
     let topic = TopicInfo::new("/fmu/out/sensor_gyro", "TestPing", "0");
 

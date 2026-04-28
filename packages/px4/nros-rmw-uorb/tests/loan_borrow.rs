@@ -53,7 +53,7 @@ fn loan_borrow_round_trip_via_executor() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
@@ -106,7 +106,7 @@ fn loan_too_large_returns_error() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
@@ -126,7 +126,7 @@ fn concurrent_loan_returns_would_block() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");

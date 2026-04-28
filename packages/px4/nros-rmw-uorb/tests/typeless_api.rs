@@ -61,7 +61,7 @@ fn typeless_api_round_trip_via_executor() {
 
     // 1. Register the typed shim once at boot. This is the only line
     //    a PX4 user adds beyond the zenoh-shape examples.
-    nros_rmw_uorb::register::<imu_topic>("/fmu/out/sensor_gyro", 0);
+    nros_rmw_uorb::register::<imu_topic>("/fmu/out/sensor_gyro", 0).expect("register");
 
     // 2. Standard nros boot: ExecutorConfig + Executor::open + create_node.
     //    Identical shape to zenoh / xrce examples.

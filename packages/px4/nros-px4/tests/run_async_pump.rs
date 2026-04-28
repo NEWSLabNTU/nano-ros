@@ -70,7 +70,7 @@ fn park_until_event_wakes_on_uorb_publish() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     // Background publisher: sleep 50 ms, then publish once.
     let driver = std::thread::spawn(|| {
@@ -114,7 +114,7 @@ fn pump_routes_publish_through_executor_within_park_window() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let exec_config = ExecutorConfig::new("").node_name("pump_test");
     let executor = Executor::open(&exec_config).expect("open");
@@ -205,7 +205,7 @@ fn pump_idles_on_quiescent_topics() {
     px4_uorb::_reset_broker();
     nros_rmw_uorb::_reset();
 
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0);
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let exec_config = ExecutorConfig::new("").node_name("idle_test");
     let executor = Executor::open(&exec_config).expect("open");

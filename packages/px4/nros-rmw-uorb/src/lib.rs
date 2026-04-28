@@ -11,7 +11,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "alloc")]
+// alloc is required unconditionally — the trampoline registry
+// (Phase 90.2b) stores boxed type-erased handles. PX4 NuttX targets
+// have an allocator; bare-metal users must provide a #[global_allocator].
 extern crate alloc;
 
 mod raw;
@@ -23,36 +25,25 @@ pub use raw::{publication, subscription};
 
 // nros-rmw trait impls (UorbSession etc.) bridge nros-node's typed
 // Publisher<M>/Subscription<M> onto px4-uorb via the trampoline registry.
-// Both the impls and the registry are std-only — no_std consumers (real
-// PX4 module builds) must use the raw API above instead.
-#[cfg(feature = "std")]
+// Phase 90.2b made the registry no_std-friendly (heapless::Vec +
+// critical_section::Mutex), so these are now available on real PX4
+// NuttX targets, not just host-mock std builds.
 mod park;
-#[cfg(feature = "std")]
 mod publisher;
-#[cfg(feature = "std")]
 mod registry;
-#[cfg(feature = "std")]
 mod service;
-#[cfg(feature = "std")]
 mod session;
-#[cfg(feature = "std")]
 mod subscriber;
 
-#[cfg(feature = "std")]
 pub use park::{Park, park_until_event};
-#[cfg(feature = "std")]
 pub use publisher::UorbPublisher;
-#[cfg(feature = "std")]
 pub use registry::register;
-#[cfg(feature = "std")]
 pub use service::{UorbServiceClient, UorbServiceServer};
-#[cfg(feature = "std")]
 pub use session::{UorbRmw, UorbSession};
-#[cfg(feature = "std")]
 pub use subscriber::UorbSubscriber;
 
 // Topic-mapping internals.
 pub use topics::{TopicEntry, lookup_topic};
 
-#[cfg(all(feature = "std", any(test, feature = "test-helpers")))]
+#[cfg(any(test, feature = "test-helpers"))]
 pub use registry::_reset;
