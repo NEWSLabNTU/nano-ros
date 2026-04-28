@@ -56,7 +56,7 @@ install:
         exit 0
     fi
     PREFIX="$(pwd)/build/install"
-    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     echo "=== Building threadx_riscv64 RMW=zenoh ==="
     THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
     cmake -S . -B "build/cmake-threadx-riscv64-zenoh" \
@@ -82,7 +82,7 @@ build:
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
-    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/qemu-riscv64-threadx/rust/zenoh/$example && \
@@ -105,8 +105,8 @@ build-fixtures:
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     netx_dir="${NETX_DIR:-$root/third-party/threadx/netxduo}"
-    config_dir="$root/packages/boards/nros-threadx-qemu-riscv64/config"
-    board_dir="$root/packages/boards/nros-threadx-qemu-riscv64/c"
+    config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
+    board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/virtio-net-netx"
     rust_examples=(talker listener service-server service-client action-server action-client)
     for ex in "${rust_examples[@]}"; do
@@ -148,7 +148,7 @@ test verbose="":
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just threadx-linux setup"
         exit 1
     fi
-    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     export THREADX_CONFIG_DIR="$rv_config"
     export NETX_CONFIG_DIR="$rv_config"
     just _nextest-platform threadx_riscv64_qemu '{{verbose}}'
@@ -183,7 +183,7 @@ ci: doctor test
 _run-qemu example binary peer_index:
     #!/usr/bin/env bash
     set -e
-    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     cd "examples/qemu-riscv64-threadx/rust/zenoh/{{example}}"
     THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release
     MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"

@@ -26,13 +26,13 @@ Create a comprehensive integration test matrix that validates all ROS patterns (
 3. **Native examples are zenoh-only** — `rs-talker`, `rs-service-server`, etc. only have a `zenoh` feature; no way to build them against XRCE
 4. **No shared test binary** — Zenoh examples use `nros` + `Context::from_env()` API; XRCE test binaries use raw `nros-rmw` + `nros-rmw-xrce` API. These are different abstraction levels.
 5. **Test binaries duplicate code** — Each backend builds its own talker/listener with hand-coded CDR instead of generated message types
-6. **Board crates are zenoh-hardcoded** — `nros-mps2-an385` directly depends on `nros-rmw-zenoh`; no feature flag to swap to XRCE
+6. **Board crates are zenoh-hardcoded** — `nros-board-mps2-an385` directly depends on `nros-rmw-zenoh`; no feature flag to swap to XRCE
 
 ### Architectural observations
 
 - **Native examples** use `nros` (high-level crate) with `Context::from_env()` → executor → node API. The `zenoh` feature on `nros` activates `nros-rmw-zenoh/platform-posix`.
 - **XRCE test binaries** (`xrce-native-test`) use raw `nros-rmw` traits + `nros-rmw-xrce` directly, bypassing `nros`/`nros-node`. They hand-code CDR for `Int32`.
-- **Board crates** (`nros-mps2-an385`) import `nros-rmw-zenoh` directly in `Cargo.toml` and `node.rs`. Swapping to XRCE requires feature-gating the dependency and transport init.
+- **Board crates** (`nros-board-mps2-an385`) import `nros-rmw-zenoh` directly in `Cargo.toml` and `node.rs`. Swapping to XRCE requires feature-gating the dependency and transport init.
 - The `nros` crate has `zenoh` and `platform-*` features but no `xrce` feature.
 - XRCE's `init_transport()` + custom callbacks is a different initialization path from zenoh's session open. Board crate (or test harness) must call it before `XrceRmw::open()`.
 
@@ -464,7 +464,7 @@ Steps 36.2-36.4 can proceed in parallel after 36.1. Steps 36.6 and 36.7 are inde
 
 - **Backend-agnostic `nros-node`**: Make `Context`/`Executor`/`Node` work with XRCE (requires abstracting session initialization, `spin_once()` integration, transport callback registration). Prerequisite: 36.8 (feature decoupling) completed first.
 - **Unified native examples**: Single rs-talker with `--features rmw-zenoh` or `--features rmw-xrce`
-- **XRCE QEMU board crate**: `xrce-platform-mps2-an385` is already created (Phase 34.7); need board crate (`nros-mps2-an385-xrce` or feature-gated `nros-mps2-an385`)
+- **XRCE QEMU board crate**: `xrce-platform-mps2-an385` is already created (Phase 34.7); need board crate (`nros-mps2-an385-xrce` or feature-gated `nros-board-mps2-an385`)
 - **XRCE-DDS ↔ ROS 2 interop**: XRCE Agent bridges to DDS, enabling ROS 2 interop via different protocol than zenoh
 - **OpenCR board crate**: `nros-opencr` using `xrce-serial` over UART to Raspberry Pi running Micro-XRCE-DDS Agent (enables TurtleBot3 with nano-ros)
 - **Serial transport on embedded boards**: `UartPlatform` implementations for STM32 HAL, Zephyr UART, ESP32 UART — any board with UART can participate in ROS 2 via host-side Agent

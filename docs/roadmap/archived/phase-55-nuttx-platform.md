@@ -50,7 +50,7 @@ NuttX requires an MMU-capable core (Cortex-A class), not Cortex-M. The QEMU `-M 
 - `platform-nuttx` feature flag chain through all crates
 - zenoh-pico `ZENOH_NUTTX` define (RNG adaptation, platform.h dispatch)
 - zpico-sys / xrce-sys build.rs NuttX compilation branches
-- NuttX QEMU board crate (`nros-nuttx-qemu-arm`)
+- NuttX QEMU board crate (`nros-board-nuttx-qemu-arm`)
 - Examples: pubsub, service, action in both Rust and C
 - Integration tests with `just test-nuttx` recipe
 
@@ -94,7 +94,7 @@ NuttX requires an MMU-capable core (Cortex-A class), not Cortex-M. The QEMU `-M 
 └───────────────────────┬──────────────────────────┘
                         │
 ┌───────────────────────┴──────────────────────────┐
-│   Board Crate (nros-nuttx-qemu-arm)              │
+│   Board Crate (nros-board-nuttx-qemu-arm)              │
 │     NuttX defconfig, build-nuttx.sh, Config       │
 └──────────────────────────────────────────────────┘
 ```
@@ -189,7 +189,7 @@ Simpler than FreeRTOS (no separate `FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG
 - [x] 55.4 — xrce-sys build.rs NuttX compilation branch
 - [x] 55.5 — `just setup-nuttx` dependency acquisition
 - [x] 55.6 — NuttX QEMU defconfig
-- [x] 55.7 — QEMU board crate (`nros-nuttx-qemu-arm`)
+- [x] 55.7 — QEMU board crate (`nros-board-nuttx-qemu-arm`)
 - [x] 55.8 — Rust zenoh examples (pubsub, service, action)
 - [x] 55.9 — C zenoh examples (pubsub, service, action)
 - [x] 55.10 — Integration tests + `just test-nuttx` recipe
@@ -299,14 +299,14 @@ CONFIG_DEFAULT_TASK_STACKSIZE=8192
 CONFIG_SCHED_WAITPID=y
 ```
 
-**Files**: `packages/boards/nros-nuttx-qemu-arm/nuttx-config/defconfig`
+**Files**: `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
 
-### 55.7 — QEMU board crate (`nros-nuttx-qemu-arm`)
+### 55.7 — QEMU board crate (`nros-board-nuttx-qemu-arm`)
 
 Create the NuttX board crate for QEMU ARM virt, following the Phase 51 pattern.
 
 ```
-packages/boards/nros-nuttx-qemu-arm/
+packages/boards/nros-board-nuttx-qemu-arm/
 ├── Cargo.toml
 ├── build.rs              # Link against NuttX libs, set linker script
 ├── nuttx-config/defconfig
@@ -328,12 +328,12 @@ packages/boards/nros-nuttx-qemu-arm/
 2. Build NuttX (which calls `cargo build` for the Rust component)
 3. Output: `nuttx` ELF binary bootable by QEMU
 
-**Config builder** mirrors `nros-mps2-an385`:
+**Config builder** mirrors `nros-board-mps2-an385`:
 - `Config::default()` — talker preset (192.0.3.10, gateway 192.0.3.1)
 - `Config::listener()` — listener preset (192.0.3.11)
 - Builder methods: `with_ip()`, `with_gateway()`, `with_zenoh_locator()`, `with_domain_id()`
 
-**Files**: `packages/boards/nros-nuttx-qemu-arm/`
+**Files**: `packages/boards/nros-board-nuttx-qemu-arm/`
 
 ### 55.8 — Rust zenoh examples (pubsub, service, action)
 
@@ -349,7 +349,7 @@ examples/qemu-arm-nuttx/rust/zenoh/
 
 Each example has:
 ```
-├── Cargo.toml           # deps: nros, nros-nuttx-qemu-arm, generated msg types
+├── Cargo.toml           # deps: nros, nros-board-nuttx-qemu-arm, generated msg types
 ├── .cargo/config.toml   # target = armv7a-nuttx-eabi, -Z build-std, patch.crates-io
 ├── package.xml          # For cargo-nano-ros message generation
 ├── .gitignore           # /target/, /generated/
@@ -360,7 +360,7 @@ Each example has:
 
 ```rust
 use nros::prelude::*;
-use nros_nuttx_qemu_arm::{Config, run};
+use nros_board_nuttx_qemu_arm::{Config, run};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -434,7 +434,7 @@ just test-nuttx verbose=false  # With live output
 ### 55.11 — Documentation
 
 - Update `CLAUDE.md`:
-  - Add `nros-nuttx-qemu-arm` to workspace structure under `packages/boards/`
+  - Add `nros-board-nuttx-qemu-arm` to workspace structure under `packages/boards/`
   - Add `qemu-arm-nuttx` to examples list
   - Update platform backends section to include `platform-nuttx`
   - Add `just test-nuttx` to test groups table

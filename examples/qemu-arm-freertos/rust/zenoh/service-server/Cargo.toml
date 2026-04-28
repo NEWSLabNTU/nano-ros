@@ -15,7 +15,7 @@ bench = false
 default = []
 
 [dependencies]
-nros-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-mps2-an385-freertos" }
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-freertos", "link-tcp", "link-udp-unicast", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }

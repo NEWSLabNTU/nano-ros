@@ -76,7 +76,7 @@ void app_main(void) {
     // blocking connect() well enough to rely on connect_timeout, so we
     // just sleep for a few seconds after boot and let the virtio-net
     // driver + DHCP/static IP setup finish. Mirrors the 5-second wait
-    // in packages/boards/nros-nuttx-qemu-arm/src/node.rs::run().
+    // in packages/boards/nros-board-nuttx-qemu-arm/src/node.rs::run().
     fflush(stdout);
     sleep(5);
 

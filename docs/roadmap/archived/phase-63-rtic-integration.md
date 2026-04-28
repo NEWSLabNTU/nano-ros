@@ -591,20 +591,20 @@ which takes peripherals before calling `#[init]`. `run()` calls `Peripherals::ta
 internally so existing non-RTIC code is unaffected.
 
 **Files**:
-- `packages/boards/nros-stm32f4/src/node.rs` + `lib.rs`
-- `packages/boards/nros-mps2-an385/src/node.rs` + `lib.rs`
-- `packages/boards/nros-esp32/src/node.rs` + `lib.rs`
-- `packages/boards/nros-esp32-qemu/src/node.rs` + `lib.rs`
-- `packages/boards/nros-mps2-an385-freertos/src/node.rs` + `lib.rs`
-- `packages/boards/nros-nuttx-qemu-arm/src/node.rs` + `lib.rs`
-- `packages/boards/nros-threadx-linux/src/node.rs` + `lib.rs`
-- `packages/boards/nros-threadx-qemu-riscv64/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-stm32f4/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-mps2-an385/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-esp32/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-esp32-qemu/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-mps2-an385-freertos/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-nuttx-qemu-arm/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-threadx-linux/src/node.rs` + `lib.rs`
+- `packages/boards/nros-board-threadx-qemu-riscv64/src/node.rs` + `lib.rs`
 
 ### 63.2 — RTIC Talker/Listener Example
 
 Create a working RTIC example on STM32F4 (Nucleo-F429ZI) with talker and listener
 using `#[local]` resources, `spin_once(0)` net_poll task, and `try_recv()` subscription
-polling. STM32F4 is chosen because `nros-stm32f4` board crate already exists and the
+polling. STM32F4 is chosen because `nros-board-stm32f4` board crate already exists and the
 `stm32f4xx-hal` PAC provides interrupt definitions for RTIC's `dispatchers`.
 
 The `rtic-` prefix follows the existing `async-` prefix convention (e.g.,
@@ -683,7 +683,7 @@ Create a minimal in-tree PAC for the ARM CMSDK Cortex-M3 (MPS2-AN385 FPGA image)
 RTIC needs a PAC with an `Interrupt` enum and vector table — no register APIs required.
 
 **Why MPS2-AN385**: nano-ros already has full networking infrastructure for this QEMU
-machine — `lan9118-smoltcp` driver, `nros-mps2-an385` board crate, TAP bridge networking
+machine — `lan9118-smoltcp` driver, `nros-board-mps2-an385` board crate, TAP bridge networking
 (192.0.3.x), and `QemuProcess::start_mps2_an385_networked()` test helpers. A single
 platform covers both RTIC task dispatch validation AND networked zenoh communication,
 eliminating the need for a separate non-networked tier.
@@ -769,7 +769,7 @@ struct, and `device.x` linker script. Edition 2024 conventions: `unsafe extern "
 ### 63.6 — RTIC QEMU Pub/Sub Examples
 
 Create RTIC talker and listener examples targeting `mps2-an385` QEMU with LAN9118
-networking. These use the MPS2-AN385 PAC from 63.5 and the `nros-mps2-an385` board
+networking. These use the MPS2-AN385 PAC from 63.5 and the `nros-board-mps2-an385` board
 crate.
 
 The examples follow the same directory convention as existing QEMU bare-metal examples
@@ -777,7 +777,7 @@ The examples follow the same directory convention as existing QEMU bare-metal ex
 
 Key differences from STM32F4 RTIC examples:
 - PAC: `mps2_an385_pac` instead of `stm32f4xx_hal::pac`
-- Board crate: `nros-mps2-an385` instead of `nros-stm32f4`
+- Board crate: `nros-board-mps2-an385` instead of `nros-board-stm32f4`
 - Target: `thumbv7m-none-eabi` (Cortex-M3) instead of `thumbv7em-none-eabihf` (Cortex-M4F)
 - Networking: LAN9118 over TAP bridge (QEMU emulated) instead of STM32 Ethernet
 - Output: semihosting (`cortex_m_semihosting`) instead of defmt-rtt
@@ -1011,7 +1011,7 @@ infrastructure. Two QEMU processes communicate via zenohd on the bridge IP
   (`#[task(binds = TIM2)]`) could be used for periodic net_poll but add complexity
   without clear benefit for the initial integration
 - **Target board**: STM32F4 (Nucleo-F429ZI) is the primary target for real-hardware
-  examples — `nros-stm32f4` board crate exists, `stm32f4xx-hal` PAC provides RTIC
+  examples — `nros-board-stm32f4` board crate exists, `stm32f4xx-hal` PAC provides RTIC
   dispatcher interrupts, and RTIC has strong STM32F4 community support
 - **QEMU test platform**: MPS2-AN385 is chosen over lm3s6965evb because it has LAN9118
   Ethernet (with existing nano-ros driver and test infrastructure), enabling full

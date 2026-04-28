@@ -184,7 +184,7 @@ impl Default for Config {
 }
 ```
 
-Provide builder methods (`with_ip`, `with_mac`, `with_gateway`, etc.) and factory presets (`listener()`, `talker()`) for common test topologies. See `nros-mps2-an385/src/config.rs` for a complete example including `from_toml()` parsing.
+Provide builder methods (`with_ip`, `with_mac`, `with_gateway`, etc.) and factory presets (`listener()`, `talker()`) for common test topologies. See `nros-board-mps2-an385/src/config.rs` for a complete example including `from_toml()` parsing.
 
 ### node.rs
 
@@ -262,14 +262,14 @@ Start from the crate closest to your target:
 
 | Board crate | Transport | Platform | Location |
 |---|---|---|---|
-| `nros-mps2-an385` | Ethernet + Serial | Bare-metal | `packages/boards/nros-mps2-an385/` |
-| `nros-mps2-an385-freertos` | Ethernet (lwIP) | FreeRTOS | `packages/boards/nros-mps2-an385-freertos/` |
-| `nros-esp32` | WiFi | Bare-metal (ESP-IDF) | `packages/boards/nros-esp32/` |
-| `nros-stm32f4` | Ethernet + Serial | Bare-metal | `packages/boards/nros-stm32f4/` |
-| `nros-nuttx-qemu-arm` | BSD sockets | NuttX | `packages/boards/nros-nuttx-qemu-arm/` |
-| `nros-threadx-qemu-riscv64` | NetX Duo | ThreadX | `packages/boards/nros-threadx-qemu-riscv64/` |
+| `nros-board-mps2-an385` | Ethernet + Serial | Bare-metal | `packages/boards/nros-board-mps2-an385/` |
+| `nros-board-mps2-an385-freertos` | Ethernet (lwIP) | FreeRTOS | `packages/boards/nros-board-mps2-an385-freertos/` |
+| `nros-board-esp32` | WiFi | Bare-metal (ESP-IDF) | `packages/boards/nros-board-esp32/` |
+| `nros-board-stm32f4` | Ethernet + Serial | Bare-metal | `packages/boards/nros-board-stm32f4/` |
+| `nros-board-nuttx-qemu-arm` | BSD sockets | NuttX | `packages/boards/nros-board-nuttx-qemu-arm/` |
+| `nros-board-threadx-qemu-riscv64` | NetX Duo | ThreadX | `packages/boards/nros-board-threadx-qemu-riscv64/` |
 
-The bare-metal `nros-mps2-an385` is the simplest starting point. The FreeRTOS variant shows how to add RTOS task creation and lwIP networking.
+The bare-metal `nros-board-mps2-an385` is the simplest starting point. The FreeRTOS variant shows how to add RTOS task creation and lwIP networking.
 
 ## See also
 

@@ -4,7 +4,7 @@
 
 ## Background
 
-Board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) currently
+Board crates (`nros-board-mps2-an385`, `nros-board-stm32f4`, `nros-board-esp32`, `nros-board-esp32-qemu`) currently
 expose a simplified `Node` wrapper that only supports pub/sub via `create_publisher()` and
 `create_subscription()`. This blocks users from using services, actions, timers, callbacks,
 async, and the full Executor API on embedded targets.
@@ -51,10 +51,10 @@ run(Config::default(), |config| {
 
 ## Work Items
 
-- [x] 51.1 — `nros-mps2-an385`: Add `run()`, remove `run_node()`, remove simplified `Node`
-- [x] 51.2 — `nros-stm32f4`: Add `run()`, remove `run_node()`, remove simplified `Node`
-- [x] 51.3 — `nros-esp32`: Add `run()`, remove `run_node()`, remove simplified `Node`
-- [x] 51.4 — `nros-esp32-qemu`: Add `run()`, remove `run_node()`, remove simplified `Node`
+- [x] 51.1 — `nros-board-mps2-an385`: Add `run()`, remove `run_node()`, remove simplified `Node`
+- [x] 51.2 — `nros-board-stm32f4`: Add `run()`, remove `run_node()`, remove simplified `Node`
+- [x] 51.3 — `nros-board-esp32`: Add `run()`, remove `run_node()`, remove simplified `Node`
+- [x] 51.4 — `nros-board-esp32-qemu`: Add `run()`, remove `run_node()`, remove simplified `Node`
 - [x] 51.5 — Migrate QEMU ARM examples (`talker`, `listener`, `large-msg-test`) to `run()`
 - [x] 51.6 — Migrate STM32F4 example (`talker`) to `run()`
 - [x] 51.7 — Migrate ESP32 examples (`talker`, `listener`) to `run()`

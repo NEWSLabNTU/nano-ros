@@ -82,7 +82,7 @@ the backing memory.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ Board crate (e.g., nros-mps2-an385)                 │
+│ Board crate (e.g., nros-board-mps2-an385)                 │
 │   #[global_allocator]                               │
 │   static HEAP: LlffHeap = ...;   // 64-128 KB      │
 │   static mut HEAP_MEM: [u8; N];  // backing storage │

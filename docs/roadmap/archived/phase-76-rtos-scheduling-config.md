@@ -71,7 +71,7 @@ them from the `[scheduling]` section of `config.toml`.
 - [x] Add builder methods: `with_app_priority()`, `with_poll_interval_ms()`, etc.
 
 **Files:**
-- `packages/boards/nros-mps2-an385-freertos/src/config.rs`
+- `packages/boards/nros-board-mps2-an385-freertos/src/config.rs`
 
 ### 76.3 — FreeRTOS board crate wiring
 
@@ -85,7 +85,7 @@ Replace hardcoded constants with config values in task creation calls.
 - [x] Remove old `APP_TASK_STACK`, `APP_TASK_PRIORITY` constants (poll task stack kept as small constant — 256 words is fixed overhead)
 
 **Files:**
-- `packages/boards/nros-mps2-an385-freertos/src/node.rs`
+- `packages/boards/nros-board-mps2-an385-freertos/src/node.rs`
 
 ### 76.4 — Example and test validation
 
@@ -165,8 +165,8 @@ for the full feasibility study.
 - [x] Set `tband_portTIMESTAMP_RESOLUTION_NS` to 40 (25 MHz clock)
 
 **Files:**
-- `packages/boards/nros-mps2-an385-freertos/trace/tband_port.h`
-- `packages/boards/nros-mps2-an385-freertos/trace/tband_config.h`
+- `packages/boards/nros-board-mps2-an385-freertos/trace/tband_port.h`
+- `packages/boards/nros-board-mps2-an385-freertos/trace/tband_config.h`
 
 ### 76.7.2 — Build integration (opt-in)
 
@@ -176,8 +176,8 @@ for the full feasibility study.
 - [x] Verify board crate builds with and without `NROS_TRACE`
 
 **Files:**
-- `packages/boards/nros-mps2-an385-freertos/build.rs`
-- `packages/boards/nros-mps2-an385-freertos/config/FreeRTOSConfig.h`
+- `packages/boards/nros-board-mps2-an385-freertos/build.rs`
+- `packages/boards/nros-board-mps2-an385-freertos/config/FreeRTOSConfig.h`
 
 ### 76.7.3 — Trace dump via semihosting
 
@@ -187,8 +187,8 @@ for the full feasibility study.
 - [x] Verify semihosting file I/O works on QEMU MPS2-AN385 (end-to-end test — 19 events, 127 bytes)
 
 **Files:**
-- `packages/boards/nros-mps2-an385-freertos/c/trace_dump.c`
-- `packages/boards/nros-mps2-an385-freertos/src/node.rs`
+- `packages/boards/nros-board-mps2-an385-freertos/c/trace_dump.c`
+- `packages/boards/nros-board-mps2-an385-freertos/src/node.rs`
 
 ### 76.7.4 — Host-side conversion and visualization
 

@@ -1,4 +1,4 @@
-//! Simple ESP32 WiFi Talker using nros-esp32
+//! Simple ESP32 WiFi Talker using nros-board-esp32
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with the QEMU bsp-talker to see the similar API.
@@ -23,10 +23,10 @@
 
 use esp_backtrace as _;
 use nros::prelude::*;
-use nros_esp32::{NodeConfig, entry, esp_println, run};
+use nros_board_esp32::{NodeConfig, entry, esp_println, run};
 use std_msgs::msg::Int32;
 
-nros_esp32::esp_bootloader_esp_idf::esp_app_desc!();
+nros_board_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {

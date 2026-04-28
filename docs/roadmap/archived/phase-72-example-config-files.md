@@ -180,7 +180,7 @@ compatibility but delegate to `from_toml()` internally or are deprecated.
 ## Work Items
 
 - [x] 72.1 — Define config TOML schema and implement parser
-- [x] 72.2 — Add `Config::from_toml()` to `nros-mps2-an385` (proof of concept)
+- [x] 72.2 — Add `Config::from_toml()` to `nros-board-mps2-an385` (proof of concept)
 - [x] 72.3 — Create config.toml for remaining QEMU ARM bare-metal examples
 - [x] 72.4 — Port remaining board crates to config.toml
 - [x] 72.5 — Port RTOS examples (FreeRTOS, NuttX, ThreadX)
@@ -214,14 +214,14 @@ pub const CONFIG_DOMAIN_ID: u32 = 0;
 - `packages/core/nros-config/` — new crate (or add to `nros-core`)
 - Parser functions: `parse_ipv4()`, `parse_mac()`, `parse_toml_config()`
 
-### 72.2 — Add `Config::from_toml()` to `nros-mps2-an385`
+### 72.2 — Add `Config::from_toml()` to `nros-board-mps2-an385`
 
 Proof of concept: add config.toml support to the QEMU ARM bare-metal
 board crate. Add `build.rs` that reads `config.toml` from the example
 directory (passed via env var) and generates config constants.
 
 **Files**:
-- `packages/boards/nros-mps2-an385/src/config.rs` — add `from_toml()`
+- `packages/boards/nros-board-mps2-an385/src/config.rs` — add `from_toml()`
 - Example `config.toml` files for talker/listener
 
 ### 72.3 — Create config.toml for QEMU ARM bare-metal examples
@@ -264,13 +264,13 @@ domain_id = 0
 ### 72.4 — Port remaining board crates to config.toml
 
 Add `from_toml()` to all board crates:
-- `nros-mps2-an385-freertos`
-- `nros-nuttx-qemu-arm`
-- `nros-threadx-qemu-riscv64`
-- `nros-threadx-linux`
-- `nros-esp32-qemu`
-- `nros-stm32f4`
-- `nros-esp32`
+- `nros-board-mps2-an385-freertos`
+- `nros-board-nuttx-qemu-arm`
+- `nros-board-threadx-qemu-riscv64`
+- `nros-board-threadx-linux`
+- `nros-board-esp32-qemu`
+- `nros-board-stm32f4`
+- `nros-board-esp32`
 
 Each board crate provides its own `board_defaults()` with hardware-specific
 values (e.g., STM32F4 uses `192.168.1.x`, ESP32 uses WiFi/DHCP).

@@ -20,7 +20,7 @@ use panic_semihosting as _;
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;
-use nros_mps2_an385::{Config, println};
+use nros_board_mps2_an385::{Config, println};
 
 use rtic_monotonics::systick::prelude::*;
 
@@ -46,7 +46,7 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         let config = Config::from_toml(include_str!("../config.toml"));
-        nros_mps2_an385::init_hardware(&config);
+        nros_board_mps2_an385::init_hardware(&config);
 
         Mono::start(cx.core.SYST, 25_000_000);
 
@@ -103,13 +103,13 @@ mod app {
                     Ok(None) => {}
                     Err(e) => {
                         println!("try_recv error: {:?}", e);
-                        nros_mps2_an385::exit_failure();
+                        nros_board_mps2_an385::exit_failure();
                     }
                 }
             }
             if !got_reply {
                 println!("Service call timed out after 30s");
-                nros_mps2_an385::exit_failure();
+                nros_board_mps2_an385::exit_failure();
             }
 
             cx.local
@@ -120,6 +120,6 @@ mod app {
 
         println!("");
         println!("All service calls completed");
-        nros_mps2_an385::exit_success();
+        nros_board_mps2_an385::exit_success();
     }
 }

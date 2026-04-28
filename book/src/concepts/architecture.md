@@ -31,10 +31,10 @@ This document presents the overall nano-ros architecture: the layered crate stru
   <rect class="board" x="10" y="68" width="600" height="60"/>
   <text class="boardg" x="20" y="84">Board  (optional — bundles hardware init + drivers + re-exports nros)</text>
   <rect class="boardi" x="20" y="90" width="285" height="32"/>
-  <text class="label" x="162" y="104" text-anchor="middle">nros-mps2-an385-freertos</text>
+  <text class="label" x="162" y="104" text-anchor="middle">nros-board-mps2-an385-freertos</text>
   <text class="sub" x="162" y="117" text-anchor="middle">MPS2-AN385 + FreeRTOS + lwIP + LAN9118</text>
   <rect class="boardi" x="315" y="90" width="285" height="32"/>
-  <text class="label" x="457" y="104" text-anchor="middle">nros-nuttx-qemu-arm / nros-threadx-* / ...</text>
+  <text class="label" x="457" y="104" text-anchor="middle">nros-board-nuttx-qemu-arm / nros-threadx-* / ...</text>
   <text class="sub" x="457" y="117" text-anchor="middle">one crate per (board + RTOS) combination</text>
 
   <!-- Core layer -->
@@ -90,7 +90,7 @@ This document presents the overall nano-ros architecture: the layered crate stru
 Five conceptual layers. Arrows point downward — each layer depends on the one below:
 
 - **Application** — user code in Rust, C, or C++. Depends on either `nros` directly (if doing hardware init manually) or on a board package that handles setup.
-- **Board** *(optional)* — "batteries-included" wrapper crates like `nros-mps2-an385-freertos` that combine a platform crate + network drivers + hardware-init code + a `Config` struct + a `run()` entry point. They re-export `nros` so user code uses the same API either way. Most embedded users depend on a board package; POSIX users skip this layer. See [Custom Board Package](../porting/custom-board.md) for what a board crate provides.
+- **Board** *(optional)* — "batteries-included" wrapper crates like `nros-board-mps2-an385-freertos` that combine a platform crate + network drivers + hardware-init code + a `Config` struct + a `run()` entry point. They re-export `nros` so user code uses the same API either way. Most embedded users depend on a board package; POSIX users skip this layer. See [Custom Board Package](../porting/custom-board.md) for what a board crate provides.
 - **Core** — the `nros` facade re-exports `nros-node` (executor, node, handles), `nros-params` (parameter server), and `nros-core` (message traits, CDR serialization). Middleware-agnostic — knows nothing about zenoh or XRCE.
 - **RMW** — `nros-rmw` defines the `Session`/`Publisher`/`Subscriber` trait interface. Backend crates (`nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-cffi`) implement these traits using specific transport protocols. Selected at compile time via Cargo feature flags.
 - **Platform** — `nros-platform` defines traits for clock, memory, sleep, random, threading, and networking. Platform crates (`nros-platform-posix`, `nros-platform-freertos`, `nros-platform-zephyr`, etc.) implement these for each OS/RTOS. See the [Platform API Reference](../reference/platform-api.md) for trait details and the [Custom Platform](../porting/custom-platform.md) guide for porting.
@@ -138,7 +138,7 @@ graph TD
     end
 
     subgraph "Board Crates"
-        BOARD["nros-mps2-an385<br/>nros-mps2-an385-freertos<br/>nros-esp32 / nros-esp32-qemu<br/>nros-stm32f4<br/>nros-threadx-* / nros-nuttx-*"]
+        BOARD["nros-board-mps2-an385<br/>nros-board-mps2-an385-freertos<br/>nros-board-esp32 / nros-board-esp32-qemu<br/>nros-board-stm32f4<br/>nros-threadx-* / nros-nuttx-*"]
     end
 
     subgraph "Drivers"
@@ -413,7 +413,7 @@ Board crates provide a turn-key entry point for a specific hardware + RTOS combi
 
 ```mermaid
 graph TD
-    subgraph "Board Crate (e.g. nros-mps2-an385)"
+    subgraph "Board Crate (e.g. nros-board-mps2-an385)"
         RUN["run(config, |config| { ... })"]
         HW["Hardware Init<br/><i>Ethernet driver, clocks</i>"]
         NET["Network Stack<br/><i>smoltcp / lwIP / NetX / NuttX sockets</i>"]
@@ -435,14 +435,14 @@ graph TD
 
 | Board Crate                 | Target         | RTOS       | Network Stack | Ethernet Driver       |
 |-----------------------------|----------------|------------|---------------|-----------------------|
-| `nros-mps2-an385`           | QEMU Cortex-M3 | Bare-metal | smoltcp       | lan9118-smoltcp       |
-| `nros-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
-| `nros-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
-| `nros-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
-| `nros-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
-| `nros-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
-| `nros-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
-| `nros-threadx-linux`        | Linux (x86_64) | ThreadX    | NetX Duo      | veth (bridge)         |
+| `nros-board-mps2-an385`           | QEMU Cortex-M3 | Bare-metal | smoltcp       | lan9118-smoltcp       |
+| `nros-board-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
+| `nros-board-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
+| `nros-board-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
+| `nros-board-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
+| `nros-board-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
+| `nros-board-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
+| `nros-board-threadx-linux`        | Linux (x86_64) | ThreadX    | NetX Duo      | veth (bridge)         |
 
 ### Platform Primitives
 

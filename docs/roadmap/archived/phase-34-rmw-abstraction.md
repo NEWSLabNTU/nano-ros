@@ -21,7 +21,7 @@
 **Complete:**
 - `nros-rmw` — `Rmw` factory trait, `RmwConfig`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait` traits, `TopicInfo`, `ServiceInfo`, `ActionInfo`, `QosSettings`, `TransportError`
 - `nros-rmw-zenoh` — `ZenohRmw` implements `Rmw` trait, `ShimSession`/`ShimPublisher`/`ShimSubscriber` implement session/pub/sub traits
-- All 4 board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
+- All 4 board crates (`nros-board-mps2-an385`, `nros-board-stm32f4`, `nros-board-esp32`, `nros-board-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
 
 **Remaining (34.6-34.8):**
 - XRCE-DDS as second RMW backend, proving the abstraction works
@@ -123,18 +123,18 @@ pub struct RmwConfig<'a> {
 - [x] Board-specific `Node` type uses concrete `ZenohRmw` (no dynamic dispatch, no generics needed for single-backend boards)
 
 **QEMU board crate (refactored first — most tested):**
-- [x] Refactor `nros-mps2-an385/src/node.rs`
-- [x] Refactor `nros-mps2-an385/src/publisher.rs`
-- [x] Refactor `nros-mps2-an385/src/subscriber.rs`
+- [x] Refactor `nros-board-mps2-an385/src/node.rs`
+- [x] Refactor `nros-board-mps2-an385/src/publisher.rs`
+- [x] Refactor `nros-board-mps2-an385/src/subscriber.rs`
 - [x] All QEMU examples build and pass tests
 
 **STM32F4 board crate:**
-- [x] Refactor `nros-stm32f4/src/{node,publisher,subscriber}.rs`
+- [x] Refactor `nros-board-stm32f4/src/{node,publisher,subscriber}.rs`
 - [x] STM32F4 examples build
 
 **ESP32 board crates:**
-- [x] Refactor `nros-esp32/src/{node,publisher,subscriber}.rs`
-- [x] Refactor `nros-esp32-qemu/src/{node,publisher,subscriber}.rs`
+- [x] Refactor `nros-board-esp32/src/{node,publisher,subscriber}.rs`
+- [x] Refactor `nros-board-esp32-qemu/src/{node,publisher,subscriber}.rs`
 - [x] ESP32 examples build
 
 **Final verification:**

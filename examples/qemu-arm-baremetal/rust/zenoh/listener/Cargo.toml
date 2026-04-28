@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple listener example using nros-mps2-an385"
+description = "Simple listener example using nros-board-mps2-an385"
 
 [[bin]]
 name = "qemu-bsp-listener"
@@ -14,13 +14,13 @@ bench = false
 [features]
 default = []
 # Use Docker network configuration (different IPs for container-based testing)
-docker = ["nros-mps2-an385/docker"]
+docker = ["nros-board-mps2-an385/docker"]
 # TLS transport support (connects to zenohd over TLS)
-link-tls = ["nros-mps2-an385/link-tls", "nros/link-tls"]
+link-tls = ["nros-board-mps2-an385/link-tls", "nros/link-tls"]
 
 [dependencies]
 # Board crate for hardware + network init
-nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385" }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-unicast", "ros-humble"] }

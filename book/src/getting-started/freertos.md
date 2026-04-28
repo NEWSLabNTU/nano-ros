@@ -13,7 +13,7 @@ The FreeRTOS platform uses:
 - **zenoh-pico** -- Zenoh transport over lwIP BSD sockets
 - **LAN9118** -- MMIO Ethernet controller (QEMU MPS2-AN385)
 
-Board crate: `nros-mps2-an385-freertos` (in `packages/boards/`).
+Board crate: `nros-board-mps2-an385-freertos` (in `packages/boards/`).
 
 ### Why lwIP (Not FreeRTOS+TCP)
 
@@ -129,14 +129,14 @@ FreeRTOS QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-mps2-an385-freertos` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md). It provides network and node configuration presets (`default()`, `listener()`, `server()`, `client()`) and initializes FreeRTOS, lwIP, and LAN9118 before running the user closure as a FreeRTOS task. Output uses ARM semihosting (`SYS_WRITE0`).
+The `nros-board-mps2-an385-freertos` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md). It provides network and node configuration presets (`default()`, `listener()`, `server()`, `client()`) and initializes FreeRTOS, lwIP, and LAN9118 before running the user closure as a FreeRTOS task. Output uses ARM semihosting (`SYS_WRITE0`).
 
 Unlike NuttX, FreeRTOS is `no_std` -- examples use `#![no_std]` / `#![no_main]`
 entry points with semihosting for output.
 
 ### FreeRTOS Configuration
 
-The board configuration in `packages/boards/nros-mps2-an385-freertos/config/`:
+The board configuration in `packages/boards/nros-board-mps2-an385-freertos/config/`:
 
 - `FreeRTOSConfig.h` -- 25 MHz CPU clock, 256 KB heap, recursive mutexes,
   semihosting-compatible `configASSERT()`

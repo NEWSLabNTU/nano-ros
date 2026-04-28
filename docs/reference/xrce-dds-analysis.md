@@ -11,7 +11,7 @@ Source code studied: [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-X
 ```
 MCU (XRCE Client)                     Gateway (XRCE Agent)
 ┌──────────────────┐                   ┌──────────────────────┐
-│  nros-mps2-an385       │   XRCE Protocol   │  Micro-XRCE-DDS     │
+│  nros-board-mps2-an385       │   XRCE Protocol   │  Micro-XRCE-DDS     │
 │  nros-rmw-xrce   │◄─── UDP/Serial ──►│  Agent               │
 │  xrce-sys        │                   │  ┌──────────────┐    │
 │                  │                   │  │ DDS           │    │

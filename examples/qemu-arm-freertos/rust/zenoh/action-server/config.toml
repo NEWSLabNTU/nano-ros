@@ -1,5 +1,5 @@
 # QEMU ARM FreeRTOS action server — network configuration
-# Used by nros-mps2-an385-freertos board crate (Config::from_toml)
+# Used by nros-board-mps2-an385-freertos board crate (Config::from_toml)
 
 [network]
 ip = "10.0.2.20"

@@ -177,7 +177,7 @@ the real implementation first.
 
 - [x] 84.F1 — Dedupe `net.rs` across 4 bare-metal platform crates via a `nros_smoltcp::define_smoltcp_platform!(PlatformZst)` macro. Each platform's 502-line `net.rs` collapses to a single 8-line file that invokes the macro; the body lives once in `nros-smoltcp::platform_macro`. Net result: 2008 lines → 577 lines (~70% reduction). The macro emits the same five `impl crate::PlatformZst { ... }` blocks (TCP / UDP / socket helpers / multicast stubs) so the existing `zpico-platform-shim` inherent-method dispatch keeps working unchanged. Took the macro approach instead of the audit's "extract a `zpico-smoltcp-platform` crate" because `nros-smoltcp` is already a dep of every bare-metal platform crate, so a new crate would have been pure overhead.
 - [x] 84.F2 — Extract `nros-baremetal-common` crate for the shared `xorshift32` RNG (`random.rs`, 70 lines × 4), `sleep.rs` (44 lines × 4), and libc stubs (`libc_stubs.rs`, 247 lines × 2). New crate at `packages/drivers/nros-baremetal-common/`. Each platform crate's `random.rs` becomes a 5-line `pub use`; `sleep.rs` becomes a 12-line wrapper that registers the platform's `clock::clock_ms` via `set_clock_fn` (the shared sleep module uses a function-pointer atomic to call the right clock); `libc_stubs.rs` becomes a 4-8 line note (the actual `#[unsafe(no_mangle)]` symbols are gated behind a `libc-stubs` Cargo feature in `nros-baremetal-common`, enabled only by MPS2-AN385 and STM32F4 — ESP32 / ESP32-QEMU don't enable it because esp-hal already provides them). Net savings: 950 duplicated lines → 511 lines (~46% reduction).
-- [x] 84.F3 — Split timing API into **`MonotonicClock::now() -> core::time::Duration`** (portable, available on every platform) and **`CycleCounter`** (raw u32 cycles, only on platforms with real hardware cycle counters — MPS2/STM32F4 via DWT). ESP32 and ESP32-QEMU dropped the fake `CycleCounter` and keep only `MonotonicClock`. Board-crate re-exports updated (`nros-mps2-an385` / `nros-stm32f4` re-export both; `nros-esp32` / `nros-esp32-qemu` re-export only `MonotonicClock`). No in-repo example uses `CycleCounter::measure()` so no example migration was needed. Platform-api / custom-platform docs will gain content in a follow-up (the split is documented inline in each platform's `timing.rs`).
+- [x] 84.F3 — Split timing API into **`MonotonicClock::now() -> core::time::Duration`** (portable, available on every platform) and **`CycleCounter`** (raw u32 cycles, only on platforms with real hardware cycle counters — MPS2/STM32F4 via DWT). ESP32 and ESP32-QEMU dropped the fake `CycleCounter` and keep only `MonotonicClock`. Board-crate re-exports updated (`nros-board-mps2-an385` / `nros-board-stm32f4` re-export both; `nros-board-esp32` / `nros-board-esp32-qemu` re-export only `MonotonicClock`). No in-repo example uses `CycleCounter::measure()` so no example migration was needed. Platform-api / custom-platform docs will gain content in a follow-up (the split is documented inline in each platform's `timing.rs`).
 - [ ] 84.F4 — Platform traits in `packages/core/nros-platform/src/traits.rs`
       become a real contract: actually `impl PlatformClock`,
       `PlatformAlloc`, `PlatformUdp`, … on each platform ZST and have
@@ -322,7 +322,7 @@ the real implementation first.
       `zpico-platform-shim` and `xrce-platform-shim`. **Verified
       2026-04-24**: only one residual `P::` is in a doc comment.
 - [x] 84.F5 — Landed via a new `nros_smoltcp::NetworkState<D>` generic holder. The struct keeps the `(Interface, SocketSet, Device)` triple in `AtomicPtr` fields (no more `static mut`), exposes `set` / `clear` / `poll` / `poll_via_ref` methods (the `_via_ref` variant covers STM32F4's `for<'a> &'a mut EthernetDMA: Device` quirk), and is `unsafe impl Sync`. Each board's `network.rs` is now ~35 lines of wiring instead of ~63 lines of hand-rolled globals. Board total 254 → 148 lines (-42%), and the 12 `static mut` globals are gone. Board-side net lines (`boards/nros-platform-*/src/net.rs`) were already covered by the `define_smoltcp_platform!` macro in Phase 83.
-- [ ] 84.F6 — **Deferred to the end of Phase 84**: directory-layout cleanup + board-crate rename. Target layout:
+- [x] 84.F6 — **Landed 2026-04-27**: directory-layout cleanup + board-crate rename. Target layout:
       - `packages/platforms/` — OS-level platform crates (`posix`, `freertos`, `nuttx`, `threadx`, `zephyr`) and bare-metal platform crates (current `packages/boards/nros-platform-*` move here, keeping the `nros-platform-*` name since these are implementer-facing).
       - `packages/boards/` — **user-facing** board bring-up crates. Rename from `nros-*` / `nros-*-freertos` etc. to a clearer prefix like `nros-board-*` (e.g. `nros-board-mps2-an385`, `nros-board-esp32-wifi`). These are the end-user library surface; the rename distinguishes "what I `use` from my app" from "what I implement when porting".
       - Update CLAUDE.md workspace layout and all book porting docs.
@@ -330,20 +330,20 @@ the real implementation first.
 
       Sub-items (land in this order; each is a self-contained PR):
 
-      - [ ] **84.F6.1 — Move `packages/boards/nros-platform-*` to `packages/platforms/`.** Files: top-level `Cargo.toml` workspace `members`/`exclude` lists, every internal `path = "../boards/nros-platform-*"` reference (search `grep -rn 'boards/nros-platform-' packages/ examples/ zephyr/`), `zephyr/modules.yaml`, `zephyr/CMakeLists.txt` if it references board paths, and any `cargo-nano-ros` template that points at the old path. No crate names change, only paths. Acceptance: `just check` + `just test-unit` green; `grep -rn 'boards/nros-platform-' packages/ examples/` returns nothing.
+      - [x] **84.F6.1 — Move `packages/boards/nros-platform-*` to `packages/platforms/`.** Files: top-level `Cargo.toml` workspace `members`/`exclude` lists, every internal `path = "../boards/nros-platform-*"` reference (search `grep -rn 'boards/nros-platform-' packages/ examples/ zephyr/`), `zephyr/modules.yaml`, `zephyr/CMakeLists.txt` if it references board paths, and any `cargo-nano-ros` template that points at the old path. No crate names change, only paths. Acceptance: `just check` + `just test-unit` green; `grep -rn 'boards/nros-platform-' packages/ examples/` returns nothing.
 
-      - [ ] **84.F6.2 — Rename user-facing board crates `nros-* → nros-board-*`.** Concrete renames:
+      - [x] **84.F6.2 — Rename user-facing board crates `nros-* → nros-board-*`.** Concrete renames:
 
             | Old crate name              | Old path                                | New crate name                  | New path                              |
             |-----------------------------|------------------------------------------|---------------------------------|----------------------------------------|
-            | `nros-mps2-an385`           | `packages/boards/nros-mps2-an385`         | `nros-board-mps2-an385`         | `packages/boards/nros-board-mps2-an385` |
-            | `nros-mps2-an385-freertos`  | `packages/boards/nros-mps2-an385-freertos`| `nros-board-mps2-an385-freertos`| `packages/boards/nros-board-mps2-an385-freertos` |
-            | `nros-stm32f4`              | `packages/boards/nros-stm32f4`            | `nros-board-stm32f4`            | `packages/boards/nros-board-stm32f4`   |
-            | `nros-esp32`                | `packages/boards/nros-esp32`              | `nros-board-esp32`              | `packages/boards/nros-board-esp32`     |
-            | `nros-esp32-qemu`           | `packages/boards/nros-esp32-qemu`         | `nros-board-esp32-qemu`         | `packages/boards/nros-board-esp32-qemu`|
-            | `nros-nuttx-qemu-arm`       | `packages/boards/nros-nuttx-qemu-arm`     | `nros-board-nuttx-qemu-arm`     | `packages/boards/nros-board-nuttx-qemu-arm` |
-            | `nros-threadx-linux`        | `packages/boards/nros-threadx-linux`      | `nros-board-threadx-linux`      | `packages/boards/nros-board-threadx-linux` |
-            | `nros-threadx-qemu-riscv64` | `packages/boards/nros-threadx-qemu-riscv64`| `nros-board-threadx-qemu-riscv64`| `packages/boards/nros-board-threadx-qemu-riscv64` |
+            | `nros-board-mps2-an385`           | `packages/boards/nros-board-mps2-an385`         | `nros-board-mps2-an385`         | `packages/boards/nros-board-mps2-an385` |
+            | `nros-board-mps2-an385-freertos`  | `packages/boards/nros-board-mps2-an385-freertos`| `nros-board-mps2-an385-freertos`| `packages/boards/nros-board-mps2-an385-freertos` |
+            | `nros-board-stm32f4`              | `packages/boards/nros-board-stm32f4`            | `nros-board-stm32f4`            | `packages/boards/nros-board-stm32f4`   |
+            | `nros-board-esp32`                | `packages/boards/nros-board-esp32`              | `nros-board-esp32`              | `packages/boards/nros-board-esp32`     |
+            | `nros-board-esp32-qemu`           | `packages/boards/nros-board-esp32-qemu`         | `nros-board-esp32-qemu`         | `packages/boards/nros-board-esp32-qemu`|
+            | `nros-board-nuttx-qemu-arm`       | `packages/boards/nros-board-nuttx-qemu-arm`     | `nros-board-nuttx-qemu-arm`     | `packages/boards/nros-board-nuttx-qemu-arm` |
+            | `nros-board-threadx-linux`        | `packages/boards/nros-board-threadx-linux`      | `nros-board-threadx-linux`      | `packages/boards/nros-board-threadx-linux` |
+            | `nros-board-threadx-qemu-riscv64` | `packages/boards/nros-board-threadx-qemu-riscv64`| `nros-board-threadx-qemu-riscv64`| `packages/boards/nros-board-threadx-qemu-riscv64` |
 
             `mps2-an385-pac` (the auto-generated PAC) is **not** renamed — it's a one-off vendor crate, not a board bring-up surface.
 
@@ -351,26 +351,26 @@ the real implementation first.
 
             Acceptance: `cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | grep -E '^nros-(mps2-an385|stm32f4|esp32|esp32-qemu|nuttx-qemu-arm|threadx-)'` returns nothing; new `nros-board-*` names appear. `just check` green.
 
-      - [ ] **84.F6.3 — Update every `examples/**/Cargo.toml` and `examples/**/.cargo/config.toml`.** Patterns to migrate:
-            - `[dependencies] nros-mps2-an385 = { … }` → `nros-board-mps2-an385 = { … }` (and the same for each board listed in 84.F6.2)
+      - [x] **84.F6.3 — Update every `examples/**/Cargo.toml` and `examples/**/.cargo/config.toml`.** Patterns to migrate:
+            - `[dependencies] nros-board-mps2-an385 = { … }` → `nros-board-mps2-an385 = { … }` (and the same for each board listed in 84.F6.2)
             - `[patch.crates-io] nros-* = { path = "..." }` entries
-            - Any `extern crate nros_mps2_an385;` / `use nros_mps2_an385::` in `examples/**/src/`
+            - Any `extern crate nros_board_mps2_an385;` / `use nros_board_mps2_an385::` in `examples/**/src/`
             - `examples/*/cargo-template/` files used by `cargo nano-ros init`
 
             Acceptance: `just build-test-fixtures` succeeds with zero changes to other parts of the recipe.
 
-      - [ ] **84.F6.4 — Update book + porting docs.** Files (start with): `book/src/getting-started/{bare-metal,freertos,nuttx,threadx,esp32,stm32f4}.md`, `book/src/porting/{custom-board,custom-platform}.md`, `book/src/reference/platform-api.md`, `book/src/concepts/platform-model.md`, `book/src/internals/creating-examples.md`, every `docs/research/` and `docs/design/` reference. Search: `grep -rn 'nros-mps2-an385\|nros-stm32f4\|nros-esp32\|nros-nuttx-qemu-arm\|nros-threadx-' book/ docs/`. Acceptance: `just book` builds clean; spot-check a "Getting Started" page builds an example with the new crate name.
+      - [x] **84.F6.4 — Update book + porting docs.** Files (start with): `book/src/getting-started/{bare-metal,freertos,nuttx,threadx,esp32,stm32f4}.md`, `book/src/porting/{custom-board,custom-platform}.md`, `book/src/reference/platform-api.md`, `book/src/concepts/platform-model.md`, `book/src/internals/creating-examples.md`, every `docs/research/` and `docs/design/` reference. Search: `grep -rn 'nros-board-mps2-an385\|nros-board-stm32f4\|nros-board-esp32\|nros-board-nuttx-qemu-arm\|nros-threadx-' book/ docs/`. Acceptance: `just book` builds clean; spot-check a "Getting Started" page builds an example with the new crate name.
 
-      - [ ] **84.F6.5 — Update CLAUDE.md workspace layout block** (the ASCII tree under "Workspace Structure") and any `Boards:` / `Platforms:` lines in the Phase summary table or design pattern sections.
+      - [x] **84.F6.5 — Update CLAUDE.md workspace layout block** (the ASCII tree under "Workspace Structure") and any `Boards:` / `Platforms:` lines in the Phase summary table or design pattern sections.
 
-      - [ ] **84.F6.6 — Update Zephyr module wiring + cmake.** Files: `zephyr/modules.yaml`, `zephyr/cmake/*.cmake`, `examples/zephyr/**/CMakeLists.txt` if any reference the board crate. The Zephyr workspace patches in `scripts/zephyr/` may also embed crate names — sweep those too. Acceptance: `just zephyr build-fixtures` clean rebuild from a wiped workspace.
+      - [x] **84.F6.6 — Update Zephyr module wiring + cmake.** Files: `zephyr/modules.yaml`, `zephyr/cmake/*.cmake`, `examples/zephyr/**/CMakeLists.txt` if any reference the board crate. The Zephyr workspace patches in `scripts/zephyr/` may also embed crate names — sweep those too. Acceptance: `just zephyr build-fixtures` clean rebuild from a wiped workspace.
 
       Phase-level acceptance for 84.F6 as a whole:
 
       - `grep -rEn '\bnros-(mps2-an385|stm32f4|esp32|esp32-qemu|nuttx-qemu-arm|threadx-linux|threadx-qemu-riscv64)\b' packages/ examples/ book/ docs/ CLAUDE.md zephyr/` returns **zero hits outside intentionally-pinned migration notes**.
       - `packages/platforms/` exists and is non-empty; `packages/boards/nros-platform-*` is gone.
       - `just ci` + `just test-all` both green.
-- [x] 84.F7 — `Config` per-board divergence: defined `nros_platform::BoardConfig { zenoh_locator(&self) -> &str, domain_id(&self) -> u32 }` and implemented it on all 4 board configs (`nros-mps2-an385::Config`, `nros-stm32f4::Config`, `nros-esp32::NodeConfig`, `nros-esp32-qemu::Config`). Cross-board generic code can now read the universal fields via `&impl BoardConfig` instead of `cfg`-gating on each board type. Each board's transport-specific knobs (MAC, IP, WiFi credentials, UART base) stay on the concrete struct as ordinary fields. Trait re-exported from each board crate's root + prelude. `from_toml` was NOT added to the trait — every board's parser keeps its own implementation since the TOML schemas legitimately differ; unifying them is a separate (larger) refactor.
+- [x] 84.F7 — `Config` per-board divergence: defined `nros_platform::BoardConfig { zenoh_locator(&self) -> &str, domain_id(&self) -> u32 }` and implemented it on all 4 board configs (`nros-board-mps2-an385::Config`, `nros-board-stm32f4::Config`, `nros-board-esp32::NodeConfig`, `nros-board-esp32-qemu::Config`). Cross-board generic code can now read the universal fields via `&impl BoardConfig` instead of `cfg`-gating on each board type. Each board's transport-specific knobs (MAC, IP, WiFi credentials, UART base) stay on the concrete struct as ordinary fields. Trait re-exported from each board crate's root + prelude. `from_toml` was NOT added to the trait — every board's parser keeps its own implementation since the TOML schemas legitimately differ; unifying them is a separate (larger) refactor.
 - [x] 84.F8 — Move `_z_listen_udp_unicast` from a hard-coded `-1` stub in `zpico-platform-shim::shim.rs:503` onto `PlatformUdp::udp_listen(...)` with a default `-1` impl so future ports can override *(trait default added; shim stays `-1` until Phase 84.F4 switches platforms to trait dispatch)*
 
 ### Group G — Minor / nit

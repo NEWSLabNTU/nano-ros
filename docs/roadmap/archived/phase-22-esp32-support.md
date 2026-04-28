@@ -54,7 +54,7 @@ Fits comfortably. ESP32-C3 has 20x more flash and 5x more RAM than needed.
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│                     nros-esp32                           │
+│                     nros-board-esp32                           │
 │                                                                  │
 │  - WiFi initialization (esp-wifi + smoltcp)                     │
 │  - Zenoh session setup via platform_smoltcp backend             │
@@ -96,7 +96,7 @@ Fits comfortably. ESP32-C3 has 20x more flash and 5x more RAM than needed.
 #![no_std]
 #![no_main]
 
-use nros_esp32::prelude::*;
+use nros_board_esp32::prelude::*;
 
 #[entry]
 fn main() -> ! {
@@ -136,7 +136,7 @@ run_node_with_config(
 #![no_std]
 #![no_main]
 
-use nros_esp32::prelude::*;
+use nros_board_esp32::prelude::*;
 
 #[entry]
 fn main() -> ! {
@@ -204,14 +204,14 @@ fn main() -> ! {
 - picolibc specs auto-detected for system GCC headers
 - Same source file set and defines as the ARM build (platform_smoltcp backend)
 
-### 22.3: Create `nros-esp32` Crate
+### 22.3: Create `nros-board-esp32` Crate
 
 **Status**: Complete (compile-verified; WiFi/zenoh require hardware)
 
 **Tasks**:
 1. [x] Create crate structure:
    ```
-   packages/boards/nros-esp32/
+   packages/boards/nros-board-esp32/
    ├── Cargo.toml
    ├── src/
    │   ├── lib.rs           # Public API, prelude
@@ -319,7 +319,7 @@ Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
 #### 22.5b: ESP32-C3 QEMU BSP Variant
 
 **Tasks**:
-1. [x] Create `packages/boards/nros-esp32-qemu/` (separate crate, no WiFi deps)
+1. [x] Create `packages/boards/nros-board-esp32-qemu/` (separate crate, no WiFi deps)
 2. [x] `node.rs`: Use OpenETH + smoltcp instead of WiFi (`esp-radio`) — skip WiFi init, DHCP, `esp-rtos`
 3. [x] `bridge.rs`: Reuse smoltcp↔zenoh-pico bridge (copied from WiFi BSP)
 4. [x] `clock.rs`: Reuse `esp_hal::time::Instant` (works in QEMU with `-icount 3`)

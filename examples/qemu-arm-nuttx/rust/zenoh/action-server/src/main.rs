@@ -6,7 +6,7 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::prelude::*;
-use nros_nuttx_qemu_arm::{Config, run};
+use nros_board_nuttx_qemu_arm::{Config, run};
 
 fn main() {
     run(Config::from_toml(include_str!("../config.toml")), |config| {

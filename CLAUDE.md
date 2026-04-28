@@ -16,7 +16,7 @@ nano-ros/
 │   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-threadx-linux, nros-threadx-qemu-riscv64, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── boards/         # Board support: nros-board-mps2-an385, nros-board-mps2-an385-freertos, nros-board-nuttx-qemu-arm, nros-board-threadx-linux, nros-board-threadx-qemu-riscv64, nros-board-esp32, nros-board-esp32-qemu, nros-board-stm32f4
 │   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp, virtio-net-netx
 │   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
 │   ├── testing/        # nros-tests (integration test crate)
@@ -271,7 +271,7 @@ Board crates use Cargo features to select the communication transport:
 
 `Config` struct fields are `#[cfg(feature = "...")]`-gated per transport (e.g., MAC/IP under `ethernet`, baudrate under `serial`). At least one transport must be enabled (`compile_error!` enforced). Both can be enabled simultaneously — runtime selection via the zenoh locator string.
 
-ESP32 and ESP32-QEMU use zenoh-pico's built-in serial implementation (no `zpico-serial` dependency). Only bare-metal board crates (`nros-mps2-an385`, `nros-stm32f4`) depend on `zpico-serial`.
+ESP32 and ESP32-QEMU use zenoh-pico's built-in serial implementation (no `zpico-serial` dependency). Only bare-metal board crates (`nros-board-mps2-an385`, `nros-board-stm32f4`) depend on `zpico-serial`.
 
 Examples select non-default transport with `default-features = false, features = ["serial"]`.
 

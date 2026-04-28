@@ -37,7 +37,7 @@ build-kernel:
         exit 0
     fi
     NUTTX_DIR=$NUTTX_DIR NUTTX_APPS_DIR=$NUTTX_APPS_DIR \
-        packages/boards/nros-nuttx-qemu-arm/scripts/build-nuttx.sh
+        packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
 
 # Build NuttX QEMU ARM virt examples
 build:

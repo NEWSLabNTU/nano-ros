@@ -1951,7 +1951,6 @@ dependencies = [
 name = "px4-workqueue-macros"
 version = "0.1.0"
 dependencies = [
- "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn",

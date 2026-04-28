@@ -74,7 +74,7 @@ nros-rmw-zenoh → zpico-sys
   ├── freertos/lwip/network.c (lwIP sockets)    ← C networking inside zpico-sys
   └── zpico-platform-shim → nros-platform-freertos (clock, malloc, threading)
 Board crate:
-  └── nros-mps2-an385-freertos (lwIP init, LAN9118 driver)
+  └── nros-board-mps2-an385-freertos (lwIP init, LAN9118 driver)
 ```
 
 **Bare-metal (MPS2-AN385):**
@@ -83,7 +83,7 @@ nros-rmw-zenoh → zpico-sys
   ├── zenoh-pico C code (calls _z_open_tcp etc.)
   └── zpico-platform-shim → nros-platform-mps2-an385 (clock, malloc, socket stubs)
 Board crate:
-  ├── nros-mps2-an385 (LAN9118 driver, smoltcp Interface)
+  ├── nros-board-mps2-an385 (LAN9118 driver, smoltcp Interface)
   ├── zpico-smoltcp (_z_open_tcp via smoltcp)   ← Rust networking outside zpico-sys
   └── network.rs (smoltcp_network_poll)
 ```
@@ -109,7 +109,7 @@ nros-rmw-zenoh → zpico-sys
   └── zpico-platform-shim → nros-platform-freertos
         ├── PlatformClock, PlatformAlloc, PlatformThreading (existing)
         └── PlatformTcp, PlatformUdp (NEW — via cffi vtable)
-Board crate (nros-mps2-an385-freertos):
+Board crate (nros-board-mps2-an385-freertos):
   ├── Hardware init (LAN9118, lwIP)
   ├── Registers cffi network vtable:
   │     tcp_open → lwip_socket + lwip_connect
@@ -125,7 +125,7 @@ nros-rmw-zenoh → zpico-sys
   └── zpico-platform-shim → nros-platform-mps2-an385
         ├── PlatformClock, PlatformAlloc, PlatformThreading (existing)
         └── PlatformTcp, PlatformUdp (NEW — smoltcp bridge, moved from zpico-smoltcp)
-Board crate (nros-mps2-an385):
+Board crate (nros-board-mps2-an385):
   ├── Hardware init (LAN9118, smoltcp Interface)
   └── smoltcp_network_poll (existing)
 ```
@@ -397,8 +397,8 @@ typedef struct {
         (minimal-scope). Both `nros-platform-mps2-an385` and
         `nros-platform-stm32f4` now implement
         `PlatformSerial`, backed by a fn-pointer vtable that the
-        corresponding board crate (`nros-mps2-an385` /
-        `nros-stm32f4`) populates during `init_serial()`. The
+        corresponding board crate (`nros-board-mps2-an385` /
+        `nros-board-stm32f4`) populates during `init_serial()`. The
         board-side fn pointers dispatch to the same UART the
         board hands to `zpico_serial::register_port`; both paths
         share state. Shape: `Handle = u8`, single-port,

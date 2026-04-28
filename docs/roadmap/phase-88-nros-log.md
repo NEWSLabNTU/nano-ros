@@ -21,8 +21,8 @@ context but not a blocker).
 ### Status quo
 
 - No logging trait or hook exists in `nros-platform`; every board crate
-  chooses its own output path (`nros-mps2-an385` → semihosting,
-  `nros-stm32f4` → `defmt`, `nros-esp32` → `esp_println`).
+  chooses its own output path (`nros-board-mps2-an385` → semihosting,
+  `nros-board-stm32f4` → `defmt`, `nros-board-esp32` → `esp_println`).
 - `nros-node`, `nros-c`, and `nros-cpp` have no `Logger` concept, so
   library code either silently swallows diagnostics or routes them via
   `eprintln!` on `std` targets only.
@@ -141,14 +141,14 @@ Severity matches REP-2012: `Debug`, `Info`, `Warn`, `Error`, `Fatal`.
       duplicating output.
 - [ ] 88.8 — Board-crate wiring: replace ad-hoc output in each board
       crate with a sink init:
-      - `nros-mps2-an385` → enable `sink-semihosting`, delete the custom
-        `println!` macro at `packages/boards/nros-mps2-an385/src/lib.rs`.
-      - `nros-stm32f4` → enable `sink-defmt`, remove direct `defmt::…`
-        call sites in `packages/boards/nros-stm32f4/src/node.rs`.
-      - `nros-esp32` / `nros-esp32-qemu` → enable `sink-esp-idf`.
-      - `nros-mps2-an385-freertos` → enable `sink-freertos`, provide the
+      - `nros-board-mps2-an385` → enable `sink-semihosting`, delete the custom
+        `println!` macro at `packages/boards/nros-board-mps2-an385/src/lib.rs`.
+      - `nros-board-stm32f4` → enable `sink-defmt`, remove direct `defmt::…`
+        call sites in `packages/boards/nros-board-stm32f4/src/node.rs`.
+      - `nros-board-esp32` / `nros-board-esp32-qemu` → enable `sink-esp-idf`.
+      - `nros-board-mps2-an385-freertos` → enable `sink-freertos`, provide the
         board's `configPRINTF` adapter.
-      - `nros-nuttx-qemu-arm` → enable `sink-nuttx`.
+      - `nros-board-nuttx-qemu-arm` → enable `sink-nuttx`.
       - `nros-threadx-*` → enable `sink-threadx` plus UART writer.
       - Zephyr: the `zephyr/` module's Kconfig gets a
         `CONFIG_NROS_LOG_SINK_ZEPHYR` option; Rust side enables

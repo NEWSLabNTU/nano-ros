@@ -8,7 +8,7 @@
 //!
 //! ## BSP Tests
 //!
-//! The BSP (Board Support Package) tests verify the simplified nros-mps2-an385 API:
+//! The BSP (Board Support Package) tests verify the simplified nros-board-mps2-an385 API:
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nros_tests::fixtures::{
@@ -242,7 +242,7 @@ fn test_arm_toolchain_detection() {
 // QEMU BSP Tests (Phase 17.7)
 // =============================================================================
 //
-// Tests for the simplified nros-mps2-an385 API (Board Support Package).
+// Tests for the simplified nros-board-mps2-an385 API (Board Support Package).
 // These examples use a higher-level API than the rs-* examples.
 
 /// Test that qemu-bsp-talker builds successfully

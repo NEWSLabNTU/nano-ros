@@ -9,7 +9,7 @@ use example_interfaces::action::{
     Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult,
 };
 use nros::prelude::*;
-use nros_threadx_qemu_riscv64::{Config, println, run};
+use nros_board_threadx_qemu_riscv64::{Config, println, run};
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {

@@ -1176,8 +1176,8 @@ hardcoded to three OS threads), and Phase 71.4 (arena hook driving
 ### 71.6 — Board-crate `#[global_allocator]` support (opt-in)
 
 Bare-metal boards that consume `nros-rmw-dds` need a `#[global_allocator]`.
-Add an `alloc` feature to the relevant board crates (`nros-mps2-an385`,
-`nros-stm32f4`, `nros-esp32-qemu`) that pulls `embedded-alloc` and
+Add an `alloc` feature to the relevant board crates (`nros-board-mps2-an385`,
+`nros-board-stm32f4`, `nros-board-esp32-qemu`) that pulls `embedded-alloc` and
 sets up a `LinkedListAllocator` backed by a static `[u8; 65_536]` byte
 array in SRAM. Default is off so zenoh-pico / XRCE bare-metal targets
 don't pay the ~4 KiB heap metadata cost.
@@ -1186,9 +1186,9 @@ Document in `book/src/getting-started/bare-metal.md` that enabling
 `nros-rmw-dds` on a bare-metal board requires the `alloc` feature.
 
 **Files**:
-- `packages/boards/nros-mps2-an385/src/alloc.rs` (new, feature-gated)
-- `packages/boards/nros-stm32f4/src/alloc.rs` (new, feature-gated)
-- `packages/boards/nros-esp32-qemu/src/alloc.rs` (new, feature-gated)
+- `packages/boards/nros-board-mps2-an385/src/alloc.rs` (new, feature-gated)
+- `packages/boards/nros-board-stm32f4/src/alloc.rs` (new, feature-gated)
+- `packages/boards/nros-board-esp32-qemu/src/alloc.rs` (new, feature-gated)
 
 ### 71.7 — Bare-metal QEMU DDS talker/listener
 

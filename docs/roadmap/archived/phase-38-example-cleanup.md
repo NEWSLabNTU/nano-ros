@@ -32,10 +32,10 @@ All examples now use only the public API:
 - **Native Rust zenoh** (7): talker, listener, service-server, service-client, action-server, action-client, custom-msg — all use `nros` + `Context::from_env()` / executor API
 - **Native Rust XRCE** (8): talker, listener, serial-talker, serial-listener, service-server, service-client, action-server, action-client — all use `nros` with `rmw-xrce` feature + `XrceExecutor`/`XrceNode` API
 - **Native C zenoh** (3): talker, listener, custom-msg — use public C headers via `nros/init.h`, `nros/node.h`
-- **QEMU ARM** (2): talker, listener — use `nros-mps2-an385` board crate
-- **QEMU ESP32** (2): talker, listener — use `nros-esp32-qemu` board crate + generated `std_msgs`
-- **ESP32 hardware** (2): talker, listener — use `nros-esp32` board crate
-- **STM32F4 talker** (1): uses `nros-stm32f4` board crate
+- **QEMU ARM** (2): talker, listener — use `nros-board-mps2-an385` board crate
+- **QEMU ESP32** (2): talker, listener — use `nros-board-esp32-qemu` board crate + generated `std_msgs`
+- **ESP32 hardware** (2): talker, listener — use `nros-board-esp32` board crate
+- **STM32F4 talker** (1): uses `nros-board-stm32f4` board crate
 - **Zephyr** (6): talker, listener, service-server, service-client, action-server, action-client — use `nros` with `ShimExecutor`/`ShimNode`
 
 ### Porting references (moved out of `examples/`)

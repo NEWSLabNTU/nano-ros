@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Platform crate handles all hardware setup
-nros-stm32f4 = { path = "../../../../../packages/boards/nros-stm32f4" }
+nros-board-stm32f4 = { path = "../../../../../packages/boards/nros-board-stm32f4" }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "ros-humble"] }

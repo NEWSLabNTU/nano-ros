@@ -8,7 +8,7 @@ publish = false
 description = "NuttX kernel + nros C/C++ FFI bundle for CMake-built examples"
 
 [dependencies]
-nros-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-nuttx-qemu-arm" }
+nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 nros-c = { path = "../../../../packages/core/nros-c", features = [
     "std", "rmw-zenoh", "platform-nuttx", "link-tcp", "link-udp-unicast", "ros-humble"
 ] }

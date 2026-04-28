@@ -51,23 +51,23 @@ Each board crate uses Cargo features to select the transport:
 
 ```toml
 # Use serial transport (disable default ethernet/wifi)
-nros-mps2-an385 = { path = "...", default-features = false, features = ["serial"] }
+nros-board-mps2-an385 = { path = "...", default-features = false, features = ["serial"] }
 
 # Use ethernet transport (default)
-nros-mps2-an385 = { path = "..." }
+nros-board-mps2-an385 = { path = "..." }
 
 # Both transports (runtime selection via locator string)
-nros-mps2-an385 = { path = "...", features = ["serial"] }
+nros-board-mps2-an385 = { path = "...", features = ["serial"] }
 ```
 
 ### Available Features by Board
 
 | Board Crate | Default | Alternative | Both |
 |-------------|---------|-------------|------|
-| `nros-mps2-an385` | `ethernet` | `serial` | `ethernet,serial` |
-| `nros-stm32f4` | `ethernet` | `serial` | `ethernet,serial` |
-| `nros-esp32` | `wifi` | `serial` | `wifi,serial` |
-| `nros-esp32-qemu` | `ethernet` | `serial` | `ethernet,serial` |
+| `nros-board-mps2-an385` | `ethernet` | `serial` | `ethernet,serial` |
+| `nros-board-stm32f4` | `ethernet` | `serial` | `ethernet,serial` |
+| `nros-board-esp32` | `wifi` | `serial` | `wifi,serial` |
+| `nros-board-esp32-qemu` | `ethernet` | `serial` | `ethernet,serial` |
 
 When both features are enabled, the transport is selected at runtime by the zenoh locator string in `Config`:
 - `"tcp/192.0.3.1:7448"` → Ethernet/WiFi
@@ -122,7 +122,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 Board crates provide a `serial_default()` constructor:
 
 ```rust
-use nros_mps2_an385::{Config, run};
+use nros_board_mps2_an385::{Config, run};
 
 let config = Config::serial_default();
 // Defaults: baudrate=115200, locator="serial/UART_0#baudrate=115200"
@@ -257,7 +257,7 @@ On physical hardware, ensure the UART TX/RX pins aren't shared with the debug co
 ESP32 uses zenoh-pico's built-in ESP-IDF serial implementation. No `zpico-serial` dependency is needed. Select serial transport in the board crate:
 
 ```toml
-nros-esp32 = { path = "...", default-features = false, features = ["serial"] }
+nros-board-esp32 = { path = "...", default-features = false, features = ["serial"] }
 ```
 
 The default locator is `serial/UART_0#baudrate=115200`. ESP32's USB-JTAG-Serial peripheral or UART0/UART1 can be used.

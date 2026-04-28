@@ -1,7 +1,7 @@
 //! Cross-board configuration trait.
 //!
-//! Every board crate (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`,
-//! `nros-esp32-qemu`, …) declares its own `Config` / `NodeConfig`
+//! Every board crate (`nros-board-mps2-an385`, `nros-board-stm32f4`, `nros-board-esp32`,
+//! `nros-board-esp32-qemu`, …) declares its own `Config` / `NodeConfig`
 //! struct with board-specific fields (MAC, IP, gateway, UART base,
 //! WiFi SSID, etc.). The structs share a few universal fields —
 //! Zenoh locator, ROS 2 domain ID — but cross-board generic code

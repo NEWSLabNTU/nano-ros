@@ -122,7 +122,7 @@ bare-metal Rust examples (talker, listener, service, action).
 + -nic user,model=lan9118
 ```
 
-**Board crate seed**: `nros-mps2-an385/src/node.rs:158-163` seeds
+**Board crate seed**: `nros-board-mps2-an385/src/node.rs:158-163` seeds
 `zpico_smoltcp::seed_ephemeral_port()` from `host_time + ip_byte * 251`
 and `random::seed()` from `u32::from_be_bytes(config.ip)`. Unique IPs
 are required.
@@ -150,7 +150,7 @@ Same QEMU machine as bare-metal (MPS2-AN385 + LAN9118). Shares the
 `start_mps2_an385_networked()` function — the slirp change in 74.1.1
 covers the QEMU flags.
 
-**Board crate seed**: `nros-mps2-an385-freertos/build.rs` generates
+**Board crate seed**: `nros-board-mps2-an385-freertos/build.rs` generates
 `srand(seed)` from IP+MAC bytes. Unique IPs required.
 
 **Config.toml change** (all examples under `examples/qemu-arm-freertos/`):
@@ -230,7 +230,7 @@ The `-device` line is unchanged — only the `-netdev` backend changes
 from `tap` to `user`. The MAC address is still needed to match the
 firmware config.
 
-**Board crate seed**: `nros-threadx-qemu-riscv64/c/app_define.c:127-132`
+**Board crate seed**: `nros-board-threadx-qemu-riscv64/c/app_define.c:127-132`
 seeds `srand()` from `IP * 2654435761 ^ MAC`. Unique IPs required.
 
 **Config.toml change** (all examples under `examples/qemu-riscv64-threadx/`):
@@ -274,7 +274,7 @@ qemu-system-riscv32 -M esp32c3 -nic user,model=open_eth ...
 If slirp doesn't work with the Espressif fork, keep TAP for ESP32 tests
 and isolate via per-platform TAP devices instead.
 
-**Board crate seed**: `nros-esp32-qemu/src/node.rs:188` seeds
+**Board crate seed**: `nros-board-esp32-qemu/src/node.rs:188` seeds
 `random::seed()` from hardware RNG. The ESP32-C3 has a true RNG
 peripheral — unique IPs are recommended but not strictly required for
 session ID uniqueness.
@@ -323,7 +323,7 @@ in their own test group (`threadx-linux`), so they don't contend with
 QEMU platforms. The main improvement comes from isolating the QEMU
 platforms via slirp.
 
-**Board crate seed**: `nros-threadx-linux/c/app_define.c:110-115` seeds
+**Board crate seed**: `nros-board-threadx-linux/c/app_define.c:110-115` seeds
 `srand()` from `IP * 2654435761 ^ MAC`. Unique IPs required if running
 multiple instances.
 
@@ -332,7 +332,7 @@ to `127.0.0.x` loopback if/when the socket driver is implemented.
 
 **Files**:
 - `packages/testing/nros-tests/tests/threadx_linux.rs`
-- `packages/boards/nros-threadx-linux/c/app_define.c`
+- `packages/boards/nros-board-threadx-linux/c/app_define.c`
 - `examples/threadx-linux/rust/zenoh/*/config.toml`
 
 #### 74.1.7 — Test harness: remove `cleanup_tap_network()`

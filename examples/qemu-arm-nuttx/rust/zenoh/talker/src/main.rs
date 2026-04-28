@@ -4,7 +4,7 @@
 //! Uses NuttX QEMU ARM virt (Cortex-A7 + virtio-net).
 
 use nros::prelude::*;
-use nros_nuttx_qemu_arm::{Config, run};
+use nros_board_nuttx_qemu_arm::{Config, run};
 use std_msgs::msg::Int32;
 
 fn main() {

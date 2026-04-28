@@ -12,7 +12,7 @@ test = false
 bench = false
 
 [dependencies]
-nros-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-nuttx-qemu-arm" }
+nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-nuttx", "link-tcp", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 heapless = "0.8"

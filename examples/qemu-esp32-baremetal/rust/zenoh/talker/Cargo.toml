@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple QEMU OpenETH publisher example using nros-esp32-qemu"
+description = "Simple QEMU OpenETH publisher example using nros-board-esp32-qemu"
 
 [[bin]]
 name = "esp32-qemu-talker"
@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
-nros-esp32-qemu = { path = "../../../../../packages/boards/nros-esp32-qemu" }
+nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu" }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "ros-humble"] }

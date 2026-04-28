@@ -56,8 +56,8 @@ ThreadX's unique value is the safety certification stack — certified kernel + 
 - zpico-sys / xrce-sys build.rs ThreadX compilation branches
 - zenoh-pico NetX Duo network transport (~300–500 LOC C)
 - virtio-net NetX Duo driver (~700–1000 LOC C)
-- Linux simulation board crate (`nros-threadx-linux`)
-- QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
+- Linux simulation board crate (`nros-board-threadx-linux`)
+- QEMU RISC-V board crate (`nros-board-threadx-qemu-riscv64`)
 - Examples: pubsub, service, action
 - Integration tests
 
@@ -102,7 +102,7 @@ ThreadX's unique value is the safety certification stack — certified kernel + 
 └───────────────────────┬──────────────────────────┘
                         │
 ┌───────────────────────┴──────────────────────────┐
-│     Board Crate (nros-threadx-linux)              │
+│     Board Crate (nros-board-threadx-linux)              │
 │      tx_kernel_enter(), nx_system_initialize()    │
 │      nx_linux_network_driver, IP config           │
 └──────────────────────────────────────────────────┘
@@ -157,7 +157,7 @@ Linux simulation test topology:
 └───────────────────────┬──────────────────────────┘
                         │
 ┌───────────────────────┴──────────────────────────┐
-│   Board Crate (nros-threadx-qemu-riscv64)        │
+│   Board Crate (nros-board-threadx-qemu-riscv64)        │
 │     PLIC, CLINT timer, UART, virtio-net init      │
 │     tx_kernel_enter(), nx_system_initialize()     │
 └──────────────────────────────────────────────────┘
@@ -262,11 +262,11 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 - [x] 58.2 — `just setup-threadx` dependency acquisition
 - [x] 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
 - [x] 58.4 — zenoh-pico NetX Duo BSD socket network transport
-- [x] 58.5 — Linux simulation board crate (`nros-threadx-linux`)
+- [x] 58.5 — Linux simulation board crate (`nros-board-threadx-linux`)
 - [x] 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
 - [x] 58.7 — Linux simulation integration tests + `just test-threadx-linux` recipe
 - [x] 58.8 — virtio-net NetX Duo driver
-- [x] 58.9 — QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
+- [x] 58.9 — QEMU RISC-V board crate (`nros-board-threadx-qemu-riscv64`)
 - [x] 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
 - [x] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
 - [x] 58.12 — xrce-sys build.rs ThreadX compilation branch
@@ -344,12 +344,12 @@ Also includes a custom ThreadX system layer (`zenoh_threadx_system.c`) providing
 - `packages/zpico/zpico-sys/c/platform/zenoh_threadx_platform.h` — **New** — Platform types
 - `packages/zpico/zpico-sys/c/platform/zenoh_generic_platform.h` — Updated to dispatch for ThreadX
 
-### 58.5 — Linux simulation board crate (`nros-threadx-linux`)
+### 58.5 — Linux simulation board crate (`nros-board-threadx-linux`)
 
 Create a board crate for ThreadX Linux simulation.
 
 ```
-packages/boards/nros-threadx-linux/
+packages/boards/nros-board-threadx-linux/
 ├── Cargo.toml
 ├── build.rs              # Compile ThreadX Linux port + NetX Duo + Linux network driver via cc
 ├── config/
@@ -395,14 +395,14 @@ packages/boards/nros-threadx-linux/
 **Status**: Done
 
 **Files**:
-- `packages/boards/nros-threadx-linux/Cargo.toml`
-- `packages/boards/nros-threadx-linux/build.rs` — Compiles ThreadX Linux port, NetX Duo, BSD sockets, Linux network driver
-- `packages/boards/nros-threadx-linux/c/app_define.c` — `tx_application_define()`: packet pool, IP instance, TCP/UDP/BSD enable, app thread
-- `packages/boards/nros-threadx-linux/config/tx_user.h` — ThreadX kernel config
-- `packages/boards/nros-threadx-linux/config/nx_user.h` — NetX Duo config (BSD sockets enabled)
-- `packages/boards/nros-threadx-linux/src/lib.rs` — Re-exports `Config` and `run`
-- `packages/boards/nros-threadx-linux/src/config.rs` — Config builder (IP, MAC, gateway, interface, zenoh locator, domain_id)
-- `packages/boards/nros-threadx-linux/src/node.rs` — `run()`: banner, FFI setup, `tx_kernel_enter()`
+- `packages/boards/nros-board-threadx-linux/Cargo.toml`
+- `packages/boards/nros-board-threadx-linux/build.rs` — Compiles ThreadX Linux port, NetX Duo, BSD sockets, Linux network driver
+- `packages/boards/nros-board-threadx-linux/c/app_define.c` — `tx_application_define()`: packet pool, IP instance, TCP/UDP/BSD enable, app thread
+- `packages/boards/nros-board-threadx-linux/config/tx_user.h` — ThreadX kernel config
+- `packages/boards/nros-board-threadx-linux/config/nx_user.h` — NetX Duo config (BSD sockets enabled)
+- `packages/boards/nros-board-threadx-linux/src/lib.rs` — Re-exports `Config` and `run`
+- `packages/boards/nros-board-threadx-linux/src/config.rs` — Config builder (IP, MAC, gateway, interface, zenoh locator, domain_id)
+- `packages/boards/nros-board-threadx-linux/src/node.rs` — `run()`: banner, FFI setup, `tx_kernel_enter()`
 
 ### 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
 
@@ -418,7 +418,7 @@ examples/threadx-linux/rust/zenoh/
 
 Each example has:
 ```
-├── Cargo.toml           # deps: nros, nros-threadx-linux, generated msg types
+├── Cargo.toml           # deps: nros, nros-board-threadx-linux, generated msg types
 ├── .cargo/config.toml   # target = x86_64-unknown-linux-gnu, patch.crates-io
 ├── package.xml          # For cargo-nano-ros message generation
 ├── .gitignore           # /target/, /generated/
@@ -428,7 +428,7 @@ Each example has:
 **Entry point pattern** (standard Rust — ThreadX Linux sim supports `std`):
 ```rust
 use nros::prelude::*;
-use nros_threadx_linux::{Config, run};
+use nros_board_threadx_linux::{Config, run};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -529,12 +529,12 @@ qemu-system-riscv64 -M virt -nographic \
 
 **Files**: `packages/drivers/virtio-net-netx/`
 
-### 58.9 — QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
+### 58.9 — QEMU RISC-V board crate (`nros-board-threadx-qemu-riscv64`)
 
 Create a board crate for ThreadX on QEMU RISC-V 64-bit virt.
 
 ```
-packages/boards/nros-threadx-qemu-riscv64/
+packages/boards/nros-board-threadx-qemu-riscv64/
 ├── Cargo.toml
 ├── build.rs              # Compile ThreadX rv64 port + NetX Duo + virtio-net driver via cc
 ├── config/
@@ -567,7 +567,7 @@ packages/boards/nros-threadx-qemu-riscv64/
 
 **Build target**: `riscv64gc-unknown-none-elf` (bare-metal RISC-V 64-bit).
 
-**Files**: `packages/boards/nros-threadx-qemu-riscv64/`
+**Files**: `packages/boards/nros-board-threadx-qemu-riscv64/`
 
 ### 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
 
@@ -583,7 +583,7 @@ examples/qemu-riscv64-threadx/rust/zenoh/
 
 Each example has:
 ```
-├── Cargo.toml           # deps: nros, nros-threadx-qemu-riscv64, generated msg types
+├── Cargo.toml           # deps: nros, nros-board-threadx-qemu-riscv64, generated msg types
 ├── .cargo/config.toml   # target = riscv64gc-unknown-none-elf, patch.crates-io
 ├── package.xml
 ├── .gitignore
@@ -633,7 +633,7 @@ Add a ThreadX branch in `xrce-sys/build.rs`:
 ### 58.13 — Documentation
 
 - Update `CLAUDE.md`:
-  - Add `nros-threadx-linux`, `nros-threadx-qemu-riscv64` to workspace structure
+  - Add `nros-board-threadx-linux`, `nros-board-threadx-qemu-riscv64` to workspace structure
   - Add `virtio-net-netx` to drivers list
   - Add `threadx-linux`, `qemu-riscv64-threadx` to examples list
   - Update platform backends to include `platform-threadx`

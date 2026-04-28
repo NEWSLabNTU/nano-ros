@@ -70,7 +70,7 @@ cd examples/native/rust/zenoh/listener && cargo run
 
 ### QEMU ARM Bare-Metal (`qemu-arm-baremetal/`)
 
-Bare-metal ARM Cortex-M3 examples running on QEMU MPS2-AN385. Uses `nros-mps2-an385` for simplified setup.
+Bare-metal ARM Cortex-M3 examples running on QEMU MPS2-AN385. Uses `nros-board-mps2-an385` for simplified setup.
 
 | Example | Description |
 |---------|-------------|
@@ -88,7 +88,7 @@ just docker-qemu-test
 
 ### STM32F4 (`stm32f4/`)
 
-STM32F4 microcontroller examples using `nros-stm32f4`.
+STM32F4 microcontroller examples using `nros-board-stm32f4`.
 
 | Example | Description |
 |---------|-------------|

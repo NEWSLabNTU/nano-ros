@@ -17,11 +17,11 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_mps2_an385::{Config, println, run};
+use nros_board_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-#[nros_mps2_an385::entry]
+#[nros_board_mps2_an385::entry]
 fn main() -> ! {
     run(
         Config::from_toml(include_str!("../config.toml")),

@@ -100,8 +100,8 @@ ESP32 support spans three directories:
 
 ```
 packages/boards/
-├── nros-esp32/            # WiFi BSP crate (esp-radio + smoltcp)
-└── nros-esp32-qemu/       # QEMU BSP crate (OpenETH + smoltcp, no WiFi deps)
+├── nros-board-esp32/            # WiFi BSP crate (esp-radio + smoltcp)
+└── nros-board-esp32-qemu/       # QEMU BSP crate (OpenETH + smoltcp, no WiFi deps)
 
 packages/drivers/
 └── openeth-smoltcp/       # OpenCores Ethernet MAC driver for smoltcp
@@ -112,14 +112,14 @@ packages/core/
 
 examples/esp32/rust/
 ├── zenoh/
-│   ├── talker/            # WiFi publisher (nros-esp32 BSP)
-│   └── listener/          # WiFi subscriber (nros-esp32 BSP)
+│   ├── talker/            # WiFi publisher (nros-board-esp32 BSP)
+│   └── listener/          # WiFi subscriber (nros-board-esp32 BSP)
 └── standalone/
     └── hello-world/       # Minimal UART print (no nros deps)
 
 examples/qemu-esp32-baremetal/rust/zenoh/
-├── talker/                # QEMU publisher (nros-esp32-qemu BSP)
-└── listener/              # QEMU subscriber (nros-esp32-qemu BSP)
+├── talker/                # QEMU publisher (nros-board-esp32-qemu BSP)
+└── listener/              # QEMU subscriber (nros-board-esp32-qemu BSP)
 ```
 
 All ESP32 examples are standalone packages (excluded from the workspace) because they require nightly + `build-std`.
@@ -218,7 +218,7 @@ Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native int
 
 ## WiFi BSP Examples
 
-The WiFi examples use the `nros-esp32` BSP crate, which handles WiFi initialization, DHCP, and zenoh session setup.
+The WiFi examples use the `nros-board-esp32` BSP crate, which handles WiFi initialization, DHCP, and zenoh session setup.
 
 ### Build
 
@@ -239,10 +239,10 @@ espflash flash --monitor target/riscv32imc-unknown-none-elf/release/esp32-bsp-ta
 
 ### BSP API
 
-The `nros-esp32` crate provides `run_node()` for a minimal setup:
+The `nros-board-esp32` crate provides `run_node()` for a minimal setup:
 
 ```rust
-use nros_esp32::prelude::*;
+use nros_board_esp32::prelude::*;
 
 run_node(
     WifiConfig::new("MyNetwork", "password123"),
@@ -269,7 +269,7 @@ run_node_with_config(
 )
 ```
 
-See `packages/boards/nros-esp32/` for full API documentation.
+See `packages/boards/nros-board-esp32/` for full API documentation.
 
 ### Requirements
 

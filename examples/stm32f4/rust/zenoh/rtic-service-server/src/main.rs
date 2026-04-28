@@ -22,7 +22,7 @@ defmt::timestamp!("{=u64:us}", { 0 });
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
-use nros_stm32f4::Config;
+use nros_board_stm32f4::Config;
 
 use rtic_monotonics::systick::prelude::*;
 
@@ -48,7 +48,7 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         let config = Config::nucleo_f429zi();
-        let syst = nros_stm32f4::init_hardware(&config, cx.device, cx.core);
+        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
 
         Mono::start(syst, 168_000_000);
 

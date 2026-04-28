@@ -14,4 +14,4 @@ These are **porting reference implementations**, not user-facing examples. They 
 These reference implementations use internal platform crates directly (`nros-rmw-zenoh`, `zpico-smoltcp`) rather than a board support crate. They serve as templates for BSP developers creating new board support crates, not as end-user examples.
 
 For user-facing STM32F4 examples, see:
-- `examples/stm32f4/rust/zenoh/talker/` - Publisher using the `nros-stm32f4` board crate
+- `examples/stm32f4/rust/zenoh/talker/` - Publisher using the `nros-board-stm32f4` board crate

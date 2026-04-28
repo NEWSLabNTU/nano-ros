@@ -111,7 +111,7 @@ nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
         │          zenoh-pico FreeRTOS platform
         │          (system.c + lwip/network.c)
         │
-Board Crate (nros-mps2-an385-freertos)
+Board Crate (nros-board-mps2-an385-freertos)
 ├── FreeRTOS kernel (tasks, mutexes, semaphores)
 ├── lwIP TCP/IP stack (BSD sockets, threaded mode)
 └── LAN9118 lwIP netif driver (Ethernet on QEMU)
@@ -146,7 +146,7 @@ internals.
 
 ## Porting to Real Hardware
 
-The QEMU board crate (`nros-mps2-an385-freertos`) validates the FreeRTOS
+The QEMU board crate (`nros-board-mps2-an385-freertos`) validates the FreeRTOS
 integration pattern. To port to a real board (e.g., STM32F767 Nucleo):
 
 1. Create a new board crate (e.g., `nros-stm32f767-freertos`)

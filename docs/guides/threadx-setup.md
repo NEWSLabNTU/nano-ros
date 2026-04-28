@@ -137,7 +137,7 @@ nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
         │          zenoh-pico POSIX platform
         │          (pthreads, BSD sockets)
         │
-Board Crate (nros-threadx-linux)
+Board Crate (nros-board-threadx-linux)
 ├── ThreadX kernel (Linux port — tx_thread via pthreads)
 ├── NetX Duo (BSD sockets)
 └── TAP network driver (packages/drivers/tap-netx)
@@ -155,7 +155,7 @@ nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
         │          zenoh-pico ThreadX platform
         │          (tx_thread, tx_mutex, BSD sockets)
         │
-Board Crate (nros-threadx-qemu-riscv64)
+Board Crate (nros-board-threadx-qemu-riscv64)
 ├── ThreadX kernel (RISC-V port — real preemptive scheduling)
 ├── NetX Duo (BSD sockets over virtio-net)
 └── virtio-net NetX Duo driver (virtio MMIO)

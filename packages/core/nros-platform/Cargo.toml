@@ -55,10 +55,10 @@ critical-section = ["nros-platform-freertos?/critical-section"]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix", optional = true }
 nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
-nros-platform-mps2-an385 = { version = "0.1.0", path = "../../boards/nros-platform-mps2-an385", optional = true }
-nros-platform-stm32f4 = { version = "0.1.0", path = "../../boards/nros-platform-stm32f4", optional = true }
-nros-platform-esp32 = { version = "0.1.0", path = "../../boards/nros-platform-esp32", optional = true }
-nros-platform-esp32-qemu = { version = "0.1.0", path = "../../boards/nros-platform-esp32-qemu", optional = true }
+nros-platform-mps2-an385 = { version = "0.1.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
+nros-platform-stm32f4 = { version = "0.1.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
+nros-platform-esp32 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32", optional = true }
+nros-platform-esp32-qemu = { version = "0.1.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
 nros-platform-nuttx = { version = "0.1.0", path = "../nros-platform-nuttx", optional = true }
 nros-platform-freertos = { version = "0.1.0", path = "../nros-platform-freertos", optional = true }
 nros-platform-threadx = { version = "0.1.0", path = "../nros-platform-threadx", optional = true }

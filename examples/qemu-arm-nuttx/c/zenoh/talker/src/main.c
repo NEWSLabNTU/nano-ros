@@ -76,7 +76,7 @@ void app_main(void) {
     // otherwise generate identical Zenoh session IDs and zenohd rejects
     // the second connection with MAX_LINKS. Writing bytes to /dev/urandom
     // reseeds the PRNG state. Mirrors the approach in the Rust board
-    // crate (packages/boards/nros-nuttx-qemu-arm/src/node.rs::init_hardware).
+    // crate (packages/boards/nros-board-nuttx-qemu-arm/src/node.rs::init_hardware).
     //
     // The literal bytes don't matter — they just need to be distinct per
     // example. We match the Rust config IPs (10.0.2.30 = talker,
@@ -96,7 +96,7 @@ void app_main(void) {
     // blocking connect() well enough to rely on connect_timeout, so we
     // just sleep for a few seconds after boot and let the virtio-net
     // driver + DHCP/static IP setup finish. Mirrors the 5-second wait
-    // in packages/boards/nros-nuttx-qemu-arm/src/node.rs::run().
+    // in packages/boards/nros-board-nuttx-qemu-arm/src/node.rs::run().
     fflush(stdout);
     sleep(5);
 

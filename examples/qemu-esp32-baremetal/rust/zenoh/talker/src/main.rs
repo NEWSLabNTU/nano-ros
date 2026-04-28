@@ -1,4 +1,4 @@
-//! Simple ESP32-C3 QEMU Talker using nros-esp32-qemu
+//! Simple ESP32-C3 QEMU Talker using nros-board-esp32-qemu
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-bsp-talker -- this is the ESP32-C3 equivalent.
@@ -21,11 +21,11 @@
 
 use esp_backtrace as _;
 use nros::prelude::*;
-use nros_esp32_qemu::esp_println;
-use nros_esp32_qemu::prelude::*;
+use nros_board_esp32_qemu::esp_println;
+use nros_board_esp32_qemu::prelude::*;
 use std_msgs::msg::Int32;
 
-nros_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
+nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {

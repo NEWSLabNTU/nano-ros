@@ -166,7 +166,7 @@ static mut SERIAL_PORTS: [Option<&'static mut dyn SerialPort>; MAX_SERIAL_PORTS]
 The board crate registers its UART during `init_hardware()`:
 
 ```rust
-// In nros-mps2-an385/src/node.rs (when feature = "serial")
+// In nros-board-mps2-an385/src/node.rs (when feature = "serial")
 fn init_serial(config: &Config) {
     let uart = create_uart(config.serial_baudrate);
     unsafe { UART_DEVICE.write(uart) };
@@ -287,14 +287,14 @@ Then connect zenohd to the PTY device.
 - [x] 67.2 — Implement COBS staging buffers and port table in `zpico-serial`
 - [x] 67.3 — Wire `link-serial` feature through zpico-sys build.rs for bare-metal
 - [x] 67.4 — Add MPS2-AN385 UART driver (CMSDK UART peripheral)
-- [x] 67.5 — Feature-gate `nros-mps2-an385`: `ethernet` (default) vs `serial`
+- [x] 67.5 — Feature-gate `nros-board-mps2-an385`: `ethernet` (default) vs `serial`
 - [x] 67.6 — Refactor `Config` with `#[cfg(feature)]` transport fields
 - [x] 67.7 — QEMU serial example (`examples/qemu-arm-baremetal/rust/zenoh/serial-talker/`)
 - [x] 67.8 — QEMU serial integration test (zenohd serial plugin + QEMU PTY)
-- [x] 67.9 — Feature-gate `nros-stm32f4`: `ethernet` (default) vs `serial`
+- [x] 67.9 — Feature-gate `nros-board-stm32f4`: `ethernet` (default) vs `serial`
 - [x] 67.10 — STM32F4 USART driver for `zpico-serial`
-- [x] 67.11 — Feature-gate `nros-esp32`: `wifi` (default) vs `serial`
-- [x] 67.12 — Feature-gate `nros-esp32-qemu`: `ethernet` (default) vs `serial`
+- [x] 67.11 — Feature-gate `nros-board-esp32`: `wifi` (default) vs `serial`
+- [x] 67.12 — Feature-gate `nros-board-esp32-qemu`: `ethernet` (default) vs `serial`
 - [x] 67.13 — Documentation: serial transport guide in book
 - [x] 67.14 — Update CLAUDE.md with transport feature conventions
 
@@ -423,7 +423,7 @@ boards) or inline in the zpico-platform crate.
 - `packages/drivers/cmsdk-uart/Cargo.toml`
 - `packages/drivers/cmsdk-uart/src/lib.rs`
 
-### 67.5 — Feature-gate `nros-mps2-an385`: `ethernet` (default) vs `serial`
+### 67.5 — Feature-gate `nros-board-mps2-an385`: `ethernet` (default) vs `serial`
 
 Refactor `Cargo.toml` to make `zpico-smoltcp`, `lan9118-smoltcp`, and `smoltcp`
 optional behind an `ethernet` feature. Add `serial` feature gating
@@ -444,9 +444,9 @@ compile_error!("Enable at least one transport: `ethernet` or `serial`");
 ```
 
 **Files**:
-- `packages/boards/nros-mps2-an385/Cargo.toml`
-- `packages/boards/nros-mps2-an385/src/config.rs`
-- `packages/boards/nros-mps2-an385/src/node.rs`
+- `packages/boards/nros-board-mps2-an385/Cargo.toml`
+- `packages/boards/nros-board-mps2-an385/src/config.rs`
+- `packages/boards/nros-board-mps2-an385/src/node.rs`
 
 ### 67.6 — Refactor `Config` with `#[cfg(feature)]` transport fields
 
@@ -462,8 +462,8 @@ Existing `Config::listener()` / `Config::talker()` only available under
 `#[cfg(feature = "ethernet")]`.
 
 **Files**:
-- `packages/boards/nros-mps2-an385/src/config.rs`
-- `packages/boards/nros-stm32f4/src/config.rs`
+- `packages/boards/nros-board-mps2-an385/src/config.rs`
+- `packages/boards/nros-board-stm32f4/src/config.rs`
 
 ### 67.7 — QEMU serial example
 
@@ -471,7 +471,7 @@ Create `examples/qemu-arm-baremetal/rust/zenoh/serial-talker/` — a minimal
 talker that uses UART instead of Ethernet.
 
 ```rust
-use nros_mps2_an385::{Config, run};
+use nros_board_mps2_an385::{Config, run};
 
 fn main() -> ! {
     let config = Config::serial_default();
@@ -489,7 +489,7 @@ The `.cargo/config.toml` uses `-serial pty` instead of `-netdev tap`:
 runner = "qemu-system-arm -M mps2-an385 -semihosting -nographic -serial pty -kernel"
 ```
 
-The example's `Cargo.toml` depends on `nros-mps2-an385` with
+The example's `Cargo.toml` depends on `nros-board-mps2-an385` with
 `features = ["serial"]` and `default-features = false`.
 
 **Files**:
@@ -515,7 +515,7 @@ Use `QemuProcess` with modified args (no `-netdev`, add `-serial pty`).
 - `packages/testing/nros-tests/tests/emulator.rs`
 - `packages/testing/nros-tests/src/fixtures/binaries.rs` (add build helper)
 
-### 67.9 — Feature-gate `nros-stm32f4`
+### 67.9 — Feature-gate `nros-board-stm32f4`
 
 Same pattern as 67.5 for STM32F4. The STM32F4 has both Ethernet and USART
 peripherals, making it a natural dual-transport board.
@@ -524,9 +524,9 @@ Ethernet feature gates `stm32-eth`, `zpico-smoltcp`, `smoltcp`. Serial feature
 gates `zpico-serial` and the USART initialization code.
 
 **Files**:
-- `packages/boards/nros-stm32f4/Cargo.toml`
-- `packages/boards/nros-stm32f4/src/config.rs`
-- `packages/boards/nros-stm32f4/src/node.rs`
+- `packages/boards/nros-board-stm32f4/Cargo.toml`
+- `packages/boards/nros-board-stm32f4/src/config.rs`
+- `packages/boards/nros-board-stm32f4/src/node.rs`
 
 ### 67.10 — STM32F4 USART driver for `zpico-serial`
 
@@ -545,14 +545,14 @@ where
 }
 ```
 
-This can be a thin wrapper in `nros-stm32f4` or a separate driver crate. The
+This can be a thin wrapper in `nros-board-stm32f4` or a separate driver crate. The
 HAL's `Serial` type already provides `read`/`write` methods; the wrapper adds
 the `read_exact` timeout loop using the DWT cycle counter.
 
 **Files**:
-- `packages/boards/nros-stm32f4/src/serial.rs` (or `packages/drivers/stm32f4-serial/`)
+- `packages/boards/nros-board-stm32f4/src/serial.rs` (or `packages/drivers/stm32f4-serial/`)
 
-### 67.11 — Feature-gate `nros-esp32`
+### 67.11 — Feature-gate `nros-board-esp32`
 
 The ESP32-C3 board crate currently hardcodes WiFi via esp-radio. Add `serial`
 feature for UART transport as an alternative.
@@ -566,18 +566,18 @@ the WiFi/network init code and set `Z_FEATURE_LINK_SERIAL=1`. No `zpico-serial`
 dependency required.
 
 **Files**:
-- `packages/boards/nros-esp32/Cargo.toml`
-- `packages/boards/nros-esp32/src/lib.rs`
+- `packages/boards/nros-board-esp32/Cargo.toml`
+- `packages/boards/nros-board-esp32/src/lib.rs`
 
-### 67.12 — Feature-gate `nros-esp32-qemu`
+### 67.12 — Feature-gate `nros-board-esp32-qemu`
 
 Same pattern for the ESP32-C3 QEMU board crate. Currently uses OpenETH.
 
 Like 67.11, this uses zenoh-pico's built-in serial support, not `zpico-serial`.
 
 **Files**:
-- `packages/boards/nros-esp32-qemu/Cargo.toml`
-- `packages/boards/nros-esp32-qemu/src/lib.rs`
+- `packages/boards/nros-board-esp32-qemu/Cargo.toml`
+- `packages/boards/nros-board-esp32-qemu/src/lib.rs`
 
 ### 67.13 — Documentation: serial transport guide
 
@@ -607,12 +607,12 @@ Add transport feature conventions to CLAUDE.md:
 ## Acceptance Criteria
 
 - [ ] `zpico-serial` compiles for `thumbv7m-none-eabi` with `link-serial` feature
-- [ ] `nros-mps2-an385` compiles with `--features serial --no-default-features`
-- [ ] `nros-mps2-an385` compiles with `--features ethernet` (default, no regression)
-- [ ] `nros-mps2-an385` compiles with `--features ethernet,serial` (both enabled)
+- [ ] `nros-board-mps2-an385` compiles with `--features serial --no-default-features`
+- [ ] `nros-board-mps2-an385` compiles with `--features ethernet` (default, no regression)
+- [ ] `nros-board-mps2-an385` compiles with `--features ethernet,serial` (both enabled)
 - [ ] QEMU serial example sends messages over UART PTY to zenohd
 - [ ] Integration test passes: serial talker -> zenohd serial plugin -> subscriber
-- [ ] `nros-stm32f4` compiles with `--features serial --no-default-features`
+- [ ] `nros-board-stm32f4` compiles with `--features serial --no-default-features`
 - [ ] `just quality` passes (no regressions in existing Ethernet tests)
 - [ ] Serial transport guide published in book
 

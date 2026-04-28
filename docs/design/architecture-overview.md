@@ -96,7 +96,7 @@ graph TD
     end
 
     subgraph "Board Crates"
-        BOARD["nros-mps2-an385<br/>nros-esp32<br/>nros-stm32f4<br/>nros-threadx-*<br/>nros-nuttx-*"]
+        BOARD["nros-board-mps2-an385<br/>nros-board-esp32<br/>nros-board-stm32f4<br/>nros-threadx-*<br/>nros-nuttx-*"]
     end
 
     subgraph "Drivers"
@@ -392,7 +392,7 @@ Board crates provide a turn-key entry point for a specific hardware + RTOS combi
 
 ```mermaid
 graph TD
-    subgraph "Board Crate (e.g. nros-mps2-an385)"
+    subgraph "Board Crate (e.g. nros-board-mps2-an385)"
         RUN["run(config, |config| { ... })"]
         HW["Hardware Init<br/><i>Ethernet driver, clocks</i>"]
         NET["Network Stack<br/><i>smoltcp / lwIP / NetX / NuttX sockets</i>"]
@@ -414,13 +414,13 @@ graph TD
 
 | Board Crate                 | Target         | RTOS       | Network Stack | Ethernet Driver       |
 |-----------------------------|----------------|------------|---------------|-----------------------|
-| `nros-mps2-an385`           | QEMU Cortex-M3 | Bare-metal | smoltcp       | lan9118-smoltcp       |
-| `nros-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
-| `nros-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
-| `nros-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
-| `nros-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
-| `nros-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
-| `nros-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
+| `nros-board-mps2-an385`           | QEMU Cortex-M3 | Bare-metal | smoltcp       | lan9118-smoltcp       |
+| `nros-board-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
+| `nros-board-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
+| `nros-board-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
+| `nros-board-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
+| `nros-board-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
+| `nros-board-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
 
 ### Platform Primitives
 

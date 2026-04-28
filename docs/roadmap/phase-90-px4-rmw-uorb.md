@@ -25,7 +25,7 @@ nano-ros code. This phase adds the glue that lets nano-ros sit on top:
 
 - `nros-rmw-uorb` — implements `nros-rmw` traits using `px4-uorb` as the
   underlying transport. Replaces zenoh / xrce-dds as the RMW choice.
-- `nros-px4` — board-style crate. Mirrors `nros-mps2-an385` shape:
+- `nros-px4` — board-style crate. Mirrors `nros-board-mps2-an385` shape:
   exposes a `run(config, user_fn)` that spawns an `Executor` on a
   chosen PX4 WorkQueue. Style B entry point.
 
@@ -101,7 +101,8 @@ is generated from a TOML file (committed, not runtime).
 
 - [x] `Config` struct: `wq_name`, `node_name`, `namespace`, `domain_id`
 - [x] `run<F>(config, |&Executor| -> Result<(), E>) -> !` matches
-      existing board-crate signatures
+      existing board-crate signatures (`nros-board-mps2-an385::run`,
+      `nros-board-nuttx-qemu-arm::run`)
 - [x] Opens UorbSession-backed `Executor` via `Executor::open` w/
       `rmw-uorb` feature; user closure receives `&mut Executor` for
       node creation

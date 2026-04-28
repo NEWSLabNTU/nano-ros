@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Board crate for hardware + network init
-nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385" }
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
 mps2-an385-pac = { path = "../../../../../packages/boards/mps2-an385-pac" }

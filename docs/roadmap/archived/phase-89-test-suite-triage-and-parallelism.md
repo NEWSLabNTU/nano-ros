@@ -301,7 +301,7 @@ and networking problems, not skips:
    and `::set_poll_callback(smoltcp_network_poll)` in
    `init_hardware`. (Same fix is needed for MPS2-AN385, STM32F4,
    ESP32 WiFi — tracked in 89.5 / 89.Baremetal.)
-3. **DMA-buffer lifetime bug in `nros-esp32-qemu`**. `OpenEth::
+3. **DMA-buffer lifetime bug in `nros-board-esp32-qemu`**. `OpenEth::
    init()` writes the addresses of `self.tx_buf` / `self.rx_buf`
    (fields inside the struct) into hardware TX/RX descriptors,
    but the board crate constructed `OpenEth` on the stack, called
@@ -344,10 +344,10 @@ path can be added later if some platform needs it.
 - `packages/testing/nros-tests/tests/esp32_emulator.rs`
   (boot-banner pattern; remove stale `Connected!` assertions that
   the examples never emit; drop the earlier `#[ignore]` attrs).
-- `packages/boards/nros-esp32-qemu/src/node.rs`
+- `packages/boards/nros-board-esp32-qemu/src/node.rs`
   (`init_clock`, `sleep::set_poll_callback`, re-ordered
   `OpenEth::new` / `ETH_DEVICE.write` / `init`).
-- `packages/boards/nros-esp32-qemu/src/network.rs`
+- `packages/boards/nros-board-esp32-qemu/src/network.rs`
   (RXEN-toggle flush workaround in `smoltcp_network_poll`).
 - `packages/drivers/openeth-smoltcp/src/lib.rs`
   (4-slot RX ring + rotating `next_rx_idx`; promiscuous mode;
@@ -522,7 +522,7 @@ ThreadX-Linux is the lowest-cost path to within-platform
 parallelism because its binaries are **native processes** and
 nsos-netx (the NetX Duo BSD-socket shim) offloads straight to the
 host kernel, ignoring the legacy `interface` / `ip` / `netmask` /
-`gateway` fields (see `packages/boards/nros-threadx-linux/c/
+`gateway` fields (see `packages/boards/nros-board-threadx-linux/c/
 app_define.c:50`). The only thing that actually matters for
 cross-test isolation is the host zenohd port.
 

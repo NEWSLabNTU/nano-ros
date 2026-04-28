@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "QEMU large message publish test using nros-mps2-an385"
+description = "QEMU large message publish test using nros-board-mps2-an385"
 
 [[bin]]
 name = "qemu-bsp-large-msg-test"
@@ -13,11 +13,11 @@ bench = false
 
 [features]
 default = []
-docker = ["nros-mps2-an385/docker"]
+docker = ["nros-board-mps2-an385/docker"]
 
 [dependencies]
 # Board crate for hardware + network init
-nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385" }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp"] }

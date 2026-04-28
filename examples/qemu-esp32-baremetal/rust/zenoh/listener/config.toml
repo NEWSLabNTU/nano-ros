@@ -1,5 +1,5 @@
 # ESP32-C3 QEMU listener — network configuration
-# Used by nros-esp32-qemu board crate (Config::from_toml)
+# Used by nros-board-esp32-qemu board crate (Config::from_toml)
 
 [network]
 ip = "10.0.2.51"

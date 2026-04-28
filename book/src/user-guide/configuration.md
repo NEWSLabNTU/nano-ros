@@ -100,7 +100,7 @@ priority scale and constraints.
 
 **Rust:**
 ```rust
-use nros_mps2_an385::{Config, run};
+use nros_board_mps2_an385::{Config, run};
 
 fn main() -> ! {
     run(Config::from_toml(include_str!("../config.toml")), |config| {

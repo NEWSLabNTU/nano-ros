@@ -371,12 +371,12 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
       that know their IRQ story override via a separate `BoardIdle`
       hook. Precedent already exists:
       - WFI usage (board-layer opt-in):
-        `packages/boards/nros-stm32f4/src/node.rs:96,167,173,190`,
-        `packages/boards/nros-mps2-an385/src/lib.rs:64,73`,
-        `packages/boards/nros-mps2-an385-freertos/build.rs:401,410,671`
+        `packages/boards/nros-board-stm32f4/src/node.rs:96,167,173,190`,
+        `packages/boards/nros-board-mps2-an385/src/lib.rs:64,73`,
+        `packages/boards/nros-board-mps2-an385-freertos/build.rs:401,410,671`
       - `spin_loop()` usage (safe default, proven on ESP32):
-        `packages/boards/nros-esp32/src/node.rs:126,136,151,157,163,170,252,370`,
-        `packages/boards/nros-esp32-qemu/src/node.rs:255`
+        `packages/boards/nros-board-esp32/src/node.rs:126,136,151,157,163,170,252,370`,
+        `packages/boards/nros-board-esp32-qemu/src/node.rs:255`
     - **Safety**: none of the RTOS yields are ISR-safe
       (`tx_thread_relinquish`, `k_yield`, `taskYIELD` all panic /
       error from ISR). Document the constraint on the trait; add a

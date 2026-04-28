@@ -1,7 +1,7 @@
 //! `PlatformSerial` impl for MPS2-AN385.
 //!
 //! **Status (Phase 80.14.4b)**: surface-complete, uses a fn-pointer
-//! vtable that the board crate (`nros-mps2-an385`) populates at init
+//! vtable that the board crate (`nros-board-mps2-an385`) populates at init
 //! time. The platform ZST doesn't own the UART peripheral itself —
 //! the board crate does, because the driver (`cmsdk-uart`) lives
 //! there along with every other board-specific detail (pinmux, clock

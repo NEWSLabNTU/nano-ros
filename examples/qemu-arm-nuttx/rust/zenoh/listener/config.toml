@@ -1,5 +1,5 @@
 # NuttX QEMU ARM listener — network configuration
-# Used by nros-nuttx-qemu-arm board crate (Config::from_toml)
+# Used by nros-board-nuttx-qemu-arm board crate (Config::from_toml)
 
 [network]
 ip = "10.0.2.31"

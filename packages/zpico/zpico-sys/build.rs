@@ -1615,7 +1615,7 @@ fn build_zenoh_pico_freertos(
         panic!(
             "FREERTOS_CONFIG_DIR not set. Point it at a directory containing\n\
              FreeRTOSConfig.h and lwipopts.h for your board.\n\
-             Example: export FREERTOS_CONFIG_DIR=packages/boards/nros-mps2-an385-freertos/config"
+             Example: export FREERTOS_CONFIG_DIR=packages/boards/nros-board-mps2-an385-freertos/config"
         );
     }));
 
@@ -1918,7 +1918,7 @@ fn build_zenoh_pico_threadx(
     let threadx_config_dir = PathBuf::from(env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
         panic!(
             "THREADX_CONFIG_DIR not set. Point it at a directory containing tx_user.h.\n\
-             Example: export THREADX_CONFIG_DIR=packages/boards/nros-threadx-linux/config"
+             Example: export THREADX_CONFIG_DIR=packages/boards/nros-board-threadx-linux/config"
         );
     }));
     let netx_dir = PathBuf::from(env::var("NETX_DIR").unwrap_or_else(|_| {
@@ -1931,7 +1931,7 @@ fn build_zenoh_pico_threadx(
     let netx_config_dir = PathBuf::from(env::var("NETX_CONFIG_DIR").unwrap_or_else(|_| {
         panic!(
             "NETX_CONFIG_DIR not set. Point it at a directory containing nx_user.h.\n\
-             Example: export NETX_CONFIG_DIR=packages/boards/nros-threadx-linux/config"
+             Example: export NETX_CONFIG_DIR=packages/boards/nros-board-threadx-linux/config"
         );
     }));
 

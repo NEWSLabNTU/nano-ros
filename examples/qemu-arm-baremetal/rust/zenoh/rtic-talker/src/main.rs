@@ -21,7 +21,7 @@
 use panic_semihosting as _;
 
 use nros::prelude::*;
-use nros_mps2_an385::{Config, println};
+use nros_board_mps2_an385::{Config, println};
 use std_msgs::msg::Int32;
 
 use rtic_monotonics::systick::prelude::*;
@@ -48,7 +48,7 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         let config = Config::from_toml(include_str!("../config.toml"));
-        nros_mps2_an385::init_hardware(&config);
+        nros_board_mps2_an385::init_hardware(&config);
 
         Mono::start(cx.core.SYST, 25_000_000);
 

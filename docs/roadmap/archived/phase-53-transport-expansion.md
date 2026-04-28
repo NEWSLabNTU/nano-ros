@@ -85,10 +85,10 @@ nano-ros initially only supported TCP for the zenoh-pico transport layer. This p
 ### 53.4 — Board crate UDP socket registration ✓
 
 Update board crates to create and register UDP sockets alongside TCP:
-- `packages/boards/nros-mps2-an385/src/node.rs`
-- `packages/boards/nros-stm32f4/src/node.rs`
-- `packages/boards/nros-esp32/src/node.rs`
-- `packages/boards/nros-esp32-qemu/src/node.rs`
+- `packages/boards/nros-board-mps2-an385/src/node.rs`
+- `packages/boards/nros-board-stm32f4/src/node.rs`
+- `packages/boards/nros-board-esp32/src/node.rs`
+- `packages/boards/nros-board-esp32-qemu/src/node.rs`
 
 Each `init_network()` function adds `create_and_register_udp_sockets()` call after TCP socket setup.
 Board crate `Cargo.toml` files add `"socket-udp"` to their smoltcp dependency features.
@@ -319,7 +319,7 @@ are too complex for FFI bindings). Custom BIO callbacks route through SmoltcpBri
 Feature wiring through the crate chain:
 
 - `examples/qemu-arm-baremetal/rust/zenoh/{talker,listener}/Cargo.toml` — added `link-tls` feature
-- `packages/boards/nros-mps2-an385/Cargo.toml` — added `link-tls` feature forwarding
+- `packages/boards/nros-board-mps2-an385/Cargo.toml` — added `link-tls` feature forwarding
 - `packages/zpico/zpico-platform-mps2-an385/Cargo.toml` — added `link-tls` feature
 - `packages/zpico/zpico-platform-mps2-an385/src/memory.rs` — conditional heap:
   64 KB default, 128 KB with `link-tls`
@@ -407,7 +407,7 @@ requires hostname matching.
 | `packages/zpico/zpico-smoltcp/c/tls_bare_metal.c`                 | **New** — 9 TLS platform symbols + BIO callbacks  |
 | `packages/zpico/zpico-smoltcp/c/entropy_bare_metal.c`             | **New** — DWT-based entropy source                |
 | `packages/zpico/zpico-smoltcp/c/mbedtls_config.h`                 | **New** — bare-metal mbedTLS config               |
-| `packages/boards/nros-mps2-an385/Cargo.toml`                      | Add `link-tls` feature forwarding                 |
+| `packages/boards/nros-board-mps2-an385/Cargo.toml`                      | Add `link-tls` feature forwarding                 |
 | `packages/zpico/zpico-platform-mps2-an385/Cargo.toml`             | Add `link-tls` feature forwarding                 |
 | `packages/zpico/zpico-platform-mps2-an385/src/memory.rs`          | Conditional heap (64KB / 128KB with TLS)          |
 | `packages/testing/nros-tests/src/fixtures/tls_certs.rs`           | **New** — TLS cert generation for tests           |

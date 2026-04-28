@@ -199,8 +199,8 @@ systems:
 - **Bare-metal**: Rust board crates with cargo as the build system
 - **ESP-IDF**: idf.py with component integration
 
-These will get dedicated packages (like the Rust board crates `nros-mps2-an385`,
-`nros-esp32`, etc.), not variants within this install layout.
+These will get dedicated packages (like the Rust board crates `nros-board-mps2-an385`,
+`nros-board-esp32`, etc.), not variants within this install layout.
 
 ### CMake source files co-located with packages
 

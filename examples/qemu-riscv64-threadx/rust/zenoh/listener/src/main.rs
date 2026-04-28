@@ -6,7 +6,7 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_threadx_qemu_riscv64::{Config, println, run};
+use nros_board_threadx_qemu_riscv64::{Config, println, run};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]

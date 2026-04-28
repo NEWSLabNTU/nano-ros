@@ -1,5 +1,5 @@
 # ThreadX QEMU RISC-V service server — network configuration
-# Used by nros-threadx-qemu-riscv64 board crate (Config::from_toml)
+# Used by nros-board-threadx-qemu-riscv64 board crate (Config::from_toml)
 
 [network]
 ip = "10.0.2.40"

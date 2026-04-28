@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Serial (UART) talker example using nros-mps2-an385"
+description = "Serial (UART) talker example using nros-board-mps2-an385"
 
 [[bin]]
 name = "qemu-serial-talker"
@@ -16,7 +16,7 @@ default = []
 
 [dependencies]
 # Board crate with serial transport (no ethernet)
-nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385", default-features = false, features = ["serial"] }
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["serial"] }
 
 # nros Executor API (no link-tcp/link-udp — serial link comes from zpico-serial)
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"] }

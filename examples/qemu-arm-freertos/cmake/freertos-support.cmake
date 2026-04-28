@@ -31,7 +31,7 @@ include(nros-freertos)
 get_filename_component(_FREERTOS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_NROS_ROOT "${_FREERTOS_CMAKE_DIR}/../../.." ABSOLUTE)
 set(FREERTOS_CONFIG_DIR
-    "${_NROS_ROOT}/packages/boards/nros-mps2-an385-freertos/config"
+    "${_NROS_ROOT}/packages/boards/nros-board-mps2-an385-freertos/config"
     CACHE PATH "")
 set(_LAN9118_DIR "${_NROS_ROOT}/packages/drivers/lan9118-lwip")
 

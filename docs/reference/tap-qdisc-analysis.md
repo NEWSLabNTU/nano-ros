@@ -78,7 +78,7 @@ With `pfifo`, stale packets from killed QEMU processes persist in the queue
 
 ### 1. Ephemeral port seeding via ARM semihosting
 
-The firmware (`nros-mps2-an385`) seeds smoltcp's ephemeral port counter from
+The firmware (`nros-board-mps2-an385`) seeds smoltcp's ephemeral port counter from
 the host's wall clock using ARM semihosting `SYS_TIME` (operation 0x11):
 
 ```rust

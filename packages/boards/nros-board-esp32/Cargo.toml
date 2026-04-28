@@ -1,0 +1,53 @@
+[package]
+name = "nros-board-esp32"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ESP32-C3 board crate for nros (hardware init + run() entry point)"
+
+[lib]
+name = "nros_board_esp32"
+
+[dependencies]
+# Unified platform primitives (clock, memory, random, sleep)
+nros-platform-esp32 = { path = "../../platforms/nros-platform-esp32" }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32"] }
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+
+# smoltcp network provider (wifi only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+
+# ESP32-C3 HAL and support crates
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32c3"] }
+esp-println = { version = "~0.16.0", features = ["esp32c3"] }
+esp-alloc = { version = "~0.9.0" }
+
+# WiFi support (wifi only; esp-wifi split into esp-radio + esp-rtos in 1.0 ecosystem)
+esp-rtos = { version = "~0.2.0", features = ["esp32c3", "esp-radio"], optional = true }
+esp-radio = { version = "~0.17.0", features = ["esp32c3", "wifi", "smoltcp", "unstable"], optional = true }
+
+# Network stack (wifi only; version must match esp-radio's smoltcp dependency)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-udp",
+    "socket-dhcpv4",
+    "proto-dhcpv4",
+] }
+
+# Atomics for riscv32imc (no hardware atomic support)
+# unsafe-assume-single-core is safe because ESP32-C3 is single-core
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+
+# Critical section for safe interior mutability in statics
+critical-section = "1"
+
+[features]
+default = ["wifi"]
+# WiFi transport via esp-radio + smoltcp TCP/IP stack
+wifi = ["dep:nros-smoltcp", "dep:esp-rtos", "dep:esp-radio", "dep:smoltcp"]
+# Serial transport via zenoh-pico built-in ESP-IDF serial (no extra deps)
+serial = []

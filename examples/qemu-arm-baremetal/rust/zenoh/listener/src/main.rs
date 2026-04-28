@@ -1,4 +1,4 @@
-//! Simple QEMU Listener using nros-mps2-an385
+//! Simple QEMU Listener using nros-board-mps2-an385
 //!
 //! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
 
@@ -6,11 +6,11 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_mps2_an385::{Config, println, run};
+use nros_board_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-#[nros_mps2_an385::entry]
+#[nros_board_mps2_an385::entry]
 fn main() -> ! {
     // Load config from config.toml (different IP/MAC than talker)
     run(

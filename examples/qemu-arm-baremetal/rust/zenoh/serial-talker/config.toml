@@ -1,5 +1,5 @@
 # QEMU ARM bare-metal serial talker — transport configuration
-# Used by nros-mps2-an385 board crate (Config::from_toml)
+# Used by nros-board-mps2-an385 board crate (Config::from_toml)
 
 [serial]
 baudrate = 115200

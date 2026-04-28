@@ -1,7 +1,7 @@
 //! `PlatformSerial` impl for STM32F4.
 //!
 //! **Status (Phase 80.14.4b)**: surface-complete, uses a fn-pointer
-//! vtable that the board crate (`nros-stm32f4`) populates at init
+//! vtable that the board crate (`nros-board-stm32f4`) populates at init
 //! time. Same rationale as `nros-platform-mps2-an385::serial`:
 //! the platform ZST doesn't own the UART peripheral — the board
 //! crate does, because its USART driver lives there with the rest

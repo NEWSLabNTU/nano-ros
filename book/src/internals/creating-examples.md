@@ -194,10 +194,10 @@ bench = false
 
 [features]
 default = []
-docker = ["nros-mps2-an385/docker"]
+docker = ["nros-board-mps2-an385/docker"]
 
 [dependencies]
-nros-mps2-an385 = { path = "../../../packages/boards/nros-mps2-an385" }
+nros-board-mps2-an385 = { path = "../../../packages/boards/nros-board-mps2-an385" }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 ```
@@ -229,8 +229,8 @@ Create the `[build]` and `[target.*]` sections **first**, then run `cargo nano-r
 #![no_std]
 #![no_main]
 
-use nros_mps2_an385::prelude::*;
-use nros_mps2_an385::println;
+use nros_board_mps2_an385::prelude::*;
+use nros_board_mps2_an385::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -259,8 +259,8 @@ fn main() -> ! {
 #![no_main]
 
 use core::sync::atomic::{AtomicU32, Ordering};
-use nros_mps2_an385::prelude::*;
-use nros_mps2_an385::println;
+use nros_board_mps2_an385::prelude::*;
+use nros_board_mps2_an385::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -298,18 +298,18 @@ fn main() -> ! {
 
 ### STM32F4 variant
 
-Same pattern, but use `nros-stm32f4` and `defmt` logging:
+Same pattern, but use `nros-board-stm32f4` and `defmt` logging:
 
 ```toml
 [dependencies]
-nros-stm32f4 = { path = "../../../packages/boards/nros-stm32f4" }
+nros-board-stm32f4 = { path = "../../../packages/boards/nros-board-stm32f4" }
 std_msgs = { version = "*", default-features = false }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt-rtt = "0.4"
 ```
 
 ```rust
-use nros_stm32f4::prelude::*;
+use nros_board_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 
 #[entry]
@@ -614,7 +614,7 @@ CONFIG_NET_SOCKETS=y
 | **Source file** | `src/main.rs` | `src/main.rs` | `src/lib.rs` |
 | **Crate type** | Binary | Binary | Staticlib |
 | **Package name** | Any | Any | Must be `rustapp` |
-| **Main crate** | `nros` | `nros-mps2-an385`/`nros-stm32f4` | `nros` |
+| **Main crate** | `nros` | `nros-board-mps2-an385`/`nros-board-stm32f4` | `nros` |
 | **Transport** | Feature-gated `zenoh` | Built into platform crate | Kconfig + module |
 | **Logging** | `env_logger` | Semihosting / `defmt` | `zephyr::set_logger()` |
 | **Build system** | `cargo build` | `cargo build` | `west build` (CMake) |

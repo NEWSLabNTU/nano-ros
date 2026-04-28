@@ -3,7 +3,7 @@
 //! Subscribes to `std_msgs/Int32` messages on `/chatter`.
 
 use nros::prelude::*;
-use nros_threadx_linux::{Config, run};
+use nros_board_threadx_linux::{Config, run};
 use std_msgs::msg::Int32;
 
 fn main() {

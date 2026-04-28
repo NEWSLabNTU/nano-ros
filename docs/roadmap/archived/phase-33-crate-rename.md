@@ -81,10 +81,10 @@ Each `zpico-platform-*` crate:
 
 | Source (after extraction)      | New nros crate    | Modules remaining                                            |
 |--------------------------------|-------------------|--------------------------------------------------------------|
-| `nano-ros-platform-qemu`       | `nros-mps2-an385`       | node, publisher, subscriber, config, error, timing + hw init |
-| `nano-ros-platform-esp32`      | `nros-esp32`      | Same pattern                                                 |
-| `nano-ros-platform-esp32-qemu` | `nros-esp32-qemu` | Same pattern                                                 |
-| `nano-ros-platform-stm32f4`    | `nros-stm32f4`    | Same + phy, pins                                             |
+| `nano-ros-platform-qemu`       | `nros-board-mps2-an385`       | node, publisher, subscriber, config, error, timing + hw init |
+| `nano-ros-platform-esp32`      | `nros-board-esp32`      | Same pattern                                                 |
+| `nano-ros-platform-esp32-qemu` | `nros-board-esp32-qemu` | Same pattern                                                 |
+| `nano-ros-platform-stm32f4`    | `nros-board-stm32f4`    | Same + phy, pins                                             |
 
 Each `nros-*` board crate:
 - Lives in `packages/boards/nros-*/`
@@ -93,7 +93,7 @@ Each `nros-*` board crate:
 - Is excluded from the default workspace (embedded-only, cross-compiled)
 
 **Updated examples to depend on split crates:**
-- QEMU examples: depend on `nros-mps2-an385` (which pulls in `zpico-platform-mps2-an385` etc.)
+- QEMU examples: depend on `nros-board-mps2-an385` (which pulls in `zpico-platform-mps2-an385` etc.)
 - ESP32 examples: same pattern
 - Updated `.cargo/config.toml` patch entries
 
@@ -364,10 +364,10 @@ packages/
     zpico-zephyr/                    #   Zephyr C convenience library
     nros-rmw-zenoh/                  #   RMW glue (bridges zpico ↔ nros-rmw)
   boards/                            # User-facing platform packages (nros deps)
-    nros-mps2-an385/                       #   QEMU: Publisher<M>, run_node(), Config
-    nros-esp32/                      #   ESP32-C3 WiFi user API
-    nros-esp32-qemu/                 #   ESP32-C3 QEMU user API
-    nros-stm32f4/                    #   STM32F4 user API
+    nros-board-mps2-an385/                       #   QEMU: Publisher<M>, run_node(), Config
+    nros-board-esp32/                      #   ESP32-C3 WiFi user API
+    nros-board-esp32-qemu/                 #   ESP32-C3 QEMU user API
+    nros-board-stm32f4/                    #   STM32F4 user API
   drivers/                           # Hardware drivers (unchanged)
     lan9118-smoltcp/
     openeth-smoltcp/

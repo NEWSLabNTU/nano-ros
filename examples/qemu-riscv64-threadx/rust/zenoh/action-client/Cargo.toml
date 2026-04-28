@@ -15,6 +15,6 @@ bench = false
 default = []
 
 [dependencies]
-nros-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-threadx-qemu-riscv64" }
+nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-threadx", "link-tcp", "link-udp-unicast", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }

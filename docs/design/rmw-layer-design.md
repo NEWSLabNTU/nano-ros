@@ -94,7 +94,7 @@ For a detailed analysis of rmw.h's limitations for embedded and what nros adopts
 The target dependency chain flows top-down:
 
 ```
-Platform API (nros-mps2-an385, nros-esp32, ...)
+Platform API (nros-board-mps2-an385, nros-board-esp32, ...)
   → nros-core (RosMessage, Serialize, Deserialize)
     → nros-rmw (RMW traits: Session, Publisher, Subscriber)
       → nros-rmw-zenoh (zenoh RMW implementation)
@@ -104,7 +104,7 @@ Platform API (nros-mps2-an385, nros-esp32, ...)
 With link-time symbol resolution for embedded platforms:
 
 ```
-nros-mps2-an385 (user-facing, composes everything)
+nros-board-mps2-an385 (user-facing, composes everything)
   ├── nros-core                    (message types, traits)
   ├── nros-rmw                     (RMW trait interface)
   │     └── nros-rmw-zenoh         (zenoh RMW impl: shim, keyexpr, liveliness)
@@ -138,10 +138,10 @@ nros-mps2-an385 (user-facing, composes everything)
 | split from `nano-ros-platform-stm32f4`       | **`zpico-platform-stm32f4`**    | none                | System symbols for STM32F4                                |
 | `nano-ros-bsp-zephyr`                        | **`zpico-zephyr`**              | none                | Zephyr C integration (wraps zenoh_shim.h)                 |
 | **User-facing platform API (nros deps)**     |                                 |                     |                                                           |
-| `nano-ros-platform-qemu` (user API portion)  | **`nros-mps2-an385`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
-| `nano-ros-platform-esp32` (user API portion) | **`nros-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
-| `nano-ros-platform-esp32-qemu` (user API)    | **`nros-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
-| `nano-ros-platform-stm32f4` (user API)       | **`nros-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
+| `nano-ros-platform-qemu` (user API portion)  | **`nros-board-mps2-an385`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
+| `nano-ros-platform-esp32` (user API portion) | **`nros-board-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
+| `nano-ros-platform-esp32-qemu` (user API)    | **`nros-board-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
+| `nano-ros-platform-stm32f4` (user API)       | **`nros-board-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
 | **Removed**                                  |                                 |                     |                                                           |
 | `nano-ros-bsp-qemu`                          | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
 | `nano-ros-bsp-esp32`                         | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
@@ -177,10 +177,10 @@ packages/
     zpico-zephyr/                    #   Zephyr C convenience library
     nros-rmw-zenoh/                  #   RMW glue (bridges zpico ↔ nros-rmw)
   boards/                            # User-facing platform packages (nros deps)
-    nros-mps2-an385/                       #   Publisher<M>, run_node(), Config for QEMU
-    nros-esp32/                      #   Same for ESP32 WiFi
-    nros-esp32-qemu/                 #   Same for ESP32 QEMU
-    nros-stm32f4/                    #   Same for STM32F4
+    nros-board-mps2-an385/                       #   Publisher<M>, run_node(), Config for QEMU
+    nros-board-esp32/                      #   Same for ESP32 WiFi
+    nros-board-esp32-qemu/                 #   Same for ESP32 QEMU
+    nros-board-stm32f4/                    #   Same for STM32F4
   drivers/                           # Hardware drivers (middleware-agnostic)
     lan9118-smoltcp/
     openeth-smoltcp/
@@ -200,7 +200,7 @@ packages/
 User code
   │
   ▼
-nros-mps2-an385 / nros-esp32 / ...     # User-facing platform API
+nros-board-mps2-an385 / nros-board-esp32 / ...     # User-facing platform API
   │  Publisher<M>, Subscription<M>, run_node(), Config
   │
   ├────────────────┐
@@ -251,7 +251,7 @@ nano-ros-platform-qemu (CURRENT: 1,314 lines, mixed)
   ├── node.rs, publisher.rs, subscriber.rs,  ─┐
   │   config.rs, error.rs, timing.rs, lib.rs  │ 587 lines
   │                                           ▼
-  │                                nros-mps2-an385 (NEW)
+  │                                nros-board-mps2-an385 (NEW)
   │                                  Deps: nros-core, nros-rmw, nros-rmw-zenoh
   │                                  Also: zpico-platform-mps2-an385, zpico-smoltcp
   │                                         lan9118-smoltcp (link-time)
@@ -506,7 +506,7 @@ For Linux/desktop targets, using the full Zenoh Rust library instead of zenoh-pi
 | Core library          | `nros-`      | —          | `nros-core`, `nros-rmw`, `nros-node`                |
 | RMW glue              | `nros-rmw-*` | nros-rmw   | `nros-rmw-zenoh`                                    |
 | Zenoh-pico plumbing   | `zpico-`     | none       | `zpico-sys`, `zpico-smoltcp`, `zpico-platform-mps2-an385` |
-| User-facing platforms | `nros-`      | nros-core  | `nros-mps2-an385`, `nros-esp32`                           |
+| User-facing platforms | `nros-`      | nros-core  | `nros-board-mps2-an385`, `nros-board-esp32`                           |
 
 ### Key architectural decisions
 
@@ -514,4 +514,4 @@ For Linux/desktop targets, using the full Zenoh Rust library instead of zenoh-pi
 2. **Remove 4 Rust BSP wrappers** — they're just `pub use *` re-exports
 3. **Reclassify Zephyr BSP** as `zpico-zephyr` — it's a zpico C integration, not an nros package
 4. **Move keyexpr formatting** from generic `TopicInfo` into `nros-rmw-zenoh`
-5. **Dependency chain** flows cleanly: `nros-mps2-an385 → nros-core → nros-rmw → nros-rmw-zenoh → zpico-sys`
+5. **Dependency chain** flows cleanly: `nros-board-mps2-an385 → nros-core → nros-rmw → nros-rmw-zenoh → zpico-sys`

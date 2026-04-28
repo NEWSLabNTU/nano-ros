@@ -322,9 +322,9 @@ The user selects the board by depending on its crate:
 ```toml
 # Cargo.toml
 [dependencies]
-nros-mps2-an385-freertos = { version = "0.1" }
-# or: nros-esp32 = { version = "0.1", features = ["wifi"] }
-# or: nros-stm32f4 = { version = "0.1", features = ["ethernet"] }
+nros-board-mps2-an385-freertos = { version = "0.1" }
+# or: nros-board-esp32 = { version = "0.1", features = ["wifi"] }
+# or: nros-board-stm32f4 = { version = "0.1", features = ["ethernet"] }
 ```
 
 The board crate handles:
@@ -335,7 +335,7 @@ The board crate handles:
 
 The user's `main.rs`:
 ```rust
-use nros_mps2_an385_freertos::{Config, run};
+use nros_board_mps2_an385_freertos::{Config, run};
 
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {

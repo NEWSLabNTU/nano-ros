@@ -324,7 +324,7 @@ that provides all platform primitives for the MPS2-AN385 bare-metal board.
 Both `zpico-platform-shim` and `xrce-platform-shim` can use it via the
 `platform-mps2-an385` feature on `nros-platform`.
 
-Key design: the board crate (`nros-mps2-an385`) owns lifecycle (init, run,
+Key design: the board crate (`nros-board-mps2-an385`) owns lifecycle (init, run,
 device management) and delegates to the platform crate for system primitives.
 Sleep uses a registerable poll callback (`set_poll_callback`) so the board
 crate can wire in smoltcp polling without coupling the platform crate to
@@ -598,8 +598,8 @@ lifecycle (init, run, device management) and delegates to the platform crate
 for system primitives.
 
 ```
-RTOS:       nros-platform-freertos (generic) + nros-mps2-an385-freertos (board)
-Bare-metal: nros-platform-mps2-an385 (per-board) + nros-mps2-an385 (board)
+RTOS:       nros-platform-freertos (generic) + nros-board-mps2-an385-freertos (board)
+Bare-metal: nros-platform-mps2-an385 (per-board) + nros-board-mps2-an385 (board)
 ```
 
 Generic building blocks shared across bare-metal boards (xorshift PRNG,

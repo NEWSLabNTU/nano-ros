@@ -14,8 +14,13 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
-    if command -v qemu-system-riscv32 &>/dev/null; then
-        echo "qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
+    # Probe for the `esp32c3` machine model, not the binary's mere
+    # existence. Stock Debian/Ubuntu ships a `qemu-system-riscv32` that
+    # only knows the `virt` machine — the ESP32 tests need Espressif's
+    # fork. Mirrors `nros_tests::esp32::is_qemu_riscv32_available()`.
+    if command -v qemu-system-riscv32 &>/dev/null \
+            && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
+        echo "Espressif qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
     else
         ./scripts/esp32/install-espressif-qemu.sh
     fi
@@ -25,10 +30,11 @@ doctor:
     #!/usr/bin/env bash
     set +e
     fail=0
-    if command -v qemu-system-riscv32 &>/dev/null; then
-        echo "  [OK] qemu-system-riscv32"
+    if command -v qemu-system-riscv32 &>/dev/null \
+            && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
+        echo "  [OK] qemu-system-riscv32 (Espressif fork, esp32c3 machine)"
     else
-        echo "  [MISSING] qemu-system-riscv32 (run: just esp32 setup)"
+        echo "  [MISSING] Espressif qemu-system-riscv32 with esp32c3 machine (run: just esp32 setup)"
         fail=1
     fi
     if rustup target list --installed 2>/dev/null | grep -q '^riscv32imc-unknown-none-elf$'; then

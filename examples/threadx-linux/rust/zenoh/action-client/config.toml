@@ -1,5 +1,5 @@
 # ThreadX Linux action client — network configuration
-# Used by nros-threadx-linux board crate (Config::from_toml)
+# Used by nros-board-threadx-linux board crate (Config::from_toml)
 
 [network]
 ip = "192.0.3.15"

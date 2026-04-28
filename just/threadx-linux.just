@@ -81,8 +81,8 @@ build-fixtures:
     cmake_pfx="$root/build/install"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
-    config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-threadx-linux/config}"
-    app_define="$root/packages/boards/nros-threadx-linux/c/app_define.c"
+    config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
+    app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
     rust_examples=(talker listener service-server service-client action-server action-client)
     for ex in "${rust_examples[@]}"; do
         echo "  → threadx-linux/rust/$ex"

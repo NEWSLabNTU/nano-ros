@@ -13,7 +13,7 @@ The NuttX platform uses:
 - **zenoh-pico** -- Zenoh transport over NuttX sockets (same code path as POSIX)
 - **virtio-net** -- NuttX built-in Ethernet driver (no custom driver needed)
 
-Board crate: `nros-nuttx-qemu-arm` (in `packages/boards/`).
+Board crate: `nros-board-nuttx-qemu-arm` (in `packages/boards/`).
 
 ### Why NuttX Is Simpler Than FreeRTOS
 
@@ -106,7 +106,7 @@ NuttX QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-nuttx-qemu-arm` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md). It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
+The `nros-board-nuttx-qemu-arm` board crate follows the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md). It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
 
 Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
 initialization, no network stack setup, and no task creation. NuttX's kernel
@@ -117,7 +117,7 @@ before `main()` runs. Because NuttX supports Rust `std`, examples use standard
 ### NuttX Defconfig
 
 The QEMU board configuration lives in
-`packages/boards/nros-nuttx-qemu-arm/nuttx-config/` and enables:
+`packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/` and enables:
 
 - `CONFIG_NET` -- networking subsystem
 - `CONFIG_NET_TCP` / `CONFIG_NET_UDP` -- TCP/UDP protocols

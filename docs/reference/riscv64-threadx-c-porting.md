@@ -81,7 +81,7 @@ define `app_main()` which must be called when no Rust callback is set.
 **Fix:** Added `extern void app_main(void) __attribute__((weak))` and
 a fallback `else if (app_main) app_main()` branch in `app_thread_entry`.
 
-**File:** `packages/boards/nros-threadx-qemu-riscv64/c/app_define.c`
+**File:** `packages/boards/nros-board-threadx-qemu-riscv64/c/app_define.c`
 
 ### 6. No UART output (picolibc stdout)
 

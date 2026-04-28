@@ -1,0 +1,64 @@
+[package]
+name = "nros-board-stm32f4"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "STM32F4 board crate for nros (hardware + network init)"
+
+[lib]
+name = "nros_board_stm32f4"
+
+[dependencies]
+# Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
+nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4"] }
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+
+# smoltcp network provider (ethernet only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+# STM32F4 HAL (feature-gated for different chips)
+stm32f4xx-hal = { version = "0.21" }
+
+# STM32 Ethernet (ethernet only)
+stm32-eth = { version = "0.8", features = ["smoltcp-phy"], optional = true }
+
+# TCP/IP stack (ethernet only)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-udp",
+] }
+
+# Serial link layer (serial only)
+zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+
+# STM32F4 USART driver (serial only)
+stm32f4-usart = { path = "../../drivers/stm32f4-usart", optional = true }
+
+# Logging
+defmt = "0.3"
+
+[features]
+default = ["stm32f429", "ethernet"]
+# Ethernet transport via STM32 MAC + smoltcp
+ethernet = ["dep:nros-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
+# Serial transport via USART
+serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
+
+# STM32F4 chip variants (forwarded to HAL and zpico-platform)
+# stm32-eth features are only needed when ethernet is enabled, but Cargo
+# ignores unknown features on optional deps, so this is safe.
+stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32-eth?/stm32f407"]
+stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32-eth?/stm32f417"]
+stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32-eth?/stm32f427"]
+stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32-eth?/stm32f429"]
+stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth?/stm32f437"]
+stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth?/stm32f439"]
+stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth?/stm32f469"]
+stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth?/stm32f479"]

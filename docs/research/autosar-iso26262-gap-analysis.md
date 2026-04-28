@@ -374,7 +374,7 @@ The target MCU must satisfy:
 
 **What's needed for S32K3 support:**
 1. Generate PAC from NXP SVD files using `svd2rust` (NXP provides CMSIS-Pack SVDs)
-2. Create `zpico-platform-s32k3` + `nros-s32k3` crates (same pattern as `zpico-platform-stm32f4` + `nros-stm32f4`)
+2. Create `zpico-platform-s32k3` + `nros-s32k3` crates (same pattern as `zpico-platform-stm32f4` + `nros-board-stm32f4`)
 3. Write minimal HAL for GPIO, UART, Ethernet (or use Zephyr for peripheral access)
 
 ### Stepping Stone: NXP S32K144

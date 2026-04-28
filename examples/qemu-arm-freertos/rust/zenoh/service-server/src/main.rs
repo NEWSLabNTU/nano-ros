@@ -7,7 +7,7 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
-use nros_mps2_an385_freertos::{Config, println, run};
+use nros_board_mps2_an385_freertos::{Config, println, run};
 use panic_semihosting as _;
 
 #[unsafe(no_mangle)]

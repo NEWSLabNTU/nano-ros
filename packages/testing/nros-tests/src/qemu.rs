@@ -499,7 +499,7 @@ impl QemuProcess {
     /// MAC addresses use the QEMU OUI range (52:54:00) with the last byte
     /// derived from the peer index (0x56 + index). These must match the
     /// firmware's `Config::default()` / `Config::listener()` presets in
-    /// `nros-threadx-qemu-riscv64`.
+    /// `nros-board-threadx-qemu-riscv64`.
     pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(

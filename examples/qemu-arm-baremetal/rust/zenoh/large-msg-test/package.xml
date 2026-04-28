@@ -2,7 +2,7 @@
 <package format="3">
   <name>qemu_bsp_large_msg_test</name>
   <version>0.1.0</version>
-  <description>QEMU large message publish test using nros-mps2-an385</description>
+  <description>QEMU large message publish test using nros-board-mps2-an385</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>std_msgs</depend>

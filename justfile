@@ -14,13 +14,13 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "third-party/freertos/kernel")
 export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
 export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "third-party/freertos/lwip")
-export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
+export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-mps2-an385-freertos/config")
 export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "third-party/nuttx/nuttx")
 export NUTTX_APPS_DIR := env("NUTTX_APPS_DIR", justfile_directory() / "third-party/nuttx/nuttx-apps")
 export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "third-party/threadx/kernel")
-export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
+export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-threadx-linux/config")
 export NETX_DIR := env("NETX_DIR", justfile_directory() / "third-party/threadx/netxduo")
-export NETX_CONFIG_DIR := env("NETX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
+export NETX_CONFIG_DIR := env("NETX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-threadx-linux/config")
 
 # =============================================================================
 # Platform modules (just <platform> <recipe>)

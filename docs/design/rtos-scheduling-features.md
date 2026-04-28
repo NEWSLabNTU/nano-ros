@@ -318,8 +318,8 @@ fn to_threadx_priority(normalized: u8) -> u32 {
 |-----------|--------|-------|
 | **zpico C API** (`zpico_set_task_config`) | Done | `zpico-sys/c/zpico/zpico.c`, `zpico.h` |
 | **zpico Rust FFI** | Done | `zpico-sys/src/lib.rs`, `ffi.rs` |
-| **FreeRTOS board crate Config** | Done | `nros-mps2-an385-freertos/src/config.rs` |
-| **FreeRTOS board crate wiring** | Done | `nros-mps2-an385-freertos/src/node.rs` |
+| **FreeRTOS board crate Config** | Done | `nros-board-mps2-an385-freertos/src/config.rs` |
+| **FreeRTOS board crate wiring** | Done | `nros-board-mps2-an385-freertos/src/node.rs` |
 | **CMake config parser** | Done | `nros-c/cmake/NanoRosReadConfig.cmake` |
 | **FreeRTOS Rust examples** | Done | talker + listener have `[scheduling]` |
 | **FreeRTOS C example** | Done (CMake wired) | talker has `[scheduling]` + `APP_*` defs |
@@ -342,7 +342,7 @@ instead of `NULL`. Platform-specific handling:
 
 ### Board Crate Config (FreeRTOS — implemented)
 
-The `Config` struct in `nros-mps2-an385-freertos` has 8 scheduling fields
+The `Config` struct in `nros-board-mps2-an385-freertos` has 8 scheduling fields
 parsed from `[scheduling]` in config.toml. `Config::to_freertos_priority()`
 maps normalized 0–31 → FreeRTOS 0–7 linearly. `run()` and `app_task_entry()`
 use config values instead of hardcoded constants. `zpico_set_task_config()`
