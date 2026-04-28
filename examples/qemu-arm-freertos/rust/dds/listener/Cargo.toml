@@ -15,8 +15,14 @@ bench = false
 default = []
 
 [dependencies]
-nros-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-mps2-an385-freertos", default-features = false }
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-dds", "platform-freertos", "ros-humble"] }
+# Phase 97.4 debug — semihosting trace inside
+# `transport_nros::create_participant`. Cargo unifies this with
+# the `nros-rmw-dds` instance pulled in by `nros[rmw-dds]` so the
+# trace lights up without forcing a duplicate feature path.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-cortex-m-semihosting"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator", "critical-section"] }
+nros-platform-freertos = { path = "../../../../../packages/core/nros-platform-freertos", default-features = false, features = ["debug-cortex-m-semihosting"] }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }

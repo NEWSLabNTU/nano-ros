@@ -11,6 +11,12 @@ build = "build.rs"
 [features]
 default = []
 
+# Phase 97.4 debug — sprinkle Cortex-M semihosting prints throughout
+# `transport_nros::create_participant` so a hung bring-up surfaces
+# the last-reached step. Off by default; enable from a bare-metal
+# / FreeRTOS example crate's Cargo.toml.
+debug-cortex-m-semihosting = ["dep:cortex-m-semihosting"]
+
 # Core capability flags. `std` enables the stock dust-dds UDP transport
 # (3 OS threads per participant); `alloc` is required on every platform
 # because dust-dds is `no_std + alloc`, not alloc-free (see Phase 71 doc
@@ -56,6 +62,11 @@ heapless = { workspace = true }
 # `spin` provides the no_std Mutex used by `NrosPlatformRuntime`'s task
 # queue. `std` builds use `std::sync::Mutex` instead (see runtime.rs).
 spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
+# Phase 97.4 debug — semihosting trace inside `transport_nros::create_participant`
+# so failed bring-up shows where it dies (which RTPS port bind, which
+# `mcast_listen` step, etc.). Cortex-M only; bare-metal / FreeRTOS
+# examples turn it on via `features = ["debug-cortex-m-semihosting"]`.
+cortex-m-semihosting = { version = "0.5", optional = true }
 
 [dev-dependencies]
 # Phase 71 — host-side end-to-end validation drives `NrosPlatformRuntime`

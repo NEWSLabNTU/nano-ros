@@ -33,6 +33,8 @@ impl Rmw for DdsRmw {
     type Error = TransportError;
 
     fn open(self, config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        #[cfg(feature = "debug-cortex-m-semihosting")]
+        cortex_m_semihosting::hprintln!("[nros-rmw-dds] DdsRmw::open ENTER");
         #[cfg(feature = "std")]
         {
             let factory = DomainParticipantFactory::get_instance();
@@ -84,6 +86,8 @@ impl Rmw for DdsRmw {
             // do-nothing impl below.
             struct NoListener;
             impl dust_dds::dds_async::domain_participant_listener::DomainParticipantListener for NoListener {}
+            #[cfg(feature = "debug-cortex-m-semihosting")]
+            cortex_m_semihosting::hprintln!("[nros-rmw-dds] DdsRmw::open: pre block_on");
             let participant = runtime
                 .block_on(factory.create_participant(
                     config.domain_id as i32,
@@ -92,6 +96,8 @@ impl Rmw for DdsRmw {
                     NO_STATUS,
                 ))
                 .map_err(|_| TransportError::ConnectionFailed)?;
+            #[cfg(feature = "debug-cortex-m-semihosting")]
+            cortex_m_semihosting::hprintln!("[nros-rmw-dds] DdsRmw::open: post block_on, session ready");
 
             Ok(DdsSession::new_nostd(
                 runtime_arc,

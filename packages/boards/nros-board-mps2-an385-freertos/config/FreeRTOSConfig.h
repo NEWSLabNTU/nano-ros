@@ -27,7 +27,10 @@
 /* ---- Memory ---- */
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(256 * 1024))
+/* Phase 97.4.freertos — DDS DcpsDomainParticipant + dust-dds builtin
+ * topics / readers / writers consume far more heap than the zenoh-pico
+ * baseline. Bumped from 256 to 2048 KB on the 4 MB MPS2-AN385 SRAM. */
+#define configTOTAL_HEAP_SIZE                   ((size_t)(2048 * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* ---- Synchronisation ---- */

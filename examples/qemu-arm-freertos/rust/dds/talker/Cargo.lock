@@ -527,6 +527,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-mps2-an385-freertos"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "cortex-m-semihosting",
+ "nros-platform",
+ "nros-platform-freertos",
+ "panic-semihosting",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -542,17 +553,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "nros-mps2-an385-freertos"
-version = "0.1.0"
-dependencies = [
- "cc",
- "cortex-m-semihosting",
- "nros-platform",
- "nros-platform-freertos",
- "panic-semihosting",
 ]
 
 [[package]]
@@ -593,6 +593,7 @@ name = "nros-platform-freertos"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "cortex-m-semihosting",
  "critical-section",
  "freertos-lwip-sys",
  "nros-platform-api",
@@ -610,6 +611,7 @@ dependencies = [
 name = "nros-rmw-dds"
 version = "0.1.0"
 dependencies = [
+ "cortex-m-semihosting",
  "dust_dds",
  "heapless",
  "nros-core",
@@ -712,8 +714,10 @@ name = "qemu-freertos-dds-talker"
 version = "0.1.0"
 dependencies = [
  "nros",
- "nros-mps2-an385-freertos",
+ "nros-board-mps2-an385-freertos",
  "nros-platform",
+ "nros-platform-freertos",
+ "nros-rmw-dds",
  "panic-semihosting",
  "std_msgs",
 ]

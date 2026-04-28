@@ -52,6 +52,22 @@
 
 extern crate alloc;
 
+// Phase 97.4 debug — semihosting print macro for Cortex-M FreeRTOS /
+// bare-metal bring-up. No-op when the feature is off so std builds
+// don't pull in cortex-m-semihosting.
+#[cfg(feature = "debug-cortex-m-semihosting")]
+macro_rules! dbg_log {
+    ($($arg:tt)*) => {
+        cortex_m_semihosting::hprintln!("[nros-rmw-dds] {}", format_args!($($arg)*));
+    };
+}
+#[cfg(not(feature = "debug-cortex-m-semihosting"))]
+macro_rules! dbg_log {
+    ($($arg:tt)*) => {{
+        let _ = format_args!($($arg)*);
+    }};
+}
+
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
@@ -287,11 +303,21 @@ where
         datagram: &[u8],
         locator_list: &[Locator],
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        dbg_log!(
+            "write_message ENTER: locators={} datagram_len={}",
+            locator_list.len(),
+            datagram.len()
+        );
         // Resolve every locator in the list to a C-string endpoint and
         // dispatch the datagram synchronously. dust-dds's transport
         // contract returns a Future, but the actual send is non-blocking
         // here — we wrap an immediately-Ready future.
         for loc in locator_list {
+            dbg_log!(
+                "write_message: dst_pre {}.{}.{}.{}:{}",
+                loc.address()[12], loc.address()[13], loc.address()[14], loc.address()[15],
+                loc.port()
+            );
             // Allocate a fresh endpoint for each destination —
             // create_endpoint on platforms that resolve hostnames may
             // touch state (DNS), so don't reuse.
@@ -302,6 +328,7 @@ where
             let mut ep = OpaqueEndpoint::new();
             let rc =
                 <P as PlatformUdp>::create_endpoint(ep.as_mut_ptr(), addr.as_ptr(), port.as_ptr());
+            dbg_log!("write_message: create_endpoint rc={}", rc as i32);
             if rc < 0 {
                 continue;
             }
@@ -316,11 +343,16 @@ where
                 &self.sock
             };
             let sock = active_sock.lock();
-            let _ = <P as PlatformUdp>::send(
+            let n = <P as PlatformUdp>::send(
                 sock.as_ptr(),
                 datagram.as_ptr(),
                 datagram.len(),
                 ep.as_ptr(),
+            );
+            dbg_log!(
+                "write_message: dst={}.{}.{}.{}:{} mcast={} datagram_len={} sent={}",
+                loc.address()[12], loc.address()[13], loc.address()[14], loc.address()[15],
+                loc.port(), mcast as u32, datagram.len(), n as i32
             );
             <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
             drop(sock);
@@ -407,6 +439,7 @@ async fn multicast_recv_loop<P>(
             sender_addr.as_mut_ptr(),
         );
         if n != usize::MAX && n > 0 {
+            dbg_log!("multicast_recv_loop: got n={} bytes", n);
             if sender.send(Arc::from(&buf[..n])).await.is_err() {
                 break;
             }
@@ -474,17 +507,21 @@ impl<P> NrosUdpTransportFactory<P> {
 ///
 /// Returns `None` on bind failure.
 fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
+    dbg_log!("bind_unicast({}) ENTER", port);
     let addr = b"0.0.0.0\0".as_ptr();
     let port_str = port_cstring(port as u32);
     let mut ep = OpaqueEndpoint::new();
     if <P as PlatformUdp>::create_endpoint(ep.as_mut_ptr(), addr, port_str.as_ptr()) < 0 {
+        dbg_log!("bind_unicast({}): create_endpoint FAIL", port);
         return None;
     }
+    dbg_log!("bind_unicast({}): create_endpoint OK", port);
     let mut sock = OpaqueSocket::new();
     // Pass `timeout_ms = 0` — recv is set non-blocking by the recv
     // loop's `set_recv_timeout(0)` call before any read happens, so
     // the bind-time timeout is irrelevant.
     let rc = <P as PlatformUdp>::listen(sock.as_mut_ptr(), ep.as_ptr(), 0);
+    dbg_log!("bind_unicast({}): listen rc={}", port, rc as i32);
     <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
     if rc < 0 { None } else { Some(sock) }
 }
@@ -495,15 +532,19 @@ fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
 fn bind_multicast<P: PlatformUdpMulticast + PlatformUdp + 'static>(
     port: u16,
 ) -> Option<(OpaqueSocket, OpaqueEndpoint)> {
+    dbg_log!("bind_multicast({}) ENTER", port);
     let local_addr = b"0.0.0.0\0".as_ptr();
     let port_str = port_cstring(port as u32);
     let mut local_ep = OpaqueEndpoint::new();
     if <P as PlatformUdp>::create_endpoint(local_ep.as_mut_ptr(), local_addr, port_str.as_ptr()) < 0
     {
+        dbg_log!("bind_multicast({}): create_endpoint FAIL", port);
         return None;
     }
+    dbg_log!("bind_multicast({}): create_endpoint OK", port);
     let join = b"239.255.0.1\0".as_ptr();
     let mut sock = OpaqueSocket::new();
+    dbg_log!("bind_multicast({}): mcast_listen pre-call", port);
     let rc = <P as PlatformUdpMulticast>::mcast_listen(
         sock.as_mut_ptr(),
         local_ep.as_ptr(),
@@ -511,6 +552,7 @@ fn bind_multicast<P: PlatformUdpMulticast + PlatformUdp + 'static>(
         core::ptr::null(),
         join,
     );
+    dbg_log!("bind_multicast({}): mcast_listen rc={}", port, rc as i32);
     if rc < 0 {
         <P as PlatformUdp>::free_endpoint(local_ep.as_mut_ptr());
         return None;
@@ -531,6 +573,7 @@ where
         let fragment_size = self.fragment_size;
         let start_pid = self.participant_id;
         async move {
+            dbg_log!("create_participant: ENTER domain={}", domain_id);
             let domain = domain_id as u32;
 
             // ---- Auto-increment participant_id until both unicast
@@ -574,9 +617,18 @@ where
                 Vec::new()
             };
 
+            dbg_log!(
+                "create_participant: unicast binds done, pid={}",
+                participant_id
+            );
+
             // ---- Metatraffic multicast (SPDP) -----------------------
             let metatraffic_mc_port = port_metatraffic_multicast(domain);
             let metatraffic_mc_pair = bind_multicast::<P>(metatraffic_mc_port);
+            dbg_log!(
+                "create_participant: mcast pair = {}",
+                if metatraffic_mc_pair.is_some() { "Some" } else { "None" }
+            );
             let metatraffic_multicast_locator_list = if metatraffic_mc_pair.is_some() {
                 alloc::vec![ipv4_locator([239, 255, 0, 1], metatraffic_mc_port as u32)]
             } else {
@@ -636,7 +688,9 @@ where
                 <P as PlatformUdp>::free_endpoint(send_ep.as_mut_ptr());
             }
             let writer = NrosMessageWriter::<P>::new(send_sock, mcast_send_sock_for_writer);
+            dbg_log!("create_participant: send sock + writer ready");
 
+            dbg_log!("create_participant: RETURN");
             RtpsTransportParticipant {
                 message_writer: Box::new(writer),
                 default_unicast_locator_list,

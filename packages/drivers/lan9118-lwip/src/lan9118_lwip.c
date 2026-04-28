@@ -83,6 +83,8 @@
 /* MAC CR bits */
 #define MAC_CR_TXEN  (1u << 3)
 #define MAC_CR_RXEN  (1u << 2)
+#define MAC_CR_PRMS  (1u << 18)
+#define MAC_CR_MCPAS (1u << 19)
 
 /* MII access bits */
 #define MII_ACC_BUSY           (1u << 0)
@@ -281,7 +283,12 @@ reset_done:
     reg_write(base, REG_RX_CFG, 0);
 
     if (mac_read(base, MAC_CSR_MAC_CR, &mac_cr) != 0) return -1;
-    if (mac_write(base, MAC_CSR_MAC_CR, mac_cr | MAC_CR_RXEN) != 0) return -1;
+    /* Enable RX + pass-all-multicast so IGMP-joined groups
+     * (e.g. RTPS SPDP 239.255.0.1) reach lwIP. Without MCPAS the
+     * LAN9118 hardware filter drops multicast frames whose dest MAC
+     * doesn't match the unicast ADDRH/ADDRL pair. */
+    if (mac_write(base, MAC_CSR_MAC_CR,
+                  mac_cr | MAC_CR_RXEN | MAC_CR_MCPAS) != 0) return -1;
 
     /* 10. Clear RX threshold */
     uint32_t fifo_int = reg_read(base, REG_FIFO_INT);
@@ -455,7 +462,11 @@ err_t lan9118_lwip_init(struct netif *netif) {
     netif->flags = NETIF_FLAG_BROADCAST
                  | NETIF_FLAG_ETHARP
                  | NETIF_FLAG_LINK_UP
-                 | NETIF_FLAG_ETHERNET;
+                 | NETIF_FLAG_ETHERNET
+#if LWIP_IGMP
+                 | NETIF_FLAG_IGMP
+#endif
+                 ;
 
 #if LWIP_IPV4
     netif->output = etharp_output;

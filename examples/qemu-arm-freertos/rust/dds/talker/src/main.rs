@@ -6,7 +6,7 @@
 //! directly to peer DDS participants on the same domain.
 //!
 //! Phase 97.1 prerequisites wire in via Cargo.toml features:
-//!   * `nros-mps2-an385-freertos` with `default-features = false`
+//!   * `nros-board-mps2-an385-freertos` with `default-features = false`
 //!     drops zenoh-pico C transport + the `zpico_set_task_config`
 //!     boot call. Generic FreeRTOS / lwIP / poll task init keep
 //!     working unchanged.
@@ -24,7 +24,7 @@
 extern crate alloc;
 
 use nros::prelude::*;
-use nros_mps2_an385_freertos::{Config, println, run};
+use nros_board_mps2_an385_freertos::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 

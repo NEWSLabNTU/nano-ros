@@ -64,6 +64,11 @@
 #define MEMP_NUM_NETBUF                 32
 #define MEMP_NUM_NETCONN                8
 #define MEMP_NUM_SYS_TIMEOUT            16
+/* Phase 97.4.freertos — DDS create_endpoint() allocates an addrinfo
+ * per RTPS port (3 binds + send sockets per participant + every
+ * write_message() destination). Default MEMP_NUM_NETDB=1 exhausts on
+ * the first SPDP send. */
+#define MEMP_NUM_NETDB                  16
 
 /* ---- Pbuf pool ---- */
 #define PBUF_POOL_SIZE                  24
