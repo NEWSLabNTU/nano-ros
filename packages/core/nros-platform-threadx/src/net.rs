@@ -120,12 +120,17 @@ fn ep_to_sockaddr(ep: &Endpoint) -> nx_bsd_sockaddr_in {
 
 impl ThreadxPlatform {
     pub fn tcp_create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        // Phase 97.4.threadx — RTPS binds use "0.0.0.0" (any-iface)
+        // for unicast / multicast listeners, which `parse_ipv4`
+        // legitimately returns as `0`. Don't treat 0 as failure here
+        // — only reject NULL inputs and let bind() catch real
+        // invalid addresses later.
+        if address.is_null() || port.is_null() {
+            return -1;
+        }
         let ep = ep as *mut Endpoint;
         let addr = parse_ipv4(address);
         let p = parse_port(port);
-        if addr == 0 {
-            return -1;
-        }
         unsafe {
             (*ep)._addr = addr;
             (*ep)._port = p;

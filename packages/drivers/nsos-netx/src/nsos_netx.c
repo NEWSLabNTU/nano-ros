@@ -111,13 +111,39 @@ INT nx_bsd_recvfrom(INT sockID, CHAR *buf, INT bufLen, INT flags,
     return n;
 }
 
+/* Phase 97.4.threadx-linux — NetX BSD's `IPPROTO_IP` and
+ * `IP_*MEMBERSHIP` / `IP_MULTICAST_*` constants don't match Linux's
+ * (NetX uses `IPPROTO_IP=2`, `IP_ADD_MEMBERSHIP=32`,
+ * `IP_MULTICAST_LOOP=29`; Linux uses `IPPROTO_IP=0`,
+ * `IP_ADD_MEMBERSHIP=35`, `IP_MULTICAST_LOOP=34`). Translate the
+ * level + optname pair before forwarding to the host kernel.
+ *
+ * SOL_SOCKET / SO_* constants happen to match between NetX and
+ * Linux, so we only need the IPPROTO_IP path. */
+static int translate_sockopt(INT *level, INT *optName) {
+    if (*level == 2 /* NetX IPPROTO_IP */) {
+        *level = 0; /* Linux IPPROTO_IP */
+        switch (*optName) {
+            case 27: *optName = 32; break; /* IP_MULTICAST_IF */
+            case 28: *optName = 33; break; /* IP_MULTICAST_TTL */
+            case 29: *optName = 34; break; /* IP_MULTICAST_LOOP */
+            case 32: *optName = 35; break; /* IP_ADD_MEMBERSHIP */
+            case 33: *optName = 36; break; /* IP_DROP_MEMBERSHIP */
+            default: return -1;
+        }
+    }
+    return 0;
+}
+
 INT nx_bsd_setsockopt(INT sockID, INT level, INT optName,
                       const VOID *optValue, INT optLen) {
+    if (translate_sockopt(&level, &optName) < 0) return -1;
     return setsockopt(sockID, level, optName, optValue, (socklen_t)optLen);
 }
 
 INT nx_bsd_getsockopt(INT sockID, INT level, INT optName,
                       VOID *optValue, INT *optLen) {
+    if (translate_sockopt(&level, &optName) < 0) return -1;
     socklen_t posix_len = (socklen_t)*optLen;
     int rc = getsockopt(sockID, level, optName, optValue, &posix_len);
     *optLen = (INT)posix_len;

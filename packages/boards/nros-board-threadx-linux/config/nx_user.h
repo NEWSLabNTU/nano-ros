@@ -82,4 +82,10 @@ extern TX_TIMER_INTERNAL *_tx_timer_expired_timer_ptr;
  * The actual name is set at runtime via nx_tap_set_interface_name(). */
 #define NX_LINUX_INTERFACE_NAME     "tap-tx0"
 
+/* Phase 97.4.threadx-linux — IGMP for RTPS SPDP multicast on
+ * 239.255.0.1:7400+. NetX Duo gates `nx_igmp_*` and BSD's
+ * IP_ADD_MEMBERSHIP setsockopt on `NX_ENABLE_IGMPV2`; without it,
+ * setsockopt returns NX_NOT_ENABLED and SPDP can't join. */
+#define NX_ENABLE_IGMPV2
+
 #endif /* NX_USER_H */

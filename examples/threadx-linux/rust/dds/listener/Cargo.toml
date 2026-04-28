@@ -18,5 +18,5 @@ default = []
 nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr", "platform-threadx", "alloc"] }
 critical-section = { version = "1.2", default-features = false, features = ["std"] }

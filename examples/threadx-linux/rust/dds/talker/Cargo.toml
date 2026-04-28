@@ -23,7 +23,7 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 std_msgs = { version = "*", default-features = false }
 # Phase 97.4 debug — surfaces the per-bind / per-write_message trace
 # through `eprintln!`. Off by default.
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr", "platform-threadx", "alloc"] }
 # `dust-dds` references `_critical_section_1_0_*` symbols. Linux host
 # has pthread → use the std-backed impl from the `critical-section`
 # crate.

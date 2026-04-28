@@ -345,7 +345,7 @@ retries = 2
 
 # ThreadX Linux sim (veth bridge) — port 7455.
 [[profile.default.overrides]]
-filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
+filter = "binary(threadx_linux) or binary(threadx_linux_dds) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

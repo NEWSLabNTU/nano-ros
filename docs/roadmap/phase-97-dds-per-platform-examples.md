@@ -318,24 +318,53 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         Runtime debug needs a board-side trace channel (no_std
         RISC-V can't use `eprintln!`); follow-up work.
 - [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
-      Build path lands green:
+      Discovery + bind path lands green: SPDP multicast crosses
+      between the two ThreadX-Linux processes through the
+      `veth-tx0` / `veth-tx1` bridge, both peers bind their
+      unicast metatraffic / data ports successfully, and dust-dds
+      attempts SEDP unicast to the discovered peer.
       - Example crates at
         `examples/threadx-linux/rust/dds/{talker,listener}/`,
         both build clean for `x86_64-unknown-linux-gnu`.
-      - `nros-platform-threadx` shares the same `mcast_*` impls
-        used by the qemu-riscv64-threadx slice — NetX Duo BSD's
-        `IP_ADD_MEMBERSHIP` setsockopt + `nx_bsd_fcntl` for
-        `O_NONBLOCK`.
-      - Example `.cargo/config.toml` sets `NROS_LOCAL_IPV4` per
-        instance, same role as the FreeRTOS / NuttX slices.
+      - `nros-platform-threadx` shares the `mcast_*` impls used
+        by the qemu-riscv64-threadx slice (NetX Duo BSD shim
+        `IP_ADD_MEMBERSHIP` + `nx_bsd_fcntl(O_NONBLOCK)`).
+      - `nx_user.h` enables `NX_ENABLE_IGMPV2` so NetX BSD's
+        `IP_ADD_MEMBERSHIP` setsockopt actually fires.
+      - `nsos-netx::nsos_netx.c` `translate_sockopt()` translates
+        NetX-BSD `IPPROTO_IP=2`, `IP_*MEMBERSHIP=32/33`,
+        `IP_MULTICAST_*=27/28/29` to the Linux kernel's
+        `IPPROTO_IP=0`, `IP_*MEMBERSHIP=35/36`,
+        `IP_MULTICAST_*=32/33/34` so NSOS's verbatim
+        `setsockopt`/`getsockopt` forwarding doesn't fail with
+        `ENOPROTOOPT` for the multicast knobs that DDS relies on.
+      - `tcp_create_endpoint` no longer rejects `0.0.0.0`
+        (RTPS unicast + multicast listens use it for any-iface).
+      - Board byte pool bumped 512 KB → 2 MB (same DDS heap
+        budget as the FreeRTOS / RV64 slices).
+      - Examples select `alloc` (not `std`) on `nros` so dust-dds
+        runs the cooperative `nostd-runtime` path — saves the
+        socket2 compile failures that hit the NuttX slice and
+        keeps the platform-threadx code path consistent across
+        no_std (qemu-riscv64) and std (Linux sim) deployments.
+      - `critical-section = { features = ["std"] }` direct dep
+        on each example, same as NuttX.
+      - `QemuProcess`-style test fixtures + `tests/
+        threadx_linux_dds.rs` integration test land.
 
-      Runtime E2E test still pending — requires the existing
-      ThreadX-Linux TAP / bridge fixture (`veth-tx0` / `veth-tx1`
-      pair with `tap-tx0` / `tap-tx1` host endpoints and an
-      `nros-test-bridge` linking them). DDS works through the
-      same setup that ships green for the zenoh path; the
-      remaining work is the test harness wiring + `tests/
-      threadx_linux_dds.rs` integration test.
+      Runtime E2E test currently fails: SPDP discovery completes
+      and dust-dds tries SEDP unicast to the peer's
+      metatraffic_unicast (192.0.3.10/192.0.3.11:7410), but
+      `sendto` returns -1 even when the destination is the
+      sender's own IP. The two ThreadX-Linux processes run as
+      regular host processes (not inside a netns), so the bridge
+      sees mcast frames but the kernel's unicast routing for the
+      192.0.3.0/24 subnet doesn't deliver to the per-process
+      bound sockets. Resolving needs either per-process netns
+      isolation or rebinding to `0.0.0.0` on the unicast leg
+      (and translating discovered locator IPs at the receive
+      side). Follow-up work, infrastructure-only — example
+      crates + platform crate ship as a stable build target.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on

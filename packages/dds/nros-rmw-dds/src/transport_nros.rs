@@ -68,7 +68,11 @@ extern crate std;
 #[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
 macro_rules! dbg_log {
     ($($arg:tt)*) => {
-        std::eprintln!("[nros-rmw-dds] {}", format_args!($($arg)*));
+        // Despite the feature name, route through stdout so test
+        // harnesses that drain only `child.stdout` see these traces.
+        // Stderr may be buffered separately or dropped by ThreadX-Linux's
+        // /dev/null wrapper around its console.
+        std::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
     };
 }
 #[cfg(all(not(feature = "debug-cortex-m-semihosting"), not(feature = "debug-stderr")))]

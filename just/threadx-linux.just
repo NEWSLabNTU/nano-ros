@@ -88,6 +88,12 @@ build-fixtures:
         echo "  → threadx-linux/rust/$ex"
         ( cd "examples/threadx-linux/rust/zenoh/$ex" && cargo build --release --quiet )
     done
+    # Phase 97.4.threadx-linux — DDS variants alongside zenoh.
+    dds_examples=(talker listener)
+    for ex in "${dds_examples[@]}"; do
+        echo "  → threadx-linux/rust/dds/$ex"
+        ( cd "examples/threadx-linux/rust/dds/$ex" && cargo build --release --quiet )
+    done
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do
