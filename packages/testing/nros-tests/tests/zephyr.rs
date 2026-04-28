@@ -2131,16 +2131,19 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     }
 }
 
-/// **#[ignore]d**: Phase 96.1 fixed the session-key collision that
-/// blocked the cpp/xrce talker→listener and service tests, but the
-/// action client still observes `feedback=0` and a zero-length
-/// result payload after the server completes a goal with sequence
-/// length=10. The session demux is correct now (talker_listener +
-/// service interop both pass) — separate cpp-xrce action send_feedback
-/// / send_result data path bug that doesn't carry the typed payload
-/// across the agent. Tracked as a Phase 96.1 follow-up.
+/// Phase 96.1 follow-up — cpp/xrce action goal/feedback/result on
+/// a shared agent. Re-enabled after fixing two off-by-N offset
+/// bugs in `arena.rs`'s action-client trampoline:
+///   * result reply: `result_offset = 5` missed the 3-byte align
+///     pad inserted by `try_handle_get_result_raw` between the
+///     status byte and the payload (correct offset = 8).
+///   * feedback: `offset = 4 + 16` missed the 4-byte GoalId
+///     length-prefix u32 written by `write_goal_id` (correct
+///     offset = 24).
+/// Both surfaced as empty payloads on the cpp client side because
+/// the prefix bytes leaked into the body and `ffi_deserialize`
+/// read sequence_length = 0.
 #[test]
-#[ignore]
 fn test_zephyr_xrce_cpp_action_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");

@@ -7,9 +7,7 @@ them are example-coverage gaps — the example crates themselves all
 build clean and reach readiness — but each blocks an interop test
 that proves end-to-end behaviour.
 
-**Status**: 96.1 mostly closed (talker_listener + service E2Es pass;
-action E2E still `#[ignore]`d on a separate cpp-xrce action data
-path bug). 96.2 closed. 96.3 closed.
+**Status**: All three closed.
 
 **Priority**: Medium. Phase 95's matrix is complete; these are
 quality-of-life follow-ups that turn `#[ignore]`d tests back on so
@@ -23,19 +21,38 @@ two non-dust-dds items + the cross-link.
 
 ## Work Items
 
-- [x] 96.1 — Root cause turned out NOT to be a `try_recv()` demux
-      bug but an XRCE session-key collision: the cpp `nros::init()`
-      wrapper hardcoded the session key to `hash("nros_cpp")` for
-      every cpp process, so two cpp participants on the same agent
-      collided as one client. Added `init(locator, domain_id,
-      session_name)` overload + `Executor::create(... session_name)`;
-      updated all 6 zephyr cpp/xrce examples to pass distinct names.
-      Re-enabled tests: `test_zephyr_xrce_cpp_talker_listener` (24 s),
-      `test_zephyr_xrce_cpp_service_e2e` (37 s). Action E2E
-      (`test_zephyr_xrce_cpp_action_e2e`) stays `#[ignore]`d on a
-      separate cpp-xrce action data-path bug — server completes
-      goal with sequence length=10, client receives result with
-      length=0 and feedback=0. Tracked as a 96.1 follow-up.
+- [x] 96.1 — Root cause was a stack of three independent bugs,
+      not a `try_recv()` demux bug:
+      1. **XRCE session-key collision.** The cpp `nros::init()`
+         wrapper hardcoded the session key to `hash("nros_cpp")`
+         for every cpp process — two cpp participants on the
+         same agent collided as one client, so topic publishes
+         weren't cross-routed. Added
+         `init(locator, domain_id, session_name)` overload +
+         `Executor::create(... session_name)`; updated all 6
+         zephyr cpp/xrce examples to pass distinct names.
+      2. **Action result reply offset off-by-3.** `arena.rs`
+         `result_offset = 5` skipped only the CDR header and
+         status byte but missed the `align(4)` pad that
+         `try_handle_get_result_raw` inserts before the payload
+         (correct offset = 8). The leaked pad bytes blew up
+         `ffi_deserialize`. Same fix in
+         `nros_cpp_action_client_poll` (poll path) and
+         `nros_cpp_action_client_try_recv_result` (Future path).
+      3. **Action feedback offset off-by-4 + missing stash.**
+         `arena.rs` `offset = CDR_HEADER_LEN + GoalId::UUID_LEN`
+         (= 20) missed the `write_u32(16)` length-prefix that
+         `write_goal_id` emits before the UUID bytes (correct
+         offset = 24). Plus the polling path needed a
+         `FEEDBACK_STASH` filled by the trampoline so
+         `try_recv_feedback()` wouldn't return empty after the
+         arena's auto-dispatch consumed the message.
+
+      Re-enabled tests:
+      `test_zephyr_xrce_cpp_talker_listener` (24 s),
+      `test_zephyr_xrce_cpp_service_e2e` (37 s),
+      `test_zephyr_xrce_cpp_action_e2e` (69 s).
+      Full cpp/xrce nextest suite: 9/9 pass.
 - [x] 96.2 — `test_talker_param_declaration` waits directly for
       the assertion target (`"Counter start value"`, 15 s window)
       instead of `"Publishing"` + 2 s grace. Eliminates the

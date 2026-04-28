@@ -517,12 +517,46 @@ unsafe extern "C" fn cpp_goal_response_trampoline(
     }
 }
 
+/// Single-slot stash for feedback messages consumed by the trampoline.
+///
+/// The arena's `action_client_raw_try_process` consumes feedback from
+/// the core during `spin_once`, then fires the trampoline. If the
+/// user registered a `feedback` callback via
+/// `nros_cpp_action_client_set_callbacks`, the trampoline forwards
+/// to it. Otherwise — the polling case used by the example —
+/// without this stash the message would simply be dropped, leaving
+/// `feedback_stream().try_next()` and `try_recv_feedback()` empty
+/// even though the server published. Stashing the latest feedback
+/// here lets both APIs coexist.
+///
+/// Single slot: a second feedback arriving before the first is
+/// drained overwrites it. Real-world action workflows rarely need
+/// more than the latest sample, and a heapless ring would add
+/// per-slot capacity tradeoffs without test pressure.
+static mut FEEDBACK_STASH_LEN: i32 = -1;
+static mut FEEDBACK_STASH: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
+static mut FEEDBACK_STASH_GOAL_ID: nros::GoalId = nros::GoalId { uuid: [0u8; 16] };
+
 unsafe extern "C" fn cpp_feedback_trampoline(
     goal_id: *const nros::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut c_void,
 ) {
+    // Always stash the latest feedback for `try_recv_feedback` /
+    // `feedback_stream().try_next()` polling.
+    unsafe {
+        let copy_len = feedback_len.min(DEFAULT_RX_BUF_SIZE);
+        core::ptr::copy_nonoverlapping(
+            feedback_data,
+            core::ptr::addr_of_mut!(FEEDBACK_STASH) as *mut u8,
+            copy_len,
+        );
+        core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), copy_len as i32);
+        core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_GOAL_ID), *goal_id);
+    }
+
+    // Also forward to user callback if set.
     let client = unsafe { &*(context as *const CppActionClient) };
     if let Some(cb) = client.callbacks.feedback {
         unsafe {
@@ -909,6 +943,31 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
+    // First check the trampoline's stash. Arena's
+    // `action_client_raw_try_process` consumes feedback from the
+    // core during `spin_once`; without checking the stash here we'd
+    // see no feedback even though the trampoline got it.
+    let stash_len = unsafe { core::ptr::read(core::ptr::addr_of!(FEEDBACK_STASH_LEN)) };
+    if stash_len >= 0 {
+        let data_len = stash_len as usize;
+        unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
+        if data_len > buf_len {
+            unsafe {
+                *feedback_len = data_len;
+            }
+            return NROS_CPP_RET_ERROR;
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                core::ptr::addr_of!(FEEDBACK_STASH) as *const u8,
+                feedback_buf,
+                data_len,
+            );
+            *feedback_len = data_len;
+        }
+        return NROS_CPP_RET_OK;
+    }
+
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
 
     let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
@@ -923,11 +982,16 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
 
     match core.try_recv_feedback_raw() {
         Ok(Some((_goal_id, total_len))) => {
-            // Feedback buffer layout: [CDR_HEADER][UUID][feedback_fields]
+            // Feedback buffer layout (see arena.rs
+            // `FEEDBACK_PAYLOAD_OFFSET` comment): outer CDR(4) +
+            // GoalId.length(u32 = 4) + GoalId.uuid(16) + payload.
+            // Skip 24 bytes to land on the payload — the prior
+            // `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) missed
+            // the GoalId length-prefix u32.
+            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 4 + GoalId::UUID_LEN;
             let buf = core.feedback_buffer_ref();
-            let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
-            if total_len > offset {
-                let data = &buf[offset..total_len];
+            if total_len > FEEDBACK_PAYLOAD_OFFSET {
+                let data = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
                 if data.len() <= buf_len {
                     unsafe {
                         core::ptr::copy_nonoverlapping(data.as_ptr(), feedback_buf, data.len());
@@ -1038,28 +1102,28 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
     // The executor's action_client_raw_try_process consumes the reply from the
     // core and fires the trampoline, which stashes the data here. We can't call
     // core.try_recv_get_result_reply() because the data is already consumed.
+    //
+    // The stash contains the payload as written by the action server
+    // (the bytes `complete_goal_raw` was given) — for cpp callers that
+    // means a CDR-encoded buffer with header included, since
+    // `ffi_serialize` writes one. Forward it verbatim; `ffi_deserialize`
+    // re-reads the CDR header.
     let stash_len = unsafe { core::ptr::read(core::ptr::addr_of!(RESULT_STASH_LEN)) };
     if stash_len >= 0 {
         let data_len = stash_len as usize;
         unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
 
-        // The stash contains raw result fields (no CDR header) from the trampoline.
-        // ffi_deserialize expects CDR-encoded data, so prepend a CDR header.
-        let total_len = 4 + data_len; // CDR header (4) + result fields
-        if total_len > out_capacity {
-            unsafe { *out_len = total_len };
+        if data_len > out_capacity {
+            unsafe { *out_len = data_len };
             return NROS_CPP_RET_ERROR;
         }
         unsafe {
-            // CDR header: little-endian, no options
-            let cdr_header: [u8; 4] = [0x00, 0x01, 0x00, 0x00];
-            core::ptr::copy_nonoverlapping(cdr_header.as_ptr(), out_data, 4);
             core::ptr::copy_nonoverlapping(
                 core::ptr::addr_of!(RESULT_STASH) as *const u8,
-                out_data.add(4),
+                out_data,
                 data_len,
             );
-            *out_len = total_len;
+            *out_len = data_len;
         }
         return NROS_CPP_RET_OK;
     }
@@ -1077,12 +1141,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
 
     match core.try_recv_get_result_reply() {
         Ok(Some(total_len)) => {
-            let result_offset = 5usize;
-            if total_len <= result_offset {
+            // Reply layout (see arena.rs `RESULT_PAYLOAD_OFFSET`
+            // comment): outer CDR(4) + status(1) + align(4 → pad 3)
+            // + payload. Skip 8 bytes to land on the payload.
+            const RESULT_PAYLOAD_OFFSET: usize = 8;
+            if total_len <= RESULT_PAYLOAD_OFFSET {
                 unsafe { *out_len = 0 };
                 return NROS_CPP_RET_OK;
             }
-            let data_len = total_len - result_offset;
+            let data_len = total_len - RESULT_PAYLOAD_OFFSET;
             if data_len > out_capacity {
                 unsafe { *out_len = data_len };
                 return NROS_CPP_RET_ERROR;
@@ -1090,7 +1157,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
             let buf = core.result_buffer_ref();
             unsafe {
                 core::ptr::copy_nonoverlapping(
-                    buf[result_offset..total_len].as_ptr(),
+                    buf[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
                     out_data,
                     data_len,
                 );
@@ -1212,8 +1279,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
         uuid: unsafe { *goal_id },
     };
 
-    // Reset result stash before sending (so try_recv_result starts clean)
+    // Reset stashes before sending (so try_recv_*  starts clean)
     unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
+    unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
 
     let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
         Some(c) => c,
@@ -1301,15 +1369,19 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
         && let Some(cb) = feedback_cb
     {
-        // [CDR_HEADER][UUID][feedback_fields]
-        let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
-        if total_len > offset {
+        // [CDR_HEADER(4)][GoalId.length(u32 = 4)][GoalId.uuid(16)][feedback_fields]
+        // — same off-by-N as the trampoline version: prior code
+        // used `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) and missed
+        // the `write_u32(16)` length-prefix that `write_goal_id`
+        // emits before the UUID bytes.
+        const FEEDBACK_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + 4 + GoalId::UUID_LEN;
+        if total_len > FEEDBACK_PAYLOAD_OFFSET {
             let buf = core.feedback_buffer_ref();
             unsafe {
                 cb(
                     &goal_id.uuid,
-                    buf[offset..total_len].as_ptr(),
-                    total_len - offset,
+                    buf[FEEDBACK_PAYLOAD_OFFSET..total_len].as_ptr(),
+                    total_len - FEEDBACK_PAYLOAD_OFFSET,
                     ctx,
                 );
             }
@@ -1317,20 +1389,24 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     }
 
     // Poll result reply
+    //
+    // Layout: [CDR_HEADER(4)][status(i8)][align(4)→pad(3)][payload].
+    // Skip 8 bytes to land on the payload — prior 5-byte offset
+    // missed the alignment pad (Phase 96.1).
+    const RESULT_PAYLOAD_OFFSET: usize = 8;
     if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
         && let Some(cb) = result_cb
-        && total_len >= 5
+        && total_len >= RESULT_PAYLOAD_OFFSET
     {
         let buf = core.result_buffer_ref();
         let status = buf[4] as i32;
-        let result_offset = 5;
         let uuid = make_uuid(core.goal_counter());
         unsafe {
             cb(
                 &uuid,
                 status,
-                buf[result_offset..total_len].as_ptr(),
-                total_len - result_offset,
+                buf[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
+                total_len - RESULT_PAYLOAD_OFFSET,
                 ctx,
             );
         }
