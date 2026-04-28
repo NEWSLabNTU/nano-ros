@@ -55,6 +55,18 @@ nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. dust-dds + portable-atomic depend on it being set.
+#
+# `restore-state-u32` is only safe to enable on real Cortex-M Zephyr
+# targets where `nros_zephyr_irq_lock` returns a u32 IRQ key. On
+# native_sim (x86_64) Zephyr DDS the dust-dds[std] path enables
+# `critical-section/std`, which selects `restore-state-bool` — having
+# both u32 and bool active produces `error[E0428]: RawRestoreStateInner
+# defined multiple times` inside critical-section. Gate by target arch:
+# arm → u32 (the no_std Zephyr Cortex-M path), other → no
+# restore-state set (the std fallback wins).
+critical-section = { version = "1.1", optional = true }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
 critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }
 
 [build-dependencies]

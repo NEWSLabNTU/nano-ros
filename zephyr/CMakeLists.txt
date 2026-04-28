@@ -13,7 +13,12 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # The nros repo root (parent of this zephyr/ directory)
 set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 
-zephyr_library()
+# `zephyr_library()` would create a default library named after this
+# directory's path (e.g. `..__..__nano-ros__zephyr`). All sources below
+# are added via `zephyr_library_sources(...)` which targets the most
+# recently declared library — the named one — so the unnamed one was
+# always empty and Zephyr printed "No SOURCES given to Zephyr library:
+# ..__..__nano-ros__zephyr". Use only the named form.
 zephyr_library_named(nros)
 
 # =============================================================================
