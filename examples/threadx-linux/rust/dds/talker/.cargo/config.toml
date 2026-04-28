@@ -14,4 +14,4 @@ path = "generated/std_msgs"
 # SPDP unicast locators *and* seed the dust-dds GUID prefix so peers
 # don't self-filter each other.
 [env]
-NROS_LOCAL_IPV4 = "192.0.3.10"
+NROS_LOCAL_IPV4 = "127.0.10.10"

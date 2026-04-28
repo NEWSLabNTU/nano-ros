@@ -24,6 +24,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/select.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "nsos_netx.h"
@@ -138,6 +139,25 @@ static int translate_sockopt(INT *level, INT *optName) {
 INT nx_bsd_setsockopt(INT sockID, INT level, INT optName,
                       const VOID *optValue, INT optLen) {
     if (translate_sockopt(&level, &optName) < 0) return -1;
+
+    /* Phase 97.4.threadx-linux — NetX BSD passes SO_RCVTIMEO /
+     * SO_SNDTIMEO as `INT` milliseconds, but Linux's POSIX socket
+     * layer expects `struct timeval`. Forwarding the 4-byte INT
+     * verbatim makes Linux interpret the milliseconds as
+     * `tv_sec` (so a NetX 1 ms timeout becomes a 1-second Linux
+     * block), starving the cooperative recv loops. Convert here
+     * — `tv_usec` carries the millisecond fraction. */
+    if (level == SOL_SOCKET && (optName == SO_RCVTIMEO || optName == SO_SNDTIMEO)
+        && optLen == (INT)sizeof(INT))
+    {
+        INT ms = *(const INT *)optValue;
+        struct timeval tv = {
+            .tv_sec = ms / 1000,
+            .tv_usec = (ms % 1000) * 1000,
+        };
+        return setsockopt(sockID, level, optName, &tv, (socklen_t)sizeof(tv));
+    }
+
     return setsockopt(sockID, level, optName, optValue, (socklen_t)optLen);
 }
 

@@ -352,19 +352,28 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       - `QemuProcess`-style test fixtures + `tests/
         threadx_linux_dds.rs` integration test land.
 
-      Runtime E2E test currently fails: SPDP discovery completes
-      and dust-dds tries SEDP unicast to the peer's
-      metatraffic_unicast (192.0.3.10/192.0.3.11:7410), but
-      `sendto` returns -1 even when the destination is the
-      sender's own IP. The two ThreadX-Linux processes run as
-      regular host processes (not inside a netns), so the bridge
-      sees mcast frames but the kernel's unicast routing for the
-      192.0.3.0/24 subnet doesn't deliver to the per-process
-      bound sockets. Resolving needs either per-process netns
-      isolation or rebinding to `0.0.0.0` on the unicast leg
-      (and translating discovered locator IPs at the receive
-      side). Follow-up work, infrastructure-only — example
-      crates + platform crate ship as a stable build target.
+      Runtime SPDP + SEDP exchange now flows end-to-end on
+      127.x.y.z loopback (config.toml updated to `127.0.10.10` /
+      `127.0.10.11` with domain_id `42` to dodge the host's
+      default-domain DDS noise; `nsos-netx::translate_sockopt`
+      additionally now converts NetX BSD's `INT`-millisecond
+      `SO_RCVTIMEO` / `SO_SNDTIMEO` into Linux `struct timeval`
+      so the cooperative recv loops don't end up blocking 1 second
+      per `nx_bsd_recv` because Linux read the INT as `tv_sec`).
+      Both sides exchange SPDP and SEDP unicast cleanly.
+
+      Runtime E2E `assert!(received >= 1)` still red — the SEDP
+      handshake locks into infinite reliability ping-pong (every
+      AckNack triggers a DATA which triggers another AckNack)
+      under the cooperative `NrosPlatformRuntime` poll loop, and
+      the user-data `/chatter` writer never matches the
+      subscriber inside the 60 s window. The talker's main loop
+      stalls at "Published: 5" on this path. Resolving needs
+      either a fix in dust-dds's SEDP reliability path under the
+      `nostd-runtime` cooperative scheduler, or moving the
+      ThreadX-Linux slice to the threaded `rtps_udp_transport`
+      path. Infrastructure (mcast / unicast / IGMP, sockopt
+      translation, byte pool, debug traces) all ship green.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on

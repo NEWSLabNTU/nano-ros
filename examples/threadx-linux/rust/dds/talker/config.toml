@@ -2,13 +2,24 @@
 # Brokerless DDS over RTPS multicast — no zenoh router needed.
 
 [network]
-ip = "192.0.3.10"
+# Phase 97.4.threadx-linux — NSOS forwards every BSD call to the
+# host kernel's POSIX socket layer (no per-process netns). Using
+# the bridge subnet (192.0.3.0/24) doesn't work because those IPs
+# aren't bound on host ifaces. Pick distinct 127.0.0.0/8 loopback
+# IPs so each process binds to a real local address and peers
+# `sendto` back to the same loopback IP.
+ip = "127.0.10.10"
 mac = "02:00:00:00:00:00"
-gateway = "192.0.3.1"
+gateway = "127.0.0.1"
 netmask = "255.255.255.0"
 
 [platform]
 interface = "tap-tx0"
 
 [zenoh]
-domain_id = 0
+# Phase 97.4.threadx-linux — pick a non-default domain so SPDP
+# doesn't collide with whatever default-domain DDS / ROS 2 stacks
+# may be running on the host (we observed dust-dds chasing every
+# default-domain participant it could see, drowning out our
+# talker / listener pair).
+domain_id = 42
