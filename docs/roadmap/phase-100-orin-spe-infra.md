@@ -61,15 +61,109 @@ SPI/serial link family).
 │  nros-platform-freertos [cortex-r feature]                 │
 │      │                                                     │
 │      ▼                                                     │
-│  zpico-platform-shim → zenoh-pico                          │
+│  zpico-platform-shim::ivc_helpers → zenoh-pico             │
+│      │            (forwards via <P as PlatformIvc>::*)     │
+│      ▼                                                     │
+│  nros-platform-orin-spe (impl PlatformIvc, Clock, …)       │
 │      │                                                     │
-│      └── Z_FEATURE_LINK_IVC (new) ── tegra_ivc_channel_*   │
+│      ▼                                                     │
+│  packages/drivers/nvidia-ivc (driver crate)                │
+│      │      ├─ feature `fsp`        → tegra_ivc_channel_*  │
+│      │      └─ feature `unix-mock`  → Unix-socket pair     │
+│      ▼                                                     │
+│  Z_FEATURE_LINK_IVC inside vendored zenoh-pico             │
+│  (new C link transport — peer to TCP/UDP/Serial/RawEth)    │
 │                                                            │
 │  Application: autoware_sentinel reduced subset             │
 └────────────────────────────────────────────────────────────┘
 ```
 
+### Layering rules
+
+- **`packages/drivers/nvidia-ivc/`** is a self-contained driver crate. No
+  dep on `nros-platform`, `nros-rmw`, or zenoh-pico. Two compile-time
+  backends behind features: `fsp` (links NVIDIA's `tegra_aon_fsp.a` via
+  `NV_SPE_FSP_DIR`) and `unix-mock` (Unix-domain-socket pair, Linux-only,
+  for POSIX dev + CI). Reusable by any other Tegra Cortex-R5/R52 project.
+- **`packages/platforms/nros-platform-orin-spe/`** is a thin trait-impl
+  crate. Implements `PlatformIvc`, `PlatformClock`, `PlatformSleep`,
+  `PlatformAlloc`, `PlatformThreading`. Most impls re-export from
+  `nros-platform-freertos`; `PlatformIvc` delegates to the driver.
+- **`zpico-platform-shim::ivc_helpers`** (gated on a new `ivc` feature)
+  exposes `_z_open_ivc` / `_z_read_ivc` / `_z_send_ivc` / `_z_close_ivc`
+  / `_z_ivc_notify` symbols that zenoh-pico's `Z_FEATURE_LINK_IVC` C code
+  consumes. Forwards to `<P as PlatformIvc>`.
+- **Sentinel's Linux-side IVC bridge daemon** can also depend on
+  `nvidia-ivc` (`unix-mock` for testing, plain sysfs read/write on real
+  Orin), keeping a single Rust API both sides of the wire.
+
 ## Work items
+
+- [ ] **100.0 — `nvidia-ivc` driver crate**
+
+      Create `packages/drivers/nvidia-ivc/` — a self-contained NVIDIA Tegra
+      IVC driver. No `nros-platform` / `nros-rmw` / zenoh-pico deps. Mirrors
+      the existing `packages/drivers/{lan9118-smoltcp,openeth-smoltcp,…}`
+      pattern: vendor-chip glue lives in `drivers/`, platform crates wire it
+      into the trait stack.
+
+      **Public API (safe Rust):**
+      ```rust
+      pub struct Channel(/* opaque */);
+      impl Channel {
+          pub fn open(id: u32) -> Option<Self>;
+          pub fn read(&self, buf: &mut [u8])  -> Result<usize, IvcError>;
+          pub fn write(&self, buf: &[u8])     -> Result<usize, IvcError>;
+          pub fn notify(&self);
+          pub fn frame_size(&self) -> usize;
+      }
+      ```
+      Plus C-callable `extern "C"` wrappers (`nvidia_ivc_channel_*`) consumed
+      by zenoh-pico's `Z_FEATURE_LINK_IVC` C code and by the shim.
+
+      **Cargo features (mutually exclusive):**
+      - `fsp` — links `tegra_aon_fsp.a` via `NV_SPE_FSP_DIR` env. `no_std`.
+      - `unix-mock` — Unix-domain-socket pair simulating one IVC channel
+        (Linux-only, requires `std`). Used by 100.5 + sentinel CI.
+      - `std` — pulled in by `unix-mock`.
+
+      **Files:**
+      - `packages/drivers/nvidia-ivc/Cargo.toml`
+      - `packages/drivers/nvidia-ivc/build.rs` (cfg(fsp) → link search)
+      - `packages/drivers/nvidia-ivc/src/lib.rs` (safe API + dispatch)
+      - `packages/drivers/nvidia-ivc/src/fsp.rs` (cfg(fsp) — extern "C" decls)
+      - `packages/drivers/nvidia-ivc/src/unix_mock.rs` (cfg(unix-mock))
+      - `packages/drivers/nvidia-ivc/src/error.rs`
+      - `packages/drivers/nvidia-ivc/tests/loopback.rs` (unix-mock loopback)
+      - `packages/drivers/nvidia-ivc/README.md` (NV SDK Manager prereq + EULA)
+
+      Crate is added to `[workspace.exclude]` (matches `nros-board-orin-spe`
+      pattern) because `fsp` builds need a user-supplied SDK path.
+
+      **Acceptance:**
+      - `cargo build -p nvidia-ivc --features unix-mock` succeeds on Linux.
+      - `cargo test -p nvidia-ivc --features unix-mock` runs the loopback
+        test (open two channels, exchange frames, assert reassembly).
+      - `cargo build -p nvidia-ivc --features fsp --target armv7r-none-eabihf
+        -Zbuild-std=core` succeeds when `NV_SPE_FSP_DIR` is set.
+
+- [ ] **100.0a — `PlatformIvc` trait in `nros-platform-api`**
+
+      Add an opaque-pointer trait alongside `PlatformTcp` / `PlatformUdp` /
+      `PlatformSocketHelpers`:
+      ```rust
+      pub trait PlatformIvc {
+          fn channel_get(id: u32) -> *mut c_void;
+          fn read(ch: *mut c_void,  buf: *mut u8,  len: usize) -> isize;
+          fn write(ch: *mut c_void, buf: *const u8, len: usize) -> isize;
+          fn notify(ch: *mut c_void);
+          fn frame_size(ch: *mut c_void) -> u32;
+      }
+      ```
+      No impl in this sub-item — just the contract. ~50 LOC.
+
+      **Acceptance:** `nros-platform-api` builds for `thumbv7m-none-eabi`
+      and `armv7r-none-eabihf` without changes elsewhere.
 
 - [ ] **100.1 — Cortex-R5 critical-section abstraction in `nros-platform-freertos`**
 
@@ -119,50 +213,75 @@ SPI/serial link family).
       existing `serial` and `raweth` link families. Hooks behind `Z_FEATURE_LINK_IVC=1`
       (default off; enabled by zpico-sys when the SPE board crate selects it).
 
+      The link's C code calls **C-callable forwarders in `zpico-platform-shim`**
+      (`_z_open_ivc`, `_z_read_ivc`, `_z_send_ivc`, `_z_close_ivc`, `_z_ivc_notify`),
+      which in turn dispatch through `<P as PlatformIvc>` — same pattern as the
+      existing `_z_open_tcp` / `_z_send_udp` chain. The shim block is gated on a
+      new `ivc` cargo feature (added in 100.3 alongside the cortex-r feature).
+
       **Files (new + edits in `packages/zpico/zpico-sys/zenoh-pico/`):**
-      - `src/link/unicast/ivc.c` (new) — implements `_z_open_ivc`, `_z_listen_ivc`,
-        `_z_close_ivc`, `_z_read_ivc`, `_z_send_ivc` against a transport-trait
-        function-pointer table set by the platform (`tegra_ivc_channel_*` on hardware,
-        Unix-domain-socket bridge in the POSIX simulator)
+      - `src/link/unicast/ivc.c` (new) — implements `_z_open_link_ivc` /
+        `_z_listen_ivc` / `_z_close_ivc` / `_z_read_ivc` / `_z_send_ivc`. Calls the
+        shim forwarders (`_z_open_ivc` etc.) for the actual I/O.
       - `include/zenoh-pico/link/config/ivc.h` (new) — `_z_endpoint_ivc_*` parsers,
-        IVC-specific config keys (`channel_id`, `frame_size`)
-      - `src/link/endpoint.c` — register `ivc/<N>` URI scheme
-      - `src/link/link.c` — link-table entry, dispatch
-      - `src/link/manager.c` — manager-side hookup
-      - `include/zenoh-pico/link/link.h` — `Z_LINK_IVC` enum value + feature guards
-      - `include/zenoh-pico/config.h` — `Z_FEATURE_LINK_IVC` default
-      - `CMakeLists.txt` — conditional compile of `ivc.c`
+        IVC-specific config keys (`channel_id`, `frame_size`).
+      - `src/link/endpoint.c` — register `ivc/<N>` URI scheme.
+      - `src/link/link.c` — link-table entry, dispatch.
+      - `src/link/manager.c` — manager-side hookup.
+      - `include/zenoh-pico/link/link.h` — `Z_LINK_IVC` enum value + feature guards.
+      - `include/zenoh-pico/config.h` — `Z_FEATURE_LINK_IVC` default off.
+      - `CMakeLists.txt` — conditional compile of `ivc.c`.
       - `packages/zpico/zpico-sys/build.rs` — add IVC source list, propagate
-        `cargo:rustc-cfg=feature="link_ivc"` when SPE/POSIX-mock is the target
+        `cargo:rustc-cfg=feature="link_ivc"` when SPE/POSIX-mock is the target.
 
       Key design constraint: zenoh messages routinely exceed the **64-byte IVC frame
       size**. The link layer owns reassembly with a length-prefixed framing protocol
       (header: u16 total length + u16 sequence; same protocol on both sides of the
-      bridge, see 100.6). Re-uses the size-aware ring already present in zenoh-pico's
-      buf abstractions.
+      bridge, see autoware_sentinel Phase 11.6). Re-uses the size-aware ring already
+      present in zenoh-pico's buf abstractions.
 
       **Acceptance:**
       - `Z_FEATURE_LINK_IVC=0` default build is byte-identical to current.
-      - `Z_FEATURE_LINK_IVC=1` builds on POSIX (uses Unix-socket transport) and on
-        `armv7r-none-eabihf` (uses `tegra_ivc_channel_*` provided by the board crate).
-      - Unit test in `tests/`: open two IVC endpoints in the same process via the
-        Unix-socket backend, exchange a multi-frame message, assert reassembled bytes.
+      - `Z_FEATURE_LINK_IVC=1` builds on POSIX and on `armv7r-none-eabihf`.
+      - Reassembly unit test (multi-frame zenoh message in/out) green via the
+        `nvidia-ivc` `unix-mock` backend.
 
-- [ ] **100.5 — Mock IVC transport (POSIX dev path)**
+- [ ] **100.5 — `nros-platform-orin-spe` (platform crate)**
 
-      Without this, every iteration on the IVC link logic would require flashing the
-      SPE — a 5–10 minute round-trip via USB recovery (see Phase 11.7 in
-      `autoware_sentinel`). The mock backend lets us run the same zenoh-pico IVC link
-      against a Unix-domain-socket pair and a small bridge daemon (Phase 11.6 in
-      `autoware_sentinel`) on a single Linux host.
+      Create `packages/platforms/nros-platform-orin-spe/`. Thin trait-impl crate
+      that wires the SPE's HAL into the standard `nros-platform-api` traits.
+      Layout matches the existing `nros-platform-{mps2-an385,stm32f4,esp32,…}`
+      siblings.
 
-      **Files:** the mock side is **all in zenoh-pico**: `_z_open_ivc` etc. take a
-      vtable pointer. The real-hardware vtable (FSP `tegra_ivc_channel_*`) is provided
-      by the SPE board crate (100.6); the mock vtable (Unix-socket I/O) is provided
-      by `nros-platform-posix` behind a `link-ivc-mock` feature.
+      **Trait impls:**
+      - `PlatformIvc` — delegates to `nvidia-ivc` (with `fsp` feature on hardware
+        builds, `unix-mock` feature on POSIX dev).
+      - `PlatformClock` — re-export from `nros-platform-freertos` (FSP exposes
+        the same FreeRTOS V10.4.3 tick API).
+      - `PlatformSleep` — `vTaskDelay`. Re-export.
+      - `PlatformAlloc` — FSP's `pvPortMalloc` / `vPortFree` (heap_4 in FSP).
+      - `PlatformThreading` — `xTaskCreate` etc. Re-export.
+      - `PlatformRandom` — best-effort `rand_r`-equivalent or a hash-of-tick
+        fallback (note: SPE has no hardware RNG; document the weakness).
 
-      **Acceptance:** `cargo test -p nros-rmw-zenoh --features link-ivc-mock` exchanges
-      a string via the mock IVC vtable end-to-end.
+      **Files:**
+      - `packages/platforms/nros-platform-orin-spe/Cargo.toml`
+      - `packages/platforms/nros-platform-orin-spe/src/lib.rs` (re-exports +
+        `pub struct OrinSpe;` as `ConcretePlatform`)
+      - `packages/platforms/nros-platform-orin-spe/src/ivc.rs` (PlatformIvc impl)
+      - `packages/platforms/nros-platform-orin-spe/src/random.rs` (RNG note)
+
+      Wire into `nros-platform/Cargo.toml`:
+      ```toml
+      [features]
+      platform-orin-spe = ["dep:nros-platform-orin-spe"]
+      [dependencies]
+      nros-platform-orin-spe = { path = "../../platforms/nros-platform-orin-spe", optional = true }
+      ```
+
+      **Acceptance:** `cargo build -p nros-platform --no-default-features
+      --features platform-orin-spe --target armv7r-none-eabihf
+      -Zbuild-std=core,alloc` succeeds (with `NV_SPE_FSP_DIR` set).
 
 - [ ] **100.6 — `nros-board-orin-spe` board crate**
 
@@ -235,11 +354,12 @@ SPI/serial link family).
 
 ## Acceptance criteria (phase-level)
 
-- [ ] All 8 sub-items above checked off.
+- [ ] All 10 sub-items above checked off (100.0, 100.0a, 100.1–100.8).
 - [ ] `cargo +nightly build --target armv7r-none-eabihf -Zbuild-std=core,alloc -p nros-platform-freertos --features cortex-r,active` succeeds with zero warnings.
-- [ ] POSIX-side mock IVC end-to-end test (`orin_spe_mock_ivc`) passes in `just test-all`.
+- [ ] `cargo test -p nvidia-ivc --features unix-mock` loopback green on Linux.
+- [ ] POSIX-side mock IVC end-to-end test (`orin_spe_mock_ivc` in `nros-tests`) passes in `just test-all` against the `nvidia-ivc` `unix-mock` backend.
 - [ ] `just orin_spe build` produces a `spe.bin` whose statically-linked size is reported (target `< 256 KB` but not gated — application-level fitting is `autoware_sentinel`'s job).
-- [ ] `nros-rmw-zenoh` test suite passes both with and without `link-ivc-mock` feature.
+- [ ] `nros-rmw-zenoh` test suite passes both with and without `Z_FEATURE_LINK_IVC` enabled.
 
 ## Out of scope (handed off to autoware_sentinel)
 
@@ -333,18 +453,24 @@ to sysfs/chardev directly.
 
 ### A.3 Implications for this phase
 
-1. **The "IVC library" is asymmetric.** SPE side links against the closed
-   NVIDIA FSP. Linux side opens a sysfs file. Phase 100 only needs the SPE
-   binding; the Linux binding lives in `autoware_sentinel` Phase 11.6 and
-   is just `read(2)`/`write(2)` on the sysfs node.
+1. **The "IVC library" is asymmetric, and we own one independent crate
+   that captures both sides.** `packages/drivers/nvidia-ivc` (100.0) wraps
+   the FSP on hardware and a Unix-socket pair in dev. SPE side gets the
+   `fsp` feature; CCPLEX side (used in the `autoware_sentinel`
+   `src/ivc-bridge/` daemon) can pull the same crate with `unix-mock` for
+   testing or `std`-side sysfs read/write for production. One Rust API,
+   two consumers.
 
-2. **No portable IVC dep needed.** zenoh-pico's `Z_FEATURE_LINK_IVC` (100.4)
-   takes a vtable of function pointers. The board crate (100.6) populates
-   it with FSP calls. The mock backend (100.5) populates it with Unix-socket
-   I/O. Neither end of nano-ros pulls a third-party IVC dep.
+2. **No portable IVC dep needed at the platform layer.** The
+   `PlatformIvc` trait in `nros-platform-api` (100.0a) hides the driver
+   choice; `nros-platform-orin-spe` (100.5) implements it via
+   `nvidia-ivc`. zenoh-pico's `Z_FEATURE_LINK_IVC` C code calls the shim
+   forwarders (100.3 + 100.4), which dispatch through `<P as PlatformIvc>`.
+   Same chain pattern as `_z_open_tcp` → `<P as PlatformTcp>::open`.
 
-3. **If we ever need an open-source IVC port** (e.g. to run the IVC link
-   layer outside NVIDIA hardware, or to support a non-Tegra SoC with a
+3. **If we ever need an open-source IVC port** (e.g. running the link
+   layer outside NVIDIA hardware, or supporting a non-Tegra SoC with a
    similar mailbox), the cleanest starting point is the GPL kernel impl —
-   ~500 LOC, well-tested. Track as a Phase 100.x sub-item only if a real
-   second consumer materialises.
+   ~500 LOC, well-tested. Would land as a third backend feature
+   (`nvidia-ivc/portable`) inside the same driver crate, no platform-layer
+   churn.
