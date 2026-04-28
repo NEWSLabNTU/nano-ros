@@ -373,18 +373,26 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       per `nx_bsd_recv` because Linux read the INT as `tv_sec`).
       Both sides exchange SPDP and SEDP unicast cleanly.
 
-      Runtime E2E `assert!(received >= 1)` still red — the SEDP
-      handshake locks into infinite reliability ping-pong (every
-      AckNack triggers a DATA which triggers another AckNack)
-      under the cooperative `NrosPlatformRuntime` poll loop, and
-      the user-data `/chatter` writer never matches the
-      subscriber inside the 60 s window. The talker's main loop
-      stalls at "Published: 5" on this path. Resolving needs
-      either a fix in dust-dds's SEDP reliability path under the
-      `nostd-runtime` cooperative scheduler, or moving the
-      ThreadX-Linux slice to the threaded `rtps_udp_transport`
-      path. Infrastructure (mcast / unicast / IGMP, sockopt
-      translation, byte pool, debug traces) all ship green.
+      Runtime E2E `assert!(received >= 1)` still red even with a
+      generous 30 s + 90 s window — the SEDP handshake locks into
+      infinite reliability ping-pong on Linux loopback's
+      ~zero-latency RTT (every AckNack triggers a DATA which
+      triggers another AckNack) under the cooperative
+      `NrosPlatformRuntime` poll loop, and the user-data
+      `/chatter` writer never matches the subscriber. The talker's
+      main loop stalls at "Published: 5" on this path because
+      every `spin_once` call spends its budget on SEDP traffic.
+      The same `nros-rmw-dds` cooperative runtime ships green on
+      QEMU-networked targets (FreeRTOS, NuttX) where higher
+      latency caps the SEDP retry rate; loopback exposes the
+      unbounded-poll-loop problem. Resolving needs either a
+      dust-dds-side fix on the `nostd-runtime` SEDP reliability
+      heartbeat / max_blocking_time, or moving the ThreadX-Linux
+      slice to the threaded `rtps_udp_transport` path (blocked on
+      socket2's NetX-libc compatibility — same issue the Phase
+      97.4.nuttx slice paid). Infrastructure (mcast / unicast /
+      IGMP, sockopt translation, byte pool, debug traces) all
+      ship green.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on

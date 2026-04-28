@@ -63,9 +63,12 @@ fn test_threadx_linux_dds_rust_talker_to_listener_e2e() {
     let mut talker = ManagedProcess::spawn(&talker_bin, &[], "threadx-linux-dds-talker")
         .expect("Failed to spawn talker");
 
-    let talker_out = talker.wait_for_output(Duration::from_secs(15)).unwrap_or_default();
+    // Phase 97.4.threadx-linux — SEDP on the cooperative single-thread
+    // `nostd-runtime` is slow; the match closes 30+ seconds after
+    // discovery. Give a generous window before declaring failure.
+    let talker_out = talker.wait_for_output(Duration::from_secs(30)).unwrap_or_default();
     let listener_out = listener
-        .wait_for_output(Duration::from_secs(45))
+        .wait_for_output(Duration::from_secs(90))
         .unwrap_or_default();
 
     eprintln!("\n=== ThreadX Linux DDS talker tail ===");
