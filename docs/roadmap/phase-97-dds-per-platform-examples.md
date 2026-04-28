@@ -312,18 +312,22 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       - `tests/threadx_riscv64_qemu_dds.rs` integration test
         (currently fails — talker publishes ~600 messages, listener
         reaches "Waiting for messages…", host-side tshark sees
-        zero frames cross between QEMU instances). After adding
-        `nx_igmp_enable(&ip_instance)` (otherwise NetX BSD's
-        `IP_ADD_MEMBERSHIP` setsockopt fails with `NX_NOT_ENABLED`)
-        and bumping `PACKET_COUNT` from 30 → 64 to host the
-        SEDP burst, the listener now stalls inside
-        `create_subscription` and host-side tshark still sees
-        zero frames. Most likely `nx_igmp_multicast_interface_join`
-        tries to emit an IGMP membership report through the
-        virtio-net-netx driver and the TX path stalls — the
-        cooperative single-thread poll loop can't drive it.
-        Runtime debug needs a board-side trace channel (no_std
-        RISC-V can't use `eprintln!`); follow-up work.
+        zero frames cross between QEMU instances). With `addr=0`
+        (INADDR_ANY) accepted by `tcp_create_endpoint`, both
+        unicast binds succeed and dust-dds enters its full SEDP
+        path — at which point talker hangs inside
+        `create_publisher` and listener hangs inside
+        `create_subscription`. `nx_igmp_enable` *not* called: it
+        makes `IP_ADD_MEMBERSHIP` fire
+        `nx_igmp_multicast_interface_join` which queues an IGMP
+        membership report through virtio-net-netx and stalls the
+        cooperative poll loop. `mcast_listen` treats the setsockopt
+        rc as best-effort to tolerate this. Resolving needs a
+        no_std RISC-V trace channel (board crate's `uart_putc` is
+        link-available; an opt-in `debug-uart` feature on
+        `nros-rmw-dds` mirroring `debug-cortex-m-semihosting`
+        would surface where in dust-dds the cooperative runtime
+        deadlocks). Follow-up.
 - [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
       Discovery + bind path lands green: SPDP multicast crosses
       between the two ThreadX-Linux processes through the

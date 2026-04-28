@@ -121,16 +121,29 @@ fn ep_to_sockaddr(ep: &Endpoint) -> nx_bsd_sockaddr_in {
 impl ThreadxPlatform {
     pub fn tcp_create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
         // Phase 97.4.threadx — RTPS binds use "0.0.0.0" (any-iface)
-        // for unicast / multicast listeners, which `parse_ipv4`
-        // legitimately returns as `0`. Don't treat 0 as failure here
-        // — only reject NULL inputs and let bind() catch real
-        // invalid addresses later.
+        // for unicast / multicast listeners. `parse_ipv4` returns 0
+        // for both that *and* parse failures; we differentiate by
+        // checking the literal string. Accept "0.0.0.0\0" as
+        // INADDR_ANY, reject any other zero-result as malformed.
         if address.is_null() || port.is_null() {
             return -1;
         }
+        let is_any = unsafe {
+            *address == b'0'
+                && *address.add(1) == b'.'
+                && *address.add(2) == b'0'
+                && *address.add(3) == b'.'
+                && *address.add(4) == b'0'
+                && *address.add(5) == b'.'
+                && *address.add(6) == b'0'
+                && *address.add(7) == 0
+        };
         let ep = ep as *mut Endpoint;
         let addr = parse_ipv4(address);
         let p = parse_port(port);
+        if addr == 0 && !is_any {
+            return -1;
+        }
         unsafe {
             (*ep)._addr = addr;
             (*ep)._port = p;
@@ -549,15 +562,10 @@ impl ThreadxPlatform {
         endpoint: *const c_void,
         timeout_ms: u32,
         _iface: *const u8,
-        join: *const u8,
+        _join: *const u8,
     ) -> i8 {
         let rc = Self::udp_listen(sock, endpoint, timeout_ms);
         if rc < 0 {
-            return rc;
-        }
-
-        let group_h = if !join.is_null() { parse_ipv4(join) } else { 0 };
-        if group_h == 0 {
             return rc;
         }
 
@@ -567,28 +575,37 @@ impl ThreadxPlatform {
             return -1;
         }
 
-        // NetX `nx_bsd_in_addr` field is `s_addr` in *network* byte
-        // order (BE). Our `parse_ipv4` returns host byte order so
-        // the high octet sits at the bottom of the u32. Swap.
-        let group_n = group_h.to_be();
-        let mreq = nx_bsd_ip_mreq {
-            imr_multiaddr: nx_bsd_in_addr { s_addr: group_n },
-            imr_interface: nx_bsd_in_addr { s_addr: 0 },
-        };
-        let setsockopt_rc = unsafe {
-            nx_bsd_setsockopt(
-                fd,
-                IPPROTO_IP as INT,
-                IP_ADD_MEMBERSHIP as INT,
-                &mreq as *const _ as *const c_void,
-                core::mem::size_of::<nx_bsd_ip_mreq>() as INT,
-            )
-        };
-        if setsockopt_rc < 0 {
-            unsafe {
-                nx_bsd_soc_close(fd);
+        // Phase 97.4.threadx — IGMP join path. We try the BSD-shim
+        // setsockopt(IP_ADD_MEMBERSHIP) but tolerate failure: on
+        // QEMU virtio-net + the NetX virtio-net-netx driver the
+        // hardware filter accepts all mcast (`NX_LINK_MULTICAST_JOIN`
+        // is silently no-op), and the host-side `-netdev socket,mcast`
+        // tunnel forwards mcast frames to every joined sibling
+        // regardless of the in-VM IGMP state. On the threadx-linux
+        // (NSOS) path the same setsockopt forwards to the host kernel
+        // (`translate_sockopt` adjusts the constants); host-kernel
+        // IGMP membership on loopback is what matters there. Skipping
+        // a hard-error rc means a mis-configured `nx_igmp_enable` on
+        // the board crate doesn't kill the whole listener.
+        if !_join.is_null() {
+            let group_h = parse_ipv4(_join);
+            if group_h != 0 {
+                let group_n = group_h.to_be();
+                let mreq = nx_bsd_ip_mreq {
+                    imr_multiaddr: nx_bsd_in_addr { s_addr: group_n },
+                    imr_interface: nx_bsd_in_addr { s_addr: 0 },
+                };
+                let _ = unsafe {
+                    nx_bsd_setsockopt(
+                        fd,
+                        IPPROTO_IP as INT,
+                        IP_ADD_MEMBERSHIP as INT,
+                        &mreq as *const _ as *const c_void,
+                        core::mem::size_of::<nx_bsd_ip_mreq>() as INT,
+                    )
+                };
+                // Best-effort — discard rc.
             }
-            return -1;
         }
 
         if timeout_ms == 0 {
