@@ -104,6 +104,11 @@ impl DdsSession {
 // request packet means the client times out and the server never
 // sees the call. ROS 2 service convention is `Reliable +
 // KeepLast(N)` on both sides; mirror that here.
+// `service_reader_qos` / `service_writer_qos` are only invoked from
+// the `cfg(feature = "std")` create_service_{server,client} paths.
+// Gate the helpers on the same cfg so no_std builds (where the
+// callers vanish) don't emit "function never used" warnings.
+#[cfg(feature = "std")]
 fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     use dust_dds::infrastructure::qos_policy::{
         HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
@@ -120,6 +125,7 @@ fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     q
 }
 
+#[cfg(feature = "std")]
 fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
     use dust_dds::infrastructure::qos_policy::{
         HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
@@ -317,7 +323,11 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
-            return Ok(DdsSubscriber::new_async(reader, self.runtime.clone(), waker_cell));
+            return Ok(DdsSubscriber::new_async(
+                reader,
+                self.runtime.clone(),
+                waker_cell,
+            ));
         }
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]

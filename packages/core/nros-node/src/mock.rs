@@ -1,7 +1,10 @@
 //! Mock session for unit tests.
 //!
 //! Provides [`MockSession`] as the `ConcreteSession` when no real RMW
-//! backend feature is enabled during test compilation.
+//! backend feature is enabled during test compilation. Module-level
+//! cfg gate in `lib.rs:75` matches `executor/mod.rs:42` so mock.rs
+//! only compiles when the test paths that actually consume it are
+//! also compiled.
 
 use core::cell::Cell;
 

@@ -134,13 +134,13 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
         }
     }
 
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime));
 
     for (_, path) in &candidates {
-        if let Ok(sizes) = extract_sizes(path, symbol_prefix) {
-            if !sizes.is_empty() {
-                return Ok(path.clone());
-            }
+        if let Ok(sizes) = extract_sizes(path, symbol_prefix)
+            && !sizes.is_empty()
+        {
+            return Ok(path.clone());
         }
     }
 
@@ -226,10 +226,11 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
     // their v0-mangled symbol names contain both the NAME and the
     // const-generic value N (the `size_of::<T>()` result). A single
     // regex captures `NAME` and `N` from the demangled output.
-    if out.is_empty() && saw_bitcode {
-        if let Ok(from_bitcode) = extract_sizes_via_llvm_nm(rlib) {
-            return Ok(from_bitcode);
-        }
+    if out.is_empty()
+        && saw_bitcode
+        && let Ok(from_bitcode) = extract_sizes_via_llvm_nm(rlib)
+    {
+        return Ok(from_bitcode);
     }
 
     Ok(out)
@@ -331,10 +332,10 @@ fn rustc_host_triple() -> Result<String, Error> {
 fn cargo_target_dir() -> Result<PathBuf, Error> {
     // Respect an explicit override first — keeps downstream builds that set
     // CARGO_TARGET_DIR (e.g. cargo-chef) working without a metadata hop.
-    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
-        if !dir.is_empty() {
-            return Ok(PathBuf::from(dir));
-        }
+    if let Ok(dir) = env::var("CARGO_TARGET_DIR")
+        && !dir.is_empty()
+    {
+        return Ok(PathBuf::from(dir));
     }
 
     // Corrosion (CMake) invokes cargo with `--target-dir <custom>` which
