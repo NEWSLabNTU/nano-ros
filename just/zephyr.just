@@ -125,9 +125,17 @@ build-fixtures:
       "native_sim/native/64|build-xrce-cpp-service-client|zephyr/cpp/xrce/service-client|0"
       "native_sim/native/64|build-xrce-cpp-action-server|zephyr/cpp/xrce/action-server|0"
       "native_sim/native/64|build-xrce-cpp-action-client|zephyr/cpp/xrce/action-client|0"
-      # Phase 71.8 DDS native_sim boot smoke (best-effort)
+      # Phase 71.8 + Phase 93 DDS native_sim boot smoke (best-effort).
+      # Keep this list in sync with the qemu_cortex_a9 set below — the
+      # zephyr boots tests in nros-tests/tests/zephyr.rs expect every
+      # example here as a native_sim binary.
       "native_sim/native/64|build-dds-rs-talker|zephyr/rust/dds/talker|1"
       "native_sim/native/64|build-dds-rs-listener|zephyr/rust/dds/listener|1"
+      "native_sim/native/64|build-dds-rs-service-server|zephyr/rust/dds/service-server|1"
+      "native_sim/native/64|build-dds-rs-service-client|zephyr/rust/dds/service-client|1"
+      "native_sim/native/64|build-dds-rs-action-server|zephyr/rust/dds/action-server|1"
+      "native_sim/native/64|build-dds-rs-action-client|zephyr/rust/dds/action-client|1"
+      "native_sim/native/64|build-dds-rs-async-service-client|zephyr/rust/dds/async-service-client|1"
       # Phase 92 + 95.B — DDS Rust full 7-set on qemu_cortex_a9 (real IGMP/GEM/ARP)
       "qemu_cortex_a9|build-dds-a9-talker|zephyr/rust/dds/talker|0"
       "qemu_cortex_a9|build-dds-a9-listener|zephyr/rust/dds/listener|0"

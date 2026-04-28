@@ -75,6 +75,10 @@ build-fixtures:
         native/rust/xrce/stress-test
         native/rust/dds/talker
         native/rust/dds/listener
+        native/rust/dds/service-server
+        native/rust/dds/service-client
+        native/rust/dds/action-server
+        native/rust/dds/action-client
     )
     for ex in "${examples[@]}"; do
         echo "  → $ex"
