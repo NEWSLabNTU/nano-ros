@@ -129,6 +129,26 @@ template <typename A> class ActionClient;
 /// @return Result indicating success or failure.
 inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 
+/// Initialize the nros session with an explicit session name.
+///
+/// `session_name` is the *process-wide* identifier used by the
+/// XRCE-DDS RMW backend to derive a unique session key. Two
+/// processes connecting to the same XRCE Agent MUST use distinct
+/// session names — otherwise the agent treats them as the same
+/// client and topic publishes don't cross-route. For zenoh / DDS
+/// backends the value is informational only.
+///
+/// Pick a name that's stable for the process and distinct from
+/// every other nros process you intend to share an agent with.
+/// Typical choice: the process's primary node name (e.g.
+/// `"talker"`, `"listener"`).
+///
+/// @param locator       Middleware locator, or nullptr for default.
+/// @param domain_id     ROS domain ID (0-232).
+/// @param session_name  Per-process session identifier. Must not be nullptr.
+/// @return Result indicating success or failure.
+inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
+
 /// Shut down the nros session.
 ///
 /// Closes the middleware connection and frees all resources.
@@ -348,6 +368,7 @@ class Node {
 
     friend class Executor;
     friend Result init(const char* locator, uint8_t domain_id);
+    friend Result init(const char* locator, uint8_t domain_id, const char* session_name);
     friend Result shutdown();
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
@@ -387,8 +408,18 @@ bool Node::GlobalStorageHolder<N>::initialized = false;
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
+    return init(locator, domain_id, "nros_cpp");
+}
+
+inline Result init(const char* locator, uint8_t domain_id, const char* session_name) {
+    // NROS_CPP_RET_INVALID_ARGUMENT = -3 (defined in nros_cpp_ffi.h
+    // which isn't included from this header — duplicate the value
+    // inline; cbindgen-generated header is the source of truth).
+    if (session_name == nullptr) {
+        return Result(-3);
+    }
     nros_cpp_ret_t ret =
-        nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, Node::global_storage());
+        nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {
         Node::global_initialized() = true;
     }

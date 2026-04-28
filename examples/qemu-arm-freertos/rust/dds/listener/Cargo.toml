@@ -15,7 +15,7 @@ bench = false
 default = []
 
 [dependencies]
-nros-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-mps2-an385-freertos", default-features = false }
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-dds", "platform-freertos", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator", "critical-section"] }
 std_msgs = { version = "*", default-features = false }

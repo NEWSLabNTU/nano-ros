@@ -7,7 +7,9 @@ them are example-coverage gaps — the example crates themselves all
 build clean and reach readiness — but each blocks an interop test
 that proves end-to-end behaviour.
 
-**Status**: Not Started
+**Status**: 96.1 mostly closed (talker_listener + service E2Es pass;
+action E2E still `#[ignore]`d on a separate cpp-xrce action data
+path bug). 96.2 closed. 96.3 closed.
 
 **Priority**: Medium. Phase 95's matrix is complete; these are
 quality-of-life follow-ups that turn `#[ignore]`d tests back on so
@@ -21,9 +23,23 @@ two non-dust-dds items + the cross-link.
 
 ## Work Items
 
-- [ ] 96.1 — `nros::Subscription::try_recv()` demux on shared XRCE
-      Agent (cpp-API session shape)
-- [ ] 96.2 — `test_talker_param_declaration` flake fix
+- [x] 96.1 — Root cause turned out NOT to be a `try_recv()` demux
+      bug but an XRCE session-key collision: the cpp `nros::init()`
+      wrapper hardcoded the session key to `hash("nros_cpp")` for
+      every cpp process, so two cpp participants on the same agent
+      collided as one client. Added `init(locator, domain_id,
+      session_name)` overload + `Executor::create(... session_name)`;
+      updated all 6 zephyr cpp/xrce examples to pass distinct names.
+      Re-enabled tests: `test_zephyr_xrce_cpp_talker_listener` (24 s),
+      `test_zephyr_xrce_cpp_service_e2e` (37 s). Action E2E
+      (`test_zephyr_xrce_cpp_action_e2e`) stays `#[ignore]`d on a
+      separate cpp-xrce action data-path bug — server completes
+      goal with sequence length=10, client receives result with
+      length=0 and feedback=0. Tracked as a 96.1 follow-up.
+- [x] 96.2 — `test_talker_param_declaration` waits directly for
+      the assertion target (`"Counter start value"`, 15 s window)
+      instead of `"Publishing"` + 2 s grace. Eliminates the
+      `just test-all`-load timing dependency.
 - [x] 96.3 — Cross-link to Phase 71.28 / 71.29: **closed**.
       71.28 (slice-offset bug in `ServiceServerTrait::handle_request`),
       71.29 (cooperative-runtime starvation in DDS Cortex-A9

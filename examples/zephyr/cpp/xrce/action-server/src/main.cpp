@@ -65,7 +65,7 @@ int main(void)
     LOG_INF("===============================");
 
     /* Initialize nros session */
-    nros::Result ret = nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT), CONFIG_NROS_DOMAIN_ID);
+    nros::Result ret = nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT), CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_action_server");
     if (!ret.ok()) {
         LOG_ERR("Init failed: %d", ret.raw());
         return 1;
