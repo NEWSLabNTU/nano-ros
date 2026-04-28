@@ -635,13 +635,28 @@ mod tests {
     // `Ok(None)` from `try_recv_request`, so the tests confirm the
     // plumbing doesn't crash when there's nothing to process and that
     // the state machine accessors behave correctly.
-
-    use crate::executor::Executor;
-    use crate::mock::MockSession;
-    use core::ffi::c_void;
-    use core::sync::atomic::{AtomicU32, Ordering};
-    use core::time::Duration;
-    use nros_core::lifecycle::TransitionResult;
+    //
+    // Wrapped in a sub-module gated on the same condition as
+    // `MockSession`'s `ConcreteSession` alias in `session.rs` —
+    // feature unification under `cargo test --workspace` activates
+    // one of the rmw-* features through downstream crates (e.g.
+    // nros-px4), at which point `Executor::from_session` expects a
+    // different concrete session and these tests stop type-checking.
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
+    )))]
+    mod mock_integration {
+        use super::*;
+        use crate::executor::Executor;
+        use crate::mock::MockSession;
+        use core::ffi::c_void;
+        use core::sync::atomic::{AtomicU32, Ordering};
+        use core::time::Duration;
+        use nros_core::lifecycle::TransitionResult;
 
     #[test]
     fn register_lifecycle_services_succeeds_on_mock() {
@@ -755,5 +770,6 @@ mod tests {
         // Subsequent `get_state` handler must reflect the new state.
         let gs = handle_get_state(sm, &GetStateRequest::default());
         assert_eq!(gs.current_state.id, state_id::PRIMARY_STATE_INACTIVE);
+    }
     }
 }

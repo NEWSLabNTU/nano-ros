@@ -152,7 +152,12 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 pub const DEFAULT_LOAN_BUF: usize = 1024;
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::Ordering;
+// portable-atomic AtomicBool — resolves to native on targets that
+// support it, software fallback on those that don't (e.g. some
+// Xtensa ESP32 SoCs). nros-node compiles into example crates that
+// target both.
+use portable_atomic::AtomicBool;
 
 /// Typeless publisher handle. Use when the wire format is not ROS CDR
 /// (e.g. PX4 uORB raw POD bytes, custom binary protocols).

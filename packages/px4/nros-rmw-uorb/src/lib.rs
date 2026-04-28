@@ -11,41 +11,58 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// alloc is required unconditionally — the trampoline registry
-// (Phase 90.2b) stores boxed type-erased handles. PX4 NuttX targets
-// have an allocator; bare-metal users must provide a #[global_allocator].
+// alloc is required by the trampoline registry / Session impls
+// (Phase 90.2b) which store boxed type-erased handles. Examples
+// that only use the direct typed API in `raw.rs` don't need it.
+// Gate `extern crate alloc` + the registry/session module tree on
+// the `alloc` feature so no_std crates that just publish/subscribe
+// via `nros::uorb::publication` / `subscription` can stay
+// alloc-free (no `#[global_allocator]` required).
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 mod raw;
 mod topics;
 
 // Direct typed API — primary entry point for PX4-shaped messages.
-// Available in both std and no_std builds.
+// Available in both std and no_std builds. No alloc required.
 pub use raw::{publication, subscription};
 
 // nros-rmw trait impls (UorbSession etc.) bridge nros-node's typed
-// Publisher<M>/Subscription<M> onto px4-uorb via the trampoline registry.
-// Phase 90.2b made the registry no_std-friendly (heapless::Vec +
-// critical_section::Mutex), so these are now available on real PX4
-// NuttX targets, not just host-mock std builds.
+// Publisher<M>/Subscription<M> onto px4-uorb via the trampoline
+// registry. Phase 90.2b made the registry no_std-friendly
+// (heapless::Vec + critical_section::Mutex). Still requires alloc
+// for the boxed type-erased TopicHandle entries.
+#[cfg(feature = "alloc")]
 mod park;
+#[cfg(feature = "alloc")]
 mod publisher;
+#[cfg(feature = "alloc")]
 mod registry;
+#[cfg(feature = "alloc")]
 mod service;
+#[cfg(feature = "alloc")]
 mod session;
+#[cfg(feature = "alloc")]
 mod subscriber;
 
+#[cfg(feature = "alloc")]
 pub use park::{Park, park_until_event};
+#[cfg(feature = "alloc")]
 pub use publisher::UorbPublisher;
+#[cfg(feature = "alloc")]
 pub use registry::register;
+#[cfg(feature = "alloc")]
 pub use service::{
     UORB_SERVICE_PAYLOAD_MAX, UORB_SERVICE_TOPIC_BYTES, UorbServiceClient, UorbServiceServer,
 };
+#[cfg(feature = "alloc")]
 pub use session::{UorbRmw, UorbSession};
+#[cfg(feature = "alloc")]
 pub use subscriber::UorbSubscriber;
 
 // Topic-mapping internals.
 pub use topics::{TopicEntry, lookup_topic};
 
-#[cfg(any(test, feature = "test-helpers"))]
+#[cfg(all(feature = "alloc", any(test, feature = "test-helpers")))]
 pub use registry::_reset;

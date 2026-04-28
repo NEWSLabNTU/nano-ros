@@ -39,7 +39,8 @@
 //! - No multi-instance routing — server broadcasts replies to
 //!   anyone subscribed to the reply topic.
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::Ordering;
+use portable_atomic::AtomicU64;
 
 use heapless::String as HString;
 use nros_rmw::{ServiceClientTrait, ServiceRequest, ServiceServerTrait, TransportError};
