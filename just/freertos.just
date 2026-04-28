@@ -88,8 +88,16 @@ build-fixtures:
     echo "Building FreeRTOS test fixtures..."
     rust_examples=(talker listener service-server service-client action-server action-client)
     for ex in "${rust_examples[@]}"; do
-        echo "  → freertos/rust/$ex"
+        echo "  → freertos/rust/zenoh/$ex"
         ( cd "examples/qemu-arm-freertos/rust/zenoh/$ex" && cargo build --release --quiet )
+    done
+    # Phase 97.4.freertos — DDS variant (talker + listener only;
+    # services / actions follow once the kconfig + linker template
+    # graduates to those use cases).
+    dds_rust_examples=(talker listener)
+    for ex in "${dds_rust_examples[@]}"; do
+        echo "  → freertos/rust/dds/$ex"
+        ( cd "examples/qemu-arm-freertos/rust/dds/$ex" && cargo build --release --quiet )
     done
     cmake_pfx="$(pwd)/build/install"
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"

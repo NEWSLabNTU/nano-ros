@@ -198,22 +198,35 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
 
 - [ ] **97.4.zephyr-native_sim** — blocked behind NSOS gap.
 - [~] **97.4.freertos** — qemu-arm-freertos talker↔listener.
-      Talker + listener crates land at
-      `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`.
-      Both build green for `thumbv7m-none-eabi` with all 97.1
-      prereqs wired (cs, linker, board-decouple, global-allocator,
-      kconfig). `nros-tests::fixtures::binaries::freertos`
-      exposes `build_freertos_dds_talker` / `_listener`
-      `OnceCell`-cached fixtures.
-      Remaining: nros-tests fixture
-      (`tests/freertos_qemu_dds.rs`) launching both binaries on
-      a shared `-netdev socket,mcast=…` segment (mirroring the
-      Zephyr A9 mcast pattern, not the existing
-      `start_mps2_an385_networked` slirp NAT path which gives
-      each instance its own isolated NAT stack and so won't
-      cross-deliver multicast). Justfile build-fixtures recipe
-      entry to the existing `just freertos build-fixtures` once
-      the fixture lands.
+      Build / launch / network-init paths all land green:
+      - Talker + listener crates at
+        `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`,
+        both build clean for `thumbv7m-none-eabi`.
+      - `QemuProcess::start_mps2_an385_mcast` launcher in
+        `nros-tests/src/qemu.rs` brings up two instances on a
+        shared `-netdev socket,mcast=…` segment.
+      - `nros-tests/src/fixtures/binaries/freertos.rs` exposes
+        `build_freertos_dds_{talker,listener}` `OnceCell` caches.
+      - `tests/freertos_qemu_dds.rs` integration test scaffolded.
+      - `just freertos build-fixtures` recipe builds DDS variants
+        alongside zenoh.
+      - `.config/nextest.toml` routes `freertos_qemu_dds` into the
+        existing `qemu-freertos` test-group with the matching
+        120s slow-timeout + 2 retries.
+
+      **Runtime smoke `#[ignore]`d** pending follow-up: with the
+      build infrastructure in place, the listener boots,
+      initialises lwIP, and prints "Network ready". Beyond that
+      `Executor::open()` hangs before reaching
+      "Subscribing to /chatter" — most likely a stall in
+      `NrosUdpTransportFactory::create_participant` on one of the
+      RTPS socket binds (`IP_ADD_MEMBERSHIP` setsockopt or the
+      multicast metatraffic port bind) when running under
+      lwIP-on-FreeRTOS. The Zephyr A9 path runs the same
+      `nros-rmw-dds` async transport against zsock_*; the gap is
+      lwIP-specific. Re-enable
+      `test_freertos_dds_rust_talker_to_listener_e2e` once the
+      runtime path matches.
 - [ ] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
 - [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
       talker↔listener.

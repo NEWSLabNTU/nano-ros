@@ -315,7 +315,7 @@ retries = 2
 
 # FreeRTOS QEMU (MPS2-AN385 + FreeRTOS kernel) — port 7451.
 [[profile.default.overrides]]
-filter = "binary(freertos_qemu) or (binary(rtos_e2e) and test(Platform__Freertos))"
+filter = "binary(freertos_qemu) or binary(freertos_qemu_dds) or (binary(rtos_e2e) and test(Platform__Freertos))"
 test-group = "qemu-freertos"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
