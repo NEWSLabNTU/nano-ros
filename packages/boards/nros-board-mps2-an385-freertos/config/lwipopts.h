@@ -49,8 +49,15 @@
  * IP_REASSEMBLY the receiver drops every fragment past the first. */
 #define IP_REASSEMBLY                   1
 
-/* ---- Memory ---- */
-#define MEM_SIZE                        (16 * 1024)
+/* ---- Memory ----
+ * Phase 97.1.kconfig.freertos bumped MEMP_NUM_NETBUF from 8 to 32 +
+ * enabled IGMP / BROADCAST / IP_REASSEMBLY for DDS multicast. The
+ * combined pool footprint exceeded the original 16 KiB lwIP heap on
+ * the Zenoh path — `Executor::open` failed `Transport(ConnectionFailed)`
+ * during the connect handshake because lwIP couldn't allocate a
+ * netbuf for the outbound TCP SYN. Double the heap to 32 KiB; QEMU
+ * MPS2-AN385 has 4 MiB of SRAM so the cost is irrelevant. */
+#define MEM_SIZE                        (32 * 1024)
 #define MEM_ALIGNMENT                   4
 #define MEMP_NUM_PBUF                   32
 #define MEMP_NUM_UDP_PCB                8
