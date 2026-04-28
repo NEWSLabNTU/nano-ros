@@ -74,6 +74,12 @@ build-sitl:
         EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
 # Check formatting + clippy on px4 crates.
+#
+# fmt uses `-p` per crate (not `--all`) because `cargo fmt --all`
+# from the nano-ros workspace walks path-dep
+# `third-party/px4/px4-rs/*` crates with nano-ros's stable rustfmt
+# and rewrites them — drift against px4-rs's pinned nightly
+# rustfmt. Pinning per-crate keeps fmt confined to nano-ros sources.
 check:
     cargo fmt --check -p nros-rmw-uorb -p nros-px4
     cargo clippy -p nros-rmw-uorb -p nros-px4 --features std,test-helpers --all-targets -- -D warnings
@@ -81,15 +87,13 @@ check:
 # Run unit tests against the px4-rs std mock broker (no SITL required).
 # Includes nros-px4's run_async/pump host-mock tests (90.5b acceptance).
 #
-# --test-threads=1: the px4-rs std mock spawns background HRT + WQ
-# threads whose lifetimes outlast individual #[test] bodies. Running
-# tests in parallel races those threads against each other across
-# `_reset_broker()` boundaries, which manifests as "tcache_thread_shutdown:
-# unaligned tcache chunk detected" at process exit. Serialising
-# tests at the cargo level avoids the race.
+# Default-parallel mode is fine since px4-rs `3afaf2c2` migrated the
+# HRT mock to a single shared worker thread and added the SubCbInner
+# leak tracker. Earlier pins required `--test-threads=1` to avoid
+# `tcache_thread_shutdown: unaligned tcache chunk detected` at exit.
 test:
-    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests -- --test-threads=1
-    cargo test -p nros-px4 --features test-helpers --tests -- --test-threads=1
+    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests
+    cargo test -p nros-px4 --features test-helpers --tests
 
 # Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
 test-sitl: build-sitl
