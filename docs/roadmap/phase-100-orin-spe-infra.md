@@ -295,3 +295,56 @@ SPI/serial link family).
   `external/freertos-kernel/portable/ThirdParty/GCC/Posix/` POSIX port are pulled
   into `external/` (gitignored) as reference. NVIDIA's FSP uses its own copy of the
   ARM_CR5 port with Tegra-specific tweaks; we don't replace it, only read it.
+
+## Appendix A — IVC library landscape
+
+IVC (Inter-VM Communication, but on AGX Orin used CCPLEX↔SPE) is a
+NVIDIA-defined header-prefixed lock-free SPSC ring buffer in shared DRAM,
+paired with an HSP (Hardware Synchronization Primitives) doorbell for wake.
+Two sides — client + server — go through an asymmetric init handshake.
+Frame size and frame count are fixed at carveout setup (typical: 16 frames
+× 64 B per channel).
+
+**It is not pub/sub.** No discovery, naming, QoS, or fanout. One channel =
+one peer. That's why this phase puts IVC at the **link layer inside
+zenoh-pico** (`Z_FEATURE_LINK_IVC`), peer to TCP/UDP/Serial/RawEth — not as
+a new RMW backend.
+
+### A.1 SPE / embedded side
+
+| Source | License | Status | Notes |
+|--------|---------|--------|-------|
+| **NVIDIA FSP `tegra_ivc_channel_*`** | NVIDIA EULA (SDK Manager) | The only sanctioned path on SPE | Ships with the `tegra_aon_fsp` static lib in the FreeRTOS FSP. API: `tegra_ivc_channel_get(id)`, `tegra_ivc_channel_read/write`, `tegra_ivc_channel_notify`. Closed-source. **100.6 binds against this via `NV_SPE_FSP_DIR`.** |
+| Linux kernel `drivers/firmware/tegra/ivc.c` + `include/soc/tegra/ivc.h` | GPL-2.0 | Upstream since v4.10 | Canonical open-source impl. ~500 LOC of C, mostly cache-coherent ring-buffer arithmetic. Reference for protocol semantics; **not** linked. Could be ported to `no_std` Rust as `nros-ivc-core` if the FSP becomes a portability blocker (out of scope for this phase). |
+| `arm-trusted-firmware/drivers/nvidia/tegra/common/tegra_ivc.c` | BSD-3-Clause | In TF-A | Smaller boot-time init impl. Same protocol. Useful as a second open-source data point. |
+| NVIDIA TLK / Trusty IVC | NVIDIA | Used in TLK secure-OS | Same protocol; not used here. |
+
+### A.2 Linux host side (CCPLEX)
+
+| Source | License | Status | Notes |
+|--------|---------|--------|-------|
+| **sysfs `/sys/devices/platform/bus@0/bus@0:aon_echo/data_channel`** | n/a | Shipped by L4T's `aon_echo` driver | Plain read/write file. **Simplest path; no library needed.** This is what `autoware_sentinel/src/ivc-bridge/` daemon uses (its Phase 11.6). |
+| `/dev/tegra-ivc-N` chardev | n/a | Present in some L4T configs | Same data, ioctl-based. Not always available; sysfs is more universal. |
+| L4T BSP `tegra_ivc_test` userspace tool | NVIDIA EULA | SDK Manager | ~150 LOC C wrapper around the sysfs node. Demo-grade. |
+| `JetsonHacks/jetson-orin-aon-echo` (community) | various OSS | GitHub | Bash + small C wrappers around the sysfs node. Useful for quick verification on a fresh Orin. |
+
+**No `libtegra-ivc` userspace library ships** — every Linux-side caller talks
+to sysfs/chardev directly.
+
+### A.3 Implications for this phase
+
+1. **The "IVC library" is asymmetric.** SPE side links against the closed
+   NVIDIA FSP. Linux side opens a sysfs file. Phase 100 only needs the SPE
+   binding; the Linux binding lives in `autoware_sentinel` Phase 11.6 and
+   is just `read(2)`/`write(2)` on the sysfs node.
+
+2. **No portable IVC dep needed.** zenoh-pico's `Z_FEATURE_LINK_IVC` (100.4)
+   takes a vtable of function pointers. The board crate (100.6) populates
+   it with FSP calls. The mock backend (100.5) populates it with Unix-socket
+   I/O. Neither end of nano-ros pulls a third-party IVC dep.
+
+3. **If we ever need an open-source IVC port** (e.g. to run the IVC link
+   layer outside NVIDIA hardware, or to support a non-Tegra SoC with a
+   similar mailbox), the cleanest starting point is the GPL kernel impl —
+   ~500 LOC, well-tested. Track as a Phase 100.x sub-item only if a real
+   second consumer materialises.
