@@ -92,8 +92,7 @@ template <typename T> class Future {
         const uint64_t start_ns = nros_cpp_time_ns();
         const uint64_t budget_ns = static_cast<uint64_t>(timeout_ms) * 1000000ULL;
         while (true) {
-            nros_cpp_ret_t ret =
-                nros_cpp_spin_once(executor_handle, static_cast<int32_t>(poll_ms));
+            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(poll_ms));
             // Transient conditions: keep polling. Anything else propagates.
             // - Ok (0): nothing to dispatch this round.
             // - Timeout (-2): spin_once returned after its timeout — normal.

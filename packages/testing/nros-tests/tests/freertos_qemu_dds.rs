@@ -118,19 +118,27 @@ fn test_freertos_dds_rust_talker_to_listener_e2e() {
 
     std::thread::sleep(Duration::from_secs(3));
 
-    let mut talker =
-        QemuProcess::start_mps2_an385_mcast(&talker_bin, &mcast, "02:00:00:00:00:00")
-            .expect("Failed to start FreeRTOS DDS talker");
+    let mut talker = QemuProcess::start_mps2_an385_mcast(&talker_bin, &mcast, "02:00:00:00:00:00")
+        .expect("Failed to start FreeRTOS DDS talker");
 
     // Drain talker output for a window so it actually publishes some
     // messages before we assess the listener.
-    let _talker_out = talker.wait_for_output(Duration::from_secs(20)).unwrap_or_default();
+    let _talker_out = talker
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
     let listener_out = listener
         .wait_for_output(Duration::from_secs(60))
         .unwrap_or_default();
 
     eprintln!("\n=== FreeRTOS DDS listener tail ===");
-    for line in listener_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in listener_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -151,7 +159,5 @@ fn test_freertos_dds_rust_talker_to_listener_e2e() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    eprintln!(
-        "[freertos-dds] talker → listener E2E green: {received} messages received"
-    );
+    eprintln!("[freertos-dds] talker → listener E2E green: {received} messages received");
 }

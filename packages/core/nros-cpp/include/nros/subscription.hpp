@@ -12,7 +12,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <string.h>  // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
+#include <string.h> // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
@@ -189,8 +189,8 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
     ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
     ffi_qos.depth = qos.depth();
-    nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME,
-                                                      M::TYPE_HASH, ffi_qos, out.storage_);
+    nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
+                                                      ffi_qos, out.storage_);
     if (ret == 0) {
         // Phase 87.6: topic name lives C++-side now.
         size_t topic_len = 0;

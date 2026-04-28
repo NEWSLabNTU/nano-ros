@@ -357,15 +357,15 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
     ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
     ffi_qos.depth = qos.depth();
-    nros_cpp_ret_t ret = nros_cpp_action_server_create(
-        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
+    nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
+                                                       A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret != 0) return Result(ret);
     // Register with executor — creates transport handles (3 queryables + 2 publishers).
     // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
     // names are passed at register-time (buffers live on the C++
     // `nros::ActionServer<A>` class, not in the Rust struct).
-    ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name,
-                                          A::TYPE_NAME, A::Goal::TYPE_HASH);
+    ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name, A::TYPE_NAME,
+                                          A::Goal::TYPE_HASH);
     if (ret == 0) {
         // Phase 87.6: copy action_name into the C++-owned buffer for
         // `get_action_name()` accessor.

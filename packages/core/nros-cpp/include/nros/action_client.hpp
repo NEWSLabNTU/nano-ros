@@ -399,8 +399,8 @@ Result Node::create_action_client(ActionClient<A>& out, const char* action_name,
     ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
     ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
     ffi_qos.depth = qos.depth();
-    nros_cpp_ret_t ret = nros_cpp_action_client_create(
-        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
+    nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
+                                                       A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
         // Phase 87.6: action_name buffer lives C++-side now.
         size_t name_len = 0;

@@ -118,11 +118,7 @@ fn bind_recvfrom_loopback() {
     assert_eq!(rc, 0, "create_endpoint(dest) should return 0");
 
     let mut tx_sock = OpaqueSocket::new();
-    let rc = <PosixPlatform as PlatformUdp>::open(
-        tx_sock.as_mut_ptr(),
-        dest_ep.as_ptr(),
-        100,
-    );
+    let rc = <PosixPlatform as PlatformUdp>::open(tx_sock.as_mut_ptr(), dest_ep.as_ptr(), 100);
     assert_eq!(rc, 0, "open(tx) should return 0");
 
     // Send a payload; recv on the bound socket.
@@ -141,11 +137,7 @@ fn bind_recvfrom_loopback() {
     std::thread::sleep(Duration::from_millis(20));
 
     let mut rx = [0u8; 64];
-    let n = <PosixPlatform as PlatformUdp>::read(
-        bound_sock.as_ptr(),
-        rx.as_mut_ptr(),
-        rx.len(),
-    );
+    let n = <PosixPlatform as PlatformUdp>::read(bound_sock.as_ptr(), rx.as_mut_ptr(), rx.len());
     assert_eq!(n, payload.len(), "read returned wrong byte count");
     assert_eq!(&rx[..n], payload, "received payload mismatch");
 
@@ -181,11 +173,7 @@ fn set_recv_timeout_returns_zero_on_no_data() {
 
     let start = std::time::Instant::now();
     let mut rx = [0u8; 16];
-    let n = <PosixPlatform as PlatformUdp>::read(
-        sock.as_ptr(),
-        rx.as_mut_ptr(),
-        rx.len(),
-    );
+    let n = <PosixPlatform as PlatformUdp>::read(sock.as_ptr(), rx.as_mut_ptr(), rx.len());
     let elapsed = start.elapsed();
 
     // No sender means recv times out. `read()` returns 0 (or

@@ -18,9 +18,9 @@ mod service;
 mod session;
 mod subscriber;
 mod transport;
-mod waker_cell;
 #[cfg(feature = "alloc")]
 pub mod transport_nros;
+mod waker_cell;
 
 pub use publisher::DdsPublisher;
 pub use service::{DdsServiceClient, DdsServiceServer};
