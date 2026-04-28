@@ -1219,9 +1219,12 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        // Pass period_ns as the timeout so that spin_once uses it as the
-        // timer delta — timers accumulate elapsed time from this value.
-        // drive_io() will block for up to period_ms waiting for I/O.
+        // `period_ns` is an upper bound on how long `drive_io` will block.
+        // The timer delta credited to spin_once is the *real* wall-clock
+        // elapsed inside drive_io (measured via std::time::Instant when
+        // available), not `period_ns` itself — transports like zenoh-pico's
+        // condvar wake early on data arrival, and treating the requested
+        // timeout as the delta would tick timers faster than wall-clock.
         let _ = nros_executor_spin_some(executor, period_ns);
 
         // Accumulate next invocation time to prevent drift
@@ -1260,8 +1263,9 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 
     let start = crate::platform::get_time_ns();
 
-    // Pass period_ns as the timeout so that spin_once uses it as the
-    // timer delta — timers accumulate elapsed time from this value.
+    // `period_ns` bounds how long `drive_io` may block. spin_once
+    // measures the actual elapsed wall-clock and credits that — not
+    // `period_ns` — to timers. See `nros_executor_spin_period` above.
     let _ = nros_executor_spin_some(executor, period_ns);
 
     // Sleep for remaining time in period

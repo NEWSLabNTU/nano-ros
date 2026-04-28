@@ -244,6 +244,18 @@ pub struct Executor {
     #[cfg(feature = "lifecycle-services")]
     pub(crate) lifecycle:
         Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
+    /// Sub-millisecond wall-clock residual carried across `spin_once` calls
+    /// so timers tick at true wall-clock rate even when `drive_io` returns
+    /// in well under 1 ms (e.g. zenoh-pico condvar wakeups under load).
+    #[cfg(feature = "std")]
+    pub(crate) spin_residual_us: u64,
+    /// Wall-clock instant at which the previous `spin_once` exited. The
+    /// timer delta on the next call is measured from this point so any
+    /// time the caller spent between `spin_once` invocations (e.g. an
+    /// explicit `thread::sleep`) counts toward timer accumulation just
+    /// like time spent inside `drive_io`.
+    #[cfg(feature = "std")]
+    pub(crate) last_spin_end: Option<std::time::Instant>,
 }
 
 impl Executor {
@@ -271,6 +283,14 @@ impl Executor {
             params: None,
             #[cfg(feature = "lifecycle-services")]
             lifecycle: None,
+            #[cfg(feature = "std")]
+            spin_residual_us: 0,
+            // Initialise the spin endpoint to construction time so the
+            // very first `spin_once` credits time the caller spent
+            // *before* it (e.g. setup, an explicit pre-spin sleep) just
+            // like time spent between later calls.
+            #[cfg(feature = "std")]
+            last_spin_end: Some(std::time::Instant::now()),
         }
     }
 
@@ -300,6 +320,14 @@ impl Executor {
             params: None,
             #[cfg(feature = "lifecycle-services")]
             lifecycle: None,
+            #[cfg(feature = "std")]
+            spin_residual_us: 0,
+            // Initialise the spin endpoint to construction time so the
+            // very first `spin_once` credits time the caller spent
+            // *before* it (e.g. setup, an explicit pre-spin sleep) just
+            // like time spent between later calls.
+            #[cfg(feature = "std")]
+            last_spin_end: Some(std::time::Instant::now()),
         }
     }
 
@@ -1435,8 +1463,50 @@ impl Executor {
     /// `Duration` has no negative sentinel.
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+
+        // Wall-clock-accurate timer accumulation. Measure real time
+        // since the previous `spin_once` exited (or, on the first call,
+        // since `drive_io` started). Two failure modes the requested
+        // `timeout_ms` doesn't capture:
+        //  1. `drive_io` returns early — e.g. zenoh-pico's condvar wakes
+        //     on data arrival, well under 1 ms.
+        //  2. The caller spends time outside `spin_once` (explicit sleep,
+        //     ROS-2 cooperative scheduling, etc.) and that time should
+        //     still count toward timers.
+        // Crediting the requested timeout to timers in either case ticks
+        // them faster than wall-clock — observed as a 30 Hz control loop
+        // overshooting to >200 Hz under sustained traffic. Carry the
+        // sub-ms remainder across calls so precision is preserved.
+        #[cfg(feature = "std")]
+        let spin_start = std::time::Instant::now();
+
         let _ = self.session.drive_io(timeout_ms);
 
+        #[cfg(feature = "std")]
+        let delta_ms = {
+            let now = std::time::Instant::now();
+            // `last_spin_end` is seeded at construction time, so this
+            // path always has a Some(_) on every call.
+            let prev = self.last_spin_end.unwrap_or(spin_start);
+            let elapsed = now.saturating_duration_since(prev);
+            self.last_spin_end = Some(now);
+            let total_us = self
+                .spin_residual_us
+                .saturating_add(elapsed.as_micros() as u64);
+            let ms = total_us / 1000;
+            self.spin_residual_us = total_us % 1000;
+            ms
+        };
+        #[cfg(not(feature = "std"))]
+        // TODO(no_std): same overshoot bug as the std path used to have —
+        // `timeout_ms` is the requested upper bound, not the elapsed wall
+        // clock. If a bare-metal `drive_io` returns early (e.g. zpico_spin_once
+        // on a serial transport with non-blocking read), timers tick faster
+        // than wall-clock. Fix is to thread `<P as nros_platform::PlatformClock>
+        // ::clock_us()` through Executor (e.g. as a `clock_us_fn: fn() -> u64`
+        // field set at construction). Deferred until a no_std workload
+        // surfaces the bug — std workloads (autoware_sentinel) hit it first
+        // and that path is now correct.
         let delta_ms = timeout_ms as u64;
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
