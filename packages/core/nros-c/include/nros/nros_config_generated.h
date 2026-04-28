@@ -15,7 +15,7 @@
 * macros are deleted.
 */
 /** `size_of::<nros_node::Executor>()` */
-#define NROS_EXECUTOR_SIZE 16784
+#define NROS_EXECUTOR_SIZE 16776
 /** `size_of::<nros_node::GuardConditionHandle>()` */
 #define NROS_GUARD_CONDITION_SIZE 8
 /** `size_of::<RmwPublisher>()` */
