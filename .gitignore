@@ -32,3 +32,8 @@ tools/*
 
 # Local environment overrides (created from .env.example)
 /.env
+
+# Third-party reference repos (cloned ad-hoc for cross-checking
+# upstream source — Phase 100 SPE port pulls FreeRTOS-Kernel here for
+# its Cortex-R5 GCC port + POSIX simulator port).
+/external/
