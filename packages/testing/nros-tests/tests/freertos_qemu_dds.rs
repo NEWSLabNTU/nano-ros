@@ -139,10 +139,17 @@ fn test_freertos_dds_rust_talker_to_listener_e2e() {
     }
 
     let received = listener_out.matches("Received:").count();
+    let cross_instance = listener_out.matches("src=10.0.2.20").count();
+    let self_loopback = listener_out.matches("src=10.0.2.21").count();
+    eprintln!(
+        "[freertos-dds] listener saw cross-instance frames={} self-loopback frames={}",
+        cross_instance, self_loopback
+    );
     assert!(
         received >= 1,
         "FreeRTOS DDS listener received no `/chatter` messages — \
-         RTPS SPDP discovery and/or pubsub regressed.\n\
+         RTPS SPDP discovery and/or pubsub regressed. \
+         cross_instance={cross_instance} self_loopback={self_loopback}\n\
          Listener tail:\n{}",
         listener_out
             .lines()

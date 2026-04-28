@@ -198,13 +198,7 @@ impl QemuProcess {
         .arg(binary)
         .args([
             "-nic",
-            // Pin localaddr=127.0.0.1 so both sibling QEMU instances use
-            // the loopback interface for the host-side mcast socket. On
-            // multi-iface hosts the kernel otherwise picks a random iface
-            // per QEMU and frames never cross between siblings.
-            &format!(
-                "socket,model=lan9118,mcast={mcast_addr_port},localaddr=127.0.0.1,mac={mac}"
-            ),
+            &format!("socket,model=lan9118,mcast={mcast_addr_port},mac={mac}"),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
