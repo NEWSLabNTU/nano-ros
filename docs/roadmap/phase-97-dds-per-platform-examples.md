@@ -134,7 +134,7 @@ matrix in the book.
             `Interface::join_multicast_group`. Already addressed by
             Phase 71.26's bridge / macro; per-board wiring lands
             with 97.4.baremetal / 97.4.esp32-qemu.
-- [~] **97.1.board-decouple** — board crates currently hard-call
+- [x] **97.1.board-decouple** — board crates currently hard-call
       zenoh-pico-specific symbols at boot (`zpico_set_task_config`,
       `extern crate zpico_*`). DDS-only builds reach the linker
       step with these symbols undefined. Fix: option (a) — cfg-gate
@@ -156,12 +156,25 @@ matrix in the book.
             (default features keep the historic shape); the new DDS
             talker / listener depend with `default-features = false`
             and link cleanly without the zenoh-pico symbol set.
-      - [ ] **97.1.board-decouple.mps2-an385** (bare-metal smoltcp).
-      - [ ] **97.1.board-decouple.stm32f4**.
-      - [ ] **97.1.board-decouple.nros-nuttx-qemu-arm**.
-      - [ ] **97.1.board-decouple.threadx-qemu-riscv64**.
-      - [ ] **97.1.board-decouple.threadx-linux**.
-      - [ ] **97.1.board-decouple.esp32-qemu**.
+      - [x] **97.1.board-decouple.mps2-an385** — landed (bare-metal
+            smoltcp). Same shape: optional `zpico-platform-shim`,
+            new `rmw-zenoh` feature in `default`,
+            cfg-gated `extern crate zpico_platform_shim`. Verified
+            both feature combos build for `thumbv7m-none-eabi`;
+            existing `examples/qemu-arm-baremetal/rust/zenoh/talker`
+            still builds clean.
+      - [x] **97.1.board-decouple.stm32f4** — landed. Same template;
+            `default = ["stm32f429", "ethernet", "rmw-zenoh"]`.
+      - [x] **97.1.board-decouple.esp32-qemu** — landed. Same
+            template; `default = ["ethernet", "rmw-zenoh"]`.
+      - [x] **97.1.board-decouple.nros-nuttx-qemu-arm** — no-op,
+            board crate already clean (NuttX userspace links libc;
+            zenoh-pico runs against POSIX socket API, no force-link
+            of zpico-platform-shim).
+      - [x] **97.1.board-decouple.threadx-qemu-riscv64** — no-op,
+            same reason as NuttX.
+      - [x] **97.1.board-decouple.threadx-linux** — no-op, same
+            reason as NuttX.
 
 ### 97.2 — Per-platform PlatformUdp smoke binary
 

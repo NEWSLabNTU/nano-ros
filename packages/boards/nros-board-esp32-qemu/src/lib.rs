@@ -17,6 +17,8 @@
 //! (Ethernet) or zenoh-pico's built-in serial for the link layer.
 
 #![no_std]
+// Phase 97.1.board-decouple — only force-link when `rmw-zenoh` active.
+#[cfg(feature = "rmw-zenoh")]
 extern crate zpico_platform_shim;
 
 extern crate alloc;

@@ -12,7 +12,8 @@ name = "nros_board_mps2_an385"
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-mps2-an385 = { path = "../../platforms/nros-platform-mps2-an385" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385"] }
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+# Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
 
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -40,7 +41,13 @@ cortex-m-semihosting = "0.5"
 panic-semihosting = "0.6"
 
 [features]
-default = ["ethernet"]
+# Default keeps the historic zenoh-pico wiring active. DDS-only
+# downstream crates use `default-features = false, features = ["ethernet"]`.
+default = ["ethernet", "rmw-zenoh"]
+# Phase 97.1.board-decouple — pull in the zenoh-pico C transport
+# shim. Off for DDS-only builds (which drive their own UDP via
+# `nros-platform-mps2-an385`'s `PlatformUdp` impl directly).
+rmw-zenoh = ["dep:zpico-platform-shim"]
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART
