@@ -35,7 +35,10 @@ TX_BYTE_POOL *zpico_threadx_byte_pool;
  * Match the FreeRTOS bring-up's 2 MB headroom. */
 #define BYTE_POOL_SIZE          (2 * 1024 * 1024)
 #define PACKET_SIZE             1536
-#define PACKET_COUNT            30
+/* Phase 97.4.threadx-riscv64 — DDS SEDP discovery + RTPS reliability
+ * burst can hold dozens of packets in flight; bumped from 30 to 64
+ * to match dust-dds's `DcpsDomainParticipant` builtin entity load. */
+#define PACKET_COUNT            64
 #define PACKET_POOL_SIZE        ((PACKET_SIZE + sizeof(NX_PACKET)) * PACKET_COUNT)
 #define IP_STACK_SIZE           4096
 #define IP_THREAD_PRIORITY      1
@@ -221,11 +224,16 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    uart_puts("[app_define] Enabling TCP/UDP/ICMP...\n");
+    uart_puts("[app_define] Enabling TCP/UDP/ICMP/IGMP...\n");
     /* Enable TCP, UDP, ICMP */
     nx_tcp_enable(&ip_instance);
     nx_udp_enable(&ip_instance);
     nx_icmp_enable(&ip_instance);
+    /* Phase 97.4.threadx-riscv64 — enable IGMP so RTPS SPDP can
+     * join the 239.255.0.1 multicast group. NetX BSD's
+     * `IP_ADD_MEMBERSHIP` setsockopt returns -1 (NX_NOT_ENABLED)
+     * without this. */
+    nx_igmp_enable(&ip_instance);
 
     uart_puts("[app_define] Initializing BSD sockets...\n");
     /* Initialize BSD socket layer */

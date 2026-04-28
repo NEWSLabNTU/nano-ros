@@ -312,9 +312,16 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       - `tests/threadx_riscv64_qemu_dds.rs` integration test
         (currently fails — talker publishes ~600 messages, listener
         reaches "Waiting for messages…", host-side tshark sees
-        zero frames cross between QEMU instances). The virtio-net
-        driver in the board crate appears to drop multicast TX or
-        NetX's IGMP join doesn't propagate through to the wire.
+        zero frames cross between QEMU instances). After adding
+        `nx_igmp_enable(&ip_instance)` (otherwise NetX BSD's
+        `IP_ADD_MEMBERSHIP` setsockopt fails with `NX_NOT_ENABLED`)
+        and bumping `PACKET_COUNT` from 30 → 64 to host the
+        SEDP burst, the listener now stalls inside
+        `create_subscription` and host-side tshark still sees
+        zero frames. Most likely `nx_igmp_multicast_interface_join`
+        tries to emit an IGMP membership report through the
+        virtio-net-netx driver and the TX path stalls — the
+        cooperative single-thread poll loop can't drive it.
         Runtime debug needs a board-side trace channel (no_std
         RISC-V can't use `eprintln!`); follow-up work.
 - [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
