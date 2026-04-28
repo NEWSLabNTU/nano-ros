@@ -608,8 +608,59 @@ impl FreeRtosPlatform {
     }
 }
 
+/// Parse a NUL-terminated dotted-quad ASCII IPv4 address (e.g.
+/// `b"239.255.0.1\0"`) into a host-byte-order u32. Returns `None` on
+/// malformed input.
+fn parse_dotted_quad_le(s: *const u8) -> Option<u32> {
+    if s.is_null() {
+        return None;
+    }
+    // SAFETY: caller must pass a NUL-terminated string; bound the
+    // search at 16 bytes (max IPv4 dotted-quad length is 15 + NUL).
+    let bytes: &[u8] = unsafe {
+        let mut len = 0usize;
+        while len < 16 {
+            if *s.add(len) == 0 {
+                break;
+            }
+            len += 1;
+        }
+        core::slice::from_raw_parts(s, len)
+    };
+    let mut octets = [0u32; 4];
+    let mut idx = 0usize;
+    let mut cur: u32 = 0;
+    let mut have_digit = false;
+    for &b in bytes {
+        match b {
+            b'0'..=b'9' => {
+                cur = cur.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+                if cur > 255 {
+                    return None;
+                }
+                have_digit = true;
+            }
+            b'.' => {
+                if !have_digit || idx >= 3 {
+                    return None;
+                }
+                octets[idx] = cur;
+                idx += 1;
+                cur = 0;
+                have_digit = false;
+            }
+            _ => return None,
+        }
+    }
+    if !have_digit || idx != 3 {
+        return None;
+    }
+    octets[3] = cur;
+    Some((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3])
+}
+
 // ============================================================================
-// UDP multicast (stubs — not supported on FreeRTOS QEMU)
+// UDP multicast (Phase 97.4.freertos: IGMP join via lwIP setsockopt)
 // ============================================================================
 
 impl FreeRtosPlatform {
@@ -623,32 +674,151 @@ impl FreeRtosPlatform {
         -1
     }
 
+    /// Open a UDP socket bound to `INADDR_ANY:port` (port from
+    /// `endpoint`) and join the multicast group `join` (NUL-terminated
+    /// dotted-quad ASCII, e.g. `b"239.255.0.1\0"`).
+    ///
+    /// Mirrors the POSIX impl in `nros-platform-posix::net::mcast_listen`
+    /// but uses lwIP's BSD socket API. Requires `LWIP_IGMP=1` in
+    /// `lwipopts.h` (Phase 97.1.kconfig.freertos enables it).
     pub fn mcast_listen(
-        _sock: *mut c_void,
-        _endpoint: *const c_void,
-        _timeout_ms: u32,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
         _iface: *const u8,
-        _join: *const u8,
+        join: *const u8,
     ) -> i8 {
-        -1
+        unsafe { lwip_socket_thread_init() };
+
+        let sock = sock as *mut Socket;
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        let ai = unsafe { &*rep._iptcp };
+
+        // Only IPv4 supported (lwIP's IGMP is IPv4-only).
+        if ai.ai_family != AF_INET as c_int {
+            return -1;
+        }
+
+        let fd = unsafe { lwip_socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        if fd < 0 {
+            return -1;
+        }
+        unsafe { (*sock)._socket = fd };
+
+        let one: c_int = 1;
+        let tv = timeval {
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
+        };
+        unsafe {
+            lwip_setsockopt(
+                fd,
+                SOL_SOCKET as c_int,
+                SO_REUSEADDR as c_int,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<c_int>() as u32,
+            );
+            lwip_setsockopt(
+                fd,
+                SOL_SOCKET as c_int,
+                SO_RCVTIMEO as c_int,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<timeval>() as u32,
+            );
+        }
+
+        // Bind to INADDR_ANY:port. `ai.ai_addr` from getaddrinfo on
+        // "0.0.0.0" already has sin_addr = 0; we just need to ensure
+        // sa_family is set (the `udp_create_endpoint` quirk handler
+        // does this earlier in the path).
+        if unsafe { lwip_bind(fd, ai.ai_addr, ai.ai_addrlen) } < 0 {
+            unsafe {
+                lwip_close(fd);
+                (*sock)._socket = -1;
+            }
+            return -1;
+        }
+
+        // Parse `join` (NUL-terminated dotted-quad ASCII) into 32-bit
+        // network-order address, then setsockopt(IP_ADD_MEMBERSHIP).
+        let group_addr = match parse_dotted_quad_le(join) {
+            Some(host) => host.to_be(),
+            None => {
+                unsafe {
+                    lwip_close(fd);
+                    (*sock)._socket = -1;
+                }
+                return -1;
+            }
+        };
+        let mreq = ip_mreq {
+            imr_multiaddr: in_addr {
+                s_addr: group_addr,
+            },
+            imr_interface: in_addr {
+                s_addr: 0u32, // INADDR_ANY — let lwIP pick the netif
+            },
+        };
+        let join_rc = unsafe {
+            lwip_setsockopt(
+                fd,
+                IPPROTO_IP as c_int,
+                IP_ADD_MEMBERSHIP as c_int,
+                &mreq as *const _ as *const c_void,
+                core::mem::size_of::<ip_mreq>() as u32,
+            )
+        };
+        if join_rc < 0 {
+            unsafe {
+                lwip_close(fd);
+                (*sock)._socket = -1;
+            }
+            return -1;
+        }
+        0
     }
 
     pub fn mcast_close(
-        _sockrecv: *mut c_void,
-        _socksend: *mut c_void,
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
         _rep: *const c_void,
         _lep: *const c_void,
     ) {
+        if !sockrecv.is_null() {
+            Self::udp_close(sockrecv);
+        }
+        if !socksend.is_null() && socksend != sockrecv {
+            Self::udp_close(socksend);
+        }
     }
 
+    /// Receive a datagram on a multicast socket. The socket is the
+    /// one returned by `mcast_listen`, so this is just `recvfrom`.
     pub fn mcast_read(
-        _sock: *const c_void,
-        _buf: *mut u8,
-        _len: usize,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
         _lep: *const c_void,
         _addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        unsafe { lwip_socket_thread_init() };
+        let sock = sock as *const Socket;
+        let fd = unsafe { (*sock)._socket };
+        if fd < 0 {
+            return usize::MAX;
+        }
+        // Non-blocking recv (the listen path set SO_RCVTIMEO=0).
+        let n = unsafe {
+            lwip_recvfrom(
+                fd,
+                buf as *mut c_void,
+                len,
+                0,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
+            )
+        };
+        if n < 0 { 0 } else { n as usize }
     }
 
     pub fn mcast_read_exact(
@@ -661,13 +831,33 @@ impl FreeRtosPlatform {
         usize::MAX
     }
 
+    /// Send a datagram to a multicast group. `endpoint` is the
+    /// dotted-quad + port the group joiners are listening on.
     pub fn mcast_send(
-        _sock: *const c_void,
-        _buf: *const u8,
-        _len: usize,
-        _endpoint: *const c_void,
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
     ) -> usize {
-        usize::MAX
+        unsafe { lwip_socket_thread_init() };
+        let sock = sock as *const Socket;
+        let fd = unsafe { (*sock)._socket };
+        if fd < 0 {
+            return usize::MAX;
+        }
+        let rep = unsafe { &*(endpoint as *const Endpoint) };
+        let ai = unsafe { &*rep._iptcp };
+        let n = unsafe {
+            lwip_sendto(
+                fd,
+                buf as *const c_void,
+                len,
+                0,
+                ai.ai_addr,
+                ai.ai_addrlen,
+            )
+        };
+        if n < 0 { usize::MAX } else { n as usize }
     }
 }
 

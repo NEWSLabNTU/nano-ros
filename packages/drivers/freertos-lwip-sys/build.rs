@@ -67,6 +67,10 @@ fn main() {
         .allowlist_type("fd_set")
         .allowlist_type("_z_sys_net_socket_t")
         .allowlist_type("_z_sys_net_endpoint_t")
+        // IPv4 multicast (Phase 97.4.freertos — IGMP join via
+        // setsockopt(IP_ADD_MEMBERSHIP) for RTPS SPDP).
+        .allowlist_type("ip_mreq")
+        .allowlist_type("in_addr")
         // Socket functions (lwIP exports lwip_* names)
         .allowlist_function("lwip_socket")
         .allowlist_function("lwip_connect")
@@ -100,6 +104,11 @@ fn main() {
         .allowlist_var("O_NONBLOCK")
         .allowlist_var("SHUT_.*")
         .allowlist_var("MSG_.*")
+        .allowlist_var("IP_ADD_MEMBERSHIP")
+        .allowlist_var("IP_DROP_MEMBERSHIP")
+        .allowlist_var("IP_MULTICAST_TTL")
+        .allowlist_var("IP_MULTICAST_LOOP")
+        .allowlist_var("INADDR_ANY")
         // Don't generate layout tests (can't run on embedded)
         .layout_tests(false)
         // Derive common traits

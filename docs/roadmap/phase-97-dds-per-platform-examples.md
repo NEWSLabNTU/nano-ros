@@ -227,19 +227,37 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         existing `qemu-freertos` test-group with the matching
         120s slow-timeout + 2 retries.
 
-      **Runtime smoke `#[ignore]`d** pending follow-up: with the
-      build infrastructure in place, the listener boots,
-      initialises lwIP, and prints "Network ready". Beyond that
-      `Executor::open()` hangs before reaching
-      "Subscribing to /chatter" — most likely a stall in
-      `NrosUdpTransportFactory::create_participant` on one of the
-      RTPS socket binds (`IP_ADD_MEMBERSHIP` setsockopt or the
-      multicast metatraffic port bind) when running under
-      lwIP-on-FreeRTOS. The Zephyr A9 path runs the same
-      `nros-rmw-dds` async transport against zsock_*; the gap is
-      lwIP-specific. Re-enable
+      **Runtime smoke `#[ignore]`d** pending follow-up. Closed
+      sub-fixes this session:
+      - lwIP IGMP source link: `igmp.c` was missing from
+        `nros-c/cmake/nros-freertos.cmake`'s lwIP source list
+        even after `LWIP_IGMP=1` landed in `lwipopts.h`. Without
+        it, `lwip_init()` and the `lwip_netconn_do_join_leave_group`
+        path failed to link on every C / C++ FreeRTOS example
+        that shares this lwIP build.
+      - `mcast_listen` / `mcast_read` / `mcast_send` /
+        `mcast_close` on `FreeRtosPlatform` were `-1` stubs.
+        Now implemented via `lwip_setsockopt(IP_ADD_MEMBERSHIP)`
+        + `lwip_recvfrom` / `lwip_sendto`. `freertos-lwip-sys`
+        bindgen allowlist extended for `ip_mreq` /
+        `IP_ADD_MEMBERSHIP` / `IP_DROP_MEMBERSHIP` /
+        `IP_MULTICAST_TTL` / `IP_MULTICAST_LOOP` / `INADDR_ANY`.
+      - `examples/qemu-arm-freertos/rust/dds/{talker,listener}`
+        Cargo deps + main.rs re-pointed from the old
+        `nros-mps2-an385-freertos` crate name to the renamed
+        `nros-board-mps2-an385-freertos` (Phase 84.F6 missed these).
+
+      Still open: `Executor::open()` hangs before reaching
+      "Subscribing to /chatter" even with the multicast path
+      working. Likely an async runtime issue inside
+      `NrosPlatformRuntime::block_on` (noop_waker drives
+      spawned tasks each iter, but dust-dds's
+      `create_participant` may have an internal await that
+      never re-polls). Needs deeper instrumentation —
+      semihosting prints inside `nros-rmw-dds` would isolate
+      the exact stuck future. Re-enable
       `test_freertos_dds_rust_talker_to_listener_e2e` once the
-      runtime path matches.
+      hang is resolved.
 - [ ] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
 - [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
       talker↔listener.
