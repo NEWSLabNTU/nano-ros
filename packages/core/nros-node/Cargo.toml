@@ -20,6 +20,14 @@ rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb"]
 
+# Phase 95: backend native slot lending (zero-copy publish via
+# SlotLending trait). Forwards to whichever active backend supports it.
+# Backends without lending (uORB, default zenoh-pico, dds, cffi) don't
+# expose a `lending` feature; user enabling `rmw-lending` w/ such a
+# backend gets a clear compile error from the missing feature
+# (instead of an opaque trait-bound error).
+rmw-lending = ["nros-rmw/lending", "nros-rmw-xrce?/lending"]
+
 # XRCE transport refinements (forwarded to nros-rmw-xrce)
 platform-udp = ["nros-rmw-xrce?/platform-udp"]
 posix-serial = ["nros-rmw-xrce?/posix-serial"]

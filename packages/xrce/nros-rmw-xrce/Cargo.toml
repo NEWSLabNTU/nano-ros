@@ -38,6 +38,11 @@ ffi-sync = ["dep:critical-section"]
 # result will always report `crc_valid: None` (see Phase 84.E1).
 safety-e2e = ["nros-rmw/safety-e2e"]
 
+# Phase 95.G: native slot lending via uxr_prepare_output_stream. Forwards
+# to nros-rmw/lending so EmbeddedRawPublisher's try_loan path uses the
+# backend's outbound stream buffer directly (no arena memcpy at commit).
+lending = ["nros-rmw/lending"]
+
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, optional = true }

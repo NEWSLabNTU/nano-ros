@@ -1272,6 +1272,75 @@ impl Publisher for XrcePublisher {
 }
 
 // ============================================================================
+// Phase 95.G — XrcePublisher SlotLending (native zero-copy publish)
+// ============================================================================
+
+/// Backend-owned slot into XRCE-DDS's reliable output stream.
+///
+/// `uxr_prepare_output_stream` carves out `len` bytes from the session's
+/// outbound stream buffer and points `ucdrBuffer.iterator` at the start
+/// of the writable region. We hand the user a `&mut [u8]` over that
+/// region; commit triggers `uxr_run_session_time(0)` to flush.
+///
+/// Lifetime is tied to `&'a XrcePublisher` (and transitively to the
+/// session, which lives for the lifetime of the global state).
+#[cfg(feature = "lending")]
+pub struct XrceSlot<'a> {
+    bytes: &'a mut [u8],
+    _publisher: &'a XrcePublisher,
+}
+
+#[cfg(feature = "lending")]
+impl<'a> AsMut<[u8]> for XrceSlot<'a> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.bytes
+    }
+}
+
+#[cfg(feature = "lending")]
+impl nros_rmw::SlotLending for XrcePublisher {
+    type Slot<'a>
+        = XrceSlot<'a>
+    where
+        Self: 'a;
+
+    fn try_lend_slot(&self, len: usize) -> Result<Option<Self::Slot<'_>>, TransportError> {
+        ffi_guard(|| unsafe {
+            let mut ub = core::mem::zeroed::<xrce_sys::ucdrBuffer>();
+            let req = xrce_sys::uxr_prepare_output_stream(
+                &raw mut state().session,
+                state().output_reliable,
+                self.datawriter_id,
+                &raw mut ub,
+                len as u32,
+            );
+            if req == xrce_sys::UXR_INVALID_REQUEST_ID {
+                // Stream slot full — caller falls back to publish_raw or
+                // retries.
+                return Ok(None);
+            }
+            // SAFETY: ucdrBuffer.iterator points at the start of the
+            // reserved writable region; `len` bytes are valid and
+            // exclusive until commit_slot flushes the stream.
+            let bytes = core::slice::from_raw_parts_mut(ub.iterator, len);
+            Ok(Some(XrceSlot {
+                bytes,
+                _publisher: self,
+            }))
+        })
+    }
+
+    fn commit_slot(&self, _slot: Self::Slot<'_>) -> Result<(), TransportError> {
+        // Flush the output stream so the bytes reach the agent. The
+        // slot was filled in place by the user; nothing further to copy.
+        ffi_guard(|| unsafe {
+            xrce_sys::uxr_run_session_time(&raw mut state().session, 0);
+            Ok(())
+        })
+    }
+}
+
+// ============================================================================
 // XrceSubscriber (Subscriber trait)
 // ============================================================================
 

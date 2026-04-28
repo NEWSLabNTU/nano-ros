@@ -58,3 +58,9 @@ pub use traits::{
 // `Subscriber::try_recv_raw_with_info` don't need their own direct
 // nros-core dep.
 pub use nros_core::MessageInfo;
+
+// Phase 95 — zero-copy raw API: SlotLending / SlotBorrowing traits.
+// Backends opt in by impl'ing these (and forwarding their own `lending`
+// feature to `nros-rmw/lending`).
+#[cfg(feature = "lending")]
+pub use traits::{SlotBorrowing, SlotLending};
