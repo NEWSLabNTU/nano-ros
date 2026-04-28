@@ -1,0 +1,18 @@
+# QEMU ARM FreeRTOS DDS listener — network configuration
+# Distinct IP + MAC from the talker so two QEMU instances on the
+# same bridge don't collide on ARP.
+
+[network]
+ip = "10.0.2.21"
+mac = "02:00:00:00:00:01"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[dds]
+domain_id = 0
+
+[scheduling]
+app_priority = 12
+app_stack_bytes = 65536
+poll_priority = 16
+poll_interval_ms = 5

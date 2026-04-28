@@ -1,0 +1,21 @@
+# QEMU ARM FreeRTOS DDS talker — network configuration
+# Used by nros-mps2-an385-freertos board crate (Config::from_toml).
+#
+# DDS uses brokerless RTPS multicast; no zenoh router locator is
+# needed. The talker just joins domain 0 and announces via
+# 239.255.0.1:7400+ on the lwIP interface configured below.
+
+[network]
+ip = "10.0.2.20"
+mac = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[dds]
+domain_id = 0
+
+[scheduling]
+app_priority = 12
+app_stack_bytes = 65536
+poll_priority = 16
+poll_interval_ms = 5

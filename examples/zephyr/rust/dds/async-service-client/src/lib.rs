@@ -20,6 +20,12 @@ use static_cell::StaticCell;
 /// Concrete nros executor type for Embassy task signatures.
 type NrosExecutor = nros::Executor;
 
+/// Polling cadence for the background spin task. Short enough that
+/// dust-dds's UDP sockets don't accumulate (avoiding GEM RX
+/// "alloc failed" on Cortex-A9), long enough that the embassy-time
+/// driver gets a chance to schedule other tasks.
+const SPIN_TICK_MS: u64 = 10;
+
 /// Static storage for the Embassy executor (lives for the program lifetime).
 static EMBASSY: StaticCell<zephyr::embassy::Executor> = StaticCell::new();
 
@@ -38,9 +44,22 @@ extern "C" fn rust_main() {
     });
 }
 
+/// Background task that drives nros I/O forever.
+///
+/// `Executor::spin_async()` parks indefinitely once the runtime
+/// reports no pending work, with no way for arriving UDP packets
+/// to wake it (the cooperative `NrosPlatformRuntime` has no socket
+/// → embassy-waker bridge). For zenoh that doesn't matter — zpico
+/// has its own kernel thread draining the wire — but for the DDS
+/// backend `spin_async` is the sole I/O driver. We replace it with
+/// `spin_once` on an embassy-time pacing loop so the task keeps
+/// polling the runtime until process exit.
 #[embassy_executor::task]
 async fn spin_task(mut exec: NrosExecutor) -> ! {
-    exec.spin_async().await
+    loop {
+        let _ = exec.spin_once(core::time::Duration::from_millis(0));
+        embassy_time::Timer::after_millis(SPIN_TICK_MS).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -67,8 +86,13 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
 
     info!("Async service client ready: /add_two_ints");
 
-    // Allow time for SPDP/SEDP discovery to complete
-    zephyr::time::sleep(zephyr::time::Duration::secs(3));
+    // Allow time for SPDP/SEDP discovery to complete. Uses
+    // `embassy_time::Timer` (async) so the Embassy executor stays
+    // free to schedule `spin_task` during the wait. A synchronous
+    // `zephyr::time::sleep` here would park the whole single-threaded
+    // executor, starve the I/O pump, and deadlock the discovery
+    // handshake (Phase 71.29 follow-up).
+    embassy_time::Timer::after_secs(10).await;
 
     let test_cases = [(5i64, 3), (10, 20), (100, 200), (-5, 10)];
 
@@ -76,15 +100,20 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
         let req = AddTwoIntsRequest { a, b };
         info!("Calling service: {} + {} = ?", a, b);
 
+        // `nros-rmw-dds` now implements `register_waker` (Phase 71.29
+        // follow-up): a `DataReaderListener` attached to the reply
+        // reader fires `on_data_available` from dust-dds's task pool
+        // when the reply lands, which wakes the future polling this
+        // Promise.
         let reply = client.call(&req)?.await?;
         info!("Response: {} + {} = {}", a, b, reply.sum);
 
-        zephyr::time::sleep(zephyr::time::Duration::millis(500));
+        embassy_time::Timer::after_millis(500).await;
     }
 
     info!("All async service calls completed!");
 
     loop {
-        zephyr::time::sleep(zephyr::time::Duration::secs(60));
+        embassy_time::Timer::after_secs(60).await;
     }
 }

@@ -116,6 +116,10 @@ exclude = [
     "examples/qemu-arm-freertos/rust/zenoh/service-client",
     "examples/qemu-arm-freertos/rust/zenoh/action-server",
     "examples/qemu-arm-freertos/rust/zenoh/action-client",
+    # Phase 97.4.freertos — DDS variant (board crate built with
+    # `default-features = false` to drop the zenoh-pico C transport).
+    "examples/qemu-arm-freertos/rust/dds/talker",
+    "examples/qemu-arm-freertos/rust/dds/listener",
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-arm-nuttx/rust/zenoh/talker",
     "examples/qemu-arm-nuttx/rust/zenoh/listener",

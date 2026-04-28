@@ -1479,6 +1479,8 @@ dependencies = [
 name = "nros-platform-freertos"
 version = "0.1.0"
 dependencies = [
+ "cortex-m",
+ "critical-section",
  "freertos-lwip-sys",
  "nros-platform-api",
 ]

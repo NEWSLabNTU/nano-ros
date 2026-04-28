@@ -15,4 +15,6 @@ default = []
 nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
+    # Phase 71.26 — IGMP for RTPS SPDP multicast (239.255.0.1:7400+).
+    "multicast",
 ] }

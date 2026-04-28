@@ -1,5 +1,17 @@
 # Phase 71 — DDS Backend on `nros-platform` Capability Traits
 
+> **Phase 71 archived 2026-04-28.** The infrastructure block (cooperative
+> runtime, async transport, size-probed buffers, smoltcp multicast, POSIX
+> validation, generic global-allocator) all landed and ships with two
+> end-to-end consumers (native POSIX + Zephyr `qemu_cortex_a9`). The
+> remaining per-platform DDS pubsub examples (FreeRTOS, NuttX, ThreadX,
+> bare-metal MPS2-AN385, ESP32-QEMU, Zephyr native_sim) plus their
+> generic prerequisites (critical-section feature, linker / heap
+> tuning per board, Kconfig copy-in) are tracked under
+> [Phase 97](../phase-97-dds-per-platform-examples.md). 71-numbered
+> sub-bullets renumber to 97-prefixed items there; the original
+> numbering stays in this archived doc for historical context.
+
 **Goal**: Bring `nros-rmw-dds` (dust-dds fork) to parity with
 `nros-rmw-zenoh` and `nros-rmw-xrce` as a third shipping RMW backend —
 native POSIX, Zephyr, NuttX, ThreadX-Linux, and bare-metal (smoltcp) —
@@ -7,11 +19,9 @@ driven by the unified `nros-platform-api` capability traits that Phase
 84.F4 froze. No new C dependencies, no forked runtime, no alloc-free
 fantasy.
 
-**Status**: Partially landed. `nros-rmw-dds` ships a std-only POSIX path
-today (`packages/dds/nros-rmw-dds/`); the fork (`packages/dds/dust-dds/`)
-already compiles `no_std + alloc` via its own `nostd_test_project`.
-What's missing is the transport + runtime adapter layer that lets the
-backend open a session on every nros platform.
+**Status**: **Archived** — infrastructure complete (native POSIX +
+Zephyr `qemu_cortex_a9` ship). Remaining per-platform examples
+tracked in Phase 97 (see banner above).
 
 **Priority**: Medium. Zenoh and XRCE cover the embedded footprint;
 DDS/RTPS is the interop story for ROS 2 stacks that use
@@ -174,36 +184,248 @@ suggested.
 
 ## Work Items
 
-- [x] 71.1 — `block_on` on `NrosPlatformRuntime` (no fork patch needed)
-- [x] 71.2 — Non-blocking UDP transport (`NrosUdpTransportFactory`,
-       Path B): bind, SPDP multicast join, recv loops spawned to runtime
-- [x] 71.3 — `NrosPlatformRuntime<P>` adapter (`nros-rmw-dds::runtime`)
-- [x] 71.4 — `drive_io()` drives the runtime + `Rmw::open` no_std path
-- [x] 71.5 — Feature-gated backend selection in `nros-rmw-dds`
-- [x] 71.4.b — Port `DdsPublisher` / `DdsSubscriber` / `DdsService*` from
-       sync to async dust-dds API + block_on wrap, unblocking actual no_std
-       end-to-end pubsub
-- [ ] 71.6 — Board-crate `#[global_allocator]` support (off by default)
+The remaining open items are sorted in dependency order: foundational
+infrastructure first (transport / config / size-probing / validation),
+then the example crates and per-platform E2E tests that consume them.
+This matches the order they should be picked up — each block in a row
+builds on the one above. Closed items follow at the bottom for
+reference.
+
+### Open infrastructure
+
+Order is dependency-based — each item assumes the ones above are in.
+Per-platform slices are listed under the items that fan out per
+platform; close them in any order once the parent's shared scaffolding
+exists.
+
+- [x] **71.22** — Replace `[u8; 64]` opaque buffers: **closed**.
+      Each `nros-platform-*` crate exposes
+      `pub const NET_SOCKET_SIZE / NET_SOCKET_ALIGN /
+      NET_ENDPOINT_SIZE / NET_ENDPOINT_ALIGN` computed from
+      `core::mem::size_of::<Socket>()` over its private struct
+      mirroring zenoh-pico's platform header. `nros-platform`
+      re-exports them via the same `cfg` switch as `ConcretePlatform`
+      (with a `[u8; 64]` fallback for the bare-metal / cffi
+      platforms that don't yet have a typed socket struct).
+      `nros-rmw-dds::transport_nros::OpaqueSocket` /
+      `OpaqueEndpoint` now carry `[u8; nros_platform::NET_SOCKET_SIZE]`
+      / `[u8; nros_platform::NET_ENDPOINT_SIZE]`. Verified: 23/23
+      native dds_api tests pass; 4/4 Zephyr `qemu_cortex_a9` DDS
+      tests pass.
+- [~] **71.23** — Per-platform SDK / Kconfig profile for DDS. Shared
+      scaffolding (the matrix documented in
+      `book/src/user-guide/rmw-backends.md` "DDS — per-platform
+      configuration profile") **landed**. Each per-platform slice
+      below either lands as part of an example crate's
+      `prj.conf` / `FreeRTOSConfig.h` / `nx_user.h` / Kconfig
+      fragment, or — for the Zephyr cortex_a9 case — has already
+      shipped via Phase 71.29.
+      - [x] **71.23.zephyr-a9** — `CONFIG_NET_IPV4_IGMP=y` +
+            `CONFIG_NET_PKT_RX_COUNT` / `NET_BUF_RX_COUNT` /
+            `NET_BUF_DATA_SIZE` bumps + GEM `rx-buffer-descriptors`
+            overlay. Live in
+            `examples/zephyr/rust/dds/*/boards/qemu_cortex_a9.{conf,overlay}`.
+      - [ ] **71.23.zephyr-native_sim** — same config; blocked
+            behind upstream NSOS `IP_ADD_MEMBERSHIP` gap (see closed
+            71.8 note). Document as "use `qemu_cortex_a9`" in the
+            book.
+      - [ ] **71.23.freertos** — `LWIP_IGMP=1`,
+            `LWIP_SO_RCVTIMEO=1`, `LWIP_BROADCAST=1`,
+            `IP_REASSEMBLY=1`, `MEMP_NUM_NETBUF≥32`. Lands with the
+            FreeRTOS DDS example (71.27.freertos).
+      - [ ] **71.23.nuttx** — `CONFIG_NET_IGMP=y`,
+            `CONFIG_NET_BROADCAST=y`, `CONFIG_NET_UDP_NRECVS≥4`,
+            `CONFIG_NET_RECV_TIMEO=y`. Lands with 71.27.nuttx.
+      - [ ] **71.23.threadx** — `NX_ENABLE_IGMPV2` + NetX BSD-layer
+            `SO_RCVTIMEO` init. Lands with 71.27.threadx-*.
+      - [ ] **71.23.smoltcp** — bridge config exposes
+            `MulticastConfig::Strict` + `Interface::join_multicast_group`.
+            Joins 71.26 below.
+- [~] **71.26** — Bare-metal smoltcp multicast (IGMP) audit. Bridge
+      + macro slices landed; the QEMU E2E rolls in with 71.7 + 71.27.
+      - [x] **71.26.bridge** — `SmoltcpBridge` gained a small pending-
+            join queue (`queue_multicast_join`) that the per-poll
+            iteration drains via `Interface::join_multicast_group`.
+            Re-exports `Ipv4Address` so the macro can build group
+            values without forcing every board crate to depend on
+            `smoltcp` directly. Enables smoltcp's `multicast` feature
+            (turns on IGMPv1/v2 in the IP layer).
+      - [x] **71.26.macro** — `define_smoltcp_platform!`'s
+            `PlatformUdpMulticast` impl now wires `mcast_open`,
+            `mcast_listen`, `mcast_close`, `mcast_read`,
+            `mcast_read_exact`, and `mcast_send`. Send path reuses
+            unicast UDP (smoltcp routes outbound 224.0.0.0/4 frames
+            through the default interface); receive path enqueues
+            the group via `bridge::queue_multicast_join` and binds
+            a UDP socket to the multicast port.
+      - [ ] **71.26.qemu** — End-to-end smoke test on MPS2-AN385 +
+            ESP32-QEMU. Lands with 71.7 + 71.27.baremetal /
+            71.27.esp32-qemu — the bare-metal DDS example provides
+            the SPDP-receiving consumer. If smoltcp's IGMP support
+            proves too restrictive in practice, document the
+            limitation here and have the bare-metal target fall back
+            to unicast-only DDS over slirp.
+- [x] **71.24** — Host-side `PlatformUdp` validation suite:
+      **closed**. Three loopback unit tests live in
+      `packages/dds/nros-rmw-dds/tests/platform_udp_posix.rs` and
+      exercise `PosixPlatform`'s implementation of the
+      `PlatformUdp` trait directly:
+      - `bind_recvfrom_loopback` — `listen` + `read` round-trips a
+        payload sent via `open` + `send` on a peer socket.
+      - `set_recv_timeout_returns_zero_on_no_data` — recv on an
+        idle bound socket returns within the configured timeout
+        instead of blocking forever.
+      - `create_endpoint_parses_ipv4_string` — dotted-quad address
+        + numeric port string populate an opaque endpoint that
+        the bind path accepts.
+      All three pass via `cargo test -p nros-rmw-dds
+      --test platform_udp_posix --features platform-posix`. The
+      cross-compile RTOS variants share the same contract; their
+      coverage lands in 71.25's QEMU smoke binary.
+- [~] **71.25** — Per-platform QEMU smoke binary
+      (`PlatformUdp::bind` → `recvfrom` → assert).
+      The shared *contract* is locked down by Phase 71.24's POSIX
+      loopback suite and by the existing per-RTOS zenoh / DDS
+      pubsub tests (which exercise `PlatformUdp` end-to-end via
+      either the `zpico-platform-shim` or `nros-rmw-dds::transport_nros`
+      paths). Each per-platform slice below adds a stripped-down
+      single-process bind / send / recv self-test that doesn't need
+      a peer process — useful when a board newly comes up and the
+      full pubsub stack would mask which layer is broken. They
+      land alongside their matching 71.27 example crate.
+      - [x] **71.25.zephyr-a9** — covered indirectly by
+            `test_zephyr_dds_rust_talker_to_listener_a9_e2e` +
+            the three `*_a9_e2e` service / action tests, which
+            exercise the same `PlatformUdp::bind` path. Standalone
+            smoke binary not needed.
+      - [ ] **71.25.zephyr-native_sim** — blocked behind NSOS
+            `IP_ADD_MEMBERSHIP` gap (see 71.8 closed note).
+      - [ ] **71.25.freertos** (qemu-arm-freertos) — lands with
+            71.27.freertos.
+      - [ ] **71.25.nuttx** (qemu-arm-nuttx) — lands with 71.27.nuttx.
+      - [ ] **71.25.threadx-riscv64** (qemu-riscv64-threadx) —
+            lands with 71.27.threadx-riscv64.
+      - [ ] **71.25.threadx-linux** (sim) — lands with
+            71.27.threadx-linux.
+      - [ ] **71.25.baremetal** (MPS2-AN385) — lands with
+            71.7.mps2-an385 / 71.27.baremetal.
+      - [ ] **71.25.esp32-qemu** — lands with 71.7.esp32-qemu /
+            71.27.esp32-qemu.
+- [ ] **71.10** — *(Optional)* upstream the non-blocking UDP
+      transport back to dust-dds. Doesn't block any nano-ros work but
+      removes the local fork dependency. Pick up after 71.22 finalises
+      the API shape. Shared work; no fan-out.
+
+### Open examples + cross-platform E2E
+
+Depend on the infrastructure block above.
+
+- [ ] **71.7** — Bare-metal QEMU DDS talker/listener example +
+      nextest suite. Depends on 71.23.smoltcp + 71.26 + 71.25.baremetal.
+      - [ ] **71.7.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
+      - [ ] **71.7.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
+
+#### 71.27 prerequisites — generic infrastructure (landed)
+
+Each per-platform 71.27 example needs **four** generic pieces in
+addition to the platform-specific config (71.23). The first two
+shipped here so subsequent examples don't reinvent them:
+
+- [x] `nros-platform/global-allocator` cargo feature (Phase 71.22
+      follow-on): promotes `<ConcretePlatform as PlatformAlloc>::alloc`
+      / `dealloc` to Rust's `#[global_allocator]`. Off by default
+      (POSIX uses libstd); on for bare-metal / RTOS examples.
+- [ ] **71.27.cs** — `nros-platform/critical-section` cargo feature:
+      lift each platform's interrupt-disable primitive (FreeRTOS
+      `vPortEnterCritical`, NuttX `up_irq_save`, ThreadX
+      `__disable_irq`, smoltcp `cortex_m::interrupt::free`, etc.) and
+      register a `critical_section::Impl`. dust-dds's oneshot
+      channels reference `_critical_section_1_0_acquire` /
+      `_release` symbols, so without this each example crate has to
+      ship its own impl. **Pending.**
+- [ ] **71.27.linker** — per-board linker scripts need the RAM
+      region big enough for dust-dds's read-only static data
+      (typical: ~700 KB code + ~100 KB rodata). Documented per
+      board in `examples/<board>/rust/dds/<role>/build.rs` /
+      `*.ld`.
+- [ ] **71.27.heap** — per-board heap config bumped to ≥ 256 KB
+      (FreeRTOS `configTOTAL_HEAP_SIZE`, NuttX
+      `CONFIG_MM_KERNEL_HEAPSIZE`, ThreadX `tx_byte_pool_create`
+      pool, etc.) so dust-dds + heapless futures don't run out at
+      runtime.
+
+- [ ] **71.27** — End-to-end DDS pubsub QEMU E2E test, one per
+      platform. Each slice is a talker + listener pair on the matching
+      RTOS plus a `tests/` entry in `nros-tests`. Every slice below
+      depends on the four 71.27 prerequisites + the matching 71.23
+      Kconfig profile + (for bare-metal) 71.26.qemu.
+      - [x] **71.27.native** — POSIX talker↔listener (already in
+            `tests/dds_api.rs`).
+      - [x] **71.27.zephyr-a9** — `test_zephyr_dds_rust_talker_to_listener_a9_e2e`
+            (Phase 92).
+      - [ ] **71.27.zephyr-native_sim** — gated behind NSOS IGMP gap
+            (see 71.8 closed note).
+      - [ ] **71.27.freertos** — qemu-arm-freertos talker↔listener.
+            *Bring-up status*: `nros-rmw-dds` builds for
+            `thumbv7m-none-eabi` with `platform-freertos`. Remaining:
+            71.27.cs (critical-section impl), 71.27.linker (`.ARM.extab`
+            placement against MPS2-AN385's RAM map), 71.27.heap (lwIP
+            `LWIP_IGMP=1` + `MEMP_NUM_NETBUF≥32`), nros-tests fixture.
+      - [ ] **71.27.nuttx** — qemu-arm-nuttx talker↔listener.
+      - [ ] **71.27.threadx-riscv64** — qemu-riscv64-threadx
+            talker↔listener.
+      - [ ] **71.27.threadx-linux** — ThreadX Linux sim
+            talker↔listener.
+      - [ ] **71.27.baremetal** — MPS2-AN385 talker↔listener.
+      - [ ] **71.27.esp32-qemu** — ESP32-QEMU talker↔listener.
+- [ ] **71.9** — *(Optional)* CycloneDDS / Fast-DDS interop test in
+      nros-tests. Independent of the matrix above; useful regression
+      coverage once at least one platform's E2E is stable. Shared
+      work; no fan-out.
+
+### Closed (recent → old)
+
+- [x] 71.29 follow-up — `register_waker` + embassy-time driver
+      (async-service A9 E2E green via `.await`).
+- [x] 71.29 — Cortex-A9 example client cooperative-runtime
+      starvation fix (sync sleep → spin loop).
+- [x] 71.28 — `ServiceServerTrait::handle_request` slice-offset bug.
+- [x] 71.21 — Per-platform `PlatformUdp::listen` implementations (×6).
+- [x] 71.20 — `PlatformUdp::listen` already on trait surface.
+- [x] 71.8 — Zephyr DDS talker/listener interop on `qemu_cortex_a9`
+      (Phase 92). `native_sim` slice deferred behind upstream NSOS
+      `IP_ADD_MEMBERSHIP` gap.
+- [x] 71.6 — Board-crate `#[global_allocator]` support: **closed**.
+       Landed as Phase 95 prereq. `nros-c` and `nros-cpp` both ship
+       a Zephyr-only `zephyr_alloc` module (k_malloc/k_free) gated
+       behind `feature = "platform-zephyr"`, plus a
+       `critical-section` impl backed by
+       `nros_zephyr_irq_lock` / `nros_zephyr_irq_unlock` shims in
+       `zephyr/nros_platform_zephyr_shims.c`. Allocator is off on
+       host targets; activates only when the platform feature is
+       set, so existing POSIX builds are unaffected.
 - [ ] 71.7 — Bare-metal QEMU DDS talker/listener example + nextest suite
-- [~] 71.8 — Zephyr DDS talker/listener example + nextest suite
-       Scaffolding + Kconfig/CMake wiring + native_sim build & run green.
-       `test_zephyr_dds_rust_talker_boots` / `..._listener_boots` (boot
-       smoke) checked in. **Zephyr `mcast_listen` / `mcast_read` /
-       `mcast_send` are now implemented** — they pass the
-       cooperative driver and don't crash, but `IP_ADD_MEMBERSHIP`
-       returns `EOPNOTSUPP` on `native_sim` because Zephyr's NSOS
-       driver only forwards `SOL_SOCKET` / `IPPROTO_TCP` /
+- [x] 71.8 — Zephyr DDS talker/listener interop: **closed via
+       Phase 92** (`qemu_cortex_a9` is the canonical interop target).
+       `test_zephyr_dds_rust_talker_to_listener_a9_e2e` passes
+       end-to-end on real Zephyr IP stack with native IGMP / GEM /
+       ARP — same code path production DDS-on-Zephyr deployments
+       use.
+
+       **`native_sim` interop still open**, tracked separately:
+       `IP_ADD_MEMBERSHIP` returns `EOPNOTSUPP` because Zephyr's
+       NSOS driver only forwards `SOL_SOCKET` / `IPPROTO_TCP` /
        `IPPROTO_IPV6` setsockopt options to the host kernel — there
-       is no `IPPROTO_IP` case in `nsos_adapt_setsockopt`. Talker↔
-       listener interop on `native_sim` therefore still falls back to
-       "talker publishes into the void." Two paths to close this:
+       is no `IPPROTO_IP` case in `nsos_adapt_setsockopt`. Two
+       paths to close it:
        * Patch upstream Zephyr's `nsos_adapt.c` / `nsos_sockets.c` /
          `nsos_socket.h` to forward `IP_ADD_MEMBERSHIP` (3 small
          additions). Out-of-scope for nano-ros itself; document under
          `scripts/zephyr/`.
-       * Switch the interop test to `qemu_cortex_m3` (real Zephyr IP
-         stack with native IGMP). Trades the NSOS gap for the QEMU
-         networking-stack setup the existing zenoh tests already use.
+       * Drop `native_sim` from the DDS interop matrix (use
+         `qemu_cortex_a9` exclusively, as Phase 92 already does).
+         Documented as the recommended posture in the Zephyr
+         testing docs.
 - [ ] 71.9 — (Optional) CycloneDDS / Fast-DDS interop test in nros-tests
 - [ ] 71.10 — (Optional) Upstream non-blocking transport to dust-dds
 
@@ -334,19 +556,90 @@ on every nros platform.
        was finally pinned by adding an `eprintln!` of the take()
        sample contents and seeing the request payload arrive intact
        but never reach the user callback.
-- [ ] 71.29 — Cortex-A9 GEM RX queue tuning under SEDP burst
-       (separate from 71.28 but observed alongside): even with
-       `CONFIG_NET_PKT_RX_COUNT=256` / `CONFIG_NET_BUF_RX_COUNT=512`,
-       the Xilinx GEM driver logs `RX packet buffer alloc failed:
-       110 bytes` during the SEDP traffic burst that opens a
-       service. Pubsub doesn't trigger this because it has fewer
-       discovery topics. Likely a `eth_xlnx_gem` driver-side bug
-       (ring buffer not draining fast enough) or a need for a
-       deeper Zephyr `net_buf` reservation. **Not yet attempted** —
-       blocked behind 71.28 since the symptom only appears when
-       service / action SEDP traffic is generated, and 71.28's
-       discovery isn't reaching the server in the first place.
-       Pick up after 71.28 closes so the symptom is reproducible.
+- [x] 71.29 — Cortex-A9 GEM RX queue: **closed**. Root cause was a
+       cooperative-runtime starvation bug in the example clients,
+       not the GEM driver. Bumping pools or RX descriptors did not
+       help; the actual fix was driving the runtime instead of
+       blocking it.
+
+       **Diagnosis**: with `CONFIG_NET_LOG=y` +
+       `CONFIG_NET_PKT_LOG_LEVEL_DBG=y`, `net_pkt_print` showed
+       `RX 256/256` immediately after the SEDP burst — the rx_pkts
+       slab was full because the application wasn't reading from
+       the UDP sockets. The service-client example called
+       `zephyr::time::sleep(Duration::secs(30))` between the
+       "client ready" log and the first `client.call()`. That
+       parked the cooperative `NrosPlatformRuntime`. Inbound
+       SPDP/SEDP packets queued at the socket layer with no
+       drainer, the per-socket queue grew, and the GEM RX path
+       finally hit "no free net_pkt slots" → "RX packet buffer
+       alloc failed: 110 bytes" on every dropped frame — including
+       the very SEDP messages that would have completed the
+       matched-pubs/matched-subs handshake. Pubsub didn't hit
+       this because the talker enters `executor.spin()`
+       immediately and never blocks the runtime.
+
+       **Fix** (PR-shape):
+       - `examples/zephyr/rust/dds/service-client/src/lib.rs`:
+         replace the 30 s `zephyr::time::sleep` with a 100×
+         `executor.spin_once(10ms) + zephyr::time::sleep(100ms)`
+         loop that drains the sockets continuously while
+         giving Zephyr's RX work-queue thread time to deliver
+         inbound frames.
+       - `examples/zephyr/rust/dds/action-client/src/lib.rs`:
+         same swap on the 3 s post-create sleep.
+       - `examples/zephyr/rust/dds/{service-server,
+         service-client, action-server, action-client,
+         async-service-client}/boards/qemu_cortex_a9.conf`:
+         bump `CONFIG_NET_PKT_RX_COUNT=256`,
+         `CONFIG_NET_PKT_TX_COUNT=128`,
+         `CONFIG_NET_BUF_RX_COUNT=512`,
+         `CONFIG_NET_BUF_TX_COUNT=256`,
+         `CONFIG_NET_BUF_DATA_SIZE=512`. Defensive headroom —
+         not strictly required once the runtime drains in real
+         time, but avoids re-introducing the issue if the
+         drain stalls briefly.
+       - `examples/zephyr/rust/dds/{service-server,
+         service-client}/boards/qemu_cortex_a9.overlay`: bump
+         GEM `rx-buffer-descriptors=128` /
+         `tx-buffer-descriptors=64` (default 32). Same defensive
+         rationale — gives the GEM ring more depth so a brief
+         drainer pause doesn't immediately spill.
+       - `packages/testing/nros-tests/tests/zephyr.rs`: removed
+         `#[ignore]` on `test_zephyr_dds_rust_service_a9_e2e`
+         (passes in 21 s) and `test_zephyr_dds_rust_action_a9_e2e`
+         (passes in 30 s).
+
+       **71.29 follow-up — async-service A9 closed**: re-enabled
+       `test_zephyr_dds_rust_async_service_a9_e2e` by:
+       - Enabling the `time-driver` feature on the `zephyr` crate
+         in `examples/zephyr/rust/dds/async-service-client/Cargo.toml`
+         and depending on `embassy-time = "0.4"` with
+         `tick-hz-1_000` (matches `CONFIG_SYS_CLOCK_TICKS_PER_SEC=1000`
+         in prj.conf).
+       - Replacing `zephyr::time::sleep` with `embassy_time::Timer::after_*`
+         everywhere in `async-service-client/src/lib.rs` so the
+         single-threaded Embassy executor stays free to schedule
+         `spin_task` during waits.
+       - Implementing `ServiceClientTrait::register_waker` and
+         `Subscriber::register_waker` on `nros-rmw-dds`. A new
+         `waker_cell` module (`Arc<spin::Mutex<Option<Waker>>>`)
+         is shared between the `DdsSubscriber` and a
+         `DataAvailableListener` attached at `create_datareader`
+         time. dust-dds fires `on_data_available` from its task
+         pool when the reader's history queue gains a sample; the
+         listener wakes the cell, which wakes whatever future
+         registered itself via `register_waker`. The async example
+         now uses `client.call(&req)?.await` directly — no manual
+         poll loop needed.
+       - Defensively bumping the cortex_a9 conf's net pools to the
+         same shape as the sync service-client conf
+         (`NET_PKT_RX_COUNT=256`, `NET_BUF_RX_COUNT=512`,
+         `NET_BUF_DATA_SIZE=512`).
+       Test passes consistently in ~20 s. All four DDS A9 tests
+       (talker→listener, service, action, async-service) run green;
+       all 23 native dds_api tests still pass; all 42 cross-RMW
+       service tests still pass (no regression on zenoh / xrce).
 
 #### 71.20 / 71.21 — bind primitive — **Landed**
 

@@ -1,4 +1,4 @@
-# Phase 97 — Zero-copy raw pub/sub API (loan + borrow)
+# Phase 99 — Zero-copy raw pub/sub API (loan + borrow)
 
 **Goal:** Add a unified raw pub/sub API across all RMW backends that supports
 true zero-copy where the backend offers it, and falls back to a
@@ -14,7 +14,7 @@ across backends; lending capability is selected at compile time.
 new API can be migrated against a known-working baseline.
 
 **Design rationale:** [docs/design/zero-copy-raw-api.md](../design/zero-copy-raw-api.md)
-(to be authored as part of 97.A).
+(to be authored as part of 99.A).
 
 ---
 
@@ -71,23 +71,23 @@ unsatisfiable. Caught at build, not runtime.
                  │
                  ▼
 ┌─────────────────────────────────────────┐
-│ 97.A  design doc                        │
-│ 97.B  trait surface (SlotLending,       │
+│ 99.A  design doc                        │
+│ 99.B  trait surface (SlotLending,       │
 │       SlotBorrowing in nros-rmw)        │
-│ 97.C  PublishLoan + RecvView types      │
-│ 97.D  arena impl (no-lending path)      │
-│ 97.E  uORB backend (arena-only impl)    │
-│ 97.F  zenoh-pico lending impl (gated)   │
-│ 97.G  XRCE-DDS lending impl (gated)     │
-│ 97.H  Promise-driven async loan/borrow  │
-│ 97.I  migrate PX4 examples to new API   │
-│ 97.J  migrate zenoh/xrce examples (opt) │
-│ 97.K  benchmark + docs                  │
+│ 99.C  PublishLoan + RecvView types      │
+│ 99.D  arena impl (no-lending path)      │
+│ 99.E  uORB backend (arena-only impl)    │
+│ 99.F  zenoh-pico lending impl (gated)   │
+│ 99.G  XRCE-DDS lending impl (gated)     │
+│ 99.H  Promise-driven async loan/borrow  │
+│ 99.I  migrate PX4 examples to new API   │
+│ 99.J  migrate zenoh/xrce examples (opt) │
+│ 99.K  benchmark + docs                  │
 └─────────────────────────────────────────┘
 ```
 
-Phases 97.E (uORB) lands the **arena-only path end-to-end** as the proof
-that the abstraction is sound. 97.F/G add native lending opt-in. 97.I
+Phases 99.E (uORB) lands the **arena-only path end-to-end** as the proof
+that the abstraction is sound. 99.F/G add native lending opt-in. 99.I
 migrates PX4 talker/listener (from 90.6) to the new API as the first
 real consumer.
 
@@ -95,27 +95,27 @@ real consumer.
 
 ## Work items
 
-### v1 (97.A–97.I — required)
+### v1 (99.A–99.I — required)
 
-- [ ] 97.A — Design doc (`docs/design/zero-copy-raw-api.md`)
-- [ ] 97.B — Trait surface (`SlotLending`, `SlotBorrowing` in `nros-rmw`)
-- [ ] 97.C — `PublishLoan` + `RecvView` types in `nros-node`
-- [ ] 97.D — Arena impl (no-lending path) for `EmbeddedRawPublisher` / `RawSubscription`
-- [ ] 97.E — uORB backend wiring (arena-only; serves as parity oracle)
-- [ ] 97.F — Zenoh-pico lending impl behind `lending` feature
-- [ ] 97.G — XRCE-DDS lending impl behind `lending` feature
-- [ ] 97.H — Promise-driven `loan()` / `borrow()` futures w/ `pin-project-lite`
-- [ ] 97.I — Migrate PX4 talker/listener examples to loan/borrow
+- [ ] 99.A — Design doc (`docs/design/zero-copy-raw-api.md`)
+- [ ] 99.B — Trait surface (`SlotLending`, `SlotBorrowing` in `nros-rmw`)
+- [ ] 99.C — `PublishLoan` + `RecvView` types in `nros-node`
+- [ ] 99.D — Arena impl (no-lending path) for `EmbeddedRawPublisher` / `RawSubscription`
+- [ ] 99.E — uORB backend wiring (arena-only; serves as parity oracle)
+- [ ] 99.F — Zenoh-pico lending impl behind `lending` feature
+- [ ] 99.G — XRCE-DDS lending impl behind `lending` feature
+- [ ] 99.H — Promise-driven `loan()` / `borrow()` futures w/ `pin-project-lite`
+- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow
 
-### Post-v1 (97.J + 97.K)
+### Post-v1 (99.J + 99.K)
 
-- [ ] 97.J — Migrate zenoh / xrce examples to loan/borrow (showcase
+- [ ] 99.J — Migrate zenoh / xrce examples to loan/borrow (showcase
       cross-backend uniformity)
-- [ ] 97.K — Benchmark vs `publish_raw`/`try_recv_raw` baseline; docs
+- [ ] 99.K — Benchmark vs `publish_raw`/`try_recv_raw` baseline; docs
 
 ---
 
-### 97.A — Design doc
+### 99.A — Design doc
 
 Author `docs/design/zero-copy-raw-api.md` capturing:
 
@@ -127,11 +127,11 @@ Author `docs/design/zero-copy-raw-api.md` capturing:
 - `#[must_use]` + auto-discard-on-Drop semantics; explicit `discard()`
 - `RecvView` `!Send + !Sync` lifetime tied to `&mut self`
 - Per-backend support matrix
-- Migration plan (Phase 97.I) and expected perf delta
+- Migration plan (Phase 99.I) and expected perf delta
 
 **Files:** `docs/design/zero-copy-raw-api.md` (new)
 
-### 97.B — Trait surface
+### 99.B — Trait surface
 
 Add to `packages/core/nros-rmw/src/traits.rs`:
 
@@ -172,7 +172,7 @@ Backend Cargo.toml additions:
 - `packages/zpico/nros-rmw-zenoh/Cargo.toml` (forward `lending`)
 - `packages/xrce/nros-rmw-xrce/Cargo.toml` (forward `lending`)
 
-### 97.C — `PublishLoan` + `RecvView` types
+### 99.C — `PublishLoan` + `RecvView` types
 
 In `packages/core/nros-node/src/executor/handles.rs`:
 
@@ -210,7 +210,7 @@ impl<'a> Deref for RecvView<'a> { type Target = [u8]; /* ... */ }
 - `packages/core/nros-node/src/executor/types.rs` (LoanError, CommitError)
 - Re-export from `nros-node::lib`, `nros::lib`, `nros::prelude`.
 
-### 97.D — Arena impl
+### 99.D — Arena impl
 
 Per-publisher inline arena, const-generic sized:
 
@@ -234,7 +234,7 @@ RAM). Users opting into pipelining: `EmbeddedRawPublisher<TX_BUF, 4>`.
 - `packages/core/nros-node/src/executor/handles.rs` (wire arena into
   `try_loan` body when `not(feature = "rmw-lending")`)
 
-### 97.E — uORB backend (arena-only impl, parity oracle)
+### 99.E — uORB backend (arena-only impl, parity oracle)
 
 Validate the abstraction end-to-end on the backend that **cannot** lend.
 uORB's `commit_slot` simply calls existing `publish_raw` (which itself
@@ -253,7 +253,7 @@ bytes round-trip as Phase 90's `typeless_api.rs` test.
 
 - `packages/px4/nros-rmw-uorb/tests/loan_borrow_uorb.rs` (new)
 
-### 97.F — Zenoh-pico lending impl
+### 99.F — Zenoh-pico lending impl
 
 Wrap `z_bytes_writer_init` (or equivalent stable API once available) as
 `SlotLending` impl on `ZenohPublisher`. Gate behind
@@ -272,7 +272,7 @@ internal buffer).
 - `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs` (SlotBorrowing impl)
 - `packages/zpico/nros-rmw-zenoh/tests/loan_borrow_zenoh.rs`
 
-### 97.G — XRCE-DDS lending impl
+### 99.G — XRCE-DDS lending impl
 
 Wrap `uxr_prepare_output_stream` as `SlotLending` impl on `XrcePublisher`.
 Gate behind `nros-rmw-xrce/lending`.
@@ -283,7 +283,7 @@ Gate behind `nros-rmw-xrce/lending`.
 - `packages/xrce/nros-rmw-xrce/src/subscriber.rs`
 - `packages/xrce/nros-rmw-xrce/tests/loan_borrow_xrce.rs`
 
-### 97.H — Promise-driven async loan/borrow
+### 99.H — Promise-driven async loan/borrow
 
 `PublishLoan::commit() -> Promise<Result<(), CommitError>>` and
 `EmbeddedRawPublisher::loan() -> Promise<Result<PublishLoan, LoanError>>`
@@ -300,7 +300,7 @@ pattern as `Subscription::recv()` but for the publisher side.
 - `packages/core/nros-node/src/executor/borrow_promise.rs` (new)
 - `Cargo.toml`: add `pin-project-lite` workspace dep
 
-### 97.I — Migrate PX4 examples to loan/borrow
+### 99.I — Migrate PX4 examples to loan/borrow
 
 Rewrite `examples/px4/rust/uorb/talker` + `examples/px4/rust/uorb/listener`
 (landed in 90.6) to use the new loan/borrow API. Drop the
@@ -316,13 +316,13 @@ Verify the SITL integration test (90.7) still passes. This is the
 - `examples/px4/rust/uorb/listener/src/main.rs` (rewrite)
 - `packages/testing/nros-tests/tests/px4_e2e.rs` (update assertions)
 
-### 97.J — Migrate zenoh / xrce examples (post-v1)
+### 99.J — Migrate zenoh / xrce examples (post-v1)
 
 Convert `examples/native/rust/zenoh/{talker,listener}` to loan/borrow,
 demonstrating cross-backend uniformity. With `nros/rmw-lending`
 enabled, the same code achieves true zero-copy via `unstable-zenoh-api`.
 
-### 97.K — Benchmark + docs (post-v1)
+### 99.K — Benchmark + docs (post-v1)
 
 - Bench: `cargo bench` harness comparing `publish_raw` / `try_recv_raw`
   vs `loan` / `try_borrow` on each backend. Expected:
@@ -382,7 +382,7 @@ enabled, the same code achieves true zero-copy via `unstable-zenoh-api`.
   `!Send + !Sync` so cannot cross threads — single-threaded constraint
   preserved. Arena slots are per-publisher, so multi-thread access to
   the same publisher requires the publisher to be `Sync`; default
-  arena uses spin-lock or single-task assumption (decision in 97.D).
+  arena uses spin-lock or single-task assumption (decision in 99.D).
 
 ## Risks
 

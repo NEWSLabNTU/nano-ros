@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 //! End-to-end loan/borrow API via the px4-uorb std mock broker.
 //!
-//! Mirror of `typeless_api.rs` but using the new Phase 97 zero-copy
+//! Mirror of `typeless_api.rs` but using the new Phase 99 zero-copy
 //! API: `try_loan` returns a writable `PublishLoan` slice; user fills
 //! in place; `commit` triggers the wire write. `try_borrow` returns a
 //! `RecvView` lent from the subscriber's internal buffer.

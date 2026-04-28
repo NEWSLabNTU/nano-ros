@@ -45,6 +45,11 @@ pub use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuf
 pub use smoltcp::socket::udp::{
     PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata, Socket as UdpSocket,
 };
+// Phase 71.26 — re-export `Ipv4Address` so the
+// `define_smoltcp_platform!` macro can construct multicast group
+// values without forcing every board crate to depend on `smoltcp`
+// directly.
+pub use smoltcp::wire::Ipv4Address;
 
 /// Total number of smoltcp sockets (TCP + UDP) for socket storage allocation.
 pub const TOTAL_SOCKETS: usize = MAX_SOCKETS + MAX_UDP_SOCKETS;

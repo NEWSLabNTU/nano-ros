@@ -38,7 +38,7 @@ rmw-dds = ["dep:nros-rmw-dds", "nros-node/rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb", "nros-node/rmw-uorb"]
 
-# Phase 97: backend native slot lending. See nros-node's rmw-lending
+# Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix. v1: only XRCE-DDS implements
 # SlotLending (via uxr_prepare_output_stream).
 rmw-lending = ["nros-node/rmw-lending"]

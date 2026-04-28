@@ -297,6 +297,92 @@ struct BridgeState {
 static mut BRIDGE_STATE: BridgeState = BridgeState { initialized: false };
 
 // ============================================================================
+// Phase 71.26 — multicast group join queue
+// ============================================================================
+//
+// `Interface::join_multicast_group()` requires a `&mut Interface` plus a
+// timestamp, so it can only be invoked from `SmoltcpBridge::poll`. Other
+// call sites (e.g. `PlatformUdpMulticast::mcast_listen` from a board
+// crate) push group addresses into a small queue here; `poll` drains it
+// at the start of each iteration.
+//
+// `MAX_MULTICAST_PENDING` covers the SPDP / SEDP set (one builtin
+// multicast group + a handful of user-topic groups) with headroom.
+// `MULTICAST_JOINED` tracks groups already passed to the interface so
+// repeated `mcast_listen` calls on the same address don't spam the
+// IGMP report path.
+
+const MAX_MULTICAST_GROUPS: usize = 8;
+
+static mut MULTICAST_PENDING: [Option<Ipv4Address>; MAX_MULTICAST_GROUPS] =
+    [None; MAX_MULTICAST_GROUPS];
+static mut MULTICAST_JOINED: [Option<Ipv4Address>; MAX_MULTICAST_GROUPS] =
+    [None; MAX_MULTICAST_GROUPS];
+
+/// Queue an IPv4 multicast group for the next poll to join via
+/// `Interface::join_multicast_group`.
+///
+/// Returns `false` if the queue is full or the group is already joined
+/// / pending. Idempotent — duplicate calls are no-ops.
+pub fn queue_multicast_join(group: Ipv4Address) -> bool {
+    unsafe {
+        let pending = &raw mut MULTICAST_PENDING;
+        let joined = &raw const MULTICAST_JOINED;
+        // Already joined?
+        for slot in (*joined).iter() {
+            if *slot == Some(group) {
+                return true;
+            }
+        }
+        // Already pending?
+        for slot in (*pending).iter() {
+            if *slot == Some(group) {
+                return true;
+            }
+        }
+        // Insert into first empty pending slot.
+        for slot in (*pending).iter_mut() {
+            if slot.is_none() {
+                *slot = Some(group);
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Drain the pending-join queue, calling `iface.join_multicast_group`
+/// for each address. Called once per `SmoltcpBridge::poll` iteration.
+fn drain_multicast_joins<D: Device>(
+    iface: &mut Interface,
+    device: &mut D,
+    timestamp: smoltcp::time::Instant,
+) {
+    let _ = (device, timestamp);
+    unsafe {
+        let pending = &raw mut MULTICAST_PENDING;
+        let joined = &raw mut MULTICAST_JOINED;
+        for i in 0..MAX_MULTICAST_GROUPS {
+            if let Some(group) = (*pending)[i].take() {
+                // Best-effort: ignore the join result. smoltcp returns
+                // `Ok(())` on success and `Err(_)` if the multicast
+                // table is full or the address isn't multicast — bare-
+                // metal code can't recover from these in line, so we
+                // just record the attempt.
+                let _ = iface.join_multicast_group(IpAddress::Ipv4(group));
+                // Record in the joined table so we don't double-join later.
+                for slot in (*joined).iter_mut() {
+                    if slot.is_none() {
+                        *slot = Some(group);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Poll Callback
 // ============================================================================
 
@@ -429,6 +515,12 @@ impl SmoltcpBridge {
     pub fn poll<D: Device>(iface: &mut Interface, device: &mut D, sockets: &mut SocketSet) -> bool {
         let timestamp =
             smoltcp::time::Instant::from_millis(unsafe { smoltcp_clock_now_ms() } as i64);
+
+        // Phase 71.26 — drain any multicast joins queued by
+        // `mcast_listen` since the previous poll, so the IP layer
+        // sees the IGMP membership before the first inbound packet
+        // arrives.
+        drain_multicast_joins(iface, device, timestamp);
 
         let activity = iface.poll(timestamp, device, sockets);
 

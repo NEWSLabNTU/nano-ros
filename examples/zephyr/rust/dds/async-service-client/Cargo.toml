@@ -19,8 +19,18 @@ crate-type = ["staticlib"]
 
 [dependencies]
 # Zephyr support with kernel-backed Embassy executor (k_sem waking)
-zephyr = { version = "0.1.0", features = ["executor-zephyr"] }
+# + embassy-time driver wired against Zephyr's kernel clock so async
+# `Timer::after(...)` yields cooperatively instead of parking the
+# whole executor.
+zephyr = { version = "0.1.0", features = ["executor-zephyr", "time-driver"] }
 log = "0.4"
+
+# embassy-time — async timers backed by zephyr's time-driver. The
+# tick-hz-1_000 feature matches `CONFIG_SYS_CLOCK_TICKS_PER_SEC=1000`
+# (set in prj.conf). Phase 71.29 follow-up: replaces the synchronous
+# `zephyr::time::sleep` calls that parked the single-threaded Embassy
+# executor during SPDP/SEDP discovery.
+embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
 
 # nros unified API — DDS backend via dust-dds, no_std + alloc.
 nros = { version = "*", default-features = false, features = ["rmw-dds", "platform-zephyr"] }

@@ -15,7 +15,13 @@
 //! - No `zpico-platform-*` or `zpico-smoltcp` crates needed
 
 #![no_std]
+// Force-link the zenoh-pico C transport + platform shim when
+// `rmw-zenoh` is active. DDS-only builds drop both deps via
+// `default-features = false` and reach the linker without the
+// zenoh-pico symbol set.
+#[cfg(feature = "rmw-zenoh")]
 extern crate zpico_platform_shim;
+#[cfg(feature = "rmw-zenoh")]
 extern crate zpico_sys;
 
 mod config;

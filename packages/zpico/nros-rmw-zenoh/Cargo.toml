@@ -32,7 +32,7 @@ safety-e2e = ["nros-rmw/safety-e2e"]
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["zpico-sys/unstable-zenoh-api"]
 
-# Phase 97.F — native slot lending for zero-copy publish.
+# Phase 99.F — native slot lending for zero-copy publish.
 # ZenohPublisher impls SlotLending; uses zpico_publish_with_attachment_aliased
 # which calls z_bytes_from_static_buf (stable zenoh-pico API) instead of
 # z_bytes_copy_from_buf, eliminating the user→backend memcpy. Attachment

@@ -18,4 +18,11 @@
      * Phase 92.5 — pairs with the listener overlay's distinct MAC.
      */
     local-mac-address = [02 00 00 00 00 11];
+
+    /* Phase 71.29 — bump RX buffer descriptor ring (default 32 → 128)
+     * to absorb dust-dds's SEDP burst without dropping discovery
+     * messages. See service-server overlay for rationale.
+     */
+    rx-buffer-descriptors = <128>;
+    tx-buffer-descriptors = <64>;
 };

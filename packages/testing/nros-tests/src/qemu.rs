@@ -159,6 +159,56 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// Start QEMU with MPS2-AN385 machine + LAN9118 mcast-socket
+    /// networking (Phase 97.4.freertos).
+    ///
+    /// Two QEMU instances launched with the same `mcast_addr:port`
+    /// share a virtual L2 broadcast domain on the host (no `sudo`,
+    /// no TAP, no bridge needed). RTPS SPDP / SEDP / ARP all flow
+    /// between them. Mirrors the Zephyr A9 mcast pattern Phase 92
+    /// uses for cross-instance DDS.
+    ///
+    /// `mac` must be unique per instance so ARP behaves; the FreeRTOS
+    /// board crate's `Config::mac` should match what's passed here.
+    pub fn start_mps2_an385_mcast(
+        binary: &Path,
+        mcast_addr_port: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-cpu",
+            "cortex-m3",
+            "-machine",
+            "mps2-an385",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-nic",
+            &format!("socket,model=lan9118,mcast={mcast_addr_port},mac={mac}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     /// Start QEMU with MPS2-AN385 machine + external serial device
     ///
     /// Connects UART0 to the given serial device path (e.g., a socat PTY).

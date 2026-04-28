@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qemu_freertos_dds_talker</name>
+  <version>0.1.0</version>
+  <description>FreeRTOS QEMU DDS talker example (Phase 97.4.freertos)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

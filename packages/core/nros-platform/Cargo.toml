@@ -26,6 +26,29 @@ platform-zephyr = ["dep:nros-platform-zephyr"]
 alloc = []
 threading = []
 
+# Phase 71.27 — opt-in `#[global_allocator]` that routes Rust's
+# `Box`, `Vec`, etc. through `<ConcretePlatform as PlatformAlloc>`.
+# Off by default: host (`platform-posix`) builds use libstd's
+# allocator and would conflict; bare-metal / RTOS examples enable
+# this feature to wire dust-dds + heapless futures through the
+# board's heap (`pvPortMalloc` on FreeRTOS, `tx_byte_allocate` on
+# ThreadX, `kmm_malloc` on NuttX, etc.).
+global-allocator = ["alloc"]
+
+# Phase 97.1.cs — opt-in `critical_section::Impl` registered against
+# the active platform's interrupt-disable primitive. dust-dds's
+# oneshot channels reference `_critical_section_1_0_acquire` /
+# `_release` symbols; without this feature, every bare-metal / RTOS
+# DDS example fails to link.
+#
+# Forwards to the per-platform crate's matching feature. POSIX builds
+# get a no-op impl (libstd has its own synchronization primitives;
+# the symbols resolve via critical-section's `std` feature). Zephyr
+# already ships its impl through `nros-c`; consumers that depend on
+# both `nros-platform/critical-section` and `nros-c` need to set the
+# feature on only one to avoid double-registration.
+critical-section = ["nros-platform-freertos?/critical-section"]
+
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.

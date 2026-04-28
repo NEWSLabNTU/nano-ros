@@ -110,6 +110,8 @@ fn main() {
         "src/core/ipv4/ip4.c",
         "src/core/ipv4/ip4_addr.c",
         "src/core/ipv4/ip4_frag.c",
+        // Phase 97.1.kconfig.freertos — IGMP for RTPS SPDP multicast.
+        "src/core/ipv4/igmp.c",
     ] {
         lwip.file(lwip_dir.join(src));
     }

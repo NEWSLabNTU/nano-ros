@@ -29,6 +29,12 @@ struct Endpoint {
     _iptcp: *mut addrinfo,
 }
 
+/// Phase 71.22 — net buffer sizes (see nros-platform-posix for rationale).
+pub const NET_SOCKET_SIZE: usize = core::mem::size_of::<Socket>();
+pub const NET_SOCKET_ALIGN: usize = core::mem::align_of::<Socket>();
+pub const NET_ENDPOINT_SIZE: usize = core::mem::size_of::<Endpoint>();
+pub const NET_ENDPOINT_ALIGN: usize = core::mem::align_of::<Endpoint>();
+
 const Z_TRANSPORT_LEASE: u32 = 10000; // ms
 
 // ============================================================================

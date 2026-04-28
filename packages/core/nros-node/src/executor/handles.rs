@@ -164,7 +164,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 /// - [`try_loan`](Self::try_loan): backend (or per-publisher arena fallback)
 ///   hands user a `&mut [u8]` slice. User writes in place. [`PublishLoan::commit`]
 ///   triggers the wire write. Zero-copy on backends with native lending
-///   (Phase 97: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
+///   (Phase 99: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
 ///   fallback on backends without (uORB).
 ///
 /// The const-generic `TX_BUF` sizes the inline arena slot (default

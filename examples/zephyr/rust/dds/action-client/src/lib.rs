@@ -38,7 +38,13 @@ fn run() -> Result<(), NodeError> {
     info!("Action client ready: /fibonacci");
 
     info!("Waiting for server...");
-    zephyr::time::sleep(zephyr::time::Duration::secs(3));
+    // Drive I/O during SPDP/SEDP discovery instead of blocking the
+    // cooperative runtime (Phase 71.29 — see service-client lib for
+    // rationale; actions open 5 channels so the burst is even larger).
+    for _ in 0..100 {
+        executor.spin_once(core::time::Duration::from_millis(10));
+        zephyr::time::sleep(zephyr::time::Duration::millis(100));
+    }
 
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);

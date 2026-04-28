@@ -889,7 +889,7 @@ impl<'a> Publisher<'a> {
         Ok(())
     }
 
-    /// Phase 97.F — zero-copy publish via z_bytes_from_static_buf.
+    /// Phase 99.F — zero-copy publish via z_bytes_from_static_buf.
     ///
     /// Identical to [`publish_with_attachment`] but ALIASES the
     /// payload pointer instead of copying. Caller MUST guarantee

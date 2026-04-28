@@ -39,10 +39,19 @@ fn run() -> Result<(), NodeError> {
     info!("Service client ready: /add_two_ints");
     info!("Sending service requests...");
 
-    // Allow time for SPDP/SEDP discovery to complete. RTPS service
-    // discovery (4 service topics: request data + reply data on each
-    // side) takes longer than pubsub.
-    zephyr::time::sleep(zephyr::time::Duration::secs(30));
+    // Drive I/O for ~10 seconds while SPDP/SEDP discovery completes.
+    // A blocking `zephyr::time::sleep` here would starve the
+    // cooperative `NrosPlatformRuntime`: dust-dds's UDP sockets keep
+    // queueing inbound discovery packets, the per-socket queue fills
+    // up, and the Xilinx GEM driver runs out of `net_pkt` slots
+    // ("RX packet buffer alloc failed: 110 bytes"). Interleave
+    // `executor.spin_once` (drains the sockets) with brief
+    // `zephyr::time::sleep` calls (yields to lower-prio threads /
+    // tickless idle so wall-clock actually advances).
+    for _ in 0..100 {
+        executor.spin_once(core::time::Duration::from_millis(10));
+        zephyr::time::sleep(zephyr::time::Duration::millis(100));
+    }
 
     let mut count: i64 = 0;
 

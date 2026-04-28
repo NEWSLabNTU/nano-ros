@@ -172,7 +172,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
                                    void *ctx);
 
 /**
- * Phase 97.F: zero-copy publish via z_bytes_from_static_buf.
+ * Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
  * Caller guarantees `data` outlives the call.
  */
 /**

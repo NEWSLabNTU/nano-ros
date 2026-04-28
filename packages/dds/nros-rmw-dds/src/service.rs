@@ -102,6 +102,15 @@ impl DdsServiceClient {
 impl ServiceClientTrait for DdsServiceClient {
     type Error = TransportError;
 
+    fn register_waker(&self, waker: &core::task::Waker) {
+        // Delegate to the reply reader's waker cell. dust-dds's
+        // `DataReaderListener::on_data_available` fires from the
+        // internal task pool when a reply lands; that wakes the
+        // future polling this Promise. Phase 71.29 follow-up.
+        use nros_rmw::Subscriber;
+        self.reply_reader.register_waker(waker);
+    }
+
     #[allow(deprecated)]
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
         self.send_request_raw(request)?;

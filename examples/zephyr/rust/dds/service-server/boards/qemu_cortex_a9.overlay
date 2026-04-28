@@ -18,4 +18,14 @@
      * Phase 92.5 — pairs with the listener overlay's distinct MAC.
      */
     local-mac-address = [02 00 00 00 00 10];
+
+    /* Phase 71.29 — bump RX buffer descriptor ring to absorb the
+     * SEDP burst. zynq7000 default is 32; dust-dds's service +
+     * action discovery storms past that and the GEM logs
+     * "RX packet buffer alloc failed: 110 bytes" until the
+     * matched-pubs handshake completes. 255 is the binding's
+     * max (`<= 255`).
+     */
+    rx-buffer-descriptors = <128>;
+    tx-buffer-descriptors = <64>;
 };

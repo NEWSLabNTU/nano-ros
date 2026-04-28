@@ -1,9 +1,10 @@
 //! DDS subscriber — implements `nros_rmw::Subscriber`.
 
+use alloc::sync::Arc;
+
 use nros_rmw::{Subscriber, TransportError};
 
-#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-use alloc::sync::Arc;
+use crate::waker_cell::WakerCell;
 
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
@@ -18,14 +19,21 @@ pub struct DdsSubscriber {
     reader_async: dust_dds::dds_async::data_reader::DataReaderAsync<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+    /// Shared with the `DataAvailableListener` attached to the reader at
+    /// construction time. The listener fires `on_data_available` from
+    /// dust-dds's internal task pool whenever the reader's history queue
+    /// gains a sample; this in turn wakes whatever future last called
+    /// `register_waker`. Phase 71.29 follow-up.
+    waker_cell: Arc<WakerCell>,
 }
 
 impl DdsSubscriber {
     #[cfg(feature = "std")]
     pub(crate) fn new(
         reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
+        waker_cell: Arc<WakerCell>,
     ) -> Self {
-        Self { reader }
+        Self { reader, waker_cell }
     }
 
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
@@ -34,12 +42,15 @@ impl DdsSubscriber {
             crate::raw_type::RawCdrPayload,
         >,
         runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+        waker_cell: Arc<WakerCell>,
     ) -> Self {
         Self {
             reader_async,
             runtime,
+            waker_cell,
         }
     }
+
 }
 
 impl Subscriber for DdsSubscriber {
@@ -111,6 +122,10 @@ impl Subscriber for DdsSubscriber {
 
     fn has_data(&self) -> bool {
         true
+    }
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        self.waker_cell.register(waker);
     }
 
     fn deserialization_error(&self) -> Self::Error {

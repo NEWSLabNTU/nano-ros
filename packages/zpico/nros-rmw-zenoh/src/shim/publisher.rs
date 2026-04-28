@@ -30,7 +30,7 @@ pub struct ZenohPublisher {
     timestamp_counter: AtomicSeqCounter,
     /// Liveliness token for ROS 2 graph discovery (kept alive for publisher lifetime)
     _liveliness: Option<LivelinessToken>,
-    /// Phase 97.F: per-publisher TX arena for SlotLending. Exists only
+    /// Phase 99.F: per-publisher TX arena for SlotLending. Exists only
     /// when the `lending` feature is on.
     #[cfg(feature = "lending")]
     pub(super) lend_arena: lending::LendArena,
@@ -176,7 +176,7 @@ impl Publisher for ZenohPublisher {
 }
 
 // ============================================================================
-// Phase 97.F — ZenohPublisher SlotLending (zero-copy publish)
+// Phase 99.F — ZenohPublisher SlotLending (zero-copy publish)
 // ============================================================================
 
 #[cfg(feature = "lending")]
@@ -251,7 +251,7 @@ mod lending {
     }
 
     impl ZenohPublisher {
-        // Wire the arena into the constructor — see Phase 97.F note in
+        // Wire the arena into the constructor — see Phase 99.F note in
         // `new()` for why this lives outside the main impl block.
         pub(super) const fn lend_arena_init() -> LendArena {
             LendArena::new()

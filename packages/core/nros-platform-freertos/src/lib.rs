@@ -26,6 +26,46 @@ mod types;
 pub struct FreeRtosPlatform;
 
 // ============================================================================
+// Phase 97.1.cs — `critical_section::Impl` against Cortex-M PRIMASK
+// ============================================================================
+//
+// dust-dds's oneshot channels reference `_critical_section_1_0_acquire` /
+// `_release` symbols; the example crate links against this impl so the
+// symbols resolve at link time. Cortex-M PRIMASK gives a 1-bit
+// "interrupts enabled / disabled" flag — we save the prior value into
+// the restore state so nested critical sections nest cleanly.
+
+#[cfg(feature = "critical-section")]
+mod cs_impl {
+    use cortex_m::register::primask;
+
+    struct FreeRtosCs;
+    critical_section::set_impl!(FreeRtosCs);
+
+    unsafe impl critical_section::Impl for FreeRtosCs {
+        unsafe fn acquire() -> critical_section::RawRestoreState {
+            // Read prior PRIMASK (bit 0 = 1 means interrupts already
+            // disabled), then disable interrupts. The token encodes
+            // the prior state so `release` can re-enable only if we
+            // were the outermost acquire.
+            let was_enabled = primask::read().is_active();
+            cortex_m::interrupt::disable();
+            // RawRestoreState = u32 (matches the `restore-state-u32`
+            // critical-section feature).
+            if was_enabled { 1 } else { 0 }
+        }
+
+        unsafe fn release(token: critical_section::RawRestoreState) {
+            if token == 1 {
+                // SAFETY: prior state was "enabled"; we're at the
+                // outermost acquire.
+                unsafe { cortex_m::interrupt::enable() };
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Clock — xTaskGetTickCount
 // ============================================================================
 

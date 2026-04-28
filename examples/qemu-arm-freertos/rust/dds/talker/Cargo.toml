@@ -1,0 +1,30 @@
+[package]
+name = "qemu-freertos-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on QEMU MPS2-AN385 with FreeRTOS + lwIP (Phase 97.4.freertos)"
+
+[[bin]]
+name = "qemu-freertos-dds-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+# `default-features = false` drops the zenoh-pico optional deps + the
+# boot-time `zpico_set_task_config` call. The board crate keeps every
+# generic FreeRTOS / lwIP / network init code path active.
+nros-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-mps2-an385-freertos", default-features = false }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-dds", "platform-freertos", "ros-humble"] }
+# Phase 97.1 prerequisites:
+#   * `global-allocator` — `<FreeRtosPlatform as PlatformAlloc>` →
+#     Rust `#[global_allocator]`.
+#   * `critical-section` — Cortex-M PRIMASK → `critical_section::Impl`,
+#     resolves the `_critical_section_1_0_*` symbols dust-dds references.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator", "critical-section"] }
+std_msgs = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }

@@ -522,64 +522,139 @@ macro_rules! __define_smoltcp_platform_impl {
                 }
             }
 
-            // ---- UDP multicast stubs (not supported on bare-metal) ----
+            // ---- UDP multicast (Phase 71.26) ----
+            //
+            // smoltcp handles IGMPv1/v2 internally once the application calls
+            // `Interface::join_multicast_group(addr, timestamp)`. The bridge's
+            // `queue_multicast_join` records the group and the next bridge poll
+            // performs the actual join on the live `&mut Interface`.
+            //
+            // The recv path is identical to plain UDP (smoltcp delivers
+            // multicast-destined frames to any UDP socket bound to the matching
+            // port once IGMP membership is in place); the multicast path here
+            // just adds the group-join step on top of the unicast bind.
 
             impl $crate::PlatformUdpMulticast for crate::$plat {
                 fn mcast_open(
-                    _sock: *mut c_void,
-                    _endpoint: *const c_void,
-                    _lep: *mut c_void,
-                    _timeout_ms: u32,
+                    sock: *mut c_void,
+                    endpoint: *const c_void,
+                    lep: *mut c_void,
+                    timeout_ms: u32,
                     _iface: *const u8,
                 ) -> i8 {
-                    -1
+                    // `mcast_open` opens the **send** side. There's no
+                    // group join required to TX multicast — smoltcp routes
+                    // outbound multicast through the default interface as
+                    // long as the destination address is in 224.0.0.0/4.
+                    // We just open a regular UDP socket and copy the
+                    // remote endpoint into `lep` so `mcast_send` can
+                    // reuse it.
+                    if !lep.is_null() && !endpoint.is_null() {
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                endpoint as *const u8,
+                                lep as *mut u8,
+                                core::mem::size_of::<Endpoint>(),
+                            );
+                        }
+                    }
+                    <crate::$plat as $crate::PlatformUdp>::open(sock, endpoint, timeout_ms)
                 }
 
                 fn mcast_listen(
-                    _sock: *mut c_void,
-                    _endpoint: *const c_void,
+                    sock: *mut c_void,
+                    endpoint: *const c_void,
                     _timeout_ms: u32,
                     _iface: *const u8,
                     _join: *const u8,
                 ) -> i8 {
-                    -1
+                    if sock.is_null() || endpoint.is_null() {
+                        return -1;
+                    }
+                    let rep = unsafe { &*(endpoint as *const Endpoint) };
+
+                    // 1. Queue the multicast group join on the bridge.
+                    // The destination address in `endpoint` is the
+                    // multicast group itself (e.g. 239.255.0.1).
+                    let group = $crate::Ipv4Address::new(
+                        rep._ip[0], rep._ip[1], rep._ip[2], rep._ip[3],
+                    );
+                    if !$crate::bridge::queue_multicast_join(group) {
+                        // Multicast table full — fall through and try
+                        // the bind anyway; the receive will silently
+                        // drop frames until a slot frees up. Reporting
+                        // `-1` here would block participant boot.
+                    }
+
+                    // 2. Open + bind a UDP socket on the multicast port
+                    // so smoltcp's UDP layer routes inbound mcast frames
+                    // to it. Same code path as plain `listen`.
+                    let sock_ptr = sock as *mut Socket;
+                    unsafe {
+                        (*sock_ptr)._handle = -1;
+                        (*sock_ptr)._connected = false;
+                    }
+                    let handle = SmoltcpBridge::udp_open();
+                    if handle < 0 {
+                        return -1;
+                    }
+                    if SmoltcpBridge::udp_set_local_port(handle, rep._port) < 0 {
+                        SmoltcpBridge::udp_close(handle);
+                        return -1;
+                    }
+                    unsafe {
+                        (*sock_ptr)._handle = handle as i8;
+                        (*sock_ptr)._connected = false;
+                    }
+                    0
                 }
 
                 fn mcast_close(
-                    _sockrecv: *mut c_void,
-                    _socksend: *mut c_void,
+                    sockrecv: *mut c_void,
+                    socksend: *mut c_void,
                     _rep: *const c_void,
                     _lep: *const c_void,
                 ) {
+                    if !sockrecv.is_null() {
+                        <crate::$plat as $crate::PlatformTcp>::close(sockrecv);
+                    }
+                    if !socksend.is_null() {
+                        <crate::$plat as $crate::PlatformTcp>::close(socksend);
+                    }
+                    // Note: we don't `leave_multicast_group` on close.
+                    // Joins are participant-lifetime in our usage; a
+                    // participant tears down by reset / reboot.
                 }
 
                 fn mcast_read(
-                    _sock: *const c_void,
-                    _buf: *mut u8,
-                    _len: usize,
+                    sock: *const c_void,
+                    buf: *mut u8,
+                    len: usize,
                     _lep: *const c_void,
                     _addr: *mut c_void,
                 ) -> usize {
-                    usize::MAX
+                    // Identical to plain UDP read — smoltcp already routed
+                    // the multicast frame into our bound socket's RX queue.
+                    <crate::$plat as $crate::PlatformUdp>::read(sock, buf, len)
                 }
 
                 fn mcast_read_exact(
-                    _sock: *const c_void,
-                    _buf: *mut u8,
-                    _len: usize,
+                    sock: *const c_void,
+                    buf: *mut u8,
+                    len: usize,
                     _lep: *const c_void,
                     _addr: *mut c_void,
                 ) -> usize {
-                    usize::MAX
+                    <crate::$plat as $crate::PlatformUdp>::read_exact(sock, buf, len)
                 }
 
                 fn mcast_send(
-                    _sock: *const c_void,
-                    _buf: *const u8,
-                    _len: usize,
-                    _endpoint: *const c_void,
+                    sock: *const c_void,
+                    buf: *const u8,
+                    len: usize,
+                    endpoint: *const c_void,
                 ) -> usize {
-                    usize::MAX
+                    <crate::$plat as $crate::PlatformUdp>::send(sock, buf, len, endpoint)
                 }
             }
         }

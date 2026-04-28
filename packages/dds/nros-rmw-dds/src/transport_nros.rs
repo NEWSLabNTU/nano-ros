@@ -154,17 +154,21 @@ fn ipv4_locator(addr: [u8; 4], port: u32) -> Locator {
 
 /// Caller-allocated storage for `<P as PlatformUdp>` socket state.
 ///
-/// Sized to fit every shipped platform's `_z_sys_net_socket_t`. Aligned
-/// to 8 bytes so any pointer-bearing platform layout (NetX, Zephyr,
-/// FreeRTOS+lwIP) is naturally aligned.
+/// Phase 71.22: sized exactly from the active platform's
+/// `core::mem::size_of::<Socket>()` (re-exported via
+/// `nros_platform::NET_SOCKET_SIZE`). Bare-metal / cffi platforms
+/// without a typed socket struct fall back to the 64-byte legacy
+/// shape via `nros-platform`'s `fallback_net_sizes` module.
 #[repr(C, align(8))]
 struct OpaqueSocket {
-    bytes: [u8; 64],
+    bytes: [u8; nros_platform::NET_SOCKET_SIZE],
 }
 
 impl OpaqueSocket {
     fn new() -> Self {
-        Self { bytes: [0; 64] }
+        Self {
+            bytes: [0; nros_platform::NET_SOCKET_SIZE],
+        }
     }
 
     fn as_mut_ptr(&mut self) -> *mut c_void {
@@ -179,12 +183,14 @@ impl OpaqueSocket {
 /// Same shape as [`OpaqueSocket`] but for `_z_sys_net_endpoint_t`.
 #[repr(C, align(8))]
 struct OpaqueEndpoint {
-    bytes: [u8; 64],
+    bytes: [u8; nros_platform::NET_ENDPOINT_SIZE],
 }
 
 impl OpaqueEndpoint {
     fn new() -> Self {
-        Self { bytes: [0; 64] }
+        Self {
+            bytes: [0; nros_platform::NET_ENDPOINT_SIZE],
+        }
     }
 
     fn as_mut_ptr(&mut self) -> *mut c_void {

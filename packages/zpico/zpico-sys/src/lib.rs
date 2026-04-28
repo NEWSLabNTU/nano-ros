@@ -134,7 +134,7 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    /// Phase 97.F: zero-copy publish via z_bytes_from_static_buf.
+    /// Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
     /// Caller guarantees `data` outlives the call.
     pub fn zpico_publish_with_attachment_aliased(
         handle: i32,

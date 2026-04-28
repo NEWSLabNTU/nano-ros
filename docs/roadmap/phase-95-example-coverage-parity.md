@@ -37,9 +37,14 @@ agnostic.md`):
   cross-process E2Es (`test_dds_service_server_client_e2e`,
   `test_dds_action_server_client_e2e`) now pass; they were
   re-enabled in `packages/testing/nros-tests/tests/dds_api.rs`.
-* **Phase 71.29** — Cortex-A9 Xilinx GEM RX queue tuning still
-  open; the three `test_zephyr_dds_rust_*_a9_e2e` cousins remain
-  `#[ignore]`d behind it.
+* **Phase 71.29** — closed. Was a cooperative-runtime starvation
+  bug in the example clients (synchronous `zephyr::time::sleep`
+  parked the single-threaded `NrosPlatformRuntime` during SEDP
+  discovery); the GEM "RX packet buffer alloc failed" errors were
+  a downstream symptom of socket-queue overflow, not a driver
+  issue. Service + action A9 E2Es pass; async-service A9 E2E
+  remains `#[ignore]`d behind a separate Embassy + Zephyr time
+  driver gap.
 * **Phase 96.1** — `nros::Subscription::try_recv()` demux on a
   shared XRCE Agent (blocks C-cpp/xrce dual-instance E2E; rust +
   c xrce shapes work fine on the same agent, so the bug is on the

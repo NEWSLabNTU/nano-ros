@@ -38,6 +38,11 @@ use nros_platform_api::{
 mod ffi;
 mod net;
 
+/// Phase 71.22 — opaque buffer sizes for `_z_sys_net_socket_t` and
+/// `_z_sys_net_endpoint_t` on Zephyr. Re-exported so callers (e.g.
+/// `nros-rmw-dds`) can size their socket / endpoint storage exactly.
+pub use net::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE};
+
 /// Zero-sized type implementing all platform methods for Zephyr.
 pub struct ZephyrPlatform;
 

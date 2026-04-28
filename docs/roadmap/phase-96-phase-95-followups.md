@@ -24,9 +24,22 @@ two non-dust-dds items + the cross-link.
 - [ ] 96.1 — `nros::Subscription::try_recv()` demux on shared XRCE
       Agent (cpp-API session shape)
 - [ ] 96.2 — `test_talker_param_declaration` flake fix
-- [ ] 96.3 — Cross-link to Phase 71.28 / 71.29 (dust-dds service
-      SEDP + Cortex-A9 GEM RX) — re-enable `#[ignore]`d tests once
-      they land
+- [x] 96.3 — Cross-link to Phase 71.28 / 71.29: **closed**.
+      71.28 (slice-offset bug in `ServiceServerTrait::handle_request`),
+      71.29 (cooperative-runtime starvation in DDS Cortex-A9
+      example clients), and the 71.29 async follow-up
+      (embassy-time driver + manual Promise poll) all landed.
+      Re-enabled tests:
+      `test_dds_service_server_client_e2e`,
+      `test_dds_action_server_client_e2e`,
+      `test_zephyr_dds_rust_service_a9_e2e`,
+      `test_zephyr_dds_rust_action_a9_e2e`,
+      `test_zephyr_dds_rust_async_service_a9_e2e`. Remaining
+      open: `nros-rmw-dds` doesn't yet implement
+      `ServiceClientTrait::register_waker` /
+      `Subscriber::register_waker`, so the async example uses a
+      manual `try_recv` poll loop instead of `.await`. Tracked
+      separately as a 71.x follow-up.
 
 ### 96.1 — cpp/xrce subscription demux on shared agent
 

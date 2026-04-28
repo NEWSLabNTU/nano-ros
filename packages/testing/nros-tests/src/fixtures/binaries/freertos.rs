@@ -114,6 +114,42 @@ pub fn build_freertos_action_client() -> TestResult<&'static Path> {
 }
 
 // =============================================================================
+// FreeRTOS DDS variant (Phase 97.4.freertos)
+// =============================================================================
+
+static FREERTOS_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static FREERTOS_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+fn build_dds_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/dds/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "FreeRTOS DDS example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    let binary_path =
+        example_dir.join(format!("target/thumbv7m-none-eabi/release/{}", binary_name));
+
+    super::require_prebuilt_binary(&binary_path)
+}
+
+pub fn build_freertos_dds_talker() -> TestResult<&'static Path> {
+    FREERTOS_DDS_TALKER_BINARY
+        .get_or_try_init(|| build_dds_rust_example("talker", "qemu-freertos-dds-talker"))
+        .map(|p| p.as_path())
+}
+
+pub fn build_freertos_dds_listener() -> TestResult<&'static Path> {
+    FREERTOS_DDS_LISTENER_BINARY
+        .get_or_try_init(|| build_dds_rust_example("listener", "qemu-freertos-dds-listener"))
+        .map(|p| p.as_path())
+}
+
+// =============================================================================
 // C / C++ binary builders (CMake)
 // =============================================================================
 

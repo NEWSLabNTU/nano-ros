@@ -38,8 +38,16 @@
 #define LWIP_IPV6                       0
 #define LWIP_DHCP                       0
 #define LWIP_DNS                        1
-#define LWIP_IGMP                       0
+/* Phase 97.1.kconfig.freertos — IGMP for RTPS SPDP multicast
+ * (239.255.0.1:7400+). Always-on cost is ~600 bytes of code +
+ * ~64 bytes of state on a unicast-only system; cheap enough to
+ * leave on for every RMW backend. */
+#define LWIP_IGMP                       1
 #define LWIP_RAW                        0
+#define LWIP_BROADCAST                  1
+/* RTPS DATA_FRAG submessages can fragment large samples; without
+ * IP_REASSEMBLY the receiver drops every fragment past the first. */
+#define IP_REASSEMBLY                   1
 
 /* ---- Memory ---- */
 #define MEM_SIZE                        (16 * 1024)
@@ -49,7 +57,11 @@
 #define MEMP_NUM_TCP_PCB                8
 #define MEMP_NUM_TCP_PCB_LISTEN         4
 #define MEMP_NUM_TCP_SEG                32
-#define MEMP_NUM_NETBUF                 8
+/* Phase 97.1.kconfig.freertos — bumped from 8 to 32 so dust-dds's
+ * SPDP / SEDP discovery burst doesn't exhaust the pool on
+ * participant open. Same rationale as the Cortex-A9 net_pkt bump
+ * for Zephyr (Phase 71.29). */
+#define MEMP_NUM_NETBUF                 32
 #define MEMP_NUM_NETCONN                8
 #define MEMP_NUM_SYS_TIMEOUT            16
 

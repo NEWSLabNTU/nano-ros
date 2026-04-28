@@ -239,8 +239,10 @@ impl Session for DdsSession {
         #[cfg(feature = "std")]
         {
             use crate::raw_type::RawCdrPayload;
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
             use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
             use dust_dds::infrastructure::type_support::TypeSupport;
 
             let dds_topic = self
@@ -259,23 +261,27 @@ impl Session for DdsSession {
                 .create_subscriber(QosKind::Default, None::<()>, NO_STATUS)
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
+            let waker_cell = Arc::new(WakerCell::default());
+            let listener = DataAvailableListener::new(waker_cell.clone());
             let reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &dds_topic,
                     QosKind::Default,
-                    None::<()>,
-                    NO_STATUS,
+                    Some(listener),
+                    &[StatusKind::DataAvailable],
                 )
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
-            Ok(DdsSubscriber::new(reader))
+            Ok(DdsSubscriber::new(reader, waker_cell))
         }
 
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::raw_type::RawCdrPayload;
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
             use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
+            use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
             use dust_dds::infrastructure::type_support::TypeSupport;
             use no_listener::*;
 
@@ -299,17 +305,19 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
+            let waker_cell = Arc::new(WakerCell::default());
+            let listener = DataAvailableListener::new(waker_cell.clone());
             let reader = self
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &dds_topic,
                     QosKind::Default,
-                    None::<NoDataReaderListenerRaw>,
-                    NO_STATUS,
+                    Some(listener),
+                    &[StatusKind::DataAvailable],
                 ))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
-            return Ok(DdsSubscriber::new_async(reader, self.runtime.clone()));
+            return Ok(DdsSubscriber::new_async(reader, self.runtime.clone(), waker_cell));
         }
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
@@ -356,16 +364,22 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
+            use dust_dds::infrastructure::status::StatusKind;
+
             let subscriber = self
                 .participant
                 .create_subscriber(QosKind::Default, None::<()>, NO_STATUS)
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+            let req_waker = Arc::new(WakerCell::default());
+            let req_listener = DataAvailableListener::new(req_waker.clone());
             let request_reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &req_topic,
                     QosKind::Specific(service_reader_qos()),
-                    None::<()>,
-                    NO_STATUS,
+                    Some(req_listener),
+                    &[StatusKind::DataAvailable],
                 )
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
@@ -383,7 +397,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
             Ok(DdsServiceServer::new(
-                DdsSubscriber::new(request_reader),
+                DdsSubscriber::new(request_reader, req_waker),
                 DdsPublisher::new(reply_writer),
             ))
         }
@@ -422,6 +436,10 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
+            use dust_dds::infrastructure::status::StatusKind;
+
             let subscriber = self
                 .runtime
                 .block_on(self.participant_async.create_subscriber(
@@ -430,13 +448,15 @@ impl Session for DdsSession {
                     NO_STATUS,
                 ))
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+            let req_waker = Arc::new(WakerCell::default());
+            let req_listener = DataAvailableListener::new(req_waker.clone());
             let request_reader = self
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &req_topic,
                     QosKind::Specific(service_reader_qos()),
-                    None::<NoDataReaderListenerRaw>,
-                    NO_STATUS,
+                    Some(req_listener),
+                    &[StatusKind::DataAvailable],
                 ))
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
@@ -459,7 +479,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
             return Ok(DdsServiceServer::new(
-                DdsSubscriber::new_async(request_reader, self.runtime.clone()),
+                DdsSubscriber::new_async(request_reader, self.runtime.clone(), req_waker),
                 DdsPublisher::new_async(reply_writer, self.runtime.clone()),
             ));
         }
@@ -521,22 +541,28 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
+            use dust_dds::infrastructure::status::StatusKind;
+
             let subscriber = self
                 .participant
                 .create_subscriber(QosKind::Default, None::<()>, NO_STATUS)
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+            let reply_waker = Arc::new(WakerCell::default());
+            let reply_listener = DataAvailableListener::new(reply_waker.clone());
             let reply_reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &reply_topic,
                     QosKind::Specific(service_reader_qos()),
-                    None::<()>,
-                    NO_STATUS,
+                    Some(reply_listener),
+                    &[StatusKind::DataAvailable],
                 )
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             Ok(DdsServiceClient::new(
                 DdsPublisher::new(request_writer),
-                DdsSubscriber::new(reply_reader),
+                DdsSubscriber::new(reply_reader, reply_waker),
             ))
         }
 
@@ -592,6 +618,10 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
+            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use alloc::sync::Arc;
+            use dust_dds::infrastructure::status::StatusKind;
+
             let subscriber = self
                 .runtime
                 .block_on(self.participant_async.create_subscriber(
@@ -600,19 +630,21 @@ impl Session for DdsSession {
                     NO_STATUS,
                 ))
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+            let reply_waker = Arc::new(WakerCell::default());
+            let reply_listener = DataAvailableListener::new(reply_waker.clone());
             let reply_reader = self
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &reply_topic,
                     QosKind::Specific(service_reader_qos()),
-                    None::<NoDataReaderListenerRaw>,
-                    NO_STATUS,
+                    Some(reply_listener),
+                    &[StatusKind::DataAvailable],
                 ))
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             return Ok(DdsServiceClient::new(
                 DdsPublisher::new_async(request_writer, self.runtime.clone()),
-                DdsSubscriber::new_async(reply_reader, self.runtime.clone()),
+                DdsSubscriber::new_async(reply_reader, self.runtime.clone(), reply_waker),
             ));
         }
 

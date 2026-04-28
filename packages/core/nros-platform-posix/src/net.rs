@@ -27,6 +27,16 @@ struct Endpoint {
     _iptcp: *mut libc::addrinfo,
 }
 
+/// Size + alignment of `_z_sys_net_socket_t` for this platform.
+///
+/// Phase 71.22 — exposed so callers (e.g. `nros-rmw-dds::transport_nros`)
+/// can size their opaque buffers exactly instead of paying for a
+/// `[u8; 64]` worst-case.
+pub const NET_SOCKET_SIZE: usize = core::mem::size_of::<Socket>();
+pub const NET_SOCKET_ALIGN: usize = core::mem::align_of::<Socket>();
+pub const NET_ENDPOINT_SIZE: usize = core::mem::size_of::<Endpoint>();
+pub const NET_ENDPOINT_ALIGN: usize = core::mem::align_of::<Endpoint>();
+
 // Constants
 const Z_TRANSPORT_LEASE: u32 = 10000; // ms (default zenoh-pico lease)
 

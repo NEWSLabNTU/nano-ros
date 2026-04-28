@@ -3182,14 +3182,15 @@ fn get_zephyr_dds_async_service_client_a9() -> PathBuf {
 
 /// Service server ↔ client interop on `qemu_cortex_a9` (Phase 95.B1+B2).
 ///
-/// **#[ignore]d**: dust-dds service SEDP discovery overwhelms the
-/// Xilinx GEM RX queue under the cortex_a9 mcast netdev. Service
-/// requests never reach the server. Pubsub on the same setup works
-/// (`test_zephyr_dds_rust_talker_to_listener_a9_e2e`). Re-enable
-/// after a Phase 71.x follow-up tunes the SEDP traffic shape (e.g.
-/// QoS tuning to RELIABLE + smaller history queue, or SEDP throttle).
+/// Re-enabled by Phase 71.28 (slice-offset bug in
+/// `ServiceServerTrait::handle_request`) + Phase 71.29 (the client
+/// example now drives the cooperative runtime via `executor.spin_once`
+/// during discovery instead of `zephyr::time::sleep`, so dust-dds's
+/// UDP sockets stay drained and the GEM driver no longer logs
+/// "RX packet buffer alloc failed: 110 bytes"). Combined with the
+/// bumped `NET_PKT_RX_COUNT` / `NET_BUF_RX_COUNT` and GEM
+/// `rx-buffer-descriptors=128` overlay, the test passes consistently.
 #[test]
-#[ignore]
 fn test_zephyr_dds_rust_service_a9_e2e() {
     if !require_zephyr() {
         return;
@@ -3269,12 +3270,8 @@ fn test_zephyr_dds_rust_service_a9_e2e() {
 
 /// Action server ↔ client interop on `qemu_cortex_a9` (Phase 95.B3+B4).
 ///
-/// **#[ignore]d** for the same reason as
-/// `test_zephyr_dds_rust_service_a9_e2e` — dust-dds SEDP discovery
-/// for the action's 5 service+topic channels overwhelms the cortex_a9
-/// GEM RX queue. Re-enable alongside the service E2E.
+/// Re-enabled alongside the service E2E (Phase 71.28 + 71.29 fix).
 #[test]
-#[ignore]
 fn test_zephyr_dds_rust_action_a9_e2e() {
     if !require_zephyr() {
         return;
@@ -3352,10 +3349,13 @@ fn test_zephyr_dds_rust_action_a9_e2e() {
 /// Async service client (Embassy `spin_async`) ↔ DDS service server on
 /// `qemu_cortex_a9` (Phase 95.B5).
 ///
-/// **#[ignore]d** for the same reason as
-/// `test_zephyr_dds_rust_service_a9_e2e`. Re-enable alongside it.
+/// Re-enabled by Phase 71.29 follow-up: the example now uses
+/// `embassy_time::Timer::after_secs(...)` (backed by zephyr's
+/// `time-driver` feature) instead of the synchronous
+/// `zephyr::time::sleep`. The Embassy executor stays free to
+/// schedule `spin_task` during the discovery window, which keeps
+/// dust-dds's UDP sockets drained.
 #[test]
-#[ignore]
 fn test_zephyr_dds_rust_async_service_a9_e2e() {
     if !require_zephyr() {
         return;

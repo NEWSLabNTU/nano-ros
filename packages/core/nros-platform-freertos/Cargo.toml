@@ -6,7 +6,19 @@ license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for FreeRTOS (calls FreeRTOS C APIs via FFI)"
 
+[features]
+default = []
+# Phase 97.1.cs — register a `critical_section::Impl` against
+# Cortex-M PRIMASK. Off by default so that linking against this
+# crate from a non-Cortex-M context (or from a build that already
+# provides its own critical-section impl, e.g. nros-c on Zephyr)
+# doesn't double-register.
+critical-section = ["dep:critical-section", "dep:cortex-m"]
+
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Bindgen-generated lwIP BSD socket FFI (struct timeval, addrinfo, lwip_* functions)
 freertos-lwip-sys = { path = "../../drivers/freertos-lwip-sys" }
+# Phase 97.1.cs — Cortex-M PRIMASK manipulation for `critical_section::Impl`.
+critical-section = { version = "1.2", optional = true, features = ["restore-state-u32"] }
+cortex-m = { version = "0.7", optional = true }

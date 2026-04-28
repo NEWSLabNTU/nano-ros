@@ -1,0 +1,272 @@
+# Phase 97 — DDS per-platform examples + cross-platform E2E
+
+**Goal**: Close the example + per-platform-E2E half of the original
+Phase 71 (dust-dds platform-agnostic) effort. Phase 71's
+infrastructure block landed end-to-end (cooperative runtime, async
+transport, size-probed buffers, smoltcp multicast, POSIX validation,
+generic global-allocator) but the eight per-platform DDS pubsub
+talker / listener crates and their nros-tests fixtures are still
+open. Each per-platform slice is a from-scratch board bring-up
+exercise — too big to fit alongside Phase 71's infrastructure, hence
+splitting it out.
+
+**Status**: Not Started
+
+**Priority**: Medium. Native + Zephyr (`qemu_cortex_a9`) DDS already
+ship and cover the user-visible surface. Each remaining per-platform
+slice is "another cross-compile target works for DDS" — incremental
+coverage rather than a new feature.
+
+**Depends on**:
+- Phase 71 infrastructure block: cooperative runtime (71.1–71.5),
+  async transport API port (71.4.b), `PlatformUdp::listen` per
+  platform (71.20 / 71.21), size-probed buffers (71.22),
+  shared Kconfig matrix (71.23 doc), POSIX loopback validation
+  (71.24), `PlatformUdp` contract pinned (71.25 doc), smoltcp
+  multicast bridge + macro (71.26), `nros-platform/global-allocator`
+  feature (71.27 prereq).
+- Phase 71.28 / 71.29: bug-fix follow-ups (slice-offset in
+  `handle_request`; cooperative-runtime starvation in DDS A9
+  example clients). Both closed.
+
+## Architecture / design
+
+The remaining work splits into three concentric layers:
+
+1. **Generic 71.27 prerequisites** — finish the four pieces every
+   per-platform DDS example will need:
+   - `nros-platform/critical-section` cargo feature with per-RTOS
+     `critical_section::Impl` (FreeRTOS / NuttX / ThreadX / smoltcp).
+     The Zephyr impl already exists in `nros-c`'s
+     `cfg(feature = "platform-zephyr")` block — lift the shape into
+     `nros-platform` so it's available to pure-Rust examples too.
+     dust-dds's oneshot channels reference
+     `_critical_section_1_0_acquire / _release`; without an impl,
+     every per-platform example fails to link.
+   - Per-board linker scripts: RAM region big enough for dust-dds
+     rodata. `.ARM.extab` placement on Cortex-M FreeRTOS overlapped
+     `.data` in the first bring-up attempt (Phase 71 archived
+     notes); document the typical sizing per board (~700 KB code,
+     ~100 KB rodata).
+   - Per-board heap config bumped to ≥ 256 KB (`configTOTAL_HEAP_SIZE`,
+     `CONFIG_MM_KERNEL_HEAPSIZE`, `tx_byte_pool_create` pool, …).
+   - Per-RTOS Kconfig delta (the matrix documented in
+     `book/src/user-guide/rmw-backends.md` "DDS — per-platform
+     configuration profile" — copy the appropriate snippet into the
+     example's `prj.conf` / `lwipopts.h` / `nx_user.h`).
+
+2. **Per-platform PlatformUdp smoke binary** — single-process bind /
+   send / recv self-test mirroring Phase 71's POSIX loopback suite.
+   Useful when a board first comes up and the full pubsub stack would
+   mask which layer is broken. Each slice is a 200-line `lib.rs` plus
+   the matching board-crate cargo / linker glue.
+
+3. **Per-platform DDS pubsub E2E** — talker + listener crate pair
+   plus a `tests/<rtos>.rs` entry in `nros-tests` that spawns two
+   QEMU instances on a shared netdev (slirp / mcast socket) and
+   asserts `Received: <data>` is logged on the listener side within
+   a timeout. Every slice depends on the corresponding 71.27.cs /
+   linker / heap / Kconfig pieces.
+
+The 71-numbered sub-bullets used during Phase 71 are renumbered as
+97-prefixed items below; cross-references in
+`docs/roadmap/archived/phase-71-dust-dds-platform-agnostic.md` and
+in `book/src/user-guide/rmw-backends.md` keep working through the
+matrix in the book.
+
+## Work Items
+
+### 97.1 — Generic prerequisites (gate every per-platform example)
+
+- [~] **97.1.cs** — `nros-platform/critical-section` cargo feature
+      + per-RTOS `critical_section::Impl`. **FreeRTOS slice landed**:
+      `nros-platform-freertos/src/lib.rs` ships a Cortex-M PRIMASK
+      impl behind `feature = "critical-section"`, registered via
+      `critical_section::set_impl!`. `nros-platform`'s
+      `critical-section` feature forwards through. Verified by
+      `cargo build -p nros-platform-freertos --features critical-section
+      --target thumbv7m-none-eabi`. Per-RTOS slices below still need
+      their own impl:
+      - [x] **97.1.cs.freertos** — Cortex-M PRIMASK via `cortex-m`.
+      - [ ] **97.1.cs.nuttx** — `up_irq_save` / `up_irq_restore`.
+      - [ ] **97.1.cs.threadx** — `__disable_irq` / restore.
+      - [ ] **97.1.cs.smoltcp** — `cortex-m::interrupt::free`
+            (same as freertos for Cortex-M boards; different impl
+            for RISC-V / ESP32 if they ever land).
+      - Zephyr already provides this via `nros-c`'s `ZephyrCs`;
+        the Phase 97 examples on Zephyr that don't go through
+        `nros-c` would need this lifted into `nros-platform-zephyr`.
+- [~] **97.1.linker** — document RAM-region sizing per board.
+      MPS2-AN385 slice landed (Cortex-M3 + FreeRTOS): root cause was
+      a missing `.ARM.extab` placement in
+      `packages/boards/nros-mps2-an385-freertos/config/mps2_an385.ld`.
+      dust-dds emits `.ARM.extab` entries for its panic unwind paths;
+      without an explicit output section the linker dropped them at
+      the start of `.data`, overlapping initialised data. Fix: a
+      one-line `.ARM.extab` section in FLASH between `.text` and
+      `.ARM.exidx`. Other boards likely need the same audit:
+      - [x] **97.1.linker.mps2-an385-freertos** — fixed inline with
+            97.4.freertos talker / listener bring-up.
+      - [ ] **97.1.linker.mps2-an385** (bare-metal smoltcp).
+      - [ ] **97.1.linker.stm32f4**.
+      - [ ] **97.1.linker.esp32-qemu**.
+- [ ] **97.1.heap** — heap config delta per board (Cargo.toml
+      feature gate + `prj.conf` / `FreeRTOSConfig.h` /
+      `tx_user.h` / `nx_user.h` patch). Lands inline with each
+      example's Cargo manifest.
+- [~] **97.1.kconfig** — pull each `[71.23.<plat>]` block from the
+      book into the matching example's
+      `prj.conf` / `lwipopts.h` / `nx_user.h`. The matrix is
+      documented; this is mechanical copy.
+      - [x] **97.1.kconfig.freertos** — landed in
+            `packages/boards/nros-mps2-an385-freertos/config/lwipopts.h`:
+            `LWIP_IGMP=1`, `LWIP_BROADCAST=1`, `IP_REASSEMBLY=1`,
+            `MEMP_NUM_NETBUF` bumped 8→32. `igmp.c` added to the
+            board's `build.rs` lwIP source list. Shared config —
+            zenoh examples link unchanged (verified: 9/9 FreeRTOS
+            rtos_e2e zenoh tests still pass).
+      - [ ] **97.1.kconfig.nuttx** — `CONFIG_NET_IGMP=y`,
+            `CONFIG_NET_BROADCAST=y`, `CONFIG_NET_UDP_NRECVS≥4`,
+            `CONFIG_NET_RECV_TIMEO=y`. Lands with 97.4.nuttx.
+      - [ ] **97.1.kconfig.threadx** — `NX_ENABLE_IGMPV2` + NetX
+            BSD-layer `SO_RCVTIMEO` init. Lands with 97.4.threadx-*.
+      - [ ] **97.1.kconfig.smoltcp** — `MulticastConfig::Strict` +
+            `Interface::join_multicast_group`. Already addressed by
+            Phase 71.26's bridge / macro; per-board wiring lands
+            with 97.4.baremetal / 97.4.esp32-qemu.
+- [~] **97.1.board-decouple** — board crates currently hard-call
+      zenoh-pico-specific symbols at boot (`zpico_set_task_config`,
+      `extern crate zpico_*`). DDS-only builds reach the linker
+      step with these symbols undefined. Fix: option (a) — cfg-gate
+      the calls behind a `feature = "rmw-zenoh"` on the board crate;
+      keep the priority / stack config fields on `Config` because the
+      same FreeRTOS-priority knobs (`zenoh_read_priority` /
+      `zenoh_lease_priority` etc.) tune zenoh-pico's read / lease
+      tasks to avoid priority inversion against the app and poll
+      tasks. The fields are zenoh-named for historical reasons but
+      are config data, not RMW linkage; they only get pushed into
+      zenoh-pico when the matching feature is active.
+      - [x] **97.1.board-decouple.mps2-an385-freertos** — landed.
+            `nros-mps2-an385-freertos`'s `Cargo.toml` makes
+            `zpico-platform-shim` + `zpico-sys` optional under a new
+            `rmw-zenoh` feature (defaulted on for backward compat);
+            `lib.rs`'s `extern crate zpico_*` lines and `node.rs`'s
+            `zpico_set_task_config` block are both cfg-gated.
+            Verified: existing zenoh examples still link unchanged
+            (default features keep the historic shape); the new DDS
+            talker / listener depend with `default-features = false`
+            and link cleanly without the zenoh-pico symbol set.
+      - [ ] **97.1.board-decouple.mps2-an385** (bare-metal smoltcp).
+      - [ ] **97.1.board-decouple.stm32f4**.
+      - [ ] **97.1.board-decouple.nros-nuttx-qemu-arm**.
+      - [ ] **97.1.board-decouple.threadx-qemu-riscv64**.
+      - [ ] **97.1.board-decouple.threadx-linux**.
+      - [ ] **97.1.board-decouple.esp32-qemu**.
+
+### 97.2 — Per-platform PlatformUdp smoke binary
+
+Each slice ports the Phase 71.24 POSIX loopback contract to a
+cross-compile QEMU configuration. Single-process bind / send / recv;
+no peer process. Useful for board bring-up debugging before the full
+DDS stack is wired.
+
+- [ ] **97.2.zephyr-native_sim** — blocked behind upstream NSOS
+      `IP_ADD_MEMBERSHIP` gap (see archived 71.8 note).
+- [ ] **97.2.freertos** — qemu-arm-freertos / MPS2-AN385.
+- [ ] **97.2.nuttx** — qemu-arm-nuttx.
+- [ ] **97.2.threadx-riscv64** — qemu-riscv64-threadx.
+- [ ] **97.2.threadx-linux** — ThreadX Linux sim.
+- [ ] **97.2.baremetal** — MPS2-AN385 (smoltcp).
+- [ ] **97.2.esp32-qemu** — ESP32-QEMU.
+
+### 97.3 — Bare-metal DDS talker / listener examples
+
+Bare-metal examples need 71.26.qemu (smoltcp IGMP E2E smoke) to land
+first; until then the multicast SPDP path is proven only in the unit
+tests landed by Phase 71.26.
+
+- [ ] **97.3.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
+      talker + listener.
+- [ ] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
+      talker + listener.
+
+### 97.4 — Per-platform DDS pubsub E2E
+
+Talker + listener + nros-tests fixture. Each slice depends on the
+matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
+97.2.esp32-qemu.
+
+- [ ] **97.4.zephyr-native_sim** — blocked behind NSOS gap.
+- [~] **97.4.freertos** — qemu-arm-freertos talker↔listener.
+      Talker + listener crates land at
+      `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`.
+      Both build green for `thumbv7m-none-eabi` with all 97.1
+      prereqs wired (cs, linker, board-decouple, global-allocator,
+      kconfig). `nros-tests::fixtures::binaries::freertos`
+      exposes `build_freertos_dds_talker` / `_listener`
+      `OnceCell`-cached fixtures.
+      Remaining: nros-tests fixture
+      (`tests/freertos_qemu_dds.rs`) launching both binaries on
+      a shared `-netdev socket,mcast=…` segment (mirroring the
+      Zephyr A9 mcast pattern, not the existing
+      `start_mps2_an385_networked` slirp NAT path which gives
+      each instance its own isolated NAT stack and so won't
+      cross-deliver multicast). Justfile build-fixtures recipe
+      entry to the existing `just freertos build-fixtures` once
+      the fixture lands.
+- [ ] **97.4.nuttx** — qemu-arm-nuttx talker↔listener.
+- [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
+      talker↔listener.
+- [ ] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
+- [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
+      97.3.mps2-an385).
+- [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on
+      97.3.esp32-qemu).
+
+### 97.5 — Optional follow-ons
+
+- [ ] **97.5.cyclone-fastdds-interop** — *(optional)* CycloneDDS /
+      FastDDS interop test in nros-tests. Independent of the per-
+      platform matrix; useful regression coverage once at least one
+      cross-compile platform's E2E is stable.
+- [ ] **97.5.upstream-transport** — *(optional)* upstream
+      `NrosUdpTransportFactory`'s non-blocking transport back to
+      dust-dds. Removes the local fork dependency on dust-dds without
+      blocking any nano-ros work. Shape stable since Phase 71.22's
+      size-probed buffers landed.
+
+## Acceptance Criteria
+
+- [ ] **97.1.cs** + the four other 97.1 prerequisites each have at
+      least one consumer (the matching 97.4 slice) building cleanly
+      against them.
+- [ ] **97.2** — at least one per-platform `PlatformUdp` smoke binary
+      lands and runs green in `just <plat> test`. Remaining slices
+      can copy the template.
+- [ ] **97.4.freertos** lands as the canonical "first non-Zephyr DDS
+      RTOS" example, exercising every 97.1 piece end-to-end. Other
+      RTOS slices template off it.
+- [ ] At least three of the seven 97.4 slices ship + pass in
+      `just test-all` before this phase is considered "done"
+      (rest can roll incrementally as priorities allow).
+- [ ] Archived Phase 71 doc cross-links to this phase so the
+      historical context is one click away.
+- [ ] `book/src/user-guide/rmw-backends.md` "DDS — per-platform
+      configuration profile" stays in sync; closed slices switch
+      from "TODO" prose to "see `examples/<plat>/rust/dds/`" links.
+
+## Notes
+
+- **Order matters.** 97.1.cs gates every slice; ship it first, then
+  pick one platform end-to-end as the template (recommend FreeRTOS —
+  most mature lwIP support; MPS2-AN385 board crate already exists for
+  zenoh examples).
+- **Per-platform bring-up cost is non-trivial.** Each 97.4 slice is
+  realistically 1–2 days of work end-to-end (cs / linker / heap /
+  Kconfig / fixture / first-boot debugging). The matrix takes time;
+  closing one platform per week is a reasonable cadence.
+- **No new traits or APIs.** Every piece consumes infrastructure
+  Phase 71 already shipped. This phase is pure assembly.
+- **Coordinate with Phase 64.2** (embedded transport tuning guide):
+  the per-RTOS heap / lwIP / Kconfig knobs documented here also
+  belong in Phase 64.2's narrative, once it lands.

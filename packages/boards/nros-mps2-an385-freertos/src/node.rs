@@ -100,12 +100,30 @@ where
         nros_platform_freertos::seed(seed);
     }
 
+    // Resolve the FreeRTOS-native priority for the network poll task —
+    // needed for every RMW backend (the poll task drains the LAN9118
+    // RX FIFO; without it the IP stack stalls). The zenoh-pico read /
+    // lease priorities only matter when `rmw-zenoh` is active; DDS
+    // drives I/O cooperatively from the app task and doesn't spawn
+    // background kernel threads of its own.
+    let poll_pri = Config::to_freertos_priority(ctx.config.poll_priority);
+
     // Configure zenoh-pico read/lease task scheduling from config.
     // Must be called before Executor::open() which calls zpico_open().
-    let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
-    let lease_pri = Config::to_freertos_priority(ctx.config.zenoh_lease_priority);
-    let poll_pri = Config::to_freertos_priority(ctx.config.poll_priority);
+    //
+    // The priorities documented on `Config` (`zenoh_read_priority` /
+    // `zenoh_lease_priority` / `*_stack_bytes`) exist to avoid priority
+    // inversion: zenoh-pico's read task must outrank the application
+    // task so it can drain RX before the app produces the next message,
+    // and outrank the network poll task so it never blocks waiting on a
+    // poll cycle. We keep those config fields for backward compat but
+    // only push them into zenoh-pico when the matching feature is
+    // active — DDS-only builds reach the linker without
+    // `zpico_set_task_config` undefined.
+    #[cfg(feature = "rmw-zenoh")]
     {
+        let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
+        let lease_pri = Config::to_freertos_priority(ctx.config.zenoh_lease_priority);
         unsafe extern "C" {
             fn zpico_set_task_config(
                 read_priority: u32,
