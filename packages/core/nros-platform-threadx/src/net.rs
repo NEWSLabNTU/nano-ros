@@ -504,65 +504,145 @@ impl ThreadxPlatform {
 }
 
 // ============================================================================
-// UDP multicast (stubs — not supported on ThreadX/NetX Duo)
+// UDP multicast — Phase 97.4.threadx
 // ============================================================================
+//
+// NetX Duo's BSD shim exposes a real `IP_ADD_MEMBERSHIP` setsockopt
+// (see `nxd_bsd.h:601`). Same shape as the lwIP / NuttX paths:
+//   * `mcast_open` — open a regular UDP socket aimed at the mcast
+//     group + stash the destination endpoint in `lep` for the
+//     writer's reuse.
+//   * `mcast_listen` — `udp_listen` + setsockopt
+//     `IP_ADD_MEMBERSHIP` + flip O_NONBLOCK when the caller asked
+//     for `timeout_ms = 0`.
+//   * `mcast_read{,_exact}` / `mcast_send` — delegate to the
+//     unicast helpers; once the IGMP join lands NetX delivers the
+//     mcast traffic through the same `nx_bsd_recv` path.
 
 impl ThreadxPlatform {
     pub fn mcast_open(
-        _sock: *mut c_void,
-        _endpoint: *const c_void,
-        _lep: *mut c_void,
-        _timeout_ms: u32,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
         _iface: *const u8,
     ) -> i8 {
-        -1
+        if !lep.is_null() && !endpoint.is_null() {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    endpoint as *const u8,
+                    lep as *mut u8,
+                    core::mem::size_of::<Endpoint>(),
+                );
+            }
+        }
+        Self::udp_open(sock, endpoint, timeout_ms)
     }
 
     pub fn mcast_listen(
-        _sock: *mut c_void,
-        _endpoint: *const c_void,
-        _timeout_ms: u32,
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
         _iface: *const u8,
-        _join: *const u8,
+        join: *const u8,
     ) -> i8 {
-        -1
+        let rc = Self::udp_listen(sock, endpoint, timeout_ms);
+        if rc < 0 {
+            return rc;
+        }
+
+        let group_h = if !join.is_null() { parse_ipv4(join) } else { 0 };
+        if group_h == 0 {
+            return rc;
+        }
+
+        let sock_ref = unsafe { &*(sock as *const Socket) };
+        let fd = sock_ref._fd;
+        if fd < 0 {
+            return -1;
+        }
+
+        // NetX `nx_bsd_in_addr` field is `s_addr` in *network* byte
+        // order (BE). Our `parse_ipv4` returns host byte order so
+        // the high octet sits at the bottom of the u32. Swap.
+        let group_n = group_h.to_be();
+        let mreq = nx_bsd_ip_mreq {
+            imr_multiaddr: nx_bsd_in_addr { s_addr: group_n },
+            imr_interface: nx_bsd_in_addr { s_addr: 0 },
+        };
+        let setsockopt_rc = unsafe {
+            nx_bsd_setsockopt(
+                fd,
+                IPPROTO_IP as INT,
+                IP_ADD_MEMBERSHIP as INT,
+                &mreq as *const _ as *const c_void,
+                core::mem::size_of::<nx_bsd_ip_mreq>() as INT,
+            )
+        };
+        if setsockopt_rc < 0 {
+            unsafe {
+                nx_bsd_soc_close(fd);
+            }
+            return -1;
+        }
+
+        if timeout_ms == 0 {
+            // NetX's `nx_bsd_fcntl` mirrors POSIX semantics but uses
+            // a fixed (UINT, UINT) signature — no vararg. Flip
+            // O_NONBLOCK so the cooperative recv loops don't block
+            // forever (NetX's `SO_RCVTIMEO {0}` means "block
+            // forever" too).
+            unsafe {
+                let flags = nx_bsd_fcntl(fd, F_GETFL, 0);
+                if flags >= 0 {
+                    nx_bsd_fcntl(fd, F_SETFL, (flags as u32) | O_NONBLOCK);
+                }
+            }
+        }
+        0
     }
 
     pub fn mcast_close(
-        _sockrecv: *mut c_void,
-        _socksend: *mut c_void,
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
         _rep: *const c_void,
         _lep: *const c_void,
     ) {
+        if !sockrecv.is_null() {
+            Self::udp_close(sockrecv);
+        }
+        if !socksend.is_null() {
+            Self::udp_close(socksend);
+        }
     }
 
     pub fn mcast_read(
-        _sock: *const c_void,
-        _buf: *mut u8,
-        _len: usize,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
         _lep: *const c_void,
         _addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        Self::udp_read(sock, buf, len)
     }
 
     pub fn mcast_read_exact(
-        _sock: *const c_void,
-        _buf: *mut u8,
-        _len: usize,
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
         _lep: *const c_void,
         _addr: *mut c_void,
     ) -> usize {
-        usize::MAX
+        Self::udp_read_exact(sock, buf, len)
     }
 
     pub fn mcast_send(
-        _sock: *const c_void,
-        _buf: *const u8,
-        _len: usize,
-        _endpoint: *const c_void,
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
     ) -> usize {
-        usize::MAX
+        Self::udp_send(sock, buf, len, endpoint)
     }
 }
 

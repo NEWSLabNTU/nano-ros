@@ -1,0 +1,30 @@
+[package]
+name = "threadx-linux-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on Linux with ThreadX + NetX Duo (Phase 97.4.threadx-linux)"
+
+[[bin]]
+name = "threadx-linux-dds-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
+# Use `alloc` instead of `std` so the dust-dds nostd-runtime path runs
+# (the threaded `rtps_udp_transport` socket2 path doesn't apply on top
+# of NetX BSD).
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
+# Phase 97.4 debug — surfaces the per-bind / per-write_message trace
+# through `eprintln!`. Off by default.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+# `dust-dds` references `_critical_section_1_0_*` symbols. Linux host
+# has pthread → use the std-backed impl from the `critical-section`
+# crate.
+critical-section = { version = "1.2", default-features = false, features = ["std"] }

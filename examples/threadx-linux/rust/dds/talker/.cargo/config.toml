@@ -1,0 +1,17 @@
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nros-core]
+path = "../../../../../packages/core/nros-core"
+
+[patch.crates-io.nros-serdes]
+path = "../../../../../packages/core/nros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+# Phase 97.4.threadx-linux — advertise this guest's interface IPv4 in
+# SPDP unicast locators *and* seed the dust-dds GUID prefix so peers
+# don't self-filter each other.
+[env]
+NROS_LOCAL_IPV4 = "192.0.3.10"

@@ -98,6 +98,10 @@ fn main() {
         .allowlist_function("nx_bsd_getsockopt")
         .allowlist_function("nx_bsd_soc_close")
         .allowlist_function("nx_bsd_select")
+        // Phase 97.4.threadx — `O_NONBLOCK` flip for the cooperative
+        // recv loops (NetX's SO_RCVTIMEO {0,0} is blocking, same lwIP
+        // gotcha).
+        .allowlist_function("nx_bsd_fcntl")
         // htonl/htons/ntohl/ntohs are C macros in NetX — provide as Rust functions
         // Constants
         .allowlist_var("AF_INET")
@@ -115,6 +119,17 @@ fn main() {
         .allowlist_var("SO_LINGER")
         .allowlist_var("TCP_NODELAY")
         .allowlist_var("NX_BSD_MAX_SOCKETS")
+        // Phase 97.4.threadx — IGMP join via setsockopt + RTPS literal
+        // resolution.
+        .allowlist_var("IP_ADD_MEMBERSHIP")
+        .allowlist_var("IP_DROP_MEMBERSHIP")
+        .allowlist_var("IP_MULTICAST_LOOP")
+        .allowlist_var("IPPROTO_IP")
+        .allowlist_var("F_GETFL")
+        .allowlist_var("F_SETFL")
+        .allowlist_var("O_NONBLOCK")
+        .allowlist_type("nx_bsd_ip_mreq")
+        .allowlist_type("nx_bsd_in_addr")
         // No layout tests (can't run on embedded)
         .layout_tests(false)
         .derive_debug(false)

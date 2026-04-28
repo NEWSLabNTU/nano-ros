@@ -1,0 +1,14 @@
+# ThreadX Linux DDS listener — network configuration
+# Distinct IP + MAC + TAP device from talker.
+
+[network]
+ip = "192.0.3.11"
+mac = "02:00:00:00:00:01"
+gateway = "192.0.3.1"
+netmask = "255.255.255.0"
+
+[platform]
+interface = "tap-tx1"
+
+[zenoh]
+domain_id = 0

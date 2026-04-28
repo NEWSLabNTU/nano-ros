@@ -295,8 +295,29 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         routed through `eprintln!` instead of Cortex-M
         semihosting.
 - [ ] **97.4.threadx-riscv64** — qemu-riscv64-threadx
-      talker↔listener.
-- [ ] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
+      talker↔listener. Platform-side `mcast_*` impls landed in
+      `nros-platform-threadx::net.rs` (NetX Duo's BSD shim
+      `IP_ADD_MEMBERSHIP` + `nx_bsd_fcntl(O_NONBLOCK)`); example
+      crates and nros-tests fixture remain.
+- [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
+      Build path lands green:
+      - Example crates at
+        `examples/threadx-linux/rust/dds/{talker,listener}/`,
+        both build clean for `x86_64-unknown-linux-gnu`.
+      - `nros-platform-threadx` shares the same `mcast_*` impls
+        used by the qemu-riscv64-threadx slice — NetX Duo BSD's
+        `IP_ADD_MEMBERSHIP` setsockopt + `nx_bsd_fcntl` for
+        `O_NONBLOCK`.
+      - Example `.cargo/config.toml` sets `NROS_LOCAL_IPV4` per
+        instance, same role as the FreeRTOS / NuttX slices.
+
+      Runtime E2E test still pending — requires the existing
+      ThreadX-Linux TAP / bridge fixture (`veth-tx0` / `veth-tx1`
+      pair with `tap-tx0` / `tap-tx1` host endpoints and an
+      `nros-test-bridge` linking them). DDS works through the
+      same setup that ships green for the zenoh path; the
+      remaining work is the test harness wiring + `tests/
+      threadx_linux_dds.rs` integration test.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on

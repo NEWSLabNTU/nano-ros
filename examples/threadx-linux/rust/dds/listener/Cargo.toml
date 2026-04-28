@@ -1,0 +1,22 @@
+[package]
+name = "threadx-linux-dds-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS listener example on Linux with ThreadX + NetX Duo (Phase 97.4.threadx-linux)"
+
+[[bin]]
+name = "threadx-linux-dds-listener"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+critical-section = { version = "1.2", default-features = false, features = ["std"] }

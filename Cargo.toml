@@ -219,6 +219,9 @@ exclude = [
     "examples/threadx-linux/rust/zenoh/service-client",
     "examples/threadx-linux/rust/zenoh/action-server",
     "examples/threadx-linux/rust/zenoh/action-client",
+    # ThreadX-Linux DDS (Phase 97.4.threadx-linux)
+    "examples/threadx-linux/rust/dds/talker",
+    "examples/threadx-linux/rust/dds/listener",
     # ThreadX QEMU RISC-V examples (require ThreadX + NetX Duo SDKs + RISC-V toolchain)
     "examples/qemu-riscv64-threadx/rust/zenoh/talker",
     "examples/qemu-riscv64-threadx/rust/zenoh/listener",

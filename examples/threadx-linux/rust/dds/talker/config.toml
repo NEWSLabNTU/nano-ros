@@ -1,0 +1,14 @@
+# ThreadX Linux DDS talker — network configuration
+# Brokerless DDS over RTPS multicast — no zenoh router needed.
+
+[network]
+ip = "192.0.3.10"
+mac = "02:00:00:00:00:00"
+gateway = "192.0.3.1"
+netmask = "255.255.255.0"
+
+[platform]
+interface = "tap-tx0"
+
+[zenoh]
+domain_id = 0
