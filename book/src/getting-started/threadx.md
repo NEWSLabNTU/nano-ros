@@ -73,7 +73,8 @@ just build-examples-threadx-riscv64
 
 ### Available Examples
 
-All examples are in `examples/threadx-linux/rust/zenoh/` and
+Zenoh examples (zenoh-pico backend) live in
+`examples/threadx-linux/rust/zenoh/` and
 `examples/qemu-riscv64-threadx/rust/zenoh/`:
 
 | Example | Description |
@@ -84,6 +85,15 @@ All examples are in `examples/threadx-linux/rust/zenoh/` and
 | `service-client` | Calls `AddTwoInts` on `/add_two_ints` |
 | `action-server` | Serves `Fibonacci` action on `/fibonacci` |
 | `action-client` | Sends `Fibonacci` goal on `/fibonacci` |
+
+DDS examples (dust-dds + NetX Duo BSD shim, brokerless RTPS over UDP)
+live in `examples/threadx-linux/rust/dds/` and
+`examples/qemu-riscv64-threadx/rust/dds/`:
+
+| Example | Description |
+|---------|-------------|
+| `talker` | Publishes `std_msgs/Int32` on `/chatter` over RTPS |
+| `listener` | Subscribes to `std_msgs/Int32` on `/chatter` over RTPS |
 
 ## Testing
 
