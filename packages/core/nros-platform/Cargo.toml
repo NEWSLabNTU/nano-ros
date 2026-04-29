@@ -21,6 +21,12 @@ platform-nuttx = ["dep:nros-platform-nuttx"]
 platform-freertos = ["dep:nros-platform-freertos"]
 platform-threadx = ["dep:nros-platform-threadx"]
 platform-zephyr = ["dep:nros-platform-zephyr"]
+# Phase 100 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP, IVC transport).
+# IVC backend is selected by the consumer crate via
+# `nros-platform-orin-spe?/{fsp,unix-mock}`; defaults to no backend
+# (a build-time error on first use) so accidentally enabling
+# `platform-orin-spe` without picking one fails fast.
+platform-orin-spe = ["dep:nros-platform-orin-spe"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -58,6 +64,15 @@ critical-section = [
 # debug NSOS RX delivery on `native_sim`.
 debug-mcast-read-zephyr = ["nros-platform-zephyr?/debug-mcast-read"]
 
+# Phase 100.1 — Cortex-R5 CPSR I-bit critical-section (Orin SPE). Pulled
+# in by the SPE board crate alongside `platform-orin-spe`. Distinct from
+# the Cortex-M umbrella above so the two `set_impl!` registrations never
+# collide; `nros-platform-freertos` itself raises a `compile_error!` if
+# both are activated together.
+cortex-r = [
+    "nros-platform-orin-spe?/cortex-r",
+]
+
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.
@@ -72,6 +87,7 @@ nros-platform-nuttx = { version = "0.1.0", path = "../nros-platform-nuttx", opti
 nros-platform-freertos = { version = "0.1.0", path = "../nros-platform-freertos", optional = true }
 nros-platform-threadx = { version = "0.1.0", path = "../nros-platform-threadx", optional = true }
 nros-platform-zephyr = { version = "0.1.0", path = "../nros-platform-zephyr", optional = true }
+nros-platform-orin-spe = { version = "0.1.0", path = "../../platforms/nros-platform-orin-spe", optional = true }
 
 [lints]
 workspace = true

@@ -35,6 +35,9 @@ pub type ConcretePlatform = nros_platform_threadx::ThreadxPlatform;
 #[cfg(feature = "platform-zephyr")]
 pub type ConcretePlatform = nros_platform_zephyr::ZephyrPlatform;
 
+#[cfg(feature = "platform-orin-spe")]
+pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;
+
 // ============================================================================
 // Phase 71.22 — opaque-buffer sizes for `_z_sys_net_socket_t` /
 // `_z_sys_net_endpoint_t`, resolved per platform.
@@ -75,6 +78,16 @@ pub use nros_platform_nuttx::net::{
 
 #[cfg(feature = "platform-threadx")]
 pub use nros_platform_threadx::net::{
+    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
+};
+
+// Phase 100 — SPE has no TCP/UDP at the platform level (IVC replaces
+// them at the link layer). The platform crate publishes the same
+// 64-byte fallback the other no-network platforms use, exposed as a
+// crate-root constant rather than a `net::` submodule because there
+// is no `net` module to host it on the SPE.
+#[cfg(feature = "platform-orin-spe")]
+pub use nros_platform_orin_spe::{
     NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
 };
 

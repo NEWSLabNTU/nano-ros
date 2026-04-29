@@ -1474,6 +1474,7 @@ dependencies = [
  "nros-platform-freertos",
  "nros-platform-mps2-an385",
  "nros-platform-nuttx",
+ "nros-platform-orin-spe",
  "nros-platform-posix",
  "nros-platform-stm32f4",
  "nros-platform-threadx",
@@ -1544,6 +1545,15 @@ dependencies = [
  "nros-platform-api",
  "nros-platform-posix",
  "nuttx-sys",
+]
+
+[[package]]
+name = "nros-platform-orin-spe"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-api",
+ "nros-platform-freertos",
+ "nvidia-ivc",
 ]
 
 [[package]]

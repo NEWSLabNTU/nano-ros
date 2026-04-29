@@ -53,6 +53,10 @@ members = [
     "packages/core/nros-platform-freertos",
     "packages/core/nros-platform-threadx",
     "packages/core/nros-platform-zephyr",
+    # Phase 100 — AGX Orin SPE platform crate. Thin trait-impl crate
+    # that delegates to nros-platform-freertos (FSP exposes the same
+    # FreeRTOS V10.4.3 surface) and to nvidia-ivc for `PlatformIvc`.
+    "packages/platforms/nros-platform-orin-spe",
     # Platform shims for RMW backends
     "packages/zpico/zpico-platform-shim",
     "packages/xrce/xrce-platform-shim",
