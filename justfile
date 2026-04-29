@@ -86,11 +86,35 @@ install-local-posix:
         cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
     done
 
-# Remove the install prefix and rebuild from scratch.
-# Use after library renames or CMake structural changes that leave stale files.
+# The cmake build dirs hold their own cargo target tree
+# (`build/cmake-<rmw>/cargo/...`) whose incremental cache can hand
+# back stale `.rlib`s after edits to deeply-shared crates like
+# `nros-node` — the resulting `lib<...>.a` then carries pre-edit code
+# into Zephyr / FreeRTOS / etc. binaries that link against it. Wipe
+# both layers when in doubt.
+#
+# Remove install prefix + each per-RMW cmake build dir, then rebuild from scratch.
 clean-install:
-    rm -rf build/install/
+    rm -rf build/install/ build/cmake-*
     just install-local
+
+# Same stale-`.rlib` trap as above (see clean-install) — preserves
+# cmake configure state, only wipes the cargo target trees and the
+# installed nros-c / nros-cpp staticlibs. After this, rerun whatever
+# per-platform build recipe is relevant (`just install-local`,
+# `just zephyr build-fixtures`, …).
+#
+# Faster cache flush — wipes per-RMW cargo target trees only, no cmake reconfigure.
+refresh-cmake-cargo:
+    #!/usr/bin/env bash
+    set -e
+    for dir in build/cmake-*; do
+        [ -d "$dir" ] || continue
+        rm -rf "$dir/cargo"
+        echo "Wiped $dir/cargo"
+    done
+    rm -f build/install/lib/libnros_c*.a build/install/lib/libnros_cpp*.a
+    echo "Done. Now rerun the build recipe for whichever target you need."
 
 # Create a combined binary distribution archive of the full install prefix.
 # Runs install-local first, then archives build/install/ as a self-contained
