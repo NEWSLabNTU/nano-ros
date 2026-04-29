@@ -2026,17 +2026,15 @@ fn get_zephyr_xrce_cpp_action_client_native_sim() -> PathBuf {
     .expect("Failed to get zephyr-xrce-cpp-action-client binary")
 }
 
-/// **#[ignore]d**: cpp/xrce listener never receives messages from
-/// cpp/xrce talker on the same XRCE Agent. Talker publishes 1..10 OK,
-/// listener stays in `nros::spin_once(100)` + `sub.try_recv(msg)`
-/// loop without seeing any. Likely an XRCE agent demux bug for the
-/// cpp-API session shape (rust + c xrce work fine on the same agent
-/// — see `test_zephyr_xrce_rust_talker_listener` and
-/// `test_zephyr_xrce_c_talker_listener`). Re-enable after a follow-up
-/// reproduces both sessions on a fresh agent and walks the cpp →
-/// nros-c FFI path.
+/// Phase 96.1 — cpp/xrce talker→listener interop on a shared agent.
+///
+/// Re-enabled after the cpp `nros::init()` overload took an explicit
+/// session_name. Earlier the wrapper hardcoded the XRCE session key
+/// to a hash of `"nros_cpp"` for every cpp process — two cpp
+/// participants on the same agent collided as one client, so topic
+/// publishes weren't cross-routed. Examples now pass distinct names
+/// (`"zephyr_cpp_talker"`, `"zephyr_cpp_listener"`, …).
 #[test]
-#[ignore]
 fn test_zephyr_xrce_cpp_talker_listener() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
@@ -2082,13 +2080,9 @@ fn test_zephyr_xrce_cpp_talker_listener() {
     eprintln!("SUCCESS: cpp/xrce listener got {} messages", count);
 }
 
-/// **#[ignore]d**: same root cause as
-/// `test_zephyr_xrce_cpp_talker_listener` — cpp/xrce subscriber path
-/// doesn't receive messages from another cpp/xrce participant on the
-/// same agent. Service requests sent by cpp client never reach cpp
-/// server.
+/// Phase 96.1 — cpp/xrce service request/reply on a shared agent.
+/// Re-enabled alongside `test_zephyr_xrce_cpp_talker_listener`.
 #[test]
-#[ignore]
 fn test_zephyr_xrce_cpp_service_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
@@ -2137,10 +2131,19 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     }
 }
 
-/// **#[ignore]d**: same root cause as
-/// `test_zephyr_xrce_cpp_talker_listener`. Re-enable alongside.
+/// Phase 96.1 follow-up — cpp/xrce action goal/feedback/result on
+/// a shared agent. Re-enabled after fixing two off-by-N offset
+/// bugs in `arena.rs`'s action-client trampoline:
+///   * result reply: `result_offset = 5` missed the 3-byte align
+///     pad inserted by `try_handle_get_result_raw` between the
+///     status byte and the payload (correct offset = 8).
+///   * feedback: `offset = 4 + 16` missed the 4-byte GoalId
+///     length-prefix u32 written by `write_goal_id` (correct
+///     offset = 24).
+/// Both surfaced as empty payloads on the cpp client side because
+/// the prefix bytes leaked into the body and `ffi_deserialize`
+/// read sequence_length = 0.
 #[test]
-#[ignore]
 fn test_zephyr_xrce_cpp_action_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");

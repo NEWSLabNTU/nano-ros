@@ -13,8 +13,9 @@ use cortex_m_semihosting::hprintln;
 
 use nros_platform_mps2_an385::random;
 
-#[cfg(feature = "ethernet")]
-use nros_platform_mps2_an385::clock;
+// `nros_platform_mps2_an385::clock` is referenced via its fully
+// qualified path (e.g. `clock::clock_ms()`) at the call sites; no
+// `use` import needed.
 #[cfg(feature = "ethernet")]
 use crate::network;
 

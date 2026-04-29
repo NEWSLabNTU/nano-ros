@@ -53,8 +53,7 @@ fn main() {
             }
         };
 
-        let response = match promise.wait(&mut executor, core::time::Duration::from_millis(10000))
-        {
+        let response = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
             Ok(reply) => reply,
             Err(e) => {
                 error!("Service call failed: {:?}", e);

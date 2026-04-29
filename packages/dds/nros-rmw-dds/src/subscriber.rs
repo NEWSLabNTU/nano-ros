@@ -50,7 +50,6 @@ impl DdsSubscriber {
             waker_cell,
         }
     }
-
 }
 
 impl Subscriber for DdsSubscriber {

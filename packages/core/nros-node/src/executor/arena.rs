@@ -875,14 +875,29 @@ pub(crate) unsafe fn action_client_raw_try_process<
     // 2. Poll feedback
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
         if let Some(cb) = feedback_callback {
-            // Feedback buffer: CDR header (4) + GoalId (16) + feedback fields
-            let offset = 4 + 16;
-            if total_len > offset {
+            // Feedback buffer layout from `publish_feedback_raw` in
+            // `action_core.rs`:
+            //   bytes 0..4   outer CDR header (`new_with_header`)
+            //   bytes 4..8   GoalId.length (u32 = 16, written by
+            //                `write_goal_id`)
+            //   bytes 8..24  GoalId.uuid (16 bytes)
+            //   bytes 24..   payload — exactly the bytes the caller
+            //                of `publish_feedback_raw` handed in
+            //                (typed serializers like `ffi_serialize`
+            //                write a CDR header at the front).
+            //
+            // Earlier offset of 4 + 16 = 20 missed the GoalId
+            // length-prefix u32, so 4 bytes of GoalId UUID leaked
+            // into the payload prefix and `ffi_deserialize` blew
+            // up — surfaced as `feedback=0` on cpp/xrce action E2E
+            // (Phase 96.1 follow-up).
+            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 4 + 16;
+            if total_len > FEEDBACK_PAYLOAD_OFFSET {
                 unsafe {
                     cb(
                         &goal_id,
-                        core.feedback_buffer[offset..total_len].as_ptr(),
-                        total_len - offset,
+                        core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len].as_ptr(),
+                        total_len - FEEDBACK_PAYLOAD_OFFSET,
                         *context,
                     );
                 }
@@ -894,8 +909,28 @@ pub(crate) unsafe fn action_client_raw_try_process<
     // 3. Poll result reply
     if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
         if let Some(cb) = result_callback {
-            // Result reply CDR: header (4) + status (i8, 1 byte) + result fields
-            if total_len >= 5 {
+            // Reply layout from `try_handle_get_result_raw` in
+            // `action_core.rs`:
+            //   bytes 0..4   outer CDR header (`new_with_header`)
+            //   byte  4      status (i8)
+            //   bytes 5..8   align(4) pad
+            //   bytes 8..    payload — exactly the bytes the caller
+            //                of `complete_goal_raw` handed in (typed
+            //                serializers like `ffi_serialize` write
+            //                a CDR header at the front, which is
+            //                why the alignment pad above is sized
+            //                to land the payload at a 4-byte boundary).
+            //
+            // The trampoline forwards `payload` to the C/C++
+            // callback verbatim — the cpp wrapper expects to see
+            // the inner CDR header that `ffi_serialize` wrote.
+            // Earlier code used `result_offset = 5` and skipped
+            // only the status byte; that leaked the 3 alignment
+            // pad bytes into the payload prefix and blew up
+            // `ffi_deserialize`, surfacing as an empty result on
+            // the cpp/xrce action client (Phase 96.1 follow-up).
+            const RESULT_PAYLOAD_OFFSET: usize = 8;
+            if total_len >= RESULT_PAYLOAD_OFFSET {
                 let status_byte = core.result_buffer[4];
                 let status = match status_byte {
                     4 => nros_core::GoalStatus::Succeeded,
@@ -903,7 +938,6 @@ pub(crate) unsafe fn action_client_raw_try_process<
                     6 => nros_core::GoalStatus::Aborted,
                     _ => nros_core::GoalStatus::Unknown,
                 };
-                let result_offset = 5;
                 // Extract GoalId from the last sent goal
                 let goal_id = nros_core::GoalId {
                     uuid: {
@@ -917,8 +951,8 @@ pub(crate) unsafe fn action_client_raw_try_process<
                     cb(
                         &goal_id,
                         status,
-                        core.result_buffer[result_offset..total_len].as_ptr(),
-                        total_len - result_offset,
+                        core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
+                        total_len - RESULT_PAYLOAD_OFFSET,
                         *context,
                     );
                 }

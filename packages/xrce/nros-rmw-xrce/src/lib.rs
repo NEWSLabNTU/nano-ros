@@ -633,7 +633,14 @@ pub struct XrceRmw {
 }
 
 /// Agent endpoint (IPv4 + UDP port).
+///
+/// Stored on the `XrceRmw` factory so `open()` can hand the address
+/// to the platform-UDP init hook. The fields are written from
+/// `with_agent` but only read inside the `platform-udp` feature path
+/// — `#[allow(dead_code)]` keeps the warning quiet on builds that
+/// don't compile that path in.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct AgentAddr {
     ip: [u8; 4],
     port: u16,

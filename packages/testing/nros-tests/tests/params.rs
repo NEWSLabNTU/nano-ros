@@ -93,15 +93,20 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Wait for talker to start publishing (ensures parameters are loaded)
+    // Wait directly for the line we're going to assert on. Earlier
+    // the test waited for "Publishing" (5 s window) then killed and
+    // grabbed the rest with a 2 s grace — under heavy `just
+    // test-all` load the talker booted slowly enough that the
+    // grace window missed the "Counter start value" line, flaking
+    // the test (Phase 96.2). Waiting for the exact pattern
+    // eliminates the timing dependency.
     let early_output = proc
-        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .wait_for_output_pattern("Counter start value", Duration::from_secs(15))
         .unwrap_or_default();
 
-    // Kill the process before collecting output
+    // Kill the process before collecting any remaining output.
     proc.kill();
 
-    // Capture both stdout and stderr — combine with early output
     let remaining = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();

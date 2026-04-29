@@ -73,7 +73,23 @@ class Executor {
     /// @param domain_id  ROS domain ID (0-232).
     /// @return Result indicating success or failure.
     static Result create(Executor& out, const char* locator = nullptr, uint8_t domain_id = 0) {
-        nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, out.storage_);
+        return create(out, locator, domain_id, "nros_cpp");
+    }
+
+    /// Create and initialize an executor with an explicit session name.
+    ///
+    /// `session_name` flows through to the XRCE-DDS RMW backend as the
+    /// per-process key derivation seed. Two processes sharing one
+    /// XRCE Agent MUST use distinct names; see `nros::init`'s named
+    /// overload for the full discussion.
+    static Result create(Executor& out, const char* locator, uint8_t domain_id,
+                         const char* session_name) {
+        // -3 = NROS_CPP_RET_INVALID_ARGUMENT (cbindgen header).
+        if (session_name == nullptr) {
+            return Result(-3);
+        }
+        nros_cpp_ret_t ret =
+            nros_cpp_init(locator, domain_id, session_name, nullptr, out.storage_);
         if (ret == 0) {
             out.initialized_ = true;
         }

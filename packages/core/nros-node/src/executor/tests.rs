@@ -7,6 +7,18 @@ use nros_rmw::TransportError;
 use crate::mock::{MockSession, MockSubscriber};
 use crate::timer::TimerDuration;
 
+/// Sleep `ms` then call `spin_once(0)`. Phase 100 follow-up: spin_once
+/// credits the wall-clock since the previous `spin_once` exited (not the
+/// requested timeout) to the timer accumulator. Tests that previously
+/// relied on `spin_once(N ms)` advancing virtual time by N must now
+/// elapse real wall-clock time between calls. MockSession's `drive_io`
+/// is a no-op, so the requested timeout adds no real elapsed.
+#[cfg(feature = "std")]
+fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+    executor.spin_once(core::time::Duration::from_millis(0))
+}
+
 #[test]
 fn test_error_conversion() {
     let transport_err = TransportError::ConnectionFailed;
@@ -270,12 +282,12 @@ fn test_add_timer_and_fire() {
         .unwrap();
 
     // Not enough time elapsed — should not fire
-    let result = executor.spin_once(core::time::Duration::from_millis(50));
+    let result = elapse_then_spin_once(&mut executor, 50);
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
 
     // Now enough time elapsed (50 + 60 = 110 >= 100)
-    let result = executor.spin_once(core::time::Duration::from_millis(60));
+    let result = elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -294,9 +306,9 @@ fn test_timer_repeats() {
         .unwrap();
 
     // Fire 3 times
-    let _ = executor.spin_once(core::time::Duration::from_millis(100));
-    let _ = executor.spin_once(core::time::Duration::from_millis(100));
-    let _ = executor.spin_once(core::time::Duration::from_millis(100));
+    let _ = elapse_then_spin_once(&mut executor, 100);
+    let _ = elapse_then_spin_once(&mut executor, 100);
+    let _ = elapse_then_spin_once(&mut executor, 100);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
 
@@ -314,12 +326,12 @@ fn test_timer_oneshot_fires_once() {
         .unwrap();
 
     // First spin fires
-    let result = executor.spin_once(core::time::Duration::from_millis(60));
+    let result = elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     // Second spin should NOT fire again
-    let result = executor.spin_once(core::time::Duration::from_millis(60));
+    let result = elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -369,7 +381,7 @@ fn test_timer_with_subscriptions() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(core::time::Duration::from_millis(100));
+    let result = elapse_then_spin_once(&mut executor, 100);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(timer_count.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -1142,7 +1154,7 @@ fn test_trigger_all_with_mixed_handles() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = executor.spin_once(core::time::Duration::from_millis(100));
+    let result = elapse_then_spin_once(&mut executor, 100);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(result.timers_fired, 1);
 }
@@ -1303,10 +1315,10 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
     // When the timer fires during the trigger-failed path, its callback
     // IS invoked (timers always fire regardless of trigger), but the
     // SpinOnceResult is not propagated.
-    let _result = executor.spin_once(core::time::Duration::from_millis(50)); // elapsed=50, not ready
+    let _result = elapse_then_spin_once(&mut executor, 50); // elapsed=50, not ready
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
 
-    let _result = executor.spin_once(core::time::Duration::from_millis(60)); // elapsed=110, fires!
+    let _result = elapse_then_spin_once(&mut executor, 60); // elapsed=110, fires!
     // Timer callback fired even though trigger didn't pass
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -1404,4 +1416,57 @@ fn test_promise_try_recv_returns_none_then_some() {
     // Now try_recv should return the reply
     let reply = promise.try_recv().unwrap().unwrap();
     assert_eq!(reply.sum, 99);
+}
+
+// ====================================================================
+// Wall-clock-accurate timer accumulation regression test (Phase 100
+// follow-up: 232 Hz → 40 Hz fix).
+// ====================================================================
+//
+// `spin_once(timeout)` used to credit the requested `timeout_ms` to the
+// timer accumulator regardless of how long `drive_io` actually blocked.
+// MockSession::drive_io returns immediately, so a 100 ms `spin_once`
+// would tick a 30 ms timer ~3 times even though 0 wall-clock ms had
+// elapsed. Under sustained traffic that broke a 30 Hz control loop into
+// >200 Hz overshoot.
+//
+// The fix: measure real elapsed via `Instant::now()` and carry the
+// sub-ms remainder across calls. This test asserts a 50 ms timer does
+// NOT fire after a single 1 s `spin_once` against a no-op session.
+#[test]
+#[cfg(feature = "std")]
+fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use core::time::Duration;
+    static FIRES: AtomicU32 = AtomicU32::new(0);
+    FIRES.store(0, Ordering::SeqCst);
+
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // 50 ms periodic timer.
+    let _timer = executor
+        .add_timer(TimerDuration::from_millis(50), || {
+            FIRES.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // Ask for a 1 s spin. MockSession::drive_io returns instantly, so
+    // real elapsed is ~0 ms. With the bug the timer would fire ~20 times
+    // (1000 ms / 50 ms). Without the bug, 0 fires.
+    let start = std::time::Instant::now();
+    executor.spin_once(Duration::from_millis(1000));
+    let real_elapsed_ms = start.elapsed().as_millis() as u64;
+
+    let fires = FIRES.load(Ordering::SeqCst);
+
+    // Expected fires = real_elapsed / 50 ms. Allow off-by-one for the
+    // residual carry. Pre-fix this would be ~20 regardless of elapsed.
+    let expected_max = (real_elapsed_ms / 50 + 1) as u32;
+    assert!(
+        fires <= expected_max,
+        "timer over-fired: got {fires} fires after only {real_elapsed_ms} ms wall-clock \
+         (expected ≤ {expected_max}). The pre-fix bug credited the requested \
+         timeout (1000 ms) to the timer delta.",
+    );
 }

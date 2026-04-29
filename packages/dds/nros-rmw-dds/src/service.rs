@@ -22,6 +22,12 @@ pub struct DdsServiceServer {
     reply_writer: DdsPublisher,
 }
 
+// Constructor is only invoked from the
+// `cfg(any(feature = "std", feature = "nostd-runtime"))` branches
+// of `DdsSession::create_service_server` in session.rs. Gate the
+// impl block on the same cfg so the bare-no-std fallback (no
+// runtime, no callers) doesn't emit "function never used".
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
 impl DdsServiceServer {
     pub(crate) fn new(request_reader: DdsSubscriber, reply_writer: DdsPublisher) -> Self {
         Self {
@@ -88,6 +94,9 @@ pub struct DdsServiceClient {
     pending_sequence: i64,
 }
 
+// Same `cfg(any(feature = "std", feature = "nostd-runtime"))` gate
+// as `DdsServiceServer::new` above.
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
 impl DdsServiceClient {
     pub(crate) fn new(request_writer: DdsPublisher, reply_reader: DdsSubscriber) -> Self {
         Self {

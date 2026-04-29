@@ -21,9 +21,10 @@
 //! or `zpico-serial` (serial).
 
 #![no_std]
-// Phase 97.1.board-decouple — only force-link the zenoh-pico shim
-// when `rmw-zenoh` is active. DDS-only builds drop this dep.
-#[cfg(feature = "rmw-zenoh")]
+// Phase 97.1.board-decouple — force-link the zenoh-pico shim whenever a
+// zenoh-pico-backed transport is active (rmw-zenoh ethernet OR rmw-zenoh
+// serial). DDS-only builds drop this dep.
+#[cfg(any(feature = "rmw-zenoh", feature = "serial"))]
 extern crate zpico_platform_shim;
 
 // Application modules

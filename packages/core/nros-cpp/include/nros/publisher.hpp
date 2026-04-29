@@ -12,7 +12,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <string.h>  // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
+#include <string.h> // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"

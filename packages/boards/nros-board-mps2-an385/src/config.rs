@@ -392,8 +392,15 @@ impl Config {
 }
 
 // ── Minimal no_std parsers ──────────────────────────────────────────────
+//
+// The TOML parser only invokes these when the matching `ethernet` cfg
+// arm fires (see `match (section, key)` above). Gate the helpers
+// themselves on the same feature so serial-only builds (which strip
+// every `("network", _)` arm) don't emit `function never used`
+// warnings.
 
 /// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
+#[cfg(feature = "ethernet")]
 fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
     let mut result = [0u8; 4];
     let mut octet_idx = 0;
@@ -431,6 +438,7 @@ fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
 }
 
 /// Parse a MAC address string ("02:00:00:00:00:00") into [u8; 6].
+#[cfg(feature = "ethernet")]
 fn parse_mac(s: &str) -> Option<[u8; 6]> {
     let mut result = [0u8; 6];
     let mut byte_idx = 0;
@@ -447,6 +455,7 @@ fn parse_mac(s: &str) -> Option<[u8; 6]> {
 }
 
 /// Parse a two-character hex string ("0a") into a u8.
+#[cfg(feature = "ethernet")]
 fn parse_hex_byte(s: &str) -> Option<u8> {
     let bytes = s.as_bytes();
     if bytes.len() != 2 {
@@ -457,6 +466,7 @@ fn parse_hex_byte(s: &str) -> Option<u8> {
     Some(hi * 16 + lo)
 }
 
+#[cfg(feature = "ethernet")]
 fn hex_digit(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),

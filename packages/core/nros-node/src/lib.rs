@@ -71,7 +71,23 @@ pub mod session;
 mod subscriber;
 pub mod timer;
 
-#[cfg(test)]
+// MockSession only matters when neither a real RMW backend feature
+// nor lifecycle-services is enabled — the same gate as
+// `session::ConcreteSession = MockSession` and the executor tests in
+// `executor/mod.rs:42`. Compiling mock.rs unconditionally under
+// `cfg(test)` produced "never constructed / never used" warnings on
+// `cargo build --tests` when feature-unification activated a real
+// RMW backend (e.g. workspace builds with `rmw-uorb` on).
+#[cfg(all(
+    test,
+    not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi",
+        feature = "rmw-uorb"
+    ))
+))]
 pub(crate) mod mock;
 
 #[cfg(feature = "param-services")]
