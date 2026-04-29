@@ -294,8 +294,10 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         (NuttX, ThreadX-Linux, native_sim) — same trace points,
         routed through `eprintln!` instead of Cortex-M
         semihosting.
-- [~] **97.4.threadx-riscv64** — qemu-riscv64-threadx
-      talker↔listener. Build path lands green:
+- [x] **97.4.threadx-riscv64** — qemu-riscv64-threadx
+      talker↔listener. End-to-end green: ~870 messages received in
+      the 60 s test window across two QEMU `-netdev socket,mcast=…`
+      instances:
       - Example crates at
         `examples/qemu-riscv64-threadx/rust/dds/{talker,listener}/`,
         both build clean for `riscv64gc-unknown-none-elf`.
@@ -310,38 +312,22 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       - `QemuProcess::start_riscv64_virt_mcast` launcher.
       - `build_threadx_rv64_dds_{talker,listener}` fixtures.
       - `tests/threadx_riscv64_qemu_dds.rs` integration test
-        (currently fails — talker publishes ~600 messages, listener
-        reaches "Waiting for messages…", host-side tshark sees
-        zero frames cross between QEMU instances). With `addr=0`
-        (INADDR_ANY) accepted by `tcp_create_endpoint`, both
-        unicast binds succeed and dust-dds enters its full SEDP
-        path — at which point talker hangs inside
-        `create_publisher` and listener hangs inside
-        `create_subscription`. `nx_igmp_enable` *not* called: it
-        makes `IP_ADD_MEMBERSHIP` fire
-        `nx_igmp_multicast_interface_join` which queues an IGMP
-        membership report through virtio-net-netx and stalls the
-        cooperative poll loop. `mcast_listen` treats the setsockopt
-        rc as best-effort to tolerate this.
+        (`test_threadx_rv64_dds_rust_talker_to_listener_e2e`)
+        passes via nextest in ~83 s.
 
-        Web research narrowed the search to the dust-dds /
-        cooperative-runtime side: NetX Duo auto-maps mcast IPs to
-        their `01:00:5E:..` Ethernet addresses *before* the driver
-        sees the frame
-        ([Eclipse ThreadX, ch.3](https://github.com/eclipse-threadx/rtos-docs/blob/main/rtos-docs/netx-duo/chapter3.md)),
-        and QEMU virtio-net runs in `promisc=1` by default when
-        `VIRTIO_NET_F_CTRL_VQ` is unset (our driver advertises
-        only `MAC | STATUS`), so neither L2 mapping nor RX
-        filtering can be the blocker. The remaining suspects are
-        (a) virtio-net-netx TX completion under TCG (the driver's
-        100k-iter busy-wait may complete before QEMU TCG actually
-        flushes the descriptor) and (b) the same dust-dds nostd-
-        runtime SEDP loop that hits the threadx-linux slice on
-        loopback. Resolving needs the no_std RISC-V trace channel
-        (board crate's `uart_putc` is link-available; an opt-in
-        `debug-uart` feature on `nros-rmw-dds` mirroring
-        `debug-cortex-m-semihosting` would surface the deadlock
-        site). Follow-up.
+      Root cause: `udp_set_recv_timeout` /
+      `udp_listen_inner(timeout_ms>0)` /  `mcast_listen(timeout_ms=0)`
+      were calling `nx_bsd_setsockopt(SO_RCVTIMEO, &INT, 4)`, but
+      `nxd_bsd.c` casts the option buffer directly to
+      `struct nx_bsd_timeval *` (8 bytes on RV64 LP64). The
+      mismatch silently produced `option_receive_timeout = 0`,
+      which falls through to `wait_option = NX_WAIT_FOREVER` and
+      lets the cooperative recv loop's first `nx_bsd_recv` block
+      the entire app thread. Switched the cooperative-non-blocking
+      path to `nx_bsd_fcntl(F_SETFL, O_NONBLOCK)` (NetX BSD F_SETFL
+      toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING` on the
+      socket entry, and the recv path honours that flag) and the
+      finite-timeout path to a real `nx_bsd_timeval` struct.
 - [x] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
       `test_threadx_linux_dds_rust_talker_to_listener_e2e` passes
       end-to-end (~123 s) on Linux loopback + NSOS + NetX BSD

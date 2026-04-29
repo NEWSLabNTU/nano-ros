@@ -10,6 +10,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
+#[macro_use]
+mod debug;
+
 mod publisher;
 mod raw_type;
 #[cfg(feature = "alloc")]

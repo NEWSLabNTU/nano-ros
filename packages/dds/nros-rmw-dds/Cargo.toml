@@ -23,7 +23,9 @@ debug-stderr = []
 # Phase 97.4.threadx-riscv64 — UART-backed trace for no_std targets
 # where neither semihosting nor `eprintln!` is available. The board
 # crate provides `uart_putc(u8)` via cc-compiled C; the linker
-# resolves it when this feature is on.
+# resolves it when this feature is on. Off by default — only the
+# `transport_nros::create_participant` bind/listen path traces
+# through it, which is enough to surface where bring-up dies.
 debug-uart = []
 
 # Core capability flags. `std` enables the stock dust-dds UDP transport

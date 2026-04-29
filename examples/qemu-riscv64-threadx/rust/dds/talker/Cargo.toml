@@ -21,7 +21,8 @@ nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 std_msgs = { version = "*", default-features = false }
-# Phase 97.4 debug — UART-backed trace surfaces where in dust-dds
-# the cooperative runtime stalls on no_std RISC-V (see RV64 slice
-# notes in docs/roadmap/phase-97-dds-per-platform-examples.md).
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-uart"] }
+# Phase 97.4.threadx-riscv64 — `nros-rmw-dds` is a transitive dep
+# of `nros` already; we list it here only to opt the example in to
+# the `debug-uart` feature when bringing up the DDS-on-no_std stack.
+# Off by default in shipped examples.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }

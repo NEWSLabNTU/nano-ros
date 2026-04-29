@@ -52,86 +52,10 @@
 
 extern crate alloc;
 
-// Phase 97.4 debug — print macro for bring-up. Cortex-M flavour uses
-// semihosting; std-capable platforms (NuttX, ThreadX-Linux, native_sim)
-// use eprintln. Both gated behind the same feature so production builds
-// stay silent.
-#[cfg(feature = "debug-cortex-m-semihosting")]
-macro_rules! dbg_log {
-    ($($arg:tt)*) => {
-        cortex_m_semihosting::hprintln!("[nros-rmw-dds] {}", format_args!($($arg)*));
-    };
-}
-#[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
-extern crate std;
-
-#[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
-macro_rules! dbg_log {
-    ($($arg:tt)*) => {
-        // Despite the feature name, route through stdout so test
-        // harnesses that drain only `child.stdout` see these traces.
-        // Stderr may be buffered separately or dropped by ThreadX-Linux's
-        // /dev/null wrapper around its console.
-        std::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
-    };
-}
-#[cfg(all(
-    feature = "debug-uart",
-    not(feature = "debug-cortex-m-semihosting"),
-    not(feature = "debug-stderr"),
-))]
-mod debug_uart {
-    use alloc::format;
-    use core::fmt::Write;
-
-    /// Char-at-a-time UART putter provided by the board crate.
-    /// Linker resolves the symbol when `feature = "debug-uart"` is on.
-    unsafe extern "C" {
-        pub fn uart_putc(c: u8);
-    }
-
-    pub struct UartWriter;
-    impl Write for UartWriter {
-        fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            for byte in s.bytes() {
-                unsafe { uart_putc(byte) };
-            }
-            Ok(())
-        }
-    }
-
-    pub fn write(s: &str) {
-        let mut w = UartWriter;
-        let _ = write!(w, "{}", s);
-    }
-
-    pub fn writeln_args(args: core::fmt::Arguments<'_>) {
-        let s = format!("[nros-rmw-dds] {args}\n");
-        write(&s);
-    }
-}
-
-#[cfg(all(
-    feature = "debug-uart",
-    not(feature = "debug-cortex-m-semihosting"),
-    not(feature = "debug-stderr"),
-))]
-macro_rules! dbg_log {
-    ($($arg:tt)*) => {
-        crate::transport_nros::debug_uart::writeln_args(format_args!($($arg)*));
-    };
-}
-
-#[cfg(all(
-    not(feature = "debug-cortex-m-semihosting"),
-    not(feature = "debug-stderr"),
-    not(feature = "debug-uart"),
-))]
-macro_rules! dbg_log {
-    ($($arg:tt)*) => {{
-        let _ = format_args!($($arg)*);
-    }};
-}
+// Phase 97.4 debug — print macros (dbg_log!) come from `crate::debug`,
+// which routes through Cortex-M semihosting / `std::println` / UART
+// depending on which `debug-*` feature is enabled. With every flag off
+// the macro expands to nothing, so production builds stay silent.
 
 use alloc::boxed::Box;
 use alloc::format;

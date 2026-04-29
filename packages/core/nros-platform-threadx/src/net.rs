@@ -490,25 +490,38 @@ impl ThreadxPlatform {
 
     pub fn udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         let sock = unsafe { &*(sock as *const Socket) };
-        // NetX BSD takes INT milliseconds, not struct timeval. NetX
-        // doesn't support `O_NONBLOCK` via fcntl/ioctl on UDP sockets,
-        // so when callers pass `timeout_ms = 0` (cooperative recv-loop
-        // poll style — Phase 71.2) we use the smallest representable
-        // timeout instead. 1 ms costs at most one extra tick of latency
-        // per failed read.
-        let tv_ms: INT = if timeout_ms == 0 {
-            1
+        // Phase 97.4.threadx-riscv64 — `timeout_ms == 0` means
+        // "cooperative non-blocking" (the recv loop polls every
+        // tick). NetX BSD honours `fcntl(F_SETFL, O_NONBLOCK)`
+        // (nxd_bsd.c F_SETFL toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING`
+        // on the socket array entry; the recv path checks that flag
+        // and falls through to `wait_option = 0`). Use fcntl for the
+        // 0-ms path; for non-zero timeouts NetX expects a
+        // `nx_bsd_timeval` struct (not a raw INT — the older
+        // INT-passing path silently mis-parses the buffer because
+        // nxd_bsd.c casts `option_value` directly to
+        // `struct nx_bsd_timeval *`).
+        if timeout_ms == 0 {
+            unsafe {
+                let flags = nx_bsd_fcntl(sock._fd, F_GETFL, 0);
+                if flags >= 0 {
+                    nx_bsd_fcntl(sock._fd, F_SETFL, (flags as u32) | O_NONBLOCK);
+                }
+            }
         } else {
-            timeout_ms as INT
-        };
-        unsafe {
-            nx_bsd_setsockopt(
-                sock._fd,
-                SOL_SOCKET as INT,
-                SO_RCVTIMEO as INT,
-                &tv_ms as *const _ as *const c_void,
-                core::mem::size_of::<INT>() as INT,
-            );
+            let tv = nx_bsd_timeval {
+                tv_sec: (timeout_ms / 1000) as nx_bsd_time_t,
+                tv_usec: ((timeout_ms % 1000) * 1000) as nx_bsd_suseconds_t,
+            };
+            unsafe {
+                nx_bsd_setsockopt(
+                    sock._fd,
+                    SOL_SOCKET as INT,
+                    SO_RCVTIMEO as INT,
+                    &tv as *const _ as *const c_void,
+                    core::mem::size_of::<nx_bsd_timeval>() as INT,
+                );
+            }
         }
     }
 }
@@ -518,8 +531,25 @@ impl ThreadxPlatform {
 // ============================================================================
 
 impl ThreadxPlatform {
-    pub fn socket_set_non_blocking(_sock: *const c_void) -> i8 {
-        0 // NetX Duo BSD does not support fcntl/O_NONBLOCK
+    pub fn socket_set_non_blocking(sock: *const c_void) -> i8 {
+        // NetX Duo's BSD shim does support `fcntl(F_SETFL, O_NONBLOCK)`
+        // — it toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING` on
+        // the socket array entry (nxd_bsd.c F_SETFL handler). The
+        // earlier "not supported" claim was a misread.
+        let sock = unsafe { &*(sock as *const Socket) };
+        if sock._fd < 0 {
+            return -1;
+        }
+        unsafe {
+            let flags = nx_bsd_fcntl(sock._fd, F_GETFL, 0);
+            if flags < 0 {
+                return -1;
+            }
+            if nx_bsd_fcntl(sock._fd, F_SETFL, (flags as u32) | O_NONBLOCK) < 0 {
+                return -1;
+            }
+        }
+        0
     }
 
     pub fn socket_accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8 {
@@ -646,12 +676,18 @@ impl ThreadxPlatform {
             }
         }
 
+        // Phase 97.4.threadx-riscv64 — `timeout_ms == 0` means the
+        // caller wants a cooperative non-blocking recv loop. Earlier
+        // bring-up tried `setsockopt(SO_RCVTIMEO, INT 1ms)` which
+        // is a buffer-shape mismatch (nxd_bsd.c casts option_value
+        // straight to `struct nx_bsd_timeval *`) and silently set
+        // option_receive_timeout to 0 → wait_option falls through to
+        // `NX_WAIT_FOREVER` → the mcast recv loop blocks the entire
+        // app thread forever, which hangs the cooperative drain
+        // loop. Use `fcntl(F_SETFL, O_NONBLOCK)` instead — nxd_bsd.c
+        // F_SETFL flips `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING`
+        // on the socket entry, and the recv path honours that flag.
         if timeout_ms == 0 {
-            // NetX's `nx_bsd_fcntl` mirrors POSIX semantics but uses
-            // a fixed (UINT, UINT) signature — no vararg. Flip
-            // O_NONBLOCK so the cooperative recv loops don't block
-            // forever (NetX's `SO_RCVTIMEO {0}` means "block
-            // forever" too).
             unsafe {
                 let flags = nx_bsd_fcntl(fd, F_GETFL, 0);
                 if flags >= 0 {
