@@ -1,0 +1,33 @@
+[package]
+name = "nros-platform-orin-spe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform for NVIDIA AGX Orin SPE (Cortex-R5F + FreeRTOS FSP, IVC transport)"
+publish = false
+
+[lib]
+name = "nros_platform_orin_spe"
+
+# Two mutually-exclusive IVC backends, plus the cortex-r critical-section
+# pass-through. Pick one IVC backend; SPE hardware uses `fsp`, host
+# bring-up (FreeRTOS POSIX simulator + Linux IVC bridge daemon) uses
+# `unix-mock`. The cortex-r feature is pulled in by the SPE board crate
+# (Phase 100.6) so dust-dds's `_critical_section_*` symbols resolve
+# against the ARMv7-R CPSR I-bit impl.
+[features]
+default = []
+fsp = ["nvidia-ivc/fsp"]
+unix-mock = ["nvidia-ivc/unix-mock"]
+# Phase 100.1 — register `critical_section::Impl` against the ARMv7-R
+# CPSR I-bit. Forwards to nros-platform-freertos's `cortex-r` feature.
+cortex-r = ["nros-platform-freertos/cortex-r"]
+
+[dependencies]
+# Trait definitions
+nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
+# Reuse FreeRTOS trait impls — FSP exposes the same FreeRTOS V10.4.3
+# tick / xTaskCreate / pvPortMalloc surface as the upstream kernel.
+nros-platform-freertos = { version = "0.1.0", path = "../../core/nros-platform-freertos" }
+# IVC transport (nvidia-ivc backend selected by feature)
+nvidia-ivc = { version = "0.1.0", path = "../../drivers/nvidia-ivc" }
