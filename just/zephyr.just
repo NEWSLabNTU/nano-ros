@@ -88,6 +88,11 @@ build-fixtures:
     # Apply Cortex-A9 patches (idempotent; required for the
     # build-dds-a9-{talker,listener} entries below).
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
+    # Phase 97.4.zephyr-native_sim — patch upstream Zephyr's NSOS
+    # to forward `IPPROTO_IP` setsockopt (incl. `IP_ADD_MEMBERSHIP`).
+    # Without this the listener can't join `239.255.0.1` host-side
+    # and DDS SPDP discovery never closes on `native_sim`.
+    bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$workspace"
     echo "Building Zephyr test fixtures..."
     cmake_pfx="$(pwd)/build/install"
     nros_root="$(pwd)"

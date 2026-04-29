@@ -256,7 +256,18 @@ Talker + listener + nros-tests fixture. Each slice depends on the
 matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
 97.2.esp32-qemu.
 
-- [ ] **97.4.zephyr-native_sim** — blocked behind NSOS gap.
+- [~] **97.4.zephyr-native_sim** — upstream NSOS patch landed
+      (`scripts/zephyr/native-sim-ipproto-ip-patch.sh`). Adds
+      `IPPROTO_IP` setsockopt forwarding (`IP_ADD_MEMBERSHIP`,
+      `IP_DROP_MEMBERSHIP`, `IP_MULTICAST_TTL`, `IP_MULTICAST_LOOP`,
+      `IP_MULTICAST_IF`) to Zephyr's `drivers/net/nsos_*.[ch]`.
+      Verified against Zephyr v3.7.0 + main (file shape identical).
+      Patch wired into `just zephyr build-fixtures` alongside
+      `cortex-a9-rust-patch.sh`. End-to-end smoke against a sibling
+      `native_sim` instance still pending — bring-up needs a
+      working `west build` of the DDS talker / listener against the
+      patched workspace, plus the `start_native_sim_mcast` test
+      fixture mirroring `start_mps2_an385_mcast`.
 - [x] **97.4.freertos** — qemu-arm-freertos talker↔listener.
       `test_freertos_dds_rust_talker_to_listener_e2e` passes
       end-to-end (~83 s) on QEMU MPS2-AN385 + lwIP. Path:
