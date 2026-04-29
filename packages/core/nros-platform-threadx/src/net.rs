@@ -114,6 +114,28 @@ fn ep_to_sockaddr(ep: &Endpoint) -> nx_bsd_sockaddr_in {
     }
 }
 
+/// Apply `SO_RCVTIMEO` for `timeout_ms` (1+ ms). NetX BSD's
+/// `nx_bsd_setsockopt` casts the option buffer directly to
+/// `struct nx_bsd_timeval *`, so passing a raw `INT` (the obvious
+/// "milliseconds" shape) silently produces a 0-tick option which
+/// falls through to `NX_WAIT_FOREVER`. Always pass a real
+/// `nx_bsd_timeval`.
+fn set_recv_timeout_ms(fd: INT, timeout_ms: u32) {
+    let tv = nx_bsd_timeval {
+        tv_sec: (timeout_ms / 1000) as nx_bsd_time_t,
+        tv_usec: ((timeout_ms % 1000) * 1000) as nx_bsd_suseconds_t,
+    };
+    unsafe {
+        nx_bsd_setsockopt(
+            fd,
+            SOL_SOCKET as INT,
+            SO_RCVTIMEO as INT,
+            &tv as *const _ as *const c_void,
+            core::mem::size_of::<nx_bsd_timeval>() as INT,
+        );
+    }
+}
+
 // ============================================================================
 // TCP
 // ============================================================================
@@ -163,18 +185,8 @@ impl ThreadxPlatform {
         }
         unsafe { (*sock)._fd = fd };
 
-        // SO_RCVTIMEO (NetX BSD takes INT milliseconds, not struct timeval)
         if timeout_ms > 0 {
-            let tv_ms: INT = timeout_ms as INT;
-            unsafe {
-                nx_bsd_setsockopt(
-                    fd,
-                    SOL_SOCKET as INT,
-                    SO_RCVTIMEO as INT,
-                    &tv_ms as *const _ as *const c_void,
-                    core::mem::size_of::<INT>() as INT,
-                );
-            }
+            set_recv_timeout_ms(fd, timeout_ms);
         }
 
         let addr = ep_to_sockaddr(rep);
@@ -327,16 +339,7 @@ impl ThreadxPlatform {
         unsafe { (*sock)._fd = fd };
 
         if timeout_ms > 0 {
-            let tv_ms: INT = timeout_ms as INT;
-            unsafe {
-                nx_bsd_setsockopt(
-                    fd,
-                    SOL_SOCKET as INT,
-                    SO_RCVTIMEO as INT,
-                    &tv_ms as *const _ as *const c_void,
-                    core::mem::size_of::<INT>() as INT,
-                );
-            }
+            set_recv_timeout_ms(fd, timeout_ms);
         }
 
         // Connect for send/recv
@@ -416,16 +419,7 @@ impl ThreadxPlatform {
         }
 
         if timeout_ms > 0 {
-            let tv_ms: INT = timeout_ms as INT;
-            unsafe {
-                nx_bsd_setsockopt(
-                    fd,
-                    SOL_SOCKET as INT,
-                    SO_RCVTIMEO as INT,
-                    &tv_ms as *const _ as *const c_void,
-                    core::mem::size_of::<INT>() as INT,
-                );
-            }
+            set_recv_timeout_ms(fd, timeout_ms);
         }
 
         let addr = ep_to_sockaddr(rep);
@@ -509,19 +503,7 @@ impl ThreadxPlatform {
                 }
             }
         } else {
-            let tv = nx_bsd_timeval {
-                tv_sec: (timeout_ms / 1000) as nx_bsd_time_t,
-                tv_usec: ((timeout_ms % 1000) * 1000) as nx_bsd_suseconds_t,
-            };
-            unsafe {
-                nx_bsd_setsockopt(
-                    sock._fd,
-                    SOL_SOCKET as INT,
-                    SO_RCVTIMEO as INT,
-                    &tv as *const _ as *const c_void,
-                    core::mem::size_of::<nx_bsd_timeval>() as INT,
-                );
-            }
+            set_recv_timeout_ms(sock._fd, timeout_ms);
         }
     }
 }

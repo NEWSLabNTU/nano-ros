@@ -141,21 +141,32 @@ INT nx_bsd_setsockopt(INT sockID, INT level, INT optName,
     if (translate_sockopt(&level, &optName) < 0) return -1;
 
     /* Phase 97.4.threadx-linux — NetX BSD passes SO_RCVTIMEO /
-     * SO_SNDTIMEO as `INT` milliseconds, but Linux's POSIX socket
-     * layer expects `struct timeval`. Forwarding the 4-byte INT
-     * verbatim makes Linux interpret the milliseconds as
-     * `tv_sec` (so a NetX 1 ms timeout becomes a 1-second Linux
-     * block), starving the cooperative recv loops. Convert here
-     * — `tv_usec` carries the millisecond fraction. */
-    if (level == SOL_SOCKET && (optName == SO_RCVTIMEO || optName == SO_SNDTIMEO)
-        && optLen == (INT)sizeof(INT))
-    {
-        INT ms = *(const INT *)optValue;
-        struct timeval tv = {
-            .tv_sec = ms / 1000,
-            .tv_usec = (ms % 1000) * 1000,
-        };
-        return setsockopt(sockID, level, optName, &tv, (socklen_t)sizeof(tv));
+     * SO_SNDTIMEO as `INT` milliseconds *or* (post Phase 97.4.threadx-
+     * riscv64 cleanup) as a packed `struct nx_bsd_timeval` (LONG-typed
+     * tv_sec / tv_usec — 8 bytes total under bindgen's INT-as-c_int
+     * remap). Linux's POSIX socket layer expects `struct timeval`
+     * (16 bytes on LP64). Either input shape needs translation —
+     * forwarding verbatim makes Linux interpret the 4 / 8 byte buffer
+     * as a truncated 16-byte timeval and either yields a 1-second
+     * block (the INT path) or returns EINVAL silently (the 8-byte
+     * path). */
+    if (level == SOL_SOCKET && (optName == SO_RCVTIMEO || optName == SO_SNDTIMEO)) {
+        if (optLen == (INT)sizeof(INT)) {
+            INT ms = *(const INT *)optValue;
+            struct timeval tv = {
+                .tv_sec = ms / 1000,
+                .tv_usec = (ms % 1000) * 1000,
+            };
+            return setsockopt(sockID, level, optName, &tv, (socklen_t)sizeof(tv));
+        }
+        if (optLen == (INT)(2 * sizeof(INT))) {
+            const INT *fields = (const INT *)optValue;
+            struct timeval tv = {
+                .tv_sec = (long)fields[0],
+                .tv_usec = (long)fields[1],
+            };
+            return setsockopt(sockID, level, optName, &tv, (socklen_t)sizeof(tv));
+        }
     }
 
     return setsockopt(sockID, level, optName, optValue, (socklen_t)optLen);
