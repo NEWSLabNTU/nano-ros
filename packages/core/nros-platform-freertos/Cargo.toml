@@ -14,6 +14,11 @@ default = []
 # provides its own critical-section impl, e.g. nros-c on Zephyr)
 # doesn't double-register.
 critical-section = ["dep:critical-section", "dep:cortex-m"]
+# Phase 100.1 — register a `critical_section::Impl` against the
+# ARMv7-R CPSR I-bit (Cortex-R5/R52 — AGX Orin SPE). Mutually
+# exclusive with `critical-section` (the Cortex-M path); the lib
+# raises a compile_error if both are enabled.
+cortex-r = ["dep:critical-section"]
 # Phase 97.4 debug — Cortex-M semihosting trace for the lwIP
 # multicast bind path. Off by default; enable from a board /
 # example crate's Cargo.toml when bring-up needs visibility.

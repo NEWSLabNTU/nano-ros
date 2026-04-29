@@ -26,14 +26,24 @@ mod types;
 pub struct FreeRtosPlatform;
 
 // ============================================================================
-// Phase 97.1.cs — `critical_section::Impl` against Cortex-M PRIMASK
+// Phase 97.1.cs / 100.1 — `critical_section::Impl` (Cortex-M or Cortex-R)
 // ============================================================================
 //
 // dust-dds's oneshot channels reference `_critical_section_1_0_acquire` /
 // `_release` symbols; the example crate links against this impl so the
-// symbols resolve at link time. Cortex-M PRIMASK gives a 1-bit
-// "interrupts enabled / disabled" flag — we save the prior value into
-// the restore state so nested critical sections nest cleanly.
+// symbols resolve at link time. Cortex-M and Cortex-R provide
+// equivalent "globally mask interrupts" mechanisms; we save the prior
+// state into the restore token so nested critical sections nest cleanly.
+//
+// The two paths are mutually exclusive — the `critical-section` (M) and
+// `cortex-r` (R) features each register one global `set_impl!`, so
+// enabling both would double-define the static.
+
+#[cfg(all(feature = "critical-section", feature = "cortex-r"))]
+compile_error!(
+    "nros-platform-freertos: features `critical-section` (Cortex-M PRIMASK) and \
+     `cortex-r` (ARMv7-R CPSR I-bit) are mutually exclusive — pick one"
+);
 
 #[cfg(feature = "critical-section")]
 mod cs_impl {
@@ -60,6 +70,57 @@ mod cs_impl {
                 // SAFETY: prior state was "enabled"; we're at the
                 // outermost acquire.
                 unsafe { cortex_m::interrupt::enable() };
+            }
+        }
+    }
+}
+
+// Phase 100.1 — ARMv7-R CPSR I-bit critical section.
+//
+// On Cortex-R the global interrupt mask lives in CPSR bit 7 (I-bit).
+// `cpsid i` sets it, `cpsie i` clears it. We snapshot the prior value
+// via `mrs Rd, cpsr` and stash it in the restore token, so nested
+// `acquire`/`release` pairs unwind correctly: only the outermost
+// `release` re-enables interrupts.
+//
+// `armv7r-none-eabihf` doesn't ship a `cortex-r` analogue of the
+// `cortex-m` crate; raw inline asm is the standard way (the same
+// pattern used by the FreeRTOS ARM_CR5 port and by RTIC's R-profile
+// support).
+#[cfg(feature = "cortex-r")]
+mod cs_impl {
+    use core::arch::asm;
+
+    struct FreeRtosCs;
+    critical_section::set_impl!(FreeRtosCs);
+
+    unsafe impl critical_section::Impl for FreeRtosCs {
+        unsafe fn acquire() -> critical_section::RawRestoreState {
+            let cpsr: u32;
+            // Read CPSR, then mask IRQs (bit 7). Mask FIQs (bit 6) is
+            // intentionally left alone — FIQ on the Orin SPE carries
+            // the high-rate timer tick and should not be deferred.
+            unsafe {
+                asm!(
+                    "mrs {0}, cpsr",
+                    "cpsid i",
+                    out(reg) cpsr,
+                    options(nomem, nostack, preserves_flags),
+                );
+            }
+            // Bit 7 of the snapshot: 0 = IRQs were enabled, 1 = already
+            // masked. Token format matches the M-side convention: 1
+            // means "we did the masking, restore on release".
+            if (cpsr & (1 << 7)) == 0 { 1 } else { 0 }
+        }
+
+        unsafe fn release(token: critical_section::RawRestoreState) {
+            if token == 1 {
+                // SAFETY: prior state was "enabled"; we're at the
+                // outermost acquire.
+                unsafe {
+                    asm!("cpsie i", options(nomem, nostack, preserves_flags));
+                }
             }
         }
     }
