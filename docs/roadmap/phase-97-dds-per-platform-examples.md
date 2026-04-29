@@ -342,12 +342,12 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
         `debug-uart` feature on `nros-rmw-dds` mirroring
         `debug-cortex-m-semihosting` would surface the deadlock
         site). Follow-up.
-- [~] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
-      Discovery + bind path lands green: SPDP multicast crosses
-      between the two ThreadX-Linux processes through the
-      `veth-tx0` / `veth-tx1` bridge, both peers bind their
-      unicast metatraffic / data ports successfully, and dust-dds
-      attempts SEDP unicast to the discovered peer.
+- [x] **97.4.threadx-linux** — ThreadX Linux sim talker↔listener.
+      `test_threadx_linux_dds_rust_talker_to_listener_e2e` passes
+      end-to-end (~123 s) on Linux loopback + NSOS + NetX BSD
+      shim. talker → listener E2E green: 26 messages received in
+      the steady-state window. Two unrelated bugs landed together
+      to flip this from red to green:
       - Example crates at
         `examples/threadx-linux/rust/dds/{talker,listener}/`,
         both build clean for `x86_64-unknown-linux-gnu`.
@@ -387,44 +387,35 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       per `nx_bsd_recv` because Linux read the INT as `tv_sec`).
       Both sides exchange SPDP and SEDP unicast cleanly.
 
-      Runtime E2E `assert!(received >= 1)` still red even with a
-      generous 30 s + 90 s window — the SEDP handshake locks into
-      infinite reliability ping-pong on Linux loopback's
-      ~zero-latency RTT (every AckNack triggers a DATA which
-      triggers another AckNack) under the cooperative
-      `NrosPlatformRuntime` poll loop, and the user-data
-      `/chatter` writer never matches the subscriber. The talker's
-      main loop stalls at "Published: 5" on this path because
-      every `spin_once` call spends its budget on SEDP traffic.
-      The same `nros-rmw-dds` cooperative runtime ships green on
-      QEMU-networked targets (FreeRTOS, NuttX) where higher
-      latency caps the SEDP retry rate; loopback exposes the
-      unbounded-poll-loop problem.
+      Final fixes in this slice (both also benefit every other
+      cooperative-`nostd-runtime` deployment):
 
-      Web research findings:
-      - dust-dds hardcodes a 200 ms `heartbeat_period` in
-        `rtps/stateful_writer.rs:38`. On QEMU-networked latency
-        the AckNack reflex is naturally rate-limited by RTT;
-        loopback uncaps it.
-      - DeepWiki on
-        [dust-dds RTPS](https://deepwiki.com/s2e-systems/dust-dds/9-rtps-protocol-and-transport)
-        confirms SEDP is reliable / transient-local — heartbeat /
-        AckNack loops until the writer "eventually receives a pure
-        acknowledgement", which presupposes a network where the
-        reader can finish processing samples before its AckNack
-        crosses the writer's next heartbeat.
-      - Known dust-dds <-> external-DDS interop loop scenarios
-        (Cyclone <-> RTI), see
-        [Eclipse Cyclone DDS docs](https://cyclonedds.io/docs/cyclonedds/0.10.2/config/ddsi_concepts.html).
+      1. **dust-dds heartbeat_period 200 ms → 2000 ms** in
+         `rtps/stateful_writer.rs`. On Linux loopback's
+         ~zero-latency RTT the 200 ms cycle saturated the
+         cooperative single-thread poll loop with AckNack ↔ DATA
+         ping-pong; talker stalled at "Published: 5". 2 s gives
+         the cooperative scheduler room to drain matched-reader
+         bookkeeping between heartbeats. ROS 2 / Cyclone /
+         FastDDS defaults are 1 s+ for the discovery writer, so
+         this is in line with upstream. Web research:
+         [DeepWiki dust-dds RTPS](https://deepwiki.com/s2e-systems/dust-dds/9-rtps-protocol-and-transport),
+         [Cyclone DDS DDSI docs](https://cyclonedds.io/docs/cyclonedds/0.10.2/config/ddsi_concepts.html).
 
-      Cleanest fix is moving the slice to dust-dds's threaded
-      `rtps_udp_transport` (socket2). Currently blocked because
-      `nros-rmw-dds`'s `platform-threadx` feature hard-couples
-      `nostd-runtime`; opening up a `platform-threadx,std` axis
-      would let ThreadX-Linux take the threaded path while the
-      no_std qemu-riscv64-threadx slice keeps the cooperative
-      one. Infrastructure (mcast / unicast / IGMP / sockopt
-      translation / byte pool / debug traces) all ship green.
+      2. **Drop `SO_REUSEADDR` on the unicast `udp_listen`** path
+         in `nros-platform-threadx::net.rs`. Two co-resident
+         ThreadX-Linux processes both bound to
+         `INADDR_ANY:default_unicast_port`; with `SO_REUSEADDR`
+         the kernel delivered each /chatter datagram to *one* of
+         them on a round-robin → the listener missed every other
+         RTPS message and the SEDP handshake never closed.
+         Without it, the second process's `bind(2)` returns
+         `EADDRINUSE` and the `create_participant` auto-pid loop
+         (already there, never fired) bumps to the next slot, so
+         each participant gets a unique unicast port. Multicast
+         binds layer the option back in via the dedicated
+         `udp_listen_reusable` helper so SPDP joins still
+         succeed.
 - [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
       97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on

@@ -360,7 +360,39 @@ impl ThreadxPlatform {
     }
 
     /// Phase 71.21 — bind a UDP socket for inbound use via NetX BSD.
+    ///
+    /// Phase 97.4.threadx-linux: unicast bind path no longer sets
+    /// `SO_REUSEADDR`. With it, two co-resident processes both
+    /// bound to `INADDR_ANY:default_unicast_port` and the kernel
+    /// delivered each datagram to *one* of them — losing every
+    /// other RTPS message. Without it, the second process's
+    /// `bind(2)` returns `EADDRINUSE` and the
+    /// `create_participant` auto-pid loop bumps to the next slot,
+    /// giving each participant a unique unicast port. Multicast
+    /// binds (`mcast_listen`) layer the option back in via the
+    /// dedicated reusable-bind helper below.
     pub fn udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        Self::udp_listen_inner(sock, endpoint, timeout_ms, false)
+    }
+
+    /// Variant of `udp_listen` that *does* set `SO_REUSEADDR`
+    /// before `bind(2)` — used by the multicast listen path so
+    /// every co-resident participant can join the same SPDP
+    /// group on `239.255.0.1:7400`.
+    pub fn udp_listen_reusable(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+    ) -> i8 {
+        Self::udp_listen_inner(sock, endpoint, timeout_ms, true)
+    }
+
+    fn udp_listen_inner(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        reuseaddr: bool,
+    ) -> i8 {
         let sock = sock as *mut Socket;
         let rep = unsafe { &*(endpoint as *const Endpoint) };
 
@@ -370,15 +402,17 @@ impl ThreadxPlatform {
         }
         unsafe { (*sock)._fd = fd };
 
-        let one: INT = 1;
-        unsafe {
-            nx_bsd_setsockopt(
-                fd,
-                SOL_SOCKET as INT,
-                SO_REUSEADDR as INT,
-                &one as *const _ as *const c_void,
-                core::mem::size_of::<INT>() as INT,
-            );
+        if reuseaddr {
+            let one: INT = 1;
+            unsafe {
+                nx_bsd_setsockopt(
+                    fd,
+                    SOL_SOCKET as INT,
+                    SO_REUSEADDR as INT,
+                    &one as *const _ as *const c_void,
+                    core::mem::size_of::<INT>() as INT,
+                );
+            }
         }
 
         if timeout_ms > 0 {
@@ -564,7 +598,11 @@ impl ThreadxPlatform {
         _iface: *const u8,
         _join: *const u8,
     ) -> i8 {
-        let rc = Self::udp_listen(sock, endpoint, timeout_ms);
+        // Mcast bind path keeps `SO_REUSEADDR` so multiple
+        // co-resident participants can all join the same SPDP
+        // group. The unicast `udp_listen` deliberately drops it
+        // (see Phase 97.4.threadx-linux comment there).
+        let rc = Self::udp_listen_reusable(sock, endpoint, timeout_ms);
         if rc < 0 {
             return rc;
         }

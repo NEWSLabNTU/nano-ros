@@ -516,11 +516,12 @@ impl<P> NrosUdpTransportFactory<P> {
 
 /// Bind a unicast UDP socket to `0.0.0.0:port` for inbound RTPS
 /// traffic. Calls `<P as PlatformUdp>::listen` (Phase 71.20), which
-/// is the trait method specifically for the bind-then-recv flow that
-/// `udp_open` doesn't cover (open is connect-style for zenoh-pico's
-/// outbound queries; listen does an explicit `bind(2)`).
+/// is the trait method specifically for the bind-then-recv flow
+/// that `udp_open` doesn't cover.
 ///
-/// Returns `None` on bind failure.
+/// Returns `None` on bind failure (incl. EADDRINUSE — the
+/// `create_participant` auto-pid loop relies on the rc to detect
+/// colocated participants).
 fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
     dbg_log!("bind_unicast({}) ENTER", port);
     let addr = b"0.0.0.0\0".as_ptr();
@@ -532,9 +533,6 @@ fn bind_unicast<P: PlatformUdp + 'static>(port: u16) -> Option<OpaqueSocket> {
     }
     dbg_log!("bind_unicast({}): create_endpoint OK", port);
     let mut sock = OpaqueSocket::new();
-    // Pass `timeout_ms = 0` — recv is set non-blocking by the recv
-    // loop's `set_recv_timeout(0)` call before any read happens, so
-    // the bind-time timeout is irrelevant.
     let rc = <P as PlatformUdp>::listen(sock.as_mut_ptr(), ep.as_ptr(), 0);
     dbg_log!("bind_unicast({}): listen rc={}", port, rc as i32);
     <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
