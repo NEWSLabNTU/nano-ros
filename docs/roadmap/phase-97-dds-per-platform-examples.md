@@ -256,18 +256,39 @@ Talker + listener + nros-tests fixture. Each slice depends on the
 matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
 97.2.esp32-qemu.
 
-- [~] **97.4.zephyr-native_sim** — upstream NSOS patch landed
-      (`scripts/zephyr/native-sim-ipproto-ip-patch.sh`). Adds
-      `IPPROTO_IP` setsockopt forwarding (`IP_ADD_MEMBERSHIP`,
-      `IP_DROP_MEMBERSHIP`, `IP_MULTICAST_TTL`, `IP_MULTICAST_LOOP`,
-      `IP_MULTICAST_IF`) to Zephyr's `drivers/net/nsos_*.[ch]`.
-      Verified against Zephyr v3.7.0 + main (file shape identical).
-      Patch wired into `just zephyr build-fixtures` alongside
-      `cortex-a9-rust-patch.sh`. End-to-end smoke against a sibling
-      `native_sim` instance still pending — bring-up needs a
-      working `west build` of the DDS talker / listener against the
-      patched workspace, plus the `start_native_sim_mcast` test
-      fixture mirroring `start_mps2_an385_mcast`.
+- [~] **97.4.zephyr-native_sim** — upstream NSOS patch landed +
+      verified end-to-end:
+      - `scripts/zephyr/native-sim-ipproto-ip-patch.sh` patches
+        Zephyr's `drivers/net/nsos_*.[ch]` to forward `IPPROTO_IP`
+        setsockopt (`IP_ADD_MEMBERSHIP`, `IP_DROP_MEMBERSHIP`,
+        `IP_MULTICAST_TTL`) to the host kernel. Verified against
+        Zephyr v3.7.0 + main (file shape identical).
+      - `nsos_sockets.c` guest path translates Zephyr's
+        `struct ip_mreqn` (12 bytes — only IPv4 mreq form Zephyr
+        exposes) into the wire-format `nsos_mid_ip_mreq` (8 bytes,
+        host-side `struct ip_mreq`-shaped).
+      - `west build -b native_sim/native/64
+        examples/zephyr/rust/dds/talker` succeeds against the
+        patched workspace; `zephyr.exe` boots and reaches
+        `Published: <N>` steady state. Same for `listener`.
+      - Host-level verification: `ip maddr show enp7s0` shows
+        `inet 239.255.0.1` after the listener joins — proof that
+        `setsockopt(IP_ADD_MEMBERSHIP)` now reaches the host kernel
+        (was `EOPNOTSUPP` before the patch).
+      - Patch wired into `just zephyr build-fixtures` alongside
+        `cortex-a9-rust-patch.sh`.
+
+      Two-instance same-host smoke is **not** yet green: host kernel
+      routes the talker's mcast TX onto its default mcast iface
+      (typically the external NIC like `enp7s0`) while the listener
+      joined on the same iface — works for sibling-host setups but
+      not when both QEMU-equivalent processes are on the same host
+      and the user expects loopback delivery. Follow-up: wire
+      `IP_MULTICAST_IF` setsockopt in `nros-platform-zephyr` to pin
+      both sides to `lo` on `native_sim`. Orthogonal to the NSOS
+      patch itself.
+
+      Suggested upstream PR target: `zephyrproject-rtos/zephyr` main.
 - [x] **97.4.freertos** — qemu-arm-freertos talker↔listener.
       `test_freertos_dds_rust_talker_to_listener_e2e` passes
       end-to-end (~83 s) on QEMU MPS2-AN385 + lwIP. Path:
