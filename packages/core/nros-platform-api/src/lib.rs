@@ -494,6 +494,53 @@ pub trait PlatformUdpMulticast {
 }
 
 // ============================================================================
+// Inter-VM / mailbox transport (NVIDIA IVC and similar)
+// ============================================================================
+
+/// Inter-processor mailbox transport, modelled after NVIDIA Tegra IVC.
+///
+/// IVC (Inter-VM Communication on Tegra; in practice CCPLEX↔SPE on AGX
+/// Orin) is a header-prefixed lock-free SPSC ring in shared DRAM, paired
+/// with a hardware doorbell for wake. One channel is one peer — there
+/// is no discovery, naming, QoS, or fanout — which is why it's a *link*
+/// transport (peer to TCP/UDP/Serial/RawEth inside zenoh-pico) rather
+/// than a new RMW backend.
+///
+/// Channel handles are opaque `*mut c_void` to match the shape zenoh-pico
+/// passes across its FFI boundary. The driver crate (`nvidia-ivc`)
+/// translates between this opaque handle and either NVIDIA's FSP
+/// `tegra_ivc_channel_*` API (`fsp` feature) or a Unix-socket pair
+/// (`unix-mock` feature, host dev + CI).
+///
+/// Read / write return `usize::MAX` on hard error and `0` on
+/// "no frame available within poll" — same convention as
+/// [`PlatformSerial::read`].
+///
+/// `frame_size` is the fixed per-channel frame size negotiated at
+/// carveout setup (typical NVIDIA IVC: 64 bytes per frame, 16 frames per
+/// channel). The link layer uses it to pick its reassembly buffer.
+pub trait PlatformIvc {
+    /// Resolve a channel ID into an opaque handle. Returns null on
+    /// failure. The numeric ID matches the NVIDIA channel index
+    /// (`channel 2 = aon_echo`).
+    fn channel_get(id: u32) -> *mut c_void;
+
+    /// Read up to `len` bytes from the channel. Returns bytes read,
+    /// `0` on no-frame-available, or `usize::MAX` on error.
+    fn read(ch: *mut c_void, buf: *mut u8, len: usize) -> usize;
+
+    /// Write `len` bytes to the channel. Returns bytes written, or
+    /// `usize::MAX` on error.
+    fn write(ch: *mut c_void, buf: *const u8, len: usize) -> usize;
+
+    /// Ring the doorbell to wake the peer.
+    fn notify(ch: *mut c_void);
+
+    /// Fixed frame size negotiated for this channel, in bytes.
+    fn frame_size(ch: *mut c_void) -> u32;
+}
+
+// ============================================================================
 // Serial (UART / PTY)
 // ============================================================================
 

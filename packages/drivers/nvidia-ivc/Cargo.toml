@@ -1,0 +1,26 @@
+[package]
+name = "nvidia-ivc"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "NVIDIA Tegra IVC (Inter-VM Communication) driver — FSP on hardware, Unix-socket pair for host dev"
+publish = false
+readme = "README.md"
+keywords = ["embedded", "nvidia", "tegra", "ivc", "no_std"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+# Mutually exclusive backends:
+#   - `fsp`: links NVIDIA's `tegra_aon_fsp.a` via `NV_SPE_FSP_DIR`. `no_std`,
+#           `armv7r-none-eabihf`. Requires SDK Manager EULA-bound install.
+#   - `unix-mock`: Unix-domain-socket pair simulating one IVC channel.
+#                 Linux-only, requires `std`. Used by CI + the
+#                 autoware_sentinel POSIX integration tests.
+[features]
+default = []
+fsp = []
+unix-mock = ["std"]
+std = []
+
+[dependencies]
+
+[dev-dependencies]
