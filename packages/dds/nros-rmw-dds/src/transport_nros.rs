@@ -75,7 +75,58 @@ macro_rules! dbg_log {
         std::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
     };
 }
-#[cfg(all(not(feature = "debug-cortex-m-semihosting"), not(feature = "debug-stderr")))]
+#[cfg(all(
+    feature = "debug-uart",
+    not(feature = "debug-cortex-m-semihosting"),
+    not(feature = "debug-stderr"),
+))]
+mod debug_uart {
+    use alloc::format;
+    use core::fmt::Write;
+
+    /// Char-at-a-time UART putter provided by the board crate.
+    /// Linker resolves the symbol when `feature = "debug-uart"` is on.
+    unsafe extern "C" {
+        pub fn uart_putc(c: u8);
+    }
+
+    pub struct UartWriter;
+    impl Write for UartWriter {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            for byte in s.bytes() {
+                unsafe { uart_putc(byte) };
+            }
+            Ok(())
+        }
+    }
+
+    pub fn write(s: &str) {
+        let mut w = UartWriter;
+        let _ = write!(w, "{}", s);
+    }
+
+    pub fn writeln_args(args: core::fmt::Arguments<'_>) {
+        let s = format!("[nros-rmw-dds] {args}\n");
+        write(&s);
+    }
+}
+
+#[cfg(all(
+    feature = "debug-uart",
+    not(feature = "debug-cortex-m-semihosting"),
+    not(feature = "debug-stderr"),
+))]
+macro_rules! dbg_log {
+    ($($arg:tt)*) => {
+        crate::transport_nros::debug_uart::writeln_args(format_args!($($arg)*));
+    };
+}
+
+#[cfg(all(
+    not(feature = "debug-cortex-m-semihosting"),
+    not(feature = "debug-stderr"),
+    not(feature = "debug-uart"),
+))]
 macro_rules! dbg_log {
     ($($arg:tt)*) => {{
         let _ = format_args!($($arg)*);

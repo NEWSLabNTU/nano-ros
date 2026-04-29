@@ -242,9 +242,21 @@ void tx_application_define(void *first_unused_memory)
         uart_puts("ERROR: BSD stack memory alloc failed");
         return;
     }
+    /* Phase 97.4.threadx-riscv64 — NetX Duo BSD-Support docs note
+     * "this thread should be the highest priority task defined in
+     * the program". With BSD = APP+1 (lower than app), the
+     * cooperative dust-dds poll loop running in the app thread
+     * starves the BSD thread → the BSD layer's deferred packet
+     * processing never fires → `bind` / `getaddrinfo` calls hang
+     * inside `create_subscription` waiting for state the BSD
+     * thread can't deliver. Bumping BSD priority to 2 (one below
+     * the IP helper thread, two above the app) lets the BSD layer
+     * run when the app thread sleeps in `tx_thread_sleep` between
+     * spin_once iterations. */
+    #define BSD_THREAD_PRIORITY     2
     status = nx_bsd_initialize(&ip_instance, &packet_pool,
                              (CHAR *)pointer, BSD_STACK_SIZE,
-                             APP_THREAD_PRIORITY + 1);
+                             BSD_THREAD_PRIORITY);
     if (status != NX_SUCCESS) {
         uart_puts("ERROR: BSD initialize failed, status=0x");
         {

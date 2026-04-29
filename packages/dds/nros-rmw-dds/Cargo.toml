@@ -20,6 +20,11 @@ debug-cortex-m-semihosting = ["dep:cortex-m-semihosting"]
 # routed through `eprintln!` for std-capable platforms (NuttX,
 # ThreadX-Linux, etc.) where Cortex-M semihosting isn't applicable.
 debug-stderr = []
+# Phase 97.4.threadx-riscv64 — UART-backed trace for no_std targets
+# where neither semihosting nor `eprintln!` is available. The board
+# crate provides `uart_putc(u8)` via cc-compiled C; the linker
+# resolves it when this feature is on.
+debug-uart = []
 
 # Core capability flags. `std` enables the stock dust-dds UDP transport
 # (3 OS threads per participant); `alloc` is required on every platform
