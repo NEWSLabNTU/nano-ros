@@ -5,7 +5,7 @@ true zero-copy where the backend offers it, and falls back to a
 single-memcpy arena path where it doesn't. User code stays unchanged
 across backends; lending capability is selected at compile time.
 
-**Status:** Not Started
+**Status:** v1 mostly landed (99.A–99.G + 99.D' wire-through complete; 99.H minimal; 99.I + 99.J + 99.K open)
 
 **Priority:** Medium
 
@@ -97,15 +97,16 @@ real consumer.
 
 ### v1 (99.A–99.I — required)
 
-- [ ] 99.A — Design doc (`docs/design/zero-copy-raw-api.md`)
-- [ ] 99.B — Trait surface (`SlotLending`, `SlotBorrowing` in `nros-rmw`)
-- [ ] 99.C — `PublishLoan` + `RecvView` types in `nros-node`
-- [ ] 99.D — Arena impl (no-lending path) for `EmbeddedRawPublisher` / `RawSubscription`
-- [ ] 99.E — uORB backend wiring (arena-only; serves as parity oracle)
-- [ ] 99.F — Zenoh-pico lending impl behind `lending` feature
-- [ ] 99.G — XRCE-DDS lending impl behind `lending` feature
-- [ ] 99.H — Promise-driven `loan()` / `borrow()` futures w/ `pin-project-lite`
-- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow
+- [x] 99.A — Design doc (`docs/design/zero-copy-raw-api.md`)
+- [x] 99.B — Trait surface (`SlotLending`, `SlotBorrowing` in `nros-rmw`)
+- [x] 99.C — `PublishLoan` + `RecvView` types in `nros-node`
+- [x] 99.D — Arena impl (no-lending path) for `EmbeddedRawPublisher` / `RawSubscription`
+- [x] 99.D' — `try_loan` / `try_borrow` wire-through to `<P as SlotLending/SlotBorrowing>` under `rmw-lending`
+- [x] 99.E — uORB backend wiring (arena-only; `tests/loan_borrow.rs` 3/3 passes via std mock; enabling `rmw-lending` w/ uORB now fails to compile, satisfying the acceptance gate)
+- [x] 99.F — Zenoh-pico lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
+- [x] 99.G — XRCE-DDS lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
+- [~] 99.H — Promise-driven `loan()` / `borrow()` futures (minimal v1: `borrow().await` and `loan().await` use `poll_fn` with self-wake yield; cancellation-safe pin-project-lite variant deferred to a follow-up)
+- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow (deferred; SITL gate stays under 90.7)
 
 ### Post-v1 (99.J + 99.K)
 

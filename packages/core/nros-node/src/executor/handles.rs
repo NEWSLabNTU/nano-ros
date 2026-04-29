@@ -325,6 +325,47 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             }
         }
     }
+
+    /// Async-await on a free loan slot. Yields cooperatively (one
+    /// `wake_by_ref + Pending` per iteration so other tasks on the
+    /// executor get to run) until [`try_loan`] succeeds.
+    ///
+    /// Phase 99.H: minimal v1. Uses self-wake yield instead of a
+    /// dedicated `AtomicWaker` on the arena (no-lending path) or a
+    /// stream-drain waker (lending path). The cancellation-safe
+    /// pin-projected variant lands as a follow-up — for v1, dropping
+    /// the future before await returns simply releases whatever borrow
+    /// `try_loan` had momentarily taken (single-task model: no
+    /// reservation outlives the await point).
+    pub async fn loan(&self, len: usize) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
+        if len > TX_BUF {
+            return Err(LoanError::TooLarge);
+        }
+        loop {
+            match self.try_loan(len) {
+                Ok(loan) => return Ok(loan),
+                Err(LoanError::WouldBlock) => yield_once().await,
+                Err(other) => return Err(other),
+            }
+        }
+    }
+}
+
+/// Cooperative-yield helper for the busy-wait loops in the async loan /
+/// borrow paths. One `wake_by_ref + Pending` schedules the task for
+/// immediate re-poll, but other ready tasks on the executor run first.
+async fn yield_once() {
+    let mut yielded = false;
+    core::future::poll_fn(|cx| {
+        if yielded {
+            core::task::Poll::Ready(())
+        } else {
+            yielded = true;
+            cx.waker().wake_by_ref();
+            core::task::Poll::Pending
+        }
+    })
+    .await
 }
 
 /// Error type for [`EmbeddedRawPublisher::try_loan`].
