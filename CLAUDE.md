@@ -264,6 +264,11 @@ Cooperative yield (Phase 77.22 — planned `PlatformYield` trait):
 
 None of the RTOS yields are ISR-safe. `core::hint::spin_loop()` is.
 
+### NetX Duo BSD Shim Pitfalls (ThreadX platforms)
+- **`SO_RCVTIMEO` takes `struct nx_bsd_timeval *`, NOT `INT` ms.** `nxd_bsd.c` casts `option_value` directly to `struct nx_bsd_timeval *`. Passing a 4-byte `INT` silently produces `option_receive_timeout = 0`, which falls through to `wait_option = NX_WAIT_FOREVER` — the recv path then blocks the calling thread forever, deadlocking cooperative drain loops. Use `nros-platform-threadx::set_recv_timeout_ms` helper.
+- **NetX BSD `fcntl(F_SETFL, O_NONBLOCK)` works** — toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING` and the recv path honours that flag. Use it for cooperative non-blocking sockets where `SO_RCVTIMEO=0` would otherwise mean "wait forever". (The earlier "fcntl not supported on UDP" comment in our code was a misread of `nxd_bsd.c`.)
+- **NSOS-NetX shim translates `SO_RCVTIMEO`** for threadx-linux to bridge NetX BSD ↔ Linux POSIX. It accepts both 4-byte INT-ms and 8-byte `nx_bsd_timeval` shapes (LP64 `nx_bsd_time_t`/`nx_bsd_suseconds_t` map to `c_int` per bindgen) and converts to Linux's 16-byte `struct timeval`. Callers don't need to special-case threadx-linux.
+
 ### Board Crate Transport Features
 Board crates use Cargo features to select the communication transport:
 - **`ethernet`** (default for MPS2-AN385, STM32F4, ESP32-QEMU) or **`wifi`** (default for ESP32) — TCP/UDP via `zpico-smoltcp`
