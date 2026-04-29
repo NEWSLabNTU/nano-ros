@@ -112,6 +112,20 @@ const GOAL_UUID_SIZE: usize = 16;
 // ============================================================================
 
 /// Typed publisher handle.
+///
+/// Two methods, both byte-oriented at the wire:
+///
+/// - [`publish`](Self::publish) / [`publish_with_buffer`](Self::publish_with_buffer)
+///   — accept `&M: RosMessage`, CDR-encode into a stack buffer, then
+///   call [`Publisher::publish_raw`](nros_rmw::Publisher::publish_raw).
+/// - [`publish_raw`](Self::publish_raw) — accepts pre-encoded CDR bytes
+///   for callers that already produced the wire payload.
+///
+/// **No typed `loan()` exists.** Loan/borrow live exclusively on
+/// [`EmbeddedRawPublisher`] / [`RawSubscription`]. `try_loan(len)`
+/// requires the byte length up front, which CDR ser/de can only
+/// discover after encoding — the two APIs are incompatible by
+/// construction. See `docs/design/zero-copy-raw-api.md` decision D7.
 pub struct EmbeddedPublisher<M> {
     pub(crate) handle: session::RmwPublisher,
     pub(crate) _phantom: PhantomData<M>,
@@ -504,6 +518,21 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 // ============================================================================
 
 /// Typed subscription handle with internal receive buffer.
+///
+/// Two methods, both byte-oriented at the wire:
+///
+/// - [`try_recv`](Self::try_recv) / [`recv`](Self::recv) — pull bytes
+///   from the backend, CDR-decode into `M: RosMessage`, hand back
+///   ownership of the typed message.
+/// - [`try_recv_raw`](Self::try_recv_raw) — copy bytes into the
+///   subscription's internal buffer and return the length, leaving CDR
+///   decoding to the caller.
+///
+/// **No typed `borrow()` exists.** Borrow lives exclusively on
+/// [`RawSubscription`]. `RecvView` is `&[u8]` semantics; CDR decoding
+/// into a typed `M` requires owning the bytes (or running the decoder
+/// in place), which the borrow contract doesn't fit. See
+/// `docs/design/zero-copy-raw-api.md` decision D7.
 pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],

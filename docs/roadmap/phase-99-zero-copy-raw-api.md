@@ -26,17 +26,31 @@ one memcpy each: user's buffer → backend on publish; backend → user's
 buffer on receive. Acceptable for v1, but suboptimal for high-rate
 sensor traffic and impossible to remove with the current API shape.
 
-This phase introduces a **loan / borrow** API:
+This phase introduces a **loan / borrow** API on the **raw** publisher /
+subscription side **only** (see D7 in `docs/design/zero-copy-raw-api.md`):
 
-- **Publish:** `try_loan(len)` returns a `PublishLoan` exposing
-  `&mut [u8]`. User writes directly into backend memory (or arena
-  fallback). `commit()` finalizes.
-- **Receive:** `try_borrow()` returns a `RecvView` exposing `&[u8]` into
-  the backend's recv buffer. Drop releases.
+- **Publish:** `EmbeddedRawPublisher::try_loan(len)` returns a
+  `PublishLoan` exposing `&mut [u8]`. User writes directly into backend
+  memory (or arena fallback). `commit()` finalizes.
+- **Receive:** `RawSubscription::try_borrow()` returns a `RecvView`
+  exposing `&[u8]` into the backend's recv buffer. Drop releases.
 
-Both directions use [`nros_node::Promise`] for unified `try_*` (never
-block) / `.await` (async) / `.wait_with(executor)` (blocking-with-
-executor) ergonomics — same pattern as today's `Subscription::recv` etc.
+There is **no** typed `Publisher<M>::loan()` / `Subscription<M>::borrow()`.
+The lent slot is `len` *bytes*; CDR ser/de needs the writer to discover
+length, incompatible with `try_loan(len)`'s up-front contract. Typed
+users either keep using `publish(&M)` (which CDR-encodes internally) or
+drop down to the raw side after manually encoding into a `&[u8]`. POD
+backends (uORB on PX4) sit on the raw side from the start — user owns
+the `#[repr(C)]` struct↔bytes cast.
+
+Both directions provide three blocking flavours:
+
+| | non-blocking | blocking + executor | async |
+|---|---|---|---|
+| publish | `try_loan(len)` | `loan_with_timeout(len, exec, t)` | `loan(len).await` |
+| receive | `try_borrow()` | `borrow_with_timeout(exec, t)` | `borrow().await` |
+
+Same pattern as today's `Subscription::recv` etc.
 
 **Compile-time lending capability** — each `nros-rmw-*` backend declares
 a `lending` Cargo feature iff its FFI exposes a slot-borrow primitive.

@@ -1,6 +1,19 @@
 # Zero-copy raw publish/subscribe API
 
-**Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H–99.K open).
+**Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H minimal; 99.I–99.K open).
+
+## API discipline (read first)
+
+nano-ros has **two and only two** classes of public pub/sub methods:
+
+| class | input | encoding |
+|---|---|---|
+| **Typed** (`Publisher<M>::publish(&M)`, `Subscription<M>::try_recv()`) | `M: RosMessage` | nros performs CDR ser/de internally |
+| **Raw** (`EmbeddedRawPublisher::publish_raw(&[u8])`, `RawSubscription::try_recv_raw(&mut [u8])`) | `&[u8]` / `&mut [u8]` | bytes pass straight through |
+
+There is no third bucket. POD-struct backends (uORB on PX4) sit on the **raw** side — the user owns the struct↔bytes cast (typically a `core::slice::from_raw_parts(&t as *const _ as *const u8, size_of::<T>())`).
+
+**Loan / borrow are exclusively raw**. The lent slot is `len` *bytes*; CDR encoding requires knowing the size only after the writer finishes, which is incompatible with `try_loan(len)`'s up-front-length contract. So `Publisher<M>` has no typed `loan()` dual — typed users either keep using `publish(&M)` or drop down to `publish_raw(&cdr_bytes)` after encoding manually.
 
 ## Goals
 
@@ -18,28 +31,48 @@
 
 ## API summary
 
-```rust
-// publish side
-let mut loan = pub.try_loan(len)?;     // Result<PublishLoan<'_, TX_BUF>, LoanError>
-loan.as_mut().copy_from_slice(&bytes); // user-fill
-loan.commit()?;                        // hand to backend (arena memcpy OR commit_slot)
+Loan/borrow live on the **raw** publisher / subscription only:
 
-// receive side
-match sub.try_borrow()? {              // Result<Option<RecvView<'_>>, NodeError>
-    Some(view) => process(&view),      // Deref<Target = [u8]>
+```rust
+// publish side — EmbeddedRawPublisher (typeless byte publisher)
+let mut loan = pub_.try_loan(len)?;      // Result<PublishLoan<'_, TX_BUF>, LoanError>
+loan.as_mut().copy_from_slice(&bytes);   // user-fill in place
+loan.commit()?;                          // hand to backend (arena memcpy OR commit_slot)
+
+// receive side — RawSubscription
+match sub_.try_borrow()? {               // Result<Option<RecvView<'_>>, NodeError>
+    Some(view) => process(view.as_ref()), // Deref<Target = [u8]>
     None => /* nothing pending */,
 }
 ```
 
-Three variants, all valid:
+Three blocking variants per direction:
 
 | Method | Returns | Blocks? |
 |---|---|---|
 | `try_loan(len)` / `try_borrow()` | now-or-never | no |
 | `loan_with_timeout` / `borrow_with_timeout` | sync, spins executor | yes (bounded) |
-| `loan().await` / `borrow().await` | async, future-based | yes (cooperative) |
+| `loan(len).await` / `borrow().await` | async, future-based | yes (cooperative) |
 
-(`loan().await` is Phase 99.H, future-based with cancellation safety.)
+PX4 / uORB POD-struct example (struct↔bytes cast is the user's job):
+
+```rust
+// publish a #[repr(C)] struct via the raw API
+let loan = pub_.try_loan(core::mem::size_of::<SensorPing>())?;
+let dst: &mut SensorPing =
+    unsafe { &mut *(loan.as_mut().as_mut_ptr().cast()) };
+*dst = SensorPing { timestamp, seq, value };
+loan.commit()?;
+
+// receive
+let view = sub_.borrow().await?;
+debug_assert_eq!(view.len(), core::mem::size_of::<SensorPing>());
+let msg: &SensorPing =
+    unsafe { &*(view.as_ref().as_ptr().cast()) };
+process(msg);
+```
+
+There is **no** `Publisher<M>::loan()` / `Subscription<M>::borrow()`. See decision D7 below.
 
 ## Layering
 
@@ -128,6 +161,20 @@ A future opt-in for `SLOTS = N` could pipeline N in-flight publishes per publish
 - Not materialise a `PublishLoan` that the caller never sees.
 
 Implementation: the future holds an enum state (`Idle | Reserving | Ready(slot)`). `poll` advances the state; `Drop` runs cleanup against whatever state is reached. `pin-project-lite` is a workspace dep already (used elsewhere); no new transitive deps.
+
+**v1 minimal**: the current `loan().await` / `borrow().await` use `core::future::poll_fn` with a `wake_by_ref + Pending` cooperative-yield helper (`yield_once`). Cancellation is safe under the single-task ownership model — dropping the future before it returns releases whatever borrow `try_loan` had momentarily taken. The pin-projected enum-state variant is a follow-up that lands when shared / multi-task ownership becomes a target.
+
+### D7 — Loan/borrow are raw-only by design
+
+There is no `Publisher<M>::loan()` typed dual. Three reasons:
+
+1. **`try_loan(len)` requires the byte length up front.** CDR encoding only discovers the final length after the writer has consumed the message — you'd have to either call `serialized_size(&msg)` ahead of time (forces a full encode-into-discard pass, defeating the saved memcpy) or over-reserve `T`'s `MAX_SIZE` (wastes wire bandwidth on every variable-length string / sequence field).
+
+2. **The two-bucket API is load-bearing.** Every public pub/sub method is either typed (CDR ser/de inside) or raw (bytes through). Adding "typed loan" creates a third bucket whose semantics partially overlap both — users would reach for it expecting "typed publish" speed and get raw publish ergonomics.
+
+3. **POD users already have a clean path.** PX4 / uORB users `#[repr(C)]` their structs and cast to `&[u8]` / `&mut [u8]` — same shape as any other byte stream. The cast is one `unsafe` line at the loan/borrow boundary; user code stays typed inside the loan body via a `&mut T` pointer fix-up.
+
+Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&M)` always CDR-encodes into a stack/heap buffer and calls `publish_raw`. Users that want the lending perf win drop down to `EmbeddedRawPublisher` + manual encode (or `#[repr(C)]` POD cast for non-CDR formats).
 
 ## Per-backend support matrix
 
