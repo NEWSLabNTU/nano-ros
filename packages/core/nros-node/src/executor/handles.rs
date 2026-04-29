@@ -178,11 +178,15 @@ pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
     pub(crate) handle: session::RmwPublisher,
     /// Single-slot arena: writable buffer + busy flag. SLOTS=1 in v1
     /// (concurrent loans on the same publisher return WouldBlock).
+    /// Unused when the `rmw-lending` feature is on — `try_loan`
+    /// dispatches to the backend's `SlotLending` instead.
+    #[allow(dead_code)]
     pub(crate) arena: TxArena<TX_BUF>,
 }
 
 /// Single-slot per-publisher arena. Concurrent `try_loan` calls on the
 /// same publisher race on the busy flag; loser gets `WouldBlock`.
+#[allow(dead_code)]
 pub(crate) struct TxArena<const TX_BUF: usize> {
     busy: AtomicBool,
     buf: UnsafeCell<[u8; TX_BUF]>,
@@ -193,6 +197,7 @@ pub(crate) struct TxArena<const TX_BUF: usize> {
 // discard releases the slot.
 unsafe impl<const TX_BUF: usize> Sync for TxArena<TX_BUF> {}
 
+#[allow(dead_code)] // unused when `rmw-lending` is on
 impl<const TX_BUF: usize> TxArena<TX_BUF> {
     pub(crate) const fn new() -> Self {
         Self {
@@ -249,8 +254,19 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// Reserve a writable slot of `len` bytes. Caller writes into the
     /// returned [`PublishLoan`] and calls [`PublishLoan::commit`] to
     /// publish. Never blocks; returns [`LoanError::WouldBlock`] when the
-    /// arena slot is already in use, or [`LoanError::TooLarge`] when
-    /// `len` exceeds the const-generic `TX_BUF` capacity.
+    /// slot is already in use (arena fallback) or the backend's outbound
+    /// stream is full (lending path), and [`LoanError::TooLarge`] when
+    /// `len` exceeds the publisher's slot capacity.
+    ///
+    /// With the `rmw-lending` cargo feature on, this dispatches to the
+    /// active backend's [`SlotLending::try_lend_slot`](nros_rmw::SlotLending::try_lend_slot)
+    /// — zero-copy on backends that natively lend (zenoh-pico via
+    /// `z_bytes_from_static_buf`, XRCE-DDS via `uxr_prepare_output_stream`).
+    /// Without `rmw-lending`, the arena fallback is used: caller fills a
+    /// per-publisher inline slot, [`commit`](PublishLoan::commit) calls
+    /// the backend's `publish_raw` (single memcpy into the backend's
+    /// outbound buffer, same as `publish_raw` directly).
+    #[cfg(not(feature = "rmw-lending"))]
     pub fn try_loan(&self, len: usize) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
         let slice = self.arena.try_claim(len)?;
         Ok(PublishLoan {
@@ -258,6 +274,21 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             slice,
             committed: false,
         })
+    }
+
+    /// `rmw-lending` variant — see the no-lending [`try_loan`] for the docs.
+    #[cfg(feature = "rmw-lending")]
+    pub fn try_loan(&self, len: usize) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
+        use nros_rmw::SlotLending;
+        match self.handle.try_lend_slot(len) {
+            Ok(Some(slot)) => Ok(PublishLoan {
+                publisher: self,
+                backend_slot: Some(slot),
+                committed: false,
+            }),
+            Ok(None) => Err(LoanError::WouldBlock),
+            Err(e) => Err(LoanError::Backend(e)),
+        }
     }
 
     /// Sync blocking loan with timeout. Spins the executor until the
@@ -314,19 +345,40 @@ impl From<TransportError> for LoanError {
     }
 }
 
-/// Writable loan into a [`EmbeddedRawPublisher`]'s arena slot.
+/// Writable loan into a [`EmbeddedRawPublisher`]'s slot.
 ///
 /// User fills `as_mut()` then calls [`commit`](Self::commit) to publish,
 /// or [`discard`](Self::discard) to release the slot without publishing.
 /// Dropping without either silently discards (slot freed); a
 /// `#[must_use]` warning catches accidental drops at compile time.
+///
+/// Two backings, selected at compile time by the `rmw-lending` feature:
+///
+/// - **Arena (default)**: per-publisher inline `[u8; TX_BUF]` slot. On
+///   commit, `publish_raw` memcpys into the backend's outbound buffer.
+/// - **Backend lending (`rmw-lending`)**: slot owned by the backend
+///   (zenoh-pico's static buffer aliased via `z_bytes_from_static_buf`,
+///   XRCE's `ucdrBuffer` reservation). True zero-copy publish.
 #[must_use = "PublishLoan must be committed or discarded; dropping silently rolls back"]
+#[cfg(not(feature = "rmw-lending"))]
 pub struct PublishLoan<'a, const TX_BUF: usize> {
     publisher: &'a EmbeddedRawPublisher<TX_BUF>,
     slice: &'a mut [u8],
     committed: bool,
 }
 
+#[must_use = "PublishLoan must be committed or discarded; dropping silently rolls back"]
+#[cfg(feature = "rmw-lending")]
+pub struct PublishLoan<'a, const TX_BUF: usize> {
+    publisher: &'a EmbeddedRawPublisher<TX_BUF>,
+    /// `Option` so `commit` can move the slot out via `take()` without
+    /// triggering Drop's release path. Always `Some(_)` until `commit`
+    /// or `discard` runs.
+    backend_slot: Option<<session::RmwPublisher as nros_rmw::SlotLending>::Slot<'a>>,
+    committed: bool,
+}
+
+#[cfg(not(feature = "rmw-lending"))]
 impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// Mutable view into the loaned bytes. Caller writes message data here.
     #[allow(clippy::should_implement_trait)]
@@ -356,6 +408,44 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     }
 }
 
+#[cfg(feature = "rmw-lending")]
+impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
+    /// Mutable view into the backend-lent bytes.
+    #[allow(clippy::should_implement_trait)]
+    pub fn as_mut(&mut self) -> &mut [u8] {
+        // Always Some until commit/discard.
+        self.backend_slot
+            .as_mut()
+            .expect("PublishLoan slot already consumed")
+            .as_mut()
+    }
+
+    /// Commit the loan: hand the slot to the backend's `commit_slot` for
+    /// flushing. The slot's bytes are written to the wire without an
+    /// extra user-side memcpy.
+    pub fn commit(mut self) -> Result<(), LoanError> {
+        use nros_rmw::SlotLending;
+        let slot = self
+            .backend_slot
+            .take()
+            .expect("PublishLoan slot already consumed");
+        self.committed = true;
+        self.publisher
+            .handle
+            .commit_slot(slot)
+            .map_err(LoanError::Backend)
+    }
+
+    /// Discard the loan without publishing. The backend-owned slot is
+    /// released by its own Drop when this `PublishLoan` is dropped.
+    pub fn discard(mut self) {
+        self.committed = true;
+        // backend_slot's Option<Slot> drops here, releasing the slot.
+        drop(self.backend_slot.take());
+    }
+}
+
+#[cfg(not(feature = "rmw-lending"))]
 impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
     fn drop(&mut self) {
         // Slot always returned to the free pool; whether the bytes were
@@ -364,6 +454,9 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
         self.publisher.arena.release();
     }
 }
+
+// rmw-lending variant relies on the backend's `Slot` Drop impl to release
+// the underlying buffer/stream slot. No explicit nros-side Drop needed.
 
 // ============================================================================
 // Subscription
@@ -546,6 +639,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// View is `!Send + !Sync` to discourage holding it across `.await`
     /// or thread boundaries (would block subsequent receives on the
     /// same subscriber).
+    #[cfg(not(feature = "rmw-lending"))]
     pub fn try_borrow(&mut self) -> Result<Option<RecvView<'_>>, NodeError> {
         match self.try_recv_raw()? {
             Some(len) => Ok(Some(RecvView {
@@ -556,40 +650,60 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         }
     }
 
+    /// `rmw-lending` variant — dispatches to the backend's
+    /// [`SlotBorrowing::try_borrow`](nros_rmw::SlotBorrowing::try_borrow)
+    /// for true zero-copy receive (zenoh-pico's static buffer borrowed
+    /// directly via `z_bytes_get_contiguous_view`, XRCE's slot borrowed
+    /// in place). The bytes never touch `self.buffer`.
+    #[cfg(feature = "rmw-lending")]
+    pub fn try_borrow(&mut self) -> Result<Option<RecvView<'_>>, NodeError> {
+        use nros_rmw::SlotBorrowing;
+        match self.handle.try_borrow() {
+            Ok(Some(view)) => Ok(Some(RecvView {
+                view: Some(view),
+                _marker: core::marker::PhantomData,
+            })),
+            Ok(None) => Ok(None),
+            Err(e) => Err(NodeError::Transport(e)),
+        }
+    }
+
     /// Async-await on the next message, returning a [`RecvView`].
     /// Mirrors the `Subscription::recv` pattern but typeless.
     ///
     /// Backend wake source: `Subscriber::register_waker`. Same race-
     /// safe register-then-check ordering as `Subscription::recv`.
     pub async fn borrow(&mut self) -> Result<RecvView<'_>, NodeError> {
-        // Loop until try_borrow returns Some. Poll-and-register pattern
-        // identical to Subscription::recv. The borrow returned by
-        // try_borrow ties RecvView's lifetime to &mut self for the rest
-        // of this fn body, so there's no lifetime trick needed.
-        loop {
-            // SAFETY-of-pattern: we register the waker BEFORE we check
-            // for data so any concurrent backend callback that fires
-            // between try_borrow returning None and the waker landing
-            // wakes us, not the previous waker (or nowhere).
+        // Wait for `has_data` to flip true via the AtomicWaker, *without*
+        // holding any borrow that `try_borrow` would need afterwards.
+        // Borrow `&self.handle` immutably inside poll_fn so the
+        // borrow checker can prove `&mut self` is free by the time we
+        // return Ok(view) below. Earlier revisions used a `loop { …
+        // try_borrow … }` pattern that hit the polonius two-phase-borrow
+        // limitation when `RecvView<'a>` started carrying a backend slot
+        // (Phase 99.D' wire-through).
+        {
+            let handle = &self.handle;
             core::future::poll_fn(|cx| {
-                self.handle.register_waker(cx.waker());
-                if self.has_data() {
+                // Register-then-check: closes the race where a backend
+                // callback fires between has_data returning false and
+                // the waker landing.
+                handle.register_waker(cx.waker());
+                if handle.has_data() {
                     core::task::Poll::Ready(())
                 } else {
                     core::task::Poll::Pending
                 }
             })
             .await;
-            if let Some(view) = self.try_borrow()? {
-                // Re-borrow to hand the view out with a fresh lifetime
-                // tied to the outer &mut self.
-                let len = view.as_ref().len();
-                return Ok(RecvView {
-                    bytes: &self.buffer[..len],
-                    _marker: core::marker::PhantomData,
-                });
-            }
-            // Spurious wake — loop and re-register.
+        }
+        // has_data was true at some point; in the single-threaded
+        // executor there's no other reader, so try_borrow returns Some.
+        // A spurious wake (very unlikely on shipping backends) returns
+        // WouldBlock and the caller can retry.
+        match self.try_borrow()? {
+            Some(view) => Ok(view),
+            None => Err(NodeError::Transport(TransportError::WouldBlock)),
         }
     }
 
@@ -623,11 +737,28 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 ///
 /// `!Send + !Sync`: cannot cross `.await` or threads. Drop releases
 /// any backend lock + lets the next message advance.
+///
+/// Two backings, selected at compile time by the `rmw-lending` feature:
+/// the no-lending variant points at `RawSubscription::buffer` (filled by
+/// `try_recv_raw`'s memcpy); the lending variant holds the backend's
+/// own [`SlotBorrowing::View`](nros_rmw::SlotBorrowing::View) — zero
+/// copies on the receive path, with the backend's Drop taking care of
+/// releasing the buffer lock.
+#[cfg(not(feature = "rmw-lending"))]
 pub struct RecvView<'a> {
     bytes: &'a [u8],
     _marker: core::marker::PhantomData<*const ()>,
 }
 
+#[cfg(feature = "rmw-lending")]
+pub struct RecvView<'a> {
+    /// `Option` for symmetry with `PublishLoan::backend_slot`. Always
+    /// `Some(_)` until the view is dropped.
+    view: Option<<session::RmwSubscriber as nros_rmw::SlotBorrowing>::View<'a>>,
+    _marker: core::marker::PhantomData<*const ()>,
+}
+
+#[cfg(not(feature = "rmw-lending"))]
 impl<'a> core::ops::Deref for RecvView<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
@@ -635,9 +766,32 @@ impl<'a> core::ops::Deref for RecvView<'a> {
     }
 }
 
+#[cfg(feature = "rmw-lending")]
+impl<'a> core::ops::Deref for RecvView<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        // Always Some until Drop.
+        self.view
+            .as_ref()
+            .expect("RecvView accessed after drop")
+            .as_ref()
+    }
+}
+
+#[cfg(not(feature = "rmw-lending"))]
 impl<'a> AsRef<[u8]> for RecvView<'a> {
     fn as_ref(&self) -> &[u8] {
         self.bytes
+    }
+}
+
+#[cfg(feature = "rmw-lending")]
+impl<'a> AsRef<[u8]> for RecvView<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.view
+            .as_ref()
+            .expect("RecvView accessed after drop")
+            .as_ref()
     }
 }
 
