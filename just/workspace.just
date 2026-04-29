@@ -93,7 +93,7 @@ doctor:
 
     # --- rust-targets ---
     tgt_missing=()
-    for t in thumbv7em-none-eabihf thumbv7m-none-eabi riscv32imc-unknown-none-elf riscv64gc-unknown-none-elf; do
+    for t in thumbv7em-none-eabihf thumbv7m-none-eabi armv7r-none-eabihf riscv32imc-unknown-none-elf riscv64gc-unknown-none-elf; do
         rustup target list --installed 2>/dev/null | grep -q "^$t$" || tgt_missing+=("$t")
     done
     if [ ${#tgt_missing[@]} -eq 0 ]; then
@@ -246,6 +246,12 @@ rust-targets:
     set -e
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
+    # Phase 100 — AGX Orin SPE (Cortex-R5F). Tier 3, but rustup ships a
+    # prebuilt rust-std for both stable and nightly so `cargo check`
+    # works without `-Zbuild-std`. The SPE board crate (100.6) may
+    # still opt into `-Zbuild-std` for `panic_abort` / build-std-features
+    # tuning; that lives in the board crate's .cargo/config.toml.
+    rustup target add armv7r-none-eabihf
     rustup target add riscv32imc-unknown-none-elf
     rustup target add riscv64gc-unknown-none-elf
     rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
