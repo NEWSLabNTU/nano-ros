@@ -4,16 +4,30 @@
 
 ## API discipline (read first)
 
+### Public API surface
+
+The **only** crate users (and example code) reach into is `nros::*` (the nano-ros facade crate). RMW backend crates (`nros-rmw-uorb`, `nros-rmw-zenoh`, `nros-rmw-xrce`, …) are **internal** plumbing — they implement the `nros-rmw` trait surface and are pulled in by `nros` via Cargo features (`nros = { features = ["rmw-uorb"] }`). Users never write `use nros_rmw_uorb::publication;` etc. in application code.
+
+This rule applies equally to the bundled examples: the on-disk `examples/px4/rust/uorb/{talker,listener}` route through `nros::Executor` + `nros::Node` + `nros::EmbeddedRawPublisher` + `nros::RawSubscription`, not through `nros_rmw_uorb::publication::<T>` / `subscription::<T>`. The latter typed-direct path still exists inside the RMW crate as the implementation entrypoint for the trampoline registry, but it is not the user-facing API.
+
+### Two API classes
+
 nano-ros has **two and only two** classes of public pub/sub methods:
 
 | class | input | encoding |
 |---|---|---|
-| **Typed** (`Publisher<M>::publish(&M)`, `Subscription<M>::try_recv()`) | `M: RosMessage` | nros performs CDR ser/de internally |
-| **Raw** (`EmbeddedRawPublisher::publish_raw(&[u8])`, `RawSubscription::try_recv_raw(&mut [u8])`) | `&[u8]` / `&mut [u8]` | bytes pass straight through |
+| **Typed** (`nros::Publisher<M>::publish(&M)`, `nros::Subscription<M>::try_recv()`) | `M: RosMessage` | nros performs CDR ser/de internally |
+| **Raw** (`nros::EmbeddedRawPublisher::publish_raw(&[u8])`, `nros::RawSubscription::try_recv_raw(&mut [u8])`) | `&[u8]` / `&mut [u8]` | bytes pass straight through |
 
 There is no third bucket. POD-struct backends (uORB on PX4) sit on the **raw** side — the user owns the struct↔bytes cast (typically a `core::slice::from_raw_parts(&t as *const _ as *const u8, size_of::<T>())`).
 
 **Loan / borrow are exclusively raw**. The lent slot is `len` *bytes*; CDR encoding requires knowing the size only after the writer finishes, which is incompatible with `try_loan(len)`'s up-front-length contract. So `Publisher<M>` has no typed `loan()` dual — typed users either keep using `publish(&M)` or drop down to `publish_raw(&cdr_bytes)` after encoding manually.
+
+### `no_std` constraint on examples
+
+PX4 example modules deploy onto FCU targets where `std` is unavailable. Zero-copy is the *primary* benefit on those targets (RAM-tight, copy-count-sensitive). So both example crates and the migration target stay `#![no_std]` plus `extern crate alloc` — no `std::*` anywhere in user code or in the dependency closure brought in by `nros`'s feature selection.
+
+The std-mock test paths (`nros-rmw-uorb`'s `tests/loan_borrow.rs`, `tests/typeless_api.rs`) light up `nros-rmw-uorb/std` to host the executor on a desktop unit-test process; that opt-in is confined to test binaries and never reaches the example crates.
 
 ## Goals
 

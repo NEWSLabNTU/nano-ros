@@ -145,22 +145,55 @@ real consumer.
 - [x] 99.F — Zenoh-pico lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.G — XRCE-DDS lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.H' — Cancellation-safe `LoanFuture` via `AtomicWaker` on `TxArena`; `Drop` forwards wake to next waiter; regression test in `tests/loan_borrow.rs`
-- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow.
-      **Blocked** on a px4-rs staticlib-linkage issue, not on Phase 99
-      itself: switching the examples from the direct typed
-      `nros_rmw_uorb::publication::<T>` path onto
-      `Executor`/`Node`/`EmbeddedRawPublisher` pulls in the
-      `nros-rmw-uorb` registry's `critical_section` impl + an
-      allocator. PX4 SITL links the two example crates as separate
-      Rust staticlibs into a single `px4` binary, so the resulting
-      `_critical_section_1_0_acquire/_release`, `#[global_allocator]`,
-      and (when `#![no_std]` is dropped) std panic-handler symbols
-      multi-define across the two libs. Resolving this needs a shared
-      provider crate in px4-rs (or a C-side impl) outside the Phase 99
-      scope. Std-mock proxy E2E (5/5 in `loan_borrow.rs` +
-      `typeless_api.rs`) covers the same code path the migrated
-      examples would have exercised; SITL E2E remains green on the
-      typed-direct baseline.
+- [ ] 99.I — Migrate PX4 talker/listener examples to the loan/borrow
+      raw byte API. **Migration target rules** (locked, see
+      `docs/design/zero-copy-raw-api.md`):
+      1. **Public API only**: `nros::Executor` / `nros::Node` /
+         `nros::EmbeddedRawPublisher` / `nros::RawSubscription`. No
+         `nros_rmw_uorb::*` imports — the RMW crate is internal.
+      2. **`#![no_std]` + alloc**, no `std::*` in user code or the
+         dependency closure (FCU targets do not have std). The
+         existing std-mock test paths under
+         `nros-rmw-uorb/std` are confined to test binaries and not
+         exercised by the examples.
+      3. **Zero-copy via `try_loan` + `commit` / `try_borrow`** — the
+         on-the-wire format is the user's POD `#[repr(C)]` struct
+         cast to bytes, no CDR.
+
+      **Blocked** on a px4-rs staticlib-linkage prerequisite, not on
+      Phase 99 itself: the registry path inside `nros-rmw-uorb` (the
+      one `Executor` walks through under the hood) needs exactly one
+      `critical_section::set_impl!` provider and one
+      `#[global_allocator]` per final `px4` binary. PX4 SITL links
+      `talker` and `listener` as **two separate Rust staticlibs**
+      into the same `bin/px4`, so when the RMW crate's `alloc`
+      feature is on in both, the linker sees two copies of
+      `_critical_section_1_0_acquire` / `_release`,
+      `__rust_alloc` / `__rust_dealloc`, etc. The talker→listener
+      build I attempted hit exactly this:
+      ```
+      undefined reference to '_critical_section_1_0_acquire'
+      undefined reference to '_critical_section_1_0_release'
+      ```
+      (and, additionally, libstd internals like
+      `std::panicking::EMPTY_PANIC` if a crate accidentally drops
+      `#![no_std]`).
+
+      Resolving this needs a px4-rs-side change (NOT a Phase 99
+      change): one shared provider — either a C-side
+      `_critical_section_1_0_*` definition in `px4-sys/wrapper.cpp`
+      and a libc-malloc `#[global_allocator]` shim shipped from
+      px4-rs, or a single shared "px4-rs-runtime" provider crate
+      that PX4's CMake links **once** at the binary level (not per
+      staticlib). Once landed, the examples re-do this migration in a
+      few lines.
+
+      Std-mock proxy E2E (5/5 across
+      `nros-rmw-uorb/tests/loan_borrow.rs` + `typeless_api.rs`)
+      covers the same `Executor::open` → `create_publisher_raw` →
+      `try_loan` → `commit` chain the migrated examples would
+      exercise; the SITL E2E in 90.7 remains green on the
+      typed-direct baseline pending the px4-rs runtime fix.
 
 ### Post-v1 (99.J + 99.K)
 
