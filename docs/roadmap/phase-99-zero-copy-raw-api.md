@@ -5,7 +5,7 @@ true zero-copy where the backend offers it, and falls back to a
 single-memcpy arena path where it doesn't. User code stays unchanged
 across backends; lending capability is selected at compile time.
 
-**Status:** v1 mostly landed (99.A–99.G + 99.D' wire-through complete; 99.H minimal; 99.I + 99.J + 99.K open)
+**Status:** v1 mostly landed (99.A–99.G + 99.D' wire-through complete; 99.H' cancellation-safe loan future done; 99.I + 99.J + 99.K open)
 
 **Priority:** Medium
 
@@ -42,6 +42,30 @@ users either keep using `publish(&M)` (which CDR-encodes internally) or
 drop down to the raw side after manually encoding into a `&[u8]`. POD
 backends (uORB on PX4) sit on the raw side from the start — user owns
 the `#[repr(C)]` struct↔bytes cast.
+
+### When loan/borrow actually applies
+
+The zero-copy API is only useful when the user is already operating on
+**bytes**, i.e. has chosen the raw side of the two-bucket API. In
+practice:
+
+- **uORB / PX4** — POD `#[repr(C)]` structs cast to bytes; loan/borrow is
+  the natural fit and saves the user-side memcpy at publish.
+- **Custom byte protocols** on Zenoh / XRCE / DDS — user bypasses CDR
+  entirely (e.g. forwarding pre-encoded frames, raw sensor blobs,
+  inter-application IPC). Backend lending impls (99.F/G) make this
+  truly zero-copy.
+
+The stock `examples/native/rust/zenoh/{talker,listener}` and the
+analogous XRCE / DDS examples publish **typed** ROS messages (`String`,
+`Twist`, etc.). Those go through `Publisher<M>::publish(&M)` and
+serialize via CDR by definition — there is no slot whose length is known
+up front, so loan/borrow does not apply and migration is a category
+error. Those examples stay on the typed API.
+
+What changes for Zenoh / XRCE / DDS in this phase: a **separate**
+zero-copy example tree publishing raw byte payloads, demonstrating the
+backend lending path end-to-end. See 99.J.
 
 Both directions provide three blocking flavours:
 
@@ -95,7 +119,8 @@ unsatisfiable. Caught at build, not runtime.
 │ 99.G  XRCE-DDS lending impl (gated)     │
 │ 99.H  Promise-driven async loan/borrow  │
 │ 99.I  migrate PX4 examples to new API   │
-│ 99.J  migrate zenoh/xrce examples (opt) │
+│ 99.J  new raw-bytes zero-copy examples  │
+│       (zenoh/xrce; not migration)       │
 │ 99.K  benchmark + docs                  │
 └─────────────────────────────────────────┘
 ```
@@ -119,13 +144,29 @@ real consumer.
 - [x] 99.E — uORB backend wiring (arena-only; `tests/loan_borrow.rs` 3/3 passes via std mock; enabling `rmw-lending` w/ uORB now fails to compile, satisfying the acceptance gate)
 - [x] 99.F — Zenoh-pico lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.G — XRCE-DDS lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
-- [~] 99.H — Promise-driven `loan()` / `borrow()` futures (minimal v1: `borrow().await` and `loan().await` use `poll_fn` with self-wake yield; cancellation-safe pin-project-lite variant deferred to a follow-up)
-- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow (deferred; SITL gate stays under 90.7)
+- [x] 99.H' — Cancellation-safe `LoanFuture` via `AtomicWaker` on `TxArena`; `Drop` forwards wake to next waiter; regression test in `tests/loan_borrow.rs`
+- [ ] 99.I — Migrate PX4 talker/listener examples to loan/borrow.
+      **Blocked** on a px4-rs staticlib-linkage issue, not on Phase 99
+      itself: switching the examples from the direct typed
+      `nros_rmw_uorb::publication::<T>` path onto
+      `Executor`/`Node`/`EmbeddedRawPublisher` pulls in the
+      `nros-rmw-uorb` registry's `critical_section` impl + an
+      allocator. PX4 SITL links the two example crates as separate
+      Rust staticlibs into a single `px4` binary, so the resulting
+      `_critical_section_1_0_acquire/_release`, `#[global_allocator]`,
+      and (when `#![no_std]` is dropped) std panic-handler symbols
+      multi-define across the two libs. Resolving this needs a shared
+      provider crate in px4-rs (or a C-side impl) outside the Phase 99
+      scope. Std-mock proxy E2E (5/5 in `loan_borrow.rs` +
+      `typeless_api.rs`) covers the same code path the migrated
+      examples would have exercised; SITL E2E remains green on the
+      typed-direct baseline.
 
 ### Post-v1 (99.J + 99.K)
 
-- [ ] 99.J — Migrate zenoh / xrce examples to loan/borrow (showcase
-      cross-backend uniformity)
+- [ ] 99.J — **New** raw-bytes zero-copy examples for Zenoh + XRCE +
+      DDS (separate example tree; not migration of typed examples).
+      Demonstrates `try_loan` / `try_borrow` over backend lending.
 - [ ] 99.K — Benchmark vs `publish_raw`/`try_recv_raw` baseline; docs
 
 ---
@@ -331,11 +372,34 @@ Verify the SITL integration test (90.7) still passes. This is the
 - `examples/px4/rust/uorb/listener/src/main.rs` (rewrite)
 - `packages/testing/nros-tests/tests/px4_e2e.rs` (update assertions)
 
-### 99.J — Migrate zenoh / xrce examples (post-v1)
+### 99.J — New raw-bytes zero-copy examples (post-v1)
 
-Convert `examples/native/rust/zenoh/{talker,listener}` to loan/borrow,
-demonstrating cross-backend uniformity. With `nros/rmw-lending`
-enabled, the same code achieves true zero-copy via `unstable-zenoh-api`.
+The existing `examples/native/rust/zenoh/{talker,listener}` (and the
+XRCE / DDS analogues) publish **typed** ROS messages and always
+CDR-serialize. Loan/borrow does not apply to them and they stay as-is.
+
+Instead, add a **separate** example tree under
+`examples/native/rust/<backend>/zero-copy/{talker,listener}` (one pair
+per lending-capable backend) that:
+
+- Operates on raw byte payloads (e.g. a fixed-size `[u8; 1024]` sensor
+  frame, or a small POD `#[repr(C)]` struct cast to bytes — the user's
+  call, no CDR involved).
+- Uses `EmbeddedRawPublisher::try_loan` + `commit` on the publish side
+  and `RawSubscription::try_borrow` on the receive side.
+- Builds with `nros/rmw-lending` enabled so the lending feature on the
+  backend kicks in; the same source builds without `rmw-lending` and
+  silently falls through to the arena path.
+
+Acceptance: byte-pointer assertion in a paired integration test proves
+the lent slice points into the backend's internal buffer (true zero-copy)
+when `rmw-lending` is on, and into the per-publisher arena when it's off.
+
+**Files (per backend):**
+
+- `examples/native/rust/<backend>/zero-copy/talker/{Cargo.toml, src/main.rs}`
+- `examples/native/rust/<backend>/zero-copy/listener/{Cargo.toml, src/main.rs}`
+- `packages/testing/nros-tests/tests/<backend>_zero_copy_e2e.rs`
 
 ### 99.K — Benchmark + docs (post-v1)
 
@@ -368,10 +432,15 @@ enabled, the same code achieves true zero-copy via `unstable-zenoh-api`.
       byte-pointer assertion proves true zero-copy.
 - [ ] XRCE-DDS lending test passes.
 - [ ] PX4 talker/listener examples migrated; SITL test (90.7) still green.
-- [ ] Promise-based futures cancel cleanly (drop releases wait-queue
-      reservation); no leaks under cancel-storm test.
+- [x] Cancellation-safe `LoanFuture` — drop of a Pending future does not
+      leak arena state; the next waiter is woken via `AtomicWaker`
+      (`tests/loan_borrow.rs::loan_future_drop_does_not_leak_slot`).
 - [ ] `publish_raw` / `try_recv_raw` retained as convenience wrappers
       atop loan/borrow (no API removal).
+- [ ] Stock typed examples (zenoh / xrce / dds talker/listener)
+      **unchanged**. Loan/borrow does not apply to typed +
+      CDR-serializing flows; new raw-bytes example tree (99.J) covers
+      the zero-copy use case for those backends instead.
 
 ---
 

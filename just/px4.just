@@ -15,6 +15,11 @@ setup:
         third-party/px4/PX4-Autopilot
     git -C third-party/px4/PX4-Autopilot submodule update --init \
         --depth 1 --recommend-shallow --recursive
+    # Install PX4's Python build deps user-local so `just px4 build-sitl`
+    # doesn't fail mid-build on missing imports (kconfiglib for the
+    # menuconfig step, pyros-genmsg + jinja2 for uORB topic-header
+    # generation, …). Mirrors PX4's own `Tools/setup/ubuntu.sh` step.
+    pip3 install --user -r third-party/px4/PX4-Autopilot/Tools/setup/requirements.txt
 
 # Diagnose PX4 install status (read-only).
 doctor:

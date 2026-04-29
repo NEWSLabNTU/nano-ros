@@ -190,11 +190,11 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 
 | Phase | Examples touched |
 |---|---|
-| **99.I (v1 gate)** | `examples/px4/rust/uorb/{talker,listener}` — first real-world consumer; passes the SITL E2E (90.7) unchanged. |
-| 99.J (post-v1) | `examples/native/rust/zenoh/{talker,listener}` and the equivalent xrce examples — same source code, recompile with `nros/rmw-lending` against zenoh+`unstable-zenoh-api` to demonstrate the cross-backend uniformity. |
+| **99.I (v1 gate)** | `examples/px4/rust/uorb/{talker,listener}` — first real-world consumer; passes the SITL E2E (90.7) unchanged. PX4 already operates on raw bytes, so this is a direct migration. |
+| 99.J (post-v1) | **New** raw-bytes example tree under `examples/native/rust/<backend>/zero-copy/{talker,listener}` for zenoh / xrce / dds. Not a migration of the existing typed examples — those publish ROS messages (`String`, `Twist`, …) through `Publisher<M>::publish(&M)` and always CDR-serialize, so loan/borrow does not apply to them and they stay unchanged. The new tree publishes byte payloads directly to demonstrate backend lending end-to-end. |
 | 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`try_recv_raw` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/zero-copy-raw-api.md` with a decision matrix. |
 
-Existing user code that calls `publish_raw` / `try_recv_raw` keeps working unchanged. The two APIs coexist.
+Existing user code that calls `publish_raw` / `try_recv_raw` keeps working unchanged. The two APIs coexist. **Typed** flows (`Publisher<M>::publish` / `Subscription<M>::recv`) are entirely separate from the loan/borrow path and are not affected by this phase.
 
 ## Expected perf delta
 
