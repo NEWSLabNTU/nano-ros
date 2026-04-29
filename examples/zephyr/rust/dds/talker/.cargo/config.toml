@@ -1,3 +1,14 @@
+# Phase 97.4.zephyr-native_sim — pin SPDP unicast locator + mcast TX
+# iface to host loopback so two sibling `native_sim` processes on
+# the same host see each other's SPDP. `NROS_LOCAL_IPV4` is read by:
+#   - `nros-rmw-dds`'s `transport_nros::LOCAL_IPV4` (SPDP unicast
+#     locator advertised in the participant's GUID).
+#   - `nros-platform-zephyr`'s `set_multicast_if_from_local_ipv4`
+#     (sets `IP_MULTICAST_IF` on send + listen sockets).
+[env]
+NROS_LOCAL_IPV4 = "127.0.0.1"
+NROS_LOCAL_IPV4_BYTES = "127,0,0,1"
+
 [patch.crates-io]
 nros = { path = "../../../../../packages/core/nros" }
 nros-core = { path = "../../../../../packages/core/nros-core" }

@@ -521,6 +521,7 @@ impl ZephyrPlatform {
                 core::mem::size_of::<timeval>() as socklen_t,
             );
         }
+
         0
     }
 
@@ -913,6 +914,11 @@ impl ZephyrPlatform {
                 return -1;
             }
         };
+        // imr_address=INADDR_ANY + imr_ifindex=0 → host kernel picks
+        // default mcast iface (typically the external NIC). Both
+        // sibling native_sim processes on a single host land on the
+        // same iface this way; relying on `IP_MULTICAST_LOOP=1`
+        // (default ON) for same-host delivery.
         let mreq = c::ip_mreqn {
             imr_multiaddr: c::in_addr { s_addr: group },
             imr_address: c::in_addr {
@@ -942,6 +948,10 @@ impl ZephyrPlatform {
         0
     }
 
+    /// Set `IP_MULTICAST_IF` from the build-time `NROS_LOCAL_IPV4` env
+    /// var. On native_sim the `NROS_LOCAL_IPV4=127.0.0.1` config pins
+    /// both ends of the SPDP exchange to `lo`. No-op when the env var
+    /// is unset or `0.0.0.0`.
     pub fn mcast_close(
         _sockrecv: *mut c_void,
         _socksend: *mut c_void,

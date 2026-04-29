@@ -278,15 +278,20 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
       - Patch wired into `just zephyr build-fixtures` alongside
         `cortex-a9-rust-patch.sh`.
 
-      Two-instance same-host smoke is **not** yet green: host kernel
-      routes the talker's mcast TX onto its default mcast iface
-      (typically the external NIC like `enp7s0`) while the listener
-      joined on the same iface — works for sibling-host setups but
-      not when both QEMU-equivalent processes are on the same host
-      and the user expects loopback delivery. Follow-up: wire
-      `IP_MULTICAST_IF` setsockopt in `nros-platform-zephyr` to pin
-      both sides to `lo` on `native_sim`. Orthogonal to the NSOS
-      patch itself.
+      Two-instance same-host smoke is **not** yet green. Verified
+      via host-side `socat -u UDP4-RECV:7400,reuseaddr,
+      ip-add-membership=239.255.0.1:0.0.0.0` capture: talker emits
+      ~17 KB of RTPS frames over the host kernel mcast group within
+      a 10 s window. Listener's NSOS-bound UDP socket joins the
+      group cleanly (`ip maddr show enp7s0` confirms `inet 239.255.0.1`)
+      but never delivers received frames into the cooperative recv
+      loop. Open suspect: NSOS adapter's epoll-based pump on the
+      host-side socket isn't triggering for received mcast
+      datagrams, or there's a guest-side delivery path issue between
+      the NSOS midplane and `mcast_recv_loop`. Patch script also
+      handles `IP_MULTICAST_IF` (Linux raw value 32) for the
+      eventual `lo`-pinning follow-up. Orthogonal to the IPPROTO_IP
+      patch this commit lands.
 
       Suggested upstream PR target: `zephyrproject-rtos/zephyr` main.
 - [x] **97.4.freertos** — qemu-arm-freertos talker↔listener.
