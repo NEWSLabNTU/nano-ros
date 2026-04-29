@@ -10,7 +10,11 @@ open. Each per-platform slice is a from-scratch board bring-up
 exercise — too big to fit alongside Phase 71's infrastructure, hence
 splitting it out.
 
-**Status**: Not Started
+**Status**: In Progress — 4 of 7 97.4 slices green
+(`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`); exceeds the
+"≥3 of 7" acceptance threshold. Remaining: `zephyr-native_sim`
+(blocked upstream NSOS), `baremetal` + `esp32-qemu` (gated by 97.3
+bare-metal smoltcp DDS bring-up).
 
 **Priority**: Medium. Native + Zephyr (`qemu_cortex_a9`) DDS already
 ship and cover the user-visible surface. Each remaining per-platform
