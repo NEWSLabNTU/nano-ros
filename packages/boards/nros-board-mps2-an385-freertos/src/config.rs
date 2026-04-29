@@ -220,7 +220,7 @@ impl Config {
                     ("zenoh", "locator") => {
                         config.zenoh_locator = value;
                     }
-                    ("zenoh", "domain_id") => {
+                    ("zenoh", "domain_id") | ("dds", "domain_id") => {
                         if let Some(d) = parse_u32(value) {
                             config.domain_id = d;
                         }

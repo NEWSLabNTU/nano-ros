@@ -256,9 +256,20 @@ impl Lan9118 {
     }
 
     /// Enable MAC receive.
+    ///
+    /// Phase 97.3.mps2-an385 — also flips `MCPAS` (Pass All Multicast)
+    /// + `PRMS` (Promiscuous Mode) so DDS / RTPS multicast frames
+    /// (`239.255.0.1` → `01:00:5e:7f:00:01`) and any other-MAC traffic
+    /// the smoltcp stack later filters reach the driver. QEMU socket
+    /// netdev forwards every frame on the segment regardless of MAC,
+    /// so without promiscuous the chip drops sibling-instance
+    /// SPDP/SEDP multicasts and discovery never closes.
     fn enable_mac_rx(&mut self) -> Result<(), Error> {
         let mac_cr = self.mac_read(regs::mac_csr::MAC_CR)?;
-        self.mac_write(regs::mac_csr::MAC_CR, mac_cr | regs::mac_cr::RXEN)?;
+        self.mac_write(
+            regs::mac_csr::MAC_CR,
+            mac_cr | regs::mac_cr::RXEN | regs::mac_cr::MCPAS | regs::mac_cr::PRMS,
+        )?;
         Ok(())
     }
 

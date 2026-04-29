@@ -450,12 +450,16 @@ macro_rules! __define_smoltcp_platform_impl {
                 }
 
                 fn set_recv_timeout(_sock: *const c_void, timeout_ms: u32) {
+                    // Phase 97.3.mps2-an385 — `timeout_ms == 0` is the
+                    // cooperative "poll once, return immediately" shape
+                    // every nros-rmw-* recv loop wants. Pre-97.3 this
+                    // path silently fell back to `SOCKET_TIMEOUT_MS`
+                    // (10 s default), which made `udp_read` block the
+                    // single-thread bare-metal app for 10 s per failed
+                    // poll → cooperative drain stalls and dust-dds
+                    // factory mailbox round-trips never complete.
                     unsafe {
-                        UDP_RECV_TIMEOUT_MS = if timeout_ms == 0 {
-                            SOCKET_TIMEOUT_MS
-                        } else {
-                            timeout_ms as u64
-                        };
+                        UDP_RECV_TIMEOUT_MS = timeout_ms as u64;
                     }
                 }
 

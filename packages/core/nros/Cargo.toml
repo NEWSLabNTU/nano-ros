@@ -64,6 +64,7 @@ platform-bare-metal = [
     "nros-node/platform-bare-metal",
     "nros-rmw-zenoh?/platform-bare-metal",
     "nros-rmw-xrce?/platform-bare-metal",
+    "nros-rmw-dds?/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",

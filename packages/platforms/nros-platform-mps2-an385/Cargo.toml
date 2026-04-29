@@ -13,6 +13,15 @@ name = "nros_platform_mps2_an385"
 default = []
 # TLS support (larger heap: 128 KB instead of 64 KB)
 link-tls = []
+# Phase 97.3.mps2-an385 — DDS / dust-dds DcpsDomainParticipant + builtin
+# topics / readers / writers consume far more heap than zenoh-pico (the
+# threadx-rv64 slice needed 2 MB; same budget here). Off by default so
+# zenoh / xrce builds keep their 64 KB footprint.
+dds-heap = []
+# Cortex-M PRIMASK → `critical_section::Impl`. Activated by
+# `nros-platform/critical-section` when the bare-metal platform feature
+# is on. Same flag the FreeRTOS / ThreadX paths use.
+critical-section = ["cortex-m/critical-section-single-core"]
 
 [dependencies]
 # Platform trait definitions (trait impls live in lib.rs)

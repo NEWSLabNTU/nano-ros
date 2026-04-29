@@ -12,6 +12,9 @@ name = "nros_board_mps2_an385"
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-mps2-an385 = { path = "../../platforms/nros-platform-mps2-an385" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385"] }
+# Phase 97.3.mps2-an385 — `smoltcp_clock_now_ms` extern shim needs the
+# trait import. Only used inside the cfg-gated forwarder in lib.rs.
+nros-platform-api = { path = "../../core/nros-platform-api" }
 # Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
 
@@ -25,6 +28,10 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
     "proto-ipv4",
     "socket-tcp",
     "socket-udp",
+    # Phase 97.3.mps2-an385 — IGMP / multicast group join for RTPS
+    # SPDP `239.255.0.1:7400+`. Without this, smoltcp's IPv4 layer
+    # drops mcast frames before they reach the UDP socket.
+    "multicast",
 ] }
 
 # Serial link layer (serial only)
@@ -59,3 +66,6 @@ serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:zpico-platform-shim"]
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
 link-tls = ["nros-platform-mps2-an385/link-tls"]
+# Phase 97.3.mps2-an385 — DDS / dust-dds heap budget (2 MB). Off by
+# default; DDS example crates pull in via `features = ["dds-heap"]`.
+dds-heap = ["nros-platform-mps2-an385/dds-heap"]

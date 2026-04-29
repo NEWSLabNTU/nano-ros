@@ -126,6 +126,24 @@ static mut UDP_TX_META_1: [UdpPacketMetadata; UDP_PACKET_QUEUE_SIZE] =
     [UdpPacketMetadata::EMPTY; UDP_PACKET_QUEUE_SIZE];
 static mut UDP_TX_DATA_1: [u8; UDP_BUFFER_SIZE] = [0u8; UDP_BUFFER_SIZE];
 
+// Phase 97.3.mps2-an385 — DDS RTPS needs 3 UDP sockets per
+// participant (default-unicast + metatraffic-unicast + metatraffic-
+// multicast). Slots 2 and 3 give the bare-metal DDS bring-up
+// headroom; zenoh / xrce builds keep using 0..=1 only.
+static mut UDP_RX_META_2: [UdpPacketMetadata; UDP_PACKET_QUEUE_SIZE] =
+    [UdpPacketMetadata::EMPTY; UDP_PACKET_QUEUE_SIZE];
+static mut UDP_RX_DATA_2: [u8; UDP_BUFFER_SIZE] = [0u8; UDP_BUFFER_SIZE];
+static mut UDP_TX_META_2: [UdpPacketMetadata; UDP_PACKET_QUEUE_SIZE] =
+    [UdpPacketMetadata::EMPTY; UDP_PACKET_QUEUE_SIZE];
+static mut UDP_TX_DATA_2: [u8; UDP_BUFFER_SIZE] = [0u8; UDP_BUFFER_SIZE];
+
+static mut UDP_RX_META_3: [UdpPacketMetadata; UDP_PACKET_QUEUE_SIZE] =
+    [UdpPacketMetadata::EMPTY; UDP_PACKET_QUEUE_SIZE];
+static mut UDP_RX_DATA_3: [u8; UDP_BUFFER_SIZE] = [0u8; UDP_BUFFER_SIZE];
+static mut UDP_TX_META_3: [UdpPacketMetadata; UDP_PACKET_QUEUE_SIZE] =
+    [UdpPacketMetadata::EMPTY; UDP_PACKET_QUEUE_SIZE];
+static mut UDP_TX_DATA_3: [u8; UDP_BUFFER_SIZE] = [0u8; UDP_BUFFER_SIZE];
+
 /// Get static UDP packet buffers for the given socket index.
 ///
 /// Returns (rx_meta, rx_data, tx_meta, tx_data) slices.
@@ -160,6 +178,18 @@ pub unsafe fn get_udp_buffers(
                 &mut UDP_RX_DATA_1[..],
                 &mut UDP_TX_META_1[..],
                 &mut UDP_TX_DATA_1[..],
+            ),
+            2 => (
+                &mut UDP_RX_META_2[..],
+                &mut UDP_RX_DATA_2[..],
+                &mut UDP_TX_META_2[..],
+                &mut UDP_TX_DATA_2[..],
+            ),
+            3 => (
+                &mut UDP_RX_META_3[..],
+                &mut UDP_RX_DATA_3[..],
+                &mut UDP_TX_META_3[..],
+                &mut UDP_TX_DATA_3[..],
             ),
             _ => panic!("UDP socket index out of range"),
         }

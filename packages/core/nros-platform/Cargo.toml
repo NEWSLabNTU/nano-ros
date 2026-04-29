@@ -50,6 +50,7 @@ global-allocator = ["alloc"]
 critical-section = [
     "nros-platform-freertos?/critical-section",
     "nros-platform-threadx?/critical-section",
+    "nros-platform-mps2-an385?/critical-section",
 ]
 
 [dependencies]

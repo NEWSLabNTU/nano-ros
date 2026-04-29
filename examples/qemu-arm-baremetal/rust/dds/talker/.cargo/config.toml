@@ -1,0 +1,27 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+# Phase 97.3.mps2-an385 — advertise this guest's interface IPv4 in
+# SPDP unicast locators so peers send back to the right address (not
+# loopback). Must match `[network] ip` in config.toml.
+[env]
+NROS_LOCAL_IPV4 = "10.0.2.20"
+
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nros-core]
+path = "../../../../../packages/core/nros-core"
+
+[patch.crates-io.nros-serdes]
+path = "../../../../../packages/core/nros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C",
+    "link-arg=-Tlink.x",
+]

@@ -1,0 +1,10 @@
+# QEMU ARM bare-metal DDS listener — network configuration
+
+[network]
+ip = "10.0.2.21"
+mac = "02:00:00:00:00:01"
+gateway = "10.0.2.2"
+prefix = 24
+
+[dds]
+domain_id = 0

@@ -10,10 +10,15 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let max_sockets = env_usize_compat("NROS_SMOLTCP_MAX_SOCKETS", "ZPICO_SMOLTCP_MAX_SOCKETS", 4);
+    // Phase 97.3.mps2-an385 — RTPS needs 3 UDP sockets per participant
+    // (default-unicast + metatraffic-unicast + metatraffic-multicast),
+    // so default to 4 to leave headroom for an additional pub/sub.
+    // zenoh / xrce builds use only 0..=1 of these and the unused
+    // slot's static buffers stay zero-initialised (cost: ~16 KB BSS).
     let max_udp_sockets = env_usize_compat(
         "NROS_SMOLTCP_MAX_UDP_SOCKETS",
         "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
-        2,
+        4,
     );
     let buffer_size = env_usize_compat(
         "NROS_SMOLTCP_BUFFER_SIZE",
@@ -39,10 +44,10 @@ fn main() {
         );
     }
 
-    if max_udp_sockets > 2 {
+    if max_udp_sockets > 4 {
         panic!(
-            "NROS_SMOLTCP_MAX_UDP_SOCKETS={max_udp_sockets} exceeds 2. \
-             Increasing beyond 2 requires adding static UDP buffer \
+            "NROS_SMOLTCP_MAX_UDP_SOCKETS={max_udp_sockets} exceeds 4. \
+             Increasing beyond 4 requires adding static UDP buffer \
              declarations in nros-smoltcp/src/lib.rs."
         );
     }

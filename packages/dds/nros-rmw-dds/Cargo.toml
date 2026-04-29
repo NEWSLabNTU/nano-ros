@@ -52,10 +52,14 @@ platform-threadx  = ["nostd-runtime", "nros-platform/platform-threadx"]
 # platform except `platform-posix`, which keeps using dust-dds's stock
 # threaded transport).
 nostd-runtime = ["alloc"]
-# `platform-bare-metal` intentionally omitted for now — Phase 71.6 /
-# 71.7 will add an opt-in `#[global_allocator]` on the supported board
-# crates before this feature makes sense. Until that lands, bare-metal
-# users should stay on `rmw-zenoh` or `rmw-xrce`.
+# Phase 97.3 — bare-metal slices (MPS2-AN385 / STM32F4 / ESP32-QEMU)
+# pull in `nostd-runtime` and rely on the example crate to pin the
+# concrete board via `nros-platform/platform-<board>` directly. Same
+# shape as the per-RTOS features above, just without forwarding the
+# nros-platform pin (different board crates pick different ZSTs).
+# Cooperative recv runs through `<ConcretePlatform as PlatformUdp>`
+# the smoltcp macro emits in the board's `nros-platform-<board>` crate.
+platform-bare-metal = ["nostd-runtime"]
 
 # ROS edition (controls topic name/type hash format)
 ros-humble = []

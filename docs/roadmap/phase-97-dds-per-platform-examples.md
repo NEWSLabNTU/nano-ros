@@ -202,8 +202,47 @@ Bare-metal examples need 71.26.qemu (smoltcp IGMP E2E smoke) to land
 first; until then the multicast SPDP path is proven only in the unit
 tests landed by Phase 71.26.
 
-- [ ] **97.3.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
-      talker + listener.
+- [~] **97.3.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
+      talker + listener. Build path lands green:
+      - Example crates build clean for `thumbv7m-none-eabi` with
+        `nros = features = ["alloc", "rmw-dds", "platform-bare-metal",
+        "ros-humble"]`. Single-instance smoke runs end-to-end —
+        talker reaches `Publisher declared` and publishes, listener
+        reaches `Subscriber declared` and enters its recv loop.
+      - `nros-rmw-dds`'s previously-omitted `platform-bare-metal`
+        Cargo feature now exists (forwards `nostd-runtime`); `nros`'s
+        `platform-bare-metal` propagates it.
+      - `nros-platform-mps2-an385`: new `dds-heap` feature bumps the
+        free-list heap 64 KB → 2 MB so dust-dds's `DcpsDomainParticipant`
+        builtin entities fit. New `critical-section` feature flips
+        `cortex-m/critical-section-single-core` so the
+        `_critical_section_1_0_*` symbols dust-dds references resolve.
+      - `nros-board-mps2-an385`: re-exposes the heap bump under a
+        `dds-heap` Cargo feature; provides `smoltcp_clock_now_ms`
+        directly (cfg-gated to non-zenoh builds) since zpico-platform-
+        shim is dropped. `[dds] domain_id = N` accepted in
+        `Config::from_toml`.
+      - `nros-smoltcp`: `MAX_UDP_SOCKETS` default bumped 2 → 4 (RTPS
+        needs 3 per participant — default-unicast + metatraffic-unicast
+        + metatraffic-multicast); UDP_*_2 / UDP_*_3 static buffers
+        added. `set_recv_timeout(_, 0)` no longer silently falls back
+        to the 10 s `SOCKET_TIMEOUT_MS` default — passes 0 verbatim,
+        which is what the cooperative recv loops want.
+      - `lan9118-smoltcp`: `enable_mac_rx` now flips `MCPAS` (Pass All
+        Multicast) + `PRMS` (Promiscuous) so SPDP `01:00:5e:7f:00:01`
+        frames reach smoltcp without per-group hash filter
+        programming. Same fix the FreeRTOS lan9118-lwip slice landed.
+      - Cross-instance E2E **NOT** yet green: talker + listener on a
+        shared `-nic socket,mcast=…` segment both emit RTPS frames
+        (host-side `socat` confirms both flows visible on
+        loopback), but neither side's `multicast_recv_loop` ever
+        fires. Open suspect: smoltcp's IPv4 mcast RX dispatch under
+        the bridge's `iface.join_multicast_group` queue isn't
+        delivering inbound mcast frames to the bound UDP socket.
+        Needs further smoltcp-trace work before 97.4.baremetal can
+        close.
+      - `tmp/baremetal-dds-{2-instance,smoke,tshark}.sh` ship as
+        repro scripts.
 - [ ] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
       talker + listener.
 

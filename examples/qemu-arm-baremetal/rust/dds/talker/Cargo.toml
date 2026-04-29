@@ -1,0 +1,43 @@
+[package]
+name = "qemu-baremetal-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on QEMU MPS2-AN385 bare-metal + smoltcp (Phase 97.3.mps2-an385)"
+
+[[bin]]
+name = "qemu-baremetal-dds-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+# `default-features = false` drops the zenoh-pico optional deps + the
+# boot-time `zpico_set_task_config` call. `dds-heap` flips the
+# bare-metal heap from 64 KB to 2 MB so dust-dds's
+# `DcpsDomainParticipant` builtin entities fit.
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["ethernet", "dds-heap"] }
+
+# Phase 97.3.mps2-an385 prerequisites:
+#   * `global-allocator` — `<Mps2An385Platform as PlatformAlloc>` →
+#     Rust `#[global_allocator]`.
+#   * `critical-section` — Cortex-M PRIMASK → `critical_section::Impl`,
+#     resolves the `_critical_section_1_0_*` symbols dust-dds
+#     references.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
+
+# Phase 97.3 bring-up trace — Cortex-M semihosting trace inside
+# `transport_nros::create_participant` + `write_message`. Off in
+# shipped examples; flip the feature on locally to surface the
+# last-reached step.
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }

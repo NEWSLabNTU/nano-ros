@@ -1,0 +1,15 @@
+# QEMU ARM bare-metal DDS talker — network configuration
+# Used by nros-board-mps2-an385 board crate (Config::from_toml).
+#
+# DDS uses brokerless RTPS multicast; no zenoh router locator is
+# needed. The talker just joins domain 0 and announces via
+# 239.255.0.1:7400+ on the smoltcp interface configured below.
+
+[network]
+ip = "10.0.2.20"
+mac = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+prefix = 24
+
+[dds]
+domain_id = 0

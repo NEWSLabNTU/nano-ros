@@ -1,0 +1,23 @@
+[package]
+name = "qemu-baremetal-dds-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS listener example on QEMU MPS2-AN385 bare-metal + smoltcp (Phase 97.3.mps2-an385)"
+
+[[bin]]
+name = "qemu-baremetal-dds-listener"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["ethernet", "dds-heap"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }
+std_msgs = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }
