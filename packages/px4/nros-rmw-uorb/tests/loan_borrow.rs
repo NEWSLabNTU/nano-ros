@@ -141,3 +141,56 @@ fn concurrent_loan_returns_would_block() {
     assert!(matches!(err, nros_node::LoanError::WouldBlock));
     // _loan1 dropped at end of scope, slot freed.
 }
+
+/// Phase 99.H': dropping a `LoanFuture` before it resolves must NOT
+/// leak the arena slot reservation. The Future never actually
+/// reserves anything (try_loan is non-blocking and the slot is held
+/// by the *successful* PublishLoan, not by the future itself), so
+/// the slot stays free across cancellation.
+#[test]
+fn loan_future_drop_does_not_leak_slot() {
+    use core::future::Future;
+    use core::pin::pin;
+    use core::task::{Context, Poll, Waker};
+
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    px4_uorb::_reset_broker();
+    nros_rmw_uorb::_reset();
+
+    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
+
+    let config = ExecutorConfig::new("").node_name("loan_borrow");
+    let mut executor = Executor::open(&config).expect("open");
+    let mut node = executor.create_node("loan_borrow").expect("create_node");
+    let publisher = node
+        .create_publisher_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
+        .expect("publisher");
+
+    // Take the slot via try_loan, then build a LoanFuture that will
+    // see WouldBlock on its first poll.
+    let outstanding = publisher.try_loan(16).expect("first loan");
+
+    let waker = Waker::noop().clone();
+    let mut cx = Context::from_waker(&waker);
+    {
+        let fut = publisher.loan(16);
+        let mut fut = pin!(fut);
+        // First poll → WouldBlock → Pending. Future registers a waker.
+        match fut.as_mut().poll(&mut cx) {
+            Poll::Pending => {}
+            Poll::Ready(_) => panic!("expected Pending while slot is busy"),
+        }
+        // Drop the future without ever resolving it.
+    }
+
+    // Outstanding loan still holds the slot.
+    assert!(matches!(
+        publisher.try_loan(16).map(|_| ()),
+        Err(nros_node::LoanError::WouldBlock)
+    ));
+
+    // Release the outstanding loan; arena should now serve a fresh
+    // try_loan (proving the cancelled future didn't corrupt state).
+    drop(outstanding);
+    let _fresh = publisher.try_loan(16).expect("slot reusable after future drop");
+}

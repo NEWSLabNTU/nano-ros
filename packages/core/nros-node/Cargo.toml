@@ -79,6 +79,7 @@ nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-f
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
+atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }

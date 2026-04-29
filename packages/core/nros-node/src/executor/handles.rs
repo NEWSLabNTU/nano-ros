@@ -200,10 +200,18 @@ pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
 
 /// Single-slot per-publisher arena. Concurrent `try_loan` calls on the
 /// same publisher race on the busy flag; loser gets `WouldBlock`.
+///
+/// `waker` lets `loan().await` register a waker before returning
+/// `Pending`; `release()` wakes it so the next `try_loan` succeeds
+/// without polling the executor loop. Phase 99.H' — replaces the
+/// earlier `wake_by_ref + Pending` busy yield with an event-driven
+/// wake, and gives `LoanFuture::Drop` a place to release a pending
+/// reservation cleanly.
 #[allow(dead_code)]
 pub(crate) struct TxArena<const TX_BUF: usize> {
     busy: AtomicBool,
     buf: UnsafeCell<[u8; TX_BUF]>,
+    waker: atomic_waker::AtomicWaker,
 }
 
 // SAFETY: Sync-ness of the arena is enforced by the `busy` flag — only
@@ -217,6 +225,7 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
         Self {
             busy: AtomicBool::new(false),
             buf: UnsafeCell::new([0u8; TX_BUF]),
+            waker: atomic_waker::AtomicWaker::new(),
         }
     }
 
@@ -248,6 +257,9 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
 
     fn release(&self) {
         self.busy.store(false, Ordering::Release);
+        // Wake any pending `LoanFuture` waiting on this arena. Cheap
+        // no-op if no one is waiting.
+        self.waker.wake();
     }
 }
 
@@ -340,46 +352,111 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         }
     }
 
-    /// Async-await on a free loan slot. Yields cooperatively (one
-    /// `wake_by_ref + Pending` per iteration so other tasks on the
-    /// executor get to run) until [`try_loan`] succeeds.
+    /// Async-await on a free loan slot. Returns the loan as soon as
+    /// the arena's busy flag clears (no-lending path) or as soon as
+    /// the backend's outbound stream has room (lending path).
     ///
-    /// Phase 99.H: minimal v1. Uses self-wake yield instead of a
-    /// dedicated `AtomicWaker` on the arena (no-lending path) or a
-    /// stream-drain waker (lending path). The cancellation-safe
-    /// pin-projected variant lands as a follow-up — for v1, dropping
-    /// the future before await returns simply releases whatever borrow
-    /// `try_loan` had momentarily taken (single-task model: no
-    /// reservation outlives the await point).
-    pub async fn loan(&self, len: usize) -> Result<PublishLoan<'_, TX_BUF>, LoanError> {
-        if len > TX_BUF {
-            return Err(LoanError::TooLarge);
-        }
-        loop {
-            match self.try_loan(len) {
-                Ok(loan) => return Ok(loan),
-                Err(LoanError::WouldBlock) => yield_once().await,
-                Err(other) => return Err(other),
-            }
+    /// Phase 99.H': cancellation-safe Future. Registers the task's
+    /// waker on the arena's [`AtomicWaker`] before checking
+    /// [`try_loan`]; another task's `commit` / `discard` calls
+    /// [`TxArena::release`] which wakes us. Dropping the future before
+    /// it resolves removes nothing from any wait queue (single-slot
+    /// AtomicWaker semantics: only the latest registration matters)
+    /// and explicitly wakes another waiter so the next task in line
+    /// gets a poll. No `PublishLoan` is materialised on cancel paths.
+    pub fn loan(&self, len: usize) -> LoanFuture<'_, TX_BUF> {
+        LoanFuture {
+            publisher: self,
+            len,
+            registered: false,
         }
     }
 }
 
-/// Cooperative-yield helper for the busy-wait loops in the async loan /
-/// borrow paths. One `wake_by_ref + Pending` schedules the task for
-/// immediate re-poll, but other ready tasks on the executor run first.
-async fn yield_once() {
-    let mut yielded = false;
-    core::future::poll_fn(|cx| {
-        if yielded {
-            core::task::Poll::Ready(())
-        } else {
-            yielded = true;
-            cx.waker().wake_by_ref();
-            core::task::Poll::Pending
+/// Future returned by [`EmbeddedRawPublisher::loan`]. Phase 99.H'
+/// cancellation-safe variant: if dropped before resolving, it wakes
+/// the next pending waiter so the busy-flag-clear signal isn't lost
+/// to the cancelled task.
+#[must_use = "futures do nothing unless polled"]
+pub struct LoanFuture<'a, const TX_BUF: usize> {
+    publisher: &'a EmbeddedRawPublisher<TX_BUF>,
+    len: usize,
+    /// Set on the first `Pending` return so `Drop` knows whether a
+    /// waker was registered (and thus another waiter may need a wake).
+    registered: bool,
+}
+
+impl<'a, const TX_BUF: usize> core::future::Future for LoanFuture<'a, TX_BUF> {
+    type Output = Result<PublishLoan<'a, TX_BUF>, LoanError>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // SAFETY: LoanFuture is `Unpin` for all practical purposes —
+        // it holds only `&publisher`, `len`, and a bool. Move out of
+        // Pin for the body.
+        let this = self.get_mut();
+
+        // Register-then-check: closes the race where another task's
+        // `release` fires between `try_loan` returning WouldBlock and
+        // the waker landing. The arena's AtomicWaker stores the
+        // latest waker; we update it on every poll so a `select!` /
+        // re-poll under a different waker observes the right one.
+        loan_register_waker(this.publisher, cx.waker());
+        this.registered = true;
+
+        match this.publisher.try_loan(this.len) {
+            Ok(loan) => core::task::Poll::Ready(Ok(loan)),
+            Err(LoanError::WouldBlock) => core::task::Poll::Pending,
+            Err(other) => core::task::Poll::Ready(Err(other)),
         }
-    })
-    .await
+    }
+}
+
+impl<'a, const TX_BUF: usize> Drop for LoanFuture<'a, TX_BUF> {
+    fn drop(&mut self) {
+        // If we registered a waker but never resolved, the busy flag
+        // may have just cleared and we'd swallow the wake. Forward it
+        // to the next waiter so the line keeps moving. Cheap no-op
+        // when no one else is waiting.
+        if self.registered {
+            loan_wake_next(self.publisher);
+        }
+    }
+}
+
+// Indirection so the `rmw-lending` build (which has no arena) can
+// stub these. With `rmw-lending` on, the lending Future variant uses
+// the executor's drive_io spin to drain the backend stream — there's
+// no arena-level wake source, so the helpers degrade to a self-wake.
+#[cfg(not(feature = "rmw-lending"))]
+fn loan_register_waker<const TX_BUF: usize>(
+    pub_: &EmbeddedRawPublisher<TX_BUF>,
+    waker: &core::task::Waker,
+) {
+    pub_.arena.waker.register(waker);
+}
+
+#[cfg(not(feature = "rmw-lending"))]
+fn loan_wake_next<const TX_BUF: usize>(pub_: &EmbeddedRawPublisher<TX_BUF>) {
+    pub_.arena.waker.wake();
+}
+
+#[cfg(feature = "rmw-lending")]
+fn loan_register_waker<const TX_BUF: usize>(
+    _pub_: &EmbeddedRawPublisher<TX_BUF>,
+    waker: &core::task::Waker,
+) {
+    // No arena wake source under lending; self-wake so the runtime
+    // re-polls after the next executor tick (which drains the
+    // backend's outbound stream via `drive_io`).
+    waker.wake_by_ref();
+}
+
+#[cfg(feature = "rmw-lending")]
+fn loan_wake_next<const TX_BUF: usize>(_pub_: &EmbeddedRawPublisher<TX_BUF>) {
+    // No-op: no AtomicWaker on the arena under the lending build.
 }
 
 /// Error type for [`EmbeddedRawPublisher::try_loan`].
@@ -744,14 +821,17 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// Backend wake source: `Subscriber::register_waker`. Same race-
     /// safe register-then-check ordering as `Subscription::recv`.
     pub async fn borrow(&mut self) -> Result<RecvView<'_>, NodeError> {
-        // Wait for `has_data` to flip true via the AtomicWaker, *without*
-        // holding any borrow that `try_borrow` would need afterwards.
-        // Borrow `&self.handle` immutably inside poll_fn so the
-        // borrow checker can prove `&mut self` is free by the time we
-        // return Ok(view) below. Earlier revisions used a `loop { …
-        // try_borrow … }` pattern that hit the polonius two-phase-borrow
-        // limitation when `RecvView<'a>` started carrying a backend slot
-        // (Phase 99.D' wire-through).
+        // Wait for `has_data` to flip true via the backend's
+        // AtomicWaker, *without* holding any borrow that `try_borrow`
+        // would need afterwards. Borrow `&self.handle` immutably
+        // inside poll_fn so the borrow checker can prove `&mut self`
+        // is free by the time we return Ok(view) below.
+        //
+        // Phase 99.H' cancellation safety: there is no reservation
+        // taken inside poll. Dropping the future before it resolves
+        // simply abandons whatever waker registration the backend
+        // accepted; the next call to `borrow().await` (or
+        // `try_borrow`) re-registers. No leaked state.
         {
             let handle = &self.handle;
             core::future::poll_fn(|cx| {
