@@ -326,6 +326,20 @@ fn try_probe(
             } else {
                 build.flag("-mcpu=cortex-m3").flag("-mthumb");
             }
+        } else if target.contains("armv7r") {
+            // Phase 100.3 — AGX Orin SPE (Cortex-R5F) runs ARM mode, no
+            // `-mthumb`. `cc::Build` already emits `-march=armv7-r` from
+            // the target triple, so we don't repeat `-mcpu=cortex-r5`
+            // (gcc warns "switch -mcpu=… conflicts with -march=…"). The
+            // FSP ships a `vfpv3-d16` hard-float build of the FreeRTOS
+            // ARM_CR5 port; matching the FPU + float ABI here keeps the
+            // probe's compile environment lined up with the real board
+            // build. (Pointer/int sizes are ABI-determined, so the probe
+            // would pick `(2, 6)` even without these flags — they exist
+            // for parity, not correctness.)
+            build
+                .flag("-mfpu=vfpv3-d16")
+                .flag("-mfloat-abi=hard");
         }
     } else if platform == ProbePlatform::Linux {
         build.define("ZENOH_LINUX", None);
