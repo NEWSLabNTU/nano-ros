@@ -30,6 +30,10 @@ members = [
     "packages/core/nros-cpp",
     # LAN9118 Ethernet driver for smoltcp
     "packages/drivers/lan9118-smoltcp",
+    # NVIDIA Tegra IVC driver (Orin SPE — Phase 100). Default build is
+    # an empty stub; `unix-mock` for host CI, `fsp` to link against
+    # NVIDIA's `tegra_aon_fsp.a` (requires `NV_SPE_FSP_DIR`).
+    "packages/drivers/nvidia-ivc",
     # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).
     # Required by nros-node's param-services feature. Checked into git because
     # cargo requires workspace member paths to exist on disk.
