@@ -351,6 +351,26 @@ pub fn queue_multicast_join(group: Ipv4Address) -> bool {
     }
 }
 
+// Phase 97.3 mcast-join diagnostic counters.
+static MCAST_JOIN_ATTEMPTS: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+static MCAST_JOIN_OK: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_UNADDR: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_FULL: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+
+/// Snapshot of multicast-join counters (attempts, ok, err_unaddressable, err_full).
+pub fn mcast_join_counters() -> (u32, u32, u32, u32) {
+    use core::sync::atomic::Ordering;
+    (
+        MCAST_JOIN_ATTEMPTS.load(Ordering::Relaxed),
+        MCAST_JOIN_OK.load(Ordering::Relaxed),
+        MCAST_JOIN_ERR_UNADDR.load(Ordering::Relaxed),
+        MCAST_JOIN_ERR_FULL.load(Ordering::Relaxed),
+    )
+}
+
 /// Drain the pending-join queue, calling `iface.join_multicast_group`
 /// for each address. Called once per `SmoltcpBridge::poll` iteration.
 fn drain_multicast_joins<D: Device>(
@@ -358,18 +378,29 @@ fn drain_multicast_joins<D: Device>(
     device: &mut D,
     timestamp: smoltcp::time::Instant,
 ) {
+    use core::sync::atomic::Ordering;
     let _ = (device, timestamp);
     unsafe {
         let pending = &raw mut MULTICAST_PENDING;
         let joined = &raw mut MULTICAST_JOINED;
         for i in 0..MAX_MULTICAST_GROUPS {
             if let Some(group) = (*pending)[i].take() {
-                // Best-effort: ignore the join result. smoltcp returns
-                // `Ok(())` on success and `Err(_)` if the multicast
-                // table is full or the address isn't multicast — bare-
-                // metal code can't recover from these in line, so we
-                // just record the attempt.
-                let _ = iface.join_multicast_group(IpAddress::Ipv4(group));
+                MCAST_JOIN_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+                match iface.join_multicast_group(IpAddress::Ipv4(group)) {
+                    Ok(()) => {
+                        MCAST_JOIN_OK.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(smoltcp::iface::MulticastError::Unaddressable) => {
+                        MCAST_JOIN_ERR_UNADDR.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(smoltcp::iface::MulticastError::GroupTableFull) => {
+                        MCAST_JOIN_ERR_FULL.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(_) => {
+                        // Forward-compat for new variants — count as full.
+                        MCAST_JOIN_ERR_FULL.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
                 // Record in the joined table so we don't double-join later.
                 for slot in (*joined).iter_mut() {
                     if slot.is_none() {

@@ -570,7 +570,7 @@ macro_rules! __define_smoltcp_platform_impl {
                     endpoint: *const c_void,
                     _timeout_ms: u32,
                     _iface: *const u8,
-                    _join: *const u8,
+                    join: *const u8,
                 ) -> i8 {
                     if sock.is_null() || endpoint.is_null() {
                         return -1;
@@ -578,16 +578,19 @@ macro_rules! __define_smoltcp_platform_impl {
                     let rep = unsafe { &*(endpoint as *const Endpoint) };
 
                     // 1. Queue the multicast group join on the bridge.
-                    // The destination address in `endpoint` is the
-                    // multicast group itself (e.g. 239.255.0.1).
-                    let group = $crate::Ipv4Address::new(
-                        rep._ip[0], rep._ip[1], rep._ip[2], rep._ip[3],
-                    );
-                    if !$crate::bridge::queue_multicast_join(group) {
-                        // Multicast table full — fall through and try
-                        // the bind anyway; the receive will silently
-                        // drop frames until a slot frees up. Reporting
-                        // `-1` here would block participant boot.
+                    // Phase 97.3.mps2-an385 — the local-bind `endpoint`
+                    // is `INADDR_ANY:port` (port-only listener). The
+                    // multicast group itself comes through the `join`
+                    // C-string arg (e.g. "239.255.0.1\0"). Earlier
+                    // bring-up grabbed `endpoint`'s addr bytes for the
+                    // join, which is `0.0.0.0` → smoltcp rejected with
+                    // `MulticastError::Unaddressable` and inbound
+                    // mcast frames never reached the UDP socket.
+                    if !join.is_null() {
+                        if let Some(g) = unsafe { $crate::util::parse_ip_address(join) } {
+                            let group = $crate::Ipv4Address::new(g[0], g[1], g[2], g[3]);
+                            let _ = $crate::bridge::queue_multicast_join(group);
+                        }
                     }
 
                     // 2. Open + bind a UDP socket on the multicast port

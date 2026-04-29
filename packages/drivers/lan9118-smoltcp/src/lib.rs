@@ -33,10 +33,28 @@
 pub mod regs;
 
 use core::ptr::{read_volatile, write_volatile};
+use core::sync::atomic::{AtomicU32, Ordering};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
 pub use regs::MPS2_AN385_BASE;
+
+// Phase 97.3.mps2-an385 — RX path diagnostic counters. Incremented
+// every time `poll_rx` observes a non-empty FIFO entry. Read by the
+// board crate to confirm whether inbound mcast frames reach the chip
+// at all (vs. being dropped at higher smoltcp layers).
+static RX_PKT_PENDING_TOTAL: AtomicU32 = AtomicU32::new(0);
+static RX_PKT_DELIVERED_TOTAL: AtomicU32 = AtomicU32::new(0);
+static RX_PKT_ERR_TOTAL: AtomicU32 = AtomicU32::new(0);
+
+/// Snapshot of RX-path counters (pending observed, delivered, err-discarded).
+pub fn rx_diag_counters() -> (u32, u32, u32) {
+    (
+        RX_PKT_PENDING_TOTAL.load(Ordering::Relaxed),
+        RX_PKT_DELIVERED_TOTAL.load(Ordering::Relaxed),
+        RX_PKT_ERR_TOTAL.load(Ordering::Relaxed),
+    )
+}
 
 /// Maximum Transmission Unit for Ethernet
 pub const MTU: usize = 1500;
@@ -454,6 +472,7 @@ impl Lan9118 {
         if self.rx_packets_pending() == 0 {
             return false;
         }
+        RX_PKT_PENDING_TOTAL.fetch_add(1, Ordering::Relaxed);
         // Read RX status
         let rx_stat = self.read_reg(regs::offset::RX_STAT_PORT);
         let pkt_len =
@@ -462,12 +481,14 @@ impl Lan9118 {
         // Check for errors
         if (rx_stat & regs::rx_stat::ES) != 0 {
             self.rx_discard();
+            RX_PKT_ERR_TOTAL.fetch_add(1, Ordering::Relaxed);
             return false;
         }
 
         // Packet length includes 4-byte FCS
         if !(4..=MAX_FRAME_SIZE).contains(&pkt_len) {
             self.rx_discard();
+            RX_PKT_ERR_TOTAL.fetch_add(1, Ordering::Relaxed);
             return false;
         }
         let data_len = pkt_len - 4;
@@ -497,6 +518,7 @@ impl Lan9118 {
         }
 
         self.rx_len = data_len;
+        RX_PKT_DELIVERED_TOTAL.fetch_add(1, Ordering::Relaxed);
         true
     }
 

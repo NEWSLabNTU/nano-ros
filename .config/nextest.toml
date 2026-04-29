@@ -231,6 +231,15 @@ test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# Phase 97.3.mps2-an385 — bare-metal DDS pubsub E2E. 80 s combined
+# wait window (20 s talker + 60 s listener) needs the same 120 s
+# slow-timeout the other RTOS DDS slices use.
+[[profile.default.overrides]]
+filter = "binary(baremetal_qemu_dds)"
+test-group = "qemu-baremetal"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
 # Phase 89.12 #15-17 — Per-variant serialization for rtos_e2e. These overrides
 # MUST come before the generic per-platform rules so nextest's first-match-wins
 # routing picks them up first. The three pubsub/service/action language cases

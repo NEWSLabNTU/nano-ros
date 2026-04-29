@@ -66,6 +66,10 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 97.3.mps2-an385 — bare-metal MPS2-AN385 DDS examples.
+static QEMU_BAREMETAL_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static QEMU_BAREMETAL_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the qemu-serial-talker binary
 static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -581,6 +585,34 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
             build_example(
                 "qemu-arm-baremetal/rust/zenoh/listener",
                 "qemu-bsp-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 97.3.mps2-an385 — bare-metal DDS talker (cached).
+pub fn build_qemu_baremetal_dds_talker() -> TestResult<&'static Path> {
+    QEMU_BAREMETAL_DDS_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/dds/talker",
+                "qemu-baremetal-dds-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 97.3.mps2-an385 — bare-metal DDS listener (cached).
+pub fn build_qemu_baremetal_dds_listener() -> TestResult<&'static Path> {
+    QEMU_BAREMETAL_DDS_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/dds/listener",
+                "qemu-baremetal-dds-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
             )

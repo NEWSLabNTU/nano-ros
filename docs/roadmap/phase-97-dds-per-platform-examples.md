@@ -10,11 +10,11 @@ open. Each per-platform slice is a from-scratch board bring-up
 exercise — too big to fit alongside Phase 71's infrastructure, hence
 splitting it out.
 
-**Status**: In Progress — 4 of 7 97.4 slices green
-(`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`); exceeds the
-"≥3 of 7" acceptance threshold. Remaining: `zephyr-native_sim`
-(blocked upstream NSOS), `baremetal` + `esp32-qemu` (gated by 97.3
-bare-metal smoltcp DDS bring-up).
+**Status**: In Progress — 5 of 7 97.4 slices green
+(`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`, `baremetal`);
+exceeds the "≥3 of 7" acceptance threshold. Remaining:
+`zephyr-native_sim` (blocked upstream NSOS), `esp32-qemu` (depends
+on Phase 97.3.esp32-qemu bare-metal smoltcp DDS port).
 
 **Priority**: Medium. Native + Zephyr (`qemu_cortex_a9`) DDS already
 ship and cover the user-visible surface. Each remaining per-platform
@@ -202,13 +202,13 @@ Bare-metal examples need 71.26.qemu (smoltcp IGMP E2E smoke) to land
 first; until then the multicast SPDP path is proven only in the unit
 tests landed by Phase 71.26.
 
-- [~] **97.3.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
-      talker + listener. Build path lands green:
+- [x] **97.3.mps2-an385** — `examples/qemu-arm-baremetal/rust/dds/`
+      talker + listener. Cross-instance E2E green: ~42 messages
+      received in the 60 s test window across two QEMU `-nic
+      socket,mcast=…` instances:
       - Example crates build clean for `thumbv7m-none-eabi` with
         `nros = features = ["alloc", "rmw-dds", "platform-bare-metal",
-        "ros-humble"]`. Single-instance smoke runs end-to-end —
-        talker reaches `Publisher declared` and publishes, listener
-        reaches `Subscriber declared` and enters its recv loop.
+        "ros-humble"]`.
       - `nros-rmw-dds`'s previously-omitted `platform-bare-metal`
         Cargo feature now exists (forwards `nostd-runtime`); `nros`'s
         `platform-bare-metal` propagates it.
@@ -232,17 +232,21 @@ tests landed by Phase 71.26.
         Multicast) + `PRMS` (Promiscuous) so SPDP `01:00:5e:7f:00:01`
         frames reach smoltcp without per-group hash filter
         programming. Same fix the FreeRTOS lan9118-lwip slice landed.
-      - Cross-instance E2E **NOT** yet green: talker + listener on a
-        shared `-nic socket,mcast=…` segment both emit RTPS frames
-        (host-side `socat` confirms both flows visible on
-        loopback), but neither side's `multicast_recv_loop` ever
-        fires. Open suspect: smoltcp's IPv4 mcast RX dispatch under
-        the bridge's `iface.join_multicast_group` queue isn't
-        delivering inbound mcast frames to the bound UDP socket.
-        Needs further smoltcp-trace work before 97.4.baremetal can
-        close.
-      - `tmp/baremetal-dds-{2-instance,smoke,tshark}.sh` ship as
-        repro scripts.
+
+      Root cause of the cross-instance bring-up hang: `nros-smoltcp`'s
+      `mcast_listen` was passing the local-bind endpoint's IP
+      (`INADDR_ANY` = `0.0.0.0`) to `iface.join_multicast_group` instead
+      of the multicast group address from the `join` C-string arg.
+      smoltcp 0.12's `join_multicast_group` rejects non-multicast
+      addresses with `MulticastError::Unaddressable`, so the listener
+      never actually joined `239.255.0.1` and inbound mcast frames
+      were dropped at the IPv4 layer despite reaching the LAN9118
+      chip cleanly (verified via `lan9118_smoltcp::rx_diag_counters`
+      + `nros_smoltcp::bridge::mcast_join_counters`). Fix: parse the
+      `join` arg via `crate::util::parse_ip_address` and queue that
+      group instead.
+- [x] **97.4.baremetal** — same crates as 97.3, exercised by
+      `nros-tests::baremetal_qemu_dds::test_baremetal_dds_rust_talker_to_listener_e2e`.
 - [ ] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
       talker + listener.
 
@@ -445,8 +449,6 @@ matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
          binds layer the option back in via the dedicated
          `udp_listen_reusable` helper so SPDP joins still
          succeed.
-- [ ] **97.4.baremetal** — MPS2-AN385 talker↔listener (depends on
-      97.3.mps2-an385).
 - [ ] **97.4.esp32-qemu** — ESP32-QEMU talker↔listener (depends on
       97.3.esp32-qemu).
 
