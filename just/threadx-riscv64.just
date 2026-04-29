@@ -65,6 +65,7 @@ install:
         -DNANO_ROS_PLATFORM="threadx_riscv64" \
         -DNANO_ROS_BUILD_CODEGEN=OFF \
         -DCMAKE_BUILD_TYPE=Release
+    just _cmake-cargo-stale-guard "build/cmake-threadx-riscv64-zenoh"
     THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
     cmake --build "build/cmake-threadx-riscv64-zenoh"
     cmake --install "build/cmake-threadx-riscv64-zenoh" --prefix "$PREFIX"

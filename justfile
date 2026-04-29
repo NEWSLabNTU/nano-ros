@@ -82,9 +82,51 @@ install-local-posix:
             -DNANO_ROS_RMW="$rmw" \
             -DNANO_ROS_PLATFORM="posix" \
             -DCMAKE_BUILD_TYPE=Release
+        just _cmake-cargo-stale-guard "build/cmake-$rmw"
         cmake --build "build/cmake-$rmw"
         cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
     done
+
+# Internal: invalidate stale nros-* cargo fingerprints in a cmake build
+# dir's per-build cargo cache when shared-core source content has
+# changed since the last build.
+#
+# Why: corrosion gives each cmake build dir its own cargo target tree
+# under `build/cmake-<rmw>/cargo/...`. That tree's fingerprint check
+# is mtime-based — when a `git checkout`, `git stash pop`, or similar
+# operation rewrites a file's content WITHOUT bumping mtime past the
+# fingerprint's `invoked.timestamp`, cargo decides "clean", reuses the
+# pre-edit `.rlib`, and the resulting `lib<...>.a` carries stale
+# code into every linked binary (zephyr, freertos, …). Cost us a
+# multi-hour debug on cpp/xrce action E2E (post Phase 96.1).
+#
+# This guard hashes every shared-core `.rs` file and compares against
+# a stamp file under the cmake build dir. Hash changed → nuke
+# `nros*` fingerprints under that build dir → next cargo invocation
+# revalidates. Hash unchanged → no-op (~200 ms hashing only).
+_cmake-cargo-stale-guard build_dir:
+    #!/usr/bin/env bash
+    set -e
+    BUILD_DIR="{{build_dir}}"
+    [ -d "$BUILD_DIR" ] || exit 0
+    SRC_HASH=$(find \
+        packages/core \
+        packages/xrce/nros-rmw-xrce \
+        packages/xrce/xrce-platform-shim \
+        packages/zpico/nros-rmw-zenoh \
+        packages/zpico/zpico-platform-shim \
+        packages/dds/nros-rmw-dds \
+        -name '*.rs' -type f -print0 2>/dev/null \
+        | sort -z \
+        | xargs -0 sha1sum 2>/dev/null \
+        | sha1sum | cut -d' ' -f1)
+    STAMP="$BUILD_DIR/.shared-cores-hash"
+    LAST_HASH=$(cat "$STAMP" 2>/dev/null || true)
+    if [ "$SRC_HASH" != "$LAST_HASH" ]; then
+        echo "[stale-guard] shared-core source hash changed → invalidating nros-* fingerprints in $BUILD_DIR/cargo"
+        find "$BUILD_DIR/cargo" -type d -path '*/.fingerprint/nros*' -exec rm -rf {} + 2>/dev/null || true
+        echo "$SRC_HASH" > "$STAMP"
+    fi
 
 # The cmake build dirs hold their own cargo target tree
 # (`build/cmake-<rmw>/cargo/...`) whose incremental cache can hand

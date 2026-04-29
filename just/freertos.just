@@ -56,6 +56,7 @@ install:
         -DNANO_ROS_PLATFORM="freertos_armcm3" \
         -DNANO_ROS_BUILD_CODEGEN=OFF \
         -DCMAKE_BUILD_TYPE=Release
+    just _cmake-cargo-stale-guard "build/cmake-freertos-armcm3-zenoh"
     cmake --build "build/cmake-freertos-armcm3-zenoh"
     cmake --install "build/cmake-freertos-armcm3-zenoh" --prefix "$PREFIX"
 
