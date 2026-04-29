@@ -1277,9 +1277,12 @@ fn test_zephyr_xrce_rust_talker_listener() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
-    eprintln!("Starting XRCE Agent on port 2018...");
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    // Per-(variant, lang) Agent port — fixtures rebuilt with this same
+    // port via the matching `xrce_port` column in just/zephyr.just.
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust);
+    eprintln!("Starting XRCE Agent on port {}...", port);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
 
     // Give agent time to start
     std::thread::sleep(Duration::from_millis(500));
@@ -1375,9 +1378,10 @@ fn test_zephyr_xrce_c_talker_listener() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
-    eprintln!("Starting XRCE Agent on port 2018...");
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::C);
+    eprintln!("Starting XRCE Agent on port {}...", port);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
 
     // Give agent time to start
     std::thread::sleep(Duration::from_millis(500));
@@ -1509,8 +1513,10 @@ fn test_zephyr_xrce_rust_service_e2e() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    eprintln!("Starting XRCE Agent on port 2018...");
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Rust);
+    eprintln!("Starting XRCE Agent on port {}...", port);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_xrce_rs_service_server_native_sim();
@@ -1577,8 +1583,10 @@ fn test_zephyr_xrce_rust_action_e2e() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    eprintln!("Starting XRCE Agent on port 2018...");
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Rust);
+    eprintln!("Starting XRCE Agent on port {}...", port);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_binary = get_zephyr_xrce_rs_action_server_native_sim();
@@ -2043,7 +2051,9 @@ fn test_zephyr_xrce_cpp_talker_listener() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
     std::thread::sleep(Duration::from_millis(500));
 
     let talker_bin = get_zephyr_xrce_cpp_talker_native_sim();
@@ -2091,7 +2101,9 @@ fn test_zephyr_xrce_cpp_service_e2e() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Cpp);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_bin = get_zephyr_xrce_cpp_service_server_native_sim();
@@ -2152,7 +2164,9 @@ fn test_zephyr_xrce_cpp_action_e2e() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+    let port = platform::ZEPHYR
+        .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Cpp);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
     std::thread::sleep(Duration::from_millis(500));
 
     let server_bin = get_zephyr_xrce_cpp_action_server_native_sim();

@@ -125,9 +125,10 @@ max-threads = 3
 
 # Phase 89.Zephyr — Zephyr native_sim uses NSOS (Phase 81) which offloads BSD
 # sockets to the host kernel, so per-variant host zenohd ports (base + 0/10/20)
-# are sufficient to run pubsub/service/action concurrently. XRCE tests share
-# a hardcoded Agent port (2018, baked into firmware via Kconfig) and must
-# stay serial — they live in `qemu-zephyr-xrce`.
+# are sufficient to run pubsub/service/action concurrently. XRCE tests now
+# also use per-(variant, lang) Agent ports (`xrce_agent_port_for` —
+# 2018/2028/2038 ± 100 per language) so all 7 XRCE tests can run in parallel
+# in the `qemu-zephyr-xrce` group.
 #
 # Phase 89.13 — migrated to per-(variant, lang) host ports
 # (`ZEPHYR.lang_stride = 100`): C++ tests get +200 on top of the
@@ -175,8 +176,12 @@ max-threads = 1
 [test-groups.qemu-zephyr-action-cpp]
 max-threads = 1
 
+# Each XRCE test now starts its Agent on a (variant, lang)-specific
+# UDP port (see `ZEPHYR.xrce_agent_port_for` in nros-tests/platform.rs
+# + the matching `xrce_port` column in just/zephyr.just). With distinct
+# ports per (variant, lang), the 7 XRCE tests can run in parallel.
 [test-groups.qemu-zephyr-xrce]
-max-threads = 1
+max-threads = 7
 
 # Phase 92.6 — Zephyr DDS interop on qemu_cortex_a9. The talker↔listener
 # pair shares a host-side multicast group keyed off PID; running two

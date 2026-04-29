@@ -113,23 +113,30 @@ build-fixtures:
       "native_sim/native/64|build-cpp-service-client|zephyr/cpp/zenoh/service-client|1"
       "native_sim/native/64|build-cpp-action-server|zephyr/cpp/zenoh/action-server|1"
       "native_sim/native/64|build-cpp-action-client|zephyr/cpp/zenoh/action-client|1"
+      # XRCE entries carry a 5th `xrce_agent_port` column so each
+      # (variant, lang) pair builds with its dedicated Kconfig port —
+      # mirrors `nros_tests::platform::ZEPHYR.xrce_agent_port_for`.
+      # Pubsub uses base; service / action add 10 / 20; lang stride 100.
+      # Pairs that share a test (talker+listener, server+client) MUST
+      # have the same port.
+      #
       # Phase 95.A — XRCE Rust full 6-set (build dirs match `nros_tests::zephyr`)
-      "native_sim/native/64|build-xrce-rs-talker|zephyr/rust/xrce/talker|0"
-      "native_sim/native/64|build-xrce-rs-listener|zephyr/rust/xrce/listener|0"
-      "native_sim/native/64|build-xrce-rs-service-server|zephyr/rust/xrce/service-server|0"
-      "native_sim/native/64|build-xrce-rs-service-client|zephyr/rust/xrce/service-client|0"
-      "native_sim/native/64|build-xrce-rs-action-server|zephyr/rust/xrce/action-server|0"
-      "native_sim/native/64|build-xrce-rs-action-client|zephyr/rust/xrce/action-client|0"
+      "native_sim/native/64|build-xrce-rs-talker|zephyr/rust/xrce/talker|0|2018"
+      "native_sim/native/64|build-xrce-rs-listener|zephyr/rust/xrce/listener|0|2018"
+      "native_sim/native/64|build-xrce-rs-service-server|zephyr/rust/xrce/service-server|0|2028"
+      "native_sim/native/64|build-xrce-rs-service-client|zephyr/rust/xrce/service-client|0|2028"
+      "native_sim/native/64|build-xrce-rs-action-server|zephyr/rust/xrce/action-server|0|2038"
+      "native_sim/native/64|build-xrce-rs-action-client|zephyr/rust/xrce/action-client|0|2038"
       # XRCE C
-      "native_sim/native/64|build-xrce-c-talker|zephyr/c/xrce/talker|0"
-      "native_sim/native/64|build-xrce-c-listener|zephyr/c/xrce/listener|0"
+      "native_sim/native/64|build-xrce-c-talker|zephyr/c/xrce/talker|0|2118"
+      "native_sim/native/64|build-xrce-c-listener|zephyr/c/xrce/listener|0|2118"
       # Phase 95.C — XRCE C++ full 6-set
-      "native_sim/native/64|build-xrce-cpp-talker|zephyr/cpp/xrce/talker|0"
-      "native_sim/native/64|build-xrce-cpp-listener|zephyr/cpp/xrce/listener|0"
-      "native_sim/native/64|build-xrce-cpp-service-server|zephyr/cpp/xrce/service-server|0"
-      "native_sim/native/64|build-xrce-cpp-service-client|zephyr/cpp/xrce/service-client|0"
-      "native_sim/native/64|build-xrce-cpp-action-server|zephyr/cpp/xrce/action-server|0"
-      "native_sim/native/64|build-xrce-cpp-action-client|zephyr/cpp/xrce/action-client|0"
+      "native_sim/native/64|build-xrce-cpp-talker|zephyr/cpp/xrce/talker|0|2218"
+      "native_sim/native/64|build-xrce-cpp-listener|zephyr/cpp/xrce/listener|0|2218"
+      "native_sim/native/64|build-xrce-cpp-service-server|zephyr/cpp/xrce/service-server|0|2228"
+      "native_sim/native/64|build-xrce-cpp-service-client|zephyr/cpp/xrce/service-client|0|2228"
+      "native_sim/native/64|build-xrce-cpp-action-server|zephyr/cpp/xrce/action-server|0|2238"
+      "native_sim/native/64|build-xrce-cpp-action-client|zephyr/cpp/xrce/action-client|0|2238"
       # Phase 71.8 + Phase 93 DDS native_sim boot smoke (best-effort).
       # Keep this list in sync with the qemu_cortex_a9 set below — the
       # zephyr boots tests in nros-tests/tests/zephyr.rs expect every
@@ -180,13 +187,21 @@ build-fixtures:
     pids=()
     failures=()
     for entry in "${entries[@]}"; do
-        IFS='|' read -r board build_dir src best_effort <<< "$entry"
-        echo "  → zephyr/$src (-d $build_dir, $board)"
+        # Optional 5th column: `xrce_agent_port`. Defaults to empty for
+        # non-XRCE entries (no override). When present, it's forwarded as
+        # `-DCONFIG_NROS_XRCE_AGENT_PORT=<port>` so each (variant, lang)
+        # pair builds against its own Kconfig port slot.
+        IFS='|' read -r board build_dir src best_effort xrce_port <<< "$entry"
+        echo "  → zephyr/$src (-d $build_dir, $board${xrce_port:+, xrce-port=$xrce_port})"
+        extra_args=()
+        if [ -n "$xrce_port" ]; then
+            extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
+        fi
         (
           cd "$workspace"
           if west build -b "$board" -d "$build_dir" -p auto \
                 "$nros_root/examples/$src" \
-                -- -DCMAKE_PREFIX_PATH="$cmake_pfx" > /dev/null 2>&1; then
+                -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}" > /dev/null 2>&1; then
               exit 0
           else
               [ "$best_effort" = "1" ] && exit 0 || exit 1
