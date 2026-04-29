@@ -568,6 +568,83 @@ impl Subscriber for ZenohSubscriber {
 }
 
 // ============================================================================
+// Phase 99.F — ZenohSubscriber SlotBorrowing (zero-copy receive)
+// ============================================================================
+
+#[cfg(feature = "lending")]
+mod borrowing {
+    use super::*;
+    use core::sync::atomic::Ordering as CoreOrdering;
+
+    /// Backend-lent read-only view into the subscriber's static receive
+    /// buffer. Holds the buffer's `locked` flag for the lifetime of the
+    /// view so the C-side notify callback can't overwrite the bytes
+    /// while the user is reading them. On drop the lock is released and
+    /// `has_data` cleared (consume-on-borrow semantics, matching
+    /// `try_recv_raw`).
+    pub struct ZenohView<'a> {
+        bytes: &'a [u8],
+        buffer: &'a SubscriberBuffer,
+    }
+
+    impl<'a> AsRef<[u8]> for ZenohView<'a> {
+        fn as_ref(&self) -> &[u8] {
+            self.bytes
+        }
+    }
+
+    impl<'a> Drop for ZenohView<'a> {
+        fn drop(&mut self) {
+            // Release the buffer lock first so `locked` is consistent
+            // with `has_data`. The C callback gates writes on `locked`.
+            self.buffer.locked.store(false, CoreOrdering::Release);
+            self.buffer.has_data.store(false, CoreOrdering::Release);
+        }
+    }
+
+    impl nros_rmw::SlotBorrowing for ZenohSubscriber {
+        type View<'a>
+            = ZenohView<'a>
+        where
+            Self: 'a;
+
+        fn try_borrow(&mut self) -> Result<Option<Self::View<'_>>, TransportError> {
+            // SubscriberBufferRef::get() returns a &SubscriberBuffer whose
+            // backing storage is 'static (lives in SUBSCRIBER_BUFFERS).
+            // Re-tie that 'static reference to the lifetime of `&mut self`
+            // by wrapping it in ZenohView (whose `'_` is implicit on
+            // `Self::View<'_>` and bound by `Self: 'a` in the trait def).
+            let buffer = self.buf.get();
+
+            if !buffer.has_data.load(CoreOrdering::Acquire) {
+                return Ok(None);
+            }
+            if buffer.overflow.load(CoreOrdering::Acquire) {
+                buffer.overflow.store(false, CoreOrdering::Release);
+                buffer.has_data.store(false, CoreOrdering::Release);
+                return Err(TransportError::MessageTooLarge);
+            }
+
+            let len = buffer.len.load(CoreOrdering::Acquire);
+
+            // Lock against the C callback before we hand out a borrow
+            // into `buffer.data` so the callback can't overwrite the
+            // bytes while the user is reading.
+            buffer.locked.store(true, CoreOrdering::Release);
+
+            // SAFETY: data is valid up to len; locked=true blocks the
+            // notify callback from overwriting until ZenohView::drop.
+            let bytes = unsafe { core::slice::from_raw_parts(buffer.data.as_ptr(), len) };
+
+            Ok(Some(ZenohView { bytes, buffer }))
+        }
+    }
+}
+
+#[cfg(feature = "lending")]
+pub use borrowing::ZenohView;
+
+// ============================================================================
 // Tests
 // ============================================================================
 

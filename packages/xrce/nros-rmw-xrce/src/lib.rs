@@ -1455,6 +1455,74 @@ impl Subscriber for XrceSubscriber {
 }
 
 // ============================================================================
+// Phase 99.G — XrceSubscriber SlotBorrowing (zero-copy receive)
+// ============================================================================
+
+/// Backend-lent read-only view into the subscriber slot's static receive
+/// buffer. Holds the slot's `locked` flag for the lifetime of the view
+/// so the XRCE notify callback can't overwrite the bytes while the user
+/// is reading them. On drop the lock is released and `has_data` cleared
+/// (consume-on-borrow semantics, matching `try_recv_raw`).
+#[cfg(feature = "lending")]
+pub struct XrceView<'a> {
+    bytes: &'a [u8],
+    slot: &'a SubscriberSlot,
+}
+
+#[cfg(feature = "lending")]
+impl<'a> AsRef<[u8]> for XrceView<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes
+    }
+}
+
+#[cfg(feature = "lending")]
+impl<'a> Drop for XrceView<'a> {
+    fn drop(&mut self) {
+        // Release lock first so it stays consistent with has_data.
+        self.slot.locked.store(false, Ordering::Release);
+        self.slot.has_data.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(feature = "lending")]
+impl nros_rmw::SlotBorrowing for XrceSubscriber {
+    type View<'a>
+        = XrceView<'a>
+    where
+        Self: 'a;
+
+    fn try_borrow(&mut self) -> Result<Option<Self::View<'_>>, TransportError> {
+        ffi_guard(|| {
+            // SAFETY: state() returns &mut to a 'static singleton; the
+            // slot index was bounds-checked at subscriber registration.
+            let slot: &SubscriberSlot = unsafe { &state().subscriber_slots[self.slot_index] };
+
+            if !slot.has_data.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+            if slot.overflow.load(Ordering::Acquire) {
+                slot.overflow.store(false, Ordering::Release);
+                slot.has_data.store(false, Ordering::Release);
+                return Err(TransportError::MessageTooLarge);
+            }
+
+            let len = slot.len.load(Ordering::Acquire);
+
+            // Lock against the C callback before borrowing.
+            slot.locked.store(true, Ordering::Release);
+
+            // SAFETY: slot.data is valid for `BUFFER_SIZE`; len ≤ BUFFER_SIZE
+            // (notify callback drops messages that don't fit). locked=true
+            // gates the callback from overwriting until XrceView::drop.
+            let bytes = unsafe { core::slice::from_raw_parts(slot.data.as_ptr(), len) };
+
+            Ok(Some(XrceView { bytes, slot }))
+        })
+    }
+}
+
+// ============================================================================
 // XrceServiceServer (ServiceServerTrait)
 // ============================================================================
 
