@@ -36,13 +36,6 @@
  *  - `destroy_*`: void (best-effort cleanup).
  */
 
-/**
- * Legacy void-pointer alias retained for backends that round-trip
- * opaque state through `backend_data`. Public function pointers use
- * the typed entity structs from `<nros/rmw_entity.h>`.
- */
-typedef void* nros_rmw_handle_t;
-
 typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
     /** Open a session. The runtime supplies a zero-initialised

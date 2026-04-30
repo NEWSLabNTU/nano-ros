@@ -8,11 +8,12 @@
  * @file rmw_entity.h
  * @brief Typed entity structs for the nros RMW C surface.
  *
- * Phase 102.3 — replaces the fully-opaque `nros_rmw_handle_t = void *`
- * model with typed entity structs that expose the metadata fields the
- * runtime actually reads (topic name, QoS, lending capabilities) while
- * keeping backend-private state behind an opaque `backend_data`
- * pointer.
+ * Typed entity structs that expose the metadata fields the runtime
+ * reads (topic name, QoS, lending capabilities) while keeping
+ * backend-private state behind an opaque `backend_data` pointer.
+ * Same shape as upstream `rmw.h`'s `rmw_publisher_t` /
+ * `rmw_subscription_t` family: visible metadata + `void * data`
+ * tail, no generic-handle typedef.
  *
  * **Lifetime rule.** All `const char *` string fields are
  * **borrowed pointers** — the storage pointing at them is owned by

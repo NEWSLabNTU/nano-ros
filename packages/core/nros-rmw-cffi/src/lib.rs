@@ -134,10 +134,9 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 // ============================================================================
 //
 // These structs are layout-compatible with the typed entity structs
-// in the C header. They are introduced in 102.3 (header + Rust
-// mirror) without changing the vtable signature; 102.4 will switch
-// the vtable's `create_*` calls to use them as out-parameters and
-// retire `CffiHandle` for those entities.
+// in the C header. Same shape as upstream `rmw.h`'s `rmw_publisher_t`
+// / `rmw_subscription_t` family: visible metadata + a `void * data`
+// tail (named `backend_data` here).
 
 /// QoS values. Mirrors `nros_rmw_qos_t` from `<nros/rmw_entity.h>`.
 #[repr(C)]
@@ -268,11 +267,6 @@ impl From<QosSettings> for NrosRmwQos {
 // ============================================================================
 // Vtable type (mirrors C header)
 // ============================================================================
-
-/// Legacy void-pointer alias. Public function-pointer signatures use
-/// the typed entity structs from Phase 102.3; this alias is retained
-/// for backends that round-trip opaque state through `backend_data`.
-pub type CffiHandle = *mut c_void;
 
 /// C function table for an RMW backend.
 ///
