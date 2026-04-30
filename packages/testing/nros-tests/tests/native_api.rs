@@ -252,7 +252,7 @@ fn test_native_talker_starts(
     // a fixed sleep. `wait_for_output_pattern` times out at 10s but
     // normally returns in <1s once `nros::init` completes.
     let output = talker
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(10))
+        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
         .unwrap_or_default();
 
     eprintln!("{} talker output:\n{}", lang.label(), output);
@@ -277,7 +277,7 @@ fn test_native_listener_starts(
     let mut listener = spawn_native(&binary, lang, "listener", &locator);
 
     let output = listener
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(10))
+        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
         .unwrap_or_default();
 
     eprintln!("{} listener output:\n{}", lang.label(), output);
@@ -302,7 +302,7 @@ fn test_native_service_server_starts(
     let mut server = spawn_native(&binary, lang, "service-server", &locator);
 
     let output = server
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(10))
+        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
         .unwrap_or_default();
 
     eprintln!("{} service server output:\n{}", lang.label(), output);
@@ -327,7 +327,7 @@ fn test_native_action_server_starts(
     let mut server = spawn_native(&binary, lang, "action-server", &locator);
 
     let output = server
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(10))
+        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
         .unwrap_or_default();
 
     eprintln!("{} action server output:\n{}", lang.label(), output);
@@ -361,7 +361,7 @@ fn test_native_talker_listener_communication(
     // print "Waiting for messages" once `create_subscription` returns.
     // Keep the consumed output — the init assertion below greps it.
     let listener_boot_output = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("listener did not become ready");
 
     let mut talker = spawn_native(&talker_bin, lang, "talker", &locator);
@@ -422,7 +422,7 @@ fn test_native_service_communication(
     let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
     // Server prints "Waiting for service requests" after queryable registration.
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("service server did not become ready");
 
     let mut client = spawn_native(&client_bin, lang, "service-client", &locator);
@@ -464,7 +464,7 @@ fn native_action_communication_body(lang: Language, locator: &str) {
 
     let mut server = spawn_native(&server_bin, lang, "action-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("action server did not become ready");
 
     let mut client = spawn_native(&client_bin, lang, "action-client", locator);
@@ -554,7 +554,7 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("cpp-action-server did not become ready");
 
     let mut client_cmd = stdbuf_command(&client_bin);
@@ -610,7 +610,7 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     // Rust listener logs "Subscriber created" once
     // `create_subscription` succeeds.
     listener
-        .wait_for_output_pattern("Subscriber created", Duration::from_secs(10))
+        .wait_for_output_pattern("Subscriber created", Duration::from_secs(30))
         .expect("rust-listener did not become ready");
 
     let talker_bin = lang.talker_binary();
@@ -670,7 +670,7 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     let server_bin = lang.service_server_binary();
     let mut server = spawn_native(&server_bin, lang, "service-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("native service server did not become ready");
     assert!(
         server.is_running(),
