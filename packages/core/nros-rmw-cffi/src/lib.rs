@@ -414,6 +414,19 @@ fn to_c_str<const N: usize>(s: &str, buf: &mut [u8; N]) -> *const u8 {
     buf.as_ptr()
 }
 
+/// Inverse of [`to_c_str`] — read a null-terminated byte buffer back
+/// as a `&str`, stopping at the first NUL byte. Used by the
+/// `topic_name()` / `type_name()` / `node_name()` accessors on the
+/// `Cffi*` types so callers can introspect without round-tripping
+/// through the vtable. Phase 102.5.
+fn cstr_buf_to_str<const N: usize>(buf: &[u8; N]) -> &str {
+    let len = buf.iter().position(|&b| b == 0).unwrap_or(N);
+    // The buffers are written via `to_c_str` from a `&str`, so the
+    // bytes between [..len] are guaranteed valid UTF-8. `from_utf8`
+    // handles the (impossible) corruption case by returning empty.
+    core::str::from_utf8(&buf[..len]).unwrap_or("")
+}
+
 // ============================================================================
 // CffiSession
 // ============================================================================
@@ -457,6 +470,11 @@ impl CffiSession {
             namespace_: self.namespace_buf.as_ptr(),
             backend_data: self.backend_data,
         }
+    }
+
+    /// Node name passed at session-open time.
+    pub fn node_name(&self) -> &str {
+        cstr_buf_to_str(&self.node_name_buf)
     }
 
     /// Open a new session via the registered vtable.
@@ -746,6 +764,27 @@ impl CffiPublisher {
             backend_data: self.backend_data,
         }
     }
+
+    /// Topic name. Result is the null-terminated string written at
+    /// publisher creation; never re-resolved from the backend.
+    pub fn topic_name(&self) -> &str {
+        cstr_buf_to_str(&self.topic_name_buf)
+    }
+
+    /// Fully-qualified type name (`"std_msgs/msg/Int32"`).
+    pub fn type_name(&self) -> &str {
+        cstr_buf_to_str(&self.type_name_buf)
+    }
+
+    /// QoS used to create this publisher.
+    pub fn qos(&self) -> NrosRmwQos {
+        self.qos
+    }
+
+    /// Lending capabilities advertised by the backend.
+    pub fn loan_caps(&self) -> NrosRmwLoanCaps {
+        self.loan_caps
+    }
 }
 
 impl Publisher for CffiPublisher {
@@ -808,6 +847,22 @@ impl CffiSubscriber {
             backend_data: self.backend_data,
         }
     }
+
+    pub fn topic_name(&self) -> &str {
+        cstr_buf_to_str(&self.topic_name_buf)
+    }
+
+    pub fn type_name(&self) -> &str {
+        cstr_buf_to_str(&self.type_name_buf)
+    }
+
+    pub fn qos(&self) -> NrosRmwQos {
+        self.qos
+    }
+
+    pub fn loan_caps(&self) -> NrosRmwLoanCaps {
+        self.loan_caps
+    }
 }
 
 impl nros_rmw::Subscriber for CffiSubscriber {
@@ -868,6 +923,14 @@ impl CffiServiceServer {
             type_name: self.type_name_buf.as_ptr(),
             backend_data: self.backend_data,
         }
+    }
+
+    pub fn service_name(&self) -> &str {
+        cstr_buf_to_str(&self.service_name_buf)
+    }
+
+    pub fn type_name(&self) -> &str {
+        cstr_buf_to_str(&self.type_name_buf)
     }
 }
 
@@ -948,6 +1011,14 @@ impl CffiServiceClient {
             backend_data: self.backend_data,
         }
     }
+
+    pub fn service_name(&self) -> &str {
+        cstr_buf_to_str(&self.service_name_buf)
+    }
+
+    pub fn type_name(&self) -> &str {
+        cstr_buf_to_str(&self.type_name_buf)
+    }
 }
 
 impl ServiceClientTrait for CffiServiceClient {
@@ -1025,5 +1096,276 @@ impl nros_rmw::Rmw for CffiRmw {
             nros_rmw::SessionMode::Peer => 1u8,
         };
         CffiSession::open(config.locator, mode, config.domain_id, config.node_name)
+    }
+}
+
+// ============================================================================
+// Phase 102.5 — typed-struct roundtrip test
+// ============================================================================
+//
+// Verifies the visible-struct contract end-to-end:
+// 1. Runtime fills `topic_name` / `type_name` / `qos` before
+//    `create_publisher`.
+// 2. Backend's `create_publisher` writes `backend_data` and
+//    `loan_caps` into the same struct.
+// 3. Rust accessors (`CffiPublisher::topic_name()`, `qos()`,
+//    `loan_caps()`) read back the values without any vtable
+//    callback.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nros_rmw::{Rmw, RmwConfig, Session, SessionMode, TopicInfo};
+
+    // Stub backend state. Statically allocated; the vtable's
+    // `backend_data` round-trips a `&'static mut StubBackend`.
+    static mut STUB_OPEN_CALLED: bool = false;
+    static mut STUB_CREATE_PUB_CALLED: bool = false;
+    static mut STUB_PUBLISH_CALLED: bool = false;
+    static mut STUB_LAST_TOPIC_NAME: [u8; 64] = [0u8; 64];
+    static mut STUB_LAST_TYPE_NAME: [u8; 64] = [0u8; 64];
+    static mut STUB_LAST_QOS: NrosRmwQos = NrosRmwQos {
+        reliability: 0,
+        durability: 0,
+        history: 0,
+        _pad0: 0,
+        depth: 0,
+        _pad1: 0,
+    };
+
+    /// Read a null-terminated `*const u8` into the supplied byte
+    /// buffer. Used by the stub backend to capture the topic / type
+    /// names that the runtime hands it.
+    unsafe fn copy_cstr(src: *const u8, dst: &mut [u8]) {
+        let mut i = 0;
+        while i < dst.len() {
+            let b = unsafe { *src.add(i) };
+            dst[i] = b;
+            if b == 0 {
+                break;
+            }
+            i += 1;
+        }
+    }
+
+    unsafe extern "C" fn stub_open(
+        _locator: *const u8,
+        _mode: u8,
+        _domain_id: u32,
+        _node_name: *const u8,
+        out: *mut NrosRmwSession,
+    ) -> NrosRmwRet {
+        unsafe {
+            *(&raw mut STUB_OPEN_CALLED) = true;
+            (*out).backend_data = 0xDEAD_BEEFusize as *mut c_void;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_close(_session: *mut NrosRmwSession) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_drive_io(
+        _session: *mut NrosRmwSession,
+        _timeout_ms: i32,
+    ) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_create_publisher(
+        _session: *mut NrosRmwSession,
+        _topic_name: *const u8,
+        _type_name: *const u8,
+        _type_hash: *const u8,
+        _domain_id: u32,
+        qos: *const NrosRmwQos,
+        out: *mut NrosRmwPublisher,
+    ) -> NrosRmwRet {
+        // Capture the typed-struct fields the runtime supplied.
+        unsafe {
+            *(&raw mut STUB_CREATE_PUB_CALLED) = true;
+            copy_cstr((*out).topic_name, &mut *(&raw mut STUB_LAST_TOPIC_NAME));
+            copy_cstr((*out).type_name, &mut *(&raw mut STUB_LAST_TYPE_NAME));
+            *(&raw mut STUB_LAST_QOS) = *qos;
+            (*out).backend_data = 0xCAFEusize as *mut c_void;
+            (*out).loan_caps = NrosRmwLoanCaps { bits: 0b0000_0001 };
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_destroy_publisher(_publisher: *mut NrosRmwPublisher) {}
+
+    unsafe extern "C" fn stub_publish_raw(
+        publisher: *mut NrosRmwPublisher,
+        _data: *const u8,
+        _len: usize,
+    ) -> NrosRmwRet {
+        // Verify the runtime is still passing the same backend_data
+        // and topic_name on every call.
+        unsafe {
+            *(&raw mut STUB_PUBLISH_CALLED) = true;
+            assert_eq!((*publisher).backend_data as usize, 0xCAFE);
+            let mut buf = [0u8; 64];
+            copy_cstr((*publisher).topic_name, &mut buf);
+            assert_eq!(&buf[..], &*(&raw const STUB_LAST_TOPIC_NAME));
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_create_subscriber(
+        _: *mut NrosRmwSession,
+        _: *const u8,
+        _: *const u8,
+        _: *const u8,
+        _: u32,
+        _: *const NrosRmwQos,
+        out: *mut NrosRmwSubscriber,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*out).backend_data = 0x1usize as *mut c_void;
+        }
+        NROS_RMW_RET_OK
+    }
+    unsafe extern "C" fn stub_destroy_subscriber(_: *mut NrosRmwSubscriber) {}
+    unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
+        0
+    }
+    unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
+        0
+    }
+
+    unsafe extern "C" fn stub_create_service_server(
+        _: *mut NrosRmwSession,
+        _: *const u8,
+        _: *const u8,
+        _: *const u8,
+        _: u32,
+        out: *mut NrosRmwServiceServer,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*out).backend_data = 0x1usize as *mut c_void;
+        }
+        NROS_RMW_RET_OK
+    }
+    unsafe extern "C" fn stub_destroy_service_server(_: *mut NrosRmwServiceServer) {}
+    unsafe extern "C" fn stub_try_recv_request(
+        _: *mut NrosRmwServiceServer,
+        _: *mut u8,
+        _: usize,
+        _: *mut i64,
+    ) -> i32 {
+        0
+    }
+    unsafe extern "C" fn stub_has_request(_: *mut NrosRmwServiceServer) -> i32 {
+        0
+    }
+    unsafe extern "C" fn stub_send_reply(
+        _: *mut NrosRmwServiceServer,
+        _: i64,
+        _: *const u8,
+        _: usize,
+    ) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn stub_create_service_client(
+        _: *mut NrosRmwSession,
+        _: *const u8,
+        _: *const u8,
+        _: *const u8,
+        _: u32,
+        out: *mut NrosRmwServiceClient,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*out).backend_data = 0x1usize as *mut c_void;
+        }
+        NROS_RMW_RET_OK
+    }
+    unsafe extern "C" fn stub_destroy_service_client(_: *mut NrosRmwServiceClient) {}
+    unsafe extern "C" fn stub_call_raw(
+        _: *mut NrosRmwServiceClient,
+        _: *const u8,
+        _: usize,
+        _: *mut u8,
+        _: usize,
+    ) -> i32 {
+        0
+    }
+
+    static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        open: stub_open,
+        close: stub_close,
+        drive_io: stub_drive_io,
+        create_publisher: stub_create_publisher,
+        destroy_publisher: stub_destroy_publisher,
+        publish_raw: stub_publish_raw,
+        create_subscriber: stub_create_subscriber,
+        destroy_subscriber: stub_destroy_subscriber,
+        try_recv_raw: stub_try_recv_raw,
+        has_data: stub_has_data,
+        create_service_server: stub_create_service_server,
+        destroy_service_server: stub_destroy_service_server,
+        try_recv_request: stub_try_recv_request,
+        has_request: stub_has_request,
+        send_reply: stub_send_reply,
+        create_service_client: stub_create_service_client,
+        destroy_service_client: stub_destroy_service_client,
+        call_raw: stub_call_raw,
+    };
+
+    #[test]
+    fn typed_struct_roundtrip() {
+        // Register the stub vtable.
+        let ret = unsafe { nros_rmw_cffi_register(&STUB_VTABLE) };
+        assert_eq!(ret, NROS_RMW_RET_OK);
+
+        // Open a session.
+        let cfg = RmwConfig {
+            mode: SessionMode::Client,
+            locator: "tcp/127.0.0.1:7447",
+            domain_id: 0,
+            node_name: "test_node",
+            namespace: "",
+            properties: &[],
+        };
+        let mut session = CffiRmw.open(&cfg).expect("session open");
+        assert!(unsafe { *(&raw const STUB_OPEN_CALLED) });
+        assert_eq!(session.node_name(), "test_node");
+
+        // Create a publisher; verify backend received the typed
+        // struct with topic_name + qos populated.
+        let topic = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "RIHS01_abc");
+        let qos = nros_rmw::QosSettings::default();
+        let publisher = session
+            .create_publisher(&topic, qos)
+            .expect("publisher create");
+        assert!(unsafe { *(&raw const STUB_CREATE_PUB_CALLED) });
+        let topic_buf = unsafe { &*(&raw const STUB_LAST_TOPIC_NAME) };
+        assert_eq!(
+            core::str::from_utf8(topic_buf)
+                .unwrap_or("")
+                .trim_end_matches('\0'),
+            "/chatter"
+        );
+        let type_buf = unsafe { &*(&raw const STUB_LAST_TYPE_NAME) };
+        assert_eq!(
+            core::str::from_utf8(type_buf)
+                .unwrap_or("")
+                .trim_end_matches('\0'),
+            "std_msgs/msg/Int32"
+        );
+
+        // Rust accessors read back the typed-struct fields.
+        assert_eq!(publisher.topic_name(), "/chatter");
+        assert_eq!(publisher.type_name(), "std_msgs/msg/Int32");
+        assert!(publisher.loan_caps().supports_cdr_loan());
+        assert!(!publisher.loan_caps().supports_typed_loan());
+
+        // Publish — verify backend_data round-trips correctly via
+        // the typed view.
+        use nros_rmw::Publisher as _;
+        publisher.publish_raw(&[1u8, 2, 3]).expect("publish");
+        assert!(unsafe { *(&raw const STUB_PUBLISH_CALLED) });
     }
 }
