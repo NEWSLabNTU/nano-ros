@@ -519,7 +519,12 @@ int nros_freertos_create_task(
     void *arg,
     uint32_t priority)
 {
-    BaseType_t ret = xTaskCreate(entry, name, (uint16_t)stack_words, arg,
+    /* configSTACK_DEPTH_TYPE defaults to StackType_t (uint32_t on Cortex-M3
+     * via portmacro.h). The previous (uint16_t) cast silently truncated
+     * stack depths > 65535 words (>256 KB), leaving tasks with a 0-word
+     * stack and a wild SP. Drop the cast — xTaskCreate accepts the full
+     * uint32_t we already declared in this wrapper. */
+    BaseType_t ret = xTaskCreate(entry, name, stack_words, arg,
                                  (UBaseType_t)priority, NULL);
     return (ret == pdPASS) ? 0 : -1;
 }
