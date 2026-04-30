@@ -265,7 +265,8 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 fn get_vtable() -> Result<&'static NrosRmwVtable, TransportError> {
     let ptr = VTABLE.load(Ordering::Acquire);
     if ptr.is_null() {
-        return Err(TransportError::InvalidConfig);
+        // No vtable registered — caller forgot nros_rmw_cffi_register.
+        return Err(TransportError::InvalidArgument);
     }
     // SAFETY: Registration ensures the pointer is valid and 'static.
     Ok(unsafe { &*ptr })

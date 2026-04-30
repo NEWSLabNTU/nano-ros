@@ -9,7 +9,7 @@
 //! receives `(name, type_name, type_hash)`, none of which yield a
 //! `&'static orb_metadata` pointer (uORB needs the full descriptor,
 //! not just a name string). Those impls return
-//! [`TransportError::InvalidConfig`] with a message pointing the
+//! [`TransportError::Unsupported`] with a message pointing the
 //! caller at [`UorbSession::create_publisher_uorb`].
 //!
 //! Higher layers (`nros-px4::uorb::Publisher<T>`, …) call the
@@ -90,7 +90,7 @@ impl Session for UorbSession {
     // distinct paired-topic protocol that doesn't fit the byte-shaped
     // metadata-based create path. For now the trait associated types
     // alias to publisher/subscriber so the trait is satisfied; the
-    // create_service_* methods below return InvalidConfig.
+    // create_service_* methods below return Unsupported.
     type ServiceServerHandle = UorbServiceServer;
     type ServiceClientHandle = UorbServiceClient;
 
@@ -103,7 +103,7 @@ impl Session for UorbSession {
         // from a name + type_name + type_hash. Use
         // UorbSession::create_publisher_uorb (called via
         // Node::session_mut from nros-px4::uorb).
-        Err(TransportError::InvalidConfig)
+        Err(TransportError::Unsupported)
     }
 
     fn create_subscriber(
@@ -111,21 +111,21 @@ impl Session for UorbSession {
         _topic: &TopicInfo<'_>,
         _qos: nros_rmw::QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
-        Err(TransportError::InvalidConfig)
+        Err(TransportError::Unsupported)
     }
 
     fn create_service_server(
         &mut self,
         _service: &ServiceInfo<'_>,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
-        Err(TransportError::InvalidConfig)
+        Err(TransportError::Unsupported)
     }
 
     fn create_service_client(
         &mut self,
         _service: &ServiceInfo<'_>,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
-        Err(TransportError::InvalidConfig)
+        Err(TransportError::Unsupported)
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {

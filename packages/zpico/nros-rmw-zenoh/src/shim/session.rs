@@ -43,14 +43,14 @@ impl ZenohSession {
                 let mut buf = [0u8; LOCATOR_BUFFER_SIZE];
                 let bytes = loc.as_bytes();
                 if bytes.len() >= buf.len() {
-                    return Err(TransportError::InvalidConfig);
+                    return Err(TransportError::InvalidArgument);
                 }
                 buf[..bytes.len()].copy_from_slice(bytes);
                 buf[bytes.len()] = 0; // Null terminator
                 buf
             }
             (SessionMode::Client, None) => {
-                return Err(TransportError::InvalidConfig);
+                return Err(TransportError::InvalidArgument);
             }
             (SessionMode::Peer, _) => {
                 // Peer mode - pass null locator

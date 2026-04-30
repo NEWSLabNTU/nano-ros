@@ -180,12 +180,12 @@ impl From<ZpicoError> for TransportError {
     fn from(err: ZpicoError) -> Self {
         match err {
             ZpicoError::Generic => TransportError::ConnectionFailed,
-            ZpicoError::Config => TransportError::InvalidConfig,
+            ZpicoError::Config => TransportError::InvalidArgument,
             ZpicoError::Session => TransportError::ConnectionFailed,
             ZpicoError::Task => TransportError::TaskStartFailed,
-            ZpicoError::KeyExpr => TransportError::InvalidConfig,
+            ZpicoError::KeyExpr => TransportError::TopicNameInvalid,
             ZpicoError::Full => TransportError::PublisherCreationFailed,
-            ZpicoError::Invalid => TransportError::InvalidConfig,
+            ZpicoError::Invalid => TransportError::InvalidArgument,
             ZpicoError::Publish => TransportError::PublishFailed,
             ZpicoError::NotOpen => TransportError::Disconnected,
             ZpicoError::Timeout => TransportError::Timeout,
@@ -605,7 +605,7 @@ mod tests {
     fn test_error_conversion() {
         assert_eq!(
             TransportError::from(ZpicoError::Config),
-            TransportError::InvalidConfig
+            TransportError::InvalidArgument
         );
         assert_eq!(
             TransportError::from(ZpicoError::Publish),

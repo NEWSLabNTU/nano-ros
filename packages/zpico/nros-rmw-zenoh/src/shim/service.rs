@@ -233,7 +233,7 @@ impl ZenohServiceServer {
         let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
-            return Err(TransportError::InvalidConfig);
+            return Err(TransportError::TopicNameInvalid);
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
@@ -432,7 +432,7 @@ impl ZenohServiceClient {
         let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
-            return Err(TransportError::InvalidConfig);
+            return Err(TransportError::TopicNameInvalid);
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
@@ -444,7 +444,7 @@ impl ZenohServiceClient {
         let mut discovery_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let liv_bytes = liv.as_bytes();
         if liv_bytes.len() >= discovery_buf.len() {
-            return Err(TransportError::InvalidConfig);
+            return Err(TransportError::TopicNameInvalid);
         }
         discovery_buf[..liv_bytes.len()].copy_from_slice(liv_bytes);
         discovery_buf[liv_bytes.len()] = 0;

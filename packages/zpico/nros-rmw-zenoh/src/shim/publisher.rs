@@ -53,7 +53,7 @@ impl ZenohPublisher {
         let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
-            return Err(TransportError::InvalidConfig);
+            return Err(TransportError::TopicNameInvalid);
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;

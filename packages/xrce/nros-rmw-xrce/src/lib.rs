@@ -687,7 +687,7 @@ impl Rmw for XrceRmw {
 
         ffi_guard(|| unsafe {
             if state().initialized {
-                return Err(TransportError::InvalidConfig);
+                return Err(TransportError::InvalidArgument);
             }
 
             // Get pointer to the embedded uxrCommunication field.
