@@ -346,6 +346,10 @@ fn main() {
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let use_nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
     let use_threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
+    // Phase 100.6 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
+    // Builds zenoh-pico from the same C source as `freertos` but
+    // skips lwIP / TCP-UDP wiring; the only link transport is IVC.
+    let use_orin_spe = env::var("CARGO_FEATURE_ORIN_SPE").is_ok();
 
     // Count enabled backends
     let backend_count = [
@@ -355,6 +359,7 @@ fn main() {
         use_freertos,
         use_nuttx,
         use_threadx,
+        use_orin_spe,
     ]
     .iter()
     .filter(|&&b| b)
@@ -372,7 +377,7 @@ fn main() {
     if backend_count > 1 {
         panic!(
             "Only one platform backend can be selected at a time \
-             (posix, zephyr, bare-metal, freertos, nuttx, or threadx)"
+             (posix, zephyr, bare-metal, freertos, nuttx, threadx, or orin-spe)"
         );
     }
 
@@ -514,6 +519,27 @@ fn main() {
             &link_features,
             &shim_config,
         );
+    } else if use_orin_spe {
+        // Phase 100.6 — AGX Orin SPE (Cortex-R5F + NVIDIA FSP). Reuse the
+        // bare-metal embedded build path: zenoh-pico links against the
+        // generic platform header (`c/platform/bare-metal/platform.h`),
+        // and every system primitive (clock / mutex / task / random /
+        // alloc) is satisfied at link time by `zpico-platform-shim`'s
+        // forwarders dispatching to `<OrinSpe as PlatformX>::*`. The
+        // board crate (`nros-board-orin-spe`) links the resulting
+        // archive against NVIDIA's `tegra_aon_fsp.a`. No lwIP, no
+        // FreeRTOS-source compile here — the FSP ships its own
+        // pre-built FreeRTOS V10.4.3.
+        generate_config_header(&out_dir, &link_features, &buf_config);
+        build_zenoh_pico_embedded(
+            &zenoh_pico_src,
+            &c_dir,
+            &include_dir,
+            &out_dir,
+            &target,
+            &link_features,
+            &shim_config,
+        );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
@@ -531,6 +557,8 @@ fn main() {
         println!("cargo:rustc-cfg=zpico_backend=\"nuttx\"");
     } else if use_threadx {
         println!("cargo:rustc-cfg=zpico_backend=\"threadx\"");
+    } else if use_orin_spe {
+        println!("cargo:rustc-cfg=zpico_backend=\"orin-spe\"");
     }
 
     // Rerun triggers
@@ -570,7 +598,10 @@ fn main() {
             &c_dir,
             &zenoh_pico_src.join("include"),
             &out_dir,
-            use_bare_metal,
+            // orin-spe routes through the bare-metal probe path
+            // (ZENOH_GENERIC → bare-metal/platform.h, with ARM Cortex-R
+            // cross-compile flags inside the function).
+            use_bare_metal || use_orin_spe,
             use_freertos,
             use_nuttx,
             use_threadx,
@@ -645,6 +676,12 @@ fn probe_net_type_sizes(
             } else {
                 build.flag("-mcpu=cortex-m3").flag("-mthumb");
             }
+        } else if target.contains("armv7r") {
+            // Phase 100.6 — AGX Orin SPE (Cortex-R5F). cc emits
+            // `-march=armv7-r` from the target triple; we add
+            // hard-float matching the FSP's vfpv3-d16 build. Same
+            // flags as `zpico-platform-shim/build.rs`'s armv7r branch.
+            build.flag("-mfpu=vfpv3-d16").flag("-mfloat-abi=hard");
         }
     } else if use_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);

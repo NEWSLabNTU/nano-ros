@@ -1,0 +1,23 @@
+# AGX Orin SPE — Cortex-R5F, hard-float ABI.
+#
+# `armv7r-none-eabihf` is rustup-shipped Tier 3; rustup ships a prebuilt
+# rust-std for stable, so we don't strictly need `-Zbuild-std`. We
+# request it anyway because:
+#   1. NVIDIA's FSP defaults to `-fno-exceptions -fno-rtti` for C++ and
+#      a custom `panic_abort` strategy. Pinning `core,alloc` from the
+#      `rust-src` component ensures a consistent panic ABI between
+#      Rust crates and the FSP-built C library at link time.
+#   2. The toolchain pin lives in nano-ros's root `rust-toolchain.toml`
+#      (Phase 100.2), and `-Zbuild-std` is a nightly flag — we expect
+#      the SPE board to track nightly anyway because the broader
+#      embedded ecosystem (cortex-r, RTIC) does.
+#
+# Override `target.cfg(target_os = "none")` rustflags as needed in the
+# firmware crate's `.cargo/config.toml`; we don't pin a linker script
+# here because the FSP supplies its own.
+
+[build]
+target = "armv7r-none-eabihf"
+
+[unstable]
+build-std = ["core", "alloc"]
