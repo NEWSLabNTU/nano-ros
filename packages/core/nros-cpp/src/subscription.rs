@@ -181,3 +181,72 @@ pub unsafe extern "C" fn nros_cpp_subscription_relocate(
     }
     NROS_CPP_RET_OK
 }
+
+// ============================================================================
+// Phase 108 — status events (stub: returns NROS_CPP_RET_UNSUPPORTED)
+// ============================================================================
+//
+// User-facing C++ event-setter shims. Match the typedefs in
+// `<nros/subscription.hpp>`. Backend wiring lands per phase (109+);
+// for now the runtime returns NROS_CPP_RET_UNSUPPORTED so the C++
+// API compiles and is callable.
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_liveliness_changed_status_t {
+    pub alive_count: u16,
+    pub not_alive_count: u16,
+    pub alive_count_change: i16,
+    pub not_alive_count_change: i16,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_count_status_t {
+    pub total_count: u32,
+    pub total_count_change: u32,
+}
+
+pub type nros_cpp_liveliness_changed_cb_t = Option<
+    unsafe extern "C" fn(
+        storage: *mut c_void,
+        status: nros_cpp_liveliness_changed_status_t,
+        user_context: *mut c_void,
+    ),
+>;
+
+pub type nros_cpp_subscriber_count_cb_t = Option<
+    unsafe extern "C" fn(
+        storage: *mut c_void,
+        status: nros_cpp_count_status_t,
+        user_context: *mut c_void,
+    ),
+>;
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_liveliness_changed(
+    _storage: *mut c_void,
+    _cb: nros_cpp_liveliness_changed_cb_t,
+    _user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    crate::NROS_CPP_RET_UNSUPPORTED
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_requested_deadline_missed(
+    _storage: *mut c_void,
+    _deadline_ms: u32,
+    _cb: nros_cpp_subscriber_count_cb_t,
+    _user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    crate::NROS_CPP_RET_UNSUPPORTED
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_message_lost(
+    _storage: *mut c_void,
+    _cb: nros_cpp_subscriber_count_cb_t,
+    _user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    crate::NROS_CPP_RET_UNSUPPORTED
+}

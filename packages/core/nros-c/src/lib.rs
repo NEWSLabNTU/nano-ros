@@ -198,6 +198,8 @@ mod config;
 #[cfg(cbindgen)]
 mod executor;
 #[cfg(cbindgen)]
+mod event;
+#[cfg(cbindgen)]
 mod guard_condition;
 #[cfg(cbindgen)]
 mod lifecycle;
@@ -230,6 +232,7 @@ macro_rules! rmw_modules {
 #[cfg(not(cbindgen))]
 rmw_modules! {
     mod action;
+    mod event;
     mod executor;
     mod guard_condition;
     mod lifecycle;

@@ -214,6 +214,9 @@ pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -7;
 /// Transport / connection error.
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 
+/// Phase 108 — operation not implemented by the active backend.
+pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
+
 // ============================================================================
 // Inline opaque storage sizes (in u64 units)
 // ============================================================================

@@ -23,6 +23,22 @@ typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
 nros_cpp_ret_t nros_cpp_publisher_destroy(void* storage);
 nros_cpp_ret_t nros_cpp_publisher_relocate(void* old_storage, void* new_storage);
+
+// Phase 108 — publisher-side status-event setters. Returns
+// NROS_CPP_RET_UNSUPPORTED until backend wiring lands per-phase.
+struct nros_cpp_pub_count_status_t {
+    uint32_t total_count;
+    uint32_t total_count_change;
+};
+typedef void (*nros_cpp_publisher_count_cb_t)(
+    void* storage,
+    nros_cpp_pub_count_status_t status,
+    void* user_context);
+nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(
+    void* storage, nros_cpp_publisher_count_cb_t cb, void* user_context);
+nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(
+    void* storage, uint32_t deadline_ms,
+    nros_cpp_publisher_count_cb_t cb, void* user_context);
 } // extern "C"
 
 namespace nros {
@@ -106,6 +122,28 @@ template <typename M> class Publisher {
     /// Default constructor — creates an uninitialized publisher.
     /// Use `Node::create_publisher()` to initialize.
     Publisher() : storage_(), topic_name_{}, initialized_(false) {}
+
+    // ====================================================================
+    // Phase 108 — status events
+    // ====================================================================
+
+    /// Register a callback for liveliness-lost events on this publisher.
+    Result on_liveliness_lost(
+        nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_set_liveliness_lost(
+            storage_, cb, user_context));
+    }
+
+    /// Register a callback for offered-deadline-missed events on this
+    /// publisher.
+    Result on_offered_deadline_missed(
+        uint32_t deadline_ms,
+        nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_set_offered_deadline_missed(
+            storage_, deadline_ms, cb, user_context));
+    }
 
   private:
     Publisher(const Publisher&) = delete;

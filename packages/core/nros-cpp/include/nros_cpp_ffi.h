@@ -92,6 +92,35 @@ typedef struct nros_cpp_qos_t {
   int depth;
 } nros_cpp_qos_t;
 
+typedef struct nros_cpp_pub_count_status_t {
+  uint32_t total_count;
+  uint32_t total_count_change;
+} nros_cpp_pub_count_status_t;
+
+typedef void (*nros_cpp_publisher_count_cb_t)(void *storage,
+                                              struct nros_cpp_pub_count_status_t status,
+                                              void *user_context);
+
+typedef struct nros_cpp_liveliness_changed_status_t {
+  uint16_t alive_count;
+  uint16_t not_alive_count;
+  int16_t alive_count_change;
+  int16_t not_alive_count_change;
+} nros_cpp_liveliness_changed_status_t;
+
+typedef void (*nros_cpp_liveliness_changed_cb_t)(void *storage,
+                                                 struct nros_cpp_liveliness_changed_status_t status,
+                                                 void *user_context);
+
+typedef struct nros_cpp_count_status_t {
+  uint32_t total_count;
+  uint32_t total_count_change;
+} nros_cpp_count_status_t;
+
+typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
+                                               struct nros_cpp_count_status_t status,
+                                               void *user_context);
+
 /**
  * C callback type for timers: `void callback(void* context)`.
  */
@@ -141,6 +170,11 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
  * Transport / connection error.
  */
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
+
+/**
+ * Phase 108 — operation not implemented by the active backend.
+ */
+#define NROS_CPP_RET_UNSUPPORTED -16
 
 #ifdef __cplusplus
 extern "C" {
@@ -375,6 +409,15 @@ nros_cpp_ret_t nros_cpp_publisher_destroy(void *storage);
  */
 nros_cpp_ret_t nros_cpp_publisher_relocate(void *old_storage, void *new_storage);
 
+nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void *_storage,
+                                                      nros_cpp_publisher_count_cb_t _cb,
+                                                      void *_user_context);
+
+nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
+                                                              uint32_t _deadline_ms,
+                                                              nros_cpp_publisher_count_cb_t _cb,
+                                                              void *_user_context);
+
 /**
  * Create a service server on a node.
  *
@@ -557,6 +600,19 @@ nros_cpp_ret_t nros_cpp_subscription_destroy(void *storage);
  * See `nros_cpp_publisher_relocate`.
  */
 nros_cpp_ret_t nros_cpp_subscription_relocate(void *old_storage, void *new_storage);
+
+nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void *_storage,
+                                                            nros_cpp_liveliness_changed_cb_t _cb,
+                                                            void *_user_context);
+
+nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *_storage,
+                                                                   uint32_t _deadline_ms,
+                                                                   nros_cpp_subscriber_count_cb_t _cb,
+                                                                   void *_user_context);
+
+nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *_storage,
+                                                      nros_cpp_subscriber_count_cb_t _cb,
+                                                      void *_user_context);
 
 /**
  * Create a repeating timer and register it with the executor.

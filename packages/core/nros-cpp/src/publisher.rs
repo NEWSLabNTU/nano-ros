@@ -162,3 +162,41 @@ pub unsafe extern "C" fn nros_cpp_publisher_relocate(
     }
     NROS_CPP_RET_OK
 }
+
+// ============================================================================
+// Phase 108 — publisher-side status events (stub: NROS_CPP_RET_UNSUPPORTED)
+// ============================================================================
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_pub_count_status_t {
+    pub total_count: u32,
+    pub total_count_change: u32,
+}
+
+pub type nros_cpp_publisher_count_cb_t = Option<
+    unsafe extern "C" fn(
+        storage: *mut c_void,
+        status: nros_cpp_pub_count_status_t,
+        user_context: *mut c_void,
+    ),
+>;
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_set_liveliness_lost(
+    _storage: *mut c_void,
+    _cb: nros_cpp_publisher_count_cb_t,
+    _user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    crate::NROS_CPP_RET_UNSUPPORTED
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_set_offered_deadline_missed(
+    _storage: *mut c_void,
+    _deadline_ms: u32,
+    _cb: nros_cpp_publisher_count_cb_t,
+    _user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    crate::NROS_CPP_RET_UNSUPPORTED
+}

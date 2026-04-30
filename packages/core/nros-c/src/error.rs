@@ -58,3 +58,8 @@ pub const NROS_RET_TRY_AGAIN: nros_ret_t = -14;
 /// inside a dispatch callback. These functions internally call
 /// `nros_executor_spin_some`, which is not reentrant.
 pub const NROS_RET_REENTRANT: nros_ret_t = -15;
+
+/// The active backend does not implement this operation. Phase 108
+/// status-event setters return this until backend wiring lands per
+/// phase (109+).
+pub const NROS_RET_UNSUPPORTED: nros_ret_t = -16;
