@@ -54,29 +54,53 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
     LOG_INF("Network ready (NSOS — host kernel sockets)");
     return 0;
 #else
-    /* Native Zephyr net stack: wait for NET_EVENT_L4_CONNECTED */
+    /* Native Zephyr net stack: wait for the iface to come up + acquire
+     * an IPv4 address. The previous strict `NET_EVENT_L4_CONNECTED`
+     * handshake never fires on `qemu_cortex_a9` with the GEM driver in
+     * promiscuous mode (no DHCP, no PHY-managed link state) — the
+     * conn_mgr never promotes "iface up + IP set" to L4_CONNECTED, so
+     * the listener was hanging the full timeout while talker continued
+     * publishing into the void. Instead, poll for the post-condition
+     * that DDS / zenoh-pico actually need: iface admin-up + carrier ok
+     * + at least one IPv4 address bound to the interface. Falls back to
+     * the L4 sem if the conn_mgr does fire it (NSOS / Zephyr-native /
+     * any future board with a managed PHY). */
     struct net_if* iface = net_if_get_default();
-    bool already_up = false;
+    if (iface == NULL) {
+        LOG_ERR("No default net_if");
+        return -1;
+    }
 
-    if (iface != NULL && net_if_is_up(iface) && net_if_is_carrier_ok(iface)) {
+    LOG_INF("Waiting for network readiness (timeout %d ms)...", timeout_ms);
+
+    const int poll_ms = 50;
+    int waited = 0;
+    while (timeout_ms < 0 || waited < timeout_ms) {
+        if (net_if_is_up(iface) && net_if_is_carrier_ok(iface)) {
+            /* Has at least one configured IPv4 address? */
+            struct net_if_ipv4* ipv4 = iface->config.ip.ipv4;
+            if (ipv4 != NULL) {
+                for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+                    if (ipv4->unicast[i].ipv4.is_used &&
+                        ipv4->unicast[i].ipv4.addr_state == NET_ADDR_PREFERRED) {
+                        LOG_INF("Network ready (iface up + IPv4 bound)");
+                        return 0;
+                    }
+                }
+            }
+        }
+        /* Also accept the L4 sem as a positive signal — keeps the
+         * fast path for boards that do drive conn_mgr correctly. */
         if (k_sem_take(&net_l4_connected, K_NO_WAIT) == 0) {
-            LOG_INF("Network L4 connected (already up)");
-            already_up = true;
+            LOG_INF("Network L4 connected");
+            return 0;
         }
+        k_sleep(K_MSEC(poll_ms));
+        waited += poll_ms;
     }
 
-    if (!already_up) {
-        LOG_INF("Waiting for network L4 connectivity (timeout %d ms)...", timeout_ms);
-
-        int ret = k_sem_take(&net_l4_connected, timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
-        if (ret != 0) {
-            LOG_ERR("Network L4 not connected after %d ms", timeout_ms);
-            return -1;
-        }
-        LOG_INF("Network L4 connected");
-    }
-
-    return 0;
+    LOG_ERR("Network not ready after %d ms", timeout_ms);
+    return -1;
 #endif
 }
 
