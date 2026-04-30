@@ -99,9 +99,12 @@ pub async fn pump(mut executor: Executor, park_max: Duration) {
     loop {
         let result = executor.spin_once(Duration::ZERO);
         if !result.any_work() {
-            // Nothing to do. Park until any uORB sub fires or
-            // park_max expires.
-            nros_rmw_uorb::park_until_event(park_max).await;
+            // Nothing to do. Sleep up to park_max; the per-subscriber
+            // AtomicWaker (now owned by each UorbSubscriber post-99.L,
+            // not a global registry) wakes the executor task itself
+            // when its registered callback fires, which preempts this
+            // sleep via the executor's wake propagation.
+            px4_workqueue::sleep(park_max).await;
         } else {
             // Dispatched at least one callback. Yield once so any
             // other WorkItem on the same WQ that became ready in
@@ -145,7 +148,7 @@ where
             //
             // Race the park against `until` so an exit signal during
             // a long park_max wakes us promptly.
-            let park = nros_rmw_uorb::park_until_event(park_max);
+            let park = px4_workqueue::sleep(park_max);
             let mut park = Box::pin(park);
             let woken = core::future::poll_fn(|cx| {
                 if let Poll::Ready(()) = Pin::new(&mut until).poll(cx) {

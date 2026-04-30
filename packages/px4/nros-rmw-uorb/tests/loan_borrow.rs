@@ -1,25 +1,29 @@
 #![allow(non_camel_case_types)]
-//! End-to-end loan/borrow API via the px4-uorb std mock broker.
+//! End-to-end loan/borrow API via the px4-uorb std mock broker, exercising
+//! the Phase 99.L byte-shaped path:
 //!
-//! Mirror of `typeless_api.rs` but using the new Phase 99 zero-copy
-//! API: `try_loan` returns a writable `PublishLoan` slice; user fills
-//! in place; `commit` triggers the wire write. `try_borrow` returns a
-//! `RecvView` lent from the subscriber's internal buffer.
+//! - `Executor::open` → `create_node` → `node.session_mut()` →
+//!   `UorbSession::create_publisher_uorb(metadata, instance)`
+//!   → `EmbeddedRawPublisher::new(handle)`.
+//! - `try_loan` returns a writable `PublishLoan`; user fills bytes in
+//!   place; `commit` calls `orb_publish` directly via the
+//!   `px4_uorb::RawPublication` wrapper.
+//! - `try_borrow` returns a `RecvView` lent from the subscriber's
+//!   internal buffer (post-99.E uORB stays on the arena fallback —
+//!   no native lending).
 //!
-//! On uORB the underlying backend has no native lending support, so
-//! the loan goes through `EmbeddedRawPublisher`'s per-publisher arena
-//! and memcpys at commit time. Saves the user-side copy that
-//! `publish_raw(&[u8])` would have made before calling the backend;
-//! same on-the-wire semantics otherwise.
+//! No registry, no `register::<T>`, no `topics.toml`, no
+//! `critical_section`. Each publisher/subscriber owns its own
+//! `&'static orb_metadata` pointer and FFI handle.
 
 #![cfg(feature = "std")]
 
 use core::time::Duration;
 use std::sync::Mutex;
 
-use nros_node::{Executor, ExecutorConfig};
+use nros_node::{EmbeddedRawPublisher, Executor, ExecutorConfig, RawSubscription};
 use px4_sys::orb_metadata;
-use px4_uorb::{OrbMetadata, UorbTopic};
+use px4_uorb::OrbMetadata;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -30,7 +34,6 @@ struct Tick {
     payload: [u8; 8],
 }
 
-struct tick_topic;
 static TICK_NAME: [u8; 11] = *b"sensor_acc\0";
 static TICK_META: OrbMetadata = OrbMetadata::new(orb_metadata {
     o_name: TICK_NAME.as_ptr() as *const _,
@@ -40,31 +43,27 @@ static TICK_META: OrbMetadata = OrbMetadata::new(orb_metadata {
     o_id: u16::MAX,
     o_queue: 1,
 });
-impl UorbTopic for tick_topic {
-    type Msg = Tick;
-    fn metadata() -> &'static orb_metadata {
-        TICK_META.get()
-    }
-}
 
 #[test]
 fn loan_borrow_round_trip_via_executor() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
-    nros_rmw_uorb::_reset();
-
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
     let mut node = executor.create_node("loan_borrow").expect("create_node");
 
-    let publisher = node
-        .create_publisher_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
-        .expect("publisher");
-    let mut subscriber = node
-        .create_subscription_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
-        .expect("subscriber");
+    let publisher_handle = node
+        .session_mut()
+        .create_publisher_uorb(TICK_META.get(), 0)
+        .expect("publisher_uorb");
+    let publisher: EmbeddedRawPublisher = EmbeddedRawPublisher::new(publisher_handle);
+
+    let subscriber_handle = node
+        .session_mut()
+        .create_subscription_uorb(TICK_META.get(), 0)
+        .expect("subscription_uorb");
+    let mut subscriber: RawSubscription = RawSubscription::new(subscriber_handle);
 
     // Loan + fill in place + commit.
     let msg = Tick {
@@ -74,8 +73,6 @@ fn loan_borrow_round_trip_via_executor() {
     let mut loan = publisher
         .try_loan(core::mem::size_of::<Tick>())
         .expect("loan");
-    // Write the message bytes directly into the loan's slice. No
-    // intermediate user buffer.
     let bytes: &[u8] = unsafe {
         core::slice::from_raw_parts(
             &msg as *const Tick as *const u8,
@@ -85,8 +82,8 @@ fn loan_borrow_round_trip_via_executor() {
     loan.as_mut().copy_from_slice(bytes);
     loan.commit().expect("commit");
 
-    // Spin once so the broker delivers (uORB std mock fires callbacks
-    // synchronously on publish, but spin_once is harmless).
+    // Spin once so any internal poll executes (uORB std mock fires
+    // callbacks synchronously on publish, but spin_once is harmless).
     let _ = executor.spin_once(Duration::from_millis(0));
 
     // Borrow the message in place via RecvView.
@@ -104,16 +101,15 @@ fn loan_borrow_round_trip_via_executor() {
 fn loan_too_large_returns_error() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
-    nros_rmw_uorb::_reset();
-
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
     let mut node = executor.create_node("loan_borrow").expect("create_node");
-    let publisher = node
-        .create_publisher_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
-        .expect("publisher");
+    let publisher_handle = node
+        .session_mut()
+        .create_publisher_uorb(TICK_META.get(), 0)
+        .expect("publisher_uorb");
+    let publisher: EmbeddedRawPublisher = EmbeddedRawPublisher::new(publisher_handle);
 
     // Default arena slot is DEFAULT_LOAN_BUF (1024). Request larger.
     let err = publisher.try_loan(2048).map(|_| ()).expect_err("must fail");
@@ -124,16 +120,15 @@ fn loan_too_large_returns_error() {
 fn concurrent_loan_returns_would_block() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
-    nros_rmw_uorb::_reset();
-
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
     let mut node = executor.create_node("loan_borrow").expect("create_node");
-    let publisher = node
-        .create_publisher_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
-        .expect("publisher");
+    let publisher_handle = node
+        .session_mut()
+        .create_publisher_uorb(TICK_META.get(), 0)
+        .expect("publisher_uorb");
+    let publisher: EmbeddedRawPublisher = EmbeddedRawPublisher::new(publisher_handle);
 
     let _loan1 = publisher.try_loan(16).expect("first loan");
     // Second loan w/o committing first → WouldBlock (single-slot arena).
@@ -143,10 +138,7 @@ fn concurrent_loan_returns_would_block() {
 }
 
 /// Phase 99.H': dropping a `LoanFuture` before it resolves must NOT
-/// leak the arena slot reservation. The Future never actually
-/// reserves anything (try_loan is non-blocking and the slot is held
-/// by the *successful* PublishLoan, not by the future itself), so
-/// the slot stays free across cancellation.
+/// leak the arena slot reservation.
 #[test]
 fn loan_future_drop_does_not_leak_slot() {
     use core::future::Future;
@@ -155,16 +147,15 @@ fn loan_future_drop_does_not_leak_slot() {
 
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();
-    nros_rmw_uorb::_reset();
-
-    nros_rmw_uorb::register::<tick_topic>("/fmu/out/sensor_accel", 0).expect("register");
 
     let config = ExecutorConfig::new("").node_name("loan_borrow");
     let mut executor = Executor::open(&config).expect("open");
     let mut node = executor.create_node("loan_borrow").expect("create_node");
-    let publisher = node
-        .create_publisher_raw("/fmu/out/sensor_accel", "px4::Tick", "0")
-        .expect("publisher");
+    let publisher_handle = node
+        .session_mut()
+        .create_publisher_uorb(TICK_META.get(), 0)
+        .expect("publisher_uorb");
+    let publisher: EmbeddedRawPublisher = EmbeddedRawPublisher::new(publisher_handle);
 
     // Take the slot via try_loan, then build a LoanFuture that will
     // see WouldBlock on its first poll.
@@ -175,7 +166,6 @@ fn loan_future_drop_does_not_leak_slot() {
     {
         let fut = publisher.loan(16);
         let mut fut = pin!(fut);
-        // First poll → WouldBlock → Pending. Future registers a waker.
         match fut.as_mut().poll(&mut cx) {
             Poll::Pending => {}
             Poll::Ready(_) => panic!("expected Pending while slot is busy"),

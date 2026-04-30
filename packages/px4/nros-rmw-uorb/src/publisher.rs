@@ -1,45 +1,56 @@
-//! [`UorbPublisher`] implements [`nros_rmw::Publisher`].
+//! [`UorbPublisher`] implements [`nros_rmw::Publisher`] over uORB.
 //!
-//! Phase 90.2 baseline: holds the resolved [`TopicEntry`]; `publish_raw`
-//! returns `Backend("uORB: typed publish not wired")` until Phase 90.6 wires
-//! the typed `px4_uorb::Publication<T>` codegen path.
+//! Phase 99.L design: byte-shaped only. Holds a
+//! [`px4_uorb::RawPublication`] which lazily advertises on first
+//! `publish` and delegates straight to `orb_publish`. No registry,
+//! no name lookup, no critical_section.
+//!
+//! Construction goes through
+//! [`crate::UorbSession::create_publisher_uorb`] which takes the
+//! `&'static orb_metadata` pointer + multi-instance index. Higher
+//! layers (`nros-px4::uorb::Publisher<T>`) feed `T::metadata()` in.
 
 use nros_rmw::{Publisher, TransportError};
+use px4_sys::orb_metadata;
+use px4_uorb::{RawPubError, RawPublication};
 
-use crate::registry::lookup_with;
-use crate::topics::TopicEntry;
-
-/// Publisher handle for one ROS 2 topic.
+/// Byte-shaped publisher handle for one uORB topic.
 ///
-/// Holds the topic descriptor + a copy of the ROS 2 topic name (for
-/// registry lookup at publish time). The typed `px4_uorb::Publication<T>`
-/// lives in the [`crate::register`]-populated trampoline registry; this
-/// type only stores the lookup key.
-#[derive(Debug)]
+/// Stores a [`RawPublication`] that owns the lazy
+/// `orb_advert_t`. `publish_raw` calls `orb_publish` directly via
+/// the raw FFI wrapper — single FFI call, no name lookup, no lock.
 pub struct UorbPublisher {
-    entry: TopicEntry,
-    ros_name: heapless::String<128>,
+    inner: RawPublication,
+    instance: i32,
 }
 
 impl UorbPublisher {
-    pub(crate) fn new(entry: TopicEntry, ros_name: &str) -> Result<Self, TransportError> {
-        let mut buf = heapless::String::new();
-        buf.push_str(ros_name)
-            .map_err(|_| TransportError::InvalidConfig)?;
-        Ok(Self {
-            entry,
-            ros_name: buf,
-        })
+    /// Construct a publisher bound to `metadata` on the given
+    /// multi-instance index. Does not advertise yet — the first
+    /// `publish_raw` call lazily advertises.
+    pub(crate) fn new(metadata: &'static orb_metadata, instance: u8) -> Self {
+        Self {
+            inner: RawPublication::new(metadata),
+            instance: instance as i32,
+        }
     }
 
-    /// uORB topic name (e.g. `"sensor_gyro"`) this publisher writes to.
-    pub fn uorb_name(&self) -> &'static str {
-        self.entry.uorb_name
+    /// Borrow the metadata this publisher was constructed with.
+    pub fn metadata(&self) -> &'static orb_metadata {
+        self.inner.metadata()
     }
 
     /// Multi-instance index.
     pub fn instance(&self) -> u8 {
-        self.entry.instance
+        self.instance as u8
+    }
+}
+
+impl core::fmt::Debug for UorbPublisher {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UorbPublisher")
+            .field("instance", &self.instance)
+            .finish()
     }
 }
 
@@ -47,11 +58,11 @@ impl Publisher for UorbPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
-        lookup_with(self.ros_name.as_str(), |handle| handle.publish(data)).ok_or(
-            TransportError::Backend(
-                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-            ),
-        )?
+        match self.inner.publish(data) {
+            Ok(()) => Ok(()),
+            Err(RawPubError::SizeMismatch) => Err(TransportError::BufferTooSmall),
+            Err(RawPubError::Failed) => Err(TransportError::PublishFailed),
+        }
     }
 
     fn buffer_error(&self) -> Self::Error {

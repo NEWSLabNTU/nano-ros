@@ -1,40 +1,43 @@
-//! [`UorbSubscriber`] implements [`nros_rmw::Subscriber`].
+//! [`UorbSubscriber`] implements [`nros_rmw::Subscriber`] over uORB.
 //!
-//! Phase 90.2 baseline: holds the resolved [`TopicEntry`]; `try_recv_raw`
-//! returns `Ok(None)` (no data) until Phase 90.6 wires the typed
-//! `px4_uorb::Subscription<T>` codegen path.
+//! Phase 99.L design: byte-shaped only. Holds a
+//! [`px4_uorb::RawSubscription`] which lazily registers an
+//! `orb_register_callback` on first `try_recv_raw` and writes
+//! into the caller's buffer on each subsequent call. No registry,
+//! no name lookup, no critical_section.
 
 use nros_rmw::{Subscriber, TransportError};
+use px4_sys::orb_metadata;
+use px4_uorb::RawSubscription;
 
-use crate::registry::lookup_with;
-use crate::topics::TopicEntry;
-
-/// Subscriber handle for one ROS 2 topic. Holds the topic descriptor and
-/// ROS 2 name; the typed `px4_uorb::Subscription<T>` lives in the trampoline
-/// registry populated by [`crate::register`].
-#[derive(Debug)]
+/// Byte-shaped subscriber handle for one uORB topic.
+///
+/// Holds the raw subscription state directly. `try_recv_raw` calls
+/// `orb_copy` (via the raw FFI wrapper) through the lazy
+/// callback registration — single FFI path, no lookup, no lock.
 pub struct UorbSubscriber {
-    entry: TopicEntry,
-    ros_name: heapless::String<128>,
+    inner: RawSubscription,
 }
 
 impl UorbSubscriber {
-    pub(crate) fn new(entry: TopicEntry, ros_name: &str) -> Result<Self, TransportError> {
-        let mut buf = heapless::String::new();
-        buf.push_str(ros_name)
-            .map_err(|_| TransportError::InvalidConfig)?;
-        Ok(Self {
-            entry,
-            ros_name: buf,
-        })
+    /// Construct a subscriber bound to `metadata` on the given
+    /// multi-instance index. Lazy-registers the underlying
+    /// callback on first `try_recv_raw` / `register_waker`.
+    pub(crate) fn new(metadata: &'static orb_metadata, instance: u8) -> Self {
+        Self {
+            inner: RawSubscription::with_instance(metadata, instance),
+        }
     }
 
-    pub fn uorb_name(&self) -> &'static str {
-        self.entry.uorb_name
+    /// Borrow the metadata this subscriber was constructed with.
+    pub fn metadata(&self) -> &'static orb_metadata {
+        self.inner.metadata()
     }
+}
 
-    pub fn instance(&self) -> u8 {
-        self.entry.instance
+impl core::fmt::Debug for UorbSubscriber {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UorbSubscriber").finish()
     }
 }
 
@@ -42,14 +45,14 @@ impl Subscriber for UorbSubscriber {
     type Error = TransportError;
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        lookup_with(self.ros_name.as_str(), |handle| handle.try_recv(buf)).ok_or(
-            TransportError::Backend(
-                "uORB: topic not registered — call nros_rmw_uorb::register::<T>(...) first",
-            ),
-        )?
+        Ok(self.inner.try_recv(buf))
     }
 
     fn deserialization_error(&self) -> Self::Error {
         TransportError::DeserializationError
+    }
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        self.inner.register_waker(waker);
     }
 }

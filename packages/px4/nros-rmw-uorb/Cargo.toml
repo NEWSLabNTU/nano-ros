@@ -11,32 +11,21 @@ doctest = false
 
 [features]
 default = []
-# Host-mock target (requires px4-rs std mock for testing without SITL).
-# Forwards to critical-section/std so its global impl is available
-# without the user wiring one up.
-std = ["alloc", "px4-uorb/std", "px4-workqueue/std", "px4-log/std", "critical-section/std"]
-# Enables the trampoline registry, Session impls, and `park` future
-# (Phase 90.2b). Required for users who go through nros-node's
-# `Executor` / `Node` API. Standalone consumers of the direct typed
-# API (`nros::uorb::publication` / `subscription`) don't need it
-# and can stay alloc-free.
-alloc = []
+# Host-mock target. Forwards to px4-* std features so the std mock
+# broker (in px4-uorb) and the std HRT worker (in px4-workqueue) are
+# available without setting up a real PX4 build.
+std = ["px4-uorb/std", "px4-workqueue/std", "px4-log/std"]
 # log forwarding via px4-log
 log = ["px4-log/log"]
-# Expose `_reset()` for downstream integration tests.
+# Expose test helpers (currently only used by px4-uorb's std mock).
 test-helpers = []
 
 [dependencies]
-nros-rmw = { workspace = true }
-nros-core = { workspace = true }
+nros-rmw = { workspace = true, default-features = false }
+nros-core = { workspace = true, default-features = false }
 heapless = { workspace = true }
-phf = { version = "0.11", default-features = false }
-# Critical-section primitives for the no_std registry (Phase 90.2b).
-# Real PX4 modules supply a critical_section impl via px4-sys; on host
-# tests cargo selects the `std` impl through px4-workqueue/std.
-critical-section = "1"
-# 64-bit atomics for the service-protocol seq counter on 32-bit
-# targets without native AtomicU64 (Cortex-M3 etc).
+# 64-bit atomics for any future seq counters on 32-bit targets without
+# native AtomicU64 (Cortex-M3 etc).
 portable-atomic = { version = "1", default-features = false, features = ["fallback"] }
 
 # px4-rs crates — vendored as a submodule under third-party/px4/px4-rs.
@@ -46,14 +35,5 @@ px4-uorb = { path = "../../../third-party/px4/px4-rs/crates/px4-uorb" }
 px4-workqueue = { path = "../../../third-party/px4/px4-rs/crates/px4-workqueue" }
 px4-log = { path = "../../../third-party/px4/px4-rs/crates/px4-log" }
 
-[build-dependencies]
-phf_codegen = "0.11"
-toml = "0.8"
-serde = { version = "1", features = ["derive"] }
-
 [dev-dependencies]
-# Used by the typeless_api integration test to exercise the
-# create_publisher_raw / create_subscription_raw flow end-to-end through
-# Executor::open. Requires the rmw-uorb feature on nros-node so its
-# session::ConcreteSession resolves to UorbSession.
 nros-node = { workspace = true, default-features = false, features = ["std", "rmw-uorb"] }

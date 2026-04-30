@@ -13,12 +13,12 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 [features]
 default = ["std"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "nros-rmw-uorb?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc", "nros-rmw-uorb?/alloc"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
-rmw-uorb = ["dep:nros-rmw-uorb", "nros-rmw-uorb/alloc"]
+rmw-uorb = ["dep:nros-rmw-uorb"]
 
 # Phase 99: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
