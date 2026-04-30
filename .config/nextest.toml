@@ -352,7 +352,7 @@ retries = 2
 
 # ESP32 QEMU (Espressif RISC-V fork) — port 7454.
 [[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
+filter = "binary(esp32_emulator) or binary(esp32_qemu_dds)"
 test-group = "qemu-esp32"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

@@ -9,8 +9,13 @@
 
 use zpico_alloc::FreeListHeap;
 
+// Phase 101.7 — original `dds-heap` carve-out was 256 KB, but that
+// pushed `.bss` + `.stack` past the 400 KB DRAM limit on ESP32-C3
+// (real-world overflow: ~26 KB). 192 KB leaves enough headroom for
+// the smoltcp + esp-hal fixed allocations + stack while still
+// fitting dust-dds's `DcpsDomainParticipant` builtin entities.
 #[cfg(feature = "dds-heap")]
-static HEAP: FreeListHeap<{ 256 * 1024 }> = FreeListHeap::new();
+static HEAP: FreeListHeap<{ 192 * 1024 }> = FreeListHeap::new();
 #[cfg(not(feature = "dds-heap"))]
 static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
 

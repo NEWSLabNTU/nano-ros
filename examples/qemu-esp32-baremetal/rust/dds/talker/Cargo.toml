@@ -24,12 +24,14 @@ nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp3
 #   * `critical-section` provided by `esp-hal` itself (RISC-V single
 #     core via `portable-atomic/unsafe-assume-single-core`).
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble", "rmw-dds-portable-atomic"] }
-# `global-allocator` intentionally OFF — `esp-alloc` (pulled by the
-# board crate via `esp-hal`) already provides the
-# `#[global_allocator]`. Enabling both produces a "the
-# `#[global_allocator]` in nros_platform conflicts with global
-# allocator in: esp_alloc" link error.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32-qemu"] }
+# `global-allocator` ON for DDS — registers a 256 KB static
+# `FreeListHeap` from `nros-platform-esp32-qemu/memory.rs` (gated
+# behind the platform crate's `dds-heap` feature, also forwarded
+# by `nros-board-esp32-qemu/dds-heap`). With this feature on, the
+# board crate skips the smaller `esp_alloc::heap_allocator!(64K)`
+# call so the two `#[global_allocator]` registrations don't
+# collide (Phase 101.7).
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32-qemu", "global-allocator"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

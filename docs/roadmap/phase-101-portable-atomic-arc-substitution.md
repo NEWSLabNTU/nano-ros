@@ -234,19 +234,55 @@ build-time seconds).
       **Files:**
       `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/Cargo.toml`.
 
-- [ ] **101.6 — Push fork branch + bump submodule pointer.**
-      Push the `nano-ros/phase-101-portable-atomic` branch on
-      `jerry73204/dust-dds`. Update root submodule pointer. Open upstream PR
-      against `s2e-systems/dust-dds` (Option B is upstream-friendly).
-      **Files:** `packages/dds/dust-dds` (submodule).
+- [x] **101.6 — Push fork branch + bump submodule pointer.**
+      Done — `jerry73204/dust-dds` branch
+      `nano-ros/phase-101-portable-atomic` pushed (commits Phase
+      101.2 + 101.3 = `3d4cc61a` + `584b077d`). Root submodule
+      pointer bumped in commit Phase 101.{2,3,4} land. Upstream
+      PR to `s2e-systems/dust-dds` is a follow-up — Option B is
+      upstream-friendly but the PR itself isn't blocking the
+      ESP32-QEMU bring-up.
 
-- [ ] **101.7 — ESP32-QEMU DDS pubsub E2E.**
-      Two-instance `nros-tests` fixture (mirror of
-      `tests/baremetal_qemu_dds.rs`). Acceptance: ≥80 % message delivery in a
-      15 s window. Update Phase 97 doc: 97.4.esp32-qemu `[ ]` → `[x]`. Move
-      Phase 97 to `archived/`.
-      **Files:** `packages/testing/nros-tests/tests/esp32_qemu_dds.rs`,
-      `.config/nextest.toml`, `docs/roadmap/phase-97-dds-per-platform-examples.md`.
+- [~] **101.7 — ESP32-QEMU DDS pubsub E2E. Test landed,
+      runtime blocked by heap budget.**
+      Infrastructure in place:
+      * `nros_tests::esp32::start_esp32_qemu_mcast` launcher
+        (mirror of `start_mps2_an385_mcast` /
+        `start_nuttx_virt_mcast` shapes — `qemu-system-riscv32
+        -M esp32c3 -nic socket,model=open_eth,mcast=…`).
+      * `build_esp32_qemu_dds_{talker,listener}` ELF builders +
+        `_flash` flash-image builders chained off
+        `create_esp32_flash_image`.
+      * `tests/esp32_qemu_dds.rs` modelled on
+        `tests/baremetal_qemu_dds.rs`.
+      * `.config/nextest.toml` routes `binary(esp32_qemu_dds)`
+        into the `qemu-esp32` test-group.
+
+      **Build-time path is fully green:** `cargo build -p
+      esp32-qemu-dds-{talker,listener} --release` produces
+      flashable images that contain the full dust-dds +
+      nros-rmw-dds + portable-atomic stack on
+      `riscv32imc-unknown-none-elf`. The Phase 101.{2,3,4,5}
+      changes all flow through end-to-end.
+
+      **Runtime is heap-bounded.** Both peers boot but panic at
+      `library/alloc/src/alloc.rs:573:9` (`handle_alloc_error`)
+      inside `DcpsDomainParticipant::new` before reaching
+      publish/subscribe. ESP32-C3 has only ~400 KiB DRAM total;
+      after `.bss` + `.stack` the largest static heap carve-out
+      that links is 192 KiB (256 KiB overflows by ~26 KiB), and
+      dust-dds's ~13 actor mailboxes + builtin readers / writers
+      need substantially more headroom (FreeRTOS + NuttX slices
+      both need ≥ 2 MiB). Test stays `#[ignore]`d.
+
+      **To unblock:** trim dust-dds's builtin entity count
+      (currently ~13 `Actor::spawn`s in
+      `DcpsDomainParticipant::new`), move some allocations to an
+      SPI-RAM region, or pivot to ESP32 (Xtensa, 8 MiB PSRAM)
+      instead of ESP32-C3. All out of scope for Phase 101 —
+      track as a follow-up phase.
+
+      Phase 97.4.esp32-qemu remains `[ ]` in the Phase 97 doc.
 
 ## Acceptance Criteria
 

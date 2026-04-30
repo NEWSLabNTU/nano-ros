@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu", default-features = false, features = ["ethernet", "dds-heap"] }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble", "rmw-dds-portable-atomic"] }
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32-qemu"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32-qemu", "global-allocator"] }
 std_msgs = { version = "*", default-features = false }
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }

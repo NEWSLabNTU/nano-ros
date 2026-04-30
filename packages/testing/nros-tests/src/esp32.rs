@@ -231,6 +231,46 @@ pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<Mana
     ManagedProcess::spawn_command(cmd, "esp32-qemu")
 }
 
+/// Phase 101.7 — start an ESP32-C3 QEMU instance on a shared
+/// `-nic socket,mcast=…` segment so two guests can exchange RTPS
+/// SPDP / SEDP / pubsub on the same virtual L2 broadcast domain.
+///
+/// Mirrors `QemuProcess::start_mps2_an385_mcast` (FreeRTOS / 97.4)
+/// and `QemuProcess::start_nuttx_virt_mcast` shapes — same mcast
+/// addr+port across both peers, distinct `mac` per instance so ARP
+/// behaves. The ESP32 OpenETH model already accepts the standard
+/// QEMU `-nic socket,…` netdev backend, so no additional wiring is
+/// needed.
+pub fn start_esp32_qemu_mcast(
+    flash_image: &Path,
+    mcast_addr_port: &str,
+    mac: &str,
+) -> TestResult<ManagedProcess> {
+    if !flash_image.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Flash image not found: {}",
+            flash_image.display()
+        )));
+    }
+
+    let drive_arg = format!("file={},if=mtd,format=raw", flash_image.display());
+    let nic_arg = format!("socket,model=open_eth,mcast={mcast_addr_port},mac={mac}");
+
+    let mut cmd = Command::new("qemu-system-riscv32");
+    cmd.args([
+        "-M", "esp32c3",
+        "-icount", "3",
+        "-nographic",
+        "-drive", &drive_arg,
+        "-nic", &nic_arg,
+    ]);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    set_new_process_group(&mut cmd);
+
+    ManagedProcess::spawn_command(cmd, "esp32-qemu-mcast")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

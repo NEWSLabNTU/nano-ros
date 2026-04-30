@@ -188,7 +188,15 @@ pub fn init_hardware(config: &Config) {
     esp_println::println!("Initializing ESP32-C3...");
     let _peripherals = esp_hal::init(esp_hal::Config::default());
 
-    // Step 2: Set up heap allocator (smaller than WiFi BSP - no WiFi overhead)
+    // Step 2: Set up heap allocator (smaller than WiFi BSP — no WiFi
+    // overhead). For zenoh / non-DDS builds, esp-alloc carves 64 KB
+    // out of DRAM at runtime. For DDS builds the example crate
+    // enables `nros-platform/global-allocator`, which registers a
+    // 256 KB static `FreeListHeap` instead — calling
+    // `esp_alloc::heap_allocator!` on top of that produces the
+    // "the `#[global_allocator]` in nros_platform conflicts with
+    // global allocator in: esp_alloc" link error (Phase 101.7).
+    #[cfg(not(feature = "dds-heap"))]
     esp_alloc::heap_allocator!(size: 64 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
