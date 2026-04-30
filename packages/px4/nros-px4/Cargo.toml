@@ -11,7 +11,7 @@ doctest = false
 
 [features]
 default = []
-std = ["nros-rmw-uorb/std", "nros-node/std"]
+std = ["nros-rmw-uorb/std", "nros-node/std", "px4-uorb/std"]
 # Expose `pump_until` for downstream integration tests. Forwards to
 # nros-rmw-uorb's test-helpers so `_reset()` is also available.
 test-helpers = ["std", "nros-rmw-uorb/test-helpers"]
@@ -24,6 +24,7 @@ nros-core = { workspace = true }
 heapless = { workspace = true }
 
 px4-sys = { path = "../../../third-party/px4/px4-rs/crates/px4-sys" }
+px4-uorb = { path = "../../../third-party/px4/px4-rs/crates/px4-uorb", default-features = false }
 px4-workqueue = { path = "../../../third-party/px4/px4-rs/crates/px4-workqueue" }
 px4-log = { path = "../../../third-party/px4/px4-rs/crates/px4-log" }
 

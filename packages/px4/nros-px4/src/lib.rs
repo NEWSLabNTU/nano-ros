@@ -7,6 +7,7 @@ mod config;
 mod run;
 #[cfg(feature = "std")]
 mod run_async;
+pub mod uorb;
 
 pub use config::Config;
 pub use run::run;
