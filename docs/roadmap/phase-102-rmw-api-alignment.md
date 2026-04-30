@@ -113,10 +113,13 @@ typedef struct nros_rmw_qos_t {
     uint16_t _pad2;
 } nros_rmw_qos_t;
 
+/* See `<nros/rmw_entity.h>` post-cleanup: `uint8_t bits;` + named
+ * macros (NROS_RMW_LOAN_SUPPORTED). C bitfield syntax was an early
+ * draft; replaced because bitfield ordering is implementation-defined
+ * across compilers. Phase 103 was cancelled, so the previously-
+ * reserved `supports_typed_loan` bit was never needed. */
 typedef struct nros_rmw_loan_caps_t {
-    uint8_t supports_cdr_loan   : 1;
-    uint8_t supports_typed_loan : 1;     /* Phase 103 */
-    uint8_t reserved            : 6;
+    uint8_t bits;
 } nros_rmw_loan_caps_t;
 
 typedef struct nros_rmw_publisher_t {
@@ -257,6 +260,9 @@ Net: skip.
   `Publisher` / `Subscriber` types. The phase is C-shape work; the
   Rust side gets the new error variants but the trait shape is
   unchanged.
-- **Future Phase 103 hook.** The `loan_caps.supports_typed_loan`
-  bit is already laid out so Phase 103's typed-loan path doesn't
-  break the struct layout again.
+- **Phase 103 was cancelled** (superseded by Phase 99 + 99.L). The
+  earlier `supports_typed_loan` reserved bit on `loan_caps` was
+  removed. `loan_caps` collapses to a single `LOAN_SUPPORTED` bit
+  with bits 1..7 reserved. The C-bitfield syntax used in early
+  drafts was replaced with `uint8_t bits;` + named macros for
+  cross-compiler ABI safety.

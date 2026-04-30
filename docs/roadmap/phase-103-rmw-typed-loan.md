@@ -1,14 +1,93 @@
-# Phase 103 — RMW typed-loan path: real zero-copy where transport supports it
+# Phase 103 — RMW typed-loan path (CANCELLED)
 
-**Goal:** add a parallel typed-shape lending surface to the RMW vtable
+**Status:** Cancelled — superseded by Phase 99 + Phase 99.L.
+
+**TL;DR.** This phase tried to add a "typed loan" vtable surface
+alongside Phase 99's CDR-byte loan, on the premise that they were
+two different primitives. They aren't. The right model is: the loan
+API hands the publisher a **raw-byte slot**; what bytes go in is the
+runtime / backend's transport-convention decision. CDR transports
+encode into the slot (not zero-copy by definition — there's still an
+encode step). Intra-process transports like uORB don't go through
+CDR at all and have their own typed API (Phase 99.L's
+`nros-px4::uorb::Publisher<T>`). One vtable function, two completely
+disjoint user-facing APIs picked per-backend.
+
+**Why we got here.** During Phase 102 review, we proposed Phase 103
+to deliver "true zero-copy" for uORB by adding a parallel typed-loan
+vtable surface. Two follow-up questions exposed the redundancy:
+
+1. *"Why distinguish CDR loan and typed loan? Aren't they the same?"*
+   For loanable POD types (the only ones typed-loan would apply to),
+   the typed in-memory layout **is** the CDR-LE byte sequence sans
+   header. So the only difference between the two paths is the
+   4-byte CDR representation header.
+2. *"Why do we need `LOAN_SKIPS_CDR_HEADER`?"* Every wire transport
+   we ship or plan to ship (zenoh-pico, XRCE-DDS, dust-DDS,
+   zenoh-pico SHM link, iceoryx) carries the CDR header on the wire
+   for ROS 2 interop. None of them want it skipped. uORB doesn't go
+   through the CDR-loan path at all — it uses
+   `nros-px4::uorb::Publisher<T>` (Phase 99.L), which calls
+   `orb_publish(&metadata, &msg)` with the typed struct directly.
+
+So:
+
+* **Wire transports** want Phase 99 CDR-loan as-is — runtime fills
+  the slot with `[CDR_HEADER][body]`, backend ships. One memcpy
+  saved (app→outbound buffer); CDR encode still happens because
+  the wire requires it. That's not "true zero-copy" by the strict
+  definition (encoding is work) but it's the cheapest the wire path
+  can ever be.
+* **Intra-process backends** (uORB) bypass CDR entirely via a
+  separate typed API in their own crate. They opt out of the loan
+  flag because their typed bypass doesn't go through the loan
+  primitive at all.
+
+Result: zero shared vtable surface to add. Phase 103's eight work
+items collapse to nothing. The loan capability stays a **single bit**
+(`NROS_RMW_LOAN_SUPPORTED`) — "backend exposes a raw-byte loan slot."
+What the runtime fills the slot with is the runtime's call.
+
+**What stays:** Phase 99 + 99.L cover the entire zero-copy story.
+
+**What gets killed:**
+
+* No `loan_publish_typed` / `commit_publish_typed` / `loan_recv_typed`
+  / `release_recv_typed` vtable functions.
+* No codegen `<MsgType>_IS_LOANABLE` flag — the runtime doesn't need
+  it. A backend that supports loan accepts arbitrary byte payloads
+  in the slot; codegen knows how to write them.
+* No `supports_typed_loan` bit. Loan caps simplifies to one bit:
+  `NROS_RMW_LOAN_SUPPORTED`.
+* No new arena type. Phase 99's `LendArena` stays as the only loan
+  arena.
+
+**What this means for future SHM transports.** If iceoryx-style
+true zero-copy ever lands in nano-ros, it would be a separate
+backend crate (`nros-rmw-iceoryx`) with its own typed publisher API,
+just like uORB. The trait surface and CDR-loan path stay untouched.
+Each "really zero-copy" transport gets its own typed surface; we
+don't try to generalise across them.
+
+**Rest of this doc:** preserved below as historical record. The
+design as drafted was sound for the premise it operated under (two
+distinct primitives); the premise just turned out to be false. Worth
+keeping the analysis so future-us doesn't re-propose the same
+overengineering.
+
+---
+
+## Original goal (historical)
+
+Add a parallel typed-shape lending surface to the RMW vtable
 alongside the existing CDR-byte lending (Phase 99). Backends with
 intra-process or shared-memory transport (uORB today; future iceoryx
 or zenoh-pico SHM link) can hand the publisher a typed-buffer slot
 instead of a CDR-byte slot, eliminating the CDR encode/decode step
 entirely and reaching **true zero-copy**.
 
-**Status:** Not Started.
-**Priority:** Medium. uORB intra-process pubsub is the immediate user
+**Original Status:** Not Started.
+**Original Priority:** Medium. uORB intra-process pubsub is the immediate user
 — Phase 90's PX4 RMW currently CDR-encodes every sample even though
 both publisher and subscriber live in the same address space. Future
 shared-memory transports (iceoryx, zenoh-pico SHM link) need this

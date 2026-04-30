@@ -79,14 +79,25 @@ typedef struct nros_rmw_qos_t {
  * receive code path accordingly. Backends fill it from their static
  * capability set — there is no per-call probe.
  *
- * `supports_typed_loan` is reserved for Phase 103 (typed-shape
- * loans for true zero-copy on intra-process / SHM transports).
+ * Currently a single bit: whether the backend exposes a raw-byte
+ * loan slot at all. The runtime fills the slot with whatever the
+ * publisher's transport convention requires (CDR-encoded bytes for
+ * wire transports; the typed-memory bypass for intra-process
+ * backends like uORB has its own separate API and does not consult
+ * this flag). Bits 1..7 reserved for future capability flags.
+ *
+ * **C-ABI note.** Plain `uint8_t bits` (not a C bitfield). Bitfield
+ * ordering is implementation-defined across compilers; using a flat
+ * byte with named bit-mask macros guarantees identical layout on
+ * GCC, Clang, MSVC, and any other compiler we might cross to.
  */
 typedef struct nros_rmw_loan_caps_t {
-    uint8_t supports_cdr_loan   : 1;  /**< Phase 99: CDR-byte slot loan. */
-    uint8_t supports_typed_loan : 1;  /**< Phase 103: typed-message slot loan. */
-    uint8_t reserved            : 6;  /**< Reserved; must be zero. */
+    uint8_t bits;
 } nros_rmw_loan_caps_t;
+
+/** Backend exposes `loan_publish` / `commit_publish` (Phase 99). */
+#define NROS_RMW_LOAN_SUPPORTED  (1u << 0)
+/* Bits 1..7 reserved; must be zero. */
 
 /* ------------------------------------------------------------------ */
 /* Entity structs                                                     */

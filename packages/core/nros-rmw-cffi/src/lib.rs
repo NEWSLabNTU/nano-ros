@@ -161,22 +161,19 @@ pub struct NrosRmwQos {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NrosRmwLoanCaps {
-    /// Bit 0: `supports_cdr_loan`. Bit 1: `supports_typed_loan`.
-    /// Remaining bits reserved.
+    /// Bit 0: `LOAN_SUPPORTED` (backend exposes raw-byte loan slot).
+    /// Bits 1..7 reserved; must be zero.
     pub bits: u8,
 }
 
-impl NrosRmwLoanCaps {
-    /// `true` iff `supports_cdr_loan` is set.
-    #[inline]
-    pub fn supports_cdr_loan(&self) -> bool {
-        self.bits & 0b0000_0001 != 0
-    }
+/// Bitmask: backend exposes `loan_publish` / `commit_publish`.
+pub const NROS_RMW_LOAN_SUPPORTED: u8 = 1 << 0;
 
-    /// `true` iff `supports_typed_loan` is set.
+impl NrosRmwLoanCaps {
+    /// `true` iff `NROS_RMW_LOAN_SUPPORTED` is set.
     #[inline]
-    pub fn supports_typed_loan(&self) -> bool {
-        self.bits & 0b0000_0010 != 0
+    pub fn loan_supported(&self) -> bool {
+        self.bits & NROS_RMW_LOAN_SUPPORTED != 0
     }
 }
 
@@ -1183,7 +1180,9 @@ mod tests {
             copy_cstr((*out).type_name, &mut *(&raw mut STUB_LAST_TYPE_NAME));
             *(&raw mut STUB_LAST_QOS) = *qos;
             (*out).backend_data = 0xCAFEusize as *mut c_void;
-            (*out).loan_caps = NrosRmwLoanCaps { bits: 0b0000_0001 };
+            (*out).loan_caps = NrosRmwLoanCaps {
+                bits: NROS_RMW_LOAN_SUPPORTED,
+            };
         }
         NROS_RMW_RET_OK
     }
@@ -1353,8 +1352,7 @@ mod tests {
         // Rust accessors read back the typed-struct fields.
         assert_eq!(publisher.topic_name(), "/chatter");
         assert_eq!(publisher.type_name(), "std_msgs/msg/Int32");
-        assert!(publisher.loan_caps().supports_cdr_loan());
-        assert!(!publisher.loan_caps().supports_typed_loan());
+        assert!(publisher.loan_caps().loan_supported());
 
         // Publish — verify backend_data round-trips correctly via
         // the typed view.
