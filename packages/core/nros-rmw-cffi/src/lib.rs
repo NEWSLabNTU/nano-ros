@@ -148,33 +148,12 @@ pub struct NrosRmwQos {
     pub durability: u8,
     /// History policy: `0` = keep-last, `1` = keep-all.
     pub history: u8,
-    /// Reserved padding; must be zero.
-    pub _pad0: u8,
+    /// Reserved for future fields; must be zero.
+    pub _reserved0: u8,
     /// History depth (0–65 535).
     pub depth: u16,
-    /// Reserved padding; must be zero.
-    pub _pad1: u16,
-}
-
-/// Lending capabilities. Mirrors `nros_rmw_loan_caps_t` from
-/// `<nros/rmw_entity.h>`.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NrosRmwLoanCaps {
-    /// Bit 0: `LOAN_SUPPORTED` (backend exposes raw-byte loan slot).
-    /// Bits 1..7 reserved; must be zero.
-    pub bits: u8,
-}
-
-/// Bitmask: backend exposes `loan_publish` / `commit_publish`.
-pub const NROS_RMW_LOAN_SUPPORTED: u8 = 1 << 0;
-
-impl NrosRmwLoanCaps {
-    /// `true` iff `NROS_RMW_LOAN_SUPPORTED` is set.
-    #[inline]
-    pub fn loan_supported(&self) -> bool {
-        self.bits & NROS_RMW_LOAN_SUPPORTED != 0
-    }
+    /// Reserved for future fields; must be zero.
+    pub _reserved1: u16,
 }
 
 /// Per-process RMW session. Mirrors `nros_rmw_session_t`.
@@ -184,11 +163,18 @@ pub struct NrosRmwSession {
     pub node_name: *const u8,
     /// Borrowed; outlives the session.
     pub namespace_: *const u8,
+    /// Reserved for future fields (Phase 104 vtable pointer slot);
+    /// must be zero.
+    pub _reserved: [u8; 8],
     /// Opaque backend state. NULL when uninitialised.
     pub backend_data: *mut c_void,
 }
 
 /// Publisher entity. Mirrors `nros_rmw_publisher_t`.
+///
+/// `can_loan_messages` matches upstream `rmw_publisher_t`'s field of
+/// the same name: `true` means the backend exposes the
+/// `loan_publish` / `commit_publish` primitive (Phase 99).
 #[repr(C)]
 pub struct NrosRmwPublisher {
     /// Borrowed; outlives the publisher.
@@ -196,7 +182,10 @@ pub struct NrosRmwPublisher {
     /// Borrowed; outlives the publisher.
     pub type_name: *const u8,
     pub qos: NrosRmwQos,
-    pub loan_caps: NrosRmwLoanCaps,
+    /// Backend exposes loan_publish / commit_publish (Phase 99).
+    pub can_loan_messages: bool,
+    /// Reserved for future fields; must be zero.
+    pub _reserved: [u8; 7],
     /// Opaque backend state. NULL when creation failed.
     pub backend_data: *mut c_void,
 }
@@ -209,7 +198,10 @@ pub struct NrosRmwSubscriber {
     /// Borrowed; outlives the subscriber.
     pub type_name: *const u8,
     pub qos: NrosRmwQos,
-    pub loan_caps: NrosRmwLoanCaps,
+    /// Backend exposes loan_recv / release_recv (Phase 99).
+    pub can_loan_messages: bool,
+    /// Reserved for future fields; must be zero.
+    pub _reserved: [u8; 7],
     /// Opaque backend state. NULL when creation failed.
     pub backend_data: *mut c_void,
 }
@@ -221,6 +213,8 @@ pub struct NrosRmwServiceServer {
     pub service_name: *const u8,
     /// Borrowed; outlives the server.
     pub type_name: *const u8,
+    /// Reserved for future fields; must be zero.
+    pub _reserved: [u8; 8],
     /// Opaque backend state. NULL when creation failed.
     pub backend_data: *mut c_void,
 }
@@ -232,6 +226,8 @@ pub struct NrosRmwServiceClient {
     pub service_name: *const u8,
     /// Borrowed; outlives the client.
     pub type_name: *const u8,
+    /// Reserved for future fields; must be zero.
+    pub _reserved: [u8; 8],
     /// Opaque backend state. NULL when creation failed.
     pub backend_data: *mut c_void,
 }
@@ -251,12 +247,12 @@ impl From<QosSettings> for NrosRmwQos {
                 QosHistoryPolicy::KeepLast => 0,
                 QosHistoryPolicy::KeepAll => 1,
             },
-            _pad0: 0,
+            _reserved0: 0,
             // QosSettings::depth is u32; clamp to u16 max. Embedded
             // ROS queue depths are typically 1–100; oversize values
             // are saturated at 65 535 rather than wrapped.
             depth: qos.depth.min(u16::MAX as u32) as u16,
-            _pad1: 0,
+            _reserved1: 0,
         }
     }
 }
@@ -428,7 +424,8 @@ fn cstr_buf_to_str<const N: usize>(buf: &[u8; N]) -> &str {
 //   FFI call via `make_*_view`, so move-invalidation of pointers
 //   into the buffer is impossible — the pointer always points to the
 //   *current* address of the buffer, computed at call time.
-// * The backend writes `backend_data` (and optionally `loan_caps`)
+// * The backend writes `backend_data` (and `can_loan_messages` for
+//   pub/sub entities)
 //   into the FFI view; we copy the writes back into the Cffi*
 //   struct's fields after the call.
 // * Strings ARE immutable for the entity's lifetime, so backends that
@@ -459,6 +456,7 @@ impl CffiSession {
         NrosRmwSession {
             node_name: self.node_name_buf.as_ptr(),
             namespace_: self.namespace_buf.as_ptr(),
+            _reserved: [0u8; 8],
             backend_data: self.backend_data,
         }
     }
@@ -490,6 +488,7 @@ impl CffiSession {
         let mut view = NrosRmwSession {
             node_name: session.node_name_buf.as_ptr(),
             namespace_: session.namespace_buf.as_ptr(),
+            _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
         let ret = unsafe {
@@ -527,7 +526,7 @@ impl Session for CffiSession {
             topic_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             qos: qos_struct,
-            loan_caps: NrosRmwLoanCaps::default(),
+            can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
         };
         let topic_ptr = to_c_str(topic.name, &mut pub_state.topic_name_buf);
@@ -537,7 +536,8 @@ impl Session for CffiSession {
             topic_name: topic_ptr,
             type_name: type_ptr,
             qos: qos_struct,
-            loan_caps: NrosRmwLoanCaps::default(),
+            can_loan_messages: false,
+            _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
         let mut session_view = self.make_view();
@@ -559,7 +559,7 @@ impl Session for CffiSession {
             return Err(TransportError::PublisherCreationFailed);
         }
         pub_state.backend_data = view.backend_data;
-        pub_state.loan_caps = view.loan_caps;
+        pub_state.can_loan_messages = view.can_loan_messages;
         Ok(pub_state)
     }
 
@@ -577,7 +577,7 @@ impl Session for CffiSession {
             topic_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             qos: qos_struct,
-            loan_caps: NrosRmwLoanCaps::default(),
+            can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
@@ -587,7 +587,8 @@ impl Session for CffiSession {
             topic_name: topic_ptr,
             type_name: type_ptr,
             qos: qos_struct,
-            loan_caps: NrosRmwLoanCaps::default(),
+            can_loan_messages: false,
+            _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
         let mut session_view = self.make_view();
@@ -609,7 +610,7 @@ impl Session for CffiSession {
             return Err(TransportError::SubscriberCreationFailed);
         }
         sub_state.backend_data = view.backend_data;
-        sub_state.loan_caps = view.loan_caps;
+        sub_state.can_loan_messages = view.can_loan_messages;
         Ok(sub_state)
     }
 
@@ -632,6 +633,7 @@ impl Session for CffiSession {
         let mut view = NrosRmwServiceServer {
             service_name: svc_ptr,
             type_name: type_ptr,
+            _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
         let mut session_view = self.make_view();
@@ -676,6 +678,7 @@ impl Session for CffiSession {
         let mut view = NrosRmwServiceClient {
             service_name: svc_ptr,
             type_name: type_ptr,
+            _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
         let mut session_view = self.make_view();
@@ -741,7 +744,7 @@ pub struct CffiPublisher {
     topic_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     qos: NrosRmwQos,
-    loan_caps: NrosRmwLoanCaps,
+    can_loan_messages: bool,
     backend_data: *mut c_void,
 }
 
@@ -751,7 +754,8 @@ impl CffiPublisher {
             topic_name: self.topic_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
             qos: self.qos,
-            loan_caps: self.loan_caps,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
             backend_data: self.backend_data,
         }
     }
@@ -772,9 +776,10 @@ impl CffiPublisher {
         self.qos
     }
 
-    /// Lending capabilities advertised by the backend.
-    pub fn loan_caps(&self) -> NrosRmwLoanCaps {
-        self.loan_caps
+    /// `true` iff the backend exposes the publish loan primitive
+    /// (Phase 99). Mirrors upstream `rmw_publisher_t::can_loan_messages`.
+    pub fn can_loan_messages(&self) -> bool {
+        self.can_loan_messages
     }
 }
 
@@ -786,7 +791,8 @@ impl Publisher for CffiPublisher {
             topic_name: self.topic_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
             qos: self.qos,
-            loan_caps: self.loan_caps,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
             backend_data: self.backend_data,
         };
         let ret = unsafe { (self.vtable.publish_raw)(&mut view, data.as_ptr(), data.len()) };
@@ -824,7 +830,7 @@ pub struct CffiSubscriber {
     topic_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     qos: NrosRmwQos,
-    loan_caps: NrosRmwLoanCaps,
+    can_loan_messages: bool,
     backend_data: *mut c_void,
 }
 
@@ -834,7 +840,8 @@ impl CffiSubscriber {
             topic_name: self.topic_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
             qos: self.qos,
-            loan_caps: self.loan_caps,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
             backend_data: self.backend_data,
         }
     }
@@ -851,8 +858,10 @@ impl CffiSubscriber {
         self.qos
     }
 
-    pub fn loan_caps(&self) -> NrosRmwLoanCaps {
-        self.loan_caps
+    /// `true` iff the backend exposes the receive loan primitive
+    /// (Phase 99).
+    pub fn can_loan_messages(&self) -> bool {
+        self.can_loan_messages
     }
 }
 
@@ -912,6 +921,7 @@ impl CffiServiceServer {
         NrosRmwServiceServer {
             service_name: self.service_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
+            _reserved: [0u8; 8],
             backend_data: self.backend_data,
         }
     }
@@ -999,6 +1009,7 @@ impl CffiServiceClient {
         NrosRmwServiceClient {
             service_name: self.service_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
+            _reserved: [0u8; 8],
             backend_data: self.backend_data,
         }
     }
@@ -1098,10 +1109,10 @@ impl nros_rmw::Rmw for CffiRmw {
 // 1. Runtime fills `topic_name` / `type_name` / `qos` before
 //    `create_publisher`.
 // 2. Backend's `create_publisher` writes `backend_data` and
-//    `loan_caps` into the same struct.
+//    `can_loan_messages` into the same struct.
 // 3. Rust accessors (`CffiPublisher::topic_name()`, `qos()`,
-//    `loan_caps()`) read back the values without any vtable
-//    callback.
+//    `can_loan_messages()`) read back the values without any
+//    vtable callback.
 
 #[cfg(test)]
 mod tests {
@@ -1119,9 +1130,9 @@ mod tests {
         reliability: 0,
         durability: 0,
         history: 0,
-        _pad0: 0,
+        _reserved0: 0,
         depth: 0,
-        _pad1: 0,
+        _reserved1: 0,
     };
 
     /// Read a null-terminated `*const u8` into the supplied byte
@@ -1180,9 +1191,7 @@ mod tests {
             copy_cstr((*out).type_name, &mut *(&raw mut STUB_LAST_TYPE_NAME));
             *(&raw mut STUB_LAST_QOS) = *qos;
             (*out).backend_data = 0xCAFEusize as *mut c_void;
-            (*out).loan_caps = NrosRmwLoanCaps {
-                bits: NROS_RMW_LOAN_SUPPORTED,
-            };
+            (*out).can_loan_messages = true;
         }
         NROS_RMW_RET_OK
     }
@@ -1352,7 +1361,7 @@ mod tests {
         // Rust accessors read back the typed-struct fields.
         assert_eq!(publisher.topic_name(), "/chatter");
         assert_eq!(publisher.type_name(), "std_msgs/msg/Int32");
-        assert!(publisher.loan_caps().loan_supported());
+        assert!(publisher.can_loan_messages());
 
         // Publish — verify backend_data round-trips correctly via
         // the typed view.

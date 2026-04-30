@@ -108,11 +108,12 @@ pointer.
 
 ```c
 typedef struct nros_rmw_publisher_t {
-    const char *         topic_name;    /* borrowed; outlives the publisher */
-    const char *         type_name;     /* borrowed */
-    nros_rmw_qos_t       qos;
-    nros_rmw_loan_caps_t loan_caps;
-    void *               backend_data;  /* opaque */
+    const char *   topic_name;          /* borrowed; outlives the publisher */
+    const char *   type_name;           /* borrowed */
+    nros_rmw_qos_t qos;
+    bool           can_loan_messages;   /* matches upstream's field of the same name */
+    uint8_t        _reserved[7];        /* forward-compat; must be zero */
+    void *         backend_data;        /* opaque */
 } nros_rmw_publisher_t;
 
 nros_rmw_ret_t (*create_publisher)(
@@ -122,19 +123,27 @@ nros_rmw_ret_t (*create_publisher)(
     nros_rmw_publisher_t * out);   /* runtime-allocated; backend fills */
 ```
 
-Same shape for `nros_rmw_session_t`, `nros_rmw_subscriber_t`,
-`nros_rmw_service_server_t`, `nros_rmw_service_client_t`. Service
-entities have no `qos` field — the
-`rmw_qos_profile_services_default` distinction does not generalise
-across non-DDS backends (see [QoS, Section 7](#7-qos-minimal-subset-not-full-dds-profiles)).
+Same shape for `nros_rmw_subscriber_t`. Service entities
+(`nros_rmw_service_server_t`, `nros_rmw_service_client_t`) and
+`nros_rmw_session_t` have no `qos` and no `can_loan_messages` —
+service-level QoS doesn't generalise across non-DDS backends
+(see [QoS, Section 7](#7-qos-minimal-subset-not-full-dds-profiles))
+and service request/reply uses the byte-buffer API rather than the
+loan primitive.
+
+**Forward-compat reserved bytes.** Each entity carries an explicit
+`_reserved[N]` byte block (sized to fill the natural alignment slot
+before `backend_data`). New fields up to N bytes can be added later
+without changing struct size or the offset of any field after
+`backend_data`. Backends and runtime keep these bytes zero.
 
 **Storage ownership.** The runtime allocates the entity-struct shell;
-the backend writes its `backend_data` (and optionally `loan_caps`)
-into the runtime-supplied out-parameter at `create_*` time. The
-backend never `malloc`s a struct shell — embedded targets cannot
-afford a per-entity heap allocation. `destroy_*` releases only the
-backend's `backend_data`; the shell stays valid until the runtime
-drops its owner.
+the backend writes its `backend_data` (plus `can_loan_messages` for
+publisher / subscriber entities) into the runtime-supplied
+out-parameter at `create_*` time. The backend never `malloc`s a
+struct shell — embedded targets cannot afford a per-entity heap
+allocation. `destroy_*` releases only the backend's `backend_data`;
+the shell stays valid until the runtime drops its owner.
 
 **Differences from upstream's `rmw_publisher_t`.**
 
@@ -146,13 +155,17 @@ drops its owner.
   compile-time (see [Section 1](#1-plugin-loading-vs-compile-time-backend));
   there's no plugin loader to dispatch through, so no need to
   identify which backend owns a struct.
-- **`loan_caps` first-class.** Upstream's `can_loan_messages` is a
-  single bool; ours is a 2-bit field (CDR loan + typed loan, the
-  latter reserved for [Phase 103](../../../docs/roadmap/phase-103-rmw-typed-loan.md))
-  the runtime checks once at create time and uses to dispatch the
-  publish path with no per-call branch.
+- **`can_loan_messages` matches upstream.** Same bool, same name,
+  same semantics — `true` if the backend exposes the loan
+  primitive (Phase 99 CDR-byte loan). The runtime reads it once
+  at create time and dispatches the publish path with no per-call
+  branch.
 - **`depth: uint16_t`.** Upstream uses 32-bit; embedded queue depths
   are 1–100, the 16-bit width saves 2 bytes × N entities.
+- **Explicit `_reserved[N]` bytes.** Upstream uses an embedded
+  `rmw_publisher_options_t` struct as the extension point; we
+  reserve raw bytes inline. Same forward-compat property — new
+  fields up to N bytes don't break ABI — without the indirection.
 
 **Why this shape.** Fully-opaque `void *` (the previous nano-ros
 design) forced every introspection through a vtable callback.
@@ -289,9 +302,9 @@ typedef struct nros_rmw_qos_t {
     uint8_t  reliability;   /* NROS_RMW_RELIABILITY_RELIABLE | _BEST_EFFORT */
     uint8_t  durability;    /* NROS_RMW_DURABILITY_VOLATILE  | _TRANSIENT_LOCAL */
     uint8_t  history;       /* NROS_RMW_HISTORY_KEEP_LAST    | _KEEP_ALL */
-    uint8_t  _pad0;
+    uint8_t  _reserved0;    /* forward-compat; must be zero */
     uint16_t depth;
-    uint16_t _pad1;
+    uint16_t _reserved1;    /* forward-compat; must be zero */
 } nros_rmw_qos_t;
 ```
 

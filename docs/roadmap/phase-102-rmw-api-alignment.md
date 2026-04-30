@@ -29,7 +29,7 @@ consumer recompiles. Version bump (102.7) skipped because
   / `CffiServiceServer` / `CffiServiceClient` rewritten with inline
   name buffers + `make_view()` move-safe FFI dispatch)
 * 102.5 — `60fbb3e2` (Rust accessors `topic_name()` / `type_name()` /
-  `qos()` / `loan_caps()` on every Cffi* type;
+  `qos()` / `can_loan_messages()` on every Cffi* type;
   `tests::typed_struct_roundtrip` end-to-end test passes)
 * 102.6 — `81148a00` (book + Doxygen for 102.1–102.2) + `b3a76a8e`
   (book + Doxygen for 102.3–102.5)
@@ -113,21 +113,20 @@ typedef struct nros_rmw_qos_t {
     uint16_t _pad2;
 } nros_rmw_qos_t;
 
-/* See `<nros/rmw_entity.h>` post-cleanup: `uint8_t bits;` + named
- * macros (NROS_RMW_LOAN_SUPPORTED). C bitfield syntax was an early
- * draft; replaced because bitfield ordering is implementation-defined
- * across compilers. Phase 103 was cancelled, so the previously-
- * reserved `supports_typed_loan` bit was never needed. */
-typedef struct nros_rmw_loan_caps_t {
-    uint8_t bits;
-} nros_rmw_loan_caps_t;
+/* Phase 103 was cancelled; the lending capability collapsed to a
+ * single bool matching upstream's `rmw_publisher_t::can_loan_messages`.
+ * Earlier drafts had a `nros_rmw_loan_caps_t` bitfield struct;
+ * dropped because (a) Phase 103 going away meant only one bit was
+ * ever needed and (b) C-bitfield ordering is implementation-defined.
+ * Final shape uses upstream's idiomatic `bool can_loan_messages`. */
 
 typedef struct nros_rmw_publisher_t {
-    const char           *topic_name;       /* not owned; caller storage */
-    const char           *type_name;        /* not owned */
-    nros_rmw_qos_t        qos;
-    nros_rmw_loan_caps_t  loan_caps;
-    void                 *backend_data;     /* opaque */
+    const char    *topic_name;          /* not owned; caller storage */
+    const char    *type_name;           /* not owned */
+    nros_rmw_qos_t qos;
+    bool           can_loan_messages;
+    uint8_t        _reserved[7];        /* forward-compat; must be zero */
+    void          *backend_data;        /* opaque */
 } nros_rmw_publisher_t;
 
 /* Same shape for nros_rmw_subscriber_t / nros_rmw_service_*_t /
@@ -210,10 +209,10 @@ Net: skip.
       every backend's create-entity path.
 
 - [x] **102.5 — Runtime-side reads of `topic_name` / `qos` /
-      `loan_caps` go through the visible struct, not vtable
+      `can_loan_messages` go through the visible struct, not vtable
       callbacks.** Removes the `get_topic_name` callback (now a
       plain field read). Removes the runtime probe for lending
-      capability (now `pub->loan_caps.supports_cdr_loan`).
+      capability (now `pub->can_loan_messages`).
       **Files:** `packages/core/nros-node/src/`.
 
 - [x] **102.6 — Update Doxygen mainpages + book.**
@@ -261,8 +260,10 @@ Net: skip.
   Rust side gets the new error variants but the trait shape is
   unchanged.
 - **Phase 103 was cancelled** (superseded by Phase 99 + 99.L). The
-  earlier `supports_typed_loan` reserved bit on `loan_caps` was
-  removed. `loan_caps` collapses to a single `LOAN_SUPPORTED` bit
+  earlier `loan_caps` bitfield was removed entirely; final shape
+  uses `bool can_loan_messages` directly on the entity, matching
+  upstream `rmw_publisher_t::can_loan_messages`. The single
+  Phase-99 capability bit
   with bits 1..7 reserved. The C-bitfield syntax used in early
   drafts was replaced with `uint8_t bits;` + named macros for
   cross-compiler ABI safety.

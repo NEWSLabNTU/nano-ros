@@ -269,7 +269,8 @@ static nros_rmw_ret_t my_create_publisher(
         nros_rmw_publisher_t *out) {
     /* Runtime has already filled out->topic_name / type_name / qos.
      * Backend writes out->backend_data with its publisher handle and
-     * may set out->loan_caps to advertise lending support. */
+     * may set out->can_loan_messages = true to advertise the
+     * loan_publish / commit_publish primitive. */
 }
 static void           my_destroy_publisher(nros_rmw_publisher_t *publisher) { /* ... */ }
 static nros_rmw_ret_t my_publish_raw(nros_rmw_publisher_t *publisher,
