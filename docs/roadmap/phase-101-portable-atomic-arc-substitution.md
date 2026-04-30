@@ -209,11 +209,29 @@ build-time seconds).
       `cargo build -p nros-rmw-dds --no-default-features --features
       std,platform-posix,ros-humble` also still works.
 
-- [ ] **101.5 — Wire ESP32-QEMU board crate to enable the feature.**
-      `nros-board-esp32-qemu` `dds-heap` feature also forwards
-      `nros/rmw-dds-portable-atomic`. Verify `cargo build -p
-      esp32-qemu-dds-talker --release` succeeds.
-      **Files:** `packages/boards/nros-board-esp32-qemu/Cargo.toml`,
+- [x] **101.5 — Wire ESP32-QEMU example crates to enable the feature.**
+      Done — `nros = [..., "rmw-dds-portable-atomic"]` added to both
+      `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/Cargo.toml`.
+      Also dropped `global-allocator` from the same Cargo's
+      `nros-platform = [...]` features — `esp-alloc` (pulled
+      transitively via `esp-hal`) already provides
+      `#[global_allocator]`, and enabling both produces a
+      `the #[global_allocator] in nros_platform conflicts with
+      global allocator in: esp_alloc` link error.
+
+      **Decision:** the board crate's `dds-heap` feature stays as a
+      pure heap-budget knob (forwards
+      `nros-platform-esp32-qemu/dds-heap` only). Forwarding
+      `nros/rmw-dds-portable-atomic` from the board crate would
+      require the board to depend on the `nros` umbrella, which it
+      currently doesn't (and shouldn't — the board is consumed by
+      `nros`, not the other way round). Letting the example set the
+      feature directly keeps the dependency graph one-way.
+
+      Verified: both `cargo build -p esp32-qemu-dds-talker --release`
+      and `cargo build -p esp32-qemu-dds-listener --release` build
+      clean for `riscv32imc-unknown-none-elf`.
+      **Files:**
       `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/Cargo.toml`.
 
 - [ ] **101.6 — Push fork branch + bump submodule pointer.**

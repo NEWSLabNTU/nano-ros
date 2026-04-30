@@ -733,7 +733,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "esp32-qemu-dds-talker"
+name = "esp32-qemu-dds-listener"
 version = "0.1.0"
 dependencies = [
  "esp-backtrace",
