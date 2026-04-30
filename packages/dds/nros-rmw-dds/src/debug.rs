@@ -58,8 +58,8 @@ macro_rules! dbg_log {
     };
 }
 
-#[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
-extern crate std;
+// `extern crate std` for the `debug-stderr` arm lives at lib.rs so
+// the macro's `std::println!` resolves at every call site.
 
 #[cfg(all(feature = "debug-stderr", not(feature = "debug-cortex-m-semihosting")))]
 #[macro_export]
@@ -67,7 +67,7 @@ macro_rules! dbg_log {
     ($($arg:tt)*) => {
         // Despite the feature name, route through stdout so test
         // harnesses that drain only `child.stdout` see these traces.
-        std::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
+        ::std::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
     };
 }
 

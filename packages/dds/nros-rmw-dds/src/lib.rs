@@ -30,6 +30,15 @@ pub(crate) mod sync {
     pub use dust_dds::sync::Weak;
 }
 
+// Make `std` resolvable at every call site of the `dbg_log!` macro
+// (debug-stderr arm uses `std::println!`).  With `#[macro_export]`
+// the macro is hygienic for variables but paths resolve at the call
+// site — gating `extern crate std` inside `debug.rs` only made `std`
+// visible in that module, which broke `dbg_log!` invocations from
+// `transport_nros.rs` etc. when `feature = "std"` itself is off.
+#[cfg(all(feature = "debug-stderr", not(feature = "std")))]
+extern crate std;
+
 #[cfg(feature = "alloc")]
 #[macro_use]
 mod debug;
