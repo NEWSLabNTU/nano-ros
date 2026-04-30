@@ -140,9 +140,26 @@ build-time seconds).
 
 ## Work Items
 
-- [ ] **101.1 — Audit `Arc`/`Weak` use sites in dust-dds.**
-      Confirm none cross FFI / `extern "C"` boundaries. Document the audit
-      result in this phase doc before touching code.
+- [x] **101.1 — Audit `Arc`/`Weak` use sites in dust-dds.**
+      **Result:** safe to substitute. 17 dust-dds source files import
+      `alloc::sync::{Arc, Weak}` across ~82 reference sites. Zero
+      `extern "C"`, `#[repr(C)]`, or `#[no_mangle]` crossings — every
+      `Arc` lives entirely inside Rust code. Two Rust trait-boundary
+      sites surface `Arc<[u8]>` to consumers and need the consumer to
+      pick the same `Arc` flavour:
+      * `transport/interface.rs:26` —
+        `MpscSender<Arc<[u8]>>` parameter on
+        `TransportParticipantFactory::create_participant`.
+      * `transport/types.rs:348` — `pub data_value: Arc<[u8]>` on
+        `CacheChange`.
+      Both consumed by `nros-rmw-dds` (15+ `use alloc::sync::Arc`
+      sites — `runtime.rs`, `transport_nros.rs`, `session.rs`,
+      `publisher.rs`, `subscriber.rs`, `waker_cell.rs`). Construction
+      sites: `transport_nros.rs:403,433` (`sender.send(Arc::from(...))`).
+      Plan: re-export pattern (Option B) inside dust-dds's `lib.rs`,
+      then have `nros-rmw-dds` import via `dust_dds::Arc` when the
+      `portable-atomic` feature is on. ABI-incompatible flavours never
+      meet because the boundary type is owned by dust-dds.
       **Files:** `packages/dds/dust-dds/dds/src/**/*.rs` (read-only audit).
 
 - [ ] **101.2 — Replace `regex` with hand-rolled fnmatch in dust-dds.**
