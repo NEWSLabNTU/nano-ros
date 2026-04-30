@@ -61,6 +61,12 @@ unsafe extern "C" {
     /// Read Zephyr's per-thread `errno` value. Phase 92.5 diagnostic.
     pub fn nros_zephyr_errno() -> i32;
 
+    /// Phase 97.4.zephyr-native_sim debug — printk wrappers (Rust
+    /// extern "C" can't call variadic `printk` directly).
+    pub fn nros_zephyr_log(msg: *const u8);
+    pub fn nros_zephyr_log_int(tag: *const u8, v: i64);
+    pub fn nros_zephyr_log_2int(tag: *const u8, a: i64, b: i64);
+
     // ---- POSIX: threads ----
 
     pub fn pthread_create(

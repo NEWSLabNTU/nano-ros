@@ -6,6 +6,13 @@ license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for Zephyr RTOS (calls Zephyr + POSIX APIs via FFI)"
 
+[features]
+default = []
+# Phase 97.4.zephyr-native_sim — printk-traced mcast_read calls in
+# `net::ZephyrPlatform::mcast_read`. Off by default; enabled via the
+# example crate when investigating NSOS RX delivery gaps.
+debug-mcast-read = []
+
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Other Zephyr APIs are extern "C", resolved at link time by Zephyr's build

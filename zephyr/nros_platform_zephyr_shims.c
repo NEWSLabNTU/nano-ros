@@ -206,3 +206,21 @@ void nros_platform_sleep_ns(uint64_t ns) {
         k_sleep(K_NSEC(ns));
     }
 }
+
+/* ── Phase 97.4.zephyr-native_sim debug printk shims ─────────────────
+ *
+ * Rust extern "C" can't directly call variadic `printk`. Provide
+ * non-variadic wrappers per shape. Always exported; Rust call sites
+ * are cfg-gated behind feature flags.
+ */
+void nros_zephyr_log(const char* msg) {
+    printk("[nros] %s\n", msg);
+}
+
+void nros_zephyr_log_int(const char* tag, int64_t v) {
+    printk("[nros] %s=%lld\n", tag, (long long)v);
+}
+
+void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
+    printk("[nros] %s=%lld,%lld\n", tag, (long long)a, (long long)b);
+}

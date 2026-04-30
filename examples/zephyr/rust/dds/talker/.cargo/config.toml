@@ -6,8 +6,12 @@
 #   - `nros-platform-zephyr`'s `set_multicast_if_from_local_ipv4`
 #     (sets `IP_MULTICAST_IF` on send + listen sockets).
 [env]
-NROS_LOCAL_IPV4 = "127.0.0.1"
-NROS_LOCAL_IPV4_BYTES = "127,0,0,1"
+# Distinct per-example IPs in 127.0.0.0/8 so the two sibling
+# `native_sim` processes derive different RTPS GUID prefixes
+# (dust-dds otherwise self-filters SPDP from a peer with the same
+# host_id+app_id).
+NROS_LOCAL_IPV4 = "127.0.0.10"
+NROS_LOCAL_IPV4_BYTES = "127,0,0,10"
 
 [patch.crates-io]
 nros = { path = "../../../../../packages/core/nros" }

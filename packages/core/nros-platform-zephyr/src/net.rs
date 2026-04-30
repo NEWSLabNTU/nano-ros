@@ -538,16 +538,14 @@ impl ZephyrPlatform {
         }
         unsafe { (*sock)._fd = fd };
 
-        let one: core::ffi::c_int = 1;
-        unsafe {
-            c::setsockopt(
-                fd,
-                c::SOL_SOCKET,
-                c::SO_REUSEADDR,
-                &one as *const _ as *const c_void,
-                core::mem::size_of::<core::ffi::c_int>() as socklen_t,
-            );
-        }
+        // Phase 97.4.zephyr-native_sim — do NOT set `SO_REUSEADDR`
+        // on the unicast path. Two co-resident `native_sim` processes
+        // would otherwise both succeed at `bind(0.0.0.0:7411)` (with
+        // SO_REUSEADDR Linux delivers each datagram to a single
+        // socket round-robin) and the auto-pid loop in
+        // `nros-rmw-dds::transport_nros::create_participant` would
+        // never fire. Multicast bind keeps SO_REUSEADDR via the
+        // dedicated `mcast_listen` path so SPDP joins still succeed.
 
         let tv = timeval {
             tv_sec: (timeout_ms / 1000) as i64,
@@ -595,6 +593,14 @@ impl ZephyrPlatform {
                 &mut addrlen,
             )
         };
+        #[cfg(feature = "debug-mcast-read")]
+        unsafe {
+            crate::ffi::nros_zephyr_log_2int(
+                b"udp_read fd,n\0".as_ptr(),
+                sock._fd as i64,
+                ret as i64,
+            );
+        }
         if ret < 0 { usize::MAX } else { ret as usize }
     }
 
@@ -985,6 +991,17 @@ impl ZephyrPlatform {
                 &mut sender_len,
             )
         };
+        // Phase 97.4.zephyr-native_sim debug — log every mcast_read
+        // outcome so we can tell whether NSOS ever delivers a frame
+        // into the cooperative recv loop. Off when feature is off.
+        #[cfg(feature = "debug-mcast-read")]
+        unsafe {
+            crate::ffi::nros_zephyr_log_2int(
+                b"mcast_read fd,n\0".as_ptr(),
+                sock._fd as i64,
+                n as i64,
+            );
+        }
         if n <= 0 {
             return usize::MAX;
         }

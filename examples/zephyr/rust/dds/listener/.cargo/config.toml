@@ -1,7 +1,7 @@
 # Phase 97.4.zephyr-native_sim — see talker .cargo/config.toml comment.
 [env]
-NROS_LOCAL_IPV4 = "127.0.0.1"
-NROS_LOCAL_IPV4_BYTES = "127,0,0,1"
+NROS_LOCAL_IPV4 = "127.0.0.20"
+NROS_LOCAL_IPV4_BYTES = "127,0,0,20"
 
 [patch.crates-io]
 nros = { path = "../../../../../packages/core/nros" }

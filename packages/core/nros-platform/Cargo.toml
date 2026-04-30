@@ -53,6 +53,11 @@ critical-section = [
     "nros-platform-mps2-an385?/critical-section",
 ]
 
+# Phase 97.4.zephyr-native_sim — printk-traced mcast_read in
+# `nros-platform-zephyr`. Off by default; flip on per-example to
+# debug NSOS RX delivery on `native_sim`.
+debug-mcast-read-zephyr = ["nros-platform-zephyr?/debug-mcast-read"]
+
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.

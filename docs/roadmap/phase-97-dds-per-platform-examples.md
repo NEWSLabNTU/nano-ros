@@ -10,11 +10,11 @@ open. Each per-platform slice is a from-scratch board bring-up
 exercise — too big to fit alongside Phase 71's infrastructure, hence
 splitting it out.
 
-**Status**: In Progress — 5 of 7 97.4 slices green
-(`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`, `baremetal`);
-exceeds the "≥3 of 7" acceptance threshold. Remaining:
-`zephyr-native_sim` (blocked upstream NSOS), `esp32-qemu` (depends
-on Phase 97.3.esp32-qemu bare-metal smoltcp DDS port).
+**Status**: In Progress — 6 of 7 97.4 slices green
+(`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`, `baremetal`,
+`zephyr-native_sim`); exceeds the "≥3 of 7" acceptance threshold.
+Only `esp32-qemu` remaining (depends on Phase 97.3.esp32-qemu
+bare-metal smoltcp DDS port).
 
 **Priority**: Medium. Native + Zephyr (`qemu_cortex_a9`) DDS already
 ship and cover the user-visible surface. Each remaining per-platform
@@ -256,44 +256,50 @@ Talker + listener + nros-tests fixture. Each slice depends on the
 matching 97.1 prerequisites and (for bare-metal) 97.2.baremetal /
 97.2.esp32-qemu.
 
-- [~] **97.4.zephyr-native_sim** — upstream NSOS patch landed +
-      verified end-to-end:
+- [x] **97.4.zephyr-native_sim** — two-instance same-host DDS pubsub
+      E2E green: ~2985 / 2997 messages received in a 15 s window.
       - `scripts/zephyr/native-sim-ipproto-ip-patch.sh` patches
         Zephyr's `drivers/net/nsos_*.[ch]` to forward `IPPROTO_IP`
         setsockopt (`IP_ADD_MEMBERSHIP`, `IP_DROP_MEMBERSHIP`,
-        `IP_MULTICAST_TTL`) to the host kernel. Verified against
-        Zephyr v3.7.0 + main (file shape identical).
+        `IP_MULTICAST_TTL`, `IP_MULTICAST_IF`) to the host kernel.
+        Verified against Zephyr v3.7.0 + main (file shape identical).
       - `nsos_sockets.c` guest path translates Zephyr's
         `struct ip_mreqn` (12 bytes — only IPv4 mreq form Zephyr
         exposes) into the wire-format `nsos_mid_ip_mreq` (8 bytes,
         host-side `struct ip_mreq`-shaped).
-      - `west build -b native_sim/native/64
-        examples/zephyr/rust/dds/talker` succeeds against the
-        patched workspace; `zephyr.exe` boots and reaches
-        `Published: <N>` steady state. Same for `listener`.
-      - Host-level verification: `ip maddr show enp7s0` shows
-        `inet 239.255.0.1` after the listener joins — proof that
-        `setsockopt(IP_ADD_MEMBERSHIP)` now reaches the host kernel
-        (was `EOPNOTSUPP` before the patch).
       - Patch wired into `just zephyr build-fixtures` alongside
         `cortex-a9-rust-patch.sh`.
+      - Suggested upstream PR target: `zephyrproject-rtos/zephyr` main.
 
-      Two-instance same-host smoke is **not** yet green. Verified
-      via host-side `socat -u UDP4-RECV:7400,reuseaddr,
-      ip-add-membership=239.255.0.1:0.0.0.0` capture: talker emits
-      ~17 KB of RTPS frames over the host kernel mcast group within
-      a 10 s window. Listener's NSOS-bound UDP socket joins the
-      group cleanly (`ip maddr show enp7s0` confirms `inet 239.255.0.1`)
-      but never delivers received frames into the cooperative recv
-      loop. Open suspect: NSOS adapter's epoll-based pump on the
-      host-side socket isn't triggering for received mcast
-      datagrams, or there's a guest-side delivery path issue between
-      the NSOS midplane and `mcast_recv_loop`. Patch script also
-      handles `IP_MULTICAST_IF` (Linux raw value 32) for the
-      eventual `lo`-pinning follow-up. Orthogonal to the IPPROTO_IP
-      patch this commit lands.
+      Two follow-up bugs in `nros-platform-zephyr` surfaced during
+      cross-instance E2E and landed alongside the patch:
 
-      Suggested upstream PR target: `zephyrproject-rtos/zephyr` main.
+      1. **`udp_listen` set `SO_REUSEADDR=1`** before bind, so two
+         co-resident `native_sim` processes both succeeded at
+         `bind(0.0.0.0:7411)`. Linux delivered each datagram to one
+         socket round-robin; the auto-pid loop in
+         `nros-rmw-dds::transport_nros::create_participant` never
+         fired because bind always succeeded. Fix: drop
+         `SO_REUSEADDR` on the unicast bind path. Multicast
+         `mcast_listen` keeps it for the SPDP join. Diagnosed via a
+         new `nros-platform-zephyr/debug-mcast-read` Cargo feature
+         that wires `printk` traces around `mcast_read` and
+         `udp_read`; `ss -uan | grep 741[0-9]` then surfaced two
+         sockets bound to the same `0.0.0.0:7411`.
+
+      2. **Identical RTPS GUID prefixes** — both processes computed
+         `host_id = LOCAL_IPV4 = [127,0,0,1]` and `app_id = [0;4]`,
+         so dust-dds self-filtered each peer's SPDP. Fix: distinct
+         `NROS_LOCAL_IPV4` per example (`127.0.0.10` for talker,
+         `127.0.0.20` for listener); both addresses still route via
+         `lo` since Linux treats all of `127.0.0.0/8` as loopback,
+         but the GUID prefix bytes now differ. Set in each
+         example's `.cargo/config.toml`.
+
+      Diagnostic shims in `zephyr/nros_platform_zephyr_shims.c`
+      (`nros_zephyr_log` / `_log_int` / `_log_2int` — non-variadic
+      `printk` wrappers callable from no_std Rust) ship with this
+      slice for the next bring-up that needs guest-side trace.
 - [x] **97.4.freertos** — qemu-arm-freertos talker↔listener.
       `test_freertos_dds_rust_talker_to_listener_e2e` passes
       end-to-end (~83 s) on QEMU MPS2-AN385 + lwIP. Path:
