@@ -269,110 +269,103 @@ impl From<QosSettings> for NrosRmwQos {
 // Vtable type (mirrors C header)
 // ============================================================================
 
-/// Opaque handle passed through the C vtable.
+/// Legacy void-pointer alias. Public function-pointer signatures use
+/// the typed entity structs from Phase 102.3; this alias is retained
+/// for backends that round-trip opaque state through `backend_data`.
 pub type CffiHandle = *mut c_void;
-
-/// QoS settings in C-compatible layout.
-#[repr(C)]
-pub struct CffiQos {
-    pub reliability: u8,
-    pub durability: u8,
-    pub history: u8,
-    pub depth: u32,
-}
-
-impl From<QosSettings> for CffiQos {
-    fn from(qos: QosSettings) -> Self {
-        Self {
-            reliability: match qos.reliability {
-                QosReliabilityPolicy::BestEffort => 0,
-                QosReliabilityPolicy::Reliable => 1,
-            },
-            durability: match qos.durability {
-                QosDurabilityPolicy::Volatile => 0,
-                QosDurabilityPolicy::TransientLocal => 1,
-            },
-            history: match qos.history {
-                QosHistoryPolicy::KeepLast => 0,
-                QosHistoryPolicy::KeepAll => 1,
-            },
-            depth: qos.depth,
-        }
-    }
-}
 
 /// C function table for an RMW backend.
 ///
-/// This struct mirrors `nros_rmw_vtable_t` from the C header.
+/// Mirrors `nros_rmw_vtable_t` from `<nros/rmw_vtable.h>`. Phase 102.4
+/// signatures: every entity entry point takes a typed-struct pointer
+/// instead of `void *`; every status-only return is `nros_rmw_ret_t`
+/// (typedef of `i32`); byte-count returns stay `i32` (positive bytes,
+/// negative `nros_rmw_ret_t`).
 #[repr(C)]
 pub struct NrosRmwVtable {
-    // Session lifecycle
+    // ---- Session lifecycle ----
     pub open: unsafe extern "C" fn(
         locator: *const u8,
         mode: u8,
         domain_id: u32,
         node_name: *const u8,
-    ) -> CffiHandle,
-    pub close: unsafe extern "C" fn(session: CffiHandle) -> i32,
-    pub drive_io: unsafe extern "C" fn(session: CffiHandle, timeout_ms: i32) -> i32,
+        out: *mut NrosRmwSession,
+    ) -> NrosRmwRet,
+    pub close: unsafe extern "C" fn(session: *mut NrosRmwSession) -> NrosRmwRet,
+    pub drive_io:
+        unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet,
 
-    // Publisher
+    // ---- Publisher ----
     pub create_publisher: unsafe extern "C" fn(
-        session: CffiHandle,
+        session: *mut NrosRmwSession,
         topic_name: *const u8,
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
-        qos: *const CffiQos,
-    ) -> CffiHandle,
-    pub destroy_publisher: unsafe extern "C" fn(publisher: CffiHandle),
-    pub publish_raw:
-        unsafe extern "C" fn(publisher: CffiHandle, data: *const u8, len: usize) -> i32,
+        qos: *const NrosRmwQos,
+        out: *mut NrosRmwPublisher,
+    ) -> NrosRmwRet,
+    pub destroy_publisher: unsafe extern "C" fn(publisher: *mut NrosRmwPublisher),
+    pub publish_raw: unsafe extern "C" fn(
+        publisher: *mut NrosRmwPublisher,
+        data: *const u8,
+        len: usize,
+    ) -> NrosRmwRet,
 
-    // Subscriber
+    // ---- Subscriber ----
     pub create_subscriber: unsafe extern "C" fn(
-        session: CffiHandle,
+        session: *mut NrosRmwSession,
         topic_name: *const u8,
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
-        qos: *const CffiQos,
-    ) -> CffiHandle,
-    pub destroy_subscriber: unsafe extern "C" fn(subscriber: CffiHandle),
-    pub try_recv_raw:
-        unsafe extern "C" fn(subscriber: CffiHandle, buf: *mut u8, buf_len: usize) -> i32,
-    pub has_data: unsafe extern "C" fn(subscriber: CffiHandle) -> i32,
+        qos: *const NrosRmwQos,
+        out: *mut NrosRmwSubscriber,
+    ) -> NrosRmwRet,
+    pub destroy_subscriber: unsafe extern "C" fn(subscriber: *mut NrosRmwSubscriber),
+    pub try_recv_raw: unsafe extern "C" fn(
+        subscriber: *mut NrosRmwSubscriber,
+        buf: *mut u8,
+        buf_len: usize,
+    ) -> i32,
+    pub has_data: unsafe extern "C" fn(subscriber: *mut NrosRmwSubscriber) -> i32,
 
-    // Service Server
+    // ---- Service Server ----
     pub create_service_server: unsafe extern "C" fn(
-        session: CffiHandle,
+        session: *mut NrosRmwSession,
         service_name: *const u8,
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
-    ) -> CffiHandle,
-    pub destroy_service_server: unsafe extern "C" fn(server: CffiHandle),
+        out: *mut NrosRmwServiceServer,
+    ) -> NrosRmwRet,
+    pub destroy_service_server: unsafe extern "C" fn(server: *mut NrosRmwServiceServer),
     pub try_recv_request: unsafe extern "C" fn(
-        server: CffiHandle,
+        server: *mut NrosRmwServiceServer,
         buf: *mut u8,
         buf_len: usize,
         seq_out: *mut i64,
     ) -> i32,
-    pub has_request: unsafe extern "C" fn(server: CffiHandle) -> i32,
-    pub send_reply:
-        unsafe extern "C" fn(server: CffiHandle, seq: i64, data: *const u8, len: usize) -> i32,
+    pub has_request: unsafe extern "C" fn(server: *mut NrosRmwServiceServer) -> i32,
+    pub send_reply: unsafe extern "C" fn(
+        server: *mut NrosRmwServiceServer,
+        seq: i64,
+        data: *const u8,
+        len: usize,
+    ) -> NrosRmwRet,
 
-    // Service Client
+    // ---- Service Client ----
     pub create_service_client: unsafe extern "C" fn(
-        session: CffiHandle,
+        session: *mut NrosRmwSession,
         service_name: *const u8,
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
-    ) -> CffiHandle,
-    pub destroy_service_client: unsafe extern "C" fn(client: CffiHandle),
+        out: *mut NrosRmwServiceClient,
+    ) -> NrosRmwRet,
+    pub destroy_service_client: unsafe extern "C" fn(client: *mut NrosRmwServiceClient),
     pub call_raw: unsafe extern "C" fn(
-        client: CffiHandle,
+        client: *mut NrosRmwServiceClient,
         request: *const u8,
         req_len: usize,
         reply_buf: *mut u8,
@@ -393,9 +386,9 @@ static VTABLE: AtomicPtr<NrosRmwVtable> = AtomicPtr::new(core::ptr::null_mut());
 /// The vtable pointer must remain valid for the lifetime of the program.
 /// All function pointers in the vtable must be valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> i32 {
+pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
     VTABLE.store(vtable as *mut NrosRmwVtable, Ordering::Release);
-    0
+    NROS_RMW_RET_OK
 }
 
 fn get_vtable() -> Result<&'static NrosRmwVtable, TransportError> {
@@ -424,14 +417,48 @@ fn to_c_str<const N: usize>(s: &str, buf: &mut [u8; N]) -> *const u8 {
 // ============================================================================
 // CffiSession
 // ============================================================================
+//
+// Storage discipline:
+// * Each Cffi* struct owns null-terminated name buffers as inline
+//   arrays. The C-side typed entity struct is rebuilt fresh on every
+//   FFI call via `make_*_view`, so move-invalidation of pointers
+//   into the buffer is impossible — the pointer always points to the
+//   *current* address of the buffer, computed at call time.
+// * The backend writes `backend_data` (and optionally `loan_caps`)
+//   into the FFI view; we copy the writes back into the Cffi*
+//   struct's fields after the call.
+// * Strings ARE immutable for the entity's lifetime, so backends that
+//   stash the topic_name pointer for diagnostics see stable storage
+//   *as long as the Cffi* struct is not moved.* The Phase 102.4
+//   contract is "do not move a Cffi* struct after construction" —
+//   nano-ros embeds them inside the executor arena, which doesn't
+//   relocate.
+
+const NAME_BUF_LEN: usize = 256;
+const HASH_BUF_LEN: usize = 128;
 
 /// Session backed by a C vtable.
 pub struct CffiSession {
     vtable: &'static NrosRmwVtable,
-    handle: CffiHandle,
+    /// Borrowed-pointer storage for `node_name`. Outlives the session.
+    node_name_buf: [u8; NAME_BUF_LEN],
+    /// Borrowed-pointer storage for `namespace_`. Empty for now —
+    /// `RmwConfig` does not yet carry a namespace through the cffi
+    /// path; reserved for future use.
+    namespace_buf: [u8; NAME_BUF_LEN],
+    /// Backend-private state, written by `vtable.open`.
+    backend_data: *mut c_void,
 }
 
 impl CffiSession {
+    fn make_view(&mut self) -> NrosRmwSession {
+        NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr(),
+            namespace_: self.namespace_buf.as_ptr(),
+            backend_data: self.backend_data,
+        }
+    }
+
     /// Open a new session via the registered vtable.
     pub fn open(
         locator: &str,
@@ -440,16 +467,33 @@ impl CffiSession {
         node_name: &str,
     ) -> Result<Self, TransportError> {
         let vtable = get_vtable()?;
-        let mut loc_buf = [0u8; 256];
+        let mut loc_buf = [0u8; NAME_BUF_LEN];
         let loc_ptr = to_c_str(locator, &mut loc_buf);
-        let mut name_buf = [0u8; 128];
-        let name_ptr = to_c_str(node_name, &mut name_buf);
 
-        let handle = unsafe { (vtable.open)(loc_ptr, mode, domain_id, name_ptr) };
-        if handle.is_null() {
+        let mut session = Self {
+            vtable,
+            node_name_buf: [0u8; NAME_BUF_LEN],
+            namespace_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::null_mut(),
+        };
+        let _ = to_c_str(node_name, &mut session.node_name_buf);
+
+        let mut view = NrosRmwSession {
+            node_name: session.node_name_buf.as_ptr(),
+            namespace_: session.namespace_buf.as_ptr(),
+            backend_data: core::ptr::null_mut(),
+        };
+        let ret = unsafe {
+            (vtable.open)(loc_ptr, mode, domain_id, session.node_name_buf.as_ptr(), &mut view)
+        };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if view.backend_data.is_null() {
             return Err(TransportError::ConnectionFailed);
         }
-        Ok(Self { vtable, handle })
+        session.backend_data = view.backend_data;
+        Ok(session)
     }
 }
 
@@ -465,31 +509,49 @@ impl Session for CffiSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<CffiPublisher, TransportError> {
-        let mut name_buf = [0u8; 256];
-        let name_ptr = to_c_str(topic.name, &mut name_buf);
-        let mut type_buf = [0u8; 256];
-        let type_ptr = to_c_str(topic.type_name, &mut type_buf);
-        let mut hash_buf = [0u8; 128];
+        let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
-        let cffi_qos = CffiQos::from(qos);
+        let qos_struct = NrosRmwQos::from(qos);
 
-        let handle = unsafe {
+        let mut pub_state = CffiPublisher {
+            vtable: self.vtable,
+            topic_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            qos: qos_struct,
+            loan_caps: NrosRmwLoanCaps::default(),
+            backend_data: core::ptr::null_mut(),
+        };
+        let topic_ptr = to_c_str(topic.name, &mut pub_state.topic_name_buf);
+        let type_ptr = to_c_str(topic.type_name, &mut pub_state.type_name_buf);
+
+        let mut view = NrosRmwPublisher {
+            topic_name: topic_ptr,
+            type_name: type_ptr,
+            qos: qos_struct,
+            loan_caps: NrosRmwLoanCaps::default(),
+            backend_data: core::ptr::null_mut(),
+        };
+        let mut session_view = self.make_view();
+        let ret = unsafe {
             (self.vtable.create_publisher)(
-                self.handle,
-                name_ptr,
+                &mut session_view,
+                topic_ptr,
                 type_ptr,
                 hash_ptr,
                 topic.domain_id,
-                &cffi_qos,
+                &qos_struct,
+                &mut view,
             )
         };
-        if handle.is_null() {
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if view.backend_data.is_null() {
             return Err(TransportError::PublisherCreationFailed);
         }
-        Ok(CffiPublisher {
-            vtable: self.vtable,
-            handle,
-        })
+        pub_state.backend_data = view.backend_data;
+        pub_state.loan_caps = view.loan_caps;
+        Ok(pub_state)
     }
 
     fn create_subscriber(
@@ -497,106 +559,155 @@ impl Session for CffiSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<CffiSubscriber, TransportError> {
-        let mut name_buf = [0u8; 256];
-        let name_ptr = to_c_str(topic.name, &mut name_buf);
-        let mut type_buf = [0u8; 256];
-        let type_ptr = to_c_str(topic.type_name, &mut type_buf);
-        let mut hash_buf = [0u8; 128];
+        let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
-        let cffi_qos = CffiQos::from(qos);
+        let qos_struct = NrosRmwQos::from(qos);
 
-        let handle = unsafe {
+        let mut sub_state = CffiSubscriber {
+            vtable: self.vtable,
+            topic_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            qos: qos_struct,
+            loan_caps: NrosRmwLoanCaps::default(),
+            backend_data: core::ptr::null_mut(),
+        };
+        let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
+        let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
+
+        let mut view = NrosRmwSubscriber {
+            topic_name: topic_ptr,
+            type_name: type_ptr,
+            qos: qos_struct,
+            loan_caps: NrosRmwLoanCaps::default(),
+            backend_data: core::ptr::null_mut(),
+        };
+        let mut session_view = self.make_view();
+        let ret = unsafe {
             (self.vtable.create_subscriber)(
-                self.handle,
-                name_ptr,
+                &mut session_view,
+                topic_ptr,
                 type_ptr,
                 hash_ptr,
                 topic.domain_id,
-                &cffi_qos,
+                &qos_struct,
+                &mut view,
             )
         };
-        if handle.is_null() {
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if view.backend_data.is_null() {
             return Err(TransportError::SubscriberCreationFailed);
         }
-        Ok(CffiSubscriber {
-            vtable: self.vtable,
-            handle,
-        })
+        sub_state.backend_data = view.backend_data;
+        sub_state.loan_caps = view.loan_caps;
+        Ok(sub_state)
     }
 
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<CffiServiceServer, TransportError> {
-        let mut name_buf = [0u8; 256];
-        let name_ptr = to_c_str(service.name, &mut name_buf);
-        let mut type_buf = [0u8; 256];
-        let type_ptr = to_c_str(service.type_name, &mut type_buf);
-        let mut hash_buf = [0u8; 128];
+        let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
-        let handle = unsafe {
+        let mut srv_state = CffiServiceServer {
+            vtable: self.vtable,
+            service_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::null_mut(),
+        };
+        let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
+        let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
+
+        let mut view = NrosRmwServiceServer {
+            service_name: svc_ptr,
+            type_name: type_ptr,
+            backend_data: core::ptr::null_mut(),
+        };
+        let mut session_view = self.make_view();
+        let ret = unsafe {
             (self.vtable.create_service_server)(
-                self.handle,
-                name_ptr,
+                &mut session_view,
+                svc_ptr,
                 type_ptr,
                 hash_ptr,
                 service.domain_id,
+                &mut view,
             )
         };
-        if handle.is_null() {
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if view.backend_data.is_null() {
             return Err(TransportError::ServiceServerCreationFailed);
         }
-        Ok(CffiServiceServer {
-            vtable: self.vtable,
-            handle,
-        })
+        srv_state.backend_data = view.backend_data;
+        Ok(srv_state)
     }
 
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<CffiServiceClient, TransportError> {
-        let mut name_buf = [0u8; 256];
-        let name_ptr = to_c_str(service.name, &mut name_buf);
-        let mut type_buf = [0u8; 256];
-        let type_ptr = to_c_str(service.type_name, &mut type_buf);
-        let mut hash_buf = [0u8; 128];
+        let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
-        let handle = unsafe {
+        let mut cli_state = CffiServiceClient {
+            vtable: self.vtable,
+            service_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::null_mut(),
+            pending_request: [0u8; 4096],
+            pending_len: 0,
+        };
+        let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
+        let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
+
+        let mut view = NrosRmwServiceClient {
+            service_name: svc_ptr,
+            type_name: type_ptr,
+            backend_data: core::ptr::null_mut(),
+        };
+        let mut session_view = self.make_view();
+        let ret = unsafe {
             (self.vtable.create_service_client)(
-                self.handle,
-                name_ptr,
+                &mut session_view,
+                svc_ptr,
                 type_ptr,
                 hash_ptr,
                 service.domain_id,
+                &mut view,
             )
         };
-        if handle.is_null() {
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if view.backend_data.is_null() {
             return Err(TransportError::ServiceClientCreationFailed);
         }
-        Ok(CffiServiceClient {
-            vtable: self.vtable,
-            handle,
-            pending_request: [0u8; 4096],
-            pending_len: 0,
-        })
+        cli_state.backend_data = view.backend_data;
+        Ok(cli_state)
     }
 
     fn close(&mut self) -> Result<(), TransportError> {
-        let rc = unsafe { (self.vtable.close)(self.handle) };
-        if rc < 0 {
-            return Err(TransportError::Disconnected);
+        if self.backend_data.is_null() {
+            return Ok(());
         }
-        self.handle = core::ptr::null_mut();
+        let mut view = self.make_view();
+        let ret = unsafe { (self.vtable.close)(&mut view) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        self.backend_data = core::ptr::null_mut();
         Ok(())
     }
 
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
-        let rc = unsafe { (self.vtable.drive_io)(self.handle, timeout_ms) };
-        if rc < 0 {
-            return Err(TransportError::PollFailed);
+        let mut view = self.make_view();
+        let ret = unsafe { (self.vtable.drive_io)(&mut view, timeout_ms) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
         }
         Ok(())
     }
@@ -604,8 +715,9 @@ impl Session for CffiSession {
 
 impl Drop for CffiSession {
     fn drop(&mut self) {
-        if !self.handle.is_null() {
-            unsafe { (self.vtable.close)(self.handle) };
+        if !self.backend_data.is_null() {
+            let mut view = self.make_view();
+            unsafe { (self.vtable.close)(&mut view) };
         }
     }
 }
@@ -617,16 +729,39 @@ impl Drop for CffiSession {
 /// Publisher backed by a C vtable.
 pub struct CffiPublisher {
     vtable: &'static NrosRmwVtable,
-    handle: CffiHandle,
+    topic_name_buf: [u8; NAME_BUF_LEN],
+    type_name_buf: [u8; NAME_BUF_LEN],
+    qos: NrosRmwQos,
+    loan_caps: NrosRmwLoanCaps,
+    backend_data: *mut c_void,
+}
+
+impl CffiPublisher {
+    fn make_view(&mut self) -> NrosRmwPublisher {
+        NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            loan_caps: self.loan_caps,
+            backend_data: self.backend_data,
+        }
+    }
 }
 
 impl Publisher for CffiPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
-        let rc = unsafe { (self.vtable.publish_raw)(self.handle, data.as_ptr(), data.len()) };
-        if rc < 0 {
-            return Err(TransportError::PublishFailed);
+        let mut view = NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            loan_caps: self.loan_caps,
+            backend_data: self.backend_data,
+        };
+        let ret = unsafe { (self.vtable.publish_raw)(&mut view, data.as_ptr(), data.len()) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
         }
         Ok(())
     }
@@ -642,7 +777,10 @@ impl Publisher for CffiPublisher {
 
 impl Drop for CffiPublisher {
     fn drop(&mut self) {
-        unsafe { (self.vtable.destroy_publisher)(self.handle) };
+        if !self.backend_data.is_null() {
+            let mut view = self.make_view();
+            unsafe { (self.vtable.destroy_publisher)(&mut view) };
+        }
     }
 }
 
@@ -653,21 +791,43 @@ impl Drop for CffiPublisher {
 /// Subscriber backed by a C vtable.
 pub struct CffiSubscriber {
     vtable: &'static NrosRmwVtable,
-    handle: CffiHandle,
+    topic_name_buf: [u8; NAME_BUF_LEN],
+    type_name_buf: [u8; NAME_BUF_LEN],
+    qos: NrosRmwQos,
+    loan_caps: NrosRmwLoanCaps,
+    backend_data: *mut c_void,
+}
+
+impl CffiSubscriber {
+    fn make_view(&mut self) -> NrosRmwSubscriber {
+        NrosRmwSubscriber {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            loan_caps: self.loan_caps,
+            backend_data: self.backend_data,
+        }
+    }
 }
 
 impl nros_rmw::Subscriber for CffiSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
-        let rc = unsafe { (self.vtable.has_data)(self.handle) };
+        // has_data takes &mut to match the C signature; cast away const
+        // because the predicate is logically read-only — backends must
+        // not mutate state from has_data.
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let rc = unsafe { (self.vtable.has_data)(&mut view) };
         rc > 0
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        let rc = unsafe { (self.vtable.try_recv_raw)(self.handle, buf.as_mut_ptr(), buf.len()) };
+        let mut view = self.make_view();
+        let rc = unsafe { (self.vtable.try_recv_raw)(&mut view, buf.as_mut_ptr(), buf.len()) };
         if rc < 0 {
-            return Err(TransportError::DeserializationError);
+            return Err(error_from_ret(rc));
         }
         if rc == 0 {
             return Ok(None);
@@ -682,7 +842,10 @@ impl nros_rmw::Subscriber for CffiSubscriber {
 
 impl Drop for CffiSubscriber {
     fn drop(&mut self) {
-        unsafe { (self.vtable.destroy_subscriber)(self.handle) };
+        if !self.backend_data.is_null() {
+            let mut view = self.make_view();
+            unsafe { (self.vtable.destroy_subscriber)(&mut view) };
+        }
     }
 }
 
@@ -693,14 +856,28 @@ impl Drop for CffiSubscriber {
 /// Service server backed by a C vtable.
 pub struct CffiServiceServer {
     vtable: &'static NrosRmwVtable,
-    handle: CffiHandle,
+    service_name_buf: [u8; NAME_BUF_LEN],
+    type_name_buf: [u8; NAME_BUF_LEN],
+    backend_data: *mut c_void,
+}
+
+impl CffiServiceServer {
+    fn make_view(&mut self) -> NrosRmwServiceServer {
+        NrosRmwServiceServer {
+            service_name: self.service_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            backend_data: self.backend_data,
+        }
+    }
 }
 
 impl ServiceServerTrait for CffiServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
-        let rc = unsafe { (self.vtable.has_request)(self.handle) };
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let rc = unsafe { (self.vtable.has_request)(&mut view) };
         rc > 0
     }
 
@@ -709,11 +886,12 @@ impl ServiceServerTrait for CffiServiceServer {
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
         let mut seq: i64 = 0;
+        let mut view = self.make_view();
         let rc = unsafe {
-            (self.vtable.try_recv_request)(self.handle, buf.as_mut_ptr(), buf.len(), &mut seq)
+            (self.vtable.try_recv_request)(&mut view, buf.as_mut_ptr(), buf.len(), &mut seq)
         };
         if rc < 0 {
-            return Err(TransportError::ServiceRequestFailed);
+            return Err(error_from_ret(rc));
         }
         if rc == 0 {
             return Ok(None);
@@ -726,11 +904,12 @@ impl ServiceServerTrait for CffiServiceServer {
     }
 
     fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
-        let rc = unsafe {
-            (self.vtable.send_reply)(self.handle, sequence_number, data.as_ptr(), data.len())
+        let mut view = self.make_view();
+        let ret = unsafe {
+            (self.vtable.send_reply)(&mut view, sequence_number, data.as_ptr(), data.len())
         };
-        if rc < 0 {
-            return Err(TransportError::ServiceReplyFailed);
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
         }
         Ok(())
     }
@@ -738,7 +917,10 @@ impl ServiceServerTrait for CffiServiceServer {
 
 impl Drop for CffiServiceServer {
     fn drop(&mut self) {
-        unsafe { (self.vtable.destroy_service_server)(self.handle) };
+        if !self.backend_data.is_null() {
+            let mut view = self.make_view();
+            unsafe { (self.vtable.destroy_service_server)(&mut view) };
+        }
     }
 }
 
@@ -749,11 +931,23 @@ impl Drop for CffiServiceServer {
 /// Service client backed by a C vtable.
 pub struct CffiServiceClient {
     vtable: &'static NrosRmwVtable,
-    handle: CffiHandle,
+    service_name_buf: [u8; NAME_BUF_LEN],
+    type_name_buf: [u8; NAME_BUF_LEN],
+    backend_data: *mut c_void,
     /// Stored request for blocking fallback in `try_recv_reply_raw`
     pending_request: [u8; 4096],
     /// Length of stored pending request (0 = no pending request)
     pending_len: usize,
+}
+
+impl CffiServiceClient {
+    fn make_view(&mut self) -> NrosRmwServiceClient {
+        NrosRmwServiceClient {
+            service_name: self.service_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            backend_data: self.backend_data,
+        }
+    }
 }
 
 impl ServiceClientTrait for CffiServiceClient {
@@ -761,9 +955,10 @@ impl ServiceClientTrait for CffiServiceClient {
 
     #[allow(deprecated)]
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
+        let mut view = self.make_view();
         let rc = unsafe {
             (self.vtable.call_raw)(
-                self.handle,
+                &mut view,
                 request.as_ptr(),
                 request.len(),
                 reply_buf.as_mut_ptr(),
@@ -771,7 +966,7 @@ impl ServiceClientTrait for CffiServiceClient {
             )
         };
         if rc < 0 {
-            return Err(TransportError::ServiceRequestFailed);
+            return Err(error_from_ret(rc));
         }
         Ok(rc as usize)
     }
@@ -805,7 +1000,10 @@ impl ServiceClientTrait for CffiServiceClient {
 
 impl Drop for CffiServiceClient {
     fn drop(&mut self) {
-        unsafe { (self.vtable.destroy_service_client)(self.handle) };
+        if !self.backend_data.is_null() {
+            let mut view = self.make_view();
+            unsafe { (self.vtable.destroy_service_client)(&mut view) };
+        }
     }
 }
 
