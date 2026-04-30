@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "nros/rmw_ret.h"
+
 /**
  * @file rmw_vtable.h
  * @brief C function table for plugging third-party RMW backends into nros.
@@ -13,11 +15,14 @@
  *
  * Return value conventions:
  *  - open:             non-null = success, NULL = error
- *  - close/drive_io/publish_raw/send_reply: 0 = success, negative = error
- *  - try_recv_raw:     positive = bytes received, 0 = no data, negative = error
- *  - try_recv_request: positive = bytes received (seq_out written), 0 = none, negative = error
+ *  - close/drive_io/publish_raw/send_reply: 0 = success, negative
+ *                      `nros_rmw_ret_t` (see <nros/rmw_ret.h>)
+ *  - try_recv_raw:     positive = bytes received, 0 = no data, negative
+ *                      `nros_rmw_ret_t`
+ *  - try_recv_request: positive = bytes received (seq_out written),
+ *                      0 = none, negative `nros_rmw_ret_t`
  *  - has_data/has_request: 1 = yes, 0 = no
- *  - call_raw:         positive = reply bytes, negative = error
+ *  - call_raw:         positive = reply bytes, negative `nros_rmw_ret_t`
  *  - destroy_*:        void (best-effort cleanup)
  */
 

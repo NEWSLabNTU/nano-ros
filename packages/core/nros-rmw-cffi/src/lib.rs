@@ -29,6 +29,107 @@ use nros_rmw::{
 };
 
 // ============================================================================
+// Phase 102.1 — `nros_rmw_ret_t` named return codes
+// ============================================================================
+//
+// Mirrors the macro constants in `<nros/rmw_ret.h>`. The C side uses
+// `#define` so future additions don't widen the type; the Rust side
+// uses `pub const` so the same names are usable by Rust code that
+// crosses the C-vtable boundary.
+
+/// Signed 32-bit status code mirroring the C `nros_rmw_ret_t` typedef.
+/// Zero on success; negative on error.
+pub type NrosRmwRet = i32;
+
+/// Operation completed successfully.
+pub const NROS_RMW_RET_OK: NrosRmwRet = 0;
+/// Generic failure not covered by a more specific code.
+pub const NROS_RMW_RET_ERROR: NrosRmwRet = -1;
+/// Operation deadline elapsed before completion.
+pub const NROS_RMW_RET_TIMEOUT: NrosRmwRet = -2;
+/// Memory allocation failed.
+pub const NROS_RMW_RET_BAD_ALLOC: NrosRmwRet = -3;
+/// Caller supplied a NULL pointer or an out-of-range value.
+pub const NROS_RMW_RET_INVALID_ARGUMENT: NrosRmwRet = -4;
+/// The backend does not implement this operation.
+pub const NROS_RMW_RET_UNSUPPORTED: NrosRmwRet = -5;
+/// QoS profiles incompatible in a way the backend cannot reconcile.
+pub const NROS_RMW_RET_INCOMPATIBLE_QOS: NrosRmwRet = -6;
+/// Topic, service, or action name failed validation.
+pub const NROS_RMW_RET_TOPIC_NAME_INVALID: NrosRmwRet = -7;
+/// Request referenced a node that does not exist in this session.
+pub const NROS_RMW_RET_NODE_NAME_NON_EXISTENT: NrosRmwRet = -8;
+/// Backend does not support loaned messages on this entity, or slot in use.
+pub const NROS_RMW_RET_LOAN_NOT_SUPPORTED: NrosRmwRet = -9;
+/// No data on a non-blocking receive (distinct from `TIMEOUT`).
+pub const NROS_RMW_RET_NO_DATA: NrosRmwRet = -10;
+/// Resource momentarily unavailable; caller should retry.
+pub const NROS_RMW_RET_WOULD_BLOCK: NrosRmwRet = -11;
+/// Caller buffer smaller than the data the backend wants to deliver.
+pub const NROS_RMW_RET_BUFFER_TOO_SMALL: NrosRmwRet = -12;
+/// Incoming message exceeded the backend's static capacity.
+pub const NROS_RMW_RET_MESSAGE_TOO_LARGE: NrosRmwRet = -13;
+
+/// Map a `TransportError` to the corresponding `nros_rmw_ret_t` code.
+///
+/// By-reference because `TransportError` carries a `String` on its
+/// dynamic-diagnostic variant and is not `Copy`. The string itself is
+/// dropped at the boundary — embedded RMW callers cannot afford a
+/// thread-local error buffer.
+pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
+    match err {
+        TransportError::Timeout => NROS_RMW_RET_TIMEOUT,
+        TransportError::WouldBlock => NROS_RMW_RET_WOULD_BLOCK,
+        TransportError::TooLarge => NROS_RMW_RET_MESSAGE_TOO_LARGE,
+        TransportError::BufferTooSmall => NROS_RMW_RET_BUFFER_TOO_SMALL,
+        TransportError::MessageTooLarge => NROS_RMW_RET_MESSAGE_TOO_LARGE,
+        TransportError::InvalidArgument => NROS_RMW_RET_INVALID_ARGUMENT,
+        TransportError::InvalidConfig => NROS_RMW_RET_INVALID_ARGUMENT,
+        TransportError::Unsupported => NROS_RMW_RET_UNSUPPORTED,
+        TransportError::BadAlloc => NROS_RMW_RET_BAD_ALLOC,
+        TransportError::IncompatibleQos => NROS_RMW_RET_INCOMPATIBLE_QOS,
+        TransportError::TopicNameInvalid => NROS_RMW_RET_TOPIC_NAME_INVALID,
+        TransportError::NodeNameNonExistent => NROS_RMW_RET_NODE_NAME_NON_EXISTENT,
+        TransportError::LoanNotSupported => NROS_RMW_RET_LOAN_NOT_SUPPORTED,
+        TransportError::NoData => NROS_RMW_RET_NO_DATA,
+        // Everything else collapses to NROS_RMW_RET_ERROR. Backends
+        // that want fine-grained reporting should adopt the named
+        // variants above (Phase 102.2 sweep).
+        _ => NROS_RMW_RET_ERROR,
+    }
+}
+
+/// Map a `nros_rmw_ret_t` returned by a C-side vtable function back to
+/// a `TransportError` for the Rust caller. Inverse of `ret_from_error`
+/// — used when `nros-rmw-cffi`'s `CffiSession` etc. receive a code
+/// from the registered C backend.
+///
+/// `NROS_RMW_RET_OK` is mapped to `TransportError::Backend("ok")` as a
+/// programming-error sentinel; callers should branch on the success
+/// path before calling this. Unknown negative codes collapse to the
+/// generic `TransportError::Backend("unknown rmw_ret_t")` so a future
+/// constant added to the C header degrades gracefully on the Rust side.
+pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
+    match ret {
+        NROS_RMW_RET_OK => TransportError::Backend("ok (logic error: positive ret_t at error site)"),
+        NROS_RMW_RET_ERROR => TransportError::Backend("rmw_ret error"),
+        NROS_RMW_RET_TIMEOUT => TransportError::Timeout,
+        NROS_RMW_RET_BAD_ALLOC => TransportError::BadAlloc,
+        NROS_RMW_RET_INVALID_ARGUMENT => TransportError::InvalidArgument,
+        NROS_RMW_RET_UNSUPPORTED => TransportError::Unsupported,
+        NROS_RMW_RET_INCOMPATIBLE_QOS => TransportError::IncompatibleQos,
+        NROS_RMW_RET_TOPIC_NAME_INVALID => TransportError::TopicNameInvalid,
+        NROS_RMW_RET_NODE_NAME_NON_EXISTENT => TransportError::NodeNameNonExistent,
+        NROS_RMW_RET_LOAN_NOT_SUPPORTED => TransportError::LoanNotSupported,
+        NROS_RMW_RET_NO_DATA => TransportError::NoData,
+        NROS_RMW_RET_WOULD_BLOCK => TransportError::WouldBlock,
+        NROS_RMW_RET_BUFFER_TOO_SMALL => TransportError::BufferTooSmall,
+        NROS_RMW_RET_MESSAGE_TOO_LARGE => TransportError::MessageTooLarge,
+        _ => TransportError::Backend("unknown rmw_ret_t"),
+    }
+}
+
+// ============================================================================
 // Vtable type (mirrors C header)
 // ============================================================================
 

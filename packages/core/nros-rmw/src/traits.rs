@@ -252,6 +252,33 @@ pub enum TransportError {
     KeepaliveFailed,
     /// Failed to send join message
     JoinFailed,
+    /// Caller supplied a NULL pointer, an out-of-range value, or an
+    /// inconsistent argument combination. Phase 102.1.
+    InvalidArgument,
+    /// The backend does not implement this operation. Optional
+    /// callbacks return this; the runtime then falls back to a
+    /// default path. Phase 102.1.
+    Unsupported,
+    /// Memory allocation failed. Returned by backends on `std` /
+    /// `alloc`-equipped platforms when heap allocation fails.
+    /// Bare-metal backends generally do not produce this — they
+    /// preallocate at session-open time. Phase 102.1.
+    BadAlloc,
+    /// Publisher and subscriber QoS profiles do not match in a way
+    /// the backend cannot reconcile. Phase 102.1.
+    IncompatibleQos,
+    /// Topic, service, or action name failed validation. Phase 102.1.
+    TopicNameInvalid,
+    /// A request referenced a node that does not exist in this
+    /// session. Phase 102.1.
+    NodeNameNonExistent,
+    /// The backend does not support loaned messages on this entity,
+    /// or the loan slot is currently in use. Phase 102.1.
+    LoanNotSupported,
+    /// No data was available on a non-blocking receive. Distinct
+    /// from `Timeout`: fires immediately, not after a bounded wait.
+    /// Phase 102.1.
+    NoData,
     /// Backend-specific error with a `'static` diagnostic string.
     ///
     /// Useful for zenoh-pico / XRCE-DDS return codes that map to a

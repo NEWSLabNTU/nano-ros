@@ -7,6 +7,7 @@ PROJECT_NAME           = "nros rmw-cffi"
 PROJECT_BRIEF          = "C vtable for plugging a third-party RMW backend into nros"
 
 INPUT                  = include/nros/rmw_vtable.h \
+                         include/nros/rmw_ret.h \
                          docs/mainpage.md
 
 RECURSIVE              = NO
