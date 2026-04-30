@@ -22,6 +22,11 @@ skip-task-symbols = []
 skip-clock-symbols = []
 # Provide network forwarders (_z_open_tcp etc. → PlatformTcp/PlatformUdp traits)
 network = []
+# Phase 100.4 — provide IVC forwarders (_z_open_ivc etc. → PlatformIvc trait).
+# Activated automatically by zpico-sys's `cargo:rustc-cfg=feature="link_ivc"`
+# when its own `link-ivc` feature is on; declared here so cargo recognises
+# the cfg flag and the manifest can also activate the block directly.
+link-ivc = []
 # Provide smoltcp_init/cleanup/poll FFI (bare-metal only — calls nros-smoltcp)
 network-smoltcp-bridge = ["network"]
 

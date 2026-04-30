@@ -13,6 +13,14 @@ use nros_platform::{
 #[cfg(feature = "network")]
 use nros_platform::{PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast};
 
+// Phase 100.4 — IVC link transport. The cargo feature is named
+// `link-ivc` on the manifest and arrives as `feature = "link-ivc"` in
+// cfg form. zpico-sys propagates `cargo:rustc-cfg=feature="link_ivc"`
+// when its own `link-ivc` feature is set, so the shim picks it up
+// transitively without needing the feature on its own manifest.
+#[cfg(feature = "link-ivc")]
+use nros_platform::PlatformIvc;
+
 type P = ConcretePlatform;
 
 // ============================================================================
@@ -763,5 +771,61 @@ mod net_smoltcp_bridge {
     #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_poll() -> i32 {
         unsafe { nros_smoltcp_do_poll() }
+    }
+}
+
+// =============================================================================
+// Phase 100.4 — `Z_FEATURE_LINK_IVC` symbol forwarders.
+//
+// These five (six counting `_z_ivc_frame_size`) `extern "C"` functions
+// are the C ABI consumed by the IVC link transport in vendored
+// zenoh-pico (`src/link/unicast/ivc.c`). They dispatch through
+// `<P as PlatformIvc>` into the active platform impl —
+// `nros-platform-orin-spe::OrinSpe` on the SPE / `unix-mock` host
+// path. See design doc `docs/roadmap/phase-100-04-link-ivc-design.md`
+// §4 for the contract.
+//
+// Gated on `feature = "link-ivc"` (set via `cargo:rustc-cfg=` from
+// zpico-sys's build.rs when its own `link-ivc` feature is on); when
+// the gate is off, no symbols are emitted and the link layer in
+// zenoh-pico is also `#if Z_FEATURE_LINK_IVC == 1`-disabled, so
+// nothing references them.
+// =============================================================================
+
+#[cfg(feature = "link-ivc")]
+mod ivc_helpers {
+    use super::{c_void, P, PlatformIvc};
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_open_ivc(channel_id: u32) -> *mut c_void {
+        <P as PlatformIvc>::channel_get(channel_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_read_ivc(ch: *mut c_void, buf: *mut u8, len: usize) -> usize {
+        <P as PlatformIvc>::read(ch, buf, len)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_send_ivc(ch: *mut c_void, buf: *const u8, len: usize) -> usize {
+        <P as PlatformIvc>::write(ch, buf, len)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_close_ivc(_ch: *mut c_void) {
+        // No-op on hardware (FSP channels outlive the session) and on
+        // the unix-mock (the registry owns the fd). Symbol exists for
+        // ABI completeness — the link layer calls it from
+        // `_z_f_link_close_ivc` and expects it to return.
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_notify(ch: *mut c_void) {
+        <P as PlatformIvc>::notify(ch)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_frame_size(ch: *mut c_void) -> u32 {
+        <P as PlatformIvc>::frame_size(ch)
     }
 }

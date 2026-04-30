@@ -33,6 +33,10 @@ link-udp-multicast = []
 link-serial = []
 link-raweth = []
 link-tls = []
+# Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Selecting
+# this feature also propagates `cargo:rustc-cfg=feature="link_ivc"` so
+# zpico-platform-shim's `mod ivc_helpers` block compiles in.
+link-ivc = []
 # Use a pre-built zenoh-pico instead of building from the submodule.
 # Set ZENOH_PICO_DIR to the CMake install prefix (must contain lib/libzenohpico.a
 # and include/zenoh-pico.h). Only supported for native targets.
