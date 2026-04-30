@@ -5,7 +5,7 @@ true zero-copy where the backend offers it, and falls back to a
 single-memcpy arena path where it doesn't. User code stays unchanged
 across backends; lending capability is selected at compile time.
 
-**Status:** v1 mostly landed (99.A–99.G + 99.D' wire-through complete; 99.H' cancellation-safe loan future done; 99.I + 99.J + 99.K open)
+**Status:** v1 **complete** — every required item (99.A–99.M + 99.I) landed and SITL E2E green. Only post-v1 follow-ups remain (99.J new raw-bytes examples for zenoh/xrce/dds, 99.K cargo bench harness + book chapter).
 
 **Priority:** Medium
 
@@ -148,14 +148,25 @@ real consumer.
 - [x] 99.F — Zenoh-pico lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.G — XRCE-DDS lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.H' — Cancellation-safe `LoanFuture` via `AtomicWaker` on `TxArena`; `Drop` forwards wake to next waiter; regression test in `tests/loan_borrow.rs`
-- [ ] 99.L — `nros-rmw-uorb` API refactor (drops registry, alloc,
-      critical_section, topics.toml). **Sequenced before 99.I.**
-- [ ] 99.M — `nros-px4::uorb` typed wrapper module + public ctors on
-      `nros::EmbeddedRawPublisher` / `RawSubscription`. **Sequenced
-      after 99.L, before 99.I.**
-- [ ] 99.I — Migrate PX4 talker/listener examples onto
-      `nros_px4::uorb::create_publisher::<T>` + loan/borrow raw byte
-      API. **Sequenced after 99.L + 99.M.**
+- [x] 99.L — `nros-rmw-uorb` API refactor (registry / alloc /
+      critical_section / topics.toml all gone). Bytes-shaped Session
+      methods take `&'static orb_metadata` directly. 5/5 std-mock
+      tests pass.
+- [x] 99.M — `nros-px4::uorb` typed wrapper landed (`Publisher<T>`,
+      `Subscriber<T>`, `TypedLoan<T>`, `TypedView<T>`,
+      `create_publisher`, `create_subscription`,
+      `create_subscription_with_callback`). 4/4 typed-wrapper tests
+      pass on the std mock. Generic
+      `Executor::add_arena_subscription_callback` primitive added to
+      nros-node so the typed-callback path stays uORB-free at the
+      nros layer.
+- [x] 99.I — PX4 examples (`talker` / `listener`) migrated to
+      `nros_px4::uorb` typed API. `#![no_std]` + libc pthread; no
+      alloc, no `#[global_allocator]`, no `std::thread`, no
+      shared global symbols → two Rust staticlibs co-exist in one
+      `bin/px4` binary cleanly. **SITL E2E (`just px4 test-sitl`)
+      PASS** (3.701 s) — `px4_sitl_talker_listener_round_trip`
+      observes `recv: ts=… seq=… value=…` lines end-to-end.
 
 ### Post-v1 (99.J + 99.K)
 
