@@ -264,6 +264,21 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
 }
 
 impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
+    /// Construct an [`EmbeddedRawPublisher`] from a backend-allocated
+    /// `RmwPublisher` handle. Public so external extension crates
+    /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle
+    /// they obtained directly from the active session via
+    /// [`crate::Node::session_mut`] + a backend-specific create method.
+    ///
+    /// Most users should not call this — use [`crate::Node::create_publisher`]
+    /// or [`crate::Node::create_publisher_raw`] instead.
+    pub fn new(handle: session::RmwPublisher) -> Self {
+        Self {
+            handle,
+            arena: TxArena::new(),
+        }
+    }
+
     /// Publish a pre-encoded byte slice. The byte format depends entirely
     /// on the active RMW backend:
     ///
@@ -756,6 +771,22 @@ pub struct RawSubscription<const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF
 }
 
 impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
+    /// Construct a [`RawSubscription`] from a backend-allocated
+    /// `RmwSubscriber` handle. Public so external extension crates
+    /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle
+    /// they obtained directly from the active session via
+    /// [`crate::Node::session_mut`] + a backend-specific create method.
+    ///
+    /// Most users should not call this — use
+    /// [`crate::Node::create_subscription`] or
+    /// [`crate::Node::create_subscription_raw`] instead.
+    pub fn new(handle: session::RmwSubscriber) -> Self {
+        Self {
+            handle,
+            buffer: [0u8; RX_BUF],
+        }
+    }
+
     /// Try to receive raw bytes (non-blocking). Returns `Ok(Some(len))`
     /// with the message length on success; the bytes live in
     /// [`buffer`](Self::buffer) until the next call.
