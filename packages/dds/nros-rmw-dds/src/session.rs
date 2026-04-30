@@ -14,7 +14,7 @@ use crate::subscriber::DdsSubscriber;
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-use alloc::sync::Arc;
+use crate::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // No-listener ZSTs — dust-dds's async create_* methods take
@@ -243,7 +243,7 @@ impl Session for DdsSession {
         {
             use crate::raw_type::RawCdrPayload;
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::qos::QosKind;
             use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
             use dust_dds::infrastructure::type_support::TypeSupport;
@@ -282,7 +282,7 @@ impl Session for DdsSession {
         {
             use crate::raw_type::RawCdrPayload;
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::qos::QosKind;
             use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
             use dust_dds::infrastructure::type_support::TypeSupport;
@@ -372,7 +372,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -444,7 +444,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -549,7 +549,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -626,7 +626,7 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self

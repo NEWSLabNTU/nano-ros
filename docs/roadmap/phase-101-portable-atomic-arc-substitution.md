@@ -162,30 +162,52 @@ build-time seconds).
       meet because the boundary type is owned by dust-dds.
       **Files:** `packages/dds/dust-dds/dds/src/**/*.rs` (read-only audit).
 
-- [ ] **101.2 — Replace `regex` with hand-rolled fnmatch in dust-dds.**
-      Drop the `regex` dep. New `fnmatch_match(pattern: &str, candidate: &str)
-      -> bool` helper in `dcps/domain_participant.rs`. Update the 4 partition
-      QoS match call sites + the `fnmatch_to_regex` helper. Tests:
-      `cargo test -p dust_dds` partition-QoS test set must stay green.
-      **Files:** `packages/dds/dust-dds/dds/Cargo.toml` (drop `regex`),
-      `packages/dds/dust-dds/dds/src/dcps/domain_participant.rs`.
+- [x] **101.2 — Replace `regex` with hand-rolled fnmatch in dust-dds.**
+      Done — `regex` dep dropped from
+      `packages/dds/dust-dds/dds/Cargo.toml`. New `fnmatch_match(p, c)
+      -> bool` recursive matcher in `dcps/domain_participant.rs`
+      (zero-alloc, supports `*`, `?`, `[abc]`, `[a-z]` ranges,
+      `[!abc]` negation, `\\X` escape, literals). Replaced 4 partition
+      QoS call sites in `is_compatible_subscription` /
+      `is_compatible_publication`. 7 unit tests cover literal /
+      star / question / class / range / escape / DDS Partition QoS
+      examples. Full `cargo test -p dust_dds --lib`: 143 passed.
 
-- [ ] **101.3 — Add `portable-atomic` feature to dust-dds.**
-      New `portable-atomic-util` + `portable-atomic` optional deps; new
-      `portable-atomic` feature; lib.rs cfg-gated `Arc`/`Weak` re-export.
-      Mechanically rewrite ~10 `use alloc::sync::Arc;` sites → `use crate::Arc;`.
-      Verify default-feature path still builds (zero overhead, stdlib re-export);
-      verify `--features portable-atomic` builds.
-      **Files:** `packages/dds/dust-dds/dds/Cargo.toml`,
-      `packages/dds/dust-dds/dds/src/lib.rs`,
-      `packages/dds/dust-dds/dds/src/{rtps_messages,std_runtime,...}/*.rs`.
+- [x] **101.3 — Add `portable-atomic` feature to dust-dds.**
+      Done — new optional `portable-atomic-util` + `portable-atomic`
+      deps + `portable-atomic` Cargo feature in `dust_dds`. New
+      `pub mod sync` in `dust_dds/lib.rs` re-exports `Arc` / `Weak`
+      from `portable_atomic_util` when feature is on,
+      `alloc::sync` otherwise. All ~13 in-crate
+      `use alloc::{..., sync::Arc, ...}` sites rewritten to drop
+      `sync::Arc` and add `use crate::sync::Arc;`. Two
+      `Arc::new([])` sites rewritten to `Arc::from(&[][..])`
+      (`portable_atomic_util::Arc::new([])` returns
+      `Arc<[T; 0]>` and does not unsize-coerce to `Arc<[T]>` —
+      stdlib unsize-coercion is built-in only for stdlib smart
+      pointers). Default build, `--features portable-atomic`
+      build, and full `cargo test -p dust_dds --lib` (143/143)
+      all pass.
 
-- [ ] **101.4 — Forward feature through `nros-rmw-dds`.**
-      New `portable-atomic` feature on `nros-rmw-dds` →
-      `dust_dds/portable-atomic`. New `rmw-dds-portable-atomic` feature on
-      `nros` → `nros-rmw-dds?/portable-atomic`.
-      **Files:** `packages/dds/nros-rmw-dds/Cargo.toml`,
-      `packages/core/nros/Cargo.toml`.
+- [x] **101.4 — Forward feature through `nros-rmw-dds`.**
+      Done — `nros-rmw-dds` Cargo feature `portable-atomic`
+      forwards to `dust_dds/portable-atomic`. `nros` umbrella
+      Cargo feature `rmw-dds-portable-atomic` forwards to
+      `nros-rmw-dds?/portable-atomic`. New `pub(crate) mod sync`
+      in `nros-rmw-dds/src/lib.rs` re-exports
+      `dust_dds::sync::{Arc, Weak}` so the crate stays in lockstep
+      with dust-dds's flavour choice (avoids the
+      `MpscSender<Arc<[u8]>>` /
+      `CacheChange::data_value: Arc<[u8]>` ABI mismatch at the
+      dust-dds boundary). All ~15
+      `use alloc::sync::Arc;` sites rewritten to
+      `use crate::sync::Arc;`. Verified:
+      `cargo build -p nros-rmw-dds --no-default-features --features
+      platform-zephyr,nostd-runtime,ros-humble,portable-atomic
+      --target thumbv7m-none-eabi` builds clean, and the std/POSIX
+      path
+      `cargo build -p nros-rmw-dds --no-default-features --features
+      std,platform-posix,ros-humble` also still works.
 
 - [ ] **101.5 — Wire ESP32-QEMU board crate to enable the feature.**
       `nros-board-esp32-qemu` `dds-heap` feature also forwards

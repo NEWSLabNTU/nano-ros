@@ -14,7 +14,7 @@
 //! waker in a shared cell that the listener wakes from
 //! `on_data_available`.
 
-use alloc::sync::Arc;
+use crate::sync::Arc;
 use core::future::Future;
 use core::task::Waker;
 use spin::Mutex;

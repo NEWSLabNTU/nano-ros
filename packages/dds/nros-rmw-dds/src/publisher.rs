@@ -3,7 +3,7 @@
 use nros_rmw::{Publisher, TransportError};
 
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-use alloc::sync::Arc;
+use crate::sync::Arc;
 
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;

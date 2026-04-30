@@ -30,7 +30,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
-use alloc::sync::Arc;
+use crate::sync::Arc;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn spawner_runs_ready_future() {
         let s = NrosSpawner::new();
-        use alloc::sync::Arc;
+        use crate::sync::Arc;
         use core::sync::atomic::{AtomicBool, Ordering};
         let flag = Arc::new(AtomicBool::new(false));
         let flag_c = flag.clone();
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn block_on_drives_spawned_side_task() {
-        use alloc::sync::Arc;
+        use crate::sync::Arc;
         use core::sync::atomic::{AtomicU32, Ordering};
         let rt: NrosPlatformRuntime<ConcretePlatform> = NrosPlatformRuntime::new();
         let counter = Arc::new(AtomicU32::new(0));
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn spawner_reschedules_pending_future() {
         let s = NrosSpawner::new();
-        use alloc::sync::Arc;
+        use crate::sync::Arc;
         use core::sync::atomic::{AtomicU32, Ordering};
         let polls = Arc::new(AtomicU32::new(0));
         let polls_c = polls.clone();

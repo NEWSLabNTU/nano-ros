@@ -10,6 +10,26 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate alloc;
 
+// Phase 101.4 — re-export dust-dds's `Arc` flavour so this crate
+// stays in lockstep with dust-dds's `portable-atomic` feature.
+// `transport_nros::write_message`'s `MpscSender<Arc<[u8]>>` boundary
+// (and the matching `CacheChange::data_value`) requires the same
+// `Arc<T>` flavour on both sides — `alloc::sync::Arc` and
+// `portable_atomic_util::Arc` are ABI-incompatible. Routing through
+// `dust_dds::sync` makes the choice transparent: when the
+// `portable-atomic` feature lights up, every internal Arc here picks
+// the polyfill automatically.
+//
+// Internal-only Arcs (e.g. `Arc<NrosPlatformRuntime>`, `Arc<WakerCell>`)
+// don't strictly *need* to match dust-dds, but using one flavour
+// crate-wide keeps the impl simple and avoids a second feature axis.
+#[cfg(feature = "alloc")]
+pub(crate) mod sync {
+    pub use dust_dds::sync::Arc;
+    #[allow(unused_imports)]
+    pub use dust_dds::sync::Weak;
+}
+
 #[cfg(feature = "alloc")]
 #[macro_use]
 mod debug;

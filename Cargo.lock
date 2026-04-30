@@ -524,7 +524,8 @@ dependencies = [
  "dust_dds_derive",
  "md5",
  "network-interface",
- "regex",
+ "portable-atomic",
+ "portable-atomic-util",
  "socket2",
 ]
 
@@ -1824,6 +1825,15 @@ name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+
+[[package]]
+name = "portable-atomic-util"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618"
+dependencies = [
+ "portable-atomic",
+]
 
 [[package]]
 name = "predicates"

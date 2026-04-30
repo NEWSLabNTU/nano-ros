@@ -59,7 +59,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::format;
-use alloc::sync::Arc;
+use crate::sync::Arc;
 use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::future::Future;

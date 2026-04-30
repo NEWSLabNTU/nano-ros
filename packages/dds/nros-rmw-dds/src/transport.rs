@@ -54,7 +54,7 @@ impl Rmw for DdsRmw {
         {
             use crate::runtime::NrosPlatformRuntime;
             use crate::transport_nros::NrosUdpTransportFactory;
-            use alloc::sync::Arc;
+            use crate::sync::Arc;
             use dust_dds::dds_async::domain_participant_factory::DomainParticipantFactoryAsync;
             use dust_dds::infrastructure::qos::QosKind;
             use dust_dds::infrastructure::status::NO_STATUS;

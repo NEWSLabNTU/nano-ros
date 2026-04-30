@@ -1,6 +1,6 @@
 //! DDS subscriber — implements `nros_rmw::Subscriber`.
 
-use alloc::sync::Arc;
+use crate::sync::Arc;
 
 use nros_rmw::{Subscriber, TransportError};
 

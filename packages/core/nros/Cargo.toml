@@ -117,6 +117,14 @@ unstable-zenoh-api = ["nros-node/unstable-zenoh-api", "nros-rmw-zenoh?/unstable-
 # Async feedback stream (futures_core::Stream impl on FeedbackStream)
 stream = ["nros-node/stream"]
 
+# Phase 101.4 — `Arc` / `Weak` substitution in dust-dds via
+# `portable-atomic-util`. Required for CAS-poor RISC-V `imc`
+# targets (ESP32-C3) where `target_has_atomic = "ptr"` evaluates
+# false and `alloc::sync::Arc` does not exist. Off by default;
+# board crates that need it (e.g. `nros-board-esp32-qemu` with
+# `dds-heap`) forward through this feature.
+rmw-dds-portable-atomic = ["nros-rmw-dds?/portable-atomic"]
+
 # FFI reentrancy guards (critical-section around all RMW FFI calls)
 ffi-sync = [
     "nros-node/ffi-sync",

@@ -68,6 +68,13 @@ ros-iron = []
 # E2E safety protocol
 safety-e2e = ["nros-rmw/safety-e2e"]
 
+# Phase 101.4 — forward dust-dds's `portable-atomic` feature so
+# `Arc` / `Weak` route through `portable-atomic-util` on CAS-poor
+# targets (ESP32-C3 / `riscv32imc`). Off by default; only enable
+# from a board crate's Cargo.toml when the target needs it. See
+# `docs/roadmap/phase-101-portable-atomic-arc-substitution.md`.
+portable-atomic = ["dust_dds/portable-atomic"]
+
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
