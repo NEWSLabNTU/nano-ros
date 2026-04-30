@@ -8,14 +8,23 @@ directly.
 
 ## API reference
 
-| Surface | Generator | Link |
-|---------|-----------|------|
-| Rust traits (`Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`, lending traits) | rustdoc | [**`nros_rmw`**](../api/rust/nros_rmw/index.html) |
-| C vtable for porters (`nros_rmw_vtable_t`) | Doxygen | [**rmw-cffi**](../api/rmw-cffi/index.html) |
-| C FFI shim crate (Rust side) | rustdoc | [`nros_rmw_cffi`](../api/rust/nros_rmw_cffi/index.html) |
+### For C / C++ porters
 
-Each trait method's `///` block in the rustdoc documents thread safety, buffer
-ownership, blocking allowance, and (for lending traits) the slot lifecycle.
+| Surface | Link |
+|---------|------|
+| C vtable (`nros_rmw_vtable_t`) | [**rmw-cffi Doxygen**](../api/rmw-cffi/index.html) |
+| GitHub source tree | [`packages/core/nros-rmw-cffi`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw-cffi) |
+
+Each function-pointer field in the Doxygen documents thread safety,
+buffer ownership, blocking allowance, and (for lending operations) the
+slot lifecycle.
+
+### For Rust porters
+
+| Surface | Link |
+|---------|------|
+| Rust traits (`Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`, lending traits) | [**`nros_rmw` rustdoc**](../api/rust/nros_rmw/index.html) |
+| GitHub source tree | [`packages/core/nros-rmw`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw) |
 
 ## Example backend implementations
 
@@ -37,6 +46,9 @@ follows the same trait-implementation pattern.
 ## Writing a custom backend
 
 - Conceptual guide: [Custom RMW Backend](../porting/custom-rmw.md) — full
-  Rust + C walkthrough, covers the lending traits and arena lifecycle.
+  Rust + C walkthrough, covers the lending operations and arena lifecycle.
+- Coming from upstream `rmw.h`?
+  → [RMW API: Differences from upstream `rmw.h`](../design/rmw-vs-upstream.md)
+  walks through what's renamed, what's collapsed, what's dropped, and why.
 - C vtable porters: see the [rmw-cffi Doxygen reference](../api/rmw-cffi/index.html)
   for per-field return-value, threading, and blocking conventions.

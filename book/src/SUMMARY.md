@@ -50,6 +50,7 @@
 
 - [Overview](./design/overview.md)
 - [RMW API Design](./design/rmw.md)
+- [RMW API: Differences from upstream rmw.h](./design/rmw-vs-upstream.md)
 - [Client Library Model](./design/client-library.md)
 - [Platform API Design](./design/platform-api.md)
 
