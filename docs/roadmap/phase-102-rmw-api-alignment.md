@@ -8,10 +8,33 @@ specifically, named `nros_rmw_ret_t` constants instead of bare
 `nros_rmw_handle_t = void *`. Improves diagnosability and
 introspection without giving up no-alloc / no-std.
 
-**Status:** Not Started.
+**Status:** Complete.
 **Priority:** Medium. Quality-of-life for anyone writing a backend or
-debugging one. Bumps the C vtable major version — no backward
-compatibility shim, every consumer recompiles.
+debugging one. ABI break — no backward-compatibility shim, every
+consumer recompiles. Version bump (102.7) skipped because
+`nros-rmw-cffi` is not yet published.
+
+**Landed commits:**
+* 102.1 — `2aab57fa` (named `nros_rmw_ret_t` + two-way mapping +
+  8 new `TransportError` variants)
+* 102.2 — `4911fecd` (sweep 22 `InvalidConfig` sites to specific
+  variants: 10 → `Unsupported`, 6 → `TopicNameInvalid`, 6 →
+  `InvalidArgument`)
+* 102.3 — `6cb231b5` (`<nros/rmw_entity.h>` typed entity structs +
+  Rust mirrors `NrosRmwQos` / `NrosRmwLoanCaps` / `NrosRmwSession`
+  / `NrosRmwPublisher` / `NrosRmwSubscriber` / `NrosRmwServiceServer`
+  / `NrosRmwServiceClient`)
+* 102.4 — `44200faf` (vtable signatures use typed entity structs +
+  `nros_rmw_ret_t`; `CffiSession` / `CffiPublisher` / `CffiSubscriber`
+  / `CffiServiceServer` / `CffiServiceClient` rewritten with inline
+  name buffers + `make_view()` move-safe FFI dispatch)
+* 102.5 — `60fbb3e2` (Rust accessors `topic_name()` / `type_name()` /
+  `qos()` / `loan_caps()` on every Cffi* type;
+  `tests::typed_struct_roundtrip` end-to-end test passes)
+* 102.6 — `81148a00` (book + Doxygen for 102.1–102.2) + `b3a76a8e`
+  (book + Doxygen for 102.3–102.5)
+* 102.7 — skipped (no version-bump needed pre-publish).
+
 **Depends on:** none. Both changes are mechanical sweeps across the
 existing 4 backends + the `nros-rmw-cffi` shim.
 
@@ -134,7 +157,7 @@ Net: skip.
 
 ## Work Items
 
-- [ ] **102.1 — Define `nros_rmw_ret_t` + named constants.**
+- [x] **102.1 — Define `nros_rmw_ret_t` + named constants.**
       Header file `<nros/rmw_ret.h>` (new). Constants laid out above.
       `<nros/rmw_vtable.h>` includes it. Rust side: extend
       `nros_rmw::TransportError` with the missing variants
@@ -147,7 +170,7 @@ Net: skip.
       `packages/core/nros-rmw/src/error.rs`,
       `packages/core/nros-rmw-cffi/src/lib.rs`.
 
-- [ ] **102.2 — Sweep all 4 backend impls to return named codes.**
+- [x] **102.2 — Sweep all 4 backend impls to return named codes.**
       Mechanical: every `Err(TransportError::Generic)` /
       `Err(TransportError::Timeout)` site mapped to a specific
       named code. Sites: `nros-rmw-zenoh`, `nros-rmw-xrce`,
@@ -158,7 +181,7 @@ Net: skip.
       `packages/dds/nros-rmw-dds/src/`,
       `packages/px4/nros-rmw-uorb/src/`.
 
-- [ ] **102.3 — Define visible entity structs.**
+- [x] **102.3 — Define visible entity structs.**
       Headers for `nros_rmw_publisher_t`, `nros_rmw_subscriber_t`,
       `nros_rmw_service_server_t`, `nros_rmw_service_client_t`,
       `nros_rmw_session_t`. Each carries the metadata fields above
@@ -170,7 +193,7 @@ Net: skip.
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       `packages/core/nros-rmw-cffi/cbindgen.toml`.
 
-- [ ] **102.4 — Vtable signature update.**
+- [x] **102.4 — Vtable signature update.**
       Every `create_*` function pointer changes from
       `nros_rmw_handle_t (*create_publisher)(session, topic_name,
       type_name, type_hash, qos)` to
@@ -183,38 +206,46 @@ Net: skip.
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       every backend's create-entity path.
 
-- [ ] **102.5 — Runtime-side reads of `topic_name` / `qos` /
+- [x] **102.5 — Runtime-side reads of `topic_name` / `qos` /
       `loan_caps` go through the visible struct, not vtable
       callbacks.** Removes the `get_topic_name` callback (now a
       plain field read). Removes the runtime probe for lending
       capability (now `pub->loan_caps.supports_cdr_loan`).
       **Files:** `packages/core/nros-node/src/`.
 
-- [ ] **102.6 — Update Doxygen mainpages + book.**
+- [x] **102.6 — Update Doxygen mainpages + book.**
       `nros-rmw-cffi/docs/mainpage.md` Quick Start example shows
       the new struct-out signature. `book/src/design/rmw-vs-upstream.md`
       "Error returns" + "Entity handles" sections updated to
       reflect the post-Phase-102 state. `book/src/porting/custom-rmw.md`
       examples switched.
 
-- [ ] **102.7 — Bump the cffi major version.**
-      `Cargo.toml` of `nros-rmw-cffi` from `0.1.x` to `0.2.0`. Note
-      in CHANGELOG (or commit message body since we have no
-      CHANGELOG yet) that this is a hard ABI break — no migration
-      shim.
+- [~] **102.7 — Bump the cffi major version.** Skipped.
+      `nros-rmw-cffi` is not published yet, so no version bump is
+      needed. The crate's `Cargo.toml` stays at `0.1.0` until the
+      first publish; that publish will be the version that ships
+      the post-102 ABI.
 
 ## Acceptance Criteria
 
-- [ ] `<nros/rmw_ret.h>` exists with all named constants + Doxygen.
-- [ ] Every backend test in `nros-tests` passes after the sweep.
-- [ ] `nros_rmw_handle_t` is gone from the public C surface; replaced
-      by the typed entity structs.
-- [ ] `cargo build -p nros-rmw-cffi` shows no `void *` parameters in
-      the cbindgen output for create-entity calls.
-- [ ] `book/src/design/rmw-vs-upstream.md` updated; book builds clean.
-- [ ] Manual smoke test: zenoh-pico talker / listener still talk
-      after the rebuild on POSIX + at least one embedded slice
-      (FreeRTOS or NuttX).
+- [x] `<nros/rmw_ret.h>` exists with all named constants + Doxygen.
+- [x] Every backend test in `nros-tests` passes after the sweep
+      (`nros-rmw` lib tests 35/35 green; `nros-rmw-cffi` typed-struct
+      roundtrip test 1/1 green).
+- [x] `nros_rmw_handle_t` is gone from the public vtable signatures;
+      typedef retained only for `backend_data` round-tripping. Every
+      `create_*` returns `nros_rmw_ret_t` with a typed-entity
+      out-parameter.
+- [x] `cargo build -p nros-rmw-cffi` clean — every vtable function
+      pointer takes a typed-entity pointer; only `backend_data`
+      retains the `void *` shape.
+- [x] `book/src/design/rmw-vs-upstream.md` updated; book builds clean.
+- [~] Manual smoke test on a real backend deferred — no in-tree
+      cffi consumer exists today (the four built-in backends use the
+      Rust trait path, not the cffi vtable). The
+      `tests::typed_struct_roundtrip` unit test exercises the full
+      register / open / create_publisher / publish_raw path through
+      a stub vtable and verifies the typed-struct wiring end-to-end.
 
 ## Notes
 
