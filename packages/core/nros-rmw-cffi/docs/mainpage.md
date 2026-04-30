@@ -94,8 +94,7 @@ destroy_*                void (best-effort cleanup)
 
 ## See also
 
-- [Rust trait reference](../rust/nros_rmw/index.html)
-- [Porting guide](../../../porting/custom-rmw.html) — full Rust + C
-  walkthrough, factory pattern, lifecycle
-- [`nros-platform-cffi`](../platform-cffi/index.html) — companion
-  vtable for the platform layer
+- The [Custom RMW Backend porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/porting/custom-rmw.md)
+  — full Rust + C walkthrough, factory pattern, lifecycle.
+- The [`nros-rmw-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw-cffi)
+  — header + crate sources for this vtable.

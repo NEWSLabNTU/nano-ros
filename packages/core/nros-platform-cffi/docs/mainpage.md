@@ -15,11 +15,10 @@ Pick the path that matches your target:
 | **Custom Rust platform crate** | book — porting/custom-platform | New target, comfortable with Rust. Implement the trait family in `nros-platform-api`. |
 | **Custom C platform via this vtable** | this site + porting/custom-platform | New target, must stay in C / no Rust toolchain available. |
 
-The vtable mirrors the Rust [`nros_platform_api`](../rust/nros_platform_api/index.html)
-trait family one-to-one. Every Rust trait method has a single function
-pointer in `nros_platform_vtable_t`. Behaviour rules (buffer ownership,
-threading, blocking allowance) are documented on the Rust trait and
-mirrored here.
+The vtable mirrors the `nros_platform_api` Rust trait family one-to-one.
+Every Rust trait method has a single function pointer in
+`nros_platform_vtable_t`. Behaviour rules (buffer ownership, threading,
+blocking allowance) are documented on each function pointer below.
 
 ## Quick start
 
@@ -97,8 +96,7 @@ missing ops:
 
 ## See also
 
-- [Rust trait reference](../rust/nros_platform_api/index.html)
-- [Porting guide](../../../porting/custom-platform.html) — full
-  step-by-step walkthrough including the Rust path
-- [`nros-rmw-cffi`](../rmw-cffi/index.html) — companion vtable for
-  the RMW layer
+- The [Custom Platform porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/porting/custom-platform.md)
+  — full step-by-step walkthrough including the Rust path.
+- The [`nros-platform-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-cffi)
+  — header + crate sources for this vtable.

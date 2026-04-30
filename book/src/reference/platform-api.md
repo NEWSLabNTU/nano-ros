@@ -42,25 +42,25 @@ graph TD
 
 ## Example platform implementations
 
-Concrete implementations of the platform traits — read these for a worked
-example before writing your own:
+Concrete implementations of the platform traits. Read the source — and
+each crate's `README.md` — for a worked example before writing your own.
+The rustdoc of a platform crate mostly replicates the trait surface; the
+source tree is what's worth reading.
 
-| Crate | Target | Clock Source | Allocator | Threading | Networking |
-|-------|--------|-------------|-----------|-----------|------------|
-| [`nros-platform-posix`](../api/rust/nros_platform_posix/index.html) | Linux/macOS | `clock_gettime` | libc `malloc` | pthreads | libc BSD sockets (Rust) |
-| `nros-platform-nuttx` | NuttX QEMU | POSIX (alias) | libc `malloc` | pthreads | zenoh-pico C `network.c` |
-| `nros-platform-freertos` | FreeRTOS | `xTaskGetTickCount` | `pvPortMalloc` | FreeRTOS tasks | lwIP via freertos-lwip-sys (Rust) |
-| `nros-platform-threadx` | ThreadX | `tx_time_get` | `tx_byte_allocate` | ThreadX threads | NetX Duo C `network.c` |
-| `nros-platform-zephyr` | Zephyr | `k_uptime_get` | `k_malloc` | Zephyr POSIX pthreads | Zephyr POSIX sockets (Rust) |
-| `nros-platform-mps2-an385` | Cortex-M3 | CMSDK Timer0 | bump allocator | single-threaded | nros-smoltcp (Rust) |
-| `nros-platform-stm32f4` | STM32F4 | DWT cycle counter | bump allocator | single-threaded | nros-smoltcp (Rust) |
-| `nros-platform-esp32` | ESP32 | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
-| `nros-platform-esp32-qemu` | ESP32-C3 QEMU | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| Crate | Source | Target | Clock Source | Allocator | Threading | Networking |
+|-------|--------|--------|--------------|-----------|-----------|------------|
+| `nros-platform-posix` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-posix) | Linux/macOS | `clock_gettime` | libc `malloc` | pthreads | libc BSD sockets (Rust) |
+| `nros-platform-nuttx` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-nuttx) | NuttX QEMU | POSIX (alias) | libc `malloc` | pthreads | zenoh-pico C `network.c` |
+| `nros-platform-freertos` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-freertos) | FreeRTOS | `xTaskGetTickCount` | `pvPortMalloc` | FreeRTOS tasks | lwIP via freertos-lwip-sys (Rust) |
+| `nros-platform-threadx` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-threadx) | ThreadX | `tx_time_get` | `tx_byte_allocate` | ThreadX threads | NetX Duo C `network.c` |
+| `nros-platform-zephyr` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-zephyr) | Zephyr | `k_uptime_get` | `k_malloc` | Zephyr POSIX pthreads | Zephyr POSIX sockets (Rust) |
+| `nros-platform-mps2-an385` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platforms/nros-platform-mps2-an385) | Cortex-M3 | CMSDK Timer0 | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-stm32f4` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platforms/nros-platform-stm32f4) | STM32F4 | DWT cycle counter | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-esp32` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platforms/nros-platform-esp32) | ESP32 | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
+| `nros-platform-esp32-qemu` | [src](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platforms/nros-platform-esp32-qemu) | ESP32-C3 QEMU | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) |
 
-The POSIX implementation
-([`nros_platform_posix`](../api/rust/nros_platform_posix/index.html)) is the
-canonical reference port: every other platform follows the same trait
-implementation pattern.
+The POSIX implementation is the canonical reference port — every other
+platform follows the same trait-implementation pattern.
 
 ### Networking implementation status
 
