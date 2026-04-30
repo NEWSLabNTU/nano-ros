@@ -9,7 +9,7 @@ links = "zpico"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx", "orin-spe"))'] }
 
 [lib]
 name = "zpico_sys"
@@ -27,6 +27,12 @@ bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-p
 freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-clock-symbols", "zpico-platform-shim?/network"]
 threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-task-symbols", "zpico-platform-shim?/network"]
+# Phase 100.6 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP). IVC-only:
+# `active` for the Rust→C symbol forwarders, `link-ivc` for the IVC
+# link-transport forwarders (Phase 100.4). NO `network` because the
+# SPE has no TCP/UDP. The board crate must also enable
+# `zpico-sys/link-ivc` to flip `Z_FEATURE_LINK_IVC=1` in the C build.
+orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/link-ivc"]
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.

@@ -220,6 +220,12 @@ exclude = [
     "packages/boards/nros-board-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
     "packages/boards/nros-board-mps2-an385-freertos",
+    # Phase 100.6 — AGX Orin SPE board crate. Excluded because it
+    # links against NVIDIA's `tegra_aon_fsp.a`, which only exists on
+    # an SDK-Manager-installed Orin SPE FSP tree at `$NV_SPE_FSP_DIR`.
+    # Build via `cd packages/boards/nros-board-orin-spe && cargo build`
+    # or `just orin_spe build` (Phase 100.7).
+    "packages/boards/nros-board-orin-spe",
     "packages/boards/nros-board-threadx-linux",
     "packages/boards/nros-board-threadx-qemu-riscv64",
     # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)

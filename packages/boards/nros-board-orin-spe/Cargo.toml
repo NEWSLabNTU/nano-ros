@@ -1,0 +1,80 @@
+[package]
+name = "nros-board-orin-spe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP) board crate for nros, with IVC transport to CCPLEX"
+publish = false
+
+# Excluded from the workspace because the build links against NVIDIA's
+# `tegra_aon_fsp.a` from an SDK Manager install at $NV_SPE_FSP_DIR.
+# Build via `cd packages/boards/nros-board-orin-spe && cargo build`
+# (or `just orin_spe build` per Phase 100.7).
+
+[lib]
+name = "nros_board_orin_spe"
+# Plain `rlib` — the firmware crate (consumed by NVIDIA's Makefile via
+# `ENABLE_NROS_APP := 1`) is responsible for the `staticlib` wrap-up
+# plus its own `#[panic_handler]`. Following nano-ros's existing pattern
+# (`nros-board-mps2-an385-freertos` does the same) keeps board crates
+# `cargo check`-clean from the workspace without forcing a panic
+# strategy on every consumer.
+
+[features]
+# Default = real hardware. Pulls the FSP linkage and the Cortex-R5F
+# critical-section impl. The lib's source files compile without these
+# features so `cargo doc` and rust-analyzer scans work cleanly outside
+# an SDK install.
+default = ["fsp", "cortex-r"]
+
+# Use NVIDIA's `tegra_aon_fsp.a` for IVC. The board crate is
+# hardware-only — the `unix-mock` host bring-up path lives in
+# `autoware_sentinel`'s ivc-bridge tests and in zpico-sys's
+# integration tests (Phase 100.8), not here.
+fsp = [
+    "nvidia-ivc/fsp",
+    "nros-platform-orin-spe/fsp",
+]
+
+# Register `critical_section::Impl` against the ARMv7-R CPSR I-bit.
+# Forwards through the platform crate; the umbrella is gated separately
+# from the IVC transport because the dust-dds RMW backend (no zenoh)
+# needs the impl too. See Phase 100.1.
+cortex-r = [
+    "nros-platform/cortex-r",
+    "nros-platform-orin-spe/cortex-r",
+]
+
+[dependencies]
+# Trait definitions + `ConcretePlatform` resolver. Selecting
+# `platform-orin-spe` here is what makes
+# `<P as PlatformIvc>::*` resolve to `OrinSpe` inside the shim.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-orin-spe"] }
+nros-platform-orin-spe = { path = "../../platforms/nros-platform-orin-spe", default-features = false }
+
+# IVC driver crate (re-exported here so the firmware can call into it
+# directly without going through the trait dispatch — useful for
+# board-side bring-up tests).
+nvidia-ivc = { path = "../../drivers/nvidia-ivc", default-features = false }
+
+# zenoh-pico C transport + the `mod ivc_helpers` shim block. Selecting
+# `zpico-sys/orin-spe` (added in this phase) activates `active` +
+# `link-ivc` on the shim and routes the C build through the embedded
+# path. `zpico-sys/link-ivc` flips `Z_FEATURE_LINK_IVC=1` in the
+# generated config header.
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active", "link-ivc"] }
+zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["orin-spe", "link-ivc"] }
+
+# Cortex-R5 panic handler is supplied by the user/firmware crate, not
+# here — board crates ship machine-init only and let downstream code
+# pick its own panic strategy (`panic-halt`, custom logger, etc.).
+
+# armv7r-none-eabihf doesn't ship a default unwinder, so panic strategy
+# must be `abort` everywhere. Setting it on the lib's own profiles
+# keeps `cargo check` happy without forcing every downstream firmware
+# crate to repeat the directive.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
