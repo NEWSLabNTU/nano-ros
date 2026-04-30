@@ -21,6 +21,8 @@ struct LinkFeatures {
     serial: bool,
     raweth: bool,
     tls: bool,
+    // Phase 100.4 — NVIDIA Tegra IVC link transport.
+    ivc: bool,
 }
 
 impl LinkFeatures {
@@ -33,6 +35,7 @@ impl LinkFeatures {
             serial: env::var("CARGO_FEATURE_LINK_SERIAL").is_ok(),
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
+            ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
         }
     }
 
@@ -53,6 +56,9 @@ impl LinkFeatures {
     }
     fn tls_flag(&self) -> u8 {
         self.tls as u8
+    }
+    fn ivc_flag(&self) -> u8 {
+        self.ivc as u8
     }
 }
 
@@ -281,6 +287,7 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_LINK_BLUETOOTH 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_WS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_SERIAL_USB 0").unwrap();
+    writeln!(header, "#define Z_FEATURE_LINK_IVC {}", link.ivc_flag()).unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,
@@ -369,6 +376,16 @@ fn main() {
 
     // Read link-* features for bare-metal protocol selection
     let link_features = LinkFeatures::from_env();
+
+    // Phase 100.4 — surface the IVC link feature as a cfg so
+    // `zpico-platform-shim` can gate its `mod ivc_helpers` block on
+    // `#[cfg(feature = "link_ivc")]` without depending on the cargo
+    // feature flag transitively. Mirrors the `zpico_backend` pattern
+    // used a few hundred lines below.
+    if link_features.ivc {
+        println!("cargo:rustc-cfg=feature=\"link-ivc\"");
+    }
+    println!("cargo:rustc-check-cfg=cfg(feature, values(\"link-ivc\"))");
 
     // Paths
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
@@ -1103,6 +1120,14 @@ fn build_zenoh_pico_native(
         .define("Z_FEATURE_MATCHING", "1")
         .define("Z_FEATURE_LINK_SERIAL", "0")
         .define(
+            "Z_FEATURE_LINK_IVC",
+            if env::var("CARGO_FEATURE_LINK_IVC").is_ok() {
+                "1"
+            } else {
+                "0"
+            },
+        )
+        .define(
             "Z_FEATURE_UNSTABLE_API",
             if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
                 "1"
@@ -1356,6 +1381,7 @@ fn build_c_shim(
             if link.udp_multicast { "1" } else { "0" },
         );
         build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+        build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
         build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
         build.define(
             "Z_FEATURE_RAWETH_TRANSPORT",
@@ -1504,6 +1530,7 @@ fn build_zenoh_pico_embedded(
         if link.udp_multicast { "1" } else { "0" },
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
@@ -1723,6 +1750,7 @@ fn build_zenoh_pico_freertos(
         if link.udp_multicast { "1" } else { "0" },
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(
@@ -1867,6 +1895,7 @@ fn build_zenoh_pico_nuttx(
         if link.udp_multicast { "1" } else { "0" },
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(
@@ -2097,6 +2126,7 @@ fn build_zenoh_pico_threadx(
         if link.udp_multicast { "1" } else { "0" },
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(
