@@ -6,6 +6,7 @@
 
 #include "nros/rmw_ret.h"
 #include "nros/rmw_entity.h"
+#include "nros/rmw_event.h"
 
 /**
  * @file rmw_vtable.h
@@ -91,6 +92,30 @@ typedef struct nros_rmw_vtable_t {
     int32_t (*call_raw)(nros_rmw_service_client_t *client,
         const uint8_t *request, size_t req_len,
         uint8_t *reply_buf, size_t reply_buf_len);
+
+    /* ---- Phase 108 — status events (optional) ---- */
+    /** Register a callback for a subscriber-side event. NULL function
+     *  pointer = backend doesn't generate any subscriber events.
+     *  Specific kind unsupported on a backend that supports some
+     *  events = `NROS_RMW_RET_UNSUPPORTED` return.
+     *  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`
+     *  only; ignored otherwise. */
+    nros_rmw_ret_t (*register_subscriber_event)(
+        nros_rmw_subscriber_t *subscriber,
+        nros_rmw_event_kind_t  kind,
+        uint32_t               deadline_ms,
+        nros_rmw_event_callback_t cb,
+        void                  *user_context);
+
+    /** Register a callback for a publisher-side event. Same NULL /
+     *  unsupported-kind conventions as `register_subscriber_event`.
+     *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
+    nros_rmw_ret_t (*register_publisher_event)(
+        nros_rmw_publisher_t  *publisher,
+        nros_rmw_event_kind_t  kind,
+        uint32_t               deadline_ms,
+        nros_rmw_event_callback_t cb,
+        void                  *user_context);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend. Call before creating any sessions.

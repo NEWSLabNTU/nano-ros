@@ -358,7 +358,87 @@ pub struct NrosRmwVtable {
         reply_buf: *mut u8,
         reply_buf_len: usize,
     ) -> i32,
+
+    // ---- Phase 108 — status events (optional) ----
+    pub register_subscriber_event: unsafe extern "C" fn(
+        subscriber: *mut NrosRmwSubscriber,
+        kind: NrosRmwEventKind,
+        deadline_ms: u32,
+        cb: NrosRmwEventCallback,
+        user_context: *mut c_void,
+    ) -> NrosRmwRet,
+
+    pub register_publisher_event: unsafe extern "C" fn(
+        publisher: *mut NrosRmwPublisher,
+        kind: NrosRmwEventKind,
+        deadline_ms: u32,
+        cb: NrosRmwEventCallback,
+        user_context: *mut c_void,
+    ) -> NrosRmwRet,
 }
+
+// ============================================================================
+// Phase 108 — status-event types (mirror `<nros/rmw_event.h>`)
+// ============================================================================
+
+/// Tier-1 event kinds. Stable u8 values matching
+/// `nros_rmw_event_kind_t` in the C header.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NrosRmwEventKind {
+    LivelinessChanged = 0,
+    RequestedDeadlineMissed = 1,
+    MessageLost = 2,
+    LivelinessLost = 3,
+    OfferedDeadlineMissed = 4,
+}
+
+impl From<nros_rmw::EventKind> for NrosRmwEventKind {
+    fn from(k: nros_rmw::EventKind) -> Self {
+        use nros_rmw::EventKind as K;
+        match k {
+            K::LivelinessChanged => NrosRmwEventKind::LivelinessChanged,
+            K::RequestedDeadlineMissed => NrosRmwEventKind::RequestedDeadlineMissed,
+            K::MessageLost => NrosRmwEventKind::MessageLost,
+            K::LivelinessLost => NrosRmwEventKind::LivelinessLost,
+            K::OfferedDeadlineMissed => NrosRmwEventKind::OfferedDeadlineMissed,
+            _ => NrosRmwEventKind::MessageLost, // unreachable for now (#[non_exhaustive])
+        }
+    }
+}
+
+/// Liveliness payload mirror.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NrosRmwLivelinessChangedStatus {
+    pub alive_count: u16,
+    pub not_alive_count: u16,
+    pub alive_count_change: i16,
+    pub not_alive_count_change: i16,
+}
+
+/// Count payload mirror.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NrosRmwCountStatus {
+    pub total_count: u32,
+    pub total_count_change: u32,
+}
+
+/// Borrow-shaped payload union mirror. C-side ABI — runtime-checked
+/// kind tag selects which member is valid.
+#[repr(C)]
+pub union NrosRmwEventPayload {
+    pub liveliness_changed: NrosRmwLivelinessChangedStatus,
+    pub count: NrosRmwCountStatus,
+}
+
+/// C callback signature. Matches `nros_rmw_event_callback_t`.
+pub type NrosRmwEventCallback = unsafe extern "C" fn(
+    kind: NrosRmwEventKind,
+    payload: *const NrosRmwEventPayload,
+    user_context: *mut c_void,
+);
 
 // ============================================================================
 // Registration
@@ -809,6 +889,11 @@ impl Publisher for CffiPublisher {
     fn serialization_error(&self) -> TransportError {
         TransportError::SerializationError
     }
+
+    #[cfg(feature = "alloc")]
+    fn unsupported_event_error(&self) -> TransportError {
+        TransportError::Unsupported
+    }
 }
 
 impl Drop for CffiPublisher {
@@ -892,6 +977,11 @@ impl nros_rmw::Subscriber for CffiSubscriber {
 
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
+    }
+
+    #[cfg(feature = "alloc")]
+    fn unsupported_event_error(&self) -> TransportError {
+        TransportError::Unsupported
     }
 }
 
@@ -1295,6 +1385,25 @@ mod tests {
         0
     }
 
+    unsafe extern "C" fn stub_register_subscriber_event(
+        _: *mut NrosRmwSubscriber,
+        _: NrosRmwEventKind,
+        _: u32,
+        _: NrosRmwEventCallback,
+        _: *mut c_void,
+    ) -> NrosRmwRet {
+        NROS_RMW_RET_UNSUPPORTED
+    }
+    unsafe extern "C" fn stub_register_publisher_event(
+        _: *mut NrosRmwPublisher,
+        _: NrosRmwEventKind,
+        _: u32,
+        _: NrosRmwEventCallback,
+        _: *mut c_void,
+    ) -> NrosRmwRet {
+        NROS_RMW_RET_UNSUPPORTED
+    }
+
     static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
         open: stub_open,
         close: stub_close,
@@ -1314,6 +1423,8 @@ mod tests {
         create_service_client: stub_create_service_client,
         destroy_service_client: stub_destroy_service_client,
         call_raw: stub_call_raw,
+        register_subscriber_event: stub_register_subscriber_event,
+        register_publisher_event: stub_register_publisher_event,
     };
 
     #[test]

@@ -870,6 +870,40 @@ pub trait Publisher {
 
     /// Return a serialization error (implementation specific)
     fn serialization_error(&self) -> Self::Error;
+
+    /// Phase 108 — `true` if the backend can generate this event for
+    /// this publisher. Default returns `false`; backends override per
+    /// supported event kind.
+    ///
+    /// Only [`EventKind::LivelinessLost`] and
+    /// [`EventKind::OfferedDeadlineMissed`] are publisher-side events;
+    /// other kinds always return `false` here.
+    fn supports_event(&self, _kind: crate::event::EventKind) -> bool {
+        false
+    }
+
+    /// Phase 108 — register a callback fired when the named status
+    /// event occurs. `deadline_ms` applies to
+    /// [`EventKind::OfferedDeadlineMissed`] only; ignored otherwise.
+    /// Default impl returns the backend's "unsupported"-shaped error.
+    #[cfg(feature = "alloc")]
+    fn register_event_callback(
+        &mut self,
+        _kind: crate::event::EventKind,
+        _deadline_ms: u32,
+        _cb: crate::event::EventCallback,
+    ) -> Result<(), Self::Error> {
+        Err(self.unsupported_event_error())
+    }
+
+    /// Phase 108 — backend's error variant for "this event kind is
+    /// not supported." Default impl reuses `serialization_error()`
+    /// since most backends share an `Unsupported` variant; backends
+    /// override if they have a distinct `Unsupported` mapping.
+    #[cfg(feature = "alloc")]
+    fn unsupported_event_error(&self) -> Self::Error {
+        self.serialization_error()
+    }
 }
 
 /// Subscriber trait for receiving messages.
@@ -1012,6 +1046,40 @@ pub trait Subscriber {
 
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
+
+    /// Phase 108 — `true` if the backend can generate this event for
+    /// this subscriber. Default returns `false`; backends override per
+    /// supported event kind.
+    ///
+    /// Subscriber-side event kinds: [`EventKind::LivelinessChanged`],
+    /// [`EventKind::RequestedDeadlineMissed`],
+    /// [`EventKind::MessageLost`]. Publisher kinds always return
+    /// `false` here.
+    fn supports_event(&self, _kind: crate::event::EventKind) -> bool {
+        false
+    }
+
+    /// Phase 108 — register a callback fired when the named status
+    /// event occurs. `deadline_ms` applies to
+    /// [`EventKind::RequestedDeadlineMissed`] only; ignored otherwise.
+    /// Default impl returns the backend's "unsupported"-shaped error.
+    #[cfg(feature = "alloc")]
+    fn register_event_callback(
+        &mut self,
+        _kind: crate::event::EventKind,
+        _deadline_ms: u32,
+        _cb: crate::event::EventCallback,
+    ) -> Result<(), Self::Error> {
+        Err(self.unsupported_event_error())
+    }
+
+    /// Phase 108 — backend's error variant for "this event kind is
+    /// not supported." Default reuses `deserialization_error()` for
+    /// backends that don't have a distinct `Unsupported` mapping.
+    #[cfg(feature = "alloc")]
+    fn unsupported_event_error(&self) -> Self::Error {
+        self.deserialization_error()
+    }
 }
 
 /// Service request from a client

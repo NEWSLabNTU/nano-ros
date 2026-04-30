@@ -36,11 +36,20 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod event;
 pub mod sync;
 pub mod traits;
 
 #[cfg(feature = "safety-e2e")]
 pub mod safety;
+
+// Phase 108 — status-event surface.
+pub use event::{
+    CountStatus, DeadlineMissedStatus, EventKind, EventPayload, LivelinessChangedStatus,
+    MessageLostStatus,
+};
+#[cfg(feature = "alloc")]
+pub use event::EventCallback;
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]

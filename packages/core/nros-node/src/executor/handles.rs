@@ -156,6 +156,66 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
+
+    // ====================================================================
+    // Phase 108 — status events
+    // ====================================================================
+    //
+    // Publisher-side: `LivelinessLost` and `OfferedDeadlineMissed`.
+    // Returns `NodeError::Transport(TransportError::Unsupported)` if
+    // the active backend doesn't generate the event for this entity.
+
+    /// `true` if the active backend can fire the named event for this
+    /// publisher.
+    #[cfg(feature = "alloc")]
+    pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        use nros_rmw::Publisher as _;
+        self.handle.supports_event(kind)
+    }
+
+    /// Register a callback for `LivelinessLost`. Fires when this
+    /// publisher misses its own liveliness assertion deadline.
+    #[cfg(feature = "alloc")]
+    pub fn on_liveliness_lost<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    {
+        use nros_rmw::Publisher as _;
+        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
+            if let nros_rmw::EventPayload::LivelinessLost(s) = payload {
+                cb(*s);
+            }
+        });
+        self.handle
+            .register_event_callback(nros_rmw::EventKind::LivelinessLost, 0, cb)
+            .map_err(|e| NodeError::Transport(e))
+    }
+
+    /// Register a callback for `OfferedDeadlineMissed`. Fires when
+    /// this publisher promised `deadline` and falls behind.
+    #[cfg(feature = "alloc")]
+    pub fn on_offered_deadline_missed<F>(
+        &mut self,
+        deadline: core::time::Duration,
+        mut cb: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::DeadlineMissedStatus) + Send + 'static,
+    {
+        use nros_rmw::Publisher as _;
+        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
+            if let nros_rmw::EventPayload::OfferedDeadlineMissed(s) = payload {
+                cb(*s);
+            }
+        });
+        self.handle
+            .register_event_callback(
+                nros_rmw::EventKind::OfferedDeadlineMissed,
+                deadline.as_millis().min(u32::MAX as u128) as u32,
+                cb,
+            )
+            .map_err(|e| NodeError::Transport(e))
+    }
 }
 
 // ============================================================================
@@ -660,6 +720,85 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Get the receive buffer (valid after `try_recv_raw`).
     pub fn buffer(&self) -> &[u8] {
         &self.buffer
+    }
+
+    // ====================================================================
+    // Phase 108 — status events
+    // ====================================================================
+    //
+    // Subscriber-side: `LivelinessChanged`, `RequestedDeadlineMissed`,
+    // `MessageLost`. Returns
+    // `NodeError::Transport(TransportError::Unsupported)` if the
+    // active backend doesn't generate the event for this entity.
+
+    /// `true` if the active backend can fire the named event for this
+    /// subscriber.
+    #[cfg(feature = "alloc")]
+    pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        use nros_rmw::Subscriber as _;
+        self.handle.supports_event(kind)
+    }
+
+    /// Register a callback for `LivelinessChanged`. Fires when a
+    /// tracked publisher's liveliness state changes.
+    #[cfg(feature = "alloc")]
+    pub fn on_liveliness_changed<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
+    {
+        use nros_rmw::Subscriber as _;
+        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
+            if let nros_rmw::EventPayload::LivelinessChanged(s) = payload {
+                cb(*s);
+            }
+        });
+        self.handle
+            .register_event_callback(nros_rmw::EventKind::LivelinessChanged, 0, cb)
+            .map_err(|e| NodeError::Transport(e))
+    }
+
+    /// Register a callback for `RequestedDeadlineMissed`. Fires when
+    /// an expected sample doesn't arrive within `deadline`.
+    #[cfg(feature = "alloc")]
+    pub fn on_requested_deadline_missed<F>(
+        &mut self,
+        deadline: core::time::Duration,
+        mut cb: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::DeadlineMissedStatus) + Send + 'static,
+    {
+        use nros_rmw::Subscriber as _;
+        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
+            if let nros_rmw::EventPayload::RequestedDeadlineMissed(s) = payload {
+                cb(*s);
+            }
+        });
+        self.handle
+            .register_event_callback(
+                nros_rmw::EventKind::RequestedDeadlineMissed,
+                deadline.as_millis().min(u32::MAX as u128) as u32,
+                cb,
+            )
+            .map_err(|e| NodeError::Transport(e))
+    }
+
+    /// Register a callback for `MessageLost`. Fires when the backend
+    /// drops a sample (overflow, etc.).
+    #[cfg(feature = "alloc")]
+    pub fn on_message_lost<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::MessageLostStatus) + Send + 'static,
+    {
+        use nros_rmw::Subscriber as _;
+        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
+            if let nros_rmw::EventPayload::MessageLost(s) = payload {
+                cb(*s);
+            }
+        });
+        self.handle
+            .register_event_callback(nros_rmw::EventKind::MessageLost, 0, cb)
+            .map_err(|e| NodeError::Transport(e))
     }
 
     /// Check if data is available without consuming it.
