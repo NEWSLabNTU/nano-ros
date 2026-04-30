@@ -65,16 +65,34 @@ The vtable is a struct of function pointers grouped by entity (see
 
 ## Return-value conventions
 
+Status is reported as `nros_rmw_ret_t` — a signed 32-bit integer.
+Zero is success; every error code is a named negative constant in
+@ref rmw_ret.h. Pointer-returning calls signal failure with `NULL`.
+
 ```
 open                     non-NULL = success, NULL = error
 close/drive_io/
-  publish_raw/send_reply 0 = success, negative = error
-try_recv_raw             positive = bytes received, 0 = no data, negative = error
-try_recv_request         positive = bytes received (seq_out written), 0 = none, negative = error
+  publish_raw/send_reply NROS_RMW_RET_OK = success, negative = named error code
+try_recv_raw             >= 0 = bytes received (0 = no data), negative = named error code
+try_recv_request         >= 0 = bytes received (seq_out written), negative = named error code
 has_data/has_request     1 = yes, 0 = no
-call_raw                 positive = reply bytes, negative = error
+call_raw                 >= 0 = reply bytes, negative = named error code
 destroy_*                void (best-effort cleanup)
 ```
+
+The full set of named codes (`NROS_RMW_RET_TIMEOUT`,
+`NROS_RMW_RET_INVALID_ARGUMENT`, `NROS_RMW_RET_UNSUPPORTED`,
+`NROS_RMW_RET_INCOMPATIBLE_QOS`, `NROS_RMW_RET_TOPIC_NAME_INVALID`,
+`NROS_RMW_RET_NODE_NAME_NON_EXISTENT`,
+`NROS_RMW_RET_LOAN_NOT_SUPPORTED`, `NROS_RMW_RET_NO_DATA`,
+`NROS_RMW_RET_WOULD_BLOCK`, `NROS_RMW_RET_BUFFER_TOO_SMALL`,
+`NROS_RMW_RET_MESSAGE_TOO_LARGE`, plus the catch-all
+`NROS_RMW_RET_ERROR`) is documented at @ref rmw_ret.h.
+
+There is no thread-local error string — the `rmw_set_error_string` /
+`rmw_get_error_string` pattern needs heap allocation per thread which
+embedded code paths cannot afford. Backends log diagnostic strings at
+the failure site through the platform's `printk` equivalent.
 
 ## Threading
 

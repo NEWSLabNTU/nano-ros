@@ -135,6 +135,34 @@ impl ServiceClientTrait for MyProtoClient {
 }
 ```
 
+### Pick the right `TransportError` variant
+
+The runtime maps every `TransportError` variant to a named
+`nros_rmw_ret_t` constant at the C boundary. Picking a specific
+variant gives the caller actionable information instead of an opaque
+"failed somehow":
+
+| Variant | When to use |
+|---------|-------------|
+| `Timeout` | Bounded wait elapsed (drive_io, blocking call_raw). |
+| `WouldBlock` | Resource momentarily unavailable; caller should retry. Distinct from `NoData` — `NoData` means the queue is empty, `WouldBlock` means it's contended. |
+| `NoData` | Non-blocking receive found the queue empty. |
+| `BufferTooSmall` | Caller's `&mut [u8]` smaller than the next message. |
+| `MessageTooLarge` | Incoming message exceeds the backend's static capacity. |
+| `InvalidArgument` | NULL pointer, out-of-range value, missing required config. |
+| `Unsupported` | Backend genuinely cannot perform this operation (e.g., uORB has no service surface). |
+| `IncompatibleQos` | Endpoints' QoS profiles differ in a way the backend cannot reconcile. |
+| `TopicNameInvalid` | Topic / service name failed validation (empty, too long, illegal characters). |
+| `BadAlloc` | Allocation failed on a heap-equipped backend. |
+| `LoanNotSupported` | Lending requested on an entity that doesn't support it. |
+| `ConnectionFailed` / `Disconnected` | Transport-level failures. |
+| `PublisherCreationFailed` / `SubscriberCreationFailed` / `ServiceServerCreationFailed` / `ServiceClientCreationFailed` | Catch-all for entity creation when no more specific code applies. |
+| `Backend(&str)` / `BackendDynamic(String)` | Backend-specific diagnostic that doesn't map to any of the above. |
+
+The Rust trait surface is the source of truth; the C header
+`<nros/rmw_ret.h>` exposes the matching `NROS_RMW_RET_*` constants
+for C porters.
+
 ### Factory shape (Phase 84.E2)
 
 `Rmw::open` consumes `self`, not a `&self`. That shape asks every
@@ -214,23 +242,25 @@ per-field return-value, threading, and blocking conventions.
 
 ```c
 #include <nros/rmw_vtable.h>
+#include <nros/rmw_ret.h>
 
 // -- Session lifecycle --
 static nros_rmw_handle_t my_open(const char *locator, uint8_t mode,
                                  uint32_t domain_id, const char *node_name) {
     /* connect, return non-NULL session handle (or NULL on failure). */
 }
-static int32_t my_close(nros_rmw_handle_t session) { /* ... */ }
-static int32_t my_drive_io(nros_rmw_handle_t session, int32_t timeout_ms) {
-    /* dispatch network I/O for up to timeout_ms; return 0 on success. */
+static nros_rmw_ret_t my_close(nros_rmw_handle_t session) { /* ... */ }
+static nros_rmw_ret_t my_drive_io(nros_rmw_handle_t session, int32_t timeout_ms) {
+    /* dispatch network I/O for up to timeout_ms; return NROS_RMW_RET_OK
+     * on success, NROS_RMW_RET_TIMEOUT / NROS_RMW_RET_ERROR otherwise. */
 }
 
 // -- Publisher --
 static nros_rmw_handle_t my_create_publisher(nros_rmw_handle_t session,
         const char *topic, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_cffi_qos_t *qos) { /* ... */ }
-static void    my_destroy_publisher(nros_rmw_handle_t publisher) { /* ... */ }
-static int32_t my_publish_raw(nros_rmw_handle_t publisher,
+static void           my_destroy_publisher(nros_rmw_handle_t publisher) { /* ... */ }
+static nros_rmw_ret_t my_publish_raw(nros_rmw_handle_t publisher,
         const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Subscriber --
@@ -240,7 +270,8 @@ static nros_rmw_handle_t my_create_subscriber(nros_rmw_handle_t session,
 static void    my_destroy_subscriber(nros_rmw_handle_t subscriber) { /* ... */ }
 static int32_t my_try_recv_raw(nros_rmw_handle_t subscriber,
         uint8_t *buf, size_t buf_len) {
-    /* positive = bytes received, 0 = no data, negative = error. */
+    /* >= 0 = bytes received (0 = no data),
+     * negative nros_rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
 }
 static int32_t my_has_data(nros_rmw_handle_t subscriber) { /* 1 = yes, 0 = no */ }
 
@@ -252,7 +283,7 @@ static void    my_destroy_service_server(nros_rmw_handle_t server) { /* ... */ }
 static int32_t my_try_recv_request(nros_rmw_handle_t server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
 static int32_t my_has_request(nros_rmw_handle_t server) { /* 1 = yes, 0 = no */ }
-static int32_t my_send_reply(nros_rmw_handle_t server,
+static nros_rmw_ret_t my_send_reply(nros_rmw_handle_t server,
         int64_t seq, const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Service Client --

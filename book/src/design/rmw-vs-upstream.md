@@ -23,7 +23,7 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 | QoS profiles | Full DDS profile match | Backend-defined minimal subset |
 | DDS events | `rmw_event_t` (`rmw_take_event`) | None |
 | Loaned messages | Optional `rmw_borrow_loaned_message` | First-class `loan_publish` / `loan_recv` |
-| Error returns | `rmw_ret_t` (`RMW_RET_OK`, …) | Negative `int32_t` for error, non-NULL handles for success |
+| Error returns | `rmw_ret_t` (`RMW_RET_OK`, …) | `nros_rmw_ret_t` (`NROS_RMW_RET_OK`, …) — same named-constant style |
 
 ## 1. Plugin loading vs. compile-time backend
 
@@ -330,22 +330,53 @@ typedef int32_t rmw_ret_t;
 Pointer-returning calls indicate failure with `NULL` *and* set a
 thread-local error string via `rmw_set_error_string`.
 
-**nano-ros.** Two conventions, picked by call shape:
+**nano-ros.** Same named-constant style (`<nros/rmw_ret.h>`),
+different sign convention, no thread-local error string:
+
+```c
+typedef int32_t nros_rmw_ret_t;
+#define NROS_RMW_RET_OK                       0
+#define NROS_RMW_RET_ERROR                   -1
+#define NROS_RMW_RET_TIMEOUT                 -2
+#define NROS_RMW_RET_BAD_ALLOC               -3
+#define NROS_RMW_RET_INVALID_ARGUMENT        -4
+#define NROS_RMW_RET_UNSUPPORTED             -5
+#define NROS_RMW_RET_INCOMPATIBLE_QOS        -6
+#define NROS_RMW_RET_TOPIC_NAME_INVALID      -7
+#define NROS_RMW_RET_NODE_NAME_NON_EXISTENT  -8
+#define NROS_RMW_RET_LOAN_NOT_SUPPORTED      -9
+#define NROS_RMW_RET_NO_DATA                -10
+#define NROS_RMW_RET_WOULD_BLOCK            -11
+#define NROS_RMW_RET_BUFFER_TOO_SMALL       -12
+#define NROS_RMW_RET_MESSAGE_TOO_LARGE      -13
+```
+
+Two return-shape conventions, picked by call shape:
 
 | Returns | Success | Failure |
 |---------|---------|---------|
-| `nros_rmw_handle_t` (`open`, `create_publisher`, …) | non-NULL | NULL |
-| `int32_t` (`drive_io`, `publish_raw`, `try_recv_raw`, …) | `0` (or positive byte count) | negative |
+| `nros_rmw_handle_t` (`open`, `create_publisher`, …) | non-NULL | `NULL` |
+| `nros_rmw_ret_t` (`drive_io`, `publish_raw`, `commit_slot`, …) | `NROS_RMW_RET_OK` | negative named constant |
+| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `call_raw`) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
 
-No thread-local error string. No `rmw_get_error_string`. Backends
-return one of a small set of negative codes; the runtime maps them
-into nano-ros's own error type at the boundary.
+**Differences from upstream.**
 
-**Why.** Thread-local error strings need a thread-local heap and
-implicit allocation on the error path. Embedded code paths can't pay
-that. Returning a small set of negative codes per call is enough
-information for the runtime to act on; the backend logs verbose
-diagnostics through whatever printk-equivalent the platform provides.
+- **Negative for error.** Upstream uses positive integer codes
+  (`RMW_RET_ERROR = 1`); nano-ros uses negative so the byte-count
+  convention can be unified into the same `int32_t` return.
+- **No thread-local error string.** No `rmw_set_error_string`, no
+  `rmw_get_error_string`. The thread-local heap allocation that
+  pattern needs is unaffordable on embedded targets. Backends log
+  verbose diagnostics at the failure site through the platform's
+  `printk` equivalent — never buffered, never thread-local.
+- **Smaller code-set.** 13 codes total (vs upstream's ~25). Phase
+  102.1 audit started from upstream's set and dropped codes that
+  don't apply (e.g., DDS event codes, `RMW_RET_NODE_INVALID`).
+  Adding a code is a `<nros/rmw_ret.h>` header change only.
+
+**Why same style.** Phase 102 deliberately moved closer to upstream
+on this point. Named constants make `switch` statements possible at
+call sites; bare negative ints don't.
 
 ## See also
 
