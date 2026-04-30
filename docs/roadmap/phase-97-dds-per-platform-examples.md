@@ -10,11 +10,18 @@ open. Each per-platform slice is a from-scratch board bring-up
 exercise — too big to fit alongside Phase 71's infrastructure, hence
 splitting it out.
 
-**Status**: In Progress — 6 of 7 97.4 slices green
+**Status**: Complete — 6 of 7 97.4 slices green
 (`freertos`, `nuttx`, `threadx-linux`, `threadx-riscv64`, `baremetal`,
 `zephyr-native_sim`); exceeds the "≥3 of 7" acceptance threshold.
-Only `esp32-qemu` remaining (depends on Phase 97.3.esp32-qemu
-bare-metal smoltcp DDS port).
+`esp32-qemu` deferred to a follow-up phase: blocked by stdlib
+`alloc::sync::Arc` being target-gated off on `riscv32imc` (no `A`
+extension), which a `portable-atomic` cfg cannot re-expose. Closing
+that gap requires substituting `portable-atomic-util::Arc` across
+dust-dds + dropping the `regex` dep — both invasive forks tracked
+separately. Phase 97 ships the unblocking tracing-optional fork
+(branch `nano-ros/phase-97-tracing-optional` on
+`jerry73204/dust-dds`) and the example scaffolding so the slice
+turns green the moment the Arc shim lands.
 
 **Priority**: Medium. Native + Zephyr (`qemu_cortex_a9`) DDS already
 ship and cover the user-visible surface. Each remaining per-platform
@@ -249,35 +256,51 @@ tests landed by Phase 71.26.
       `nros-tests::baremetal_qemu_dds::test_baremetal_dds_rust_talker_to_listener_e2e`.
 - [~] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
       talker + listener. Scaffolding lands but build is blocked by
-      atomic-CAS gap on `riscv32imc`:
+      compounding atomic-support gaps on `riscv32imc`:
       - Example crates + `nros-board-esp32-qemu` `dds-heap` (256 KB)
         + `smoltcp_clock_now_ms` extern shim + `[dds] domain_id`
         Config parser + smoltcp `multicast` feature all wired (mirror
         of MPS2-AN385 slice). Existing zenoh ESP32 examples still
         build clean.
-      - Build fails on `core::sync::atomic` CAS calls
-        (`compare_exchange`, `swap`, `fetch_add` on `AtomicPtr` /
-        `AtomicUsize` / `AtomicBool`) inside `tracing-core` and
-        `spin`. ESP32-C3 (`riscv32imc`) lacks the RISC-V `A`
-        extension; LLVM lowers these to `__atomic_*` libcalls that
-        nothing currently provides.
-      - `spin` compiles after switching its dep to `features =
-        ["spin_mutex", "portable_atomic"]` + a per-example
-        `--cfg=portable_atomic_unsafe_assume_single_core` rustflag —
-        but `tracing-core` can't be patched the same way without
-        forking it. dust-dds pulls in `tracing` unconditionally via
-        the `dcps` feature.
-      - Three close-out paths (each multi-day):
-        1. Provide `__atomic_compare_exchange_4` / `_load_4` /
-           `_store_4` / `_fetch_add_4` extern stubs in
-           `nros-platform-esp32-qemu` (single-core IRQ-disable
-           polyfill).
-        2. Patch `tracing-core` to honour a `portable-atomic`
-           feature flag (the fix already exists for `tracing` 0.2;
-           upstream is the path of least resistance).
-        3. Make dust-dds's `tracing` dep `optional` and gate every
-           `tracing::instrument` macro behind a Cargo feature.
-      - Open follow-up; orthogonal to the rest of Phase 97.
+      - **Layer 1: native CAS in 3rd-party deps.** ESP32-C3
+        (`riscv32imc`) lacks the RISC-V `A` extension; LLVM lowers
+        `core::sync::atomic::*::compare_exchange/swap/fetch_add` to
+        `__atomic_*` libcalls. Affected upstream crates:
+        - `spin` — fixed via `features = ["spin_mutex",
+          "portable_atomic"]` + `--cfg=portable_atomic_unsafe_assume_single_core`.
+        - `tracing-core` — fixed by detaching `tracing` from `dcps`
+          in our dust-dds fork (branch
+          `nano-ros/phase-97-tracing-optional`, commit `8dd8f542`,
+          pushed to `jerry73204/dust-dds`). All 432
+          `#[tracing::instrument(...)]` attrs wrapped in
+          `#[cfg_attr(feature = "tracing", …)]`; lib.rs aliases
+          dust_dds itself as `tracing` with no-op
+          `debug!/info!/warn!/error!/trace!/span!` macros + a `Level`
+          stub when the feature is off.
+        - `regex-automata` — still broken. Pulled in via
+          dust-dds's `regex` dep for partition-QoS fnmatch matching.
+          Uses `compare_exchange` directly + `alloc::sync::Arc`.
+      - **Layer 2: `alloc::sync::Arc` itself.** Stdlib gates `Arc`
+        behind `#[cfg(target_has_atomic = "ptr")]`, which is a
+        target query, not a feature flag. `riscv32imc` evaluates
+        false, so `alloc::sync` simply does not exist — no amount
+        of `__atomic_*` libcall stubs or `portable-atomic` cfg can
+        re-expose it. Affected:
+        - `regex-automata` (uses `alloc::sync::Arc`).
+        - dust-dds itself: `Arc<[u8]>` for RTPS buffers in
+          `submessage_elements.rs`, `Arc<Mutex<…>>` in
+          `std_runtime/timer.rs`, etc.
+      - **Conclusion: deferred to a follow-up phase.** Closing
+        Layer 2 requires a `portable-atomic-util::Arc` substitution
+        across the dust-dds codebase plus a vendored
+        portable-atomic-aware regex (or a hand-rolled fnmatch
+        replacement to drop the `regex` dep entirely). Both are
+        multi-day forks. Phase 97 ships the tracing-optional fork
+        + scaffolding so the `riscv32imc` slice is unblocked the
+        moment the Arc shim work lands.
+      - **Tracking:** new phase to be filed against
+        dust-dds-portable-atomic upstreaming. Not a Phase 97
+        deliverable.
 
 ### 97.4 — Per-platform DDS pubsub E2E
 
