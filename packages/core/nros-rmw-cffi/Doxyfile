@@ -8,6 +8,7 @@ PROJECT_BRIEF          = "C vtable for plugging a third-party RMW backend into n
 
 INPUT                  = include/nros/rmw_vtable.h \
                          include/nros/rmw_ret.h \
+                         include/nros/rmw_entity.h \
                          docs/mainpage.md
 
 RECURSIVE              = NO

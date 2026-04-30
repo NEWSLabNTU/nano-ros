@@ -130,6 +130,142 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 }
 
 // ============================================================================
+// Phase 102.3 — typed entity structs (mirrors `<nros/rmw_entity.h>`)
+// ============================================================================
+//
+// These structs are layout-compatible with the typed entity structs
+// in the C header. They are introduced in 102.3 (header + Rust
+// mirror) without changing the vtable signature; 102.4 will switch
+// the vtable's `create_*` calls to use them as out-parameters and
+// retire `CffiHandle` for those entities.
+
+/// QoS values. Mirrors `nros_rmw_qos_t` from `<nros/rmw_entity.h>`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NrosRmwQos {
+    /// Reliability policy: `0` = best-effort, `1` = reliable.
+    pub reliability: u8,
+    /// Durability policy: `0` = volatile, `1` = transient-local.
+    pub durability: u8,
+    /// History policy: `0` = keep-last, `1` = keep-all.
+    pub history: u8,
+    /// Reserved padding; must be zero.
+    pub _pad0: u8,
+    /// History depth (0–65 535).
+    pub depth: u16,
+    /// Reserved padding; must be zero.
+    pub _pad1: u16,
+}
+
+/// Lending capabilities. Mirrors `nros_rmw_loan_caps_t` from
+/// `<nros/rmw_entity.h>`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NrosRmwLoanCaps {
+    /// Bit 0: `supports_cdr_loan`. Bit 1: `supports_typed_loan`.
+    /// Remaining bits reserved.
+    pub bits: u8,
+}
+
+impl NrosRmwLoanCaps {
+    /// `true` iff `supports_cdr_loan` is set.
+    #[inline]
+    pub fn supports_cdr_loan(&self) -> bool {
+        self.bits & 0b0000_0001 != 0
+    }
+
+    /// `true` iff `supports_typed_loan` is set.
+    #[inline]
+    pub fn supports_typed_loan(&self) -> bool {
+        self.bits & 0b0000_0010 != 0
+    }
+}
+
+/// Per-process RMW session. Mirrors `nros_rmw_session_t`.
+#[repr(C)]
+pub struct NrosRmwSession {
+    /// Borrowed; outlives the session.
+    pub node_name: *const u8,
+    /// Borrowed; outlives the session.
+    pub namespace_: *const u8,
+    /// Opaque backend state. NULL when uninitialised.
+    pub backend_data: *mut c_void,
+}
+
+/// Publisher entity. Mirrors `nros_rmw_publisher_t`.
+#[repr(C)]
+pub struct NrosRmwPublisher {
+    /// Borrowed; outlives the publisher.
+    pub topic_name: *const u8,
+    /// Borrowed; outlives the publisher.
+    pub type_name: *const u8,
+    pub qos: NrosRmwQos,
+    pub loan_caps: NrosRmwLoanCaps,
+    /// Opaque backend state. NULL when creation failed.
+    pub backend_data: *mut c_void,
+}
+
+/// Subscriber entity. Mirrors `nros_rmw_subscriber_t`.
+#[repr(C)]
+pub struct NrosRmwSubscriber {
+    /// Borrowed; outlives the subscriber.
+    pub topic_name: *const u8,
+    /// Borrowed; outlives the subscriber.
+    pub type_name: *const u8,
+    pub qos: NrosRmwQos,
+    pub loan_caps: NrosRmwLoanCaps,
+    /// Opaque backend state. NULL when creation failed.
+    pub backend_data: *mut c_void,
+}
+
+/// Service-server entity. Mirrors `nros_rmw_service_server_t`.
+#[repr(C)]
+pub struct NrosRmwServiceServer {
+    /// Borrowed; outlives the server.
+    pub service_name: *const u8,
+    /// Borrowed; outlives the server.
+    pub type_name: *const u8,
+    /// Opaque backend state. NULL when creation failed.
+    pub backend_data: *mut c_void,
+}
+
+/// Service-client entity. Mirrors `nros_rmw_service_client_t`.
+#[repr(C)]
+pub struct NrosRmwServiceClient {
+    /// Borrowed; outlives the client.
+    pub service_name: *const u8,
+    /// Borrowed; outlives the client.
+    pub type_name: *const u8,
+    /// Opaque backend state. NULL when creation failed.
+    pub backend_data: *mut c_void,
+}
+
+impl From<QosSettings> for NrosRmwQos {
+    fn from(qos: QosSettings) -> Self {
+        Self {
+            reliability: match qos.reliability {
+                QosReliabilityPolicy::BestEffort => 0,
+                QosReliabilityPolicy::Reliable => 1,
+            },
+            durability: match qos.durability {
+                QosDurabilityPolicy::Volatile => 0,
+                QosDurabilityPolicy::TransientLocal => 1,
+            },
+            history: match qos.history {
+                QosHistoryPolicy::KeepLast => 0,
+                QosHistoryPolicy::KeepAll => 1,
+            },
+            _pad0: 0,
+            // QosSettings::depth is u32; clamp to u16 max. Embedded
+            // ROS queue depths are typically 1–100; oversize values
+            // are saturated at 65 535 rather than wrapped.
+            depth: qos.depth.min(u16::MAX as u32) as u16,
+            _pad1: 0,
+        }
+    }
+}
+
+// ============================================================================
 // Vtable type (mirrors C header)
 // ============================================================================
 
