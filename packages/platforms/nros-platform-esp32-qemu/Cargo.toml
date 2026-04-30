@@ -11,6 +11,10 @@ name = "nros_platform_esp32_qemu"
 
 [features]
 default = []
+# Phase 97.3.esp32-qemu — DDS / dust-dds heap budget (256 KB,
+# tightest fit on ESP32-C3's 400 KB SRAM). Off by default so zenoh
+# / xrce builds keep their 32 KB footprint.
+dds-heap = []
 
 [dependencies]
 nros-platform-api = { path = "../../core/nros-platform-api" }

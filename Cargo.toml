@@ -242,6 +242,8 @@ exclude = [
     "examples/esp32/rust/zenoh/listener",
     "examples/qemu-esp32-baremetal/rust/zenoh/talker",
     "examples/qemu-esp32-baremetal/rust/zenoh/listener",
+    "examples/qemu-esp32-baremetal/rust/dds/talker",
+    "examples/qemu-esp32-baremetal/rust/dds/listener",
     # PX4 examples — built into PX4 binary via px4_rust_module(); not part of
     # nano-ros's host workspace.
     "examples/px4/rust/uorb/talker",

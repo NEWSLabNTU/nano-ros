@@ -352,17 +352,17 @@ pub fn queue_multicast_join(group: Ipv4Address) -> bool {
 }
 
 // Phase 97.3 mcast-join diagnostic counters.
-static MCAST_JOIN_ATTEMPTS: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0);
-static MCAST_JOIN_OK: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-static MCAST_JOIN_ERR_UNADDR: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0);
-static MCAST_JOIN_ERR_FULL: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0);
+static MCAST_JOIN_ATTEMPTS: portable_atomic::AtomicU32 =
+    portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_OK: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_UNADDR: portable_atomic::AtomicU32 =
+    portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_FULL: portable_atomic::AtomicU32 =
+    portable_atomic::AtomicU32::new(0);
 
 /// Snapshot of multicast-join counters (attempts, ok, err_unaddressable, err_full).
 pub fn mcast_join_counters() -> (u32, u32, u32, u32) {
-    use core::sync::atomic::Ordering;
+    use portable_atomic::Ordering;
     (
         MCAST_JOIN_ATTEMPTS.load(Ordering::Relaxed),
         MCAST_JOIN_OK.load(Ordering::Relaxed),
@@ -378,7 +378,7 @@ fn drain_multicast_joins<D: Device>(
     device: &mut D,
     timestamp: smoltcp::time::Instant,
 ) {
-    use core::sync::atomic::Ordering;
+    use portable_atomic::Ordering;
     let _ = (device, timestamp);
     unsafe {
         let pending = &raw mut MULTICAST_PENDING;

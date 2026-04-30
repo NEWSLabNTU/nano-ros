@@ -18,3 +18,8 @@ smoltcp = { version = "0.12", default-features = false, features = [
     # Phase 71.26 — IGMP for RTPS SPDP multicast (239.255.0.1:7400+).
     "multicast",
 ] }
+# Phase 97.3.esp32-qemu — diagnostic counters use atomic fetch_add
+# which `riscv32imc` (ESP32-C3) doesn't have natively. portable-atomic
+# provides a polyfill via interrupt disable. Cortex-M targets get the
+# native atomic instructions; both are safe.
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }

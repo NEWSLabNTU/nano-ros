@@ -1,0 +1,40 @@
+[package]
+name = "esp32-qemu-dds-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS talker example on ESP32-C3 QEMU + OpenETH + smoltcp (Phase 97.3.esp32-qemu)"
+
+[[bin]]
+name = "esp32-qemu-dds-talker"
+test = false
+bench = false
+
+[dependencies]
+# `default-features = false` drops the zenoh-pico optional deps + the
+# boot-time `zpico_set_task_config` call. `dds-heap` flips the
+# bare-metal heap from 32 KB to 256 KB so dust-dds's
+# `DcpsDomainParticipant` builtin entities fit.
+nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu", default-features = false, features = ["ethernet", "dds-heap"] }
+
+# Phase 97.3.esp32-qemu prerequisites:
+#   * `global-allocator` — `<Esp32QemuPlatform as PlatformAlloc>` →
+#     Rust `#[global_allocator]`.
+#   * `critical-section` provided by `esp-hal` itself (RISC-V single
+#     core via `portable-atomic/unsafe-assume-single-core`).
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32-qemu", "global-allocator"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Required for #[main] proc macro
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

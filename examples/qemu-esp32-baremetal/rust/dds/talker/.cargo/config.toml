@@ -1,0 +1,36 @@
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+# Phase 97.3.esp32-qemu — distinct per-example IPs so the two sibling
+# QEMU processes derive different RTPS GUID prefixes (dust-dds
+# self-filters on identical host_id+app_id).
+[env]
+NROS_LOCAL_IPV4 = "10.0.2.50"
+NROS_LOCAL_IPV4_BYTES = "10,0,2,50"
+ESP_LOG = "info"
+
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nros-core]
+path = "../../../../../packages/core/nros-core"
+
+[patch.crates-io.nros-serdes]
+path = "../../../../../packages/core/nros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+[target.riscv32imc-unknown-none-elf]
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+  "-C", "force-frame-pointers",
+  # Phase 97.3.esp32-qemu — `riscv32imc` lacks the `A` extension; the
+  # `portable-atomic` crate (pulled in via spin's `portable_atomic`
+  # feature) otherwise refuses to compile. Single-core ESP32-C3
+  # makes the IRQ-disable polyfill safe.
+  "--cfg=portable_atomic_unsafe_assume_single_core",
+]
+
+[unstable]
+build-std = ["core", "alloc"]

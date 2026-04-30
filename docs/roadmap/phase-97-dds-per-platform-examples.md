@@ -247,8 +247,37 @@ tests landed by Phase 71.26.
       group instead.
 - [x] **97.4.baremetal** — same crates as 97.3, exercised by
       `nros-tests::baremetal_qemu_dds::test_baremetal_dds_rust_talker_to_listener_e2e`.
-- [ ] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
-      talker + listener.
+- [~] **97.3.esp32-qemu** — `examples/qemu-esp32-baremetal/rust/dds/`
+      talker + listener. Scaffolding lands but build is blocked by
+      atomic-CAS gap on `riscv32imc`:
+      - Example crates + `nros-board-esp32-qemu` `dds-heap` (256 KB)
+        + `smoltcp_clock_now_ms` extern shim + `[dds] domain_id`
+        Config parser + smoltcp `multicast` feature all wired (mirror
+        of MPS2-AN385 slice). Existing zenoh ESP32 examples still
+        build clean.
+      - Build fails on `core::sync::atomic` CAS calls
+        (`compare_exchange`, `swap`, `fetch_add` on `AtomicPtr` /
+        `AtomicUsize` / `AtomicBool`) inside `tracing-core` and
+        `spin`. ESP32-C3 (`riscv32imc`) lacks the RISC-V `A`
+        extension; LLVM lowers these to `__atomic_*` libcalls that
+        nothing currently provides.
+      - `spin` compiles after switching its dep to `features =
+        ["spin_mutex", "portable_atomic"]` + a per-example
+        `--cfg=portable_atomic_unsafe_assume_single_core` rustflag —
+        but `tracing-core` can't be patched the same way without
+        forking it. dust-dds pulls in `tracing` unconditionally via
+        the `dcps` feature.
+      - Three close-out paths (each multi-day):
+        1. Provide `__atomic_compare_exchange_4` / `_load_4` /
+           `_store_4` / `_fetch_add_4` extern stubs in
+           `nros-platform-esp32-qemu` (single-core IRQ-disable
+           polyfill).
+        2. Patch `tracing-core` to honour a `portable-atomic`
+           feature flag (the fix already exists for `tracing` 0.2;
+           upstream is the path of least resistance).
+        3. Make dust-dds's `tracing` dep `optional` and gate every
+           `tracing::instrument` macro behind a Cargo feature.
+      - Open follow-up; orthogonal to the rest of Phase 97.
 
 ### 97.4 — Per-platform DDS pubsub E2E
 

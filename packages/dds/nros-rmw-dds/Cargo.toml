@@ -76,7 +76,12 @@ dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dc
 heapless = { workspace = true }
 # `spin` provides the no_std Mutex used by `NrosPlatformRuntime`'s task
 # queue. `std` builds use `std::sync::Mutex` instead (see runtime.rs).
-spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
+# Phase 97.3.esp32-qemu — `riscv32imc` (ESP32-C3) has no native
+# atomic CAS; spin's `portable_atomic` feature swaps in the
+# `portable-atomic` crate's polyfill (which itself needs the
+# board crate to enable `unsafe-assume-single-core`). Harmless on
+# Cortex-M / x86-64 where native CAS is used.
+spin = { version = "0.9", default-features = false, features = ["spin_mutex", "portable_atomic"] }
 # Phase 97.4 debug — semihosting trace inside `transport_nros::create_participant`
 # so failed bring-up shows where it dies (which RTPS port bind, which
 # `mcast_listen` step, etc.). Cortex-M only; bare-metal / FreeRTOS

@@ -12,6 +12,9 @@ name = "nros_board_esp32_qemu"
 # Unified platform primitives (clock, memory, random, sleep, libc stubs)
 nros-platform-esp32-qemu = { path = "../../platforms/nros-platform-esp32-qemu" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32-qemu"] }
+# Phase 97.3.esp32-qemu — `smoltcp_clock_now_ms` extern shim needs the
+# trait import. Only used inside the cfg-gated forwarder in lib.rs.
+nros-platform-api = { path = "../../core/nros-platform-api" }
 # Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
 
@@ -25,6 +28,9 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
     "proto-ipv4",
     "socket-tcp",
     "socket-udp",
+    # Phase 97.3.esp32-qemu — IGMP / multicast group join for RTPS
+    # SPDP `239.255.0.1:7400+`. Same as the MPS2-AN385 slice.
+    "multicast",
 ] }
 
 # ESP32-C3 HAL and support crates
@@ -45,3 +51,6 @@ rmw-zenoh = ["dep:zpico-platform-shim"]
 ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)
 serial = []
+# Phase 97.3.esp32-qemu — DDS / dust-dds heap budget (256 KB). Off
+# by default; DDS example crates pull in via `features = ["dds-heap"]`.
+dds-heap = ["nros-platform-esp32-qemu/dds-heap"]
