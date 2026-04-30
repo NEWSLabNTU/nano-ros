@@ -16,7 +16,7 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 |---------|------------------|------------------|
 | Plugin loading | `dlopen("librmw_*.so")` at runtime | Single vtable registered at init |
 | Init sequence | `rmw_init_options_t` → `rmw_context_t` → entities | One `open()` call, returns the session |
-| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | All entities are `nros_rmw_handle_t` (opaque `void*`) |
+| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | Typed-with-opaque-tail: `nros_rmw_publisher_t` / `_subscriber_t` / `_service_server_t` / `_service_client_t` (visible metadata + opaque `backend_data`) |
 | Wait | `rmw_wait(waitset, timeout)` blocks the caller | `drive_io(session, timeout_ms)` drives I/O once |
 | Serialization | typesupport-driven (rosidl) | Pre-serialized CDR bytes only |
 | Graph queries | `rmw_get_topic_names_and_types`, … | None |
@@ -74,9 +74,10 @@ rmw_shutdown(&context);
 options + context:
 
 ```c
-nros_rmw_handle_t session = vtable->open(locator, mode, domain_id, node_name);
-/* ... use session to create_publisher / create_subscriber / … */
-vtable->close(session);
+nros_rmw_session_t session = {0};
+nros_rmw_ret_t ret = vtable->open(locator, mode, domain_id, node_name, &session);
+/* ... use &session to create_publisher / create_subscriber / … */
+vtable->close(&session);
 ```
 
 **Why.** Upstream's split is useful when an application owns multiple
@@ -99,24 +100,67 @@ typedef struct RMW_PUBLIC_TYPE rmw_publisher_t {
 } rmw_publisher_t;
 ```
 
-**nano-ros.** All entities are an opaque `void *`:
+**nano-ros.** Hybrid: typed-with-opaque-tail (Phase 102.3 / 102.4).
+Each entity is a typed C struct exposing the metadata the runtime
+actually reads (topic name, type name, QoS, lending capabilities)
+inline; backend-private state stays behind an opaque `backend_data`
+pointer.
 
 ```c
-typedef void* nros_rmw_handle_t;
+typedef struct nros_rmw_publisher_t {
+    const char *         topic_name;    /* borrowed; outlives the publisher */
+    const char *         type_name;     /* borrowed */
+    nros_rmw_qos_t       qos;
+    nros_rmw_loan_caps_t loan_caps;
+    void *               backend_data;  /* opaque */
+} nros_rmw_publisher_t;
 
-nros_rmw_handle_t (*create_publisher)(nros_rmw_handle_t session,
-                                       const char * topic_name,
-                                       const char * type_name,
-                                       const char * type_hash,
-                                       nros_rmw_cffi_qos_t qos);
+nros_rmw_ret_t (*create_publisher)(
+    nros_rmw_session_t * session,
+    const char * topic_name, const char * type_name, const char * type_hash,
+    uint32_t domain_id, const nros_rmw_qos_t * qos,
+    nros_rmw_publisher_t * out);   /* runtime-allocated; backend fills */
 ```
 
-**Why.** `rmw_publisher_t` exists so the upstream client library can
-read fields (e.g., `topic_name`, `can_loan_messages`) without calling
-into the backend. The cost is that every backend has to maintain those
-fields in sync with its own state. Nano-ros's runtime never reads
-backend-internal state directly — it asks the vtable. Collapsing
-entities to opaque pointers removes that synchronisation burden.
+Same shape for `nros_rmw_session_t`, `nros_rmw_subscriber_t`,
+`nros_rmw_service_server_t`, `nros_rmw_service_client_t`. Service
+entities have no `qos` field — the
+`rmw_qos_profile_services_default` distinction does not generalise
+across non-DDS backends (see [QoS, Section 7](#7-qos-minimal-subset-not-full-dds-profiles)).
+
+**Storage ownership.** The runtime allocates the entity-struct shell;
+the backend writes its `backend_data` (and optionally `loan_caps`)
+into the runtime-supplied out-parameter at `create_*` time. The
+backend never `malloc`s a struct shell — embedded targets cannot
+afford a per-entity heap allocation. `destroy_*` releases only the
+backend's `backend_data`; the shell stays valid until the runtime
+drops its owner.
+
+**Differences from upstream's `rmw_publisher_t`.**
+
+- **Borrowed strings, not backend-owned copies.** Upstream's
+  `topic_name` points to a backend-allocated string copied at
+  `create_publisher` time. Ours points to caller (runtime) storage
+  that outlives the publisher — no allocation per entity.
+- **No `implementation_identifier` field.** Backend selection is
+  compile-time (see [Section 1](#1-plugin-loading-vs-compile-time-backend));
+  there's no plugin loader to dispatch through, so no need to
+  identify which backend owns a struct.
+- **`loan_caps` first-class.** Upstream's `can_loan_messages` is a
+  single bool; ours is a 2-bit field (CDR loan + typed loan, the
+  latter reserved for [Phase 103](../../../docs/roadmap/phase-103-rmw-typed-loan.md))
+  the runtime checks once at create time and uses to dispatch the
+  publish path with no per-call branch.
+- **`depth: uint16_t`.** Upstream uses 32-bit; embedded queue depths
+  are 1–100, the 16-bit width saves 2 bytes × N entities.
+
+**Why this shape.** Fully-opaque `void *` (the previous nano-ros
+design) forced every introspection through a vtable callback.
+Upstream's "expose every field, backend keeps them in sync" forces
+duplicated state. The typed-with-opaque-tail middle ground exposes
+exactly the fields the runtime reads — no callback indirection — and
+keeps backend implementation state private. The struct layout is
+ABI; adding or reordering fields is a major-version bump.
 
 ## 4. `drive_io` vs. `rmw_wait`
 
@@ -139,7 +183,7 @@ callbacks asynchronously.
 **nano-ros.** The executor calls a single drive-I/O entry point:
 
 ```c
-int32_t (*drive_io)(nros_rmw_handle_t session, int32_t timeout_ms);
+nros_rmw_ret_t (*drive_io)(nros_rmw_session_t * session, int32_t timeout_ms);
 ```
 
 The backend dispatches whatever receive / send / wakeup work is
@@ -173,10 +217,10 @@ The backend dereferences `ros_message` according to a
 receive *already-CDR-encoded* bytes:
 
 ```c
-int32_t (*publish_raw)(nros_rmw_handle_t publisher,
-                       const uint8_t * data, size_t len);
+nros_rmw_ret_t (*publish_raw)(nros_rmw_publisher_t * publisher,
+                              const uint8_t * data, size_t len);
 
-int32_t (*try_recv_raw)(nros_rmw_handle_t subscriber,
+int32_t (*try_recv_raw)(nros_rmw_subscriber_t * subscriber,
                         uint8_t * buf, size_t len);
 ```
 
@@ -241,12 +285,14 @@ and surfaces violations as events.
 QoS struct is small:
 
 ```c
-typedef struct nros_rmw_cffi_qos_t {
-    uint8_t reliability;   /* RELIABLE | BEST_EFFORT */
-    uint8_t durability;    /* VOLATILE | TRANSIENT_LOCAL */
-    uint8_t history;       /* KEEP_LAST | KEEP_ALL */
+typedef struct nros_rmw_qos_t {
+    uint8_t  reliability;   /* NROS_RMW_RELIABILITY_RELIABLE | _BEST_EFFORT */
+    uint8_t  durability;    /* NROS_RMW_DURABILITY_VOLATILE  | _TRANSIENT_LOCAL */
+    uint8_t  history;       /* NROS_RMW_HISTORY_KEEP_LAST    | _KEEP_ALL */
+    uint8_t  _pad0;
     uint16_t depth;
-} nros_rmw_cffi_qos_t;
+    uint16_t _pad1;
+} nros_rmw_qos_t;
 ```
 
 No deadline / lifespan / liveliness fields. No profile matching at the
@@ -355,8 +401,8 @@ Two return-shape conventions, picked by call shape:
 
 | Returns | Success | Failure |
 |---------|---------|---------|
-| `nros_rmw_handle_t` (`open`, `create_publisher`, …) | non-NULL | `NULL` |
-| `nros_rmw_ret_t` (`drive_io`, `publish_raw`, `commit_slot`, …) | `NROS_RMW_RET_OK` | negative named constant |
+| `nros_rmw_ret_t` + entity-struct out-param (`open`, `create_publisher`, `create_subscriber`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
+| `nros_rmw_ret_t` (`close`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
 | `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `call_raw`) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
 
 **Differences from upstream.**

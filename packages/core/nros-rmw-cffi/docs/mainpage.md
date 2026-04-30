@@ -18,10 +18,16 @@ your backend stays in C.
 
    ```c
    #include <nros/rmw_vtable.h>
+   #include <nros/rmw_ret.h>
+   #include <nros/rmw_entity.h>
 
-   static nros_rmw_handle_t my_open(const char* locator, uint8_t mode,
-                                    uint32_t domain_id, const char* node_name) {
-       return /* my_session_t */;
+   /* Backend writes its own session pointer into out->backend_data.
+    * The runtime has already filled out->node_name + out->namespace_. */
+   static nros_rmw_ret_t my_open(const char* locator, uint8_t mode,
+                                 uint32_t domain_id, const char* node_name,
+                                 nros_rmw_session_t* out) {
+       out->backend_data = /* my_session_t pointer */;
+       return NROS_RMW_RET_OK;
    }
    /* ... fill in every field ... */
 

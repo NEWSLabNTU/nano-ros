@@ -243,55 +243,73 @@ per-field return-value, threading, and blocking conventions.
 ```c
 #include <nros/rmw_vtable.h>
 #include <nros/rmw_ret.h>
+#include <nros/rmw_entity.h>
 
 // -- Session lifecycle --
-static nros_rmw_handle_t my_open(const char *locator, uint8_t mode,
-                                 uint32_t domain_id, const char *node_name) {
-    /* connect, return non-NULL session handle (or NULL on failure). */
+static nros_rmw_ret_t my_open(const char *locator, uint8_t mode,
+                              uint32_t domain_id, const char *node_name,
+                              nros_rmw_session_t *out) {
+    /* Connect. On success: write out->backend_data with your session
+     * pointer, return NROS_RMW_RET_OK. On failure: return one of the
+     * named codes (NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_TIMEOUT,
+     * NROS_RMW_RET_BAD_ALLOC, NROS_RMW_RET_ERROR). out->node_name is
+     * already set by the runtime — read it for diagnostics. */
 }
-static nros_rmw_ret_t my_close(nros_rmw_handle_t session) { /* ... */ }
-static nros_rmw_ret_t my_drive_io(nros_rmw_handle_t session, int32_t timeout_ms) {
-    /* dispatch network I/O for up to timeout_ms; return NROS_RMW_RET_OK
+static nros_rmw_ret_t my_close(nros_rmw_session_t *session) { /* ... */ }
+static nros_rmw_ret_t my_drive_io(nros_rmw_session_t *session, int32_t timeout_ms) {
+    /* Dispatch network I/O for up to timeout_ms; return NROS_RMW_RET_OK
      * on success, NROS_RMW_RET_TIMEOUT / NROS_RMW_RET_ERROR otherwise. */
 }
 
 // -- Publisher --
-static nros_rmw_handle_t my_create_publisher(nros_rmw_handle_t session,
+static nros_rmw_ret_t my_create_publisher(
+        nros_rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_cffi_qos_t *qos) { /* ... */ }
-static void           my_destroy_publisher(nros_rmw_handle_t publisher) { /* ... */ }
-static nros_rmw_ret_t my_publish_raw(nros_rmw_handle_t publisher,
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
+        nros_rmw_publisher_t *out) {
+    /* Runtime has already filled out->topic_name / type_name / qos.
+     * Backend writes out->backend_data with its publisher handle and
+     * may set out->loan_caps to advertise lending support. */
+}
+static void           my_destroy_publisher(nros_rmw_publisher_t *publisher) { /* ... */ }
+static nros_rmw_ret_t my_publish_raw(nros_rmw_publisher_t *publisher,
         const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Subscriber --
-static nros_rmw_handle_t my_create_subscriber(nros_rmw_handle_t session,
+static nros_rmw_ret_t my_create_subscriber(
+        nros_rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_cffi_qos_t *qos) { /* ... */ }
-static void    my_destroy_subscriber(nros_rmw_handle_t subscriber) { /* ... */ }
-static int32_t my_try_recv_raw(nros_rmw_handle_t subscriber,
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
+        nros_rmw_subscriber_t *out) { /* ... */ }
+static void    my_destroy_subscriber(nros_rmw_subscriber_t *subscriber) { /* ... */ }
+static int32_t my_try_recv_raw(nros_rmw_subscriber_t *subscriber,
         uint8_t *buf, size_t buf_len) {
     /* >= 0 = bytes received (0 = no data),
      * negative nros_rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
 }
-static int32_t my_has_data(nros_rmw_handle_t subscriber) { /* 1 = yes, 0 = no */ }
+static int32_t my_has_data(nros_rmw_subscriber_t *subscriber) { /* 1 = yes, 0 = no */ }
 
 // -- Service Server --
-static nros_rmw_handle_t my_create_service_server(nros_rmw_handle_t session,
+static nros_rmw_ret_t my_create_service_server(
+        nros_rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id) { /* ... */ }
-static void    my_destroy_service_server(nros_rmw_handle_t server) { /* ... */ }
-static int32_t my_try_recv_request(nros_rmw_handle_t server,
+        uint32_t domain_id,
+        nros_rmw_service_server_t *out) { /* ... */ }
+static void    my_destroy_service_server(nros_rmw_service_server_t *server) { /* ... */ }
+static int32_t my_try_recv_request(nros_rmw_service_server_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
-static int32_t my_has_request(nros_rmw_handle_t server) { /* 1 = yes, 0 = no */ }
-static nros_rmw_ret_t my_send_reply(nros_rmw_handle_t server,
+static int32_t my_has_request(nros_rmw_service_server_t *server) { /* 1 = yes, 0 = no */ }
+static nros_rmw_ret_t my_send_reply(nros_rmw_service_server_t *server,
         int64_t seq, const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Service Client --
-static nros_rmw_handle_t my_create_service_client(nros_rmw_handle_t session,
+static nros_rmw_ret_t my_create_service_client(
+        nros_rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id) { /* ... */ }
-static void    my_destroy_service_client(nros_rmw_handle_t client) { /* ... */ }
-static int32_t my_call_raw(nros_rmw_handle_t client,
+        uint32_t domain_id,
+        nros_rmw_service_client_t *out) { /* ... */ }
+static void    my_destroy_service_client(nros_rmw_service_client_t *client) { /* ... */ }
+static int32_t my_call_raw(nros_rmw_service_client_t *client,
         const uint8_t *request, size_t req_len,
         uint8_t *reply_buf, size_t reply_buf_len) { /* ... */ }
 
@@ -352,9 +370,13 @@ allowance. The C vtable inherits the same rules:
   route blocking waits through the executor instead. Implement it as
   a polling loop only if you need to support legacy callers.
 
-All strings are null-terminated. Handles are opaque `nros_rmw_handle_t`
-(`void*`). Return convention: `0` = success / no data, positive =
-byte count, negative = error.
+All strings are null-terminated and borrowed (caller owns the
+storage). Entities are typed structs with an opaque `backend_data`
+slot — the runtime fills metadata fields (`topic_name`, `qos`, …)
+before calling `create_*`; the backend writes `backend_data`. Return
+convention: `NROS_RMW_RET_OK` = success, negative = named
+`nros_rmw_ret_t` constant, positive = byte count (only on
+`try_recv_*` / `call_raw`).
 
 ---
 
