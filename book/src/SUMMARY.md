@@ -39,6 +39,7 @@
 - [no_std Support](./concepts/no-std.md)
 - [Platform Model](./concepts/platform-model.md)
 - [RTOS Cooperation](./concepts/rtos-cooperation.md)
+- [Status Events](./concepts/status-events.md)
 
 # Porting
 

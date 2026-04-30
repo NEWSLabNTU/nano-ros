@@ -420,28 +420,106 @@ features that a backend can't enforce is worse than not promising
 them; constraining the surface to four fields each backend actually
 honors makes the contract real.
 
-## 8. No DDS event API
+## 8. Status events: callback-on-entity, Tier-1 subset
 
-**Upstream.** Event APIs surface DDS notifications:
+**Upstream.** Event APIs surface DDS-shaped notifications via a
+waitset-take pattern:
 
 ```c
+rmw_ret_t rmw_subscription_event_init(
+  rmw_event_t * event, const rmw_subscription_t * sub,
+  rmw_event_type_t type);
+
+/* Add event_handle to a waitset alongside subscriptions. */
+rmw_ret_t rmw_wait(...);
+
+/* Poll fired events. */
 rmw_ret_t rmw_take_event(
   const rmw_event_t * event_handle,
-  void * event_info,
-  bool * taken);
+  void * event_info, bool * taken);
 ```
 
-`rmw_event_t` types include `RMW_EVENT_REQUESTED_DEADLINE_MISSED`,
-`RMW_EVENT_LIVELINESS_LOST`, `RMW_EVENT_OFFERED_DEADLINE_MISSED`, etc.
+Eleven event types covering liveliness, deadline, QoS-incompatibility,
+match, message-lost, type-incompatibility — all dispatched through
+the waitset.
 
-**nano-ros.** None of these. The vtable has no `take_event` or
-`event_handle`.
+**nano-ros.** Callback-on-entity for a Tier-1 subset (liveliness
+changes, deadline misses, message lost). Skips the waitset. Skips
+Tier-2 (`MATCHED`) and Tier-3 (`QOS_INCOMPATIBLE`,
+`INCOMPATIBLE_TYPE`) — see "What's skipped" below.
 
-**Why.** Most events are DDS-only. Nano-ros backends include zenoh-pico,
-XRCE-DDS, dust-DDS, and uORB; only dust-DDS has native equivalents,
-and it surfaces them through its own callback registration outside the
-RMW. Adding the upstream event API to the vtable would force every
-non-DDS backend to stub it.
+```rust
+sub.on_liveliness_changed(|status| {
+    if status.alive_count == 0 { trigger_failover(); }
+})?;
+
+sub.on_requested_deadline_missed(
+    Duration::from_millis(15),
+    |status| metric_inc(&LATE_SAMPLE_COUNT, status.total_count_change),
+)?;
+
+sub.on_message_lost(|status| log::warn!("dropped {}", status.total_count_change))?;
+```
+
+C side mirrors with `nros_subscription_set_*_callback` functions.
+
+### What lands
+
+| Event | Producer | Subscriber callback / Publisher callback |
+|-------|----------|------------------------------------------|
+| Liveliness changed | sub | `on_liveliness_changed(LivelinessChangedStatus)` |
+| Liveliness lost | pub | `on_liveliness_lost(DeadlineMissedStatus)` |
+| Requested deadline missed | sub | `on_requested_deadline_missed(deadline, DeadlineMissedStatus)` |
+| Offered deadline missed | pub | `on_offered_deadline_missed(deadline, DeadlineMissedStatus)` |
+| Message lost | sub | `on_message_lost(MessageLostStatus)` |
+
+### What's skipped
+
+- **`MATCHED`** — embedded apps usually have static topology;
+  rarely load-bearing. Add the kind if a discovery-tracking app
+  shows up; additive.
+- **`QOS_INCOMPATIBLE`** / **`INCOMPATIBLE_TYPE`** — these surface
+  at create time, not as runtime events. The existing
+  `nros_rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS` from
+  Phase 102.1) carry the diagnostic synchronously from
+  `create_publisher` / `create_subscriber`. No event needed.
+
+### Dispatch — callback-on-entity, not waitset-take
+
+Events fire from inside the existing `drive_io` callback-dispatch
+path. The backend's RX worker detects an event in the same place it
+detects messages; runs the registered callback; loops. No separate
+waitset, no per-call take.
+
+This reuses the message-callback dispatch model; events count
+against the `max_callbacks` cap from Section 4 the same way message
+callbacks do.
+
+**Why callback-on-entity instead of waitset-take.** The waitset-take
+pattern requires a waitset abstraction nano-ros deliberately doesn't
+have (see Section 4). Replacing it with per-entity callbacks reuses
+existing machinery, matches the message-callback ergonomics users
+already know, and keeps the bounded-storage property — each
+registered event-callback is a fixed-size struct embedded in the
+entity, no per-call allocation.
+
+The trade-off: users can't bulk-poll all events at once. For the
+Tier-1 events this isn't load-bearing — events are rare, callbacks
+are cheap.
+
+### Backend coverage
+
+Coverage is uneven and surfaces through `Subscriber::supports_event`
+(Rust) / `register_*_event` returning `NROS_RMW_RET_UNSUPPORTED`
+(C). Apps must handle "not supported" — not every backend will
+generate every event:
+
+| Backend | Liveliness | Deadline | Message lost |
+|---------|-----------|----------|--------------|
+| dust-DDS | Native (DDS spec) | Native | Native |
+| XRCE-DDS | Native via session listener | Native | Native |
+| zenoh-pico | Liveliness-token-tracked at shim | Shim-side timer per sub | Sequence-gap detection at shim |
+| uORB | Adapted: `orb_subscribers_count` polling | Not generated (uORB has no rate concept) | Native via queue-overflow flag |
 
 ## 9. Loaned messages first-class
 
