@@ -315,7 +315,16 @@ impl nros_cpp_qos_t {
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST => QosHistoryPolicy::KeepLast,
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL => QosHistoryPolicy::KeepAll,
             },
+            // Phase 109 — extended QoS fields default to "off" until
+            // nros_cpp_qos_t grows to carry them. Apps that need
+            // deadline / lifespan / liveliness use the Rust API
+            // directly today.
+            liveliness_kind: nros_rmw::QosLivelinessPolicy::Automatic,
             depth: self.depth as u32,
+            deadline_ms: 0,
+            lifespan_ms: 0,
+            liveliness_lease_ms: 0,
+            avoid_ros_namespace_conventions: false,
         }
     }
 }

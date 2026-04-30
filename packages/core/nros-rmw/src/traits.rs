@@ -326,7 +326,33 @@ pub enum QosDurabilityPolicy {
     TransientLocal,
 }
 
-/// QoS (Quality of Service) settings with builder pattern
+/// QoS liveliness policy. Matches DDS `LIVELINESS` semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum QosLivelinessPolicy {
+    /// No liveliness assertion or tracking. Default for entities
+    /// that don't care about liveliness.
+    #[default]
+    None = 0,
+    /// Backend's keepalive task asserts liveliness automatically.
+    Automatic = 1,
+    /// Application calls `assert_liveliness()` per topic explicitly.
+    ManualByTopic = 2,
+    /// Application calls `assert_liveliness()` at the node level.
+    ManualByNode = 3,
+}
+
+/// Full DDS-shaped QoS profile. Matches the field set of upstream
+/// `rmw_qos_profile_t`.
+///
+/// Backends advertise per-policy support via
+/// [`Session::supported_qos_policies`]; entities created with a
+/// profile the active backend can't honour return
+/// [`TransportError::IncompatibleQos`] synchronously at create time
+/// — no silent downgrade.
+///
+/// Zero-valued time-window fields ("off") mean infinite — the policy
+/// is effectively disabled for the entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QosSettings {
     /// History policy
@@ -335,8 +361,20 @@ pub struct QosSettings {
     pub reliability: QosReliabilityPolicy,
     /// Durability policy
     pub durability: QosDurabilityPolicy,
+    /// Liveliness policy
+    pub liveliness_kind: QosLivelinessPolicy,
     /// History depth (only used if history is KeepLast)
     pub depth: u32,
+    /// Subscriber max-inter-arrival / publisher offered-rate, ms.
+    /// `0` = infinite (no deadline check).
+    pub deadline_ms: u32,
+    /// Sample expiry, ms. Subscribers filter samples older than this.
+    /// `0` = infinite (no expiry).
+    pub lifespan_ms: u32,
+    /// Liveliness lease, ms. `0` = infinite.
+    pub liveliness_lease_ms: u32,
+    /// If `true`, topic-name encoding skips the `/rt/` ROS prefix.
+    pub avoid_ros_namespace_conventions: bool,
 }
 
 impl Default for QosSettings {
@@ -346,96 +384,113 @@ impl Default for QosSettings {
 }
 
 impl QosSettings {
-    /// Create new QoS settings with defaults (matches `QOS_PROFILE_DEFAULT`:
-    /// Reliable, Volatile, KeepLast(10)).
-    pub const fn new() -> Self {
+    /// Internal const builder. Extended-policy fields default to
+    /// "off" (zero) and `liveliness_kind = Automatic` (the upstream
+    /// `rmw_qos_profile_default` choice).
+    const fn build(
+        reliability: QosReliabilityPolicy,
+        durability: QosDurabilityPolicy,
+        history: QosHistoryPolicy,
+        depth: u32,
+    ) -> Self {
         Self {
-            history: QosHistoryPolicy::KeepLast,
-            reliability: QosReliabilityPolicy::Reliable,
-            durability: QosDurabilityPolicy::Volatile,
-            depth: 10,
+            history,
+            reliability,
+            durability,
+            liveliness_kind: QosLivelinessPolicy::Automatic,
+            depth,
+            deadline_ms: 0,
+            lifespan_ms: 0,
+            liveliness_lease_ms: 0,
+            avoid_ros_namespace_conventions: false,
         }
     }
 
+    /// Create new QoS settings with defaults (matches `QOS_PROFILE_DEFAULT`:
+    /// Reliable, Volatile, KeepLast(10)).
+    pub const fn new() -> Self {
+        Self::QOS_PROFILE_DEFAULT
+    }
+
     /// Best-effort QoS (for real-time)
-    pub const BEST_EFFORT: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::BestEffort,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 1,
-    };
+    pub const BEST_EFFORT: Self = Self::build(
+        QosReliabilityPolicy::BestEffort,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        1,
+    );
 
     /// Reliable QoS
-    pub const RELIABLE: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 10,
-    };
+    pub const RELIABLE: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        10,
+    );
 
     /// System default QoS profile (matches rmw_qos_profile_system_default)
-    pub const QOS_PROFILE_SYSTEM_DEFAULT: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 1,
-    };
+    pub const QOS_PROFILE_SYSTEM_DEFAULT: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        1,
+    );
 
     /// Default QoS profile (matches rmw_qos_profile_default)
-    pub const QOS_PROFILE_DEFAULT: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 10,
-    };
+    pub const QOS_PROFILE_DEFAULT: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        10,
+    );
 
     /// Sensor data QoS profile (matches rmw_qos_profile_sensor_data)
-    pub const QOS_PROFILE_SENSOR_DATA: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::BestEffort,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 5,
-    };
+    pub const QOS_PROFILE_SENSOR_DATA: Self = Self::build(
+        QosReliabilityPolicy::BestEffort,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        5,
+    );
 
     /// Services default QoS profile (matches rmw_qos_profile_services_default)
-    pub const QOS_PROFILE_SERVICES_DEFAULT: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 10,
-    };
+    pub const QOS_PROFILE_SERVICES_DEFAULT: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        10,
+    );
 
     /// Parameters QoS profile (matches rmw_qos_profile_parameters)
-    pub const QOS_PROFILE_PARAMETERS: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::TransientLocal,
-        depth: 1000,
-    };
+    pub const QOS_PROFILE_PARAMETERS: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::TransientLocal,
+        QosHistoryPolicy::KeepLast,
+        1000,
+    );
 
     /// Clock QoS profile - same as sensor data but with depth 1
-    pub const QOS_PROFILE_CLOCK: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::BestEffort,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 1,
-    };
+    pub const QOS_PROFILE_CLOCK: Self = Self::build(
+        QosReliabilityPolicy::BestEffort,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepLast,
+        1,
+    );
 
     /// Parameter events QoS profile (matches rmw_qos_profile_parameter_events)
-    pub const QOS_PROFILE_PARAMETER_EVENTS: Self = Self {
-        history: QosHistoryPolicy::KeepAll,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        depth: 0, // Not used with KeepAll
-    };
+    pub const QOS_PROFILE_PARAMETER_EVENTS: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::Volatile,
+        QosHistoryPolicy::KeepAll,
+        0, // Not used with KeepAll
+    );
 
     /// Action status default QoS profile (matches rcl_action_qos_profile_status_default)
-    pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: Self = Self {
-        history: QosHistoryPolicy::KeepLast,
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::TransientLocal,
-        depth: 1,
-    };
+    pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: Self = Self::build(
+        QosReliabilityPolicy::Reliable,
+        QosDurabilityPolicy::TransientLocal,
+        QosHistoryPolicy::KeepLast,
+        1,
+    );
 
     // --- Static constructor methods (matching rclrs API) ---
 
@@ -821,6 +876,75 @@ pub trait Session {
     /// receives data via OS callbacks (push-based) and has nothing to do
     /// here, return `Ok(())` explicitly.
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error>;
+
+    /// Phase 109 — report which QoS policies the active backend
+    /// honours. The runtime validates requested QoS against this mask
+    /// at entity-create time and returns
+    /// [`TransportError::IncompatibleQos`] if the requested profile
+    /// includes a policy the backend can't enforce. **No silent
+    /// downgrade.**
+    ///
+    /// Default returns [`QosPolicyMask::CORE`] — reliability +
+    /// durability VOLATILE + history + depth. Backends override per
+    /// supported policy.
+    fn supported_qos_policies(&self) -> QosPolicyMask {
+        QosPolicyMask::CORE
+    }
+}
+
+/// Bitmask of QoS policies a backend can honour. See
+/// [`Session::supported_qos_policies`].
+///
+/// `CORE` covers the policies every nano-ros backend implements:
+/// reliability, durability=VOLATILE, history, depth. Backends opt
+/// into additional policies by OR-ing the relevant flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QosPolicyMask(pub u32);
+
+impl QosPolicyMask {
+    pub const RELIABILITY: Self = Self(1 << 0);
+    pub const DURABILITY_VOLATILE: Self = Self(1 << 1);
+    pub const DURABILITY_TRANSIENT_LOCAL: Self = Self(1 << 2);
+    pub const HISTORY: Self = Self(1 << 3);
+    pub const DEPTH: Self = Self(1 << 4);
+    pub const DEADLINE: Self = Self(1 << 5);
+    pub const LIFESPAN: Self = Self(1 << 6);
+    pub const LIVELINESS_AUTOMATIC: Self = Self(1 << 7);
+    pub const LIVELINESS_MANUAL_BY_TOPIC: Self = Self(1 << 8);
+    pub const LIVELINESS_MANUAL_BY_NODE: Self = Self(1 << 9);
+    pub const LIVELINESS_LEASE: Self = Self(1 << 10);
+    pub const AVOID_ROS_NAMESPACE_CONVENTIONS: Self = Self(1 << 11);
+
+    /// Policies every nano-ros backend implements.
+    pub const CORE: Self = Self(
+        Self::RELIABILITY.0
+            | Self::DURABILITY_VOLATILE.0
+            | Self::HISTORY.0
+            | Self::DEPTH.0,
+    );
+
+    /// `true` if `self` contains every policy in `other`.
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Bitwise OR of two masks.
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+impl core::ops::BitOr for QosPolicyMask {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        self.union(rhs)
+    }
+}
+
+impl core::ops::BitOrAssign for QosPolicyMask {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
 }
 
 /// Publisher trait for sending messages.
@@ -903,6 +1027,15 @@ pub trait Publisher {
     #[cfg(feature = "alloc")]
     fn unsupported_event_error(&self) -> Self::Error {
         self.serialization_error()
+    }
+
+    /// Phase 109 — assert this publisher's liveliness manually.
+    /// Required for publishers configured with
+    /// `QosLivelinessPolicy::ManualByTopic`. No-op for other
+    /// liveliness kinds. Default impl returns `Ok(())` (no-op);
+    /// backends override when they implement manual liveliness.
+    fn assert_liveliness(&self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

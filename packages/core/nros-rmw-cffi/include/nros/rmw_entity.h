@@ -36,42 +36,148 @@
  */
 
 /* ------------------------------------------------------------------ */
-/* Common QoS shape                                                   */
+/* QoS profile — full DDS shape (matches `rmw_qos_profile_t`)          */
 /* ------------------------------------------------------------------ */
 
-/** QoS reliability policy values for `nros_rmw_qos_t::reliability`. */
+/** Reliability policy values for `nros_rmw_qos_t::reliability`. */
 #define NROS_RMW_RELIABILITY_BEST_EFFORT 0
 #define NROS_RMW_RELIABILITY_RELIABLE    1
 
-/** QoS durability policy values for `nros_rmw_qos_t::durability`. */
+/** Durability policy values for `nros_rmw_qos_t::durability`. */
 #define NROS_RMW_DURABILITY_VOLATILE         0
 #define NROS_RMW_DURABILITY_TRANSIENT_LOCAL  1
 
-/** QoS history policy values for `nros_rmw_qos_t::history`. */
+/** History policy values for `nros_rmw_qos_t::history`. */
 #define NROS_RMW_HISTORY_KEEP_LAST 0
 #define NROS_RMW_HISTORY_KEEP_ALL  1
 
+/** Liveliness kind values for `nros_rmw_qos_t::liveliness_kind`. */
+typedef enum nros_rmw_liveliness_kind_t {
+    /** No liveliness assertion or tracking. Default for entities
+     *  that don't care about liveliness. */
+    NROS_RMW_LIVELINESS_NONE              = 0,
+    /** Backend's keepalive task asserts liveliness automatically. */
+    NROS_RMW_LIVELINESS_AUTOMATIC         = 1,
+    /** Application calls `assert_liveliness()` per topic explicitly. */
+    NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 2,
+    /** Application calls `assert_liveliness()` at the node level. */
+    NROS_RMW_LIVELINESS_MANUAL_BY_NODE    = 3,
+} nros_rmw_liveliness_kind_t;
+
 /**
- * Minimal QoS subset honoured by every nros RMW backend.
+ * Full DDS-shaped QoS profile.
  *
- * The full DDS QoS profile family (deadline, lifespan, liveliness,
- * partition, ownership, …) is not represented here — backends honour
- * the subset they natively implement, no more. See the book
- * `concepts/ros2-comparison.md` "QoS subset, not full DDS profiles"
- * section for the rationale.
+ * Matches the field set of upstream `rmw_qos_profile_t`. Backends
+ * advertise per-policy support via the runtime's
+ * `supported_qos_policies()` query; entities created with a profile
+ * the active backend can't honour return
+ * `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time
+ * — no silent downgrade.
+ *
+ * Zero-valued fields ("off") preserve the cheap default for apps
+ * that don't request the policy:
+ *  - `deadline_ms = 0`            → infinite deadline (no check).
+ *  - `lifespan_ms = 0`            → infinite lifespan (no expiry).
+ *  - `liveliness_kind = NONE`     → no liveliness tracking.
+ *  - `liveliness_lease_ms = 0`    → infinite lease.
  *
  * `depth` is `uint16_t` (max 65 535). Embedded ROS application queue
  * depths are typically 1–100; the 16-bit width saves two bytes per
  * entity vs the upstream 32-bit choice.
  */
 typedef struct nros_rmw_qos_t {
-    uint8_t  reliability;   /**< @see NROS_RMW_RELIABILITY_* */
-    uint8_t  durability;    /**< @see NROS_RMW_DURABILITY_*  */
-    uint8_t  history;       /**< @see NROS_RMW_HISTORY_*     */
-    uint8_t  _reserved0;    /**< Reserved for future fields; must be zero. */
+    /* ---- 8-byte core, layout-equivalent to the original subset ---- */
+    uint8_t  reliability;     /**< @see NROS_RMW_RELIABILITY_*    */
+    uint8_t  durability;      /**< @see NROS_RMW_DURABILITY_*     */
+    uint8_t  history;         /**< @see NROS_RMW_HISTORY_*        */
+    uint8_t  liveliness_kind; /**< @see nros_rmw_liveliness_kind_t */
     uint16_t depth;
-    uint16_t _reserved1;    /**< Reserved for future fields; must be zero. */
-} nros_rmw_qos_t;
+    uint16_t _reserved0;      /**< Reserved; must be zero. */
+
+    /* ---- 16-byte extension (Phase 109) ---- */
+    /** Subscriber: max acceptable inter-arrival time, ms. Publisher:
+     *  max acceptable inter-publish (offered rate), ms.
+     *  0 = infinite (no deadline). */
+    uint32_t deadline_ms;
+
+    /** Sample expiry, ms. Subscriber filters samples older than
+     *  this. 0 = infinite (no expiry). */
+    uint32_t lifespan_ms;
+
+    /** Liveliness lease, ms. Publisher must assert liveliness
+     *  within this window or be considered dead. 0 = infinite. */
+    uint32_t liveliness_lease_ms;
+
+    /** If `true`, topic-name encoding skips the ROS `/rt/` prefix
+     *  and uses raw application names. Matches upstream
+     *  `avoid_ros_namespace_conventions`. */
+    bool     avoid_ros_namespace_conventions;
+    uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
+} nros_rmw_qos_t;             /* 24 bytes */
+
+/* ---- Standard QoS profile constants ---- */
+/* Defined as static const initialisers at the bottom of this
+ * header so they're available in every compilation unit that
+ * includes it. Match the field set of upstream
+ * `rmw_qos_profile_default` etc. */
+
+/** `rmw_qos_profile_default`-equivalent: reliable + volatile +
+ *  keep-last(10), automatic liveliness, no deadline / lifespan. */
+#define NROS_RMW_QOS_PROFILE_DEFAULT \
+    ((nros_rmw_qos_t){                                                   \
+        .reliability = NROS_RMW_RELIABILITY_RELIABLE,                    \
+        .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
+        .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
+        .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
+        .depth       = 10,                                               \
+        ._reserved0  = 0,                                                \
+        .deadline_ms = 0,                                                \
+        .lifespan_ms = 0,                                                \
+        .liveliness_lease_ms = 0,                                        \
+        .avoid_ros_namespace_conventions = false,                        \
+        ._reserved1  = {0, 0, 0},                                        \
+    })
+
+/** `rmw_qos_profile_sensor_data`-equivalent: best-effort +
+ *  volatile + keep-last(5). */
+#define NROS_RMW_QOS_PROFILE_SENSOR_DATA \
+    ((nros_rmw_qos_t){                                                   \
+        .reliability = NROS_RMW_RELIABILITY_BEST_EFFORT,                 \
+        .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
+        .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
+        .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
+        .depth       = 5,                                                \
+        ._reserved0  = 0,                                                \
+        .deadline_ms = 0,                                                \
+        .lifespan_ms = 0,                                                \
+        .liveliness_lease_ms = 0,                                        \
+        .avoid_ros_namespace_conventions = false,                        \
+        ._reserved1  = {0, 0, 0},                                        \
+    })
+
+/** `rmw_qos_profile_services_default`-equivalent: reliable +
+ *  volatile + keep-last(10). */
+#define NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT  NROS_RMW_QOS_PROFILE_DEFAULT
+
+/** `rmw_qos_profile_parameters`-equivalent: reliable + volatile +
+ *  keep-last(1000). */
+#define NROS_RMW_QOS_PROFILE_PARAMETERS \
+    ((nros_rmw_qos_t){                                                   \
+        .reliability = NROS_RMW_RELIABILITY_RELIABLE,                    \
+        .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
+        .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
+        .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
+        .depth       = 1000,                                             \
+        ._reserved0  = 0,                                                \
+        .deadline_ms = 0,                                                \
+        .lifespan_ms = 0,                                                \
+        .liveliness_lease_ms = 0,                                        \
+        .avoid_ros_namespace_conventions = false,                        \
+        ._reserved1  = {0, 0, 0},                                        \
+    })
+
+/** `rmw_qos_profile_system_default`-equivalent: same as DEFAULT. */
+#define NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT  NROS_RMW_QOS_PROFILE_DEFAULT
 
 /* ------------------------------------------------------------------ */
 /* Entity structs                                                     */

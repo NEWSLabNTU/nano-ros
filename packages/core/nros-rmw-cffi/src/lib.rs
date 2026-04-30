@@ -138,7 +138,18 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 // / `rmw_subscription_t` family: visible metadata + a `void * data`
 // tail (named `backend_data` here).
 
-/// QoS values. Mirrors `nros_rmw_qos_t` from `<nros/rmw_entity.h>`.
+/// Liveliness kind values for `NrosRmwQos::liveliness_kind`.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NrosRmwLivelinessKind {
+    None = 0,
+    Automatic = 1,
+    ManualByTopic = 2,
+    ManualByNode = 3,
+}
+
+/// Full DDS-shaped QoS profile. Mirrors `nros_rmw_qos_t` from
+/// `<nros/rmw_entity.h>`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NrosRmwQos {
@@ -148,13 +159,67 @@ pub struct NrosRmwQos {
     pub durability: u8,
     /// History policy: `0` = keep-last, `1` = keep-all.
     pub history: u8,
-    /// Reserved for future fields; must be zero.
-    pub _reserved0: u8,
+    /// Liveliness kind. See [`NrosRmwLivelinessKind`].
+    pub liveliness_kind: u8,
     /// History depth (0–65 535).
     pub depth: u16,
-    /// Reserved for future fields; must be zero.
-    pub _reserved1: u16,
+    /// Reserved; must be zero.
+    pub _reserved0: u16,
+
+    /// Subscriber max-inter-arrival / publisher offered-rate, ms.
+    /// `0` = infinite (no deadline).
+    pub deadline_ms: u32,
+    /// Sample expiry, ms. `0` = infinite.
+    pub lifespan_ms: u32,
+    /// Liveliness lease, ms. `0` = infinite.
+    pub liveliness_lease_ms: u32,
+    /// If `true`, topic name encoding skips the ROS `/rt/` prefix.
+    pub avoid_ros_namespace_conventions: bool,
+    /// Reserved; must be zero.
+    pub _reserved1: [u8; 3],
 }
+
+/// Standard `rmw_qos_profile_default`-equivalent.
+pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
+    reliability: 1,                                  // RELIABLE
+    durability: 0,                                   // VOLATILE
+    history: 0,                                      // KEEP_LAST
+    liveliness_kind: NrosRmwLivelinessKind::Automatic as u8,
+    depth: 10,
+    _reserved0: 0,
+    deadline_ms: 0,
+    lifespan_ms: 0,
+    liveliness_lease_ms: 0,
+    avoid_ros_namespace_conventions: false,
+    _reserved1: [0; 3],
+};
+
+/// Standard `rmw_qos_profile_sensor_data`-equivalent.
+pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
+    reliability: 0,                                  // BEST_EFFORT
+    durability: 0,                                   // VOLATILE
+    history: 0,                                      // KEEP_LAST
+    liveliness_kind: NrosRmwLivelinessKind::Automatic as u8,
+    depth: 5,
+    _reserved0: 0,
+    deadline_ms: 0,
+    lifespan_ms: 0,
+    liveliness_lease_ms: 0,
+    avoid_ros_namespace_conventions: false,
+    _reserved1: [0; 3],
+};
+
+/// Standard `rmw_qos_profile_services_default`-equivalent.
+pub const NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT: NrosRmwQos = NROS_RMW_QOS_PROFILE_DEFAULT;
+
+/// Standard `rmw_qos_profile_parameters`-equivalent.
+pub const NROS_RMW_QOS_PROFILE_PARAMETERS: NrosRmwQos = NrosRmwQos {
+    depth: 1000,
+    ..NROS_RMW_QOS_PROFILE_DEFAULT
+};
+
+/// Standard `rmw_qos_profile_system_default`-equivalent.
+pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
 /// Per-process RMW session. Mirrors `nros_rmw_session_t`.
 #[repr(C)]
@@ -247,12 +312,17 @@ impl From<QosSettings> for NrosRmwQos {
                 QosHistoryPolicy::KeepLast => 0,
                 QosHistoryPolicy::KeepAll => 1,
             },
-            _reserved0: 0,
+            liveliness_kind: qos.liveliness_kind as u8,
             // QosSettings::depth is u32; clamp to u16 max. Embedded
             // ROS queue depths are typically 1–100; oversize values
             // are saturated at 65 535 rather than wrapped.
             depth: qos.depth.min(u16::MAX as u32) as u16,
-            _reserved1: 0,
+            _reserved0: 0,
+            deadline_ms: qos.deadline_ms,
+            lifespan_ms: qos.lifespan_ms,
+            liveliness_lease_ms: qos.liveliness_lease_ms,
+            avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions,
+            _reserved1: [0; 3],
         }
     }
 }
@@ -1220,9 +1290,14 @@ mod tests {
         reliability: 0,
         durability: 0,
         history: 0,
-        _reserved0: 0,
+        liveliness_kind: 0,
         depth: 0,
-        _reserved1: 0,
+        _reserved0: 0,
+        deadline_ms: 0,
+        lifespan_ms: 0,
+        liveliness_lease_ms: 0,
+        avoid_ros_namespace_conventions: false,
+        _reserved1: [0; 3],
     };
 
     /// Read a null-terminated `*const u8` into the supplied byte

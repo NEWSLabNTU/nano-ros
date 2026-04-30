@@ -58,9 +58,10 @@ pub use safety::{IntegrityStatus, SafetyValidator, crc32};
 // Re-export main types
 pub use traits::{
     ActionInfo, LocatorProtocol, Publisher, QosDurabilityPolicy, QosHistoryPolicy,
-    QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo,
-    ServiceRequest, ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport,
-    TransportConfig, TransportError, locator_protocol, validate_locator,
+    QosLivelinessPolicy, QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw, RmwConfig,
+    ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session, SessionMode,
+    Subscriber, TopicInfo, Transport, TransportConfig, TransportError, locator_protocol,
+    validate_locator,
 };
 
 // Re-export `MessageInfo` from nros-core so backends implementing

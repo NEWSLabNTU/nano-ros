@@ -20,7 +20,7 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 | Wait | `rmw_wait(waitset, timeout)` blocks the caller | `drive_io(session, timeout_ms)` drives I/O once |
 | Serialization | typesupport-driven (rosidl) | Pre-serialized CDR bytes only |
 | Graph queries | `rmw_get_topic_names_and_types`, … | None |
-| QoS profiles | Full DDS profile match | Backend-defined minimal subset |
+| QoS profiles | Full DDS profile match between endpoints | Same field set; per-backend support advertised; synchronous `IncompatibleQos` on create instead of runtime mismatch event |
 | DDS events | `rmw_event_t` (`rmw_take_event`) | None |
 | Loaned messages | Optional `rmw_borrow_loaned_message` | First-class `loan_publish` / `loan_recv` |
 | Error returns | `rmw_ret_t` (`RMW_RET_OK`, …) | `nros_rmw_ret_t` (`NROS_RMW_RET_OK`, …) — same named-constant style |
@@ -374,7 +374,7 @@ interop with `rmw_zenoh_cpp` means standard ROS 2 tools running on a
 laptop can introspect the same domain as the MCU — at zero cost on
 the MCU.
 
-## 7. QoS: minimal subset, no profile matching
+## 7. QoS: full DDS-shaped profile, per-backend support advertised
 
 **Upstream.** Full DDS QoS profile family with profile *matching*
 between endpoints:
@@ -393,32 +393,102 @@ typedef struct RMW_PUBLIC_TYPE rmw_qos_profile_t {
 } rmw_qos_profile_t;
 ```
 
-The backend negotiates compatibility (`rmw_qos_profile_check_compatible`)
-and surfaces violations as events.
+The backend negotiates compatibility
+(`rmw_qos_profile_check_compatible`) and surfaces mismatches as
+runtime events.
 
-**nano-ros.** Each backend defines its own minimal subset; the vtable
-QoS struct is small:
+**nano-ros.** Same field set, packed into 24 bytes:
 
 ```c
 typedef struct nros_rmw_qos_t {
-    uint8_t  reliability;   /* NROS_RMW_RELIABILITY_RELIABLE | _BEST_EFFORT */
-    uint8_t  durability;    /* NROS_RMW_DURABILITY_VOLATILE  | _TRANSIENT_LOCAL */
-    uint8_t  history;       /* NROS_RMW_HISTORY_KEEP_LAST    | _KEEP_ALL */
-    uint8_t  _reserved0;    /* forward-compat; must be zero */
+    uint8_t  reliability;
+    uint8_t  durability;
+    uint8_t  history;
+    uint8_t  liveliness_kind;
     uint16_t depth;
-    uint16_t _reserved1;    /* forward-compat; must be zero */
+    uint16_t _reserved0;
+    uint32_t deadline_ms;             /* 0 = infinite */
+    uint32_t lifespan_ms;             /* 0 = infinite */
+    uint32_t liveliness_lease_ms;     /* 0 = infinite */
+    bool     avoid_ros_namespace_conventions;
+    uint8_t  _reserved1[3];
 } nros_rmw_qos_t;
 ```
 
-No deadline / lifespan / liveliness fields. No profile matching at the
-RMW layer — backends honor the subset they natively implement.
+Standard profile constants
+(`NROS_RMW_QOS_PROFILE_DEFAULT`, `_SENSOR_DATA`,
+`_SERVICES_DEFAULT`, `_SYSTEM_DEFAULT`, `_PARAMETERS`) match
+upstream `rmw_qos_profile_*` field-for-field, so applications
+porting from rclcpp / rclrs can pull the equivalent profile
+constant unchanged.
 
-**Why.** `rmw_qos_profile_t` was DDS-shaped from day one. Zenoh-pico
-has no concept of "liveliness lease" the way DDS does, and no
-backend besides DDS implements `deadline` enforcement. Promising QoS
-features that a backend can't enforce is worse than not promising
-them; constraining the surface to four fields each backend actually
-honors makes the contract real.
+### Per-backend support, no silent downgrade
+
+Each backend advertises which policies it can honour via
+`Session::supported_qos_policies()`, returning a `QosPolicyMask`
+bitfield. Policies a backend can't enforce are explicit.
+
+```rust
+pub trait Session {
+    fn supported_qos_policies(&self) -> QosPolicyMask {
+        QosPolicyMask::CORE     // reliability + durability VOLATILE + history + depth
+    }
+}
+```
+
+The runtime validates the requested QoS against the backend's mask
+at entity-create time. Requesting a policy the backend doesn't
+support returns `TransportError::IncompatibleQos`
+(`NROS_RMW_RET_INCOMPATIBLE_QOS` at the C boundary) **synchronously**.
+There is no silent degradation — applications either get the
+requested QoS or a hard error.
+
+Apps that need cross-backend portability check the mask at startup:
+
+```rust
+if session.supported_qos_policies()
+    .contains(QosPolicyMask::DEADLINE)
+{
+    pub.create_with_qos(...deadline_ms = 100, ...);
+} else {
+    // app-side fallback: timeout monitoring in user code
+}
+```
+
+### Manual liveliness assertion
+
+For `LIVELINESS_MANUAL_BY_TOPIC` and `LIVELINESS_MANUAL_BY_NODE`,
+publishers call `assert_liveliness()` explicitly:
+
+```rust
+pub.assert_liveliness()?;   // refresh this publisher's lease
+```
+
+C side: `nros_publisher_assert_liveliness(&pub)`. C++ side:
+`pub.assert_liveliness()`. No-op for `AUTOMATIC` and `NONE` kinds.
+
+### Differences from upstream's matching
+
+Upstream surfaces QoS mismatches via runtime events
+(`RMW_EVENT_REQUESTED_INCOMPATIBLE_QOS`). nano-ros surfaces them
+synchronously at create time as `IncompatibleQos`. The mismatch
+is a configuration error visible at startup; the runtime path
+doesn't need to handle it.
+
+Two related choices:
+
+- **No profile matching between publisher and subscriber.** Each
+  endpoint requests the QoS it wants from its backend; the backend
+  enforces locally. Cross-endpoint compatibility is the wire
+  protocol's concern — DDS endpoints negotiate via DDS Discovery,
+  zenoh endpoints communicate intent via the topic-key encoding,
+  uORB endpoints share an in-process queue. nano-ros's executor
+  doesn't run a profile-matching pass.
+- **Wire metadata per backend.** Lifespan needs per-sample
+  timestamps; liveliness needs a keepalive mechanism. Each backend
+  uses its native attachment / sample-info mechanism (Zenoh
+  attachments, DDS RTPS sample-info, XRCE session pings) — no
+  cross-backend metadata header.
 
 ## 8. Status events: callback-on-entity, Tier-1 subset
 
