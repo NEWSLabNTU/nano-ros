@@ -118,6 +118,9 @@ unsatisfiable. Caught at build, not runtime.
 │ 99.F  zenoh-pico lending impl (gated)   │
 │ 99.G  XRCE-DDS lending impl (gated)     │
 │ 99.H  Promise-driven async loan/borrow  │
+│ 99.L  nros-rmw-uorb API refactor        │
+│       (drop registry/alloc/cs/topics)   │
+│ 99.M  nros-px4::uorb typed wrapper      │
 │ 99.I  migrate PX4 examples to new API   │
 │ 99.J  new raw-bytes zero-copy examples  │
 │       (zenoh/xrce; not migration)       │
@@ -145,55 +148,14 @@ real consumer.
 - [x] 99.F — Zenoh-pico lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.G — XRCE-DDS lending impl behind `lending` feature (publisher SlotLending + subscriber SlotBorrowing)
 - [x] 99.H' — Cancellation-safe `LoanFuture` via `AtomicWaker` on `TxArena`; `Drop` forwards wake to next waiter; regression test in `tests/loan_borrow.rs`
-- [ ] 99.I — Migrate PX4 talker/listener examples to the loan/borrow
-      raw byte API. **Migration target rules** (locked, see
-      `docs/design/zero-copy-raw-api.md`):
-      1. **Public API only**: `nros::Executor` / `nros::Node` /
-         `nros::EmbeddedRawPublisher` / `nros::RawSubscription`. No
-         `nros_rmw_uorb::*` imports — the RMW crate is internal.
-      2. **`#![no_std]` + alloc**, no `std::*` in user code or the
-         dependency closure (FCU targets do not have std). The
-         existing std-mock test paths under
-         `nros-rmw-uorb/std` are confined to test binaries and not
-         exercised by the examples.
-      3. **Zero-copy via `try_loan` + `commit` / `try_borrow`** — the
-         on-the-wire format is the user's POD `#[repr(C)]` struct
-         cast to bytes, no CDR.
-
-      **Blocked** on a px4-rs staticlib-linkage prerequisite, not on
-      Phase 99 itself: the registry path inside `nros-rmw-uorb` (the
-      one `Executor` walks through under the hood) needs exactly one
-      `critical_section::set_impl!` provider and one
-      `#[global_allocator]` per final `px4` binary. PX4 SITL links
-      `talker` and `listener` as **two separate Rust staticlibs**
-      into the same `bin/px4`, so when the RMW crate's `alloc`
-      feature is on in both, the linker sees two copies of
-      `_critical_section_1_0_acquire` / `_release`,
-      `__rust_alloc` / `__rust_dealloc`, etc. The talker→listener
-      build I attempted hit exactly this:
-      ```
-      undefined reference to '_critical_section_1_0_acquire'
-      undefined reference to '_critical_section_1_0_release'
-      ```
-      (and, additionally, libstd internals like
-      `std::panicking::EMPTY_PANIC` if a crate accidentally drops
-      `#![no_std]`).
-
-      Resolving this needs a px4-rs-side change (NOT a Phase 99
-      change): one shared provider — either a C-side
-      `_critical_section_1_0_*` definition in `px4-sys/wrapper.cpp`
-      and a libc-malloc `#[global_allocator]` shim shipped from
-      px4-rs, or a single shared "px4-rs-runtime" provider crate
-      that PX4's CMake links **once** at the binary level (not per
-      staticlib). Once landed, the examples re-do this migration in a
-      few lines.
-
-      Std-mock proxy E2E (5/5 across
-      `nros-rmw-uorb/tests/loan_borrow.rs` + `typeless_api.rs`)
-      covers the same `Executor::open` → `create_publisher_raw` →
-      `try_loan` → `commit` chain the migrated examples would
-      exercise; the SITL E2E in 90.7 remains green on the
-      typed-direct baseline pending the px4-rs runtime fix.
+- [ ] 99.L — `nros-rmw-uorb` API refactor (drops registry, alloc,
+      critical_section, topics.toml). **Sequenced before 99.I.**
+- [ ] 99.M — `nros-px4::uorb` typed wrapper module + public ctors on
+      `nros::EmbeddedRawPublisher` / `RawSubscription`. **Sequenced
+      after 99.L, before 99.I.**
+- [ ] 99.I — Migrate PX4 talker/listener examples onto
+      `nros_px4::uorb::create_publisher::<T>` + loan/borrow raw byte
+      API. **Sequenced after 99.L + 99.M.**
 
 ### Post-v1 (99.J + 99.K)
 
@@ -404,6 +366,93 @@ Verify the SITL integration test (90.7) still passes. This is the
 - `examples/px4/rust/uorb/talker/src/main.rs` (rewrite)
 - `examples/px4/rust/uorb/listener/src/main.rs` (rewrite)
 - `packages/testing/nros-tests/tests/px4_e2e.rs` (update assertions)
+
+### 99.L — `nros-rmw-uorb` API refactor
+
+Strip the RMW crate down to byte-shaped Session machinery.
+
+**Drop:**
+- `mod registry` (Box<dyn TopicHandle>, the `static REGISTRY`,
+  `register::<T>`, `lookup_with`, `register_wake_on_all`).
+- `mod raw` (`publication::<T>` / `subscription::<T>` typed-direct
+  free functions; replaced by `nros-px4::uorb` typed wrapper).
+- `mod topics` + `topics.toml` + `build.rs` topic-map codegen.
+- `mod park` (used by `nros_px4::run_async` for waker park; the new
+  design wakes per-subscriber via the `AtomicWaker` already on each
+  `UorbSubscriber` — no global walk needed).
+- The `alloc` feature gate (no `Box`, no `Arc` anywhere).
+- `critical-section` dep (no global mutex).
+- Cargo `std` feature's forwarding to `critical-section/std`.
+
+**Keep / rewrite:**
+- `mod session`: `UorbSession` continues to implement `nros-rmw`'s
+  `Session` trait. The Session-trait `create_publisher` /
+  `create_subscription` impls return errors saying "use
+  create_publisher_uorb"; users go through `nros-px4::uorb` which
+  calls UorbSession-specific methods directly.
+- New `UorbSession::create_publisher_uorb(&'static orb_metadata, instance)
+  -> UorbPublisher` and `create_subscription_uorb(...) -> UorbSubscriber`
+  byte-shaped methods.
+- `mod publisher`: `UorbPublisher` holds `(metadata_ptr,
+  advertise_handle)` + impl `Publisher` trait via direct
+  `orb_publish` FFI. No name lookup.
+- `mod subscriber`: `UorbSubscriber` holds `(metadata_ptr,
+  subscription_handle, AtomicWaker, recv_buffer)` + impl
+  `Subscriber` trait via direct `orb_copy`. Callback registration
+  uses `orb_register_callback` with a stable pointer to self
+  (subscriber lives in Node arena → stable address).
+
+**Files:**
+- `packages/px4/nros-rmw-uorb/src/lib.rs` — drop modules, drop
+  `extern crate alloc`.
+- `packages/px4/nros-rmw-uorb/src/session.rs` — rewrite.
+- `packages/px4/nros-rmw-uorb/src/publisher.rs` — rewrite.
+- `packages/px4/nros-rmw-uorb/src/subscriber.rs` — rewrite.
+- `packages/px4/nros-rmw-uorb/Cargo.toml` — drop `critical-section`,
+  drop `alloc` feature.
+- `packages/px4/nros-rmw-uorb/topics.toml` — delete.
+- `packages/px4/nros-rmw-uorb/build.rs` — delete topic-map codegen.
+
+**Acceptance:** `nros-rmw-uorb` builds without alloc + without
+critical-section. `loan_borrow.rs` / `typeless_api.rs` tests
+rewritten against the new API and 5/5 still pass through std mock.
+
+### 99.M — `nros::EmbeddedRawPublisher::new` + `nros-px4::uorb` typed wrapper
+
+**`nros-node` additions:**
+- `pub fn EmbeddedRawPublisher::new(handle: session::RmwPublisher) -> Self`.
+- `pub fn RawSubscription::new(handle: session::RmwSubscriber) -> Self`.
+- (`Node::session_mut()` already public.)
+
+**`nros-px4` additions:**
+- New `mod uorb` (gated on a `nros-px4/uorb` feature, default-on
+  for typical PX4 deployments). Imports `px4-uorb` for `UorbTopic`.
+- `uorb::Publisher<T: UorbTopic>` wrapping `nros::EmbeddedRawPublisher`.
+  - `publish(&t)`: `try_loan(size_of::<T::Msg>) → memcpy &t → commit`.
+  - `try_loan(): TypedLoan<'_, T>` — exposes `as_uninit() -> &mut MaybeUninit<T::Msg>`.
+- `uorb::Subscriber<T: UorbTopic>` wrapping `nros::RawSubscription`.
+  - `try_recv(): Option<T::Msg>` (one stack copy via `read_unaligned`).
+  - `try_borrow(): Option<TypedView<'_, T>>` (zero-copy, derefs to `&T::Msg`).
+  - `recv().await` async variant.
+- `uorb::create_publisher::<T>(node, name, instance)` — does
+  `node.session_mut().create_publisher_uorb(T::metadata(), instance)`,
+  wraps in `EmbeddedRawPublisher::new`, wraps in `Publisher<T>`.
+- `uorb::create_subscription::<T>(...)` — bare polling subscription.
+- `uorb::create_subscription_with_callback::<T, F>(node, name, instance, F)`
+  where `F: FnMut(&T::Msg) + 'static` — registers the typed callback
+  via the existing `add_subscription_callback` raw bridge.
+
+**Files:**
+- `packages/core/nros-node/src/executor/handles.rs` — add `pub fn new`.
+- `packages/px4/nros-px4/src/lib.rs` — `pub mod uorb;`.
+- `packages/px4/nros-px4/src/uorb.rs` — new file (Publisher<T>,
+  Subscriber<T>, TypedLoan<T>, TypedView<T>, factory functions).
+- `packages/px4/nros-px4/Cargo.toml` — add `nros-rmw-uorb` direct
+  dep + `px4-uorb` direct dep.
+
+**Acceptance:** `cargo check -p nros-px4 --features uorb` passes;
+new unit tests in `nros-px4/tests/uorb_typed.rs` exercise the
+typed wrapper end-to-end on the std mock.
 
 ### 99.J — New raw-bytes zero-copy examples (post-v1)
 

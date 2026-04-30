@@ -29,6 +29,88 @@ PX4 example modules deploy onto FCU targets where `std` is unavailable. Zero-cop
 
 The std-mock test paths (`nros-rmw-uorb`'s `tests/loan_borrow.rs`, `tests/typeless_api.rs`) light up `nros-rmw-uorb/std` to host the executor on a desktop unit-test process; that opt-in is confined to test binaries and never reaches the example crates.
 
+## Layered API architecture (locked)
+
+Three layers — `nros` umbrella crate is backend-agnostic; PX4-specific surface lives entirely in `nros-px4`; `nros-rmw-uorb` is internal-only.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ User code                                                        │
+│   use nros::*;                                                   │
+│   use nros_px4::{run, Config, uorb};                             │
+│                                                                  │
+│   let mut node = executor.create_node("talker")?;                │
+│   let pub_ = uorb::create_publisher::<sensor_ping>(              │
+│       &mut node, "/fmu/out/sensor_ping", 0)?;                    │
+│   pub_.publish(&msg)?;                                           │
+└──────────────────────────────────────────────────────────────────┘
+            │                    │
+            ▼                    ▼
+┌────────────────────────────┐  ┌─────────────────────────────────┐
+│ nros (umbrella)            │  │ nros-px4                        │
+│ ───────────────            │  │ ─────────                       │
+│ Publisher<M: RosMessage>   │  │ Config, run, run_async          │
+│ Subscription<M>            │  │                                 │
+│ EmbeddedRawPublisher       │  │ uorb::Publisher<T>              │
+│  + try_loan / commit       │  │ uorb::Subscriber<T>             │
+│ RawSubscription            │  │ uorb::TypedLoan<T>              │
+│  + try_borrow              │  │ uorb::TypedView<T>              │
+│ Executor, Node, timers     │  │                                 │
+│                            │  │ uorb::create_publisher::<T>     │
+│ Node::session_mut()        │  │ uorb::create_subscription::<T>  │
+│ EmbeddedRawPublisher::new  │  │ uorb::create_subscription_      │
+│ RawSubscription::new       │  │     with_callback::<T, F>       │
+│  (public ctors so external │  │                                 │
+│   crates can wrap a        │  │ All T: UorbTopic, T::metadata() │
+│   backend handle)          │  │ lookup, all px4-uorb deps live  │
+│                            │  │ here. nros stays clean.         │
+│ NO uORB types,             │  │                                 │
+│ NO &orb_metadata in API,   │  │ Constructs publishers via       │
+│ NO T: UorbTopic API        │  │ Node::session_mut() + UorbSes-  │
+│                            │  │ sion's byte-shaped methods.     │
+└────────────────────────────┘  └─────────────────────────────────┘
+            │                    │
+            └──────────┬─────────┘
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ nros-rmw-uorb (internal — Session impl crate)                    │
+│ ─────────────────────────────────────────                        │
+│ UorbSession                                                      │
+│   .create_publisher_uorb(&'static orb_metadata, instance)        │
+│     → UorbPublisher                                              │
+│   .create_subscription_uorb(&'static orb_metadata, instance)     │
+│     → UorbSubscriber                                             │
+│ UorbPublisher (Publisher trait impl, byte-shaped)                │
+│ UorbSubscriber (Subscriber trait impl, byte-shaped)              │
+│                                                                  │
+│ Direct FFI: orb_advertise_multi / orb_publish /                  │
+│             orb_register_callback / orb_copy.                    │
+│                                                                  │
+│ NO public register<T> / publication<T> / subscription<T>         │
+│ NO topics.toml                                                   │
+│ NO Box<dyn TopicHandle> registry                                 │
+│ NO critical_section, NO spin::Mutex                              │
+│ NO alloc dep                                                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Why this works architecturally
+
+- **`nros` is backend-agnostic.** No `px4-uorb` / `px4-sys` types in its public API. `Node::session_mut()` returns `&mut ConcreteSession` (a feature-selected concrete type) and `EmbeddedRawPublisher::new(handle)` accepts a backend-allocated handle — both are generic enough to support any RMW backend including future ones.
+- **`nros-px4` owns all uORB types.** `UorbTopic`, `T::metadata()`, the typed `Publisher<T>` / `Subscriber<T>` wrappers, callback bridges that deserialise bytes into `&T::Msg` — all live here. Users opt into uORB by depending on `nros-px4`.
+- **`nros-rmw-uorb` is internal plumbing.** Its public surface to `nros-px4` is a handful of byte-shaped Session methods that take metadata pointers. No user ever names a type from `nros-rmw-uorb` directly.
+
+### Why this eliminates the cs / alloc / staticlib problems
+
+- **No registry** → no `Box<dyn TopicHandle>` → no alloc requirement on the Session path → no `_critical_section_1_0_*` symbol → no multi-staticlib symbol collision.
+- **State lives in Node arena** → bump-allocated, lifetime tied to `&mut Node` (compile-time single-writer) → no runtime mutex.
+- **Publisher hot path** is `self.handle.publish_raw(bytes)` → direct `orb_publish(metadata_ptr, advertise_handle, bytes_ptr)` → one C FFI call, no name lookup, no lock.
+- **Re-registration concern** dissolves: each publisher owns a fresh `orb_advertise_multi` handle from its own `create_publisher` call; nothing is shared by name across publishers.
+
+### Two pub/sub categories revisited
+
+The "Two API classes" rule above (typed CDR + byte-level) applies to **`nros`**'s API. PX4 users interact with the third layer (`nros-px4::uorb::Publisher<T>`) which is **typed sugar** built atop the byte-level layer — not a third bucket. The wrapper's `publish(&t)` is `try_loan + memcpy + commit`; `try_loan_typed` is a typed wrapper around `try_loan`'s `&mut [u8]`. Phase 99 D7 ("loan/borrow is raw") stays intact: the raw loan API is what the typed wrapper calls into.
+
 ## Goals
 
 1. **No mandatory user-side copy** when publishing a typeless byte slice. Backends that natively lend (zenoh-pico, XRCE-DDS) hand the user a `&mut [u8]` pointing at the wire buffer. The user fills it in place. No memcpy on commit.
