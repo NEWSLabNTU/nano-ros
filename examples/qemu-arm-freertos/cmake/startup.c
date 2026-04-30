@@ -602,7 +602,16 @@ extern void app_main(void);
 #define APP_GATEWAY {192, 0, 3, 1}
 #endif
 
-#define APP_TASK_STACK   16384
+/* APP_TASK_STACK / POLL_TASK_STACK are stack WORDS (4 bytes each on
+ * Cortex-M3). 32768 words = 128 KB app stack. The Rust example
+ * default sets app_stack_bytes = 65536 (16384 words = 64 KB); the
+ * C path runs `nros_support_init -> zpico_open -> z_open` from the
+ * app task and z_open's TCP handshake (zenoh-pico OPEN frame
+ * encoder + parser) overflows 64 KB on FreeRTOS — `MALLOC FAILED`
+ * was the visible symptom in the rtos_e2e harness, hidden behind
+ * `Failed to initialize support: -1`. 256 words = 1 KB poll stack
+ * is enough for the `nros_freertos_poll_network` busy loop. */
+#define APP_TASK_STACK   32768
 #define APP_TASK_PRIORITY 3
 #define POLL_TASK_STACK   256
 #define POLL_TASK_PRIORITY 4
