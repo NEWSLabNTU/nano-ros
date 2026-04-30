@@ -84,7 +84,7 @@ class Executor {
     /// overload for the full discussion.
     static Result create(Executor& out, const char* locator, uint8_t domain_id,
                          const char* session_name) {
-        // -3 = NROS_CPP_RET_INVALID_ARGUMENT (cbindgen header).
+        // -3 = NROS_CPP_RET_INVALID_ARGUMENT (generated header).
         if (session_name == nullptr) {
             return Result(-3);
         }

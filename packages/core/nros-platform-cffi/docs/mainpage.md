@@ -1,31 +1,21 @@
 # nros platform-cffi {#mainpage}
 
-C vtable for porting the nros platform abstraction in C (or any
-language with a C ABI). Use this surface when nano-ros's pre-built
-platform crates (`nros-platform-{posix,zephyr,freertos,nuttx,threadx}`)
-do not cover your target.
+C function-pointer table for porting the nano-ros platform abstraction
+in C (or any language with a C ABI). Use this surface when nano-ros's
+pre-built platform support (POSIX, Zephyr, FreeRTOS, NuttX, ThreadX)
+does not cover your target and your port stays in C.
 
-## When to use this
-
-Pick the path that matches your target:
-
-| Path | Read | Use case |
-|------|------|----------|
-| **Pre-built Rust platform crate** | nros::reference | Your target is one of: posix, zephyr, freertos, nuttx, threadx. |
-| **Custom Rust platform crate** | book — porting/custom-platform | New target, comfortable with Rust. Implement the trait family in `nros-platform-api`. |
-| **Custom C platform via this vtable** | this site + porting/custom-platform | New target, must stay in C / no Rust toolchain available. |
-
-The vtable mirrors the `nros_platform_api` Rust trait family one-to-one.
-Every Rust trait method has a single function pointer in
-`nros_platform_vtable_t`. Behaviour rules (buffer ownership, threading,
-blocking allowance) are documented on each function pointer below.
+The vtable is a struct of function pointers covering one capability
+each. Every behaviour rule (buffer ownership, threading, blocking
+allowance) is documented on the corresponding function pointer below.
 
 ## Quick start
 
-1. Build nano-ros with the `platform-cffi` feature:
+1. Build nano-ros with the `platform-cffi` option enabled:
 
    ```bash
-   cargo build -p nros --features platform-cffi,rmw-zenoh,std
+   cmake -DNROS_PLATFORM=cffi -DNROS_RMW=zenoh -B build
+   cmake --build build
    ```
 
 2. Implement the vtable in C:
@@ -57,7 +47,7 @@ blocking allowance) are documented on each function pointer below.
 
 See @ref NrosPlatformVtable for the full struct and the per-field
 return-value / threading / blocking conventions. The grouping inside
-the struct follows the Rust trait split:
+the struct follows the platform capability split:
 
 - **Clock** (`clock_ms`, `clock_us`) — monotonic counter
 - **Alloc** (`alloc`, `realloc`, `dealloc`) — heap interface
@@ -89,14 +79,14 @@ missing ops:
   `mutex_rec_*` will deadlock under load.
 - **Poll-driven clocks** — `condvar_wait_until` callers compare
   against `clock_ms()`. The two must share the same monotonic origin.
-- **Allocator behaviour during ISRs** — nros never calls `alloc` from
-  an ISR, but if your `random_*` does it must be lock-free.
+- **Allocator behaviour during ISRs** — nano-ros never calls `alloc`
+  from an ISR, but if your `random_*` does it must be lock-free.
 - **Stack overflow on `task_init`** — RTOS task stacks ship with low
   defaults; raise via the `attr` parameter.
 
 ## See also
 
 - The [Custom Platform porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/porting/custom-platform.md)
-  — full step-by-step walkthrough including the Rust path.
+  — step-by-step walkthrough.
 - The [`nros-platform-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-cffi)
-  — header + crate sources for this vtable.
+  — header + library sources for this vtable.

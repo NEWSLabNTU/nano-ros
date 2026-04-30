@@ -15,7 +15,7 @@
 //! (publisher, subscription, service, guard condition, executor, action).
 //! No heap allocation required — fully alloc-free.
 //!
-//! All serialization/deserialization happens on the Rust side.
+//! All serialization/deserialization happens on the runtime.
 
 #![no_std]
 #![allow(non_camel_case_types)]
@@ -220,7 +220,7 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 //
 // These constants define the inline storage for internal C++ FFI wrapper
 // structs (CppPublisher, CppSubscription, etc.). The C++ side allocates
-// buffers of this size; the Rust side writes directly into them.
+// buffers of this size; the runtime writes directly into them.
 // Compile-time assertions in each module verify the storage is large enough.
 
 // Opaque storage sizes computed from size_of at compile time — always exact.
@@ -504,9 +504,9 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
 
 /// Opaque node handle.
 ///
-/// A node is a lightweight view into the executor. In Rust, `Node<'_, S>` is
-/// a borrow of the executor. For the C++ FFI we store the executor pointer
-/// plus the node name/namespace, and re-create the borrow when needed.
+/// A node is a lightweight view into the executor: it borrows the
+/// executor for its lifetime. The C++ FFI stores the executor pointer
+/// plus the node name/namespace and re-creates the borrow when needed.
 #[repr(C)]
 pub struct nros_cpp_node_t {
     /// Pointer to the parent executor handle (not owned).
@@ -715,7 +715,7 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
 // Helpers
 // ============================================================================
 
-/// Convert a C null-terminated string to a Rust `&str`.
+/// Convert a C null-terminated string to a `&str`.
 ///
 /// Returns `None` if the pointer is null or the bytes are not valid UTF-8.
 pub(crate) unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {

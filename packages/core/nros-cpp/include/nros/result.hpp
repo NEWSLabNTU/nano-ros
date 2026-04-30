@@ -18,7 +18,7 @@ namespace nros {
 
 /// Error codes returned by nros-cpp functions.
 ///
-/// Values match the Rust `nros_cpp_ret_t` constants in nros-cpp.
+/// Values match the C `nros_cpp_ret_t` enum in `<nros/nros_cpp_generated.h>`.
 enum class ErrorCode : int32_t {
     /// Success.
     Ok = 0,

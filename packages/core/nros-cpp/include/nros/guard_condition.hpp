@@ -75,7 +75,7 @@ class GuardCondition {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_guard_condition_relocate` FFI (Phase 84.C1).
+    // `nros_cpp_guard_condition_relocate` runtime call (Phase 84.C1).
     GuardCondition(GuardCondition&& other)
         : initialized_(other.initialized_)
 #ifdef NROS_CPP_STD

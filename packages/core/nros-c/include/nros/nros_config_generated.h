@@ -7,63 +7,44 @@
 /** Inline opaque storage size (bytes) for nros_executor_t. */
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
-/* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─
- * Values below are `size_of::<T>()` for each Rust type, extracted from
- * the compiled `nros` rlib by nros-sizes-build. They coexist with the
- * hand-math macros above during the Phase 87.3 transition; once
- * downstream consumers are migrated (Phase 87.4/87.6) the hand-math
- * macros are deleted.
- */
-/** `size_of::<nros_node::Executor>()` */
-#define NROS_EXECUTOR_SIZE 16776
-/** `size_of::<nros_node::GuardConditionHandle>()` */
+/* ── Probe-derived inline storage sizes ──────────────────────
+* Each constant below is the byte size of the corresponding
+* runtime type, extracted from the compiled runtime by the
+* build script. They size the `_opaque` storage of the public
+* C handle types so callers can declare them on the stack or
+* inside their own structs without dynamic allocation.
+*/
+#define NROS_EXECUTOR_SIZE 16808
 #define NROS_GUARD_CONDITION_SIZE 8
-/** `size_of::<RmwPublisher>()` */
 #define NROS_PUBLISHER_SIZE 48
-/** `size_of::<RmwSubscriber>()` */
 #define NROS_SUBSCRIBER_SIZE 24
-/** `size_of::<RmwServiceClient>()` */
 #define NROS_SERVICE_CLIENT_SIZE 568
-/** `size_of::<RmwServiceServer>()` */
 #define NROS_SERVICE_SERVER_SIZE 296
-/** `size_of::<RmwSession>()` */
 #define NROS_SESSION_SIZE 0
-/** `size_of::<LifecyclePollingNodeCtx>()` */
 #define NROS_LIFECYCLE_CTX_SIZE 64
-/** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 
-/* ── *_OPAQUE_U64S macros for cbindgen-emitted struct fields ──────
- * Phase 91.C1: cbindgen generates `uint64_t _opaque[N]` array fields
- * that reference these macros by name. The Rust definitions live in
- * src/opaque_sizes.rs / src/constants.rs and would either evaluate
- * to placeholder 1 (when cbindgen runs without an active RMW
- * feature) or fail to evaluate at all (when the value is a
- * `u64s_for::<T>()` / `size_of::<T>()` expression cbindgen can't
- * fold). build.rs emits the real, post-probe values here so the
- * cbindgen output is self-contained when included from C / C++.
- */
+/* ── *_OPAQUE_U64S macros — sized opaque storage for the
+*    handle structs declared in <nros/nros_generated.h>.
+*    Each value is `ceil(size_of_type / 8)` u64 slots so the
+*    handle's storage is u64-aligned.
+*/
 #define SESSION_OPAQUE_U64S 0
 #define PUBLISHER_OPAQUE_U64S 6
 #define EXECUTOR_OPAQUE_U64S 2216
 #define GUARD_HANDLE_OPAQUE_U64S 1
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
 
-/* ── Type-compatible opaque definition of nros_node::ActionServerRawHandle ──
- * Phase 91.C1: cbindgen emits `ActionServerRawHandle handle;` as an
- * inline field of `ActionServerInternal` (parse_deps=false means it
- * doesn't recurse into nros-node to see the body). We provide a
- * size-equivalent opaque definition here so the cbindgen header is
- * self-contained. The nros-c Rust side still uses the typed
- * `nros_node::ActionServerRawHandle`; only the C side sees opaque
- * bytes — safe because the C API never lets callers reach into
- * `_internal.handle` directly.
- */
+/* ── Type-compatible opaque definition of ActionServerRawHandle ──
+* Public C handle struct. The runtime owns the body; the C API
+* never lets callers reach into `_internal.handle` directly,
+* so an opaque, size-equivalent declaration is sufficient.
+*/
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct ActionServerRawHandle {
-    uint64_t _opaque[6];
+uint64_t _opaque[6];
 } ActionServerRawHandle;
 #ifdef __cplusplus
 }

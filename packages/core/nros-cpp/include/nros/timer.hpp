@@ -83,7 +83,7 @@ class Timer {
             nros_cpp_timer_cancel(executor_, handle_id_);
             initialized_ = false;
         }
-        // closure_ (if any) destructs here; the Rust side no longer
+        // closure_ (if any) destructs here; the runtime no longer
         // holds a raw pointer to it because we cancelled above.
     }
 
@@ -123,7 +123,7 @@ class Timer {
 #ifdef NROS_CPP_STD
     /// @internal Attach a heap-allocated std::function closure to this
     /// timer. Called by the `NROS_CPP_STD` convenience wrappers in
-    /// `std_compat.hpp` *after* the Rust side registered a raw callback
+    /// `std_compat.hpp` *after* the runtime registered a raw callback
     /// pointing into the same closure. The unique_ptr keeps the closure
     /// alive for the lifetime of the Timer, freeing it automatically on
     /// destruction. Not intended for user code.

@@ -63,7 +63,7 @@ pub struct nros_action_server_t {
     /// Pointer to parent node
     pub node: *const nros_node_t,
     /// Internal state — set by `nros_executor_add_action_server`.
-    /// Phase 87.5: typed `#[repr(C)]` field, no longer an opaque blob.
+    /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
 }
 
@@ -96,7 +96,6 @@ impl Default for nros_action_server_t {
 /// Holds the action server handle and C callback pointers needed by
 /// the goal/cancel trampolines.
 ///
-/// Phase 87.5: `#[repr(C)]` so cbindgen sees this struct directly.
 /// `handle` was `Option<ActionServerRawHandle>` previously; now it is
 /// always present, with the sentinel `INVALID_ENTRY_INDEX` indicating
 /// "not registered yet". Use `is_handle_set()` to check.
@@ -105,7 +104,7 @@ pub struct ActionServerInternal {
     /// Handle returned by executor registration. `entry_index ==
     /// INVALID_ENTRY_INDEX` until registration completes.
     pub handle: nros_node::ActionServerRawHandle,
-    /// Pointer to the internal Rust executor (`CExecutor`).
+    /// Pointer to the internal executor (`CExecutor`).
     pub executor_ptr: *mut c_void,
     /// C goal callback from init. Required.
     pub c_goal_callback: unsafe extern "C" fn(
@@ -286,12 +285,10 @@ unsafe fn get_internal(server: *const nros_action_server_t) -> &'static ActionSe
 
 /// Get a zero-initialized action server.
 ///
-/// `improper_ctypes_definitions` is silenced because
-/// `ActionServerRawHandle` (transitively in `_internal.handle`) has a
-/// function-pointer field whose *parameter* signature includes
-/// `&mut dyn FnMut(...)`. Function pointers are FFI-safe themselves;
-/// only invoking the field with a Rust trait object is non-FFI, and
-/// no C caller does that.
+/// `improper_ctypes_definitions` is silenced because the inline opaque
+/// handle stores a function-pointer field whose parameter signature
+/// references a runtime-internal type. The pointer itself is C-ABI
+/// safe; the C API never lets callers invoke through it directly.
 #[unsafe(no_mangle)]
 #[allow(improper_ctypes_definitions)]
 pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_server_t {

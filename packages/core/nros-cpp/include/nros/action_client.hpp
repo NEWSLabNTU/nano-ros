@@ -338,7 +338,7 @@ template <typename A> class ActionClient {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_action_client_relocate` FFI (Phase 84.C1).
+    // `nros_cpp_action_client_relocate` runtime call (Phase 84.C1).
     // The feedback stream is rebound to the new storage afterwards.
     ActionClient(ActionClient&& other)
         : executor_(other.executor_), initialized_(other.initialized_) {

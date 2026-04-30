@@ -65,7 +65,7 @@ pub const NROS_LIFECYCLE_RET_ERROR: u8 = TransitionResult::Error as u8;
 /// Opaque lifecycle state machine storage.
 ///
 /// The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
-/// `u64` array to keep `#[repr(C)]` layout predictable for C callers.
+/// `u64` array to keep C-ABI struct layout predictable for C callers.
 /// Treat the struct as opaque — use [`nros_lifecycle_get_state`] and the
 /// `nros_lifecycle_register_on_*` functions to interact with it.
 #[repr(C)]
@@ -74,7 +74,7 @@ pub struct nros_lifecycle_state_machine_t {
     pub initialized: bool,
     /// Padding for 8-byte alignment of `storage`.
     _pad: [u8; 7],
-    /// Opaque storage for the underlying Rust state machine.
+    /// Opaque storage for the underlying internal state machine.
     storage: [u64; NROS_LIFECYCLE_CTX_OPAQUE_U64S],
 }
 

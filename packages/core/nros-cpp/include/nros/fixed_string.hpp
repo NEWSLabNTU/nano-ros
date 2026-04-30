@@ -21,8 +21,8 @@ namespace nros {
 /// Fixed-capacity null-terminated string.
 ///
 /// Wraps a `char[N]` buffer with safe assignment and query methods.
-/// Memory layout is identical to `char[N]`, making it repr(C) compatible
-/// with the Rust side (`[u8; N]`).
+/// Memory layout is identical to `char[N]`, so the type is C-ABI
+/// compatible and can be passed across the runtime boundary by value.
 ///
 /// Usage:
 /// ```cpp

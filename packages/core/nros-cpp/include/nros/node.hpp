@@ -409,7 +409,7 @@ inline Result init(const char* locator, uint8_t domain_id) {
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name) {
     // NROS_CPP_RET_INVALID_ARGUMENT = -3 (defined in nros_cpp_ffi.h
     // which isn't included from this header — duplicate the value
-    // inline; cbindgen-generated header is the source of truth).
+    // inline; generated header is the source of truth).
     if (session_name == nullptr) {
         return Result(-3);
     }

@@ -231,7 +231,7 @@ template <typename A> class ActionServer {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_action_server_relocate` FFI (Phase 84.C1) and
+    // `nros_cpp_action_server_relocate` runtime call (Phase 84.C1) and
     // then `install_callbacks()` re-registers the goal/cancel trampolines
     // with the new `this` as the arena callback context — this is the one
     // type in nros-cpp that registers its storage address externally.
@@ -363,7 +363,7 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     // Register with executor — creates transport handles (3 queryables + 2 publishers).
     // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
     // names are passed at register-time (buffers live on the C++
-    // `nros::ActionServer<A>` class, not in the Rust struct).
+    // `nros::ActionServer<A>` class, not in the runtime struct).
     ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name, A::TYPE_NAME,
                                           A::Goal::TYPE_HASH);
     if (ret == 0) {

@@ -173,41 +173,27 @@ fn generate_config(
          /** Inline opaque storage size (bytes) for nros_executor_t. */\n\
          #define NROS_EXECUTOR_STORAGE_SIZE {executor_storage_bytes}\n\
          \n\
-         /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─\n\
-          * Values below are `size_of::<T>()` for each Rust type, extracted from\n\
-          * the compiled `nros` rlib by nros-sizes-build. They coexist with the\n\
-          * hand-math macros above during the Phase 87.3 transition; once\n\
-          * downstream consumers are migrated (Phase 87.4/87.6) the hand-math\n\
-          * macros are deleted.\n\
+         /* ── Probe-derived inline storage sizes ──────────────────────\n\
+          * Each constant below is the byte size of the corresponding\n\
+          * runtime type, extracted from the compiled runtime by the\n\
+          * build script. They size the `_opaque` storage of the public\n\
+          * C handle types so callers can declare them on the stack or\n\
+          * inside their own structs without dynamic allocation.\n\
           */\n\
-         /** `size_of::<nros_node::Executor>()` */\n\
          #define NROS_EXECUTOR_SIZE {probe_executor}\n\
-         /** `size_of::<nros_node::GuardConditionHandle>()` */\n\
          #define NROS_GUARD_CONDITION_SIZE {probe_guard}\n\
-         /** `size_of::<RmwPublisher>()` */\n\
          #define NROS_PUBLISHER_SIZE {probe_publisher}\n\
-         /** `size_of::<RmwSubscriber>()` */\n\
          #define NROS_SUBSCRIBER_SIZE {probe_subscriber}\n\
-         /** `size_of::<RmwServiceClient>()` */\n\
          #define NROS_SERVICE_CLIENT_SIZE {probe_service_client}\n\
-         /** `size_of::<RmwServiceServer>()` */\n\
          #define NROS_SERVICE_SERVER_SIZE {probe_service_server}\n\
-         /** `size_of::<RmwSession>()` */\n\
          #define NROS_SESSION_SIZE {probe_session}\n\
-         /** `size_of::<LifecyclePollingNodeCtx>()` */\n\
          #define NROS_LIFECYCLE_CTX_SIZE {probe_lifecycle_ctx}\n\
-         /** Layout-mirror size for `ActionServerInternal` (Phase 87.5). */\n\
          #define NROS_ACTION_SERVER_INTERNAL_SIZE {probe_action_server_internal}\n\
          \n\
-         /* ── *_OPAQUE_U64S macros for cbindgen-emitted struct fields ──────\n\
-          * Phase 91.C1: cbindgen generates `uint64_t _opaque[N]` array fields\n\
-          * that reference these macros by name. The Rust definitions live in\n\
-          * src/opaque_sizes.rs / src/constants.rs and would either evaluate\n\
-          * to placeholder 1 (when cbindgen runs without an active RMW\n\
-          * feature) or fail to evaluate at all (when the value is a\n\
-          * `u64s_for::<T>()` / `size_of::<T>()` expression cbindgen can't\n\
-          * fold). build.rs emits the real, post-probe values here so the\n\
-          * cbindgen output is self-contained when included from C / C++.\n\
+         /* ── *_OPAQUE_U64S macros — sized opaque storage for the\n\
+          *    handle structs declared in <nros/nros_generated.h>.\n\
+          *    Each value is `ceil(size_of_type / 8)` u64 slots so the\n\
+          *    handle's storage is u64-aligned.\n\
           */\n\
          #define SESSION_OPAQUE_U64S {session_opaque_u64s}\n\
          #define PUBLISHER_OPAQUE_U64S {publisher_opaque_u64s}\n\
@@ -215,15 +201,10 @@ fn generate_config(
          #define GUARD_HANDLE_OPAQUE_U64S {guard_handle_opaque_u64s}\n\
          #define NROS_LIFECYCLE_CTX_OPAQUE_U64S {lifecycle_ctx_opaque_u64s}\n\
          \n\
-         /* ── Type-compatible opaque definition of nros_node::ActionServerRawHandle ──\n\
-          * Phase 91.C1: cbindgen emits `ActionServerRawHandle handle;` as an\n\
-          * inline field of `ActionServerInternal` (parse_deps=false means it\n\
-          * doesn't recurse into nros-node to see the body). We provide a\n\
-          * size-equivalent opaque definition here so the cbindgen header is\n\
-          * self-contained. The nros-c Rust side still uses the typed\n\
-          * `nros_node::ActionServerRawHandle`; only the C side sees opaque\n\
-          * bytes — safe because the C API never lets callers reach into\n\
-          * `_internal.handle` directly.\n\
+         /* ── Type-compatible opaque definition of ActionServerRawHandle ──\n\
+          * Public C handle struct. The runtime owns the body; the C API\n\
+          * never lets callers reach into `_internal.handle` directly,\n\
+          * so an opaque, size-equivalent declaration is sufficient.\n\
           */\n\
          #ifdef __cplusplus\n\
          extern \"C\" {{\n\

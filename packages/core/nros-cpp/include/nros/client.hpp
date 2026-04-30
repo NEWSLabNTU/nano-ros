@@ -76,7 +76,7 @@ template <typename S> class Client {
 
     /// Send a request and block until a reply is received.
     ///
-    /// Spins the executor internally (like Rust's `Promise::wait`).
+    /// Spins the executor internally (like the runtime's `Promise::wait`).
     /// Never calls `zpico_get` — all I/O is driven by `spin_once`.
     ///
     /// @param req          Request to send.
@@ -101,7 +101,7 @@ template <typename S> class Client {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_service_client_relocate` FFI (Phase 84.C1).
+    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1).
     Client(Client&& other) : executor_(other.executor_), initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);

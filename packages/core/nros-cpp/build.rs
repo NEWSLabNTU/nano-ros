@@ -187,12 +187,12 @@ fn generate_config(
          /** Inline opaque storage size (bytes) for nros::ActionClient<A>. */\n\
          #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE {action_client_storage}\n\
          \n\
-         /* ── Phase 87: probe-derived sizes (Rust is the single source of truth) ─\n\
-          * `size_of::<T>()` per Rust type, extracted from the compiled `nros`\n\
-          * rlib by nros-sizes-build. During the 87.3 transition these exist\n\
-          * alongside the hand-math macros above; 87.4 drops hand-math and\n\
-          * 87.6 switches nros::Publisher<M> etc. to use NROS_PUBLISHER_SIZE\n\
-          * directly (thin-wrapper refactor).\n\
+         /* ── Probe-derived inline storage sizes ──────────────────────\n\
+          * Each constant below is the byte size of the corresponding\n\
+          * runtime type, extracted from the compiled runtime by the\n\
+          * build script. The C++ public templates use these as the\n\
+          * `_opaque` buffer size so handles can live on the stack or\n\
+          * inside user structs without dynamic allocation.\n\
           */\n\
          #define NROS_EXECUTOR_SIZE {probe_executor}\n\
          #define NROS_GUARD_CONDITION_SIZE {probe_guard}\n\

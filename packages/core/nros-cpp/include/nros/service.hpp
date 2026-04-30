@@ -102,7 +102,7 @@ template <typename S> class Service {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_service_server_relocate` FFI (Phase 84.C1).
+    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1).
     Service(Service&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_service_server_relocate(other.storage_, storage_);

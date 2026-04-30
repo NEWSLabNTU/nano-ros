@@ -27,12 +27,8 @@ nros_cpp_ret_t nros_cpp_publisher_relocate(void* old_storage, void* new_storage)
 
 namespace nros {
 
-/// Maximum topic name length stored inside `nros::Publisher<M>`.
-///
-/// Mirrors `nros_node::limits::MAX_TOPIC_LEN` (256). The topic name is
-/// now owned C++-side (Phase 87.6 thin-wrapper refactor) rather than
-/// inside the Rust-side FFI struct, so there's no Rust-side size constant
-/// to derive this from.
+/// Maximum topic name length stored inside `nros::Publisher<M>` (256).
+/// The topic name is owned C++-side, not inside the runtime handle.
 static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 
 /// Typed publisher for a ROS 2 topic.
@@ -42,11 +38,10 @@ static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 ///
 /// Raw CDR publishing is always available via `publish_raw()`.
 ///
-/// Phase 87.6: the inline storage now holds an `RmwPublisher` handle
-/// directly (`NROS_PUBLISHER_SIZE` bytes, derived from Rust's
-/// `size_of::<RmwPublisher>()` via the `nros-sizes-build` probe). Topic
-/// name metadata lives C++-side in `topic_name_`, avoiding a Rust-side
-/// buffer copy and an FFI hop for `get_topic_name()`.
+/// Inline storage holds the runtime publisher handle directly
+/// (`NROS_PUBLISHER_SIZE` bytes; size auto-derived from the runtime).
+/// Topic name metadata lives C++-side in `topic_name_`, avoiding a
+/// runtime hop for `get_topic_name()`.
 ///
 /// Usage:
 /// ```cpp
@@ -58,8 +53,8 @@ template <typename M> class Publisher {
   public:
     /// Publish a typed message.
     ///
-    /// Calls the codegen-generated `M::ffi_publish()` which serializes to CDR
-    /// on the Rust side and publishes.
+    /// Calls the codegen-generated `M::ffi_publish()` which serializes the
+    /// message to CDR and publishes it.
     Result publish(const M& msg) { return Result(M::ffi_publish(storage_, &msg)); }
 
     /// Publish raw CDR bytes.
@@ -83,7 +78,7 @@ template <typename M> class Publisher {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_publisher_relocate` FFI.
+    // `nros_cpp_publisher_relocate` runtime call.
     Publisher(Publisher&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_publisher_relocate(other.storage_, storage_);
@@ -144,9 +139,8 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                    ffi_qos, out.storage_);
     if (ret == 0) {
-        // Phase 87.6: topic name lives C++-side now (was inside the
-        // deleted `CppPublisher` Rust wrapper). Copy + null-terminate
-        // into the fixed-size buffer; truncation is silent.
+        // Topic name lives C++-side; copy + null-terminate into the
+        // fixed-size buffer. Truncation is silent.
         size_t topic_len = 0;
         while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
             out.topic_name_[topic_len] = topic[topic_len];

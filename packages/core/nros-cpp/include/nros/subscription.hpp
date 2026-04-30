@@ -31,7 +31,7 @@ namespace nros {
 
 /// Maximum topic name length stored inside `nros::Subscription<M>`.
 /// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Phase 87.6 thin-wrapper refactor:
-/// topic name owned C++-side, not inside a Rust-side FFI struct.
+/// topic name owned C++-side, not inside a runtime handle.
 static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 
 /// Typed subscription for a ROS 2 topic.
@@ -127,7 +127,7 @@ template <typename M> class Subscription {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // Rust-side `nros_cpp_subscription_relocate` FFI (Phase 84.C1);
+    // `nros_cpp_subscription_relocate` runtime call (Phase 84.C1);
     // the `stream_` is rebound to the new storage afterwards.
     Subscription(Subscription&& other) : initialized_(other.initialized_) {
         if (other.initialized_) {

@@ -108,7 +108,7 @@ pub struct nros_service_t {
     /// Pointer to parent node
     pub node: *const nros_node_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
-    /// now a typed `#[repr(C)]` field instead of a `[u64; N]` opaque blob.
+    /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
 }
 
@@ -340,8 +340,6 @@ pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -
 /// pointer where the actual transport handle lives. Mirrors
 /// `ServiceClientInternal` and `ActionClientInternal`.
 ///
-/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
-/// emit this struct into the C header. The size is determined by the
 /// struct definition directly — no hand-math or `u64s_for::<T>()` probe
 /// required.
 #[repr(C)]
@@ -393,13 +391,11 @@ pub type nros_response_callback_t =
 /// pointer where the actual transport handle lives. Mirrors
 /// `ActionClientInternal`.
 ///
-/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
-/// emit this struct into the C header.
 #[repr(C)]
 pub struct ServiceClientInternal {
     /// Arena entry index. -1 means not registered with any executor yet.
     pub arena_entry_index: i32,
-    /// Pointer to the Rust executor that owns the arena entry.
+    /// Pointer to the executor that owns the arena entry.
     pub executor_ptr: *mut c_void,
     /// Default timeout used by `nros_client_call`.
     pub timeout_ms: u32,
@@ -460,7 +456,7 @@ pub struct nros_client_t {
     /// Pointer to parent node
     pub node: *const nros_node_t,
     /// Internal state (arena entry index + executor pointer + timeout).
-    /// Phase 87.5: now a typed `#[repr(C)]` field.
+    /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
 }
 
@@ -635,14 +631,14 @@ pub unsafe extern "C" fn nros_client_set_timeout(
 
 /// Block until a matching service server is discoverable, or `timeout_ms`
 /// elapses. Mirrors `rclcpp::ClientBase::wait_for_service` and the
-/// public Rust `Client::wait_for_service`.
+/// the underlying `Client::wait_for_service`.
 ///
 /// The client must already have been registered with the executor via
 /// `nros_executor_add_client`. Internally fires liveliness queries
 /// against the matching service-server's wildcard liveliness keyexpr
 /// and spins the executor cooperatively while the probe is in flight.
 /// 1-second per-probe timeout, looped until either a token reply lands
-/// or the outer wall-clock budget expires — see the Rust API for the
+/// or the outer wall-clock budget expires — see the runtime API for the
 /// rationale (a single liveliness_get samples the router's current
 /// token list and terminates, so a server that comes up after we
 /// start waiting needs to be re-probed).

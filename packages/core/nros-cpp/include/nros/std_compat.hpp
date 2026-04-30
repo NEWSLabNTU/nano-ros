@@ -31,10 +31,11 @@ namespace nros {
 // ============================================================================
 //
 // Lifetime: the heap-allocated std::function is owned by the Timer /
-// GuardCondition instance via `attach_std_closure(unique_ptr)`. The Rust
-// side receives a raw pointer into the same std::function; the Timer's
-// destructor cancels the Rust-side callback before the unique_ptr is
-// dropped, so the raw pointer is never dereferenced after free.
+// GuardCondition instance via `attach_std_closure(unique_ptr)`. The
+// runtime receives a raw pointer into the same std::function; the
+// Timer's destructor cancels the runtime callback before the
+// unique_ptr is dropped, so the raw pointer is never dereferenced
+// after free.
 
 namespace detail {
 

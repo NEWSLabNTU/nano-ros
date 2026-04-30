@@ -20,8 +20,7 @@
 #ifndef NROS_INIT_H
 #define NROS_INIT_H
 
-/* Phase 91.C1: actual type/function definitions live in
- * <nros/nros_generated.h> (cbindgen-emitted from Rust #[repr(C)] types).
+/* Type and function definitions live in <nros/nros_generated.h>.
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <nros/init.h>` continues to compile. */
 #include "nros/types.h"

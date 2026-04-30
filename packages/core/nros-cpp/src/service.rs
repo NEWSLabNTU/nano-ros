@@ -4,7 +4,7 @@
 //! `RmwServiceServer` / `RmwServiceClient` handle. Service-name buffers live
 //! on the C++ `nros::Service<S>` / `nros::Client<S>` classes. Received CDR
 //! bytes are copied directly into caller-provided output buffers — no
-//! Rust-side scratch.
+//! runtime scratch.
 
 use core::ffi::{c_char, c_void};
 
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 /// Try to receive a raw service request (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer —
-/// no Rust-side scratch.
+/// no runtime scratch.
 ///
 /// # Safety
 /// All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.

@@ -22,7 +22,7 @@ namespace nros {
 ///
 /// Wraps a `uint32_t size` + `T data[N]` pair with push/access methods.
 /// Memory layout is identical to `struct { uint32_t size; T data[N]; }`,
-/// making it repr(C) compatible with the Rust side.
+/// so the type is C-ABI compatible with the runtime.
 ///
 /// Usage:
 /// ```cpp

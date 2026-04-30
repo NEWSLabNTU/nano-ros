@@ -1,23 +1,17 @@
 # nros rmw-cffi {#mainpage}
 
-C vtable for plugging a third-party RMW backend into nros. Use this
-surface when nano-ros's pre-built RMW crates (`nros-rmw-zenoh`,
-`nros-rmw-xrce`) do not cover your transport.
-
-## When to use this
-
-| Path | Read | Use case |
-|------|------|----------|
-| **Pre-built Rust RMW** | nros::reference | Zenoh-pico (`rmw-zenoh`) or XRCE-DDS (`rmw-xrce`). |
-| **Custom Rust RMW** | book — porting/custom-rmw | New transport (uORB, FastDDS, custom UDP, …) — preferred path. |
-| **Custom C RMW via this vtable** | this site + porting/custom-rmw | New transport, must stay in C. |
+C function-pointer table for plugging a third-party RMW backend into
+nano-ros. Use this surface when nano-ros's pre-built RMW backends
+(zenoh-pico, XRCE-DDS, dust-DDS, uORB) do not cover your transport and
+your backend stays in C.
 
 ## Quick start
 
-1. Build nano-ros with the `rmw-cffi` feature:
+1. Build nano-ros with the `rmw-cffi` option enabled:
 
    ```bash
-   cargo build -p nros --features rmw-cffi,platform-posix,std
+   cmake -DNROS_RMW=cffi -DNROS_PLATFORM=posix -B build
+   cmake --build build
    ```
 
 2. Implement the vtable in C:
@@ -50,7 +44,8 @@ surface when nano-ros's pre-built RMW crates (`nros-rmw-zenoh`,
 
 ## Vtable structure
 
-The vtable groups by entity (see @ref nros_rmw_vtable_t):
+The vtable is a struct of function pointers grouped by entity (see
+@ref nros_rmw_vtable_t):
 
 - **Session** — `open`, `close`, `drive_io`. `drive_io(timeout_ms)` is
   the executor's I/O drive call; it must dispatch any pending
@@ -65,8 +60,8 @@ The vtable groups by entity (see @ref nros_rmw_vtable_t):
   parameter on `try_recv_request` carries the request sequence number
   forwarded back to `send_reply`.
 - **Service Client** — `create_service_client`, `destroy_service_client`,
-  `call_raw`. `call_raw` is currently synchronous; the caller blocks
-  on the executor.
+  `call_raw`. `call_raw` is synchronous; the caller blocks on the
+  executor.
 
 ## Return-value conventions
 
@@ -95,6 +90,6 @@ destroy_*                void (best-effort cleanup)
 ## See also
 
 - The [Custom RMW Backend porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/porting/custom-rmw.md)
-  — full Rust + C walkthrough, factory pattern, lifecycle.
+  — step-by-step walkthrough, factory pattern, lifecycle.
 - The [`nros-rmw-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw-cffi)
-  — header + crate sources for this vtable.
+  — header + library sources for this vtable.

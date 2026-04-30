@@ -356,7 +356,7 @@ book/src/              # User-facing documentation (mdbook)
                        # creating-examples, platform-porting-pitfalls, contributing
 
 docs/                  # Contributor/internal documentation
-├── reference/         # api-comparison-rclrs, rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
+├── reference/         # rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
 ├── design/            # rmw-layer-design, example-directory-layout, zonal-vehicle-architecture
 ├── research/          # Internal research
 └── roadmap/           # Active + archived phases

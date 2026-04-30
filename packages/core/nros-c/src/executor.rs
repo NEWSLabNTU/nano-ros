@@ -27,7 +27,7 @@ pub use crate::config::*;
 use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 
 // ============================================================================
-// Internal Rust executor type
+// Internal executor type
 // ============================================================================
 
 /// The concrete nros-node executor type used by the C API.
@@ -71,8 +71,8 @@ pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'sta
     &mut *(ptr as *mut CExecutor)
 }
 
-/// Propagate node identity from a C node into the Rust executor before
-/// registering an entity. The Rust `add_*_raw_*` methods read
+/// Propagate node identity from a C node into the executor before
+/// registering an entity. The `add_*_raw_*` methods read
 /// `self.node_name` / `self.namespace` to build the liveliness keyexpr;
 /// without identity, no liveliness token is declared and rmw_zenoh
 /// subscribers won't discover the entity.
@@ -159,7 +159,7 @@ pub enum nros_executor_state_t {
 /// executor. The C struct retains state, timeout, and
 /// per-type counters for API compatibility.
 ///
-/// The internal Rust executor is stored inline in `_opaque` — no heap
+/// The internal executor is stored inline in `_opaque` — no heap
 /// allocation is needed. The storage size is computed at build time
 /// from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
 #[repr(C)]
@@ -192,7 +192,7 @@ pub struct nros_executor_t {
     /// callbacks. Blocking helpers (`nros_client_call`, `nros_action_send_goal`,
     /// etc.) check this flag and return `NROS_RET_REENTRANT` if set.
     pub in_dispatch: bool,
-    /// Inline opaque storage for the Rust executor.
+    /// Inline opaque storage for the executor.
     /// Managed by nros_executor_init/fini — no heap allocation needed.
     pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
 }

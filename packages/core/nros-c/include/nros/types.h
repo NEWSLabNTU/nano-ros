@@ -3,14 +3,13 @@
  * @ingroup grp_types
  * @brief Shared types and constants for the nros C API.
  *
- * Phase 91.C1: this file is now a thin transitional shim. The actual
- * type and constant definitions come from `nros_generated.h`
- * (cbindgen-emitted from Rust `#[repr(C)]` types — the field-exact
- * single source of truth) and `nros_config_generated.h` (build-script-
- * emitted opaque-storage size macros).
+ * Type and constant definitions live in `nros_generated.h` (the
+ * single source of truth for field layout) and `nros_config_generated.h`
+ * (opaque-storage size macros). This file is a thin wrapper that
+ * pulls in both.
  *
- * Keeping `types.h` as a wrapper preserves backward compatibility for
- * downstream code that already includes it. New code can include
+ * Keeping `types.h` preserves backward compatibility for downstream
+ * code that already includes it. New code can include
  * `<nros/nros_generated.h>` (or any specific module header) directly.
  *
  * Copyright 2024 nros contributors

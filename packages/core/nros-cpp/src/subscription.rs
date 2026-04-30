@@ -3,7 +3,7 @@
 //! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a
 //! bare `RmwSubscriber` handle. Topic name lives on the C++
 //! `nros::Subscription<M>` class. Received CDR bytes are copied directly
-//! into the caller's output buffer — no Rust-side 1 KiB scratch buffer.
+//! into the caller's output buffer — no runtime 1 KiB scratch buffer.
 
 use core::ffi::{c_char, c_void};
 
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 /// Try to receive raw CDR data from a subscription (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer
-/// — no Rust-side scratch. If the message is larger than `out_capacity`
+/// — no runtime scratch. If the message is larger than `out_capacity`
 /// the backend drops it and returns `NROS_CPP_RET_FULL`; callers that need
 /// to handle oversized messages should size `out_data` to the message type's
 /// `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::try_recv` does).

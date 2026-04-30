@@ -29,14 +29,12 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
 /// created by `nros_executor_add_action_client`.
 ///
-/// Phase 87.5: `#[repr(C)]` gives deterministic layout so cbindgen can
-/// emit this struct into the C header.
 #[repr(C)]
 pub struct ActionClientInternal {
     /// Arena entry index (set by nros_executor_add_action_client).
     /// -1 means not registered with executor.
     pub arena_entry_index: i32,
-    /// Pointer to the Rust executor (set by nros_executor_add_action_client).
+    /// Pointer to the executor (set by nros_executor_add_action_client).
     pub executor_ptr: *mut core::ffi::c_void,
 }
 
@@ -113,7 +111,7 @@ pub struct nros_action_client_t {
     /// Pointer to parent node
     pub node: *const nros_node_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
-    /// typed `#[repr(C)]` field.
+    /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
 }
 
@@ -227,7 +225,7 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
 /// on the network, or `timeout_ms` elapses.
 ///
 /// Mirrors `rclcpp_action::Client::wait_for_action_server` and the
-/// public Rust `ActionClient::wait_for_action_server`. Internally
+/// the underlying `ActionClient::wait_for_action_server`. Internally
 /// probes the action's `send_goal` service-server liveliness keyexpr
 /// (the goal queryable is the load-bearing entity for the first
 /// `nros_action_send_goal` call) via the same primitive as the
@@ -375,7 +373,7 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
 /// goal is accepted/rejected or timeout. Never calls `zpico_get` directly —
 /// all I/O is driven by the executor's `spin_once`.
 ///
-/// Like Rust's `Promise::wait`, this is syntactic sugar over async + spin.
+/// Like the runtime's `Promise::wait`, this is syntactic sugar over async + spin.
 #[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_action_send_goal(
     client: *mut nros_action_client_t,

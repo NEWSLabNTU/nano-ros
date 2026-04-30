@@ -33,12 +33,11 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 ///
 /// This is a fixed constant (not configurable via env var) because it
 /// affects `nros_action_server_t` struct layout. Changing it requires
-/// recompiling both Rust and C code.
+/// rebuilding the runtime and the consuming application together.
 pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
 
 /// Inline storage (in `u64`) for `nros_lifecycle_state_machine_t`.
 ///
-/// Phase 87: derived from the actual Rust `LifecyclePollingNodeCtx` size via
 /// `core::mem::size_of`, no longer a hand-coded upper bound. The C-side
 /// counterpart `NROS_LIFECYCLE_CTX_SIZE` (in `nros_config_generated.h`) is
 /// the same value in bytes.

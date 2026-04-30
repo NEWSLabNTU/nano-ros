@@ -403,7 +403,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy(storage: *mut c_void) ->
 /// move assignment must still call `install_callbacks()` afterwards,
 /// because the callback trampolines were registered with the previous
 /// `this` as their context and need to be re-registered with the new
-/// `this`. This FFI only transfers the Rust-side state; the re-install
+/// `this`. This FFI only transfers the runtime state; the re-install
 /// step is intentionally left to the C++ side so this function stays
 /// free of C++-specific pointer semantics.
 ///
