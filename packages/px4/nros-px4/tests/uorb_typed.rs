@@ -121,6 +121,73 @@ fn typed_loan_writes_in_place() {
 }
 
 #[test]
+fn typed_callback_fires_with_typed_msg() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    px4_uorb::_reset_broker();
+
+    let cfg = ExecutorConfig::new("").node_name("typed_callback");
+    let mut executor = Executor::open(&cfg).expect("open");
+
+    let observed = Arc::new(AtomicU32::new(0));
+    let observed_seq = Arc::new(AtomicU32::new(0));
+    let observed_clone = Arc::clone(&observed);
+    let observed_seq_clone = Arc::clone(&observed_seq);
+
+    // Publisher first (still uses Node).
+    let publisher = {
+        let mut node = executor.create_node("typed_callback").expect("create_node");
+        uorb::create_publisher::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+            .expect("create_publisher")
+    };
+
+    // Then register the callback against the executor — node ref is
+    // dropped above so the executor reborrow is safe under NLL.
+    uorb::create_subscription_with_callback::<tick_topic, _>(
+        &mut executor,
+        "/fmu/out/sensor_tick",
+        0,
+        move |msg: &Tick| {
+            observed_clone.fetch_add(1, Ordering::Relaxed);
+            observed_seq_clone.store(msg.seq, Ordering::Relaxed);
+        },
+    )
+    .expect("create_subscription_with_callback");
+
+    // Publish twice; spin once between to drive the callback.
+    publisher
+        .publish(&Tick {
+            seq: 1,
+            timestamp: 1,
+            payload: *b"cb-1____",
+        })
+        .expect("publish 1");
+
+    let _ = executor.spin_once(Duration::from_millis(0));
+
+    publisher
+        .publish(&Tick {
+            seq: 7,
+            timestamp: 2,
+            payload: *b"cb-7____",
+        })
+        .expect("publish 2");
+
+    let _ = executor.spin_once(Duration::from_millis(0));
+
+    // Callback should have fired at least once with seq=7 (most
+    // recent message; uORB std mock keeps the latest only with
+    // queue depth 1).
+    assert!(
+        observed.load(Ordering::Relaxed) >= 1,
+        "callback never fired"
+    );
+    assert_eq!(observed_seq.load(Ordering::Relaxed), 7);
+}
+
+#[test]
 fn typed_borrow_in_place_returns_typed_view() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();

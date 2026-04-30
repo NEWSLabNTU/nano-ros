@@ -668,9 +668,6 @@ impl Executor {
     where
         F: FnMut(&[u8]) + 'static,
     {
-        type Entry<F> = SubBufferedRawEntry<F>;
-
-        let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
         let ns: heapless::String<64> = self.namespace.clone();
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
@@ -681,7 +678,43 @@ impl Executor {
             .session
             .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)
+    }
 
+    /// Register a raw byte-shaped callback against a pre-built
+    /// `RmwSubscriber` handle.
+    ///
+    /// Backend-agnostic primitive — the caller is responsible for
+    /// obtaining the handle by whatever route the active backend
+    /// supports:
+    ///
+    /// - **Generic ROS-typed flow**: call `Session::create_subscriber`
+    ///   on `self.session_mut()` with a [`TopicInfo`].
+    ///   [`add_subscription_buffered_raw`](Self::add_subscription_buffered_raw)
+    ///   is the convenience wrapper for this path.
+    /// - **Backend-specific flow** (e.g. uORB needs `&'static orb_metadata`):
+    ///   reach into the concrete session via [`Self::session_mut`] and
+    ///   call its backend-specific create method, then hand the handle
+    ///   here. `nros-px4::uorb::create_subscription_with_callback` is
+    ///   the example.
+    ///
+    /// The arena-store + vtable wiring is identical to
+    /// `add_subscription_buffered_raw`; the only thing that varies is
+    /// where the handle came from. Callback fires on every message
+    /// delivery during [`spin_once`](Self::spin_once); bytes are
+    /// passed as `&[u8]`.
+    pub fn add_arena_subscription_callback<F, const RX_BUF: usize>(
+        &mut self,
+        handle: session::RmwSubscriber,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
+        type Entry<F> = SubBufferedRawEntry<F>;
+
+        let slot = self.next_entry_slot()?;
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
 
         let (entry_offset, trailing_offset) =

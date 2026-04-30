@@ -40,7 +40,8 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 use nros_node::{
-    EmbeddedRawPublisher, LoanError, Node, NodeError, PublishLoan, RawSubscription, RecvView,
+    EmbeddedRawPublisher, Executor, HandleId, LoanError, Node, NodeError, PublishLoan,
+    QosSettings, RawSubscription, RecvView,
 };
 use px4_uorb::UorbTopic;
 
@@ -92,6 +93,74 @@ pub fn create_subscription<T: UorbTopic>(
         _phantom: PhantomData,
     })
 }
+
+/// Construct a typed uORB subscriber and register a typed callback
+/// in one call. The callback fires on every delivered message
+/// during [`nros_node::Executor::spin_once`]; bytes are
+/// reinterpreted as `&T::Msg` (one stack copy via
+/// `read_unaligned`) before the user closure runs.
+///
+/// Returns the [`HandleId`] of the registered arena entry — caller
+/// can drop it to deregister the callback (Phase 99-side cleanup
+/// path), or simply let it be cleaned up when the Node drops.
+///
+/// # Layering
+///
+/// Two steps:
+/// 1. Backend-specific create via
+///    `Node::session_mut().create_subscription_uorb(T::metadata(), instance)`.
+///    This is the only uORB-flavoured line; lives in this crate.
+/// 2. Generic arena-callback wire-up via
+///    [`Node::add_arena_subscription_callback`]. This is the
+///    backend-agnostic primitive in `nros-node` — same primitive
+///    serves any backend that provides a `RmwSubscriber` handle.
+///
+/// `nros-node` itself contains no uORB-specific code.
+///
+/// Takes `&mut Executor` (not `&mut Node`) because the arena that
+/// stores callbacks lives on `Executor`. The bare-polling
+/// `create_subscription` takes `&mut Node` because it only needs
+/// session access. NLL handles overlap: callers can interleave
+/// node-based and executor-based calls so long as no `Node` value
+/// is alive across the executor reborrow.
+pub fn create_subscription_with_callback<T, F>(
+    executor: &mut Executor,
+    ros_name: &str,
+    instance: u8,
+    mut user_cb: F,
+) -> Result<HandleId, NodeError>
+where
+    T: UorbTopic + 'static,
+    F: FnMut(&T::Msg) + 'static,
+{
+    let _ = ros_name;
+    let handle = executor
+        .session_mut()
+        .create_subscription_uorb(T::metadata(), instance)
+        .map_err(NodeError::Transport)?;
+    executor.add_arena_subscription_callback::<_, DEFAULT_SUB_BUF>(
+        handle,
+        QosSettings::default(),
+        move |bytes: &[u8]| {
+            if bytes.len() < core::mem::size_of::<T::Msg>() {
+                return;
+            }
+            // SAFETY: T::Msg is `#[repr(C)] Copy` per UorbTopic; bytes
+            // carry T::Msg image. read_unaligned tolerates the
+            // u8-aligned arena buffer.
+            let msg: T::Msg = unsafe {
+                core::ptr::read_unaligned(bytes.as_ptr() as *const T::Msg)
+            };
+            user_cb(&msg);
+        },
+    )
+}
+
+/// Default RX buffer size for typed callback subscriptions. Sized to
+/// match `nros_node::config::DEFAULT_RX_BUF_SIZE` at the time of
+/// writing; redeclared here so we don't depend on a non-public
+/// re-export.
+const DEFAULT_SUB_BUF: usize = 1024;
 
 // ---------------------------------------------------------------------------
 // Publisher<T>
