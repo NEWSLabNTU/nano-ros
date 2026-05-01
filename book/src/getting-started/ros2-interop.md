@@ -126,7 +126,7 @@ nano-ros uses the same wire format as `rmw_zenoh_cpp`:
 
 Iron uses actual type hashes (`RIHS01_<sha256>`) instead of
 `TypeHashNotSupported`. nano-ros currently supports Humble only. Iron support
-is planned (Phase 41).
+is planned.
 
 ## Troubleshooting
 

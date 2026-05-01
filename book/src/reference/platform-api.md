@@ -81,10 +81,10 @@ platform follows the same trait-implementation pattern.
 | ThreadX | C | C | — | C | `c/platform/threadx/network.c` via NetX Duo BSD |
 
 `UDP Multicast` covers the `PlatformUdpMulticast` trait (RTPS SPDP, zenoh
-scouting). Bare-metal smoltcp gained IGMP group join in Phase 71.26 / 97.3;
-Zephyr `native_sim` gained host-kernel multicast forwarding via the NSOS
-`IPPROTO_IP` patch in Phase 97.4. FreeRTOS and ThreadX have no multicast yet
-— gated by lwIP's `IGMP=1` (untested) and NetX Duo's `nx_igmp_*` (untested).
+scouting). Bare-metal smoltcp uses smoltcp 0.12 IGMP group join. Zephyr
+`native_sim` uses host-kernel multicast forwarding via the NSOS
+`IPPROTO_IP` patch. FreeRTOS and ThreadX have no multicast yet — gated
+by lwIP's `IGMP=1` (untested) and NetX Duo's `nx_igmp_*` (untested).
 
 ## Compile-time resolution
 

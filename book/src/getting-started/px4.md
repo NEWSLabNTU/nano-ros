@@ -35,7 +35,7 @@ PX4-Autopilot checkout.
 
 ### Prerequisites
 
-- `~/repos/px4-rs` checked out (any version ≥ phase 09)
+- `~/repos/px4-rs` checked out (recent main)
 - For SITL tests: `~/repos/PX4-Autopilot` checked out + ability to build
   `make px4_sitl`
 - For target builds: `arm-none-eabi-gcc` (Pixhawk) or `riscv32-elf-gcc`
@@ -232,18 +232,18 @@ tightly to uORB-specific entry points. **Prefer the typeless `Node`
 API** when you want code that reads like the zenoh / xrce examples and
 keeps the door open for swapping RMW backends later.
 
-## Limitations (Phase 90 v1)
+## Limitations
 
 - **Services and actions return `Backend("uORB: services not yet supported")`.**
   uORB has no native request/response; a paired-topic protocol with a
-  correlation-id field is planned but not in this phase. For service-heavy
-  workloads use the XRCE-DDS backend.
+  correlation-id field is planned. For service-heavy workloads use the
+  XRCE-DDS backend.
 - **No CDR translation.** Bytes flowing through nano-ros's `publish_raw` are
   interpreted directly as the PX4 message struct via memcpy. ROS 2 messages
   with non-PX4 layouts (e.g. `sensor_msgs/msg/Imu`) require schema-mapping
   shims that we do not yet generate. Use the same `.msg` source on both ends.
 - **Spin loop is polling.** `nros-px4::run` calls `executor.spin_once`
-  every 10 ms. Phase 90.5b will replace this with a waker-driven
+  every 10 ms. Future work will replace this with a waker-driven
   `ScheduleNow()` integration so subscriber callbacks wake the hosting
   WorkItem on demand.
 - **Discovery is static.** uORB topics must be registered at compile time
@@ -282,7 +282,7 @@ cargo test -p nros-rmw-uorb --features 'std test-helpers' --test round_trip
 
 ### SITL E2E tests (requires PX4-Autopilot)
 
-Phase 90.7 will add an integration test that links a nano-ros module into
+Future work will add an integration test that links a nano-ros module into
 the PX4 simulator, modelled on `px4-rs/tests/sitl/`'s `Px4Sitl::boot()` /
 `shell()` / `wait_for_log()` fixture. Run via:
 
@@ -293,5 +293,4 @@ PX4_AUTOPILOT_DIR=~/repos/PX4-Autopilot just px4 test-sitl
 ## See also
 
 - [docs/design/px4-rmw-uorb.md](../../../docs/design/px4-rmw-uorb.md) — design notes
-- [docs/roadmap/phase-90-px4-rmw-uorb.md](../../../docs/roadmap/phase-90-px4-rmw-uorb.md) — phase plan
 - [px4-rs README](https://github.com/aeon/px4-rs) — upstream framework

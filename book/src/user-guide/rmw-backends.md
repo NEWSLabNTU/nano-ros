@@ -108,7 +108,7 @@ CONFIG_NROS_RMW_DDS=y
 
 Enabling more than one simultaneously produces a `compile_error!()`.
 
-## DDS — per-platform configuration profile (Phase 71.23)
+## DDS — per-platform configuration profile
 
 The DDS backend speaks raw RTPS over UDP multicast and unicast. The
 host networking stack on every RTOS needs IGMP enabled, adequate net-
@@ -127,8 +127,9 @@ CONFIG_NET_IF_MCAST_IPV4_ADDR_COUNT=4
 
 # Net-buffer pools — defaults of 14 / 36 are too small for the SEDP
 # burst when more than two service / action entities exist on each
-# participant. See Phase 71.29 for the runtime-starvation symptom
-# these prevent. Cortex_a9 has 512 MB SRAM; the cost is trivial.
+# participant. Symptom of undersizing: runtime starvation as the
+# discovery exchange backs up. Cortex_a9 has 512 MB SRAM; the cost
+# is trivial.
 CONFIG_NET_PKT_RX_COUNT=256
 CONFIG_NET_PKT_TX_COUNT=128
 CONFIG_NET_BUF_RX_COUNT=512
@@ -195,8 +196,7 @@ CONFIG_NET_RECV_TIMEO=y
 let mut config = smoltcp::iface::Config::new(...);
 config.multicast_groups = vec![Ipv4Address::new(239, 255, 0, 1)];
 // MulticastConfig::Strict in smoltcp 0.x; the bridge must expose
-// a `join_multicast_group` API. See Phase 71.26 for the smoltcp
-// audit work item.
+// a `join_multicast_group` API.
 ```
 
 ### POSIX (`platform-posix`)

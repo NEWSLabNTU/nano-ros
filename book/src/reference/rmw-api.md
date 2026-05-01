@@ -38,7 +38,7 @@ little extra; the source tree is what's worth reading.
 | zenoh-pico (default) | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Reference shim. C transport via zenoh-pico; lending via `z_bytes_from_static_buf`. |
 | XRCE-DDS | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | Mutually exclusive with zenoh; lending via `uxr_prepare_output_stream`. |
 | dust-DDS (Rust DDS) | [`packages/dds/nros-rmw-dds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-dds) | `std` + `nostd-runtime` variants (POSIX threading + cooperative single-task). |
-| PX4 uORB | [`packages/px4/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/px4/nros-rmw-uorb) | Phase 90 — typed-trampoline registry, ROS-name → uORB-topic map. |
+| PX4 uORB | [`packages/px4/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/px4/nros-rmw-uorb) | Typed-trampoline registry, ROS-name → uORB-topic map. |
 
 The zenoh shim is the canonical reference port — every other backend
 follows the same trait-implementation pattern.

@@ -129,6 +129,5 @@ The QEMU board configuration lives in
 
 ## Status
 
-NuttX platform support (Phase 55) is complete. All work items (55.1--55.12)
-are done, including feature flags, build integration, six Rust examples,
-E2E network tests, and documentation.
+NuttX platform support is complete: feature flags, build integration,
+six Rust examples, E2E network tests, and documentation.

@@ -100,7 +100,7 @@ typedef struct RMW_PUBLIC_TYPE rmw_publisher_t {
 } rmw_publisher_t;
 ```
 
-**nano-ros.** Hybrid: typed-with-opaque-tail (Phase 102.3 / 102.4).
+**nano-ros.** Hybrid: typed-with-opaque-tail.
 Each entity is a typed C struct exposing the metadata the runtime
 actually reads (topic name, type name, QoS, lending capabilities)
 inline; backend-private state stays behind an opaque `backend_data`
@@ -157,9 +157,9 @@ the shell stays valid until the runtime drops its owner.
   identify which backend owns a struct.
 - **`can_loan_messages` matches upstream.** Same bool, same name,
   same semantics — `true` if the backend exposes the loan
-  primitive (Phase 99 CDR-byte loan). The runtime reads it once
-  at create time and dispatches the publish path with no per-call
-  branch.
+  primitive (the CDR-byte zero-copy loan path). The runtime reads
+  it once at create time and dispatches the publish path with no
+  per-call branch.
 - **`depth: uint16_t`.** Upstream uses 32-bit; embedded queue depths
   are 1–100, the 16-bit width saves 2 bytes × N entities.
 - **Explicit `_reserved[N]` bytes.** Upstream uses an embedded
@@ -550,9 +550,9 @@ C side mirrors with `nros_subscription_set_*_callback` functions.
   shows up; additive.
 - **`QOS_INCOMPATIBLE`** / **`INCOMPATIBLE_TYPE`** — these surface
   at create time, not as runtime events. The existing
-  `nros_rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS` from
-  Phase 102.1) carry the diagnostic synchronously from
-  `create_publisher` / `create_subscriber`. No event needed.
+  `nros_rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS`) carry
+  the diagnostic synchronously from `create_publisher` /
+  `create_subscriber`. No event needed.
 
 ### Dispatch — callback-on-entity, not waitset-take
 
@@ -609,12 +609,12 @@ rmw_ret_t rmw_return_loaned_message_from_publisher(
 A backend that doesn't implement these returns
 `RMW_RET_UNSUPPORTED` and the client falls back to a copying path.
 
-**nano-ros.** Lending is a separate vtable surface (Phase 99). When
-the backend supports zero-copy publish, it implements
-`loan_publish_*` / `commit_publish_*`; when it supports zero-copy
-receive, it implements `loan_recv_*` / `release_recv_*`. The runtime
-checks the function pointers for non-NULL once at session open and
-takes the lending path for the lifetime of the session.
+**nano-ros.** Lending is a separate vtable surface. When the backend
+supports zero-copy publish, it implements `loan_publish_*` /
+`commit_publish_*`; when it supports zero-copy receive, it implements
+`loan_recv_*` / `release_recv_*`. The runtime checks the function
+pointers for non-NULL once at session open and takes the lending
+path for the lifetime of the session.
 
 **Why.** Zero-copy isn't optional on embedded — every avoidable copy
 is a copy of a CDR-encoded sensor frame from a 64 KB heap. Promoting
@@ -679,13 +679,12 @@ Two return-shape conventions, picked by call shape:
   verbose diagnostics at the failure site through the platform's
   `printk` equivalent — never buffered, never thread-local.
 - **Smaller code-set.** 13 codes total (vs upstream's ~25). Phase
-  102.1 audit started from upstream's set and dropped codes that
-  don't apply (e.g., DDS event codes, `RMW_RET_NODE_INVALID`).
-  Adding a code is a `<nros/rmw_ret.h>` header change only.
+  set started from upstream's and dropped codes that don't apply
+  (e.g., DDS event codes, `RMW_RET_NODE_INVALID`). Adding a code is
+  a `<nros/rmw_ret.h>` header change only.
 
-**Why same style.** Phase 102 deliberately moved closer to upstream
-on this point. Named constants make `switch` statements possible at
-call sites; bare negative ints don't.
+**Why same style.** Named constants make `switch` statements
+possible at call sites; bare negative ints don't.
 
 ## See also
 

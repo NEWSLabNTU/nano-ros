@@ -163,7 +163,7 @@ The Rust trait surface is the source of truth; the C header
 `<nros/rmw_ret.h>` exposes the matching `NROS_RMW_RET_*` constants
 for C porters.
 
-### Factory shape (Phase 84.E2)
+### Factory shape
 
 `Rmw::open` consumes `self`, not a `&self`. That shape asks every
 backend to treat its factory type as a **value** that carries any

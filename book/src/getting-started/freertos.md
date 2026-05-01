@@ -206,9 +206,10 @@ Overhead: ~16 KB RAM for the snapshot buffer, ~40 ns timestamp resolution
 
 ## Status
 
-FreeRTOS platform support (Phase 54) is complete. Phase 69 added C and C++
-examples with CMake cross-compilation, integration tests, and shared CMake
-platform modules. C++ action examples are pending alloc-free action module support.
+FreeRTOS platform support is complete: Rust + C + C++ examples,
+CMake cross-compilation, integration tests, and shared CMake platform
+modules. C++ action examples are pending alloc-free action module
+support.
 
 ## LAN9118 Networking Debugging Guide
 

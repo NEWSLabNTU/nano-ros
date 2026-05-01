@@ -206,7 +206,7 @@ sub.on_liveliness_changed(|status| {
 })?;
 ```
 
-This pairs with [Phase 104's bridge example](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-104-multi-backend-bridges.md).
+This pairs with the cross-backend bridge example pattern.
 
 ### 100 Hz sensor with deadline alarm
 

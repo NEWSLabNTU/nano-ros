@@ -293,7 +293,7 @@ compared to pure FPP, because fewer threads need independent stacks for
 preemption frames.
 
 **nano-ros on ThreadX**: Currently sets `preempt_threshold = priority`
-(no benefit). Phase 76 will expose this as a configurable option.
+(no benefit). Future work will expose this as a configurable option.
 
 ### NuttX
 
@@ -354,7 +354,7 @@ inheritance (`PTHREAD_PRIO_INHERIT`) and priority ceiling
 | **Priority ceiling** | Mutex has fixed ceiling priority; holder runs at ceiling | Static — simpler analysis, avoids chained inversion |
 
 **nano-ros on NuttX**: Currently runs with kernel defaults (no explicit
-scheduling policy). Phase 76 future work will add `SCHED_FIFO` and priority
+scheduling policy). Future work will add `SCHED_FIFO` and priority
 configuration.
 
 ### Zephyr

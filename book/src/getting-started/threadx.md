@@ -150,6 +150,4 @@ and automotive use cases. TSN support requires TSN-capable hardware.
 
 ## Status
 
-ThreadX platform support is tracked in Phase 58. See
-[Phase 58 roadmap](../../docs/roadmap/phase-58-threadx-platform.md) for
-details.
+ThreadX platform support is in active development.

@@ -1,12 +1,12 @@
-# Opaque Storage Sizing (Phase 87)
+# Opaque Storage Sizing
 
 `nano-ros` exposes a C and C++ API on top of Rust types whose layout is
 chosen by the Rust compiler. The C/C++ side has to allocate storage for
 those types — by value, on the user's stack or BSS — without knowing
-their exact byte size. Phase 87 makes Rust the single source of truth
-for those sizes: the values flow from `core::mem::size_of` of the real
-Rust types into auto-generated C/C++ headers, with no hand-tuned
-constants.
+their exact byte size. The runtime makes Rust the single source of
+truth for those sizes: the values flow from `core::mem::size_of` of
+the real Rust types into auto-generated C/C++ headers, with no
+hand-tuned constants.
 
 ## The pattern
 
@@ -126,22 +126,7 @@ The tripwire: any field-shape change in the real wrapper (adding a
 field, changing a pointer to a value, etc.) must be paired with an
 update to the mirror. The build fails immediately if they diverge.
 
-## What's no longer hand-coded
-
-Pre-Phase 87, four places in the build hand-tuned storage sizes:
-
-- `nros-c/include/nros/types.h` — five `NROS_*_OPAQUE_U64S` literal
-  macros (publisher, session, service-client, guard handle, lifecycle
-  context).
-- `nros-c/build.rs` — pointer-width arithmetic for executor + action
-  server/client storage.
-- `nros-cpp/build.rs` — pointer-width arithmetic for *every* C++
-  wrapper (publisher, subscription, service, action server, action
-  client, guard condition).
-- `nros-c/src/opaque_sizes.rs` — `u64s_for::<T>()` consts that cbindgen
-  silently dropped (issue #252).
-
-After Phase 87:
+## How sizing works today
 
 - All four `*Internal` shim types are `#[repr(C)]` and embedded as
   typed fields in their outer `nros_*_t` structs.
@@ -176,8 +161,6 @@ to the right value at the target's compile time.
 
 ## See also
 
-- [Phase 87 roadmap](https://github.com/jerry73204/nano-ros/blob/main/docs/roadmap/phase-87-nros-cpp-compile-time-sizes.md) for the
-  full design rationale and per-stage history.
 - `packages/core/nros-sizes-build/src/lib.rs` for the rlib probe
   implementation.
 - `packages/core/nros/src/sizes.rs` for the canonical exports.

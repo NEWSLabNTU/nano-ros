@@ -90,7 +90,7 @@ If max-callback dispatch latency is still too high in this profile
 timer and guard-condition dispatch *into* `drive_io`'s loop so the
 `max_callbacks = 1` cap covers them too. This is the path where one
 slow sub callback no longer delays a timer that should have fired
-mid-callback. (Phase 106 work.)
+mid-callback.
 
 ### WCET-bounded real-time (RTIC / Embassy)
 
