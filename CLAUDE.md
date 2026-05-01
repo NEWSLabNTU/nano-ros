@@ -1,371 +1,206 @@
 # nano-ros
 
-Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX, ThreadX). `no_std` compatible.
+Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX). `no_std` compatible.
 
-### Naming Convention
+## Naming
+- **nano-ros** — project name (prose, docs)
+- **nros** — code shorthand (crates, Rust/C identifiers, `CONFIG_NROS_*`)
+- **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nano_ros_generate_interfaces()`)
 
-- **nano-ros** — project name (prose, docs, user-facing text)
-- **nros** — code shorthand (crate names, Rust/C identifiers, Kconfig `CONFIG_NROS_*`)
-- **nano_ros** — C header dir (`nano_ros/`), CMake targets (`NanoRos::NanoRos`), CMake function (`nano_ros_generate_interfaces()`)
-
-## Workspace Structure
+## Workspace
 
 ```
-nano-ros/
-├── packages/
-│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp
-│   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
-│   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-board-mps2-an385, nros-board-mps2-an385-freertos, nros-board-nuttx-qemu-arm, nros-board-threadx-linux, nros-board-threadx-qemu-riscv64, nros-board-esp32, nros-board-esp32-qemu, nros-board-stm32f4
-│   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp, virtio-net-netx
-│   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
-│   ├── testing/        # nros-tests (integration test crate)
-│   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
-│   ├── reference/      # qemu-smoltcp-bridge
-│   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-riscv64-threadx, threadx-linux, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
-├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps, threadx, netxduo
-├── scripts/            # zenohd build, Zephyr setup
-├── docker/             # QEMU dev environment
-├── tests/              # Shell-based test scripts
-├── docs/               # Guides, reference, design, roadmap
-├── zephyr/             # Zephyr module (Kconfig, CMakeLists.txt, cmake/)
-└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + nros-cpp + codegen)
+packages/
+├── core/         # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-platform*
+├── zpico/        # Zenoh-pico backend (nros-rmw-zenoh, zpico-sys, zpico-platform-*)
+├── xrce/         # XRCE-DDS backend
+├── dds/          # dust-dds backend (nros-rmw-dds)
+├── boards/       # nros-board-* (mps2-an385, stm32f4, esp32, threadx-*, nuttx-qemu-arm, …)
+├── drivers/      # lan9118-*, openeth-smoltcp, virtio-net-netx, threadx-netx-sys, nros-smoltcp
+├── interfaces/   # rcl-interfaces (generated/, in git)
+├── testing/      # nros-tests
+├── verification/ # nros-ghost-types, nros-verification (Verus, excluded from workspace)
+├── reference/    # qemu-smoltcp-bridge, stm32f4-porting/*
+└── codegen/      # cargo-nano-ros, rosidl-*, bundled .msg/.srv
+examples/         # platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-riscv64-threadx, threadx-linux, qemu-esp32-baremetal, esp32, stm32f4, zephyr, px4)
+third-party/      # SDK sources (gitignored): freertos, nuttx, threadx, netxduo, lwip, zenoh, dust-dds, px4
+zephyr/           # Zephyr module
 ```
 
-## Build Commands
+## Build
 
 ```bash
-just setup              # Install everything: workspace + verification + platforms + services (idempotent)
-just doctor             # Diagnose install status (read-only; exit 1 if anything missing)
-just freertos setup     # Download FreeRTOS kernel + lwIP (included in just setup)
-just nuttx setup        # Download NuttX RTOS + apps (included in just setup)
-just threadx_linux setup     # Download ThreadX kernel + NetX Duo (Linux sim)
-just threadx_riscv64 setup   # Download ThreadX kernel + NetX Duo (QEMU RISC-V)
-just build              # Generate bindings + build workspace + examples
-just build-zenohd       # Build zenohd from submodule (alias: just zenohd setup)
-just check              # Format check + clippy
-just ci                 # Check + test
-just doc                # Generate docs
-just verify             # Kani + Verus verification
-just generate-bindings  # Regenerate all generated/ dirs
+just setup              # install everything (workspace + verification + platforms + services)
+just doctor             # diagnose install (read-only)
+just build              # bindings + workspace + examples
+just check              # fmt + clippy
+just ci                 # check + test
+just verify             # Kani + Verus
+just generate-bindings  # regenerate generated/ dirs
+just <module> setup     # per-module setup; modules: workspace, verification, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32, zephyr, xrce, zenohd
 ```
 
-Test commands:
-```bash
-# Project-level
-just test-unit              # Unit tests only (no external deps, ~5s)
-just test-miri              # Miri UB detection
-just test                   # Unit + integration + miri (excludes zephyr/ros2/large_msg)
-just test-all               # Everything (all platforms in one nextest run) + miri + C codegen
-just ci                     # check + test
+Tests: `just test-unit`, `just test-miri`, `just test`, `just test-all`, `just <plat> test|test-all|ci`.
 
-# Per-platform (just <platform> test|test-all|ci)
-just qemu test              # QEMU bare-metal tests (non-networked)
-just qemu test-all          # + networked E2E and RTIC tests
-just native test            # Native integration tests (needs zenohd)
-just native test-all        # + ROS 2 interop, large_msg, C/C++ API
-just freertos test          # FreeRTOS QEMU E2E (needs arm-none-eabi-gcc)
-just nuttx test             # NuttX QEMU E2E (needs nightly + qemu-system-arm)
-just threadx_linux test     # ThreadX Linux sim E2E (needs ThreadX/NetX)
-just threadx_riscv64 test   # ThreadX RISC-V QEMU E2E
-just zephyr test            # Zephyr E2E (needs west; native_sim uses NSOS on host loopback)
-just zephyr test-all        # + XRCE + C examples
-just esp32 test             # ESP32 QEMU E2E
-just <platform> ci          # Platform-specific check + test
-```
+## Environment
 
-First-time: `just setup` installs everything (workspace + verification + all platforms + services). Use `just doctor` to verify the install. Per-module: `just <module> setup` / `just <module> doctor` where modules are `workspace`, `verification`, `qemu`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, `zephyr`, `xrce`, `zenohd`.
+`.env` (gitignored) overrides defaults. **Run `direnv allow` once after clone** so cargo/cmake outside `just` pick up SDK paths. Without it, `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`.
 
-## Environment Variables
+Runtime: `ROS_DOMAIN_ID` (0), `ZENOH_LOCATOR` (`tcp/127.0.0.1:7447`), `ZENOH_MODE` (client/peer).
 
-Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and uncomment values. Loaded automatically by justfile and direnv.
+SDK paths auto-resolved from `third-party/<sdk>/`; override via env: `FREERTOS_DIR`, `FREERTOS_PORT` (`GCC/ARM_CM3`), `LWIP_DIR`, `FREERTOS_CONFIG_DIR`, `NUTTX_DIR`, `NUTTX_APPS_DIR`, `THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`, `NETX_CONFIG_DIR`. See `docs/reference/environment-variables.md`.
 
-**Use `direnv allow` once after cloning** so `cargo nextest run …`, `cargo build`, `cmake …`, etc., pick up the SDK paths and `FREERTOS_PORT` automatically. Without direnv (or without manual exports), running cargo directly outside of `just <plat> …` panics in `zpico-sys/build.rs` with `"FREERTOS_PORT not set"`. The `.envrc` defaults match the justfile defaults; an `.env` file overrides both. Setup:
-```bash
-sudo apt install direnv                              # if not installed
-echo 'eval "$(direnv hook bash)"' >> ~/.bashrc       # or fish/zsh
-direnv allow                                          # one-time per checkout
-```
+## Practices
 
-Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
+- **Always `just ci` after task.**
+- **Never `sudo`** — tell user what's needed.
+- Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
+- Reusable tests → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (sh). Temp tests → Bash, then promote.
+- **Tests must fail on unmet preconditions.** `assert!()`/`bail!()` for missing env/binary. `nros_tests::skip!` panics with `[SKIPPED]` (OK). Bare `eprintln!`+`return` reports PASS — never. Same rule for runtime: must panic, not silent early-return. Only exception: `rstest #[values]` matrix unsupported combos via `skip_reason()` helper.
+- JUnit XML at `target/nextest/default/junit.xml`. Non-nextest tests → `tests/run-test.sh` → `test-logs/latest/`.
+- Temp files in `$project/tmp/` (gitignored), not `/tmp`. Use Write/Edit, not heredoc. Repeated multi-step commands (QEMU, GDB, build+run) → `tmp/*.sh` script first.
+- `.gitignore`: every workspace-excluded crate has per-dir `.gitignore` with `/target/` (and `/generated/` if uses codegen). Native C++ examples need `/build/`. Always leading `/`. Add `--target-dir` paths.
+- **Parallel build isolation:** nextest tests with different features building the same example must use `--target-dir` (e.g. `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs`.
 
-FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes and `.envrc` (defaulting to `third-party/<sdk>/` paths populated by `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere:
-- `FREERTOS_DIR` — FreeRTOS kernel source (default: `third-party/freertos/kernel`)
-- `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
-- `LWIP_DIR` — lwIP source (default: `third-party/freertos/lwip`)
-- `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
-- `NUTTX_DIR` — NuttX RTOS source (default: `third-party/nuttx/nuttx`)
-- `NUTTX_APPS_DIR` — NuttX apps source (default: `third-party/nuttx/nuttx-apps`)
-- `THREADX_DIR` — ThreadX kernel source (default: `third-party/threadx/kernel`)
-- `THREADX_CONFIG_DIR` — ThreadX config directory (default: board crate's `config/`)
-- `NETX_DIR` — NetX Duo source (default: `third-party/threadx/netxduo`)
-- `NETX_CONFIG_DIR` — NetX Duo config directory (default: board crate's `config/`)
+### QEMU Networked Tests
+- Slirp networking on QEMU platforms (no TAP/sudo/bridges).
+- Per-platform zenohd ports in `nros_tests::platform`: baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453, esp32=7454, threadx-linux=7455, zephyr=7456. Use `ZenohRouter::start(platform::FREERTOS.zenohd_port)`.
+- Bridge-networked (threadx-linux veth): `ZenohRouter::start_on("0.0.0.0", port)`.
+- Subscriber first, then publisher. 5–10s stabilization between sub-ready and pub-start.
+- Per-platform nextest groups (`max-threads = 1`); platforms run in parallel.
 
-Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
+### Examples = Standalone Projects
+**Each `examples/` dir is self-contained, copy-out template.** Implications:
+- No shared example-only helpers in `nros-cpp`/`nros-c` — boilerplate IS the lesson.
+- `*_DIR` env / `-D` injection are the SDK-path contract. Example cmake must accept env or `-D` only — never project-tree heuristics.
+- Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` build in isolation. No workspace `Cargo.toml` reliance, no walk-up to project root.
+- Per-platform `cmake/<plat>-support.cmake` lives in example tree. Layer-2 modules (`nros-threadx.cmake`, `nros-freertos.cmake`, `nros-nuttx.cmake`) ship via `find_package(NanoRos)`.
 
-## Development Practices
+### CMake Path Convention
+- Never hard-code project-relative paths in example `CMakeLists.txt` or support cmake.
+- No fixed-depth `../../../cmake/...`, no project-root heuristics, no `${_ROOT}/external/<sdk>` defaults.
+- Build scripts pass absolute paths: `-DCMAKE_TOOLCHAIN_FILE=`, `-D<SDK>_DIR=`, `-DCMAKE_PREFIX_PATH=$pwd/build/install/`, `-D<BOARD>_CONFIG_DIR=`. Internal example-tree paths fine.
 
-### Quality Checks
-**Always run `just ci` after completing a task.**
+### Roadmap Docs (`docs/roadmap/`)
+Header (Goal, Status, Priority, Depends on) → Overview → Architecture → Work Items checklist + `### N.M — Title` subsections + `**Files**` → Acceptance → Notes. Mark `- [x]` done. Completed → `docs/roadmap/archived/`.
 
-### System Packages & Privileges
-**Never install system packages or run sudo directly.** Inform the user what's needed.
+## Key Patterns
 
-### Unused Variables
-- Rename to `_name` with a comment explaining why
-- Use `#[allow(dead_code)]` for test struct fields
-
-### Testing
-- **Reusable tests** → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (shell scripts)
-- **Temporary tests** → Bash tool directly, convert to proper tests once validated
-- Test scripts in `tests/` should have justfile entries
-- Use `just test-*` recipes. All accept a `verbose` argument for live output.
-- **Tests must fail on unmet preconditions** — if a required env var, binary, or tool is missing, the test MUST fail (return error/panic), not silently skip and report PASS. Use `assert!()` or `bail!()` for precondition checks. Silent skips that count as PASS hide real failures. This applies to ALL tests.
-  - Same rule for **runtime failures** inside a test body: if the test's subject didn't boot, didn't produce the expected output, or otherwise failed to reach the assertion point, the test must panic — not silently early-return. "Lenient" silent skips (e.g., "listener didn't reach readiness, skip") are tech debt; fix the underlying issue instead of masking it.
-  - The `nros_tests::skip!` macro panics with a `[SKIPPED]` prefix, so it satisfies this rule. A bare `eprintln!` + `return` does not (it reports PASS).
-  - **Only exception**: known-unsupported combinations in an `rstest` `#[values]` parametrised matrix may silent-return, acting as the per-case equivalent of `#[ignore]` (which rstest doesn't support per-case). Wire these through a single `skip_reason(…)` helper that documents the reason.
-- JUnit XML: `target/nextest/default/junit.xml` (auto-generated by nextest)
-- Non-nextest tests use `tests/run-test.sh` wrapper → logs in `test-logs/latest/`
-- See `tests/README.md` for full test infrastructure docs
-
-### QEMU Networked Test Rules
-- **Slirp networking** — QEMU platforms (bare-metal, FreeRTOS, NuttX, ThreadX RISC-V, ESP32) use slirp user-mode networking. No TAP devices, bridges, or `sudo` needed.
-- **Per-platform zenohd ports** — each platform has a fixed port in `nros_tests::platform` (baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453, esp32=7454, threadx-linux=7455, zephyr=7456). Use `ZenohRouter::start(platform::FREERTOS.zenohd_port)`, not hardcoded ports.
-- **Bridge-networked platforms** — ThreadX Linux sim (veth) uses bridge networking and needs `ZenohRouter::start_on("0.0.0.0", port)` instead of `start(port)`. Zephyr native_sim migrated to NSOS (Phase 81) and uses `127.0.0.1` on the host like any other loopback-bound test.
-- **Start subscriber first, then publisher.** Zenoh doesn't buffer for unknown subscribers.
-- **5–10s stabilization delay** between subscriber connection and publisher start
-- **Per-platform nextest groups** — each platform has its own `max-threads = 1` group (e.g., `qemu-freertos`). Platforms run in parallel; tests within a platform are serial.
-
-### Temporary Files
-- Create in `$project/tmp/` (git-ignored), not `/tmp`
-- Use Write/Edit tools (avoid cat + heredoc)
-- **Build test scripts**: when iterating on cmake/cargo build commands, write them as reusable scripts in `tmp/` (e.g., `tmp/build-riscv64-talker.sh`) instead of running long one-liner commands repeatedly
-- **Debug/test scripts**: when running repeated multi-step commands (QEMU launch, GDB debug sessions, build+run combos), always write them as `tmp/*.sh` scripts first, then run the script. Never repeat long commands inline.
-
-### `.gitignore` Practices
-- **Every workspace-excluded crate** (examples, board crates in `exclude`, standalone packages) must have a per-directory `.gitignore` with at least `/target/`. Add `/generated/` if the crate uses `cargo nano-ros generate`.
-- **Every native C++ example** must have a per-directory `.gitignore` with `/build/` (CMake builds in-tree). Zephyr C++ examples don't need this since they build in the Zephyr workspace.
-- Root `.gitignore` only for repo-wide patterns
-- Always use leading `/` (e.g., `/target/` not `target/`)
-- When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
-
-### Examples are Standalone Projects
-**Each example under `examples/` is a self-contained starting template that users are expected to copy out of the nano-ros source tree** and adapt for their own application — different RTOS port, different message types, different topology. The example tree is pedagogical: every example shows the full call sequence (`nros::init` → `create_node` → `create_publisher` → spin loop) explicitly so a copied-out example reads as a complete, runnable project without needing the nano-ros internals on hand.
-
-Implications:
-- **No shared example-only helpers in `nros-cpp` / `nros-c`.** A copied-out example must build against the public `find_package(NanoRos)` surface alone. Hiding boilerplate behind `nros::examples::*` headers (or similar) breaks the copy-out workflow because the helper would either travel with the example (coupling) or have to be rewritten back in (zero benefit). The boilerplate **is** the lesson.
-- **`*_DIR` env vars / `-D` injection are the SDK-path contract.** External SDK locations (`THREADX_DIR`, `NETX_DIR`, `FREERTOS_DIR`, `LWIP_DIR`, `NUTTX_DIR`, `NUTTX_APPS_DIR`, …) are passed in by the user's build script when they're outside the nano-ros tree. The same env vars are auto-resolved by the in-tree justfile recipes for the convenience of contributors, but the example's cmake files must accept them as the *only* discovery mechanism (env or `-D`, never project-tree heuristics).
-- **Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` must build in isolation.** No reliance on the workspace's `Cargo.toml`, no walk-up to project root for cmake includes (other than the example's own `cmake/` subdir), no `[patch.crates-io]` that points outside the example.
-- **Per-platform `cmake/<plat>-support.cmake` files are part of the example tree.** They live next to the example, not at project root, so they travel with a copied-out example. Layer-2 cmake modules (`nros-threadx.cmake`, `nros-freertos.cmake`, `nros-nuttx.cmake`) ship via `find_package(NanoRos)` — copied-out examples reach them through the install prefix the user passes, same as any other `find_package` consumer.
-
-### CMake Path Convention for Examples
-Examples must work when copied outside the nano-ros project tree. **Never hard-code project-relative paths in example CMakeLists.txt or support cmake files.** This means:
-- No `set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/...")` in example cmake files
-- No path expressions that assume a fixed directory depth within the project
-- No heuristic search for the project root (e.g., `get_filename_component(_ROOT "${CMAKE_CURRENT_LIST_FILE}/../../.." ABSOLUTE)`) in support cmake modules
-- No defaulting SDK paths to `${_ROOT}/external/<sdk>` — all external SDK paths must be passed explicitly
-
-Instead, pass absolute paths from build scripts:
-- **Test scripts** (`freertos_qemu.rs`, justfile): pass `-DCMAKE_TOOLCHAIN_FILE=<abs_path>`, `-DTHREADX_DIR=<abs_path>`, etc. on the cmake command line
-- **`CMAKE_PREFIX_PATH`**: always passed from the build script pointing to `build/install/`
-- **SDK paths** (`THREADX_DIR`, `NETX_DIR`, `FREERTOS_DIR`, `LWIP_DIR`, `NUTTX_DIR`): always passed as `-D` variables or env vars from the build script, never defaulted relative to the project tree
-- **Board config dirs** (`THREADX_CONFIG_DIR`, `FREERTOS_CONFIG_DIR`): passed as `-D` from the build script
-- Paths internal to the example directory tree (e.g., `../../../cmake/freertos-support.cmake` relative to the example's own cmake support directory) are fine — these are within the example's portable subtree
-
-### Parallel Build Isolation
-Nextest runs test files in parallel. When multiple tests build the same example with different features, use `--target-dir` to isolate output directories (e.g., `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs` for examples.
-
-### Roadmap Documents (`docs/roadmap/`)
-Phase docs follow a standard structure:
-- **Header**: Goal, Status, Priority, Depends on
-- **Overview**: Background and motivation
-- **Architecture/Design**: Diagrams, key decisions
-- **Work Items**: Checklist (`- [ ] 54.1 — Title`) at top, then `### 54.1 — Title` subsections with details and `**Files**` list
-- **Acceptance Criteria**: Checklist (`- [ ]` items) — testable conditions for phase completion
-- **Notes**: Caveats, gotchas, implementation details
-- Mark items `- [x]` when complete. Completed phases move to `docs/roadmap/archived/`.
-
-## Key Design Patterns
-
-### Zenoh Version Unification
-All zenoh components pinned to **1.7.2** (compatible with rmw_zenoh_cpp). zenohd built from `third-party/zenoh/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
-
-### Rust Edition 2024
-- `unsafe extern "C" { ... }` (extern blocks require `unsafe`)
-- `#[unsafe(no_mangle)]` (no_mangle requires `unsafe`)
-- Unsafe operations inside `unsafe fn` need explicit `unsafe { ... }` blocks
-- `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]` (420+ FFI operations)
-
-### API Alignment
-- **Rust API**: follows rclrs 0.7.0 naming; **C API**: follows rclc naming
-- `create_publisher()`, `create_subscription()`, `create_service()`, `create_client()`
-- `create_action_server()`, `create_action_client()`
-- Types: `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`
-- Error: `RclrsError`
-
-### `no_std` Support
-All core crates support `#![no_std]` with optional `std`/`alloc` features.
-
-### Message Types
-Generated via `cargo nano-ros generate-rust` from `package.xml`. **Never hand-write message types.** See [message-generation.md](docs/guides/message-generation.md) and [creating-examples.md](docs/guides/creating-examples.md).
-
-- Example `generated/` dirs are gitignored, recreated by `just generate-bindings`
-- Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (uses `nros-` prefixed names)
-- `.cargo/config.toml` is manually maintained per example (`[patch.crates-io]` + platform settings)
-- Bundled interfaces at `packages/codegen/interfaces/` (no ROS 2 env needed)
-- `nros-core` re-exports `heapless` for generated code
-
-### C API
-See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake integration, code generation, and system install.
-
-**nros-c thin wrapper principle:** `nros-c` must be a thin FFI wrapper over `nros-node` — delegate to Rust types, don't reimplement logic. New C API features must first be implemented in `nros-node`, then wrapped.
-
-**cbindgen header generation:** C headers are auto-generated from Rust `#[repr(C)]` types by cbindgen v0.29 during `cargo build`. The generated `nros_generated.h` is included by thin per-module header stubs. All struct fields on `#[repr(C)]` types must be `pub` for cbindgen to include them. `visibility.h`, `platform.h`, and `types.h` (for `nros_service_type_t`) remain hand-written. Platform FFI imports in `platform.rs` use `/// cbindgen:ignore` to avoid conflicts with `static inline` definitions.
-
-### C++ API
-See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started guide.
-
-`nros-cpp` is a freestanding C++14 library (header-only C++ + Rust FFI staticlib) wrapping `nros-node` directly via typed `extern "C"` FFI. Mirrors rclcpp naming (`Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`). Error handling via `nros::Result` + `NROS_TRY` macro.
-
-**Message codegen:** `cargo nano-ros generate-cpp` or CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Generated types use ROS 2 standard namespaces (e.g., `std_msgs::msg::Int32`).
-
-**Optional std mode:** Define `NROS_CPP_STD` for `std::string`, `std::function`, and `std::chrono` convenience overloads. Not required — freestanding mode uses `const char*`, C function pointers, and integer milliseconds.
-
-**Zephyr integration:** `CONFIG_NROS_CPP_API=y` + `nros_generate_interfaces(... LANGUAGE CPP)`.
-
-**C++ action client status:** `ActionServer<A>` and `ActionClient<A>` are implemented but use **blocking** `zpico_get` for `send_goal` and `get_result`. This causes hangs on FreeRTOS QEMU where the condvar is never signaled. Phase 77 will add a non-blocking async path using `zpico_get_start`/`zpico_get_check` polled by the executor. The `test_freertos_cpp_action_e2e` test is `#[ignore]`d until Phase 77. The C++ action server also hangs during `create_action_server` on FreeRTOS QEMU (zenoh-pico deadlock when declaring 5 entities) — this may be a separate zenoh-pico issue.
+- **Zenoh pinned to 1.7.2** (rmw_zenoh_cpp compatible). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+- **Rust edition 2024**: `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]` (420+ FFI ops).
+- **API**: Rust mirrors rclrs 0.7.0; C mirrors rclc. `create_publisher/subscription/service/client/action_*`. Types `Publisher<M>`, etc. Error: `RclrsError`.
+- **`no_std`**: all core crates `#![no_std]` + optional `std`/`alloc`.
+- **Messages**: `cargo nano-ros generate-rust` from `package.xml`. **Never hand-write.** Example `generated/` gitignored. Only `packages/interfaces/rcl-interfaces/generated/` in git (uses `nros-` prefix). Bundled at `packages/codegen/interfaces/`. `nros-core` re-exports `heapless`.
+- **C API**: see `docs/reference/c-api-cmake.md`. **Thin wrapper principle:** must delegate to `nros-node`, no logic re-impl. Headers auto-generated by cbindgen 0.29 → `nros_generated.h`. `#[repr(C)]` fields must be `pub`. Hand-written: `visibility.h`, `platform.h`, `types.h`. Platform FFI uses `/// cbindgen:ignore`.
+- **C++ API**: `nros-cpp` is freestanding C++14 over typed extern "C" FFI to `nros-node`. Mirrors rclcpp. Error: `nros::Result` + `NROS_TRY`. Codegen: `cargo nano-ros generate-cpp` or CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Std mode opt-in via `NROS_CPP_STD`. Zephyr: `CONFIG_NROS_CPP_API=y`. Action client/server use blocking `zpico_get` → hangs FreeRTOS QEMU; `test_freertos_cpp_action_e2e` `#[ignore]` until Phase 77 async path.
 
 ### Platform Backends
-Three orthogonal axes (NEVER cross-imply):
-- **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
-- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`, `platform-nuttx`, `platform-threadx`
-- **ROS edition** (one): `ros-humble`, `ros-iron`
+Three orthogonal axes (mutual exclusion enforced at compile-time, zero on an axis OK):
+- **RMW**: `rmw-zenoh`, `rmw-xrce`, `rmw-dds`
+- **Platform**: `platform-posix|zephyr|bare-metal|freertos|nuttx|threadx`
+- **ROS edition**: `ros-humble|iron`
 
-Mutual exclusivity enforced at compile-time. Zero features on an axis is valid (reduced functionality).
-Default features: `std` only. Platform features forwarded via Cargo `?` syntax.
+Default: `std`. Cross-cutting: `unstable-zenoh-api` for zero-copy receive.
 
-**Cross-cutting:** `unstable-zenoh-api` enables zero-copy receive (orthogonal to axes above).
+### Spin/Yield (per platform)
+`zpico_spin_once` event-driven wake on data:
+- POSIX/Zephyr: `_z_condvar_wait_until` on `g_spin_cv`
+- FreeRTOS: `xSemaphoreTake(g_spin_sem, …)`
+- NuttX: `sem_timedwait(&g_spin_sem_posix, …)` (pthread condvar hangs — Phase 55.12)
+- Bare-metal: single-thread `zp_read` loop
 
-### Spin/Yield Wake Primitives (per platform)
-`zpico_spin_once` (event-driven wake on data arrival; 77.16 / 77.17 done):
-- POSIX / Zephyr: `_z_condvar_wait_until` on `g_spin_cv`
-- FreeRTOS: `xSemaphoreTake(g_spin_sem, pdMS_TO_TICKS(…))`
-- NuttX: `sem_timedwait(&g_spin_sem_posix, &abs_deadline)` (pthread condvar hangs on NuttX — Phase 55.12)
-- Bare-metal smoltcp / serial: single-thread `zp_read` loop (77.18 will add WFI)
+Cooperative yield (Phase 77.22 `PlatformYield`): POSIX/NuttX `sched_yield()`, Zephyr `k_yield()`, FreeRTOS `vPortYield()`, ThreadX `tx_thread_relinquish()`, bare-metal default `core::hint::spin_loop()`, opt-in `cortex_m::asm::wfi()` via `BoardIdle` trait. RTOS yields not ISR-safe; `spin_loop()` is.
 
-Cooperative yield (Phase 77.22 — planned `PlatformYield` trait):
-- POSIX / NuttX: `sched_yield()`
-- Zephyr: `k_yield()`
-- FreeRTOS: `vPortYield()` (C shim for `taskYIELD` macro)
-- ThreadX: `tx_thread_relinquish()`
-- Bare-metal default: `core::hint::spin_loop()` (pure CPU hint, safe everywhere)
-- Bare-metal opt-in: `cortex_m::asm::wfi()` via a board-crate `BoardIdle` trait — deep idle, requires board to arm an IRQ source or the CPU deadlocks. Precedent: STM32F4, MPS2-AN385 board crates already use `wfi()` in their idle loops.
+### smoltcp Multicast (bare-metal)
+- `Interface::join_multicast_group(addr)` requires multicast addr; smoltcp 0.12 returns `Unaddressable` for `0.0.0.0`. Pass GROUP addr (`239.255.0.1`), not local-bind.
+- `set_recv_timeout(_, 0)` in `define_smoltcp_platform!` macro = non-blocking poll. Pre-Phase-97.3 silently fell back to `SOCKET_TIMEOUT_MS` (10s).
+- LAN9118 emulator filter rejects multicast unless `MAC_CR.MCPAS` set; promiscuous (`PRMS`) recommended for QEMU `-nic socket,…`.
+- `MAX_UDP_SOCKETS` default 4 (was 2). RTPS needs 3/participant; zenoh/xrce use 0..=1.
 
-None of the RTOS yields are ISR-safe. `core::hint::spin_loop()` is.
+### NetX Duo BSD (ThreadX)
+- `SO_RCVTIMEO` takes `struct nx_bsd_timeval *`, NOT `INT` ms. Wrong type → `wait_option = NX_WAIT_FOREVER` → deadlock. Use `nros-platform-threadx::set_recv_timeout_ms`.
+- `fcntl(F_SETFL, O_NONBLOCK)` works (toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING`).
+- NSOS-NetX shim translates `SO_RCVTIMEO` for threadx-linux (NetX BSD ↔ Linux POSIX). Accepts both INT-ms and `nx_bsd_timeval` shapes.
 
-### smoltcp Multicast (bare-metal smoltcp platforms)
-- **`Interface::join_multicast_group(IpAddress)` requires the address to be multicast.** Smoltcp 0.12 returns `MulticastError::Unaddressable` for `0.0.0.0` (the typical INADDR_ANY local-bind address). Drivers that bind a UDP socket to `INADDR_ANY:port` for multicast listening must pass the *group* address (e.g. `239.255.0.1`) to `join_multicast_group`, not the local-bind address.
-- **`set_recv_timeout(_, 0)`** in the smoltcp `define_smoltcp_platform!` macro means "non-blocking poll, return immediately"; the macro now passes 0 verbatim. Pre-Phase-97.3 it silently fell back to `SOCKET_TIMEOUT_MS` (10 s default), which blocked cooperative recv loops for 10 s per failed poll.
-- **LAN9118 emulator hardware filter rejects multicast** unless `MAC_CR.MCPAS` (Pass All Multicast) is set; promiscuous (`PRMS`) is also recommended for QEMU `-nic socket,…` since the netdev forwards every frame on the segment regardless of MAC.
-- **`MAX_UDP_SOCKETS` default is 4** (was 2). RTPS needs 3 per participant (default-unicast + metatraffic-unicast + metatraffic-multicast); zenoh / xrce builds use only 0..=1.
-
-### NetX Duo BSD Shim Pitfalls (ThreadX platforms)
-- **`SO_RCVTIMEO` takes `struct nx_bsd_timeval *`, NOT `INT` ms.** `nxd_bsd.c` casts `option_value` directly to `struct nx_bsd_timeval *`. Passing a 4-byte `INT` silently produces `option_receive_timeout = 0`, which falls through to `wait_option = NX_WAIT_FOREVER` — the recv path then blocks the calling thread forever, deadlocking cooperative drain loops. Use `nros-platform-threadx::set_recv_timeout_ms` helper.
-- **NetX BSD `fcntl(F_SETFL, O_NONBLOCK)` works** — toggles `NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING` and the recv path honours that flag. Use it for cooperative non-blocking sockets where `SO_RCVTIMEO=0` would otherwise mean "wait forever". (The earlier "fcntl not supported on UDP" comment in our code was a misread of `nxd_bsd.c`.)
-- **NSOS-NetX shim translates `SO_RCVTIMEO`** for threadx-linux to bridge NetX BSD ↔ Linux POSIX. It accepts both 4-byte INT-ms and 8-byte `nx_bsd_timeval` shapes (LP64 `nx_bsd_time_t`/`nx_bsd_suseconds_t` map to `c_int` per bindgen) and converts to Linux's 16-byte `struct timeval`. Callers don't need to special-case threadx-linux.
-
-### Board Crate Transport Features
-Board crates use Cargo features to select the communication transport:
-- **`ethernet`** (default for MPS2-AN385, STM32F4, ESP32-QEMU) or **`wifi`** (default for ESP32) — TCP/UDP via `zpico-smoltcp`
-- **`serial`** — UART via `zpico-serial` (bare-metal only) or zenoh-pico built-in serial (ESP32, Zephyr, etc.)
-
-`Config` struct fields are `#[cfg(feature = "...")]`-gated per transport (e.g., MAC/IP under `ethernet`, baudrate under `serial`). At least one transport must be enabled (`compile_error!` enforced). Both can be enabled simultaneously — runtime selection via the zenoh locator string.
-
-ESP32 and ESP32-QEMU use zenoh-pico's built-in serial implementation (no `zpico-serial` dependency). Only bare-metal board crates (`nros-board-mps2-an385`, `nros-board-stm32f4`) depend on `zpico-serial`.
-
-Examples select non-default transport with `default-features = false, features = ["serial"]`.
+### Board Transport Features
+Cargo features select transport: `ethernet` (default for MPS2-AN385/STM32F4/ESP32-QEMU) or `wifi` (ESP32) → TCP/UDP via `zpico-smoltcp`; `serial` → UART via `zpico-serial` (bare-metal) or zenoh-pico built-in (ESP32, Zephyr). `Config` fields `#[cfg(feature = "...")]`-gated. At least one transport required (`compile_error!`). Both can coexist (locator selects). ESP32/ESP32-QEMU use zenoh-pico's serial (no `zpico-serial` dep).
 
 ### Parameter Services
-Enable with `param-services` feature in `nros-node`. Provides `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces` types. Handlers return `Box<Response>` (large heapless arrays).
+`param-services` feature in `nros-node` → `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces`. Handlers return `Box<Response>`.
 
-### Formal Verification
-- **Kani**: 160 bounded model checking harnesses. `just verify-kani` (~3 min)
-- **Verus**: 102 unbounded deductive proofs. `just verify-verus` (~1 sec)
-- Key Verus rules: `external_type_specification` without `external_body` = transparent enum; with = opaque. Never add `verify = true` to production crates with fn pointers/closures.
-- See [docs/guides/verus-verification.md](docs/guides/verus-verification.md)
+### Verification
+- Kani: 160 bounded harnesses. `just verify-kani` (~3 min)
+- Verus: 102 unbounded proofs. `just verify-verus` (~1 sec)
+- Verus rules: `external_type_specification` w/o `external_body` = transparent enum; with = opaque. Never `verify = true` on production crates with fn pointers/closures. See `docs/guides/verus-verification.md`.
 
 ### ROS 2 Interop
-rmw_zenoh-compatible protocol. Key format: `<domain>/<topic>/<type>/TypeHashNotSupported`. See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
+rmw_zenoh-compatible. Key: `<domain>/<topic>/<type>/TypeHashNotSupported`. See `docs/reference/rmw_zenoh_interop.md`.
 
-## Development Phases
+## Phases
 
-Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/roadmap/) for details.
+Archived in `docs/roadmap/archived/`. See `docs/roadmap/` for active.
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 23 | Arduino precompiled library | Not Started |
+| # | Focus | Status |
+|---|-------|--------|
+| 23 | Arduino precompiled lib | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
-| 65 | nano-ros book (mdbook user guide) | Complete |
-| 69 | Cross-platform C/C++ examples + integration tests | Complete (all 10 platforms; NuttX C E2E fixed via usleep + z_clock_t patches) |
-| 71 | DDS backend on `nros-platform` capability traits — infrastructure block (cooperative runtime, async transport, size-probed buffers, smoltcp multicast bridge, POSIX `PlatformUdp` validation, generic `nros-platform/global-allocator` feature, slice-offset bug in `ServiceServerTrait::handle_request`, A9 example client cooperative-runtime starvation, async waker bridge for `DdsServiceClient` / `DdsSubscriber`). Native POSIX + Zephyr `qemu_cortex_a9` ship end-to-end. Per-platform examples (FreeRTOS / NuttX / ThreadX / bare-metal / ESP32-QEMU / Zephyr native_sim) tracked under Phase 97. | Archived |
-| 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
-| 75 | Relocatable CMake install convention for C/C++ | Complete |
-| 76 | RTOS scheduling configuration via config.toml | Complete (FreeRTOS; ThreadX/NuttX/Zephyr deferred to future work) |
-| 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1–77.5 done) |
-| 78 | Colcon build type (`nros.<lang>.<platform>`) | Not Started |
-| 79 | Unified platform abstraction layer | Complete |
-| 80 | Unified network interface for nros-platform | Not Started |
-| 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Complete (27/27 Zephyr tests pass) |
-| 82 | Blocking service client must take an executor | Complete |
-| 83 | C/C++ thin-wrapper compliance (arena-authoritative goal state + CDR header centralization) | Complete (Phase 91.B closed 11 follow-up `use nros_rmw::*` / `use nros_core::*` import sites missed in the original landing) |
-| 85 | Test-suite consolidation & speedup (214 → ~80 tests, dedupe 4-platform RTOS matrix, shared build cache, replace sleeps with ready-probes) | Complete (85.11 abandoned; test-count + wall-time targets carried to Phase 89) |
-| 86 | `nros-lifecycle-msgs` codegen crate + REP-2002 lifecycle services (`~/change_state`, `~/get_state`, …) for C/Rust APIs | Complete (86.1–86.10; pinned `rmw_zenoh` interop test verifies acceptance) |
-| 87 | nros-cpp compile-time storage-size derivation (shared types crate + probe crate; replaces hand-coded `4 * ptr_bytes` math in `build.rs`) | Complete |
-| 88 | Unified leveled logging (`nros-log` crate with pluggable RTOS/host sinks; ROS-style named loggers + severity filtering) | Not Started |
-| 89 | `just test-all` triage: close ~25 E2E failures/timeouts + restore per-platform nextest parallelism that `.config/nextest.toml` collapsed | Complete (archived; 89.11 dropped, all others landed; clean `just test-all` → 675/675 pass) |
-| 90 | PX4 RMW (`nros-rmw-uorb`) + `nros-px4` board crate — uORB-based pub/sub through typed-trampoline registry, `nros::uorb` direct typed API, ROS-name → uORB-topic map (TOML → `phf`), SITL E2E test wired to vendored PX4-Autopilot via Phase 98 fixtures, `nros_px4::run_async` proper-waker chain (uORB callback → `AtomicWaker::wake` → `ScheduleNow` → `WorkItemCell` poll, with bounded `park_max` Sleep as timer safety net) | v1 + 90.5b Complete (90.1–90.8 + 90.5b L1/L2/L3 landed; 90.4b services deferred post-v1) |
-| 91 | Code antipattern fixup (Phase 83 thin-wrapper follow-ups, cbindgen-as-SSoT C headers, three-layer cmake abstraction for ThreadX/FreeRTOS/NuttX, hardcoded test ports/paths, platform `seed()` dedup, routing-info centralization) | Complete (archived; A/B/C/D/E1/E3/E4/F/G; E2 dropped by design — examples are standalone projects, boilerplate is the lesson) |
-| 92 | Zephyr DDS talker↔listener interop on `qemu_cortex_a9` (real IP stack, IGMP, GEM driver — same code path production DDS-on-Zephyr deployments use) | Complete (archived; `scripts/zephyr/cortex-a9-rust-patch.sh` ships the upstream Zephyr workspace patches, wired into `just zephyr setup` / `build` / `build-fixtures`; interop test passes 6.16 s end-to-end) |
-| 93 | C and C++ Doxygen completion + RMW/platform porting surface (Groups A–G user-facing C/C++; Groups H–L RMW + platform trait contracts, platform vtable C header, *-cffi Doxygen sites, porting-guide C path, rustdoc deploy of porter crates) | Complete (archived) |
-| 95 | Example coverage parity — closed the `(platform × lang × backend × use-case)` matrix on already-supported backends with 51 new example crates: A Zephyr xrce-rust svc/action (4), B Zephyr dds-rust svc/action/async (5), C Zephyr cpp-xrce (6), D Zephyr cpp-dds (6), E Zephyr c-dds (6), F native dds-rust svc/action (4), G native c-dds (6), H native cpp-dds (6). In-phase prerequisites landed: Phase 71.6 (Zephyr `#[global_allocator]` + critical-section impl + cortex_a9 Rust target wiring for nros-c/nros-cpp staticlibs), `nros-rmw-dds` dual-feature struct refactor (`std`+`nostd-runtime` simultaneous activation), `dds` added to `install-local-posix`'s RMW loop (per-RMW lib namespacing already worked). Cross-instance/process E2E for B-cortex_a9, C-cpp/xrce, F-native-svc/action remain `#[ignore]`d behind unrelated dust-dds SEDP / xrce-cpp-API session-demux bugs (tracked under Phase 96) — example crates themselves all build and reach readiness | Archived |
-| 96 | Phase 95 cross-process E2E follow-ups — three independent fixes that each turn one or more `#[ignore]`d tests back on: 96.1 cpp/xrce action+pub/sub interop bug stack (a) cpp `init()` hardcoded session-name → XRCE session-key collision blocking topic publishes, (b) action result reply offset off-by-3 missing `align(4)` pad in `arena.rs::action_client_raw_try_process`, (c) action feedback offset off-by-4 missing `write_u32(16)` length-prefix + missing trampoline `FEEDBACK_STASH` for poll-style consumers; 96.2 `test_talker_param_declaration` flake (replaced fixed-window stdout scan with `wait_for_pattern("Counter start value", 15s)`); 96.3 cross-link to Phase 71.28 / 71.29 | All three closed; full cpp/xrce nextest suite 9/9 pass (talker_listener 24s, service 37s, action 69s) |
-| 97 | DDS per-platform examples + cross-platform E2E — finishes Phase 71's example block. 97.1 generic prerequisites (critical-section feature, linker / heap tuning per board, Kconfig copy-in), 97.2 per-platform `PlatformUdp` smoke binaries, 97.3 bare-metal MPS2-AN385 + ESP32-QEMU DDS examples, 97.4 per-platform DDS pubsub E2E (FreeRTOS / NuttX / ThreadX-RISC-V / ThreadX-Linux / baremetal / ESP32-QEMU / Zephyr native_sim), 97.5 optional CycloneDDS / FastDDS interop + dust-dds upstream | Complete (6 of 7 97.4 slices green; exceeds ≥3 acceptance threshold. esp32-qemu deferred — stdlib `alloc::sync::Arc` gated off on `riscv32imc` `target_has_atomic = "ptr"`, needs `portable-atomic-util::Arc` substitution + regex-drop fork. Tracing-optional fork already pushed to `jerry73204/dust-dds` branch `nano-ros/phase-97-tracing-optional` to unblock follow-up.) |
-| 98 | PX4-Autopilot vendoring + SITL E2E infrastructure — `third-party/px4/PX4-Autopilot` + `third-party/px4/px4-rs` as shallow recursive submodules, `just px4 setup/build-sitl/test-sitl` recipes, `EXTERNAL_MODULES_LOCATION` plumbing for nano-ros example modules, `Px4Sitl::boot_in()` fixture reuse from `px4-sitl-tests` | Complete (Phase 90 SITL test passes end-to-end via this infra) |
-| 99 | Zero-copy raw pub/sub API — `SlotLending` + `SlotBorrowing` traits in `nros-rmw` (GAT-based), `PublishLoan` + `RecvView` in `nros-node` w/ per-publisher `TxArena`. v1 complete: 99.A–99.G arena + lending impls + cancellation-safe `LoanFuture` (99.H'); 99.L stripped `nros-rmw-uorb` to byte-shaped Session methods (no registry / alloc / critical_section / topics.toml); 99.M added `nros-px4::uorb` typed wrapper + generic `Executor::add_arena_subscription_callback`; 99.I migrated PX4 examples and **SITL E2E green** (`just px4 test-sitl` 3.7 s). Post-v1: 99.J new raw-bytes examples for zenoh/xrce/dds, 99.K cargo bench harness + book chapter. | v1 Complete |
-| 100 | AGX Orin SPE infrastructure (Cortex-R5F + IVC) — `packages/drivers/nvidia-ivc` driver crate (HAL only; `fsp` + `unix-mock` cargo features), `PlatformIvc` trait, Cortex-R critical-section support in `nros-platform-freertos`, `armv7r-none-eabihf` toolchain wiring, `Z_FEATURE_LINK_IVC` link transport inside vendored zenoh-pico (peer to TCP/UDP/Serial/RawEth), `nros-platform-orin-spe` + `nros-board-orin-spe` against NVIDIA FSP (workspace-excluded; user-supplied SDK), POSIX mock end-to-end smoke test. Application-side port lives in `autoware_sentinel` Phase 11. | Not Started |
-| 101 | `portable-atomic-util::Arc` substitution for CAS-poor targets (`riscv32imc`-class) — patches `dust-dds` fork to route `Arc` / `Weak` through `portable-atomic-util` behind a `portable-atomic` Cargo feature (zero overhead on native-CAS targets), replaces `regex` partition-QoS matching with hand-rolled fnmatch to drop the `regex-automata` chain that also requires native CAS + `alloc::sync`. Closes Phase 97.4.esp32-qemu without forking the regex stack. Upstream-PR-able to `s2e-systems/dust-dds`. | Not Started |
-| 102 | RMW API alignment — named `nros_rmw_ret_t` constants (`NROS_RMW_RET_OK / TIMEOUT / UNSUPPORTED / INCOMPATIBLE_QOS / …`) in place of bare `int32_t`, plus visible entity structs (`nros_rmw_publisher_t` / `_subscriber_t` / `_service_*_t` / `_session_t`) carrying `topic_name`, `qos`, `loan_caps` + an opaque `void *backend_data` slot. Drops the `rmw_set_error_string` thread-local. | Complete (102.1 ret_t header + two-way mapping `2aab57fa`; 102.2 InvalidConfig sweep `4911fecd`; 102.3 entity structs `6cb231b5`; 102.4 vtable signatures `44200faf`; 102.5 Cffi accessors + roundtrip test `60fbb3e2`; 102.6 doc passes `81148a00` + `b3a76a8e`. 102.7 version bump skipped — `nros-rmw-cffi` not published.) |
-| 103 | RMW typed-loan path — Cancelled, superseded by Phase 99 + 99.L. Originally tried to add a parallel typed-loan vtable surface; the right model is "loan API hands a raw-byte slot, runtime/backend decides what bytes go in." Wire transports use Phase 99 CDR-loan. Intra-process backends (uORB) bypass CDR via their own typed API (Phase 99.L). No shared vtable surface to add. | Cancelled |
-| 104 | Multi-backend support: cross-domain bridges — opt-in `multi-backend` Cargo feature lifts the `rmw-*` mutual-exclusion check; new `Executor::open_with_session` constructor bypasses the `ConcreteSession` alias; `nros-rmw-cffi` drops static `VTABLE` and embeds `vtable: *const NrosRmwVtable` in `nros_rmw_session_t`. Driver use case: PX4-on-drone bridge subscribing uORB and republishing onto a Zenoh peer for off-vehicle ROS 2. Single-backend builds unchanged (default-off feature). | Not Started |
-| 105 | `drive_io` RTOS cooperation — adds `Session::next_deadline_ms()` so the executor caps `drive_io` timeout against the backend's next internal event (lease keepalive, heartbeat); adds `max_callbacks` parameter to `drive_io` for upstream-`rclcpp`-style "one callback per `spin_once`" scheduling. Closes the priority-inversion footgun on preemptive-priority RTOS apps where ROS-internal entities share task priority. Default behaviour unchanged. | Not Started |
-| 106 | Timer / GC interleaving inside `drive_io` — moves timer + guard-condition dispatch into the backend's `drive_io` loop so Phase 105's `max_callbacks` cap applies uniformly across all callback sources (not just sub / service). With `max_callbacks = 1` becomes "exactly one callback per `spin_once` regardless of source." | Not Started |
-| 107 | Wall-clock time budget per `drive_io` — adds optional `time_budget_ms` so time-triggered cyclic apps (avionics, functional-safety) bound the wall-clock slice spent in ROS work per cycle. Backend checks elapsed time after each callback and returns when budget exhausted. | Not Started |
-| 108 | RMW status events: API + FFI surface (no backend wiring) — Tier-1 subset (liveliness changed / lost, requested / offered deadline missed, message lost) on Subscriber + Publisher. Callback-on-entity dispatch model rather than upstream's waitset-take. Skips Tier-2 (`MATCHED`) + Tier-3 (`QOS_INCOMPATIBLE`, `INCOMPATIBLE_TYPE` — surfaced synchronously via `nros_rmw_ret_t` at create-time instead). New `<nros/rmw_event.h>` + Rust `EventKind` + payload structs + `Subscription::on_*` / `Publisher::on_*` user-facing API. Backends advertise per-event support; `register_event_callback` returns `Unsupported` until wiring lands per-backend in 109+. | Not Started |
-| 109 | Full DDS-shaped QoS profile: API surface (no backend wiring) — extends `nros_rmw_qos_t` from 8 → 24 bytes with `deadline_ms`, `lifespan_ms`, `liveliness_kind`, `liveliness_lease_ms`, `avoid_ros_namespace_conventions`. Adds `Session::supported_qos_policies()` bitmask + synchronous `IncompatibleQos` validation at create time (no silent downgrade). Adds `Publisher::assert_liveliness()` for MANUAL_BY_TOPIC. Standard profile constants (`NROS_RMW_QOS_PROFILE_DEFAULT` / `_SENSOR_DATA` / `_SERVICES_DEFAULT` / `_SYSTEM_DEFAULT` / `_PARAMETERS`) match upstream field-by-field. Per-backend wiring deferred to Phase 110 (deadline) / 111 (liveliness) / 112 (TRANSIENT_LOCAL + lifespan) / 113 (namespace conventions). | Not Started |
+| 64 | Embedded transport tuning guide | In Progress (64.1 done) |
+| 65 | nano-ros book | Complete |
+| 69 | Cross-platform C/C++ examples + tests | Complete |
+| 71 | DDS on `nros-platform` traits (POSIX + Zephyr A9) | Archived |
+| 73 | Memory + zero-copy receive | Complete |
+| 75 | Relocatable CMake install | Complete |
+| 76 | RTOS scheduling via config.toml | Complete (FreeRTOS only) |
+| 77 | Async action client | In Progress (77.1–77.5) |
+| 78 | Colcon build type | Not Started |
+| 79 | Unified platform abstraction | Complete |
+| 80 | Unified network interface | Not Started |
+| 81 | Zephyr native_sim multi-instance E2E | Complete |
+| 82 | Blocking service client takes executor | Complete |
+| 83 | C/C++ thin-wrapper compliance | Complete |
+| 85 | Test-suite consolidation | Complete |
+| 86 | `nros-lifecycle-msgs` + REP-2002 | Complete |
+| 87 | nros-cpp compile-time storage sizes | Complete |
+| 88 | Unified leveled logging (`nros-log`) | Not Started |
+| 89 | `just test-all` triage (675/675) | Complete |
+| 90 | PX4 RMW + `nros-px4` board (SITL E2E) | v1 + 90.5b Complete |
+| 91 | Antipattern fixup | Complete |
+| 92 | Zephyr DDS on `qemu_cortex_a9` | Complete |
+| 93 | C/C++ Doxygen + porting surface | Complete |
+| 95 | Example coverage parity (51 new crates) | Archived |
+| 96 | Phase 95 cross-process E2E follow-ups | Complete |
+| 97 | DDS per-platform examples + E2E (6/7 slices; esp32-qemu deferred) | Complete |
+| 98 | PX4-Autopilot vendoring + SITL infra | Complete |
+| 99 | Zero-copy raw pub/sub API (SITL E2E green) | v1 Complete |
+| 100 | AGX Orin SPE (Cortex-R5F + IVC) | Not Started |
+| 101 | `portable-atomic-util::Arc` substitution | Not Started |
+| 102 | RMW API alignment (`nros_rmw_ret_t` + entity structs) | Complete |
+| 103 | RMW typed-loan path | Cancelled (superseded by 99 + 99.L) |
+| 104 | Multi-backend support (cross-domain bridges) | Not Started |
+| 105 | `drive_io` RTOS cooperation | Not Started |
+| 106 | Timer/GC interleaving in `drive_io` | Not Started |
+| 107 | Wall-clock time budget per `drive_io` | Not Started |
+| 108 | RMW status events: API + FFI surface | Not Started |
+| 109 | Full DDS-shaped QoS profile: API surface | Not Started |
 
 ## Quick Reference
 
-See `book/src/reference/build-commands.md` for manual testing, ROS 2 interop, Docker, QEMU, and Zephyr setup commands. Build the book with `just book`.
+`book/src/reference/build-commands.md` for manual testing, ROS 2 interop, Docker, QEMU, Zephyr setup. Build book: `just book`.
 
-## Documentation Index
+## Doc Index
 
 ```
-book/src/              # User-facing documentation (mdbook)
+book/src/              # User-facing (mdbook)
 ├── getting-started/   # installation, native, zephyr, freertos, nuttx, threadx, bare-metal, esp32, ros2-interop
 ├── user-guide/        # rmw-backends, configuration, message-generation, serial-transport, troubleshooting
-├── porting/           # overview, custom-rmw, custom-platform, custom-board
+├── porting/           # custom-rmw, custom-platform, custom-board
 ├── reference/         # rust-api, c-api, cpp-api, rmw-api, platform-api, environment-variables, build-commands
 ├── concepts/          # architecture, no-std, platform-model
-└── internals/         # rmw-api-design, rmw-zenoh-protocol, scheduling-models,
-                       # verification, realtime-analysis, safety,
-                       # zenoh-pico + xrce-dds symbol refs,
-                       # creating-examples, platform-porting-pitfalls, contributing
+└── internals/         # rmw-api-design, rmw-zenoh-protocol, scheduling, verification, realtime, safety, …
 
-docs/                  # Contributor/internal documentation
-├── reference/         # rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
-├── design/            # rmw-layer-design, example-directory-layout, zonal-vehicle-architecture
-├── research/          # Internal research
-└── roadmap/           # Active + archived phases
+docs/                  # Contributor/internal
+├── reference/         # rmw-h-analysis, xrce-dds-analysis, executor-fairness
+├── design/            # rmw-layer, example-directory-layout, zonal-vehicle
+├── research/
+└── roadmap/           # active + archived
 ```
