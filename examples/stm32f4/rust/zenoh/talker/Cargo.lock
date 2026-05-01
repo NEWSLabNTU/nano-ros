@@ -319,6 +319,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dust_dds"
+version = "0.15.0"
+dependencies = [
+ "critical-section",
+ "dust_dds_derive",
+ "md5",
+]
+
+[[package]]
+name = "dust_dds_derive"
+version = "0.15.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "xml-rs",
+]
+
+[[package]]
 name = "embedded-dma"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -567,6 +586,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -597,6 +622,7 @@ dependencies = [
  "nros-params",
  "nros-platform",
  "nros-rmw",
+ "nros-rmw-dds",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "nros-serdes",
@@ -645,6 +671,7 @@ dependencies = [
 name = "nros-node"
 version = "0.1.0"
 dependencies = [
+ "atomic-waker",
  "heapless",
  "nros-core",
  "nros-params",
@@ -694,6 +721,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-dds"
+version = "0.1.0"
+dependencies = [
+ "dust_dds",
+ "heapless",
+ "nros-core",
+ "nros-platform",
+ "nros-rmw",
+ "spin",
+]
+
+[[package]]
 name = "nros-rmw-xrce"
 version = "0.1.0"
 dependencies = [
@@ -727,6 +766,7 @@ name = "nros-smoltcp"
 version = "0.1.0"
 dependencies = [
  "nros-platform-api",
+ "portable-atomic",
  "smoltcp",
 ]
 
@@ -950,6 +990,15 @@ dependencies = [
  "cfg-if",
  "heapless",
  "managed",
+]
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "portable-atomic",
 ]
 
 [[package]]
@@ -1352,6 +1401,12 @@ dependencies = [
  "unicode-xid",
  "wasmparser",
 ]
+
+[[package]]
+name = "xml-rs"
+version = "0.8.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xrce-platform-shim"

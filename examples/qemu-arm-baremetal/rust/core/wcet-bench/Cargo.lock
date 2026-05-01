@@ -431,6 +431,7 @@ dependencies = [
 name = "nros-node"
 version = "0.1.0"
 dependencies = [
+ "atomic-waker",
  "heapless",
  "nros-core",
  "nros-params",
