@@ -170,6 +170,8 @@ pub type INT = core::ffi::c_int;
 pub type UINT = core::ffi::c_uint;
 pub type ULONG = core::ffi::c_ulong;
 pub type CHAR = core::ffi::c_char;
+pub type nx_bsd_time_t = core::ffi::c_long;
+pub type nx_bsd_suseconds_t = core::ffi::c_long;
 
 pub const AF_INET: u32 = 2;
 pub const SOCK_STREAM: u32 = 1;
@@ -179,6 +181,13 @@ pub const IPPROTO_UDP: u32 = 17;
 pub const SOL_SOCKET: u32 = 0xFFFF;
 pub const SO_RCVTIMEO: u32 = 0x1006;
 pub const SO_REUSEADDR: u32 = 0x0004;
+pub const IPPROTO_IP: u32 = 0;
+pub const IP_ADD_MEMBERSHIP: u32 = 12;
+pub const IP_DROP_MEMBERSHIP: u32 = 13;
+pub const IP_MULTICAST_LOOP: u32 = 11;
+pub const F_GETFL: u32 = 3;
+pub const F_SETFL: u32 = 4;
+pub const O_NONBLOCK: u32 = 0x4000;
 
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
@@ -202,6 +211,20 @@ pub struct nx_bsd_sockaddr_in {
     pub sin_zero: [core::ffi::c_char; 8],
 }
 
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct nx_bsd_timeval {
+    pub tv_sec: nx_bsd_time_t,
+    pub tv_usec: nx_bsd_suseconds_t,
+}
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct nx_bsd_ip_mreq {
+    pub imr_multiaddr: nx_bsd_in_addr,
+    pub imr_interface: nx_bsd_in_addr,
+}
+
 unsafe extern "C" {
     pub fn nx_bsd_socket(protofamily: INT, type_: INT, protocol: INT) -> INT;
     pub fn nx_bsd_connect(sockID: INT, remoteAddress: *mut nx_bsd_sockaddr, addressLength: INT) -> INT;
@@ -213,6 +236,8 @@ unsafe extern "C" {
     pub fn nx_bsd_send(sockID: INT, msg: *const CHAR, msgLength: INT, flags: INT) -> INT;
     pub fn nx_bsd_sendto(sockID: INT, msg: *const CHAR, msgLength: INT, flags: INT, destAddr: *mut nx_bsd_sockaddr, destAddrLen: INT) -> INT;
     pub fn nx_bsd_setsockopt(sockID: INT, option_level: INT, option_name: INT, option_value: *const core::ffi::c_void, option_length: INT) -> INT;
+    pub fn nx_bsd_getsockopt(sockID: INT, option_level: INT, option_name: INT, option_value: *mut core::ffi::c_void, option_length: *mut INT) -> INT;
+    pub fn nx_bsd_fcntl(sock_ID: INT, flag_type: UINT, f_options: UINT) -> INT;
     pub fn nx_bsd_soc_close(sockID: INT) -> INT;
     // htonl/htons/ntohl/ntohs are Rust functions in lib.rs (C macros can't be bindgen'd)
 }
