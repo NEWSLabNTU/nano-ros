@@ -23,7 +23,10 @@ extern crate alloc;
 // Internal-only Arcs (e.g. `Arc<NrosPlatformRuntime>`, `Arc<WakerCell>`)
 // don't strictly *need* to match dust-dds, but using one flavour
 // crate-wide keeps the impl simple and avoids a second feature axis.
-#[cfg(feature = "alloc")]
+//
+// Not gated on `feature = "alloc"` — `extern crate alloc` above is
+// unconditional, and `subscriber.rs` / `waker_cell.rs` (compiled
+// unconditionally) reference `crate::sync::Arc` in their struct fields.
 pub(crate) mod sync {
     pub use dust_dds::sync::Arc;
     #[allow(unused_imports)]
