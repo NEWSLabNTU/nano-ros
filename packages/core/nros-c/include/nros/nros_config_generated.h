@@ -14,7 +14,7 @@
 * C handle types so callers can declare them on the stack or
 * inside their own structs without dynamic allocation.
 */
-#define NROS_EXECUTOR_SIZE 16776
+#define NROS_EXECUTOR_SIZE 16784
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 48
 #define NROS_SUBSCRIBER_SIZE 24
@@ -44,7 +44,7 @@
 extern "C" {
 #endif
 typedef struct ActionServerRawHandle {
-uint64_t _opaque[6];
+uint64_t _opaque[0];
 } ActionServerRawHandle;
 #ifdef __cplusplus
 }
