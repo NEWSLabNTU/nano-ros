@@ -26,8 +26,7 @@
 
 #![cfg(feature = "platform-posix")]
 
-use core::ffi::c_void;
-use core::time::Duration;
+use core::{ffi::c_void, time::Duration};
 
 use nros_platform::{NET_ENDPOINT_SIZE, NET_SOCKET_SIZE, PlatformUdp};
 use nros_platform_posix::PosixPlatform;

@@ -6,8 +6,7 @@
 //! Exports values via `links = "nros_node"` so dependents (nros-c, nros-cpp)
 //! can read them as `DEP_NROS_NODE_*` environment variables.
 
-use std::env;
-use std::path::Path;
+use std::{env, path::Path};
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();

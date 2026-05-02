@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```
-//! use nros_serdes::{CdrWriter, CdrReader, Serialize, Deserialize, SerError, DeserError};
+//! use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
 //!
 //! // Serialize a u32 into a CDR buffer
 //! let mut buf = [0u8; 64];

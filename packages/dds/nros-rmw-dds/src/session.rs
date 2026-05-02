@@ -2,9 +2,11 @@
 
 use nros_rmw::{QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
 
-use crate::publisher::DdsPublisher;
-use crate::service::{DdsServiceClient, DdsServiceServer};
-use crate::subscriber::DdsSubscriber;
+use crate::{
+    publisher::DdsPublisher,
+    service::{DdsServiceClient, DdsServiceServer},
+    subscriber::DdsSubscriber,
+};
 
 // Phase 71.4: when an `alloc`-only (no-std) platform is active we own
 // an `NrosPlatformRuntime` that `drive_io()` drains on every spin.
@@ -107,10 +109,12 @@ impl DdsSession {
 // has no callers) doesn't emit "function never used" warnings.
 #[cfg(any(feature = "std", feature = "nostd-runtime"))]
 fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
-    use dust_dds::infrastructure::qos_policy::{
-        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
+    use dust_dds::infrastructure::{
+        qos_policy::{
+            HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
+        },
+        time::{Duration, DurationKind},
     };
-    use dust_dds::infrastructure::time::{Duration, DurationKind};
     let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
     q.reliability = ReliabilityQosPolicy {
         kind: ReliabilityQosPolicyKind::Reliable,
@@ -124,10 +128,12 @@ fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
 
 #[cfg(any(feature = "std", feature = "nostd-runtime"))]
 fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
-    use dust_dds::infrastructure::qos_policy::{
-        HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
+    use dust_dds::infrastructure::{
+        qos_policy::{
+            HistoryQosPolicy, HistoryQosPolicyKind, ReliabilityQosPolicy, ReliabilityQosPolicyKind,
+        },
+        time::{Duration, DurationKind},
     };
-    use dust_dds::infrastructure::time::{Duration, DurationKind};
     let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();
     q.reliability = ReliabilityQosPolicy {
         kind: ReliabilityQosPolicyKind::Reliable,
@@ -154,9 +160,9 @@ impl Session for DdsSession {
         #[cfg(feature = "std")]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
 
             let dds_topic = self
                 .participant
@@ -189,9 +195,9 @@ impl Session for DdsSession {
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
             use no_listener::*;
 
             let dds_topic = self
@@ -241,12 +247,16 @@ impl Session for DdsSession {
     ) -> Result<Self::SubscriberHandle, Self::Error> {
         #[cfg(feature = "std")]
         {
-            use crate::raw_type::RawCdrPayload;
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use crate::{
+                raw_type::RawCdrPayload,
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
+            use dust_dds::infrastructure::{
+                qos::QosKind,
+                status::{NO_STATUS, StatusKind},
+                type_support::TypeSupport,
+            };
 
             let dds_topic = self
                 .participant
@@ -280,12 +290,16 @@ impl Session for DdsSession {
 
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
-            use crate::raw_type::RawCdrPayload;
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::{NO_STATUS, StatusKind};
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use crate::{
+                raw_type::RawCdrPayload,
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
+            use dust_dds::infrastructure::{
+                qos::QosKind,
+                status::{NO_STATUS, StatusKind},
+                type_support::TypeSupport,
+            };
             use no_listener::*;
 
             let dds_topic = self
@@ -341,9 +355,9 @@ impl Session for DdsSession {
         #[cfg(feature = "std")]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
 
             let req_topic_name =
                 alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
@@ -371,8 +385,10 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use crate::{
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -412,9 +428,9 @@ impl Session for DdsSession {
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
             use no_listener::*;
 
             let req_topic_name =
@@ -443,8 +459,10 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use crate::{
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -505,9 +523,9 @@ impl Session for DdsSession {
         #[cfg(feature = "std")]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
 
             let req_topic_name =
                 alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
@@ -548,8 +566,10 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use crate::{
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self
@@ -576,9 +596,9 @@ impl Session for DdsSession {
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::raw_type::RawCdrPayload;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
-            use dust_dds::infrastructure::type_support::TypeSupport;
+            use dust_dds::infrastructure::{
+                qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+            };
             use no_listener::*;
 
             let req_topic_name =
@@ -625,8 +645,10 @@ impl Session for DdsSession {
                 ))
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
-            use crate::sync::Arc;
-            use crate::waker_cell::{DataAvailableListener, WakerCell};
+            use crate::{
+                sync::Arc,
+                waker_cell::{DataAvailableListener, WakerCell},
+            };
             use dust_dds::infrastructure::status::StatusKind;
 
             let subscriber = self

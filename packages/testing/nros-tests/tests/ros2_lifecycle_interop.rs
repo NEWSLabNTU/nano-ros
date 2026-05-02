@@ -10,14 +10,14 @@
 //! Skips (not fails) when any of the above is missing, matching the
 //! existing ROS 2 interop test contract.
 
-use nros_tests::fixtures::{ZenohRouter, lifecycle_node_binary};
-use nros_tests::process::ManagedProcess;
-use nros_tests::ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator};
-use nros_tests::skip;
+use nros_tests::{
+    fixtures::{ZenohRouter, lifecycle_node_binary},
+    process::ManagedProcess,
+    ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
+    skip,
+};
 use rstest::rstest;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::Duration;
+use std::{path::PathBuf, process::Command, time::Duration};
 
 /// Run `ros2 <subcommand>` against the given zenoh locator and return combined stdout+stderr.
 ///

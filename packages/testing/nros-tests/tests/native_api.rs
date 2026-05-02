@@ -9,17 +9,22 @@
 //!
 //! Consolidates what used to be `c_api.rs` + `cpp_api.rs` (Phase 85.1).
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_c_action_client, build_c_action_server, build_c_listener,
-    build_c_service_client, build_c_service_server, build_c_talker, build_cpp_action_client,
-    build_cpp_action_server, build_cpp_listener, build_cpp_service_client,
-    build_cpp_service_server, build_cpp_talker, require_cmake, require_zenohd, zenohd_unique,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, ZenohRouter, build_c_action_client, build_c_action_server,
+        build_c_listener, build_c_service_client, build_c_service_server, build_c_talker,
+        build_cpp_action_client, build_cpp_action_server, build_cpp_listener,
+        build_cpp_service_client, build_cpp_service_server, build_cpp_talker, require_cmake,
+        require_zenohd, zenohd_unique,
+    },
 };
 use rstest::rstest;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
 
 // =============================================================================
 // Language selector

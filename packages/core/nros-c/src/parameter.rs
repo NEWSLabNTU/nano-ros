@@ -2,8 +2,10 @@
 //!
 //! Provides node parameters for configuration and runtime tuning.
 
-use core::ffi::{c_char, c_void};
-use core::ptr;
+use core::{
+    ffi::{c_char, c_void},
+    ptr,
+};
 
 use crate::error::*;
 

@@ -7,8 +7,7 @@ use nros_tests::fixtures::{
     zenohd_unique,
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // Action Server/Client Communication Tests

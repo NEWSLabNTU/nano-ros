@@ -8,9 +8,7 @@
 
 use core::ffi::c_void;
 
-use crate::error::*;
-use crate::publisher::nros_publisher_t;
-use crate::subscription::nros_subscription_t;
+use crate::{error::*, publisher::nros_publisher_t, subscription::nros_subscription_t};
 
 /// Tier-1 status-event kinds. Stable u8 values matching
 /// `nros_rmw_event_kind_t` in `<nros/rmw_event.h>`.

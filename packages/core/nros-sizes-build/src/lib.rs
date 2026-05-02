@@ -13,13 +13,14 @@
 //! See [Phase 87](../../../../docs/roadmap/phase-87-nros-cpp-compile-time-sizes.md)
 //! for the motivating design.
 
-use std::collections::HashMap;
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
-use object::read::archive::ArchiveFile;
-use object::{File as ObjectFile, Object, ObjectSymbol};
+use object::{File as ObjectFile, Object, ObjectSymbol, read::archive::ArchiveFile};
 
 /// Errors returned by this crate's helpers.
 #[derive(Debug)]

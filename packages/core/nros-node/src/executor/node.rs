@@ -7,11 +7,13 @@ use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session as _, TopicInfo, Tr
 
 use crate::session;
 
-use super::handles::{
-    ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
-    Subscription,
+use super::{
+    handles::{
+        ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient,
+        EmbeddedServiceServer, Subscription,
+    },
+    types::NodeError,
 };
-use super::types::NodeError;
 
 // ============================================================================
 // Node

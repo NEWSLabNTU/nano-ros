@@ -17,13 +17,15 @@
 //! Run with: `just test-threadx-riscv64`
 //! Or: `cargo nextest run -p nros-tests --test threadx_riscv64_qemu`
 
-use nros_tests::fixtures::threadx_riscv64::{
-    build_threadx_rv64_action_client, build_threadx_rv64_action_server,
-    build_threadx_rv64_listener, build_threadx_rv64_service_client,
-    build_threadx_rv64_service_server, build_threadx_rv64_talker, is_netx_available,
-    is_riscv_gcc_available, is_threadx_available,
+use nros_tests::fixtures::{
+    is_qemu_riscv64_available, is_zenohd_available,
+    threadx_riscv64::{
+        build_threadx_rv64_action_client, build_threadx_rv64_action_server,
+        build_threadx_rv64_listener, build_threadx_rv64_service_client,
+        build_threadx_rv64_service_server, build_threadx_rv64_talker, is_netx_available,
+        is_riscv_gcc_available, is_threadx_available,
+    },
 };
-use nros_tests::fixtures::{is_qemu_riscv64_available, is_zenohd_available};
 
 // =============================================================================
 // Prerequisite checks

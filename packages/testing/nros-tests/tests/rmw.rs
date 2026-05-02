@@ -7,8 +7,7 @@ use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, SessionMode, Top
 use nros_rmw_zenoh::ZenohRmw;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
-use std::thread;
-use std::time::Duration;
+use std::{thread, time::Duration};
 
 // =============================================================================
 // Session Open/Close Tests

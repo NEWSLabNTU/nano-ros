@@ -4,8 +4,10 @@ use nros_core::{
 };
 use nros_rmw::TransportError;
 
-use crate::mock::{MockSession, MockSubscriber};
-use crate::timer::TimerDuration;
+use crate::{
+    mock::{MockSession, MockSubscriber},
+    timer::TimerDuration,
+};
 
 /// Sleep `ms` then call `spin_once(0)`. Phase 100 follow-up: spin_once
 /// credits the wall-clock since the previous `spin_once` exited (not the
@@ -1436,8 +1438,10 @@ fn test_promise_try_recv_returns_none_then_some() {
 #[test]
 #[cfg(feature = "std")]
 fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
-    use core::sync::atomic::{AtomicU32, Ordering};
-    use core::time::Duration;
+    use core::{
+        sync::atomic::{AtomicU32, Ordering},
+        time::Duration,
+    };
     static FIRES: AtomicU32 = AtomicU32::new(0);
     FIRES.store(0, Ordering::SeqCst);
 

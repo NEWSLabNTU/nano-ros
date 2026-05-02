@@ -1,7 +1,9 @@
 //! Serialization traits
 
-use crate::cdr::{CdrReader, CdrWriter};
-use crate::error::{DeserError, SerError};
+use crate::{
+    cdr::{CdrReader, CdrWriter},
+    error::{DeserError, SerError},
+};
 
 /// Trait for types that can be serialized to CDR format
 pub trait Serialize {

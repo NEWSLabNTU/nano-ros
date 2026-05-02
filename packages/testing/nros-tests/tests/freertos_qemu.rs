@@ -17,12 +17,14 @@
 //! Run with: `just test-freertos`
 //! Or: `cargo nextest run -p nros-tests --test freertos_qemu`
 
-use nros_tests::fixtures::freertos::{
-    build_freertos_action_client, build_freertos_action_server, build_freertos_listener,
-    build_freertos_service_client, build_freertos_service_server, build_freertos_talker,
-    is_arm_gcc_available, is_freertos_available, is_lwip_available,
+use nros_tests::fixtures::{
+    freertos::{
+        build_freertos_action_client, build_freertos_action_server, build_freertos_listener,
+        build_freertos_service_client, build_freertos_service_server, build_freertos_talker,
+        is_arm_gcc_available, is_freertos_available, is_lwip_available,
+    },
+    is_qemu_available, is_zenohd_available,
 };
-use nros_tests::fixtures::{is_qemu_available, is_zenohd_available};
 
 // =============================================================================
 // Prerequisite checks

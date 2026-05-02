@@ -24,15 +24,17 @@
 //! Run with: `just test-nuttx`
 //! Or: `cargo nextest run -p nros-tests --test nuttx_qemu`
 
-use nros_tests::fixtures::nuttx::{
-    build_nuttx_action_client, build_nuttx_action_server, build_nuttx_cpp_action_client,
-    build_nuttx_cpp_action_server, build_nuttx_cpp_listener, build_nuttx_cpp_service_client,
-    build_nuttx_cpp_service_server, build_nuttx_cpp_talker, build_nuttx_listener,
-    build_nuttx_service_client, build_nuttx_service_server, build_nuttx_talker,
-    is_arm_gcc_available, is_cmake_available, is_nuttx_available, is_nuttx_configured,
-    is_nuttx_toolchain_available, nuttx_kernel_path,
+use nros_tests::fixtures::{
+    QemuProcess, is_qemu_available, is_zenohd_available,
+    nuttx::{
+        build_nuttx_action_client, build_nuttx_action_server, build_nuttx_cpp_action_client,
+        build_nuttx_cpp_action_server, build_nuttx_cpp_listener, build_nuttx_cpp_service_client,
+        build_nuttx_cpp_service_server, build_nuttx_cpp_talker, build_nuttx_listener,
+        build_nuttx_service_client, build_nuttx_service_server, build_nuttx_talker,
+        is_arm_gcc_available, is_cmake_available, is_nuttx_available, is_nuttx_configured,
+        is_nuttx_toolchain_available, nuttx_kernel_path,
+    },
 };
-use nros_tests::fixtures::{QemuProcess, is_qemu_available, is_zenohd_available};
 use std::time::Duration;
 
 // =============================================================================

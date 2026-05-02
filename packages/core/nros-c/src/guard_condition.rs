@@ -4,12 +4,13 @@
 //! another thread. They are used for shutdown requests, custom triggers,
 //! and inter-thread communication.
 
-use core::ffi::c_void;
-use core::ptr;
+use core::{ffi::c_void, ptr};
 
-use crate::constants::GUARD_HANDLE_OPAQUE_U64S;
-use crate::error::*;
-use crate::support::{nros_support_state_t, nros_support_t};
+use crate::{
+    constants::GUARD_HANDLE_OPAQUE_U64S,
+    error::*,
+    support::{nros_support_state_t, nros_support_t},
+};
 
 // ============================================================================
 // Guard Condition Types

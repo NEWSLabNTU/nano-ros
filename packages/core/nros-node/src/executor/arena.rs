@@ -2,18 +2,19 @@
 
 use core::marker::PhantomData;
 
-use nros_core::MessageInfo;
-use nros_core::{CdrReader, RosAction, RosMessage, RosService};
+use nros_core::{CdrReader, MessageInfo, RosAction, RosMessage, RosService};
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
-use super::action_core::{ActionClientCore, ActionServerCore};
-use super::handles::{ActionServer, ActiveGoal};
-use super::spsc_ring::SpscRing;
-use super::triple_buffer::TripleBuffer;
-use super::types::{
-    InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
-    RawGoalCallback, RawGoalResponseCallback, RawResponseCallback, RawResultCallback,
-    RawServiceCallback, RawSubscriptionCallback,
+use super::{
+    action_core::{ActionClientCore, ActionServerCore},
+    handles::{ActionServer, ActiveGoal},
+    spsc_ring::SpscRing,
+    triple_buffer::TripleBuffer,
+    types::{
+        InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
+        RawGoalCallback, RawGoalResponseCallback, RawResponseCallback, RawResultCallback,
+        RawServiceCallback, RawSubscriptionCallback,
+    },
 };
 use crate::session;
 

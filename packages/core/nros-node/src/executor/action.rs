@@ -5,23 +5,22 @@ use core::marker::PhantomData;
 use nros_core::RosAction;
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
-use super::action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
-use super::arena::{
-    ActionClientRawArenaEntry, ActionServerArenaEntry, ActionServerRawArenaEntry, CallbackMeta,
-    EntryKind, action_client_raw_try_process, action_server_raw_try_process,
-    action_server_try_process, always_ready, as_active_goal_count, as_complete_goal,
-    as_for_each_active_goal, as_publish_feedback, as_raw_active_goal_count, as_raw_complete_goal,
-    as_raw_for_each_active_goal, as_raw_publish_feedback, as_raw_set_goal_status,
-    as_set_goal_status, drop_entry, no_pre_sample,
-};
-use super::handles::{ActionServer, ActiveGoal};
-use super::spin::Executor;
-use super::types::HandleId;
-use super::types::InvocationMode;
-use super::types::NodeError;
-use super::types::{
-    RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback, RawGoalCallback,
-    RawGoalResponseCallback, RawResultCallback,
+use super::{
+    action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},
+    arena::{
+        ActionClientRawArenaEntry, ActionServerArenaEntry, ActionServerRawArenaEntry, CallbackMeta,
+        EntryKind, action_client_raw_try_process, action_server_raw_try_process,
+        action_server_try_process, always_ready, as_active_goal_count, as_complete_goal,
+        as_for_each_active_goal, as_publish_feedback, as_raw_active_goal_count,
+        as_raw_complete_goal, as_raw_for_each_active_goal, as_raw_publish_feedback,
+        as_raw_set_goal_status, as_set_goal_status, drop_entry, no_pre_sample,
+    },
+    handles::{ActionServer, ActiveGoal},
+    spin::Executor,
+    types::{
+        HandleId, InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
+        RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback, RawResultCallback,
+    },
 };
 
 // ============================================================================

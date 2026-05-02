@@ -3,8 +3,7 @@
 //! Services provide synchronous request/response communication.
 //! A service client sends a request and waits for a response from a service server.
 
-use crate::NanoRosError;
-use crate::types::RosService;
+use crate::{NanoRosError, types::RosService};
 
 /// Service server handle
 ///

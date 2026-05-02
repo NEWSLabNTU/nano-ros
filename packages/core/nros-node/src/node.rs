@@ -4,8 +4,7 @@ use heapless::Vec;
 use nros_core::RosMessage;
 use nros_rmw::{QosSettings, TopicInfo};
 
-use crate::publisher::PublisherHandle;
-use crate::subscriber::SubscriberHandle;
+use crate::{publisher::PublisherHandle, subscriber::SubscriberHandle};
 
 /// Node configuration
 #[derive(Debug, Clone)]

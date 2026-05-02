@@ -35,9 +35,11 @@
 
 #![no_std]
 
-use core::cell::UnsafeCell;
-use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use core::{
+    cell::UnsafeCell,
+    ptr,
+    sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+};
 
 const ALIGN: usize = 8;
 const HEADER_SIZE: usize = core::mem::size_of::<BlockHeader>();

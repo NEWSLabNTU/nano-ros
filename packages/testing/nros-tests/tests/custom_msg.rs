@@ -10,8 +10,7 @@ use nros_tests::fixtures::{
     require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
-use std::process::Command;
-use std::time::Duration;
+use std::{process::Command, time::Duration};
 
 // =============================================================================
 // Build Tests

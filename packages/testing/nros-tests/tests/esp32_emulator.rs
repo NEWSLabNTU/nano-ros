@@ -17,16 +17,16 @@
 //! - Boot test: + qemu-system-riscv32 (Espressif fork) + espflash
 //! - Networked E2E: + zenohd (slirp networking, no TAP/bridge setup needed)
 
-use nros_tests::count_pattern;
-use nros_tests::esp32::*;
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
-    build_native_listener, build_native_talker, require_zenohd,
+use nros_tests::{
+    count_pattern,
+    esp32::*,
+    fixtures::{
+        ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
+        build_native_listener, build_native_talker, require_zenohd,
+    },
+    platform, wait_for_port,
 };
-use nros_tests::platform;
-use nros_tests::wait_for_port;
-use std::process::Command;
-use std::time::Duration;
+use std::{process::Command, time::Duration};
 
 // =============================================================================
 // Build Tests (no QEMU needed)

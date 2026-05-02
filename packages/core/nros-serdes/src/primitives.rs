@@ -4,9 +4,11 @@
 //! fixed-size arrays, `heapless::String`, and `heapless::Vec`.
 //! With the `alloc` feature: `String` and `Vec<T>`.
 
-use crate::cdr::{CdrReader, CdrWriter};
-use crate::error::{DeserError, SerError};
-use crate::traits::{Deserialize, Serialize};
+use crate::{
+    cdr::{CdrReader, CdrWriter},
+    error::{DeserError, SerError},
+    traits::{Deserialize, Serialize},
+};
 
 // === Boolean ===
 
@@ -276,8 +278,7 @@ impl<T: Deserialize, const N: usize> Deserialize for heapless::Vec<T, N> {
 #[cfg(feature = "alloc")]
 mod alloc_impl {
     use super::*;
-    use alloc::string::String;
-    use alloc::vec::Vec;
+    use alloc::{string::String, vec::Vec};
 
     impl Serialize for String {
         #[inline]

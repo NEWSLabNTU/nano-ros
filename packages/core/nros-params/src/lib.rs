@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```
-//! use nros_params::{ParameterServer, ParameterValue, ParameterDescriptor, ParameterType};
+//! use nros_params::{ParameterDescriptor, ParameterServer, ParameterType, ParameterValue};
 //!
 //! let mut server = ParameterServer::new();
 //!

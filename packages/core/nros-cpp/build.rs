@@ -7,8 +7,7 @@
 //! The opaque storage size is an upper bound. A compile-time assertion in
 //! lib.rs validates that `size_of::<CppContext>()` fits within this bound.
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 // Phase 87.11: `target_pointer_bytes()` and `align_up()` removed —
 // nros-cpp's storage sizes are now sourced from `nros::sizes` probes

@@ -10,18 +10,17 @@
 //! `freertos_qemu.rs` / `nuttx_qemu.rs` / `threadx_linux.rs` /
 //! `threadx_riscv64_qemu.rs` files — only the E2E bodies moved here.
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    QemuProcess, ZenohRouter, is_qemu_available, is_qemu_riscv64_available, require_zenohd,
+use nros_tests::{
+    TestError, TestResult, count_pattern,
+    fixtures::{
+        QemuProcess, ZenohRouter, freertos, is_qemu_available, is_qemu_riscv64_available, nuttx,
+        require_zenohd, threadx_linux, threadx_riscv64,
+    },
+    platform,
+    process::{ManagedProcess, kill_process_group},
 };
-use nros_tests::fixtures::{freertos, nuttx, threadx_linux, threadx_riscv64};
-use nros_tests::platform;
-use nros_tests::process::{ManagedProcess, kill_process_group};
-use nros_tests::{TestError, TestResult};
 use rstest::rstest;
-use std::fmt;
-use std::path::Path;
-use std::time::Duration;
+use std::{fmt, path::Path, time::Duration};
 
 // =============================================================================
 // Parameter enums

@@ -34,10 +34,7 @@
 
 #![cfg(feature = "px4-sitl")]
 
-use std::env;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::Duration;
+use std::{env, path::PathBuf, process::Command, time::Duration};
 
 use px4_sitl_tests::Px4Sitl;
 

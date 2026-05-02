@@ -58,18 +58,16 @@ extern crate alloc;
 // the macro expands to nothing, so production builds stay silent.
 
 use crate::sync::Arc;
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::vec::Vec;
-use core::ffi::c_void;
-use core::future::Future;
-use core::pin::Pin;
+use alloc::{boxed::Box, format, vec::Vec};
+use core::{ffi::c_void, future::Future, pin::Pin};
 
-use dust_dds::dcps::channels::mpsc::MpscSender;
-use dust_dds::runtime::Spawner;
-use dust_dds::transport::{
-    interface::{RtpsTransportParticipant, TransportParticipantFactory, WriteMessage},
-    types::{LOCATOR_KIND_UDP_V4, Locator},
+use dust_dds::{
+    dcps::channels::mpsc::MpscSender,
+    runtime::Spawner,
+    transport::{
+        interface::{RtpsTransportParticipant, TransportParticipantFactory, WriteMessage},
+        types::{LOCATOR_KIND_UDP_V4, Locator},
+    },
 };
 use nros_platform::{PlatformUdp, PlatformUdpMulticast};
 

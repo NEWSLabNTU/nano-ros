@@ -4,13 +4,12 @@ use nros_rmw::{
     QosSettings, ServiceInfo, Session, SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
-use super::Ros2Liveliness;
-use super::publisher::ZenohPublisher;
-use super::service::{ZenohServiceClient, ZenohServiceServer};
-use super::subscriber::ZenohSubscriber;
 use super::{
     CONFIG_PROPERTY_SIZE, Context, LOCATOR_BUFFER_SIZE, LivelinessToken, MAX_SESSION_PROPERTIES,
-    ZenohId,
+    Ros2Liveliness, ZenohId,
+    publisher::ZenohPublisher,
+    service::{ZenohServiceClient, ZenohServiceServer},
+    subscriber::ZenohSubscriber,
 };
 
 // ============================================================================

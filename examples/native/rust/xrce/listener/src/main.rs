@@ -9,9 +9,13 @@
 //!   XRCE_MSG_COUNT   — Messages to receive before exiting (default: 5)
 
 use nros::{Executor, ExecutorConfig};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Instant,
+};
 use std_msgs::msg::Int32;
 
 fn main() {

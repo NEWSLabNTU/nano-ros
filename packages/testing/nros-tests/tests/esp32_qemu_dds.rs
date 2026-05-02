@@ -13,12 +13,14 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test esp32_qemu_dds`
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
-use nros_tests::esp32::{require_qemu_riscv32, require_riscv32_target, start_esp32_qemu_mcast};
-use nros_tests::fixtures::{
-    build_esp32_qemu_dds_listener_flash, build_esp32_qemu_dds_talker_flash,
+use nros_tests::{
+    esp32::{require_qemu_riscv32, require_riscv32_target, start_esp32_qemu_mcast},
+    fixtures::{build_esp32_qemu_dds_listener_flash, build_esp32_qemu_dds_talker_flash},
 };
 
 fn require_esp32_dds() -> bool {

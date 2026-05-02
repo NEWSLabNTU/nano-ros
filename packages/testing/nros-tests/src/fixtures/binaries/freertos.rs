@@ -7,8 +7,10 @@
 
 use crate::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 // =============================================================================
 // Prerequisite detection

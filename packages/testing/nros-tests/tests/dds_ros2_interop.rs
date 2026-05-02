@@ -24,8 +24,7 @@ use nros_tests::fixtures::{
     ManagedProcess, dds_listener_binary, dds_talker_binary, is_ros2_available,
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 /// Check if ROS 2 with a DDS RMW backend is available.
 fn require_ros2_dds() -> bool {

@@ -17,15 +17,19 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test freertos_qemu_dds`
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
-
-use nros_tests::fixtures::QemuProcess;
-use nros_tests::fixtures::freertos::{
-    build_freertos_dds_listener, build_freertos_dds_talker, is_arm_gcc_available,
-    is_freertos_available, is_lwip_available,
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
 };
-use nros_tests::fixtures::is_qemu_available;
+
+use nros_tests::fixtures::{
+    QemuProcess,
+    freertos::{
+        build_freertos_dds_listener, build_freertos_dds_talker, is_arm_gcc_available,
+        is_freertos_available, is_lwip_available,
+    },
+    is_qemu_available,
+};
 
 fn require_freertos_dds() -> bool {
     if !is_freertos_available() {

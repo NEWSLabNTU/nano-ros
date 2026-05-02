@@ -29,13 +29,14 @@
 extern crate alloc;
 
 use crate::sync::Arc;
-use alloc::boxed::Box;
-use alloc::collections::VecDeque;
-use core::future::Future;
-use core::marker::PhantomData;
-use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
-use core::time::Duration;
+use alloc::{boxed::Box, collections::VecDeque};
+use core::{
+    future::Future,
+    marker::PhantomData,
+    pin::Pin,
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
 
 use dust_dds::{
     infrastructure::time::Time,

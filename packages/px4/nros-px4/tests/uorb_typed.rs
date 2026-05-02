@@ -108,8 +108,10 @@ fn typed_loan_writes_in_place() {
 
 #[test]
 fn typed_callback_fires_with_typed_msg() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    };
 
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();

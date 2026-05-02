@@ -22,10 +22,14 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse}
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::{
+    process::{Child, Command, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STATISTICS

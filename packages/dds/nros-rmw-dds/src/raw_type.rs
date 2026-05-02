@@ -15,10 +15,12 @@
 //!   matching the actual message layout, planned for 70.10)
 
 use alloc::{string::String, vec::Vec};
-use dust_dds::infrastructure::type_support::TypeSupport;
-use dust_dds::xtypes::dynamic_type::{
-    DynamicData, DynamicDataFactory, DynamicType, DynamicTypeBuilderFactory, ExtensibilityKind,
-    MemberDescriptor, TryConstructKind, TypeDescriptor, TypeKind,
+use dust_dds::{
+    infrastructure::type_support::TypeSupport,
+    xtypes::dynamic_type::{
+        DynamicData, DynamicDataFactory, DynamicType, DynamicTypeBuilderFactory, ExtensibilityKind,
+        MemberDescriptor, TryConstructKind, TypeDescriptor, TypeKind,
+    },
 };
 
 /// Opaque CDR payload carrier for the DDS typed API.

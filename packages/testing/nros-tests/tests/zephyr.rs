@@ -19,18 +19,19 @@
 //! cargo test -p nano-ros-tests --test zephyr -- --nocapture
 //! ```
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
-    build_native_service_server, build_native_talker, require_xrce_agent,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
+        build_native_service_server, build_native_talker, require_xrce_agent,
+    },
+    platform,
+    zephyr::{
+        ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_zephyr_available,
+        require_zephyr, zephyr_workspace_path,
+    },
 };
-use nros_tests::platform;
-use nros_tests::zephyr::{
-    ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_zephyr_available,
-    require_zephyr, zephyr_workspace_path,
-};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 /// Get or build Zephyr talker for native_sim (uses existing binary if available)
 fn get_zephyr_talker_native_sim() -> PathBuf {

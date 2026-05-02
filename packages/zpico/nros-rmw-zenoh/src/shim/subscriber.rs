@@ -11,8 +11,10 @@ use super::{
     KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MessageInfo, SUBSCRIBER_ATTACHMENT_BUF_SIZE,
     SUBSCRIBER_BUFFER_SIZE,
 };
-use crate::keyexpr::TopicKeyExpr;
-use crate::zpico::{Context, ZPICO_MAX_SUBSCRIBERS};
+use crate::{
+    keyexpr::TopicKeyExpr,
+    zpico::{Context, ZPICO_MAX_SUBSCRIBERS},
+};
 
 #[cfg(feature = "safety-e2e")]
 use super::{RMW_ATTACHMENT_SIZE, SAFETY_CRC_SIZE};

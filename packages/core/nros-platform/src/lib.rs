@@ -70,8 +70,10 @@ pub use nros_platform_api::*;
 
 #[cfg(all(feature = "global-allocator", not(feature = "std")))]
 mod global_allocator {
-    use core::alloc::{GlobalAlloc, Layout};
-    use core::ffi::c_void;
+    use core::{
+        alloc::{GlobalAlloc, Layout},
+        ffi::c_void,
+    };
 
     use crate::ConcretePlatform;
     use nros_platform_api::PlatformAlloc;

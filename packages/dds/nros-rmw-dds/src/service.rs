@@ -9,8 +9,7 @@ use nros_rmw::{
     Publisher, ServiceClientTrait, ServiceRequest, ServiceServerTrait, Subscriber, TransportError,
 };
 
-use crate::publisher::DdsPublisher;
-use crate::subscriber::DdsSubscriber;
+use crate::{publisher::DdsPublisher, subscriber::DdsSubscriber};
 
 /// DDS service server (request DataReader + reply DataWriter).
 ///

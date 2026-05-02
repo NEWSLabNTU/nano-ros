@@ -5,17 +5,16 @@
 //! state machine; all transition / callback logic lives in `nros-node` and is
 //! tested there.
 
-use core::ffi::c_void;
-use core::mem::MaybeUninit;
+use core::{ffi::c_void, mem::MaybeUninit};
 
-use nros_node::lifecycle::{
-    LifecycleCallbackFnCtx, LifecycleCallbackSlot, LifecycleError, LifecyclePollingNodeCtx,
+use nros_node::{
+    LifecycleState, LifecycleTransition, TransitionResult,
+    lifecycle::{
+        LifecycleCallbackFnCtx, LifecycleCallbackSlot, LifecycleError, LifecyclePollingNodeCtx,
+    },
 };
-use nros_node::{LifecycleState, LifecycleTransition, TransitionResult};
 
-use crate::constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S;
-use crate::error::*;
-use crate::node::nros_node_t;
+use crate::{constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S, error::*, node::nros_node_t};
 
 // ============================================================================
 // Constants — exported to C via cbindgen

@@ -2,14 +2,15 @@
 //!
 //! Tests communication between native nros binaries via zenoh.
 
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, listener_tls_binary,
-    require_zenohd, talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
+use nros_tests::{
+    fixtures::{
+        ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, listener_tls_binary,
+        require_zenohd, talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
+    },
+    output,
 };
-use nros_tests::output;
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // Native Pub/Sub Tests

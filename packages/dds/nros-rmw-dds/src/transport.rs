@@ -52,12 +52,13 @@ impl Rmw for DdsRmw {
 
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
-            use crate::runtime::NrosPlatformRuntime;
-            use crate::sync::Arc;
-            use crate::transport_nros::NrosUdpTransportFactory;
-            use dust_dds::dds_async::domain_participant_factory::DomainParticipantFactoryAsync;
-            use dust_dds::infrastructure::qos::QosKind;
-            use dust_dds::infrastructure::status::NO_STATUS;
+            use crate::{
+                runtime::NrosPlatformRuntime, sync::Arc, transport_nros::NrosUdpTransportFactory,
+            };
+            use dust_dds::{
+                dds_async::domain_participant_factory::DomainParticipantFactoryAsync,
+                infrastructure::{qos::QosKind, status::NO_STATUS},
+            };
 
             // Two clones of the runtime: one consumed by the dust-dds
             // factory, one kept around for `block_on` + driving the

@@ -19,8 +19,7 @@
 #![no_std]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::ffi::c_void;
-use core::sync::atomic::Ordering;
+use core::{ffi::c_void, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 

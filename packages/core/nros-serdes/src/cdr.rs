@@ -1,7 +1,9 @@
 //! CDR encoder/decoder with alignment handling
 
-use crate::CDR_LE_HEADER;
-use crate::error::{DeserError, SerError};
+use crate::{
+    CDR_LE_HEADER,
+    error::{DeserError, SerError},
+};
 
 /// CDR writer for serialization.
 ///

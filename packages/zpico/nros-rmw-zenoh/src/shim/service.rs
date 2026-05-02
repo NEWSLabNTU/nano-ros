@@ -12,8 +12,10 @@ use nros_rmw::{
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, SERVICE_BUFFER_SIZE,
 };
-use crate::keyexpr::ServiceKeyExpr;
-use crate::zpico::{self, Queryable, ZPICO_MAX_QUERYABLES};
+use crate::{
+    keyexpr::ServiceKeyExpr,
+    zpico::{self, Queryable, ZPICO_MAX_QUERYABLES},
+};
 
 #[cfg(feature = "std")]
 use super::signal_executor_wake;

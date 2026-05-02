@@ -6,8 +6,10 @@
 //! function in `src/lib.rs` is the single source of truth; this build
 //! script ensures the C header never drifts.
 
-use std::env;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

@@ -3,15 +3,15 @@
 //! Tests for ROS 2 service communication between nros nodes.
 //! Uses the AddTwoInts service from example_interfaces.
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_service_client, build_native_service_server,
-    require_zenohd, service_client_binary, service_server_binary, zenohd_unique,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, ZenohRouter, build_native_service_client, build_native_service_server,
+        require_zenohd, service_client_binary, service_server_binary, zenohd_unique,
+    },
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::Duration;
+use std::{path::PathBuf, process::Command, time::Duration};
 
 // =============================================================================
 // Build/Detection Tests

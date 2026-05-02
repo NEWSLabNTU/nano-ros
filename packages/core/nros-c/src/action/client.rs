@@ -1,15 +1,18 @@
 //! Action client implementation.
 
-use core::ffi::c_void;
-use core::ptr;
+use core::{ffi::c_void, ptr};
 
-use nros::GoalId;
-use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header};
+use nros::{
+    GoalId,
+    cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header},
+};
 
 use super::common::*;
-use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
-use crate::error::*;
-use crate::node::{nros_node_state_t, nros_node_t};
+use crate::{
+    constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
+    error::*,
+    node::{nros_node_state_t, nros_node_t},
+};
 
 /// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
 /// Mirrors the constant of the same name in `server.rs`.
@@ -28,7 +31,6 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
 /// created by `nros_executor_add_action_client`.
-///
 #[repr(C)]
 pub struct ActionClientInternal {
     /// Arena entry index (set by nros_executor_add_action_client).

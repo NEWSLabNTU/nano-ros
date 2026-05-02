@@ -19,9 +19,11 @@
 use nros_rmw::{Rmw, RmwConfig, ServiceInfo, Session, SessionMode, TopicInfo, TransportError};
 use px4_sys::orb_metadata;
 
-use crate::publisher::UorbPublisher;
-use crate::service::{UorbServiceClient, UorbServiceServer};
-use crate::subscriber::UorbSubscriber;
+use crate::{
+    publisher::UorbPublisher,
+    service::{UorbServiceClient, UorbServiceServer},
+    subscriber::UorbSubscriber,
+};
 
 /// uORB-backed RMW. Construct via `UorbRmw::default()` then call
 /// [`Rmw::open`] to obtain a [`UorbSession`].

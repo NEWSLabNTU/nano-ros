@@ -27,14 +27,16 @@ use nros_core::lifecycle::{
 
 use crate::lifecycle::LifecyclePollingNodeCtx;
 
-pub(crate) use nros_lifecycle_msgs::msg::{
-    State as MsgState, Transition as MsgTransition, TransitionDescription as MsgTransitionDesc,
-};
-pub(crate) use nros_lifecycle_msgs::srv::{
-    ChangeState, ChangeStateRequest, ChangeStateResponse, GetAvailableStates,
-    GetAvailableStatesRequest, GetAvailableStatesResponse, GetAvailableTransitions,
-    GetAvailableTransitionsRequest, GetAvailableTransitionsResponse, GetState, GetStateRequest,
-    GetStateResponse,
+pub(crate) use nros_lifecycle_msgs::{
+    msg::{
+        State as MsgState, Transition as MsgTransition, TransitionDescription as MsgTransitionDesc,
+    },
+    srv::{
+        ChangeState, ChangeStateRequest, ChangeStateResponse, GetAvailableStates,
+        GetAvailableStatesRequest, GetAvailableStatesResponse, GetAvailableTransitions,
+        GetAvailableTransitionsRequest, GetAvailableTransitionsResponse, GetState, GetStateRequest,
+        GetStateResponse,
+    },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -651,11 +653,12 @@ mod tests {
     )))]
     mod mock_integration {
         use super::*;
-        use crate::executor::Executor;
-        use crate::mock::MockSession;
-        use core::ffi::c_void;
-        use core::sync::atomic::{AtomicU32, Ordering};
-        use core::time::Duration;
+        use crate::{executor::Executor, mock::MockSession};
+        use core::{
+            ffi::c_void,
+            sync::atomic::{AtomicU32, Ordering},
+            time::Duration,
+        };
         use nros_core::lifecycle::TransitionResult;
 
         #[test]

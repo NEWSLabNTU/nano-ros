@@ -2,14 +2,18 @@
 //!
 //! Provides managed QEMU processes for testing ARM Cortex-M binaries.
 
-use crate::process::{kill_process_group, set_new_process_group};
-use crate::{TestError, TestResult};
-use std::io::Read;
+use crate::{
+    TestError, TestResult,
+    process::{kill_process_group, set_new_process_group},
+};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::{
+    io::Read,
+    path::Path,
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
 
 /// Managed QEMU process for Cortex-M3 emulation
 ///

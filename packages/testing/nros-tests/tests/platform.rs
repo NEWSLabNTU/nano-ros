@@ -3,8 +3,10 @@
 //! Tests for Zephyr, embedded targets, and platform-specific functionality.
 
 use nros_tests::fixtures::{is_arm_toolchain_available, is_qemu_available};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 // =============================================================================
 // Zephyr Environment Detection

@@ -4,24 +4,25 @@
 //! evaluation, LET semantics, and I/O driving are delegated to the Rust
 //! executor — this module only handles C FFI translation.
 
-use core::ffi::c_int;
-use core::ptr;
+use core::{ffi::c_int, ptr};
 
-use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline};
-use crate::action::{
-    nros_action_client_state_t, nros_action_client_t, nros_action_server_state_t,
-    nros_action_server_t, nros_goal_status_t, nros_goal_uuid_t,
+use crate::{
+    action::{
+        ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline,
+        nros_action_client_state_t, nros_action_client_t, nros_action_server_state_t,
+        nros_action_server_t, nros_goal_status_t, nros_goal_uuid_t,
+    },
+    error::*,
+    guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t},
+    node::nros_node_t,
+    service::{
+        client_response_trampoline, nros_client_state_t, nros_client_t, nros_service_state_t,
+        nros_service_t,
+    },
+    subscription::{nros_subscription_state_t, nros_subscription_t},
+    support::{nros_support_state_t, nros_support_t},
+    timer::{nros_timer_state_t, nros_timer_t},
 };
-use crate::error::*;
-use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
-use crate::node::nros_node_t;
-use crate::service::{
-    client_response_trampoline, nros_client_state_t, nros_client_t, nros_service_state_t,
-    nros_service_t,
-};
-use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
-use crate::support::{nros_support_state_t, nros_support_t};
-use crate::timer::{nros_timer_state_t, nros_timer_t};
 
 pub use crate::config::*;
 use crate::constants::NROS_MAX_CONCURRENT_GOALS;

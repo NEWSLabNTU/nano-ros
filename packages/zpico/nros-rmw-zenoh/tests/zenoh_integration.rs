@@ -8,10 +8,8 @@
 use nros_rmw::{
     Publisher, QosSettings, Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig,
 };
-use nros_rmw_zenoh::ZenohTransport;
-use nros_rmw_zenoh::keyexpr::TopicKeyExpr;
-use std::thread;
-use std::time::Duration;
+use nros_rmw_zenoh::{ZenohTransport, keyexpr::TopicKeyExpr};
+use std::{thread, time::Duration};
 
 /// Locator for the zenohd router that the `#[ignore]`d tests below connect to.
 /// Tests requiring this router must be invoked manually after starting:

@@ -28,12 +28,13 @@
 //! are written as `extern "C" fn` so this path exercises exactly the same
 //! FFI surface the C API uses.
 
-use core::ffi::c_void;
-use core::time::Duration;
+use core::{ffi::c_void, time::Duration};
 
 use log::info;
-use nros::lifecycle::{LifecycleCallbackSlot, TransitionResult};
-use nros::{Executor, ExecutorConfig};
+use nros::{
+    Executor, ExecutorConfig,
+    lifecycle::{LifecycleCallbackSlot, TransitionResult},
+};
 
 unsafe extern "C" fn on_configure(_ctx: *mut c_void) -> u8 {
     info!("[callback] on_configure — allocating resources");

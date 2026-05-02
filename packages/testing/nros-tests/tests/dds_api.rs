@@ -4,16 +4,17 @@
 //! with dust-dds. Unlike zenoh tests, DDS uses brokerless peer-to-peer
 //! discovery — no router or agent process is needed.
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, build_dds_action_client, build_dds_action_server, build_dds_listener,
-    build_dds_service_client, build_dds_service_server, build_dds_talker, dds_action_client_binary,
-    dds_action_server_binary, dds_listener_binary, dds_service_client_binary,
-    dds_service_server_binary, dds_talker_binary,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, build_dds_action_client, build_dds_action_server, build_dds_listener,
+        build_dds_service_client, build_dds_service_server, build_dds_talker,
+        dds_action_client_binary, dds_action_server_binary, dds_listener_binary,
+        dds_service_client_binary, dds_service_server_binary, dds_talker_binary,
+    },
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // Build Tests

@@ -141,9 +141,11 @@ fn concurrent_loan_returns_would_block() {
 /// leak the arena slot reservation.
 #[test]
 fn loan_future_drop_does_not_leak_slot() {
-    use core::future::Future;
-    use core::pin::pin;
-    use core::task::{Context, Poll, Waker};
+    use core::{
+        future::Future,
+        pin::pin,
+        task::{Context, Poll, Waker},
+    };
 
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     px4_uorb::_reset_broker();

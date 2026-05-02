@@ -182,8 +182,10 @@ impl Publisher for ZenohPublisher {
 #[cfg(feature = "lending")]
 mod lending {
     use super::*;
-    use core::cell::UnsafeCell;
-    use core::sync::atomic::{AtomicBool, Ordering as CoreOrdering};
+    use core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicBool, Ordering as CoreOrdering},
+    };
 
     /// Per-publisher TX arena slot capacity.
     pub const ZENOH_TX_BUF: usize = 1024;

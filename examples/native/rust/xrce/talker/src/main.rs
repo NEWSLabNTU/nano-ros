@@ -8,8 +8,10 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
 use nros::{Executor, ExecutorConfig, TimerDuration};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicI32, Ordering},
+};
 use std_msgs::msg::Int32;
 
 fn main() {

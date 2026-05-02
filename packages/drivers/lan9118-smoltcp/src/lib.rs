@@ -32,10 +32,14 @@
 
 pub mod regs;
 
-use core::ptr::{read_volatile, write_volatile};
-use core::sync::atomic::{AtomicU32, Ordering};
-use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
-use smoltcp::time::Instant;
+use core::{
+    ptr::{read_volatile, write_volatile},
+    sync::atomic::{AtomicU32, Ordering},
+};
+use smoltcp::{
+    phy::{self, Device, DeviceCapabilities, Medium},
+    time::Instant,
+};
 
 pub use regs::MPS2_AN385_BASE;
 

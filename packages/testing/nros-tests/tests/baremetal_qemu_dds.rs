@@ -12,12 +12,15 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test baremetal_qemu_dds`
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
-use nros_tests::fixtures::QemuProcess;
-use nros_tests::fixtures::is_qemu_available;
-use nros_tests::fixtures::{build_qemu_baremetal_dds_listener, build_qemu_baremetal_dds_talker};
+use nros_tests::fixtures::{
+    QemuProcess, build_qemu_baremetal_dds_listener, build_qemu_baremetal_dds_talker,
+    is_qemu_available,
+};
 
 fn require_baremetal_dds() -> bool {
     if !is_qemu_available() {

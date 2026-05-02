@@ -54,8 +54,10 @@ pub(crate) type AtomicSeqCounter = portable_atomic::AtomicI32;
 
 use nros_rmw::{QosSettings, ServiceInfo, TopicInfo, TransportError};
 
-use crate::keyexpr::QosKeyExpr;
-use crate::zpico::{Context, LivelinessToken, ZPICO_RMW_GID_SIZE, ZpicoError};
+use crate::{
+    keyexpr::QosKeyExpr,
+    zpico::{Context, LivelinessToken, ZPICO_RMW_GID_SIZE, ZpicoError},
+};
 
 // Re-export for convenience
 pub use crate::zpico::ZenohId;

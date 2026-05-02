@@ -2,10 +2,11 @@
 //!
 //! Provides automatic startup and cleanup of the XRCE-DDS Agent.
 
-use crate::process::kill_process_group;
-use crate::{TestError, TestResult};
-use std::process::{Child, Stdio};
-use std::time::Duration;
+use crate::{TestError, TestResult, process::kill_process_group};
+use std::{
+    process::{Child, Stdio},
+    time::Duration,
+};
 
 /// Managed XRCE-DDS Agent process.
 ///

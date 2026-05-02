@@ -2,10 +2,7 @@
 //!
 //! This ensures the linker can find memory.x
 
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{env, fs::File, io::Write, path::PathBuf};
 
 fn main() {
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());

@@ -9,14 +9,17 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test nuttx_qemu_dds`
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
-use nros_tests::fixtures::QemuProcess;
-use nros_tests::fixtures::is_qemu_available;
-use nros_tests::fixtures::nuttx::{
-    build_nuttx_dds_listener, build_nuttx_dds_talker, is_nuttx_available, is_nuttx_configured,
-    is_nuttx_toolchain_available,
+use nros_tests::fixtures::{
+    QemuProcess, is_qemu_available,
+    nuttx::{
+        build_nuttx_dds_listener, build_nuttx_dds_talker, is_nuttx_available, is_nuttx_configured,
+        is_nuttx_toolchain_available,
+    },
 };
 
 fn require_nuttx_dds() -> bool {

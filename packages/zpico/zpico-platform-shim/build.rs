@@ -4,9 +4,11 @@
 //! `_z_sys_net_endpoint_t` from the C headers using the cross-compiler,
 //! then generates Rust constants for the opaque wrapper types.
 
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());

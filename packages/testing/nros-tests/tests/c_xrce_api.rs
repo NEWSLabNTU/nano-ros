@@ -7,15 +7,19 @@
 //!   just build-xrce-agent   # Build the Micro-XRCE-DDS Agent from source
 //!   cmake                   # Required for building C examples
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, XrceAgent, build_c_xrce_listener, build_c_xrce_talker, c_xrce_listener_binary,
-    c_xrce_talker_binary, require_cmake, require_xrce_agent,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, XrceAgent, build_c_xrce_listener, build_c_xrce_talker,
+        c_xrce_listener_binary, c_xrce_talker_binary, require_cmake, require_xrce_agent,
+    },
 };
 use rstest::rstest;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
 
 /// Create a Command that wraps a C binary with `stdbuf -oL -eL` to force
 /// line-buffered stdout/stderr. C's printf fully-buffers when piped.

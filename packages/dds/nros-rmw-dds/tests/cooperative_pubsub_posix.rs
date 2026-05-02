@@ -25,14 +25,16 @@
 use core::time::Duration;
 use std::sync::Arc;
 
-use dust_dds::dds_async::domain_participant_factory::DomainParticipantFactoryAsync;
-use dust_dds::dds_async::domain_participant_listener::DomainParticipantListener;
-use dust_dds::infrastructure::qos::QosKind;
-use dust_dds::infrastructure::status::NO_STATUS;
+use dust_dds::{
+    dds_async::{
+        domain_participant_factory::DomainParticipantFactoryAsync,
+        domain_participant_listener::DomainParticipantListener,
+    },
+    infrastructure::{qos::QosKind, status::NO_STATUS},
+};
 
 use nros_platform_posix::PosixPlatform;
-use nros_rmw_dds::runtime::NrosPlatformRuntime;
-use nros_rmw_dds::transport_nros::NrosUdpTransportFactory;
+use nros_rmw_dds::{runtime::NrosPlatformRuntime, transport_nros::NrosUdpTransportFactory};
 
 struct NoListener;
 impl DomainParticipantListener for NoListener {}

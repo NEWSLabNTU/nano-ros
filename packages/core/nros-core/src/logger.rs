@@ -32,7 +32,12 @@
 //! // Rate-limited logging (requires tracking elapsed time)
 //! let mut last_log_ms: u64 = 0;
 //! let current_time_ms: u64 = 1000; // From your clock
-//! logger.info_throttle(&mut last_log_ms, current_time_ms, 1000, "Rate limited to 1Hz");
+//! logger.info_throttle(
+//!     &mut last_log_ms,
+//!     current_time_ms,
+//!     1000,
+//!     "Rate limited to 1Hz",
+//! );
 //! ```
 //!
 //! # Embedded Integration

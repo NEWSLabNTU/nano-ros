@@ -54,11 +54,13 @@ macro_rules! skip {
     };
 }
 
-use std::io::{BufRead, BufReader};
-use std::net::TcpStream;
-use std::process::{Child, ChildStdout};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::{Duration, Instant};
+use std::{
+    io::{BufRead, BufReader},
+    net::TcpStream,
+    process::{Child, ChildStdout},
+    sync::atomic::{AtomicU32, Ordering},
+    time::{Duration, Instant},
+};
 
 /// Intra-process counter for multiple `unique_domain_id()` calls in one test.
 static DOMAIN_SEQ: AtomicU32 = AtomicU32::new(0);

@@ -13,8 +13,7 @@ use nros_tests::fixtures::{
     xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // XRCE Pub/Sub Tests

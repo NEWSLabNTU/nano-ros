@@ -2,14 +2,18 @@
 //!
 //! Subscriptions receive messages from topics that publishers send to.
 
-use core::ffi::{c_char, c_void};
-use core::ptr;
+use core::{
+    ffi::{c_char, c_void},
+    ptr,
+};
 
-use crate::constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
-use crate::error::*;
-use crate::node::{nros_node_state_t, nros_node_t};
-use crate::publisher::nros_message_type_t;
-use crate::qos::nros_qos_t;
+use crate::{
+    constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
+    error::*,
+    node::{nros_node_state_t, nros_node_t},
+    publisher::nros_message_type_t,
+    qos::nros_qos_t,
+};
 
 /// Subscription callback function type.
 ///

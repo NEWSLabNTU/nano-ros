@@ -36,8 +36,7 @@
 //! })
 //! ```
 
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::{marker::PhantomData, mem::MaybeUninit};
 
 use nros_node::{
     EmbeddedRawPublisher, Executor, HandleId, LoanError, Node, NodeError, PublishLoan, QosSettings,

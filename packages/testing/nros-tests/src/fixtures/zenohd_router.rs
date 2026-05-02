@@ -2,11 +2,8 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::process::graceful_kill_process_group;
-use crate::{TestError, TestResult, wait_for_port};
-use std::net::TcpStream;
-use std::process::Child;
-use std::time::Duration;
+use crate::{TestError, TestResult, process::graceful_kill_process_group, wait_for_port};
+use std::{net::TcpStream, process::Child, time::Duration};
 
 /// Allocate an ephemeral port from the OS.
 ///

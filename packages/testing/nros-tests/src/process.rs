@@ -5,8 +5,10 @@
 //! `kill_process_group()` can reap the entire tree (bash + children).
 
 use crate::TestError;
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use std::{
+    process::{Child, Command, Stdio},
+    time::Duration,
+};
 
 /// Wait for a file descriptor to become readable, or sleep on non-Unix.
 ///

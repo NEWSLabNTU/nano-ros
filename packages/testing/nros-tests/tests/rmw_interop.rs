@@ -12,16 +12,20 @@
 //! - **QoS**: Reliability and durability compatibility
 //! - **Benchmarks**: Latency and throughput measurements
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
-    action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
-    ros2_node_list, ros2_service_list, ros2_topic_info, ros2_topic_list, service_client_binary,
-    service_server_binary, talker_binary, zenohd_unique,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
+        action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
+        ros2_node_list, ros2_service_list, ros2_topic_info, ros2_topic_list, service_client_binary,
+        service_server_binary, talker_binary, zenohd_unique,
+    },
 };
 use rstest::rstest;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 /// Skip test if ROS 2 prerequisites are not met
 fn require_ros2() -> bool {

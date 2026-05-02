@@ -11,20 +11,21 @@
 //! The BSP (Board Support Package) tests verify the simplified nros-board-mps2-an385 API:
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
-use nros_tests::fixtures::{
-    QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
-    build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
-    build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
-    build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
-    build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_wcet_bench,
-    is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
-    qemu_binary, require_zenoh_pico_arm,
+use nros_tests::{
+    assert_output_contains, assert_output_excludes, count_pattern,
+    fixtures::{
+        QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
+        build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
+        build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
+        build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
+        build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_wcet_bench,
+        is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
+        qemu_binary, require_zenoh_pico_arm,
+    },
+    platform, wait_for_port,
 };
-use nros_tests::platform;
-use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port};
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 /// Skip test if QEMU is not available
 fn require_qemu() {

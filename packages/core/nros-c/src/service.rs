@@ -3,16 +3,20 @@
 //! Services provide request-reply communication patterns.
 //! This module implements both service servers and clients.
 
-use core::ffi::{c_char, c_void};
-use core::ptr;
-use core::sync::atomic::AtomicBool;
-use core::task::{RawWaker, RawWakerVTable, Waker};
+use core::{
+    ffi::{c_char, c_void},
+    ptr,
+    sync::atomic::AtomicBool,
+    task::{RawWaker, RawWakerVTable, Waker},
+};
 
-use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
-use crate::error::*;
-use crate::executor::nros_executor_t;
-use crate::node::{nros_node_state_t, nros_node_t};
-use crate::publisher::nros_service_type_t;
+use crate::{
+    constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
+    error::*,
+    executor::nros_executor_t,
+    node::{nros_node_state_t, nros_node_t},
+    publisher::nros_service_type_t,
+};
 
 // ============================================================================
 // Waker helper — creates a Waker that sets an AtomicBool
@@ -390,7 +394,6 @@ pub type nros_response_callback_t =
 /// Lightweight — stores only the arena entry index and the executor
 /// pointer where the actual transport handle lives. Mirrors
 /// `ActionClientInternal`.
-///
 #[repr(C)]
 pub struct ServiceClientInternal {
     /// Arena entry index. -1 means not registered with any executor yet.

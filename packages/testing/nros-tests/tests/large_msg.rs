@@ -7,15 +7,16 @@
 //!   Zenoh tests: zenohd (built automatically)
 //!   XRCE tests: just build-xrce-agent
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, XrceAgent, ZenohRouter, qemu_large_msg_test_binary, require_xrce_agent,
-    require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
-    zenoh_stress_test_large_buf_binary, zenohd_unique,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, XrceAgent, ZenohRouter, qemu_large_msg_test_binary, require_xrce_agent,
+        require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
+        zenoh_stress_test_large_buf_binary, zenohd_unique,
+    },
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // Zenoh Large Message Tests

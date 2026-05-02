@@ -5,14 +5,15 @@
 //! Run with: `cargo test -p nano-ros-tests --test executor -- --nocapture`
 //! Or: `just test-rust-executor`
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener, build_native_talker, require_zenohd,
-    zenohd_unique,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        ManagedProcess, ZenohRouter, build_native_listener, build_native_talker, require_zenohd,
+        zenohd_unique,
+    },
 };
 use rstest::rstest;
-use std::process::Command;
-use std::time::Duration;
+use std::{process::Command, time::Duration};
 
 // =============================================================================
 // Timer Interval Tests

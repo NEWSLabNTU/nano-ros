@@ -5,8 +5,10 @@
 
 use core::ffi::c_char;
 
-use crate::constants::{MAX_LOCATOR_LEN, SESSION_OPAQUE_U64S};
-use crate::error::*;
+use crate::{
+    constants::{MAX_LOCATOR_LEN, SESSION_OPAQUE_U64S},
+    error::*,
+};
 
 /// Support context state
 #[repr(C)]

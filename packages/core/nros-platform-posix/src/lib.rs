@@ -19,8 +19,7 @@ pub mod net;
 #[cfg(not(target_os = "nuttx"))]
 pub mod serial;
 
-use core::ffi::c_void;
-use core::ptr;
+use core::{ffi::c_void, ptr};
 
 /// Zero-sized type implementing all platform traits via POSIX APIs.
 pub struct PosixPlatform;

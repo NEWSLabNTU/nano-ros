@@ -8,12 +8,16 @@
 
 use std::time::Duration;
 
-use nros_tests::fixtures::is_veth_bridge_available;
-use nros_tests::fixtures::threadx_linux::{
-    build_threadx_dds_listener, build_threadx_dds_talker, is_nsos_netx_available,
-    is_threadx_available,
+use nros_tests::{
+    fixtures::{
+        is_veth_bridge_available,
+        threadx_linux::{
+            build_threadx_dds_listener, build_threadx_dds_talker, is_nsos_netx_available,
+            is_threadx_available,
+        },
+    },
+    process::ManagedProcess,
 };
-use nros_tests::process::ManagedProcess;
 
 fn require_threadx_dds() -> bool {
     if !is_threadx_available() {

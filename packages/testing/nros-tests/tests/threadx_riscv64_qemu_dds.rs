@@ -6,14 +6,17 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test threadx_riscv64_qemu_dds`
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
-use nros_tests::fixtures::QemuProcess;
-use nros_tests::fixtures::is_qemu_riscv64_available;
-use nros_tests::fixtures::threadx_riscv64::{
-    build_threadx_rv64_dds_listener, build_threadx_rv64_dds_talker, is_riscv_gcc_available,
-    is_threadx_available,
+use nros_tests::fixtures::{
+    QemuProcess, is_qemu_riscv64_available,
+    threadx_riscv64::{
+        build_threadx_rv64_dds_listener, build_threadx_rv64_dds_talker, is_riscv_gcc_available,
+        is_threadx_available,
+    },
 };
 
 fn require_threadx_rv64_dds() -> bool {

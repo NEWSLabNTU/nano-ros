@@ -10,8 +10,7 @@ extern crate alloc;
 
 use esp_backtrace as _;
 use nros::prelude::*;
-use nros_board_esp32_qemu::esp_println;
-use nros_board_esp32_qemu::prelude::*;
+use nros_board_esp32_qemu::{esp_println, prelude::*};
 use std_msgs::msg::Int32;
 
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();

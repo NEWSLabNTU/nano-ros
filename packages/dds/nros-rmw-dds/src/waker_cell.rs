@@ -15,12 +15,10 @@
 //! `on_data_available`.
 
 use crate::sync::Arc;
-use core::future::Future;
-use core::task::Waker;
+use core::{future::Future, task::Waker};
 use spin::Mutex;
 
-use dust_dds::dds_async::data_reader::DataReaderAsync;
-use dust_dds::dds_async::data_reader_listener::DataReaderListener;
+use dust_dds::dds_async::{data_reader::DataReaderAsync, data_reader_listener::DataReaderListener};
 
 use crate::raw_type::RawCdrPayload;
 

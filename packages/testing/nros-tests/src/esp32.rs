@@ -3,10 +3,14 @@
 //! Provides guard functions and process management for ESP32-C3 QEMU tests.
 //! ESP32-C3 uses RISC-V (qemu-system-riscv32) with the Espressif machine model.
 
-use crate::process::{ManagedProcess, set_new_process_group};
-use crate::{TestError, TestResult};
-use std::path::Path;
-use std::process::{Command, Stdio};
+use crate::{
+    TestError, TestResult,
+    process::{ManagedProcess, set_new_process_group},
+};
+use std::{
+    path::Path,
+    process::{Command, Stdio},
+};
 
 // =============================================================================
 // Guard Functions

@@ -1,6 +1,7 @@
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 /// Read a usize from an environment variable, falling back to a default.
 fn env_usize(name: &str, default: usize) -> usize {

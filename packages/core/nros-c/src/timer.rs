@@ -2,11 +2,12 @@
 //!
 //! Timers provide periodic callbacks for time-based operations.
 
-use core::ffi::c_void;
-use core::ptr;
+use core::{ffi::c_void, ptr};
 
-use crate::error::*;
-use crate::support::{nros_support_state_t, nros_support_t};
+use crate::{
+    error::*,
+    support::{nros_support_state_t, nros_support_t},
+};
 
 /// Timer callback function type.
 ///

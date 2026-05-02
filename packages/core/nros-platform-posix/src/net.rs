@@ -5,8 +5,7 @@
 
 #![allow(unsafe_op_in_unsafe_fn)]
 
-use core::ffi::c_void;
-use core::ptr;
+use core::{ffi::c_void, ptr};
 
 use crate::PosixPlatform;
 

@@ -22,15 +22,16 @@
 //!   rmw_fastrtps_cpp available   # Default in Humble
 //!   example_interfaces installed # For AddTwoInts service type
 
-use nros_tests::count_pattern;
-use nros_tests::fixtures::{
-    DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, is_rmw_fastrtps_available,
-    is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_listener_binary,
-    xrce_service_server_binary, xrce_talker_binary,
+use nros_tests::{
+    count_pattern,
+    fixtures::{
+        DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, is_rmw_fastrtps_available,
+        is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_listener_binary,
+        xrce_service_server_binary, xrce_talker_binary,
+    },
 };
 use rstest::rstest;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 // =============================================================================
 // Detection Tests

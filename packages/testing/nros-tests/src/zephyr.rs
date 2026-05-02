@@ -2,11 +2,16 @@
 //!
 //! Provides managed Zephyr processes for testing native_sim and QEMU targets.
 
-use crate::process::{kill_process_group, set_new_process_group};
-use crate::{TestError, TestResult, project_root};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use crate::{
+    TestError, TestResult,
+    process::{kill_process_group, set_new_process_group},
+    project_root,
+};
+use std::{
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
 
 /// Zephyr platform variants
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

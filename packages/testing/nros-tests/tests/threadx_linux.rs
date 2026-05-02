@@ -14,11 +14,13 @@
 //! Run with: `just test-threadx-linux`
 //! Or: `cargo nextest run -p nros-tests --test threadx_linux`
 
-use nros_tests::fixtures::is_zenohd_available;
-use nros_tests::fixtures::threadx_linux::{
-    build_threadx_action_client, build_threadx_action_server, build_threadx_listener,
-    build_threadx_service_client, build_threadx_service_server, build_threadx_talker,
-    is_nsos_netx_available, is_threadx_available,
+use nros_tests::fixtures::{
+    is_zenohd_available,
+    threadx_linux::{
+        build_threadx_action_client, build_threadx_action_server, build_threadx_listener,
+        build_threadx_service_client, build_threadx_service_server, build_threadx_talker,
+        is_nsos_netx_available, is_threadx_available,
+    },
 };
 
 // =============================================================================

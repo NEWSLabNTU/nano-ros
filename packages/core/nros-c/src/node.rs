@@ -3,12 +3,13 @@
 //! A node is the main entity in ROS 2 that can have publishers, subscribers,
 //! services, and other communication primitives.
 
-use core::ffi::c_char;
-use core::ptr;
+use core::{ffi::c_char, ptr};
 
-use crate::constants::{MAX_NAME_LEN, MAX_NAMESPACE_LEN};
-use crate::error::*;
-use crate::support::{nros_support_state_t, nros_support_t};
+use crate::{
+    constants::{MAX_NAME_LEN, MAX_NAMESPACE_LEN},
+    error::*,
+    support::{nros_support_state_t, nros_support_t},
+};
 
 /// Node state
 #[repr(C)]

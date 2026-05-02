@@ -15,9 +15,7 @@
 //!   the uORB callback chain, not the bounded sleep).
 //! - nros timers stay accurate to within `Config::park_max`.
 
-use core::future::Future;
-use core::pin::Pin;
-use core::time::Duration;
+use core::{future::Future, pin::Pin, time::Duration};
 
 use nros_node::{Executor, ExecutorConfig};
 use px4_workqueue::{WorkItemCell, WqConfig, wq_configurations, yield_now};
@@ -122,8 +120,7 @@ pub async fn pump_until<U>(mut executor: Executor, park_max: Duration, until: U)
 where
     U: Future<Output = ()> + Unpin,
 {
-    use core::pin::Pin;
-    use core::task::Poll;
+    use core::{pin::Pin, task::Poll};
 
     let mut until = until;
     loop {

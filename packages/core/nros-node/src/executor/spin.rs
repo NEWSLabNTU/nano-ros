@@ -1,31 +1,16 @@
 //! Executor struct and core spin methods.
 
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::{marker::PhantomData, mem::MaybeUninit};
 
 use nros_core::{RosMessage, RosService};
 use nros_rmw::{QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
 
-use crate::session;
-use crate::timer::TimerDuration;
+use crate::{session, timer::TimerDuration};
 
-use super::arena::{
-    BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
-    SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
-    SubInfoEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
-    guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process, srv_has_data,
-    srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
-    sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
-    sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data, sub_info_pre_sample,
-    sub_info_try_process, timer_try_process,
-};
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
     SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
 };
-use super::node::Node;
-use super::spsc_ring::SpscRing;
-use super::triple_buffer::TripleBuffer;
 #[cfg(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -36,10 +21,25 @@ use super::triple_buffer::TripleBuffer;
 use super::types::ExecutorConfig;
 #[cfg(feature = "std")]
 use super::types::SpinOptions;
-use super::types::{
-    ExecutorSemantics, GuardConditionHandle, HandleId, InvocationMode, NodeError,
-    RawResponseCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    SpinOnceResult, SpinPeriodPollingResult, Trigger,
+use super::{
+    arena::{
+        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
+        SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+        SubInfoEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
+        guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
+        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
+        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
+        sub_buffered_raw_has_data, sub_buffered_raw_try_process, sub_buffered_try_process,
+        sub_info_has_data, sub_info_pre_sample, sub_info_try_process, timer_try_process,
+    },
+    node::Node,
+    spsc_ring::SpscRing,
+    triple_buffer::TripleBuffer,
+    types::{
+        ExecutorSemantics, GuardConditionHandle, HandleId, InvocationMode, NodeError,
+        RawResponseCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
+        SpinOnceResult, SpinPeriodPollingResult, Trigger,
+    },
 };
 
 // ============================================================================
@@ -1987,10 +1987,12 @@ impl Executor {
     /// The caller must keep the callback code and any context it captures
     /// valid for as long as the executor processes services.
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
-        use crate::lifecycle::LifecyclePollingNodeCtx;
-        use crate::lifecycle_services::{
-            ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
-            LIFECYCLE_SERVICE_BUFFER_SIZE, LifecycleRuntimeState, LifecycleServiceServers,
+        use crate::{
+            lifecycle::LifecyclePollingNodeCtx,
+            lifecycle_services::{
+                ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
+                LIFECYCLE_SERVICE_BUFFER_SIZE, LifecycleRuntimeState, LifecycleServiceServers,
+            },
         };
         use nros_core::RosService;
 

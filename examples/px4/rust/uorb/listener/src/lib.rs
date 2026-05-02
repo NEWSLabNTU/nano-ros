@@ -12,8 +12,10 @@
 #![no_std]
 #![feature(type_alias_impl_trait)]
 
-use core::ffi::{c_char, c_int, c_void};
-use core::time::Duration;
+use core::{
+    ffi::{c_char, c_int, c_void},
+    time::Duration,
+};
 
 use nros_node::{Executor, ExecutorConfig};
 use nros_px4::uorb;

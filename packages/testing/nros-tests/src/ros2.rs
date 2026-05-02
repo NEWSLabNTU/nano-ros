@@ -2,11 +2,15 @@
 //!
 //! Provides helpers for running ROS 2 commands and processes.
 
-use crate::process::{kill_process_group, set_new_process_group};
-use crate::{TestError, TestResult};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use crate::{
+    TestError, TestResult,
+    process::{kill_process_group, set_new_process_group},
+};
+use std::{
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    time::Duration,
+};
 
 /// Default ROS 2 distro to use
 pub const DEFAULT_ROS_DISTRO: &str = "humble";

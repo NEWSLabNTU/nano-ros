@@ -28,8 +28,10 @@
 #![no_std]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::ffi::{c_char, c_int, c_void};
-use core::ptr;
+use core::{
+    ffi::{c_char, c_int, c_void},
+    ptr,
+};
 #[allow(unused_imports)]
 use nros_platform_api::{
     PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,

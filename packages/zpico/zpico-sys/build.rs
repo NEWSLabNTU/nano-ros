@@ -5,10 +5,12 @@
 //! 2. The zpico C layer (zpico.c)
 //! 3. Generates C header from Rust FFI declarations (cbindgen)
 
-use std::env;
-use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env,
+    fmt::Write as _,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Protocol link features read from Cargo feature flags.
 ///

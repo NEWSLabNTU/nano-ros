@@ -2,16 +2,15 @@
 //!
 //! Publishers send messages to topics that subscribers can receive.
 
-use core::ffi::c_char;
-use core::ptr;
+use core::{ffi::c_char, ptr};
 
-use crate::constants::{
-    MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, PUBLISHER_OPAQUE_U64S,
+use crate::{
+    constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, PUBLISHER_OPAQUE_U64S},
+    error::*,
+    node::{nros_node_state_t, nros_node_t},
+    qos::nros_qos_t,
+    support::nros_support_state_t,
 };
-use crate::error::*;
-use crate::node::{nros_node_state_t, nros_node_t};
-use crate::qos::nros_qos_t;
-use crate::support::nros_support_state_t;
 
 /// Message type information.
 ///

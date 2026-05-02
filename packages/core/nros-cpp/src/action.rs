@@ -4,8 +4,10 @@
 
 use core::ffi::{c_char, c_void};
 
-use nros::GoalId;
-use nros::cdr::{CDR_HEADER_LEN, strip_cdr_header};
+use nros::{
+    GoalId,
+    cdr::{CDR_HEADER_LEN, strip_cdr_header},
+};
 use nros_node::config::DEFAULT_RX_BUF_SIZE;
 
 use crate::{

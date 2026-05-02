@@ -10,8 +10,10 @@
 //! validates that `size_of::<Executor>()` fits within this bound — if the
 //! estimate drifts, the build fails instead of silently corrupting memory.
 
-use std::env;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();

@@ -3,8 +3,7 @@
 //! Reads NROS_* environment variables and generates `nros_params_config.rs`
 //! with compile-time configurable constants for parameter storage limits.
 
-use std::env;
-use std::path::Path;
+use std::{env, path::Path};
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
