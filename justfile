@@ -783,11 +783,16 @@ generate-bindings:
     # To update: run `cargo nano-ros generate-rust` in packages/interfaces/rcl-interfaces/
     # then apply nros- prefix rename to generated Cargo.toml and source files
 
-    # Auto-discover all examples with package.xml (Rust only, not zephyr)
+    # Auto-discover all examples with package.xml (Rust only, not zephyr).
+    # `--force` so a system `apt upgrade ros-humble-*-msgs` actually
+    # propagates into the regenerated `generated/<pkg>/Cargo.toml`
+    # version field. Without it the per-package skip-if-exists check
+    # leaves the old crate version in place and downstream cargo
+    # rebuilds reuse the stale rlib.
     for pkg in $(find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$pkg")"
         echo "  $dir"
-        (cd "$dir" && $NANO_ROS generate-rust)
+        (cd "$dir" && $NANO_ROS generate-rust --force)
     done
 
     echo "All bindings regenerated!"
