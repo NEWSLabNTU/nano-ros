@@ -5,3 +5,6 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Platform capability traits for nros (no deps; platform crates impl these)"
+
+[lints]
+workspace = true

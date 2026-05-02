@@ -11,10 +11,11 @@ default = ["std"]
 std = ["nros-serdes/std"]
 alloc = ["nros-serdes/alloc"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [dependencies]
 log = { version = "0.4", default-features = false }
 nros-serdes = { workspace = true, default-features = false }
 heapless = { workspace = true }
+
+[lints]
+workspace = true

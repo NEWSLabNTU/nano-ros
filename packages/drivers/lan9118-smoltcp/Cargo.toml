@@ -24,3 +24,6 @@ defmt = []  # Future: defmt logging support
 
 [dev-dependencies]
 # Tests run on host, not bare-metal
+
+[lints]
+workspace = true

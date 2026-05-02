@@ -7,8 +7,6 @@ repository.workspace = true
 description = "Node abstraction for nros"
 links = "nros_node"
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [features]
 default = ["std"]
@@ -87,3 +85,6 @@ nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-ms
 
 [dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
+
+[lints]
+workspace = true

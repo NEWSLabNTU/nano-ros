@@ -17,3 +17,6 @@ smoltcp = []
 
 [dependencies]
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
+
+[lints]
+workspace = true

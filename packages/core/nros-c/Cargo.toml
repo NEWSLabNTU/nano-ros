@@ -83,8 +83,9 @@ nros-sizes-build = { workspace = true }
 # this build.rs runs so the size probe has a rlib to read.
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cbindgen)'] }
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints]
+workspace = true

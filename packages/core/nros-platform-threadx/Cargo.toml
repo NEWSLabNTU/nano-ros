@@ -27,3 +27,6 @@ threadx-netx-sys = { path = "../../drivers/threadx-netx-sys" }
 # RISC-V `mstatus.MIE` bit so re-enabling only happens at the
 # outermost release.
 critical-section = { version = "1.2", optional = true, features = ["restore-state-u8"] }
+
+[lints]
+workspace = true

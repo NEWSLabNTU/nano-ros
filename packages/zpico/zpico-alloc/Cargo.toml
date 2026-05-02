@@ -10,3 +10,6 @@ repository.workspace = true
 default = []
 ## Track peak heap usage (adds one atomic per heap).
 stats = []
+
+[lints]
+workspace = true

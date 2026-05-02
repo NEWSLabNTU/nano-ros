@@ -17,3 +17,6 @@ portable-atomic = { version = "1", default-features = false }
 default = []
 std = ["nros-rmw/std"]
 alloc = ["nros-rmw/alloc"]
+
+[lints]
+workspace = true

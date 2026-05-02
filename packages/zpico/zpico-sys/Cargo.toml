@@ -7,9 +7,6 @@ repository.workspace = true
 description = "C shim library for zenoh-pico with FFI bindings"
 links = "zpico"
 
-[lints.rust]
-# cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))'] }
 
 [lib]
 name = "zpico_sys"
@@ -55,3 +52,6 @@ zpico-platform-shim = { version = "0.1.0", path = "../zpico-platform-shim", defa
 cbindgen = "0.29"
 cc = "1.0"
 cmake = "0.1"
+
+[lints]
+workspace = true

@@ -17,3 +17,6 @@ debug-mcast-read = []
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Other Zephyr APIs are extern "C", resolved at link time by Zephyr's build
 # system (kernel + POSIX subsystem).
+
+[lints]
+workspace = true

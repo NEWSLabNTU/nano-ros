@@ -117,3 +117,6 @@ path = "tests/rtos_e2e.rs"
 name = "px4_e2e"
 path = "tests/px4_e2e.rs"
 required-features = ["px4-sitl"]
+
+[lints]
+workspace = true

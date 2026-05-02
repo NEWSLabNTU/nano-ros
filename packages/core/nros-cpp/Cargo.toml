@@ -79,8 +79,9 @@ nros-sizes-build = { workspace = true }
 # macro — see Phase 77.23 / 77.24 for the downstream damage.
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)'] }
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints]
+workspace = true

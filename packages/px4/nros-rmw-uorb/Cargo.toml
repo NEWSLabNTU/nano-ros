@@ -37,3 +37,6 @@ px4-log = { path = "../../../third-party/px4/px4-rs/crates/px4-log" }
 
 [dev-dependencies]
 nros-node = { workspace = true, default-features = false, features = ["std", "rmw-uorb"] }
+
+[lints]
+workspace = true

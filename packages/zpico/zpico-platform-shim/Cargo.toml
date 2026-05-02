@@ -30,3 +30,6 @@ nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-
 
 [build-dependencies]
 cc = "1"
+
+[lints]
+workspace = true

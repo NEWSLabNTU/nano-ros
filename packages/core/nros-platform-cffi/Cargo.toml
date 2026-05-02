@@ -16,3 +16,6 @@ nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 
 [build-dependencies]
 cbindgen = "0.29"
+
+[lints]
+workspace = true

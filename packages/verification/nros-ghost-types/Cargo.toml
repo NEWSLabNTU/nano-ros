@@ -6,8 +6,9 @@ license = "MIT OR Apache-2.0"
 description = "Ghost model types for nros verification — shared between production crate tests and Verus proofs"
 publish = false
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [features]
 default = []
+
+[lints]
+workspace = true

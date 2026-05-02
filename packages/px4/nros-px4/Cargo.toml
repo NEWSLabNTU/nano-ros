@@ -36,3 +36,6 @@ px4-uorb = { path = "../../../third-party/px4/px4-rs/crates/px4-uorb", features 
 px4-workqueue = { path = "../../../third-party/px4/px4-rs/crates/px4-workqueue", features = ["std"] }
 futures = { version = "0.3", default-features = false, features = ["executor"] }
 cpu-time = "1"
+
+[lints]
+workspace = true

@@ -9,3 +9,6 @@ description = "POSIX platform implementation for nros"
 [dependencies]
 libc = "0.2"
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+
+[lints]
+workspace = true

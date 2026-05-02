@@ -10,3 +10,6 @@ description = "nros platform implementation for NuttX (POSIX-compatible, delegat
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix" }
 nuttx-sys = { path = "../../drivers/nuttx-sys" }
+
+[lints]
+workspace = true

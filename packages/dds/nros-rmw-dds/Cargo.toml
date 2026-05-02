@@ -102,3 +102,6 @@ cortex-m-semihosting = { version = "0.5", optional = true }
 # transport). Lets us run the same code path the no_std platforms run,
 # on Linux, without QEMU.
 nros-platform-posix = { version = "0.1.0", path = "../../core/nros-platform-posix" }
+
+[lints]
+workspace = true

@@ -2,7 +2,9 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
-CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
+
+# CLIPPY_LINTS removed — workspace-wide lint config now lives in root Cargo.toml `[workspace.lints]`
+
 LOG_DIR := "test-logs"
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
@@ -141,7 +143,7 @@ check:
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
         echo "  check $dir"
-        (cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags -- {{CLIPPY_LINTS}})
+        (cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags)
     done
     echo "All examples check passed!"
 

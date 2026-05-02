@@ -324,6 +324,35 @@ defmt-rtt = "0.4"
 # FFI / C interop
 cty = "0.2"
 
+# ---------------------------------------------------------------------------
+# Workspace-wide lint configuration. Member crates opt in with
+# `[lints] workspace = true`. Replaces the ad-hoc CLIPPY_LINTS string the
+# justfile used to pass on the command line.
+# ---------------------------------------------------------------------------
+[workspace.lints.rust]
+warnings = "deny"
+# Whitelist cfg flags consumed by the workspace's verifiers / codegen tools
+# (Kani for bounded model checking, cbindgen for C header generation,
+# zpico_backend for the zenoh-pico backend selector). Combined here so
+# each crate can opt in via `[lints] workspace = true` without needing
+# its own per-crate `[lints.rust] unexpected_cfgs` override.
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(kani)',
+    'cfg(cbindgen)',
+    'cfg(verus_keep_ghost)',
+    'cfg(verus_keep_ghost_body)',
+    'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))',
+] }
+
+[workspace.lints.clippy]
+infinite_iter = "deny"
+while_immutable_condition = "deny"
+never_loop = "deny"
+empty_loop = "deny"
+unconditional_recursion = "deny"
+large_stack_arrays = "warn"
+large_types_passed_by_value = "warn"
+
 [profile.release]
 opt-level = "s"      # Optimize for size
 # `lto = true` makes rustc emit each rlib's codegen units as LLVM

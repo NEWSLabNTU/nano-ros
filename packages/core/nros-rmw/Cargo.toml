@@ -46,3 +46,6 @@ log = { workspace = true, optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { path = "../../verification/nros-ghost-types" }
+
+[lints]
+workspace = true

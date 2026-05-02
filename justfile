@@ -1,7 +1,8 @@
 set dotenv-load
 
-# Common clippy lints for real-time safety
-CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
+# Workspace-wide clippy lint levels live in root `Cargo.toml` under
+# `[workspace.lints]` (and per-crate `[lints] workspace = true`). The
+# old `CLIPPY_LINTS` string passed through `--` is no longer needed.
 
 LOG_DIR := "test-logs"
 
@@ -426,7 +427,7 @@ format-workspace:
 # nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
-    cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp -- {{CLIPPY_LINTS}}
+    cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -443,23 +444,23 @@ check-workspace-embedded:
         --exclude nros-platform-nuttx \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
-        --exclude xrce-platform-shim -- {{CLIPPY_LINTS}}
+        --exclude xrce-platform-shim
 
 # Check workspace with various feature combinations
 check-workspace-features:
     @echo "Checking feature combinations..."
     @echo "  - nros: zenoh + posix + humble"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble"
     @echo "  - nros: zenoh + posix + iron"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-iron" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-iron"
     @echo "  - nros-c: zenoh + posix + humble"
-    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
-    cargo clippy -p nros --no-default-features --features "rmw-cffi" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
-    cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
     @echo "  - zenoh transport (std)"
-    cargo clippy -p nros-rmw --features "std" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features "std"
     @echo "All feature checks passed!"
 
 # Format C code (nros-c headers, zpico C, C examples) with clang-format
@@ -517,7 +518,7 @@ check-cpp:
             -include "$hdr" -x c++ /dev/null
     done
     echo "  - nros-cpp clippy (zenoh + posix + humble)"
-    cargo clippy -p nros-cpp --features "rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-cpp --features "rmw-zenoh,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # Check Python code: formatting + linting with ruff
@@ -743,7 +744,7 @@ build-zenoh:
 
 # Check zenoh transport
 check-zenoh:
-    cargo clippy -p nros-rmw --features std -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features std
 
 # Build zenohd from submodule (alias for `just zenohd build`).
 build-zenohd: zenohd::build

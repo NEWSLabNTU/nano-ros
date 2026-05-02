@@ -72,3 +72,6 @@ nros-platform-nuttx = { version = "0.1.0", path = "../nros-platform-nuttx", opti
 nros-platform-freertos = { version = "0.1.0", path = "../nros-platform-freertos", optional = true }
 nros-platform-threadx = { version = "0.1.0", path = "../nros-platform-threadx", optional = true }
 nros-platform-zephyr = { version = "0.1.0", path = "../nros-platform-zephyr", optional = true }
+
+[lints]
+workspace = true

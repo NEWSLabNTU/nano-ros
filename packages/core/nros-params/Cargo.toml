@@ -11,11 +11,12 @@ default = ["std"]
 std = []
 alloc = []
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [dependencies]
 heapless = { workspace = true }
 
 [dev-dependencies]
 nros-ghost-types = { path = "../../verification/nros-ghost-types" }
+
+[lints]
+workspace = true
