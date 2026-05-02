@@ -88,8 +88,7 @@ class Executor {
         if (session_name == nullptr) {
             return Result(-3);
         }
-        nros_cpp_ret_t ret =
-            nros_cpp_init(locator, domain_id, session_name, nullptr, out.storage_);
+        nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, session_name, nullptr, out.storage_);
         if (ret == 0) {
             out.initialized_ = true;
         }

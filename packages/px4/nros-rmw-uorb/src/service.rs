@@ -41,10 +41,7 @@ impl ServiceClientTrait for UorbServiceClient {
         Err(TransportError::Unsupported)
     }
 
-    fn try_recv_reply_raw(
-        &mut self,
-        _reply_buf: &mut [u8],
-    ) -> Result<Option<usize>, Self::Error> {
+    fn try_recv_reply_raw(&mut self, _reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         Err(TransportError::Unsupported)
     }
 }

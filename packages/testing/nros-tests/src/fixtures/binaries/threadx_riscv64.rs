@@ -129,10 +129,7 @@ static THREADX_RV64_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_dds_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!(
-        "examples/qemu-riscv64-threadx/rust/dds/{}",
-        name
-    ));
+    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/dds/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -156,9 +153,7 @@ pub fn build_threadx_rv64_dds_talker() -> TestResult<&'static Path> {
 
 pub fn build_threadx_rv64_dds_listener() -> TestResult<&'static Path> {
     THREADX_RV64_DDS_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_dds_rust_example("listener", "qemu-riscv64-threadx-dds-listener")
-        })
+        .get_or_try_init(|| build_dds_rust_example("listener", "qemu-riscv64-threadx-dds-listener"))
         .map(|p| p.as_path())
 }
 

@@ -44,12 +44,12 @@ pub mod traits;
 pub mod safety;
 
 // Phase 108 — status-event surface.
+#[cfg(feature = "alloc")]
+pub use event::EventCallback;
 pub use event::{
     CountStatus, DeadlineMissedStatus, EventKind, EventPayload, LivelinessChangedStatus,
     MessageLostStatus,
 };
-#[cfg(feature = "alloc")]
-pub use event::EventCallback;
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]

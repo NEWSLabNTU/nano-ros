@@ -182,5 +182,7 @@ fn loan_future_drop_does_not_leak_slot() {
     // Release the outstanding loan; arena should now serve a fresh
     // try_loan (proving the cancelled future didn't corrupt state).
     drop(outstanding);
-    let _fresh = publisher.try_loan(16).expect("slot reusable after future drop");
+    let _fresh = publisher
+        .try_loan(16)
+        .expect("slot reusable after future drop");
 }

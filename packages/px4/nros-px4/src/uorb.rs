@@ -40,8 +40,8 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 use nros_node::{
-    EmbeddedRawPublisher, Executor, HandleId, LoanError, Node, NodeError, PublishLoan,
-    QosSettings, RawSubscription, RecvView,
+    EmbeddedRawPublisher, Executor, HandleId, LoanError, Node, NodeError, PublishLoan, QosSettings,
+    RawSubscription, RecvView,
 };
 use px4_uorb::UorbTopic;
 
@@ -148,9 +148,7 @@ where
             // SAFETY: T::Msg is `#[repr(C)] Copy` per UorbTopic; bytes
             // carry T::Msg image. read_unaligned tolerates the
             // u8-aligned arena buffer.
-            let msg: T::Msg = unsafe {
-                core::ptr::read_unaligned(bytes.as_ptr() as *const T::Msg)
-            };
+            let msg: T::Msg = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const T::Msg) };
             user_cb(&msg);
         },
     )
@@ -230,9 +228,7 @@ impl<'a, T: UorbTopic> TypedLoan<'a, T> {
         // The slot is at least pointer-aligned (TxArena's static
         // backing), and `#[repr(C)] Copy` PX4 messages have align ≤
         // 8 in practice; this matches.
-        unsafe {
-            &mut *(self.inner.as_mut().as_mut_ptr() as *mut MaybeUninit<T::Msg>)
-        }
+        unsafe { &mut *(self.inner.as_mut().as_mut_ptr() as *mut MaybeUninit<T::Msg>) }
     }
 
     /// Commit the slot. Caller must have written every byte first.

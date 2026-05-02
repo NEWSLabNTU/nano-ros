@@ -26,8 +26,8 @@ namespace nros {
 struct LivelinessChangedStatus {
     uint16_t alive_count;
     uint16_t not_alive_count;
-    int16_t  alive_count_change;
-    int16_t  not_alive_count_change;
+    int16_t alive_count_change;
+    int16_t not_alive_count_change;
 };
 
 /// Count payload — used for deadline-missed and message-lost events.

@@ -196,9 +196,9 @@ mod action;
 #[cfg(cbindgen)]
 mod config;
 #[cfg(cbindgen)]
-mod executor;
-#[cfg(cbindgen)]
 mod event;
+#[cfg(cbindgen)]
+mod executor;
 #[cfg(cbindgen)]
 mod guard_condition;
 #[cfg(cbindgen)]

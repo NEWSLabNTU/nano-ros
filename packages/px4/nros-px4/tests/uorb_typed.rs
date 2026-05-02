@@ -52,19 +52,12 @@ fn typed_publish_recv_round_trip() {
     let mut executor = Executor::open(&cfg).expect("open");
     let mut node = executor.create_node("typed_uorb").expect("create_node");
 
-    let publisher = uorb::create_publisher::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_publisher");
+    let publisher = uorb::create_publisher::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+        .expect("create_publisher");
 
-    let mut subscriber = uorb::create_subscription::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_subscription");
+    let mut subscriber =
+        uorb::create_subscription::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+            .expect("create_subscription");
 
     let msg = Tick {
         seq: 0xfeed_face,
@@ -88,19 +81,12 @@ fn typed_loan_writes_in_place() {
     let mut executor = Executor::open(&cfg).expect("open");
     let mut node = executor.create_node("typed_loan").expect("create_node");
 
-    let publisher = uorb::create_publisher::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_publisher");
+    let publisher = uorb::create_publisher::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+        .expect("create_publisher");
 
-    let mut subscriber = uorb::create_subscription::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_subscription");
+    let mut subscriber =
+        uorb::create_subscription::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+            .expect("create_subscription");
 
     // Typed loan path: write fields directly into the loan slot via
     // MaybeUninit, no user-side T construction.
@@ -196,19 +182,12 @@ fn typed_borrow_in_place_returns_typed_view() {
     let mut executor = Executor::open(&cfg).expect("open");
     let mut node = executor.create_node("typed_borrow").expect("create_node");
 
-    let publisher = uorb::create_publisher::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_publisher");
+    let publisher = uorb::create_publisher::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+        .expect("create_publisher");
 
-    let mut subscriber = uorb::create_subscription::<tick_topic>(
-        &mut node,
-        "/fmu/out/sensor_tick",
-        0,
-    )
-    .expect("create_subscription");
+    let mut subscriber =
+        uorb::create_subscription::<tick_topic>(&mut node, "/fmu/out/sensor_tick", 0)
+            .expect("create_subscription");
 
     let msg = Tick {
         seq: 42,

@@ -916,12 +916,8 @@ impl QosPolicyMask {
     pub const AVOID_ROS_NAMESPACE_CONVENTIONS: Self = Self(1 << 11);
 
     /// Policies every nano-ros backend implements.
-    pub const CORE: Self = Self(
-        Self::RELIABILITY.0
-            | Self::DURABILITY_VOLATILE.0
-            | Self::HISTORY.0
-            | Self::DEPTH.0,
-    );
+    pub const CORE: Self =
+        Self(Self::RELIABILITY.0 | Self::DURABILITY_VOLATILE.0 | Self::HISTORY.0 | Self::DEPTH.0);
 
     /// `true` if `self` contains every policy in `other`.
     pub const fn contains(self, other: Self) -> bool {

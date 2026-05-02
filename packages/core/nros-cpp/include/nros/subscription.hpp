@@ -32,28 +32,26 @@ nros_cpp_ret_t nros_cpp_subscription_relocate(void* old_storage, void* new_stora
 struct nros_cpp_liveliness_changed_status_t {
     uint16_t alive_count;
     uint16_t not_alive_count;
-    int16_t  alive_count_change;
-    int16_t  not_alive_count_change;
+    int16_t alive_count_change;
+    int16_t not_alive_count_change;
 };
 struct nros_cpp_count_status_t {
     uint32_t total_count;
     uint32_t total_count_change;
 };
-typedef void (*nros_cpp_liveliness_changed_cb_t)(
-    void* storage,
-    nros_cpp_liveliness_changed_status_t status,
-    void* user_context);
-typedef void (*nros_cpp_subscriber_count_cb_t)(
-    void* storage,
-    nros_cpp_count_status_t status,
-    void* user_context);
-nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(
-    void* storage, nros_cpp_liveliness_changed_cb_t cb, void* user_context);
+typedef void (*nros_cpp_liveliness_changed_cb_t)(void* storage,
+                                                 nros_cpp_liveliness_changed_status_t status,
+                                                 void* user_context);
+typedef void (*nros_cpp_subscriber_count_cb_t)(void* storage, nros_cpp_count_status_t status,
+                                               void* user_context);
+nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void* storage,
+                                                            nros_cpp_liveliness_changed_cb_t cb,
+                                                            void* user_context);
 nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(
-    void* storage, uint32_t deadline_ms,
-    nros_cpp_subscriber_count_cb_t cb, void* user_context);
-nros_cpp_ret_t nros_cpp_subscription_set_message_lost(
-    void* storage, nros_cpp_subscriber_count_cb_t cb, void* user_context);
+    void* storage, uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb, void* user_context);
+nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void* storage,
+                                                      nros_cpp_subscriber_count_cb_t cb,
+                                                      void* user_context);
 } // extern "C"
 
 namespace nros {
@@ -199,28 +197,24 @@ template <typename M> class Subscription {
     ///
     /// Returns `Result(ErrorCode::Unsupported)` until the active
     /// backend wires up liveliness detection.
-    Result on_liveliness_changed(
-        nros_cpp_liveliness_changed_cb_t cb, void* user_context = nullptr) {
+    Result on_liveliness_changed(nros_cpp_liveliness_changed_cb_t cb,
+                                 void* user_context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_subscription_set_liveliness_changed(
-            storage_, cb, user_context));
+        return Result(nros_cpp_subscription_set_liveliness_changed(storage_, cb, user_context));
     }
 
     /// Register a callback for requested-deadline-missed events.
-    Result on_requested_deadline_missed(
-        uint32_t deadline_ms,
-        nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
+    Result on_requested_deadline_missed(uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb,
+                                        void* user_context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_subscription_set_requested_deadline_missed(
-            storage_, deadline_ms, cb, user_context));
+        return Result(nros_cpp_subscription_set_requested_deadline_missed(storage_, deadline_ms, cb,
+                                                                          user_context));
     }
 
     /// Register a callback for message-lost events.
-    Result on_message_lost(
-        nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
+    Result on_message_lost(nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_subscription_set_message_lost(
-            storage_, cb, user_context));
+        return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));
     }
 
   private:

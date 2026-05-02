@@ -78,33 +78,42 @@ fn test_nuttx_dds_rust_talker_to_listener_e2e() {
 
     // Listener first (subscribes before talker publishes), then a
     // brief stabilisation window for SPDP discovery, then talker.
-    let mut listener = QemuProcess::start_nuttx_virt_mcast(
-        &listener_bin,
-        &mcast,
-        "52:54:00:12:34:71",
-    )
-    .expect("Failed to start NuttX DDS listener");
+    let mut listener =
+        QemuProcess::start_nuttx_virt_mcast(&listener_bin, &mcast, "52:54:00:12:34:71")
+            .expect("Failed to start NuttX DDS listener");
 
     std::thread::sleep(Duration::from_secs(3));
 
-    let mut talker = QemuProcess::start_nuttx_virt_mcast(
-        &talker_bin,
-        &mcast,
-        "52:54:00:12:34:70",
-    )
-    .expect("Failed to start NuttX DDS talker");
+    let mut talker = QemuProcess::start_nuttx_virt_mcast(&talker_bin, &mcast, "52:54:00:12:34:70")
+        .expect("Failed to start NuttX DDS talker");
 
-    let talker_out = talker.wait_for_output(Duration::from_secs(20)).unwrap_or_default();
+    let talker_out = talker
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
     let listener_out = listener
         .wait_for_output(Duration::from_secs(60))
         .unwrap_or_default();
 
     eprintln!("\n=== NuttX DDS talker tail ===");
-    for line in talker_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in talker_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== NuttX DDS listener tail ===");
-    for line in listener_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in listener_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -125,7 +134,5 @@ fn test_nuttx_dds_rust_talker_to_listener_e2e() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    eprintln!(
-        "[nuttx-dds] talker → listener E2E green: {received} messages received"
-    );
+    eprintln!("[nuttx-dds] talker → listener E2E green: {received} messages received");
 }

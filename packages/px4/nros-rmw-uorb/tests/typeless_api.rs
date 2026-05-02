@@ -76,7 +76,9 @@ fn byte_shaped_round_trip_via_executor() {
         accel: [1.0, 2.0, 3.0],
         gyro: [0.1, 0.2, 0.3],
     };
-    publisher.publish_raw(unsafe { as_bytes(&msg) }).expect("publish");
+    publisher
+        .publish_raw(unsafe { as_bytes(&msg) })
+        .expect("publish");
 
     let _ = executor.spin_once(Duration::from_millis(0));
 

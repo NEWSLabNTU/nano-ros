@@ -99,9 +99,7 @@ fn run_executor() {
         |msg: &SensorPing| {
             info!(
                 "recv: ts={} seq={} value={}",
-                msg.timestamp,
-                msg.seq,
-                msg.value as i32,
+                msg.timestamp, msg.seq, msg.value as i32,
             );
         },
     ) {

@@ -83,9 +83,8 @@ fn test_esp32_qemu_dds_rust_talker_to_listener_e2e() {
 
     // Listener first (subscribe before publishes), then a brief
     // discovery window, then talker.
-    let mut listener =
-        start_esp32_qemu_mcast(&listener_bin, &mcast, "02:00:00:00:00:01")
-            .expect("Failed to start ESP32 DDS listener");
+    let mut listener = start_esp32_qemu_mcast(&listener_bin, &mcast, "02:00:00:00:00:01")
+        .expect("Failed to start ESP32 DDS listener");
 
     std::thread::sleep(Duration::from_secs(3));
 

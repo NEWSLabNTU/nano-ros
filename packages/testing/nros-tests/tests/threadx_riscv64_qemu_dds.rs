@@ -67,33 +67,43 @@ fn test_threadx_rv64_dds_rust_talker_to_listener_e2e() {
     let mcast = pick_mcast_addr_port();
     eprintln!("[threadx-rv64-dds] mcast group/port = {mcast}");
 
-    let mut listener = QemuProcess::start_riscv64_virt_mcast(
-        &listener_bin,
-        &mcast,
-        "52:54:00:12:34:61",
-    )
-    .expect("Failed to start ThreadX RISC-V DDS listener");
+    let mut listener =
+        QemuProcess::start_riscv64_virt_mcast(&listener_bin, &mcast, "52:54:00:12:34:61")
+            .expect("Failed to start ThreadX RISC-V DDS listener");
 
     std::thread::sleep(Duration::from_secs(3));
 
-    let mut talker = QemuProcess::start_riscv64_virt_mcast(
-        &talker_bin,
-        &mcast,
-        "52:54:00:12:34:60",
-    )
-    .expect("Failed to start ThreadX RISC-V DDS talker");
+    let mut talker =
+        QemuProcess::start_riscv64_virt_mcast(&talker_bin, &mcast, "52:54:00:12:34:60")
+            .expect("Failed to start ThreadX RISC-V DDS talker");
 
-    let talker_out = talker.wait_for_output(Duration::from_secs(20)).unwrap_or_default();
+    let talker_out = talker
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
     let listener_out = listener
         .wait_for_output(Duration::from_secs(60))
         .unwrap_or_default();
 
     eprintln!("\n=== ThreadX RISC-V DDS talker tail ===");
-    for line in talker_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in talker_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== ThreadX RISC-V DDS listener tail ===");
-    for line in listener_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in listener_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -114,7 +124,5 @@ fn test_threadx_rv64_dds_rust_talker_to_listener_e2e() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    eprintln!(
-        "[threadx-rv64-dds] talker → listener E2E green: {received} messages received"
-    );
+    eprintln!("[threadx-rv64-dds] talker → listener E2E green: {received} messages received");
 }

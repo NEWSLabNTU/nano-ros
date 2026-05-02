@@ -111,7 +111,9 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
 /// constant added to the C header degrades gracefully on the Rust side.
 pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
     match ret {
-        NROS_RMW_RET_OK => TransportError::Backend("ok (logic error: positive ret_t at error site)"),
+        NROS_RMW_RET_OK => {
+            TransportError::Backend("ok (logic error: positive ret_t at error site)")
+        }
         NROS_RMW_RET_ERROR => TransportError::Backend("rmw_ret error"),
         NROS_RMW_RET_TIMEOUT => TransportError::Timeout,
         NROS_RMW_RET_BAD_ALLOC => TransportError::BadAlloc,
@@ -181,9 +183,9 @@ pub struct NrosRmwQos {
 
 /// Standard `rmw_qos_profile_default`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
-    reliability: 1,                                  // RELIABLE
-    durability: 0,                                   // VOLATILE
-    history: 0,                                      // KEEP_LAST
+    reliability: 1, // RELIABLE
+    durability: 0,  // VOLATILE
+    history: 0,     // KEEP_LAST
     liveliness_kind: NrosRmwLivelinessKind::Automatic as u8,
     depth: 10,
     _reserved0: 0,
@@ -196,9 +198,9 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
 
 /// Standard `rmw_qos_profile_sensor_data`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
-    reliability: 0,                                  // BEST_EFFORT
-    durability: 0,                                   // VOLATILE
-    history: 0,                                      // KEEP_LAST
+    reliability: 0, // BEST_EFFORT
+    durability: 0,  // VOLATILE
+    history: 0,     // KEEP_LAST
     liveliness_kind: NrosRmwLivelinessKind::Automatic as u8,
     depth: 5,
     _reserved0: 0,
@@ -349,8 +351,7 @@ pub struct NrosRmwVtable {
         out: *mut NrosRmwSession,
     ) -> NrosRmwRet,
     pub close: unsafe extern "C" fn(session: *mut NrosRmwSession) -> NrosRmwRet,
-    pub drive_io:
-        unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet,
+    pub drive_io: unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet,
 
     // ---- Publisher ----
     pub create_publisher: unsafe extern "C" fn(
@@ -642,7 +643,13 @@ impl CffiSession {
             backend_data: core::ptr::null_mut(),
         };
         let ret = unsafe {
-            (vtable.open)(loc_ptr, mode, domain_id, session.node_name_buf.as_ptr(), &mut view)
+            (vtable.open)(
+                loc_ptr,
+                mode,
+                domain_id,
+                session.node_name_buf.as_ptr(),
+                &mut view,
+            )
         };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));

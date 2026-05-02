@@ -66,17 +66,33 @@ fn test_threadx_linux_dds_rust_talker_to_listener_e2e() {
     // Phase 97.4.threadx-linux — SEDP on the cooperative single-thread
     // `nostd-runtime` is slow; the match closes 30+ seconds after
     // discovery. Give a generous window before declaring failure.
-    let talker_out = talker.wait_for_output(Duration::from_secs(30)).unwrap_or_default();
+    let talker_out = talker
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
     let listener_out = listener
         .wait_for_output(Duration::from_secs(90))
         .unwrap_or_default();
 
     eprintln!("\n=== ThreadX Linux DDS talker tail ===");
-    for line in talker_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in talker_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
     eprintln!("\n=== ThreadX Linux DDS listener tail ===");
-    for line in listener_out.lines().rev().take(30).collect::<Vec<_>>().iter().rev() {
+    for line in listener_out
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .iter()
+        .rev()
+    {
         eprintln!("{line}");
     }
 
@@ -97,7 +113,5 @@ fn test_threadx_linux_dds_rust_talker_to_listener_e2e() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    eprintln!(
-        "[threadx-linux-dds] talker → listener E2E green: {received} messages received"
-    );
+    eprintln!("[threadx-linux-dds] talker → listener E2E green: {received} messages received");
 }

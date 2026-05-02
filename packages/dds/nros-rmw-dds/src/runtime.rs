@@ -28,9 +28,9 @@
 
 extern crate alloc;
 
+use crate::sync::Arc;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
-use crate::sync::Arc;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;

@@ -752,9 +752,7 @@ impl FreeRtosPlatform {
             }
         };
         let mreq = ip_mreq {
-            imr_multiaddr: in_addr {
-                s_addr: group_addr,
-            },
+            imr_multiaddr: in_addr { s_addr: group_addr },
             imr_interface: in_addr {
                 s_addr: 0u32, // INADDR_ANY — let lwIP pick the netif
             },
@@ -847,16 +845,7 @@ impl FreeRtosPlatform {
         }
         let rep = unsafe { &*(endpoint as *const Endpoint) };
         let ai = unsafe { &*rep._iptcp };
-        let n = unsafe {
-            lwip_sendto(
-                fd,
-                buf as *const c_void,
-                len,
-                0,
-                ai.ai_addr,
-                ai.ai_addrlen,
-            )
-        };
+        let n = unsafe { lwip_sendto(fd, buf as *const c_void, len, 0, ai.ai_addr, ai.ai_addrlen) };
         if n < 0 { usize::MAX } else { n as usize }
     }
 }

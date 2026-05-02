@@ -382,11 +382,7 @@ impl ThreadxPlatform {
     /// before `bind(2)` — used by the multicast listen path so
     /// every co-resident participant can join the same SPDP
     /// group on `239.255.0.1:7400`.
-    pub fn udp_listen_reusable(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-    ) -> i8 {
+    pub fn udp_listen_reusable(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
         Self::udp_listen_inner(sock, endpoint, timeout_ms, true)
     }
 

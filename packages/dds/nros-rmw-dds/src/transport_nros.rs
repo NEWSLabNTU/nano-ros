@@ -57,9 +57,9 @@ extern crate alloc;
 // depending on which `debug-*` feature is enabled. With every flag off
 // the macro expands to nothing, so production builds stay silent.
 
+use crate::sync::Arc;
 use alloc::boxed::Box;
 use alloc::format;
-use crate::sync::Arc;
 use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::future::Future;
@@ -304,7 +304,10 @@ where
         for loc in locator_list {
             dbg_log!(
                 "write_message: dst_pre {}.{}.{}.{}:{}",
-                loc.address()[12], loc.address()[13], loc.address()[14], loc.address()[15],
+                loc.address()[12],
+                loc.address()[13],
+                loc.address()[14],
+                loc.address()[15],
                 loc.port()
             );
             // Allocate a fresh endpoint for each destination —
@@ -340,8 +343,14 @@ where
             );
             dbg_log!(
                 "write_message: dst={}.{}.{}.{}:{} mcast={} datagram_len={} sent={}",
-                loc.address()[12], loc.address()[13], loc.address()[14], loc.address()[15],
-                loc.port(), mcast as u32, datagram.len(), n as i32
+                loc.address()[12],
+                loc.address()[13],
+                loc.address()[14],
+                loc.address()[15],
+                loc.port(),
+                mcast as u32,
+                datagram.len(),
+                n as i32
             );
             <P as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
             drop(sock);
@@ -615,7 +624,11 @@ where
             let metatraffic_mc_pair = bind_multicast::<P>(metatraffic_mc_port);
             dbg_log!(
                 "create_participant: mcast pair = {}",
-                if metatraffic_mc_pair.is_some() { "Some" } else { "None" }
+                if metatraffic_mc_pair.is_some() {
+                    "Some"
+                } else {
+                    "None"
+                }
             );
             let metatraffic_multicast_locator_list = if metatraffic_mc_pair.is_some() {
                 alloc::vec![ipv4_locator([239, 255, 0, 1], metatraffic_mc_port as u32)]

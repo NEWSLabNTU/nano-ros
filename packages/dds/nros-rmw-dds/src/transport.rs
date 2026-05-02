@@ -53,8 +53,8 @@ impl Rmw for DdsRmw {
         #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
         {
             use crate::runtime::NrosPlatformRuntime;
-            use crate::transport_nros::NrosUdpTransportFactory;
             use crate::sync::Arc;
+            use crate::transport_nros::NrosUdpTransportFactory;
             use dust_dds::dds_async::domain_participant_factory::DomainParticipantFactoryAsync;
             use dust_dds::infrastructure::qos::QosKind;
             use dust_dds::infrastructure::status::NO_STATUS;
@@ -100,7 +100,9 @@ impl Rmw for DdsRmw {
                 ))
                 .map_err(|_| TransportError::ConnectionFailed)?;
             #[cfg(feature = "debug-cortex-m-semihosting")]
-            cortex_m_semihosting::hprintln!("[nros-rmw-dds] DdsRmw::open: post block_on, session ready");
+            cortex_m_semihosting::hprintln!(
+                "[nros-rmw-dds] DdsRmw::open: post block_on, session ready"
+            );
 
             Ok(DdsSession::new_nostd(
                 runtime_arc,

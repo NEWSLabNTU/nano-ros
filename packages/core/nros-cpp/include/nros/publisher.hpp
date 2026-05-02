@@ -30,15 +30,14 @@ struct nros_cpp_pub_count_status_t {
     uint32_t total_count;
     uint32_t total_count_change;
 };
-typedef void (*nros_cpp_publisher_count_cb_t)(
-    void* storage,
-    nros_cpp_pub_count_status_t status,
-    void* user_context);
-nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(
-    void* storage, nros_cpp_publisher_count_cb_t cb, void* user_context);
-nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(
-    void* storage, uint32_t deadline_ms,
-    nros_cpp_publisher_count_cb_t cb, void* user_context);
+typedef void (*nros_cpp_publisher_count_cb_t)(void* storage, nros_cpp_pub_count_status_t status,
+                                              void* user_context);
+nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void* storage,
+                                                      nros_cpp_publisher_count_cb_t cb,
+                                                      void* user_context);
+nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void* storage, uint32_t deadline_ms,
+                                                              nros_cpp_publisher_count_cb_t cb,
+                                                              void* user_context);
 } // extern "C"
 
 namespace nros {
@@ -128,21 +127,18 @@ template <typename M> class Publisher {
     // ====================================================================
 
     /// Register a callback for liveliness-lost events on this publisher.
-    Result on_liveliness_lost(
-        nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
+    Result on_liveliness_lost(nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_publisher_set_liveliness_lost(
-            storage_, cb, user_context));
+        return Result(nros_cpp_publisher_set_liveliness_lost(storage_, cb, user_context));
     }
 
     /// Register a callback for offered-deadline-missed events on this
     /// publisher.
-    Result on_offered_deadline_missed(
-        uint32_t deadline_ms,
-        nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
+    Result on_offered_deadline_missed(uint32_t deadline_ms, nros_cpp_publisher_count_cb_t cb,
+                                      void* user_context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_publisher_set_offered_deadline_missed(
-            storage_, deadline_ms, cb, user_context));
+        return Result(nros_cpp_publisher_set_offered_deadline_missed(storage_, deadline_ms, cb,
+                                                                     user_context));
     }
 
   private:

@@ -258,11 +258,15 @@ pub fn start_esp32_qemu_mcast(
 
     let mut cmd = Command::new("qemu-system-riscv32");
     cmd.args([
-        "-M", "esp32c3",
-        "-icount", "3",
+        "-M",
+        "esp32c3",
+        "-icount",
+        "3",
         "-nographic",
-        "-drive", &drive_arg,
-        "-nic", &nic_arg,
+        "-drive",
+        &drive_arg,
+        "-nic",
+        &nic_arg,
     ]);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]

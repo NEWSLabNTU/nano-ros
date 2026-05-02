@@ -1378,8 +1378,8 @@ fn test_zephyr_xrce_c_talker_listener() {
         nros_tests::skip!("XRCE agent not available");
     }
 
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::C);
+    let port =
+        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::C);
     eprintln!("Starting XRCE Agent on port {}...", port);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
 
