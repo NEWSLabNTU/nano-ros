@@ -138,12 +138,11 @@ fn probe_sizes(
         ProbePlatform::Freertos
     } else if target.contains("nuttx") || target.contains("armv7a-nuttx") {
         ProbePlatform::Nuttx
-    } else if target.contains("riscv64") && env::var("THREADX_DIR").is_ok() {
-        ProbePlatform::Threadx
-    } else if !target.contains("none")
-        && !target.contains("linux-gnu")
-        && env::var("THREADX_DIR").is_ok()
-        && env::var("NETX_DIR").is_ok()
+    } else if (target.contains("riscv64") && env::var("THREADX_DIR").is_ok())
+        || (!target.contains("none")
+            && !target.contains("linux-gnu")
+            && env::var("THREADX_DIR").is_ok()
+            && env::var("NETX_DIR").is_ok())
     {
         ProbePlatform::Threadx
     } else if target.contains("none") {
@@ -177,8 +176,8 @@ fn probe_sizes(
     ) {
         return Some(sizes);
     }
-    if will_retry {
-        if let Some(sizes) = try_probe(
+    if will_retry
+        && let Some(sizes) = try_probe(
             &probe_c,
             zenoh_include,
             zpico_sys_dir,
@@ -186,9 +185,9 @@ fn probe_sizes(
             &target,
             ProbePlatform::BareMetal,
             false,
-        ) {
-            return Some(sizes);
-        }
+        )
+    {
+        return Some(sizes);
     }
     println!(
         "cargo:warning=zpico-platform-shim size_probe failed for all platform \

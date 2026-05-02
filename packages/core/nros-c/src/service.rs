@@ -702,7 +702,11 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
                     Some(e) => e,
                     None => return NROS_RET_NOT_INIT,
                 };
-                if let Err(_) = entry.handle.start_server_discovery(PROBE_TIMEOUT_MS) {
+                if entry
+                    .handle
+                    .start_server_discovery(PROBE_TIMEOUT_MS)
+                    .is_err()
+                {
                     return NROS_RET_ERROR;
                 }
             }

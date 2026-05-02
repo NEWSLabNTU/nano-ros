@@ -11,7 +11,7 @@ use super::{
 use crate::keyexpr::TopicKeyExpr;
 
 #[cfg(feature = "safety-e2e")]
-use super::{RMW_ATTACHMENT_SIZE_WITH_CRC, SAFETY_CRC_SIZE};
+use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 
 // ============================================================================
 // ZenohPublisher

@@ -276,7 +276,7 @@ impl Lan9118 {
     /// Enable MAC receive.
     ///
     /// Phase 97.3.mps2-an385 — also flips `MCPAS` (Pass All Multicast)
-    /// + `PRMS` (Promiscuous Mode) so DDS / RTPS multicast frames
+    /// and `PRMS` (Promiscuous Mode) so DDS / RTPS multicast frames
     /// (`239.255.0.1` → `01:00:5e:7f:00:01`) and any other-MAC traffic
     /// the smoltcp stack later filters reach the driver. QEMU socket
     /// netdev forwards every frame on the segment regardless of MAC,

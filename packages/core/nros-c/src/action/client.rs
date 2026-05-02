@@ -289,7 +289,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
                     Some(c) => c,
                     None => return NROS_RET_NOT_INIT,
                 };
-                if let Err(_) = core.start_server_discovery(PROBE_TIMEOUT_MS) {
+                if core.start_server_discovery(PROBE_TIMEOUT_MS).is_err() {
                     return NROS_RET_ERROR;
                 }
             }

@@ -335,10 +335,10 @@ pub fn pinned_nightly() -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
     for line in contents.lines() {
         let line = line.trim();
-        if let Some(rest) = line.strip_prefix("channel") {
-            if let Some(eq) = rest.find('=') {
-                return rest[eq + 1..].trim().trim_matches('"').to_string();
-            }
+        if let Some(rest) = line.strip_prefix("channel")
+            && let Some(eq) = rest.find('=')
+        {
+            return rest[eq + 1..].trim().trim_matches('"').to_string();
         }
     }
     panic!("no channel = \"...\" line in {}", path.display());

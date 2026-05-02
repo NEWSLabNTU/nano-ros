@@ -15,7 +15,7 @@ use crate::keyexpr::TopicKeyExpr;
 use crate::zpico::{Context, ZPICO_MAX_SUBSCRIBERS};
 
 #[cfg(feature = "safety-e2e")]
-use super::{RMW_ATTACHMENT_SIZE, RMW_ATTACHMENT_SIZE_WITH_CRC, RMW_GID_SIZE, SAFETY_CRC_SIZE};
+use super::{RMW_ATTACHMENT_SIZE, SAFETY_CRC_SIZE};
 
 #[cfg(feature = "std")]
 use super::signal_executor_wake;

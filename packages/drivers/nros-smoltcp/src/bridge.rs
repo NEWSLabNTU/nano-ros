@@ -396,6 +396,7 @@ fn drain_multicast_joins<D: Device>(
                     Err(smoltcp::iface::MulticastError::GroupTableFull) => {
                         MCAST_JOIN_ERR_FULL.fetch_add(1, Ordering::Relaxed);
                     }
+                    #[allow(unreachable_patterns)]
                     Err(_) => {
                         // Forward-compat for new variants — count as full.
                         MCAST_JOIN_ERR_FULL.fetch_add(1, Ordering::Relaxed);

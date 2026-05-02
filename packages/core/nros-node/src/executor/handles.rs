@@ -188,7 +188,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         });
         self.handle
             .register_event_callback(nros_rmw::EventKind::LivelinessLost, 0, cb)
-            .map_err(|e| NodeError::Transport(e))
+            .map_err(NodeError::Transport)
     }
 
     /// Register a callback for `OfferedDeadlineMissed`. Fires when
@@ -214,7 +214,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
                 deadline.as_millis().min(u32::MAX as u128) as u32,
                 cb,
             )
-            .map_err(|e| NodeError::Transport(e))
+            .map_err(NodeError::Transport)
     }
 }
 
@@ -754,7 +754,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         });
         self.handle
             .register_event_callback(nros_rmw::EventKind::LivelinessChanged, 0, cb)
-            .map_err(|e| NodeError::Transport(e))
+            .map_err(NodeError::Transport)
     }
 
     /// Register a callback for `RequestedDeadlineMissed`. Fires when
@@ -780,7 +780,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
                 deadline.as_millis().min(u32::MAX as u128) as u32,
                 cb,
             )
-            .map_err(|e| NodeError::Transport(e))
+            .map_err(NodeError::Transport)
     }
 
     /// Register a callback for `MessageLost`. Fires when the backend
@@ -798,7 +798,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         });
         self.handle
             .register_event_callback(nros_rmw::EventKind::MessageLost, 0, cb)
-            .map_err(|e| NodeError::Transport(e))
+            .map_err(NodeError::Transport)
     }
 
     /// Check if data is available without consuming it.

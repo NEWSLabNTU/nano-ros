@@ -128,7 +128,7 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_dds::DdsRmw::default()
+            let session = nros_rmw_dds::DdsRmw
                 .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
@@ -147,7 +147,7 @@ impl Executor {
                 namespace: config.namespace,
                 properties: &[],
             };
-            let session = nros_rmw_cffi::CffiRmw::default()
+            let session = nros_rmw_cffi::CffiRmw
                 .open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
@@ -184,6 +184,7 @@ impl Executor {
 ///
 /// The C API creates a session in `nros_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum SessionStore {
     Owned(session::ConcreteSession),
     Borrowed(*mut session::ConcreteSession),
