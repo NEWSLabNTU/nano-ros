@@ -18,7 +18,7 @@
 * `_opaque` buffer size so handles can live on the stack or
 * inside user structs without dynamic allocation.
 */
-#define NROS_EXECUTOR_SIZE 16784
+#define NROS_EXECUTOR_SIZE 16808
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 48
 #define NROS_SUBSCRIBER_SIZE 24
