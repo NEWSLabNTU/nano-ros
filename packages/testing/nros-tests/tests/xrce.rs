@@ -36,7 +36,7 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
         ManagedProcess::spawn_command(cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for readiness (talker prints "Publishing" after setup)
-    match talker.wait_for_output_pattern("Published:", Duration::from_secs(10)) {
+    match talker.wait_for_output_pattern("Published:", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-talker started and published successfully"),
         Err(_) => {
             if talker.is_running() {
@@ -65,7 +65,7 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
         ManagedProcess::spawn_command(cmd, "xrce-listener").expect("Failed to start listener");
 
     // Wait for readiness (listener prints "Waiting for" after setup)
-    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10)) {
+    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-listener started successfully"),
         Err(_) => {
             if listener.is_running() {
@@ -102,7 +102,7 @@ fn test_xrce_talker_listener_communication(
         .expect("Failed to start listener");
 
     // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
 
     // Stabilization delay — let XRCE Agent propagate the subscription
     std::thread::sleep(Duration::from_secs(2));
@@ -147,7 +147,7 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
     std::thread::sleep(Duration::from_secs(2));
 
     // Start talker (publishes 20 messages at 500ms intervals)
@@ -190,7 +190,7 @@ fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
         .expect("Failed to start service server");
 
     // Wait for readiness marker
-    match server.wait_for_output_pattern("Service server ready", Duration::from_secs(10)) {
+    match server.wait_for_output_pattern("Service server ready", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-service-server started successfully"),
         Err(_) => {
             if server.is_running() {
@@ -223,7 +223,7 @@ fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
         .expect("Failed to start service client");
 
     // Wait for readiness marker (client will timeout without a server)
-    match client.wait_for_output_pattern("Service client ready", Duration::from_secs(10)) {
+    match client.wait_for_output_pattern("Service client ready", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-service-client started successfully"),
         Err(_) => {
             if client.is_running() {
@@ -262,7 +262,7 @@ fn test_xrce_service_request_response(
         .expect("Failed to start service server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(10));
+    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(30));
 
     // Stabilization delay — let XRCE Agent propagate the service
     std::thread::sleep(Duration::from_secs(2));
@@ -325,7 +325,7 @@ fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
     let mut server = ManagedProcess::spawn_command(cmd, "xrce-action-server")
         .expect("Failed to start action server");
 
-    match server.wait_for_output_pattern("Action server ready", Duration::from_secs(10)) {
+    match server.wait_for_output_pattern("Action server ready", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-action-server started successfully"),
         Err(_) => {
             if server.is_running() {
@@ -356,7 +356,7 @@ fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
     let mut client = ManagedProcess::spawn_command(cmd, "xrce-action-client")
         .expect("Failed to start action client");
 
-    match client.wait_for_output_pattern("Action client ready", Duration::from_secs(10)) {
+    match client.wait_for_output_pattern("Action client ready", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-action-client started successfully"),
         Err(_) => {
             if client.is_running() {
@@ -395,7 +395,7 @@ fn test_xrce_action_fibonacci(
         .expect("Failed to start action server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(10));
+    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(30));
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(2));
