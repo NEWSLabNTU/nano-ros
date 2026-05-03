@@ -59,24 +59,39 @@ default:
 # Entry Points
 # =============================================================================
 
-# Default build: refresh bindings + native + embedded workspace + the
-# two transport runtimes (zenohd, zenoh-pico). Examples and per-RTOS
-# fixtures are excluded — most dev iterations don't need them. Use
-# `just build-all` (or the per-RTOS recipes directly) when you do.
+# Build tiers (each tier is a strict superset of the previous):
+#
+#   build               workspace (native + embedded) + transports (zenohd, zenoh-pico).
+#                       Fast — typical dev iteration.
+#   build-examples      `build` + every example crate + per-RTOS example builds
+#                       (native, freertos, threadx_linux, threadx_riscv64).
+#                       Use to verify the example matrix compiles.
+#   build-test-fixtures Per-test staged binaries: feature variants
+#                       (--target-dir target-tls / target-safety / target-zero-copy
+#                       / target-large-buf) and C / C++ fixture binaries built via
+#                       cmake. Required before `just test-all`.
+#   build-all           = build-examples + build-test-fixtures. True superset.
+#                       Slow — expect 15-40 min depending on machine.
+#
+# Default `build` recipe: refresh bindings + workspace + transports.
 build: \
     install-local generate-bindings \
     build-workspace build-workspace-embedded \
     build-zenohd qemu::build-zenoh-pico
-    @echo 'Workspace + transports built. Run "just build-all" for examples + per-RTOS fixtures.'
+    @echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build-test-fixtures" for `test-all` staging, or "just build-all" for everything.'
 
-# Heavy build — everything that the old `just build` covered: workspace
-# + every example crate + per-RTOS fixtures. Use for full CI
-# verification or when you want to pre-populate caches before a flight
-# of tests. Slow; expect 5-15 min depending on machine.
-build-all: build \
+# `build` + every example crate + per-RTOS example builds (native,
+# freertos, threadx_linux, threadx_riscv64). Use to verify the
+# example matrix still compiles after a core change.
+build-examples: build \
     native::build \
     freertos::build threadx_linux::build threadx_riscv64::build
-    @echo "All builds completed!"
+    @echo "Workspace + examples built."
+
+# True superset: workspace + every example + per-test fixture variants.
+# Pre-populates everything `just test-all` consumes. Slow.
+build-all: build-examples build-test-fixtures
+    @echo "All builds completed (workspace + examples + test fixtures)."
 
 # Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
 # Builds posix (zenoh + xrce) unconditionally, then platform-specific libraries when toolchains are available.
