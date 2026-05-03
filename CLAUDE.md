@@ -163,25 +163,23 @@ Archived in `docs/roadmap/archived/`. See `docs/roadmap/` for active.
 | 87 | nros-cpp compile-time storage sizes | Complete |
 | 88 | Unified leveled logging (`nros-log`) | Not Started |
 | 89 | `just test-all` triage (675/675) | Complete |
-| 90 | PX4 RMW + `nros-px4` board (SITL E2E) | v1 + 90.5b Complete |
+| 90 | PX4 RMW + `nros-px4` board (SITL E2E) | Archived (v1 + 90.5b Complete) |
 | 91 | Antipattern fixup | Complete |
 | 92 | Zephyr DDS on `qemu_cortex_a9` | Complete |
 | 93 | C/C++ Doxygen + porting surface | Complete |
 | 95 | Example coverage parity (51 new crates) | Archived |
-| 96 | Phase 95 cross-process E2E follow-ups | Complete |
-| 97 | DDS per-platform examples + E2E (6/7 slices; esp32-qemu deferred) | Complete |
-| 98 | PX4-Autopilot vendoring + SITL infra | Complete |
-| 99 | Zero-copy raw pub/sub API (SITL E2E green) | v1 Complete |
+| 96 | Phase 95 cross-process E2E follow-ups | Archived (Complete) |
+| 97 | DDS per-platform examples + E2E | Archived (6/7 slices Complete; esp32-qemu deferred to 101) |
+| 98 | PX4-Autopilot vendoring + SITL infra | Archived (Complete) |
+| 99 | Zero-copy raw pub/sub API | Archived (v1 Complete; post-v1 99.J/99.K open) |
 | 100 | AGX Orin SPE (Cortex-R5F + IVC) | Not Started |
 | 101 | `portable-atomic-util::Arc` substitution | Not Started |
-| 102 | RMW API alignment (`nros_rmw_ret_t` + entity structs) | Complete |
-| 103 | RMW typed-loan path | Cancelled (superseded by 99 + 99.L) |
+| 102 | RMW API alignment (`nros_rmw_ret_t` + entity structs) | Archived (Complete) |
+| 103 | RMW typed-loan path | Archived (Cancelled — superseded by 99 + 99.L) |
 | 104 | Multi-backend support (cross-domain bridges) | Not Started |
-| 105 | `drive_io` RTOS cooperation | Not Started |
-| 106 | Timer/GC interleaving in `drive_io` | Not Started |
-| 107 | Wall-clock time budget per `drive_io` | Not Started |
-| 108 | RMW status events: API + FFI surface | Not Started |
-| 109 | Full DDS-shaped QoS profile: API surface | Not Started |
+| 105 | `drive_io` cooperation surface (next_deadline_ms + max_callbacks + timer/GC interleaving + time budget) | Not Started |
+| 108 | RMW surface extensions (status events + full DDS-shaped QoS) | Not Started |
+| 110 | RT execution model (intra-executor scheduling: SchedContext, EDF, Bucketed, multi-executor) | Not Started |
 
 ## Quick Reference
 

@@ -7,7 +7,7 @@ test reuses `px4-sitl-tests`'s `Px4Sitl::boot_in()` fixture for
 subprocess management; nano-ros only writes the build-invocation
 wrapper.
 
-**Status:** Not Started
+**Status:** Complete (Phase 90 SITL E2E green via this infra; see CLAUDE.md status table)
 
 **Priority:** P1 (unblocks Phase 90 v1 acceptance)
 
