@@ -177,9 +177,8 @@ Archived in `docs/roadmap/archived/`. See `docs/roadmap/` for active.
 | 102 | RMW API alignment (`nros_rmw_ret_t` + entity structs) | Archived (Complete) |
 | 103 | RMW typed-loan path | Archived (Cancelled — superseded by 99 + 99.L) |
 | 104 | Multi-backend support (cross-domain bridges) | Not Started |
-| 105 | `drive_io` cooperation surface (next_deadline_ms + max_callbacks + timer/GC interleaving + time budget) | Not Started |
 | 108 | RMW surface extensions (status events + full DDS-shaped QoS) | Not Started |
-| 110 | RT execution model (intra-executor scheduling: SchedContext, EDF, Bucketed, multi-executor) | Not Started |
+| 110 | RT execution model (incl. RMW `next_deadline_ms`; absorbs former Phase 105) | Not Started |
 
 ## Quick Reference
 

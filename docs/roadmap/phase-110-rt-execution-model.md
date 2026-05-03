@@ -6,7 +6,7 @@
 
 **Priority:** High
 
-**Depends on:** Phase 79 (PlatformYield trait), Phase 76 (config.toml plumbing), Phase 77 (`zpico_spin_once` wake primitive). Coordinates with Phase 94 (RTOS orchestration — emits per-callback `SchedContext` bindings from launch manifests in future) and Phase 88 (nros-log — uses `BestEffort` SC for log sinks).
+**Depends on:** Phase 79 (PlatformYield trait), Phase 76 (config.toml plumbing), Phase 77 (`zpico_spin_once` wake primitive). Coordinates with Phase 94 (RTOS orchestration — emits per-callback `SchedContext` bindings from launch manifests in future) and Phase 88 (nros-log — uses `BestEffort` SC for log sinks). **Absorbs former Phase 105** — the RMW-side `Session::next_deadline_ms` work lives here as 110.0; former 105's `max_callbacks` + timer/GC interleaving + wall-clock budget are all subsumed by 110.A's Activator + ReadySet design (cap and budget enforcement live in the executor's dispatch loop, not in `drive_io`).
 
 **Design:** [docs/design/rt-execution-model.md](../design/rt-execution-model.md)
 
@@ -40,8 +40,9 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
 
 ## Work Items
 
-### v1 (Phases 110.A–110.D — required)
+### v1 (Phases 110.0–110.D — required)
 
+- [ ] 110.0 — `Session::next_deadline_ms()` RMW trait method + per-backend impls (RMW-side, lands first or in parallel)
 - [ ] 110.A — Refactor: `Activator + ReadySet + Dispatcher` + ISR SPSC ring (behavioural no-op)
 - [ ] 110.B — `SchedContext` API + `OptUs` newtype + `EdfReadySet`
 - [ ] 110.C — `BucketedFifoSet<N>` + `BucketedEdfSet<N>` (HSE-style criticality split)
@@ -52,6 +53,62 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
 - [ ] 110.E — `SchedClass::Sporadic` + budget refill timer (NuttX-native + user-space fallback)
 - [ ] 110.F — `OsPrioritySet` (PiCAS-style, opt-in)
 - [ ] 110.G — `SchedClass::TimeTriggered` (ARINC-653-style cyclic executive)
+
+---
+
+### 110.0 — `Session::next_deadline_ms()` RMW trait method (RMW-side prerequisite)
+
+The backend internally schedules events: zenoh-pico's lease keepalive, XRCE-DDS's session ping, dust-DDS's heartbeats. The executor's `spin_once` should cap its `drive_io` timeout against the soonest of (user_timeout, timer_deadline, this) — otherwise on quiet links the backend wakes early, sees no user-visible work, calls `drive_io` again. Wasted round-trips.
+
+```rust
+pub trait Session {
+    /// Backend's next internal-event deadline (keepalive, heartbeat,
+    /// lease expiry). The runtime caps its `drive_io` timeout against
+    /// `min(user_timeout, timer_deadline, this)`. Returns `None` if
+    /// the backend has no internal deadlines or chooses not to expose
+    /// them.
+    fn next_deadline_ms(&self) -> Option<u32> { None }
+}
+```
+
+C side — optional vtable function pointer (NULL = no deadline):
+
+```c
+typedef struct nros_rmw_vtable_t {
+    /* … */
+    int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
+} nros_rmw_vtable_t;
+```
+
+**Backend opt-in matrix:**
+
+| Backend | Deadline source | Plan |
+|---------|-----------------|------|
+| zenoh-pico | Lease keepalive interval | Track `last_keepalive_sent + LEASE_INTERVAL` in shim. ~15 LOC. |
+| dust-DDS | Per-writer heartbeat period; per-reader ACK-NACK timeout; participant liveliness lease | Implement `DdsRuntime::next_event_time`. ~30 LOC. |
+| XRCE-DDS | Heartbeat to agent; session ping | Mirror in shim: `last_run + heartbeat_period - now()`. ~15 LOC. |
+| uORB | None — intra-process, no keepalives | Keep default `None`. 0 LOC. |
+
+110.A's refactored `spin_once` consumes this trait method when computing `effective_timeout`:
+
+```rust
+let next_timer = self.timers.next_deadline_ms();
+let next_session = self.session.next_deadline_ms();
+let effective_timeout = [Some(user_timeout), next_timer, next_session]
+    .into_iter().flatten().min().unwrap();
+```
+
+**Files:**
+
+- `packages/core/nros-rmw/src/traits.rs` — `Session::next_deadline_ms` default trait method.
+- `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h` — optional vtable function pointer.
+- `packages/core/nros-rmw-cffi/src/lib.rs` — Rust mirror.
+- `packages/zpico/nros-rmw-zenoh/src/` — zenoh lease deadline tracking.
+- `packages/dds/nros-rmw-dds/src/` — dust-DDS min-over-entities.
+- `packages/xrce/nros-rmw-xrce/src/` — XRCE heartbeat schedule mirror.
+- Tests: per-backend test that verifies `next_deadline_ms` caps the wait to the keepalive interval on a quiet link.
+
+**Acceptance:** zenoh-pico `next_deadline_ms` keeps drive_io from waking sooner than the lease deadline + tolerance band on a quiet link (verified by counting drive_io return events in a 30 s window). Independent of 110.A — can land first or in parallel.
 
 ---
 
@@ -225,9 +282,10 @@ ARINC-653-style outer time-triggered + inner priority. Major-frame schedule tabl
 
 ## Acceptance Criteria
 
-### v1 (110.A–110.D)
+### v1 (110.0–110.D)
 
 - [ ] `just test-all` green w/ `Scheduler::Fifo` (default) — bit-identical to today.
+- [ ] zenoh-pico `next_deadline_ms` keeps drive_io from waking sooner than the lease deadline + tolerance band on a quiet link, verified by counting drive_io return events in a 30 s window (110.0).
 - [ ] EDF dispatch order verified under contention (110.B).
 - [ ] Bucketed criticality dispatch order verified (110.C).
 - [ ] **Drone scenario S1 meets 1 ms deadline** under sustained 5 ms BE-load on Linux + NuttX (110.D required).
@@ -298,3 +356,16 @@ OSEK lesson: pick at config / build time so MCU builds drop unused scheduler cod
 - `feature = "scheduler-time-triggered"` (110.G)
 
 Runtime selection only when multiple are compiled in.
+
+### Absorbed from former Phase 105
+
+Former Phase 105 was an earlier attempt at the same problem at the RMW / `drive_io` layer. Phase 110's executor refactor obsoletes most of it:
+
+| Former Phase 105 item | Outcome under Phase 110 |
+|-----------------------|---------------------------|
+| 105.A `Session::next_deadline_ms` | **Absorbed as 110.0** — RMW trait method that 110.A's `spin_once` consumes when computing `effective_timeout`. |
+| 105.A `max_callbacks` cap on `drive_io` | **Subsumed by 110.A** — cap lives in the executor's dispatch loop (`while ready.pop_next()`) via `DrainMode::Latched` (default; drains snapshot only) or an optional `MaxCount(usize)` variant. Doesn't need a `drive_io` parameter. |
+| 105.B Timer/GC interleaving INTO `drive_io` | **Obsoleted by 110.A** — 110's `Activator::scan` runs *after* `drive_io` returns and unifies all callback sources (subs, services, timers, GCs) under one ready-set scan. No need to push timer/GC schedulers into the backend. |
+| 105.C Wall-clock time budget per `drive_io` | **Subsumed by 110.A** — `ExecutorConfig::cycle_budget_us` enforces wall-clock budget at the executor's dispatch loop, not at `drive_io`. Same primitive, cleaner layering. |
+
+The earlier 105 design was correct in identifying the problems but wrong about which layer should own the solution. Pushing scheduling concerns into the backend's `drive_io` couples every backend to scheduler internals; pulling them up to the executor (110) keeps backends transport-only.
