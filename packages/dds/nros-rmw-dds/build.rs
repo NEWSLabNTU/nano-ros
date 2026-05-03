@@ -5,23 +5,33 @@
 // user-data to localhost and never reach us across guest VMs.
 //
 // Resolution order:
-//   1. `NROS_LOCAL_IPV4` env var (explicit override).
-//   2. `CONFIG_NET_CONFIG_MY_IPV4_ADDR` parsed from Zephyr's `.config`
-//      (path supplied via the `DOTCONFIG` env var that
-//      `rust_cargo_application()` exports). This is the path used
-//      by Zephyr-Rust embedded targets — the upstream cmake helper
-//      doesn't propagate arbitrary env vars to cargo, but
-//      `DOTCONFIG` is in its allow-list so we read .config directly.
-//   3. `127.0.0.1` (keeps native_sim NSOS host-loopback path
-//      working unchanged).
+//   1. `CONFIG_NET_CONFIG_MY_IPV4_ADDR` parsed from Zephyr's `.config`
+//      when `DOTCONFIG` is present and contains a non-empty value.
+//      This is authoritative for embedded Zephyr boards
+//      (qemu_cortex_a9 + Xilinx GEM, ESP32 + WiFi, …) that hard-pin
+//      a real interface IP via `boards/<board>.conf`.
+//   2. `NROS_LOCAL_IPV4` env var (explicit override). Used by
+//      `native_sim` examples that bypass the Zephyr IP stack via
+//      NSOS — `.config` has no `CONFIG_NET_CONFIG_MY_IPV4_ADDR` set
+//      there, but `.cargo/config.toml` provides distinct loopback
+//      IPs (e.g. 127.0.0.10 / 127.0.0.20) so two sibling
+//      `native_sim` processes derive different RTPS GUID prefixes.
+//   3. `127.0.0.1` (final fallback for non-Zephyr POSIX builds).
+//
+// Order is `.config` first so an a9 / ESP32 build automatically
+// inherits its real interface IP without per-example
+// `.cargo/config.toml` patching — earlier the order was reversed
+// and the `NROS_LOCAL_IPV4 = "127.0.0.20"` line that native_sim
+// needs was poisoning the a9 build, producing SPDP locators of
+// `127.0.0.20:7410` instead of `192.0.2.2:7410`. Cross-VM SEDP
+// then never reached the listener.
 
 fn main() {
     println!("cargo:rerun-if-env-changed=NROS_LOCAL_IPV4");
     println!("cargo:rerun-if-env-changed=DOTCONFIG");
 
-    let ip = std::env::var("NROS_LOCAL_IPV4")
-        .ok()
-        .or_else(read_kconfig_ipv4)
+    let ip = read_kconfig_ipv4()
+        .or_else(|| std::env::var("NROS_LOCAL_IPV4").ok())
         .unwrap_or_else(|| "127.0.0.1".to_string());
     let octets: Vec<u8> = ip
         .split('.')
