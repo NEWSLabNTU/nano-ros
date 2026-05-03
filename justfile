@@ -223,10 +223,40 @@ check: \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
-# Run unit tests only (no external dependencies)
+# Test tiers (each tier is a strict superset of the previous):
+#
+#   test-unit         workspace lib/bin tests except nros-tests crate.
+#                     ~5s, no external deps.
+#   test-integration  nros-tests integration tests excluding heavy QEMU /
+#                     Zephyr / ROS-2-interop groups. ~30s, needs zenohd.
+#   test              = test-unit + test-integration. Default dev tier.
+#                     No miri, no heavy QEMU/Zephyr.
+#   test-doc          rustdoc doctests for the `nros` umbrella crate.
+#   test-miri         Miri UB scan on embedded-safe crates. Standalone, ~min.
+#   test-all          = test + heavy QEMU / Zephyr / threadx-linux /
+#                     ros2-interop groups + test-doc + test-miri + C codegen.
+#                     True superset, requires `just build-test-fixtures` first.
+#
+# Per-platform tests (just <plat> test|test-all|ci) are organized in
+# the matching just/<plat>.just files — see CLAUDE.md for the matrix.
+
+# Workspace lib/bin/unit tests, excluding the integration crate.
 test-unit verbose="":
     #!/usr/bin/env bash
     args=(--workspace --exclude nros-tests --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
+# Filters mirror the `test` recipe's `-E` predicate, just scoped to
+# `package(nros-tests)` so the workspace unit tests aren't re-run.
+test-integration verbose="": build-zenohd
+    #!/usr/bin/env bash
+    set -e
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
+    args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -292,21 +322,17 @@ _test-summary:
     fi
     echo "Real failures: $real / $total total failures"
 
-# Run standard tests (fast path — skips heavy external-dep binaries).
+# Default dev tier — workspace unit tests + integration tests, with
+# heavy QEMU / Zephyr / ROS-2-interop groups skipped. Does NOT run
+# Miri (use `test-miri` or `test-all` for that).
 #
-# The exclusion keys off nextest test-groups: any binary assigned to
-# `qemu-{baremetal,freertos,nuttx,threadx-riscv,esp32,zephyr}`,
-# `threadx-linux`, `ros2-interop`, or `xrce_ros2_interop` in
-# `.config/nextest.toml` is skipped. When a new heavy test binary
-# lands, assign it to one of those groups via an override entry and
-# this recipe will pick it up automatically. (The former single
-# `qemu-serial` group was split into per-platform groups in
-# Phase 89.1 so platforms run in parallel; `large_msg` merged into
-# `qemu-baremetal` since it shares the 7450 port.)
-#
-# `group(...)` is a CLI-only filter predicate (nextest 0.9.133+), so
-# the list lives here rather than under a `[profile.fast]`
-# default-filter.
+# Heavy groups are skipped via a CLI `-E` predicate keyed off nextest
+# test-groups (`qemu-{baremetal,freertos,nuttx,threadx-riscv,esp32,zephyr}`,
+# `threadx-linux`, `ros2-interop`, `xrce_ros2_interop`). New heavy
+# binaries inherit the skip by assigning to one of those groups in
+# `.config/nextest.toml`. `group(...)` is a CLI-only predicate
+# (nextest 0.9.133+), so the list lives here rather than under a
+# `[profile.fast]` default-filter.
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
@@ -325,15 +351,12 @@ test verbose="": build-zenohd
     echo ""
     just _test-summary
     echo ""
-    echo "=== Miri ==="
-    just test-miri || failed=1
-    echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1
     else
-        echo "All standard tests passed!"
+        echo "All standard tests passed! (Miri skipped — run \`just test-miri\` or \`just test-all\`.)"
     fi
 
 # Pre-build every example binary the test suite reaches.
@@ -377,6 +400,9 @@ test-all verbose="": build-zenohd
     echo ""
     just _test-summary
     echo ""
+    echo "=== Doctests ==="
+    just test-doc || failed=1
+    echo ""
     echo "=== Miri ==="
     just test-miri || failed=1
     echo ""
@@ -392,8 +418,9 @@ test-all verbose="": build-zenohd
         echo "All tests passed!"
     fi
 
-# Run CI: format check + clippy + tests + doctests (never modifies code)
-ci: check test test-doc
+# Run CI: format check + clippy + every test tier (never modifies code).
+# `test-all` already covers test-doc + test-miri internally.
+ci: check test-all
     @echo "CI passed!"
 
 # =============================================================================
@@ -560,9 +587,6 @@ check-python:
     ruff format --check packages/codegen/packages/colcon-cargo-ros2/
     ruff check packages/codegen/packages/colcon-cargo-ros2/
     @echo "All Python checks passed!"
-
-# Alias for test-unit (backward compatibility)
-test-workspace verbose="": (test-unit verbose)
 
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 test-miri:
