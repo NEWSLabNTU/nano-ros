@@ -32,15 +32,34 @@ zephyr/           # Zephyr module
 ```bash
 just setup              # install everything (workspace + verification + platforms + services)
 just doctor             # diagnose install (read-only)
-just build              # bindings + workspace + examples
 just check              # fmt + clippy
-just ci                 # check + test
+just ci                 # check + test-all (full CI)
 just verify             # Kani + Verus
 just generate-bindings  # regenerate generated/ dirs
 just <module> setup     # per-module setup; modules: workspace, verification, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32, zephyr, xrce, zenohd
 ```
 
-Tests: `just test-unit`, `just test-miri`, `just test`, `just test-all`, `just <plat> test|test-all|ci`.
+**Build tiers** (each strict superset of previous):
+| Recipe | Scope |
+|---|---|
+| `just build` | workspace (native + embedded) + transports (zenohd, zenoh-pico) — fast dev iter |
+| `just build-examples` | + every example crate + per-RTOS example builds |
+| `just build-test-fixtures` | per-test staged binaries (`--target-dir` feature variants + C/C++ via cmake) |
+| `just build-all` | `build-examples` + `build-test-fixtures` (true superset) |
+
+**Test tiers** (each strict superset of previous):
+| Recipe | Scope |
+|---|---|
+| `just test-unit` | workspace lib/bin tests, no integration (~5s) |
+| `just test-integration` | nros-tests integration minus heavy QEMU/Zephyr groups (~30s) |
+| `just test` | `test-unit` + `test-integration` (default, no Miri) |
+| `just test-doc` | rustdoc doctests |
+| `just test-miri` | Miri UB scan, standalone (~min) |
+| `just test-all` | `test` + heavy QEMU/Zephyr/ROS-interop + `test-doc` + `test-miri` + C codegen |
+
+Per-platform: `just <plat> test|test-all|ci`.
+
+**Speed knobs:** GNU `parallel` auto-used when present (example build/check); set `RUSTC_WRAPPER=sccache` (auto-detected at justfile parse) for cross-recipe rustc cache.
 
 ## Environment
 
