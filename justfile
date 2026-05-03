@@ -4,6 +4,14 @@ set dotenv-load
 # `[workspace.lints]` (and per-crate `[lints] workspace = true`). The
 # old `CLIPPY_LINTS` string passed through `--` is no longer needed.
 
+# Opt-in rustc wrapper. When `sccache` is on `PATH`, every `cargo`
+# invocation under any `just` recipe shares its compilation cache —
+# big win across per-example builds that recompile the same
+# `nros-core` / `heapless` / etc. crates over and over. When sccache
+# is absent the variable is empty, which cargo treats as unset
+# (verified on cargo 1.95).
+export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || true`
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
@@ -51,13 +59,23 @@ default:
 # Entry Points
 # =============================================================================
 
-# Build everything: refresh bindings, workspace (native + embedded), all examples, and test deps
+# Default build: refresh bindings + native + embedded workspace + the
+# two transport runtimes (zenohd, zenoh-pico). Examples and per-RTOS
+# fixtures are excluded — most dev iterations don't need them. Use
+# `just build-all` (or the per-RTOS recipes directly) when you do.
 build: \
     install-local generate-bindings \
     build-workspace build-workspace-embedded \
-    native::build \
-    freertos::build threadx_linux::build threadx_riscv64::build \
     build-zenohd qemu::build-zenoh-pico
+    @echo 'Workspace + transports built. Run "just build-all" for examples + per-RTOS fixtures.'
+
+# Heavy build — everything that the old `just build` covered: workspace
+# + every example crate + per-RTOS fixtures. Use for full CI
+# verification or when you want to pre-populate caches before a flight
+# of tests. Slow; expect 5-15 min depending on machine.
+build-all: build \
+    native::build \
+    freertos::build threadx_linux::build threadx_riscv64::build
     @echo "All builds completed!"
 
 # Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
