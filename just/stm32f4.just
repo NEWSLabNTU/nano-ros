@@ -14,7 +14,6 @@ build-fixtures:
     echo "Building STM32F4 test fixtures..."
     rust_examples=(
         talker
-        listener
         rtic-talker
         rtic-listener
         rtic-service-server
@@ -22,23 +21,15 @@ build-fixtures:
         rtic-action-server
         rtic-action-client
     )
-    # Best-effort: report failures but don't abort `build-test-fixtures`.
-    # Recent core-side static-buffer growth (Phase 99.M handles.rs)
-    # pushes some RTIC binaries past the 192 KB SRAM1 budget; the
-    # talker/listener pair still fits and is what `test-all` cares
-    # about for build-only verification.
-    failed=0
+    # Strict: abort on the first per-example failure. Per-example RAM
+    # tuning (e.g. `NROS_SUBSCRIPTION_BUFFER_SIZE` in the example's
+    # `.cargo/config.toml`) is the right place to fix overflows now.
     for ex in "${rust_examples[@]}"; do
         dir="examples/stm32f4/rust/zenoh/$ex"
         if [ ! -d "$dir" ]; then
-            echo "  skip $dir (missing)"; continue
+            echo "ERROR: $dir missing"
+            exit 1
         fi
         echo "  → stm32f4/rust/$ex"
-        if ! ( cd "$dir" && cargo build --release --target thumbv7em-none-eabihf --quiet ); then
-            echo "  FAIL stm32f4/rust/$ex (continuing)"
-            failed=$((failed+1))
-        fi
+        ( cd "$dir" && cargo build --release --target thumbv7em-none-eabihf --quiet )
     done
-    if [ "$failed" -gt 0 ]; then
-        echo "STM32F4 fixtures: $failed failed (best-effort, continuing)"
-    fi
