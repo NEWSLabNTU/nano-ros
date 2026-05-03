@@ -11,25 +11,35 @@ Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C head
 
 **Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend phases.
 
-**Depends on:** Phase 102 (typed entity structs, `nros_rmw_ret_t`), Phase 105 (`max_callbacks` cap; events count against it the same as message callbacks).
+**Depends on:** Phase 102 (typed entity structs, `nros_rmw_ret_t`), Phase 110 (Activator + ReadySet — events count as ready callbacks under `DrainMode::Latched` and against the dispatch loop's count cap; `OptUs` newtype + sentinel-`0` ABI convention reused for time fields).
 
 ---
 
 ## Background
 
+### Event tier vocabulary
+
+| Tier | Events | Why grouped |
+|------|--------|-------------|
+| **Tier-1 (this phase)** | LivelinessChanged, RequestedDeadlineMissed, MessageLost, LivelinessLost, OfferedDeadlineMissed | Steady-state runtime events that fire repeatedly during normal operation; drive RTOS-side fail-over / alarm / drop logic. |
+| **Tier-2 (deferred)** | Matched, QosIncompatible, IncompatibleType | Discovery-time events that fire once at startup in static-topology embedded apps. Surface via existing `nros_rmw_ret_t` codes at create-time instead. Re-evaluate if dynamic-discovery apps appear. |
+| **Tier-3 (deferred)** | SampleRejected, RequestedIncompatibleQos (DDS-spec extras) | DDS-spec events with no clear RTOS use case. Skip indefinitely. |
+
+Tier-1 use cases:
+
+| Event                                     | Use case                                                                                                                |
+|-------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| **Liveliness changed (sub) / lost (pub)** | Safety-island fail-over: when a remote control node goes silent, trigger MRM. Drone bridge: detect PX4 commander stall. |
+| **Deadline missed (sub / pub)**           | Periodic-pubsub safety: 100 Hz sensor topic; if a sample doesn't arrive within deadline, alarm or fail-over.            |
+| **Message lost (sub)**                    | Slow-consumer diagnostic: ring buffer overflow signals the app to drop / coalesce / log.                                |
+
 ### 108.A — Why callbacks, not waitset-take
 
-Three classes of transport-level status are useful on RTOS:
+Upstream uses `rmw_event_t` handles in a waitset; `rmw_wait` returns when an event fires; `rmw_take_event` pulls the payload. Two-phase, per-call. Adopting it would require a waitset abstraction we deliberately don't have. Replace with **callback-on-entity** — backend's RX worker detects event, runs registered callback inline. Reuses existing `drive_io` callback dispatch path; events count as ready callbacks in Phase 110's `ReadySet` (one ready bit per event-callback subscription, drained alongside message callbacks); matches message-callback ergonomics.
 
-| Event | Use case |
-|-------|----------|
-| **Liveliness changed (sub) / lost (pub)** | Safety-island fail-over: when a remote control node goes silent, trigger MRM. Drone bridge: detect PX4 commander stall. |
-| **Deadline missed (sub / pub)** | Periodic-pubsub safety: 100 Hz sensor topic; if a sample doesn't arrive within deadline, alarm or fail-over. |
-| **Message lost (sub)** | Slow-consumer diagnostic: ring buffer overflow signals the app to drop / coalesce / log. |
+### Why no `Box<dyn FnMut>` callbacks
 
-Three more (`MATCHED`, `QOS_INCOMPATIBLE`, `INCOMPATIBLE_TYPE`) exist in upstream but are mostly diagnostic — fire once at startup in static-topology embedded apps. Skip them for now; surface via existing `nros_rmw_ret_t` codes at create-time instead.
-
-Upstream uses `rmw_event_t` handles in a waitset; `rmw_wait` returns when an event fires; `rmw_take_event` pulls the payload. Two-phase, per-call. Adopting it would require a waitset abstraction we deliberately don't have. Replace with **callback-on-entity** — backend's RX worker detects event, runs registered callback inline. Reuses existing `drive_io` callback dispatch path; counts against Phase 105's `max_callbacks` cap; matches message-callback ergonomics.
+nano-ros is no_std + heapless across all backends. Phase 110 explicitly forbids alloc-style indirection at the executor surface. Phase 108 follows suit: callbacks are raw function pointers + user-context `void*`, identical between Rust and C. Rust generic helpers wrap closures into static trampolines at call sites (same pattern as today's `add_subscription` for typed messages).
 
 ### 108.B — Why full QoS now
 
@@ -62,15 +72,18 @@ So the "subset" framing is no longer load-bearing. Surface the full shape; let b
 ```rust
 // packages/core/nros-rmw/src/event.rs (new)
 
+#[non_exhaustive]
+#[repr(u8)]
 pub enum EventKind {
-    LivelinessChanged,            // subscriber
-    RequestedDeadlineMissed,      // subscriber
-    MessageLost,                  // subscriber
-    LivelinessLost,               // publisher
-    OfferedDeadlineMissed,        // publisher
+    LivelinessChanged       = 0,  // subscriber
+    RequestedDeadlineMissed = 1,  // subscriber
+    MessageLost             = 2,  // subscriber
+    LivelinessLost          = 3,  // publisher
+    OfferedDeadlineMissed   = 4,  // publisher
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct LivelinessChangedStatus {
     pub alive_count: u16,
     pub not_alive_count: u16,
@@ -79,40 +92,47 @@ pub struct LivelinessChangedStatus {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DeadlineMissedStatus {
+#[repr(C)]
+pub struct CountStatus {
     pub total_count: u32,
     pub total_count_change: u32,
 }
+// Used for RequestedDeadlineMissed, MessageLost, LivelinessLost,
+// OfferedDeadlineMissed — same shape.
 
-#[derive(Debug, Clone, Copy)]
-pub struct MessageLostStatus {
-    pub total_count: u32,
-    pub total_count_change: u32,
-}
+// EventPayload is laid out as a tagged union shared with the C
+// vtable (kind + payload union). See `EventPayload` in nros-rmw-cffi.
 
-pub enum EventPayload<'a> {
-    LivelinessChanged(&'a LivelinessChangedStatus),
-    RequestedDeadlineMissed(&'a DeadlineMissedStatus),
-    MessageLost(&'a MessageLostStatus),
-    LivelinessLost(&'a DeadlineMissedStatus),
-    OfferedDeadlineMissed(&'a DeadlineMissedStatus),
-}
+/// Raw callback signature. Identical Rust + C ABI. No alloc.
+/// `payload_kind` selects the variant of `payload_ptr`. `user_ctx`
+/// is opaque application state passed at registration.
+pub type EventCallback = unsafe extern "C" fn(
+    payload_kind: EventKind,
+    payload_ptr: *const core::ffi::c_void,
+    user_ctx: *mut core::ffi::c_void,
+);
 
 pub trait Subscriber {
     fn supports_event(&self, _kind: EventKind) -> bool { false }
 
-    fn register_event_callback(
+    /// Register a raw callback. `deadline_ms` consulted only for
+    /// `RequestedDeadlineMissed`; `0` = use SC-bound deadline.
+    /// Returns `Err(Unsupported)` if backend doesn't generate this
+    /// event for this entity. SAFETY: `cb` must remain valid for
+    /// entity lifetime; `user_ctx` likewise.
+    unsafe fn register_event_callback(
         &mut self,
         kind: EventKind,
         deadline_ms: u32,
         cb: EventCallback,
+        user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), Self::Error>;
 }
-
-pub type EventCallback = alloc::boxed::Box<dyn FnMut(EventPayload<'_>) + Send>;
 ```
 
 Same shape on `Publisher`. Default `supports_event = false`; default `register_event_callback = Err(Unsupported)`. Backends override per event kind.
+
+Closure ergonomics on `nros-node`: typed wrappers store the closure in a per-callback slot (allocated from the executor arena, not the heap), generate a static `unsafe extern "C" fn` trampoline that downcasts `user_ctx` and invokes the closure. Same pattern as today's `add_subscription::<M, F>(topic, closure)` — closure lifetime tied to the entity, no heap.
 
 C vtable extension:
 
@@ -171,17 +191,20 @@ User-facing API (`nros-node`):
 
 ```rust
 impl<M: Message> Subscription<M> {
+    /// Closure stored in entity arena; trampoline generated at compile time.
+    /// No heap allocation. Returns `Err(Unsupported)` if backend doesn't
+    /// generate this event for this entity.
     pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<()>
-    where F: FnMut(LivelinessChangedStatus) + Send + 'static;
+    where F: FnMut(LivelinessChangedStatus) + 'static;
 
     pub fn on_requested_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
         cb: F,
-    ) -> Result<()> where F: FnMut(DeadlineMissedStatus) + Send + 'static;
+    ) -> Result<()> where F: FnMut(CountStatus) + 'static;
 
     pub fn on_message_lost<F>(&mut self, cb: F) -> Result<()>
-    where F: FnMut(MessageLostStatus) + Send + 'static;
+    where F: FnMut(CountStatus) + 'static;
 }
 
 impl<M: Message> Publisher<M> {
@@ -190,7 +213,9 @@ impl<M: Message> Publisher<M> {
 }
 ```
 
-Async equivalents (`next_liveliness_change()` etc.) return `Future`, mirror message-future path.
+`'static` (not `Send`) — entity is single-thread-owned by its Executor; closure inherits.
+
+Async equivalents (`next_liveliness_change().await` etc.) — Future variant via Phase 99's waker plumbing. Single shared `EventFuture` poll path; no heap allocation; same machinery as `Subscription::recv().await`. Optional, behind `feature = "async"`.
 
 ### 108.B — Full QoS shape
 
@@ -207,20 +232,41 @@ typedef struct nros_rmw_qos_t {
     uint8_t  reliability;
     uint8_t  durability;
     uint8_t  history;
-    uint8_t  liveliness_kind;
+    uint8_t  liveliness_kind;            /* repurposed from former _reserved0 */
     uint16_t depth;
-    uint16_t _reserved0;
+    uint16_t _reserved0;                 /* renamed from former _reserved1 */
 
     /* ---- 108.B extensions (16 bytes). ---- */
     uint32_t deadline_ms;                /* 0 = infinite */
     uint32_t lifespan_ms;                /* 0 = infinite */
     uint32_t liveliness_lease_ms;        /* 0 = infinite */
-    bool     avoid_ros_namespace_conventions;
+    uint8_t  avoid_ros_namespace_conventions;  /* 0 = false, nonzero = true */
     uint8_t  _reserved1[3];
 } nros_rmw_qos_t;                        /* 24 bytes */
 ```
 
-Sentinel `0` = "policy off / infinite" matches Phase 110 `OptUs` ABI convention.
+Avoid C99 `_Bool` for ABI stability — `sizeof(_Bool)` is impl-defined; use `uint8_t` w/ documented `0/nonzero` convention. Sentinel `0` for time fields = "policy off / infinite" matches Phase 110 `OptUs` ABI convention.
+
+Rust mirror uses `OptUs` (Phase 110) for the time fields:
+
+```rust
+#[repr(C)]
+pub struct NrosRmwQos {
+    pub reliability: u8,
+    pub durability: u8,
+    pub history: u8,
+    pub liveliness_kind: u8,
+    pub depth: u16,
+    pub _reserved0: u16,
+    pub deadline: OptUs,           // ← Phase 110 newtype
+    pub lifespan: OptUs,           // ← Phase 110 newtype
+    pub liveliness_lease: OptUs,   // ← Phase 110 newtype
+    pub avoid_ros_namespace_conventions: u8,
+    pub _reserved1: [u8; 3],
+}
+```
+
+Single shared newtype across both phases — one definition site, consistent semantics.
 
 Standard profile constants matching upstream (`NROS_RMW_QOS_PROFILE_DEFAULT`, `_SENSOR_DATA`, `_SERVICES_DEFAULT`, `_SYSTEM_DEFAULT`, `_PARAMETERS`).
 
@@ -268,7 +314,18 @@ C side: `nros_publisher_assert_liveliness(pub) -> nros_ret_t`. Default impl no-o
 
 ### Storage budget
 
-Per registered event-callback: 8 B function ptr + 8 B context + 16-32 B status counters ≈ 32-48 B inline. Subscriber w/ liveliness + deadline + message-lost ≈ 96 B. Bounded; fits in executor arena. Apps not registering events pay zero.
+Per registered event-callback (64-bit pointer target):
+- 8 B function pointer (`EventCallback`)
+- 8 B `user_ctx` opaque pointer
+- 8 B status counters (`CountStatus` = 8 B; `LivelinessChangedStatus` = 8 B; same size)
+- 4 B `deadline_ms`
+- 4 B padding / discriminant
+
+≈ **32 B per event-callback registration**.
+
+Subscriber w/ all three sub-side events (liveliness + deadline + message-lost): **~96 B**. Publisher w/ both pub-side events: **~64 B**. Bounded; fits in executor arena. Apps not registering events pay zero.
+
+On 32-bit platforms (Cortex-M / RV32) function/ctx pointers are 4 B each → ~24 B per event, ~72 B for full subscriber, ~48 B for full publisher.
 
 ### Wire-level requirements (108.B-driven)
 
@@ -283,9 +340,10 @@ Each backend uses native attachment mechanism. nano-ros doesn't define a cross-b
 
 ### Cross-feature interaction
 
-- **108.A events depend on 108.B QoS.** `register_event_callback(RequestedDeadlineMissed)` on a subscription with `deadline_ms = 0` is a no-op (`Err(IncompatibleQos)` since the policy isn't enabled).
-- **Phase 105 `max_callbacks` interaction.** Event callbacks count against `max_callbacks_per_spin` like message callbacks. No special-casing.
-- **Tier-2/3 events deferred.** `MATCHED`, `QOS_INCOMPATIBLE`, `INCOMPATIBLE_TYPE` not in API. `EventKind` is `#[non_exhaustive]`, additive.
+- **108.A events depend on 108.B QoS.** `register_event_callback(RequestedDeadlineMissed)` on a subscription with `deadline_ms = 0` returns `Err(IncompatibleQos)` — policy isn't enabled.
+- **Phase 110 `ReadySet` interaction.** Each event-callback registration is a separate ready bit in the executor's `ReadySet`. Events drain alongside message callbacks under `DrainMode::Latched` and against the dispatch loop's optional count cap. No special-casing in the executor.
+- **Phase 110 `OptUs` newtype reused** for QoS time fields. Single newtype definition site (`packages/core/nros-node/src/executor/sched_context.rs` from Phase 110) — Phase 108 imports it, doesn't redefine.
+- **Tier-2/3 events deferred.** See vocabulary table above. `EventKind` is `#[non_exhaustive]`, additive.
 - **No upstream `rmw_event_t` ABI compat.** Apps porting from rclcpp rewrite event-handling code; message path stays compatible.
 
 ---
@@ -346,13 +404,12 @@ Each backend uses native attachment mechanism. nano-ros doesn't define a cross-b
 
 ### Backend wiring follow-up phases
 
-108 lands the surface only. Per-backend wiring follows in numbered sub-phases (numbering reused after archive — concrete numbers TBD when 108 lands):
+108 lands the surface only. Per-backend wiring follows in numbered sub-phases (concrete numbers TBD when 108 lands; will use the 109 / 111+ slots freed by Phase 105/107/109 archive/merge):
 
-- dust-DDS event wiring (native; ~50 LOC)
-- XRCE-DDS event wiring (native via uxr listener; ~50 LOC)
-- zenoh-pico event wiring (shim-tracked, ~100 LOC)
-- uORB event wiring (Tier-1 partial coverage; ~50 LOC)
-- Per-backend QoS policy opt-ins (deadline, liveliness, lifespan, durability TL, namespace flag — flipped one bit at a time per backend)
+- dust-DDS event + QoS wiring (native; ~80 LOC for events, ~120 LOC for full QoS opt-in)
+- XRCE-DDS event + QoS wiring (native via uxr listener; ~80 LOC events, ~120 LOC QoS)
+- zenoh-pico event + QoS wiring (shim-tracked, ~150 LOC events, ~200 LOC QoS — biggest because Zenoh has no native QoS, all policies emulated)
+- uORB event + QoS wiring (Tier-1 partial coverage; ~50 LOC; only RELIABILITY/DURABILITY_VOLATILE/HISTORY/DEPTH supported per uORB QoS section below)
 
 ### No upstream ABI compat
 
