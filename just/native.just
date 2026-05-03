@@ -12,31 +12,56 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # Rust examples (auto-discovered from examples/{platform}/{lang}/{rmw}/{use-case}/)
 # =============================================================================
 
-# Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS)
-build:
+# Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS).
+#
+# Parallelised via GNU parallel — examples are independent standalone
+# crates (per the copy-out invariant in CLAUDE.md), so each cargo
+# invocation can run concurrently. JOBS defaults to 75 % of CPU cores
+# to leave headroom for rustc's per-process RAM (~1-3 GB). Override
+# with `just native build JOBS=4` for tighter machines.
+build JOBS="75%":
     #!/usr/bin/env bash
     set -e
-    echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml \
+    echo "Building examples (parallel, JOBS={{JOBS}})..."
+    if ! command -v parallel >/dev/null 2>&1; then
+        echo "GNU parallel not found — falling back to serial build."
+        SERIAL=1
+    else
+        SERIAL=0
+    fi
+
+    find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' | sort); do
-        dir="$(dirname "$toml")"
-        platform="$(echo "$dir" | cut -d/ -f2)"
-        flags=""
-        env_prefix=""
-        toolchain=""
+                       -not -path '*/px4/*' | sort > /tmp/_nros_example_toml.list
+
+    build_one() {
+        local toml="$1"
+        local dir="$(dirname "$toml")"
+        local platform="$(echo "$dir" | cut -d/ -f2)"
+        local flags=""
+        local env_prefix=""
+        local toolchain=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
             toolchain="+{{NIGHTLY}}"
         fi
         echo "  build $dir"
-        (cd "$dir" && eval $env_prefix cargo $toolchain build $flags)
-    done
+        ( cd "$dir" && eval $env_prefix cargo $toolchain build $flags )
+    }
+    export -f build_one
+    export NIGHTLY="{{NIGHTLY}}"
+
+    if [ "$SERIAL" = "1" ]; then
+        while read -r toml; do build_one "$toml"; done < /tmp/_nros_example_toml.list
+    else
+        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} build_one :::: /tmp/_nros_example_toml.list
+    fi
+    rm -f /tmp/_nros_example_toml.list
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -122,29 +147,48 @@ format:
         'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
     echo "All examples formatted!"
 
-# Check all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS)
-check:
+# Check all Rust examples (auto-discovered, parallel via GNU parallel).
+check JOBS="75%":
     #!/usr/bin/env bash
     set -e
-    echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml \
+    echo "Checking examples (parallel, JOBS={{JOBS}})..."
+    if ! command -v parallel >/dev/null 2>&1; then
+        echo "GNU parallel not found — falling back to serial check."
+        SERIAL=1
+    else
+        SERIAL=0
+    fi
+
+    find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' | sort); do
-        dir="$(dirname "$toml")"
-        platform="$(echo "$dir" | cut -d/ -f2)"
-        flags=""
-        env_prefix=""
+                       -not -path '*/px4/*' | sort > /tmp/_nros_check_toml.list
+
+    check_one() {
+        local toml="$1"
+        local dir="$(dirname "$toml")"
+        local platform="$(echo "$dir" | cut -d/ -f2)"
+        local flags=""
+        local env_prefix=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
         echo "  check $dir"
-        (cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags)
-    done
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags )
+    }
+    export -f check_one
+    export NIGHTLY="{{NIGHTLY}}"
+
+    if [ "$SERIAL" = "1" ]; then
+        while read -r toml; do check_one "$toml"; done < /tmp/_nros_check_toml.list
+    else
+        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} check_one :::: /tmp/_nros_check_toml.list
+    fi
+    rm -f /tmp/_nros_check_toml.list
     echo "All examples check passed!"
 
 # Show embedded example binary sizes
