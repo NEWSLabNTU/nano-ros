@@ -107,6 +107,98 @@ impl DdsSession {
 // on `cfg(any(feature = "std", feature = "nostd-runtime"))`. Gate
 // the helpers on the same cfg so the bare-no-std fallback (which
 // has no callers) doesn't emit "function never used" warnings.
+// ============================================================================
+// Phase 108.B — QoS mapping (nros QosSettings → dust-dds DataWriterQos /
+// DataReaderQos). Called from `create_publisher` / `create_subscriber`.
+// ============================================================================
+
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
+fn ms_to_duration_kind(ms: u32) -> dust_dds::infrastructure::time::DurationKind {
+    use dust_dds::infrastructure::time::{Duration, DurationKind};
+    if ms == 0 {
+        DurationKind::Infinite
+    } else {
+        let sec = (ms / 1000) as i32;
+        let nanosec = (ms % 1000) * 1_000_000;
+        DurationKind::Finite(Duration::new(sec, nanosec))
+    }
+}
+
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
+fn map_writer_qos(qos: &nros_rmw::QosSettings) -> dust_dds::infrastructure::qos::DataWriterQos {
+    use dust_dds::infrastructure::qos_policy::{
+        DurabilityQosPolicyKind, HistoryQosPolicyKind, LivelinessQosPolicyKind,
+        ReliabilityQosPolicyKind,
+    };
+    use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
+
+    let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();
+
+    q.reliability.kind = match qos.reliability {
+        QosReliabilityPolicy::BestEffort => ReliabilityQosPolicyKind::BestEffort,
+        QosReliabilityPolicy::Reliable => ReliabilityQosPolicyKind::Reliable,
+    };
+    q.durability.kind = match qos.durability {
+        QosDurabilityPolicy::Volatile => DurabilityQosPolicyKind::Volatile,
+        QosDurabilityPolicy::TransientLocal => DurabilityQosPolicyKind::TransientLocal,
+    };
+    q.history.kind = match qos.history {
+        QosHistoryPolicy::KeepLast => HistoryQosPolicyKind::KeepLast(qos.depth),
+        QosHistoryPolicy::KeepAll => HistoryQosPolicyKind::KeepAll,
+    };
+    q.deadline.period = ms_to_duration_kind(qos.deadline_ms);
+    q.lifespan.duration = ms_to_duration_kind(qos.lifespan_ms);
+    q.liveliness.kind = match qos.liveliness_kind {
+        // None → Automatic + infinite lease (no wire activity); avoids
+        // adding a "no liveliness" mode that DDS doesn't have.
+        QosLivelinessPolicy::None | QosLivelinessPolicy::Automatic => {
+            LivelinessQosPolicyKind::Automatic
+        }
+        QosLivelinessPolicy::ManualByTopic => LivelinessQosPolicyKind::ManualByTopic,
+        // ROS "by node" maps to DDS "by participant" — every nano-ros
+        // process has one DDS participant.
+        QosLivelinessPolicy::ManualByNode => LivelinessQosPolicyKind::ManualByParticipant,
+    };
+    q.liveliness.lease_duration = ms_to_duration_kind(qos.liveliness_lease_ms);
+    q
+}
+
+#[cfg(any(feature = "std", feature = "nostd-runtime"))]
+fn map_reader_qos(qos: &nros_rmw::QosSettings) -> dust_dds::infrastructure::qos::DataReaderQos {
+    use dust_dds::infrastructure::qos_policy::{
+        DurabilityQosPolicyKind, HistoryQosPolicyKind, LivelinessQosPolicyKind,
+        ReliabilityQosPolicyKind,
+    };
+    use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
+
+    let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
+
+    q.reliability.kind = match qos.reliability {
+        QosReliabilityPolicy::BestEffort => ReliabilityQosPolicyKind::BestEffort,
+        QosReliabilityPolicy::Reliable => ReliabilityQosPolicyKind::Reliable,
+    };
+    q.durability.kind = match qos.durability {
+        QosDurabilityPolicy::Volatile => DurabilityQosPolicyKind::Volatile,
+        QosDurabilityPolicy::TransientLocal => DurabilityQosPolicyKind::TransientLocal,
+    };
+    q.history.kind = match qos.history {
+        QosHistoryPolicy::KeepLast => HistoryQosPolicyKind::KeepLast(qos.depth),
+        QosHistoryPolicy::KeepAll => HistoryQosPolicyKind::KeepAll,
+    };
+    q.deadline.period = ms_to_duration_kind(qos.deadline_ms);
+    q.liveliness.kind = match qos.liveliness_kind {
+        QosLivelinessPolicy::None | QosLivelinessPolicy::Automatic => {
+            LivelinessQosPolicyKind::Automatic
+        }
+        QosLivelinessPolicy::ManualByTopic => LivelinessQosPolicyKind::ManualByTopic,
+        QosLivelinessPolicy::ManualByNode => LivelinessQosPolicyKind::ManualByParticipant,
+    };
+    q.liveliness.lease_duration = ms_to_duration_kind(qos.liveliness_lease_ms);
+    // Note: DataReaderQos has no `lifespan` field — readers honour the
+    // writer's lifespan via per-sample expiry timestamps.
+    q
+}
+
 #[cfg(any(feature = "std", feature = "nostd-runtime"))]
 fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
     use dust_dds::infrastructure::{
@@ -155,7 +247,7 @@ impl Session for DdsSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         #[cfg(feature = "std")]
         {
@@ -183,7 +275,7 @@ impl Session for DdsSession {
             let writer = publisher
                 .create_datawriter::<RawCdrPayload>(
                     &dds_topic,
-                    QosKind::Default,
+                    QosKind::Specific(map_writer_qos(&qos)),
                     None::<()>,
                     NO_STATUS,
                 )
@@ -224,7 +316,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(publisher.create_datawriter::<RawCdrPayload>(
                     &dds_topic,
-                    QosKind::Default,
+                    QosKind::Specific(map_writer_qos(&qos)),
                     None::<NoDataWriterListenerRaw>,
                     NO_STATUS,
                 ))
@@ -235,7 +327,7 @@ impl Session for DdsSession {
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
-            let _ = (topic, _qos);
+            let _ = (topic, qos);
             Err(TransportError::PublisherCreationFailed)
         }
     }
@@ -243,7 +335,7 @@ impl Session for DdsSession {
     fn create_subscriber(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
         #[cfg(feature = "std")]
         {
@@ -279,7 +371,7 @@ impl Session for DdsSession {
             let reader = subscriber
                 .create_datareader::<RawCdrPayload>(
                     &dds_topic,
-                    QosKind::Default,
+                    QosKind::Specific(map_reader_qos(&qos)),
                     Some(listener),
                     &[StatusKind::DataAvailable],
                 )
@@ -328,7 +420,7 @@ impl Session for DdsSession {
                 .runtime
                 .block_on(subscriber.create_datareader::<RawCdrPayload>(
                     &dds_topic,
-                    QosKind::Default,
+                    QosKind::Specific(map_reader_qos(&qos)),
                     Some(listener),
                     &[StatusKind::DataAvailable],
                 ))
@@ -343,7 +435,7 @@ impl Session for DdsSession {
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
-            let _ = (topic, _qos);
+            let _ = (topic, qos);
             Err(TransportError::SubscriberCreationFailed)
         }
     }
@@ -699,5 +791,22 @@ impl Session for DdsSession {
             self.runtime.drive();
         }
         Ok(())
+    }
+
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        // Phase 108.B — dust-dds maps every DDS QoS policy nano-ros
+        // exposes (durability TL, deadline, lifespan, all liveliness
+        // kinds). The only nros-side policy not honoured is
+        // `AVOID_ROS_NAMESPACE_CONVENTIONS`, a topic-name-encoding
+        // flag handled at the nano-ros layer (not yet wired anywhere).
+        use nros_rmw::QosPolicyMask;
+        QosPolicyMask::CORE
+            | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            | QosPolicyMask::DEADLINE
+            | QosPolicyMask::LIFESPAN
+            | QosPolicyMask::LIVELINESS_AUTOMATIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            | QosPolicyMask::LIVELINESS_LEASE
     }
 }

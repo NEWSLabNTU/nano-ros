@@ -82,4 +82,27 @@ impl Publisher for DdsPublisher {
     fn serialization_error(&self) -> Self::Error {
         TransportError::SerializationError
     }
+
+    fn assert_liveliness(&self) -> Result<(), Self::Error> {
+        // Phase 108.B — manual liveliness assertion. dust-dds exposes
+        // it natively on DataWriter (sync) and DataWriterAsync (no_std).
+        // For AUTOMATIC liveliness this is unnecessary but cheap; we
+        // forward unconditionally to keep the Publisher trait simple.
+        #[cfg(feature = "std")]
+        {
+            self.writer
+                .assert_liveliness()
+                .map_err(|_| TransportError::Backend("dust-dds assert_liveliness failed"))
+        }
+
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+        {
+            self.runtime
+                .block_on(self.writer_async.assert_liveliness())
+                .map_err(|_| TransportError::Backend("dust-dds assert_liveliness failed"))
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
+        Err(TransportError::Unsupported)
+    }
 }
