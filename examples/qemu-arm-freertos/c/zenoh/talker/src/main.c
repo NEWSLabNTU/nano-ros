@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_config.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -33,7 +34,9 @@ void app_main(void) {
 
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_support_init(&app.support,
+                                 NROS_APP_CONFIG.zenoh.locator,
+                                 NROS_APP_CONFIG.zenoh.domain_id));
     NROS_CHECK(nros_node_init(&app.node, &app.support, "c_talker", "/"));
     NROS_CHECK(nros_publisher_init(&app.publisher, &app.node,
                                    std_msgs_msg_int32_get_type_support(), "/chatter"));

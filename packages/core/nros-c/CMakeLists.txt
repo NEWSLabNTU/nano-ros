@@ -119,3 +119,11 @@ install(PROGRAMS
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/strip-compiler-builtins.sh"
     DESTINATION lib/cmake/NanoRos
 )
+
+# Phase 112.D: typed app-config header template consumed by
+# nano_ros_generate_config_header(). Ships into share/nano_ros/templates
+# so the install-time path-search in NanoRosReadConfig.cmake finds it.
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/templates/nros_app_config.h.in"
+    DESTINATION share/nano_ros/templates
+)

@@ -154,6 +154,57 @@ function(nano_ros_read_config CONFIG_FILE)
     set(NROS_CONFIG_POLL_INTERVAL_MS "${_poll_interval_ms}" PARENT_SCOPE)
 endfunction()
 
+# nano_ros_generate_config_header(<config_file> <out_path>)
+#
+# Reads <config_file> via nano_ros_read_config(), then emits a typed
+# <nros/app_config.h> at <out_path>. The header declares
+# `static const nros_app_config_t NROS_APP_CONFIG = { ... };` so user
+# code can write `NROS_APP_CONFIG.zenoh.locator` instead of consuming a
+# tree of `APP_*` preprocessor macros from target_compile_definitions.
+#
+# Typical use:
+#   nano_ros_generate_config_header(
+#       "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
+#       "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
+#   target_include_directories(my_app PRIVATE
+#       "${CMAKE_CURRENT_BINARY_DIR}/include")
+#
+# User source then does `#include <nros/app_config.h>`.
+function(nano_ros_generate_config_header CONFIG_FILE OUT_PATH)
+    nano_ros_read_config("${CONFIG_FILE}")
+
+    set(NROS_CONFIG_SOURCE "${CONFIG_FILE}")
+
+    # CMAKE_CURRENT_FUNCTION_LIST_DIR is the directory of the file that
+    # *defined* this function (not the caller). Stable across `cmake -P`,
+    # `find_package`, and `include()`. Requires cmake 3.17+ (matches the
+    # workspace minimum).
+    set(_NROS_CFG_CMAKE_DIR "${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
+    set(_template_candidates
+        # In-tree (cmake module dir's parent has templates/)
+        "${_NROS_CFG_CMAKE_DIR}/templates/nros_app_config.h.in"
+        # Source-tree consumption: ../../../../cmake/templates/ from
+        # packages/core/nros-c/cmake/.
+        "${_NROS_CFG_CMAKE_DIR}/../../../../cmake/templates/nros_app_config.h.in"
+        # Installed layout: <prefix>/share/nano_ros/templates/.
+        "${_NROS_CFG_CMAKE_DIR}/../../share/nano_ros/templates/nros_app_config.h.in"
+        "${_NROS_CFG_CMAKE_DIR}/../share/nano_ros/templates/nros_app_config.h.in")
+    set(_template "")
+    foreach(_cand IN LISTS _template_candidates)
+        if(EXISTS "${_cand}")
+            get_filename_component(_template "${_cand}" ABSOLUTE)
+            break()
+        endif()
+    endforeach()
+    if(_template STREQUAL "")
+        message(FATAL_ERROR
+            "nano_ros_generate_config_header: nros_app_config.h.in template not found. "
+            "Searched: ${_template_candidates}")
+    endif()
+
+    configure_file("${_template}" "${OUT_PATH}" @ONLY)
+endfunction()
+
 # Convert "192.0.3.10" -> "192,0,3,10"
 function(_nros_ip_to_c IP_STR OUT_VAR)
     string(REPLACE "." "," _result "${IP_STR}")
