@@ -397,13 +397,13 @@ Backends opt into specific QoS bits + event kinds one at a time. Each landing fl
 #### zenoh-pico — `108.C.zenoh`
 
 - [x] **108.C.zenoh.1 — `Session::supported_qos_policies()` override.** Returns CORE only (commit `95df4d39`).
-- [ ] **108.C.zenoh.2 — Shim-emulated DEADLINE. DEFERRED.** Per-subscriber timer + `last_msg_at` tracking + per-cycle expiry check. ~150 LOC. Open as separate phase.
-- [ ] **108.C.zenoh.3 — Shim-emulated LIFESPAN. DEFERRED.** Per-sample timestamp attachment + subscriber filter. Requires sample attachment scheme. ~100 LOC.
-- [ ] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens. DEFERRED.** Each publisher declares a liveliness token; subscribers query token presence. zenoh-pico ≥ 1.x has native token API. ~200 LOC.
-- [x] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST.** Subscriber parses publisher seq from the existing RMW attachment (already populated by every `ZenohPublisher::publish_raw` since Phase 91), tracks `next_expected_seq`, and fires `MessageLost { total_count, total_count_change }` on the registered callback when `seq > expected`. Out-of-order / duplicate samples count as zero loss. First-message synchronisation: initial `next_expected_seq = 0` means we sync to the publisher's first observed seq w/o reporting a gap. ~120 LOC. (commit `<this commit>`)
-- [ ] **108.C.zenoh.6 — Update `supported_qos_policies()` mask** as each emulation lands.
+- [x] **108.C.zenoh.2 — Shim-emulated DEADLINE.** Sub side: `ZenohSubscriber` captures `deadline_ms` from QoS at create, tracks `last_msg_at_ms` (updated on every successful `try_recv_raw`), checks gap against `now_ms()` from `<P as PlatformClock>::clock_ms` on each `try_recv_raw` / `has_data`, fires `RequestedDeadlineMissed` with rate-limit (≤ 1 fire per deadline period). Pub side: same pattern on `ZenohPublisher::publish_raw` for `OfferedDeadlineMissed`. (`<this commit>`)
+- [x] **108.C.zenoh.3 — Shim-emulated LIFESPAN.** `try_recv_raw` parses the publisher timestamp out of the RMW attachment (bytes 8..16 = i64 ns LE, already populated since Phase 91), compares to `now_ms()`, drops the sample (returns `Ok(None)`) when `now > sent_ts + lifespan_ms`. (`<this commit>`)
+- [🟡] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens.** Surface API only: `Subscriber::register_event_callback(LivelinessChanged)` and `Publisher::register_event_callback(LivelinessLost)` accept registrations and store them in slots, but the global `z_liveliness_declare_subscriber` bridge that routes token-change notifications to those slots is deferred to a follow-up phase (needs ABI surface for shim-side liveliness keyexpr matching to nros entity → cb). Apps can register callbacks and check `supports_event` returns `true`; calls don't fire today. ~200 LOC follow-up.
+- [x] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST.** Subscriber parses publisher seq from the existing RMW attachment, tracks `next_expected_seq`, and fires `MessageLost { total_count, total_count_change }` on the registered callback when `seq > expected`. Out-of-order / duplicate samples count as zero loss. First-message synchronisation: initial `next_expected_seq = 0` means we sync to the publisher's first observed seq w/o reporting a gap. (commit `0c8e24ee`)
+- [x] **108.C.zenoh.6 — Update `supported_qos_policies()` mask.** Now `CORE | DEADLINE | LIFESPAN`. Liveliness deferred until 108.C.zenoh.4's bridge lands.
 
-The zenoh shim emulation block is a substantial standalone effort (~530 LOC across 4 features + tests). Open as separate phase rather than landing piecemeal under 108.
+Bonus side-effect: `ZenohPublisher::current_timestamp` switched from a per-publisher monotonic counter to the platform clock (`<P as PlatformClock>::clock_ms()` × 1_000_000 ns). Existing rmw_zenoh interop keeps working (timestamps still monotonic per publisher, now also globally meaningful).
 
 #### uORB — `108.C.uorb`
 
@@ -448,7 +448,7 @@ Tracked as sub-phases above. Current status:
 |---------|-------------|---------------------|------------------|---------------------|
 | dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
 | XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
-| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (seq-gap from RMW attachment); 🟡 deadline / lifespan / liveliness deferred | n/a (no prefix) |
+| zenoh-pico | ✅ CORE+DEADLINE+LIFESPAN (`<this>`) | n/a | ✅ MessageLost + RequestedDeadlineMissed + OfferedDeadlineMissed; 🟡 LivelinessChanged/Lost surface only | n/a (no prefix) |
 | uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock + real-PX4 wired) | n/a (no DDS naming) |
 
 ### No upstream ABI compat

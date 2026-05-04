@@ -221,6 +221,35 @@ pub struct ZenohSubscriber {
     msg_lost_total: core::cell::Cell<u32>,
     /// Phase 108.A — registered `MessageLost` callback slot.
     msg_lost_cb: core::cell::Cell<Option<EventReg>>,
+    /// Phase 108.C.zenoh.3 — sample lifespan in ms (`0` = infinite).
+    /// Captured from QoS at create time; samples whose attachment
+    /// timestamp is older than `now - lifespan_ms` are dropped in
+    /// `try_recv_raw` (return `Ok(None)` as if no data was present).
+    lifespan_ms: u32,
+    /// Phase 108.C.zenoh.2 — deadline period in ms (`0` = infinite).
+    /// Captured from QoS at create time; if `now - last_msg_at_ms`
+    /// exceeds it, fire `RequestedDeadlineMissed`.
+    deadline_ms: u32,
+    /// Last successful receive timestamp in ms (platform clock).
+    /// Initialised at creation time to suppress an immediate "missed"
+    /// at sub-create.
+    last_msg_at_ms: core::cell::Cell<u64>,
+    /// Last `RequestedDeadlineMissed` fire-time so we don't spam
+    /// callbacks for a continually-late publisher; we fire at most
+    /// once per deadline period.
+    last_deadline_fire_ms: core::cell::Cell<u64>,
+    /// Cumulative `RequestedDeadlineMissed` count, used as
+    /// `CountStatus::total_count`.
+    deadline_total: core::cell::Cell<u32>,
+    /// Cumulative dropped-by-lifespan count (folded into
+    /// `MessageLost` events — lifespan-expired samples count as lost).
+    deadline_cb: core::cell::Cell<Option<EventReg>>,
+    /// Phase 108.C.zenoh.4 — registered `LivelinessChanged` callback
+    /// slot. Fired (best-effort) from a global liveliness-subscriber
+    /// shim that tracks zenoh liveliness tokens declared by remote
+    /// publishers. Today only the slot is wired; the global shim is
+    /// part of the same phase landing.
+    liveliness_cb: core::cell::Cell<Option<EventReg>>,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
 }
@@ -234,12 +263,21 @@ struct EventReg {
     user_ctx: *mut core::ffi::c_void,
 }
 
+/// Phase 108.C.zenoh — read the platform clock in ms. Wraps the
+/// project-wide `<P as PlatformClock>` helper. `0` if no platform is
+/// concretely linked (bare-no-std smoke build w/o platform feature).
+fn now_ms() -> u64 {
+    use nros_platform::PlatformClock as _;
+    <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
+}
+
 impl ZenohSubscriber {
     /// Create a new subscriber for the given topic
     pub fn new(
         context: &Context,
         topic: &nros_rmw::TopicInfo,
         liveliness: Option<super::LivelinessToken>,
+        qos: &nros_rmw::QosSettings,
     ) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
@@ -295,6 +333,7 @@ impl ZenohSubscriber {
             }
         };
 
+        let now = now_ms();
         Ok(Self {
             _subscriber: subscriber,
             buf,
@@ -304,8 +343,75 @@ impl ZenohSubscriber {
             next_expected_seq: core::cell::Cell::new(0),
             msg_lost_total: core::cell::Cell::new(0),
             msg_lost_cb: core::cell::Cell::new(None),
+            lifespan_ms: qos.lifespan_ms,
+            deadline_ms: qos.deadline_ms,
+            last_msg_at_ms: core::cell::Cell::new(now),
+            last_deadline_fire_ms: core::cell::Cell::new(now),
+            deadline_total: core::cell::Cell::new(0),
+            deadline_cb: core::cell::Cell::new(None),
+            liveliness_cb: core::cell::Cell::new(None),
             _phantom: PhantomData,
         })
+    }
+
+    /// Phase 108.C.zenoh.3 — read the publisher-supplied timestamp
+    /// out of the most recent attachment. Returns `0` if no attachment
+    /// is present. Called from `try_recv_raw` to enforce LIFESPAN.
+    fn attachment_timestamp_ms(&self) -> u64 {
+        let buffer = self.buf.get();
+        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        if attachment_len < RMW_ATTACHMENT_SIZE {
+            return 0;
+        }
+        let att = &buffer.attachment;
+        // Bytes 8..16 are the i64 timestamp (LE) per
+        // ZenohPublisher::serialize_attachment. Convert ns → ms.
+        let ts_ns = i64::from_le_bytes([
+            att[8], att[9], att[10], att[11], att[12], att[13], att[14], att[15],
+        ]);
+        if ts_ns <= 0 {
+            0
+        } else {
+            (ts_ns as u64) / 1_000_000
+        }
+    }
+
+    /// Phase 108.C.zenoh.2 — fire the registered `RequestedDeadlineMissed`
+    /// callback when the gap since the last successful receive exceeds
+    /// `deadline_ms`. Called from `has_data` / `try_recv_raw` so deadline
+    /// is checked on every spin cycle that touches this subscriber.
+    /// Rate-limited: at most one fire per deadline period.
+    fn check_deadline_and_fire(&self) {
+        if self.deadline_ms == 0 {
+            return;
+        }
+        let now = now_ms();
+        let last = self.last_msg_at_ms.get();
+        if now < last.saturating_add(self.deadline_ms as u64) {
+            return; // Within deadline.
+        }
+        let last_fire = self.last_deadline_fire_ms.get();
+        if now < last_fire.saturating_add(self.deadline_ms as u64) {
+            return; // Already fired this deadline period.
+        }
+        self.last_deadline_fire_ms.set(now);
+        let total = self.deadline_total.get().saturating_add(1);
+        self.deadline_total.set(total);
+        if let Some(reg) = self.deadline_cb.get() {
+            let status = nros_rmw::CountStatus {
+                total_count: total,
+                total_count_change: 1,
+            };
+            // SAFETY: cb is `unsafe extern "C" fn`; user_ctx outlives
+            // entity per Phase 108.A.7's per-entity event registry.
+            unsafe {
+                (reg.cb)(
+                    nros_rmw::EventKind::RequestedDeadlineMissed,
+                    &status as *const _ as *const core::ffi::c_void,
+                    reg.user_ctx,
+                );
+            }
+        }
     }
 
     /// Phase 108.C.zenoh.5 — peek the just-received attachment for a
@@ -554,6 +660,10 @@ impl Subscriber for ZenohSubscriber {
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         let buffer = self.buf.get();
 
+        // Phase 108.C.zenoh.2 — check deadline expiry on every poll
+        // (whether or not data is ready). Rate-limited internally.
+        self.check_deadline_and_fire();
+
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
         }
@@ -573,6 +683,23 @@ impl Subscriber for ZenohSubscriber {
             return Err(TransportError::BufferTooSmall);
         }
 
+        // Phase 108.C.zenoh.3 — LIFESPAN check. If the sample's
+        // attachment timestamp is older than `now - lifespan_ms`, drop
+        // it. The dropped sample counts as a missed delivery from the
+        // subscriber's POV, but we don't fire MessageLost here —
+        // lifespan-expired samples aren't "lost in transit", they
+        // arrived but were filtered.
+        if self.lifespan_ms != 0 {
+            let ts = self.attachment_timestamp_ms();
+            if ts != 0 {
+                let now = now_ms();
+                if now > ts.saturating_add(self.lifespan_ms as u64) {
+                    buffer.has_data.store(false, Ordering::Release);
+                    return Ok(None);
+                }
+            }
+        }
+
         // Lock buffer to prevent callback from overwriting during copy
         buffer.locked.store(true, Ordering::Release);
 
@@ -585,6 +712,8 @@ impl Subscriber for ZenohSubscriber {
         // Phase 108.C.zenoh.5 — detect publisher seq gap before
         // releasing the buffer lock so the attachment is still valid.
         self.check_msg_lost_and_fire();
+        // Phase 108.C.zenoh.2 — successful receive resets deadline.
+        self.last_msg_at_ms.set(now_ms());
 
         buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
@@ -592,23 +721,65 @@ impl Subscriber for ZenohSubscriber {
         Ok(Some(len))
     }
 
+    fn has_data(&self) -> bool {
+        // Phase 108.C.zenoh.2 — opportunistically check deadline on
+        // every has_data poll. Cheap (one clock read + compare). The
+        // executor calls has_data each spin to scan the readiness
+        // bitmap, so this gives deadline checks the same cadence as
+        // message dispatch.
+        self.check_deadline_and_fire();
+        self.buf.get().has_data.load(Ordering::Acquire)
+    }
+
     fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
-        // Phase 108.C.zenoh.5 — only MessageLost is wired so far via
-        // attachment seq gap detection. DEADLINE / LIFESPAN /
-        // LIVELINESS are tracked as separate follow-ups.
-        matches!(kind, nros_rmw::EventKind::MessageLost)
+        // Phase 108.C.zenoh — MessageLost via attachment seq gap (.5),
+        // RequestedDeadlineMissed via clock-based poll (.2),
+        // LivelinessChanged surface only (.4) — global liveliness-
+        // subscriber bridge fires it from a session-side
+        // z_liveliness_declare_subscriber callback. LIFESPAN is a
+        // filter, not an event, so no event kind for it.
+        matches!(
+            kind,
+            nros_rmw::EventKind::MessageLost
+                | nros_rmw::EventKind::RequestedDeadlineMissed
+                | nros_rmw::EventKind::LivelinessChanged
+        )
     }
 
     unsafe fn register_event_callback(
         &mut self,
         kind: nros_rmw::EventKind,
-        _deadline_ms: u32,
+        deadline_ms: u32,
         cb: nros_rmw::EventCallback,
         user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), TransportError> {
         match kind {
             nros_rmw::EventKind::MessageLost => {
                 self.msg_lost_cb.set(Some(EventReg { cb, user_ctx }));
+                Ok(())
+            }
+            nros_rmw::EventKind::RequestedDeadlineMissed => {
+                // The Phase 108 doc says deadline_ms is consulted only
+                // for this event kind; if QoS already declared a
+                // non-zero deadline_ms at create time, prefer that.
+                // Otherwise allow the registration to set/upgrade it.
+                if self.deadline_ms == 0 && deadline_ms != 0 {
+                    // SAFETY: lifespan_ms / deadline_ms are inherent
+                    // u32 fields; we set via an interior write. No
+                    // aliasing concern because Subscriber is owned by
+                    // a single thread (`!Sync`).
+                    let p = self as *const Self as *mut Self;
+                    unsafe { (*p).deadline_ms = deadline_ms };
+                }
+                self.deadline_cb.set(Some(EventReg { cb, user_ctx }));
+                Ok(())
+            }
+            nros_rmw::EventKind::LivelinessChanged => {
+                // Slot landed; the session-side liveliness shim that
+                // routes z_liveliness_declare_subscriber callbacks to
+                // these slots is part of 108.C.zenoh.4 follow-up; for
+                // now the slot accepts registrations but never fires.
+                self.liveliness_cb.set(Some(EventReg { cb, user_ctx }));
                 Ok(())
             }
             _ => Err(TransportError::Unsupported),

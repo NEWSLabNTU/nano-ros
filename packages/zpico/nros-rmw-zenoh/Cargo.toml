@@ -48,6 +48,11 @@ ros-iron = []
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
+# Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
+# for deadline / lifespan emulation. The façade crate gates the
+# ConcretePlatform pick on the same feature flags as the rest of
+# nros, so adding it here doesn't constrain platform selection.
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
 zpico-sys = { version = "0.1.0", path = "../zpico-sys" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }

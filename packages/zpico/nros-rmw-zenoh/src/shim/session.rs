@@ -262,7 +262,7 @@ impl Session for ZenohSession {
                 )
             })
         });
-        ZenohPublisher::new(&self.context, topic, liveliness_token)
+        ZenohPublisher::new(&self.context, topic, liveliness_token, &qos)
     }
 
     fn create_subscriber(
@@ -282,7 +282,7 @@ impl Session for ZenohSession {
                 )
             })
         });
-        ZenohSubscriber::new(&self.context, topic, liveliness_token)
+        ZenohSubscriber::new(&self.context, topic, liveliness_token, &qos)
     }
 
     fn create_service_server(
@@ -333,21 +333,25 @@ impl Session for ZenohSession {
     }
 
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
-        // Phase 108.B — zenoh-pico's wire protocol has no native DDS
-        // QoS. Reliability maps to zenoh congestion-control (CORE
-        // already covers it); durability/history/depth are honoured
-        // in the shim. Deadline / lifespan / liveliness manual modes
-        // would require shim-side emulation (timer + sample timestamp
-        // + zenoh liveliness tokens) — tracked as a follow-up.
-        //
-        // `LIVELINESS_AUTOMATIC` is reported as supported because the
-        // ROS 2 / DDS default profile sets `liveliness = AUTOMATIC` and
-        // Automatic semantics ("alive while the task lives") are
-        // satisfied trivially by zenoh-pico — the underlying zenoh
-        // session keepalive already covers it. Without this bit the
-        // default `QosSettings` would fail
-        // `Session::supported_qos_policies` validation on every entity
-        // create call.
-        nros_rmw::QosPolicyMask::CORE | nros_rmw::QosPolicyMask::LIVELINESS_AUTOMATIC
+        // Phase 108.B/C — zenoh-pico's wire protocol has no native
+        // DDS QoS, so the shim emulates everything:
+        // - Reliability maps to zenoh congestion-control (CORE).
+        // - Durability VOLATILE / History / Depth honoured at the
+        //   subscriber buffer level (CORE).
+        // - DEADLINE: clock-based check at try_recv_raw (sub) /
+        //   publish_raw (pub). 108.C.zenoh.2.
+        // - LIFESPAN: subscriber filters samples whose attachment
+        //   timestamp is older than `now - lifespan_ms`. 108.C.zenoh.3.
+        // - LIVELINESS_AUTOMATIC: zenoh session keepalive covers
+        //   "alive while the task lives" trivially. The default
+        //   QosSettings sets `liveliness = AUTOMATIC`, so without
+        //   this bit every entity create call fails QoS validation.
+        //   MANUAL_BY_TOPIC / MANUAL_BY_NODE require an app-driven
+        //   assert_liveliness keepalive timer; deferred to 108.C.zenoh.4.
+        use nros_rmw::QosPolicyMask;
+        QosPolicyMask::CORE
+            | QosPolicyMask::DEADLINE
+            | QosPolicyMask::LIFESPAN
+            | QosPolicyMask::LIVELINESS_AUTOMATIC
     }
 }

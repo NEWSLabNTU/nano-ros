@@ -1691,6 +1691,7 @@ dependencies = [
  "log",
  "nros-core",
  "nros-ghost-types",
+ "nros-platform",
  "nros-rmw",
  "portable-atomic",
  "zpico-sys",
