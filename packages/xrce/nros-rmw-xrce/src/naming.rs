@@ -8,12 +8,19 @@ use heapless::String;
 /// Convert an nros topic name to a DDS topic name.
 ///
 /// Strips the leading `/` and prepends `rt/` (ROS topic prefix).
+/// When `avoid_ros_prefix` is true (Phase 108.B
+/// `avoid_ros_namespace_conventions`), skip the `rt/` prefix and use
+/// the raw application name. Used for non-ROS DDS interop.
 ///
-/// Example: `"/chatter"` → `"rt/chatter"`
-pub fn dds_topic_name<const N: usize>(name: &str) -> String<N> {
+/// Examples:
+/// - `dds_topic_name("/chatter", false)` → `"rt/chatter"`
+/// - `dds_topic_name("/chatter", true)` → `"chatter"`
+pub fn dds_topic_name<const N: usize>(name: &str, avoid_ros_prefix: bool) -> String<N> {
     let mut out = String::new();
     let stripped = name.strip_prefix('/').unwrap_or(name);
-    let _ = out.push_str("rt/");
+    if !avoid_ros_prefix {
+        let _ = out.push_str("rt/");
+    }
     let _ = out.push_str(stripped);
     out
 }
@@ -88,20 +95,29 @@ mod tests {
 
     #[test]
     fn test_dds_topic_name() {
-        let name: String<64> = dds_topic_name("/chatter");
+        let name: String<64> = dds_topic_name("/chatter", false);
         assert_eq!(name.as_str(), "rt/chatter");
     }
 
     #[test]
     fn test_dds_topic_name_no_leading_slash() {
-        let name: String<64> = dds_topic_name("chatter");
+        let name: String<64> = dds_topic_name("chatter", false);
         assert_eq!(name.as_str(), "rt/chatter");
     }
 
     #[test]
     fn test_dds_topic_name_nested() {
-        let name: String<64> = dds_topic_name("/ns/chatter");
+        let name: String<64> = dds_topic_name("/ns/chatter", false);
         assert_eq!(name.as_str(), "rt/ns/chatter");
+    }
+
+    #[test]
+    fn test_dds_topic_name_avoid_ros_prefix() {
+        // Phase 108.B `avoid_ros_namespace_conventions = true`
+        let name: String<64> = dds_topic_name("/chatter", true);
+        assert_eq!(name.as_str(), "chatter");
+        let name: String<64> = dds_topic_name("/ns/chatter", true);
+        assert_eq!(name.as_str(), "ns/chatter");
     }
 
     #[test]

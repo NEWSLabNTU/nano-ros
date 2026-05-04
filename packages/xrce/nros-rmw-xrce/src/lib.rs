@@ -848,7 +848,7 @@ impl Session for XrceSession {
             let dw_obj_id = alloc_entity_id(UXR_DATAWRITER_ID);
 
             // Format DDS topic name
-            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name);
+            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
             let mut topic_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
 
@@ -917,7 +917,7 @@ impl Session for XrceSession {
             let dr_obj_id = alloc_entity_id(UXR_DATAREADER_ID);
 
             // Format DDS topic name
-            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name);
+            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
             let mut topic_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
 
@@ -1213,8 +1213,12 @@ impl Session for XrceSession {
         // observe them through `uxrQoS_t`. Expose only what we can
         // honour at this layer; users wanting those policies should
         // pick the dust-DDS backend.
+        // AVOID_ROS_NAMESPACE_CONVENTIONS honoured at topic-name
+        // encoding (Phase 108.C.x.3); see `naming::dds_topic_name`.
         use nros_rmw::QosPolicyMask;
-        QosPolicyMask::CORE | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
+        QosPolicyMask::CORE
+            | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            | QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
     }
 }
 

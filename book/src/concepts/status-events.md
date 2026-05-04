@@ -146,10 +146,14 @@ Not every backend can generate every event. Apps must handle
 
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
-| dust-DDS | ✓ Native | ✓ Native | ✓ Native |
-| XRCE-DDS | ✓ Native | ✓ Native | ✓ Native |
-| zenoh-pico | ✓ Liveliness-token-tracked at shim | ✓ Shim-side per-sub timer | ✓ Sequence-gap detection at shim |
-| uORB | ◯ Adapted (`orb_subscribers_count` polling) | ✗ Not supported (no rate concept) | ✓ Queue-overflow flag |
+| dust-DDS | ✓ Native (DataReader/Writer listeners) | ✓ Native | ✓ Native (`SampleLost`) |
+| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ Not exposed | ✗ Not exposed |
+| zenoh-pico | 🟡 Planned: zenoh liveliness tokens | 🟡 Planned: shim-side per-sub timer | 🟡 Planned: seq-gap detection at shim |
+| uORB | ✗ No wire-level liveliness | ✗ No rate concept | 🟡 Planned: needs `px4-uorb` crate extension |
+
+✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.
+
+**Today (commit `861fc2cf`):** dust-DDS is the only backend with full Tier-1 event wiring. The others' `register_event_callback` returns `Err(Unsupported)`. Apps targeting non-dust-DDS backends should call `Subscriber::supports_event(kind)` first or design for graceful fallback.
 
 The `Subscriber::supports_event(kind)` query lets applications check
 support before registering:

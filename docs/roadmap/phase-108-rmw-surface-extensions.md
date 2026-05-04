@@ -7,7 +7,7 @@
 
 Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C header, both ship API-only, and Phase 108.A's deadline/liveliness events depend on Phase 108.B's QoS fields to be meaningful.
 
-**Status:** v1 surface complete (108.A + 108.B); backend wiring in progress (dust-DDS QoS done; status events backend wiring next).
+**Status:** v1 surface complete (108.A + 108.B). dust-DDS fully wired (QoS + assert_liveliness + sub/pub events). Lightweight follow-ups landed for XRCE-DDS / zenoh-pico / uORB (CORE QoS + AVOID_ROS_NAMESPACE_CONVENTIONS for XRCE). Heavy follow-ups (XRCE listener events, zenoh shim emulation, uORB MessageLost via px4-uorb extension, E2E test matrix) deferred — see § 108.C below.
 
 **Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend sub-phases below.
 
@@ -384,34 +384,37 @@ Backends opt into specific QoS bits + event kinds one at a time. Each landing fl
 - [x] **108.C.dds.1 — Full QoS mapping.** `map_writer_qos` / `map_reader_qos` translate `QosSettings` → dust-dds `DataWriterQos` / `DataReaderQos`. Reliability, durability (V/TL), history, deadline, lifespan (writer), liveliness (Auto/ManualByTopic/ManualByParticipant), liveliness lease.
 - [x] **108.C.dds.2 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL | DEADLINE | LIFESPAN | LIVELINESS_AUTOMATIC | LIVELINESS_MANUAL_BY_TOPIC | LIVELINESS_MANUAL_BY_NODE | LIVELINESS_LEASE.
 - [x] **108.C.dds.3 — `Publisher::assert_liveliness`** routes through dust-dds `DataWriter::assert_liveliness` (sync) / `DataWriterAsync` (no_std).
-- [ ] **108.C.dds.4 — Status events (sub side).** Wire `register_event_callback` for `LivelinessChanged` / `RequestedDeadlineMissed` / `MessageLost` via dust-dds `DataReaderListener`. Bridge listener callback → registered `EventCallback` via stored fn pointer + user_ctx.
-- [ ] **108.C.dds.5 — Status events (pub side).** Same for `LivelinessLost` / `OfferedDeadlineMissed` via `DataWriterListener`.
+- [x] **108.C.dds.4 — Status events (sub side).** `DataReaderListener` bridge fires `LivelinessChanged` / `RequestedDeadlineMissed` / `MessageLost` (commit `861fc2cf`).
+- [x] **108.C.dds.5 — Status events (pub side).** `DataWriterListener` bridge fires `LivelinessLost` / `OfferedDeadlineMissed` (commit `861fc2cf`).
 
-#### XRCE-DDS — `108.C.xrce` — **CORE QoS COMPLETE** (commit `95df4d39`)
+#### XRCE-DDS — `108.C.xrce`
 
-- [x] **108.C.xrce.1 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL only — XRCE C client surface (`uxrQoS_t`) doesn't expose deadline / lifespan / liveliness; agent-side enforcement only. Map nros QoS to `uxrQoS_t` already in tree.
-- [ ] **108.C.xrce.2 — Status events.** `uxr_set_status_callback` / `uxr_set_topic_callback` listener bridge for `MessageLost` (best-effort). Liveliness / deadline NOT exposable through xrce-dds-client API; remain `Err(Unsupported)`.
-- [ ] **108.C.xrce.3 — Optional: full QoS via XML.** `uxr_buffer_create_*_xml` accepts agent-side QoS XML w/ deadline / lifespan / liveliness. Trade-off: requires agent w/ XML support + larger payload. Defer until requested.
+- [x] **108.C.xrce.1 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL | AVOID_ROS_NAMESPACE_CONVENTIONS (commits `95df4d39`, `<this commit>`). XRCE C client surface (`uxrQoS_t`) doesn't expose deadline / lifespan / liveliness; agent-side enforcement only.
+- [x] **108.C.xrce.1b — `avoid_ros_namespace_conventions` honoured at topic-name encoding.** `naming::dds_topic_name` skips the `rt/` prefix when the flag is set; XRCE is the only backend that meaningfully implements this flag (others pass topic names through unchanged).
+- [ ] **108.C.xrce.2 — Status events. DEFERRED.** Would require routing `uxr_set_status_callback` / `uxr_set_topic_callback` (session-level) to the right entity. Significant plumbing; low value (XRCE typically used in resource-constrained MCU + agent w/ DDS broker that handles enforcement). Open as separate phase if needed.
+- [ ] **108.C.xrce.3 — Optional: full QoS via XML. DEFERRED.** `uxr_buffer_create_*_xml` accepts agent-side QoS XML w/ deadline / lifespan / liveliness. Requires agent w/ XML support + larger payload. Defer until requested.
 
-#### zenoh-pico — `108.C.zenoh` — **CORE QoS COMPLETE** (commit `95df4d39`)
+#### zenoh-pico — `108.C.zenoh`
 
-- [x] **108.C.zenoh.1 — `Session::supported_qos_policies()` override.** Returns CORE only.
-- [ ] **108.C.zenoh.2 — Shim-emulated DEADLINE.** Per-subscriber timer; on each message arrival reset deadline; on expiry fire `RequestedDeadlineMissed` event. Pub side: track inter-publish timestamps; fire `OfferedDeadlineMissed` if late.
-- [ ] **108.C.zenoh.3 — Shim-emulated LIFESPAN.** Per-sample timestamp attachment; subscriber filter on `(now - sent_ts > lifespan)`.
-- [ ] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens.** Each publisher declares a liveliness token; subscribers query token presence; on token loss fire `LivelinessChanged`. Native zenoh token API exists in zenoh-pico ≥ 1.x.
-- [ ] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST.** Sequence number attachment; subscriber detects gaps → fire event w/ count.
+- [x] **108.C.zenoh.1 — `Session::supported_qos_policies()` override.** Returns CORE only (commit `95df4d39`).
+- [ ] **108.C.zenoh.2 — Shim-emulated DEADLINE. DEFERRED.** Per-subscriber timer + `last_msg_at` tracking + per-cycle expiry check. ~150 LOC. Open as separate phase.
+- [ ] **108.C.zenoh.3 — Shim-emulated LIFESPAN. DEFERRED.** Per-sample timestamp attachment + subscriber filter. Requires sample attachment scheme. ~100 LOC.
+- [ ] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens. DEFERRED.** Each publisher declares a liveliness token; subscribers query token presence. zenoh-pico ≥ 1.x has native token API. ~200 LOC.
+- [ ] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST. DEFERRED.** Sequence-number attachment + subscriber gap-detection. ~80 LOC.
 - [ ] **108.C.zenoh.6 — Update `supported_qos_policies()` mask** as each emulation lands.
 
-#### uORB — `108.C.uorb` — **CORE QoS COMPLETE** (commit `95df4d39`)
+The zenoh shim emulation block is a substantial standalone effort (~530 LOC across 4 features + tests). Open as separate phase rather than landing piecemeal under 108.
 
-- [x] **108.C.uorb.1 — `Session::supported_qos_policies()` override.** Returns CORE only — intra-process pubsub w/ no wire-level QoS.
-- [ ] **108.C.uorb.2 — `MessageLost` event.** uORB tracks lost-message count per subscription via `orb_stat`. Fire on increment between polls. Other event kinds remain unsupported (no wire, no liveliness concept).
+#### uORB — `108.C.uorb`
+
+- [x] **108.C.uorb.1 — `Session::supported_qos_policies()` override.** Returns CORE only (commit `95df4d39`).
+- [ ] **108.C.uorb.2 — `MessageLost` event. BLOCKED on px4-uorb extension.** uORB C API tracks lost-message count via `orb_stat`, but the `px4-uorb` Rust crate (under `third-party/px4/px4-rs/`) doesn't expose it. Need to add `RawSubscription::missed_count() -> u32` upstream first. Defer until requested.
 
 #### Cross-backend integration
 
-- [ ] **108.C.x.1 — Test matrix.** For each backend × each supported QoS policy, end-to-end test: create publisher + subscriber w/ that QoS, verify enforcement (e.g. publisher exceeds deadline → subscriber fires `RequestedDeadlineMissed`).
-- [ ] **108.C.x.2 — Per-backend support matrix in book.** Update `book/src/concepts/status-events.md` § per-backend matrix when new bits land.
-- [ ] **108.C.x.3 — `AVOID_ROS_NAMESPACE_CONVENTIONS`** topic-name encoding flag handling in nros-node `Node::topic_info` (cross-cutting; not per-backend).
+- [ ] **108.C.x.1 — Test matrix. DEFERRED.** Per-backend × per-policy E2E test (e.g. dust-DDS publisher exceeds deadline → subscriber fires `RequestedDeadlineMissed`). ~5-10 tests × backends w/ wiring (today: dust-DDS only). Open as separate phase once at least 2 backends have full wiring.
+- [x] **108.C.x.2 — Per-backend support matrix in book.** `book/src/concepts/status-events.md` § "Backend support is uneven" updated to reflect dust-DDS full wiring + others 🟡 planned. (commit `<this commit>`).
+- [x] **108.C.x.3 — `AVOID_ROS_NAMESPACE_CONVENTIONS` flag.** XRCE-DDS `naming::dds_topic_name` honours the flag (`true` skips `rt/` prefix). dust-DDS / zenoh-pico / uORB pass topic names through unchanged (no prefix added either way) — flag has no observable effect on those backends and is therefore not advertised in their `supported_qos_policies()`. (commit `<this commit>`).
   **Files:** `packages/core/nros-node/src/`, `packages/core/nros/src/lib.rs`.
 - [ ] **108.B.7 — C / C++ user-facing wrappers.** `nros-c` extends `nros_qos_t`. `nros-cpp` extends `nros::QoS` builder + adds `Publisher<M>::assert_liveliness()`. Profile constants in both.
   **Files:** `packages/core/nros-c/src/qos.rs`, `packages/core/nros-c/include/nros/types.h`, `packages/core/nros-cpp/include/nros/qos.hpp`.
@@ -441,12 +444,12 @@ Backends opt into specific QoS bits + event kinds one at a time. Each landing fl
 
 Tracked as sub-phases above. Current status:
 
-| Backend | QoS surface | assert_liveliness | Status events |
-|---------|-------------|---------------------|------------------|
-| dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | 🟡 next (`108.C.dds.4` / `.5`) |
-| XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | 🟡 partial possible (`108.C.xrce.2`) |
-| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | 🟡 shim-emulated (`108.C.zenoh.2-5`) |
-| uORB | ✅ CORE (commit `95df4d39`) | n/a | 🟡 partial possible (`108.C.uorb.2`) |
+| Backend | QoS surface | assert_liveliness | Status events | Avoid-ROS-prefix |
+|---------|-------------|---------------------|------------------|---------------------|
+| dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
+| XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
+| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ❌ deferred — shim emulation, separate phase | n/a (no prefix) |
+| uORB | ✅ CORE (commit `95df4d39`) | n/a | ❌ blocked — `px4-uorb` crate ext needed | n/a (no DDS naming) |
 
 ### No upstream ABI compat
 
