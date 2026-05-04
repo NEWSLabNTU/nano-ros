@@ -336,10 +336,18 @@ impl Session for ZenohSession {
         // Phase 108.B — zenoh-pico's wire protocol has no native DDS
         // QoS. Reliability maps to zenoh congestion-control (CORE
         // already covers it); durability/history/depth are honoured
-        // in the shim. Deadline / lifespan / liveliness would require
-        // shim-side emulation (timer + sample timestamp + zenoh
-        // liveliness tokens) — tracked as a follow-up. Until then,
-        // advertise only what the shim actually enforces.
-        nros_rmw::QosPolicyMask::CORE
+        // in the shim. Deadline / lifespan / liveliness manual modes
+        // would require shim-side emulation (timer + sample timestamp
+        // + zenoh liveliness tokens) — tracked as a follow-up.
+        //
+        // `LIVELINESS_AUTOMATIC` is reported as supported because the
+        // ROS 2 / DDS default profile sets `liveliness = AUTOMATIC` and
+        // Automatic semantics ("alive while the task lives") are
+        // satisfied trivially by zenoh-pico — the underlying zenoh
+        // session keepalive already covers it. Without this bit the
+        // default `QosSettings` would fail
+        // `Session::supported_qos_policies` validation on every entity
+        // create call.
+        nros_rmw::QosPolicyMask::CORE | nros_rmw::QosPolicyMask::LIVELINESS_AUTOMATIC
     }
 }
