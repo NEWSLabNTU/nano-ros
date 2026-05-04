@@ -28,6 +28,6 @@ cortex-r = ["nros-platform-freertos/cortex-r"]
 nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
 # Reuse FreeRTOS trait impls — FSP exposes the same FreeRTOS V10.4.3
 # tick / xTaskCreate / pvPortMalloc surface as the upstream kernel.
-nros-platform-freertos = { version = "0.1.0", path = "../../core/nros-platform-freertos" }
+nros-platform-freertos = { version = "0.1.0", path = "../../core/nros-platform-freertos", default-features = false }
 # IVC transport (nvidia-ivc backend selected by feature)
 nvidia-ivc = { version = "0.1.0", path = "../../drivers/nvidia-ivc" }
