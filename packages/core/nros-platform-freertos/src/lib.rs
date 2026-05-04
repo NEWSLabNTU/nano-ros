@@ -19,6 +19,7 @@ use core::ffi::c_void;
 use nros_platform_api::{PlatformAlloc, PlatformClock};
 
 mod ffi;
+#[cfg(feature = "lwip")]
 pub mod net;
 mod types;
 

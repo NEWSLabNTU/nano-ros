@@ -337,6 +337,18 @@ SPI/serial link family).
       - `flash` uses the L4T BSP's `flash.sh -k A_spe-fw …` against an x86
         host in USB recovery mode. Reads `L4T_BSP_DIR`; refuses to run
         without it.
+      - `bsp-download` / `bsp-build` / `bsp-clean` (added post-100.8) fetch
+        NVIDIA's SPE FreeRTOS BSP from L4T 36.4.4's `public_sources.tbz2`
+        + the ARM GNU 13.2 toolchain, build the upstream
+        `rt-aux-cpu-demo-fsp` Makefile, and repackage the resulting `.o`
+        files into a single `libtegra_aon_fsp.a` (~37 MB on t23x) plus a
+        staged `include/` tree under `external/spe-fsp/install/`. `build`
+        auto-detects the staged install when `NV_SPE_FSP_DIR` is unset.
+        Downloads are idempotent (cksum-verified) and can be reused via
+        `SPE_BSP_SRC_DIR`/`ARM_TOOLCHAIN_DIR` env overrides — sentinel
+        ships the same artifacts at
+        `scripts/spe/downloads/spe-freertos-bsp/`, so the two trees
+        share a single download cache.
 
       The mod is registered alongside the other platform modules in the root
       `justfile` and in the `_orchestrate` loop, so `just setup` / `just
