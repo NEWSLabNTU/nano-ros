@@ -7,9 +7,9 @@
 
 Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C header, both ship API-only, and Phase 108.A's deadline/liveliness events depend on Phase 108.B's QoS fields to be meaningful.
 
-**Status:** Not Started
+**Status:** v1 surface complete (108.A + 108.B); backend wiring in progress (dust-DDS QoS done; status events backend wiring next).
 
-**Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend phases.
+**Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend sub-phases below.
 
 **Depends on:** Phase 102 (typed entity structs, `nros_rmw_ret_t`), Phase 110 (Activator + ReadySet — events count as ready callbacks under `DrainMode::Latched` and against the dispatch loop's count cap; `OptUs` newtype + sentinel-`0` ABI convention reused for time fields).
 
@@ -350,33 +350,68 @@ Each backend uses native attachment mechanism. nano-ros doesn't define a cross-b
 
 ## Work Items
 
-### v1 — 108.A (Status events surface)
+### v1 — 108.A (Status events surface) — **COMPLETE** (commit `2ae8fbaf` + leak fix `f9d2267f`)
 
-- [ ] **108.A.1 — Rust trait + payload types.** `nros-rmw` crate: new `event.rs` module with `EventKind`, payload structs, `EventPayload<'a>` borrow-shaped union, `EventCallback` boxed closure typedef. Trait extensions on `Subscriber` and `Publisher` w/ default `Unsupported` impls.
-  **Files:** `packages/core/nros-rmw/src/event.rs` (new), `packages/core/nros-rmw/src/traits.rs`, `packages/core/nros-rmw/src/lib.rs`.
-- [ ] **108.A.2 — C vtable + payload header.** New `<nros/rmw_event.h>`. Vtable extension: two new optional function pointers. Doxygen on lifetime + threading + dispatch context.
-  **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_event.h` (new), `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`.
-- [ ] **108.A.3 — Rust mirror in `nros-rmw-cffi`.** `#[repr(C)]` mirrors. `NrosRmwVtable` adds two new function pointers. `CffiSubscriber`/`CffiPublisher` thread `register_event_callback` calls through.
+- [x] **108.A.1 — Rust trait + payload types.** `nros-rmw` crate: new `event.rs` module with `EventKind`, payload structs, `EventPayload<'a>` borrow-shaped union, `EventCallback` raw fn pointer typedef. Trait extensions on `Subscriber` and `Publisher` w/ default `Unsupported` impls.
+  **Files:** `packages/core/nros-rmw/src/event.rs`, `packages/core/nros-rmw/src/traits.rs`, `packages/core/nros-rmw/src/lib.rs`.
+- [x] **108.A.2 — C vtable + payload header.** `<nros/rmw_event.h>` w/ event types. Vtable adds `register_subscriber_event` + `register_publisher_event` function pointers.
+  **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_event.h`, `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`.
+- [x] **108.A.3 — Rust mirror in `nros-rmw-cffi`.** `#[repr(C)]` mirrors. `NrosRmwVtable` w/ event fn pointers. `CffiSubscriber`/`CffiPublisher` route through vtable.
   **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`.
-- [ ] **108.A.4 — User-facing API on `nros-node`.** `Subscription<M>::on_liveliness_changed` / `on_requested_deadline_missed` / `on_message_lost`. `Publisher<M>::on_liveliness_lost` / `on_offered_deadline_missed`. Async `next_*` Future variants. Each method `Err(Unsupported)` until backend wiring lands.
-  **Files:** `packages/core/nros-node/src/subscription.rs`, `packages/core/nros-node/src/publisher.rs`.
-- [ ] **108.A.5 — C / C++ thin wrappers.** `nros-c`: `nros_subscription_set_*_callback` family. `nros-cpp`: `nros::Subscription<M>::on_*` w/ `std::function` overloads under `NROS_CPP_STD`.
-  **Files:** `packages/core/nros-c/src/`, `packages/core/nros-cpp/include/nros/`, `packages/core/nros-cpp/src/`.
-- [ ] **108.A.6 — Book chapter.** New `book/src/concepts/status-events.md`: five Tier-1 event kinds + use cases; callback-on-entity vs upstream waitset-take rationale; per-backend support matrix; Tier-2/3 skipped + rationale; per-RTOS recommendations (drone bridge, 100 Hz sensor pattern). Cross-link from `book/src/design/rmw-vs-upstream.md` § 8.
+- [x] **108.A.4 — User-facing API on `nros-node`.** `Subscription<M>::on_liveliness_changed` / `on_requested_deadline_missed` / `on_message_lost`. `Publisher<M>::on_liveliness_lost` / `on_offered_deadline_missed`. Closure boxed → trampoline; `Err(Unsupported)` until backend wiring lands per kind.
+  **Files:** `packages/core/nros-node/src/executor/handles.rs`.
+- [x] **108.A.5 — C / C++ thin wrappers.** `nros-c`: `nros_subscription_set_*_callback` family. `nros-cpp`: `nros::Subscription<M>::on_*` w/ std::function overloads under `NROS_CPP_STD`.
+  **Files:** `packages/core/nros-c/src/event.rs`, `packages/core/nros-cpp/include/nros/{publisher,subscription}.hpp`.
+- [x] **108.A.6 — Book chapter.** `book/src/concepts/status-events.md` (244 lines).
+- [x] **108.A.7 — Closure leak on entity drop fix.** `heapless::Vec<EventReg, 3>` per entity + type-erased Box destructor; Drop walks the registry. No-alloc builds: ZST + no-op (commit `f9d2267f`).
+  **Files:** `packages/core/nros-node/src/executor/handles.rs`, `packages/core/nros-node/src/executor/node.rs`.
 
-### v1 — 108.B (Full QoS surface)
+### v1 — 108.B (Full QoS surface) — **COMPLETE** (commit `c5ef9fdc`)
 
-- [ ] **108.B.1 — Update C header `<nros/rmw_entity.h>`.** Extend `nros_rmw_qos_t` to 24 bytes. Add `nros_rmw_liveliness_kind_t` enum. Standard profile constants. Doxygen on each new field.
-  **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_entity.h`.
-- [ ] **108.B.2 — Update Rust mirror in `nros-rmw-cffi`.** `NrosRmwQos` grows. `LivelinessKind` enum. `pub const`s for standard profiles. `From<QosSettings> for NrosRmwQos` extended.
-  **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`.
-- [ ] **108.B.3 — Update `nros-rmw` `QosSettings` + add `QosPolicyMask`.** Extend QosSettings w/ deadline, lifespan, liveliness_kind, liveliness_lease_duration, avoid_ros_namespace_conventions. Default values preserve current semantics (zero = "off"). Add `QosPolicyMask` bitflags. Add `Session::supported_qos_policies()` trait method (default `CORE`).
-  **Files:** `packages/core/nros-rmw/src/traits.rs`, `packages/core/nros-rmw/src/lib.rs`.
-- [ ] **108.B.4 — `Session::create_*` validates QoS against mask.** Default-implemented validation. Unsupported policy → `IncompatibleQos`. No silent downgrade.
-  **Files:** `packages/core/nros-rmw/src/traits.rs`.
-- [ ] **108.B.5 — `Publisher::assert_liveliness()` trait method.** Default no-op. C vtable adds optional `assert_publisher_liveliness` function pointer.
-  **Files:** `packages/core/nros-rmw/src/traits.rs`, `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`, `packages/core/nros-rmw-cffi/src/lib.rs`.
-- [ ] **108.B.6 — `nros-node` user-facing surface.** `Publisher<M>::assert_liveliness()`. `create_*_with_qos` accepts extended QosSettings. Profile constants re-exported at `nros::qos::*`.
+- [x] **108.B.1 — Update C header `<nros/rmw_entity.h>`.** `nros_rmw_qos_t` = 24 bytes; `nros_rmw_liveliness_kind_t` enum; standard profile constants; `bool` → `uint8_t` for ABI stability.
+- [x] **108.B.2 — Update Rust mirror in `nros-rmw-cffi`.** `NrosRmwQos` grows; `LivelinessKind` enum; `pub const`s for standard profiles; `avoid_ros_namespace_conventions: u8`.
+- [x] **108.B.3 — Update `nros-rmw` `QosSettings` + add `QosPolicyMask`.** Extended fields; bitflags; `Session::supported_qos_policies()` trait method; `QosSettings::required_policies()` / `validate_against()` helpers.
+- [x] **108.B.4 — `Node::create_*` validates QoS against mask.** Synchronous `Err(IncompatibleQos)`; no silent downgrade. (Validation lives in `nros-node` `Node::create_*_with_qos`, not in the `Session` trait — keeps backends transport-only.)
+- [x] **108.B.5 — `Publisher::assert_liveliness()` trait method.** Default no-op. C vtable: `assert_publisher_liveliness` function pointer.
+- [x] **108.B.6 — `nros-node` user-facing surface.** `Publisher<M>::assert_liveliness()` + `EmbeddedRawPublisher::assert_liveliness()`. `create_*_with_qos` validates. `nros::qos::{DEFAULT, SENSOR_DATA, SERVICES_DEFAULT, PARAMETERS, SYSTEM_DEFAULT}` profile constants re-exported.
+
+### Post-v1 — 108.C (Per-backend wiring)
+
+Backends opt into specific QoS bits + event kinds one at a time. Each landing flips bits in the backend's `supported_qos_policies()` mask and overrides the relevant trait methods.
+
+#### dust-DDS — `108.C.dds` — **COMPLETE** (commit `d74aa834`)
+
+- [x] **108.C.dds.1 — Full QoS mapping.** `map_writer_qos` / `map_reader_qos` translate `QosSettings` → dust-dds `DataWriterQos` / `DataReaderQos`. Reliability, durability (V/TL), history, deadline, lifespan (writer), liveliness (Auto/ManualByTopic/ManualByParticipant), liveliness lease.
+- [x] **108.C.dds.2 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL | DEADLINE | LIFESPAN | LIVELINESS_AUTOMATIC | LIVELINESS_MANUAL_BY_TOPIC | LIVELINESS_MANUAL_BY_NODE | LIVELINESS_LEASE.
+- [x] **108.C.dds.3 — `Publisher::assert_liveliness`** routes through dust-dds `DataWriter::assert_liveliness` (sync) / `DataWriterAsync` (no_std).
+- [ ] **108.C.dds.4 — Status events (sub side).** Wire `register_event_callback` for `LivelinessChanged` / `RequestedDeadlineMissed` / `MessageLost` via dust-dds `DataReaderListener`. Bridge listener callback → registered `EventCallback` via stored fn pointer + user_ctx.
+- [ ] **108.C.dds.5 — Status events (pub side).** Same for `LivelinessLost` / `OfferedDeadlineMissed` via `DataWriterListener`.
+
+#### XRCE-DDS — `108.C.xrce` — **CORE QoS COMPLETE** (commit `95df4d39`)
+
+- [x] **108.C.xrce.1 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL only — XRCE C client surface (`uxrQoS_t`) doesn't expose deadline / lifespan / liveliness; agent-side enforcement only. Map nros QoS to `uxrQoS_t` already in tree.
+- [ ] **108.C.xrce.2 — Status events.** `uxr_set_status_callback` / `uxr_set_topic_callback` listener bridge for `MessageLost` (best-effort). Liveliness / deadline NOT exposable through xrce-dds-client API; remain `Err(Unsupported)`.
+- [ ] **108.C.xrce.3 — Optional: full QoS via XML.** `uxr_buffer_create_*_xml` accepts agent-side QoS XML w/ deadline / lifespan / liveliness. Trade-off: requires agent w/ XML support + larger payload. Defer until requested.
+
+#### zenoh-pico — `108.C.zenoh` — **CORE QoS COMPLETE** (commit `95df4d39`)
+
+- [x] **108.C.zenoh.1 — `Session::supported_qos_policies()` override.** Returns CORE only.
+- [ ] **108.C.zenoh.2 — Shim-emulated DEADLINE.** Per-subscriber timer; on each message arrival reset deadline; on expiry fire `RequestedDeadlineMissed` event. Pub side: track inter-publish timestamps; fire `OfferedDeadlineMissed` if late.
+- [ ] **108.C.zenoh.3 — Shim-emulated LIFESPAN.** Per-sample timestamp attachment; subscriber filter on `(now - sent_ts > lifespan)`.
+- [ ] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens.** Each publisher declares a liveliness token; subscribers query token presence; on token loss fire `LivelinessChanged`. Native zenoh token API exists in zenoh-pico ≥ 1.x.
+- [ ] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST.** Sequence number attachment; subscriber detects gaps → fire event w/ count.
+- [ ] **108.C.zenoh.6 — Update `supported_qos_policies()` mask** as each emulation lands.
+
+#### uORB — `108.C.uorb` — **CORE QoS COMPLETE** (commit `95df4d39`)
+
+- [x] **108.C.uorb.1 — `Session::supported_qos_policies()` override.** Returns CORE only — intra-process pubsub w/ no wire-level QoS.
+- [ ] **108.C.uorb.2 — `MessageLost` event.** uORB tracks lost-message count per subscription via `orb_stat`. Fire on increment between polls. Other event kinds remain unsupported (no wire, no liveliness concept).
+
+#### Cross-backend integration
+
+- [ ] **108.C.x.1 — Test matrix.** For each backend × each supported QoS policy, end-to-end test: create publisher + subscriber w/ that QoS, verify enforcement (e.g. publisher exceeds deadline → subscriber fires `RequestedDeadlineMissed`).
+- [ ] **108.C.x.2 — Per-backend support matrix in book.** Update `book/src/concepts/status-events.md` § per-backend matrix when new bits land.
+- [ ] **108.C.x.3 — `AVOID_ROS_NAMESPACE_CONVENTIONS`** topic-name encoding flag handling in nros-node `Node::topic_info` (cross-cutting; not per-backend).
   **Files:** `packages/core/nros-node/src/`, `packages/core/nros/src/lib.rs`.
 - [ ] **108.B.7 — C / C++ user-facing wrappers.** `nros-c` extends `nros_qos_t`. `nros-cpp` extends `nros::QoS` builder + adds `Publisher<M>::assert_liveliness()`. Profile constants in both.
   **Files:** `packages/core/nros-c/src/qos.rs`, `packages/core/nros-c/include/nros/types.h`, `packages/core/nros-cpp/include/nros/qos.hpp`.
@@ -402,14 +437,16 @@ Each backend uses native attachment mechanism. nano-ros doesn't define a cross-b
 
 ## Notes
 
-### Backend wiring follow-up phases
+### Backend wiring progress (108.C)
 
-108 lands the surface only. Per-backend wiring follows in numbered sub-phases (concrete numbers TBD when 108 lands; will use the 109 / 111+ slots freed by Phase 105/107/109 archive/merge):
+Tracked as sub-phases above. Current status:
 
-- dust-DDS event + QoS wiring (native; ~80 LOC for events, ~120 LOC for full QoS opt-in)
-- XRCE-DDS event + QoS wiring (native via uxr listener; ~80 LOC events, ~120 LOC QoS)
-- zenoh-pico event + QoS wiring (shim-tracked, ~150 LOC events, ~200 LOC QoS — biggest because Zenoh has no native QoS, all policies emulated)
-- uORB event + QoS wiring (Tier-1 partial coverage; ~50 LOC; only RELIABILITY/DURABILITY_VOLATILE/HISTORY/DEPTH supported per uORB QoS section below)
+| Backend | QoS surface | assert_liveliness | Status events |
+|---------|-------------|---------------------|------------------|
+| dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | 🟡 next (`108.C.dds.4` / `.5`) |
+| XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | 🟡 partial possible (`108.C.xrce.2`) |
+| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | 🟡 shim-emulated (`108.C.zenoh.2-5`) |
+| uORB | ✅ CORE (commit `95df4d39`) | n/a | 🟡 partial possible (`108.C.uorb.2`) |
 
 ### No upstream ABI compat
 
