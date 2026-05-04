@@ -128,7 +128,16 @@ const GOAL_UUID_SIZE: usize = 16;
 /// construction. See `docs/design/zero-copy-raw-api.md` decision D7.
 pub struct EmbeddedPublisher<M> {
     pub(crate) handle: session::RmwPublisher,
+    /// Phase 108 — registered event closures kept alive for the
+    /// publisher's lifetime; freed in `Drop`.
+    pub(crate) event_regs: EventRegs,
     pub(crate) _phantom: PhantomData<M>,
+}
+
+impl<M> Drop for EmbeddedPublisher<M> {
+    fn drop(&mut self) {
+        drop_event_regs(&mut self.event_regs);
+    }
 }
 
 impl<M: RosMessage> EmbeddedPublisher<M> {
@@ -182,6 +191,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     {
         register_pub_event::<F, _>(
             &mut self.handle,
+            &mut self.event_regs,
             nros_rmw::EventKind::LivelinessLost,
             0,
             cb,
@@ -206,6 +216,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     {
         register_pub_event::<F, _>(
             &mut self.handle,
+            &mut self.event_regs,
             nros_rmw::EventKind::OfferedDeadlineMissed,
             deadline.as_millis().min(u32::MAX as u128) as u32,
             cb,
@@ -218,9 +229,51 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     }
 }
 
+/// Cap on registered event callbacks per entity. Subscribers can hold
+/// up to 3 (LivelinessChanged + RequestedDeadlineMissed + MessageLost);
+/// publishers up to 2 (LivelinessLost + OfferedDeadlineMissed). One vec
+/// type fits both — extra slots are unused on publishers.
+pub(crate) const MAX_EVENTS_PER_ENTITY: usize = 3;
+
+/// One row of the per-entity event-callback registry. Stores enough to
+/// type-erase the boxed closure for `Drop`-time deallocation.
+#[cfg(feature = "alloc")]
+#[derive(Clone, Copy)]
+pub(crate) struct EventReg {
+    /// `Box::into_raw`-derived pointer; valid for the entity's lifetime.
+    pub(crate) ctx: *mut core::ffi::c_void,
+    /// Type-erased destructor. Calls `Box::from_raw` w/ the originating
+    /// monomorphic type, dropping the closure + freeing the heap slot.
+    pub(crate) drop_fn: unsafe fn(*mut core::ffi::c_void),
+}
+
+#[cfg(feature = "alloc")]
+pub(crate) type EventRegs = heapless::Vec<EventReg, MAX_EVENTS_PER_ENTITY>;
+
+/// Empty placeholder for no-alloc builds — keeps struct layout stable
+/// across feature combinations without paying any space.
+#[cfg(not(feature = "alloc"))]
+#[derive(Default, Clone, Copy)]
+pub(crate) struct EventRegs;
+
+#[cfg(feature = "alloc")]
+pub(crate) fn drop_event_regs(regs: &mut EventRegs) {
+    while let Some(reg) = regs.pop() {
+        // SAFETY: `reg.ctx` was obtained from `Box::into_raw` of the
+        // monomorphic type that `reg.drop_fn` knows about. Each reg is
+        // visited exactly once because we drain via `pop`.
+        unsafe { (reg.drop_fn)(reg.ctx) };
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+#[inline]
+pub(crate) fn drop_event_regs(_regs: &mut EventRegs) {}
+
 #[cfg(feature = "alloc")]
 fn register_pub_event<F, D>(
     handle: &mut session::RmwPublisher,
+    regs: &mut EventRegs,
     kind: nros_rmw::EventKind,
     deadline_ms: u32,
     user_cb: F,
@@ -231,16 +284,37 @@ where
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     use nros_rmw::Publisher as _;
+    if regs.is_full() {
+        return Err(NodeError::Transport(TransportError::Unsupported));
+    }
     let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
     // SAFETY: trampoline downcasts `user_ctx` back to the boxed
-    // EventClosureState. Pointer remains valid until the entity is
-    // dropped (entity drop must `Box::from_raw` to free — TODO when
-    // backend wiring lands; today only Err(Unsupported) returns).
-    unsafe {
+    // EventClosureState. Box ownership is recorded in `regs`; entity
+    // Drop walks the registry and frees via `drop_event_state::<F, D>`.
+    let res = unsafe {
         handle.register_event_callback(kind, deadline_ms, event_trampoline::<F, D>, user_ctx)
+    };
+    match res {
+        Ok(()) => {
+            // is_full check above guarantees push() succeeds.
+            let _ = regs.push(EventReg {
+                ctx: user_ctx,
+                drop_fn: drop_event_state::<F, D>,
+            });
+            Ok(())
+        }
+        Err(e) => {
+            // SAFETY: backend rejected the registration; reclaim the
+            // box we just leaked into raw form.
+            unsafe {
+                drop(alloc::boxed::Box::from_raw(
+                    user_ctx as *mut EventClosureState<F, D>,
+                ));
+            }
+            Err(NodeError::Transport(e))
+        }
     }
-    .map_err(NodeError::Transport)
 }
 
 #[cfg(feature = "alloc")]
@@ -264,8 +338,24 @@ unsafe extern "C" fn event_trampoline<F, D>(
 }
 
 #[cfg(feature = "alloc")]
+unsafe fn drop_event_state<F, D>(ctx: *mut core::ffi::c_void)
+where
+    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
+{
+    // SAFETY: caller guarantees `ctx` was obtained from
+    // `Box::into_raw::<EventClosureState<F, D>>` and not yet freed.
+    unsafe {
+        drop(alloc::boxed::Box::from_raw(
+            ctx as *mut EventClosureState<F, D>,
+        ));
+    }
+}
+
+#[cfg(feature = "alloc")]
 fn register_sub_event_count<F, D>(
     handle: &mut session::RmwSubscriber,
+    regs: &mut EventRegs,
     kind: nros_rmw::EventKind,
     deadline_ms: u32,
     user_cb: F,
@@ -276,34 +366,85 @@ where
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     use nros_rmw::Subscriber as _;
+    if regs.is_full() {
+        return Err(NodeError::Transport(TransportError::Unsupported));
+    }
     let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
-    unsafe {
+    let res = unsafe {
         handle.register_event_callback(kind, deadline_ms, event_trampoline::<F, D>, user_ctx)
+    };
+    match res {
+        Ok(()) => {
+            let _ = regs.push(EventReg {
+                ctx: user_ctx,
+                drop_fn: drop_event_state::<F, D>,
+            });
+            Ok(())
+        }
+        Err(e) => {
+            unsafe {
+                drop(alloc::boxed::Box::from_raw(
+                    user_ctx as *mut EventClosureState<F, D>,
+                ));
+            }
+            Err(NodeError::Transport(e))
+        }
     }
-    .map_err(NodeError::Transport)
 }
 
 #[cfg(feature = "alloc")]
 fn register_sub_event_liveliness<F>(
     handle: &mut session::RmwSubscriber,
+    regs: &mut EventRegs,
     user_cb: F,
 ) -> Result<(), NodeError>
 where
     F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
 {
     use nros_rmw::Subscriber as _;
+    if regs.is_full() {
+        return Err(NodeError::Transport(TransportError::Unsupported));
+    }
     let state = alloc::boxed::Box::new(LivelinessClosureState { user_cb });
     let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
-    unsafe {
+    let res = unsafe {
         handle.register_event_callback(
             nros_rmw::EventKind::LivelinessChanged,
             0,
             liveliness_trampoline::<F>,
             user_ctx,
         )
+    };
+    match res {
+        Ok(()) => {
+            let _ = regs.push(EventReg {
+                ctx: user_ctx,
+                drop_fn: drop_liveliness_state::<F>,
+            });
+            Ok(())
+        }
+        Err(e) => {
+            unsafe {
+                drop(alloc::boxed::Box::from_raw(
+                    user_ctx as *mut LivelinessClosureState<F>,
+                ));
+            }
+            Err(NodeError::Transport(e))
+        }
     }
-    .map_err(NodeError::Transport)
+}
+
+#[cfg(feature = "alloc")]
+unsafe fn drop_liveliness_state<F>(ctx: *mut core::ffi::c_void)
+where
+    F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
+{
+    unsafe {
+        drop(alloc::boxed::Box::from_raw(
+            ctx as *mut LivelinessClosureState<F>,
+        ));
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -364,6 +505,14 @@ pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
     /// dispatches to the backend's `SlotLending` instead.
     #[allow(dead_code)]
     pub(crate) arena: TxArena<TX_BUF>,
+    /// Phase 108 — registered event closures.
+    pub(crate) event_regs: EventRegs,
+}
+
+impl<const TX_BUF: usize> Drop for EmbeddedRawPublisher<TX_BUF> {
+    fn drop(&mut self) {
+        drop_event_regs(&mut self.event_regs);
+    }
 }
 
 /// Single-slot per-publisher arena. Concurrent `try_loan` calls on the
@@ -444,6 +593,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         Self {
             handle,
             arena: TxArena::new(),
+            event_regs: EventRegs::default(),
         }
     }
 
@@ -796,7 +946,15 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
+    /// Phase 108 — registered event closures.
+    pub(crate) event_regs: EventRegs,
     pub(crate) _phantom: PhantomData<M>,
+}
+
+impl<M, const RX_BUF: usize> Drop for Subscription<M, RX_BUF> {
+    fn drop(&mut self) {
+        drop_event_regs(&mut self.event_regs);
+    }
 }
 
 impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
@@ -854,7 +1012,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     where
         F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
     {
-        register_sub_event_liveliness::<F>(&mut self.handle, cb)
+        register_sub_event_liveliness::<F>(&mut self.handle, &mut self.event_regs, cb)
     }
 
     /// Register a callback for `RequestedDeadlineMissed`. Fires when
@@ -870,6 +1028,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     {
         register_sub_event_count::<F, _>(
             &mut self.handle,
+            &mut self.event_regs,
             nros_rmw::EventKind::RequestedDeadlineMissed,
             deadline.as_millis().min(u32::MAX as u128) as u32,
             cb,
@@ -890,6 +1049,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     {
         register_sub_event_count::<F, _>(
             &mut self.handle,
+            &mut self.event_regs,
             nros_rmw::EventKind::MessageLost,
             0,
             cb,
@@ -1007,6 +1167,14 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 pub struct RawSubscription<const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
+    /// Phase 108 — registered event closures.
+    pub(crate) event_regs: EventRegs,
+}
+
+impl<const RX_BUF: usize> Drop for RawSubscription<RX_BUF> {
+    fn drop(&mut self) {
+        drop_event_regs(&mut self.event_regs);
+    }
 }
 
 impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
@@ -1023,6 +1191,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         Self {
             handle,
             buffer: [0u8; RX_BUF],
+            event_regs: EventRegs::default(),
         }
     }
 
