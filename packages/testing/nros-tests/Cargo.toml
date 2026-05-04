@@ -30,6 +30,12 @@ px4-sitl-tests = { path = "../../../third-party/px4/px4-rs/tests/sitl", optional
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Phase 100.8 — Orin SPE IVC link transport mock E2E test. The
+# `unix-mock` backend implements the IVC channel API on top of an
+# `AF_UNIX SOCK_DGRAM` pair, so the framing protocol can be exercised
+# on any POSIX host without an SDK Manager install.
+nvidia-ivc = { path = "../../drivers/nvidia-ivc", features = ["unix-mock"] }
+
 # Workspace dependencies for type access (optional)
 nros-core = { path = "../../core/nros-core", optional = true }
 nros-serdes = { path = "../../core/nros-serdes", optional = true }
@@ -117,3 +123,7 @@ path = "tests/rtos_e2e.rs"
 name = "px4_e2e"
 path = "tests/px4_e2e.rs"
 required-features = ["px4-sitl"]
+
+[[test]]
+name = "orin_spe_mock_ivc"
+path = "tests/orin_spe_mock_ivc.rs"

@@ -7,7 +7,8 @@ FSP. Application-level work (porting the safety-island packages from the friend 
 repo's [Phase 11](https://github.com/jerry73204/autoware_sentinel/blob/main/docs/roadmap/11-orin-spe.md);
 this phase delivers the pieces nano-ros has to provide to make Phase 11 buildable.
 
-**Status:** Not Started.
+**Status:** Done. All 10 sub-items landed; POSIX mock-IVC E2E green; hardware bring-up
+deferred to `autoware_sentinel` Phase 11.7.
 **Priority:** Medium (driven by autoware_sentinel Phase 11 dependency).
 **Depends on:** none in nano-ros (greenfield).
 **Cross-cutting:** `autoware_sentinel` Phase 11 consumes everything this phase produces.
@@ -318,39 +319,60 @@ SPI/serial link family).
       - Float ABI consistent across Rust + C objects (no `attribute Tag_ABI_VFP_args`
         warnings at link time).
 
-- [ ] **100.7 — Justfile + setup wiring**
+- [x] **100.7 — Justfile + setup wiring**
 
-      Add `just/orin-spe.just` mod with the standard recipe set used by every other
-      platform module: `setup`, `doctor`, `build`, `build-fixtures`, `test`, `clean`.
+      Added `just/orin-spe.just` mod with the standard recipe set: `setup`,
+      `doctor`, `build`, `build-fixtures`, `test`, `flash`, `ci`, `clean`.
 
-      - `setup` — verifies `armv7r-none-eabihf` target installed, FSP path env vars
-        present, `arm-none-eabi-{gcc,ld,size}` on PATH; clones FSP samples to
-        `external/nvidia-spe-fsp` if user has SDK Manager creds (best-effort).
-      - `doctor` — read-only diagnostic.
-      - `build` — invokes board crate build via `cargo +nightly build --target
-        armv7r-none-eabihf -Zbuild-std=core,alloc`, then NVIDIA Makefile.
-      - `flash` — `flash.sh -k A_spe-fw …` against an x86 host in USB recovery mode
-        (same mechanism documented in `autoware_sentinel` Phase 11.7).
+      - `setup` installs the `armv7r-none-eabihf` target on the workspace
+        nightly and prints a notice for `NV_SPE_FSP_DIR`. The FSP itself
+        ships under NVIDIA's SDK Manager EULA and cannot be auto-installed.
+      - `doctor` is read-only. Exits 1 if the target or `arm-none-eabi-gcc`
+        is missing; treats `NV_SPE_FSP_DIR` as informational so host CI
+        without the SDK passes.
+      - `build` runs `cargo +nightly build --release` inside the (workspace-
+        excluded) board crate against `NV_SPE_FSP_DIR`. Fails loud if the env
+        var isn't set, with a pointer to `just orin_spe test` for the POSIX
+        path that doesn't need the SDK.
+      - `flash` uses the L4T BSP's `flash.sh -k A_spe-fw …` against an x86
+        host in USB recovery mode. Reads `L4T_BSP_DIR`; refuses to run
+        without it.
 
-      Wire into the top-level `_orchestrate` loop in `justfile` so `just setup` /
-      `just doctor` mention SPE alongside other platforms.
+      The mod is registered alongside the other platform modules in the root
+      `justfile` and in the `_orchestrate` loop, so `just setup` / `just
+      doctor` cover SPE with everything else.
 
-- [ ] **100.8 — Examples + smoke tests**
+- [x] **100.8 — Mock-IVC E2E test**
 
-      Create one minimal end-to-end example that exercises the full stack on the
-      POSIX simulator (no SPE hardware required for CI):
+      Landed `packages/testing/nros-tests/tests/orin_spe_mock_ivc.rs` as the
+      executable spec for the IVC link wire format
+      (`docs/roadmap/phase-100-04-link-ivc-design.md` §5). The test pins:
 
-      - `examples/orin-spe/rust/zenoh/talker/` — publishes `std_msgs/Int32` on
-        `/chatter` over `ivc/2`, runs as a FreeRTOS POSIX-port process.
-      - `tests/orin-spe-mock-ivc.sh` — boots zenohd, the mock IVC bridge daemon (which
-        actually lives in `autoware_sentinel/src/ivc-bridge/`, exec'd by the test
-        harness), and the talker; subscribes from CLI; asserts message receipt.
+      - 64-byte fixed frame size, 4-byte LE `total_len + offset` header,
+        60-byte max payload — matches the C `__z_ivc_send_batch` /
+        `__z_ivc_recv_batch` state machines in
+        `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/ivc.c`.
+      - Single-frame round-trip, multi-frame reassembly (200 B → 4 frames),
+        keep-alive (`total=0, offset=0`) drop, and protocol-violation
+        rejection (offset != accumulated length on a fresh batch).
 
-      Hardware tests live in `autoware_sentinel` Phase 11.7 (require SPE flash);
-      nano-ros CI only runs the POSIX path.
+      Runs over the `nvidia-ivc/unix-mock` backend on a `SOCK_DGRAM` pair —
+      no NVIDIA SDK or hardware needed. The CCPLEX-side bridge daemon in
+      `autoware_sentinel/src/ivc-bridge/` cites this test as its byte-level
+      conformance reference.
 
-      **Acceptance:** `cargo nextest run -p nros-tests --test orin_spe_mock_ivc` passes
-      on Linux without any NVIDIA SDK.
+      A POSIX-side `examples/orin-spe/rust/zenoh/talker/` is **deferred** —
+      a working binary needs (a) a POSIX FreeRTOS port crate (we don't ship
+      one) and (b) `nros` umbrella propagation of a `link-ivc` feature plus
+      a zpico-sys backend matrix that lets `orin-spe` co-exist with the
+      `posix` UDP/TCP path. Both are larger lifts than fit this phase. The
+      friend project's bridge daemon (autoware_sentinel Phase 11.6) will
+      land the runnable end-to-end demo once it's the right side of those
+      decisions.
+
+      **Acceptance:** `cargo nextest run -p nros-tests --test orin_spe_mock_ivc`
+      passes on Linux without any NVIDIA SDK. Wired into `just orin_spe test`
+      alongside the `nvidia-ivc` `unix-mock` loopback (Phase 100.0).
 
 ## Acceptance criteria (phase-level)
 

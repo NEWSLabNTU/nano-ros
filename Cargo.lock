@@ -1737,6 +1737,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-zenoh",
  "nros-serdes",
+ "nvidia-ivc",
  "once_cell",
  "parking_lot",
  "predicates",
