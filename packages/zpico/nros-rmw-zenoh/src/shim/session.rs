@@ -331,4 +331,15 @@ impl Session for ZenohSession {
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
         self.spin_once(timeout_ms as u32).map(|_| ())
     }
+
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        // Phase 108.B — zenoh-pico's wire protocol has no native DDS
+        // QoS. Reliability maps to zenoh congestion-control (CORE
+        // already covers it); durability/history/depth are honoured
+        // in the shim. Deadline / lifespan / liveliness would require
+        // shim-side emulation (timer + sample timestamp + zenoh
+        // liveliness tokens) — tracked as a follow-up. Until then,
+        // advertise only what the shim actually enforces.
+        nros_rmw::QosPolicyMask::CORE
+    }
 }

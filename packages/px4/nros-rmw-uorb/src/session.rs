@@ -141,4 +141,14 @@ impl Session for UorbSession {
         // attached to each UorbSubscriber.
         Ok(())
     }
+
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        // Phase 108.B — uORB is intra-process pubsub w/ no wire-level
+        // reliability or durability negotiation. Adapted semantics:
+        // RELIABLE always (queue-bounded, no drops while consumer is
+        // keeping up); VOLATILE always (no late-joiner replay);
+        // HISTORY/DEPTH honoured via the per-subscriber ring buffer.
+        // No deadline, lifespan, liveliness, or TL durability.
+        nros_rmw::QosPolicyMask::CORE
+    }
 }

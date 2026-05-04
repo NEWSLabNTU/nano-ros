@@ -1204,6 +1204,18 @@ impl Session for XrceSession {
         self.spin_once(timeout_ms);
         Ok(())
     }
+
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        // Phase 108.B — XRCE-DDS exposes only core QoS (reliability,
+        // durability V/TL, history, depth) on the C client surface.
+        // Deadline / lifespan / liveliness are policed by the XRCE
+        // agent (full-DDS broker) but the client cannot configure or
+        // observe them through `uxrQoS_t`. Expose only what we can
+        // honour at this layer; users wanting those policies should
+        // pick the dust-DDS backend.
+        use nros_rmw::QosPolicyMask;
+        QosPolicyMask::CORE | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
+    }
 }
 
 // ============================================================================
