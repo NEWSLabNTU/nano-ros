@@ -2,7 +2,7 @@
 
 **Goal:** Close the day-to-day API ergonomics gap between `nros-c`/`nros-cpp` and `rclc`/`rclcpp` so a hello-world is the same line count, the same shape, and free of platform leaks.
 
-**Status:** Not Started
+**Status:** In Progress (B + D shipped, A/C/E/F pending)
 **Priority:** High
 **Depends on:** Phase 21 (C API), Phase 79 (unified platform abstraction), Phase 83 (thin-wrapper compliance)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-2, UX-3, UX-4, UX-8, UX-21, UX-26
@@ -124,14 +124,14 @@ Zephyr Rust examples must be named `rustapp` because `zephyr-lang-rust`'s `rust_
 - [ ] **112.A.1** Codegen — emit `nros_publisher_publish_<pkg>_<type>` per message type
 - [ ] **112.A.2** Codegen — emit `_Generic`-based `NROS_PUBLISH(pub, msg)` umbrella macro
 - [ ] **112.A.3** Sweep examples to use typed publish
-- [ ] **112.B.1** Add `<nros/check.h>` with `NROS_CHECK`/`NROS_SOFTCHECK`
-- [ ] **112.B.2** Sweep all C/C++ examples to use the macros
+- [x] **112.B.1** Added `<nros/check.h>` with `NROS_CHECK`/`NROS_SOFTCHECK`/`NROS_CHECK_RET`. Override-able log via `NROS_CHECK_LOG`. Re-exported from umbrella `<nros/nros.h>`.
+- [~] **112.B.2** Swept FreeRTOS / NuttX / ThreadX-RISCV C zenoh talker + listener (6 files). Native (`int main`) and service/action/cpp examples deferred — patterns diverge.
 - [ ] **112.C.1** Define `nros_app_main` contract; document in `book/src/reference/c-api.md`
 - [ ] **112.C.2** Per-platform startup shim in each `nros-platform-<rtos>` crate
 - [ ] **112.C.3** Migrate examples to `nros_app_main`; keep deprecated shims one release
-- [ ] **112.D.1** Auto-generate `nros_app_config.h` from `config.toml`; emit from `nros_generate_interfaces()` cmake fn
+- [x] **112.D.1** `nano_ros_generate_config_header(<config_file> <out_path>)` cmake function in `NanoRosReadConfig.cmake`. Template at `cmake/templates/nros_app_config.h.in`. Installed to `share/nano_ros/templates/`. Found via `CMAKE_CURRENT_FUNCTION_LIST_DIR` across in-tree, source-tree, and install layouts. FreeRTOS C zenoh talker migrated to use `NROS_APP_CONFIG.zenoh.locator` / `.domain_id`.
 - [ ] **112.D.2** Zephyr variant — read Kconfig values into the same struct
-- [ ] **112.D.3** Drop `target_compile_definitions(... APP_*)` blocks in example CMakeLists
+- [ ] **112.D.3** Drop `target_compile_definitions(... APP_*)` blocks. **Deferred** — `startup.c` per-example-compiled, lwIP/netif still wants `APP_IP`/`APP_MAC` macros. Phase 116 (`nano-ros.toml`) cleans this up.
 - [ ] **112.E.1** Move `cmake/<plat>-support.cmake` into the `find_package` install layout
 - [ ] **112.E.2** Examples switch to `find_package(NanoRos<Plat> REQUIRED)`
 - [ ] **112.E.3** Acceptance test: `tests/integration/copy-out-example.sh` copies an example to `/tmp` and builds
