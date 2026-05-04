@@ -128,10 +128,25 @@ static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
 // ============================================================================
 
 /**
- * Disable interrupts (Cortex-M specific).
- * User may need to override for other architectures.
+ * Disable interrupts. ARM has two distinct mechanisms:
+ *
+ *   - **Cortex-M (ARMv6-M/v7-M/v8-M)**: dedicated `PRIMASK` register,
+ *     accessed via `mrs Rd, primask` / `msr primask, Rs`. The token
+ *     returned is the prior PRIMASK value.
+ *   - **Cortex-R / Cortex-A (ARMv7-R/v7-A/v8-R)**: no PRIMASK; the
+ *     IRQ mask lives in `CPSR` bit 7 (the I-bit). Read via
+ *     `mrs Rd, cpsr`, write via `msr cpsr_c, Rs`. The token returned
+ *     is the prior CPSR (mode + flag + IRQ-mask bits).
+ *
+ * The `mrs Rd, primask` form is **not assemblable** on R/A profiles —
+ * gating only on `__ARM_ARCH` (which is defined for every ARM profile)
+ * would break Cortex-R5 builds (Orin SPE) at the assembler stage.
+ *
+ * `__ARM_ARCH_PROFILE` is the ARM ACLE-defined character constant for
+ * the profile: `'M'`, `'R'`, or `'A'`. GCC and Clang both define it.
+ * User may override either path for boards with a custom IRQ scheme.
  */
-#if defined(__ARM_ARCH)
+#if defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
 static inline uint32_t nros_platform_disable_irq(void) {
     uint32_t primask;
     __asm__ volatile("mrs %0, primask\n\t"
@@ -142,6 +157,20 @@ static inline uint32_t nros_platform_disable_irq(void) {
 
 static inline void nros_platform_restore_irq(uint32_t primask) {
     __asm__ volatile("msr primask, %0" ::"r"(primask) : "memory");
+}
+#elif defined(__ARM_ARCH_PROFILE) && ((__ARM_ARCH_PROFILE == 'R') || (__ARM_ARCH_PROFILE == 'A'))
+static inline uint32_t nros_platform_disable_irq(void) {
+    uint32_t cpsr;
+    __asm__ volatile("mrs %0, cpsr\n\t"
+                     "cpsid i"
+                     : "=r"(cpsr)::"memory");
+    return cpsr;
+}
+
+static inline void nros_platform_restore_irq(uint32_t cpsr) {
+    /* Restore only the control byte (mode + IRQ/FIQ masks). Touching
+     * the flag byte would clobber NZCV unrelated to interrupt state. */
+    __asm__ volatile("msr cpsr_c, %0" ::"r"(cpsr) : "memory");
 }
 #endif
 

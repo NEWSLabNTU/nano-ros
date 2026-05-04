@@ -418,9 +418,21 @@ SPI/serial link family).
    option (BSP doesn't recompile cleanly), switch Rust to `armv7r-none-eabi` (soft)
    and accept the perf hit.
 
-5. **Cortex-M assumption leakage.** The `nros-platform-freertos` critical-section
-   abstraction is the obvious cleanup, but other places may bake Cortex-M assumptions
-   (interrupt numbering, SCB access, CMSIS macros). Run `grep -rn 'cortex_m::\|CMSIS\|SCB\|primask' packages/` after 100.1 lands and fix any leaks.
+5. **Cortex-M assumption leakage.** *Audited.* The `nros-platform-freertos`
+   critical-section path is the only Rust-side leak and 100.1 fixed it; the M-side
+   `cs_impl` is gated on `feature = "critical-section"`, the R-side on `feature =
+   "cortex-r"`, and the lib raises a `compile_error!` if both are enabled. Other
+   Cortex-M `cortex_m::` users (`nros-board-{stm32f4,mps2-an385}`,
+   `nros-platform-{stm32f4,mps2-an385}`, `mps2-an385-pac`, `qemu-smoltcp-bridge`,
+   `stm32f4-porting`) are board/platform-scoped to those Cortex-M targets and not
+   pulled by `nros-board-orin-spe`. Found one C-side leak in
+   `packages/core/nros-c/include/nros/platform/baremetal.h`: the
+   `nros_platform_disable_irq` / `restore_irq` helpers gated on `__ARM_ARCH`
+   (defined for *every* ARM profile) and emitted `mrs Rd, primask` —
+   not assemblable on R/A profiles. Replaced with a profile-aware
+   `__ARM_ARCH_PROFILE`-gated split: M uses PRIMASK, R/A uses CPSR I-bit
+   (`mrs Rd, cpsr` / `msr cpsr_c, Rs`). Verified codegen for `cortex-m3` and
+   `cortex-r5` produces correct mnemonics for each profile.
 
 ## Notes
 
