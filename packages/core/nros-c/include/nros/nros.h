@@ -11,6 +11,7 @@
 #define NROS_H
 
 #include "nros/types.h"
+#include "nros/check.h"
 #include "nros/init.h"
 #include "nros/node.h"
 #include "nros/publisher.h"

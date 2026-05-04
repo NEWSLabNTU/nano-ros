@@ -6,11 +6,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
-#include <nros/executor.h>
 
 #include "std_msgs.h"
 
@@ -100,27 +101,10 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return;
-    }
-
-    ret = nros_node_init(&app.node, &app.support, "nuttx_c_talker", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_publisher_init(&app.publisher, &app.node,
-        std_msgs_msg_int32_get_type_support(), "/chatter");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_talker", "/"));
+    NROS_CHECK(nros_publisher_init(&app.publisher, &app.node,
+        std_msgs_msg_int32_get_type_support(), "/chatter"));
 
     app.talker_ctx = (talker_context_t){
         .publisher = &app.publisher,
@@ -130,27 +114,10 @@ void app_main(void) {
     };
     std_msgs_msg_int32_init(&app.talker_ctx.message);
 
-    ret = nros_timer_init(&app.timer, &app.support, 1000000000ULL,
-        timer_callback, &app.talker_ctx);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize timer: %d\n", ret);
-        nros_publisher_fini(&app.publisher);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_timer_fini(&app.timer);
-        nros_publisher_fini(&app.publisher);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    nros_executor_add_timer(&app.executor, &app.timer);
+    NROS_CHECK(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
+        timer_callback, &app.talker_ctx));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_SOFTCHECK(nros_executor_add_timer(&app.executor, &app.timer));
 
     printf("Publishing messages...\n\n");
     // See rationale in timer_callback (line 60). Flush here too so the
