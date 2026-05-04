@@ -355,7 +355,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(cbindgen)',
     'cfg(verus_keep_ghost)',
     'cfg(verus_keep_ghost_body)',
-    'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))',
+    'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx", "orin-spe"))',
 ] }
 
 [workspace.lints.clippy]
