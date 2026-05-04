@@ -116,6 +116,15 @@ typedef struct nros_rmw_vtable_t {
         uint32_t               deadline_ms,
         nros_rmw_event_callback_t cb,
         void                  *user_context);
+
+    /** Phase 108.B — manually assert this publisher's liveliness.
+     *  Required for `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness
+     *  kinds; no-op (return `NROS_RMW_RET_OK`) for other kinds.
+     *  NULL function pointer = backend doesn't support manual
+     *  liveliness; runtime returns `NROS_RMW_RET_OK` for AUTOMATIC /
+     *  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*. */
+    nros_rmw_ret_t (*assert_publisher_liveliness)(
+        nros_rmw_publisher_t *publisher);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend. Call before creating any sessions.

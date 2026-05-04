@@ -138,6 +138,10 @@ impl<'a> Node<'a> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        // Phase 108.B — synchronous QoS validation against backend's
+        // `supported_qos_policies()` mask. No silent downgrade.
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -179,6 +183,8 @@ impl<'a> Node<'a> {
         type_hash: &str,
         qos: QosSettings,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -222,6 +228,8 @@ impl<'a> Node<'a> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,

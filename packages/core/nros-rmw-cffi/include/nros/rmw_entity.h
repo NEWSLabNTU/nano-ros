@@ -108,10 +108,13 @@ typedef struct nros_rmw_qos_t {
      *  within this window or be considered dead. 0 = infinite. */
     uint32_t liveliness_lease_ms;
 
-    /** If `true`, topic-name encoding skips the ROS `/rt/` prefix
+    /** If non-zero, topic-name encoding skips the ROS `/rt/` prefix
      *  and uses raw application names. Matches upstream
-     *  `avoid_ros_namespace_conventions`. */
-    bool     avoid_ros_namespace_conventions;
+     *  `avoid_ros_namespace_conventions`. `0` = false, non-zero =
+     *  true. (`uint8_t` instead of `bool`; `sizeof(_Bool)` is impl-
+     *  defined per C99 — `uint8_t` keeps the layout stable across
+     *  toolchains.) */
+    uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
 } nros_rmw_qos_t;             /* 24 bytes */
 
@@ -134,7 +137,7 @@ typedef struct nros_rmw_qos_t {
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \
         .liveliness_lease_ms = 0,                                        \
-        .avoid_ros_namespace_conventions = false,                        \
+        .avoid_ros_namespace_conventions = 0,                            \
         ._reserved1  = {0, 0, 0},                                        \
     })
 
@@ -151,7 +154,7 @@ typedef struct nros_rmw_qos_t {
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \
         .liveliness_lease_ms = 0,                                        \
-        .avoid_ros_namespace_conventions = false,                        \
+        .avoid_ros_namespace_conventions = 0,                            \
         ._reserved1  = {0, 0, 0},                                        \
     })
 
@@ -172,7 +175,7 @@ typedef struct nros_rmw_qos_t {
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \
         .liveliness_lease_ms = 0,                                        \
-        .avoid_ros_namespace_conventions = false,                        \
+        .avoid_ros_namespace_conventions = 0,                            \
         ._reserved1  = {0, 0, 0},                                        \
     })
 

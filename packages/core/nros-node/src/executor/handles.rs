@@ -166,6 +166,17 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
+    /// Phase 108.B — manually assert this publisher's liveliness.
+    /// Required for publishers configured with
+    /// [`QosLivelinessPolicy::ManualByTopic`] /
+    /// [`QosLivelinessPolicy::ManualByNode`]. No-op for AUTOMATIC /
+    /// NONE kinds. Returns `Err(Unsupported)` if the backend doesn't
+    /// implement manual liveliness.
+    pub fn assert_liveliness(&self) -> Result<(), NodeError> {
+        use nros_rmw::Publisher as _;
+        self.handle.assert_liveliness().map_err(NodeError::Transport)
+    }
+
     // ====================================================================
     // Phase 108 — status events
     // ====================================================================
@@ -608,6 +619,14 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
+    /// Phase 108.B — manually assert this publisher's liveliness.
+    /// Required for `QosLivelinessPolicy::ManualByTopic` /
+    /// `ManualByNode`. No-op for AUTOMATIC / NONE.
+    pub fn assert_liveliness(&self) -> Result<(), NodeError> {
+        use nros_rmw::Publisher as _;
+        self.handle.assert_liveliness().map_err(NodeError::Transport)
     }
 
     /// Reserve a writable slot of `len` bytes. Caller writes into the

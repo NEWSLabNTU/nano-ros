@@ -943,6 +943,55 @@ impl core::ops::BitOrAssign for QosPolicyMask {
     }
 }
 
+impl QosSettings {
+    /// Compute the set of QoS policies actually requested by this profile.
+    ///
+    /// Zero-valued time fields and `LivelinessKind::None` count as "not
+    /// requesting" the corresponding policy — the cheap default. The
+    /// `CORE` bits (reliability, durability=VOLATILE, history, depth)
+    /// are always present because every nano-ros backend honours them.
+    pub fn required_policies(&self) -> QosPolicyMask {
+        let mut mask = QosPolicyMask::CORE;
+        if self.durability == QosDurabilityPolicy::TransientLocal {
+            mask = QosPolicyMask(
+                (mask.0 & !QosPolicyMask::DURABILITY_VOLATILE.0)
+                    | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL.0,
+            );
+        }
+        if self.deadline_ms != 0 {
+            mask |= QosPolicyMask::DEADLINE;
+        }
+        if self.lifespan_ms != 0 {
+            mask |= QosPolicyMask::LIFESPAN;
+        }
+        match self.liveliness_kind {
+            QosLivelinessPolicy::None => {}
+            QosLivelinessPolicy::Automatic => mask |= QosPolicyMask::LIVELINESS_AUTOMATIC,
+            QosLivelinessPolicy::ManualByTopic => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
+            QosLivelinessPolicy::ManualByNode => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_NODE,
+        }
+        if self.liveliness_lease_ms != 0 {
+            mask |= QosPolicyMask::LIVELINESS_LEASE;
+        }
+        if self.avoid_ros_namespace_conventions {
+            mask |= QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS;
+        }
+        mask
+    }
+
+    /// Returns `Err(TransportError::IncompatibleQos)` if any policy this
+    /// profile requires is missing from the backend's `supported` mask.
+    /// Used at entity-create time to enforce the **no silent
+    /// degradation** contract.
+    pub fn validate_against(&self, supported: QosPolicyMask) -> Result<(), TransportError> {
+        if supported.contains(self.required_policies()) {
+            Ok(())
+        } else {
+            Err(TransportError::IncompatibleQos)
+        }
+    }
+}
+
 /// Publisher trait for sending messages.
 ///
 /// # Threading

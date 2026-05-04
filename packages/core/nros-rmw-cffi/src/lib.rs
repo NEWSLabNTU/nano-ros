@@ -174,8 +174,10 @@ pub struct NrosRmwQos {
     pub lifespan_ms: u32,
     /// Liveliness lease, ms. `0` = infinite.
     pub liveliness_lease_ms: u32,
-    /// If `true`, topic name encoding skips the ROS `/rt/` prefix.
-    pub avoid_ros_namespace_conventions: bool,
+    /// If non-zero, topic name encoding skips the ROS `/rt/` prefix.
+    /// `u8` instead of `bool` for ABI parity with C — `sizeof(_Bool)`
+    /// is impl-defined per C99.
+    pub avoid_ros_namespace_conventions: u8,
     /// Reserved; must be zero.
     pub _reserved1: [u8; 3],
 }
@@ -191,7 +193,7 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
-    avoid_ros_namespace_conventions: false,
+    avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
 };
 
@@ -206,7 +208,7 @@ pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
-    avoid_ros_namespace_conventions: false,
+    avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
 };
 
@@ -322,7 +324,7 @@ impl From<QosSettings> for NrosRmwQos {
             deadline_ms: qos.deadline_ms,
             lifespan_ms: qos.lifespan_ms,
             liveliness_lease_ms: qos.liveliness_lease_ms,
-            avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions,
+            avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions as u8,
             _reserved1: [0; 3],
         }
     }
@@ -445,6 +447,10 @@ pub struct NrosRmwVtable {
         cb: NrosRmwEventCallback,
         user_context: *mut c_void,
     ) -> NrosRmwRet,
+
+    // ---- Phase 108.B — manual liveliness assertion (optional) ----
+    pub assert_publisher_liveliness:
+        unsafe extern "C" fn(publisher: *mut NrosRmwPublisher) -> NrosRmwRet,
 }
 
 // ============================================================================
@@ -1004,6 +1010,20 @@ impl Publisher for CffiPublisher {
         }
         Ok(())
     }
+
+    fn assert_liveliness(&self) -> Result<(), TransportError> {
+        // Phase 108.B — manual liveliness assertion. NULL function
+        // pointer = backend doesn't support manual liveliness; the
+        // runtime caller (Node) gates the call by liveliness_kind so
+        // we just delegate.
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let ret = unsafe { (self.vtable.assert_publisher_liveliness)(&mut view) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(())
+    }
 }
 
 impl Drop for CffiPublisher {
@@ -1360,7 +1380,7 @@ mod tests {
         deadline_ms: 0,
         lifespan_ms: 0,
         liveliness_lease_ms: 0,
-        avoid_ros_namespace_conventions: false,
+        avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
     };
 
@@ -1542,6 +1562,11 @@ mod tests {
     ) -> NrosRmwRet {
         NROS_RMW_RET_UNSUPPORTED
     }
+    unsafe extern "C" fn stub_assert_publisher_liveliness(
+        _: *mut NrosRmwPublisher,
+    ) -> NrosRmwRet {
+        NROS_RMW_RET_UNSUPPORTED
+    }
 
     static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
         open: stub_open,
@@ -1564,6 +1589,7 @@ mod tests {
         call_raw: stub_call_raw,
         register_subscriber_event: stub_register_subscriber_event,
         register_publisher_event: stub_register_publisher_event,
+        assert_publisher_liveliness: stub_assert_publisher_liveliness,
     };
 
     #[test]

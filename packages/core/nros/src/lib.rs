@@ -179,10 +179,56 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
-    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
-    RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
-    SessionMode, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
+    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosPolicyMask,
+    QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo,
+    ServiceRequest, ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport,
+    TransportConfig, TransportError,
 };
+
+/// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
+/// upstream `rmw_qos_profile_default` etc. field-by-field. Backends
+/// validate against these synchronously at create time; no silent
+/// downgrade.
+pub mod qos {
+    use crate::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+        QosSettings,
+    };
+
+    /// `rmw_qos_profile_default`-equivalent: reliable + volatile +
+    /// keep-last(10), automatic liveliness, no deadline / lifespan.
+    pub const DEFAULT: QosSettings = QosSettings {
+        reliability: QosReliabilityPolicy::Reliable,
+        durability: QosDurabilityPolicy::Volatile,
+        history: QosHistoryPolicy::KeepLast,
+        liveliness_kind: QosLivelinessPolicy::Automatic,
+        depth: 10,
+        deadline_ms: 0,
+        lifespan_ms: 0,
+        liveliness_lease_ms: 0,
+        avoid_ros_namespace_conventions: false,
+    };
+
+    /// `rmw_qos_profile_sensor_data`-equivalent: best-effort +
+    /// volatile + keep-last(5).
+    pub const SENSOR_DATA: QosSettings = QosSettings {
+        reliability: QosReliabilityPolicy::BestEffort,
+        depth: 5,
+        ..DEFAULT
+    };
+
+    /// `rmw_qos_profile_services_default`-equivalent.
+    pub const SERVICES_DEFAULT: QosSettings = DEFAULT;
+
+    /// `rmw_qos_profile_parameters`-equivalent: depth = 1000.
+    pub const PARAMETERS: QosSettings = QosSettings {
+        depth: 1000,
+        ..DEFAULT
+    };
+
+    /// `rmw_qos_profile_system_default`-equivalent.
+    pub const SYSTEM_DEFAULT: QosSettings = DEFAULT;
+}
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
