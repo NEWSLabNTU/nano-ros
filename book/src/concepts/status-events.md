@@ -147,7 +147,7 @@ Not every backend can generate every event. Apps must handle
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
 | dust-DDS | ✓ Native (DataReader/Writer listeners) | ✓ Native | ✓ Native (`SampleLost`) |
-| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ Not exposed | ✗ Not exposed |
+| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Shim-side clock check (sub: `has_data` / `try_recv_raw`; pub: `publish_raw`) | ✗ Not exposed |
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Native (host mock + real PX4 via `RustSubscriptionCallback` publish-counter) |
 

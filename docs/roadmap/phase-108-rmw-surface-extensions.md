@@ -391,7 +391,7 @@ Backends opt into specific QoS bits + event kinds one at a time. Each landing fl
 
 - [x] **108.C.xrce.1 — `Session::supported_qos_policies()` override.** Returns CORE | DURABILITY_TL | AVOID_ROS_NAMESPACE_CONVENTIONS (commits `95df4d39`, `<this commit>`). XRCE C client surface (`uxrQoS_t`) doesn't expose deadline / lifespan / liveliness; agent-side enforcement only.
 - [x] **108.C.xrce.1b — `avoid_ros_namespace_conventions` honoured at topic-name encoding.** `naming::dds_topic_name` skips the `rt/` prefix when the flag is set; XRCE is the only backend that meaningfully implements this flag (others pass topic names through unchanged).
-- [ ] **108.C.xrce.2 — Status events. DEFERRED.** Would require routing `uxr_set_status_callback` / `uxr_set_topic_callback` (session-level) to the right entity. Significant plumbing; low value (XRCE typically used in resource-constrained MCU + agent w/ DDS broker that handles enforcement). Open as separate phase if needed.
+- [x] **108.C.xrce.2 — Shim-emulated DEADLINE.** Same shape as 108.C.zenoh.2: clock-based check on every receive / publish poll. Sub side: `SubscriberSlot` captures `deadline_ms` from QoS at create, bumps `last_msg_at_ms` from inside `topic_callback` after each payload copy, runs `check_deadline_and_fire` from `XrceSubscriber::has_data` / `try_recv_raw` / `process_raw_in_place` (rate-limited to ≤ 1 fire per deadline period). Pub side: `XrcePublisher` carries the same fields plus an `AtomicCallback`; `publish_raw` calls `check_offered_deadline` before the wire write, then bumps `last_publish_at_ms` only on `Ok`. Both paths short-circuit when `now_ms() == 0` (gated behind the `platform-udp` feature). `Subscriber::supports_event(RequestedDeadlineMissed)` / `Publisher::supports_event(OfferedDeadlineMissed)` now return `true`; `supported_qos_policies()` advertises `DEADLINE`. `LivelinessChanged` / `LivelinessLost` / `MessageLost` remain unsupported (xrce-dds-client API doesn't expose session-level liveliness events to topic readers, and `topic_callback` carries no per-sample sequence). `AtomicCallback` (raw `cb` + `ctx` AtomicPtr pair) is used instead of `Cell<Option<EventReg>>` because XRCE entities live in a `static mut` slot array. (`<this commit>`)
 - [ ] **108.C.xrce.3 — Optional: full QoS via XML. DEFERRED.** `uxr_buffer_create_*_xml` accepts agent-side QoS XML w/ deadline / lifespan / liveliness. Requires agent w/ XML support + larger payload. Defer until requested.
 
 #### zenoh-pico — `108.C.zenoh`
@@ -447,7 +447,7 @@ Tracked as sub-phases above. Current status:
 | Backend | QoS surface | assert_liveliness | Status events | Avoid-ROS-prefix |
 |---------|-------------|---------------------|------------------|---------------------|
 | dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
-| XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
+| XRCE-DDS | ✅ CORE+TL+DEADLINE (commit `95df4d39`, `<this commit>`) | n/a | 🟡 DEADLINE (sub+pub) shim-emulated; LIVELINESS/MessageLost not feasible at this layer | ✅ honoured |
 | zenoh-pico | ✅ CORE+DEADLINE+LIFESPAN+LIVELINESS_AUTOMATIC+LIVELINESS_LEASE | n/a | ✅ MessageLost + RequestedDeadlineMissed + OfferedDeadlineMissed + LivelinessChanged (poll-based, alive_count ∈ {0,1}); 🟡 LivelinessLost surface only | n/a (no prefix) |
 | uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock + real-PX4 wired) | n/a (no DDS naming) |
 

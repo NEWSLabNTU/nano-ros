@@ -46,6 +46,29 @@ pub mod platform_serial;
 use atomic_waker::AtomicWaker;
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+// Phase 108.C.xrce.2 — AtomicU32/U64 for deadline accounting.
+// portable-atomic provides software fallbacks for targets without
+// native u64/u32 atomics (Cortex-M0+ when ESP32-style xtensa is in
+// the workspace). nros-rmw-xrce already pulls portable-atomic
+// transitively via atomic-waker.
+use portable_atomic::{AtomicU32, AtomicU64};
+
+/// Phase 108.C.xrce.2 — read the platform clock in ms.
+/// Returns 0 when nros-platform isn't linked (bare-no-std smoke
+/// build w/o `platform-udp` / `platform-*` feature). When `0`, the
+/// deadline check short-circuits — apps relying on deadline events
+/// must enable a `platform-*` feature.
+#[inline]
+fn now_ms() -> u64 {
+    #[cfg(feature = "platform-udp")]
+    {
+        <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
+    }
+    #[cfg(not(feature = "platform-udp"))]
+    {
+        0
+    }
+}
 
 // ============================================================================
 // FFI Reentrancy Guard
@@ -248,6 +271,61 @@ struct SubscriberSlot {
     waker: AtomicWaker,
     datareader_id: u16,
     active: bool,
+    /// Phase 108.C.xrce.2 — deadline period in ms (`0` = infinite).
+    /// Captured from QoS at create time. Sub-side check: if no
+    /// sample arrived in `deadline_ms` since the previous successful
+    /// receive, fire `RequestedDeadlineMissed`.
+    deadline_ms: u32,
+    /// Last successful receive timestamp (ms, platform clock).
+    last_msg_at_ms: AtomicU64,
+    /// Last `RequestedDeadlineMissed` fire timestamp; rate-limits
+    /// callbacks to ≤ 1 per deadline period.
+    last_deadline_fire_ms: AtomicU64,
+    /// Cumulative `RequestedDeadlineMissed` count.
+    deadline_total: AtomicU32,
+    /// Phase 108.A — registered `RequestedDeadlineMissed` callback.
+    /// Stored as raw fields rather than `Cell<Option>` because the
+    /// slot is in a `static mut` array shared across threads in the
+    /// XRCE session model.
+    deadline_cb: AtomicCallback,
+}
+
+/// Phase 108.A — atomic-load callback slot for the XRCE static-mut
+/// subscriber array. Stores `(cb, user_ctx)` as a tuple of raw
+/// pointers; `set` swaps both atomically (under FFI guard); `take`
+/// snapshots without clearing.
+struct AtomicCallback {
+    cb: portable_atomic::AtomicPtr<()>,
+    ctx: portable_atomic::AtomicPtr<core::ffi::c_void>,
+}
+
+impl AtomicCallback {
+    const fn new() -> Self {
+        Self {
+            cb: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+            ctx: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+        }
+    }
+
+    fn set(&self, cb: nros_rmw::EventCallback, user_ctx: *mut core::ffi::c_void) {
+        // Order matters: install ctx before cb so a concurrent fire
+        // observing a non-null cb also sees the matching ctx.
+        self.ctx.store(user_ctx, Ordering::Release);
+        self.cb.store(cb as *mut (), Ordering::Release);
+    }
+
+    fn fire(&self, kind: nros_rmw::EventKind, payload: *const core::ffi::c_void) {
+        let cb = self.cb.load(Ordering::Acquire);
+        if cb.is_null() {
+            return;
+        }
+        let user_ctx = self.ctx.load(Ordering::Acquire);
+        // SAFETY: cb was set via `set(...)` which transmutes from
+        // `nros_rmw::EventCallback`. user_ctx outlives the entity per
+        // Phase 108.A.7's per-entity event registry.
+        let cb: nros_rmw::EventCallback = unsafe { core::mem::transmute(cb) };
+        unsafe { cb(kind, payload, user_ctx) };
+    }
 }
 
 impl SubscriberSlot {
@@ -261,7 +339,46 @@ impl SubscriberSlot {
             waker: AtomicWaker::new(),
             datareader_id: 0,
             active: false,
+            deadline_ms: 0,
+            last_msg_at_ms: AtomicU64::new(0),
+            last_deadline_fire_ms: AtomicU64::new(0),
+            deadline_total: AtomicU32::new(0),
+            deadline_cb: AtomicCallback::new(),
         }
+    }
+
+    /// Phase 108.C.xrce.2 — fire `RequestedDeadlineMissed` when the
+    /// gap since the last successful receive exceeds `deadline_ms`.
+    /// Called from `has_data` / `try_recv_raw` / `process_raw_in_place`
+    /// / `try_borrow` so deadline gets the same cadence as message
+    /// dispatch. Rate-limited to one fire per deadline period.
+    fn check_deadline_and_fire(&self) {
+        if self.deadline_ms == 0 {
+            return;
+        }
+        let now = now_ms();
+        if now == 0 {
+            return; // No platform clock — can't measure.
+        }
+        let dl = self.deadline_ms as u64;
+        let last = self.last_msg_at_ms.load(Ordering::Acquire);
+        if now < last.saturating_add(dl) {
+            return;
+        }
+        let last_fire = self.last_deadline_fire_ms.load(Ordering::Acquire);
+        if now < last_fire.saturating_add(dl) {
+            return;
+        }
+        self.last_deadline_fire_ms.store(now, Ordering::Release);
+        let total = self.deadline_total.fetch_add(1, Ordering::AcqRel).saturating_add(1);
+        let status = nros_rmw::CountStatus {
+            total_count: total,
+            total_count_change: 1,
+        };
+        self.deadline_cb.fire(
+            nros_rmw::EventKind::RequestedDeadlineMissed,
+            &status as *const _ as *const core::ffi::c_void,
+        );
     }
 }
 
@@ -523,6 +640,13 @@ unsafe extern "C" fn topic_callback(
                 let src = core::slice::from_raw_parts((*ub).iterator, len);
                 slot.data[..len].copy_from_slice(src);
                 slot.len.store(len, Ordering::Release);
+                // Phase 108.C.xrce.2 — record receive timestamp so
+                // the deadline check on the next `has_data` /
+                // `try_recv_raw` poll sees a fresh window.
+                let now = now_ms();
+                if now != 0 {
+                    slot.last_msg_at_ms.store(now, Ordering::Release);
+                }
                 slot.has_data.store(true, Ordering::Release);
                 slot.waker.wake();
                 return;
@@ -892,8 +1016,16 @@ impl Session for XrceSession {
             confirm_entities(&requests, &mut statuses, 3)
                 .map_err(|_| TransportError::PublisherCreationFailed)?;
 
+            // Phase 108.C.xrce.2 — seed deadline timestamps so we
+            // don't fire OfferedDeadlineMissed immediately at create.
+            let now = now_ms();
             Ok(XrcePublisher {
                 datawriter_id: dw_obj_id,
+                deadline_ms: qos.deadline_ms,
+                last_publish_at_ms: AtomicU64::new(now),
+                last_deadline_fire_ms: AtomicU64::new(now),
+                deadline_total: AtomicU32::new(0),
+                deadline_cb: AtomicCallback::new(),
             })
         })
     }
@@ -967,6 +1099,14 @@ impl Session for XrceSession {
             slot.has_data.store(false, Ordering::Release);
             slot.overflow.store(false, Ordering::Release);
             slot.len.store(0, Ordering::Release);
+            // Phase 108.C.xrce.2 — capture deadline + seed
+            // last_msg_at so we don't fire an immediate "missed" at
+            // create time.
+            slot.deadline_ms = qos.deadline_ms;
+            let now = now_ms();
+            slot.last_msg_at_ms.store(now, Ordering::Release);
+            slot.last_deadline_fire_ms.store(now, Ordering::Release);
+            slot.deadline_total.store(0, Ordering::Release);
             slot.active = true;
 
             // Request continuous data delivery
@@ -1208,17 +1348,22 @@ impl Session for XrceSession {
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
         // Phase 108.B — XRCE-DDS exposes only core QoS (reliability,
         // durability V/TL, history, depth) on the C client surface.
-        // Deadline / lifespan / liveliness are policed by the XRCE
-        // agent (full-DDS broker) but the client cannot configure or
-        // observe them through `uxrQoS_t`. Expose only what we can
-        // honour at this layer; users wanting those policies should
-        // pick the dust-DDS backend.
+        // Lifespan / liveliness are policed by the XRCE agent (full-
+        // DDS broker) but the client cannot configure or observe them
+        // through `uxrQoS_t`.
+        // Phase 108.C.xrce.2 — DEADLINE is exposed via clock-based
+        // emulation on the client side: `RequestedDeadlineMissed`
+        // fires from `has_data` / `try_recv_raw`, and
+        // `OfferedDeadlineMissed` from `publish_raw`. The agent isn't
+        // told about the deadline, but the client's local view is
+        // observable to the user.
         // AVOID_ROS_NAMESPACE_CONVENTIONS honoured at topic-name
         // encoding (Phase 108.C.x.3); see `naming::dds_topic_name`.
         use nros_rmw::QosPolicyMask;
         QosPolicyMask::CORE
             | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
             | QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
+            | QosPolicyMask::DEADLINE
     }
 }
 
@@ -1229,13 +1374,66 @@ impl Session for XrceSession {
 /// XRCE-DDS publisher handle.
 pub struct XrcePublisher {
     datawriter_id: uxrObjectId,
+    /// Phase 108.C.xrce.2 — offered-deadline period in ms (`0` =
+    /// infinite). Captured from QoS at create time.
+    deadline_ms: u32,
+    /// Last successful publish timestamp in ms (platform clock).
+    last_publish_at_ms: AtomicU64,
+    /// Last `OfferedDeadlineMissed` fire timestamp; rate-limits
+    /// callbacks to ≤ 1 per deadline period.
+    last_deadline_fire_ms: AtomicU64,
+    /// Cumulative `OfferedDeadlineMissed` count.
+    deadline_total: AtomicU32,
+    /// Phase 108.A — registered `OfferedDeadlineMissed` callback slot.
+    deadline_cb: AtomicCallback,
+}
+
+impl XrcePublisher {
+    /// Phase 108.C.xrce.2 — fire `OfferedDeadlineMissed` if we
+    /// haven't published within the deadline window. Called from
+    /// `publish_raw`; rate-limited to one fire per deadline.
+    fn check_offered_deadline(&self) {
+        if self.deadline_ms == 0 {
+            return;
+        }
+        let now = now_ms();
+        if now == 0 {
+            return;
+        }
+        let dl = self.deadline_ms as u64;
+        let last = self.last_publish_at_ms.load(Ordering::Acquire);
+        if now < last.saturating_add(dl) {
+            return;
+        }
+        let last_fire = self.last_deadline_fire_ms.load(Ordering::Acquire);
+        if now < last_fire.saturating_add(dl) {
+            return;
+        }
+        self.last_deadline_fire_ms.store(now, Ordering::Release);
+        let total = self
+            .deadline_total
+            .fetch_add(1, Ordering::AcqRel)
+            .saturating_add(1);
+        let status = nros_rmw::CountStatus {
+            total_count: total,
+            total_count_change: 1,
+        };
+        self.deadline_cb.fire(
+            nros_rmw::EventKind::OfferedDeadlineMissed,
+            &status as *const _ as *const core::ffi::c_void,
+        );
+    }
 }
 
 impl Publisher for XrcePublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
-        ffi_guard(|| unsafe {
+        // Phase 108.C.xrce.2 — fire OfferedDeadlineMissed BEFORE the
+        // publish so the user observes the late-publish event with
+        // the correct delta (last_publish_at gets bumped after).
+        self.check_offered_deadline();
+        let result = ffi_guard(|| unsafe {
             // Try the non-fragmented fast path first.
             let req = xrce_sys::uxr_buffer_topic(
                 &raw mut state().session,
@@ -1282,7 +1480,17 @@ impl Publisher for XrcePublisher {
             xrce_sys::uxr_flash_output_streams(&raw mut state().session);
 
             Ok(())
-        })
+        });
+        // Phase 108.C.xrce.2 — only update last_publish_at on a
+        // successful wire write so a failed publish doesn't reset the
+        // deadline window.
+        if result.is_ok() {
+            let now = now_ms();
+            if now != 0 {
+                self.last_publish_at_ms.store(now, Ordering::Release);
+            }
+        }
+        result
     }
 
     fn buffer_error(&self) -> TransportError {
@@ -1291,6 +1499,39 @@ impl Publisher for XrcePublisher {
 
     fn serialization_error(&self) -> TransportError {
         TransportError::SerializationError
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Phase 108.C.xrce.2 — XRCE-DDS doesn't expose native pub-side
+        // event listeners; we surface only `OfferedDeadlineMissed`,
+        // emulated via a clock-based check on every `publish_raw`.
+        matches!(kind, nros_rmw::EventKind::OfferedDeadlineMissed)
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        match kind {
+            nros_rmw::EventKind::OfferedDeadlineMissed => {
+                if self.deadline_ms == 0 && deadline_ms != 0 {
+                    self.deadline_ms = deadline_ms;
+                    let now = now_ms();
+                    self.last_publish_at_ms.store(now, Ordering::Release);
+                    self.last_deadline_fire_ms.store(now, Ordering::Release);
+                }
+                self.deadline_cb.set(cb, user_ctx);
+                Ok(())
+            }
+            _ => Err(TransportError::Unsupported),
+        }
+    }
+
+    fn unsupported_event_error(&self) -> TransportError {
+        TransportError::Unsupported
     }
 }
 
@@ -1377,15 +1618,18 @@ impl Subscriber for XrceSubscriber {
 
     fn has_data(&self) -> bool {
         ffi_guard(|| unsafe {
-            state().subscriber_slots[self.slot_index]
-                .has_data
-                .load(Ordering::Acquire)
+            let slot = &state().subscriber_slots[self.slot_index];
+            // Phase 108.C.xrce.2 — opportunistic deadline check on
+            // every poll. Cheap (one clock read + compare).
+            slot.check_deadline_and_fire();
+            slot.has_data.load(Ordering::Acquire)
         })
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         ffi_guard(|| unsafe {
             let slot = &state().subscriber_slots[self.slot_index];
+            slot.check_deadline_and_fire();
 
             if !slot.has_data.load(Ordering::Acquire) {
                 return Ok(None);
@@ -1417,6 +1661,7 @@ impl Subscriber for XrceSubscriber {
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, TransportError> {
         ffi_guard(|| unsafe {
             let slot = &state().subscriber_slots[self.slot_index];
+            slot.check_deadline_and_fire();
 
             if !slot.has_data.load(Ordering::Acquire) {
                 return Ok(false);
@@ -1467,6 +1712,44 @@ impl Subscriber for XrceSubscriber {
 
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Phase 108.C.xrce.2 — XRCE-DDS doesn't expose native event
+        // listeners through the xrce-dds-client API; we surface only
+        // `RequestedDeadlineMissed`, emulated via a clock-based check
+        // on every receive poll. Other kinds remain unsupported.
+        matches!(kind, nros_rmw::EventKind::RequestedDeadlineMissed)
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        match kind {
+            nros_rmw::EventKind::RequestedDeadlineMissed => {
+                let slot = unsafe { &mut state().subscriber_slots[self.slot_index] };
+                // If QoS already declared a non-zero deadline_ms at
+                // create time, prefer that; otherwise allow the
+                // registration to set/upgrade it.
+                if slot.deadline_ms == 0 && deadline_ms != 0 {
+                    slot.deadline_ms = deadline_ms;
+                    let now = now_ms();
+                    slot.last_msg_at_ms.store(now, Ordering::Release);
+                    slot.last_deadline_fire_ms.store(now, Ordering::Release);
+                }
+                slot.deadline_cb.set(cb, user_ctx);
+                Ok(())
+            }
+            _ => Err(TransportError::Unsupported),
+        }
+    }
+
+    fn unsupported_event_error(&self) -> TransportError {
+        TransportError::Unsupported
     }
 }
 
