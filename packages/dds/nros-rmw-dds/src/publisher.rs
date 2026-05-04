@@ -1,9 +1,9 @@
 //! DDS publisher — implements `nros_rmw::Publisher`.
 
+use crate::sync::Arc;
 use nros_rmw::{Publisher, TransportError};
 
-#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
-use crate::sync::Arc;
+use crate::waker_cell::{EventReg, PublisherShared};
 
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
@@ -18,14 +18,19 @@ pub struct DdsPublisher {
     writer_async: dust_dds::dds_async::data_writer::DataWriterAsync<crate::raw_type::RawCdrPayload>,
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+    /// Phase 108.A.dds — publisher-side event-callback slots
+    /// (LivelinessLost / OfferedDeadlineMissed). Shared with the
+    /// `PublisherEventListener` attached to the underlying DataWriter.
+    shared: Arc<PublisherShared>,
 }
 
 impl DdsPublisher {
     #[cfg(feature = "std")]
     pub(crate) fn new(
         writer: dust_dds::publication::data_writer::DataWriter<crate::raw_type::RawCdrPayload>,
+        shared: Arc<PublisherShared>,
     ) -> Self {
-        Self { writer }
+        Self { writer, shared }
     }
 
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
@@ -34,10 +39,12 @@ impl DdsPublisher {
             crate::raw_type::RawCdrPayload,
         >,
         runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+        shared: Arc<PublisherShared>,
     ) -> Self {
         Self {
             writer_async,
             runtime,
+            shared,
         }
     }
 }
@@ -104,5 +111,30 @@ impl Publisher for DdsPublisher {
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         Err(TransportError::Unsupported)
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Phase 108.A.dds — Tier-1 pub-side events surfaced by
+        // dust-dds DataWriterListener.
+        matches!(
+            kind,
+            nros_rmw::EventKind::LivelinessLost | nros_rmw::EventKind::OfferedDeadlineMissed
+        )
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        _deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        let slot = match kind {
+            nros_rmw::EventKind::LivelinessLost => &self.shared.liveliness_lost,
+            nros_rmw::EventKind::OfferedDeadlineMissed => &self.shared.offered_deadline,
+            _ => return Err(TransportError::Unsupported),
+        };
+        slot.set(EventReg { cb, user_ctx });
+        Ok(())
     }
 }

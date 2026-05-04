@@ -4,7 +4,7 @@ use crate::sync::Arc;
 
 use nros_rmw::{Subscriber, TransportError};
 
-use crate::waker_cell::WakerCell;
+use crate::waker_cell::{EventReg, SubscriberShared};
 
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::runtime::NrosPlatformRuntime;
@@ -20,20 +20,19 @@ pub struct DdsSubscriber {
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
     /// Shared with the `DataAvailableListener` attached to the reader at
-    /// construction time. The listener fires `on_data_available` from
-    /// dust-dds's internal task pool whenever the reader's history queue
-    /// gains a sample; this in turn wakes whatever future last called
-    /// `register_waker`. Phase 71.29 follow-up.
-    waker_cell: Arc<WakerCell>,
+    /// construction time. Holds the per-future waker (data-arrival)
+    /// AND the Phase 108 status-event callback slots
+    /// (LivelinessChanged / RequestedDeadlineMissed / MessageLost).
+    shared: Arc<SubscriberShared>,
 }
 
 impl DdsSubscriber {
     #[cfg(feature = "std")]
     pub(crate) fn new(
         reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
-        waker_cell: Arc<WakerCell>,
+        shared: Arc<SubscriberShared>,
     ) -> Self {
-        Self { reader, waker_cell }
+        Self { reader, shared }
     }
 
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
@@ -42,12 +41,12 @@ impl DdsSubscriber {
             crate::raw_type::RawCdrPayload,
         >,
         runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
-        waker_cell: Arc<WakerCell>,
+        shared: Arc<SubscriberShared>,
     ) -> Self {
         Self {
             reader_async,
             runtime,
-            waker_cell,
+            shared,
         }
     }
 }
@@ -124,10 +123,42 @@ impl Subscriber for DdsSubscriber {
     }
 
     fn register_waker(&self, waker: &core::task::Waker) {
-        self.waker_cell.register(waker);
+        self.shared.waker_cell.register(waker);
     }
 
     fn deserialization_error(&self) -> Self::Error {
         TransportError::DeserializationError
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Phase 108.A.dds — Tier-1 sub-side events are surfaced by
+        // dust-dds DataReaderListener.
+        matches!(
+            kind,
+            nros_rmw::EventKind::LivelinessChanged
+                | nros_rmw::EventKind::RequestedDeadlineMissed
+                | nros_rmw::EventKind::MessageLost
+        )
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        _deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        // Deadline is configured at QoS-create time (DataReaderQos.deadline),
+        // not on the listener. nros-node only calls register_event_callback
+        // after a non-zero deadline_ms is set on QoS, so we don't need to
+        // forward _deadline_ms here.
+        let slot = match kind {
+            nros_rmw::EventKind::LivelinessChanged => &self.shared.liveliness,
+            nros_rmw::EventKind::RequestedDeadlineMissed => &self.shared.deadline,
+            nros_rmw::EventKind::MessageLost => &self.shared.message_lost,
+            _ => return Err(TransportError::Unsupported),
+        };
+        slot.set(EventReg { cb, user_ctx });
+        Ok(())
     }
 }
