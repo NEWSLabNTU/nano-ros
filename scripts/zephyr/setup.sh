@@ -1,8 +1,12 @@
 #!/bin/bash
 # nros Zephyr Workspace Setup
 #
-# This script creates a Zephyr workspace as a sibling to the nros repository.
-# It installs all dependencies including:
+# Creates a Zephyr workspace at $NROS_ZEPHYR_WORKSPACE, defaulting to
+# $repo/zephyr-workspace/ (gitignored). Pre-existing sibling installs at
+# $repo/../nano-ros-workspace/ are auto-detected and reused so contributors
+# who set up before this change keep working.
+#
+# Installs:
 #   - Python tools (west, etc.)
 #   - Zephyr SDK (cross-compilers)
 #   - Zephyr RTOS and modules
@@ -21,10 +25,14 @@
 #   --force            Overwrite existing workspace
 #   --skip-sdk         Skip SDK installation (if already installed)
 #
+# Environment overrides:
+#   NROS_ZEPHYR_WORKSPACE   Absolute path to install the workspace at.
+#                           Default: $repo/zephyr-workspace/
+#
 # Example:
 #   ./scripts/zephyr/setup.sh
-#   source ../nano-ros-workspace/env.sh
-#   cd ../nano-ros-workspace
+#   source zephyr-workspace/env.sh
+#   cd zephyr-workspace
 #   west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
 
 set -e
@@ -33,7 +41,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NANO_ROS_PARENT="$(dirname "$NANO_ROS_ROOT")"
 NANO_ROS_NAME="$(basename "$NANO_ROS_ROOT")"
-WORKSPACE_DIR="$NANO_ROS_PARENT/${NANO_ROS_NAME}-workspace"
+
+# Workspace location. Priority:
+#   1. $NROS_ZEPHYR_WORKSPACE explicit override
+#   2. Pre-existing sibling install at $parent/${name}-workspace (legacy layout)
+#   3. In-tree default at $repo/zephyr-workspace
+LEGACY_SIBLING="$NANO_ROS_PARENT/${NANO_ROS_NAME}-workspace"
+IN_TREE_DEFAULT="$NANO_ROS_ROOT/zephyr-workspace"
+if [ -n "${NROS_ZEPHYR_WORKSPACE:-}" ]; then
+    WORKSPACE_DIR="$NROS_ZEPHYR_WORKSPACE"
+elif [ -d "$LEGACY_SIBLING/.west" ]; then
+    WORKSPACE_DIR="$LEGACY_SIBLING"
+else
+    WORKSPACE_DIR="$IN_TREE_DEFAULT"
+fi
+
 DOWNLOAD_DIR="$SCRIPT_DIR/downloads"
 SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 
@@ -255,7 +277,7 @@ create_env_script() {
     cat > "$WORKSPACE_DIR/env.sh" << ENVEOF
 #!/bin/bash
 # nros Zephyr Environment
-# Usage: source ../nano-ros-workspace/env.sh (from nros dir)
+# Usage: source zephyr-workspace/env.sh (from nros dir)
 #    or: source env.sh (from workspace dir)
 
 WORKSPACE="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
@@ -364,17 +386,20 @@ echo "  modules/         - Zephyr modules (lang/rust, HALs)"
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Create symlink (if not exists):"
-echo "     ln -sfn $WORKSPACE_DIR $NANO_ROS_ROOT/zephyr-workspace"
+# Show a relative path when the workspace is in-tree, else show absolute.
+if [ "$WORKSPACE_DIR" = "$IN_TREE_DEFAULT" ]; then
+    REL_WS="zephyr-workspace"
+else
+    REL_WS="$WORKSPACE_DIR"
+fi
+echo "  1. Source the environment:"
+echo "     source $REL_WS/env.sh"
 echo ""
-echo "  2. Source the environment:"
-echo "     source $WORKSPACE_DIR/env.sh"
-echo ""
-echo "  3. Build an example:"
-echo "     cd $WORKSPACE_DIR"
+echo "  2. Build an example:"
+echo "     cd $REL_WS"
 echo "     west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rust/zenoh/talker"
 echo ""
-echo "  4. Run:"
+echo "  3. Run:"
 echo "     ./build/zephyr/zephyr.exe"
 echo ""
 echo "  Networking: native_sim uses NSOS on the host loopback — no TAP"

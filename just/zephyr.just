@@ -2,11 +2,14 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
-# Zephyr workspace path (symlink or sibling directory)
-ZEPHYR_WORKSPACE := if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else { "../nano-ros-workspace" }
+# Zephyr workspace path. Default: in-tree (gitignored) `zephyr-workspace/`.
+# Falls back to legacy sibling `../nano-ros-workspace` for users set up
+# before the in-tree default. Set $NROS_ZEPHYR_WORKSPACE to override.
+ZEPHYR_WORKSPACE := env("NROS_ZEPHYR_WORKSPACE", if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else if path_exists("../nano-ros-workspace") == "true" { "../nano-ros-workspace" } else { "zephyr-workspace" })
 
-# Install the Zephyr workspace as a sibling directory (large download).
-# Idempotent: skips if ../nano-ros-workspace/zephyr already exists.
+# Install the Zephyr workspace at $repo/zephyr-workspace/ (large download).
+# Idempotent: skips if the workspace already exists.
+# Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.
 # Extra args are forwarded: e.g. `just zephyr setup --force --skip-sdk`.
 setup *ARGS:
     #!/usr/bin/env bash
@@ -80,9 +83,9 @@ build-fixtures:
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr skip: west not found"; exit 0
     fi
-    workspace="$(realpath ../nano-ros-workspace 2>/dev/null || echo "")"
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr skip: ../nano-ros-workspace not set up (run \`just zephyr setup\`)"
+        echo "Zephyr skip: {{ZEPHYR_WORKSPACE}} not set up (run \`just zephyr setup\`)"
         exit 0
     fi
     # Apply Cortex-A9 patches (idempotent; required for the

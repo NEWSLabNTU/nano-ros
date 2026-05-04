@@ -30,17 +30,29 @@
 # Usage:
 #   scripts/zephyr/native-sim-ipproto-ip-patch.sh [<workspace-dir>]
 #
-# If <workspace-dir> is omitted, falls back to the ZEPHYR_WORKSPACE env
-# var, then to ../nano-ros-workspace relative to this script.
+# If <workspace-dir> is omitted, falls back to $NROS_ZEPHYR_WORKSPACE env
+# var, then $ZEPHYR_WORKSPACE (legacy), then in-tree zephyr-workspace/, then
+# the legacy sibling ../nano-ros-workspace/.
 
 set -euo pipefail
 
 # ---- Resolve workspace directory ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DEFAULT_WORKSPACE="$(cd "$NANO_ROS_ROOT/.." && pwd)/nano-ros-workspace"
+IN_TREE_WORKSPACE="$NANO_ROS_ROOT/zephyr-workspace"
+LEGACY_WORKSPACE="$(cd "$NANO_ROS_ROOT/.." && pwd)/nano-ros-workspace"
 
-WORKSPACE="${1:-${ZEPHYR_WORKSPACE:-$DEFAULT_WORKSPACE}}"
+if [ -n "${1:-}" ]; then
+    WORKSPACE="$1"
+elif [ -n "${NROS_ZEPHYR_WORKSPACE:-}" ]; then
+    WORKSPACE="$NROS_ZEPHYR_WORKSPACE"
+elif [ -n "${ZEPHYR_WORKSPACE:-}" ]; then
+    WORKSPACE="$ZEPHYR_WORKSPACE"
+elif [ -d "$IN_TREE_WORKSPACE/zephyr" ]; then
+    WORKSPACE="$IN_TREE_WORKSPACE"
+else
+    WORKSPACE="$LEGACY_WORKSPACE"
+fi
 
 if [ ! -d "$WORKSPACE/zephyr" ]; then
     echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace (missing zephyr/)" >&2

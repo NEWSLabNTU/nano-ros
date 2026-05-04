@@ -175,14 +175,14 @@ Run `just qemu-help` for more options.
 ## Zephyr Setup
 
 ```bash
-just zephyr setup   # Initialize workspace + create symlink
+just zephyr setup   # Initialize workspace at $repo/zephyr-workspace/
 just test-zephyr    # Run zenoh tests (native_sim uses NSOS on host loopback)
 just test-zephyr-xrce
 ```
 
-The `zephyr-workspace` symlink points to the actual workspace (default: `../nano-ros-workspace/`). For custom workspace locations, update the symlink:
-```bash
-ln -sfn /path/to/custom-workspace zephyr-workspace
-```
+The workspace lives at `$repo/zephyr-workspace/` by default (gitignored).
+Set `$NROS_ZEPHYR_WORKSPACE` to install elsewhere. Legacy sibling installs
+at `../nano-ros-workspace/` are auto-detected; run
+`./scripts/zephyr/migrate-workspace.sh` to consolidate.
 
 See [Zephyr](../getting-started/zephyr.md) for full details.

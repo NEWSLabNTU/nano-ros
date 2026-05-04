@@ -291,11 +291,13 @@ ip addr show tap0
 
 **Solution**: Ensure the Zephyr workspace is properly configured:
 ```bash
-# The workspace should be at ../nano-ros-workspace relative to nros
-ls -la zephyr-workspace  # Should be a symlink
+# Default location: $repo/zephyr-workspace/ (gitignored, in-tree).
+# Pre-Phase-113 setups: $repo/../nano-ros-workspace/ (auto-detected).
+ls -la zephyr-workspace
+just zephyr doctor
 
 # Or set explicitly
-export ZEPHYR_WORKSPACE=/path/to/nano-ros-workspace
+export NROS_ZEPHYR_WORKSPACE=/path/to/zephyr-workspace
 
 # Verify west is available
 west --version

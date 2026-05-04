@@ -7,37 +7,41 @@ or `sudo`.
 
 ## Overview
 
-nros uses a **sibling Zephyr workspace** alongside the repository. A symlink inside nros provides a stable path for scripts to locate the workspace.
+nros uses an **in-tree Zephyr workspace** at `zephyr-workspace/` (gitignored).
+Set `$NROS_ZEPHYR_WORKSPACE` to install elsewhere.
 
 ```
-repos/
-├── nros/                     # Your repository
-│   ├── scripts/zephyr/
-│   │   ├── setup.sh              # Initialize workspace
-│   │   ├── downloads/            # SDK tarball cache (gitignored)
-│   │   └── sdk/                  # Installed Zephyr SDK (gitignored)
-│   ├── zephyr/                   # Zephyr module definition
-│   │   ├── Kconfig               # RMW backend, API selection, tuning
-│   │   ├── CMakeLists.txt        # Transport C sources + nros-c build
-│   │   └── cmake/                # nros_cargo_build(), nros_generate_interfaces()
-│   ├── examples/zephyr/
-│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, ...)
-│   │   ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener)
-│   │   ├── c/zenoh/              # C + zenoh (talker, listener)
-│   │   └── c/xrce/              # C + XRCE-DDS (talker, listener)
-│   ├── zephyr-workspace -> ../nano-ros-workspace/  # Symlink (gitignored)
-│   └── west.yml                  # West manifest
-│
-└── nano-ros-workspace/           # Created by setup script
-    ├── nros -> ../nros   # Symlink to your repo
-    ├── zephyr/                   # Zephyr RTOS v3.7.0
-    └── modules/                  # HALs, zephyr-lang-rust
+nros/
+├── scripts/zephyr/
+│   ├── setup.sh                      # Initialize workspace
+│   ├── migrate-workspace.sh          # Move legacy sibling install in-tree
+│   ├── downloads/                    # SDK tarball cache (gitignored)
+│   └── sdk/                          # Installed Zephyr SDK (gitignored)
+├── zephyr/                           # Zephyr module definition
+│   ├── Kconfig                       # RMW backend, API selection, tuning
+│   ├── CMakeLists.txt                # Transport C sources + nros-c build
+│   └── cmake/                        # nros_cargo_build(), nros_generate_interfaces()
+├── examples/zephyr/
+│   ├── rust/zenoh/                   # Rust + zenoh (talker, listener, ...)
+│   ├── rust/xrce/                    # Rust + XRCE-DDS (talker, listener)
+│   ├── c/zenoh/                      # C + zenoh (talker, listener)
+│   └── c/xrce/                       # C + XRCE-DDS (talker, listener)
+├── west.yml                          # West manifest
+└── zephyr-workspace/                 # Created by setup.sh (gitignored)
+    ├── nros -> ../                   # Symlink back to repo root
+    ├── zephyr/                       # Zephyr RTOS v3.7.0
+    └── modules/                      # HALs, zephyr-lang-rust
 ```
 
-The `zephyr-workspace` symlink allows scripts to find the workspace without hardcoding paths.
-For custom workspace locations, update the symlink:
+### Migrating from the legacy sibling layout
+
+Pre-Phase-113 setups put the workspace at `../nano-ros-workspace/` with an
+in-tree symlink. Both layouts work — `just zephyr` recipes auto-detect — but
+to consolidate run:
+
 ```bash
-ln -sfn /path/to/custom-workspace zephyr-workspace
+./scripts/zephyr/migrate-workspace.sh --dry-run     # preview
+./scripts/zephyr/migrate-workspace.sh               # execute
 ```
 
 ## Prerequisites
@@ -63,7 +67,7 @@ This recipe automatically:
 - Downloads Zephyr SDK (~1.5 GB) to `scripts/zephyr/downloads/` using aria2c (parallel, resumable)
 - Verifies download with sha256sum
 - Installs SDK to `scripts/zephyr/sdk/`
-- Creates sibling workspace `../nano-ros-workspace/`
+- Creates in-tree workspace at `zephyr-workspace/` (gitignored; auto-detects legacy `../nano-ros-workspace/`)
 - Symlinks nros into the workspace
 - Fetches Zephyr RTOS and all modules
 - Installs Rust embedded targets
@@ -95,10 +99,10 @@ without bridge configuration.
 
 ```bash
 # Source environment
-source ../nano-ros-workspace/env.sh
+source zephyr-workspace/env.sh
 
 # Build Zephyr talker (Rust + zenoh, default backend)
-cd ../nano-ros-workspace
+cd zephyr-workspace
 west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
 
 # Run (no sudo needed)
@@ -246,7 +250,7 @@ just build-zephyr-all       # Build everything
 |-------|----------|
 | `west: command not found` | Run `pip3 install --user west` and add `~/.local/bin` to PATH |
 | `Connection refused` | Start `zenohd` / `MicroXRCEAgent` on the host loopback (e.g. `tcp/127.0.0.1:7456`) |
-| `Build fails` | Source environment: `source ../nano-ros-workspace/env.sh` |
+| `Build fails` | Source environment: `source zephyr-workspace/env.sh` |
 | `XRCE Agent not found` | Install: `just setup` (installs MicroXRCEAgent) |
 | Zenoh mutex exhaustion | Increase `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (default 5 is too low) |
 
@@ -280,7 +284,7 @@ emulated L2/L3 stack to configure, no static IP, and no bridge.
 To update Zephyr and modules to latest versions specified in `west.yml`:
 
 ```bash
-cd ../nano-ros-workspace
+cd zephyr-workspace
 west update
 ```
 

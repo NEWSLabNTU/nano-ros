@@ -56,6 +56,24 @@ mod orin_spe 'just/orin-spe.just'
 default:
     @just --list
 
+# Show every recipe including private/internal ones.
+# Maintainer/CI flow. End users want `just --list`.
+list-all:
+    #!/usr/bin/env bash
+    set -e
+    awk '
+        # Skip attribute lines, comments, blank, indented (recipe bodies).
+        /^[[:space:]]/ || /^#/ || /^\[/ || /^$/ { next }
+        # Recipe head: "name[ params]:" — capture the name.
+        /^[a-zA-Z_][a-zA-Z0-9_-]*([[:space:]]|:|\*)/ {
+            n = $1
+            sub(/:.*/, "", n)
+            print n
+        }
+    ' justfile | sort -u
+    echo ""
+    echo "(Run \`just <name>\` for any of these. Public subset: \`just --list\`.)"
+
 # =============================================================================
 # Entry Points
 # =============================================================================
@@ -107,6 +125,7 @@ install-local: \
 # cleanly with `std + platform-posix` and the lib names are RMW-suffixed
 # (`libnros_c_dds.a` / `libnros_cpp_dds.a`), so all three coexist in
 # the install prefix.
+[private]
 install-local-posix:
     #!/usr/bin/env bash
     set -e
@@ -182,6 +201,7 @@ clean-install:
 # `just zephyr build-fixtures`, …).
 #
 # Faster cache flush — wipes per-RMW cargo target trees only, no cmake reconfigure.
+[private]
 refresh-cmake-cargo:
     #!/usr/bin/env bash
     set -e
@@ -442,6 +462,7 @@ test-kill-orphans:
     echo "Done."
 
 # Initialize timestamped log directory for non-nextest test output (QEMU, C)
+[private]
 init-test-logs:
     #!/usr/bin/env bash
     timestamp=$(date +%Y%m%d-%H%M%S)
@@ -458,6 +479,7 @@ test-report:
 
 # Build workspace (no_std, native)
 # nros-c/nros-cpp excluded from no_std build: staticlib/cdylib requires panic handler (needs std)
+[private]
 build-workspace:
     cargo build --workspace --no-default-features --exclude nros-c --exclude nros-cpp
     cargo nextest run --workspace --no-run
@@ -466,6 +488,7 @@ build-workspace:
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
 # Excludes nros-c/nros-cpp: staticlib/cdylib requires panic handler (needs std)
+[private]
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
@@ -481,11 +504,13 @@ build-workspace-embedded:
         --exclude nros-px4
 
 # Format workspace code
+[private]
 format-workspace:
     cargo +{{NIGHTLY}} fmt
 
 # Check workspace: formatting and clippy (no_std, native)
 # nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
+[private]
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
     cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp
@@ -494,6 +519,7 @@ check-workspace:
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
 # Excludes nros-c/nros-cpp: staticlib/cdylib requires panic handler (needs std)
+[private]
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
@@ -508,6 +534,7 @@ check-workspace-embedded:
         --exclude xrce-platform-shim
 
 # Check workspace with various feature combinations
+[private]
 check-workspace-features:
     @echo "Checking feature combinations..."
     @echo "  - nros: zenoh + posix + humble"
@@ -525,6 +552,7 @@ check-workspace-features:
     @echo "All feature checks passed!"
 
 # Format C code (nros-c headers, zpico C, C examples) with clang-format
+[private]
 format-c:
     #!/usr/bin/env bash
     set -e
@@ -535,12 +563,14 @@ format-c:
     echo "C code formatted."
 
 # Format C++ headers (nros-cpp) with clang-format
+[private]
 format-cpp:
     @echo "Formatting C++ headers..."
     clang-format -i packages/core/nros-cpp/include/nros/*.hpp
     @echo "C++ headers formatted."
 
 # Format Python code (colcon-cargo-ros2) with ruff
+[private]
 format-python:
     @echo "Formatting Python code..."
     ruff format packages/codegen/packages/colcon-cargo-ros2/
@@ -548,6 +578,7 @@ format-python:
     @echo "Python code formatted."
 
 # Check C code: formatting + nros-c umbrella header syntax
+[private]
 check-c:
     #!/usr/bin/env bash
     set -e
@@ -566,6 +597,7 @@ check-c:
     echo "All C checks passed!"
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy
+[private]
 check-cpp:
     #!/usr/bin/env bash
     set -e
@@ -583,6 +615,7 @@ check-cpp:
     echo "All C++ checks passed!"
 
 # Check Python code: formatting + linting with ruff
+[private]
 check-python:
     @echo "Checking Python code..."
     ruff format --check packages/codegen/packages/colcon-cargo-ros2/
@@ -797,21 +830,26 @@ coverage:
 # =============================================================================
 
 # Build zenoh transport
+[private]
 build-zenoh:
     cargo build -p nros-rmw --features std
 
 # Check zenoh transport
+[private]
 check-zenoh:
     cargo clippy -p nros-rmw --features std
 
 # Build zenohd from submodule (alias for `just zenohd build`).
+[private]
 build-zenohd: zenohd::build
 
 # Clean zenohd build (alias for `just zenohd clean`).
+[private]
 clean-zenohd: zenohd::clean
 
 
 # Build zenoh-pico C library (standalone, for debugging)
+[private]
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
     cd packages/zpico/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
@@ -869,6 +907,7 @@ clean-bindings:
     echo "All generated bindings removed."
 
 # Regenerate rcl-interfaces bindings (workspace member with nros- prefix)
+[private]
 generate-rcl-interfaces:
     #!/usr/bin/env bash
     set -e
@@ -884,6 +923,7 @@ generate-rcl-interfaces:
     echo "✓ rcl-interfaces regenerated"
 
 # Regenerate lifecycle-msgs bindings (workspace member with nros- prefix)
+[private]
 generate-lifecycle-msgs:
     #!/usr/bin/env bash
     set -e
@@ -990,6 +1030,7 @@ doc-c:
 
 # Verify hand-written C headers are syntactically correct.
 # Signature drift against Rust is caught at link time by `just test-c`.
+[private]
 doc-c-check:
     #!/usr/bin/env bash
     set -e
@@ -1014,6 +1055,7 @@ doc-cpp:
     echo "C++ API docs generated: target/doxygen/cpp/html/index.html"
 
 # Generate Doxygen for the RMW vtable (porter-facing).
+[private]
 doc-rmw-cffi:
     #!/usr/bin/env bash
     set -e
@@ -1028,6 +1070,7 @@ doc-rmw-cffi:
 # Generate Doxygen for the platform vtable (porter-facing). Triggers a
 # build of nros-platform-cffi first so the cbindgen-emitted header
 # exists.
+[private]
 doc-platform-cffi:
     #!/usr/bin/env bash
     set -e
