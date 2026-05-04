@@ -149,7 +149,7 @@ Not every backend can generate every event. Apps must handle
 | dust-DDS | ✓ Native (DataReader/Writer listeners) | ✓ Native | ✓ Native (`SampleLost`) |
 | XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ Not exposed | ✗ Not exposed |
 | zenoh-pico | 🟡 Planned: zenoh liveliness tokens | 🟡 Planned: shim-side per-sub timer | 🟡 Planned: seq-gap detection at shim |
-| uORB | ✗ No wire-level liveliness | ✗ No rate concept | 🟡 Planned: needs `px4-uorb` crate extension |
+| uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Host mock (real PX4 path stubbed pending `px4-sys` binding) |
 
 ✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.
 

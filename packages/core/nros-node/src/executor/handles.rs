@@ -1223,6 +1223,67 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
     }
 
+    /// Phase 108.A — `true` if the active backend can fire the named
+    /// event for this raw subscription.
+    #[cfg(feature = "alloc")]
+    pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        use nros_rmw::Subscriber as _;
+        self.handle.supports_event(kind)
+    }
+
+    /// Phase 108.A — register a callback for `LivelinessChanged`.
+    #[cfg(feature = "alloc")]
+    pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
+    {
+        register_sub_event_liveliness::<F>(&mut self.handle, &mut self.event_regs, cb)
+    }
+
+    /// Phase 108.A — register a callback for `RequestedDeadlineMissed`.
+    #[cfg(feature = "alloc")]
+    pub fn on_requested_deadline_missed<F>(
+        &mut self,
+        deadline: core::time::Duration,
+        cb: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::RequestedDeadlineMissed,
+            deadline.as_millis().min(u32::MAX as u128) as u32,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::RequestedDeadlineMissed(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
+    /// Phase 108.A — register a callback for `MessageLost`.
+    #[cfg(feature = "alloc")]
+    pub fn on_message_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::MessageLost,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::MessageLost(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
     /// Get the receive buffer (valid after [`try_recv_raw`](Self::try_recv_raw)).
     pub fn buffer(&self) -> &[u8] {
         &self.buffer

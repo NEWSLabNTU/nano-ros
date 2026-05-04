@@ -408,7 +408,7 @@ The zenoh shim emulation block is a substantial standalone effort (~530 LOC acro
 #### uORB — `108.C.uorb`
 
 - [x] **108.C.uorb.1 — `Session::supported_qos_policies()` override.** Returns CORE only (commit `95df4d39`).
-- [ ] **108.C.uorb.2 — `MessageLost` event. BLOCKED on px4-uorb extension.** uORB C API tracks lost-message count via `orb_stat`, but the `px4-uorb` Rust crate (under `third-party/px4/px4-rs/`) doesn't expose it. Need to add `RawSubscription::missed_count() -> u32` upstream first. Defer until requested.
+- [x] **108.C.uorb.2 — `MessageLost` event.** Std host (mock broker) path complete: `RawSubscription::missed_count()` exposes the per-subscriber dropped-sample count via `sub_cb_lost_take` (drains an `AtomicU32` bumped in `sub_cb_update` whenever the seq gap > 1). `UorbSubscriber` polls `missed_count()` on every `try_recv_raw` and fires the registered `MessageLost` callback when non-zero. RawSubscription gains `on_message_lost` / `on_liveliness_changed` / `on_requested_deadline_missed` ergonomic wrappers (also reusable by other typeless backends). Test `message_lost_event_fires_on_dropped_messages` verifies cumulative + delta counts. **Real PX4 path** is stubbed (returns 0) until a `px4_rs_sub_cb_lost_take` C-side binding lands in `px4-sys`/`px4-shim`; tracked in px4-uorb's TODO.
 
 #### Cross-backend integration
 
@@ -449,7 +449,7 @@ Tracked as sub-phases above. Current status:
 | dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
 | XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
 | zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ❌ deferred — shim emulation, separate phase | n/a (no prefix) |
-| uORB | ✅ CORE (commit `95df4d39`) | n/a | ❌ blocked — `px4-uorb` crate ext needed | n/a (no DDS naming) |
+| uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock complete; real PX4 path needs `px4_rs_sub_cb_lost_take` binding — stub returns 0) | n/a (no DDS naming) |
 
 ### No upstream ABI compat
 
