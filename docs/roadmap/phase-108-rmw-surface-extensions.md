@@ -400,7 +400,7 @@ Backends opt into specific QoS bits + event kinds one at a time. Each landing fl
 - [ ] **108.C.zenoh.2 — Shim-emulated DEADLINE. DEFERRED.** Per-subscriber timer + `last_msg_at` tracking + per-cycle expiry check. ~150 LOC. Open as separate phase.
 - [ ] **108.C.zenoh.3 — Shim-emulated LIFESPAN. DEFERRED.** Per-sample timestamp attachment + subscriber filter. Requires sample attachment scheme. ~100 LOC.
 - [ ] **108.C.zenoh.4 — Shim-emulated LIVELINESS via zenoh tokens. DEFERRED.** Each publisher declares a liveliness token; subscribers query token presence. zenoh-pico ≥ 1.x has native token API. ~200 LOC.
-- [ ] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST. DEFERRED.** Sequence-number attachment + subscriber gap-detection. ~80 LOC.
+- [x] **108.C.zenoh.5 — Shim-emulated MESSAGE_LOST.** Subscriber parses publisher seq from the existing RMW attachment (already populated by every `ZenohPublisher::publish_raw` since Phase 91), tracks `next_expected_seq`, and fires `MessageLost { total_count, total_count_change }` on the registered callback when `seq > expected`. Out-of-order / duplicate samples count as zero loss. First-message synchronisation: initial `next_expected_seq = 0` means we sync to the publisher's first observed seq w/o reporting a gap. ~120 LOC. (commit `<this commit>`)
 - [ ] **108.C.zenoh.6 — Update `supported_qos_policies()` mask** as each emulation lands.
 
 The zenoh shim emulation block is a substantial standalone effort (~530 LOC across 4 features + tests). Open as separate phase rather than landing piecemeal under 108.
@@ -448,7 +448,7 @@ Tracked as sub-phases above. Current status:
 |---------|-------------|---------------------|------------------|---------------------|
 | dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
 | XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
-| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ❌ deferred — shim emulation, separate phase | n/a (no prefix) |
+| zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (seq-gap from RMW attachment); 🟡 deadline / lifespan / liveliness deferred | n/a (no prefix) |
 | uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock complete; real PX4 path needs `px4_rs_sub_cb_lost_take` binding — stub returns 0) | n/a (no DDS naming) |
 
 ### No upstream ABI compat

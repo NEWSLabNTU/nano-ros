@@ -209,8 +209,29 @@ pub struct ZenohSubscriber {
     /// E2E safety validator (tracks sequence numbers, validates CRC)
     #[cfg(feature = "safety-e2e")]
     safety_validator: nros_rmw::SafetyValidator,
+    /// Phase 108.C.zenoh.5 — next expected sequence number, used to
+    /// detect publisher gaps in the attachment-encoded seq stream and
+    /// fire `MessageLost` events. Initialised to `0` (= "no message
+    /// observed yet"); first `try_recv_raw` synchronises to the
+    /// publisher's seq w/o reporting a gap.
+    next_expected_seq: core::cell::Cell<i64>,
+    /// Cumulative count of messages dropped between this subscriber's
+    /// observed seq stream and the publisher's seq stream. Used as
+    /// `CountStatus::total_count` per the nros event contract.
+    msg_lost_total: core::cell::Cell<u32>,
+    /// Phase 108.A — registered `MessageLost` callback slot.
+    msg_lost_cb: core::cell::Cell<Option<EventReg>>,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
+}
+
+/// Phase 108.A — single-slot event registration. The cb is
+/// `unsafe extern "C" fn` (always Send); user_ctx outlives the
+/// subscriber per Phase 108.A.7's per-entity event registry.
+#[derive(Clone, Copy)]
+struct EventReg {
+    cb: nros_rmw::EventCallback,
+    user_ctx: *mut core::ffi::c_void,
 }
 
 impl ZenohSubscriber {
@@ -280,8 +301,64 @@ impl ZenohSubscriber {
             _liveliness: liveliness,
             #[cfg(feature = "safety-e2e")]
             safety_validator: nros_rmw::SafetyValidator::new(),
+            next_expected_seq: core::cell::Cell::new(0),
+            msg_lost_total: core::cell::Cell::new(0),
+            msg_lost_cb: core::cell::Cell::new(None),
             _phantom: PhantomData,
         })
+    }
+
+    /// Phase 108.C.zenoh.5 — peek the just-received attachment for a
+    /// sequence number, detect gaps against `next_expected_seq`, and
+    /// fire the registered `MessageLost` callback if any are dropped.
+    /// Called from `try_recv_raw` AFTER the payload is copied so the
+    /// status-event delivery is observable to the user as a side-
+    /// effect of receive (matching dust-DDS sample-lost semantics).
+    fn check_msg_lost_and_fire(&self) {
+        let buffer = self.buf.get();
+        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        if attachment_len < RMW_ATTACHMENT_SIZE {
+            return; // No attachment, no seq → can't detect gaps.
+        }
+        let att = &buffer.attachment;
+        let seq = i64::from_le_bytes([
+            att[0], att[1], att[2], att[3], att[4], att[5], att[6], att[7],
+        ]);
+        let expected = self.next_expected_seq.get();
+        // First message: synchronise w/o reporting; expected stays 0
+        // until we see a real seq, then we set expected = seq + 1.
+        let gap = if expected == 0 {
+            0
+        } else if seq > expected {
+            (seq - expected) as u64
+        } else {
+            // Out-of-order or duplicate — treat as zero loss.
+            0
+        };
+        self.next_expected_seq.set(seq.saturating_add(1));
+        if gap == 0 {
+            return;
+        }
+        let delta = u32::try_from(gap).unwrap_or(u32::MAX);
+        let total = self.msg_lost_total.get().saturating_add(delta);
+        self.msg_lost_total.set(total);
+        if let Some(reg) = self.msg_lost_cb.get() {
+            let status = nros_rmw::CountStatus {
+                total_count: total,
+                total_count_change: delta,
+            };
+            // SAFETY: cb is `unsafe extern "C" fn` matching
+            // EventCallback; user_ctx outlives this call (entity owns
+            // the Box backing it; freed in nros-node's per-entity
+            // event-registry on Drop).
+            unsafe {
+                (reg.cb)(
+                    nros_rmw::EventKind::MessageLost,
+                    &status as *const _ as *const core::ffi::c_void,
+                    reg.user_ctx,
+                );
+            }
+        }
     }
 }
 
@@ -505,10 +582,37 @@ impl Subscriber for ZenohSubscriber {
             core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
         }
 
+        // Phase 108.C.zenoh.5 — detect publisher seq gap before
+        // releasing the buffer lock so the attachment is still valid.
+        self.check_msg_lost_and_fire();
+
         buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
 
         Ok(Some(len))
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Phase 108.C.zenoh.5 — only MessageLost is wired so far via
+        // attachment seq gap detection. DEADLINE / LIFESPAN /
+        // LIVELINESS are tracked as separate follow-ups.
+        matches!(kind, nros_rmw::EventKind::MessageLost)
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        _deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        match kind {
+            nros_rmw::EventKind::MessageLost => {
+                self.msg_lost_cb.set(Some(EventReg { cb, user_ctx }));
+                Ok(())
+            }
+            _ => Err(TransportError::Unsupported),
+        }
     }
 
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
