@@ -1607,7 +1607,11 @@ fn test_zephyr_xrce_rust_action_e2e() {
             server_ready
         );
     }
-    std::thread::sleep(Duration::from_millis(500));
+    // Was 500 ms — bumped to 1500 ms so the XRCE Agent has time to
+    // propagate the server's CREATE_REPLIER ack back to the client
+    // session under `just test-all` load (8 sibling Zephyr XRCE
+    // workers + parallel rebuilds racing for the same Agent).
+    std::thread::sleep(Duration::from_millis(1500));
     let mut server = server;
 
     eprintln!("Starting Zephyr XRCE action client...");
