@@ -408,7 +408,7 @@ The zenoh shim emulation block is a substantial standalone effort (~530 LOC acro
 #### uORB — `108.C.uorb`
 
 - [x] **108.C.uorb.1 — `Session::supported_qos_policies()` override.** Returns CORE only (commit `95df4d39`).
-- [x] **108.C.uorb.2 — `MessageLost` event.** Std host (mock broker) path complete: `RawSubscription::missed_count()` exposes the per-subscriber dropped-sample count via `sub_cb_lost_take` (drains an `AtomicU32` bumped in `sub_cb_update` whenever the seq gap > 1). `UorbSubscriber` polls `missed_count()` on every `try_recv_raw` and fires the registered `MessageLost` callback when non-zero. RawSubscription gains `on_message_lost` / `on_liveliness_changed` / `on_requested_deadline_missed` ergonomic wrappers (also reusable by other typeless backends). Test `message_lost_event_fires_on_dropped_messages` verifies cumulative + delta counts. **Real PX4 path** is stubbed (returns 0) until a `px4_rs_sub_cb_lost_take` C-side binding lands in `px4-sys`/`px4-shim`; tracked in px4-uorb's TODO.
+- [x] **108.C.uorb.2 — `MessageLost` event.** Both std host (mock broker) and real-target paths complete. The C wrapper's `RustSubscriptionCallback` (`px4-sys/wrapper.cpp`) tracks publish-callback fires in an atomic and computes the delta on each successful `update()`. New `px4_rs_sub_cb_lost_take` extern "C" surface drains the accumulator. `RawSubscription::missed_count()` routes there; `UorbSubscriber` polls it on every `try_recv_raw` and fires the registered `MessageLost` callback when non-zero. RawSubscription gains `on_message_lost` / `on_liveliness_changed` / `on_requested_deadline_missed` ergonomic wrappers (also reusable by other typeless backends). Test `message_lost_event_fires_on_dropped_messages` verifies cumulative + delta counts on host. (commits `c9748ad9` host, `<this>` real-target submodule bump.)
 
 #### Cross-backend integration
 
@@ -449,7 +449,7 @@ Tracked as sub-phases above. Current status:
 | dust-DDS | ✅ full (commit `d74aa834`) | ✅ native | ✅ full (commit `861fc2cf`) | n/a (no prefix) |
 | XRCE-DDS | ✅ CORE+TL (commit `95df4d39`) | n/a | ❌ deferred — uxr session listener routing | ✅ honoured |
 | zenoh-pico | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (seq-gap from RMW attachment); 🟡 deadline / lifespan / liveliness deferred | n/a (no prefix) |
-| uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock complete; real PX4 path needs `px4_rs_sub_cb_lost_take` binding — stub returns 0) | n/a (no DDS naming) |
+| uORB | ✅ CORE (commit `95df4d39`) | n/a | ✅ MessageLost (host mock + real-PX4 wired) | n/a (no DDS naming) |
 
 ### No upstream ABI compat
 
