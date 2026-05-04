@@ -91,6 +91,15 @@ platform-threadx = [
     "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
+# Phase 11 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
+# IVC-only transport; no `platform-udp` (no Ethernet, no UDP socket
+# layer). zenoh-pico's `Z_FEATURE_LINK_IVC` is enabled by
+# `zpico-sys/orin-spe` transitively via the rmw-zenoh feature.
+platform-orin-spe = [
+    "nros-platform/platform-orin-spe",
+    "nros-node/platform-orin-spe",
+    "nros-rmw-zenoh?/platform-orin-spe",
+]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]

@@ -14,6 +14,8 @@ platform-bare-metal = ["zpico-sys/bare-metal"]
 platform-freertos = ["zpico-sys/freertos"]
 platform-nuttx = ["zpico-sys/nuttx"]
 platform-threadx = ["zpico-sys/threadx"]
+# Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
+platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 link-tcp = ["zpico-sys/link-tcp"]
 link-udp-unicast = ["zpico-sys/link-udp-unicast"]
 link-tls = ["zpico-sys/link-tls"]

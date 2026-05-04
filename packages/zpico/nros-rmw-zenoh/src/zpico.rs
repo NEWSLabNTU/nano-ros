@@ -9,7 +9,9 @@
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 use core::ffi::c_void;
 #[cfg(any(
@@ -18,7 +20,9 @@ use core::ffi::c_void;
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 use core::marker::PhantomData;
 
@@ -60,7 +64,9 @@ pub use zpico_sys::{
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 use zpico_sys::{
     zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
@@ -108,6 +114,7 @@ pub enum ZpicoError {
     feature = "platform-freertos",
     feature = "platform-nuttx",
     feature = "platform-threadx",
+    feature = "platform-orin-spe",
     test
 ))]
 impl ZpicoError {
@@ -200,7 +207,9 @@ impl ZenohId {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 pub struct LivelinessToken {
     handle: i32,
@@ -212,7 +221,9 @@ pub struct LivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl LivelinessToken {
     /// Get the liveliness handle
@@ -227,7 +238,9 @@ impl LivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl Drop for LivelinessToken {
     fn drop(&mut self) {
@@ -254,7 +267,9 @@ impl Drop for LivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 pub struct Queryable {
     handle: i32,
@@ -266,7 +281,9 @@ pub struct Queryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl Queryable {
     /// Get the queryable handle
@@ -281,7 +298,9 @@ impl Queryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl Drop for Queryable {
     fn drop(&mut self) {
@@ -310,7 +329,9 @@ impl Drop for Queryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 pub struct Context {
     _private: PhantomData<*const ()>,
@@ -322,7 +343,9 @@ pub struct Context {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl Context {
     /// Create a new shim context with the given locator
@@ -809,7 +832,9 @@ impl Context {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl Drop for Context {
     fn drop(&mut self) {
@@ -832,7 +857,9 @@ impl Drop for Context {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 pub struct Publisher<'a> {
     handle: i32,
@@ -845,7 +872,9 @@ pub struct Publisher<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl<'a> Publisher<'a> {
     /// Publish data
@@ -936,7 +965,9 @@ impl<'a> Publisher<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
@@ -959,7 +990,9 @@ impl<'a> Drop for Publisher<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 pub struct Subscriber<'a> {
     handle: i32,
@@ -972,7 +1005,9 @@ pub struct Subscriber<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl<'a> Subscriber<'a> {
     /// Get the subscriber handle
@@ -987,7 +1022,9 @@ impl<'a> Subscriber<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+    feature = "platform-orin-spe",
 ))]
 impl<'a> Drop for Subscriber<'a> {
     fn drop(&mut self) {

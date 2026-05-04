@@ -30,6 +30,7 @@ extern crate std;
     feature = "nuttx",
     feature = "freertos",
     feature = "threadx",
+    feature = "orin-spe",
     feature = "zephyr"
 ))]
 extern crate zpico_platform_shim;
@@ -43,7 +44,8 @@ extern crate zpico_platform_shim;
     feature = "bare-metal",
     feature = "freertos",
     feature = "nuttx",
-    feature = "threadx"
+    feature = "threadx",
+    feature = "orin-spe"
 ))]
 use core::ffi::c_void;
 
@@ -95,7 +97,8 @@ pub struct zpico_property_t {
         feature = "bare-metal",
         feature = "freertos",
         feature = "nuttx",
-        feature = "threadx"
+        feature = "threadx",
+    feature = "orin-spe"
     ),
     not(cbindgen)
 ))]

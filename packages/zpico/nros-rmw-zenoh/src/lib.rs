@@ -27,7 +27,8 @@ extern crate alloc;
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
 ))]
 pub(crate) mod config;
 pub mod keyexpr;
@@ -39,7 +40,8 @@ pub mod zpico;
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
 ))]
 pub mod shim;
 
@@ -53,7 +55,8 @@ pub use zpico::{ZenohId, ZpicoError};
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
 ))]
 pub use zpico::{
     Context, LivelinessToken, Publisher as ZpicoPublisher, Queryable, Subscriber as ZpicoSubscriber,
@@ -66,7 +69,8 @@ pub use zpico::{
     feature = "platform-bare-metal",
     feature = "platform-freertos",
     feature = "platform-nuttx",
-    feature = "platform-threadx"
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
 ))]
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,

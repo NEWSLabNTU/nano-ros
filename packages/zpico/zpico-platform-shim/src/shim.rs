@@ -42,6 +42,7 @@ mod net_sizes {
 /// passed by value across the `extern "C"` boundary.
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(dead_code)] // unused on IVC-only targets (orin-spe — no network)
 pub struct ZSysNetSocket {
     _opaque: [u8; net_sizes::NET_SOCKET_SIZE],
 }
@@ -49,6 +50,7 @@ pub struct ZSysNetSocket {
 /// Opaque wrapper matching `_z_sys_net_endpoint_t` size for the target platform.
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(dead_code)] // unused on IVC-only targets (orin-spe — no network)
 pub struct ZSysNetEndpoint {
     _opaque: [u8; net_sizes::NET_ENDPOINT_SIZE],
 }
