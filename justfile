@@ -42,6 +42,7 @@ mod verification 'just/verification.just'
 mod zenohd 'just/zenohd.just'
 mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
+mod orin_spe 'just/orin-spe.just'
 
 default:
     @just --list
@@ -819,6 +820,7 @@ _orchestrate verb:
     run xrce
     run zenohd
     run rmw_zenoh
+    run orin_spe
     echo ""
     if [ ${#failed[@]} -gt 0 ]; then
         echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"
