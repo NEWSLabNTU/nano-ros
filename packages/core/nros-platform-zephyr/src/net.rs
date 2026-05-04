@@ -538,14 +538,29 @@ impl ZephyrPlatform {
         }
         unsafe { (*sock)._fd = fd };
 
-        // Phase 97.4.zephyr-native_sim — do NOT set `SO_REUSEADDR`
-        // on the unicast path. Two co-resident `native_sim` processes
-        // would otherwise both succeed at `bind(0.0.0.0:7411)` (with
-        // SO_REUSEADDR Linux delivers each datagram to a single
-        // socket round-robin) and the auto-pid loop in
-        // `nros-rmw-dds::transport_nros::create_participant` would
-        // never fire. Multicast bind keeps SO_REUSEADDR via the
-        // dedicated `mcast_listen` path so SPDP joins still succeed.
+        // Set SO_REUSEADDR to absorb the kernel's lingering binding
+        // from a recently-killed sibling test instance. On Linux UDP
+        // SO_REUSEADDR alone does NOT permit two live sockets on the
+        // same port (only SO_REUSEPORT does — verified, EADDRINUSE
+        // still fires for the second live bind), so the auto-pid
+        // loop in `nros-rmw-dds::transport_nros::create_participant`
+        // continues to fire correctly when two live participants
+        // collide. Without SO_REUSEADDR a stale binding from a
+        // killed sibling can lock out every pid 0..32 long enough
+        // for the new participant's `Executor::open` to fail —
+        // observed as `test_zephyr_dds_rust_action_server_boots`
+        // flaking under `just test-all` load (process exits in
+        // ~0.24 s without ever printing the readiness banner).
+        let one: c_int = 1;
+        unsafe {
+            c::setsockopt(
+                fd,
+                c::SOL_SOCKET,
+                c::SO_REUSEADDR,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<c_int>() as socklen_t,
+            );
+        }
 
         let tv = timeval {
             tv_sec: (timeout_ms / 1000) as i64,
