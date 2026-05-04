@@ -2,7 +2,7 @@
 
 **Goal:** Close the day-to-day API ergonomics gap between `nros-c`/`nros-cpp` and `rclc`/`rclcpp` so a hello-world is the same line count, the same shape, and free of platform leaks.
 
-**Status:** In Progress (B + D shipped, A/C/E/F pending)
+**Status:** In Progress (A + B + D shipped, C/E/F pending)
 **Priority:** High
 **Depends on:** Phase 21 (C API), Phase 79 (unified platform abstraction), Phase 83 (thin-wrapper compliance)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-2, UX-3, UX-4, UX-8, UX-21, UX-26
@@ -121,9 +121,9 @@ Zephyr Rust examples must be named `rustapp` because `zephyr-lang-rust`'s `rust_
 
 ## Work Items
 
-- [ ] **112.A.1** Codegen — emit `nros_publisher_publish_<pkg>_<type>` per message type
-- [ ] **112.A.2** Codegen — emit `_Generic`-based `NROS_PUBLISH(pub, msg)` umbrella macro
-- [ ] **112.A.3** Sweep examples to use typed publish
+- [x] **112.A.1** Codegen — emit `static inline {struct_name}_publish(pub, msg)` per message type. Uses `NROS_PUB_BUFFER_SIZE` (default 256, override-able) for the per-call serialize buffer. Submodule commit `d7876c2` in `packages/codegen`. Test extended in `rosidl-codegen` (`test_c_simple_message_generation`).
+- [ ] **112.A.2** `_Generic`-based `NROS_PUBLISH(pub, msg)` umbrella macro — deferred. Per-type `_publish` is sufficient for current examples; umbrella macro requires a single header that knows every type and is best generated under Phase 116.
+- [~] **112.A.3** Migrated FreeRTOS C zenoh talker. Combined Phase 112.B + D + A reduction: 98 -> 60 lines (-39%). Other examples still use the explicit serialize+publish_raw two-step; sweep tracked alongside 112.B.2.
 - [x] **112.B.1** Added `<nros/check.h>` with `NROS_CHECK`/`NROS_SOFTCHECK`/`NROS_CHECK_RET`. Override-able log via `NROS_CHECK_LOG`. Re-exported from umbrella `<nros/nros.h>`.
 - [~] **112.B.2** Swept FreeRTOS / NuttX / ThreadX-RISCV C zenoh talker + listener (6 files). Native (`int main`) and service/action/cpp examples deferred — patterns diverge.
 - [ ] **112.C.1** Define `nros_app_main` contract; document in `book/src/reference/c-api.md`
