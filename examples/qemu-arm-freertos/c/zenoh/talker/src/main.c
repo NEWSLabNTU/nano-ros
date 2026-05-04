@@ -53,17 +53,8 @@ void app_main(void) {
         }
 
         message.data = count;
-        uint8_t buffer[64];
-        size_t serialized_size = 0;
-        int32_t ser_ret = std_msgs_msg_int32_serialize(
-            &message, buffer, sizeof(buffer), &serialized_size);
-
-        if (ser_ret == 0 && serialized_size > 0) {
-            NROS_SOFTCHECK(nros_publish_raw(&app.publisher, buffer, serialized_size));
-            printf("Published: %d\n", message.data);
-        } else {
-            printf("Serialize failed: %d\n", ser_ret);
-        }
+        NROS_SOFTCHECK(std_msgs_msg_int32_publish(&app.publisher, &message));
+        printf("Published: %d\n", message.data);
         count++;
     }
 }
