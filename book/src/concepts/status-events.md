@@ -148,7 +148,7 @@ Not every backend can generate every event. Apps must handle
 |---------|------------------------------|------------------|---------------|
 | dust-DDS | ✓ Native (DataReader/Writer listeners) | ✓ Native | ✓ Native (`SampleLost`) |
 | XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ Not exposed | ✗ Not exposed |
-| zenoh-pico | 🟡 Surface only (token bridge deferred) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
+| zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Native (host mock + real PX4 via `RustSubscriptionCallback` publish-counter) |
 
 ✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.

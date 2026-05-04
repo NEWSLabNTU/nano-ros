@@ -552,6 +552,35 @@ impl Ros2Liveliness {
     /// Build a wildcard liveliness keyexpr matching any service-server token
     /// for the given service.
     ///
+    /// Phase 108.C.zenoh.4 — wildcard publisher liveliness keyexpr.
+    ///
+    /// Format: `@ros2_lv/<domain_id>/*/0/11/MP/%/*/*/<topic>/<type>/*/*`
+    /// — wildcards on zid, namespace, node, type_hash, qos. Used by
+    /// `ZenohSubscriber`'s LivelinessChanged emulation: the subscriber
+    /// periodically polls this keyexpr via `liveliness_get_start` to
+    /// discover any publisher matching its own (topic, type) pair, and
+    /// fires `LivelinessChanged` on alive-state transitions.
+    pub fn publisher_keyexpr_wildcard<const N: usize>(
+        domain_id: u32,
+        topic: &TopicInfo,
+    ) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let topic_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(topic.name);
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/*/{}/{}/%/*/*/{}/{}/*/*",
+                LIVELINESS_PREFIX,
+                domain_id,
+                PROTO_VERSION_TOPIC,
+                ENTITY_PUBLISHER,
+                topic_mangled.as_str(),
+                topic.type_name,
+            ),
+        );
+        key
+    }
+
     /// Format: `@ros2_lv/<domain_id>/*/0/11/SS/%/*/*/<service>/<type>/*/*`
     /// — wildcards on zid, namespace, node, type_hash, and qos. Used by
     /// `Client::wait_for_service` to discover any matching server before

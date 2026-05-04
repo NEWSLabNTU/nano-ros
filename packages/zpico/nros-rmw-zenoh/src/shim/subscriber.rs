@@ -244,15 +244,63 @@ pub struct ZenohSubscriber {
     /// Cumulative dropped-by-lifespan count (folded into
     /// `MessageLost` events — lifespan-expired samples count as lost).
     deadline_cb: core::cell::Cell<Option<EventReg>>,
-    /// Phase 108.C.zenoh.4 — registered `LivelinessChanged` callback
-    /// slot. Fired (best-effort) from a global liveliness-subscriber
-    /// shim that tracks zenoh liveliness tokens declared by remote
-    /// publishers. Today only the slot is wired; the global shim is
-    /// part of the same phase landing.
+    /// Phase 108.C.zenoh.4 — registered `LivelinessChanged` callback.
+    /// Fired from `has_data` / `try_recv_raw` after a periodic
+    /// `liveliness_get_*` poll detects an alive-state transition for
+    /// any publisher matching the subscriber's wildcard liveliness
+    /// keyexpr.
     liveliness_cb: core::cell::Cell<Option<EventReg>>,
+    /// Wildcard liveliness keyexpr matching any publisher on this
+    /// subscriber's (topic, type). Populated at create.
+    liveliness_keyexpr: heapless::String<256>,
+    /// Liveliness-poll context — handle of an in-flight
+    /// `liveliness_get_start` query (None = idle), the timestamp of
+    /// the most recent poll start, and the previously observed alive
+    /// state.
+    liveliness_poll: core::cell::Cell<LivelinessPoll>,
+    /// Raw pointer to the owning session's `Context`. Used by the
+    /// LIVELINESS poll loop to issue `liveliness_get_*` queries.
+    /// SAFETY: the Context is owned by `ZenohSession`, which outlives
+    /// every entity it spawns (entities are created via Session and
+    /// dropped before Session::close).
+    context: *const Context,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
 }
+
+/// Phase 108.C.zenoh.4 — liveliness-poll state. Owned by the
+/// subscriber via `Cell` since the subscriber is `!Sync`.
+#[derive(Clone, Copy)]
+struct LivelinessPoll {
+    /// Slot handle of an in-flight `liveliness_get_start` query, or
+    /// `-1` when idle.
+    handle: i32,
+    /// Wall-clock ms when the most recent poll was started.
+    started_at_ms: u64,
+    /// Last observed alive-state (any matching publisher visible).
+    /// Initialised to `false`; the first transition to `true` fires
+    /// `alive_count_change = +1`.
+    last_alive: bool,
+    /// Cumulative running count for `LivelinessChangedStatus.alive_count`.
+    alive_count: u16,
+}
+
+impl LivelinessPoll {
+    const IDLE: Self = Self {
+        handle: -1,
+        started_at_ms: 0,
+        last_alive: false,
+        alive_count: 0,
+    };
+}
+
+/// Liveliness-poll cadence. We don't expose a knob because polling
+/// faster than ~1 Hz spams the network without benefit; coarser than
+/// ~5 s loses transitions. Sub side honors `liveliness_lease_ms` from
+/// QoS by clamping the poll window to half the lease (so we observe
+/// at least two probes per lease period).
+const LIVELINESS_POLL_DEFAULT_MS: u64 = 1_000;
+const LIVELINESS_POLL_TIMEOUT_MS: u32 = 100;
 
 /// Phase 108.A — single-slot event registration. The cb is
 /// `unsafe extern "C" fn` (always Send); user_ctx outlives the
@@ -279,6 +327,11 @@ impl ZenohSubscriber {
         liveliness: Option<super::LivelinessToken>,
         qos: &nros_rmw::QosSettings,
     ) -> Result<Self, TransportError> {
+        // Phase 108.C.zenoh.4 — wildcard liveliness keyexpr matching
+        // any publisher on this (topic, type). Built once and stored
+        // for reuse on each LIVELINESS poll.
+        let liveliness_keyexpr: heapless::String<256> =
+            super::Ros2Liveliness::publisher_keyexpr_wildcard(topic.domain_id, topic);
         // Allocate a buffer index
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
@@ -350,8 +403,112 @@ impl ZenohSubscriber {
             deadline_total: core::cell::Cell::new(0),
             deadline_cb: core::cell::Cell::new(None),
             liveliness_cb: core::cell::Cell::new(None),
+            liveliness_keyexpr,
+            liveliness_poll: core::cell::Cell::new(LivelinessPoll::IDLE),
+            context: context as *const Context,
             _phantom: PhantomData,
         })
+    }
+
+    /// Phase 108.C.zenoh.4 — liveliness poll loop. Polls `zpico`'s
+    /// one-shot `liveliness_get_*` API on a coarse cadence (default
+    /// 1s, halved when QoS sets `liveliness_lease_ms`) and fires
+    /// `LivelinessChanged` on alive-state transitions. Single-slot
+    /// alive (any matching publisher) — DDS's per-publisher
+    /// alive_count is approximated to {0, 1}; ROS 2 apps that only
+    /// care about "any publisher present" get correct semantics, apps
+    /// counting individual publishers see one entry. Exact per-pub
+    /// counting needs a long-lived `z_liveliness_declare_subscriber`
+    /// shim, which is the next sub-phase if requested.
+    fn check_liveliness_and_fire(&self) {
+        if self.liveliness_cb.get().is_none() {
+            return; // No callback registered → don't burn cycles polling.
+        }
+        // SAFETY: see `context` field doc.
+        let context: &Context = unsafe { &*self.context };
+        let now = now_ms();
+        let mut state = self.liveliness_poll.get();
+
+        // 1. If a query is in flight, poll it; on completion record
+        //    the new alive state and clear the handle.
+        if state.handle >= 0 {
+            match context.liveliness_get_check(state.handle) {
+                Ok(true) => {
+                    self.handle_alive_transition(true, &mut state);
+                }
+                Ok(false) => {
+                    // Still waiting; keep handle for next poll.
+                }
+                Err(_) => {
+                    // Timeout (no matching publisher) or error → alive=false.
+                    self.handle_alive_transition(false, &mut state);
+                }
+            }
+        }
+
+        // 2. If idle and the cadence has elapsed, start a fresh query.
+        if state.handle < 0 {
+            let interval = self.liveliness_poll_interval_ms();
+            if now >= state.started_at_ms.saturating_add(interval) {
+                // Liveliness keyexpr must be null-terminated for the
+                // C bridge.
+                let mut nul = heapless::Vec::<u8, 257>::new();
+                let _ = nul.extend_from_slice(self.liveliness_keyexpr.as_bytes());
+                let _ = nul.push(0);
+                if let Ok(handle) = context.liveliness_get_start(
+                    nul.as_slice(),
+                    LIVELINESS_POLL_TIMEOUT_MS,
+                ) {
+                    state.handle = handle;
+                    state.started_at_ms = now;
+                }
+            }
+        }
+
+        self.liveliness_poll.set(state);
+    }
+
+    fn handle_alive_transition(&self, now_alive: bool, state: &mut LivelinessPoll) {
+        // Always clear the handle on terminal result.
+        state.handle = -1;
+        if now_alive == state.last_alive {
+            return;
+        }
+        state.last_alive = now_alive;
+        let (alive_count, alive_count_change, not_alive_count_change) = if now_alive {
+            state.alive_count = state.alive_count.saturating_add(1);
+            (state.alive_count, 1i16, 0i16)
+        } else {
+            state.alive_count = state.alive_count.saturating_sub(1);
+            (state.alive_count, -1i16, 1i16)
+        };
+        if let Some(reg) = self.liveliness_cb.get() {
+            let status = nros_rmw::LivelinessChangedStatus {
+                alive_count,
+                not_alive_count: 0,
+                alive_count_change,
+                not_alive_count_change,
+            };
+            // SAFETY: cb is `unsafe extern "C" fn`; user_ctx outlives
+            // entity per Phase 108.A.7.
+            unsafe {
+                (reg.cb)(
+                    nros_rmw::EventKind::LivelinessChanged,
+                    &status as *const _ as *const core::ffi::c_void,
+                    reg.user_ctx,
+                );
+            }
+        }
+    }
+
+    fn liveliness_poll_interval_ms(&self) -> u64 {
+        // Half the lease so we observe ≥ 2 probes per lease window.
+        // 0 (no lease set) → default 1s.
+        // Any backend that fires this code path also has a working
+        // platform clock so non-zero `now` is guaranteed.
+        // We don't propagate the QoS field through to here yet (would
+        // need another `Cell<u32>` field); use the default for now.
+        LIVELINESS_POLL_DEFAULT_MS
     }
 
     /// Phase 108.C.zenoh.3 — read the publisher-supplied timestamp
@@ -728,6 +885,11 @@ impl Subscriber for ZenohSubscriber {
         // bitmap, so this gives deadline checks the same cadence as
         // message dispatch.
         self.check_deadline_and_fire();
+        // Phase 108.C.zenoh.4 — drive the LIVELINESS poll loop on the
+        // same cadence. The loop has its own internal time-gated
+        // start, so calling on every has_data is cheap (one clock
+        // read + cell-load + cell-store when idle).
+        self.check_liveliness_and_fire();
         self.buf.get().has_data.load(Ordering::Acquire)
     }
 

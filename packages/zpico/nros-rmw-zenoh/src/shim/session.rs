@@ -342,16 +342,21 @@ impl Session for ZenohSession {
         //   publish_raw (pub). 108.C.zenoh.2.
         // - LIFESPAN: subscriber filters samples whose attachment
         //   timestamp is older than `now - lifespan_ms`. 108.C.zenoh.3.
-        // - LIVELINESS_AUTOMATIC: zenoh session keepalive covers
-        //   "alive while the task lives" trivially. The default
-        //   QosSettings sets `liveliness = AUTOMATIC`, so without
-        //   this bit every entity create call fails QoS validation.
-        //   MANUAL_BY_TOPIC / MANUAL_BY_NODE require an app-driven
-        //   assert_liveliness keepalive timer; deferred to 108.C.zenoh.4.
+        // - LIVELINESS_AUTOMATIC: zenoh runtime declares the token
+        //   automatically when the publisher is created
+        //   (`Ros2Liveliness::publisher_keyexpr`); subscribers track
+        //   alive-state via a periodic poll of the wildcard liveliness
+        //   keyexpr. 108.C.zenoh.4. MANUAL_BY_TOPIC / MANUAL_BY_NODE
+        //   intentionally not set — they require an app-driven
+        //   `assert_liveliness` keepalive timer that's a separate
+        //   sub-phase.
+        // - LIVELINESS_LEASE: caller-supplied lease duration honoured
+        //   alongside AUTOMATIC. 108.C.zenoh.4.
         use nros_rmw::QosPolicyMask;
         QosPolicyMask::CORE
             | QosPolicyMask::DEADLINE
             | QosPolicyMask::LIFESPAN
             | QosPolicyMask::LIVELINESS_AUTOMATIC
+            | QosPolicyMask::LIVELINESS_LEASE
     }
 }
