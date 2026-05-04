@@ -552,6 +552,60 @@ unsafe extern "C" {
         mode: u8,
     ) -> u16;
 
+    // --- Entity creation — XML (create_entities_xml.h) ---
+    //
+    // XML profiles let the client send full FastDDS QoS XML to the
+    // Agent, exposing every DDS QoS policy (deadline / lifespan /
+    // liveliness / latency budget / history depth / etc.) at the cost
+    // of a larger create-message payload. Used by `nros-rmw-xrce`
+    // when QoS exceeds what `uxrQoS_t` (the binary profile) can
+    // represent.
+
+    pub fn uxr_buffer_create_topic_xml(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        object_id: uxrObjectId,
+        participant_id: uxrObjectId,
+        xml: *const c_char,
+        mode: u8,
+    ) -> u16;
+
+    pub fn uxr_buffer_create_publisher_xml(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        object_id: uxrObjectId,
+        participant_id: uxrObjectId,
+        xml: *const c_char,
+        mode: u8,
+    ) -> u16;
+
+    pub fn uxr_buffer_create_subscriber_xml(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        object_id: uxrObjectId,
+        participant_id: uxrObjectId,
+        xml: *const c_char,
+        mode: u8,
+    ) -> u16;
+
+    pub fn uxr_buffer_create_datawriter_xml(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        object_id: uxrObjectId,
+        publisher_id: uxrObjectId,
+        xml: *const c_char,
+        mode: u8,
+    ) -> u16;
+
+    pub fn uxr_buffer_create_datareader_xml(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        object_id: uxrObjectId,
+        subscriber_id: uxrObjectId,
+        xml: *const c_char,
+        mode: u8,
+    ) -> u16;
+
     // --- Entity deletion (common_create_entities.h) ---
 
     pub fn uxr_buffer_delete_entity(

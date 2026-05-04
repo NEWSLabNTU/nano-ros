@@ -485,6 +485,206 @@ fn hash_session_key(name: &str) -> u32 {
     if hash == 0 { 1 } else { hash }
 }
 
+/// Phase 108.C.xrce.3 — XML buffer size for full FastDDS QoS profile.
+/// Enough to hold the worst-case `<dds><data_writer>...` payload with
+/// every QoS policy expanded (~700 chars) plus a 128-char topic/type
+/// name pair. Bump if new QoS knobs land that don't fit.
+const XML_BUF_SIZE: usize = 1024;
+
+/// Phase 108.C.xrce.3 — `true` when the QoS profile uses any policy
+/// that `uxrQoS_t` (the binary profile) can't represent. `false` keeps
+/// the smaller binary path. Fields covered by `uxrQoS_t`: durability,
+/// reliability, history, depth.
+fn qos_needs_xml(qos: &QosSettings) -> bool {
+    use nros_rmw::QosLivelinessPolicy;
+    qos.deadline_ms != 0
+        || qos.lifespan_ms != 0
+        || qos.liveliness_lease_ms != 0
+        || matches!(
+            qos.liveliness_kind,
+            QosLivelinessPolicy::ManualByTopic | QosLivelinessPolicy::ManualByNode
+        )
+}
+
+/// Phase 108.C.xrce.3 — split `total_ms` into FastDDS XML
+/// `<sec>S</sec><nanosec>N</nanosec>` elements. `0 ms` → `0` sec / `0`
+/// nanosec; agent reads "all-zeros" as the FastDDS infinite duration
+/// when the policy's default is "infinite" (deadline / lifespan use 0
+/// to mean infinite per DDS spec, which matches our convention).
+#[inline]
+fn ms_to_sec_nanosec(total_ms: u32) -> (u32, u32) {
+    let sec = total_ms / 1000;
+    let nanosec = (total_ms % 1000) * 1_000_000;
+    (sec, nanosec)
+}
+
+/// Phase 108.C.xrce.3 — emit `<durability>` element.
+fn emit_durability(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    d: nros_rmw::QosDurabilityPolicy,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    let kind = match d {
+        nros_rmw::QosDurabilityPolicy::Volatile => "VOLATILE",
+        nros_rmw::QosDurabilityPolicy::TransientLocal => "TRANSIENT_LOCAL",
+    };
+    write!(buf, "<durability><kind>{kind}</kind></durability>")
+}
+
+/// Phase 108.C.xrce.3 — emit `<reliability>` element.
+fn emit_reliability(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    r: nros_rmw::QosReliabilityPolicy,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    let kind = match r {
+        nros_rmw::QosReliabilityPolicy::Reliable => "RELIABLE",
+        nros_rmw::QosReliabilityPolicy::BestEffort => "BEST_EFFORT",
+    };
+    write!(buf, "<reliability><kind>{kind}</kind></reliability>")
+}
+
+/// Phase 108.C.xrce.3 — emit `<history>` element.
+fn emit_history(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    h: nros_rmw::QosHistoryPolicy,
+    depth: u32,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    let kind = match h {
+        nros_rmw::QosHistoryPolicy::KeepLast => "KEEP_LAST",
+        nros_rmw::QosHistoryPolicy::KeepAll => "KEEP_ALL",
+    };
+    write!(
+        buf,
+        "<history><kind>{kind}</kind><depth>{depth}</depth></history>"
+    )
+}
+
+/// Phase 108.C.xrce.3 — emit `<deadline>` if non-zero (zero ⇒ infinite,
+/// FastDDS default — omit element).
+fn emit_deadline(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    deadline_ms: u32,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    if deadline_ms == 0 {
+        return Ok(());
+    }
+    let (s, ns) = ms_to_sec_nanosec(deadline_ms);
+    write!(
+        buf,
+        "<deadline><period><sec>{s}</sec><nanosec>{ns}</nanosec></period></deadline>"
+    )
+}
+
+/// Phase 108.C.xrce.3 — emit `<lifespan>` if non-zero.
+fn emit_lifespan(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    lifespan_ms: u32,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    if lifespan_ms == 0 {
+        return Ok(());
+    }
+    let (s, ns) = ms_to_sec_nanosec(lifespan_ms);
+    write!(
+        buf,
+        "<lifespan><duration><sec>{s}</sec><nanosec>{ns}</nanosec></duration></lifespan>"
+    )
+}
+
+/// Phase 108.C.xrce.3 — emit `<liveliness>` if kind ≠ None.
+fn emit_liveliness(
+    buf: &mut heapless::String<XML_BUF_SIZE>,
+    kind: nros_rmw::QosLivelinessPolicy,
+    lease_ms: u32,
+) -> core::fmt::Result {
+    use core::fmt::Write as _;
+    use nros_rmw::QosLivelinessPolicy;
+    let kind_str = match kind {
+        QosLivelinessPolicy::None => return Ok(()), // Skip — leave agent default.
+        QosLivelinessPolicy::Automatic => "AUTOMATIC",
+        QosLivelinessPolicy::ManualByTopic => "MANUAL_BY_TOPIC",
+        QosLivelinessPolicy::ManualByNode => "MANUAL_BY_PARTICIPANT",
+    };
+    let (s, ns) = ms_to_sec_nanosec(lease_ms);
+    write!(
+        buf,
+        "<liveliness><kind>{kind_str}</kind><lease_duration><sec>{s}</sec><nanosec>{ns}</nanosec></lease_duration></liveliness>"
+    )
+}
+
+/// Phase 108.C.xrce.3 — build the `<dds><topic>...` XML for a topic
+/// entity. Topic-level QoS (history/durability/reliability) lives on
+/// the data_writer / data_reader, so the topic XML carries only the
+/// name + type.
+fn build_topic_xml(
+    topic_name: &str,
+    type_name: &str,
+) -> Result<heapless::String<XML_BUF_SIZE>, TransportError> {
+    use core::fmt::Write as _;
+    let mut buf: heapless::String<XML_BUF_SIZE> = heapless::String::new();
+    write!(
+        &mut buf,
+        "<dds><topic><name>{topic_name}</name><dataType>{type_name}</dataType></topic></dds>"
+    )
+    .map_err(|_| TransportError::TopicNameInvalid)?;
+    Ok(buf)
+}
+
+/// Phase 108.C.xrce.3 — build the `<dds><data_writer>...` XML.
+fn build_datawriter_xml(
+    topic_name: &str,
+    type_name: &str,
+    qos: &QosSettings,
+) -> Result<heapless::String<XML_BUF_SIZE>, TransportError> {
+    use core::fmt::Write as _;
+    let mut buf: heapless::String<XML_BUF_SIZE> = heapless::String::new();
+    write!(
+        &mut buf,
+        "<dds><data_writer><topic><kind>NO_KEY</kind><name>{topic_name}</name><dataType>{type_name}</dataType></topic><qos>"
+    )
+    .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_durability(&mut buf, qos.durability).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_reliability(&mut buf, qos.reliability).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_history(&mut buf, qos.history, qos.depth)
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_deadline(&mut buf, qos.deadline_ms).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_lifespan(&mut buf, qos.lifespan_ms).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_liveliness(&mut buf, qos.liveliness_kind, qos.liveliness_lease_ms)
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    write!(&mut buf, "</qos></data_writer></dds>")
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    Ok(buf)
+}
+
+/// Phase 108.C.xrce.3 — build the `<dds><data_reader>...` XML.
+fn build_datareader_xml(
+    topic_name: &str,
+    type_name: &str,
+    qos: &QosSettings,
+) -> Result<heapless::String<XML_BUF_SIZE>, TransportError> {
+    use core::fmt::Write as _;
+    let mut buf: heapless::String<XML_BUF_SIZE> = heapless::String::new();
+    write!(
+        &mut buf,
+        "<dds><data_reader><topic><kind>NO_KEY</kind><name>{topic_name}</name><dataType>{type_name}</dataType></topic><qos>"
+    )
+    .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_durability(&mut buf, qos.durability).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_reliability(&mut buf, qos.reliability).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_history(&mut buf, qos.history, qos.depth)
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_deadline(&mut buf, qos.deadline_ms).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_lifespan(&mut buf, qos.lifespan_ms).map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_liveliness(&mut buf, qos.liveliness_kind, qos.liveliness_lease_ms)
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    write!(&mut buf, "</qos></data_reader></dds>")
+        .map_err(|_| TransportError::TopicNameInvalid)?;
+    Ok(buf)
+}
+
 /// Map nros QoS settings to XRCE-DDS QoS.
 fn map_qos(qos: &QosSettings) -> uxrQoS_t {
     uxrQoS_t {
@@ -979,36 +1179,76 @@ impl Session for XrceSession {
             let mut type_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let type_name_ptr = to_c_str(topic.type_name, &mut type_name_buf);
 
-            let xrce_qos = map_qos(&qos);
+            // Phase 108.C.xrce.3 — switch to XML profile when QoS uses
+            // policies the binary `uxrQoS_t` can't represent. Bin path
+            // stays the default for the common Reliable/Volatile/
+            // KeepLast(N) case to keep create-message payloads small.
+            let use_xml = qos_needs_xml(&qos);
 
             // Buffer entity creation requests
-            let req_topic = xrce_sys::uxr_buffer_create_topic_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                topic_obj_id,
-                state().participant_oid,
-                topic_name_ptr,
-                type_name_ptr,
-                UXR_REPLACE,
-            );
-
-            let req_pub = xrce_sys::uxr_buffer_create_publisher_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                pub_obj_id,
-                state().participant_oid,
-                UXR_REPLACE,
-            );
-
-            let req_dw = xrce_sys::uxr_buffer_create_datawriter_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                dw_obj_id,
-                pub_obj_id,
-                topic_obj_id,
-                xrce_qos,
-                UXR_REPLACE,
-            );
+            let mut topic_xml_buf = [0u8; XML_BUF_SIZE];
+            let mut dw_xml_buf = [0u8; XML_BUF_SIZE];
+            let (req_topic, req_pub, req_dw) = if use_xml {
+                let topic_xml = build_topic_xml(dds_topic.as_str(), topic.type_name)?;
+                let topic_xml_ptr = to_c_str(topic_xml.as_str(), &mut topic_xml_buf);
+                let dw_xml = build_datawriter_xml(dds_topic.as_str(), topic.type_name, &qos)?;
+                let dw_xml_ptr = to_c_str(dw_xml.as_str(), &mut dw_xml_buf);
+                (
+                    xrce_sys::uxr_buffer_create_topic_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        topic_obj_id,
+                        state().participant_oid,
+                        topic_xml_ptr,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_publisher_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        pub_obj_id,
+                        state().participant_oid,
+                        c"".as_ptr(),
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_datawriter_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        dw_obj_id,
+                        pub_obj_id,
+                        dw_xml_ptr,
+                        UXR_REPLACE,
+                    ),
+                )
+            } else {
+                let xrce_qos = map_qos(&qos);
+                (
+                    xrce_sys::uxr_buffer_create_topic_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        topic_obj_id,
+                        state().participant_oid,
+                        topic_name_ptr,
+                        type_name_ptr,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_publisher_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        pub_obj_id,
+                        state().participant_oid,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_datawriter_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        dw_obj_id,
+                        pub_obj_id,
+                        topic_obj_id,
+                        xrce_qos,
+                        UXR_REPLACE,
+                    ),
+                )
+            };
 
             // Confirm all 3 entities
             let requests = [req_topic, req_pub, req_dw];
@@ -1056,36 +1296,71 @@ impl Session for XrceSession {
             let mut type_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let type_name_ptr = to_c_str(topic.type_name, &mut type_name_buf);
 
-            let xrce_qos = map_qos(&qos);
-
-            // Buffer entity creation requests
-            let req_topic = xrce_sys::uxr_buffer_create_topic_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                topic_obj_id,
-                state().participant_oid,
-                topic_name_ptr,
-                type_name_ptr,
-                UXR_REPLACE,
-            );
-
-            let req_sub = xrce_sys::uxr_buffer_create_subscriber_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                sub_obj_id,
-                state().participant_oid,
-                UXR_REPLACE,
-            );
-
-            let req_dr = xrce_sys::uxr_buffer_create_datareader_bin(
-                &raw mut state().session,
-                state().output_reliable,
-                dr_obj_id,
-                sub_obj_id,
-                topic_obj_id,
-                xrce_qos,
-                UXR_REPLACE,
-            );
+            // Phase 108.C.xrce.3 — XML profile for extended QoS.
+            let use_xml = qos_needs_xml(&qos);
+            let mut topic_xml_buf = [0u8; XML_BUF_SIZE];
+            let mut dr_xml_buf = [0u8; XML_BUF_SIZE];
+            let (req_topic, req_sub, req_dr) = if use_xml {
+                let topic_xml = build_topic_xml(dds_topic.as_str(), topic.type_name)?;
+                let topic_xml_ptr = to_c_str(topic_xml.as_str(), &mut topic_xml_buf);
+                let dr_xml = build_datareader_xml(dds_topic.as_str(), topic.type_name, &qos)?;
+                let dr_xml_ptr = to_c_str(dr_xml.as_str(), &mut dr_xml_buf);
+                (
+                    xrce_sys::uxr_buffer_create_topic_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        topic_obj_id,
+                        state().participant_oid,
+                        topic_xml_ptr,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_subscriber_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        sub_obj_id,
+                        state().participant_oid,
+                        c"".as_ptr(),
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_datareader_xml(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        dr_obj_id,
+                        sub_obj_id,
+                        dr_xml_ptr,
+                        UXR_REPLACE,
+                    ),
+                )
+            } else {
+                let xrce_qos = map_qos(&qos);
+                (
+                    xrce_sys::uxr_buffer_create_topic_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        topic_obj_id,
+                        state().participant_oid,
+                        topic_name_ptr,
+                        type_name_ptr,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_subscriber_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        sub_obj_id,
+                        state().participant_oid,
+                        UXR_REPLACE,
+                    ),
+                    xrce_sys::uxr_buffer_create_datareader_bin(
+                        &raw mut state().session,
+                        state().output_reliable,
+                        dr_obj_id,
+                        sub_obj_id,
+                        topic_obj_id,
+                        xrce_qos,
+                        UXR_REPLACE,
+                    ),
+                )
+            };
 
             // Confirm all 3 entities
             let requests = [req_topic, req_sub, req_dr];
@@ -1346,24 +1621,37 @@ impl Session for XrceSession {
     }
 
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
-        // Phase 108.B — XRCE-DDS exposes only core QoS (reliability,
-        // durability V/TL, history, depth) on the C client surface.
-        // Lifespan / liveliness are policed by the XRCE agent (full-
-        // DDS broker) but the client cannot configure or observe them
-        // through `uxrQoS_t`.
-        // Phase 108.C.xrce.2 — DEADLINE is exposed via clock-based
-        // emulation on the client side: `RequestedDeadlineMissed`
-        // fires from `has_data` / `try_recv_raw`, and
-        // `OfferedDeadlineMissed` from `publish_raw`. The agent isn't
-        // told about the deadline, but the client's local view is
-        // observable to the user.
-        // AVOID_ROS_NAMESPACE_CONVENTIONS honoured at topic-name
-        // encoding (Phase 108.C.x.3); see `naming::dds_topic_name`.
+        // Phase 108.B — Core QoS (reliability, durability V/TL,
+        // history, depth) goes through the binary `uxrQoS_t` profile.
+        // Phase 108.C.xrce.2 — DEADLINE is also exposed via shim-side
+        // clock emulation: `RequestedDeadlineMissed` fires from
+        // `has_data` / `try_recv_raw`, `OfferedDeadlineMissed` from
+        // `publish_raw`. Status events are observable client-side
+        // even when the agent doesn't know about deadline.
+        // Phase 108.C.xrce.3 — When the QoS profile uses any extended
+        // policy (deadline / lifespan / non-Auto liveliness / lease),
+        // `create_publisher` / `create_subscriber` switch from the
+        // `_bin` create path to FastDDS XML profiles
+        // (`uxr_buffer_create_*_xml`), which forward full DDS QoS to
+        // the agent. Agent-side enforcement: lifespan drops expired
+        // samples on the wire; liveliness (kind + lease) configures
+        // the DDS DataReader. Liveliness *event* delivery to the
+        // client is not implemented — XRCE protocol carries no
+        // session→client liveliness-changed callback — so
+        // `Subscriber::supports_event(LivelinessChanged)` stays
+        // `false`. Manual liveliness assertion (`assert_liveliness`)
+        // is also unsupported (no XRCE submessage).
+        // AVOID_ROS_NAMESPACE_CONVENTIONS: see `naming::dds_topic_name`.
         use nros_rmw::QosPolicyMask;
         QosPolicyMask::CORE
             | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
             | QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
             | QosPolicyMask::DEADLINE
+            | QosPolicyMask::LIFESPAN
+            | QosPolicyMask::LIVELINESS_AUTOMATIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            | QosPolicyMask::LIVELINESS_LEASE
     }
 }
 
@@ -1986,5 +2274,115 @@ impl ServiceClientTrait for XrceServiceClient {
                 .waker
                 .register(waker);
         }
+    }
+}
+
+#[cfg(test)]
+mod xml_tests {
+    use super::*;
+    use nros_rmw::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+        QosSettings,
+    };
+
+    fn base_qos() -> QosSettings {
+        QosSettings {
+            history: QosHistoryPolicy::KeepLast,
+            reliability: QosReliabilityPolicy::Reliable,
+            durability: QosDurabilityPolicy::Volatile,
+            liveliness_kind: QosLivelinessPolicy::Automatic,
+            depth: 10,
+            deadline_ms: 0,
+            lifespan_ms: 0,
+            liveliness_lease_ms: 0,
+            avoid_ros_namespace_conventions: false,
+        }
+    }
+
+    #[test]
+    fn qos_needs_xml_default_returns_false() {
+        assert!(!qos_needs_xml(&base_qos()));
+    }
+
+    #[test]
+    fn qos_needs_xml_deadline_set_returns_true() {
+        let mut q = base_qos();
+        q.deadline_ms = 15;
+        assert!(qos_needs_xml(&q));
+    }
+
+    #[test]
+    fn qos_needs_xml_lifespan_set_returns_true() {
+        let mut q = base_qos();
+        q.lifespan_ms = 100;
+        assert!(qos_needs_xml(&q));
+    }
+
+    #[test]
+    fn qos_needs_xml_liveliness_lease_returns_true() {
+        let mut q = base_qos();
+        q.liveliness_lease_ms = 1000;
+        assert!(qos_needs_xml(&q));
+    }
+
+    #[test]
+    fn qos_needs_xml_manual_liveliness_returns_true() {
+        let mut q = base_qos();
+        q.liveliness_kind = QosLivelinessPolicy::ManualByTopic;
+        assert!(qos_needs_xml(&q));
+    }
+
+    #[test]
+    fn topic_xml_well_formed() {
+        let xml = build_topic_xml("rt/foo", "std_msgs::msg::dds_::String_").unwrap();
+        assert!(xml.starts_with("<dds><topic>"));
+        assert!(xml.ends_with("</topic></dds>"));
+        assert!(xml.contains("<name>rt/foo</name>"));
+        assert!(xml.contains("<dataType>std_msgs::msg::dds_::String_</dataType>"));
+    }
+
+    #[test]
+    fn datawriter_xml_includes_extended_qos() {
+        let mut qos = base_qos();
+        qos.deadline_ms = 15;
+        qos.lifespan_ms = 1000;
+        qos.liveliness_kind = QosLivelinessPolicy::ManualByTopic;
+        qos.liveliness_lease_ms = 2500;
+        qos.durability = QosDurabilityPolicy::TransientLocal;
+        let xml = build_datawriter_xml("rt/foo", "Foo", &qos).unwrap();
+        assert!(xml.contains("<data_writer>"));
+        assert!(xml.contains("<durability><kind>TRANSIENT_LOCAL</kind></durability>"));
+        assert!(xml.contains("<reliability><kind>RELIABLE</kind></reliability>"));
+        assert!(xml.contains("<history><kind>KEEP_LAST</kind><depth>10</depth></history>"));
+        assert!(xml.contains(
+            "<deadline><period><sec>0</sec><nanosec>15000000</nanosec></period></deadline>"
+        ));
+        assert!(xml.contains(
+            "<lifespan><duration><sec>1</sec><nanosec>0</nanosec></duration></lifespan>"
+        ));
+        assert!(xml.contains("<kind>MANUAL_BY_TOPIC</kind>"));
+        assert!(xml.contains("<lease_duration><sec>2</sec><nanosec>500000000</nanosec></lease_duration>"));
+        assert!(xml.ends_with("</qos></data_writer></dds>"));
+    }
+
+    #[test]
+    fn datareader_xml_omits_zero_extended_qos() {
+        let xml = build_datareader_xml("rt/foo", "Foo", &base_qos()).unwrap();
+        assert!(xml.contains("<data_reader>"));
+        // Defaults — no deadline, lifespan, manual liveliness fields.
+        assert!(!xml.contains("<deadline>"));
+        assert!(!xml.contains("<lifespan>"));
+        // Automatic liveliness w/ zero lease still emits the element
+        // (Automatic is the FastDDS default — harmless to repeat).
+        assert!(xml.contains("<kind>AUTOMATIC</kind>"));
+    }
+
+    #[test]
+    fn ms_to_sec_nanosec_splits_correctly() {
+        assert_eq!(ms_to_sec_nanosec(0), (0, 0));
+        assert_eq!(ms_to_sec_nanosec(15), (0, 15_000_000));
+        assert_eq!(ms_to_sec_nanosec(999), (0, 999_000_000));
+        assert_eq!(ms_to_sec_nanosec(1000), (1, 0));
+        assert_eq!(ms_to_sec_nanosec(2500), (2, 500_000_000));
     }
 }
