@@ -966,9 +966,43 @@ impl Publisher for CffiPublisher {
         TransportError::SerializationError
     }
 
-    #[cfg(feature = "alloc")]
     fn unsupported_event_error(&self) -> TransportError {
         TransportError::Unsupported
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        let mut view = NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
+            backend_data: self.backend_data,
+        };
+        // Cffi NrosRmwEventCallback ABI matches nros_rmw::EventCallback —
+        // both are `unsafe extern "C" fn(EventKind, *const c_void, *mut c_void)`.
+        // The C-side enum is bitwise-equivalent to the Rust enum (same #[repr(u8)]).
+        let cb: NrosRmwEventCallback =
+            unsafe { core::mem::transmute::<nros_rmw::EventCallback, NrosRmwEventCallback>(cb) };
+        let ret = unsafe {
+            (self.vtable.register_publisher_event)(
+                &mut view,
+                kind.into(),
+                deadline_ms,
+                cb,
+                user_ctx,
+            )
+        };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(())
     }
 }
 
@@ -1055,9 +1089,33 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         TransportError::DeserializationError
     }
 
-    #[cfg(feature = "alloc")]
     fn unsupported_event_error(&self) -> TransportError {
         TransportError::Unsupported
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        let mut view = self.make_view();
+        let cb: NrosRmwEventCallback =
+            unsafe { core::mem::transmute::<nros_rmw::EventCallback, NrosRmwEventCallback>(cb) };
+        let ret = unsafe {
+            (self.vtable.register_subscriber_event)(
+                &mut view,
+                kind.into(),
+                deadline_ms,
+                cb,
+                user_ctx,
+            )
+        };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(())
     }
 }
 

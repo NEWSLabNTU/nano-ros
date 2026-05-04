@@ -176,19 +176,21 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// Register a callback for `LivelinessLost`. Fires when this
     /// publisher misses its own liveliness assertion deadline.
     #[cfg(feature = "alloc")]
-    pub fn on_liveliness_lost<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    pub fn on_liveliness_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::CountStatus) + Send + 'static,
     {
-        use nros_rmw::Publisher as _;
-        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
-            if let nros_rmw::EventPayload::LivelinessLost(s) = payload {
-                cb(*s);
-            }
-        });
-        self.handle
-            .register_event_callback(nros_rmw::EventKind::LivelinessLost, 0, cb)
-            .map_err(NodeError::Transport)
+        register_pub_event::<F, _>(
+            &mut self.handle,
+            nros_rmw::EventKind::LivelinessLost,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::LivelinessLost(s) = payload {
+                    f(*s);
+                }
+            },
+        )
     }
 
     /// Register a callback for `OfferedDeadlineMissed`. Fires when
@@ -197,24 +199,130 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     pub fn on_offered_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
-        mut cb: F,
+        cb: F,
     ) -> Result<(), NodeError>
     where
-        F: FnMut(nros_rmw::DeadlineMissedStatus) + Send + 'static,
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
     {
-        use nros_rmw::Publisher as _;
-        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
-            if let nros_rmw::EventPayload::OfferedDeadlineMissed(s) = payload {
-                cb(*s);
-            }
-        });
-        self.handle
-            .register_event_callback(
-                nros_rmw::EventKind::OfferedDeadlineMissed,
-                deadline.as_millis().min(u32::MAX as u128) as u32,
-                cb,
-            )
-            .map_err(NodeError::Transport)
+        register_pub_event::<F, _>(
+            &mut self.handle,
+            nros_rmw::EventKind::OfferedDeadlineMissed,
+            deadline.as_millis().min(u32::MAX as u128) as u32,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::OfferedDeadlineMissed(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn register_pub_event<F, D>(
+    handle: &mut session::RmwPublisher,
+    kind: nros_rmw::EventKind,
+    deadline_ms: u32,
+    user_cb: F,
+    dispatch: D,
+) -> Result<(), NodeError>
+where
+    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
+{
+    use nros_rmw::Publisher as _;
+    let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
+    let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
+    // SAFETY: trampoline downcasts `user_ctx` back to the boxed
+    // EventClosureState. Pointer remains valid until the entity is
+    // dropped (entity drop must `Box::from_raw` to free — TODO when
+    // backend wiring lands; today only Err(Unsupported) returns).
+    unsafe {
+        handle.register_event_callback(kind, deadline_ms, event_trampoline::<F, D>, user_ctx)
+    }
+    .map_err(NodeError::Transport)
+}
+
+#[cfg(feature = "alloc")]
+struct EventClosureState<F, D> {
+    user_cb: F,
+    dispatch: D,
+}
+
+#[cfg(feature = "alloc")]
+unsafe extern "C" fn event_trampoline<F, D>(
+    kind: nros_rmw::EventKind,
+    payload_ptr: *const core::ffi::c_void,
+    user_ctx: *mut core::ffi::c_void,
+) where
+    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
+{
+    let state = unsafe { &mut *(user_ctx as *mut EventClosureState<F, D>) };
+    let payload = unsafe { nros_rmw::payload_from_raw(kind, payload_ptr) };
+    (state.dispatch)(payload, &mut state.user_cb);
+}
+
+#[cfg(feature = "alloc")]
+fn register_sub_event_count<F, D>(
+    handle: &mut session::RmwSubscriber,
+    kind: nros_rmw::EventKind,
+    deadline_ms: u32,
+    user_cb: F,
+    dispatch: D,
+) -> Result<(), NodeError>
+where
+    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
+{
+    use nros_rmw::Subscriber as _;
+    let state = alloc::boxed::Box::new(EventClosureState { user_cb, dispatch });
+    let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
+    unsafe {
+        handle.register_event_callback(kind, deadline_ms, event_trampoline::<F, D>, user_ctx)
+    }
+    .map_err(NodeError::Transport)
+}
+
+#[cfg(feature = "alloc")]
+fn register_sub_event_liveliness<F>(
+    handle: &mut session::RmwSubscriber,
+    user_cb: F,
+) -> Result<(), NodeError>
+where
+    F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
+{
+    use nros_rmw::Subscriber as _;
+    let state = alloc::boxed::Box::new(LivelinessClosureState { user_cb });
+    let user_ctx = alloc::boxed::Box::into_raw(state) as *mut core::ffi::c_void;
+    unsafe {
+        handle.register_event_callback(
+            nros_rmw::EventKind::LivelinessChanged,
+            0,
+            liveliness_trampoline::<F>,
+            user_ctx,
+        )
+    }
+    .map_err(NodeError::Transport)
+}
+
+#[cfg(feature = "alloc")]
+struct LivelinessClosureState<F> {
+    user_cb: F,
+}
+
+#[cfg(feature = "alloc")]
+unsafe extern "C" fn liveliness_trampoline<F>(
+    kind: nros_rmw::EventKind,
+    payload_ptr: *const core::ffi::c_void,
+    user_ctx: *mut core::ffi::c_void,
+) where
+    F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
+{
+    let state = unsafe { &mut *(user_ctx as *mut LivelinessClosureState<F>) };
+    let payload = unsafe { nros_rmw::payload_from_raw(kind, payload_ptr) };
+    if let nros_rmw::EventPayload::LivelinessChanged(s) = payload {
+        (state.user_cb)(*s);
     }
 }
 
@@ -742,19 +850,11 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Register a callback for `LivelinessChanged`. Fires when a
     /// tracked publisher's liveliness state changes.
     #[cfg(feature = "alloc")]
-    pub fn on_liveliness_changed<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
     {
-        use nros_rmw::Subscriber as _;
-        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
-            if let nros_rmw::EventPayload::LivelinessChanged(s) = payload {
-                cb(*s);
-            }
-        });
-        self.handle
-            .register_event_callback(nros_rmw::EventKind::LivelinessChanged, 0, cb)
-            .map_err(NodeError::Transport)
+        register_sub_event_liveliness::<F>(&mut self.handle, cb)
     }
 
     /// Register a callback for `RequestedDeadlineMissed`. Fires when
@@ -763,42 +863,42 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     pub fn on_requested_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
-        mut cb: F,
+        cb: F,
     ) -> Result<(), NodeError>
     where
-        F: FnMut(nros_rmw::DeadlineMissedStatus) + Send + 'static,
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
     {
-        use nros_rmw::Subscriber as _;
-        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
-            if let nros_rmw::EventPayload::RequestedDeadlineMissed(s) = payload {
-                cb(*s);
-            }
-        });
-        self.handle
-            .register_event_callback(
-                nros_rmw::EventKind::RequestedDeadlineMissed,
-                deadline.as_millis().min(u32::MAX as u128) as u32,
-                cb,
-            )
-            .map_err(NodeError::Transport)
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            nros_rmw::EventKind::RequestedDeadlineMissed,
+            deadline.as_millis().min(u32::MAX as u128) as u32,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::RequestedDeadlineMissed(s) = payload {
+                    f(*s);
+                }
+            },
+        )
     }
 
     /// Register a callback for `MessageLost`. Fires when the backend
     /// drops a sample (overflow, etc.).
     #[cfg(feature = "alloc")]
-    pub fn on_message_lost<F>(&mut self, mut cb: F) -> Result<(), NodeError>
+    pub fn on_message_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
-        F: FnMut(nros_rmw::MessageLostStatus) + Send + 'static,
+        F: FnMut(nros_rmw::CountStatus) + Send + 'static,
     {
-        use nros_rmw::Subscriber as _;
-        let cb = alloc::boxed::Box::new(move |payload: nros_rmw::EventPayload<'_>| {
-            if let nros_rmw::EventPayload::MessageLost(s) = payload {
-                cb(*s);
-            }
-        });
-        self.handle
-            .register_event_callback(nros_rmw::EventKind::MessageLost, 0, cb)
-            .map_err(NodeError::Transport)
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            nros_rmw::EventKind::MessageLost,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::MessageLost(s) = payload {
+                    f(*s);
+                }
+            },
+        )
     }
 
     /// Check if data is available without consuming it.

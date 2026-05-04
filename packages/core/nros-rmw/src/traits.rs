@@ -1006,12 +1006,18 @@ pub trait Publisher {
     /// event occurs. `deadline_ms` applies to
     /// [`EventKind::OfferedDeadlineMissed`] only; ignored otherwise.
     /// Default impl returns the backend's "unsupported"-shaped error.
-    #[cfg(feature = "alloc")]
-    fn register_event_callback(
+    ///
+    /// # Safety
+    ///
+    /// `cb` and `user_ctx` must remain valid for the entity's
+    /// lifetime. Caller (typically `nros-node`'s typed wrapper) is
+    /// responsible for keeping the closure / context arena alive.
+    unsafe fn register_event_callback(
         &mut self,
         _kind: crate::event::EventKind,
         _deadline_ms: u32,
         _cb: crate::event::EventCallback,
+        _user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), Self::Error> {
         Err(self.unsupported_event_error())
     }
@@ -1020,7 +1026,6 @@ pub trait Publisher {
     /// not supported." Default impl reuses `serialization_error()`
     /// since most backends share an `Unsupported` variant; backends
     /// override if they have a distinct `Unsupported` mapping.
-    #[cfg(feature = "alloc")]
     fn unsupported_event_error(&self) -> Self::Error {
         self.serialization_error()
     }
@@ -1192,12 +1197,18 @@ pub trait Subscriber {
     /// event occurs. `deadline_ms` applies to
     /// [`EventKind::RequestedDeadlineMissed`] only; ignored otherwise.
     /// Default impl returns the backend's "unsupported"-shaped error.
-    #[cfg(feature = "alloc")]
-    fn register_event_callback(
+    ///
+    /// # Safety
+    ///
+    /// `cb` and `user_ctx` must remain valid for the entity's
+    /// lifetime. Caller (typically `nros-node`'s typed wrapper) is
+    /// responsible for keeping the closure / context arena alive.
+    unsafe fn register_event_callback(
         &mut self,
         _kind: crate::event::EventKind,
         _deadline_ms: u32,
         _cb: crate::event::EventCallback,
+        _user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), Self::Error> {
         Err(self.unsupported_event_error())
     }
@@ -1205,7 +1216,6 @@ pub trait Subscriber {
     /// Phase 108 — backend's error variant for "this event kind is
     /// not supported." Default reuses `deserialization_error()` for
     /// backends that don't have a distinct `Unsupported` mapping.
-    #[cfg(feature = "alloc")]
     fn unsupported_event_error(&self) -> Self::Error {
         self.deserialization_error()
     }

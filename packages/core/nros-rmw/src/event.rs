@@ -24,9 +24,6 @@
 //! `NROS_RMW_RET_INCOMPATIBLE_QOS` / `NROS_RMW_RET_TOPIC_NAME_INVALID`
 //! at the C boundary). No runtime event needed.
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
 /// Tier-1 status-event kinds. `#[non_exhaustive]` so adding a Tier-2
 /// (`MATCHED`) variant later is not an ABI break for matchers.
 #[non_exhaustive]
@@ -106,9 +103,53 @@ impl<'a> EventPayload<'a> {
     }
 }
 
-/// Heap-allocated event-callback closure. Available with the `alloc`
-/// feature. Backends may also accept `'static fn(&EventPayload)`
-/// pointers via a separate registration path on no-alloc targets;
-/// not yet exposed.
-#[cfg(feature = "alloc")]
-pub type EventCallback = alloc::boxed::Box<dyn FnMut(EventPayload<'_>) + Send>;
+/// Raw event callback. Identical Rust + C ABI; no_std + alloc-free.
+///
+/// The backend invokes this with the [`EventKind`] selecting which
+/// payload-pointer variant is valid. `user_ctx` is opaque application
+/// state passed at registration.
+///
+/// **Lifetime.** `payload_ptr` is valid for the duration of this call
+/// only. Copy fields out before returning if needed beyond.
+///
+/// **Threading.** Invoked from inside `drive_io` on the executor
+/// thread; do not block.
+///
+/// **Safety contract.** The callback is `unsafe extern "C" fn`:
+/// implementors guarantee `payload_ptr` is non-null and points to a
+/// valid payload of the variant selected by `kind`.
+pub type EventCallback = unsafe extern "C" fn(
+    kind: EventKind,
+    payload_ptr: *const core::ffi::c_void,
+    user_ctx: *mut core::ffi::c_void,
+);
+
+/// Helper: convert a raw `(kind, payload_ptr)` pair into a typed
+/// [`EventPayload`] borrow. Used inside `EventCallback` trampolines.
+///
+/// # Safety
+///
+/// Caller guarantees `payload_ptr` matches the variant indicated by
+/// `kind` and is valid for the borrow lifetime.
+pub unsafe fn payload_from_raw<'a>(
+    kind: EventKind,
+    payload_ptr: *const core::ffi::c_void,
+) -> EventPayload<'a> {
+    match kind {
+        EventKind::LivelinessChanged => unsafe {
+            EventPayload::LivelinessChanged(&*(payload_ptr as *const LivelinessChangedStatus))
+        },
+        EventKind::RequestedDeadlineMissed => unsafe {
+            EventPayload::RequestedDeadlineMissed(&*(payload_ptr as *const CountStatus))
+        },
+        EventKind::MessageLost => unsafe {
+            EventPayload::MessageLost(&*(payload_ptr as *const CountStatus))
+        },
+        EventKind::LivelinessLost => unsafe {
+            EventPayload::LivelinessLost(&*(payload_ptr as *const CountStatus))
+        },
+        EventKind::OfferedDeadlineMissed => unsafe {
+            EventPayload::OfferedDeadlineMissed(&*(payload_ptr as *const CountStatus))
+        },
+    }
+}
