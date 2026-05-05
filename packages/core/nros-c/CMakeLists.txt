@@ -21,8 +21,15 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_rmw_features rmw-xrce xrce-udp)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     set(_rmw_features rmw-dds)
+elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
+    # Phase 117.8: Cyclone DDS rides the generic `rmw-cffi` axis on
+    # the Rust side. Backend wiring + auto-register happens C++-side
+    # via `NrosRmwCyclonedds::NrosRmwCyclonedds` in nros-cpp.
+    set(_rmw_features rmw-cffi)
 else()
-    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh, xrce, or dds)")
+    message(FATAL_ERROR
+        "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
+        "(expected: zenoh, xrce, dds, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----

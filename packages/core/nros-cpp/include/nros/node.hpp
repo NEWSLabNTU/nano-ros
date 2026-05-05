@@ -395,6 +395,20 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     if (session_name == nullptr) {
         return Result(-3);
     }
+#ifdef NROS_RMW_CYCLONEDDS
+    // Phase 117.8: when the consumer linked against the Cyclone DDS
+    // RMW backend (via nros-cpp's `NROS_CPP_RMW=cyclonedds` CMake
+    // option), register the backend's vtable with the runtime before
+    // the first session is created. Idempotent — re-registering
+    // the same vtable is a no-op.
+    extern "C" int32_t nros_rmw_cyclonedds_register(void);
+    {
+        int32_t reg_ret = nros_rmw_cyclonedds_register();
+        if (reg_ret != 0) {
+            return Result(reg_ret);
+        }
+    }
+#endif
     nros_cpp_ret_t ret =
         nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {

@@ -21,8 +21,18 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_rmw_features rmw-xrce xrce-udp)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     set(_rmw_features rmw-dds)
+elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
+    # Phase 117.8: Cyclone DDS backend lives behind the `rmw-cffi`
+    # Rust feature axis (the nano-ros runtime sees it as a generic
+    # "registered C ABI vtable backend"). The actual Cyclone wiring
+    # comes from linking `NrosRmwCyclonedds::NrosRmwCyclonedds` below;
+    # `NROS_RMW_CYCLONEDDS=1` flips on the auto-register call inside
+    # `nros::init`.
+    set(_rmw_features rmw-cffi)
 else()
-    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh, xrce, or dds)")
+    message(FATAL_ERROR
+        "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
+        "(expected: zenoh, xrce, dds, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----
@@ -64,6 +74,17 @@ target_include_directories(nros-cpp-headers INTERFACE
 
 # Link against the FFI static library
 target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
+
+# Phase 117.8: when the consumer asks for the Cyclone DDS RMW backend,
+# pull in the standalone `nros-rmw-cyclonedds` library + Cyclone DDS
+# itself transitively, and flip on the auto-register call inside
+# `nros::init` via the `NROS_RMW_CYCLONEDDS` macro.
+if(NANO_ROS_RMW STREQUAL "cyclonedds")
+    find_package(NrosRmwCyclonedds CONFIG REQUIRED)
+    target_link_libraries(nros-cpp-headers INTERFACE
+        NrosRmwCyclonedds::NrosRmwCyclonedds)
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
+endif()
 
 # Require at least C++14
 target_compile_features(nros-cpp-headers INTERFACE cxx_std_14)
