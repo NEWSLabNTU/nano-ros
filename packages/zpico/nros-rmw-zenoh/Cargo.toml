@@ -62,6 +62,10 @@ critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
+# Force `ConcretePlatform` resolution for tests under `platform-posix`.
+# Workspace-context builds get this via feature unification from a board
+# crate; standalone `cargo test` here doesn't.
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", features = ["platform-posix"] }
 
 [lints]
 workspace = true

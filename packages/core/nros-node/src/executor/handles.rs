@@ -608,6 +608,14 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         }
     }
 
+    /// Phase 108.A — `true` if the active backend can fire the named
+    /// event for this raw publisher.
+    #[cfg(feature = "alloc")]
+    pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        use nros_rmw::Publisher as _;
+        self.handle.supports_event(kind)
+    }
+
     /// Publish a pre-encoded byte slice. The byte format depends entirely
     /// on the active RMW backend:
     ///

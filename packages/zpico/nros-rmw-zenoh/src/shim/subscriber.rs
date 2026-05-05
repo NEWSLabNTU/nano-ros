@@ -8,8 +8,8 @@ use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
 use nros_rmw::{Subscriber, TransportError};
 
 use super::{
-    KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MessageInfo, SUBSCRIBER_ATTACHMENT_BUF_SIZE,
-    SUBSCRIBER_BUFFER_SIZE,
+    KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MessageInfo, RMW_ATTACHMENT_SIZE,
+    SUBSCRIBER_ATTACHMENT_BUF_SIZE, SUBSCRIBER_BUFFER_SIZE,
 };
 use crate::{
     keyexpr::TopicKeyExpr,
@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[cfg(feature = "safety-e2e")]
-use super::{RMW_ATTACHMENT_SIZE, SAFETY_CRC_SIZE};
+use super::SAFETY_CRC_SIZE;
 
 #[cfg(feature = "std")]
 use super::signal_executor_wake;
@@ -315,7 +315,6 @@ struct EventReg {
 /// project-wide `<P as PlatformClock>` helper. `0` if no platform is
 /// concretely linked (bare-no-std smoke build w/o platform feature).
 fn now_ms() -> u64 {
-    use nros_platform::PlatformClock as _;
     <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
 }
 
@@ -805,10 +804,6 @@ impl ZenohSubscriber {
 
 impl Subscriber for ZenohSubscriber {
     type Error = TransportError;
-
-    fn has_data(&self) -> bool {
-        self.buf.get().has_data.load(Ordering::Acquire)
-    }
 
     fn register_waker(&self, waker: &core::task::Waker) {
         self.buf.get().waker.register(waker);

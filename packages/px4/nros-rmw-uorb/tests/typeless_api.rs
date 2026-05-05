@@ -189,3 +189,57 @@ fn message_lost_event_fires_on_dropped_messages() {
     assert_eq!(LOST_DELTA.load(Ordering::Relaxed), 2);
     assert_eq!(LOST_TOTAL.load(Ordering::Relaxed), 7);
 }
+
+/// Phase 108.C.x.1 — uORB slice of the cross-backend status-event
+/// matrix. Confirms `Subscriber::supports_event` reports the right
+/// mask (MessageLost only — uORB has no wire-level deadline /
+/// liveliness notion) and that registrations follow suit.
+#[test]
+fn uorb_subscriber_event_mask_matches_doc() {
+    use nros_rmw::EventKind;
+
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    px4_uorb::_reset_broker();
+
+    let config = ExecutorConfig::new("").node_name("matrix_sub");
+    let mut executor = Executor::open(&config).expect("open");
+    let mut node = executor.create_node("matrix_sub").expect("create_node");
+
+    let sub_handle = node
+        .session_mut()
+        .create_subscription_uorb(IMU_META.get(), 0)
+        .expect("subscription_uorb");
+    let subscriber: RawSubscription = RawSubscription::new(sub_handle);
+
+    // Per Phase 108.C.uorb.2: only MessageLost is surfaced.
+    assert!(subscriber.supports_event(EventKind::MessageLost));
+    assert!(!subscriber.supports_event(EventKind::LivelinessChanged));
+    assert!(!subscriber.supports_event(EventKind::RequestedDeadlineMissed));
+    assert!(!subscriber.supports_event(EventKind::LivelinessLost));
+    assert!(!subscriber.supports_event(EventKind::OfferedDeadlineMissed));
+}
+
+/// Phase 108.C.x.1 — uORB pub-side mask. uORB has no wire-level
+/// liveliness or rate concept, so `Publisher::supports_event` returns
+/// `false` for every kind.
+#[test]
+fn uorb_publisher_event_mask_matches_doc() {
+    use nros_rmw::EventKind;
+
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    px4_uorb::_reset_broker();
+
+    let config = ExecutorConfig::new("").node_name("matrix_pub");
+    let mut executor = Executor::open(&config).expect("open");
+    let mut node = executor.create_node("matrix_pub").expect("create_node");
+
+    let pub_handle = node
+        .session_mut()
+        .create_publisher_uorb(IMU_META.get(), 0)
+        .expect("publisher_uorb");
+    let publisher: EmbeddedRawPublisher = EmbeddedRawPublisher::new(pub_handle);
+
+    assert!(!publisher.supports_event(EventKind::LivelinessLost));
+    assert!(!publisher.supports_event(EventKind::OfferedDeadlineMissed));
+    let _ = executor;
+}

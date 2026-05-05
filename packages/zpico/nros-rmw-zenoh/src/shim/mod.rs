@@ -115,6 +115,10 @@ const ZID_HEX_SIZE: usize = 32;
 const QOS_STRING_SIZE: usize = 32;
 
 /// Placeholder timestamp increment per publish (1ms in nanoseconds).
+/// Retained as a documented landing place for legacy callers; the
+/// publisher path now uses `<P as PlatformClock>::clock_ms()` directly
+/// (Phase 108.C.zenoh.2).
+#[allow(dead_code)]
 pub(crate) const TIMESTAMP_INCREMENT_NS: i64 = 1_000_000;
 
 /// Attachment buffer size: 33 bytes normally, 37 with safety CRC

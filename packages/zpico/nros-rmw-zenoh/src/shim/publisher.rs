@@ -6,7 +6,7 @@ use nros_rmw::{Publisher, TransportError};
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, LivelinessToken,
-    RMW_ATTACHMENT_SIZE, RMW_GID_SIZE, RmwAttachment, TIMESTAMP_INCREMENT_NS,
+    RMW_ATTACHMENT_SIZE, RMW_GID_SIZE, RmwAttachment,
 };
 use crate::keyexpr::TopicKeyExpr;
 
@@ -61,7 +61,6 @@ struct EventReg {
 
 /// Phase 108.C.zenoh — read the platform clock in ms.
 fn now_ms() -> u64 {
-    use nros_platform::PlatformClock as _;
     <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
 }
 

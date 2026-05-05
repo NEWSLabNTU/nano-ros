@@ -2377,6 +2377,47 @@ mod xml_tests {
         assert!(xml.contains("<kind>AUTOMATIC</kind>"));
     }
 
+    /// Phase 108.C.x.1 — XRCE slice of the cross-backend status-event
+    /// matrix. Verifies `Subscriber::supports_event` and
+    /// `Publisher::supports_event` return the expected mask without
+    /// opening a session (which would need a running MicroXRCEAgent).
+    /// Pairs with the dust-DDS, zenoh-pico, and uORB matrix slices.
+    #[test]
+    fn xrce_subscriber_event_mask_matches_doc() {
+        use nros_rmw::{EventKind, Subscriber};
+        let sub = super::XrceSubscriber { slot_index: 0 };
+        // Per Phase 108.C.xrce.2: only RequestedDeadlineMissed.
+        assert!(sub.supports_event(EventKind::RequestedDeadlineMissed));
+        assert!(!sub.supports_event(EventKind::LivelinessChanged));
+        assert!(!sub.supports_event(EventKind::MessageLost));
+        // Pub-side kinds always false on subscribers.
+        assert!(!sub.supports_event(EventKind::LivelinessLost));
+        assert!(!sub.supports_event(EventKind::OfferedDeadlineMissed));
+    }
+
+    #[test]
+    fn xrce_publisher_event_mask_matches_doc() {
+        use nros_rmw::{EventKind, Publisher};
+        // Build a stub publisher — the deadline_cb / counters are
+        // exercised here only for the supports_event query, not for
+        // wire I/O.
+        let pubr = super::XrcePublisher {
+            datawriter_id: ::xrce_sys::uxrObjectId { id: 0, type_: 0 },
+            deadline_ms: 0,
+            last_publish_at_ms: super::AtomicU64::new(0),
+            last_deadline_fire_ms: super::AtomicU64::new(0),
+            deadline_total: super::AtomicU32::new(0),
+            deadline_cb: super::AtomicCallback::new(),
+        };
+        // Per Phase 108.C.xrce.2: only OfferedDeadlineMissed.
+        assert!(pubr.supports_event(EventKind::OfferedDeadlineMissed));
+        assert!(!pubr.supports_event(EventKind::LivelinessLost));
+        // Sub-side kinds always false on publishers.
+        assert!(!pubr.supports_event(EventKind::LivelinessChanged));
+        assert!(!pubr.supports_event(EventKind::RequestedDeadlineMissed));
+        assert!(!pubr.supports_event(EventKind::MessageLost));
+    }
+
     #[test]
     fn ms_to_sec_nanosec_splits_correctly() {
         assert_eq!(ms_to_sec_nanosec(0), (0, 0));
