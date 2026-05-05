@@ -53,6 +53,7 @@ FetchContent_MakeAvailable(Corrosion)
 # ---------------------------------------------------------------------------
 # Sub-projects
 # ---------------------------------------------------------------------------
+add_subdirectory(packages/core/nros-rmw-cffi)
 add_subdirectory(packages/core/nros-c)
 add_subdirectory(packages/core/nros-cpp)
 

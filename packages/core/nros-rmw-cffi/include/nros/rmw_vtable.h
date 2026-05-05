@@ -8,6 +8,10 @@
 #include "nros/rmw_entity.h"
 #include "nros/rmw_event.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @file rmw_vtable.h
  * @brief C function table for plugging third-party RMW backends into nros.
@@ -144,5 +148,9 @@ typedef struct nros_rmw_vtable_t {
 /** Register a custom RMW backend. Call before creating any sessions.
  *  Returns NROS_RMW_RET_OK. */
 nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* NROS_RMW_VTABLE_H */
