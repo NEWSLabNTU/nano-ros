@@ -5,10 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <nros/init.h>
-#include <nros/node.h>
+#include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
+#include <nros/init.h>
+#include <nros/node.h>
 
 #include "example_interfaces.h"
 
@@ -37,46 +38,11 @@ void app_main(void) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize support: %d\n", ret);
-        return;
-    }
-    printf("Support initialized\n");
-
-    ret = nros_node_init(&app.node, &app.support, "c_service_client", "/");
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints");
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize executor: %d\n", ret);
-        nros_client_fini(&app.client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_add_client(&app.executor, &app.client);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to register client with executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_client_fini(&app.client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_service_client", "/"));
+    NROS_CHECK(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK(nros_executor_add_client(&app.executor, &app.client));
 
     printf("Service client ready for /add_two_ints\n");
 

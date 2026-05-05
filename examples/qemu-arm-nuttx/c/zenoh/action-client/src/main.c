@@ -6,10 +6,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/action.h>
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -66,61 +67,20 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return;
-    }
-
-    ret = nros_node_init(&app.node, &app.support, "nuttx_c_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_action_client_init(
-        &app.action_client, &app.node, "/fibonacci", &fibonacci_type);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize action client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to add action client to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_action_client", "/"));
+    NROS_CHECK(nros_action_client_init(
+        &app.action_client, &app.node, "/fibonacci", &fibonacci_type));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK(nros_executor_add_action_client(&app.executor, &app.action_client));
 
     // Race 3 fix (Phase 89.13): probe the action server's send_goal
     // queryable liveliness token before the first send_goal so we
     // don't race the queryable's declare-ack from the router on cold
     // boot. See the service-client example for the full rationale.
-    ret = nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Action server /fibonacci not visible after 10s — bailing (ret=%d)\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000));
     printf("Action server discovered — sending goal\n");
+    nros_ret_t ret = NROS_RET_OK;
     fflush(stdout);
 
     example_interfaces_action_fibonacci_goal goal;

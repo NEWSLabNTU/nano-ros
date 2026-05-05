@@ -5,10 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/service.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -78,47 +79,12 @@ void app_main(void) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize support: %d\n", ret);
-        return;
-    }
-    printf("Support initialized\n");
-
-    ret = nros_node_init(&app.node, &app.support, "c_service_server", "/");
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_service_init(&app.service, &app.node, &add_two_ints_type,
-                            "/add_two_ints", service_callback, &app.ctx);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize service: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize executor: %d\n", ret);
-        nros_service_fini(&app.service);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_add_service(&app.executor, &app.service);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to add service to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_service_fini(&app.service);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_service_server", "/"));
+    NROS_CHECK(nros_service_init(&app.service, &app.node, &add_two_ints_type,
+                                 "/add_two_ints", service_callback, &app.ctx));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK(nros_executor_add_service(&app.executor, &app.service));
 
     printf("Service server ready on /add_two_ints\n");
     printf("Waiting for requests...\n");

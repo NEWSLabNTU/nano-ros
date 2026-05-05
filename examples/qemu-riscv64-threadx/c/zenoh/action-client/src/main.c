@@ -5,10 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/action.h>
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -81,59 +82,17 @@ void app_main(void) {
         .feedback_serialized_size_max = 264,
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize support: %d\n", ret);
-        return;
-    }
-    printf("Support initialized\n");
-
-    ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
-                                  &fibonacci_type);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize action client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_action_client_set_feedback_callback(&app.action_client,
-                                                    feedback_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to set feedback callback: %d\n", ret);
-    }
-
-    ret = nros_action_client_set_result_callback(&app.action_client,
-                                                  result_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to set result callback: %d\n", ret);
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to initialize executor: %d\n", ret);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to add action client to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_action_client", "/"));
+    NROS_CHECK(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
+                                       &fibonacci_type));
+    NROS_SOFTCHECK(nros_action_client_set_feedback_callback(&app.action_client,
+                                                            feedback_callback, NULL));
+    NROS_SOFTCHECK(nros_action_client_set_result_callback(&app.action_client,
+                                                          result_callback, NULL));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK(nros_executor_add_action_client(&app.executor, &app.action_client));
+    nros_ret_t ret = NROS_RET_OK;
 
     printf("Action client ready for /fibonacci\n");
 

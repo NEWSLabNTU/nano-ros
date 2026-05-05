@@ -6,10 +6,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/service.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -107,39 +108,13 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return;
-    }
-
-    ret = nros_node_init(&app.node, &app.support, "nuttx_c_service_server", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_service_init(
+    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_service_server", "/"));
+    NROS_CHECK(nros_service_init(
         &app.service, &app.node, &add_two_ints_type,
-        "/add_two_ints", service_callback, &app.ctx);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize service: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_service_fini(&app.service);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return;
-    }
-
-    nros_executor_add_service(&app.executor, &app.service);
+        "/add_two_ints", service_callback, &app.ctx));
+    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_SOFTCHECK(nros_executor_add_service(&app.executor, &app.service));
 
     printf("Waiting for requests...\n\n");
     // NuttX libc full-buffers stdout under the test harness's pipe.
