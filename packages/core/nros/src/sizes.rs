@@ -47,7 +47,7 @@ mod rmw_sizes {
         ($vis:vis $name:ident = $ty:ty) => {
             $vis const $name: usize = core::mem::size_of::<$ty>();
             paste::paste! {
-                #[used]
+                #[cfg_attr(feature = "ffi-size-markers", used)]
                 #[unsafe(no_mangle)]
                 #[doc(hidden)]
                 pub static [<__NROS_SIZE_ $name>]: [u8; $name] = [0u8; $name];
@@ -57,7 +57,7 @@ mod rmw_sizes {
                 #[inline(never)]
                 pub fn [<__nros_size_ $name>]<const N: usize>() -> usize { N }
 
-                #[used]
+                #[cfg_attr(feature = "ffi-size-markers", used)]
                 #[doc(hidden)]
                 pub static [<__NROS_SIZE_FN_ $name>]: fn() -> usize =
                     [<__nros_size_ $name>]::<{ $name }>;

@@ -9,7 +9,17 @@ keywords = ["ros", "ros2", "embedded", "no_std"]
 categories = ["embedded", "no-std", "robotics"]
 
 [features]
-default = ["std"]
+default = ["std", "ffi-size-markers"]
+# Phase 11.3.C — `#[used]` markers on the `__NROS_SIZE_*` opaque-storage
+# statics. nros-c / nros-cpp build scripts probe these out of the rlib
+# to derive C/C++ FFI macros (Phase 87). Pure-Rust applications (e.g.
+# autoware-sentinel's SPE firmware) don't need them — the markers are
+# `#[used]` so `--gc-sections` cannot drop the underlying [u8; N]
+# arrays from the final binary, which costs ~340 KB on Cortex-R5
+# because `size_of::<Executor>()` ≈ 348 KB. Disable this feature with
+# `default-features = false` + opt back into `std` to recover the
+# 340 KB at link time.
+ffi-size-markers = []
 std = [
     "alloc",  # std implies alloc
     "nros-core/std",
