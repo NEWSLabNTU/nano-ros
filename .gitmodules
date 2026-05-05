@@ -58,3 +58,6 @@
 [submodule "third-party/px4/PX4-Autopilot"]
 	path = third-party/px4/PX4-Autopilot
 	url = https://github.com/PX4/PX4-Autopilot.git
+[submodule "third-party/dds/cyclonedds"]
+	path = third-party/dds/cyclonedds
+	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
