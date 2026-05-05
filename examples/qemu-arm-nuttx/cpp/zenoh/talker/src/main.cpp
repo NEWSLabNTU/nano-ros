@@ -3,6 +3,10 @@
 
 #include <cstdint>
 #include <cstdio>
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
 
@@ -30,17 +34,15 @@ extern "C" void app_main(void) {
 
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
-    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
+    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_talker");
-    if (!ret.ok()) { printf("create_node failed: %d\n", ret.raw()); nros::shutdown(); return; }
+    NROS_CHECK(nros::create_node(node, "cpp_talker"));
     printf("Node created\n");
 
     nros::Publisher<std_msgs::msg::Int32> pub;
-    ret = node.create_publisher(pub, "/chatter");
-    if (!ret.ok()) { printf("create_publisher failed: %d\n", ret.raw()); nros::shutdown(); return; }
+    NROS_CHECK(node.create_publisher(pub, "/chatter"));
+    nros::Result ret;
 
     printf("Publishing messages...\n");
     int count = 0;

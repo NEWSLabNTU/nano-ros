@@ -2,22 +2,23 @@
 /// @brief C++ service server — AddTwoInts (FreeRTOS QEMU)
 
 #include <cstdio>
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
 extern "C" void app_main(void) {
     printf("nros C++ Service Server (FreeRTOS)\n");
-    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
+    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_service_server");
-    if (!ret.ok()) { printf("create_node failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(nros::create_node(node, "cpp_service_server"));
     printf("Node created\n");
 
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
-    ret = node.create_service(srv, "/add_two_ints");
-    if (!ret.ok()) { printf("create_service failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(node.create_service(srv, "/add_two_ints"));
 
     printf("Service server ready\n");
     printf("Waiting for requests...\n");

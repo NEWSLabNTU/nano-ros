@@ -4,6 +4,10 @@
 // alternative, see the native/cpp/zenoh/action-client example.
 
 #include <cstdio>
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -71,18 +75,16 @@ static void result_cb(const uint8_t goal_id[16], int status,
 
 extern "C" void app_main(void) {
     printf("nros C++ Action Client (FreeRTOS) [async]\n");
-    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
+    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_action_client");
-    if (!ret.ok()) { printf("create_node failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(nros::create_node(node, "cpp_action_client"));
     printf("Node created\n");
 
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
-    ret = node.create_action_client(client, "/fibonacci");
-    if (!ret.ok()) { printf("create_action_client failed: %d\n", ret.raw()); nros::shutdown(); return; }
+    NROS_CHECK(node.create_action_client(client, "/fibonacci"));
     g_client_ptr = &client;
+    nros::Result ret;
 
     // Register async callbacks
     nros::ActionClient<example_interfaces::action::Fibonacci>::SendGoalOptions opts;

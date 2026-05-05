@@ -110,6 +110,18 @@ class Result {
         }                                                                                          \
     } while (0)
 
+/// Like NROS_TRY but for void-returning callers (RTOS `app_main(void)`,
+/// task entry points, …). Logs the failure via the same `NROS_TRY_LOG`
+/// hook as `NROS_TRY_RET` and bails with a bare `return;`.
+#define NROS_CHECK(expr)                                                                           \
+    do {                                                                                           \
+        ::nros::Result _nros_r = (expr);                                                           \
+        if (!_nros_r.ok()) {                                                                       \
+            NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
+
 } // namespace nros
 
 #endif // NROS_CPP_RESULT_HPP
