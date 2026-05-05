@@ -56,7 +56,7 @@ int main() {
     }
 
     nros_rmw_service_server_t srv{};
-    srv.service_name = "rq/svc_roundtrip";
+    srv.service_name = "svc_roundtrip";
     srv.type_name    = "nros_test::srv::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
                                     99, &srv) != NROS_RMW_RET_OK) {
@@ -64,7 +64,7 @@ int main() {
     }
 
     nros_rmw_service_client_t cli{};
-    cli.service_name = "rq/svc_roundtrip";
+    cli.service_name = "svc_roundtrip";
     cli.type_name    = "nros_test::srv::AddTwoInts";
     if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
                                     99, &cli) != NROS_RMW_RET_OK) {

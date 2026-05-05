@@ -31,7 +31,7 @@ extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vt) {
 static int run_client(nros_rmw_session_t *s, int client_idx,
                       std::atomic<int> *failures) {
     nros_rmw_service_client_t cli{};
-    cli.service_name = "rq/concurrent_test";
+    cli.service_name = "concurrent_test";
     cli.type_name    = "anything";
     if (g_vt->create_service_client(s, cli.service_name, cli.type_name, "",
                                     99, &cli) != NROS_RMW_RET_OK) {
@@ -84,7 +84,7 @@ int main() {
     }
 
     nros_rmw_service_server_t srv{};
-    srv.service_name = "rq/concurrent_test";
+    srv.service_name = "concurrent_test";
     srv.type_name    = "anything";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
                                     99, &srv) != NROS_RMW_RET_OK) {

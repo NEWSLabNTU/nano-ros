@@ -14,6 +14,7 @@
 #include "descriptors.hpp"
 #include "qos.hpp"
 #include "sertype_min.hpp"
+#include "topic_prefix.hpp"
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
@@ -87,7 +88,15 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
-    dds_entity_t topic = dds_create_topic(pp, desc, topic_name, nullptr, nullptr);
+    // Phase 117.X.2: prepend `rt/` so we match `rmw_cyclonedds_cpp`'s
+    // wire-level topic naming. Idempotent + env-opt-out via
+    // NROS_RMW_CYCLONEDDS_SKIP_PREFIX=1.
+    char prefixed[256];
+    if (!topic_prefix::apply(topic_name, "rt", prefixed, sizeof(prefixed))) {
+        delete state;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_entity_t topic = dds_create_topic(pp, desc, prefixed, nullptr, nullptr);
     if (topic < 0) {
         delete state;
         return NROS_RMW_RET_ERROR;

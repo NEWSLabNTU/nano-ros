@@ -179,6 +179,19 @@ add_test(
     COMMAND nros_rmw_cyclonedds_service_concurrent
 )
 
+# Phase 117.X.2: topic-prefix helper unit test (no DDS interaction).
+add_executable(nros_rmw_cyclonedds_topic_prefix_test
+    topic_prefix_test.cpp
+)
+target_include_directories(nros_rmw_cyclonedds_topic_prefix_test
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_topic_prefix_test
+    COMMAND nros_rmw_cyclonedds_topic_prefix_test
+)
+
 # Phase 117.X.1: .msg → mangled IDL → idlc → registry pipeline.
 # Drives the new helper through a synthetic std_msgs package; if
 # the host lacks /opt/ros/humble's rosidl_adapter the helper emits

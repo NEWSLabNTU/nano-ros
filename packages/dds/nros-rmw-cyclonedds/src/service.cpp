@@ -33,6 +33,7 @@
 
 #include "descriptors.hpp"
 #include "sertype_min.hpp"
+#include "topic_prefix.hpp"
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
@@ -105,15 +106,34 @@ struct ClientState {
     std::atomic<int64_t>      next_seq{0};
 };
 
-bool topic_name_for(const char *base, const char *suffix, char *out,
-                    std::size_t out_cap) {
-    std::size_t blen = std::strlen(base);
+// Build the wire topic name for a service Request or Reply.
+//
+// Stock `rmw_cyclonedds_cpp` uses `rq/<svc>Request` and
+// `rr/<svc>Reply` (3-letter prefix + slash + service name +
+// suffix). We mirror that exactly so a nano-ros client and an
+// `rclcpp` server (or vice-versa) match by topic name.
+//
+// `prefix` is either "rq" (Request) or "rr" (Reply). Idempotent +
+// env-opt-out via `topic_prefix::apply` — same opt-out as pub/sub.
+bool service_topic_name(const char *service_name, const char *prefix,
+                        const char *suffix, char *out, std::size_t out_cap) {
+    if (service_name == nullptr || prefix == nullptr || suffix == nullptr ||
+        out == nullptr) {
+        return false;
+    }
+    // Combine name + suffix into a scratch buffer first so the
+    // resulting "<svc><suffix>" is what gets prefixed by
+    // `topic_prefix::apply`. Cap at half the output buffer to leave
+    // room for the prefix.
+    char with_suffix[256];
+    std::size_t blen = std::strlen(service_name);
     std::size_t slen = std::strlen(suffix);
-    if (blen + slen + 1 > out_cap) return false;
-    std::memcpy(out, base, blen);
-    std::memcpy(out + blen, suffix, slen);
-    out[blen + slen] = '\0';
-    return true;
+    if (blen + slen + 1 > sizeof(with_suffix)) return false;
+    std::memcpy(with_suffix, service_name, blen);
+    std::memcpy(with_suffix + blen, suffix, slen);
+    with_suffix[blen + slen] = '\0';
+
+    return topic_prefix::apply(with_suffix, prefix, out, out_cap);
 }
 
 uint64_t random_client_id() {
@@ -208,8 +228,8 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
 
     char req_topic[kMaxTopicName];
     char rep_topic[kMaxTopicName];
-    if (!topic_name_for(service_name, "Request", req_topic, sizeof(req_topic)) ||
-        !topic_name_for(service_name, "Reply",   rep_topic, sizeof(rep_topic))) {
+    if (!service_topic_name(service_name, "rq", "Request", req_topic, sizeof(req_topic)) ||
+        !service_topic_name(service_name, "rr", "Reply",   rep_topic, sizeof(rep_topic))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
@@ -342,8 +362,8 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
 
     char req_topic[kMaxTopicName];
     char rep_topic[kMaxTopicName];
-    if (!topic_name_for(service_name, "Request", req_topic, sizeof(req_topic)) ||
-        !topic_name_for(service_name, "Reply",   rep_topic, sizeof(rep_topic))) {
+    if (!service_topic_name(service_name, "rq", "Request", req_topic, sizeof(req_topic)) ||
+        !service_topic_name(service_name, "rr", "Reply",   rep_topic, sizeof(rep_topic))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
