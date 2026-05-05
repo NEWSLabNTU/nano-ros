@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <nros/app_config.h>
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -29,18 +30,21 @@ static struct {
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Talker (FreeRTOS)\n");
 
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK(nros_support_init(&app.support,
-                                 NROS_APP_CONFIG.zenoh.locator,
-                                 NROS_APP_CONFIG.zenoh.domain_id));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_talker", "/"));
-    NROS_CHECK(nros_publisher_init(&app.publisher, &app.node,
-                                   std_msgs_msg_int32_get_type_support(), "/chatter"));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK_RET(nros_support_init(&app.support,
+                                     NROS_APP_CONFIG.zenoh.locator,
+                                     NROS_APP_CONFIG.zenoh.domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_talker", "/"), 1);
+    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
+                                       std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     printf("Publisher created for topic: /chatter\n");
 
     std_msgs_msg_int32 message;
@@ -58,3 +62,5 @@ void app_main(void) {
         count++;
     }
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

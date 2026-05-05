@@ -12,6 +12,7 @@
 
 #include "nros/types.h"
 #include "nros/check.h"
+#include "nros/app_main.h"
 #include "nros/init.h"
 #include "nros/node.h"
 #include "nros/publisher.h"
