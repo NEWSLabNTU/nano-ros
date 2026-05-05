@@ -24,8 +24,34 @@
 #include <stddef.h>
 
 extern int vsniprintf(char *str, size_t size, const char *fmt, va_list ap);
+extern int tcu_print_msg(const char *msg_buf, int len, int from_isr);
 
 int vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
 {
     return vsniprintf(str, size, fmt, ap);
+}
+
+/*
+ * `printf` override. The BSP's `platform/debug_init.c` calls `printf`
+ * directly (not `printf_isr` via `platform/print.c`), which would
+ * otherwise pull newlib's full `vfprintf` chain — `_dtoa_r`,
+ * `fmaf128`, `__divtf3`, `__addtf3`, `__multf3`, `lgamma_r`, `frexp` —
+ * for float-format support that the BSP never uses (every printf call
+ * site formats `%d` / `%s` / `%x` / pointer literals). Forwarding to
+ * `vsniprintf` against a stack buffer + `tcu_print_msg` cuts the same
+ * ~25 KB BTCM as the `vsnprintf` shim above, but for the non-isr
+ * printf path the shim alone doesn't catch.
+ */
+int printf(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int ret = vsniprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (ret > 0) {
+        int len = ret < (int)sizeof(buf) ? ret : (int)sizeof(buf) - 1;
+        tcu_print_msg(buf, len, 0);
+    }
+    return ret;
 }
