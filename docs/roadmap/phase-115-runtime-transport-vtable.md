@@ -128,7 +128,7 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 
 ## Work Items
 
-- [ ] **115.A** Define `NrosTransportOps` fn-ptr vtable in `nros-rmw`. `#[repr(C)]`, four `unsafe extern "C" fn` fields plus `user_data: *mut c_void`. Add `set_custom_transport(&NrosTransportOps)` Rust API + matching `static AtomicCell<Option<NrosTransportOps>>` storage. **No trait, no `dyn`, no `Box`** — see § A.1 for rationale. Document send/sync contract on `user_data`.
+- [x] **115.A** `nros_rmw::custom_transport` — `NrosTransportOps` (`#[repr(C)]`, four `unsafe extern "C" fn` fields + `user_data: *mut c_void`, `unsafe impl Send + Sync` on the vtable struct itself). Storage is `static SLOT: Mutex<Option<NrosTransportOps>>` (the existing `nros_rmw::sync::Mutex`, no extra deps). Public API: `set_custom_transport(Option<NrosTransportOps>)` (unsafe — caller owns the threading contract), `peek_custom_transport()`, `take_custom_transport()`. Module-level docs cover the threading contract (no concurrent read/write, no ISR invocation, `user_data` outlives `close`) and the no-`dyn` rationale (cross-link to § A.1). 3 unit tests: lifecycle (set → peek → take → empty), explicit clear, and `Copy + Send + Sync` static assertion. (`<this commit>`)
 - [ ] **115.B** `zpico-platform-custom` crate — new mutual-exclusive transport variant.
 - [ ] **115.C** `nros-c` C API: `nros_transport_ops_t`, `nros_set_custom_transport`. cbindgen-emitted header.
 - [ ] **115.D** `nros-cpp` C++ wrapper.

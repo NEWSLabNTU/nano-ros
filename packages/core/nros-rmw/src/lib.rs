@@ -36,6 +36,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod custom_transport;
 pub mod event;
 pub mod sync;
 pub mod traits;
@@ -47,6 +48,11 @@ pub mod safety;
 pub use event::{
     CountStatus, DeadlineMissedStatus, EventCallback, EventKind, EventPayload,
     LivelinessChangedStatus, MessageLostStatus, payload_from_raw,
+};
+
+// Phase 115.A — runtime-pluggable custom transport vtable.
+pub use custom_transport::{
+    NrosTransportOps, peek_custom_transport, set_custom_transport, take_custom_transport,
 };
 
 // Re-export safety types when feature is enabled
