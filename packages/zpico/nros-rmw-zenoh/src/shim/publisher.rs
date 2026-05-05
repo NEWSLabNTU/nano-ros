@@ -129,6 +129,7 @@ impl ZenohPublisher {
         if ms == 0 {
             // No real clock — preserve the old monotonic-counter
             // behaviour so existing tests aren't disrupted.
+            #[allow(clippy::unnecessary_cast)] // i32→i64 on embedded, no-op on std
             return self
                 .sequence_counter
                 .load(Ordering::Relaxed)

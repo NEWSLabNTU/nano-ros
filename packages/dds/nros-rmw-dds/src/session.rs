@@ -207,15 +207,16 @@ fn service_reader_qos() -> dust_dds::infrastructure::qos::DataReaderQos {
         },
         time::{Duration, DurationKind},
     };
-    let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
-    q.reliability = ReliabilityQosPolicy {
-        kind: ReliabilityQosPolicyKind::Reliable,
-        max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
-    };
-    q.history = HistoryQosPolicy {
-        kind: HistoryQosPolicyKind::KeepLast(10),
-    };
-    q
+    dust_dds::infrastructure::qos::DataReaderQos {
+        reliability: ReliabilityQosPolicy {
+            kind: ReliabilityQosPolicyKind::Reliable,
+            max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
+        },
+        history: HistoryQosPolicy {
+            kind: HistoryQosPolicyKind::KeepLast(10),
+        },
+        ..Default::default()
+    }
 }
 
 #[cfg(any(feature = "std", feature = "nostd-runtime"))]
@@ -226,15 +227,16 @@ fn service_writer_qos() -> dust_dds::infrastructure::qos::DataWriterQos {
         },
         time::{Duration, DurationKind},
     };
-    let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();
-    q.reliability = ReliabilityQosPolicy {
-        kind: ReliabilityQosPolicyKind::Reliable,
-        max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
-    };
-    q.history = HistoryQosPolicy {
-        kind: HistoryQosPolicyKind::KeepLast(10),
-    };
-    q
+    dust_dds::infrastructure::qos::DataWriterQos {
+        reliability: ReliabilityQosPolicy {
+            kind: ReliabilityQosPolicyKind::Reliable,
+            max_blocking_time: DurationKind::Finite(Duration::new(0, 100_000_000)),
+        },
+        history: HistoryQosPolicy {
+            kind: HistoryQosPolicyKind::KeepLast(10),
+        },
+        ..Default::default()
+    }
 }
 
 impl Session for DdsSession {
