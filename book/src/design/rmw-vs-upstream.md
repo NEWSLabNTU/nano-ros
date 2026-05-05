@@ -490,6 +490,29 @@ Two related choices:
   attachments, DDS RTPS sample-info, XRCE session pings) — no
   cross-backend metadata header.
 
+### Per-backend QoS coverage
+
+The mask actually advertised by each backend's
+`Session::supported_qos_policies()` (Phase 108):
+
+| Backend | Reliability + Durability + History/Depth | Deadline | Lifespan | Liveliness Automatic | Liveliness Manual | Liveliness Lease | `avoid_ros_namespace_conventions` |
+|---------|-------------------------------------------|----------|----------|----------------------|--------------------|------------------|-----------------------------------|
+| dust-DDS | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ honoured |
+| XRCE-DDS | ✅ Native (binary `uxrQoS_t`) | ✅ Shim-side clock check (sub: `RequestedDeadlineMissed`; pub: `OfferedDeadlineMissed`) + agent-side via FastDDS XML profile | ✅ Agent-side via FastDDS XML profile | ✅ Native | ✅ Configured via XML | ✅ Configured via XML | ✅ honoured |
+| zenoh-pico | ✅ Shim-emulated | ✅ Clock-based check (sub + pub) | ✅ Subscriber-side filter using attachment timestamp | ✅ Trivial via session keepalive | ❌ Needs per-pub keepalive timer (deferred) | ✅ Honoured | n/a (no `/rt/` prefix) |
+| uORB | ✅ CORE only (intra-process, no wire) | ❌ No rate concept | ❌ No expiry concept | ❌ No wire-level liveliness | ❌ | ❌ | n/a |
+
+**Key takeaways**:
+
+- The default QoS profile (RELIABLE + VOLATILE + KEEP_LAST(10) + AUTOMATIC) works on every backend.
+- Apps that need extended QoS but want to stay backend-portable: check `supported_qos_policies()` at startup and degrade gracefully.
+- For full DDS QoS: dust-DDS (native) and XRCE-DDS (auto-routes through FastDDS XML profile when extended policies are set) are equivalent. Zenoh-pico fills the gap with shim-side emulation. uORB is intra-process only.
+
+See [Status events](../concepts/status-events.md) for how the
+deadline / liveliness / message-lost policies translate into
+runtime events, and [User guide → Configuration](../user-guide/configuration.md)
+for code examples.
+
 ## 8. Status events: callback-on-entity, Tier-1 subset
 
 **Upstream.** Event APIs surface DDS-shaped notifications via a
@@ -586,10 +609,14 @@ generate every event:
 
 | Backend | Liveliness | Deadline | Message lost |
 |---------|-----------|----------|--------------|
-| dust-DDS | Native (DDS spec) | Native | Native |
-| XRCE-DDS | Native via session listener | Native | Native |
-| zenoh-pico | Liveliness-token-tracked at shim | Shim-side timer per sub | Sequence-gap detection at shim |
-| uORB | Adapted: `orb_subscribers_count` polling | Not generated (uORB has no rate concept) | Native via queue-overflow flag |
+| dust-DDS | ✅ Native (`DataReaderListener` / `DataWriterListener` bridges) | ✅ Native | ✅ Native (`SampleLost`) |
+| XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `try_recv_raw`; pub: shim-side check on `publish_raw`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
+| zenoh-pico | 🟡 Sub: poll wildcard liveliness keyexpr (`alive_count ∈ {0,1}`); pub-side `LivelinessLost` slot accepted but never fires (needs per-pub keepalive timer). | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
+| uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
+
+`assert_liveliness()` (manual): only dust-DDS implements it natively.
+Other backends' default is `Ok(())` (no-op) since they don't honour
+`MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness kinds.
 
 ## 9. Loaned messages first-class
 

@@ -188,6 +188,19 @@ that aren't (cross-process QoS-mismatched discovery) the wire
 protocol handles itself — DDS endpoints negotiate via DDS Discovery,
 zenoh endpoints communicate intent through the topic-key encoding.
 
+**Manual liveliness assertion.** Publishers configured with
+`MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness call
+`assert_liveliness()` explicitly to refresh the lease. Available on
+every language surface (Rust `Publisher<M>::assert_liveliness()`, C
+`nros_publisher_assert_liveliness(&pub)`, C++
+`pub.assert_liveliness()`). Backends without manual-assertion wiring
+treat the call as a no-op — only dust-DDS implements it natively
+today. See [Status events](status-events.md) for the runtime-event
+side of liveliness, deadline, and message-lost.
+
+**Per-backend coverage** is documented in
+[RMW vs upstream § 7](../design/rmw-vs-upstream.md#7-qos-full-dds-shaped-profile-per-backend-support-advertised).
+
 ### 8. No runtime backend swap, no runtime introspection
 
 Standard ROS 2 ships `ros2 topic list`, `ros2 node info`, dynamic
