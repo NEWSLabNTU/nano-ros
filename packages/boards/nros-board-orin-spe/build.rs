@@ -50,6 +50,26 @@ fn main() {
         )
     });
 
+    // Compile `c/printf_shim.c` with the same softfp ABI the FSP uses
+    // (`-mfloat-abi=softfp -mfpu=vfpv3-d16`) so the resulting object is
+    // link-compatible with both the FSP `.a` and the Rust soft-float
+    // (`armv7r-none-eabi`) artefacts. The shim provides a `vsnprintf`
+    // override that delegates to newlib's integer-only `vsniprintf`,
+    // dropping the ~25 KB BTCM cost of the float-aware formatter chain
+    // (`_dtoa_r`, `fmaf128`, `__divtf3`, …) that BSP `platform/print.c`
+    // would otherwise pull through `printf("%d %s\r\n", …)` call sites.
+    println!("cargo:rerun-if-changed=c/printf_shim.c");
+    cc::Build::new()
+        .file("c/printf_shim.c")
+        .flag("-march=armv7-r")
+        .flag("-mcpu=cortex-r5")
+        .flag("-mfpu=vfpv3-d16")
+        .flag("-mfloat-abi=softfp")
+        .flag("-Os")
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .compile("nros_orin_spe_printf_shim");
+
     println!("cargo:rustc-link-search=native={}/lib", dir);
 
     // FSP archive — provides FreeRTOS V10.4.3, tegra_ivc_channel_*, HSP
