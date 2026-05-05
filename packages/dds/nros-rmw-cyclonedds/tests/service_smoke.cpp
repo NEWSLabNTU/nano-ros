@@ -37,7 +37,7 @@ int main() {
 
     nros_rmw_service_server_t srv{};
     srv.service_name = "add_two_ints";
-    srv.type_name    = "nros_test::srv::AddTwoInts";
+    srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
                                     99, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_server failed\n");
@@ -51,7 +51,7 @@ int main() {
 
     nros_rmw_service_client_t cli{};
     cli.service_name = "add_two_ints";
-    cli.type_name    = "nros_test::srv::AddTwoInts";
+    cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
                                     99, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_client failed\n");
@@ -73,18 +73,17 @@ int main() {
         return 7;
     }
 
-    // Missing user type is now NO LONGER an error: Phase 117.7.B
-    // wraps every service in a backend-defined envelope topic that
-    // doesn't depend on the user IDL. Verify the create succeeds
-    // and clean up.
+    // Phase 117.X.3: per-service typed-IDL registry is required.
+    // An unregistered type name must be rejected with UNSUPPORTED
+    // so consumers get a clear error if they forgot to call the
+    // codegen helper.
     nros_rmw_service_server_t any{};
-    if (g_vt->create_service_server(&s, "rq/anything", "no::such::Svc", "",
-                                    99, &any) != NROS_RMW_RET_OK) {
+    if (g_vt->create_service_server(&s, "missing", "no::such::Svc", "",
+                                    99, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,
-            "envelope-based services should accept any type_name\n");
+            "missing type_name should report UNSUPPORTED\n");
         return 8;
     }
-    g_vt->destroy_service_server(&any);
 
     g_vt->destroy_service_client(&cli);
     g_vt->destroy_service_server(&srv);

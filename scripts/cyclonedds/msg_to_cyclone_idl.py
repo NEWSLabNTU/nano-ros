@@ -109,12 +109,33 @@ _STRUCT_RE = re.compile(
 )
 
 
-def mangle_idl(src: str) -> str:
+# Phase 117.X.3 — leading-fields injected into every `_Request_` /
+# `_Response_` struct so their wire CDR matches stock
+# `rmw_cyclonedds_cpp`'s `cdds_request_header_t { uint8_t guid[16];
+# int64_t seq; }` layout. We inline the two primitive fields rather
+# than declaring a nested struct, so each IDL stays self-contained
+# (no shared preamble dependency) — the wire bytes are identical
+# either way (CDR for `octet[16]` is 16 inline bytes; `long long`
+# is 8-byte aligned with no padding given the preceding 16-byte
+# alignment-1 array).
+SERVICE_HEADER_FIELDS = [
+    "octet rmw_writer_guid[16];",
+    "long long rmw_sequence_number;",
+]
+
+
+def mangle_idl(src: str, inject_service_header: bool = False) -> str:
     """Rewrite a rosidl_adapter IDL string by inserting `module dds_ { … }`
     around every top-level (within its enclosing namespace) struct and
     suffixing the struct name with `_`. The rosidl_adapter output is
     well-behaved enough that a line-oriented rewrite is sufficient — no
     full IDL parser needed.
+
+    When ``inject_service_header`` is true, also injects the 24-byte
+    request-id header fields (`octet rmw_writer_guid[16]` +
+    `long long rmw_sequence_number`) as the first two fields of every
+    rewritten struct. Used for `.srv` inputs to make the wire CDR
+    match stock `rmw_cyclonedds_cpp`'s `cdds_request_header_t` layout.
     """
     out_lines: list[str] = []
     nesting: list[str] = []  # stack of opened wrapper indents
@@ -127,8 +148,12 @@ def mangle_idl(src: str) -> str:
             # Re-indent the struct line itself by 2 spaces under the
             # new wrapper.
             new_indent = indent + "  "
+            field_indent = new_indent + "  "
             rest = line[len(m.group(0)):]  # everything after `struct <Name> {`
             out_lines.append(f"{new_indent}struct {name}_ {{{rest}")
+            if inject_service_header:
+                for hdr in SERVICE_HEADER_FIELDS:
+                    out_lines.append(f"{field_indent}{hdr}")
             nesting.append(indent)
             continue
 
@@ -213,7 +238,11 @@ def main() -> int:
             generated_idl = run_adapter(adapter, scratch, rel)
             raw = generated_idl.read_text()
 
-        mangled = mangle_idl(raw)
+        # `.srv` files produce a Request + Response struct pair; both
+        # carry the request-id header in their wire CDR per stock
+        # `rmw_cyclonedds_cpp` convention. `.msg` files don't.
+        inject_header = (iface_path.suffix == ".srv")
+        mangled = mangle_idl(raw, inject_service_header=inject_header)
 
         out_idl = args.output_dir / iface_path.with_suffix(".idl").name
         out_idl.write_text(mangled)

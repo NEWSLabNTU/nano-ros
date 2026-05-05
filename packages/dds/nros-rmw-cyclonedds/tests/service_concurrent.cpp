@@ -32,7 +32,7 @@ static int run_client(nros_rmw_session_t *s, int client_idx,
                       std::atomic<int> *failures) {
     nros_rmw_service_client_t cli{};
     cli.service_name = "concurrent_test";
-    cli.type_name    = "anything";
+    cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(s, cli.service_name, cli.type_name, "",
                                     99, &cli) != NROS_RMW_RET_OK) {
         failures->fetch_add(1);
@@ -43,13 +43,18 @@ static int run_client(nros_rmw_session_t *s, int client_idx,
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     for (int i = 0; i < kCallsPerClient; ++i) {
-        // Request payload: 4-byte CDR encap + 1 marker byte
-        // identifying (client_idx, call_idx).
-        uint8_t req[5] = {
-            0x00, 0x01, 0x00, 0x00,
-            static_cast<uint8_t>(client_idx * 10 + i),
-        };
-        uint8_t rep[16] = {};
+        // Request payload matches the registered AddTwoInts shape:
+        //   4-byte CDR encap + 8-byte int64 a + 8-byte int64 b.
+        // Encode (a, b) so the server's reply (a+b) uniquely
+        // identifies which client + call it answered.
+        int64_t a = client_idx * 10 + i;
+        int64_t b = 1;
+        uint8_t req[20] = {0x00, 0x01, 0x00, 0x00};
+        for (int k = 0; k < 8; ++k) {
+            req[4 + k]  = static_cast<uint8_t>((a >> (k * 8)) & 0xff);
+            req[12 + k] = static_cast<uint8_t>((b >> (k * 8)) & 0xff);
+        }
+        uint8_t rep[64] = {};
         int32_t n = g_vt->call_raw(&cli, req, sizeof(req), rep, sizeof(rep));
         if (n < 0) {
             std::fprintf(stderr,
@@ -58,12 +63,22 @@ static int run_client(nros_rmw_session_t *s, int client_idx,
             failures->fetch_add(1);
             break;
         }
-        if (n < 5 || rep[4] != static_cast<uint8_t>(req[4] + 100)) {
+        if (n < 12) {
+            std::fprintf(stderr, "client %d call %d: short reply n=%d\n",
+                         client_idx, i, n);
+            failures->fetch_add(1);
+            continue;
+        }
+        // Reply: 4-byte encap + 8-byte int64 sum.
+        int64_t got = 0;
+        for (int k = 0; k < 8; ++k) {
+            got |= static_cast<int64_t>(rep[4 + k]) << (k * 8);
+        }
+        if (got != a + b) {
             std::fprintf(stderr,
-                "client %d call %d: bad reply marker (got %u, want %u)\n",
+                "client %d call %d: bad sum (got %lld, want %lld)\n",
                 client_idx, i,
-                n >= 5 ? rep[4] : 0,
-                static_cast<unsigned>(req[4] + 100));
+                static_cast<long long>(got), static_cast<long long>(a + b));
             failures->fetch_add(1);
         }
     }
@@ -85,7 +100,7 @@ int main() {
 
     nros_rmw_service_server_t srv{};
     srv.service_name = "concurrent_test";
-    srv.type_name    = "anything";
+    srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
                                     99, &srv) != NROS_RMW_RET_OK) {
         return 3;
@@ -103,12 +118,21 @@ int main() {
         while (handled < total &&
                std::chrono::steady_clock::now() < deadline) {
             if (g_vt->has_request(&srv)) {
-                uint8_t rbuf[16] = {};
+                uint8_t rbuf[64] = {};
                 int64_t seq = -1;
                 int32_t r = g_vt->try_recv_request(&srv, rbuf, sizeof(rbuf), &seq);
                 if (r > 0) {
-                    uint8_t reply[5] = {0x00, 0x01, 0x00, 0x00,
-                                        static_cast<uint8_t>(rbuf[4] + 100)};
+                    int64_t a = 0, b = 0;
+                    for (int k = 0; k < 8; ++k) {
+                        a |= static_cast<int64_t>(rbuf[4 + k])  << (k * 8);
+                        b |= static_cast<int64_t>(rbuf[12 + k]) << (k * 8);
+                    }
+                    int64_t sum = a + b;
+                    uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
+                    for (int k = 0; k < 8; ++k) {
+                        reply[4 + k] =
+                            static_cast<uint8_t>((sum >> (k * 8)) & 0xff);
+                    }
                     (void) g_vt->send_reply(&srv, seq, reply, sizeof(reply));
                     ++handled;
                 }

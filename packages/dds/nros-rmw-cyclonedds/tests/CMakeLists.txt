@@ -111,73 +111,88 @@ add_test(
     COMMAND nros_rmw_cyclonedds_data_roundtrip
 )
 
-# Phase 117.7 service entity-creation smoke. Drives a multi-type
-# IDL (Request + Response) through the codegen helper to register
-# both descriptors, then exercises service_server_create /
-# service_client_create.
-nros_rmw_cyclonedds_idlc_compile(_addtwoints_sources
-    IDL_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/types/test_addtwoints.idl"
-    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/types"
-    TYPE_NAMES
-        "nros_test::srv::AddTwoInts_Request"
-        "nros_test::srv::AddTwoInts_Response"
-)
-add_executable(nros_rmw_cyclonedds_service_smoke
-    service_smoke.cpp
-    ${_addtwoints_sources}
-)
-target_link_libraries(nros_rmw_cyclonedds_service_smoke
-    PRIVATE
-        nros_rmw_cyclonedds
-)
-target_include_directories(nros_rmw_cyclonedds_service_smoke
-    PRIVATE
-        ${NROS_RMW_CFFI_DIR}
-        "${CMAKE_CURRENT_BINARY_DIR}/types"
-)
-add_test(
-    NAME nros_rmw_cyclonedds_service_smoke
-    COMMAND nros_rmw_cyclonedds_service_smoke
-)
+# Phase 117.X.3 service test fixtures: drive `.srv` through the
+# 117.X.1 codegen helper so the typed IDLs include the in-payload
+# `cdds_request_header_t` (rmw_writer_guid + rmw_sequence_number)
+# layout. The two registered descriptor type names are
+# `nros_test::srv::dds_::AddTwoInts_Request_` and
+# `nros_test::srv::dds_::AddTwoInts_Response_`; the backend looks
+# them up via `<type_name>_Request_` / `_Response_` suffix from
+# the consumer-supplied `nros_test::srv::dds_::AddTwoInts`.
+if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
+    nros_rmw_cyclonedds_generate_from_msg(_addtwoints_sources
+        PKG_NAME nros_test
+        PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/nros_test"
+        INTERFACES srv/AddTwoInts.srv
+    )
+else()
+    set(_addtwoints_sources "")
+endif()
+if(_addtwoints_sources STREQUAL "")
+    message(STATUS
+        "rosidl_adapter unavailable: skipping service_smoke / "
+        "service_roundtrip / service_concurrent (Phase 117.X.3 "
+        "needs the codegen helper for the typed IDL).")
+endif()
+if(_addtwoints_sources)
+    add_executable(nros_rmw_cyclonedds_service_smoke
+        service_smoke.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_smoke
+        PRIVATE
+            nros_rmw_cyclonedds
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_smoke
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_smoke
+        COMMAND nros_rmw_cyclonedds_service_smoke
+    )
 
-# Phase 117.7 service request/reply data round-trip.
-add_executable(nros_rmw_cyclonedds_service_roundtrip
-    service_roundtrip.cpp
-    ${_addtwoints_sources}
-)
-target_link_libraries(nros_rmw_cyclonedds_service_roundtrip
-    PRIVATE
-        nros_rmw_cyclonedds
-        pthread
-)
-target_include_directories(nros_rmw_cyclonedds_service_roundtrip
-    PRIVATE
-        ${NROS_RMW_CFFI_DIR}
-        "${CMAKE_CURRENT_BINARY_DIR}/types"
-)
-add_test(
-    NAME nros_rmw_cyclonedds_service_roundtrip
-    COMMAND nros_rmw_cyclonedds_service_roundtrip
-)
+    # Phase 117.7 service request/reply data round-trip — Phase
+    # 117.X.3 reshapes wire to include cdds_request_header_t.
+    add_executable(nros_rmw_cyclonedds_service_roundtrip
+        service_roundtrip.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_roundtrip
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_roundtrip
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_roundtrip
+        COMMAND nros_rmw_cyclonedds_service_roundtrip
+    )
 
-# Phase 117.7.B concurrent-call correlation. No IDL types needed —
-# the backend's envelope wraps all service traffic.
-add_executable(nros_rmw_cyclonedds_service_concurrent
-    service_concurrent.cpp
-)
-target_link_libraries(nros_rmw_cyclonedds_service_concurrent
-    PRIVATE
-        nros_rmw_cyclonedds
-        pthread
-)
-target_include_directories(nros_rmw_cyclonedds_service_concurrent
-    PRIVATE
-        ${NROS_RMW_CFFI_DIR}
-)
-add_test(
-    NAME nros_rmw_cyclonedds_service_concurrent
-    COMMAND nros_rmw_cyclonedds_service_concurrent
-)
+    # Phase 117.7.B concurrent-call correlation. With Phase 117.X.3
+    # this now goes through the typed-IDL header path; the
+    # AddTwoInts type must be registered.
+    add_executable(nros_rmw_cyclonedds_service_concurrent
+        service_concurrent.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_concurrent
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_concurrent
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_concurrent
+        COMMAND nros_rmw_cyclonedds_service_concurrent
+    )
+endif()
 
 # Phase 117.X.2: topic-prefix helper unit test (no DDS interaction).
 add_executable(nros_rmw_cyclonedds_topic_prefix_test
@@ -228,9 +243,15 @@ set_tests_properties(
     nros_rmw_cyclonedds_codegen_smoke
     nros_rmw_cyclonedds_pubsub_smoke
     nros_rmw_cyclonedds_data_roundtrip
-    nros_rmw_cyclonedds_service_smoke
-    nros_rmw_cyclonedds_service_roundtrip
-    nros_rmw_cyclonedds_service_concurrent
     PROPERTIES
         ENVIRONMENT "${_nros_rmw_test_env}"
 )
+if(_addtwoints_sources)
+    set_tests_properties(
+        nros_rmw_cyclonedds_service_smoke
+        nros_rmw_cyclonedds_service_roundtrip
+        nros_rmw_cyclonedds_service_concurrent
+        PROPERTIES
+            ENVIRONMENT "${_nros_rmw_test_env}"
+    )
+endif()

@@ -52,14 +52,11 @@ endif()
 # step runs.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
-# Phase 117.7.B: service envelope IDL → descriptor + auto-register.
-# Compiled into the backend lib so every consumer gets the envelope
-# type registered without extra setup.
-nros_rmw_cyclonedds_idlc_compile(_envelope_sources
-    IDL_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/src/types/service_envelope.idl"
-    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/types"
-    TYPE_NAME "nros_rmw_cyclonedds::ServiceEnvelope"
-)
+# Phase 117.X.3: service request-id correlation now uses an in-payload
+# `cdds_request_header_t` (writer_guid[16] + sequence_number) injected
+# at IDL-codegen time by `msg_to_cyclone_idl.py` for every `.srv`
+# input. The backend-defined ServiceEnvelope IDL from 117.7.B is no
+# longer needed and has been removed.
 
 add_library(nros_rmw_cyclonedds STATIC
     src/vtable.cpp
@@ -70,10 +67,6 @@ add_library(nros_rmw_cyclonedds STATIC
     src/descriptors.cpp
     src/qos.cpp
     src/sertype_min.cpp
-    ${_envelope_sources}
-)
-target_include_directories(nros_rmw_cyclonedds PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
 add_library(NrosRmwCyclonedds::NrosRmwCyclonedds ALIAS nros_rmw_cyclonedds)
 

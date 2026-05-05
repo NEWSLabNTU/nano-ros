@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_test</name>
+  <version>0.0.0</version>
+  <description>Phase 117 service test fixture.</description>
+  <maintainer email="test@example.com">test</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+</package>
