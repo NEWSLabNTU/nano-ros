@@ -99,8 +99,8 @@ cd examples/native/rust/zenoh/action-client && cargo run
 
 **Zephyr action tests:**
 ```bash
-just build-zephyr-actions      # Build server and client
-just test-rust-zephyr-actions  # Run E2E tests (requires TAP setup)
+just zephyr build-all          # Build all Zephyr examples (Rust + C + C++ + XRCE)
+just zephyr test               # Run zenoh E2E tests (covers actions)
 ```
 
 ## Docker Development Environment
@@ -113,10 +113,10 @@ sudo usermod -aG docker $USER
 # Log out and back in, or run: newgrp docker
 
 # Build and use Docker environment
-just docker-build              # Build nano-ros-qemu image
-just docker-shell              # Interactive shell
-just docker-test-qemu          # Run QEMU tests in container
-just docker-help               # Show all Docker commands
+just docker build              # Build nano-ros-qemu image
+just docker shell              # Interactive shell
+just docker test-qemu          # Run QEMU tests in container
+just docker help               # Show all Docker commands
 ```
 
 ## QEMU Bare-Metal Testing
@@ -125,15 +125,14 @@ Run bare-metal Cortex-M3 examples on QEMU (MPS2-AN385 machine with LAN9118 Ether
 
 ```bash
 # Build prerequisites
-just build-zenoh-pico-arm     # Build zenoh-pico for ARM Cortex-M3
-just build-examples-qemu      # Build all QEMU examples
+just qemu build-zenoh-pico    # Build zenoh-pico for ARM Cortex-M3
+just qemu build                # Build all QEMU examples
 
 # Non-networked tests (no setup required)
-just test-qemu-basic          # Run serialization test
-just test-qemu-lan9118        # Run Ethernet driver test
+just qemu test                # Bare-metal QEMU integration tests
 
 # Networked talker/listener test (Docker Compose - recommended)
-just docker-qemu-test         # Runs zenohd, talker, listener in separate containers
+just docker test-qemu         # Runs zenohd, talker, listener in separate containers
 ```
 
 **Docker Compose Architecture:**
@@ -158,7 +157,7 @@ just docker-qemu-test         # Runs zenohd, talker, listener in separate contai
 **Manual networked test (3 terminals, requires host TAP setup):**
 ```bash
 # Terminal 1: Setup network + start router
-just setup-qemu-network                    # Requires sudo
+just qemu setup-network                    # Requires sudo
 ./build/zenohd/zenohd --listen tcp/0.0.0.0:7447
 
 # Terminal 2: Talker (192.0.2.10)
@@ -170,14 +169,14 @@ just setup-qemu-network                    # Requires sudo
     --binary examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
 ```
 
-Run `just qemu-help` for more options.
+Run `just qemu help` for more options.
 
 ## Zephyr Setup
 
 ```bash
-just zephyr setup   # Initialize workspace at $repo/zephyr-workspace/
-just test-zephyr    # Run zenoh tests (native_sim uses NSOS on host loopback)
-just test-zephyr-xrce
+just zephyr setup       # Initialize workspace at $repo/zephyr-workspace/
+just zephyr test        # Run zenoh tests (native_sim uses NSOS on host loopback)
+just zephyr test-xrce   # Run XRCE tests
 ```
 
 The workspace lives at `$repo/zephyr-workspace/` by default (gitignored).

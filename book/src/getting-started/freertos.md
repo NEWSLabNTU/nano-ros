@@ -49,7 +49,7 @@ Override the paths with environment variables if your sources are elsewhere:
 ## Building
 
 ```bash
-just build-examples-freertos
+just freertos build
 ```
 
 This cross-compiles all FreeRTOS examples for `thumbv7m-none-eabi` using

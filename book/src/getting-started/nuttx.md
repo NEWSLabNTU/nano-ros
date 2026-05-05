@@ -58,7 +58,7 @@ Override the paths with environment variables if your sources are elsewhere:
 ## Building
 
 ```bash
-just build-examples-nuttx
+just nuttx build
 ```
 
 This cross-compiles all NuttX examples for `armv7a-nuttx-eabi` using

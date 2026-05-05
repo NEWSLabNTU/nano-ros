@@ -840,16 +840,13 @@ check-zenoh:
     cargo clippy -p nros-rmw --features std
 
 # Build zenohd from submodule (alias for `just zenohd build`).
-[private]
 build-zenohd: zenohd::build
 
 # Clean zenohd build (alias for `just zenohd clean`).
-[private]
 clean-zenohd: zenohd::clean
 
 
 # Build zenoh-pico C library (standalone, for debugging)
-[private]
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
     cd packages/zpico/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make

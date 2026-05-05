@@ -394,10 +394,10 @@ All functions are expected to complete within **100,000 cycles** for typical pay
 
 ```bash
 # Build all QEMU examples (includes rs-wcet-bench)
-just build-examples-qemu
+just qemu build
 
 # Run the WCET benchmark
-just test-qemu-wcet
+just qemu test-wcet
 ```
 
 ### Static WCET Analysis

@@ -86,13 +86,15 @@ This builds, flashes, and opens the serial monitor (`espflash flash --monitor` i
 
 ### Build zenoh-pico for RISC-V
 
-Required for networked nros examples (WiFi + zenoh):
+zenoh-pico for the ESP32 RISC-V target is built via:
 
 ```bash
-just build-zenoh-pico-riscv
+just esp32 build           # WiFi BSP (production hardware)
+just esp32 build-qemu      # QEMU OpenETH variant
 ```
 
-Output: `build/esp32-zenoh-pico/libzenohpico.a`
+Both invoke `cargo build` against the BSP, which links against
+zenoh-pico vendored under `packages/zpico/zpico-sys/zenoh-pico/`.
 
 ## Project Structure
 
@@ -174,14 +176,11 @@ Provides `qemu-system-riscv32` with the `-M esp32c3` machine type.
 ### Build and Run QEMU Examples
 
 ```bash
-# Cross-compile zenoh-pico for RISC-V (one-time)
-just build-zenoh-pico-riscv
-
 # Build QEMU examples + create flash images
-just build-examples-esp32-qemu
+just esp32 build-qemu
 
 # Boot test (no networking)
-just test-qemu-esp32-basic
+just esp32 test-basic
 ```
 
 ### Networked E2E Tests
@@ -204,7 +203,7 @@ Run the full test suite:
 sudo ./scripts/qemu/setup-network.sh
 
 # Run all ESP32-C3 QEMU tests (builds zenohd automatically)
-just test-qemu-esp32
+just esp32 test
 ```
 
 Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native interop.
@@ -225,7 +224,7 @@ The WiFi examples use the `nros-board-esp32` BSP crate, which handles WiFi initi
 WiFi credentials are passed as environment variables:
 
 ```bash
-SSID=MyNetwork PASSWORD=secret just build-examples-esp32
+SSID=MyNetwork PASSWORD=secret just esp32 build
 ```
 
 ### Flash and Monitor

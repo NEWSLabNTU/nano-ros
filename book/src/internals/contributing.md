@@ -35,16 +35,18 @@ nano-ros has several test tiers, each with its own just recipe:
 | Recipe | What it tests | External deps |
 |--------|--------------|---------------|
 | `just test-unit` | Unit tests (no external deps) | None |
-| `just test-miri` | Undefined behavior detection | None |
-| `just test-qemu` | QEMU bare-metal examples | `qemu-system-arm` |
-| `just test-integration` | Rust integration tests (builds zenohd automatically) | None |
-| `just test` | unit + miri + qemu + integration | `qemu-system-arm` |
-| `just test-zephyr` | Zephyr E2E | west + TAP |
-| `just test-freertos` | FreeRTOS QEMU E2E | `qemu-system-arm` + `arm-none-eabi-gcc` |
-| `just test-nuttx` | NuttX QEMU E2E | nightly + `qemu-system-arm` |
-| `just test-ros2` | ROS 2 interop | ROS 2 + rmw_zenoh |
-| `just test-c` | C API tests | cmake |
-| `just test-all` | Everything | All of the above |
+| `just test-integration` | Rust integration tests, no heavy QEMU/Zephyr (builds zenohd automatically) | None |
+| `just test` | `test-unit` + `test-integration` (default dev tier) | None |
+| `just test-doc` | rustdoc doctests for the `nros` umbrella crate | None |
+| `just test-miri` | Undefined behavior detection (standalone) | None |
+| `just qemu test` | QEMU bare-metal examples | `qemu-system-arm` |
+| `just freertos test` | FreeRTOS QEMU E2E | `qemu-system-arm` + `arm-none-eabi-gcc` |
+| `just nuttx test` | NuttX QEMU E2E | nightly + `qemu-system-arm` |
+| `just threadx_linux test` | ThreadX Linux user-space E2E | `gcc` |
+| `just threadx_riscv64 test` | ThreadX RISC-V QEMU E2E | `qemu-system-riscv64` |
+| `just zephyr test` | Zephyr E2E (native_sim + NSOS) | west |
+| `just esp32 test` | ESP32-C3 QEMU E2E | nightly + `qemu-system-riscv32` |
+| `just test-all` | Everything: `test` + heavy QEMU/Zephyr/ROS-interop + `test-doc` + `test-miri` + C codegen | All of the above |
 
 All test recipes accept a `verbose` argument for live output.
 

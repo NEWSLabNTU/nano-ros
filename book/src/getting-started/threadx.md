@@ -65,10 +65,10 @@ just threadx_linux setup     # Linux simulation SDK
 just threadx_riscv64 setup   # QEMU RISC-V SDK
 
 # Build Linux simulation examples
-just build-examples-threadx-linux
+just threadx_linux build
 
 # Build QEMU RISC-V examples
-just build-examples-threadx-riscv64
+just threadx_riscv64 build
 ```
 
 ### Available Examples

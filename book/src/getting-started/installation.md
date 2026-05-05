@@ -139,8 +139,11 @@ just build
 Run tests:
 
 ```bash
-just test-unit     # Unit tests (fast)
-just test          # Unit + Miri + QEMU
+just test-unit          # Unit tests (~5s)
+just test-integration   # Integration tests (skips heavy QEMU/Zephyr) (~30s)
+just test               # = test-unit + test-integration (default dev tier)
+just test-miri          # Miri UB scan (standalone, ~min)
+just test-all           # test + test-miri + heavy QEMU/Zephyr/ROS-interop + C codegen
 ```
 
 ### Building zenohd from Source
@@ -158,9 +161,9 @@ just build-zenohd
 For a containerized environment (or QEMU 7.2+ for TAP networking):
 
 ```bash
-just docker-build      # Build the nano-ros-qemu image
-just docker-shell      # Interactive shell with all tools
-just docker-test-qemu  # Run QEMU tests in container
+just docker build      # Build the nano-ros-qemu image
+just docker shell      # Interactive shell with all tools
+just docker test-qemu  # Run QEMU tests in container
 ```
 
 ## Next Steps

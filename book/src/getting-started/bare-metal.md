@@ -68,27 +68,24 @@ just check-qemu
 ### 1. Build QEMU Examples
 
 ```bash
-just build-examples-qemu
+just qemu build
 ```
 
 ### 2. Run Tests (No Networking)
 
 ```bash
-# Run all QEMU tests
-just test-qemu
-
-# Run only LAN9118 driver test
-just test-qemu-lan9118
+# Run all QEMU bare-metal tests
+just qemu test
 ```
 
 ### 3. Setup Networking (For Full Stack Tests)
 
 ```bash
 # Create TAP bridge (requires sudo)
-just setup-qemu-network
+just qemu setup-network
 
 # Verify setup
-just status-qemu-network
+just qemu status-network
 ```
 
 ### 4. Run with Networking
@@ -107,7 +104,7 @@ zenohd --listen tcp/0.0.0.0:7447
 ### 5. Teardown
 
 ```bash
-just teardown-qemu-network
+just qemu teardown-network
 ```
 
 ## Scripts Reference
@@ -154,16 +151,17 @@ Launches QEMU mps2-an385 with optional networking.
 
 ## Justfile Recipes
 
+All under the `qemu` module: `just qemu <recipe>`.
+
 | Recipe | Description |
 |--------|-------------|
-| `build-examples-qemu` | Build all QEMU examples |
-| `test-qemu` | Run all QEMU tests |
-| `test-qemu-basic` | Run basic serialization test |
-| `test-qemu-lan9118` | Run LAN9118 driver test |
-| `setup-qemu-network` | Create TAP bridge (sudo) |
-| `teardown-qemu-network` | Remove TAP bridge (sudo) |
-| `status-qemu-network` | Show network status |
-| `qemu-help` | Show QEMU help |
+| `build` | Build all QEMU bare-metal examples |
+| `test` | Run all QEMU bare-metal integration tests |
+| `setup-network` | Create TAP bridge (sudo) |
+| `teardown-network` | Remove TAP bridge (sudo) |
+| `status-network` | Show network status |
+| `help` | Show QEMU help |
+| `doctor` | Diagnose QEMU install status |
 
 ## Available Examples
 
@@ -226,7 +224,7 @@ All examples use semihosting for debug output. Output appears directly in the te
 ```
 Error: TAP interface tap-qemu0 does not exist
 ```
-Solution: Run `just setup-qemu-network`
+Solution: Run `just qemu setup-network`
 
 **Permission denied on TAP**
 ```

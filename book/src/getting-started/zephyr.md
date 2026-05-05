@@ -232,16 +232,17 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 ```bash
 # Zenoh examples
-just build-zephyr           # Build Rust zenoh examples
-just build-zephyr-c         # Build C zenoh examples
-just test-zephyr            # Run zenoh E2E tests
+just zephyr build           # Build Rust zenoh examples
+just zephyr build-c         # Build C zenoh examples
+just zephyr test            # Run zenoh E2E tests
 
 # XRCE examples
-just build-zephyr-xrce      # Build all XRCE examples (Rust + C)
-just test-zephyr-xrce       # Run XRCE E2E tests
+just zephyr build-xrce      # Build all XRCE examples (Rust + C)
+just zephyr test-xrce       # Run XRCE E2E tests
 
 # All examples
-just build-zephyr-all       # Build everything
+just zephyr build-all       # Build everything
+just zephyr ci              # Doctor + test (CI shortcut)
 ```
 
 ## Troubleshooting
