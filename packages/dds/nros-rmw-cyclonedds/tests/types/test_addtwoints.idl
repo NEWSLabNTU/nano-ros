@@ -1,0 +1,14 @@
+// Phase 117.7 service smoke type. Registered under the canonical
+// `<svc>_Request` / `<svc>_Response` suffixes the backend looks up.
+
+module nros_test {
+    module srv {
+        struct AddTwoInts_Request {
+            long long a;
+            long long b;
+        };
+        struct AddTwoInts_Response {
+            long long sum;
+        };
+    };
+};

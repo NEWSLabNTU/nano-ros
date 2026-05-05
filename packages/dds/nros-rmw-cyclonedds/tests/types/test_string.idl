@@ -1,0 +1,15 @@
+// Phase 117.2 / 117.5 test type — exercise the IDL → idlc → static
+// descriptor → registry path with a single-field message.
+//
+// Generated symbol (Cyclone idlc):
+//   const dds_topic_descriptor_t nros_test_msg_TestString_desc;
+// The auto-generated `_register.c` constructor wires this up under
+// the canonical type name "nros_test::msg::TestString".
+
+module nros_test {
+    module msg {
+        struct TestString {
+            string data;
+        };
+    };
+};

@@ -1,0 +1,17 @@
+@PACKAGE_INIT@
+
+# Pull in the Cyclone DDS dependency. Re-resolves whenever a downstream
+# project calls `find_package(NrosRmwCyclonedds REQUIRED)`. The caller is
+# expected to put `<repo>/build/install` on `CMAKE_PREFIX_PATH` so both
+# CycloneDDS and NrosRmwCyclonedds resolve from the same install root.
+include(CMakeFindDependencyMacro)
+find_dependency(CycloneDDS CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/NrosRmwCycloneddsTargets.cmake")
+
+# Phase 117.2: helper functions for IDL → topic-descriptor codegen.
+# `nros_rmw_cyclonedds_idlc_compile()` and
+# `nros_rmw_cyclonedds_add_idl_library()` become callable after this.
+include("${CMAKE_CURRENT_LIST_DIR}/NrosRmwCycloneddsTypeSupport.cmake")
+
+check_required_components(NrosRmwCyclonedds)
