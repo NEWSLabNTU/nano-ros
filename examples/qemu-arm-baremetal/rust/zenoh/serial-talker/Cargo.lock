@@ -569,6 +569,7 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "nros-rmw",
+ "portable-atomic",
  "xrce-sys",
 ]
 
@@ -579,6 +580,7 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "nros-core",
+ "nros-platform",
  "nros-rmw",
  "portable-atomic",
  "zpico-sys",

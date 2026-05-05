@@ -639,6 +639,7 @@ dependencies = [
  "critical-section",
  "heapless",
  "nros-rmw",
+ "portable-atomic",
  "xrce-sys",
 ]
 
@@ -650,6 +651,7 @@ dependencies = [
  "critical-section",
  "heapless",
  "nros-core",
+ "nros-platform",
  "nros-rmw",
  "portable-atomic",
  "zpico-sys",
