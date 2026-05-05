@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/srv/AddTwoInts
@@ -35,31 +38,15 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    // Initialize nros session
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
-    // Create node
     nros::Node node;
-    ret = nros::create_node(node, "cpp_service_client");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_service_client"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    // Create service client
     nros::Client<example_interfaces::srv::AddTwoInts> client;
-    ret = node.create_client(client, "/add_two_ints");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create client: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
+    nros::Result ret;
 
     // Test cases
     struct TestCase {

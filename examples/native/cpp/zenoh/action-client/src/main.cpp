@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -35,31 +38,15 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    // Initialize nros session
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
-    // Create node
     nros::Node node;
-    ret = nros::create_node(node, "cpp_action_client");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_action_client"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    // Create action client
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
-    ret = node.create_action_client(client, "/fibonacci");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create action client: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
+    nros::Result ret;
 
     // Default order=10; override via NROS_TEST_GOAL_ORDER for tests that
     // want to exercise server-side rejection (order >= 64) or other edges.

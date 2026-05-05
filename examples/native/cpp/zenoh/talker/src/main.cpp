@@ -5,6 +5,10 @@
 #include <cstdlib>
 #include <csignal>
 
+// Route NROS_TRY_RET through std::fprintf (we have stdio).
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
@@ -75,44 +79,21 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    // Initialize nros session
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
-    // Create node
     nros::Node node;
-    ret = nros::create_node(node, "cpp_talker");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_talker"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    // Create publisher
     nros::Publisher<std_msgs::msg::Int32> pub;
-    ret = node.create_publisher(pub, "/chatter");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create publisher: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
-    // Create timer (1000ms period)
     TalkerContext ctx;
     ctx.publisher = &pub;
     ctx.count = 0;
 
     nros::Timer timer;
-    ret = node.create_timer(timer, 1000, timer_callback, &ctx);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create timer: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_timer(timer, 1000, timer_callback, &ctx), 1);
 
     // Set up signal handler
     std::signal(SIGINT, signal_handler);

@@ -89,6 +89,27 @@ class Result {
         if (!_nros_r.ok()) return _nros_r;                                                         \
     } while (0)
 
+/// Like NROS_TRY but for callers that need a custom return value
+/// (e.g. `int main` examples returning 1 on failure).
+///
+/// By default the failure is silent — nros-cpp is freestanding and
+/// must not pull in `<cstdio>` from a public header. Override
+/// `NROS_TRY_LOG(file, line, expr, ret)` before including this header
+/// to attach a logger (`std::fprintf`, Zephyr's `LOG_ERR`, semihosting,
+/// etc.).
+#ifndef NROS_TRY_LOG
+#define NROS_TRY_LOG(file, line, expr, ret) ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#endif
+
+#define NROS_TRY_RET(expr, retval)                                                                 \
+    do {                                                                                           \
+        ::nros::Result _nros_r = (expr);                                                           \
+        if (!_nros_r.ok()) {                                                                       \
+            NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
+            return (retval);                                                                       \
+        }                                                                                          \
+    } while (0)
+
 } // namespace nros
 
 #endif // NROS_CPP_RESULT_HPP

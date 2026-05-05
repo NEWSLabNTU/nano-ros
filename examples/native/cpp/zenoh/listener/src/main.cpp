@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <csignal>
 
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
@@ -51,31 +54,14 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    // Initialize nros session
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
-    // Create node
     nros::Node node;
-    ret = nros::create_node(node, "cpp_listener");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_listener"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    // Create subscription (manual-poll style)
     nros::Subscription<std_msgs::msg::Int32> sub;
-    ret = node.create_subscription(sub, "/chatter");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create subscription: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
 
     // Set up signal handler
     std::signal(SIGINT, signal_handler);

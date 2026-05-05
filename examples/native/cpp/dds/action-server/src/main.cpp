@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <csignal>
 
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -113,28 +116,14 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_action_server");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
     nros::ActionServer<Fibonacci> srv;
-    ret = node.create_action_server(srv, "/fibonacci");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create action server: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_action_server(srv, "/fibonacci"), 1);
 
     // Register the goal callback with a ServerState context (Phase 84.G9) —
     // no globals needed.

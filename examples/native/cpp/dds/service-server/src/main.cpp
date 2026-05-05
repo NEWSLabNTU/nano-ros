@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <csignal>
 
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/srv/AddTwoInts
@@ -51,31 +54,15 @@ int main(int argc, char** argv) {
     std::printf("Locator: %s\n", locator);
     std::printf("Domain ID: %d\n", domain_id);
 
-    // Initialize nros session
-    nros::Result ret = nros::init(locator, domain_id);
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to initialize: %d\n", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(locator, domain_id), 1);
 
-    // Create node
     nros::Node node;
-    ret = nros::create_node(node, "cpp_service_server");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create node: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "cpp_service_server"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    // Create service server (manual-poll style)
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
-    ret = node.create_service(srv, "/add_two_ints");
-    if (!ret.ok()) {
-        std::fprintf(stderr, "Failed to create service: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
+    nros::Result ret;
 
     // Set up signal handler
     std::signal(SIGINT, signal_handler);
