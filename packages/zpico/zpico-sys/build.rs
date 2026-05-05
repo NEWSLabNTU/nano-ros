@@ -1754,7 +1754,19 @@ fn build_zenoh_pico_orin_spe(
     build.include(&portmacro_inc);
     build.include(&freertos_config_inc);
 
-    // Platform defines
+    // Platform defines.
+    //
+    // `ZENOH_GENERIC` makes `config.h` include the build.rs-generated
+    // `zenoh_generic_config.h` (which sets `Z_FEATURE_LINK_*` from
+    // Cargo features). Without it, config.h falls into a hard-coded
+    // `#else` branch that sets `Z_FEATURE_LINK_TCP=1` /
+    // `Z_FEATURE_LINK_UDP_MULTICAST=1`, dragging in tcp.c / udp.c
+    // and breaking the link with undefined `_z_send_tcp` etc.
+    //
+    // `ZENOH_ORIN_SPE` is independently checked by
+    // `system/common/platform.h` to pick `freertos/orin_spe.h` (the
+    // FreeRTOS-thread-types-without-lwIP variant). Both must be set.
+    build.define("ZENOH_GENERIC", None);
     build.define("ZENOH_ORIN_SPE", None);
     build.define("ZENOH_DEBUG", "0");
     // FSP's FreeRTOS V10.4.3 has real threads.
