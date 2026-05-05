@@ -520,23 +520,21 @@ fn main() {
             &shim_config,
         );
     } else if use_orin_spe {
-        // Phase 100.6 — AGX Orin SPE (Cortex-R5F + NVIDIA FSP). Reuse the
-        // bare-metal embedded build path: zenoh-pico links against the
-        // generic platform header (`c/platform/bare-metal/platform.h`),
-        // and every system primitive (clock / mutex / task / random /
-        // alloc) is satisfied at link time by `zpico-platform-shim`'s
-        // forwarders dispatching to `<OrinSpe as PlatformX>::*`. The
-        // board crate (`nros-board-orin-spe`) links the resulting
-        // archive against NVIDIA's `tegra_aon_fsp.a`. No lwIP, no
-        // FreeRTOS-source compile here — the FSP ships its own
-        // pre-built FreeRTOS V10.4.3.
+        // Phase 11.3.B — AGX Orin SPE (Cortex-R5F + NVIDIA FSP).
+        // Routes through zenoh-pico's FreeRTOS native system layer
+        // (`src/system/freertos/system.c`) so `zpico_spin_once` falls
+        // into the `Z_FEATURE_MULTI_THREAD=1` condvar-wait branch
+        // instead of the single-threaded `select(2)` branch that
+        // crashes the link with an undefined-symbol error. NO lwIP
+        // (the SPE has no Ethernet) — the new ZENOH_ORIN_SPE platform
+        // header (`include/zenoh-pico/system/platform/freertos/orin_spe.h`)
+        // provides FreeRTOS thread/sync types with empty socket unions.
         generate_config_header(&out_dir, &link_features, &buf_config);
-        build_zenoh_pico_embedded(
+        build_zenoh_pico_orin_spe(
             &zenoh_pico_src,
             &c_dir,
             &include_dir,
             &out_dir,
-            &target,
             &link_features,
             &shim_config,
         );
@@ -1624,6 +1622,156 @@ fn build_zenoh_pico_embedded(
         // TLS platform symbols and entropy source (bare-metal)
         // Previously in zpico-smoltcp/c/. Will be relocated when TLS is implemented.
     }
+
+    // Embedded-optimized compiler flags
+    build
+        .opt_level(2)
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    build.compile("zenohpico");
+}
+
+/// Phase 11.3.B — build zenoh-pico for AGX Orin SPE.
+///
+/// Routes through zenoh-pico's FreeRTOS native system layer
+/// (`src/system/freertos/system.c`) so multi-thread paths
+/// (`zpico_spin_once`'s condvar wait, read/lease background tasks)
+/// work natively against the FSP V10.4.3 FreeRTOS API. Mirrors
+/// `build_zenoh_pico_freertos` but:
+/// - **No lwIP** — the SPE has no Ethernet. New `ZENOH_ORIN_SPE`
+///   platform header (`include/zenoh-pico/system/platform/freertos/orin_spe.h`)
+///   provides the FreeRTOS thread/sync types with empty socket unions
+///   (the link.h transport union still mentions them, but
+///   `Z_FEATURE_LINK_TCP/UDP/etc. == 0` makes them dead).
+/// - **IVC link only** — `Z_FEATURE_LINK_IVC=1`; everything else
+///   (TCP/UDP/SERIAL/RAWETH/TLS) forced to 0.
+/// - **No FreeRTOS source compile** — the FSP ships its own pre-built
+///   FreeRTOS V10.4.3 (`tegra_aon_fsp.a`); we just consume its
+///   headers via `NV_SPE_FSP_DIR`.
+///
+/// Required env vars:
+/// - `NV_SPE_FSP_DIR` — staged FSP install (sentinel `bsp-stage`
+///   recipe produces this). Must contain
+///   `include/freertos/{FreeRTOS,task,semphr,event_groups,...}.h`,
+///   `include/freertos/portable/GCC/ARM_R5/portmacro.h`, and
+///   `include/FreeRTOSConfig.h`.
+fn build_zenoh_pico_orin_spe(
+    zenoh_pico_src: &Path,
+    c_dir: &Path,
+    include_dir: &Path,
+    out_dir: &Path,
+    link: &LinkFeatures,
+    shim: &ShimConfig,
+) {
+    let fsp_dir = PathBuf::from(env::var("NV_SPE_FSP_DIR").unwrap_or_else(|_| {
+        panic!(
+            "NV_SPE_FSP_DIR not set. Point it at the staged SPE FSP install\n\
+             (sentinel `just orin_spe-bsp-stage` produces this under\n\
+             external/spe-fsp/install/). Required for zpico-sys to find\n\
+             FreeRTOS.h, portmacro.h, FreeRTOSConfig.h."
+        );
+    }));
+    let freertos_inc = fsp_dir.join("include").join("freertos");
+    let portmacro_inc = freertos_inc.join("portable").join("GCC").join("ARM_R5");
+    let freertos_config_inc = fsp_dir.join("include");
+    if !freertos_inc.join("FreeRTOS.h").exists() {
+        panic!(
+            "NV_SPE_FSP_DIR={}: missing include/freertos/FreeRTOS.h.\n\
+             Re-run `just orin_spe-bsp-stage` after the BSP download.",
+            fsp_dir.display()
+        );
+    }
+    if !portmacro_inc.join("portmacro.h").exists() {
+        panic!(
+            "NV_SPE_FSP_DIR={}: missing include/freertos/portable/GCC/ARM_R5/portmacro.h.\n\
+             The bsp-stage recipe needs to copy the ARM_R5 port directory.",
+            fsp_dir.display()
+        );
+    }
+    if !freertos_config_inc.join("FreeRTOSConfig.h").exists() {
+        panic!(
+            "NV_SPE_FSP_DIR={}: missing include/FreeRTOSConfig.h.\n\
+             The bsp-stage recipe needs to copy the demo's FreeRTOSConfig.h.",
+            fsp_dir.display()
+        );
+    }
+
+    let mut build = cc::Build::new();
+    let platform_dir = c_dir.join("platform");
+
+    // Generate version header in OUT_DIR
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
+
+    // ARMv7-R Cortex-R5 cross-compile flags. MUST match the BSP's
+    // CFLAGS (softfp + vfpv3-d16) so the C objects link against
+    // `tegra_aon_fsp.a` without `Tag_ABI_VFP_args` warnings.
+    build
+        .flag("-mcpu=cortex-r5")
+        .flag("-marm")
+        .flag("-mthumb-interwork")
+        .flag("-mfloat-abi=softfp")
+        .flag("-mfpu=vfpv3-d16");
+
+    // Collect zenoh-pico core sources (excluding platform-specific
+    // system backends — we add freertos/system.c manually below).
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
+    }
+    // Common system sources (cross-platform helpers).
+    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+
+    // FreeRTOS native system layer — provides clock / mutex / condvar /
+    // task / sleep / random / time / alloc against the FSP API.
+    build.file(src_dir.join("system").join("freertos").join("system.c"));
+
+    // Shim (high-level zpico_* API wrapper).
+    build.file(c_dir.join("zpico").join("zpico.c"));
+
+    // Include paths
+    let generated_config_dir = out_dir.join("zenoh-config");
+    build.include(&generated_config_dir);
+    build.include(zenoh_pico_src.join("include"));
+    build.include(&version_include_dir);
+    build.include(&platform_dir);
+    build.include(include_dir);
+    // FSP-supplied FreeRTOS headers — these resolve `FreeRTOS.h`,
+    // `semphr.h`, `event_groups.h`, `task.h`, `portmacro.h`, and
+    // `FreeRTOSConfig.h`.
+    build.include(&freertos_inc);
+    build.include(&portmacro_inc);
+    build.include(&freertos_config_inc);
+
+    // Platform defines
+    build.define("ZENOH_ORIN_SPE", None);
+    build.define("ZENOH_DEBUG", "0");
+    // FSP's FreeRTOS V10.4.3 has real threads.
+    build.define("Z_FEATURE_MULTI_THREAD", "1");
+    build.define("Z_FEATURE_LINK_TCP", "0");
+    build.define("Z_FEATURE_LINK_UDP_UNICAST", "0");
+    build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0");
+    build.define("Z_FEATURE_LINK_SERIAL", "0");
+    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_TLS", "0");
+    build.define("Z_FEATURE_LINK_WS", "0");
+    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
+    build.define("Z_FEATURE_RAWETH_TRANSPORT", "0");
+    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+
+    // Pass slot counts as -D flags so zpico.c gets them
+    shim.apply_to_cc(&mut build);
 
     // Embedded-optimized compiler flags
     build

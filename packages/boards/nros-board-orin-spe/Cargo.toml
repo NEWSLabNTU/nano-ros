@@ -57,12 +57,14 @@ nros-platform-orin-spe = { path = "../../platforms/nros-platform-orin-spe", defa
 # board-side bring-up tests).
 nvidia-ivc = { path = "../../drivers/nvidia-ivc", default-features = false }
 
-# zenoh-pico C transport + the `mod ivc_helpers` shim block. Selecting
-# `zpico-sys/orin-spe` (added in this phase) activates `active` +
-# `link-ivc` on the shim and routes the C build through the embedded
-# path. `zpico-sys/link-ivc` flips `Z_FEATURE_LINK_IVC=1` in the
-# generated config header.
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active", "link-ivc"] }
+# zenoh-pico C transport + the IVC shim block.
+#
+# Phase 11.3.B — `active` feature is OFF. zenoh-pico's
+# `src/system/freertos/system.c` provides clock / mutex / condvar /
+# task / sleep / random / time / alloc against the FSP V10.4.3
+# FreeRTOS API (multi-thread path). Activating `active` would
+# double-define those symbols at link.
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["link-ivc"] }
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["orin-spe", "link-ivc"] }
 
 # Cortex-R5 panic handler is supplied by the user/firmware crate, not

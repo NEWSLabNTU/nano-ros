@@ -28,7 +28,12 @@ threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-plat
 # link-transport forwarders (Phase 100.4). NO `network` because the
 # SPE has no TCP/UDP. The board crate must also enable
 # `zpico-sys/link-ivc` to flip `Z_FEATURE_LINK_IVC=1` in the C build.
-orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/link-ivc"]
+# Phase 11.3.B — orin-spe activates ONLY `link-ivc` on the shim.
+# zenoh-pico's `src/system/freertos/system.c` provides clock / mutex /
+# condvar / task / sleep / random / time / alloc natively via the FSP
+# V10.4.3 FreeRTOS API. Activating `active` would double-define those
+# symbols.
+orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/link-ivc"]
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.
