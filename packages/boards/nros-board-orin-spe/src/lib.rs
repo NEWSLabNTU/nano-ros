@@ -116,21 +116,29 @@ impl core::fmt::Write for __PrintBuf {
 
 #[doc(hidden)]
 pub fn __fsp_println(s: &str) {
-    // FSP exposes plain `printf` from its newlib build. We append a
-    // trailing newline + NUL inside `__PrintBuf::as_str` already — no:
-    // the buffer is non-NUL; we pass it as `%.*s`-style by length to
-    // avoid relying on a NUL terminator.
+    // Route through `tcu_print_msg(buf, len, from_isr)` — FSP's raw TCU
+    // writer — instead of newlib `printf`. printf pulls vfprintf +
+    // _dtoa_r + __jp2uc + 128-bit float intrinsics (fmaf128, __divtf3,
+    // __addtf3, __multf3, lgamma_r, fmodf128, …) through long-double
+    // %f support, costing ~25 KB .text on the Cortex-R5F's 256 KB BTCM
+    // even when no caller ever prints a float. tcu_print_msg is a
+    // straight memcpy-into-FIFO loop; the appended '\n' is the only
+    // formatting we ever do here.
     unsafe extern "C" {
-        fn printf(fmt: *const core::ffi::c_char, ...) -> core::ffi::c_int;
+        fn tcu_print_msg(
+            msg_buf: *const core::ffi::c_char,
+            len: core::ffi::c_int,
+            from_isr: bool,
+        ) -> core::ffi::c_int;
     }
-    // `%.*s\n` lets us pass length + ptr explicitly. Format string is
-    // a static byte string with NUL — safe to take as `*const c_char`.
-    const FMT: &[u8] = b"%.*s\n\0";
+    let bytes = s.as_bytes();
+    if !bytes.is_empty() {
+        unsafe {
+            tcu_print_msg(bytes.as_ptr() as *const core::ffi::c_char, bytes.len() as i32, false);
+        }
+    }
+    const NL: &[u8] = b"\n";
     unsafe {
-        printf(
-            FMT.as_ptr() as *const core::ffi::c_char,
-            s.len() as core::ffi::c_int,
-            s.as_ptr(),
-        );
+        tcu_print_msg(NL.as_ptr() as *const core::ffi::c_char, 1, false);
     }
 }
