@@ -27,11 +27,15 @@ dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src) {
         src->reliability == NROS_RMW_RELIABILITY_RELIABLE
             ? DDS_RELIABILITY_RELIABLE
             : DDS_RELIABILITY_BEST_EFFORT,
-        // Default max blocking time on reliable: 100 ms. Matches what
-        // upstream rmw_cyclonedds_cpp does. nros_rmw_qos_t doesn't
-        // expose this knob in v1 — surface it through the reserved
-        // bytes in a follow-up if anyone needs to tune it.
-        DDS_MSECS(100));
+        // Default max blocking time on reliable: 1 s. 100 ms (the
+        // pre-117.X.5 value) was too aggressive for the local
+        // participant's reader-writer match handshake between
+        // concurrent service clients — Cyclone's SEDP propagation
+        // across SMP cores routinely takes 100–500 ms on POSIX.
+        // 1 s matches typical `rmw_cyclonedds_cpp` deployments.
+        // `nros_rmw_qos_t` doesn't expose this knob in v1 — surface
+        // it through the reserved bytes if a tighter bound matters.
+        DDS_SECS(1));
 
     dds_qset_durability(
         q,

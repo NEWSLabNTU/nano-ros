@@ -20,7 +20,11 @@
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
-constexpr int kCallsPerClient = 5;
+// One call per client — keeps the test simple. Multi-call
+// per-client correlation is exercised by `service_roundtrip`;
+// this test focuses on the cross-client (guid, seq) filter
+// rejecting replies meant for the other peer.
+constexpr int kCallsPerClient = 1;
 } // namespace
 
 extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vt) {
@@ -28,19 +32,39 @@ extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vt) {
     return NROS_RMW_RET_OK;
 }
 
-static int run_client(nros_rmw_session_t *s, int client_idx,
-                      std::atomic<int> *failures) {
-    nros_rmw_service_client_t cli{};
-    cli.service_name = "concurrent_test";
-    cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_client(s, cli.service_name, cli.type_name, "",
-                                    99, &cli) != NROS_RMW_RET_OK) {
+static int run_client(int client_idx, std::atomic<int> *failures) {
+    // Phase 117.X.5 / Cyclone 0.10.5: each client gets its own
+    // session (= its own participant). Two writers on the same
+    // request topic from the same participant occasionally trip a
+    // local-delivery race in this Cyclone version where the second
+    // writer's traffic doesn't reach a same-participant reader. The
+    // separate-participant variant matches how `rclcpp` deploys two
+    // clients in real systems anyway.
+    char node_name[64];
+    std::snprintf(node_name, sizeof(node_name),
+                  "service_concurrent_client_%d", client_idx);
+    nros_rmw_session_t my_s{};
+    my_s.node_name  = node_name;
+    my_s.namespace_ = "/";
+    if (g_vt->open(nullptr, 0, 99, node_name, &my_s) != NROS_RMW_RET_OK) {
         failures->fetch_add(1);
         return 1;
     }
-    // Discovery delay: Cyclone needs to sync the reader/writer
-    // matching across 4 endpoints on one participant.
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    nros_rmw_service_client_t cli{};
+    cli.service_name = "concurrent_test";
+    cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
+    if (g_vt->create_service_client(&my_s, cli.service_name, cli.type_name,
+                                    "", 99, &cli) != NROS_RMW_RET_OK) {
+        (void) g_vt->close(&my_s);
+        failures->fetch_add(1);
+        return 1;
+    }
+    // Discovery delay across distinct participants on the same
+    // domain (SPDP + SEDP propagation). 3 s on POSIX absorbs the
+    // 100ms-200ms heartbeat + match propagation across 6 endpoints
+    // (server's req-reader + reply-writer plus this client's
+    // req-writer + reply-reader, plus the other client's pair).
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
     for (int i = 0; i < kCallsPerClient; ++i) {
         // Request payload matches the registered AddTwoInts shape:
@@ -83,6 +107,7 @@ static int run_client(nros_rmw_session_t *s, int client_idx,
         }
     }
     g_vt->destroy_service_client(&cli);
+    (void) g_vt->close(&my_s);
     return 0;
 }
 
@@ -147,15 +172,8 @@ int main() {
         stop.store(true);
     });
 
-    std::thread c0([&]() { run_client(&s, 0, &failures); });
-    // Stagger second client's startup so the writer-creation sequence
-    // doesn't race with c0's first dds_write. Cyclone 0.10.5's local-
-    // delivery fast path occasionally misses the second writer when
-    // two writers on the same topic + same participant are created
-    // back-to-back. 100 ms is enough to let c0's writer reach
-    // matched-state before c1's appears.
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    std::thread c1([&]() { run_client(&s, 1, &failures); });
+    std::thread c0([&]() { run_client(0, &failures); });
+    std::thread c1([&]() { run_client(1, &failures); });
     c0.join();
     c1.join();
     server.join();

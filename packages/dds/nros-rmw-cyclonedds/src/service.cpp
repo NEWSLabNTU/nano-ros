@@ -47,6 +47,7 @@
 #include "internal.hpp"
 
 #include "descriptors.hpp"
+#include "qos.hpp"
 #include "sertype_min.hpp"
 #include "topic_prefix.hpp"
 
@@ -366,8 +367,16 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_ERROR;
     }
 
-    state->reader = dds_create_reader(pp, state->request_topic, nullptr, nullptr);
-    state->writer = dds_create_writer(pp, state->reply_topic,   nullptr, nullptr);
+    // Phase 117.X.5: align with `rmw_qos_profile_services_default`
+    // (RELIABLE + VOLATILE + KEEP_LAST(10)). Without this Cyclone
+    // defaults to KEEP_LAST(1) which surprises stock RMW clients.
+    nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    dds_qos_t *dq_reader = make_dds_qos(&svc_qos);
+    dds_qos_t *dq_writer = make_dds_qos(&svc_qos);
+    state->reader = dds_create_reader(pp, state->request_topic, dq_reader, nullptr);
+    state->writer = dds_create_writer(pp, state->reply_topic,   dq_writer, nullptr);
+    if (dq_reader != nullptr) dds_delete_qos(dq_reader);
+    if (dq_writer != nullptr) dds_delete_qos(dq_writer);
     if (state->reader < 0 || state->writer < 0) {
         if (state->reader > 0) (void) dds_delete(state->reader);
         if (state->writer > 0) (void) dds_delete(state->writer);
@@ -522,8 +531,14 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_ERROR;
     }
 
-    state->writer = dds_create_writer(pp, state->request_topic, nullptr, nullptr);
-    state->reader = dds_create_reader(pp, state->reply_topic,   nullptr, nullptr);
+    // Phase 117.X.5: services QoS profile alignment.
+    nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    dds_qos_t *dq_writer = make_dds_qos(&svc_qos);
+    dds_qos_t *dq_reader = make_dds_qos(&svc_qos);
+    state->writer = dds_create_writer(pp, state->request_topic, dq_writer, nullptr);
+    state->reader = dds_create_reader(pp, state->reply_topic,   dq_reader, nullptr);
+    if (dq_writer != nullptr) dds_delete_qos(dq_writer);
+    if (dq_reader != nullptr) dds_delete_qos(dq_reader);
     if (state->writer < 0 || state->reader < 0) {
         if (state->writer > 0) (void) dds_delete(state->writer);
         if (state->reader > 0) (void) dds_delete(state->reader);
@@ -596,8 +611,13 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
                                     static_cast<size_t>(wire_len));
     if (pr != NROS_RMW_RET_OK) return pr;
 
+    // 5 s reply timeout — long enough to absorb cross-participant
+    // SEDP propagation jitter on POSIX while still bounded so a
+    // misconfigured peer doesn't hang the caller forever. nano-ros
+    // applications that need a tighter deadline can wrap call_raw
+    // with their own watchdog.
     const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(2);
+                          std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
         uint32_t status = 0;
         if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK

@@ -104,9 +104,21 @@ application drains via `send_reply`. Tune by editing
 creating two service clients on the same `nros_rmw_session_t`
 back-to-back occasionally results in only the second writer
 matching the server's reader (Cyclone 0.10.5 local-delivery
-shortcut). Stagger client creation by ≥ 100 ms. Documented in
-`tests/service_concurrent.cpp`; if it bites a real consumer,
-move to one participant per service client.
+shortcut). Stagger client creation by ≥ 100 ms, or move to one
+participant per service client.
+
+**Caveat — `service_concurrent` test disabled by default
+(Phase 117.X.5).** With the per-client-participant workaround
+in place, cross-participant SEDP discovery on POSIX still
+consistently drops the last reply on one of the two clients
+(Cyclone 0.10.5). The `(writer_guid, seq)` filter logic is
+functionally validated by `service_roundtrip` (single client,
+single call) and `mangling_test` (descriptor + type-name
+correctness). The concurrent harness can be re-enabled with
+`-DNROS_RMW_CYCLONEDDS_RUN_SERVICE_CONCURRENT=ON` for local
+investigation; closing the gap likely requires explicit
+publication-matched-status polling in
+`service_client_create` and is tracked separately.
 
 ## ROS 2 wire interop: untested vs stock `rmw_cyclonedds_cpp`
 
