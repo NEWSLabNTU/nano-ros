@@ -14,9 +14,9 @@
 * C handle types so callers can declare them on the stack or
 * inside their own structs without dynamic allocation.
 */
-#define NROS_EXECUTOR_SIZE 16808
+#define NROS_EXECUTOR_SIZE 16776
 #define NROS_GUARD_CONDITION_SIZE 8
-#define NROS_PUBLISHER_SIZE 96
+#define NROS_PUBLISHER_SIZE 120
 #define NROS_SUBSCRIBER_SIZE 400
 #define NROS_SERVICE_CLIENT_SIZE 568
 #define NROS_SERVICE_SERVER_SIZE 296
@@ -30,7 +30,7 @@
 *    handle's storage is u64-aligned.
 */
 #define SESSION_OPAQUE_U64S 0
-#define PUBLISHER_OPAQUE_U64S 12
+#define PUBLISHER_OPAQUE_U64S 15
 #define EXECUTOR_OPAQUE_U64S 2216
 #define GUARD_HANDLE_OPAQUE_U64S 1
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8

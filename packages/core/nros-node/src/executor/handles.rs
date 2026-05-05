@@ -246,6 +246,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 /// up to 3 (LivelinessChanged + RequestedDeadlineMissed + MessageLost);
 /// publishers up to 2 (LivelinessLost + OfferedDeadlineMissed). One vec
 /// type fits both — extra slots are unused on publishers.
+#[cfg(feature = "alloc")]
 pub(crate) const MAX_EVENTS_PER_ENTITY: usize = 3;
 
 /// One row of the per-entity event-callback registry. Stores enough to
