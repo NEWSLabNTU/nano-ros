@@ -11,13 +11,14 @@
 # bisection showed the edition-2024 / no-build.rs / no-zephyr-build
 # combination produces silent boot on `qemu_cortex_a9` (ARMv7-A);
 # native_sim happens to mask it.
-name = "rustapp"
+name = "nros_zephyr_dds_listener"
 version = "0.1.0"
 edition = "2021"
 description = "nros DDS listener for Zephyr RTOS"
 license = "Apache-2.0"
 
 [lib]
+name = "rustapp"
 crate-type = ["staticlib"]
 
 [dependencies]

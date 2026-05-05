@@ -4,14 +4,18 @@
 # A ROS 2 compatible publisher running on Zephyr RTOS using XRCE-DDS backend.
 
 [package]
-# Name must be "rustapp" for zephyr-lang-rust integration
-name = "rustapp"
+# Phase 112.F: package name is descriptive; the staticlib still outputs
+# `librustapp.a` via [lib] name to satisfy zephyr-lang-rust's hard-coded
+# linker expectation. Workaround until upstream zephyr-lang-rust accepts
+# a parameterized library name.
+name = "nros_zephyr_xrce_talker"
 version = "0.1.0"
 edition = "2021"
 description = "nros XRCE talker for Zephyr RTOS"
 license = "Apache-2.0"
 
 [lib]
+name = "rustapp"
 crate-type = ["staticlib"]
 
 [dependencies]

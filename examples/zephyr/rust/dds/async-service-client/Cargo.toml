@@ -7,14 +7,16 @@
 # main task .awaits Promises directly.
 
 [package]
-# Name must be "rustapp" for zephyr-lang-rust integration
-name = "rustapp"
+# Phase 112.F: descriptive package name; staticlib still outputs
+# `librustapp.a` via [lib] name to satisfy zephyr-lang-rust.
+name = "nros_zephyr_dds_async_service_client"
 version = "0.1.0"
 edition = "2021"
 description = "nros DDS async service client for Zephyr RTOS (Embassy background spin)"
 license = "Apache-2.0"
 
 [lib]
+name = "rustapp"
 crate-type = ["staticlib"]
 
 [dependencies]
