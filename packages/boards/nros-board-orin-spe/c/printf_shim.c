@@ -55,3 +55,22 @@ int printf(const char *fmt, ...)
     }
     return ret;
 }
+
+/*
+ * `vprintf` override. `platform/err-hook-printf.c::err_printf` calls
+ * `vprintf(msg, ap)` to forward an already-collected `va_list` to
+ * stdout. Newlib's `vprintf` pulls `_vfprintf_r` → `vfprintf` →
+ * `_dtoa_r` + `fmaf128` + `__divtf3` (~25 KB BTCM). Forward to
+ * `vsniprintf` against a stack buffer + `tcu_print_msg` exactly as the
+ * `printf` shim does — same int-only formatting subset, same TCU sink.
+ */
+int vprintf(const char *fmt, va_list ap)
+{
+    char buf[256];
+    int ret = vsniprintf(buf, sizeof(buf), fmt, ap);
+    if (ret > 0) {
+        int len = ret < (int)sizeof(buf) ? ret : (int)sizeof(buf) - 1;
+        tcu_print_msg(buf, len, 0);
+    }
+    return ret;
+}
