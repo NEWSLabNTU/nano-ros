@@ -2,7 +2,7 @@
 
 **Goal:** Close the day-to-day API ergonomics gap between `nros-c`/`nros-cpp` and `rclc`/`rclcpp` so a hello-world is the same line count, the same shape, and free of platform leaks.
 
-**Status:** In Progress (A + B + C + D shipped, E/F pending)
+**Status:** In Progress (A + B + C + D + F.1 + F.2 shipped, E deferred, F.3 tracking upstream)
 **Priority:** High
 **Depends on:** Phase 21 (C API), Phase 79 (unified platform abstraction), Phase 83 (thin-wrapper compliance)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-2, UX-3, UX-4, UX-8, UX-21, UX-26
@@ -132,12 +132,12 @@ Zephyr Rust examples must be named `rustapp` because `zephyr-lang-rust`'s `rust_
 - [x] **112.D.1** `nano_ros_generate_config_header(<config_file> <out_path>)` cmake function in `NanoRosReadConfig.cmake`. Template at `cmake/templates/nros_app_config.h.in`. Installed to `share/nano_ros/templates/`. Found via `CMAKE_CURRENT_FUNCTION_LIST_DIR` across in-tree, source-tree, and install layouts. FreeRTOS C zenoh talker migrated to use `NROS_APP_CONFIG.zenoh.locator` / `.domain_id`.
 - [ ] **112.D.2** Zephyr variant — read Kconfig values into the same struct
 - [ ] **112.D.3** Drop `target_compile_definitions(... APP_*)` blocks. **Deferred** — `startup.c` per-example-compiled, lwIP/netif still wants `APP_IP`/`APP_MAC` macros. Phase 116 (`nano-ros.toml`) cleans this up.
-- [ ] **112.E.1** Move `cmake/<plat>-support.cmake` into the `find_package` install layout
-- [ ] **112.E.2** Examples switch to `find_package(NanoRos<Plat> REQUIRED)`
-- [ ] **112.E.3** Acceptance test: `tests/integration/copy-out-example.sh` copies an example to `/tmp` and builds
-- [ ] **112.F.1** Add `nros_rust_application(<crate-name>)` cmake macro
-- [ ] **112.F.2** Migrate Zephyr Rust examples off the `rustapp` name
-- [ ] **112.F.3** Track upstream `zephyr-lang-rust` PR
+- [ ] **112.E.1** Move `cmake/<plat>-support.cmake` into the `find_package` install layout. **Deferred** — multi-day refactor; depends on installing platform assets (board config dirs, lan9118 lwIP driver, startup.c) under `<prefix>/share/nano_ros/...` and adding dual-mode path resolution (in-tree vs installed) to layer-3 cmake. Asset paths currently encoded as `_NROS_ROOT/packages/...` references which only work in-tree.
+- [ ] **112.E.2** Examples switch to `find_package(NanoRos<Plat> REQUIRED)`. **Deferred** — gated on E.1.
+- [ ] **112.E.3** Acceptance test: `tests/integration/copy-out-example.sh` copies an example to `/tmp` and builds. **Deferred** — gated on E.1.
+- [x] **112.F.1** Sidestep: the `[lib] name = "rustapp"` Cargo.toml split lets `[package] name` carry a descriptive identifier while the staticlib output stays at `librustapp.a`. No CMake wrapper macro required — cargo's existing knob handles the rename without touching upstream zephyr-lang-rust.
+- [x] **112.F.2** Migrated 20 Zephyr Rust examples (xrce + dds + zenoh × {talker, listener, service-{server,client}, action-{server,client}} + dds/zenoh async-service-client) via `tmp/migrate-rustapp.py`. Each `[package] name` is now `nros_zephyr_<rmw>_<usecase>`; `[lib] name = "rustapp"` retained for zephyr-lang-rust. Cargo.lock files patched in lockstep.
+- [ ] **112.F.3** Track upstream `zephyr-lang-rust` PR for parameterized library name. Until upstream fix lands, the `[lib] name = "rustapp"` workaround stands.
 
 **Files:**
 - `packages/codegen/packages/nros-codegen-c/src/templates/` (typed publish + umbrella macro)
