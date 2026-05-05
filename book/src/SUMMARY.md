@@ -5,6 +5,7 @@
 # Getting Started
 
 - [Installation](./getting-started/installation.md)
+- [Your First Project](./getting-started/your-first-project.md)
 - [Native (Linux / macOS)](./getting-started/native.md)
 - [Zephyr](./getting-started/zephyr.md)
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
@@ -24,6 +25,7 @@
 
 # Reference
 
+- [`nros` CLI](./reference/cli.md)
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [C++ API](./reference/cpp-api.md)
