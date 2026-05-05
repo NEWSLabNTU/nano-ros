@@ -10,15 +10,19 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_xrce_listener, LOG_LEVEL_INF);
+
+#define NROS_CHECK_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/subscription.h>
-#include <nros/executor.h>
 
 /* Generated message bindings */
 #include "std_msgs.h"
-
-LOG_MODULE_REGISTER(nros_xrce_listener, LOG_LEVEL_INF);
 
 /* ============================================================================
  * Subscription Callback
@@ -52,48 +56,27 @@ int main(void)
 
     /* Initialize support context (handles network wait + transport setup) */
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init_named(
+    NROS_CHECK_RET(nros_support_init_named(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID,
-        "xrce_listener");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Support init failed: %d", ret);
-        return 1;
-    }
+        "xrce_listener"), 1);
 
     /* Create node */
     nros_node_t node = nros_node_get_zero_initialized();
-    ret = nros_node_init(&node, &support, "zephyr_xrce_listener", "/");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Node init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_xrce_listener", "/"), 1);
 
     /* Create subscription using generated type support */
     nros_subscription_t sub = nros_subscription_get_zero_initialized();
-    ret = nros_subscription_init(
+    NROS_CHECK_RET(nros_subscription_init(
         &sub, &node, std_msgs_msg_int32_get_type_support(), "/chatter",
-        on_message, NULL);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Subscription init failed: %d", ret);
-        return 1;
-    }
+        on_message, NULL), 1);
 
     /* Create executor and add subscription */
     nros_executor_t executor = nros_executor_get_zero_initialized();
-    ret = nros_executor_init(&executor, &support, 1);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Executor init failed: %d", ret);
-        return 1;
-    }
-
-    ret = nros_executor_add_subscription(
-        &executor, &sub, NROS_EXECUTOR_ON_NEW_DATA);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Failed to add subscription to executor: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&executor, &support, 1), 1);
+    NROS_CHECK_RET(nros_executor_add_subscription(
+        &executor, &sub, NROS_EXECUTOR_ON_NEW_DATA), 1);
 
     LOG_INF("Waiting for messages...");
 

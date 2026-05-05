@@ -46,21 +46,10 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     ctx->count++;
     ctx->message.data = ctx->count;
 
-    uint8_t buffer[64];
-    size_t serialized_size = 0;
-    int32_t ret = std_msgs_msg_int32_serialize(
-        &ctx->message, buffer, sizeof(buffer), &serialized_size);
-
-    if (ret == 0 && serialized_size > 0) {
-        nros_ret_t pub_ret = nros_publish_raw(ctx->publisher, buffer, serialized_size);
-        if (pub_ret == NROS_RET_OK) {
-            printf("Published: %d\n", ctx->message.data);
-        } else {
-            fprintf(stderr, "Publish failed: %d\n", pub_ret);
-        }
-        fflush(stdout);
-        fflush(stderr);
-    }
+    NROS_SOFTCHECK(std_msgs_msg_int32_publish(ctx->publisher, &ctx->message));
+    printf("Published: %d\n", ctx->message.data);
+    fflush(stdout);
+    fflush(stderr);
 
     (void)0; // runs forever via timer
 }
