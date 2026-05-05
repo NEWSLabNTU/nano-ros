@@ -7,7 +7,7 @@
 
 Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C header, both ship API-only, and Phase 108.A's deadline/liveliness events depend on Phase 108.B's QoS fields to be meaningful.
 
-**Status:** v1 surface complete (108.A + 108.B). dust-DDS fully wired (QoS + assert_liveliness + sub/pub events). Lightweight follow-ups landed for XRCE-DDS / zenoh-pico / uORB (CORE QoS + AVOID_ROS_NAMESPACE_CONVENTIONS for XRCE). Heavy follow-ups (XRCE listener events, zenoh shim emulation, uORB MessageLost via px4-uorb extension, E2E test matrix) deferred — see § 108.C below.
+**Status:** Complete. v1 surface (108.A + 108.B) shipped end-to-end including the C / C++ user-facing wrappers (108.B.7) and book / Doxygen updates (108.B.8). All four backends wired in 108.C: dust-DDS native; XRCE-DDS clock-emulated DEADLINE + agent-side full-DDS QoS via FastDDS XML profiles; zenoh-pico shim-emulated DEADLINE / LIFESPAN / LIVELINESS_AUTOMATIC + MessageLost via attachment seq gap; uORB MessageLost via publish-counter delta. Cross-backend test matrix lands per backend (108.C.x.1). All v1 acceptance criteria satisfied.
 
 **Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend sub-phases below.
 
@@ -430,15 +430,15 @@ Bonus side-effect: `ZenohPublisher::current_timestamp` switched from a per-publi
 
 ### v1 (108.A + 108.B API surface)
 
-- [ ] `cargo build -p nros-rmw -p nros-rmw-cffi -p nros-node -p nros -p nros-c -p nros-cpp` clean.
-- [ ] cbindgen regenerates `nros_generated.h` w/ new event callback typedefs + extended QoS struct.
-- [ ] Doxygen `<nros/rmw_event.h>` + extended `<nros/rmw_entity.h>` site renders clean.
-- [ ] `mdbook build` clean.
-- [ ] `cargo test -p nros-rmw-cffi --lib tests::typed_struct_roundtrip` passes after QoS struct grows to 24 bytes.
-- [ ] All standard QoS profile constants match upstream `rmw_qos_profile_*` field-by-field.
-- [ ] Calling `subscription.on_liveliness_changed(...)` on every backend returns `Err(Unsupported)` (no backend wiring lands here).
-- [ ] Calling `node.create_publisher_with_qos(topic, nros::qos::SENSOR_DATA)` returns `Err(IncompatibleQos)` because no backend has wired up DEADLINE / LIFESPAN / LIVELINESS_* yet.
-- [ ] `nros::qos::DEFAULT` (CORE-only) paths unaffected.
+- [x] `cargo build -p nros-rmw -p nros-rmw-cffi -p nros-node -p nros -p nros-c -p nros-cpp --features rmw-zenoh,platform-posix,ros-humble` clean.
+- [x] cbindgen regenerates `nros_generated.h` (C) + `nros_cpp_ffi.h` (C++) with new event callback typedefs + extended QoS struct + `nros_publisher_assert_liveliness` / `nros_cpp_publisher_assert_liveliness` entries.
+- [x] `doxygen Doxyfile` in both `packages/core/nros-c` and `packages/core/nros-cpp` renders clean (no warnings).
+- [x] `mdbook build book` clean (mermaid pre-processor warning is unrelated env config).
+- [x] `cargo test -p nros-rmw-cffi --lib tests::typed_struct_roundtrip` passes; `NrosRmwQos` struct is 24 bytes.
+- [x] Standard QoS profile constants (`QOS_PROFILE_DEFAULT` / `_SENSOR_DATA` / `_SERVICES` / `_PARAMETERS` / `_SYSTEM_DEFAULT`) match upstream `rmw_qos_profile_*` field-by-field. C/C++ profile constants (`NROS_QOS_DEFAULT` / `_SENSOR_DATA` / `_SERVICES`, `nros::QoS::default_profile() / sensor_data() / services()`) align.
+- [x] Calling `subscription.on_liveliness_changed(...)` returns `Err(Unsupported)` on backends without native support (XRCE-DDS, uORB) and `Ok(())` on backends with wiring (dust-DDS, zenoh-pico). ✱ NOTE: original criterion assumed v1 ships surface only — superseded by 108.C wiring.
+- [x] Calling `node.create_publisher_with_qos(topic, nros::qos::SENSOR_DATA)` succeeds on every backend — `SENSOR_DATA` profile only requires CORE + LIVELINESS_AUTOMATIC, both advertised by every backend. ✱ NOTE: original criterion assumed no backend would honour the policies; superseded by 108.C wiring. The post-108.C correct criterion is "extended QoS profiles (with `deadline_ms` / `lifespan_ms` / non-Auto liveliness) succeed when the backend's `supported_qos_policies()` covers them, fail with `IncompatibleQos` otherwise" — verified by 108.C.x.1 cross-backend matrix.
+- [x] `nros::qos::DEFAULT` (CORE) paths work on every backend — verified end-to-end by the existing nros-tests suite.
 
 ---
 
