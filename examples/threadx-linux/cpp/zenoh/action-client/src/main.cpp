@@ -8,6 +8,7 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -62,16 +63,19 @@ static void result_cb(const uint8_t goal_id[16], int status,
     g_result_received = true;
 }
 
-extern "C" void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C++ Action Client (ThreadX Linux) [async]\n");
-    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_TRY_RET(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
 
     nros::Node node;
-    NROS_CHECK(nros::create_node(node, "cpp_action_client"));
+    NROS_TRY_RET(nros::create_node(node, "cpp_action_client"), 1);
     printf("Node created\n");
 
     nros::ActionClient<Fibonacci> client;
-    NROS_CHECK(node.create_action_client(client, "/fibonacci"));
+    NROS_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
     g_client_ptr = &client;
     nros::Result ret;
 
@@ -111,3 +115,5 @@ extern "C" void app_main(void) {
 
     nros::shutdown();
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

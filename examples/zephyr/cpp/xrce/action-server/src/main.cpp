@@ -15,6 +15,7 @@ LOG_MODULE_REGISTER(nros_cpp_xrce_action_server, LOG_LEVEL_INF);
 #define NROS_TRY_LOG(file, line, expr, ret) \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ action bindings
@@ -62,8 +63,10 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     return nros::GoalResponse::AcceptAndExecute;
 }
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr C++ Action Server");
     LOG_INF("===============================");
 
@@ -89,3 +92,5 @@ int main(void)
     nros::shutdown();
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

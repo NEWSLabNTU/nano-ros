@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(nros_xrce_action_server, LOG_LEVEL_INF);
 #define NROS_CHECK_LOG(file, line, expr, ret) \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -131,8 +132,10 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     }
 }
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr Action Server (XRCE)");
 
     /* Initialize support context (handles network wait + transport setup) */
@@ -173,3 +176,5 @@ int main(void)
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

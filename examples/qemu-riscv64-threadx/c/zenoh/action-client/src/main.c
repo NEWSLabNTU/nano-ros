@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -69,7 +70,10 @@ static void result_callback(const nros_goal_uuid_t *goal_uuid,
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Action Client (ThreadX RISC-V QEMU)\n");
 
     memset(&app, 0, sizeof(app));
@@ -82,16 +86,16 @@ void app_main(void) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_action_client", "/"));
-    NROS_CHECK(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
-                                       &fibonacci_type));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
+    NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
+                                       &fibonacci_type), 1);
     NROS_SOFTCHECK(nros_action_client_set_feedback_callback(&app.action_client,
                                                             feedback_callback, NULL));
     NROS_SOFTCHECK(nros_action_client_set_result_callback(&app.action_client,
                                                           result_callback, NULL));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_action_client(&app.executor, &app.action_client));
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
     nros_ret_t ret = NROS_RET_OK;
 
     printf("Action client ready for /fibonacci\n");
@@ -168,3 +172,5 @@ cleanup:
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

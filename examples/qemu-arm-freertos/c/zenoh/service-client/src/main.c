@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
@@ -28,7 +29,10 @@ static struct {
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Service Client (FreeRTOS)\n");
 
     memset(&app, 0, sizeof(app));
@@ -38,11 +42,11 @@ void app_main(void) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_service_client", "/"));
-    NROS_CHECK(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_client(&app.executor, &app.client));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
+    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
 
     printf("Service client ready for /add_two_ints\n");
 
@@ -99,3 +103,5 @@ void app_main(void) {
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

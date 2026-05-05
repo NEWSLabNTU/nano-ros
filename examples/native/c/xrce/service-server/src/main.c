@@ -6,6 +6,7 @@
 #include <string.h>
 #include <signal.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -69,7 +70,7 @@ static bool service_callback(const uint8_t* request_data, size_t request_len,
     return true;
 }
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -129,3 +130,5 @@ int main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

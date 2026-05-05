@@ -7,6 +7,7 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/clock.h>
 #include <nros/executor.h>
@@ -75,7 +76,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -184,3 +185,5 @@ int main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

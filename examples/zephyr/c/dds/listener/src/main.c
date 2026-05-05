@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(nros_listener, LOG_LEVEL_INF);
 #define NROS_CHECK_LOG(file, line, expr, ret) \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -50,8 +51,10 @@ static void on_message(const uint8_t *data, size_t len, void *context)
  * Application
  * ============================================================================ */
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr C Listener");
     LOG_INF("=======================");
 
@@ -88,3 +91,5 @@ int main(void)
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

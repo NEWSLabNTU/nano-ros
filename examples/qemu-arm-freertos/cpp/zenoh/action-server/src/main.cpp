@@ -6,6 +6,7 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -55,16 +56,19 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     return nros::GoalResponse::AcceptAndExecute;
 }
 
-extern "C" void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C++ Action Server (FreeRTOS)\n");
-    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_TRY_RET(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
 
     nros::Node node;
-    NROS_CHECK(nros::create_node(node, "cpp_action_server"));
+    NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);
     printf("Node created\n");
 
     nros::ActionServer<Fibonacci> srv;
-    NROS_CHECK(node.create_action_server(srv, "/fibonacci"));
+    NROS_TRY_RET(node.create_action_server(srv, "/fibonacci"), 1);
 
     g_srv = &srv;
     srv.set_goal_callback(on_goal);
@@ -79,3 +83,5 @@ extern "C" void app_main(void) {
     printf("Server shutting down.\n");
     nros::shutdown();
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

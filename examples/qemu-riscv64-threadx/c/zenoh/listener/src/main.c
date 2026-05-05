@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -49,19 +50,22 @@ static void subscription_callback(const uint8_t *data, size_t len, void *context
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Listener (ThreadX RISC-V QEMU)\n");
 
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_listener", "/"));
-    NROS_CHECK(nros_subscription_init(&app.subscription, &app.node,
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_listener", "/"), 1);
+    NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node,
                                       std_msgs_msg_int32_get_type_support(),
-                                      "/chatter", subscription_callback, &app.ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_subscription(&app.executor, &app.subscription,
-                                              NROS_EXECUTOR_ON_NEW_DATA));
+                                      "/chatter", subscription_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_subscription(&app.executor, &app.subscription,
+                                              NROS_EXECUTOR_ON_NEW_DATA), 1);
 
     printf("\nWaiting for messages...\n\n");
 
@@ -69,3 +73,5 @@ void app_main(void) {
         nros_executor_spin_some(&app.executor, 10000000ULL);
     }
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

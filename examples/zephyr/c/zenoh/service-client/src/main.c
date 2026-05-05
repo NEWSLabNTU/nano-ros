@@ -11,6 +11,7 @@ LOG_MODULE_REGISTER(nros_service_client, LOG_LEVEL_INF);
 #define NROS_CHECK_LOG(file, line, expr, ret) \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
@@ -20,8 +21,10 @@ LOG_MODULE_REGISTER(nros_service_client, LOG_LEVEL_INF);
 
 #include "example_interfaces.h"
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr Service Client (Zenoh)");
 
     if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
@@ -92,3 +95,5 @@ int main(void)
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

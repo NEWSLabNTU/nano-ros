@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -128,7 +129,10 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     fflush(stdout);
 }
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Action Server (Fibonacci)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -166,13 +170,13 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_action_server", "/"));
-    NROS_CHECK(nros_action_server_init(&app.action_server, &app.node, "/fibonacci", &fibonacci_type,
-                                       goal_callback, cancel_callback, accepted_callback, &app.ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 8));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_action_server", "/"), 1);
+    NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci", &fibonacci_type,
+                                       goal_callback, cancel_callback, accepted_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
     // Register action server with executor (creates transport handles in arena)
-    NROS_CHECK(nros_executor_add_action_server(&app.executor, &app.action_server));
+    NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
 
     printf("Waiting for goals...\n\n");
     // NuttX libc full-buffers stdout under the test harness's pipe, so
@@ -187,3 +191,5 @@ void app_main(void) {
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

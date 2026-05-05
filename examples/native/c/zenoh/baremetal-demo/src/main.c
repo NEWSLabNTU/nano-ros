@@ -23,6 +23,7 @@
 // platform-bare-metal feature instead.
 
 // nros modular includes
+#include <nros/app_main.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
@@ -217,7 +218,7 @@ static void demo_guard_condition(void) {
 // Main
 // ============================================================================
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -354,3 +355,5 @@ cleanup_support:
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

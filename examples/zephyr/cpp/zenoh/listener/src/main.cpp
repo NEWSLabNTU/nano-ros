@@ -20,6 +20,7 @@ extern "C" {
 #include <zpico_zephyr.h>
 }
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ message bindings
@@ -29,8 +30,10 @@ extern "C" {
  * Application
  * ============================================================================ */
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr C++ Listener");
     LOG_INF("=========================");
 
@@ -72,3 +75,5 @@ int main(void)
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

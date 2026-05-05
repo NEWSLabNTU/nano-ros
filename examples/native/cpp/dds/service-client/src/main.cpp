@@ -7,6 +7,7 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/srv/AddTwoInts
@@ -16,7 +17,7 @@
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -100,3 +101,5 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return (success_count == num_cases) ? 0 : 1;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

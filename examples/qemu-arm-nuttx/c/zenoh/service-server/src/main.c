@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -73,7 +74,10 @@ static bool service_callback(const uint8_t* request_data,
     return true;
 }
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Service Server (AddTwoInts)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -108,12 +112,12 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_service_server", "/"));
-    NROS_CHECK(nros_service_init(
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_service_server", "/"), 1);
+    NROS_CHECK_RET(nros_service_init(
         &app.service, &app.node, &add_two_ints_type,
-        "/add_two_ints", service_callback, &app.ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+        "/add_two_ints", service_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_SOFTCHECK(nros_executor_add_service(&app.executor, &app.service));
 
     printf("Waiting for requests...\n\n");
@@ -128,3 +132,5 @@ void app_main(void) {
     nros_support_fini(&app.support);
 
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

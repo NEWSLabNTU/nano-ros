@@ -7,6 +7,7 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -165,7 +166,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -234,3 +235,5 @@ int main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

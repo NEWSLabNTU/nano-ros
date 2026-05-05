@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(nros_cpp_dds_service_server, LOG_LEVEL_INF);
 #define NROS_TRY_LOG(file, line, expr, ret) \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ service bindings
@@ -25,8 +26,10 @@ LOG_MODULE_REGISTER(nros_cpp_dds_service_server, LOG_LEVEL_INF);
  * Application
  * ============================================================================ */
 
-int main(void)
-{
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     LOG_INF("nros Zephyr C++ Service Server");
     LOG_INF("================================");
 
@@ -71,3 +74,5 @@ int main(void)
 
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_ZEPHYR()

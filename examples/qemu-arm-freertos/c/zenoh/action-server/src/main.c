@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -134,7 +135,10 @@ static void accepted_callback(nros_action_server_t *server, const nros_goal_hand
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Action Server (FreeRTOS)\n");
 
     memset(&app, 0, sizeof(app));
@@ -147,13 +151,13 @@ void app_main(void) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_action_server", "/"));
-    NROS_CHECK(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_server", "/"), 1);
+    NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
                                        &fibonacci_type, goal_callback, cancel_callback,
-                                       accepted_callback, &app.ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 8));
-    NROS_CHECK(nros_executor_add_action_server(&app.executor, &app.action_server));
+                                       accepted_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
+    NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
 
     printf("Action server ready on /fibonacci\n");
     printf("Waiting for goals...\n");
@@ -169,3 +173,5 @@ void app_main(void) {
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/executor.h>
@@ -29,7 +30,10 @@ static struct {
     nros_executor_t executor;
 } app;
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Action Client (Fibonacci)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -67,18 +71,18 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_action_client", "/"));
-    NROS_CHECK(nros_action_client_init(
-        &app.action_client, &app.node, "/fibonacci", &fibonacci_type));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_action_client(&app.executor, &app.action_client));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_action_client", "/"), 1);
+    NROS_CHECK_RET(nros_action_client_init(
+        &app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
 
     // Race 3 fix (Phase 89.13): probe the action server's send_goal
     // queryable liveliness token before the first send_goal so we
     // don't race the queryable's declare-ack from the router on cold
     // boot. See the service-client example for the full rationale.
-    NROS_CHECK(nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000));
+    NROS_CHECK_RET(nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000), 1);
     printf("Action server discovered — sending goal\n");
     nros_ret_t ret = NROS_RET_OK;
     fflush(stdout);
@@ -161,3 +165,5 @@ cleanup:
     nros_support_fini(&app.support);
     return (ret == NROS_RET_OK) ? 0 : 1;
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

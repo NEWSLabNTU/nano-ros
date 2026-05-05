@@ -7,6 +7,7 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -18,7 +19,10 @@
 #endif
 
 extern "C" int sleep(unsigned int);
-extern "C" void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C++ Service Client (NuttX)\n");
 
     // Re-seed /dev/urandom (see talker for rationale). Unique seed per example.
@@ -30,14 +34,14 @@ extern "C" void app_main(void) {
 
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
-    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
+    NROS_TRY_RET(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
 
     nros::Node node;
-    NROS_CHECK(nros::create_node(node, "cpp_service_client"));
+    NROS_TRY_RET(nros::create_node(node, "cpp_service_client"), 1);
     printf("Node created\n");
 
     nros::Client<example_interfaces::srv::AddTwoInts> client;
-    NROS_CHECK(node.create_client(client, "/add_two_ints"));
+    NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
     nros::Result ret;
 
     printf("Service client ready\n");
@@ -61,3 +65,5 @@ extern "C" void app_main(void) {
     printf("All service calls completed (%d/%d succeeded)\n", ok_count, 4);
     nros::shutdown();
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -51,7 +52,10 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
     fflush(stderr);
 }
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Listener\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -81,20 +85,20 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_listener", "/"));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_listener", "/"), 1);
 
     app.listener_ctx = (listener_context_t){ .message_count = 0 };
 
-    NROS_CHECK(nros_subscription_init(
+    NROS_CHECK_RET(nros_subscription_init(
         &app.subscription,
         &app.node,
         std_msgs_msg_int32_get_type_support(),
         "/chatter",
         subscription_callback,
         &app.listener_ctx
-    ));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    ), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_SOFTCHECK(nros_executor_add_subscription(&app.executor, &app.subscription,
         NROS_EXECUTOR_ON_NEW_DATA));
 
@@ -110,3 +114,5 @@ void app_main(void) {
     nros_support_fini(&app.support);
 
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

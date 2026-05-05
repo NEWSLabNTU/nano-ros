@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -54,7 +55,10 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)0; // runs forever via timer
 }
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Talker\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -90,10 +94,10 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_talker", "/"));
-    NROS_CHECK(nros_publisher_init(&app.publisher, &app.node,
-        std_msgs_msg_int32_get_type_support(), "/chatter"));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_talker", "/"), 1);
+    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
+        std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
 
     app.talker_ctx = (talker_context_t){
         .publisher = &app.publisher,
@@ -103,9 +107,9 @@ void app_main(void) {
     };
     std_msgs_msg_int32_init(&app.talker_ctx.message);
 
-    NROS_CHECK(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
-        timer_callback, &app.talker_ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
+    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
+        timer_callback, &app.talker_ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_SOFTCHECK(nros_executor_add_timer(&app.executor, &app.timer));
 
     printf("Publishing messages...\n\n");
@@ -121,3 +125,5 @@ void app_main(void) {
     nros_support_fini(&app.support);
 
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

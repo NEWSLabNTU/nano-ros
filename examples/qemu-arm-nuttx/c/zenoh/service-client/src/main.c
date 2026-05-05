@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
@@ -29,7 +30,10 @@ static struct {
     nros_executor_t executor;
 } app;
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
 
     printf("nros NuttX C Service Client (AddTwoInts)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -64,11 +68,11 @@ void app_main(void) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "nuttx_c_service_client", "/"));
-    NROS_CHECK(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_client(&app.executor, &app.client));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_service_client", "/"), 1);
+    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
 
     // Race 3 fix (Phase 89.13): gate the first nros_client_call on
     // liveliness-token discovery instead of inflating the per-call
@@ -153,3 +157,5 @@ void app_main(void) {
     nros_support_fini(&app.support);
     return (success_count == num_cases) ? 0 : 1;
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

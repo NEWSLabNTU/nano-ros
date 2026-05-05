@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
@@ -69,7 +70,10 @@ static bool service_callback(const uint8_t *request_data, size_t request_len,
 // Main
 // ----------------------------------------------------------------------------
 
-void app_main(void) {
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     printf("nros C Service Server (ThreadX RISC-V QEMU)\n");
 
     memset(&app, 0, sizeof(app));
@@ -79,12 +83,12 @@ void app_main(void) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
-    NROS_CHECK(nros_node_init(&app.node, &app.support, "c_service_server", "/"));
-    NROS_CHECK(nros_service_init(&app.service, &app.node, &add_two_ints_type,
-                                 "/add_two_ints", service_callback, &app.ctx));
-    NROS_CHECK(nros_executor_init(&app.executor, &app.support, 4));
-    NROS_CHECK(nros_executor_add_service(&app.executor, &app.service));
+    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_server", "/"), 1);
+    NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type,
+                                 "/add_two_ints", service_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_service(&app.executor, &app.service), 1);
 
     printf("Service server ready on /add_two_ints\n");
     printf("Waiting for requests...\n");
@@ -100,3 +104,5 @@ void app_main(void) {
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 }
+
+NROS_APP_MAIN_REGISTER_VOID()

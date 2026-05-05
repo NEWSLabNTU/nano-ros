@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
@@ -20,7 +21,7 @@ static struct {
     nros_executor_t executor;
 } app;
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -121,3 +122,5 @@ int main(int argc, char** argv) {
     printf("Goodbye!\n");
     return (success_count == num_cases) ? 0 : 1;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()

@@ -7,6 +7,7 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -16,7 +17,7 @@
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -111,3 +112,5 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER_POSIX()
