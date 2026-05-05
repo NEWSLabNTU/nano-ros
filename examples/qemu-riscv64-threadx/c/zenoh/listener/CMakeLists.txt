@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(riscv64_threadx_c_listener LANGUAGES C CXX ASM)
 
+set(NANO_ROS_PLATFORM threadx_riscv64)
 find_package(NanoRos CONFIG REQUIRED)
 include(threadx-riscv64-support)
 

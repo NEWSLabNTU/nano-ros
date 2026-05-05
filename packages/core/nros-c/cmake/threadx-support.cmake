@@ -23,7 +23,15 @@ nros_threadx_validate(REQUIRE NSOS_NETX_DIR THREADX_APP_DEFINE)
 
 nros_threadx_build_kernel(PORT "linux/gnu")
 nros_threadx_build_netstack_nsos(SHIM_DIR "${NSOS_NETX_DIR}")
-nros_threadx_build_glue(SOURCES "${THREADX_APP_DEFINE}")
+# Phase 112.E.fix — app_define.c is NOT built into a STATIC lib here
+# because its `nros_platform_threadx_*` undef refs can't be resolved
+# from `NanoRos::NanoRos` (or `NanoRos::NanoRosCpp`) when the archive
+# member is extracted *after* those libs in the linker command line.
+# Export the source path so each example adds it to `add_executable`
+# directly — undef refs are visible from the outset and the static
+# libs further right on the link line satisfy them on first pass.
+set(THREADX_APP_DEFINE_SOURCE "${THREADX_APP_DEFINE}" CACHE INTERNAL "")
+set(THREADX_GLUE_DEFINES ${NROS_THREADX_DEFINES} CACHE INTERNAL "")
 nros_threadx_compose_platform(LINK_LIBS pthread)
 
 # Startup source ships under share/nano_ros/platform/threadx-linux/.
