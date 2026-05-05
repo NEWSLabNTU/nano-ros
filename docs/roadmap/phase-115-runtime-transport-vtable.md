@@ -21,21 +21,75 @@ This phase brings an equivalent C-side hook to nano-ros. It is intentionally ort
 
 ## Architecture
 
-### A. Trait shape (Rust core)
+### A. Vtable shape (Rust core)
 
-`nros-rmw` (or per-RMW crate) gains a trait:
+`nros-rmw` exposes a fn-pointer vtable that mirrors the C ABI 1:1.
+**No trait, no `dyn`, no `Box`** — `dyn` would force `alloc`, which
+the project deliberately avoids on its no_std backends (same
+constraint that landed in Phase 110 review and the existing XRCE
+`init_transport` callback shape).
 
 ```rust
-pub trait CustomTransport: Send {
-    type Params: ?Sized;
-    fn open(&mut self, params: &Self::Params) -> nros_ret_t;
-    fn close(&mut self);
-    fn write(&mut self, buf: &[u8]) -> nros_ret_t;
-    fn read(&mut self, buf: &mut [u8], timeout_ms: u32) -> Result<usize, nros_ret_t>;
+/// Phase 115 — runtime-pluggable custom transport. Caller fills in
+/// the four fn pointers, hands the struct to `set_custom_transport`,
+/// and the active backend treats it as the read/write surface for
+/// every wire frame.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct NrosTransportOps {
+    /// Opaque caller context, threaded back into every callback.
+    pub user_data: *mut core::ffi::c_void,
+    /// Open the underlying medium (e.g. open the UART, claim the
+    /// USB-CDC endpoint). `params` is opaque per-transport metadata.
+    pub open: unsafe extern "C" fn(user_data: *mut c_void, params: *const c_void) -> nros_ret_t,
+    /// Tear the transport down; complement of `open`.
+    pub close: unsafe extern "C" fn(user_data: *mut c_void),
+    /// Send `len` bytes; returns `NROS_RET_OK` on success.
+    pub write: unsafe extern "C" fn(user_data: *mut c_void, buf: *const u8, len: usize) -> nros_ret_t,
+    /// Receive up to `len` bytes within `timeout_ms`. Returns the
+    /// non-negative byte count on success, a negative `nros_ret_t`
+    /// on error / timeout.
+    pub read: unsafe extern "C" fn(user_data: *mut c_void, buf: *mut u8, len: usize, timeout_ms: u32) -> i32,
 }
+
+// SAFETY: the struct is just four fn pointers + a *mut. The caller
+// owns synchronisation of `user_data` per the threading contract
+// documented in book/src/porting/custom-transport.md.
+unsafe impl Send for NrosTransportOps {}
+unsafe impl Sync for NrosTransportOps {}
 ```
 
-`zpico-platform-custom` (new feature) provides a `Platform` impl that delegates to a `dyn CustomTransport`. XRCE side provides the equivalent via `uxr_set_custom_transport_callbacks` already exposed by the C client.
+Storage is a single `static AtomicCell<Option<NrosTransportOps>>`
+(or a `static mut` guarded by `ffi_guard` on backends without
+atomic-cell) — registered once at boot, read on every transport
+hit. No allocation, no per-call indirection cost beyond the fn-ptr
+load.
+
+`zpico-platform-custom` (new feature) provides a `Platform` impl
+whose `tcp_*` / `udp_*` / `serial_*` shims call straight through to
+the registered `NrosTransportOps`. XRCE side passes the four fn
+pointers verbatim to `uxr_set_custom_transport_callbacks` — the
+existing `nros-rmw-xrce::init_transport` already takes the same
+shape.
+
+### A.1 Why fn-ptr vtable, not a Rust trait
+
+Three reasons, in order of importance:
+
+1. **alloc-free.** A `Box<dyn CustomTransport>` lands the alloc
+   crate on every no_std backend that wants to use the runtime hook.
+   nano-ros's bare-metal / FreeRTOS / NuttX / ThreadX targets ship
+   without a global allocator on the default feature flags, so
+   `dyn` is a non-starter. fn pointers cost zero static memory.
+2. **C ABI parity.** The user-facing surface is `nros_transport_ops_t`
+   (a struct of fn pointers and a `void*`). A Rust-side fn-ptr
+   vtable means the `set_custom_transport` C entry just memcpys the
+   incoming struct into the static — no glue, no shims, no
+   trampolines.
+3. **Matches XRCE's existing shape.** `uxr_set_custom_transport_callbacks`
+   already takes 4 raw fn pointers; the Rust wrapper at
+   `nros-rmw-xrce::init_transport` likewise. A trait would just be
+   an extra layer that has to be type-erased into fn pointers anyway.
 
 ### B. C API
 
@@ -74,7 +128,7 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 
 ## Work Items
 
-- [ ] **115.A** Define `CustomTransport` trait in `nros-rmw` (or per-RMW crate). Document send/sync constraints.
+- [ ] **115.A** Define `NrosTransportOps` fn-ptr vtable in `nros-rmw`. `#[repr(C)]`, four `unsafe extern "C" fn` fields plus `user_data: *mut c_void`. Add `set_custom_transport(&NrosTransportOps)` Rust API + matching `static AtomicCell<Option<NrosTransportOps>>` storage. **No trait, no `dyn`, no `Box`** — see § A.1 for rationale. Document send/sync contract on `user_data`.
 - [ ] **115.B** `zpico-platform-custom` crate — new mutual-exclusive transport variant.
 - [ ] **115.C** `nros-c` C API: `nros_transport_ops_t`, `nros_set_custom_transport`. cbindgen-emitted header.
 - [ ] **115.D** `nros-cpp` C++ wrapper.
@@ -106,7 +160,8 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 
 ## Notes
 
-- Risk: ABI commitment. `nros_transport_ops_t` field order must be stable. Lock it before 1.0.
-- Risk: re-entrancy. The trait must specify whether `read` may be called from a different thread than `write`. v1: same thread only; document.
+- Risk: ABI commitment. `nros_transport_ops_t` field order must be stable. Lock it before 1.0. The Rust-side `NrosTransportOps` is `#[repr(C)]` so the two share a single layout — no parallel definitions to drift.
+- Risk: re-entrancy. The vtable contract must specify whether `read` may be called from a different thread than `write`. v1: same thread only; document.
+- Risk: registration after `nros_support_init`. v1 rejects late registration with `NROS_RET_ALREADY_INIT`. Documented in `book/src/porting/custom-transport.md`.
 - Out of scope: dust-dds DDS support (file as 115.X follow-up).
 - Out of scope: zero-copy custom transports (Phase 99 scope).
