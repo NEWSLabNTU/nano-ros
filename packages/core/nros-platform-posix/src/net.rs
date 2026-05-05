@@ -13,11 +13,25 @@ use crate::PosixPlatform;
 // Struct layouts (must match zenoh-pico's unix.h _z_sys_net_socket_t / _z_sys_net_endpoint_t)
 // ============================================================================
 
-/// Socket: `{ int _fd; void* _tls_sock; }`
+/// Socket: mirrors zenoh-pico `_z_sys_net_socket_t` (unix.h).
+///
+/// Layout matches the **TLS-disabled** zenoh-pico build, which is the
+/// only configuration `zpico-sys` ships today (`link-tls` defaults
+/// off; no nros-platform-posix consumer enables it). With TLS
+/// disabled the C struct is `{ int _fd; }` — alignment 4, size 4.
+///
+/// Adding `_tls_sock: *mut c_void` here unconditionally (as the prior
+/// layout did) inflated the Rust struct to 16 bytes / 8-byte
+/// alignment. zenoh-pico hands us its 4-byte storage at a 4-byte
+/// boundary; the `&*(ptr as *const Socket)` deref then panicked under
+/// stable rustc's strict-alignment check (`misaligned pointer
+/// dereference`, address ending in 0x4 or 0xC). Restoring the
+/// TLS-off layout fixes it. Re-introducing the `_tls_sock` field
+/// will need to be feature-gated under a new `link-tls` cargo
+/// feature plumbed through from `zpico-sys/link-tls`.
 #[repr(C)]
 struct Socket {
     _fd: libc::c_int,
-    _tls_sock: *mut c_void,
 }
 
 /// Endpoint: `{ struct addrinfo* _iptcp; }`
@@ -563,7 +577,6 @@ impl PosixPlatform {
                 core::mem::size_of::<libc::c_int>() as libc::socklen_t,
             );
             (*sock_out)._fd = con;
-            (*sock_out)._tls_sock = ptr::null_mut();
         }
         0
     }

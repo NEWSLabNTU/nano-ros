@@ -10,20 +10,14 @@
 //! mask, and confirms `register_event_callback` returns `Ok` for
 //! supported kinds and `Err(Unsupported)` for the rest.
 //!
-//! ## Status
+//! Run via:
+//! ```bash
+//! cargo test --features "platform-posix link-tcp" --test status_events_matrix
+//! ```
 //!
-//! All three tests carry `#[ignore]` and are unblocked once
-//! `nros-platform-posix::net::udp_send` (line ~455) is fixed: that
-//! function reads an `Endpoint` through a misaligned `*const c_void`,
-//! which trips the unaligned-pointer-dereference panic on stable
-//! rustc when zenoh-pico's `_z_open` calls into the posix shim.
-//! Running these tests today via `cargo test --features platform-posix
-//! --test status_events_matrix` produces SIGSEGV / SIGABRT inside
-//! `udp_send` before any matrix assertion runs. The pre-existing
-//! `tests/zenoh_integration.rs::test_session_open_close_peer` hits
-//! the same panic — this is a platform-layer issue, not a regression
-//! from Phase 108. Run via `cargo test -- --ignored` after the
-//! posix-net fix lands.
+//! `link-tcp` is required because zenoh-pico's `zpico_open` falls back
+//! to a no-link build otherwise and refuses to bring up the session.
+//! The test only exercises in-process trait methods; no wire traffic.
 
 #![cfg(feature = "platform-posix")]
 
@@ -33,16 +27,90 @@ use nros_rmw::{
     Transport, TransportConfig, TransportError,
 };
 use nros_rmw_zenoh::ZenohTransport;
+use std::{
+    net::TcpListener,
+    process::{Child, Command, Stdio},
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
+
+/// Project-tree zenohd binary (built by `just setup`).
+const ZENOHD_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../build/zenohd/zenohd"
+);
+
+/// One zenohd per test run, shared across tests via OnceLock + Mutex.
+/// Returns the locator string the tests should connect to. `None` if
+/// the zenohd binary isn't built (caller should skip).
+fn router_locator() -> Option<String> {
+    static ROUTER: OnceLock<Mutex<Option<RouterHandle>>> = OnceLock::new();
+    let cell = ROUTER.get_or_init(|| Mutex::new(RouterHandle::start()));
+    let guard = cell.lock().ok()?;
+    guard.as_ref().map(|h| h.locator.clone())
+}
+
+struct RouterHandle {
+    _child: Child,
+    locator: String,
+}
+
+impl RouterHandle {
+    fn start() -> Option<Self> {
+        if !std::path::Path::new(ZENOHD_PATH).is_file() {
+            eprintln!(
+                "[zenoh-matrix] zenohd binary missing at {ZENOHD_PATH}; tests will skip"
+            );
+            return None;
+        }
+        // Bind a listener to grab a free port, then close it before
+        // spawning zenohd. Race-y but good enough for a single-shot
+        // test fixture; zenohd retries on bind failure anyway.
+        let listener = TcpListener::bind("127.0.0.1:0").ok()?;
+        let port = listener.local_addr().ok()?.port();
+        drop(listener);
+        let endpoint = format!("tcp/127.0.0.1:{port}");
+        let child = Command::new(ZENOHD_PATH)
+            .args(["--listen", &endpoint, "--no-multicast-scouting"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        // Poll the port until accept-ready or timeout.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                break;
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        Some(Self {
+            _child: child,
+            locator: endpoint,
+        })
+    }
+}
+
+impl Drop for RouterHandle {
+    fn drop(&mut self) {
+        let _ = self._child.kill();
+        let _ = self._child.wait();
+    }
+}
 
 unsafe extern "C" fn dummy_cb(_kind: EventKind, _payload: *const c_void, _ctx: *mut c_void) {}
 
-fn open_session() -> nros_rmw_zenoh::ZenohSession {
+fn open_session() -> Option<nros_rmw_zenoh::ZenohSession> {
+    let locator = router_locator()?;
     let config = TransportConfig {
-        locator: None,
-        mode: SessionMode::Peer,
+        locator: Some(locator.as_str()),
+        mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
     };
-    ZenohTransport::open(&config).expect("open ZenohTransport peer mode")
+    ZenohTransport::open(&config).ok()
 }
 
 fn topic() -> TopicInfo<'static> {
@@ -53,23 +121,29 @@ fn topic() -> TopicInfo<'static> {
     )
 }
 
+/// All matrix assertions packed into one `#[test]` so we open zenoh-pico's
+/// session exactly once. zpico-sys's C shim keeps entity slots in `static`
+/// arrays that segfault when multiple sessions are opened (or torn down
+/// concurrently); a single test fn dodges that without needing a custom
+/// `unsafe impl Send for Context`.
 #[test]
-#[ignore = "blocked on nros-platform-posix net.rs:455 alignment bug"]
-fn zenoh_subscriber_event_mask() {
-    let mut sess = open_session();
+fn zenoh_event_matrix() {
+    use nros_rmw::QosPolicyMask;
+    let mut sess = open_session().expect(
+        "zenoh client-mode session unavailable — is build/zenohd/zenohd built? Run `just setup`",
+    );
+
+    // ---- Subscriber-side mask ----
     let mut sub = sess
         .create_subscriber(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
         .expect("create_subscriber");
 
-    // zenoh-pico shim supports the full Tier-1 sub-side set
-    // (MessageLost via attachment seq gap, RequestedDeadlineMissed
-    // via clock check, LivelinessChanged via wildcard liveliness
-    // poll).
+    // Full Tier-1 sub-side set: MessageLost (attachment seq gap),
+    // RequestedDeadlineMissed (clock check), LivelinessChanged
+    // (wildcard liveliness poll).
     assert!(sub.supports_event(EventKind::LivelinessChanged));
     assert!(sub.supports_event(EventKind::RequestedDeadlineMissed));
     assert!(sub.supports_event(EventKind::MessageLost));
-
-    // Pub-side kinds always false on a subscriber.
     assert!(!sub.supports_event(EventKind::LivelinessLost));
     assert!(!sub.supports_event(EventKind::OfferedDeadlineMissed));
 
@@ -78,33 +152,25 @@ fn zenoh_subscriber_event_mask() {
         sub.register_event_callback(EventKind::MessageLost, 0, cb, core::ptr::null_mut())
     };
     assert!(res.is_ok(), "register MessageLost: {res:?}");
-
     let res = unsafe {
         sub.register_event_callback(EventKind::OfferedDeadlineMissed, 0, cb, core::ptr::null_mut())
     };
     assert!(matches!(res, Err(TransportError::Unsupported)));
-}
 
-#[test]
-#[ignore = "blocked on nros-platform-posix net.rs:455 alignment bug"]
-fn zenoh_publisher_event_mask() {
-    let mut sess = open_session();
+    // ---- Publisher-side mask ----
     let mut pubr = sess
         .create_publisher(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
         .expect("create_publisher");
 
-    // zenoh shim — pub side surfaces OfferedDeadlineMissed (clock
-    // check) + LivelinessLost slot (registration accepted, never
-    // fires today; needs per-pub keepalive timer for MANUAL_BY_*).
+    // Pub-side: OfferedDeadlineMissed (clock check) + LivelinessLost
+    // slot (registration ok, never fires today — needs per-pub
+    // keepalive timer for MANUAL_BY_*).
     assert!(pubr.supports_event(EventKind::OfferedDeadlineMissed));
     assert!(pubr.supports_event(EventKind::LivelinessLost));
-
-    // Sub-side kinds always false on a publisher.
     assert!(!pubr.supports_event(EventKind::LivelinessChanged));
     assert!(!pubr.supports_event(EventKind::RequestedDeadlineMissed));
     assert!(!pubr.supports_event(EventKind::MessageLost));
 
-    let cb: EventCallback = dummy_cb;
     let res = unsafe {
         pubr.register_event_callback(
             EventKind::OfferedDeadlineMissed,
@@ -114,21 +180,13 @@ fn zenoh_publisher_event_mask() {
         )
     };
     assert!(res.is_ok(), "register OfferedDeadlineMissed: {res:?}");
-
     let res = unsafe {
         pubr.register_event_callback(EventKind::MessageLost, 0, cb, core::ptr::null_mut())
     };
     assert!(matches!(res, Err(TransportError::Unsupported)));
-}
 
-#[test]
-#[ignore = "blocked on nros-platform-posix net.rs:455 alignment bug"]
-fn zenoh_supported_qos_mask() {
-    use nros_rmw::QosPolicyMask;
-    let sess = open_session();
+    // ---- Session-level supported QoS mask ----
     let mask = sess.supported_qos_policies();
-    // zenoh-pico — CORE + shim-emulated DEADLINE / LIFESPAN /
-    // LIVELINESS_AUTOMATIC + LEASE.
     assert!(mask.contains(QosPolicyMask::CORE));
     assert!(mask.contains(QosPolicyMask::DEADLINE));
     assert!(mask.contains(QosPolicyMask::LIFESPAN));
