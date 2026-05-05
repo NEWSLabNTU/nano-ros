@@ -1,8 +1,9 @@
-//! Phase 100.0 acceptance test — open two `unix-mock` channels paired
-//! by `register_pair`, exchange frames in both directions, and confirm
-//! the multi-frame "reassembly" pattern (one 200-byte payload split
-//! across four 64-byte writes) round-trips with frame boundaries
-//! preserved.
+//! Phase 11.3.A acceptance — open two `unix-mock` channels paired by
+//! `register_pair`, exchange frames in both directions through the
+//! **zero-copy** API (`read_frame` / `write_frame` / `commit` / `ack`),
+//! and confirm the multi-frame fragmentation pattern (one 200-byte
+//! payload split across four 64-byte frames) round-trips with frame
+//! boundaries preserved.
 //!
 //! Single test function (not split across `#[test]`s) so the registry
 //! reset stays serialised and we don't fight cargo-test's per-test
@@ -12,7 +13,7 @@
 
 #![cfg(feature = "unix-mock")]
 
-use nvidia_ivc::{Channel, IvcError, unix_mock};
+use nvidia_ivc::{Channel, unix_mock};
 
 #[test]
 fn loopback_round_trip_and_fragmentation() {
@@ -25,46 +26,67 @@ fn loopback_round_trip_and_fragmentation() {
     assert_eq!(spe.frame_size(), 64, "frame size matches NVIDIA IVC default");
     assert_eq!(ccplex.frame_size(), 64);
 
-    // Empty queue → WouldBlock, never silent.
-    assert!(matches!(spe.read(&mut [0u8; 64]), Err(IvcError::WouldBlock)));
+    // Empty queue → read_frame returns None.
+    assert!(spe.read_frame().is_none(), "no frame on fresh queue");
 
-    // Single-frame round trip, SPE → CCPLEX.
-    let n = spe.write(b"ping").expect("write ping");
-    assert_eq!(n, 4);
-    let mut rx = [0u8; 64];
-    let m = ccplex.read(&mut rx).expect("read ping");
-    assert_eq!(m, 4);
-    assert_eq!(&rx[..m], b"ping");
+    // Single-frame round trip, SPE → CCPLEX, via zero-copy commit.
+    {
+        let mut tx = spe.write_frame().expect("tx slot");
+        tx.as_mut_slice()[..4].copy_from_slice(b"ping");
+        tx.commit(4);
+    }
+    {
+        let rx = ccplex.read_frame().expect("rx ping");
+        assert_eq!(rx.as_slice(), b"ping");
+        rx.ack();
+    }
 
     // Reverse direction.
-    let n = ccplex.write(b"pong!").expect("write pong");
-    assert_eq!(n, 5);
-    let m = spe.read(&mut rx).expect("read pong");
-    assert_eq!(m, 5);
-    assert_eq!(&rx[..m], b"pong!");
+    {
+        let mut tx = ccplex.write_frame().expect("tx slot");
+        tx.as_mut_slice()[..5].copy_from_slice(b"pong!");
+        tx.commit(5);
+    }
+    {
+        let rx = spe.read_frame().expect("rx pong");
+        assert_eq!(rx.as_slice(), b"pong!");
+        // Drop releases — equivalent to .ack().
+    }
 
     // Fragmentation: a 200-byte logical payload split across four
     // 64-byte frames, exactly as the link layer will frame zenoh
     // messages on real hardware. Datagram boundaries must be
-    // preserved — each `read` returns one full frame.
+    // preserved — each `read_frame` returns one full frame.
     let payload: Vec<u8> = (0..200).map(|i| (i & 0xff) as u8).collect();
     for chunk in payload.chunks(64) {
-        let n = spe.write(chunk).expect("write fragment");
-        assert_eq!(n, chunk.len());
+        let mut tx = spe.write_frame().expect("tx slot");
+        tx.as_mut_slice()[..chunk.len()].copy_from_slice(chunk);
+        tx.commit(chunk.len());
     }
     let mut reassembled = Vec::with_capacity(200);
     let mut frame_count = 0;
     while reassembled.len() < payload.len() {
-        let m = ccplex.read(&mut rx).expect("read fragment");
-        assert!(m > 0 && m <= 64, "frame size in IVC bounds: {m}");
-        reassembled.extend_from_slice(&rx[..m]);
+        let rx = ccplex.read_frame().expect("read fragment");
+        let bytes = rx.as_slice();
+        assert!(!bytes.is_empty() && bytes.len() <= 64, "frame size in IVC bounds: {}", bytes.len());
+        reassembled.extend_from_slice(bytes);
         frame_count += 1;
+        // implicit ack via Drop
     }
     assert_eq!(frame_count, 4, "200 bytes ≈ ⌈200/64⌉ = 4 frames");
     assert_eq!(reassembled, payload, "byte-perfect reassembly");
 
-    // Queue drained again → WouldBlock.
-    assert!(matches!(ccplex.read(&mut rx), Err(IvcError::WouldBlock)));
+    // Queue drained → read_frame None again.
+    assert!(ccplex.read_frame().is_none(), "queue drained");
+
+    // Abandon test: write_frame without commit should leave the slot
+    // free and not produce a frame on the peer.
+    {
+        let mut tx = spe.write_frame().expect("tx slot");
+        tx.as_mut_slice()[..3].copy_from_slice(b"xyz");
+        // Drop without commit
+    }
+    assert!(ccplex.read_frame().is_none(), "abandoned slot must not deliver");
 
     unix_mock::reset_for_tests();
 }

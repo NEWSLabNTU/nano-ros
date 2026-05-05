@@ -1,10 +1,5 @@
-//! `PlatformIvc` impl — forwards to the `nvidia-ivc` driver crate.
-//!
-//! The driver crate already exposes both backends (`fsp` for hardware,
-//! `unix-mock` for the FreeRTOS POSIX-simulator dev path) behind feature
-//! flags; this file just lifts that into the `PlatformIvc` trait shape
-//! that `zpico-platform-shim::ivc_helpers` and zenoh-pico's
-//! `Z_FEATURE_LINK_IVC` C code consume.
+//! `PlatformIvc` impl — forwards to the `nvidia-ivc` driver crate's
+//! zero-copy `nvidia_ivc_channel_*` C ABI (Phase 11.3.A).
 
 use crate::OrinSpe;
 use core::ffi::c_void;
@@ -17,22 +12,37 @@ impl PlatformIvc for OrinSpe {
     }
 
     #[inline]
-    fn read(ch: *mut c_void, buf: *mut u8, len: usize) -> usize {
-        unsafe { nvidia_ivc::nvidia_ivc_channel_read(ch, buf, len) }
+    fn frame_size(ch: *mut c_void) -> u32 {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_frame_size(ch) }
     }
 
     #[inline]
-    fn write(ch: *mut c_void, buf: *const u8, len: usize) -> usize {
-        unsafe { nvidia_ivc::nvidia_ivc_channel_write(ch, buf, len) }
+    fn rx_get(ch: *mut c_void, len_out: *mut usize) -> *const u8 {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_rx_get(ch, len_out) }
+    }
+
+    #[inline]
+    fn rx_release(ch: *mut c_void) {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_rx_release(ch) }
+    }
+
+    #[inline]
+    fn tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8 {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_tx_get(ch, cap_out) }
+    }
+
+    #[inline]
+    fn tx_commit(ch: *mut c_void, len: usize) {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_tx_commit(ch, len) }
+    }
+
+    #[inline]
+    fn tx_abandon(ch: *mut c_void) {
+        unsafe { nvidia_ivc::nvidia_ivc_channel_tx_abandon(ch) }
     }
 
     #[inline]
     fn notify(ch: *mut c_void) {
         unsafe { nvidia_ivc::nvidia_ivc_channel_notify(ch) }
-    }
-
-    #[inline]
-    fn frame_size(ch: *mut c_void) -> u32 {
-        unsafe { nvidia_ivc::nvidia_ivc_channel_frame_size(ch) }
     }
 }
