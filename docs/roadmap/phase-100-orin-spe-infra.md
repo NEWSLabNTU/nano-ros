@@ -208,44 +208,30 @@ SPI/serial link family).
       **Acceptance:** shim compiles for `armv7r-none-eabihf`. `_z_socket_*` stubs
       resolve cleanly without a network impl.
 
-- [ ] **100.4 — Vendored zenoh-pico: `Z_FEATURE_LINK_IVC`**
+- [x] **100.4 — Vendored zenoh-pico: `Z_FEATURE_LINK_IVC`** ✓
 
-      Add IVC as a first-class link transport inside zenoh-pico. Modelled on the
-      existing `serial` and `raweth` link families. Hooks behind `Z_FEATURE_LINK_IVC=1`
-      (default off; enabled by zpico-sys when the SPE board crate selects it).
+      Landed via fork commits on the `nano-ros-phase-100-link-ivc` branch of
+      `jerry73204/zenoh-pico`, with the parent submodule pointer pinned at
+      `897618d5` (covers the base `Add Z_FEATURE_LINK_IVC link transport`
+      commit `3243086b` + Phase 11.3.A zero-copy IVC + Phase 11.3.B
+      ZENOH_ORIN_SPE platform header). Companion infrastructure (parent
+      `build.rs` `LinkFeatures::ivc`, `zpico-sys` `link-ivc` cargo feature,
+      `zpico-platform-shim::ivc_helpers` forwarders) was already wired
+      bottom-up during 100.3 / 100.5 work.
 
-      The link's C code calls **C-callable forwarders in `zpico-platform-shim`**
-      (`_z_open_ivc`, `_z_read_ivc`, `_z_send_ivc`, `_z_close_ivc`, `_z_ivc_notify`),
-      which in turn dispatch through `<P as PlatformIvc>` — same pattern as the
-      existing `_z_open_tcp` / `_z_send_udp` chain. The shim block is gated on a
-      new `ivc` cargo feature (added in 100.3 alongside the cortex-r feature).
-
-      **Files (new + edits in `packages/zpico/zpico-sys/zenoh-pico/`):**
-      - `src/link/unicast/ivc.c` (new) — implements `_z_open_link_ivc` /
-        `_z_listen_ivc` / `_z_close_ivc` / `_z_read_ivc` / `_z_send_ivc`. Calls the
-        shim forwarders (`_z_open_ivc` etc.) for the actual I/O.
-      - `include/zenoh-pico/link/config/ivc.h` (new) — `_z_endpoint_ivc_*` parsers,
-        IVC-specific config keys (`channel_id`, `frame_size`).
-      - `src/link/endpoint.c` — register `ivc/<N>` URI scheme.
-      - `src/link/link.c` — link-table entry, dispatch.
-      - `src/link/manager.c` — manager-side hookup.
-      - `include/zenoh-pico/link/link.h` — `Z_LINK_IVC` enum value + feature guards.
-      - `include/zenoh-pico/config.h` — `Z_FEATURE_LINK_IVC` default off.
-      - `CMakeLists.txt` — conditional compile of `ivc.c`.
-      - `packages/zpico/zpico-sys/build.rs` — add IVC source list, propagate
-        `cargo:rustc-cfg=feature="link_ivc"` when SPE/POSIX-mock is the target.
-
-      Key design constraint: zenoh messages routinely exceed the **64-byte IVC frame
-      size**. The link layer owns reassembly with a length-prefixed framing protocol
-      (header: u16 total length + u16 sequence; same protocol on both sides of the
-      bridge, see autoware_sentinel Phase 11.6). Re-uses the size-aware ring already
-      present in zenoh-pico's buf abstractions.
-
-      **Acceptance:**
-      - `Z_FEATURE_LINK_IVC=0` default build is byte-identical to current.
-      - `Z_FEATURE_LINK_IVC=1` builds on POSIX and on `armv7r-none-eabihf`.
-      - Reassembly unit test (multi-frame zenoh message in/out) green via the
-        `nvidia-ivc` `unix-mock` backend.
+      **Acceptance verified:**
+      - `Z_FEATURE_LINK_IVC=0` default build is byte-identical to current
+        (no new symbols, no new `.o` files, every gated `#if` dead).
+      - `Z_FEATURE_LINK_IVC=1` builds on POSIX (validated by the orin_spe
+        mock test below) and on `armv7r-none-eabihf` (gated by the
+        SPE board crate's CMake / cc Build paths).
+      - **Reassembly tests (`nros-tests::orin_spe_mock_ivc`, 4/4 PASS)
+        via the `nvidia-ivc` `unix-mock` backend:**
+          • `single_frame_message_round_trips`
+          • `multi_frame_zenoh_batch_reassembles`
+          • `keepalive_ping_is_dropped_silently`
+          • `wire_violation_yields_protocol_error`
+        Run via `just orin_spe test`.
 
 - [ ] **100.5 — `nros-platform-orin-spe` (platform crate)**
 
