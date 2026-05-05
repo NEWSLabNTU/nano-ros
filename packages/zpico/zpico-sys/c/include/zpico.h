@@ -176,6 +176,11 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Caller guarantees `data` outlives the call.
  */
 /**
+ * Phase 108.C.zenoh.4-followup — count of liveliness-token
+ * replies on this slot. Used by the subscriber-side
+ * `LivelinessChanged` bridge to surface `alive_count > 1`.
+ */
+/**
  * Initialize zenoh configuration with client mode and connect locator.
  *
  * # Parameters
@@ -527,6 +532,13 @@ int32_t zpico_liveliness_get_start(const char *_keyexpr, uint32_t _timeout_ms);
  * timeout (dropper fired without replies), other negative on error.
  */
 int32_t zpico_liveliness_get_check(int32_t _handle);
+
+/**
+ * Phase 108.C.zenoh.4-followup — count of liveliness-token
+ * replies on this slot. Used by the subscriber-side
+ * `LivelinessChanged` bridge to surface `alive_count > 1`.
+ */
+int32_t zpico_liveliness_get_count(int32_t _handle);
 
 /**
  * Register a reply waker callback for async service client support.

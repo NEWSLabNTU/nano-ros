@@ -567,6 +567,14 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Phase 108.C.zenoh.4-followup — count of liveliness-token
+    /// replies on this slot. Used by the subscriber-side
+    /// `LivelinessChanged` bridge to surface `alive_count > 1`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_get_count(_handle: i32) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Register a reply waker callback for async service client support.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_set_reply_waker(_func: Option<unsafe extern "C" fn(i32)>) {}

@@ -173,6 +173,13 @@ typedef struct {
     size_t len;
     bool received;
     bool done;
+    /* Phase 108.C.zenoh.4-followup — counts every reply that arrives.
+     * Single-response queries (`zpico_get*`) use `received` for "first
+     * reply only" semantics; multi-response queries (liveliness) read
+     * `reply_count` to learn how many distinct tokens responded. The
+     * count is incremented in `get_reply_handler` regardless of
+     * payload buffer occupancy. */
+    uint32_t reply_count;
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_t mutex;
     _z_condvar_t cond;
@@ -1438,6 +1445,11 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
         return;
     }
 
+    /* Bump the multi-reply count regardless of payload-buffer state.
+     * Liveliness queries care about this count; single-response gets
+     * ignore it. */
+    rctx->reply_count++;
+
     // Skip if we already have a reply (only take first)
     if (rctx->received) {
         return;
@@ -1489,6 +1501,7 @@ int32_t zpico_get(const char *keyexpr,
     ctx.len = 0;
     ctx.received = false;
     ctx.done = false;
+    ctx.reply_count = 0;
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_init(&ctx.mutex);
     _z_condvar_init(&ctx.cond);
@@ -1652,6 +1665,7 @@ int32_t zpico_get_start(const char *keyexpr,
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
+    ps->ctx.reply_count = 0;
     ps->in_use = true;
 
     z_view_keyexpr_t ke;
@@ -1726,6 +1740,7 @@ int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
+    ps->ctx.reply_count = 0;
     ps->in_use = true;
 
     z_view_keyexpr_t ke;
@@ -1764,6 +1779,32 @@ int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
  *  -9 — dropper fired with no replies (timeout, no matching server).
  *   ZPICO_ERR_INVALID — handle out of range or slot not in use.
  */
+/* Phase 108.C.zenoh.4-followup — count of liveliness-token replies
+ * received on this slot. Returns 0 while the query is still in
+ * flight, ZPICO_ERR_INVALID for bad handles. After the dropper has
+ * fired (i.e. `zpico_liveliness_get_check` would return 1 or -9),
+ * the count is final and accurate up to the timeout. Used by the
+ * subscriber-side `LivelinessChanged` bridge to report
+ * `alive_count > 1` when more than one publisher matches the
+ * wildcard liveliness keyexpr.
+ *
+ * The count is left intact on read; only `zpico_liveliness_get_check`
+ * releases the slot, so callers should pair `count → check`.
+ */
+int32_t zpico_liveliness_get_count(int32_t handle) {
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+    pending_get_slot_t *ps = &g_pending_gets[handle];
+    if (!ps->in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+    /* Cap to int32 max — wildcards in practice match a handful of
+     * tokens, never billions. */
+    uint32_t c = ps->ctx.reply_count;
+    return c > (uint32_t)INT32_MAX ? INT32_MAX : (int32_t)c;
+}
+
 int32_t zpico_liveliness_get_check(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         return ZPICO_ERR_INVALID;

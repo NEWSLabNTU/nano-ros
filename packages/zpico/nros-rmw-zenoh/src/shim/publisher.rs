@@ -45,10 +45,25 @@ pub struct ZenohPublisher {
     /// Phase 108.A — registered `OfferedDeadlineMissed` callback slot.
     deadline_cb: core::cell::Cell<Option<EventReg>>,
     /// Phase 108.A — registered `LivelinessLost` callback slot.
-    /// Wired but not fired today (zenoh tokens persist until
-    /// undeclared; "liveliness lost" semantics need a per-publisher
-    /// keepalive timer that's part of 108.C.zenoh.4 follow-up).
     liveliness_lost_cb: core::cell::Cell<Option<EventReg>>,
+    /// Phase 108.C.zenoh.4-followup — liveliness kind captured from
+    /// QoS at create time. `LivelinessLost` only fires when kind is
+    /// `ManualByTopic` / `ManualByNode` AND `liveliness_lease_ms > 0`.
+    /// AUTOMATIC + NONE never fire — zenoh session keepalive covers
+    /// AUTOMATIC; NONE means the app opted out.
+    liveliness_kind: nros_rmw::QosLivelinessPolicy,
+    /// Phase 108.C.zenoh.4-followup — liveliness lease in ms. `0` =
+    /// infinite (no LivelinessLost firing).
+    liveliness_lease_ms: u32,
+    /// Phase 108.C.zenoh.4-followup — last `assert_liveliness()` (or
+    /// `publish_raw` when liveliness_kind is one of the manual modes)
+    /// timestamp in ms.
+    last_assert_at_ms: core::cell::Cell<u64>,
+    /// Phase 108.C.zenoh.4-followup — last `LivelinessLost` fire
+    /// timestamp; rate-limits callbacks to ≤ 1 per lease window.
+    last_liveliness_lost_fire_ms: core::cell::Cell<u64>,
+    /// Phase 108.C.zenoh.4-followup — cumulative `LivelinessLost` count.
+    liveliness_lost_total: core::cell::Cell<u32>,
 }
 
 /// Phase 108.A — single-slot event registration. cb is `unsafe extern
@@ -117,6 +132,11 @@ impl ZenohPublisher {
             deadline_total: core::cell::Cell::new(0),
             deadline_cb: core::cell::Cell::new(None),
             liveliness_lost_cb: core::cell::Cell::new(None),
+            liveliness_kind: qos.liveliness_kind,
+            liveliness_lease_ms: qos.liveliness_lease_ms,
+            last_assert_at_ms: core::cell::Cell::new(now),
+            last_liveliness_lost_fire_ms: core::cell::Cell::new(now),
+            liveliness_lost_total: core::cell::Cell::new(0),
         })
     }
 
@@ -176,6 +196,56 @@ impl ZenohPublisher {
         }
     }
 
+    /// Phase 108.C.zenoh.4-followup — fire `LivelinessLost` when the
+    /// gap since the last manual assertion exceeds `liveliness_lease_ms`.
+    /// Only fires for `ManualByTopic` / `ManualByNode` kinds with a
+    /// non-zero lease. Rate-limited to one fire per lease window.
+    /// Called from `publish_raw`; if the app stops publishing entirely,
+    /// no event fires (publisher path has no spin tick).
+    fn check_liveliness_lost(&self) {
+        use nros_rmw::QosLivelinessPolicy;
+        if !matches!(
+            self.liveliness_kind,
+            QosLivelinessPolicy::ManualByTopic | QosLivelinessPolicy::ManualByNode
+        ) {
+            return;
+        }
+        if self.liveliness_lease_ms == 0 {
+            return;
+        }
+        let now = now_ms();
+        if now == 0 {
+            return;
+        }
+        let lease = self.liveliness_lease_ms as u64;
+        let last_assert = self.last_assert_at_ms.get();
+        if now < last_assert.saturating_add(lease) {
+            return;
+        }
+        let last_fire = self.last_liveliness_lost_fire_ms.get();
+        if now < last_fire.saturating_add(lease) {
+            return;
+        }
+        self.last_liveliness_lost_fire_ms.set(now);
+        let total = self.liveliness_lost_total.get().saturating_add(1);
+        self.liveliness_lost_total.set(total);
+        if let Some(reg) = self.liveliness_lost_cb.get() {
+            let status = nros_rmw::CountStatus {
+                total_count: total,
+                total_count_change: 1,
+            };
+            // SAFETY: cb is `unsafe extern "C" fn`; user_ctx outlives
+            // entity per Phase 108.A.7.
+            unsafe {
+                (reg.cb)(
+                    nros_rmw::EventKind::LivelinessLost,
+                    &status as *const _ as *const core::ffi::c_void,
+                    reg.user_ctx,
+                );
+            }
+        }
+    }
+
     /// Serialize attachment for RMW compatibility
     fn serialize_attachment(&self, seq: i64, ts: i64, buf: &mut [u8; RMW_ATTACHMENT_SIZE]) {
         // Sequence number (little-endian)
@@ -197,6 +267,12 @@ impl Publisher for ZenohPublisher {
         // publish so the user observes the late-publish event with
         // the correct delta (last_publish_at gets bumped after).
         self.check_offered_deadline();
+        // Phase 108.C.zenoh.4-followup — same idea for LivelinessLost.
+        // Manual liveliness kinds: a publish does NOT count as a
+        // liveliness assertion (only `assert_liveliness()` does), so
+        // the check fires when the lease has expired since the last
+        // explicit assert.
+        self.check_liveliness_lost();
 
         // Get next sequence number and timestamp atomically
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
@@ -259,6 +335,23 @@ impl Publisher for ZenohPublisher {
             self.last_publish_at_ms.set(now_ms());
         }
         result
+    }
+
+    /// Phase 108.C.zenoh.4-followup — manual liveliness assertion.
+    /// Refreshes the lease for `ManualByTopic` / `ManualByNode`. No-op
+    /// for `Automatic` (zenoh keepalive covers it) and `None`.
+    fn assert_liveliness(&self) -> Result<(), Self::Error> {
+        use nros_rmw::QosLivelinessPolicy;
+        if matches!(
+            self.liveliness_kind,
+            QosLivelinessPolicy::ManualByTopic | QosLivelinessPolicy::ManualByNode
+        ) {
+            let now = now_ms();
+            if now != 0 {
+                self.last_assert_at_ms.set(now);
+            }
+        }
+        Ok(())
     }
 
     fn buffer_error(&self) -> Self::Error {

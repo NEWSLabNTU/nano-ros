@@ -824,6 +824,21 @@ impl Context {
             Err(ZpicoError::from_code(ret))
         }
     }
+
+    /// Phase 108.C.zenoh.4-followup — count of liveliness-token replies
+    /// received on this slot. Used by the subscriber-side
+    /// `LivelinessChanged` bridge to surface `alive_count > 1` when more
+    /// than one publisher matches the wildcard liveliness keyexpr.
+    /// Returns `0` while the query is in flight; the count is final
+    /// once `liveliness_get_check` returns `Ok(true)` / `Err(Timeout)`.
+    pub fn liveliness_get_count(&self, handle: i32) -> Result<u32> {
+        let ret = ffi_guard(|| unsafe { zpico_sys::zpico_liveliness_get_count(handle) });
+        if ret < 0 {
+            Err(ZpicoError::from_code(ret))
+        } else {
+            Ok(ret as u32)
+        }
+    }
 }
 
 #[cfg(any(

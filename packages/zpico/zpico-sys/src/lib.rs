@@ -98,7 +98,7 @@ pub struct zpico_property_t {
         feature = "freertos",
         feature = "nuttx",
         feature = "threadx",
-    feature = "orin-spe"
+        feature = "orin-spe"
     ),
     not(cbindgen)
 ))]
@@ -216,6 +216,10 @@ unsafe extern "C" {
     // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).
     pub fn zpico_liveliness_get_start(keyexpr: *const core::ffi::c_char, timeout_ms: u32) -> i32;
     pub fn zpico_liveliness_get_check(handle: i32) -> i32;
+    /// Phase 108.C.zenoh.4-followup — count of liveliness-token
+    /// replies on this slot. Used by the subscriber-side
+    /// `LivelinessChanged` bridge to surface `alive_count > 1`.
+    pub fn zpico_liveliness_get_count(handle: i32) -> i32;
 
     // Reply waker callback (for async service client)
     pub fn zpico_set_reply_waker(func: Option<unsafe extern "C" fn(i32)>);

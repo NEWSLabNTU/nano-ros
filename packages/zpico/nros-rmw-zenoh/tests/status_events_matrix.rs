@@ -191,4 +191,68 @@ fn zenoh_event_matrix() {
     assert!(mask.contains(QosPolicyMask::DEADLINE));
     assert!(mask.contains(QosPolicyMask::LIFESPAN));
     assert!(mask.contains(QosPolicyMask::LIVELINESS_AUTOMATIC));
+
+    // ---- LivelinessLost (Phase 108.C.zenoh.4-followup) ----
+    //
+    // Manual liveliness with a 100 ms lease: the publisher fires
+    // `LivelinessLost` from `publish_raw` when the gap since the last
+    // `assert_liveliness()` exceeds the lease.
+    use nros_rmw::{QosLivelinessPolicy, QosSettings as Qos};
+    let manual_qos = Qos {
+        liveliness_kind: QosLivelinessPolicy::ManualByTopic,
+        liveliness_lease_ms: 100,
+        ..Qos::QOS_PROFILE_DEFAULT
+    };
+    let mut manual_pub = sess
+        .create_publisher(&topic(), manual_qos)
+        .expect("create_publisher manual liveliness");
+
+    // Static counter — `unsafe extern "C" fn` callback can't capture.
+    use core::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+    static LL_COUNT: AtomicU32 = AtomicU32::new(0);
+    static LL_LAST_TOTAL: AtomicU32 = AtomicU32::new(0);
+    LL_COUNT.store(0, AtomicOrdering::Relaxed);
+    LL_LAST_TOTAL.store(0, AtomicOrdering::Relaxed);
+
+    unsafe extern "C" fn on_lost(_kind: EventKind, payload: *const c_void, _ctx: *mut c_void) {
+        let status = unsafe { &*(payload as *const nros_rmw::CountStatus) };
+        LL_COUNT.fetch_add(status.total_count_change, AtomicOrdering::Relaxed);
+        LL_LAST_TOTAL.store(status.total_count, AtomicOrdering::Relaxed);
+    }
+
+    let cb_lost: EventCallback = on_lost;
+    let res = unsafe {
+        manual_pub.register_event_callback(
+            EventKind::LivelinessLost,
+            100,
+            cb_lost,
+            core::ptr::null_mut(),
+        )
+    };
+    assert!(res.is_ok(), "register LivelinessLost: {res:?}");
+
+    // First publish: still within the just-created lease window —
+    // no LivelinessLost should fire.
+    manual_pub.publish_raw(b"hello").expect("publish_raw");
+    assert_eq!(LL_COUNT.load(AtomicOrdering::Relaxed), 0);
+
+    // Sleep past the lease, then publish again — should fire once.
+    std::thread::sleep(Duration::from_millis(150));
+    manual_pub.publish_raw(b"hello").expect("publish_raw");
+    assert_eq!(
+        LL_COUNT.load(AtomicOrdering::Relaxed),
+        1,
+        "expected one LivelinessLost fire"
+    );
+    assert_eq!(LL_LAST_TOTAL.load(AtomicOrdering::Relaxed), 1);
+
+    // Assert liveliness — should reset the lease, then immediate
+    // publish does NOT fire again.
+    manual_pub.assert_liveliness().expect("assert_liveliness");
+    manual_pub.publish_raw(b"hello").expect("publish_raw");
+    assert_eq!(
+        LL_COUNT.load(AtomicOrdering::Relaxed),
+        1,
+        "assert_liveliness should reset lease"
+    );
 }

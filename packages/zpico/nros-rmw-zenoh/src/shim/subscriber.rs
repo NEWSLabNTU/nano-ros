@@ -430,17 +430,24 @@ impl ZenohSubscriber {
 
         // 1. If a query is in flight, poll it; on completion record
         //    the new alive state and clear the handle.
+        //
+        // Phase 108.C.zenoh.4-followup — read `liveliness_get_count`
+        // BEFORE `liveliness_get_check` because the latter releases the
+        // slot on terminal result.
         if state.handle >= 0 {
+            let count = context.liveliness_get_count(state.handle).unwrap_or(0);
             match context.liveliness_get_check(state.handle) {
                 Ok(true) => {
-                    self.handle_alive_transition(true, &mut state);
+                    // At least one matching token responded; `count` is
+                    // the exact reply count.
+                    self.handle_count_transition(count.max(1) as u16, &mut state);
                 }
                 Ok(false) => {
                     // Still waiting; keep handle for next poll.
                 }
                 Err(_) => {
-                    // Timeout (no matching publisher) or error → alive=false.
-                    self.handle_alive_transition(false, &mut state);
+                    // Timeout (no matching publisher) or error → 0 alive.
+                    self.handle_count_transition(0, &mut state);
                 }
             }
         }
@@ -466,23 +473,30 @@ impl ZenohSubscriber {
         self.liveliness_poll.set(state);
     }
 
-    fn handle_alive_transition(&self, now_alive: bool, state: &mut LivelinessPoll) {
+    /// Phase 108.C.zenoh.4-followup — fire `LivelinessChanged` with
+    /// the actual delta between the previous and new alive count.
+    /// `new_count` is the number of unique publishers that responded
+    /// to the most recent wildcard liveliness query.
+    fn handle_count_transition(&self, new_count: u16, state: &mut LivelinessPoll) {
         // Always clear the handle on terminal result.
         state.handle = -1;
-        if now_alive == state.last_alive {
+        let prev = state.alive_count;
+        if new_count == prev {
+            // No transition — also keep last_alive in sync for any
+            // legacy field dependents.
+            state.last_alive = new_count > 0;
             return;
         }
-        state.last_alive = now_alive;
-        let (alive_count, alive_count_change, not_alive_count_change) = if now_alive {
-            state.alive_count = state.alive_count.saturating_add(1);
-            (state.alive_count, 1i16, 0i16)
+        let (alive_count_change, not_alive_count_change) = if new_count > prev {
+            ((new_count - prev) as i16, 0i16)
         } else {
-            state.alive_count = state.alive_count.saturating_sub(1);
-            (state.alive_count, -1i16, 1i16)
+            (-((prev - new_count) as i16), (prev - new_count) as i16)
         };
+        state.alive_count = new_count;
+        state.last_alive = new_count > 0;
         if let Some(reg) = self.liveliness_cb.get() {
             let status = nros_rmw::LivelinessChangedStatus {
-                alive_count,
+                alive_count: new_count,
                 not_alive_count: 0,
                 alive_count_change,
                 not_alive_count_change,

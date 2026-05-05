@@ -499,7 +499,7 @@ The mask actually advertised by each backend's
 |---------|-------------------------------------------|----------|----------|----------------------|--------------------|------------------|-----------------------------------|
 | dust-DDS | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ honoured |
 | XRCE-DDS | ✅ Native (binary `uxrQoS_t`) | ✅ Shim-side clock check (sub: `RequestedDeadlineMissed`; pub: `OfferedDeadlineMissed`) + agent-side via FastDDS XML profile | ✅ Agent-side via FastDDS XML profile | ✅ Native | ✅ Configured via XML | ✅ Configured via XML | ✅ honoured |
-| zenoh-pico | ✅ Shim-emulated | ✅ Clock-based check (sub + pub) | ✅ Subscriber-side filter using attachment timestamp | ✅ Trivial via session keepalive | ❌ Needs per-pub keepalive timer (deferred) | ✅ Honoured | n/a (no `/rt/` prefix) |
+| zenoh-pico | ✅ Shim-emulated | ✅ Clock-based check (sub + pub) | ✅ Subscriber-side filter using attachment timestamp | ✅ Trivial via session keepalive | ✅ Shim-side keepalive timer at pub publish path | ✅ Honoured | n/a (no `/rt/` prefix) |
 | uORB | ✅ CORE only (intra-process, no wire) | ❌ No rate concept | ❌ No expiry concept | ❌ No wire-level liveliness | ❌ | ❌ | n/a |
 
 **Key takeaways**:
@@ -611,7 +611,7 @@ generate every event:
 |---------|-----------|----------|--------------|
 | dust-DDS | ✅ Native (`DataReaderListener` / `DataWriterListener` bridges) | ✅ Native | ✅ Native (`SampleLost`) |
 | XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `try_recv_raw`; pub: shim-side check on `publish_raw`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
-| zenoh-pico | 🟡 Sub: poll wildcard liveliness keyexpr (`alive_count ∈ {0,1}`); pub-side `LivelinessLost` slot accepted but never fires (needs per-pub keepalive timer). | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
+| zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish_raw` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
 | uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
 
 `assert_liveliness()` (manual): only dust-DDS implements it natively.
