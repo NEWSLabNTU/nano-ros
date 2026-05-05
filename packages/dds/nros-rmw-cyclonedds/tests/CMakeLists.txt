@@ -179,6 +179,36 @@ add_test(
     COMMAND nros_rmw_cyclonedds_service_concurrent
 )
 
+# Phase 117.X.1: .msg → mangled IDL → idlc → registry pipeline.
+# Drives the new helper through a synthetic std_msgs package; if
+# the host lacks /opt/ros/humble's rosidl_adapter the helper emits
+# a soft warning at configure time and we skip the test.
+if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
+    nros_rmw_cyclonedds_generate_from_msg(_from_msg_sources
+        PKG_NAME std_msgs
+        PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/std_msgs"
+        INTERFACES msg/String.msg
+    )
+    add_executable(nros_rmw_cyclonedds_from_msg_smoke
+        from_msg_smoke.cpp
+        ${_from_msg_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_from_msg_smoke
+        PRIVATE
+            nros_rmw_cyclonedds
+    )
+    target_include_directories(nros_rmw_cyclonedds_from_msg_smoke
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_from_msg_smoke
+        COMMAND nros_rmw_cyclonedds_from_msg_smoke
+    )
+    set_tests_properties(nros_rmw_cyclonedds_from_msg_smoke
+        PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
+endif()
+
 # Apply the LD_LIBRARY_PATH prefix to every test added above.
 set_tests_properties(
     nros_rmw_cyclonedds_session_smoke

@@ -68,10 +68,16 @@ build-rmw: setup
     #!/usr/bin/env bash
     set -e
     PROJ="packages/dds/nros-rmw-cyclonedds"
+    SCRIPT="$PWD/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    # Pass the .msg → IDL converter as an absolute path so the
+    # project never has to assume the layout above its own dir
+    # (CLAUDE.md "CMake Path Convention").
     cmake -S "$PROJ" -B "$PROJ/build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="$PWD/build/install" \
-        -DCMAKE_INSTALL_PREFIX="$PWD/build/install"
+        -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
+        -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$SCRIPT" \
+        -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE="$SCRIPT"
     cmake --build "$PROJ/build" --parallel
     cmake --install "$PROJ/build"
 

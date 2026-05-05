@@ -125,13 +125,29 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-# Type-support codegen helpers (Phase 117.2). Downstream consumers
-# include via `find_package(NrosRmwCyclonedds)` which pulls in the
-# config below; the config in turn `include()`s this file.
+# Type-support codegen helpers (Phase 117.2 + 117.X.1). Downstream
+# consumers include via `find_package(NrosRmwCyclonedds)` which pulls
+# in the config below; the config in turn `include()`s this file.
 install(FILES
     cmake/NrosRmwCycloneddsTypeSupport.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwCyclonedds
 )
+
+# Phase 117.X.1: ship the .msg/.srv → mangled-IDL converter
+# alongside the install. Caller passes its absolute source path via
+# `NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE` (driven by `just cyclonedds
+# build-rmw`); skip when unset so the project remains self-contained
+# for ad-hoc cmake invocations.
+if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE)
+    if(NOT IS_ABSOLUTE "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE}")
+        message(FATAL_ERROR
+            "NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE must be an absolute path.")
+    endif()
+    install(PROGRAMS
+        "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE}"
+        DESTINATION share/nros-rmw-cyclonedds
+    )
+endif()
 
 install(EXPORT NrosRmwCycloneddsTargets
     FILE NrosRmwCycloneddsTargets.cmake

@@ -52,6 +52,41 @@ if(NOT TARGET CycloneDDS::idlc)
     endif()
 endif()
 
+# Phase 117.X.1: locate the .msg/.srv → mangled-IDL converter.
+#
+# Resolution order (no source-tree-relative HINTs — see CLAUDE.md
+# "CMake Path Convention" — callers must pass absolute paths):
+#   1. Cache var `NROS_RMW_CYCLONEDDS_MSG_TO_IDL` (e.g. set via
+#      `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=…` on cmake configure).
+#   2. Env var `NROS_RMW_CYCLONEDDS_SCRIPTS_DIR` containing the
+#      installed `msg_to_cyclone_idl.py`.
+#   3. `share/nros-rmw-cyclonedds/` next to the installed CMake
+#      config (this is a CMake-install layout convention, not a
+#      project-source-tree assumption — `CMAKE_CURRENT_LIST_DIR`
+#      resolves to `<prefix>/lib/cmake/NrosRmwCyclonedds` for
+#      installed consumers, and `share` is a sibling). For in-tree
+#      development, the consumer (e.g. the project's own
+#      `tests/CMakeLists.txt`) sets the cache var directly.
+if(NOT NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
+    find_program(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
+        NAMES msg_to_cyclone_idl.py
+        HINTS
+            "$ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR}"
+            "${CMAKE_CURRENT_LIST_DIR}/../../../share/nros-rmw-cyclonedds"
+        DOC ".msg/.srv → Cyclone-shaped IDL converter"
+    )
+endif()
+if(NOT NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
+    # Soft warning — the legacy hand-authored-IDL path still works
+    # without it; only callers of nros_rmw_cyclonedds_generate_from_msg
+    # need it.
+    message(STATUS
+        "msg_to_cyclone_idl.py not found; "
+        "nros_rmw_cyclonedds_generate_from_msg() will fail. "
+        "Pass -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=<abs path> or set "
+        "NROS_RMW_CYCLONEDDS_SCRIPTS_DIR.")
+endif()
+
 #
 # nros_rmw_cyclonedds_idlc_compile
 #
@@ -187,4 +222,126 @@ function(nros_rmw_cyclonedds_add_idl_library tgt)
         PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/${tgt}-idl")
     target_link_libraries(${tgt} PUBLIC CycloneDDS::ddsc)
     set_target_properties(${tgt} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endfunction()
+
+#
+# nros_rmw_cyclonedds_generate_from_msg
+#
+# Phase 117.X.1: drive `.msg` / `.srv` → mangled IDL → idlc → static-
+# init self-registration. Output type names match what stock
+# `rmw_cyclonedds_cpp` emits, so a nano-ros publisher / service-server
+# matches an `rclcpp` subscriber / client by `(topic_name, type_name)`.
+#
+#   nros_rmw_cyclonedds_generate_from_msg(<output_var>
+#       PKG_NAME    <my_msgs>
+#       PKG_DIR     <path/to/pkg-with-package.xml>
+#       INTERFACES  <Foo.msg> <Bar.srv> ...
+#       [OUTPUT_DIR <build/dir>]
+#   )
+#
+# Sets <output_var> to the list of generated `.c` (descriptor +
+# self-registration) source files.
+#
+# For each `.msg` Foo:
+#     descriptor name: <PKG>::msg::dds_::Foo_
+#     registry key:    "<PKG>::msg::dds_::Foo_"
+# For each `.srv` Foo:
+#     two descriptors registered:
+#       <PKG>::srv::dds_::Foo_Request_
+#       <PKG>::srv::dds_::Foo_Response_
+#
+function(nros_rmw_cyclonedds_generate_from_msg output_var)
+    set(_options "")
+    set(_one    PKG_NAME PKG_DIR OUTPUT_DIR)
+    set(_multi  INTERFACES)
+    cmake_parse_arguments(_arg "${_options}" "${_one}" "${_multi}" ${ARGN})
+
+    if(NOT _arg_PKG_NAME OR NOT _arg_PKG_DIR OR NOT _arg_INTERFACES)
+        message(FATAL_ERROR
+            "nros_rmw_cyclonedds_generate_from_msg: PKG_NAME, PKG_DIR, "
+            "and INTERFACES are required.")
+    endif()
+    if(NOT NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
+        message(FATAL_ERROR
+            "nros_rmw_cyclonedds_generate_from_msg requires "
+            "msg_to_cyclone_idl.py — set NROS_RMW_CYCLONEDDS_SCRIPTS_DIR "
+            "or check `find_program(NROS_RMW_CYCLONEDDS_MSG_TO_IDL …)` "
+            "above.")
+    endif()
+    if(NOT _arg_OUTPUT_DIR)
+        set(_arg_OUTPUT_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-from-msg/${_arg_PKG_NAME}")
+    endif()
+    set(_idl_dir "${_arg_OUTPUT_DIR}/idl")
+    set(_gen_dir "${_arg_OUTPUT_DIR}/gen")
+    file(MAKE_DIRECTORY "${_idl_dir}")
+    file(MAKE_DIRECTORY "${_gen_dir}")
+
+    # Resolve absolute interface paths so the script + custom_command
+    # see the same files regardless of caller's CMAKE_CURRENT_SOURCE_DIR.
+    set(_iface_args "")
+    set(_iface_abs_list "")
+    foreach(_iface IN LISTS _arg_INTERFACES)
+        if(IS_ABSOLUTE "${_iface}")
+            set(_abs "${_iface}")
+        else()
+            set(_abs "${_arg_PKG_DIR}/${_iface}")
+        endif()
+        list(APPEND _iface_args "--interface" "${_abs}")
+        list(APPEND _iface_abs_list "${_abs}")
+    endforeach()
+
+    set(_all_outputs "")
+
+    foreach(_iface IN LISTS _arg_INTERFACES)
+        get_filename_component(_iface_stem "${_iface}" NAME_WE)
+        get_filename_component(_iface_ext  "${_iface}" EXT)
+        set(_idl_path "${_idl_dir}/${_iface_stem}.idl")
+
+        # Run the converter once per interface so each .idl has a
+        # focused custom_command DEPENDS line.
+        if(IS_ABSOLUTE "${_iface}")
+            set(_iface_abs "${_iface}")
+        else()
+            set(_iface_abs "${_arg_PKG_DIR}/${_iface}")
+        endif()
+        add_custom_command(
+            OUTPUT  "${_idl_path}"
+            COMMAND "${CMAKE_COMMAND}" -E env
+                    "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL}"
+                    --pkg-name "${_arg_PKG_NAME}"
+                    --pkg-dir  "${_arg_PKG_DIR}"
+                    --output-dir "${_idl_dir}"
+                    --interface "${_iface_abs}"
+            DEPENDS "${_iface_abs}" "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL}"
+            COMMENT "msg_to_cyclone_idl ${_arg_PKG_NAME}/${_iface}"
+            VERBATIM
+        )
+
+        # Decide which type name(s) to register based on the
+        # extension. .msg → one name, .srv → two (Request + Response).
+        if(_iface_ext STREQUAL ".msg")
+            nros_rmw_cyclonedds_idlc_compile(_gen
+                IDL_FILE  "${_idl_path}"
+                OUTPUT_DIR "${_gen_dir}"
+                TYPE_NAME "${_arg_PKG_NAME}::msg::dds_::${_iface_stem}_"
+            )
+        elseif(_iface_ext STREQUAL ".srv")
+            nros_rmw_cyclonedds_idlc_compile(_gen
+                IDL_FILE  "${_idl_path}"
+                OUTPUT_DIR "${_gen_dir}"
+                TYPE_NAMES
+                    "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Request_"
+                    "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Response_"
+            )
+        else()
+            message(FATAL_ERROR
+                "nros_rmw_cyclonedds_generate_from_msg: unsupported "
+                "extension ${_iface_ext} on ${_iface}")
+        endif()
+
+        list(APPEND _all_outputs ${_gen})
+    endforeach()
+
+    set(${output_var} "${_all_outputs}" PARENT_SCOPE)
 endfunction()
