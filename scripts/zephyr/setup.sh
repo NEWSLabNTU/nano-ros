@@ -68,6 +68,15 @@ ZEPHYR_SDK_SHA256="cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7db
 # Parse arguments
 FORCE=false
 SKIP_SDK=false
+# Default Zephyr SDK toolchains:
+#   x86_64-zephyr-elf  — native_sim and POSIX-emulated boards.
+#   arm-zephyr-eabi    — Cortex-M, Cortex-A 32-bit, Cortex-R52 (ARMv8-R AArch32).
+# Phase 117 adds:
+#   aarch64-zephyr-elf — Cortex-A 64-bit + ARMv8-R AArch64
+#                        (e.g. fvp_baser_aemv8r_smp targeted by 117.10).
+#                        Toggle via `--phase-117` (or `--targets 117`).
+DEFAULT_TARGETS="x86_64-zephyr-elf arm-zephyr-eabi"
+EXTRA_TARGETS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -79,14 +88,34 @@ while [[ $# -gt 0 ]]; do
             SKIP_SDK=true
             shift
             ;;
+        --phase-117)
+            EXTRA_TARGETS="$EXTRA_TARGETS aarch64-zephyr-elf"
+            shift
+            ;;
+        --target)
+            EXTRA_TARGETS="$EXTRA_TARGETS $2"
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Create nros Zephyr workspace at ../${NANO_ROS_NAME}-workspace/"
             echo ""
             echo "Options:"
-            echo "  --force, -f        Overwrite existing workspace"
-            echo "  --skip-sdk         Skip SDK installation"
+            echo "  --force, -f          Overwrite existing workspace"
+            echo "  --skip-sdk           Skip SDK installation"
+            echo "  --phase-117          Add aarch64-zephyr-elf for the"
+            echo "                       Cortex-A / ARMv8-R AArch64 boards"
+            echo "                       targeted by Phase 117.10"
+            echo "                       (fvp_baser_aemv8r_smp)."
+            echo "  --target NAME        Add an extra Zephyr SDK target"
+            echo "                       (e.g. mips-zephyr-elf). Repeatable."
+            echo ""
+            echo "Default SDK targets installed: $DEFAULT_TARGETS"
+            echo ""
+            echo "FVP simulator + NXP S32Z board files are NOT installed by"
+            echo "this script — see docs/reference/zephyr-armv8r-setup.md"
+            echo "for the manual steps."
             exit 0
             ;;
         *)
@@ -95,6 +124,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+ALL_TARGETS="$DEFAULT_TARGETS $EXTRA_TARGETS"
 
 # Colors
 RED='\033[0;31m'
@@ -244,7 +275,15 @@ install_sdk() {
 
     log_info "Running SDK setup..."
     cd "$SDK_PATH"
-    ./setup.sh -t x86_64-zephyr-elf -t arm-zephyr-eabi -h -c
+    # Build the `-t <target>` list dynamically so callers can add
+    # ARMv8-R AArch64 (Phase 117.10) or other arch toolchains
+    # without forking this script.
+    SDK_ARGS=()
+    for t in $ALL_TARGETS; do
+        SDK_ARGS+=("-t" "$t")
+    done
+    log_info "  Toolchains: $ALL_TARGETS"
+    ./setup.sh "${SDK_ARGS[@]}" -h -c
 
     log_success "Zephyr SDK installed"
 }
