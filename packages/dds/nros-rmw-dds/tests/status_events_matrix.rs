@@ -63,12 +63,7 @@ fn dds_subscriber_event_mask() {
     // Registering a supported kind succeeds.
     let cb: EventCallback = dummy_cb;
     let res = unsafe {
-        sub.register_event_callback(
-            EventKind::LivelinessChanged,
-            0,
-            cb,
-            core::ptr::null_mut(),
-        )
+        sub.register_event_callback(EventKind::LivelinessChanged, 0, cb, core::ptr::null_mut())
     };
     assert!(res.is_ok(), "register LivelinessChanged: {res:?}");
 

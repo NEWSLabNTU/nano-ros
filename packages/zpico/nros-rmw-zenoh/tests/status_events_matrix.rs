@@ -35,10 +35,7 @@ use std::{
 };
 
 /// Project-tree zenohd binary (built by `just setup`).
-const ZENOHD_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../build/zenohd/zenohd"
-);
+const ZENOHD_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../build/zenohd/zenohd");
 
 /// One zenohd per test run, shared across tests via OnceLock + Mutex.
 /// Returns the locator string the tests should connect to. `None` if
@@ -58,9 +55,7 @@ struct RouterHandle {
 impl RouterHandle {
     fn start() -> Option<Self> {
         if !std::path::Path::new(ZENOHD_PATH).is_file() {
-            eprintln!(
-                "[zenoh-matrix] zenohd binary missing at {ZENOHD_PATH}; tests will skip"
-            );
+            eprintln!("[zenoh-matrix] zenohd binary missing at {ZENOHD_PATH}; tests will skip");
             return None;
         }
         // Bind a listener to grab a free port, then close it before
@@ -153,7 +148,12 @@ fn zenoh_event_matrix() {
     };
     assert!(res.is_ok(), "register MessageLost: {res:?}");
     let res = unsafe {
-        sub.register_event_callback(EventKind::OfferedDeadlineMissed, 0, cb, core::ptr::null_mut())
+        sub.register_event_callback(
+            EventKind::OfferedDeadlineMissed,
+            0,
+            cb,
+            core::ptr::null_mut(),
+        )
     };
     assert!(matches!(res, Err(TransportError::Unsupported)));
 

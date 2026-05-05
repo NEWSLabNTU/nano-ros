@@ -174,7 +174,9 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// implement manual liveliness.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
         use nros_rmw::Publisher as _;
-        self.handle.assert_liveliness().map_err(NodeError::Transport)
+        self.handle
+            .assert_liveliness()
+            .map_err(NodeError::Transport)
     }
 
     // ====================================================================
@@ -634,7 +636,9 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `ManualByNode`. No-op for AUTOMATIC / NONE.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
         use nros_rmw::Publisher as _;
-        self.handle.assert_liveliness().map_err(NodeError::Transport)
+        self.handle
+            .assert_liveliness()
+            .map_err(NodeError::Transport)
     }
 
     /// Reserve a writable slot of `len` bytes. Caller writes into the

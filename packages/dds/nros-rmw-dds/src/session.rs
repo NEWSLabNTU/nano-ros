@@ -130,7 +130,9 @@ fn map_writer_qos(qos: &nros_rmw::QosSettings) -> dust_dds::infrastructure::qos:
         DurabilityQosPolicyKind, HistoryQosPolicyKind, LivelinessQosPolicyKind,
         ReliabilityQosPolicyKind,
     };
-    use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
+    use nros_rmw::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+    };
 
     let mut q = dust_dds::infrastructure::qos::DataWriterQos::default();
 
@@ -169,7 +171,9 @@ fn map_reader_qos(qos: &nros_rmw::QosSettings) -> dust_dds::infrastructure::qos:
         DurabilityQosPolicyKind, HistoryQosPolicyKind, LivelinessQosPolicyKind,
         ReliabilityQosPolicyKind,
     };
-    use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
+    use nros_rmw::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+    };
 
     let mut q = dust_dds::infrastructure::qos::DataReaderQos::default();
 
@@ -286,7 +290,10 @@ impl Session for DdsSession {
                     &dds_topic,
                     QosKind::Specific(map_writer_qos(&qos)),
                     Some(PublisherEventListener::new(shared.clone())),
-                    &[StatusKind::LivelinessLost, StatusKind::OfferedDeadlineMissed],
+                    &[
+                        StatusKind::LivelinessLost,
+                        StatusKind::OfferedDeadlineMissed,
+                    ],
                 )
                 .map_err(|_| TransportError::PublisherCreationFailed)?;
 
@@ -334,11 +341,18 @@ impl Session for DdsSession {
                     &dds_topic,
                     QosKind::Specific(map_writer_qos(&qos)),
                     Some(PublisherEventListener::new(shared.clone())),
-                    &[StatusKind::LivelinessLost, StatusKind::OfferedDeadlineMissed],
+                    &[
+                        StatusKind::LivelinessLost,
+                        StatusKind::OfferedDeadlineMissed,
+                    ],
                 ))
                 .map_err(|_| TransportError::PublisherCreationFailed)?;
 
-            return Ok(DdsPublisher::new_async(writer, self.runtime.clone(), shared));
+            return Ok(DdsPublisher::new_async(
+                writer,
+                self.runtime.clone(),
+                shared,
+            ));
         }
 
         #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
@@ -542,7 +556,10 @@ impl Session for DdsSession {
 
             Ok(DdsServiceServer::new(
                 DdsSubscriber::new(request_reader, req_waker),
-                DdsPublisher::new(reply_writer, Arc::new(crate::waker_cell::PublisherShared::default())),
+                DdsPublisher::new(
+                    reply_writer,
+                    Arc::new(crate::waker_cell::PublisherShared::default()),
+                ),
             ))
         }
 
@@ -626,7 +643,11 @@ impl Session for DdsSession {
 
             return Ok(DdsServiceServer::new(
                 DdsSubscriber::new_async(request_reader, self.runtime.clone(), req_waker),
-                DdsPublisher::new_async(reply_writer, self.runtime.clone(), Arc::new(crate::waker_cell::PublisherShared::default())),
+                DdsPublisher::new_async(
+                    reply_writer,
+                    self.runtime.clone(),
+                    Arc::new(crate::waker_cell::PublisherShared::default()),
+                ),
             ));
         }
 
@@ -709,7 +730,10 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             Ok(DdsServiceClient::new(
-                DdsPublisher::new(request_writer, Arc::new(crate::waker_cell::PublisherShared::default())),
+                DdsPublisher::new(
+                    request_writer,
+                    Arc::new(crate::waker_cell::PublisherShared::default()),
+                ),
                 DdsSubscriber::new(reply_reader, reply_waker),
             ))
         }
@@ -793,7 +817,11 @@ impl Session for DdsSession {
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
             return Ok(DdsServiceClient::new(
-                DdsPublisher::new_async(request_writer, self.runtime.clone(), Arc::new(crate::waker_cell::PublisherShared::default())),
+                DdsPublisher::new_async(
+                    request_writer,
+                    self.runtime.clone(),
+                    Arc::new(crate::waker_cell::PublisherShared::default()),
+                ),
                 DdsSubscriber::new_async(reply_reader, self.runtime.clone(), reply_waker),
             ));
         }

@@ -1562,9 +1562,7 @@ mod tests {
     ) -> NrosRmwRet {
         NROS_RMW_RET_UNSUPPORTED
     }
-    unsafe extern "C" fn stub_assert_publisher_liveliness(
-        _: *mut NrosRmwPublisher,
-    ) -> NrosRmwRet {
+    unsafe extern "C" fn stub_assert_publisher_liveliness(_: *mut NrosRmwPublisher) -> NrosRmwRet {
         NROS_RMW_RET_UNSUPPORTED
     }
 

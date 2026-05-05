@@ -454,10 +454,9 @@ impl ZenohSubscriber {
                 let mut nul = heapless::Vec::<u8, 257>::new();
                 let _ = nul.extend_from_slice(self.liveliness_keyexpr.as_bytes());
                 let _ = nul.push(0);
-                if let Ok(handle) = context.liveliness_get_start(
-                    nul.as_slice(),
-                    LIVELINESS_POLL_TIMEOUT_MS,
-                ) {
+                if let Ok(handle) =
+                    context.liveliness_get_start(nul.as_slice(), LIVELINESS_POLL_TIMEOUT_MS)
+                {
                     state.handle = handle;
                     state.started_at_ms = now;
                 }

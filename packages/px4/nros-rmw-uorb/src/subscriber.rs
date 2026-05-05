@@ -6,8 +6,7 @@
 //! into the caller's buffer on each subsequent call. No registry,
 //! no name lookup, no critical_section.
 
-use core::cell::Cell;
-use core::ffi::c_void;
+use core::{cell::Cell, ffi::c_void};
 
 use nros_rmw::{Subscriber, TransportError};
 use px4_sys::orb_metadata;

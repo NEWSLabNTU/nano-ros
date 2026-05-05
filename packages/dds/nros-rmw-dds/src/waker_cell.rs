@@ -71,11 +71,7 @@ impl EventSlot {
     pub fn set(&self, reg: EventReg) {
         *self.0.lock() = Some(reg);
     }
-    pub fn fire(
-        &self,
-        kind: nros_rmw::EventKind,
-        payload_ptr: *const c_void,
-    ) {
+    pub fn fire(&self, kind: nros_rmw::EventKind, payload_ptr: *const c_void) {
         // Snapshot under the lock to avoid holding it across the cb.
         let reg = *self.0.lock();
         if let Some(reg) = reg {
