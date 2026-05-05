@@ -247,6 +247,18 @@ bsp-build:
     # bindgen consumers use `-I$PREFIX/include/fsp` etc.
     cp -a "$SRC/fsp/source/include/." "$PREFIX/include/fsp/"
     cp -a "$SRC/FreeRTOSV10.4.3/FreeRTOS/Source/include/." "$PREFIX/include/freertos/"
+    # Phase 11.3.B — zpico-sys's orin-spe path also needs the ARM_R5
+    # port (`portmacro.h`) and the demo's `FreeRTOSConfig.h` to
+    # cross-compile zenoh-pico's `system/freertos/system.c`.
+    mkdir -p "$PREFIX/include/freertos/portable"
+    cp -a "$SRC/FreeRTOSV10.4.3/FreeRTOS/Source/portable/GCC" "$PREFIX/include/freertos/portable/"
+    # FreeRTOSConfig.h: drop the `#include <artimer.h>` line — that's
+    # an FSP runtime dependency we don't need at C-compile time, and
+    # pulling artimer.h would drag in dozens of additional include
+    # paths from `rt-aux-cpu-demo-fsp/soc/t23x/include/`. zenoh-pico's
+    # `system/freertos/system.c` only needs the `config*` defines.
+    sed '/^#include <artimer\.h>/d' "$SRC/rt-aux-cpu-demo-fsp/FreeRTOSConfig.h" \
+        > "$PREFIX/include/FreeRTOSConfig.h"
 
     info "FSP staged at $PREFIX"
     echo "  archive:  $PREFIX/lib/libtegra_aon_fsp.a ($(du -h "$PREFIX/lib/libtegra_aon_fsp.a" | cut -f1))"

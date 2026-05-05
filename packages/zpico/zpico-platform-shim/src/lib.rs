@@ -4,19 +4,33 @@
 //! platforms. It delegates to `nros_platform::ConcretePlatform`, which
 //! resolves to the active platform backend at compile time.
 //!
-//! Symbols provided:
-//! - Clock: `z_clock_now`, `z_clock_elapsed_*`, `z_clock_advance_*`
-//! - Memory: `z_malloc`, `z_realloc`, `z_free`
-//! - Sleep: `z_sleep_us`, `z_sleep_ms`, `z_sleep_s`
-//! - Random: `z_random_u8..u64`, `z_random_fill`
-//! - Time: `z_time_now`, `z_time_now_as_str`, `z_time_elapsed_*`, `_z_get_time_since_epoch`
-//! - Threading: `_z_task_*`, `_z_mutex_*`, `_z_mutex_rec_*`, `_z_condvar_*`
-//! - Socket stubs (smoltcp): `_z_socket_*`
+//! # Two independently-gated symbol groups
+//!
+//! - **System symbols** (clock, memory, sleep, random, time, task,
+//!   mutex, mutex_rec, condvar) — gated on `feature = "active"`.
+//!   Activated by zpico-sys when a platform feature is enabled and
+//!   zenoh-pico's bare-metal system layer is in use. Disabled on
+//!   platforms where zenoh-pico's own per-RTOS system.c file
+//!   (`src/system/freertos/system.c`, etc.) provides the same
+//!   symbols — there `active` stays off so we don't double-define.
+//!
+//! - **IVC helpers** (`_z_open_ivc`, `_z_close_ivc`, `_z_ivc_notify`,
+//!   `_z_ivc_frame_size`, `_z_ivc_rx_get`, `_z_ivc_rx_release`,
+//!   `_z_ivc_tx_get`, `_z_ivc_tx_commit`, `_z_ivc_tx_abandon`) —
+//!   gated on `feature = "link-ivc"`. Forward to `<P as PlatformIvc>`
+//!   regardless of whether the system shim is also active.
+//!
+//! # AGX Orin SPE (Phase 11.3.B)
+//!
+//! On orin-spe, `active` is OFF and `link-ivc` is ON. zenoh-pico's
+//! own `system/freertos/system.c` provides every clock/mutex/condvar
+//! symbol via the FSP V10.4.3 FreeRTOS API; the shim only contributes
+//! the IVC link-layer forwarders.
 
 #![no_std]
 
-// All symbols require a platform backend to be selected.
-// The `active` feature is set by zpico-sys when a platform feature is enabled.
-// Without it, this crate compiles as an empty lib.
 #[cfg(feature = "active")]
 mod shim;
+
+#[cfg(feature = "link-ivc")]
+mod ivc_helpers;
