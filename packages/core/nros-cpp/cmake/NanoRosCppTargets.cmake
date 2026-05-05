@@ -82,10 +82,28 @@ if(NOT TARGET NanoRos::NanoRosCpp)
   add_library(NanoRos::NanoRosCpp INTERFACE IMPORTED)
   set_property(TARGET NanoRos::NanoRosCpp PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES "${_nros_cpp_include}")
+  # Phase 117.9: parameter.hpp (and any future header-only wrappers over
+  # nros-c symbols) need the C library symbols at link time. Pull
+  # NanoRos::NanoRos in transitively so consumers only need to link
+  # NanoRos::NanoRosCpp.
   set_property(TARGET NanoRos::NanoRosCpp PROPERTY
-    INTERFACE_LINK_LIBRARIES NanoRos::NanoRosCppLib)
+    INTERFACE_LINK_LIBRARIES NanoRos::NanoRosCppLib NanoRos::NanoRos)
   set_property(TARGET NanoRos::NanoRosCpp PROPERTY
     INTERFACE_COMPILE_FEATURES cxx_std_14)
+
+  # Phase 117.8: when the consumer asked for the Cyclone DDS RMW
+  # backend, link the standalone `nros-rmw-cyclonedds` library + flip
+  # on the auto-register call inside `nros::init`.
+  if(NANO_ROS_RMW STREQUAL "cyclonedds")
+    if(NOT TARGET NrosRmwCyclonedds::NrosRmwCyclonedds)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosRmwCyclonedds CONFIG)
+    endif()
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES NrosRmwCyclonedds::NrosRmwCyclonedds)
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_CYCLONEDDS=1)
+  endif()
 
   # --- Rust multi-staticlib link fix ---------------------------------------
   #

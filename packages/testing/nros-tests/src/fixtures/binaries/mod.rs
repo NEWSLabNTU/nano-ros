@@ -1784,6 +1784,9 @@ static CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the cpp-action-client binary
 static CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the cpp-parameters binary
+static CPP_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build a CMake-based C++ example.
 ///
 /// Reuses the same `build/install` layout as C examples. The NanoRos CMake
@@ -1957,6 +1960,21 @@ pub fn cpp_action_server_binary() -> PathBuf {
 pub fn cpp_action_client_binary() -> PathBuf {
     build_cpp_action_client()
         .expect("Failed to build cpp-action-client")
+        .to_path_buf()
+}
+
+/// Build cpp-parameters example (cached)
+pub fn build_cpp_parameters() -> TestResult<&'static Path> {
+    CPP_PARAMETERS_BINARY
+        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/parameters", "cpp_parameters"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the cpp-parameters binary path
+#[rstest::fixture]
+pub fn cpp_parameters_binary() -> PathBuf {
+    build_cpp_parameters()
+        .expect("Failed to build cpp-parameters")
         .to_path_buf()
 }
 

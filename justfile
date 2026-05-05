@@ -52,6 +52,7 @@ mod zenohd 'just/zenohd.just'
 mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
 mod orin_spe 'just/orin-spe.just'
+mod cyclonedds 'just/cyclonedds.just'
 
 default:
     @just --list
@@ -115,6 +116,7 @@ build-all: build-examples build-test-fixtures
 # Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
 # Builds posix (zenoh + xrce) unconditionally, then platform-specific libraries when toolchains are available.
 install-local: \
+    cyclonedds::setup \
     install-local-posix \
     freertos::install nuttx::install \
     threadx_linux::install threadx_riscv64::install
@@ -126,16 +128,22 @@ install-local: \
 # (`libnros_c_dds.a` / `libnros_cpp_dds.a`), so all three coexist in
 # the install prefix.
 [private]
-install-local-posix:
+install-local-posix: cyclonedds::build-rmw
     #!/usr/bin/env bash
     set -e
     PREFIX="$(pwd)/build/install"
-    for rmw in zenoh xrce dds; do
+    # Phase 117.8: `cyclonedds` joins the loop. Cyclone DDS itself
+    # and the `nros-rmw-cyclonedds` C++ backend are built ahead of
+    # this loop (via the `cyclonedds::build-rmw` dep), so the
+    # NanoRosCpp cmake build can `find_package(NrosRmwCyclonedds)`
+    # against the same install prefix when NANO_ROS_RMW=cyclonedds.
+    for rmw in zenoh xrce dds cyclonedds; do
         echo "=== Building posix RMW=$rmw ==="
         cmake -S . -B "build/cmake-$rmw" \
             -DNANO_ROS_RMW="$rmw" \
             -DNANO_ROS_PLATFORM="posix" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PREFIX"
         just _cmake-cargo-stale-guard "build/cmake-$rmw"
         cmake --build "build/cmake-$rmw"
         cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
@@ -605,9 +613,12 @@ check-cpp:
     echo "  - clang-format"
     clang-format --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
     echo "  - freestanding syntax (c++14)"
+    # parameter.hpp re-exposes the C-side `nros_param_*` API from
+    # nros-c, so the syntax probe needs nros-c on the include path too.
     for hdr in packages/core/nros-cpp/include/nros/*.hpp; do
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
             -Ipackages/core/nros-cpp/include \
+            -Ipackages/core/nros-c/include \
             -include "$hdr" -x c++ /dev/null
     done
     echo "  - nros-cpp clippy (zenoh + posix + humble)"
@@ -987,6 +998,7 @@ _orchestrate verb:
     run zenohd
     run rmw_zenoh
     run orin_spe
+    run cyclonedds
     echo ""
     if [ ${#failed[@]} -gt 0 ]; then
         echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"
