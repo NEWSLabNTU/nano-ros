@@ -1,10 +1,12 @@
-//! Phase 100.8 — Orin SPE mock-IVC E2E test.
+//! Phase 100.8 / 11.3.A — Orin SPE mock-IVC E2E test.
 //!
 //! Exercises the IVC link-transport wire format documented in
 //! `docs/roadmap/phase-100-04-link-ivc-design.md` §5 against the
-//! `nvidia-ivc` `unix-mock` backend. No NVIDIA SDK is required — the
-//! mock implements one IVC channel on top of an `AF_UNIX SOCK_DGRAM`
-//! pair, so this test runs on any POSIX host.
+//! `nvidia-ivc` `unix-mock` backend, using the **zero-copy**
+//! `Channel::read_frame` / `Channel::write_frame` API (Phase 11.3.A).
+//! No NVIDIA SDK required — the mock implements one IVC channel on
+//! top of an `AF_UNIX SOCK_DGRAM` pair, so this test runs on any POSIX
+//! host.
 //!
 //! What this test pins down (and what the CCPLEX-side bridge daemon
 //! in `autoware_sentinel/src/ivc-bridge/` must match byte-for-byte):
@@ -30,7 +32,7 @@
 
 #![cfg(unix)]
 
-use nvidia_ivc::{Channel, IvcError, unix_mock};
+use nvidia_ivc::{Channel, unix_mock};
 
 const FRAME_SIZE: usize = 64;
 const HEADER_SIZE: usize = 4;
@@ -50,35 +52,36 @@ mod ids {
 }
 
 // =============================================================================
-// Framing helpers (Rust mirror of `ivc.c`'s send/recv batch state machine).
+// Framing helpers (Rust mirror of `ivc.c`'s send/recv batch state machine,
+// using the zero-copy `Channel::write_frame` / `Channel::read_frame`
+// API directly).
 // =============================================================================
 
 /// Send `payload` framed over `tx`, splitting across `frame_size`-bound
 /// frames with a `u16 total_len + u16 offset` LE header. Mirrors
-/// `__z_ivc_send_batch`.
-fn send_framed(tx: &Channel, payload: &[u8]) -> Result<(), IvcError> {
+/// `__z_ivc_send_batch`. Returns `()` on success or panics if the
+/// mock ring is full (shouldn't happen with a fresh pair).
+fn send_framed(tx: &Channel, payload: &[u8]) {
     assert!(payload.len() <= u16::MAX as usize, "payload fits in u16 total_len");
     let total = payload.len() as u16;
     let mut off: u16 = 0;
     while (off as usize) < payload.len() {
         let chunk = (payload.len() - off as usize).min(PAYLOAD_MAX);
-        let mut frame = [0u8; FRAME_SIZE];
-        frame[0..2].copy_from_slice(&total.to_le_bytes());
-        frame[2..4].copy_from_slice(&off.to_le_bytes());
-        frame[HEADER_SIZE..HEADER_SIZE + chunk]
+        let mut slot = tx.write_frame().expect("tx slot");
+        let buf = slot.as_mut_slice();
+        buf[0..2].copy_from_slice(&total.to_le_bytes());
+        buf[2..4].copy_from_slice(&off.to_le_bytes());
+        buf[HEADER_SIZE..HEADER_SIZE + chunk]
             .copy_from_slice(&payload[off as usize..off as usize + chunk]);
-        let n = tx.write(&frame[..HEADER_SIZE + chunk])?;
-        assert_eq!(n, HEADER_SIZE + chunk, "unix-mock writes are atomic");
+        slot.commit(HEADER_SIZE + chunk);
         off = off.checked_add(chunk as u16).expect("offset stays in u16");
     }
     tx.notify();
-    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum RecvErr {
     Wire,
-    Closed,
 }
 
 /// Read framed bytes from `rx` until one full batch is reassembled.
@@ -86,21 +89,21 @@ enum RecvErr {
 fn recv_framed(rx: &Channel) -> Result<Vec<u8>, RecvErr> {
     let mut expected_total: u16 = 0;
     let mut acc: Vec<u8> = Vec::new();
-    let mut frame = [0u8; FRAME_SIZE];
     loop {
-        let n = match rx.read(&mut frame) {
-            Ok(n) => n,
-            Err(IvcError::WouldBlock) => {
+        let frame = match rx.read_frame() {
+            Some(f) => f,
+            None => {
                 std::thread::sleep(std::time::Duration::from_millis(1));
                 continue;
             }
-            Err(_) => return Err(RecvErr::Closed),
         };
+        let bytes = frame.as_slice();
+        let n = bytes.len();
         if n < HEADER_SIZE {
             return Err(RecvErr::Wire);
         }
-        let total = u16::from_le_bytes([frame[0], frame[1]]);
-        let off = u16::from_le_bytes([frame[2], frame[3]]);
+        let total = u16::from_le_bytes([bytes[0], bytes[1]]);
+        let off = u16::from_le_bytes([bytes[2], bytes[3]]);
         let payload_len = n - HEADER_SIZE;
 
         // Reserved keep-alive ping (§5.2). Drop and keep looping.
@@ -119,11 +122,21 @@ fn recv_framed(rx: &Channel) -> Result<Vec<u8>, RecvErr> {
         if (off as usize) != acc.len() || off as usize + payload_len > expected_total as usize {
             return Err(RecvErr::Wire);
         }
-        acc.extend_from_slice(&frame[HEADER_SIZE..HEADER_SIZE + payload_len]);
+        acc.extend_from_slice(&bytes[HEADER_SIZE..HEADER_SIZE + payload_len]);
+        // frame Drop ack's the slot
         if acc.len() == expected_total as usize {
             return Ok(acc);
         }
     }
+}
+
+/// Push a raw header into `tx` for the wire-violation test. Single
+/// `write_frame` + `commit` of just the header bytes.
+fn send_raw(tx: &Channel, raw: &[u8]) {
+    let mut slot = tx.write_frame().expect("tx slot");
+    slot.as_mut_slice()[..raw.len()].copy_from_slice(raw);
+    slot.commit(raw.len());
+    tx.notify();
 }
 
 // =============================================================================
@@ -139,7 +152,7 @@ fn single_frame_message_round_trips() {
     assert_eq!(tx.frame_size(), FRAME_SIZE, "wire spec § frame size");
 
     let payload: &[u8] = b"hello sentinel";
-    send_framed(&tx, payload).expect("send");
+    send_framed(&tx, payload);
     let got = recv_framed(&rx).expect("recv");
     assert_eq!(got, payload);
 }
@@ -154,13 +167,13 @@ fn multi_frame_zenoh_batch_reassembles() {
     // ⌈200 / 60⌉ = 4 frames (60 + 60 + 60 + 20).
     let payload: Vec<u8> = (0..200u16).map(|i| (i & 0xff) as u8).collect();
 
-    send_framed(&tx, &payload).expect("send");
+    send_framed(&tx, &payload);
     let got = recv_framed(&rx).expect("recv");
     assert_eq!(got, payload, "byte-perfect reassembly across 4 frames");
 
-    // After reassembly completes the next read must block again.
-    let mut buf = [0u8; FRAME_SIZE];
-    assert!(matches!(rx.read(&mut buf), Err(IvcError::WouldBlock)));
+    // After reassembly completes the next read must return None
+    // (the mock socket buffer is drained).
+    assert!(rx.read_frame().is_none(), "queue drained");
 }
 
 #[test]
@@ -169,14 +182,12 @@ fn keepalive_ping_is_dropped_silently() {
     let tx = Channel::open(ids::PING_TX).expect("tx channel");
     let rx = Channel::open(ids::PING_RX).expect("rx channel");
 
-    // Write a reserved keep-alive (total=0, offset=0) followed by a real
-    // message; the recv state machine must drop the ping and surface the
-    // payload only.
+    // Write a reserved keep-alive (total=0, offset=0) followed by a
+    // real message; the recv state machine must drop the ping and
+    // surface the payload only.
     let ping = [0u8; HEADER_SIZE];
-    let n = tx.write(&ping).expect("write ping");
-    assert_eq!(n, HEADER_SIZE);
-    tx.notify();
-    send_framed(&tx, b"after-ping").expect("send real payload");
+    send_raw(&tx, &ping);
+    send_framed(&tx, b"after-ping");
 
     let got = recv_framed(&rx).expect("recv");
     assert_eq!(got, b"after-ping", "ping dropped, payload survives");
@@ -194,9 +205,7 @@ fn wire_violation_yields_protocol_error() {
     let mut frame = [0u8; HEADER_SIZE + 8];
     frame[0..2].copy_from_slice(&20u16.to_le_bytes()); // total_len = 20
     frame[2..4].copy_from_slice(&8u16.to_le_bytes()); // offset = 8 (must be 0!)
-    let n = tx.write(&frame).expect("write violating frame");
-    assert_eq!(n, frame.len());
-    tx.notify();
+    send_raw(&tx, &frame);
 
     let got = recv_framed(&rx);
     assert_eq!(got, Err(RecvErr::Wire));

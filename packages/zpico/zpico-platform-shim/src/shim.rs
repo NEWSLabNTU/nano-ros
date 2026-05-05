@@ -804,16 +804,6 @@ mod ivc_helpers {
     }
 
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn _z_read_ivc(ch: *mut c_void, buf: *mut u8, len: usize) -> usize {
-        <P as PlatformIvc>::read(ch, buf, len)
-    }
-
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn _z_send_ivc(ch: *mut c_void, buf: *const u8, len: usize) -> usize {
-        <P as PlatformIvc>::write(ch, buf, len)
-    }
-
-    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn _z_close_ivc(_ch: *mut c_void) {
         // No-op on hardware (FSP channels outlive the session) and on
         // the unix-mock (the registry owns the fd). Symbol exists for
@@ -829,5 +819,32 @@ mod ivc_helpers {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn _z_ivc_frame_size(ch: *mut c_void) -> u32 {
         <P as PlatformIvc>::frame_size(ch)
+    }
+
+    // Zero-copy RX path (Phase 11.3.A).
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_rx_get(ch: *mut c_void, len_out: *mut usize) -> *const u8 {
+        <P as PlatformIvc>::rx_get(ch, len_out)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_rx_release(ch: *mut c_void) {
+        <P as PlatformIvc>::rx_release(ch)
+    }
+
+    // Zero-copy TX path (Phase 11.3.A).
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8 {
+        <P as PlatformIvc>::tx_get(ch, cap_out)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_tx_commit(ch: *mut c_void, len: usize) {
+        <P as PlatformIvc>::tx_commit(ch, len)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn _z_ivc_tx_abandon(ch: *mut c_void) {
+        <P as PlatformIvc>::tx_abandon(ch)
     }
 }

@@ -509,35 +509,71 @@ pub trait PlatformUdpMulticast {
 /// Channel handles are opaque `*mut c_void` to match the shape zenoh-pico
 /// passes across its FFI boundary. The driver crate (`nvidia-ivc`)
 /// translates between this opaque handle and either NVIDIA's FSP
-/// `tegra_ivc_channel_*` API (`fsp` feature) or a Unix-socket pair
+/// `tegra_ivc_*` API (`fsp` feature) or a Unix-socket pair
 /// (`unix-mock` feature, host dev + CI).
 ///
-/// Read / write return `usize::MAX` on hard error and `0` on
-/// "no frame available within poll" — same convention as
-/// [`PlatformSerial::read`].
+/// **Zero-copy contract** (Phase 11.3.A). NVIDIA's FSP IVC API is
+/// fundamentally a "borrow ring slot, fill, commit / release"
+/// pattern. Both backends mirror that here so consumers don't branch
+/// on backend:
+///
+/// - [`Self::rx_get`] returns a pointer into the channel's RX slot
+///   (and writes the frame length to `*len_out`); [`Self::rx_release`]
+///   advances the producer-visible cursor. Returns null +
+///   `*len_out = 0` if the ring is empty.
+/// - [`Self::tx_get`] returns a writable pointer to the next free TX
+///   slot (and writes the slot capacity to `*cap_out`);
+///   [`Self::tx_commit`] makes the slot visible to the peer (and
+///   rings the per-frame doorbell on FSP — see `notify` for batching).
+///   [`Self::tx_abandon`] frees the slot without sending. Returns
+///   null + `*cap_out = 0` if the ring is full.
+///
+/// Single outstanding RX slot and single outstanding TX slot per
+/// channel — borrow, finish, repeat. Multi-frame batching is the
+/// caller's job (loop `tx_get` / fill / `tx_commit`, then one
+/// `notify`).
 ///
 /// `frame_size` is the fixed per-channel frame size negotiated at
-/// carveout setup (typical NVIDIA IVC: 64 bytes per frame, 16 frames per
-/// channel). The link layer uses it to pick its reassembly buffer.
+/// carveout setup (typical NVIDIA IVC: 64 bytes per frame, 16 frames
+/// per channel). The link layer uses it to pick its reassembly buffer.
 pub trait PlatformIvc {
     /// Resolve a channel ID into an opaque handle. Returns null on
     /// failure. The numeric ID matches the NVIDIA channel index
     /// (`channel 2 = aon_echo`).
     fn channel_get(id: u32) -> *mut c_void;
 
-    /// Read up to `len` bytes from the channel. Returns bytes read,
-    /// `0` on no-frame-available, or `usize::MAX` on error.
-    fn read(ch: *mut c_void, buf: *mut u8, len: usize) -> usize;
-
-    /// Write `len` bytes to the channel. Returns bytes written, or
-    /// `usize::MAX` on error.
-    fn write(ch: *mut c_void, buf: *const u8, len: usize) -> usize;
-
-    /// Ring the doorbell to wake the peer.
-    fn notify(ch: *mut c_void);
-
     /// Fixed frame size negotiated for this channel, in bytes.
     fn frame_size(ch: *mut c_void) -> u32;
+
+    /// Borrow the next-available RX frame. Writes the frame length to
+    /// `*len_out` and returns a pointer into the ring. Returns null +
+    /// `*len_out = 0` if no frame is available.
+    fn rx_get(ch: *mut c_void, len_out: *mut usize) -> *const u8;
+
+    /// Release the most recently `rx_get`'d frame back to the
+    /// producer. Pair 1:1 with `rx_get` calls that returned non-null.
+    fn rx_release(ch: *mut c_void);
+
+    /// Borrow the next free TX slot. Writes the slot capacity to
+    /// `*cap_out` and returns a writable pointer. Returns null +
+    /// `*cap_out = 0` if the ring is full.
+    fn tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8;
+
+    /// Commit `len` bytes from the most recently `tx_get`'d slot.
+    /// Slot is then visible to the peer; per-frame doorbell may also
+    /// fire on FSP. Pair 1:1 with `tx_get` calls that returned
+    /// non-null.
+    fn tx_commit(ch: *mut c_void, len: usize);
+
+    /// Abandon the most recently `tx_get`'d slot without sending.
+    /// Pair 1:1 with `tx_get` calls that returned non-null.
+    fn tx_abandon(ch: *mut c_void);
+
+    /// Ring the doorbell. On FSP this is redundant (commit/release
+    /// already invoke `ch->notify_remote`); on unix-mock it's a no-op
+    /// (SOCK_DGRAM wakes the peer naturally). Provided for symmetry
+    /// so callers can batch-commit then notify once.
+    fn notify(ch: *mut c_void);
 }
 
 // ============================================================================
