@@ -146,23 +146,36 @@ liveliness+lease) **except**:
   to match `rmw_cyclonedds_cpp`. Surfacing it through
   `nros_rmw_qos_t._reserved` is a follow-up.
 
-## Type discovery (XTypes metadata)
+## Type discovery (XTypes metadata) — Phase 117.X.6 deferred
 
 The codegen helper passes `idlc -t` which **omits the XTypes type-
-information section** from the generated descriptor. Two reasons:
+information section** from the generated descriptor.
 
-1. Cyclone 0.10.5's idlc reliably segfaults emitting type-info on
-   our build (`-h` exits 1, files truncated, see
-   `cyclonedds-interop.md`).
-2. Type-info is optional on the wire — peers that need it fall
-   back to typename matching, which is what nano-ros does anyway.
+**Why.** Cyclone 0.10.5's `idlc` segfaults emitting type-info on
+**any** input — verified with the trivial `@final struct Simple {
+long x; };` (runs `idlc -l c`, prints `Failed to compile`, output
+`.c` is truncated mid-ops-array, no descriptor emitted). The bug
+is independent of our IDL shape. Tag `0.10.5` is the latest patch
+on the upstream `0.10.*` branch (no `0.10.6`).
 
-**Cost:** `ros2 topic echo --include-hidden-topics` works; full
-`ros2 topic info -v` (which queries DCPSPublication / DCPSSubscription
-for XTypes metadata) shows blank type info for nano-ros endpoints.
+**Why we keep `-t` and accept the limit.** Type-info is optional
+on the wire — peers fall back to typename matching, which is what
+nano-ros publishers / subscribers / services already use end-to-
+end. Stock ROS 2 `rclcpp` apps interop fine. Only `ros2 topic
+info -v` (which queries `DCPSPublication` / `DCPSSubscription`
+builtin topics for XTypes metadata) shows blank type info for
+nano-ros endpoints.
 
-**Path forward:** rebuild Cyclone with type-info fixed, or carry a
-patch on the submodule. Tracked separately.
+**Resolution candidates considered:**
+- **Bump Cyclone pin to `0.11.x`** — risks wire-format drift vs
+  the system-installed `ros-humble-cyclonedds 0.10.5`; breaks the
+  Humble interop guarantee the pin choice was made for.
+- **Carry a patch on the 0.10.5 submodule** investigating the
+  idlc internal failure — several hours of cyclonedds-internals
+  work for marginal benefit.
+- **Accept the limit.** Current state. Re-open when a real
+  consumer needs introspection, or when Phase 117 bumps the
+  Cyclone pin for an unrelated reason.
 
 ## Test rpath / `LD_LIBRARY_PATH`
 
