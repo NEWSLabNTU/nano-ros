@@ -2,6 +2,10 @@
 /// @brief C++ action server — Fibonacci on /fibonacci (ThreadX RISC-V QEMU, callback-based)
 
 #include <cstdio>
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -53,17 +57,14 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
 
 extern "C" void app_main(void) {
     printf("nros C++ Action Server (ThreadX RISC-V)\n");
-    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
+    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_action_server");
-    if (!ret.ok()) { printf("create_node failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(nros::create_node(node, "cpp_action_server"));
     printf("Node created\n");
 
     nros::ActionServer<Fibonacci> srv;
-    ret = node.create_action_server(srv, "/fibonacci");
-    if (!ret.ok()) { printf("create_action_server failed: %d\n", ret.raw()); nros::shutdown(); return; }
+    NROS_CHECK(node.create_action_server(srv, "/fibonacci"));
 
     g_srv = &srv;
     srv.set_goal_callback(on_goal);

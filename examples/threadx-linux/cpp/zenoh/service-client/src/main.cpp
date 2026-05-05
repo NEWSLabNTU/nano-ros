@@ -2,22 +2,24 @@
 /// @brief C++ service client — AddTwoInts (ThreadX Linux, async Future)
 
 #include <cstdio>
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
 extern "C" void app_main(void) {
     printf("nros C++ Service Client (ThreadX Linux)\n");
-    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
-    if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
+    NROS_CHECK(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID));
 
     nros::Node node;
-    ret = nros::create_node(node, "cpp_service_client");
-    if (!ret.ok()) { printf("create_node failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(nros::create_node(node, "cpp_service_client"));
     printf("Node created\n");
 
     nros::Client<example_interfaces::srv::AddTwoInts> client;
-    ret = node.create_client(client, "/add_two_ints");
-    if (!ret.ok()) { printf("create_client failed\n"); nros::shutdown(); return; }
+    NROS_CHECK(node.create_client(client, "/add_two_ints"));
+    nros::Result ret;
 
     printf("Service client ready\n");
     struct { int64_t a, b; } cases[] = {{5,3},{10,20},{100,200},{-5,10}};
