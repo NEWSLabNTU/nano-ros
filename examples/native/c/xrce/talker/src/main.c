@@ -14,11 +14,12 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
-#include <nros/executor.h>
 
 // ----------------------------------------------------------------------------
 // std_msgs/Int32 message support (manual definition for this example)
@@ -144,85 +145,33 @@ int main(int argc, char** argv) {
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
-    // Initialize support context (connects to XRCE Agent)
-    nros_ret_t ret = nros_support_init(&app.support, agent_addr, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        fprintf(stderr, "Is the XRCE Agent running? MicroXRCEAgent udp4 -p 2019\n");
-        return 1;
-    }
-    printf("Support initialized (XRCE session created)\n");
-
-    // Create node
-    ret = nros_node_init(&app.node, &app.support, "c_xrce_talker", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, agent_addr, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_talker", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    // Create publisher
-    ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
+                                       &std_msgs_Int32_type, "/chatter"), 1);
     printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
-    // Create application context
     app.talker_ctx = (talker_context_t){
         .publisher = &app.publisher,
         .message = {0},
         .count = 0,
     };
 
-    // Create timer (1 second period = 1,000,000,000 ns)
-    ret = nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize timer: %d\n", ret);
-        nros_publisher_fini(&app.publisher);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
-    printf("Timer created (1 second period)\n");
-
-    // Create executor
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_timer_fini(&app.timer);
-        nros_publisher_fini(&app.publisher);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
+                                   timer_callback, &app.talker_ctx), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-
-    // Add timer to executor
-    ret = nros_executor_add_timer(&app.executor, &app.timer);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to add timer to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_timer_fini(&app.timer);
-        nros_publisher_fini(&app.publisher);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_add_timer(&app.executor, &app.timer), 1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
-    // Set up signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
 
-    // Spin with 100ms period
-    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
+    nros_ret_t ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }

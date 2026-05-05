@@ -6,9 +6,10 @@
 #include <string.h>
 #include <signal.h>
 
+#include <nros/action.h>
+#include <nros/check.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
 
 #include "example_interfaces.h"
 
@@ -110,32 +111,17 @@ int main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, agent, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
-    }
-    printf("Support initialized\n");
-
-    ret = nros_node_init(&app.node, &app.support, "c_xrce_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, agent, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_action_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    ret = nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize action client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
+                                           &fibonacci_type), 1);
     printf("Action client created: /fibonacci\n");
 
     nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL);
     nros_action_client_set_result_callback(&app.action_client, result_callback, NULL);
+    nros_ret_t ret = NROS_RET_OK;
 
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);

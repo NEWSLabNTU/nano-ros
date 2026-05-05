@@ -7,10 +7,11 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/subscription.h>
-#include <nros/executor.h>
 
 // Generated message bindings
 #include "std_msgs.h"
@@ -95,20 +96,8 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Initialize support context
-    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
-    }
-    printf("Support initialized\n");
-
-    // Create node
-    ret = nros_node_init(&app.node, &app.support, "c_listener", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_listener", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create application context
@@ -116,41 +105,16 @@ int main(int argc, char** argv) {
         .message_count = 0,
     };
 
-    // Create subscription using generated type support
-    ret =
-        nros_subscription_init(&app.subscription, &app.node, std_msgs_msg_int32_get_type_support(),
-                               "/chatter", subscription_callback, &app.listener_ctx);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node,
+                                          std_msgs_msg_int32_get_type_support(),
+                                          "/chatter", subscription_callback, &app.listener_ctx), 1);
     printf("Subscription created for topic: %s\n",
            nros_subscription_get_topic_name(&app.subscription));
 
-    // Create executor
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_subscription_fini(&app.subscription);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-
-    // Add subscription to executor
-    ret =
-        nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to add subscription to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_subscription_fini(&app.subscription);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_add_subscription(&app.executor, &app.subscription,
+                                                  NROS_EXECUTOR_ON_NEW_DATA), 1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
@@ -160,7 +124,7 @@ int main(int argc, char** argv) {
     printf("\nWaiting for messages (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
+    nros_ret_t ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }

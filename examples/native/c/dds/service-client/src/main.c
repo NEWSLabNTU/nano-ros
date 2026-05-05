@@ -7,10 +7,11 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
-#include <nros/init.h>
-#include <nros/node.h>
+#include <nros/check.h>
 #include <nros/client.h>
 #include <nros/executor.h>
+#include <nros/init.h>
+#include <nros/node.h>
 
 // Generated C bindings for example_interfaces/srv/AddTwoInts
 #include "example_interfaces.h"
@@ -61,52 +62,17 @@ int main(int argc, char** argv) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    // Initialize support context
-    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
-    }
-    printf("Support initialized\n");
-
-    // Create node
-    ret = nros_node_init(&app.node, &app.support, "c_service_client", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    // Create service client
-    ret = nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     printf("Client created for service: %s\n", nros_client_get_service_name(&app.client));
 
     // Phase 82: clients must be registered with an executor before use.
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_client_fini(&app.client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
-
-    ret = nros_executor_add_client(&app.executor, &app.client);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to register client with executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_client_fini(&app.client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
+    nros_ret_t ret = NROS_RET_OK;
 
     // Test cases: (a, b) pairs
     struct {

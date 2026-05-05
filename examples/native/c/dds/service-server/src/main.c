@@ -7,10 +7,11 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/service.h>
-#include <nros/executor.h>
 
 // Generated C bindings for example_interfaces/srv/AddTwoInts
 #include "example_interfaces.h"
@@ -121,65 +122,25 @@ int main(int argc, char** argv) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    // Initialize support context
-    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
-    }
-    printf("Support initialized\n");
-
-    // Create node
-    ret = nros_node_init(&app.node, &app.support, "c_service_server", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_server", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    // Create service server
-    ret = nros_service_init(&app.service, &app.node, &add_two_ints_type, "/add_two_ints",
-                            service_callback, &app.ctx);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize service: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type,
+                                     "/add_two_ints", service_callback, &app.ctx), 1);
     printf("Service created: %s\n", nros_service_get_service_name(&app.service));
 
-    // Create executor
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_service_fini(&app.service);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-
-    // Add service to executor
-    ret = nros_executor_add_service(&app.executor, &app.service);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to add service to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_service_fini(&app.service);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_add_service(&app.executor, &app.service), 1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
-    // Set up signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     printf("\nWaiting for service requests (Ctrl+C to exit)...\n\n");
 
-    // Spin with 100ms period
-    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
+    nros_ret_t ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }

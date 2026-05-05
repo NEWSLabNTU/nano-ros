@@ -7,10 +7,11 @@
 #include <signal.h>
 
 // nros modular includes (rclc-style)
+#include <nros/action.h>
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
-#include <nros/executor.h>
 
 // Generated C bindings for example_interfaces/action/Fibonacci
 #include "example_interfaces.h"
@@ -138,63 +139,22 @@ int main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    // Initialize support context
-    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
-    }
-    printf("Support initialized\n");
-
-    // Create node
-    ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    // Create action client
-    ret = nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize action client: %d\n", ret);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
+                                           &fibonacci_type), 1);
     printf("Action client created: /fibonacci\n");
 
-    // Set callbacks
-    ret = nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to set feedback callback: %d\n", ret);
-    }
+    NROS_SOFTCHECK(nros_action_client_set_feedback_callback(&app.action_client,
+                                                            feedback_callback, NULL));
+    NROS_SOFTCHECK(nros_action_client_set_result_callback(&app.action_client,
+                                                          result_callback, NULL));
 
-    ret = nros_action_client_set_result_callback(&app.action_client, result_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to set result callback: %d\n", ret);
-    }
-
-    // Initialize executor
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
-
-    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
-    if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to add action client to executor: %d\n", ret);
-        nros_executor_fini(&app.executor);
-        nros_action_client_fini(&app.action_client);
-        nros_node_fini(&app.node);
-        nros_support_fini(&app.support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
+    nros_ret_t ret = NROS_RET_OK;
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 300; i++) {
