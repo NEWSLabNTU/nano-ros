@@ -52,9 +52,30 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - Per-platform `cmake/<plat>-support.cmake` in example tree. Layer-2 (`nros-{threadx,freertos,nuttx}.cmake`) ship via `find_package(NanoRos)`.
 
 ### CMake Path Convention
-- Never hard-code project-relative paths in example cmake.
-- No `../../../cmake/...`, no project-root heuristics, no `${_ROOT}/external/<sdk>` defaults.
-- Build scripts pass absolute: `-DCMAKE_TOOLCHAIN_FILE=`, `-D<SDK>_DIR=`, `-DCMAKE_PREFIX_PATH=$pwd/build/install/`, `-D<BOARD>_CONFIG_DIR=`.
+- Never hard-code project-relative paths in example cmake **or in
+  `packages/<crate>/CMakeLists.txt`, `cmake/*.cmake` modules, build.rs,
+  or any in-tree script**. Each subproject (`packages/dds/<name>`,
+  `packages/core/<name>`, `examples/<dir>`) must build standalone — no
+  walking up the source tree.
+- No `../../../cmake/...`, no project-root heuristics, no
+  `${_ROOT}/external/<sdk>` defaults, no `$<source_dir>/../../../scripts/...`
+  in `install(...)` rules.
+- **Drivers pass absolute paths.** The `just`-recipe / outer build
+  script knows the layout and supplies it via cmake `-D…=$PWD/...` or
+  env var:
+  - `-DCMAKE_TOOLCHAIN_FILE=`, `-D<SDK>_DIR=`, `-DCMAKE_PREFIX_PATH=$pwd/build/install/`,
+    `-D<BOARD>_CONFIG_DIR=`.
+  - Project-internal scripts shipped to the install: pass via a
+    cache var like `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE=$PWD/scripts/...`;
+    the project's `install(PROGRAMS ...)` reads the cache var, errors
+    out if it isn't absolute.
+- **Find-program / find-package fallbacks may use install-relative
+  paths.** Once installed, a CMake config at `<prefix>/lib/cmake/<Pkg>/`
+  legitimately knows that companion files live at
+  `<prefix>/share/<pkg>/` — `${CMAKE_CURRENT_LIST_DIR}/../../share/<pkg>`
+  resolves inside the install layout, not the source tree, and is
+  fine. The forbidden pattern is the source-tree variant
+  (`${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/<dir>`).
 
 ### Roadmap Docs
 `docs/roadmap/`: header (Goal/Status/Priority/Depends on) → Overview → Architecture → Work Items + `### N.M — Title` + `**Files**` → Acceptance → Notes. `- [x]` done. Completed → `archived/`.
