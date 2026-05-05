@@ -9,6 +9,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_cpp_action_client, LOG_LEVEL_INF);
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
 extern "C" {
 #include <zpico_zephyr.h>
 }
@@ -17,8 +22,6 @@ extern "C" {
 
 // Generated C++ action bindings
 #include "example_interfaces.hpp"
-
-LOG_MODULE_REGISTER(nros_cpp_action_client, LOG_LEVEL_INF);
 
 int main(void)
 {
@@ -31,31 +34,15 @@ int main(void)
         return 1;
     }
 
-    /* Initialize nros session */
-    nros::Result ret = nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
-    if (!ret.ok()) {
-        LOG_ERR("Init failed: %d", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
 
-    /* Create node */
     nros::Node node;
-    ret = nros::create_node(node, "zephyr_cpp_action_client");
-    if (!ret.ok()) {
-        LOG_ERR("Node creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_action_client"), 1);
 
-    /* Create action client */
     using Fibonacci = example_interfaces::action::Fibonacci;
     nros::ActionClient<Fibonacci> client;
-    ret = node.create_action_client(client, "/fibonacci");
-    if (!ret.ok()) {
-        LOG_ERR("Action client creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
+    nros::Result ret;
 
     /* Warm-up spin — allow zenoh discovery to complete */
     for (int i = 0; i < 30; i++) {

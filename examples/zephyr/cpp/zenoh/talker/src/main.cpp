@@ -10,6 +10,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_cpp_talker, LOG_LEVEL_INF);
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
 extern "C" {
 #include <zpico_zephyr.h>
 }
@@ -18,8 +23,6 @@ extern "C" {
 
 // Generated C++ message bindings
 #include "std_msgs.hpp"
-
-LOG_MODULE_REGISTER(nros_cpp_talker, LOG_LEVEL_INF);
 
 /* ============================================================================
  * Application
@@ -36,49 +39,24 @@ int main(void)
         return 1;
     }
 
-    /* Initialize nros session */
-    nros::Result ret = nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
-    if (!ret.ok()) {
-        LOG_ERR("Init failed: %d", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
 
-    /* Create node */
     nros::Node node;
-    ret = nros::create_node(node, "zephyr_cpp_talker");
-    if (!ret.ok()) {
-        LOG_ERR("Node creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_talker"), 1);
 
-    /* Create publisher */
     nros::Publisher<std_msgs::msg::Int32> pub;
-    ret = node.create_publisher(pub, "/chatter");
-    if (!ret.ok()) {
-        LOG_ERR("Publisher creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
-    /* Publish messages */
     LOG_INF("Publishing messages...");
 
     int32_t count = 0;
-
     while (true) {
         count++;
-
         std_msgs::msg::Int32 msg;
         msg.data = count;
-
-        ret = pub.publish(msg);
-        if (ret.ok()) {
-            LOG_INF("Published: %d", count);
-        } else {
-            LOG_ERR("Publish failed: %d", ret.raw());
-        }
-
+        nros::Result ret = pub.publish(msg);
+        if (ret.ok()) LOG_INF("Published: %d", count);
+        else LOG_ERR("Publish failed: %d", ret.raw());
         k_sleep(K_SECONDS(1));
     }
 
