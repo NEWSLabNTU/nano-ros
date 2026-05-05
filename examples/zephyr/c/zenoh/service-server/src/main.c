@@ -6,15 +6,19 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_service_server, LOG_LEVEL_INF);
+
+#define NROS_CHECK_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/service.h>
-#include <nros/executor.h>
 #include <zpico_zephyr.h>
 
 #include "example_interfaces.h"
-
-LOG_MODULE_REGISTER(nros_service_server, LOG_LEVEL_INF);
 
 static int g_request_count = 0;
 
@@ -66,18 +70,10 @@ int main(void)
     }
 
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init(&support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Support init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
 
     nros_node_t node = nros_node_get_zero_initialized();
-    ret = nros_node_init(&node, &support, "zephyr_service_server", "/");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Node init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_service_server", "/"), 1);
 
     nros_service_type_t type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
@@ -85,24 +81,11 @@ int main(void)
     };
 
     nros_service_t service = nros_service_get_zero_initialized();
-    ret = nros_service_init(&service, &node, &type, "/add_two_ints", service_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Service init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_service_init(&service, &node, &type, "/add_two_ints", service_callback, NULL), 1);
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
-    ret = nros_executor_init(&executor, &support, 4);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Executor init failed: %d", ret);
-        return 1;
-    }
-
-    ret = nros_executor_add_service(&executor, &service);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Add service failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&executor, &support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_service(&executor, &service), 1);
 
     LOG_INF("Waiting for requests...");
 

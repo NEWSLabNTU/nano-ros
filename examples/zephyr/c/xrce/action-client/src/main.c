@@ -10,13 +10,17 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_xrce_action_client, LOG_LEVEL_INF);
+
+#define NROS_CHECK_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
+#include <nros/action.h>
+#include <nros/check.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
 
 #include "example_interfaces.h"
-
-LOG_MODULE_REGISTER(nros_xrce_action_client, LOG_LEVEL_INF);
 
 int main(void)
 {
@@ -24,22 +28,14 @@ int main(void)
 
     /* Initialize support context (handles network wait + transport setup) */
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init_named(
+    NROS_CHECK_RET(nros_support_init_named(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID,
-        "xrce_action_client");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Support init failed: %d", ret);
-        return 1;
-    }
+        "xrce_action_client"), 1);
 
     nros_node_t node = nros_node_get_zero_initialized();
-    ret = nros_node_init(&node, &support, "zephyr_xrce_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Node init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_xrce_action_client", "/"), 1);
 
     nros_action_type_t fib_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
@@ -50,11 +46,8 @@ int main(void)
     };
 
     nros_action_client_t client = nros_action_client_get_zero_initialized();
-    ret = nros_action_client_init(&client, &node, "/fibonacci", &fib_type);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Action client init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_action_client_init(&client, &node, "/fibonacci", &fib_type), 1);
+    nros_ret_t ret = NROS_RET_OK;
 
     /* Send goal: compute Fibonacci sequence of order 10 */
     example_interfaces_action_fibonacci_goal goal;

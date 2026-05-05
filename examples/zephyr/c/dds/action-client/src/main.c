@@ -10,31 +10,27 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_action_client, LOG_LEVEL_INF);
+
+#define NROS_CHECK_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
+#include <nros/action.h>
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
-
-LOG_MODULE_REGISTER(nros_action_client, LOG_LEVEL_INF);
 
 int main(void)
 {
     LOG_INF("nros Zephyr Action Client (Zenoh)");
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Support init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID), 1);
 
     nros_node_t node = nros_node_get_zero_initialized();
-    ret = nros_node_init(&node, &support, "zephyr_action_client", "/");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Node init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_action_client", "/"), 1);
 
     nros_action_type_t fib_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
@@ -45,31 +41,12 @@ int main(void)
     };
 
     nros_action_client_t client = nros_action_client_get_zero_initialized();
-    ret = nros_action_client_init(&client, &node, "/fibonacci", &fib_type);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Action client init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_action_client_init(&client, &node, "/fibonacci", &fib_type), 1);
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
-    ret = nros_executor_init(&executor, &support, 4);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Executor init failed: %d", ret);
-        nros_action_client_fini(&client);
-        nros_node_fini(&node);
-        nros_support_fini(&support);
-        return 1;
-    }
-
-    ret = nros_executor_add_action_client(&executor, &client);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Failed to add action client to executor: %d", ret);
-        nros_executor_fini(&executor);
-        nros_action_client_fini(&client);
-        nros_node_fini(&node);
-        nros_support_fini(&support);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&executor, &support, 4), 1);
+    NROS_CHECK_RET(nros_executor_add_action_client(&executor, &client), 1);
+    nros_ret_t ret = NROS_RET_OK;
 
     /* Send goal: compute Fibonacci sequence of order 10 */
     example_interfaces_action_fibonacci_goal goal;

@@ -11,14 +11,18 @@
 #include <zephyr/logging/log.h>
 #include <string.h>
 
+LOG_MODULE_REGISTER(nros_xrce_action_server, LOG_LEVEL_INF);
+
+#define NROS_CHECK_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
+#include <nros/action.h>
+#include <nros/check.h>
+#include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/action.h>
-#include <nros/executor.h>
 
 #include "example_interfaces.h"
-
-LOG_MODULE_REGISTER(nros_xrce_action_server, LOG_LEVEL_INF);
 
 static int g_goal_count = 0;
 
@@ -133,22 +137,14 @@ int main(void)
 
     /* Initialize support context (handles network wait + transport setup) */
     nros_support_t support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init_named(
+    NROS_CHECK_RET(nros_support_init_named(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID,
-        "xrce_action_server");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Support init failed: %d", ret);
-        return 1;
-    }
+        "xrce_action_server"), 1);
 
     nros_node_t node = nros_node_get_zero_initialized();
-    ret = nros_node_init(&node, &support, "zephyr_xrce_action_server", "/");
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Node init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_xrce_action_server", "/"), 1);
 
     nros_action_type_t fib_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
@@ -159,25 +155,12 @@ int main(void)
     };
 
     nros_action_server_t server = nros_action_server_get_zero_initialized();
-    ret = nros_action_server_init(&server, &node, "/fibonacci", &fib_type,
-                                  goal_callback, cancel_callback, accepted_callback, NULL);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Action server init failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_action_server_init(&server, &node, "/fibonacci", &fib_type,
+                                           goal_callback, cancel_callback, accepted_callback, NULL), 1);
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
-    ret = nros_executor_init(&executor, &support, 8);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Executor init failed: %d", ret);
-        return 1;
-    }
-
-    ret = nros_executor_add_action_server(&executor, &server);
-    if (ret != NROS_RET_OK) {
-        LOG_ERR("Add action server failed: %d", ret);
-        return 1;
-    }
+    NROS_CHECK_RET(nros_executor_init(&executor, &support, 8), 1);
+    NROS_CHECK_RET(nros_executor_add_action_server(&executor, &server), 1);
 
     LOG_INF("Waiting for goals...");
 
