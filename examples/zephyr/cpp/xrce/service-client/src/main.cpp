@@ -11,12 +11,15 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_cpp_xrce_service_client, LOG_LEVEL_INF);
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ service bindings
 #include "example_interfaces.hpp"
-
-LOG_MODULE_REGISTER(nros_cpp_xrce_service_client, LOG_LEVEL_INF);
 
 /* ============================================================================
  * Application
@@ -27,30 +30,15 @@ int main(void)
     LOG_INF("nros Zephyr C++ Service Client");
     LOG_INF("================================");
 
-    /* Initialize nros session */
-    nros::Result ret = nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT), CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_client");
-    if (!ret.ok()) {
-        LOG_ERR("Init failed: %d", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
+                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_client"), 1);
 
-    /* Create node */
     nros::Node node;
-    ret = nros::create_node(node, "zephyr_cpp_service_client");
-    if (!ret.ok()) {
-        LOG_ERR("Node creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_service_client"), 1);
 
-    /* Create service client */
     nros::Client<example_interfaces::srv::AddTwoInts> client;
-    ret = node.create_client(client, "/add_two_ints");
-    if (!ret.ok()) {
-        LOG_ERR("Client creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
+    nros::Result ret;
 
     /* Allow time for connection to stabilize */
     k_sleep(K_SECONDS(2));

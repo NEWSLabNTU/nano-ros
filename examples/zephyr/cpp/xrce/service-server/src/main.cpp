@@ -11,12 +11,15 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_cpp_xrce_service_server, LOG_LEVEL_INF);
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ service bindings
 #include "example_interfaces.hpp"
-
-LOG_MODULE_REGISTER(nros_cpp_xrce_service_server, LOG_LEVEL_INF);
 
 /* ============================================================================
  * Application
@@ -27,30 +30,15 @@ int main(void)
     LOG_INF("nros Zephyr C++ Service Server");
     LOG_INF("================================");
 
-    /* Initialize nros session */
-    nros::Result ret = nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT), CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_server");
-    if (!ret.ok()) {
-        LOG_ERR("Init failed: %d", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
+                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_server"), 1);
 
-    /* Create node */
     nros::Node node;
-    ret = nros::create_node(node, "zephyr_cpp_service_server");
-    if (!ret.ok()) {
-        LOG_ERR("Node creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_service_server"), 1);
 
-    /* Create service server (manual-poll) */
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
-    ret = node.create_service(srv, "/add_two_ints");
-    if (!ret.ok()) {
-        LOG_ERR("Service creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
+    nros::Result ret;
 
     /* Spin + poll loop */
     LOG_INF("Waiting for service requests...");

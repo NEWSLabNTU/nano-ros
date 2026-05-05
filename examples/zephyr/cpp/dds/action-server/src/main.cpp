@@ -10,12 +10,15 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(nros_cpp_dds_action_server, LOG_LEVEL_INF);
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
+
 #include <nros/nros.hpp>
 
 // Generated C++ action bindings
 #include "example_interfaces.hpp"
-
-LOG_MODULE_REGISTER(nros_cpp_dds_action_server, LOG_LEVEL_INF);
 
 using Fibonacci = example_interfaces::action::Fibonacci;
 
@@ -64,30 +67,13 @@ int main(void)
     LOG_INF("nros Zephyr C++ Action Server");
     LOG_INF("===============================");
 
-    /* Initialize nros session */
-    nros::Result ret = nros::init("", CONFIG_NROS_DOMAIN_ID);
-    if (!ret.ok()) {
-        LOG_ERR("Init failed: %d", ret.raw());
-        return 1;
-    }
+    NROS_TRY_RET(nros::init("", CONFIG_NROS_DOMAIN_ID), 1);
 
-    /* Create node */
     nros::Node node;
-    ret = nros::create_node(node, "zephyr_cpp_action_server");
-    if (!ret.ok()) {
-        LOG_ERR("Node creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_action_server"), 1);
 
-    /* Create action server (callback-based) */
     nros::ActionServer<Fibonacci> srv;
-    ret = node.create_action_server(srv, "/fibonacci");
-    if (!ret.ok()) {
-        LOG_ERR("Action server creation failed: %d", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
+    NROS_TRY_RET(node.create_action_server(srv, "/fibonacci"), 1);
 
     g_srv = &srv;
     srv.set_goal_callback(on_goal);
