@@ -284,19 +284,47 @@ pub enum nros_cpp_qos_history_t {
     NROS_CPP_QOS_KEEP_ALL = 1,
 }
 
+/// QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum nros_cpp_qos_liveliness_t {
+    NROS_CPP_QOS_LIVELINESS_NONE = 0,
+    NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
+    NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
+    NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+}
+
 /// QoS settings (passed by value from C++).
+///
+/// Phase 108.B.7 — full DDS-shaped QoS surface. The four core fields
+/// (`reliability`, `durability`, `history`, `depth`) plus extended
+/// policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
+/// `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
+/// `nros_qos_t` (C API) and `QosSettings` (Rust API).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_qos_t {
     pub reliability: nros_cpp_qos_reliability_t,
     pub durability: nros_cpp_qos_durability_t,
     pub history: nros_cpp_qos_history_t,
+    pub liveliness_kind: nros_cpp_qos_liveliness_t,
     pub depth: c_int,
+    /// Subscriber max-inter-arrival / publisher offered-rate, ms.
+    /// `0` = infinite (no deadline check).
+    pub deadline_ms: u32,
+    /// Sample expiry, ms. `0` = infinite.
+    pub lifespan_ms: u32,
+    /// Liveliness lease, ms. `0` = infinite.
+    pub liveliness_lease_ms: u32,
+    /// If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
+    pub avoid_ros_namespace_conventions: u8,
 }
 
 impl nros_cpp_qos_t {
     pub(crate) fn to_qos_settings(self) -> nros_rmw::QosSettings {
-        use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
+        use nros_rmw::{
+            QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+        };
 
         nros_rmw::QosSettings {
             reliability: match self.reliability {
@@ -315,16 +343,25 @@ impl nros_cpp_qos_t {
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST => QosHistoryPolicy::KeepLast,
                 nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL => QosHistoryPolicy::KeepAll,
             },
-            // Phase 109 — extended QoS fields default to "off" until
-            // nros_cpp_qos_t grows to carry them. Apps that need
-            // deadline / lifespan / liveliness use the Rust API
-            // directly today.
-            liveliness_kind: nros_rmw::QosLivelinessPolicy::Automatic,
+            liveliness_kind: match self.liveliness_kind {
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_NONE => {
+                    QosLivelinessPolicy::None
+                }
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_AUTOMATIC => {
+                    QosLivelinessPolicy::Automatic
+                }
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC => {
+                    QosLivelinessPolicy::ManualByTopic
+                }
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE => {
+                    QosLivelinessPolicy::ManualByNode
+                }
+            },
             depth: self.depth as u32,
-            deadline_ms: 0,
-            lifespan_ms: 0,
-            liveliness_lease_ms: 0,
-            avoid_ros_namespace_conventions: false,
+            deadline_ms: self.deadline_ms,
+            lifespan_ms: self.lifespan_ms,
+            liveliness_lease_ms: self.liveliness_lease_ms,
+            avoid_ros_namespace_conventions: self.avoid_ros_namespace_conventions != 0,
         }
     }
 }

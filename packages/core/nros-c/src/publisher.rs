@@ -309,6 +309,55 @@ pub unsafe extern "C" fn nros_publish_raw(
     }
 }
 
+/// Phase 108.B.7 — manually assert this publisher's liveliness.
+///
+/// Required for entities created with QoS `liveliness_kind =
+/// NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC` or `MANUAL_BY_NODE`. No-op for
+/// `AUTOMATIC` / `NONE`. Backends that don't implement manual
+/// assertion (XRCE-DDS, zenoh-pico, uORB today) treat this as a no-op
+/// and return `NROS_RET_OK`.
+///
+/// # Parameters
+/// * `publisher` - Pointer to an initialized publisher
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if publisher is NULL
+/// * `NROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_PUBLISH_FAILED` on backend failure
+///
+/// # Safety
+/// * `publisher` must be a valid pointer to an initialized publisher
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_assert_liveliness(
+    publisher: *const nros_publisher_t,
+) -> nros_ret_t {
+    validate_not_null!(publisher);
+
+    let publisher = &*publisher;
+
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
+    {
+        use nros_node::Publisher;
+
+        let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+        match pub_handle.assert_liveliness() {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_PUBLISH_FAILED,
+        }
+    }
+
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
+    {
+        NROS_RET_ERROR
+    }
+}
+
 /// Finalize a publisher.
 ///
 /// # Parameters

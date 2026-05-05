@@ -46,6 +46,16 @@ typedef enum nros_cpp_qos_history_t {
   NROS_CPP_QOS_KEEP_ALL = 1,
 } nros_cpp_qos_history_t;
 
+/**
+ * QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
+ */
+typedef enum nros_cpp_qos_liveliness_t {
+  NROS_CPP_QOS_LIVELINESS_NONE = 0,
+  NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
+  NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
+  NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+} nros_cpp_qos_liveliness_t;
+
 typedef struct Option_CppCancelCallback Option_CppCancelCallback;
 
 typedef struct Option_CppGoalCallback Option_CppGoalCallback;
@@ -84,12 +94,36 @@ typedef void (*nros_cpp_guard_callback_t)(void *context);
 
 /**
  * QoS settings (passed by value from C++).
+ *
+ * Phase 108.B.7 — full DDS-shaped QoS surface. The four core fields
+ * (`reliability`, `durability`, `history`, `depth`) plus extended
+ * policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
+ * `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
+ * `nros_qos_t` (C API) and `QosSettings` (Rust API).
  */
 typedef struct nros_cpp_qos_t {
   enum nros_cpp_qos_reliability_t reliability;
   enum nros_cpp_qos_durability_t durability;
   enum nros_cpp_qos_history_t history;
+  enum nros_cpp_qos_liveliness_t liveliness_kind;
   int depth;
+  /**
+   * Subscriber max-inter-arrival / publisher offered-rate, ms.
+   * `0` = infinite (no deadline check).
+   */
+  uint32_t deadline_ms;
+  /**
+   * Sample expiry, ms. `0` = infinite.
+   */
+  uint32_t lifespan_ms;
+  /**
+   * Liveliness lease, ms. `0` = infinite.
+   */
+  uint32_t liveliness_lease_ms;
+  /**
+   * If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
+   */
+  uint8_t avoid_ros_namespace_conventions;
 } nros_cpp_qos_t;
 
 typedef struct nros_cpp_pub_count_status_t {
@@ -417,6 +451,19 @@ nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
                                                               uint32_t _deadline_ms,
                                                               nros_cpp_publisher_count_cb_t _cb,
                                                               void *_user_context);
+
+/**
+ * Phase 108.B.7 — manually assert this publisher's liveliness.
+ *
+ * Required for entities created with QoS `liveliness_kind =
+ * MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`. No-op otherwise. Backends
+ * without manual-assertion wiring return `OK` (the trait default).
+ *
+ * # Safety
+ * `storage` must be a valid publisher storage (initialised by
+ * `nros_cpp_publisher_create`).
+ */
+nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void *storage);
 
 /**
  * Create a service server on a node.

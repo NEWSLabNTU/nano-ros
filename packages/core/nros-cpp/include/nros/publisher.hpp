@@ -38,6 +38,13 @@ nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void* storage,
 nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void* storage, uint32_t deadline_ms,
                                                               nros_cpp_publisher_count_cb_t cb,
                                                               void* user_context);
+
+/// Phase 108.B.7 — manually assert this publisher's liveliness.
+/// Required for entities created with `liveliness_kind =
+/// LivelinessManualByTopic` / `ManualByNode`. No-op otherwise. Backends
+/// that don't implement manual assertion treat this as a no-op and
+/// return success.
+nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void* storage);
 } // extern "C"
 
 namespace nros {
@@ -141,6 +148,14 @@ template <typename M> class Publisher {
                                                                      user_context));
     }
 
+    /// Phase 108.B.7 — manually assert liveliness. Required for
+    /// publishers configured with `LivelinessManualByTopic` /
+    /// `ManualByNode`; no-op for `Automatic` / `None`.
+    Result assert_liveliness() {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_assert_liveliness(storage_));
+    }
+
   private:
     Publisher(const Publisher&) = delete;
     Publisher& operator=(const Publisher&) = delete;
@@ -169,7 +184,12 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
     ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
     ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
     ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
     ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                    ffi_qos, out.storage_);
     if (ret == 0) {

@@ -200,3 +200,26 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_offered_deadline_missed(
 ) -> nros_cpp_ret_t {
     crate::NROS_CPP_RET_UNSUPPORTED
 }
+
+/// Phase 108.B.7 — manually assert this publisher's liveliness.
+///
+/// Required for entities created with QoS `liveliness_kind =
+/// MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`. No-op otherwise. Backends
+/// without manual-assertion wiring return `OK` (the trait default).
+///
+/// # Safety
+/// `storage` must be a valid publisher storage (initialised by
+/// `nros_cpp_publisher_create`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_assert_liveliness(
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    match publisher.assert_liveliness() {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
