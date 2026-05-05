@@ -2,7 +2,7 @@
 
 **Goal:** Close the day-to-day API ergonomics gap between `nros-c`/`nros-cpp` and `rclc`/`rclcpp` so a hello-world is the same line count, the same shape, and free of platform leaks.
 
-**Status:** In Progress (A + B + D shipped, C/E/F pending)
+**Status:** In Progress (A + B + C + D shipped, E/F pending)
 **Priority:** High
 **Depends on:** Phase 21 (C API), Phase 79 (unified platform abstraction), Phase 83 (thin-wrapper compliance)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-2, UX-3, UX-4, UX-8, UX-21, UX-26
@@ -126,9 +126,9 @@ Zephyr Rust examples must be named `rustapp` because `zephyr-lang-rust`'s `rust_
 - [~] **112.A.3** Migrated FreeRTOS C zenoh talker. Combined Phase 112.B + D + A reduction: 98 -> 60 lines (-39%). Other examples still use the explicit serialize+publish_raw two-step; sweep tracked alongside 112.B.2.
 - [x] **112.B.1** Added `<nros/check.h>` with `NROS_CHECK`/`NROS_SOFTCHECK`/`NROS_CHECK_RET`. Override-able log via `NROS_CHECK_LOG`. Re-exported from umbrella `<nros/nros.h>`.
 - [~] **112.B.2** Swept FreeRTOS / NuttX / ThreadX-RISCV C zenoh talker + listener (6 files). Native (`int main`) and service/action/cpp examples deferred — patterns diverge.
-- [ ] **112.C.1** Define `nros_app_main` contract; document in `book/src/reference/c-api.md`
-- [ ] **112.C.2** Per-platform startup shim in each `nros-platform-<rtos>` crate
-- [ ] **112.C.3** Migrate examples to `nros_app_main`; keep deprecated shims one release
+- [x] **112.C.1** Defined `nros_app_main` contract in `<nros/app_main.h>` (re-exported from umbrella `<nros/nros.h>`). User defines `int nros_app_main(int argc, char **argv)`; macro `NROS_APP_MAIN_REGISTER_{VOID,ZEPHYR,POSIX}()` at file scope emits the linker entry shim. C/C++ both supported via `extern "C"` linkage. Auto-detect via `__ZEPHYR__` / `NROS_HOST_POSIX` / fallback void.
+- [x] **112.C.2** Per-platform startup shim — implemented as header-only macros that emit the platform-correct `app_main` / `main` symbol forwarding to `nros_app_main`. No separate Rust shim needed: existing per-platform startup chains (FreeRTOS startup.c, NuttX entry, ThreadX board init, Zephyr `main`, native CRT) link to the macro-emitted symbol unchanged.
+- [x] **112.C.3** Migrated 115 example sources to the new contract. Bulk transform via `tmp/migrate-app-main.py`. Coverage: FreeRTOS C+C++ × 6, NuttX C+C++ × 6, ThreadX-RISCV C+C++ × 6, ThreadX-Linux C+C++ × 6, Zephyr C+C++ × 3 RMWs × 6, native C+C++ × 3 RMWs × 6. Skipped: custom-msg (pure CDR test) + RTOS startup.c (platform chain).
 - [x] **112.D.1** `nano_ros_generate_config_header(<config_file> <out_path>)` cmake function in `NanoRosReadConfig.cmake`. Template at `cmake/templates/nros_app_config.h.in`. Installed to `share/nano_ros/templates/`. Found via `CMAKE_CURRENT_FUNCTION_LIST_DIR` across in-tree, source-tree, and install layouts. FreeRTOS C zenoh talker migrated to use `NROS_APP_CONFIG.zenoh.locator` / `.domain_id`.
 - [ ] **112.D.2** Zephyr variant — read Kconfig values into the same struct
 - [ ] **112.D.3** Drop `target_compile_definitions(... APP_*)` blocks. **Deferred** — `startup.c` per-example-compiled, lwIP/netif still wants `APP_IP`/`APP_MAC` macros. Phase 116 (`nano-ros.toml`) cleans this up.
