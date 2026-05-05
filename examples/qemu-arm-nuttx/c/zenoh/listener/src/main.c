@@ -13,14 +13,15 @@
 #include <nros/node.h>
 #include <nros/subscription.h>
 
+#include <nros/app_config.h>
 #include "std_msgs.h"
 
 // NuttX embedded config — matches board crate defaults (listener = 192.0.3.11)
-#ifndef APP_ZENOH_LOCATOR
-#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#ifndef NROS_APP_CONFIG.zenoh.locator
+#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
 #endif
-#ifndef APP_DOMAIN_ID
-#define APP_DOMAIN_ID 0
+#ifndef NROS_APP_CONFIG.zenoh.domain_id
+#define NROS_APP_CONFIG.zenoh.domain_id 0
 #endif
 #define MAX_MESSAGES 10
 
@@ -58,7 +59,7 @@ int nros_app_main(int argc, char **argv) {
 
 
     printf("nros NuttX C Listener\n");
-    printf("Locator: %s\n", APP_ZENOH_LOCATOR);
+    printf("Locator: %s\n", NROS_APP_CONFIG.zenoh.locator);
 
     memset(&app, 0, sizeof(app));
 
@@ -85,7 +86,7 @@ int nros_app_main(int argc, char **argv) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_listener", "/"), 1);
 
     app.listener_ctx = (listener_context_t){ .message_count = 0 };

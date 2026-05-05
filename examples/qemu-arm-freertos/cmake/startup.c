@@ -584,66 +584,16 @@ _Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
 }
 
 /* ---- C/C++ application entry point ---- */
-/* Replaces the Rust _start() → run() flow for pure C/C++ examples. */
+/* Replaces the Rust _start() → run() flow for pure C/C++ examples.
+ *
+ * Phase 112.D.3: all per-example knobs live in NROS_APP_CONFIG (typed
+ * const struct emitted by `nano_ros_generate_config_header()`). The
+ * old APP_IP / APP_MAC / APP_*_PRIORITY / APP_*_STACK_BYTES compile
+ * defines are gone — startup.c is shared across every example via
+ * `share/nano_ros/platform/freertos/startup.c`. */
+#include <nros/app_config.h>
 
 extern void app_main(void);
-
-/* Configuration — set via -D compile flags from CMakeLists.txt */
-#ifndef APP_MAC
-#define APP_MAC {0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
-#endif
-#ifndef APP_IP
-#define APP_IP {192, 0, 3, 10}
-#endif
-#ifndef APP_NETMASK
-#define APP_NETMASK {255, 255, 255, 0}
-#endif
-#ifndef APP_GATEWAY
-#define APP_GATEWAY {192, 0, 3, 1}
-#endif
-
-/* APP_TASK_STACK / POLL_TASK_STACK are stack WORDS (4 bytes each on
- * Cortex-M3). 32768 words = 128 KB app stack. The Rust example
- * default sets app_stack_bytes = 65536 (16384 words = 64 KB); the
- * C path runs `nros_support_init -> zpico_open -> z_open` from the
- * app task and z_open's TCP handshake (zenoh-pico OPEN frame
- * encoder + parser) overflows 64 KB on FreeRTOS — `MALLOC FAILED`
- * was the visible symptom in the rtos_e2e harness, hidden behind
- * `Failed to initialize support: -1`. 256 words = 1 KB poll stack
- * is enough for the `nros_freertos_poll_network` busy loop. */
-#define APP_TASK_STACK   32768
-#define APP_TASK_PRIORITY 3
-#define POLL_TASK_STACK   256
-#define POLL_TASK_PRIORITY 4
-#define POLL_INTERVAL_MS  1
-
-/* zenoh-pico read/lease task config — must be priority HIGHER than the
- * app task or the read task gets starved (FreeRTOS preempts strict-prio).
- * Without this configuration, zenoh-pico spawns the read task at default
- * priority 0 (idle) and it never runs, so subscriptions never receive.
- * Examples can override via [scheduling] in config.toml; the CMake
- * NROS_CONFIG_* mapping passes them as APP_ZENOH_*_PRIORITY defines. */
-#ifdef APP_ZENOH_READ_PRIORITY
-#define ZENOH_READ_PRIORITY  APP_ZENOH_READ_PRIORITY
-#else
-#define ZENOH_READ_PRIORITY  5  /* > POLL_TASK_PRIORITY (4) > APP_TASK_PRIORITY (3) */
-#endif
-#ifdef APP_ZENOH_LEASE_PRIORITY
-#define ZENOH_LEASE_PRIORITY APP_ZENOH_LEASE_PRIORITY
-#else
-#define ZENOH_LEASE_PRIORITY 5
-#endif
-#ifdef APP_ZENOH_READ_STACK_BYTES
-#define ZENOH_READ_STACK     APP_ZENOH_READ_STACK_BYTES
-#else
-#define ZENOH_READ_STACK     5120
-#endif
-#ifdef APP_ZENOH_LEASE_STACK_BYTES
-#define ZENOH_LEASE_STACK    APP_ZENOH_LEASE_STACK_BYTES
-#else
-#define ZENOH_LEASE_STACK    5120
-#endif
-
 extern void zpico_set_task_config(uint32_t read_priority,
                                   uint32_t read_stack_bytes,
                                   uint32_t lease_priority,
@@ -651,8 +601,9 @@ extern void zpico_set_task_config(uint32_t read_priority,
 
 static void poll_task_entry(void *arg) {
     (void)arg;
+    const uint32_t poll_ms = NROS_APP_CONFIG.scheduling.poll_interval_ms;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(poll_ms));
         nros_freertos_poll_network();
     }
 }
@@ -660,12 +611,11 @@ static void poll_task_entry(void *arg) {
 static void app_task_entry(void *arg) {
     (void)arg;
 
-    const uint8_t mac[] = APP_MAC;
-    const uint8_t ip[] = APP_IP;
-    const uint8_t netmask[] = APP_NETMASK;
-    const uint8_t gw[] = APP_GATEWAY;
-
-    if (nros_freertos_init_network(mac, ip, netmask, gw) != 0) {
+    if (nros_freertos_init_network(
+            NROS_APP_CONFIG.network.mac,
+            NROS_APP_CONFIG.network.ip,
+            NROS_APP_CONFIG.network.netmask,
+            NROS_APP_CONFIG.network.gateway) != 0) {
         semihosting_write0("Network init failed\n");
         for (;;) {}
     }
@@ -675,8 +625,10 @@ static void app_task_entry(void *arg) {
 
     semihosting_write0("Network ready\n");
 
-    /* Create poll task */
-    nros_freertos_create_task(poll_task_entry, "poll", POLL_TASK_STACK, 0, POLL_TASK_PRIORITY);
+    /* Create poll task. 256 words = 1 KB stack is enough for the
+     * `nros_freertos_poll_network` busy loop. */
+    nros_freertos_create_task(poll_task_entry, "poll", 256, 0,
+                              NROS_APP_CONFIG.scheduling.poll_priority);
 
     /* Initialise semihosting stdio so printf() routes to QEMU stdout.
      * Disable buffering so output is visible immediately (important for
@@ -688,8 +640,11 @@ static void app_task_entry(void *arg) {
      * (which calls zpico_init -> zp_start_read_task). Without this,
      * the read task spawns at priority 0 (idle) and never delivers
      * subscription messages on a system with higher-priority tasks. */
-    zpico_set_task_config(ZENOH_READ_PRIORITY, ZENOH_READ_STACK,
-                          ZENOH_LEASE_PRIORITY, ZENOH_LEASE_STACK);
+    zpico_set_task_config(
+        NROS_APP_CONFIG.scheduling.zenoh_read_priority,
+        NROS_APP_CONFIG.scheduling.zenoh_read_stack_bytes,
+        NROS_APP_CONFIG.scheduling.zenoh_lease_priority,
+        NROS_APP_CONFIG.scheduling.zenoh_lease_stack_bytes);
 
     /* Run user application */
     app_main();
@@ -703,7 +658,11 @@ static void app_task_entry(void *arg) {
 }
 
 void _start(void) {
-    nros_freertos_create_task(app_task_entry, "app", APP_TASK_STACK, 0, APP_TASK_PRIORITY);
+    /* App stack is in WORDS (4 bytes on Cortex-M3). 32 KB / 4 = 8192
+     * words minimum; defaults in config.toml come tuned per use case. */
+    const uint32_t app_stack_words = NROS_APP_CONFIG.scheduling.app_stack_bytes / 4;
+    nros_freertos_create_task(app_task_entry, "app", app_stack_words, 0,
+                              NROS_APP_CONFIG.scheduling.app_priority);
     nros_freertos_start_scheduler();
     for (;;) {}
 }

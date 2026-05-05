@@ -1,8 +1,7 @@
 # nuttx-support.cmake
 #
-# CMake support module for NuttX C/C++ examples (QEMU ARM virt) —
-# layer 3. Phase 91.E1c: thin orchestrator on top of `nros-nuttx.cmake`,
-# which is shipped via the cmake install (find_package(NanoRos)).
+# Layer-3 cmake support module for NuttX C/C++ examples (QEMU ARM virt).
+# Phase 112.E: shipped via `find_package(NanoRos)` install layout.
 #
 # Unlike FreeRTOS / ThreadX, NuttX uses its own native build system
 # (kconfig + make). cmake's job here is **not** to rebuild the
@@ -17,17 +16,23 @@
 #
 # Caller must already have done:
 #   find_package(NanoRos CONFIG REQUIRED)
-# (the codegen pipeline + nros-cpp include dir are picked up from
-# NanoRos_DIR.)
+#   include(nuttx-support)
 
 include(nros-nuttx)
 
 nros_nuttx_validate(REQUIRE NanoRos_DIR)
 nros_nuttx_set_cargo_target("armv7a-nuttx-eabihf")
 
-# FFI crate ships under this support file's portable subtree.
-get_filename_component(_NUTTX_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-set(_NUTTX_FFI_CRATE_DIR "${_NUTTX_CMAKE_DIR}/nros-nuttx-ffi")
+# FFI crate ships under share/nano_ros/platform/nuttx/.
+get_filename_component(_NUTTX_SUPPORT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(_NROS_INSTALL_PREFIX "${_NUTTX_SUPPORT_DIR}/../../.." ABSOLUTE)
+set(_NUTTX_FFI_CRATE_DIR
+    "${_NROS_INSTALL_PREFIX}/share/nano_ros/platform/nuttx/nros-nuttx-ffi")
+if(NOT EXISTS "${_NUTTX_FFI_CRATE_DIR}/Cargo.toml")
+    message(FATAL_ERROR
+        "nuttx-support: nros-nuttx-ffi crate not found at ${_NUTTX_FFI_CRATE_DIR}. "
+        "Reinstall NanoRos (`just nuttx install`).")
+endif()
 
 # Backward-compat wrapper. Existing per-example CMakeLists.txt files
 # call `nuttx_build_example(<name> <main> ...)` (positional name +

@@ -12,6 +12,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 
+#include <nros/app_config.h>
 #include "example_interfaces.h"
 
 // ----------------------------------------------------------------------------
@@ -151,7 +152,7 @@ int nros_app_main(int argc, char **argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_server", "/"), 1);
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
                                        &fibonacci_type, goal_callback, cancel_callback,

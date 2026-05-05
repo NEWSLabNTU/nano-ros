@@ -9,13 +9,14 @@
 
 #include <nros/app_main.h>
 #include <nros/nros.hpp>
+#include <nros/app_config.h>
 #include "std_msgs.hpp"
 
-#ifndef APP_ZENOH_LOCATOR
-#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#ifndef NROS_APP_CONFIG.zenoh.locator
+#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
 #endif
-#ifndef APP_DOMAIN_ID
-#define APP_DOMAIN_ID 0
+#ifndef NROS_APP_CONFIG.zenoh.domain_id
+#define NROS_APP_CONFIG.zenoh.domain_id 0
 #endif
 
 extern "C" int sleep(unsigned int);
@@ -38,7 +39,7 @@ int nros_app_main(int argc, char **argv) {
 
     // Wait for NuttX networking to come up (mirrors the C examples).
     sleep(5);
-    NROS_TRY_RET(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_TRY_RET(nros::init(NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_talker"), 1);

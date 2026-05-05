@@ -12,6 +12,7 @@
 #include <nros/node.h>
 #include <nros/service.h>
 
+#include <nros/app_config.h>
 #include "example_interfaces.h"
 
 // ----------------------------------------------------------------------------
@@ -83,7 +84,7 @@ int nros_app_main(int argc, char **argv) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_server", "/"), 1);
     NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type,
                                  "/add_two_ints", service_callback, &app.ctx), 1);

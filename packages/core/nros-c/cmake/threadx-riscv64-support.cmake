@@ -1,18 +1,16 @@
 # threadx-riscv64-support.cmake
 #
-# CMake support module for ThreadX RISC-V 64-bit (QEMU virt) C/C++
-# examples (layer 3). Phase 91.E1a: thin orchestrator on top of
-# `nros-threadx.cmake`, which is shipped via the cmake install
-# (find_package(NanoRos)).
+# Layer-3 cmake support module for ThreadX RISC-V 64-bit (QEMU virt)
+# C/C++ examples. Phase 112.E: shipped via `find_package(NanoRos)`
+# install layout.
 #
 # Provides the `threadx_platform` INTERFACE target plus
 # `threadx_riscv64_strip_builtins(<archive>)` for codegen-emitted Rust
 # archives that need their soft-float compiler_builtins members
 # stripped before linking. Exports THREADX_LINKER_SCRIPT,
-# THREADX_STARTUP_SOURCE, and THREADX_STARTUP_INCLUDES so per-example
-# CMakeLists.txt files can link their executables.
+# THREADX_STARTUP_SOURCE, and THREADX_STARTUP_INCLUDES.
 #
-# Required variables (pass via cmake -D or environment):
+# Required variables (env or -D):
 #   THREADX_DIR        — ThreadX kernel source root
 #   NETX_DIR           — NetX Duo source root
 #   THREADX_CONFIG_DIR — directory with tx_user.h, nx_user.h, link.lds
@@ -21,15 +19,21 @@
 #
 # Caller must already have done:
 #   find_package(NanoRos CONFIG REQUIRED)
+#   include(threadx-riscv64-support)
 
 include(nros-threadx)
 
 nros_threadx_validate(REQUIRE NETX_DIR THREADX_BOARD_DIR VIRTIO_DRIVER_DIR)
 
+# Resolve shipped asset paths.
+get_filename_component(_TX_RV64_SUPPORT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(_NROS_INSTALL_PREFIX "${_TX_RV64_SUPPORT_DIR}/../../.." ABSOLUTE)
+set(_TX_RV64_SHARE "${_NROS_INSTALL_PREFIX}/share/nano_ros/platform/threadx-riscv64")
+
 # picolibc must be set up *before* nros_threadx_build_kernel so the
 # kernel/netxduo/virtio-net STATIC libs see picolibc headers via the
 # global -isystem we install on CMAKE_C_FLAGS / CMAKE_CXX_FLAGS.
-nros_threadx_setup_picolibc()
+nros_threadx_setup_picolibc(CXX_COMPAT_DIR "${_TX_RV64_SHARE}/cxx-compat")
 
 nros_threadx_build_kernel(
     PORT          "risc-v64/gnu"
@@ -46,10 +50,6 @@ nros_threadx_build_kernel(
         trap.c
         hwtimer.c
         demo_threadx.c
-    # The board's app_define.c includes nx_api.h. Lump the netx + driver
-    # include trees into the kernel target's PRIVATE includes so the
-    # board sources find them (they're built as part of threadx_kernel
-    # because BOARD_DIR's *.c are globbed in alongside the kernel).
     EXTRA_INCLUDES "${NETX_DIR}/common/inc"
                    "${NETX_DIR}/addons/BSD"
                    "${VIRTIO_DRIVER_DIR}/include"
@@ -62,14 +62,6 @@ nros_threadx_build_netstack_netxduo(
 
 nros_threadx_setup_rust_lld()
 
-# Compose the platform target. picolibc + libgcc are linked manually
-# (do NOT use `--specs=picolibc.specs` — it enables TLS errno which
-# crashes on bare-metal without OS TLS support). picolibc's libc.a
-# defines errno as TLS while ThreadX defines it non-TLS in .sbss; GNU
-# `ld` refuses to mix, so we rely on rust-lld at the example level.
-# `--allow-multiple-definition` is needed because startup.c overrides
-# memset/memcpy/memmove (Rust compiler_builtins versions are buggy on
-# RISC-V) and to paper over the same TLS / non-TLS errno mix.
 nros_threadx_compose_platform(
     LINK_LIBS    c "${NROS_THREADX_LIBGCC_PATH}"
     LINK_OPTIONS --allow-multiple-definition
@@ -77,17 +69,19 @@ nros_threadx_compose_platform(
     DEFINES      NROS_PLATFORM_BAREMETAL)
 
 # Linker script + startup glue exports (consumed by per-example
-# CMakeLists.txt).
+# CMakeLists.txt). Startup source ships under
+# share/nano_ros/platform/threadx-riscv64/.
 set(THREADX_LINKER_SCRIPT "${THREADX_CONFIG_DIR}/link.lds"
     CACHE FILEPATH "ThreadX RISC-V linker script")
-get_filename_component(_TX_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-set(THREADX_STARTUP_SOURCE "${_TX_CMAKE_DIR}/startup.c")
+set(THREADX_STARTUP_SOURCE "${_TX_RV64_SHARE}/startup.c")
+if(NOT EXISTS "${THREADX_STARTUP_SOURCE}")
+    message(FATAL_ERROR
+        "threadx-riscv64-support: startup.c not found at ${THREADX_STARTUP_SOURCE}. "
+        "Reinstall NanoRos (`just threadx-riscv64 install`).")
+endif()
 set(THREADX_STARTUP_INCLUDES "${NROS_THREADX_INCLUDES}")
 
-# Backward-compat alias: existing per-example CMakeLists.txt files call
-# `threadx_riscv64_strip_builtins(...)`. The layer-2 helper is named
-# `nros_threadx_strip_builtins`. Keep both to avoid touching every
-# example.
+# Backward-compat alias.
 function(threadx_riscv64_strip_builtins archive)
     nros_threadx_strip_builtins("${archive}")
 endfunction()

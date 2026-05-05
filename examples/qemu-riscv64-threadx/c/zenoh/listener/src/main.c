@@ -12,6 +12,7 @@
 #include <nros/node.h>
 #include <nros/subscription.h>
 
+#include <nros/app_config.h>
 #include "std_msgs.h"
 
 // ----------------------------------------------------------------------------
@@ -58,7 +59,7 @@ int nros_app_main(int argc, char **argv) {
 
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_listener", "/"), 1);
     NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node,
                                       std_msgs_msg_int32_get_type_support(),

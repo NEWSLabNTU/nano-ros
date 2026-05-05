@@ -108,8 +108,62 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-threadx.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-freertos.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-nuttx.cmake"
+    # Phase 112.E: layer-3 support cmake — examples include via
+    # `include(<plat>-support)` after `find_package(NanoRos)`.
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/freertos-support.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nuttx-support.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/threadx-support.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/threadx-riscv64-support.cmake"
     DESTINATION lib/cmake/NanoRos
 )
+
+# Phase 112.E: platform assets for layer-3 support cmake. Installed
+# under share/nano_ros/ — paths match those resolved by the *-support
+# files above.
+set(_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+# FreeRTOS — board config + lan9118 driver + per-example startup.c
+install(DIRECTORY
+    "${_PROJECT_ROOT}/packages/boards/nros-board-mps2-an385-freertos/config/"
+    DESTINATION share/nano_ros/boards/mps2-an385-freertos/config)
+install(DIRECTORY
+    "${_PROJECT_ROOT}/packages/drivers/lan9118-lwip/include"
+    "${_PROJECT_ROOT}/packages/drivers/lan9118-lwip/src"
+    DESTINATION share/nano_ros/drivers/lan9118-lwip)
+install(FILES
+    "${_PROJECT_ROOT}/examples/qemu-arm-freertos/cmake/startup.c"
+    DESTINATION share/nano_ros/platform/freertos)
+
+# ThreadX-Linux — startup.c
+install(FILES
+    "${_PROJECT_ROOT}/examples/threadx-linux/cmake/startup.c"
+    DESTINATION share/nano_ros/platform/threadx-linux)
+
+# ThreadX-RISCV64 — startup.c + cxx-compat headers
+install(FILES
+    "${_PROJECT_ROOT}/examples/qemu-riscv64-threadx/cmake/startup.c"
+    DESTINATION share/nano_ros/platform/threadx-riscv64)
+install(DIRECTORY
+    "${_PROJECT_ROOT}/examples/qemu-riscv64-threadx/cmake/cxx-compat"
+    DESTINATION share/nano_ros/platform/threadx-riscv64)
+
+# NuttX — FFI crate (sources only; cargo builds at example time)
+install(DIRECTORY
+    "${_PROJECT_ROOT}/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi"
+    DESTINATION share/nano_ros/platform/nuttx
+    PATTERN "target" EXCLUDE
+    PATTERN "Cargo.lock" EXCLUDE)
+
+# Toolchain files — out-of-tree examples reference these via
+# -DCMAKE_TOOLCHAIN_FILE=<prefix>/share/nano_ros/toolchains/<plat>.cmake.
+install(FILES
+    "${_PROJECT_ROOT}/cmake/toolchain/arm-freertos-armcm3.cmake"
+    "${_PROJECT_ROOT}/cmake/toolchain/armv7a-nuttx-eabi.cmake"
+    "${_PROJECT_ROOT}/cmake/toolchain/riscv64-threadx.cmake"
+    DESTINATION share/nano_ros/toolchains)
+install(PROGRAMS
+    "${_PROJECT_ROOT}/cmake/toolchain/riscv64-lld-wrapper.sh"
+    DESTINATION share/nano_ros/toolchains)
 
 # Helper script that nros_threadx_strip_builtins() invokes (RISC-V
 # soft-float / hard-float compiler_builtins workaround). Ships next to

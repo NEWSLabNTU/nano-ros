@@ -252,6 +252,7 @@ endfunction()
 # nros_threadx_setup_picolibc (RISC-V / bare-metal hosts)
 # ----------------------------------------------------------------------
 function(nros_threadx_setup_picolibc)
+    cmake_parse_arguments(_NTSP "" "CXX_COMPAT_DIR" "" ${ARGN})
     execute_process(
         COMMAND ${CMAKE_C_COMPILER} -march=rv64gc -mabi=lp64d
                 --specs=picolibc.specs -print-sysroot
@@ -270,12 +271,15 @@ function(nros_threadx_setup_picolibc)
     endif()
     message(STATUS "picolibc sysroot: ${_sysroot}")
 
-    # cxx-compat shim dir lives next to the per-platform support file.
-    # The caller's CMAKE_CURRENT_LIST_DIR is the example's cmake dir,
-    # so we resolve it from the variable that's already in scope when
-    # this function runs.
-    get_filename_component(_caller_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-    set(_cxx_compat "${_caller_dir}/cxx-compat")
+    # cxx-compat shim dir: explicit override (CXX_COMPAT_DIR) preferred
+    # for shipped layer-3 support modules. Fallback resolves next to the
+    # caller's cmake file (legacy in-tree behavior).
+    if(_NTSP_CXX_COMPAT_DIR)
+        set(_cxx_compat "${_NTSP_CXX_COMPAT_DIR}")
+    else()
+        get_filename_component(_caller_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+        set(_cxx_compat "${_caller_dir}/cxx-compat")
+    endif()
 
     set(CMAKE_C_FLAGS
         "${CMAKE_C_FLAGS} -isystem ${_sysroot}/include -DNROS_PLATFORM_BAREMETAL"

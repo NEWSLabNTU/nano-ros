@@ -33,6 +33,10 @@ tools/*
 # Local environment overrides (created from .env.example)
 /.env
 
+# Per-CLAUDE.md, throwaway scripts and notes go in tmp/ (project root,
+# not /tmp). Recipes for repeated multi-step ops live here too.
+/tmp/
+
 # Third-party reference repos (cloned ad-hoc for cross-checking
 # upstream source — Phase 100 SPE port pulls FreeRTOS-Kernel here for
 # its Cortex-R5 GCC port + POSIX simulator port).

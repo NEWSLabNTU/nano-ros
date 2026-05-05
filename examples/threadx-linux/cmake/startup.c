@@ -10,20 +10,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "tx_api.h"
+#include <nros/app_config.h>
 
-/* ---- Configuration from CMake (via config.toml) ---- */
-#ifndef APP_IP
-#define APP_IP {192, 0, 3, 10}
-#endif
-#ifndef APP_MAC
-#define APP_MAC {0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
-#endif
-#ifndef APP_GATEWAY
-#define APP_GATEWAY {192, 0, 3, 1}
-#endif
-#ifndef APP_NETMASK
-#define APP_NETMASK {255, 255, 255, 0}
-#endif
+/* APP_INTERFACE remains a per-example compile define — bridge name is
+ * test-harness-specific and not present in the typed config.toml. */
 #ifndef APP_INTERFACE
 #define APP_INTERFACE "veth-tx0"
 #endif
@@ -43,12 +33,12 @@ int main(void)
      * flushed at exit, losing all output on timeout/kill). */
     setvbuf(stdout, NULL, _IOLBF, 0);
 
-    uint8_t ip[]      = APP_IP;
-    uint8_t netmask[] = APP_NETMASK;
-    uint8_t gateway[] = APP_GATEWAY;
-    uint8_t mac[]     = APP_MAC;
-
-    nros_threadx_set_config(ip, netmask, gateway, mac, APP_INTERFACE);
+    nros_threadx_set_config(
+        NROS_APP_CONFIG.network.ip,
+        NROS_APP_CONFIG.network.netmask,
+        NROS_APP_CONFIG.network.gateway,
+        NROS_APP_CONFIG.network.mac,
+        APP_INTERFACE);
 
     /* Enter ThreadX scheduler — never returns.
      * tx_application_define() is called from within tx_kernel_enter(). */

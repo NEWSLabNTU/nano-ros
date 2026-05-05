@@ -186,7 +186,9 @@ function(nano_ros_generate_config_header CONFIG_FILE OUT_PATH)
         # Source-tree consumption: ../../../../cmake/templates/ from
         # packages/core/nros-c/cmake/.
         "${_NROS_CFG_CMAKE_DIR}/../../../../cmake/templates/nros_app_config.h.in"
-        # Installed layout: <prefix>/share/nano_ros/templates/.
+        # Installed layout: <prefix>/lib/cmake/NanoRos/ → <prefix>/share/nano_ros/templates/
+        "${_NROS_CFG_CMAKE_DIR}/../../../share/nano_ros/templates/nros_app_config.h.in"
+        # Older install layouts that placed cmake modules under share.
         "${_NROS_CFG_CMAKE_DIR}/../../share/nano_ros/templates/nros_app_config.h.in"
         "${_NROS_CFG_CMAKE_DIR}/../share/nano_ros/templates/nros_app_config.h.in")
     set(_template "")

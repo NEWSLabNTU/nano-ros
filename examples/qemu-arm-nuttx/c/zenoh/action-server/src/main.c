@@ -13,14 +13,15 @@
 #include <nros/init.h>
 #include <nros/node.h>
 
+#include <nros/app_config.h>
 #include "example_interfaces.h"
 
 // NuttX embedded config — matches board crate defaults (server = 192.0.3.10)
-#ifndef APP_ZENOH_LOCATOR
-#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#ifndef NROS_APP_CONFIG.zenoh.locator
+#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
 #endif
-#ifndef APP_DOMAIN_ID
-#define APP_DOMAIN_ID 0
+#ifndef NROS_APP_CONFIG.zenoh.domain_id
+#define NROS_APP_CONFIG.zenoh.domain_id 0
 #endif
 
 typedef struct {
@@ -135,7 +136,7 @@ int nros_app_main(int argc, char **argv) {
 
 
     printf("nros NuttX C Action Server (Fibonacci)\n");
-    printf("Locator: %s\n", APP_ZENOH_LOCATOR);
+    printf("Locator: %s\n", NROS_APP_CONFIG.zenoh.locator);
 
     memset(&app, 0, sizeof(app));
 
@@ -170,7 +171,7 @@ int nros_app_main(int argc, char **argv) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_action_server", "/"), 1);
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci", &fibonacci_type,
                                        goal_callback, cancel_callback, accepted_callback, &app.ctx), 1);

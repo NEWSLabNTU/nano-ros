@@ -8,6 +8,7 @@
 
 #include <nros/app_main.h>
 #include <nros/nros.hpp>
+#include <nros/app_config.h>
 #include "example_interfaces.hpp"
 
 int nros_app_main(int argc, char **argv) {
@@ -15,7 +16,7 @@ int nros_app_main(int argc, char **argv) {
     (void)argv;
 
     printf("nros C++ Service Server (FreeRTOS)\n");
-    NROS_TRY_RET(nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_TRY_RET(nros::init(NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_service_server"), 1);
@@ -41,6 +42,6 @@ int nros_app_main(int argc, char **argv) {
     }
     printf("Service server done (%d requests)\n", req_count);
     nros::shutdown();
+    return 0;
 }
-
 NROS_APP_MAIN_REGISTER_VOID()

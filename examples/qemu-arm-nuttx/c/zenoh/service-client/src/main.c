@@ -13,14 +13,15 @@
 #include <nros/init.h>
 #include <nros/node.h>
 
+#include <nros/app_config.h>
 #include "example_interfaces.h"
 
 // NuttX embedded config — matches board crate defaults (client = 192.0.3.11)
-#ifndef APP_ZENOH_LOCATOR
-#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#ifndef NROS_APP_CONFIG.zenoh.locator
+#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
 #endif
-#ifndef APP_DOMAIN_ID
-#define APP_DOMAIN_ID 0
+#ifndef NROS_APP_CONFIG.zenoh.domain_id
+#define NROS_APP_CONFIG.zenoh.domain_id 0
 #endif
 
 static struct {
@@ -36,7 +37,7 @@ int nros_app_main(int argc, char **argv) {
 
 
     printf("nros NuttX C Service Client (AddTwoInts)\n");
-    printf("Locator: %s\n", APP_ZENOH_LOCATOR);
+    printf("Locator: %s\n", NROS_APP_CONFIG.zenoh.locator);
 
     memset(&app, 0, sizeof(app));
 
@@ -68,7 +69,7 @@ int nros_app_main(int argc, char **argv) {
     fflush(stdout);
     sleep(5);
 
-    NROS_CHECK_RET(nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_service_client", "/"), 1);
     NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);

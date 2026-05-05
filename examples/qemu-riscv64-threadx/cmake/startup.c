@@ -10,20 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "tx_api.h"
-
-/* ---- Configuration from CMake (via config.toml) ---- */
-#ifndef APP_IP
-#define APP_IP {10, 0, 2, 40}
-#endif
-#ifndef APP_MAC
-#define APP_MAC {0x52, 0x54, 0x00, 0x12, 0x34, 0x56}
-#endif
-#ifndef APP_GATEWAY
-#define APP_GATEWAY {10, 0, 2, 2}
-#endif
-#ifndef APP_NETMASK
-#define APP_NETMASK {255, 255, 255, 0}
-#endif
+#include <nros/app_config.h>
 
 /* ---- Override memset/memcpy from compiler_builtins ---- */
 /* Rust's compiler_builtins provides weak memset/memcpy that can crash on
@@ -140,12 +127,12 @@ int main(void) {
         const char *m = "startup: entering ThreadX\n";
         for (int i = 0; m[i]; i++) uart_putc(m[i]);
     }
-    uint8_t ip[]      = APP_IP;
-    uint8_t netmask[] = APP_NETMASK;
-    uint8_t gateway[] = APP_GATEWAY;
-    uint8_t mac[]     = APP_MAC;
-
-    nros_threadx_set_config(ip, netmask, gateway, mac, "");
+    nros_threadx_set_config(
+        NROS_APP_CONFIG.network.ip,
+        NROS_APP_CONFIG.network.netmask,
+        NROS_APP_CONFIG.network.gateway,
+        NROS_APP_CONFIG.network.mac,
+        "");
 
     /* Register C app_main as the entry point for the ThreadX app thread */
     extern void app_main(void);
