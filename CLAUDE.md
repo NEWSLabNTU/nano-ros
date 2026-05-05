@@ -113,6 +113,8 @@ rmw_zenoh-compatible. Key `<domain>/<topic>/<type>/TypeHashNotSupported`. See `d
 ## Phases
 Active in `docs/roadmap/`, completed in `docs/roadmap/archived/`. Run `ls docs/roadmap/` for status.
 
+Phase 117 (Cyclone DDS RMW + Autoware safety-island): Cyclone DDS submodule pinned tag `0.10.5` at `third-party/dds/cyclonedds/` (matches `ros-humble-cyclonedds` 0.10.5). `nros-rmw-cyclonedds` standalone CMake project at `packages/dds/nros-rmw-cyclonedds/` (NOT a Cargo crate); registers C++ vtable via `nros_rmw_cffi_register`. **Goal: full wire-compat with stock `rmw_cyclonedds_cpp`**. `NANO_ROS_RMW=cyclonedds` CMake option auto-pulls Cyclone backend + flips on `NROS_RMW_CYCLONEDDS=1` macro that triggers register call inside `nros::init`. Driver: `just cyclonedds {setup,build,build-rmw,test,doctor,clean}`. Pub/sub + services + raw-CDR data plane wired (117.1–117.9 done). Stock-RMW interop pending (117.X.1 rosidl_adapter codegen → 117.X.2 topic prefix conventions `rt/`/`rq/`/`rr/` → 117.X.3 replace `ServiceEnvelope` with upstream `cdds_request_header_t` → 117.X.4 type-name mangling verification → 117.X.5 service QoS alignment → 117.12 POSIX E2E vs stock RMW). Interim 117.7.B `ServiceEnvelope` works for nano-ros↔nano-ros only; 117.X.3 supersedes.
+
 ## Quick Reference
 `book/src/reference/build-commands.md`: manual testing, ROS 2 interop, Docker, QEMU, Zephyr. Build book: `just book`.
 

@@ -21,6 +21,7 @@ public surface a user application needs.
 - [`nros::ActionServer<A>`](../api/cpp/classnros_1_1ActionServer.html) / [`ActionClient<A>`](../api/cpp/classnros_1_1ActionClient.html)
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
+- [`nros::ParameterServer<Cap>`](../api/cpp/classnros_1_1ParameterServer.html) — node-local typed parameter store (`bool` / `int64_t` / `double` / `const char*`); compose alongside a `Node`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
 
 The library is freestanding C++14 — no STL, no exceptions. Define
 `NROS_CPP_STD` if you want the optional `std::string` / `std::function` /

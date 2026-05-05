@@ -1,6 +1,6 @@
-# RMW Backends: Zenoh, XRCE-DDS, DDS
+# RMW Backends: Zenoh, XRCE-DDS, DDS, Cyclone DDS
 
-nano-ros supports three RMW (ROS Middleware) backends for connecting embedded devices to a ROS 2 network. Each backend targets different deployment scenarios and resource constraints. Only one backend can be active at compile time.
+nano-ros supports four RMW (ROS Middleware) backends for connecting embedded devices to a ROS 2 network. Each backend targets different deployment scenarios and resource constraints. Only one backend can be active at compile time.
 
 ## Zenoh (rmw-zenoh)
 
@@ -56,22 +56,53 @@ The DDS backend uses [dust-dds](https://github.com/s2e-systems/dust-dds), a pure
 - Transport options: UDP unicast + multicast.
 - ROS 2 interop is end-to-end (no protocol translator) — DDS-on-MCU appears in the ROS 2 graph the same way a desktop ROS 2 node does.
 
+## Cyclone DDS (rmw-cyclonedds)
+
+The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/dds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi` (Phase 102).
+
+**How it works:**
+
+1. The application (or platform) calls `nros_rmw_cyclonedds_register()` once before `nros::init()` — this is automatic when the consumer's CMake build sets `-DNANO_ROS_RMW=cyclonedds`.
+2. The runtime stores the vtable pointer; subsequent `nros::init()` calls dispatch through it for session, publisher, subscriber, and service operations.
+3. `dds_create_domain` / `dds_create_participant` / `dds_create_topic` / `dds_create_writer` / `dds_create_reader` are invoked under the hood; Cyclone owns its own RX threads.
+4. ROS 2 nodes using stock `rmw_cyclonedds_cpp` interoperate directly — same wire protocol, same discovery, no key rewriting (unlike `rmw_zenoh`'s `<domain>/<topic>/<type>/...` scheme).
+
+**Key characteristics:**
+- **Pure-C++ backend** (not a Cargo crate) — Autoware contributors can read and extend the wrapper using the same patterns as `actuation_module/include/common/dds/`. Phase 117 was driven by `autoware-safety-island` integration on Arm Cortex-A/R Zephyr targets.
+- **ROS 2 Tier-1 wire compat** — pinned to Cyclone DDS tag `0.10.5` to match `ros-humble-cyclonedds` 0.10.5 + `ros-humble-rmw-cyclonedds-cpp` 1.3.4.
+- Static `ddsi_config` via `dds_create_domain_with_rawconfig` skips the XML parser; embedded-friendly.
+- Discovery via SPDP multicast or unicast peer list (mirrors Cyclone's standard config knobs).
+- Heap required (Cyclone uses `malloc`); `BUILD_SHARED_LIBS=ON` produces `libddsc.so` for POSIX, static link for embedded.
+- **No services / actions yet** — Phase 117.7 implementation pending; service create/recv/reply currently returns `NROS_RMW_RET_UNSUPPORTED`.
+- **No Phase 108 events yet** — `register_subscriber_event` / `register_publisher_event` / `assert_publisher_liveliness` slots left NULL until a follow-up phase wires Cyclone's `dds_set_listener` through to the runtime.
+
+**Build:**
+```bash
+just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
+just cyclonedds build-rmw   # build packages/dds/nros-rmw-cyclonedds
+just cyclonedds test        # run the CTest harness
+```
+
+`just install-local-posix` builds the four-RMW matrix automatically (`zenoh` / `xrce` / `dds` / `cyclonedds`); the resulting `build/install/` exposes a `cyclonedds`-flavoured `libnros_cpp_cyclonedds.a` plus `find_package(NrosRmwCyclonedds)`.
+
+**Known limitations.** Phase 117's v1 has explicit gaps: 2× CDR roundtrip per message (no zero-copy fast path until upstream Cyclone exposes the writer→sertype lookup), Phase 108 status events deferred (NULL register slots), service request-id correlation pending (concurrent calls interleave), Cortex-A/R Zephyr boards still unimplemented. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
+
 ## Comparison
 
-| Aspect               | Zenoh (`rmw-zenoh`)            | XRCE-DDS (`rmw-xrce`)          | DDS (`rmw-dds`)                 |
-|-----------------------|--------------------------------|---------------------------------|---------------------------------|
-| **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         |
-| **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~120 KB+                        |
-| **Bridge process**    | `zenohd` (generic router)      | Agent (protocol translator)     | None — RTPS multicast directly  |
-| **Peer-to-peer**      | Yes (no router needed)         | No (agent always required)      | Yes (RTPS native)               |
-| **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast    |
-| **Entity creation**   | Client creates directly        | Client requests, agent creates  | Client creates directly         |
-| **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             | UDP unicast + multicast (RTPS)  |
-| **Heap allocation**   | Required (C-level)             | None                            | Required (Rust `alloc` crate)   |
-| **Platform symbols**  | ~55 via `zpico-platform-shim`  | ~1 (`clock_gettime`) via `xrce-platform-shim` | `PlatformUdp` + `PlatformClock` + `PlatformSleep` (~7) via `nros-platform` |
-| **ROS 2 interop**     | Via `rmw_zenoh_cpp` + `zenohd` | Via Agent + any DDS RMW         | Direct (DDS↔DDS, any RMW)       |
-| **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving (rest of net continues) |
-| **C source files**    | ~100+                          | 28                              | 0 — pure Rust                   |
+| Aspect               | Zenoh (`rmw-zenoh`)            | XRCE-DDS (`rmw-xrce`)          | DDS (`rmw-dds`)                 | Cyclone DDS (`rmw-cyclonedds`) |
+|-----------------------|--------------------------------|---------------------------------|---------------------------------|---------------------------------|
+| **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         | ~32 KB+ (heap required)         |
+| **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~120 KB+                        | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
+| **Bridge process**    | `zenohd` (generic router)      | Agent (protocol translator)     | None — RTPS multicast directly  | None — RTPS multicast directly  |
+| **Peer-to-peer**      | Yes (no router needed)         | No (agent always required)      | Yes (RTPS native)               | Yes (RTPS native)               |
+| **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast    | SPDP / SEDP on UDP multicast or static peer list |
+| **Entity creation**   | Client creates directly        | Client requests, agent creates  | Client creates directly         | Client creates directly         |
+| **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             | UDP unicast + multicast (RTPS)  | UDP unicast + multicast (RTPS)  |
+| **Heap allocation**   | Required (C-level)             | None                            | Required (Rust `alloc` crate)   | Required (Cyclone uses `malloc`) |
+| **Implementation**    | Rust + zenoh-pico C            | Rust + Micro-XRCE-DDS-Client C  | Pure Rust (dust-dds)            | C++ wrapper over upstream Cyclone DDS C |
+| **ROS 2 interop**     | Via `rmw_zenoh_cpp` + `zenohd` | Via Agent + any DDS RMW         | Direct (DDS↔DDS, any RMW)       | Direct against `rmw_cyclonedds_cpp` (same upstream version) |
+| **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving | Peer goes offline = its samples stop arriving |
+| **C source files**    | ~100+                          | 28                              | 0 — pure Rust                   | Upstream Cyclone (~600+ files, vendored unchanged via submodule) |
 
 ## Feature Selection
 
@@ -91,6 +122,18 @@ nros = { features = ["rmw-xrce", "platform-bare-metal"] }
 # DDS backend (dust-dds)
 [dependencies]
 nros = { features = ["rmw-dds", "platform-zephyr"] }
+
+# Cyclone DDS backend — the Rust runtime sees it as the generic
+# `rmw-cffi` C-ABI vtable axis; the actual Cyclone wiring is linked
+# C++-side via NrosRmwCyclonedds::NrosRmwCyclonedds.
+[dependencies]
+nros = { features = ["rmw-cffi", "platform-posix"] }
+```
+
+For C++ consumers, the CMake option is the canonical way:
+
+```bash
+cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / dds / cyclonedds
 ```
 
 ### Kconfig (Zephyr)
@@ -104,6 +147,9 @@ CONFIG_NROS_RMW_XRCE=y
 
 # DDS backend (dust-dds)
 CONFIG_NROS_RMW_DDS=y
+
+# Cyclone DDS backend (Phase 117 — Cortex-A/R Zephyr targets)
+CONFIG_NROS_RMW_CYCLONEDDS=y
 ```
 
 Enabling more than one simultaneously produces a `compile_error!()`.
