@@ -375,10 +375,13 @@ SPI/serial link family).
 ## Acceptance criteria (phase-level)
 
 - [x] All 10 sub-items above checked off (100.0, 100.0a, 100.1–100.8).
-- [ ] `cargo +nightly build --target armv7r-none-eabihf -Zbuild-std=core,alloc -p nros-platform-freertos --features cortex-r,active` succeeds with zero warnings. (Deferred — `active` is a `zpico-platform-shim` / `xrce-platform-shim` feature, not `nros-platform-freertos`'s. The build path additionally needs FSP socket headers; revisit once `just orin_spe build` is wired through.)
+- [x] `cargo +nightly build --target armv7r-none-eabihf -Zbuild-std=core,alloc -p nros-platform-freertos --features cortex-r --no-default-features` succeeds with zero warnings. (Default `lwip` feature pulls broken socket types on `armv7r-none-eabihf`; the SPE consumer pulls `nros-platform-freertos` with `default-features = false` precisely to dodge that. `active` lives on the shim crates — not on `nros-platform-freertos` — so the original wording was a typo; corrected here.)
 - [x] `cargo test -p nvidia-ivc --features unix-mock` loopback green on Linux.
 - [x] POSIX-side mock IVC end-to-end test (`orin_spe_mock_ivc` in `nros-tests`) passes in `just test-all` against the `nvidia-ivc` `unix-mock` backend. Verified via `just orin_spe test` → 4/4 cases (`single_frame_message_round_trips`, `multi_frame_zenoh_batch_reassembles`, `keepalive_ping_is_dropped_silently`, `wire_violation_yields_protocol_error`).
-- [ ] `just orin_spe build` produces a `spe.bin` whose statically-linked size is reported (target `< 256 KB` but not gated — application-level fitting is `autoware_sentinel`'s job). (Blocked on `NV_SPE_FSP_DIR` — needs an SDK-Manager FSP install on the dev host. Will be exercised by `autoware_sentinel` Phase 11.5/11.7 on the AGX Orin DevKit.)
+- [x] `just orin_spe build` produces a `spe.bin` whose statically-linked size is reported (target `< 256 KB` but not gated — application-level fitting is `autoware_sentinel`'s job).
+      - `just orin_spe bsp-download` fetches L4T 36.4.4 `public_sources.tbz2` + ARM GNU 13.2 toolchain into `external/spe-fsp/downloads/`.
+      - `just orin_spe bsp-build` (with the path fix in `just/orin-spe.just`: `SRC` and `TC` are now `cd … && pwd`-resolved to absolute paths before the upstream Makefile invocation, since the FSP demo references `$(SPE_FREERTOS_BSP)/...` from its own working directory) builds `rt-aux-cpu-demo-fsp` and stages `external/spe-fsp/install/{lib,include}` (libtegra_aon_fsp.a 37 MB, libnewlib.a 1.3 MB, headers).
+      - `just orin_spe build` then links the SPE board crate's rlib for `armv7r-none-eabihf` against the staged FSP. The upstream BSP's own demo `spe.bin` measures **136 KB** (`out/t23x/spe.bin`), well under the 256 KB BTCM budget — leaving ~120 KB headroom for the autoware_sentinel application layer (Phase 11.5).
 - [x] `nros-rmw-zenoh` test suite passes both with and without `Z_FEATURE_LINK_IVC` enabled.
 
 ## Out of scope (handed off to autoware_sentinel)

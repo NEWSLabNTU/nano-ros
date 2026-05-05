@@ -185,6 +185,12 @@ bsp-build:
         exit 1
     fi
 
+    # Upstream Makefile resolves $(SPE_FREERTOS_BSP)/... paths from its
+    # own working dir (rt-aux-cpu-demo-fsp/), so the variable must be
+    # absolute. Same for the toolchain prefix.
+    SRC="$(cd "$SRC" && pwd)"
+    TC="$(cd "$TC" && pwd)"
+
     info(){ printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 
     info "Building rt-aux-cpu-demo-fsp (SPE_FREERTOS_BSP=$SRC)"
