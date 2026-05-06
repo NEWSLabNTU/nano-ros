@@ -3,8 +3,7 @@
 //! Reads XRCE_* environment variables and generates `xrce_config.rs`
 //! with compile-time configurable constants.
 
-use std::env;
-use std::path::Path;
+use std::{env, path::Path};
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();

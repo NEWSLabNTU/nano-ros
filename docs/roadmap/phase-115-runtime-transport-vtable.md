@@ -2,7 +2,7 @@
 
 **Goal:** Expose a `nros_set_custom_transport(struct nros_transport_ops *ops)` C API so users can plug a custom transport (USB-CDC, BLE, RS-485, semihosting bridge) at runtime without changing board crate, Cargo features, or rebuilding.
 
-**Status:** Not Started
+**Status:** Core surface complete (115.A / 115.C / 115.D / 115.E / 115.G / 115.I). Backend coverage today: XRCE-DDS native; zenoh-pico (115.B) and dust-DDS (115.H) deferred to follow-up phases (115.X-zenoh, 115.X-dds). Arduino library hook (115.J) deferred to Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -129,15 +129,15 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 ## Work Items
 
 - [x] **115.A** `nros_rmw::custom_transport` — `NrosTransportOps` (`#[repr(C)]`, four `unsafe extern "C" fn` fields + `user_data: *mut c_void`, `unsafe impl Send + Sync` on the vtable struct itself). Storage is `static SLOT: Mutex<Option<NrosTransportOps>>` (the existing `nros_rmw::sync::Mutex`, no extra deps). Public API: `set_custom_transport(Option<NrosTransportOps>)` (unsafe — caller owns the threading contract), `peek_custom_transport()`, `take_custom_transport()`. Module-level docs cover the threading contract (no concurrent read/write, no ISR invocation, `user_data` outlives `close`) and the no-`dyn` rationale (cross-link to § A.1). 3 unit tests: lifecycle (set → peek → take → empty), explicit clear, and `Copy + Send + Sync` static assertion. (`<this commit>`)
-- [ ] **115.B** `zpico-platform-custom` crate — new mutual-exclusive transport variant.
-- [ ] **115.C** `nros-c` C API: `nros_transport_ops_t`, `nros_set_custom_transport`. cbindgen-emitted header.
-- [ ] **115.D** `nros-cpp` C++ wrapper.
-- [ ] **115.E** XRCE plumbing — wire `nros_set_custom_transport` to `uxr_set_custom_transport_callbacks`.
-- [ ] **115.F** Loopback example — `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`.
-- [ ] **115.G** Integration test in `nros_tests/` (POSIX, single process, ring-buffer transport).
-- [ ] **115.H** DDS path — file as `115.X follow-up` or design doc.
-- [ ] **115.I** `book/src/porting/custom-transport.md` (new). Documents callback contract, threading, framing requirements.
-- [ ] **115.J** Phase 23 Arduino library uses this hook for `set_microros_transports`-equivalent (`nros::set_serial_transport(&Serial)`, `nros::set_wifi_udp_transport(...)`).
+- [ ] **115.B — DEFERRED to 115.X-zenoh.** `zpico-platform-custom` crate. zenoh-pico's custom-link API (`_z_link_t` extension) needs a per-platform C-side shim plus a `link-custom` feature in `zpico-sys`. Significant plumbing; tracked separately. Zenoh users with custom transports today fork a `zpico-platform-*` crate; the runtime hook on XRCE (115.E) covers the primary use case.
+- [x] **115.C** `nros-c` C API: `nros_transport_ops_t` (`#[repr(C)]` — same layout as `nros_rmw::NrosTransportOps`), `nros_set_custom_transport(*const ops)`, `nros_clear_custom_transport()`, `nros_has_custom_transport()`. cbindgen-emitted into `nros_generated.h`. Docs cover threading + return-code conventions. (`<this commit>`)
+- [x] **115.D** `nros-cpp` C++ wrapper: `nros::TransportOps` POD-style struct (no STL), `nros::set_custom_transport(const TransportOps&) -> Result`, `nros::clear_custom_transport()`, `nros::has_custom_transport() -> bool`. Inline header `<nros/transport.hpp>` + Rust-side FFI in `nros-cpp/src/transport.rs`. (`<this commit>`)
+- [x] **115.E** XRCE plumbing — `nros_rmw_xrce::init_transport_from_custom_ops(framing)` drains `nros_rmw::take_custom_transport()`, copies the four fn pointers + user_data into XRCE-local trampoline state, and registers C trampolines with `uxr_set_custom_transport_callbacks` + `uxr_init_custom_transport`. Bridges the v1 ABI mismatch: XRCE's `open` / `close` callbacks take `*mut uxrCustomTransport`; ours take `*mut c_void user_data`. The trampolines pull `user_data` from the static slot and forward. (`<this commit>`)
+- [ ] **115.F — DEFERRED.** Loopback example `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`. Depends on 115.B (zenoh path). XRCE-side loopback would need MicroXRCEAgent in the test harness; defer until either the agent fixture lands or 115.B unblocks.
+- [x] **115.G** Integration test at `packages/xrce/nros-rmw-xrce/tests/custom_transport.rs`. 2 tests passing: `set_custom_transport_round_trips_through_xrce_bridge` (register → peek → take via XRCE bridge → confirm slot drained → second take returns false) + `clear_via_set_none` (explicit clear via `set_custom_transport(None)`). Stub callbacks count invocations; the test does NOT open an XRCE session (would need MicroXRCEAgent). The 3-test slot-lifecycle suite in `nros-rmw/src/custom_transport.rs` covers the storage layer; this test covers the XRCE bridge. (`<this commit>`)
+- [ ] **115.H — DEFERRED to 115.X-dds.** dust-DDS plug-in path. dust-dds requires implementing a custom `RtpsUdpTransportParticipantFactory`-equivalent. Larger surface; design doc to land in a separate phase.
+- [x] **115.I** `book/src/porting/custom-transport.md` (new). Covers when to use, Rust / C / C++ examples, threading contract (no concurrent read/write, no ISR invocation, `user_data` lifetime), return-code conventions, framing semantics per backend, and a per-backend coverage table. Linked from `book/src/SUMMARY.md` under Porting. mdbook builds clean. (`<this commit>`)
+- [ ] **115.J — DEFERRED to Phase 23.** Arduino library reuse. Phase 23 (Arduino precompiled lib) hasn't started; once it does, `nros::set_serial_transport(&Serial)` / `nros::set_wifi_udp_transport(...)` should reuse this hook instead of inventing a parallel API.
 
 **Files:**
 - `packages/zpico/zpico-platform-custom/` (new crate)

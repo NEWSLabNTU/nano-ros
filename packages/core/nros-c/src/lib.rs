@@ -175,6 +175,7 @@ mod opaque_sizes;
 mod parameter;
 mod platform;
 mod qos;
+mod transport;
 mod util;
 
 pub use cdr::*;
@@ -183,6 +184,7 @@ pub use constants::*;
 pub use error::*;
 pub use parameter::*;
 pub use qos::*;
+pub use transport::*;
 
 // Backend-dependent modules (require an RMW backend)
 // These reference support/node types which depend on the active backend.

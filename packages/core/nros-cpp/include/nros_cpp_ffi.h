@@ -161,6 +161,19 @@ typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
 typedef void (*nros_cpp_timer_callback_t)(void *context);
 
 /**
+ * Phase 115.D — C++-side mirror of
+ * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
+ * layout — single ABI, no parallel definitions.
+ */
+typedef struct nros_cpp_transport_ops_t {
+  void *user_data;
+  nros_cpp_ret_t (*open)(void *user_data, const void *params);
+  void (*close)(void *user_data);
+  nros_cpp_ret_t (*write)(void *user_data, const uint8_t *buf, size_t len);
+  int32_t (*read)(void *user_data, uint8_t *buf, size_t len, uint32_t timeout_ms);
+} nros_cpp_transport_ops_t;
+
+/**
  * Success.
  */
 #define NROS_CPP_RET_OK 0
@@ -1065,6 +1078,30 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(void *handle,
  * `handle` must be a valid action client storage.
  */
 nros_cpp_ret_t nros_cpp_action_client_poll(void *handle);
+
+/**
+ * Phase 115.D — register a custom transport vtable. C++-side entry
+ * for `nros::set_custom_transport`.
+ *
+ * # Safety
+ *
+ * `ops`, when non-NULL, must point to a valid `nros_cpp_transport_ops_t`.
+ * The four function pointers must follow the threading contract
+ * documented in `<nros/transport.hpp>`.
+ */
+nros_cpp_ret_t nros_cpp_set_custom_transport(const struct nros_cpp_transport_ops_t *ops);
+
+/**
+ * Phase 115.D — clear any previously-registered transport.
+ */
+nros_cpp_ret_t nros_cpp_clear_custom_transport(void);
+
+/**
+ * Phase 115.D — return `1` if a transport is registered, `0`
+ * otherwise. Returned as `nros_cpp_ret_t` for ABI parity with the
+ * other entries.
+ */
+nros_cpp_ret_t nros_cpp_has_custom_transport(void);
 
 #ifdef __cplusplus
 }  // extern "C"
