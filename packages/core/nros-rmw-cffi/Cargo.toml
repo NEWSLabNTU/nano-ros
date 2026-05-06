@@ -13,10 +13,23 @@ name = "nros_rmw_cffi"
 nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
+[build-dependencies]
+# Phase 115.G.4 — compiles the second-language smoke-test stubs in
+# `tests/c_stubs/*.c` into a small static lib that the integration
+# tests link against. Only used during `cargo build`/`cargo test`;
+# the compiled stub is gated behind the `c-stub-test` feature so a
+# default `cargo build` of consumers doesn't need a C toolchain.
+cc = "1"
+
 [features]
 default = []
 std = ["nros-rmw/std"]
 alloc = ["nros-rmw/alloc"]
+# Phase 115.G.4 — opt-in compile of `tests/c_stubs/c_stub_transport.c`.
+# Off by default so consumers that vendor `nros-rmw-cffi` don't need a
+# C toolchain on the build host. `cargo test --features c-stub-test`
+# turns it on for the integration test.
+c-stub-test = []
 
 [lints]
 workspace = true

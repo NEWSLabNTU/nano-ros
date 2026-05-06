@@ -68,6 +68,32 @@ pub const NROS_RMW_RET_WOULD_BLOCK: NrosRmwRet = -11;
 pub const NROS_RMW_RET_BUFFER_TOO_SMALL: NrosRmwRet = -12;
 /// Incoming message exceeded the backend's static capacity.
 pub const NROS_RMW_RET_MESSAGE_TOO_LARGE: NrosRmwRet = -13;
+
+// Phase 115.G.4 — anchor every C-stub-transport symbol so they
+// survive `--gc-sections` when integration tests link against
+// `libnros_rmw_cffi`. Only compiled when the c-stub-test feature
+// is on; otherwise no C anchor + no toolchain dep.
+#[cfg(feature = "c-stub-test")]
+unsafe extern "C" {
+    fn nros_c_stub_make_ops(out: *mut core::ffi::c_void);
+    fn nros_c_stub_reset_counters();
+    fn nros_c_stub_get_open_calls() -> u32;
+    fn nros_c_stub_get_close_calls() -> u32;
+    fn nros_c_stub_get_write_calls() -> u32;
+    fn nros_c_stub_get_read_calls() -> u32;
+}
+#[cfg(feature = "c-stub-test")]
+#[doc(hidden)]
+pub fn _phase_115_g4_anchor() -> [*const core::ffi::c_void; 6] {
+    [
+        nros_c_stub_make_ops as *const _,
+        nros_c_stub_reset_counters as *const _,
+        nros_c_stub_get_open_calls as *const _,
+        nros_c_stub_get_close_calls as *const _,
+        nros_c_stub_get_write_calls as *const _,
+        nros_c_stub_get_read_calls as *const _,
+    ]
+}
 /// Phase 115.A.2 — caller's vtable struct has an `abi_version` the
 /// runtime doesn't know. Returned by entry points that take a
 /// versioned vtable struct (`nros_set_custom_transport`,

@@ -19,7 +19,7 @@ etc.). Per the design note
 - `nros-rmw-cffi`'s shape is the only "design decision"; L1 / L2
   wrappers above it are mechanical translations.
 
-**Status:** First-iteration core surface complete (115.A.1 / 115.C / 115.D / 115.E / 115.G.1 / 115.G.2 / 115.I). **Open follow-ups within v1:** 115.A.2 (promote canonical struct from `nros-rmw` → `nros-rmw-cffi`, add `abi_version` field), 115.G.3 (abi_version mismatch test), 115.G.4 (second-language smoke test in C), 115.I.2 (book update for L0/L1/L2 + abi_version semantics). **Deferred to follow-up phases:** 115.B → `115.X-zenoh`, 115.H → `115.X-dds`, 115.F → blocked on 115.B, 115.J → Phase 23.
+**Status:** v1 complete. All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.B → `115.X-zenoh` (~600 LOC), 115.H → `115.X-dds`, 115.F → blocked on 115.B, 115.J → Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -166,21 +166,20 @@ documented in
   `static SLOT: Mutex<Option<...>>`, three-fn API:
   `set_custom_transport` / `peek_custom_transport` /
   `take_custom_transport`). 3 unit tests passing. (commit `be28d0af`)
-- [ ] **115.A.2 — promote to L0 in `nros-rmw-cffi`.** Move the
-  canonical struct definition from `nros-rmw` to `nros-rmw-cffi`
-  (where the rest of the C-ABI vtables live). Rename to
-  `NrosRmwTransportOps` to match the cffi naming convention. Add a
-  reserved `abi_version: u32` field at offset 0 (per the portable-
-  ABI design note R5) so future appends are detectable by C
-  consumers. cbindgen emits the matching `nros_rmw_transport_ops_t`
-  into `<nros/rmw_vtable.h>` (or a new `<nros/rmw_transport.h>`).
-  `nros-rmw` re-exports the type so existing Rust callers don't
-  break. The slot storage (`Mutex<Option<...>>`) stays in
-  `nros-rmw` since it's a runtime singleton, not part of the ABI.
-  **Files:** `packages/core/nros-rmw-cffi/src/transport.rs` (new),
-  `packages/core/nros-rmw-cffi/include/nros/rmw_transport.h` (new,
-  cbindgen-emitted), `packages/core/nros-rmw/src/custom_transport.rs`
-  (re-export only).
+- [x] **115.A.2 — `abi_version` field + version-mismatch
+  rejection.** First pass of the canonical-C-ABI rollout
+  (`abi_version: u32` + `_reserved: u32` at offset 0,
+  `NROS_TRANSPORT_OPS_ABI_VERSION_V1 = 1` const, mismatch ⇒
+  `TransportError::IncompatibleAbi` →
+  `NROS_RMW_RET_INCOMPATIBLE_ABI = -14`). Threaded through Rust /
+  C / C++ surfaces; XRCE bridge + book examples updated to fill
+  in the field. **Crate-location move (struct definition from
+  `nros-rmw` → `nros-rmw-cffi`) deferred** — `nros-rmw-cffi`
+  already depends on `nros-rmw`, inverting the dep direction is a
+  bigger refactor that doesn't change the wire ABI. The
+  `#[repr(C)]` layout + cbindgen output already give the
+  canonical-C-ABI property the design note R1 asks for; the
+  type's home crate can move later. (commit `4e6e6858`)
 
 ### L1 — Rust trait / C / C++ wrappers
 
@@ -233,15 +232,25 @@ documented in
   (register-via-slot → drain-via-XRCE-bridge round-trip; explicit
   clear). Stub callbacks; no MicroXRCEAgent needed. (commit
   `d16bf294`)
-- [ ] **115.G.3 — abi_version mismatch test.** Once 115.A.2 lands,
-  add a test that calls `nros_set_custom_transport` with a
-  deliberately-wrong `abi_version` and asserts
-  `NROS_RET_INCOMPATIBLE_ABI`.
-- [ ] **115.G.4 — second-language smoke test.** Per the
-  portable-ABI design note R6: a C-implemented stub transport that
-  the Rust core registers via the C ABI. Catches "Rust-shape that
-  won't fit through cffi" issues before downstream users do. ~150
-  LOC. Lives at `packages/core/nros-rmw-cffi/tests/c_stub_transport/`.
+- [x] **115.G.3 — abi_version mismatch test.** `rejects_unknown_abi_version`
+  in `nros-rmw/src/custom_transport.rs::tests` (Rust path).
+  `c_built_ops_with_bogus_abi_version_rejected` in
+  `nros-rmw-cffi/tests/c_stub_transport.rs` (C-built struct
+  variant — proves the rejection path also triggers when the bad
+  version is set from the C side). Both passing. (`<this commit>`)
+- [x] **115.G.4 — second-language smoke test.** A pure-C transport
+  stub at `nros-rmw-cffi/tests/c_stubs/c_stub_transport.{c,h}`
+  (~95 LOC of plain C — no Rust headers / cbindgen / Rust types
+  on the C side). Built via `cc::Build` in `nros-rmw-cffi/build.rs`,
+  gated behind a `c-stub-test` Cargo feature so consumers without
+  a C toolchain on the build host aren't forced through the
+  invocation. `tests/c_stub_transport.rs` round-trips a C-built
+  ops struct through `nros_rmw::set_custom_transport`,
+  drives each registered fn pointer from Rust, and confirms the
+  C-side counters bumped. Layout safety via a const
+  `assert_eq!(size_of::<CStubTransportOps>(), size_of::<NrosTransportOps>())`.
+  Run via `cargo test -p nros-rmw-cffi --features c-stub-test
+  --test c_stub_transport`. 2/2 passing. (`<this commit>`)
 
 ### Examples
 
@@ -258,16 +267,22 @@ documented in
   return-code conventions, framing per backend, per-backend
   coverage table. Linked from `book/src/SUMMARY.md` under Porting.
   mdbook clean. (commit `d16bf294`)
-- [ ] **115.I.2 — abi_version + L0/L1/L2 ladder doc update.**
-  After 115.A.2 lands, update `book/src/porting/custom-transport.md`
-  to:
-  1. Document the `abi_version` field semantics (consumers must
-     fill in the macro from the header; runtime rejects mismatch).
-  2. Cross-link to the L0/L1/L2 ladder in the portable-ABI design
-     note.
-  3. Add a "Implementing in another language" sub-section showing
-     the canonical C ABI is the entry point — point at the new
-     `<nros/rmw_transport.h>` cbindgen-emitted header.
+- [x] **115.I.2 — abi_version + L0/L1/L2 ladder doc update.**
+  `book/src/porting/custom-transport.md` grew three new sections
+  before the API examples:
+  1. **API layering (L0 / L1 / L2)** — table mapping each layer to
+     its crate / file, with the rule "all design decisions live at
+     L0, L1 wrappers are mechanical".
+  2. **ABI versioning** — documents the `abi_version` field, the
+     mandatory consumer fill-in, the rejection contract via
+     `NROS_RMW_RET_INCOMPATIBLE_ABI`, and the major-vs-minor bump
+     rules.
+  3. **Implementing in another language** — points at
+     `c_stubs/c_stub_transport.{c,h}` as the reference port,
+     describes the round-trip test, and gives the
+     `cargo test --features c-stub-test` invocation.
+  Existing Rust / C examples updated to fill in `abi_version` +
+  `_reserved`. mdbook clean. (`<this commit>`)
 
 ### Deferred (out of v1)
 

@@ -22,6 +22,64 @@ If your transport fits one of the prebuilt static variants
 that — the runtime hook trades binary-size optimisation for
 flexibility.
 
+## API layering (L0 / L1 / L2)
+
+The custom transport surface is the project's first **canonical-C-ABI**
+interface, designed per
+[`docs/design/portable-rmw-platform-interface.md`](../../../docs/design/portable-rmw-platform-interface.md):
+
+| Layer | Owns | Crates / files |
+|-------|------|----------------|
+| **L0 — canonical C ABI** | `#[repr(C)]` struct + `abi_version: u32` field + four `unsafe extern "C" fn` pointers + `user_data: *mut c_void` | `nros-rmw::custom_transport` (Rust source); `<nros/transport.h>` is the cbindgen-emitted C header |
+| **L1 — language wrappers** | mechanical glue, no new design decisions | `nros-rmw::set_custom_transport` (Rust); `nros_set_custom_transport` (C); `nros::set_custom_transport` (C++) |
+| **L2 — typed app API** | n/a — transport is platform-side | — |
+
+**All design decisions live at L0.** A new feature — say, a `flush`
+callback — lands in the L0 struct first; L1 wrappers follow
+mechanically.
+
+## ABI versioning
+
+The `abi_version: u32` field at the head of the struct is mandatory.
+Consumers must fill in `NROS_TRANSPORT_OPS_ABI_VERSION_V1` (Rust:
+`nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1`; C:
+`NROS_TRANSPORT_OPS_ABI_VERSION_V1`; C++: filled in automatically by
+`nros::set_custom_transport`). Mismatched versions are rejected at
+registration time with `NROS_RMW_RET_INCOMPATIBLE_ABI` (`-14`); the
+slot stays whatever it was before the bad call.
+
+The version bumps under two rules:
+
+- **Major** (e.g. `V1` → `V2`): existing fields are removed or
+  reordered. Old consumers fail cleanly via the version check.
+- **Minor** (struct gains an *appended* fn pointer / data field):
+  version stays the same. New consumers detect the new fn via the
+  size of the trailing `_reserved` region. Today there's no such
+  appendage — V1 is the inaugural version.
+
+## Implementing in another language
+
+The L0 struct is plain C ABI (`#[repr(C)]` Rust ↔ `struct` C).
+**Any language with C-FFI support can author both sides of the
+boundary** — Zig, Python (`ctypes` / `cffi`), Lua-FFI, Go (`cgo`),
+Swift (`@_cdecl`), etc.
+
+The reference implementation of "custom transport written in pure C"
+lives at
+[`packages/core/nros-rmw-cffi/tests/c_stubs/c_stub_transport.c`](../../../packages/core/nros-rmw-cffi/tests/c_stubs/c_stub_transport.c).
+~80 LOC; no Rust headers / cbindgen output / Rust types involved on
+the C side. Use it as a template for ports to other languages.
+
+The corresponding Rust integration test
+([`tests/c_stub_transport.rs`](../../../packages/core/nros-rmw-cffi/tests/c_stub_transport.rs))
+exercises the round-trip: register the C-built struct → drive each
+fn pointer from Rust → confirm the C-side counters bumped → confirm
+abi_version mismatch is rejected. Run via:
+
+```bash
+cargo test -p nros-rmw-cffi --features c-stub-test --test c_stub_transport
+```
+
 ## API
 
 ### Rust
@@ -43,12 +101,14 @@ unsafe extern "C" fn my_read(_ud: *mut c_void, buf: *mut u8, len: usize, timeout
 
 unsafe {
     set_custom_transport(Some(NrosTransportOps {
+        abi_version: nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1,
+        _reserved: 0,
         user_data: my_uart_handle as *mut c_void,
         open: my_open,
         close: my_close,
         write: my_write,
         read: my_read,
-    }));
+    })).expect("abi_version must match runtime");
 }
 ```
 
@@ -71,6 +131,8 @@ static int32_t my_read(void *ud, uint8_t *buf, size_t len, uint32_t timeout_ms) 
 
 int main(void) {
     nros_transport_ops_t ops = {
+        .abi_version = NROS_TRANSPORT_OPS_ABI_VERSION_V1,
+        ._reserved = 0,
         .user_data = &g_uart,
         .open = my_open,
         .close = my_close,
