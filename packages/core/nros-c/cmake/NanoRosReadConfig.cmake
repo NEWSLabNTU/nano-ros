@@ -50,7 +50,12 @@ function(nano_ros_read_config CONFIG_FILE)
 
     # Defaults — scheduling (normalized 0–31 scale)
     set(_app_priority "12")
-    set(_app_stack_bytes "65536")
+    # 128 KB — historical FreeRTOS startup.c app-task stack (32768 words
+    # × 4 B/Cortex-M3). Phase 112.D.3 plumbed this through the typed
+    # `NROS_APP_CONFIG.scheduling.app_stack_bytes`; smaller defaults
+    # overflow during `z_open()` TCP handshake on FreeRTOS QEMU
+    # (`MALLOC FAILED` — see CLAUDE.md "FreeRTOS Platform Pitfalls").
+    set(_app_stack_bytes "131072")
     set(_zenoh_read_priority "16")
     set(_zenoh_read_stack_bytes "5120")
     set(_zenoh_lease_priority "16")

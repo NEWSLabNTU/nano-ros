@@ -8,13 +8,13 @@
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
 /* ── Probe-derived inline storage sizes ──────────────────────
-* Each constant below is the byte size of the corresponding
-* runtime type, extracted from the compiled runtime by the
-* build script. They size the `_opaque` storage of the public
-* C handle types so callers can declare them on the stack or
-* inside their own structs without dynamic allocation.
-*/
-#define NROS_EXECUTOR_SIZE 16808
+ * Each constant below is the byte size of the corresponding
+ * runtime type, extracted from the compiled runtime by the
+ * build script. They size the `_opaque` storage of the public
+ * C handle types so callers can declare them on the stack or
+ * inside their own structs without dynamic allocation.
+ */
+#define NROS_EXECUTOR_SIZE 16776
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 120
 #define NROS_SUBSCRIBER_SIZE 400
@@ -25,10 +25,10 @@
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 
 /* ── *_OPAQUE_U64S macros — sized opaque storage for the
-*    handle structs declared in <nros/nros_generated.h>.
-*    Each value is `ceil(size_of_type / 8)` u64 slots so the
-*    handle's storage is u64-aligned.
-*/
+ *    handle structs declared in <nros/nros_generated.h>.
+ *    Each value is `ceil(size_of_type / 8)` u64 slots so the
+ *    handle's storage is u64-aligned.
+ */
 #define SESSION_OPAQUE_U64S 0
 #define PUBLISHER_OPAQUE_U64S 15
 #define EXECUTOR_OPAQUE_U64S 2216
@@ -36,15 +36,15 @@
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
 
 /* ── Type-compatible opaque definition of ActionServerRawHandle ──
-* Public C handle struct. The runtime owns the body; the C API
-* never lets callers reach into `_internal.handle` directly,
-* so an opaque, size-equivalent declaration is sufficient.
-*/
+ * Public C handle struct. The runtime owns the body; the C API
+ * never lets callers reach into `_internal.handle` directly,
+ * so an opaque, size-equivalent declaration is sufficient.
+ */
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct ActionServerRawHandle {
-uint64_t _opaque[6];
+    uint64_t _opaque[6];
 } ActionServerRawHandle;
 #ifdef __cplusplus
 }

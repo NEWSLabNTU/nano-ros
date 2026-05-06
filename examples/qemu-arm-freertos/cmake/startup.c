@@ -599,6 +599,18 @@ extern void zpico_set_task_config(uint32_t read_priority,
                                   uint32_t lease_priority,
                                   uint32_t lease_stack_bytes);
 
+/* Clamp NROS_APP_CONFIG's normalized 0–31 scheduling priority to the
+ * FreeRTOS port's `configMAX_PRIORITIES` range. Without this, the
+ * default 12 / 16 priorities trip `configASSERT(uxPriority <
+ * configMAX_PRIORITIES)` in `xTaskCreate` (FreeRTOSConfig.h sets
+ * `configMAX_PRIORITIES = 8`). */
+static inline UBaseType_t clamp_prio(uint32_t p) {
+    if (p >= (uint32_t)configMAX_PRIORITIES) {
+        return (UBaseType_t)(configMAX_PRIORITIES - 1);
+    }
+    return (UBaseType_t)p;
+}
+
 static void poll_task_entry(void *arg) {
     (void)arg;
     const uint32_t poll_ms = NROS_APP_CONFIG.scheduling.poll_interval_ms;
@@ -628,7 +640,7 @@ static void app_task_entry(void *arg) {
     /* Create poll task. 256 words = 1 KB stack is enough for the
      * `nros_freertos_poll_network` busy loop. */
     nros_freertos_create_task(poll_task_entry, "poll", 256, 0,
-                              NROS_APP_CONFIG.scheduling.poll_priority);
+                              clamp_prio(NROS_APP_CONFIG.scheduling.poll_priority));
 
     /* Initialise semihosting stdio so printf() routes to QEMU stdout.
      * Disable buffering so output is visible immediately (important for
@@ -641,9 +653,9 @@ static void app_task_entry(void *arg) {
      * the read task spawns at priority 0 (idle) and never delivers
      * subscription messages on a system with higher-priority tasks. */
     zpico_set_task_config(
-        NROS_APP_CONFIG.scheduling.zenoh_read_priority,
+        clamp_prio(NROS_APP_CONFIG.scheduling.zenoh_read_priority),
         NROS_APP_CONFIG.scheduling.zenoh_read_stack_bytes,
-        NROS_APP_CONFIG.scheduling.zenoh_lease_priority,
+        clamp_prio(NROS_APP_CONFIG.scheduling.zenoh_lease_priority),
         NROS_APP_CONFIG.scheduling.zenoh_lease_stack_bytes);
 
     /* Run user application */
@@ -662,7 +674,7 @@ void _start(void) {
      * words minimum; defaults in config.toml come tuned per use case. */
     const uint32_t app_stack_words = NROS_APP_CONFIG.scheduling.app_stack_bytes / 4;
     nros_freertos_create_task(app_task_entry, "app", app_stack_words, 0,
-                              NROS_APP_CONFIG.scheduling.app_priority);
+                              clamp_prio(NROS_APP_CONFIG.scheduling.app_priority));
     nros_freertos_start_scheduler();
     for (;;) {}
 }
