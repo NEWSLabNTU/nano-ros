@@ -58,6 +58,13 @@ unsafe extern "C" {
     /// Real-symbol wrapper around `k_yield()` (Phase 77.22).
     pub fn nros_zephyr_yield();
 
+    // Phase 110.D — per-thread scheduling controls. Both
+    // `k_thread_priority_set` and `k_current_get` are macros /
+    // static inlines in the Zephyr headers; a per-board shim wraps
+    // them as real symbols so Rust FFI can link.
+    pub fn nros_zephyr_thread_priority_set(prio: i32);
+    pub fn nros_zephyr_thread_cpu_pin(cpu: i32) -> i32;
+
     /// Read Zephyr's per-thread `errno` value. Phase 92.5 diagnostic.
     pub fn nros_zephyr_errno() -> i32;
 

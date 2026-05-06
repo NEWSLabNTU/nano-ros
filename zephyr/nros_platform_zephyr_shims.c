@@ -40,6 +40,23 @@ void nros_zephyr_yield(void) {
     k_yield();
 }
 
+/* Phase 110.D — per-thread scheduling controls. `k_thread_priority_set`
+ * and `k_current_get` are static inlines, so wrap each as a real
+ * symbol that Rust FFI can link.
+ */
+void nros_zephyr_thread_priority_set(int prio) {
+    k_thread_priority_set(k_current_get(), prio);
+}
+
+int nros_zephyr_thread_cpu_pin(int cpu) {
+#ifdef CONFIG_SCHED_CPU_MASK_PIN_ONLY
+    return k_thread_cpu_pin(k_current_get(), cpu);
+#else
+    (void)cpu;
+    return -ENOSYS;
+#endif
+}
+
 /* ── BSD socket wrappers ────────────────────────────────────────────
  *
  * On native_sim, glibc's getaddrinfo/freeaddrinfo symbols override

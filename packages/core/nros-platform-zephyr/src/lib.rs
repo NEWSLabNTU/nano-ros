@@ -144,6 +144,82 @@ impl nros_platform_api::PlatformYield for ZephyrPlatform {
 }
 
 // ============================================================================
+// Phase 110.D — PlatformScheduler (Zephyr)
+// ============================================================================
+//
+// Zephyr priorities run **direction-flipped**: lower numeric = higher
+// priority, and cooperative threads use negative numbers (down to
+// `-CONFIG_NUM_COOP_PRIORITIES`). Boundaries:
+//
+//   * `< 0` — cooperative (run-to-yield, never preempted by
+//     same-or-lower priority)
+//   * `>= 0` — preemptive (preemptible by higher-priority threads)
+//
+// `os_pri` from `SchedPolicy::Fifo` / `RoundRobin` is interpreted as
+// the **raw Zephyr numeric priority**: callers pass small numbers
+// (or negatives via `as u8` two's-complement) for higher priority.
+// Phase 110 doesn't yet abstract this through `Priority::{Critical,
+// Normal, BestEffort}` at the platform layer; that translation
+// lands when the `Priority`-to-`os_pri` mapper ships.
+//
+// `Deadline` (Linux SCHED_DEADLINE) and `Sporadic` (NuttX
+// SCHED_SPORADIC) have no Zephyr analog; both surface
+// `Unsupported`.
+
+impl nros_platform_api::PlatformScheduler for ZephyrPlatform {
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::{SchedError, SchedPolicy};
+        // Round-trip `u8` → signed Zephyr priority. Callers wanting
+        // negative (cooperative) priorities pass `as u8` of the
+        // signed value; the cast back to `i8` then `i32` round-trips.
+        let prio = match p {
+            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => {
+                (os_pri as i8) as i32
+            }
+            SchedPolicy::Deadline { .. } | SchedPolicy::Sporadic { .. } => {
+                return Err(SchedError::Unsupported);
+            }
+        };
+        // SAFETY: `nros_zephyr_thread_priority_set` is a per-board
+        // shim wrapping `k_thread_priority_set(k_current_get(), prio)`.
+        unsafe {
+            ffi::nros_zephyr_thread_priority_set(prio);
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn yield_now() {
+        unsafe { ffi::nros_zephyr_yield() };
+    }
+
+    fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::SchedError;
+        // Zephyr's `k_thread_cpu_pin` takes a single CPU index, not
+        // a mask. Reject masks with multiple bits set; passing 0
+        // means "first CPU" historically — surface OutOfRange so the
+        // caller is forced to be explicit.
+        if cpu_mask == 0 {
+            return Err(SchedError::OutOfRange);
+        }
+        if cpu_mask.count_ones() != 1 {
+            return Err(SchedError::OutOfRange);
+        }
+        let cpu = cpu_mask.trailing_zeros() as i32;
+        // SAFETY: shim wraps `k_thread_cpu_pin(k_current_get(), cpu)`.
+        // Returns 0 on success, negative errno on failure.
+        let ret = unsafe { ffi::nros_zephyr_thread_cpu_pin(cpu) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(SchedError::KernelError)
+        }
+    }
+}
+
+// ============================================================================
 // Random — Zephyr sys_rand32_get / sys_rand_get
 // ============================================================================
 
