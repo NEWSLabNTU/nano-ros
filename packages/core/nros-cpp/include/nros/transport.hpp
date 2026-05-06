@@ -20,6 +20,8 @@ extern "C" {
 // inline here so user code only needs `#include <nros/transport.hpp>`.
 typedef int nros_cpp_transport_ret_t;
 struct nros_cpp_transport_ops_t {
+    std::uint32_t abi_version;
+    std::uint32_t _reserved;
     void* user_data;
     nros_cpp_transport_ret_t (*open)(void* user_data, const void* params);
     void (*close)(void* user_data);
@@ -27,6 +29,7 @@ struct nros_cpp_transport_ops_t {
     std::int32_t (*read)(void* user_data, std::uint8_t* buf, std::size_t len,
                          std::uint32_t timeout_ms);
 };
+extern const std::uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /// Phase 115.D — Rust-side entry that copies the vtable into
 /// `nros_rmw::set_custom_transport`. Implemented in `transport.rs`.
@@ -82,6 +85,8 @@ inline Result set_custom_transport(const TransportOps& ops) {
         return Result(ErrorCode::InvalidArgument);
     }
     nros_cpp_transport_ops_t ffi{};
+    ffi.abi_version = NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
+    ffi._reserved = 0;
     ffi.user_data = ops.user_data;
     ffi.open = ops.open;
     ffi.close = ops.close;

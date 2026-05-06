@@ -166,6 +166,8 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
  * layout — single ABI, no parallel definitions.
  */
 typedef struct nros_cpp_transport_ops_t {
+  uint32_t abi_version;
+  uint32_t _reserved;
   void *user_data;
   nros_cpp_ret_t (*open)(void *user_data, const void *params);
   void (*close)(void *user_data);
@@ -226,6 +228,12 @@ typedef struct nros_cpp_transport_ops_t {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Phase 115.A.2 — re-exported ABI version constant. C++ inline
+ * wrapper fills this in.
+ */
+extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /**
  * Initialize an nros executor session.

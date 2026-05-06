@@ -279,6 +279,11 @@ pub enum TransportError {
     /// from `Timeout`: fires immediately, not after a bounded wait.
     /// Phase 102.1.
     NoData,
+    /// Phase 115.A.2 — caller passed a versioned vtable struct
+    /// (e.g. `NrosTransportOps`) with an `abi_version` the runtime
+    /// doesn't know. Maps to `NROS_RMW_RET_INCOMPATIBLE_ABI` at
+    /// the C boundary.
+    IncompatibleAbi,
     /// Backend-specific error with a `'static` diagnostic string.
     ///
     /// Useful for zenoh-pico / XRCE-DDS return codes that map to a

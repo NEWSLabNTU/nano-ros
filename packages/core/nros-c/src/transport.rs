@@ -16,7 +16,18 @@
 
 use core::ffi::c_void;
 
-use crate::error::{NROS_RET_INVALID_ARGUMENT, NROS_RET_OK, nros_ret_t};
+use crate::error::{NROS_RET_ERROR, NROS_RET_INVALID_ARGUMENT, NROS_RET_OK, nros_ret_t};
+
+/// Phase 115.A.2 — current ABI version of [`nros_transport_ops_t`].
+///
+/// C / C++ callers MUST fill in `ops.abi_version =
+/// NROS_TRANSPORT_OPS_ABI_VERSION_V1` before passing the struct to
+/// [`nros_set_custom_transport`]. Mismatched values are rejected
+/// with `NROS_RET_ERROR` (mapped from
+/// `TransportError::IncompatibleAbi`); cffi consumers see
+/// `NROS_RMW_RET_INCOMPATIBLE_ABI`.
+#[unsafe(no_mangle)]
+pub static NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /// Phase 115.C — C-side mirror of
 /// `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
@@ -24,6 +35,9 @@ use crate::error::{NROS_RET_INVALID_ARGUMENT, NROS_RET_OK, nros_ret_t};
 ///
 /// Field semantics:
 ///
+/// - `abi_version`: must be [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]
+///   (Phase 115.A.2).
+/// - `_reserved`: padding for future minor-version detection. Set to 0.
 /// - `user_data`: opaque caller context, threaded back into every
 ///   callback as the first argument. Lifetime: must outlive the
 ///   transport's active period (i.e. until `close` returns).
@@ -40,6 +54,8 @@ use crate::error::{NROS_RET_INVALID_ARGUMENT, NROS_RET_OK, nros_ret_t};
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct nros_transport_ops_t {
+    pub abi_version: u32,
+    pub _reserved: u32,
     pub user_data: *mut c_void,
     pub open: unsafe extern "C" fn(user_data: *mut c_void, params: *const c_void) -> nros_ret_t,
     pub close: unsafe extern "C" fn(user_data: *mut c_void),
@@ -76,27 +92,24 @@ pub struct nros_transport_ops_t {
 pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_ops_t) -> nros_ret_t {
     if ops.is_null() {
         // Clear request.
-        unsafe { nros_rmw::set_custom_transport(None) };
+        let _ = unsafe { nros_rmw::set_custom_transport(None) };
         return NROS_RET_OK;
     }
     // Copy by-value out of the caller's struct.
     let ops_copy = unsafe { *ops };
-    // The `unsafe extern "C" fn` field type is non-nullable, so a
-    // C caller passing a literal NULL would have transmuted it
-    // through the struct — we can't detect that here without
-    // reinterpreting the fields as raw pointers. Document the
-    // contract; rely on the caller to fill in non-NULL pointers.
-    // (`user_data` is the only field that's allowed to be NULL.)
-
     let nros_ops = nros_rmw::NrosTransportOps {
+        abi_version: ops_copy.abi_version,
+        _reserved: ops_copy._reserved,
         user_data: ops_copy.user_data,
         open: ops_copy.open,
         close: ops_copy.close,
         write: ops_copy.write,
         read: ops_copy.read,
     };
-    unsafe { nros_rmw::set_custom_transport(Some(nros_ops)) };
-    NROS_RET_OK
+    match unsafe { nros_rmw::set_custom_transport(Some(nros_ops)) } {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Phase 115.C — clear any previously-registered custom transport.
@@ -104,7 +117,7 @@ pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_op
 /// teardown paths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_clear_custom_transport() -> nros_ret_t {
-    unsafe { nros_rmw::set_custom_transport(None) };
+    let _ = unsafe { nros_rmw::set_custom_transport(None) };
     NROS_RET_OK
 }
 

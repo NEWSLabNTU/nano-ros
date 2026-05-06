@@ -15,6 +15,8 @@ use crate::{NROS_CPP_RET_OK, nros_cpp_ret_t};
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct nros_cpp_transport_ops_t {
+    pub abi_version: u32,
+    pub _reserved: u32,
     pub user_data: *mut c_void,
     pub open: unsafe extern "C" fn(user_data: *mut c_void, params: *const c_void) -> nros_cpp_ret_t,
     pub close: unsafe extern "C" fn(user_data: *mut c_void),
@@ -27,6 +29,11 @@ pub struct nros_cpp_transport_ops_t {
         timeout_ms: u32,
     ) -> i32,
 }
+
+/// Phase 115.A.2 — re-exported ABI version constant. C++ inline
+/// wrapper fills this in.
+#[unsafe(no_mangle)]
+pub static NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1: u32 = nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /// Phase 115.D — register a custom transport vtable. C++-side entry
 /// for `nros::set_custom_transport`.
@@ -41,25 +48,29 @@ pub unsafe extern "C" fn nros_cpp_set_custom_transport(
     ops: *const nros_cpp_transport_ops_t,
 ) -> nros_cpp_ret_t {
     if ops.is_null() {
-        unsafe { nros_rmw::set_custom_transport(None) };
+        let _ = unsafe { nros_rmw::set_custom_transport(None) };
         return NROS_CPP_RET_OK;
     }
     let ops_copy = unsafe { *ops };
     let nros_ops = nros_rmw::NrosTransportOps {
+        abi_version: ops_copy.abi_version,
+        _reserved: ops_copy._reserved,
         user_data: ops_copy.user_data,
         open: ops_copy.open,
         close: ops_copy.close,
         write: ops_copy.write,
         read: ops_copy.read,
     };
-    unsafe { nros_rmw::set_custom_transport(Some(nros_ops)) };
-    NROS_CPP_RET_OK
+    match unsafe { nros_rmw::set_custom_transport(Some(nros_ops)) } {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => crate::NROS_CPP_RET_ERROR,
+    }
 }
 
 /// Phase 115.D — clear any previously-registered transport.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_clear_custom_transport() -> nros_cpp_ret_t {
-    unsafe { nros_rmw::set_custom_transport(None) };
+    let _ = unsafe { nros_rmw::set_custom_transport(None) };
     NROS_CPP_RET_OK
 }
 

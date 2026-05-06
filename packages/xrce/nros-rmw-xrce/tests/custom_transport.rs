@@ -18,7 +18,10 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use nros_rmw::{NrosTransportOps, peek_custom_transport, set_custom_transport};
+use nros_rmw::{
+    NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, peek_custom_transport,
+    set_custom_transport,
+};
 
 static OPEN_CALLS: AtomicU32 = AtomicU32::new(0);
 static CLOSE_CALLS: AtomicU32 = AtomicU32::new(0);
@@ -44,6 +47,8 @@ unsafe extern "C" fn stub_read(_ud: *mut c_void, _buf: *mut u8, _len: usize, _to
 
 fn make_ops() -> NrosTransportOps {
     NrosTransportOps {
+        abi_version: NROS_TRANSPORT_OPS_ABI_VERSION_V1,
+        _reserved: 0,
         user_data: 0xDEAD_BEEF_usize as *mut c_void,
         open: stub_open,
         close: stub_close,
@@ -60,7 +65,7 @@ fn set_custom_transport_round_trips_through_xrce_bridge() {
     READ_CALLS.store(0, Ordering::Relaxed);
 
     // Register the vtable.
-    unsafe { set_custom_transport(Some(make_ops())) };
+    unsafe { set_custom_transport(Some(make_ops())).expect("set") };
 
     // Peek to confirm registration landed.
     let peeked = peek_custom_transport().expect("peek after register");
@@ -85,8 +90,8 @@ fn set_custom_transport_round_trips_through_xrce_bridge() {
 #[test]
 fn clear_via_set_none() {
     unsafe {
-        set_custom_transport(Some(make_ops()));
-        set_custom_transport(None);
+        set_custom_transport(Some(make_ops())).expect("set");
+        set_custom_transport(None).expect("clear");
     }
     assert!(peek_custom_transport().is_none());
 }

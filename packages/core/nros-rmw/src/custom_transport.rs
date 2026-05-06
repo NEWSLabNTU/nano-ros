@@ -49,6 +49,25 @@ use core::ffi::c_void;
 
 use crate::sync::Mutex;
 
+/// Phase 115.A.2 — current ABI version of [`NrosTransportOps`].
+///
+/// Embedded as the first field of the struct (see § *Versioning*
+/// below). Consumers fill in this exact value before passing the
+/// struct to [`set_custom_transport`]; runtime entry points reject
+/// any other value with [`TransportError::IncompatibleAbi`] (or
+/// `NROS_RMW_RET_INCOMPATIBLE_ABI` at the C boundary).
+///
+/// The version bumps under two rules (per the portable-ABI design
+/// note R5 in `docs/design/portable-rmw-platform-interface.md`):
+///
+/// - **Major** (e.g. `V1` → `V2`): existing fields removed or
+///   reordered. Old consumers fail cleanly via the version check.
+/// - **Minor** (e.g. struct gains an appended fn pointer): version
+///   stays the same. New consumers detect the new fn via the size
+///   of the trailing `_reserved` region. Today there is none — v1 is
+///   the inaugural version.
+pub const NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = 1;
+
 /// Phase 115.A — runtime-pluggable custom transport. Caller fills in
 /// the four fn pointers, hands the struct to [`set_custom_transport`],
 /// and the active backend treats it as the read / write surface for
@@ -78,6 +97,16 @@ use crate::sync::Mutex;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct NrosTransportOps {
+    /// Phase 115.A.2 — ABI version. Consumers MUST fill in
+    /// [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]; mismatched values are
+    /// rejected at registration time with
+    /// `TransportError::IncompatibleAbi` (`NROS_RMW_RET_INCOMPATIBLE_ABI`
+    /// at the C boundary). Reserved for future minor-version
+    /// detection — see the const's doc-comment.
+    pub abi_version: u32,
+    /// Phase 115.A.2 — reserved padding to keep the struct
+    /// alignment-stable across appends. Must be zero.
+    pub _reserved: u32,
     /// Opaque caller context, threaded back into every callback as
     /// the first argument. Lifetime: must outlive the transport's
     /// active period (i.e. until `close` returns).
@@ -134,13 +163,25 @@ static SLOT: Mutex<Option<NrosTransportOps>> = Mutex::new(None);
 /// Pass `None` to clear a previously-registered vtable (e.g. for
 /// teardown in tests).
 ///
+/// Returns `Err(TransportError::IncompatibleAbi)` when `ops.is_some()`
+/// but `abi_version != NROS_TRANSPORT_OPS_ABI_VERSION_V1`. C / C++
+/// wrappers map this to `NROS_RMW_RET_INCOMPATIBLE_ABI`.
+///
 /// # Safety
 ///
 /// The four fn pointers in `ops` must follow the threading contract
 /// documented on [`NrosTransportOps`] — no concurrent read/write, no
 /// ISR invocation, `user_data` outlives the transport's active period.
-pub unsafe fn set_custom_transport(ops: Option<NrosTransportOps>) {
+pub unsafe fn set_custom_transport(
+    ops: Option<NrosTransportOps>,
+) -> Result<(), crate::TransportError> {
+    if let Some(o) = ops.as_ref() {
+        if o.abi_version != NROS_TRANSPORT_OPS_ABI_VERSION_V1 {
+            return Err(crate::TransportError::IncompatibleAbi);
+        }
+    }
     SLOT.with(|slot| *slot = ops);
+    Ok(())
 }
 
 /// Phase 115.A — peek at the currently-registered transport without
@@ -182,6 +223,8 @@ mod tests {
 
     fn make_ops() -> NrosTransportOps {
         NrosTransportOps {
+            abi_version: NROS_TRANSPORT_OPS_ABI_VERSION_V1,
+            _reserved: 0,
             user_data: core::ptr::null_mut(),
             open: stub_open,
             close: stub_close,
@@ -200,11 +243,12 @@ mod tests {
         assert!(peek_custom_transport().is_none());
 
         unsafe {
-            set_custom_transport(Some(make_ops()));
+            set_custom_transport(Some(make_ops())).expect("set");
         }
 
         let peeked = peek_custom_transport().expect("peek after set");
         assert!(peeked.user_data.is_null());
+        assert_eq!(peeked.abi_version, NROS_TRANSPORT_OPS_ABI_VERSION_V1);
 
         // Peek again — slot still occupied.
         assert!(peek_custom_transport().is_some());
@@ -222,9 +266,23 @@ mod tests {
     fn explicit_clear() {
         let _ = take_custom_transport();
         unsafe {
-            set_custom_transport(Some(make_ops()));
-            set_custom_transport(None);
+            set_custom_transport(Some(make_ops())).expect("set");
+            set_custom_transport(None).expect("clear");
         }
+        assert!(peek_custom_transport().is_none());
+    }
+
+    /// Phase 115.A.2 — abi_version mismatch is rejected with
+    /// `TransportError::IncompatibleAbi`. Slot stays whatever it was
+    /// before the bad call.
+    #[test]
+    fn rejects_unknown_abi_version() {
+        let _ = take_custom_transport();
+        let mut ops = make_ops();
+        ops.abi_version = 0xBAD0_BAD0; // not V1.
+        let err = unsafe { set_custom_transport(Some(ops)) };
+        assert!(matches!(err, Err(crate::TransportError::IncompatibleAbi)));
+        // Bad call did NOT install — slot stays empty.
         assert!(peek_custom_transport().is_none());
     }
 
