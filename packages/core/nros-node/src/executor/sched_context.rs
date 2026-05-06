@@ -72,6 +72,43 @@ pub enum SchedClass {
     TimeTriggered,
 }
 
+/// Criticality bucket for [`SchedContext`]. Phase 110.C uses this to
+/// pick which `BucketedFifoSet` / `BucketedEdfSet` slot a callback
+/// dispatches through; later phases (110.D) map it to OS priority.
+///
+/// Default `Normal` keeps existing single-bucket workloads unchanged
+/// — every default-Fifo SC sits in `Normal`, so dispatch order is
+/// bit-identical to pre-110.C when no callback opts in to `Critical`
+/// or `BestEffort`.
+///
+/// Single-thread non-preemption note: a `BestEffort` callback already
+/// running blocks `Critical` work that becomes ready mid-cycle. Hard-
+/// RT scenarios need 110.D's multi-executor preemption.
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Ord, PartialOrd)]
+pub enum Priority {
+    /// Highest-priority bucket. Drained first within a single
+    /// `spin_once` cycle; non-preemptive against in-flight lower-
+    /// priority callbacks (see Phase 110.D for preemption).
+    Critical = 0,
+    /// Default bucket. Most callbacks (and the auto-default Fifo SC)
+    /// live here.
+    #[default]
+    Normal = 1,
+    /// Lowest-priority bucket. Drained last; first to be skipped if a
+    /// future cycle-budget overrun forces an early return.
+    BestEffort = 2,
+}
+
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+impl Priority {
+    pub const COUNT: usize = 3;
+
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+}
+
 /// How an EDF deadline is interpreted relative to a callback firing.
 ///
 /// - `Released`: deadline is `release_time + period`. Default for
@@ -106,6 +143,7 @@ pub struct SchedContextId(pub u8);
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SchedContext {
     pub class: SchedClass,
+    pub priority: Priority,
     pub period_us: OptUs,
     pub budget_us: OptUs,
     pub deadline_us: OptUs,
@@ -117,6 +155,7 @@ impl SchedContext {
     pub const fn new_fifo() -> Self {
         Self {
             class: SchedClass::Fifo,
+            priority: Priority::Normal,
             period_us: OptUs::NONE,
             budget_us: OptUs::NONE,
             deadline_us: OptUs::NONE,

@@ -264,6 +264,131 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
     }
 }
 
+// =============================================================================
+// Phase 110.C — `BucketedFifoSet<NB, N>` + `BucketedEdfSet<NB, N>`
+// =============================================================================
+//
+// Splits a ready set across `NB` priority buckets (defaults to 3:
+// Critical / Normal / BestEffort). Within each bucket the underlying
+// FIFO bitmap or EDF heap behaves exactly as the un-bucketed variant.
+//
+// Selection: `pop_next` walks buckets ascending (lowest index first =
+// highest priority) and returns the first available job. This gives
+// strict static priority across buckets while preserving FIFO /
+// EDF ordering inside a bucket.
+//
+// Single-thread blocking note: an in-flight callback in a lower-
+// priority bucket blocks higher-priority work that becomes ready
+// during dispatch. For hard-RT preemption see Phase 110.D.
+
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+#[derive(Debug)]
+pub(crate) struct BucketedFifoSet<const NB: usize, const N: usize> {
+    buckets: [FifoReadySet<N>; NB],
+}
+
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+impl<const NB: usize, const N: usize> BucketedFifoSet<NB, N> {
+    pub const fn new() -> Self {
+        const {
+            assert!(NB >= 1, "BucketedFifoSet needs at least 1 bucket");
+        }
+        Self {
+            buckets: [const { FifoReadySet::<N>::new() }; NB],
+        }
+    }
+
+    pub fn insert_into(
+        &mut self,
+        bucket: usize,
+        job: super::types::ActiveJob,
+    ) -> Result<(), Overflow> {
+        if bucket >= NB {
+            return Err(Overflow);
+        }
+        self.buckets[bucket].insert(job)
+    }
+
+    /// Pop the highest-priority ready job. Returns `(bucket_index,
+    /// job)`; `bucket_index` is useful for telemetry / accounting.
+    pub fn pop_next(&mut self) -> Option<(usize, super::types::ActiveJob)> {
+        for (i, b) in self.buckets.iter_mut().enumerate() {
+            if let Some(j) = b.pop_next() {
+                return Some((i, j));
+            }
+        }
+        None
+    }
+
+    /// Pop a job from a specific bucket, ignoring other buckets.
+    pub fn pop_from(&mut self, bucket: usize) -> Option<super::types::ActiveJob> {
+        self.buckets.get_mut(bucket)?.pop_next()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buckets.iter().all(|b| b.is_empty())
+    }
+}
+
+impl<const NB: usize, const N: usize> Default for BucketedFifoSet<NB, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+#[derive(Debug)]
+pub(crate) struct BucketedEdfSet<const NB: usize, const N: usize> {
+    buckets: [EdfReadySet<N>; NB],
+}
+
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
+impl<const NB: usize, const N: usize> BucketedEdfSet<NB, N> {
+    pub const fn new() -> Self {
+        const {
+            assert!(NB >= 1, "BucketedEdfSet needs at least 1 bucket");
+        }
+        Self {
+            buckets: [const { EdfReadySet::<N>::new() }; NB],
+        }
+    }
+
+    pub fn insert_into(
+        &mut self,
+        bucket: usize,
+        job: super::types::ActiveJob,
+    ) -> Result<(), Overflow> {
+        if bucket >= NB {
+            return Err(Overflow);
+        }
+        self.buckets[bucket].insert(job)
+    }
+
+    pub fn pop_next(&mut self) -> Option<(usize, super::types::ActiveJob)> {
+        for (i, b) in self.buckets.iter_mut().enumerate() {
+            if let Some(j) = b.pop_next() {
+                return Some((i, j));
+            }
+        }
+        None
+    }
+
+    /// Pop a job from a specific bucket, ignoring other buckets.
+    pub fn pop_from(&mut self, bucket: usize) -> Option<super::types::ActiveJob> {
+        self.buckets.get_mut(bucket)?.pop_next()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buckets.iter().all(|b| b.is_empty())
+    }
+}
+
+impl<const NB: usize, const N: usize> Default for BucketedEdfSet<NB, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

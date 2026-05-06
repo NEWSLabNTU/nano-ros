@@ -227,6 +227,66 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.C — `Critical`-bucket callback runs before
+/// `BestEffort`-bucket callback when both are ready in the same cycle,
+/// regardless of registration order.
+#[test]
+fn test_bucketed_priority_dispatch_order() {
+    use crate::executor::sched_context::{Priority, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let o_be = firing_order.clone();
+    let o_crit = firing_order.clone();
+
+    // Registered first (lower DescIdx) — bound to BestEffort.
+    let h_be = executor
+        .add_subscription::<TestMsg, _>("/be", move |msg: &TestMsg| {
+            o_be.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+    // Registered second — bound to Critical so the bucket promotion
+    // beats registration order.
+    let h_crit = executor
+        .add_subscription::<TestMsg, _>("/crit", move |msg: &TestMsg| {
+            o_crit.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+
+    let sc_be = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::BestEffort,
+            ..Default::default()
+        })
+        .unwrap();
+    let sc_crit = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::Critical,
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h_be, sc_be).unwrap();
+    executor.bind_handle_to_sched_context(h_crit, sc_crit).unwrap();
+
+    let (d_be, n_be) = encode_test_msg(1);
+    let (d_crit, n_crit) = encode_test_msg(2);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off_be = executor.entries[0].as_ref().unwrap().offset;
+    let off_crit = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off_be) as *const MockSubscriber) }.load(d_be, n_be);
+    unsafe { &*(arena_ptr.add(off_crit) as *const MockSubscriber) }.load(d_crit, n_crit);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 2);
+
+    let order = firing_order.lock().unwrap();
+    // Critical (data=2) drains before BestEffort (data=1).
+    assert_eq!(*order, std::vec![2, 1]);
+}
+
 /// Phase 110.B — default `Fifo` SC binding preserves registration
 /// order even when other entries are bound to `Edf` SCs.
 #[test]

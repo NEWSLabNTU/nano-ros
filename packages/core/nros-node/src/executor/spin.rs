@@ -1741,58 +1741,56 @@ impl Executor {
             }
         }
 
-        // Phase 3: Dispatch (Phase 110.B — split between EdfReadySet
-        // and FifoReadySet by per-entry SchedContext class).
+        // Phase 3: Dispatch (Phase 110.C — bucketed by SC.priority).
         //
-        // Each ready entry is queued onto the EDF heap when its bound
-        // SC has `class = Edf` (`sort_key = deadline_us` from the SC),
-        // otherwise onto the registration-order FIFO bitmap. EDF
-        // drains first so deadline-prioritised callbacks pre-empt
-        // FIFO peers when both are ready in the same cycle. Default
-        // workloads — every entry bound to the auto-created Fifo SC
-        // — never touch the EDF heap, so dispatch order is
-        // bit-identical to pre-110.B.
+        // Two ready-set families, each split across `Priority::COUNT`
+        // buckets (Critical / Normal / BestEffort). Per-entry SC
+        // `class` selects FIFO bitmap vs EDF heap; SC `priority`
+        // selects the bucket within. Drain order:
+        //   for each bucket in priority order (Critical first):
+        //     drain EDF heap (deadline-priority), then FIFO bitmap
+        //     (registration-order)
+        // Default workloads — every entry on the auto-default Fifo SC
+        // (Normal priority) — populate only `fifo[Normal]`, so
+        // dispatch order is bit-identical to 110.B.b for those.
+        const NB: usize = super::sched_context::Priority::COUNT;
         let mut result = SpinOnceResult::new();
-        let mut fifo: super::ready_set::FifoReadySet<{ crate::config::MAX_CBS }> =
-            super::ready_set::FifoReadySet::new();
-        let mut edf: super::ready_set::EdfReadySet<{ crate::config::MAX_CBS }> =
-            super::ready_set::EdfReadySet::new();
+        let mut fifo: super::ready_set::BucketedFifoSet<NB, { crate::config::MAX_CBS }> =
+            super::ready_set::BucketedFifoSet::new();
+        let mut edf: super::ready_set::BucketedEdfSet<NB, { crate::config::MAX_CBS }> =
+            super::ready_set::BucketedEdfSet::new();
         let active_mask = bits | always_mask;
         for i in 0..crate::config::MAX_CBS {
             if active_mask & (1u64 << i) == 0 {
                 continue;
             }
             let sc_idx = self.sched_context_bindings[i].0 as usize;
-            let is_edf = self
+            let (is_edf, bucket, deadline_us) = self
                 .sched_contexts
                 .get(sc_idx)
                 .and_then(|s| s.as_ref())
-                .map(|sc| matches!(sc.class, super::sched_context::SchedClass::Edf))
-                .unwrap_or(false);
+                .map(|sc| {
+                    (
+                        matches!(sc.class, super::sched_context::SchedClass::Edf),
+                        sc.priority.index(),
+                        sc.deadline_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX),
+                    )
+                })
+                .unwrap_or((false, super::sched_context::Priority::Normal.index(), u32::MAX));
             let job = super::types::ActiveJob {
-                sort_key: if is_edf {
-                    self.sched_contexts[sc_idx]
-                        .as_ref()
-                        .and_then(|sc| sc.deadline_us.get())
-                        .map(|nz| nz.get())
-                        .unwrap_or(u32::MAX)
-                } else {
-                    i as u32
-                },
+                sort_key: if is_edf { deadline_us } else { i as u32 },
                 desc_idx: i as super::types::DescIdx,
             };
-            use super::ready_set::ReadySet as _;
             if is_edf {
-                let _ = edf.insert(job);
+                let _ = edf.insert_into(bucket, job);
             } else {
-                let _ = fifo.insert(job);
+                let _ = fifo.insert_into(bucket, job);
             }
         }
 
         // SAFETY: each `desc_idx` we pop was set above only when the
         // corresponding `entries[i]` slot was `Some`; no Executor
         // mutation happens between that scan and this dispatch.
-        use super::ready_set::ReadySet as _;
         let dispatch_one = |meta: &CallbackMeta,
                             arena_ptr: *mut u8,
                             delta_ms: u64,
@@ -1820,18 +1818,24 @@ impl Executor {
             }
         };
 
-        // Drain EDF first — deadline-prioritised work pre-empts FIFO.
-        while let Some(job) = edf.pop_next() {
-            let i = job.desc_idx as usize;
-            if let Some(meta) = self.entries[i].as_ref() {
-                dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+        // For each priority bucket (Critical → Normal → BestEffort),
+        // drain EDF first then FIFO so an EDF callback in this bucket
+        // beats a FIFO peer at the same priority, but no lower-priority
+        // entry runs while a higher-priority bucket has work pending.
+        // Strict static priority across buckets; non-preemptive within
+        // an in-flight callback (see Phase 110.D).
+        for bucket in 0..NB {
+            while let Some(job) = edf.pop_from(bucket) {
+                let i = job.desc_idx as usize;
+                if let Some(meta) = self.entries[i].as_ref() {
+                    dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                }
             }
-        }
-        // Drain FIFO — registration-order legacy path.
-        while let Some(job) = fifo.pop_next() {
-            let i = job.desc_idx as usize;
-            if let Some(meta) = self.entries[i].as_ref() {
-                dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+            while let Some(job) = fifo.pop_from(bucket) {
+                let i = job.desc_idx as usize;
+                if let Some(meta) = self.entries[i].as_ref() {
+                    dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                }
             }
         }
 
