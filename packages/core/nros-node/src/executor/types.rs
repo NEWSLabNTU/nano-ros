@@ -367,7 +367,6 @@ pub(crate) const DEFAULT_TX_BUF: usize = crate::config::DEFAULT_RX_BUF_SIZE;
 /// 64 to match the existing readiness bitmap width; if a future
 /// MAX_HANDLES bump goes past 64 the type widens accordingly.
 #[cfg(any(has_rmw, test))]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) type DescIdx = u8;
 
 /// Sort key used to order callbacks within a `ReadySet`.

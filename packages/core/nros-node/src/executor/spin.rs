@@ -1553,10 +1553,20 @@ impl Executor {
         let delta_ms = timeout_ms as u64;
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
-        // Phase 1: Readiness scan
+        // Phase 1: Readiness scan (Phase 110.A.b — backed by FifoReadySet).
+        //
+        // `bits` carries data-readiness only (used by trigger eval +
+        // by `InvocationMode::OnNewData`). `always_mask` carries the
+        // `InvocationMode::Always` entries that fire regardless of
+        // data presence. The dispatcher drains
+        // `FifoReadySet(bits | always_mask)` after the trigger
+        // passes; `pop_next` yields registration order (lowest bit
+        // first) so behavior is bit-identical to the pre-refactor
+        // `for (i, meta) in entries.iter().enumerate()` loop.
         let mut bits: u64 = 0;
         let mut count: usize = 0;
         let mut non_timer_mask: u64 = 0;
+        let mut always_mask: u64 = 0;
 
         for (i, meta) in self.entries.iter().enumerate() {
             if let Some(meta) = meta {
@@ -1566,6 +1576,9 @@ impl Executor {
                 }
                 if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
                     non_timer_mask |= 1u64 << i;
+                }
+                if matches!(meta.invocation, InvocationMode::Always) {
+                    always_mask |= 1u64 << i;
                 }
                 count += 1;
             }
@@ -1645,21 +1658,27 @@ impl Executor {
             }
         }
 
-        // Phase 3: Dispatch
+        // Phase 3: Dispatch (Phase 110.A.b — drains via FifoReadySet).
+        //
+        // Walking `pop_next` on a bitmap-backed FifoReadySet pops in
+        // registration order (lowest bit first), exactly matching the
+        // pre-refactor `for (i, meta) in entries.iter().enumerate()`
+        // walk — every existing test's dispatch ordering is preserved.
         let mut result = SpinOnceResult::new();
+        let mut ready: super::ready_set::FifoReadySet<{ crate::config::MAX_CBS }> =
+            super::ready_set::FifoReadySet::new();
+        ready.set_bits(bits | always_mask);
 
-        for (i, meta) in self.entries.iter().enumerate() {
-            let Some(meta) = meta else { continue };
-
-            // Check invocation mode
-            let should_fire = match meta.invocation {
-                InvocationMode::OnNewData => bits & (1u64 << i) != 0,
-                InvocationMode::Always => true,
-            };
-
-            if !should_fire {
+        // SAFETY: `ready` only has bits set for slots that were `Some`
+        // during the readiness scan above; no Executor mutation
+        // happens between the scan and dispatch, so each `desc_idx`
+        // we pop still indexes a `Some(meta)` slot.
+        use super::ready_set::ReadySet as _;
+        while let Some(job) = ready.pop_next() {
+            let i = job.desc_idx as usize;
+            let Some(meta) = self.entries[i].as_ref() else {
                 continue;
-            }
+            };
 
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             match unsafe { (meta.try_process)(data_ptr, delta_ms) } {

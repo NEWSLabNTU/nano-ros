@@ -32,7 +32,10 @@ use super::types::{ActiveJob, DescIdx};
 #[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) struct Overflow;
 
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
+// `clear` / `is_empty` / `insert` / `contains` are wired by the
+// EDF + bucketed dispatchers (110.B / 110.C); 110.A only exercises
+// `pop_next` from `spin_once`. Marked `dead_code` until then.
+#[allow(dead_code)]
 pub(crate) trait ReadySet {
     fn clear(&mut self);
     fn is_empty(&self) -> bool;
@@ -50,7 +53,6 @@ pub(crate) trait ReadySet {
 /// bit first), which reproduces the pre-110.A `spin_once` behavior
 /// exactly.
 #[derive(Debug)]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) struct FifoReadySet<const N: usize> {
     bits: u64,
 }
@@ -74,7 +76,6 @@ impl<const N: usize> FifoReadySet<N> {
     /// Bulk-set the presence bitmap. Used by the default
     /// [`Activator`](super::activator::Activator) impl which produces
     /// a full `u64` mask in one pass and writes it through.
-    #[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
     pub fn set_bits(&mut self, bits: u64) {
         self.bits = bits;
     }
