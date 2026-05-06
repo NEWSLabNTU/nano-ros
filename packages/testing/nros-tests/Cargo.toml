@@ -128,5 +128,10 @@ required-features = ["px4-sitl"]
 name = "orin_spe_mock_ivc"
 path = "tests/orin_spe_mock_ivc.rs"
 
+[[test]]
+name = "custom_transport_loopback"
+path = "tests/custom_transport_loopback.rs"
+required-features = ["rmw"]
+
 [lints]
 workspace = true

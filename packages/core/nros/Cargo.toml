@@ -115,6 +115,9 @@ platform-orin-spe = [
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]
 link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
 link-tls = ["nros-rmw-zenoh?/link-tls"]
+# Phase 115.B — runtime-pluggable user transport via the
+# `custom://` locator scheme.
+link-custom = ["nros-rmw-zenoh?/link-custom"]
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features)
 platform-udp = ["nros-node/platform-udp"]
