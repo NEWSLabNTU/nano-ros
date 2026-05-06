@@ -227,6 +227,62 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.E — `SchedClass::Sporadic` budget suppression. After the
+/// budget is exhausted within a period, the bound subscription's
+/// callback no longer fires until the next period boundary refills
+/// the budget.
+#[test]
+fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_cb = count.clone();
+    let h = executor
+        .add_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
+            count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // 1 us budget per 60 s period — first cycle's `delta_ms` saturates
+    // and exhausts the budget immediately, so the second cycle's
+    // dispatch is suppressed.
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(1),
+            period_us: OptUs::from_us(60_000_000),
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h, sc_id).unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+
+    // Cycle 1 — the first `tick` pass refills the budget to 1 us,
+    // then deducts the `delta_us` since the executor was constructed
+    // (probably 0 us on a fast machine, leaving 1 us). Either way
+    // the callback fires and the budget is consumed.
+    let (d, n) = encode_test_msg(1);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    // Sleep to push elapsed time past 1 us so cycle 2's tick
+    // exhausts whatever residual budget remained.
+    std::thread::sleep(std::time::Duration::from_millis(2));
+
+    // Cycle 2 — budget is 0; dispatch must be suppressed.
+    let initial = count.load(std::sync::atomic::Ordering::SeqCst);
+    let (d, n) = encode_test_msg(2);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let after = count.load(std::sync::atomic::Ordering::SeqCst);
+
+    // Strictly assert no new dispatch on cycle 2.
+    assert_eq!(after, initial, "Sporadic SC must suppress dispatch when budget exhausted");
+}
+
 /// Phase 110.D — multi-executor smoke test. Spawns two Executors,
 /// each on its own OS thread with a different `SchedPolicy`. Mirrors
 /// the shape of the drone S1 / watchdog S3 acceptance scenarios from

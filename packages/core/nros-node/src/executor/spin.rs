@@ -241,6 +241,11 @@ pub struct Executor {
     /// `SchedContextId(0)` (the auto-created Fifo SC).
     pub(crate) sched_context_bindings:
         [super::sched_context::SchedContextId; crate::config::MAX_CBS],
+    /// Phase 110.E — user-space sporadic-server budget state per
+    /// Sporadic-class SC. Slot indices match `sched_contexts`; non-
+    /// Sporadic slots stay `None`.
+    pub(crate) sporadic_states:
+        [Option<super::sched_context::SporadicState>; crate::config::MAX_SC],
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -287,6 +292,7 @@ impl Executor {
             },
             sched_context_bindings: [super::sched_context::SchedContextId(0);
                 crate::config::MAX_CBS],
+            sporadic_states: [None; crate::config::MAX_SC],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -331,6 +337,7 @@ impl Executor {
             },
             sched_context_bindings: [super::sched_context::SchedContextId(0);
                 crate::config::MAX_CBS],
+            sporadic_states: [None; crate::config::MAX_SC],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -392,6 +399,17 @@ impl Executor {
         for (i, slot) in self.sched_contexts.iter_mut().enumerate().skip(1) {
             if slot.is_none() {
                 *slot = Some(sc);
+                // Phase 110.E — Sporadic-class SCs get a sibling
+                // `SporadicState` entry that the spin_once dispatch
+                // path consults each cycle to refill the budget at
+                // period boundaries and skip dispatch when budget
+                // is exhausted.
+                if matches!(sc.class, super::sched_context::SchedClass::Sporadic) {
+                    let budget = sc.budget_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+                    let period = sc.period_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+                    self.sporadic_states[i] =
+                        Some(super::sched_context::SporadicState::new(budget, period));
+                }
                 return Ok(super::sched_context::SchedContextId(i as u8));
             }
         }
@@ -1760,23 +1778,65 @@ impl Executor {
         let mut edf: super::ready_set::BucketedEdfSet<NB, { crate::config::MAX_CBS }> =
             super::ready_set::BucketedEdfSet::new();
         let active_mask = bits | always_mask;
+
+        // Phase 110.E — refill any Sporadic SC budgets at period
+        // boundaries before deciding what to dispatch this cycle.
+        // Refill is polled (not ISR-driven) — coarse but correct
+        // upper-bound bandwidth limiter.
+        #[cfg(feature = "std")]
+        {
+            // Monotonic ms relative to a process-static epoch so the
+            // refill clock survives wall-clock jumps.
+            use std::sync::OnceLock;
+            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
+            let now_ms = std::time::Instant::now()
+                .saturating_duration_since(*EPOCH.get_or_init(std::time::Instant::now))
+                .as_millis() as u64;
+            // Use the cycle's `delta_ms` as the per-SC consumption
+            // estimate — worst-case attribution. Per-callback
+            // measurement lands with a higher-precision clock hook.
+            let delta_us = (delta_ms as u32).saturating_mul(1000).min(u32::MAX);
+            for slot in self.sporadic_states.iter_mut().flatten() {
+                let _ = slot.tick(now_ms, delta_us);
+            }
+        }
+
         for i in 0..crate::config::MAX_CBS {
             if active_mask & (1u64 << i) == 0 {
                 continue;
             }
             let sc_idx = self.sched_context_bindings[i].0 as usize;
-            let (is_edf, bucket, deadline_us) = self
+            let sc_class_priority_deadline = self
                 .sched_contexts
                 .get(sc_idx)
                 .and_then(|s| s.as_ref())
                 .map(|sc| {
                     (
-                        matches!(sc.class, super::sched_context::SchedClass::Edf),
+                        sc.class,
                         sc.priority.index(),
                         sc.deadline_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX),
                     )
-                })
-                .unwrap_or((false, super::sched_context::Priority::Normal.index(), u32::MAX));
+                });
+            let (sc_class, bucket, deadline_us) = sc_class_priority_deadline.unwrap_or((
+                super::sched_context::SchedClass::Fifo,
+                super::sched_context::Priority::Normal.index(),
+                u32::MAX,
+            ));
+            // Phase 110.E — Sporadic SC dispatch is suppressed when
+            // its budget is exhausted. `tick` already refilled at
+            // period boundary above; here we just gate.
+            if matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
+                let has_budget = self
+                    .sporadic_states
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|s| s.budget_remaining_us > 0)
+                    .unwrap_or(true);
+                if !has_budget {
+                    continue;
+                }
+            }
+            let is_edf = matches!(sc_class, super::sched_context::SchedClass::Edf);
             let job = super::types::ActiveJob {
                 sort_key: if is_edf { deadline_us } else { i as u32 },
                 desc_idx: i as super::types::DescIdx,

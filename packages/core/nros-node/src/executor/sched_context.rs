@@ -150,6 +150,52 @@ pub struct SchedContext {
     pub deadline_policy: DeadlinePolicy,
 }
 
+/// Phase 110.E — user-space sporadic-server runtime state.
+///
+/// Tracks remaining `budget_us` for the current period and the wall-
+/// clock instant of the last refill. The executor consults this state
+/// during dispatch: when `budget_remaining_us` reaches 0 the SC is
+/// suppressed until the next period boundary, at which point a refill
+/// resets the counter.
+///
+/// Refill cadence is polled — each `spin_once` checks whether the
+/// elapsed time since the last refill exceeds `period_us` and tops
+/// the budget back up. Less precise than an ISR-driven refill (Phase
+/// 110.E's per-platform timer hook is what gets that) but correct as
+/// an upper-bound bandwidth limiter.
+#[allow(dead_code)] // Phase 110.E — wired in spin_once Sporadic dispatch.
+#[derive(Debug, Clone, Copy)]
+pub struct SporadicState {
+    pub budget_remaining_us: u32,
+    pub budget_capacity_us: u32,
+    pub period_us: u32,
+    pub last_refill_ms: u64,
+}
+
+#[allow(dead_code)] // Phase 110.E — wired in spin_once Sporadic dispatch.
+impl SporadicState {
+    pub const fn new(budget_us: u32, period_us: u32) -> Self {
+        Self {
+            budget_remaining_us: budget_us,
+            budget_capacity_us: budget_us,
+            period_us,
+            last_refill_ms: 0,
+        }
+    }
+
+    /// Apply elapsed-time accounting since the previous spin. Returns
+    /// `true` if the SC has remaining budget after the refill check.
+    pub fn tick(&mut self, now_ms: u64, delta_us: u32) -> bool {
+        // Refill at period boundaries — coarse but correct.
+        if now_ms.saturating_sub(self.last_refill_ms) >= self.period_us as u64 / 1000 {
+            self.budget_remaining_us = self.budget_capacity_us;
+            self.last_refill_ms = now_ms;
+        }
+        self.budget_remaining_us = self.budget_remaining_us.saturating_sub(delta_us);
+        self.budget_remaining_us > 0
+    }
+}
+
 #[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 impl SchedContext {
     pub const fn new_fifo() -> Self {
