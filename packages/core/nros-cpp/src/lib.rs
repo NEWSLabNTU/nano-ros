@@ -720,6 +720,177 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     NROS_CPP_RET_OK
 }
 
+// =============================================================================
+// Phase 110.B / 110.C — SchedContext FFI for the C++ wrapper
+// =============================================================================
+
+/// `nros::SchedClass` mirror. Phase 110.B.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[repr(u8)]
+pub enum nros_cpp_sched_class_t {
+    Fifo = 0,
+    Edf = 1,
+    Sporadic = 2,
+    BestEffort = 3,
+    TimeTriggered = 4,
+}
+
+/// `nros::Priority` mirror. Phase 110.C.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[repr(u8)]
+pub enum nros_cpp_priority_t {
+    Critical = 0,
+    Normal = 1,
+    BestEffort = 2,
+}
+
+/// `nros::DeadlinePolicy` mirror. Phase 110.B.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[repr(u8)]
+pub enum nros_cpp_deadline_policy_t {
+    Released = 0,
+    Activated = 1,
+    Inherited = 2,
+}
+
+/// `nros::SchedContext` mirror passed to
+/// [`nros_cpp_create_sched_context`]. Time fields use `0` as
+/// "absent" sentinel (mirrors the Rust `OptUs` newtype).
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[repr(C)]
+pub struct nros_cpp_sched_context_t {
+    pub class: nros_cpp_sched_class_t,
+    pub priority: nros_cpp_priority_t,
+    pub deadline_policy: nros_cpp_deadline_policy_t,
+    pub period_us: u32,
+    pub budget_us: u32,
+    pub deadline_us: u32,
+}
+
+/// Identifier of the auto-created default `Fifo` SC. Phase 110.B.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_default_sched_context_id() -> u8 {
+    0
+}
+
+/// Register a new scheduling context. Phase 110.B.
+///
+/// On success writes the new SC id through `out_sc_id` and returns
+/// `NROS_CPP_RET_OK`. Returns `NROS_CPP_RET_INVALID_ARGUMENT` for null
+/// pointers, `NROS_CPP_RET_ERROR` if `MAX_SC` is exhausted.
+///
+/// # Safety
+/// All pointers must be valid; `handle` must be a context returned by
+/// `nros_cpp_init`.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_create_sched_context(
+    handle: *mut c_void,
+    cfg: *const nros_cpp_sched_context_t,
+    out_sc_id: *mut u8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || cfg.is_null() || out_sc_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_node::executor::sched_context::{
+        DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
+    };
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let cfg = unsafe { &*cfg };
+    let sc = SchedContext {
+        class: match cfg.class {
+            nros_cpp_sched_class_t::Fifo => SchedClass::Fifo,
+            nros_cpp_sched_class_t::Edf => SchedClass::Edf,
+            nros_cpp_sched_class_t::Sporadic => SchedClass::Sporadic,
+            nros_cpp_sched_class_t::BestEffort => SchedClass::BestEffort,
+            nros_cpp_sched_class_t::TimeTriggered => SchedClass::TimeTriggered,
+        },
+        priority: match cfg.priority {
+            nros_cpp_priority_t::Critical => Priority::Critical,
+            nros_cpp_priority_t::Normal => Priority::Normal,
+            nros_cpp_priority_t::BestEffort => Priority::BestEffort,
+        },
+        deadline_policy: match cfg.deadline_policy {
+            nros_cpp_deadline_policy_t::Released => DeadlinePolicy::Released,
+            nros_cpp_deadline_policy_t::Activated => DeadlinePolicy::Activated,
+            nros_cpp_deadline_policy_t::Inherited => DeadlinePolicy::Inherited,
+        },
+        period_us: OptUs::from_us(cfg.period_us),
+        budget_us: OptUs::from_us(cfg.budget_us),
+        deadline_us: OptUs::from_us(cfg.deadline_us),
+    };
+    match ctx.executor.create_sched_context(sc) {
+        Ok(id) => {
+            unsafe { *out_sc_id = id.0 };
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_FULL,
+    }
+}
+
+/// Bind a registered callback to a scheduling context. Phase 110.B.
+///
+/// `handle` is the executor context; `callback_handle` is the index
+/// returned from a previous `add_*` call; `sc_id` is from
+/// [`nros_cpp_create_sched_context`].
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
+    handle: *mut c_void,
+    callback_handle: usize,
+    sc_id: u8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let h = nros_node::executor::HandleId(callback_handle);
+    let id = nros_node::executor::sched_context::SchedContextId(sc_id);
+    match ctx.executor.bind_handle_to_sched_context(h, id) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_INVALID_ARGUMENT,
+    }
+}
+
 /// Get current monotonic time in nanoseconds.
 ///
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by

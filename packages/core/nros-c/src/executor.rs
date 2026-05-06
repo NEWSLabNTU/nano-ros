@@ -1408,6 +1408,176 @@ mod verification {
     }
 }
 
+// =============================================================================
+// Phase 110.B / 110.C — SchedContext C-API surface
+// =============================================================================
+
+/// Scheduling class — picks the runtime queue + selection policy.
+/// Mirrors `nros_node::executor::sched_context::SchedClass`.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum nros_sched_class_t {
+    NROS_SCHED_CLASS_FIFO = 0,
+    NROS_SCHED_CLASS_EDF = 1,
+    NROS_SCHED_CLASS_SPORADIC = 2,
+    NROS_SCHED_CLASS_BEST_EFFORT = 3,
+    NROS_SCHED_CLASS_TIME_TRIGGERED = 4,
+}
+
+/// Criticality bucket. Lower numeric value = higher priority.
+/// Mirrors `nros_node::executor::sched_context::Priority`.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum nros_sched_priority_t {
+    NROS_SCHED_PRIORITY_CRITICAL = 0,
+    NROS_SCHED_PRIORITY_NORMAL = 1,
+    NROS_SCHED_PRIORITY_BEST_EFFORT = 2,
+}
+
+/// Deadline interpretation policy.
+/// Mirrors `nros_node::executor::sched_context::DeadlinePolicy`.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum nros_deadline_policy_t {
+    NROS_DEADLINE_POLICY_RELEASED = 0,
+    NROS_DEADLINE_POLICY_ACTIVATED = 1,
+    NROS_DEADLINE_POLICY_INHERITED = 2,
+}
+
+/// Scheduling-context descriptor passed to
+/// [`nros_executor_create_sched_context`].
+///
+/// Time fields use a `0` sentinel for "absent" (mirrors the Rust
+/// `OptUs` newtype). Cbindgen emits these as plain `uint32_t`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub struct nros_sched_context_t {
+    pub class: nros_sched_class_t,
+    pub priority: nros_sched_priority_t,
+    pub deadline_policy: nros_deadline_policy_t,
+    /// Period in microseconds (0 = absent).
+    pub period_us: u32,
+    /// Budget in microseconds (0 = absent).
+    pub budget_us: u32,
+    /// Deadline in microseconds (0 = absent).
+    pub deadline_us: u32,
+}
+
+/// Identifier of a registered scheduling context. `0` is the
+/// auto-created default `Fifo` SC. Mirrors
+/// `nros_node::executor::sched_context::SchedContextId`.
+#[allow(non_camel_case_types)]
+pub type nros_sched_context_id_t = u8;
+
+/// Identifier of the auto-created default `Fifo`-class SC. Every
+/// callback registered without an explicit binding maps to it.
+/// Phase 110.B.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_executor_default_sched_context_id() -> nros_sched_context_id_t {
+    0
+}
+
+fn convert_sched_context(
+    cfg: &nros_sched_context_t,
+) -> nros_node::executor::sched_context::SchedContext {
+    use nros_node::executor::sched_context::{
+        DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
+    };
+    SchedContext {
+        class: match cfg.class {
+            nros_sched_class_t::NROS_SCHED_CLASS_FIFO => SchedClass::Fifo,
+            nros_sched_class_t::NROS_SCHED_CLASS_EDF => SchedClass::Edf,
+            nros_sched_class_t::NROS_SCHED_CLASS_SPORADIC => SchedClass::Sporadic,
+            nros_sched_class_t::NROS_SCHED_CLASS_BEST_EFFORT => SchedClass::BestEffort,
+            nros_sched_class_t::NROS_SCHED_CLASS_TIME_TRIGGERED => SchedClass::TimeTriggered,
+        },
+        priority: match cfg.priority {
+            nros_sched_priority_t::NROS_SCHED_PRIORITY_CRITICAL => Priority::Critical,
+            nros_sched_priority_t::NROS_SCHED_PRIORITY_NORMAL => Priority::Normal,
+            nros_sched_priority_t::NROS_SCHED_PRIORITY_BEST_EFFORT => Priority::BestEffort,
+        },
+        deadline_policy: match cfg.deadline_policy {
+            nros_deadline_policy_t::NROS_DEADLINE_POLICY_RELEASED => DeadlinePolicy::Released,
+            nros_deadline_policy_t::NROS_DEADLINE_POLICY_ACTIVATED => DeadlinePolicy::Activated,
+            nros_deadline_policy_t::NROS_DEADLINE_POLICY_INHERITED => DeadlinePolicy::Inherited,
+        },
+        period_us: OptUs::from_us(cfg.period_us),
+        budget_us: OptUs::from_us(cfg.budget_us),
+        deadline_us: OptUs::from_us(cfg.deadline_us),
+    }
+}
+
+/// Register a new scheduling context with the executor. Phase 110.B.
+///
+/// On success writes the new `SchedContextId` through `out_sc_id` and
+/// returns `NROS_RET_OK`. Returns `NROS_RET_FULL` when no slot is
+/// available (build-time `NROS_EXECUTOR_MAX_SC` exhausted).
+///
+/// # Safety
+/// All pointers must be valid and the executor initialized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_create_sched_context(
+    executor: *mut nros_executor_t,
+    cfg: *const nros_sched_context_t,
+    out_sc_id: *mut nros_sched_context_id_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, cfg, out_sc_id);
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    let sc = convert_sched_context(&*cfg);
+    match rust_exec.create_sched_context(sc) {
+        Ok(id) => {
+            *out_sc_id = id.0;
+            NROS_RET_OK
+        }
+        Err(_) => NROS_RET_FULL,
+    }
+}
+
+/// Bind a registered callback to a scheduling context. The next
+/// `spin_once` cycle dispatches that callback through the SC's queue
+/// (FIFO bitmap or EDF heap, in the SC's priority bucket).
+/// Phase 110.B.
+///
+/// `handle` is the index returned by the corresponding
+/// `nros_executor_add_*` call. `sc_id` must be a value previously
+/// returned from [`nros_executor_create_sched_context`] (or 0 for the
+/// auto-created default Fifo SC).
+///
+/// Returns `NROS_RET_INVALID_ARGUMENT` for an out-of-range handle, an
+/// empty entry slot, or an unknown `sc_id`.
+///
+/// # Safety
+/// `executor` must be a valid pointer to an initialized executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_bind_handle_to_sched_context(
+    executor: *mut nros_executor_t,
+    handle: usize,
+    sc_id: nros_sched_context_id_t,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    let h = nros_node::executor::HandleId(handle);
+    let id = nros_node::executor::sched_context::SchedContextId(sc_id);
+    match rust_exec.bind_handle_to_sched_context(h, id) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_INVALID_ARGUMENT,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
