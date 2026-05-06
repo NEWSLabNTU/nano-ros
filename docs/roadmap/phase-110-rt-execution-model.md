@@ -2,7 +2,7 @@
 
 **Goal:** Refactor the nano-ros executor to support mixed-criticality callbacks (Critical / Normal / BestEffort) on one executor with pluggable scheduling policies (FIFO / EDF / Sporadic), keeping the user-facing ROS-style API stable across scheduler swaps. Default uses **1 OS priority slot per executor thread** — scheduling decisions live in user space, not in OS priority slots (avoids PiCAS-style slot starvation on platforms like Cortex-M0+ which only has 4 NVIC levels).
 
-**Status:** Not Started
+**Status:** v1 in progress — 110.0 / A / B / C / D-foundation landed (POSIX/NuttX/FreeRTOS/Zephyr/ThreadX/cffi/Orin SPE PlatformScheduler impls + multi-exec lifecycle). Drone S1 / watchdog S3 timing acceptance + 110.E–G post-v1 deferred.
 
 **Priority:** High
 
@@ -42,11 +42,17 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
 
 ### v1 (Phases 110.0–110.D — required)
 
-- [ ] 110.0 — `Session::next_deadline_ms()` RMW trait method + per-backend impls (RMW-side, lands first or in parallel)
-- [ ] 110.A — Refactor: `Activator + ReadySet + Dispatcher` + ISR SPSC ring (behavioural no-op)
-- [ ] 110.B — `SchedContext` API + `OptUs` newtype + `EdfReadySet`
-- [ ] 110.C — `BucketedFifoSet<N>` + `BucketedEdfSet<N>` (HSE-style criticality split)
-- [ ] 110.D — `Executor::open_threaded` + `PlatformScheduler` trait per RTOS
+- [x] 110.0 — `Session::next_deadline_ms()` RMW trait method + per-backend impls (RMW-side, lands first or in parallel)
+- [x] 110.A — Refactor: `Activator + ReadySet + Dispatcher` + ISR SPSC ring (behavioural no-op)
+- [x] 110.B — `SchedContext` API + `OptUs` newtype + `EdfReadySet` (incl. C/C++ wrappers)
+- [x] 110.C — `BucketedFifoSet<N>` + `BucketedEdfSet<N>` (HSE-style criticality split)
+- [~] 110.D — `Executor::open_threaded` + `PlatformScheduler` trait per RTOS
+      Trait + POSIX/NuttX/FreeRTOS/Zephyr/ThreadX/cffi/Orin SPE
+      impls landed; `open_threaded` + `ThreadHandle` lifecycle
+      landed; multi-exec smoke test green. Drone S1 / watchdog S3
+      timing acceptance defers to a privileged-scheduling
+      integration harness (CAP_SYS_NICE + multi-core wall-clock
+      measurement).
 
 ### Post-v1 (Phases 110.E–110.G)
 

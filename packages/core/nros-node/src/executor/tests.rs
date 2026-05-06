@@ -227,6 +227,50 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.D — multi-executor smoke test. Spawns two Executors,
+/// each on its own OS thread with a different `SchedPolicy`. Mirrors
+/// the shape of the drone S1 / watchdog S3 acceptance scenarios from
+/// the phase doc. Live SCHED_FIFO requires `CAP_SYS_NICE`, so the
+/// test uses a no-op `apply_policy` and only asserts the lifecycle
+/// works — full timing acceptance for S1 / S3 ships once the
+/// integration harness with privileged scheduling is in place.
+#[test]
+fn test_open_threaded_two_executors_independent_lifecycle() {
+    use nros_platform_api::SchedPolicy;
+    fn apply_noop(_p: SchedPolicy) -> Result<(), nros_platform_api::SchedError> {
+        Ok(())
+    }
+
+    // Critical executor — would run at SCHED_FIFO os_pri 90 in a
+    // privileged process.
+    let crit = Executor::from_session(MockSession::new());
+    let crit_handle = unsafe {
+        crit.open_threaded(
+            SchedPolicy::Fifo { os_pri: 90 },
+            apply_noop,
+            core::time::Duration::from_millis(1),
+        )
+    };
+
+    // BE executor — would run at SCHED_FIFO os_pri 10 in a
+    // privileged process.
+    let be = Executor::from_session(MockSession::new());
+    let be_handle = unsafe {
+        be.open_threaded(
+            SchedPolicy::Fifo { os_pri: 10 },
+            apply_noop,
+            core::time::Duration::from_millis(5),
+        )
+    };
+
+    // Let both run a couple of cycles.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    // Halt each independently — order shouldn't matter.
+    assert!(crit_handle.join().is_ok());
+    assert!(be_handle.join().is_ok());
+}
+
 /// Phase 110.D.b — smoke test for `Executor::open_threaded`. Spawns
 /// the executor onto a fresh OS thread, lets it spin, then halts via
 /// the returned `ThreadHandle`.
