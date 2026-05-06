@@ -47,6 +47,11 @@ link-tls = []
 # this feature also propagates `cargo:rustc-cfg=feature="link_ivc"` so
 # zpico-platform-shim's `mod ivc_helpers` block compiles in.
 link-ivc = []
+# Phase 115.B — runtime-pluggable user transport via the
+# `custom://` locator scheme. Compiles in `src/link/{config,unicast}/custom.c`
+# from the zenoh-pico fork + force-links `zpico-platform-custom`'s
+# `nros_zpico_custom_take` symbol.
+link-custom = ["dep:zpico-platform-custom", "zpico-platform-custom?/active"]
 # Use a pre-built zenoh-pico instead of building from the submodule.
 # Set ZENOH_PICO_DIR to the CMake install prefix (must contain lib/libzenohpico.a
 # and include/zenoh-pico.h). Only supported for native targets.
@@ -61,6 +66,10 @@ unstable-zenoh-api = []
 # Activated by any platform feature; actual ConcretePlatform resolved by
 # the board crate's nros-platform-<board> dependency via Cargo feature unification.
 zpico-platform-shim = { version = "0.1.0", path = "../zpico-platform-shim", default-features = false, optional = true }
+# Phase 115.B — Rust-side `nros_zpico_custom_take` extern that the
+# C custom-link factory calls. Optional; only pulled in when
+# `link-custom` is enabled.
+zpico-platform-custom = { workspace = true, optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"

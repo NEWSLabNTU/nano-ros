@@ -35,6 +35,12 @@ extern crate std;
 ))]
 extern crate zpico_platform_shim;
 
+// Phase 115.B — force-link the Rust-side `nros_zpico_custom_take`
+// symbol that the C custom-link factory calls. Same pattern as
+// `extern crate zpico_platform_shim` above.
+#[cfg(feature = "link-custom")]
+extern crate zpico_platform_custom;
+
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
 // not Rust's global allocator. The `alloc` crate is NOT needed.
 

@@ -3054,6 +3054,13 @@ name = "zpico-alloc"
 version = "0.1.0"
 
 [[package]]
+name = "zpico-platform-custom"
+version = "0.1.0"
+dependencies = [
+ "nros-rmw",
+]
+
+[[package]]
 name = "zpico-platform-shim"
 version = "0.1.0"
 dependencies = [
@@ -3068,5 +3075,6 @@ dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-platform-custom",
  "zpico-platform-shim",
 ]

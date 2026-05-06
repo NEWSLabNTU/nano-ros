@@ -59,6 +59,7 @@ members = [
     "packages/platforms/nros-platform-orin-spe",
     # Platform shims for RMW backends
     "packages/zpico/zpico-platform-shim",
+    "packages/zpico/zpico-platform-custom",
     "packages/xrce/xrce-platform-shim",
     # PX4 RMW backend (uORB transport) + board crate
     "packages/px4/nros-rmw-uorb",
@@ -299,6 +300,7 @@ nros-platform-nuttx = { version = "0.1.0", path = "packages/core/nros-platform-n
 nros-platform-threadx = { version = "0.1.0", path = "packages/core/nros-platform-threadx" }
 nros-platform-zephyr = { version = "0.1.0", path = "packages/core/nros-platform-zephyr" }
 zpico-platform-shim = { version = "0.1.0", path = "packages/zpico/zpico-platform-shim", default-features = false }
+zpico-platform-custom = { version = "0.1.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
 xrce-platform-shim = { version = "0.1.0", path = "packages/xrce/xrce-platform-shim", default-features = false }
 zpico-sys = { version = "0.1.0", path = "packages/zpico/zpico-sys", default-features = false }
 zpico-alloc = { version = "0.1.0", path = "packages/zpico/zpico-alloc" }

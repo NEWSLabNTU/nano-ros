@@ -19,7 +19,7 @@ etc.). Per the design note
 - `nros-rmw-cffi`'s shape is the only "design decision"; L1 / L2
   wrappers above it are mechanical translations.
 
-**Status:** v1 complete. All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.B → `115.X-zenoh` (~600 LOC), 115.H → `115.X-dds`, 115.F → blocked on 115.B, 115.J → Phase 23.
+**Status:** v1 + 115.B complete (XRCE-DDS via 115.E + zenoh-pico via 115.B). All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.B / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`, second-language smoke test) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.H → `115.X-dds`, 115.F (loopback example) blocked on a multi-process zenohd-fixture harness, 115.J → Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -212,10 +212,51 @@ documented in
   `uxr_init_custom_transport`. Bridges the ABI mismatch: XRCE's
   `open` / `close` take `*mut uxrCustomTransport`; ours take
   `*mut c_void user_data`. (commit `d16bf294`)
-- [ ] **115.B — zenoh-pico custom-link.** Design captured in
-  § Appendix B; implementation queued for follow-up phase
-  `115.X-zenoh`. ~600 LOC across 4 components (zenoh-pico fork +
-  zpico-sys + zpico-platform-custom + integration test).
+- [x] **115.B — zenoh-pico custom-link.** Implemented per
+  § Appendix B. Four components:
+  1. **zenoh-pico fork** (branch `phase-115-link-custom` off
+     `897618d5`): 4 new files (`include/zenoh-pico/system/link/custom.h`,
+     `include/zenoh-pico/link/config/custom.h`,
+     `src/link/config/custom.c`, `src/link/unicast/custom.c`) + 5
+     patches (`include/zenoh-pico/link/{endpoint,link,manager}.h`
+     for `CUSTOM_SCHEMA` / `_Z_LINK_TYPE_CUSTOM` / forward decls;
+     `src/link/{endpoint,link}.c` for scheme dispatch;
+     `include/zenoh-pico/config.h.in` + `CMakeLists.txt` for
+     `Z_FEATURE_LINK_CUSTOM` plumbing). ~370 LOC.
+  2. **`zpico-sys`**: new `link-custom` feature; `build.rs`
+     emits `Z_FEATURE_LINK_CUSTOM` into the generated config
+     header (CMake + cc::Build paths) and force-links
+     `zpico-platform-custom` via `extern crate`.
+  3. **`zpico-platform-custom`** (new crate, ~100 LOC): exposes
+     `extern "C" fn nros_zpico_custom_take(out) -> i32` which
+     drains `nros_rmw::take_custom_transport()` into the C-side
+     vtable buffer. Layout parity with `NrosTransportOps`
+     enforced by a compile-time `size_of` + `align_of` assert.
+  4. **`nros-rmw-zenoh`**: new `link-custom` Cargo feature
+     passes through to `zpico-sys/link-custom`.
+
+  **End-to-end test** at
+  `packages/zpico/nros-rmw-zenoh/tests/custom_transport.rs`.
+  Registers a stub vtable, opens `ZenohTransport::open` against
+  locator `custom/anywhere`, and asserts all four user callbacks
+  (`open`/`write`/`read`/`close`) fired during session bring-up +
+  teardown. The stub's `read()` returns 0 bytes ⇒ zenoh-pico
+  can't complete the INIT handshake ⇒ session-open returns
+  `ConnectionFailed`; that's expected for v1 (a real custom
+  transport implements the bytes-in / bytes-out contract). The
+  link layer still drove every fn pointer, which is what the
+  test verifies.
+
+  Run via:
+  ```bash
+  cargo test -p nros-rmw-zenoh --features platform-posix,link-tcp,link-custom \
+      --test custom_transport
+  ```
+  1/1 passing.
+
+  Locator surface for users: `custom/<addr>`. The `<addr>` segment
+  is opaque to v1 (no configurable keys); future minor-version
+  bumps may thread it through `params` to the user's `open()`. (`<this commit>`)
 - [ ] **115.H — dust-DDS custom transport.** `RtpsUdpTransportParticipantFactory`-
   equivalent plug-in. Design queued for follow-up phase
   `115.X-dds`.
