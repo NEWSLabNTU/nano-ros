@@ -145,6 +145,94 @@ pub trait PlatformYield {
 }
 
 // ============================================================================
+// Phase 110.D — `PlatformScheduler` (per-thread OS scheduling policy)
+// ============================================================================
+
+/// Errors returned by [`PlatformScheduler`] entry points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchedError {
+    /// The active platform doesn't expose this control surface
+    /// (e.g. bare-metal with no scheduler, or an RTOS without an
+    /// affinity API).
+    Unsupported,
+    /// The requested policy is valid for this platform but the
+    /// numeric arguments fall outside the platform's accepted range.
+    OutOfRange,
+    /// A platform-specific syscall / kernel call failed; check
+    /// `errno` (POSIX) or the RTOS error code for details.
+    KernelError,
+}
+
+/// Per-thread OS scheduling policy.
+///
+/// `Fifo` / `RoundRobin` / `Deadline` / `Sporadic` map to platform-
+/// native scheduling classes when available. `Platform(...)` is the
+/// escape hatch for RTOS-specific knobs (e.g. ThreadX preempt-
+/// threshold) that don't map cleanly into the portable variants.
+///
+/// User-facing API (`Executor::open_threaded`) takes the abstract
+/// [`Priority`-like](crate) values and `PlatformScheduler` translates
+/// them into platform-native numerics — direction-flipped priority
+/// (Zephyr / ThreadX low-numeric = high-priority vs POSIX / FreeRTOS
+/// high-numeric = high-priority) handled internally. Phase 110.D.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchedPolicy {
+    /// POSIX `SCHED_FIFO`. `os_pri` is the platform-native numeric
+    /// priority; out-of-range values surface `SchedError::OutOfRange`.
+    Fifo { os_pri: u8 },
+    /// POSIX `SCHED_RR` with `quantum_ms` time slice.
+    RoundRobin { os_pri: u8, quantum_ms: u32 },
+    /// Linux `SCHED_DEADLINE` (sched_setattr). All values nanoseconds.
+    Deadline {
+        runtime_ns: u64,
+        period_ns: u64,
+        deadline_ns: u64,
+    },
+    /// NuttX `SCHED_SPORADIC` server. Phase 110.E.
+    Sporadic {
+        budget_us: u32,
+        period_us: u32,
+        hi_pri: u8,
+        lo_pri: u8,
+    },
+}
+
+/// Per-thread OS-scheduling control surface.
+///
+/// Each platform implements as much of this trait as its kernel
+/// supports. `bare-metal` returns [`SchedError::Unsupported`] from
+/// every entry point — there is no scheduler to talk to.
+///
+/// Phase 110.D wires this for Linux + NuttX (via POSIX) at v1; Zephyr
+/// / FreeRTOS / ThreadX impls land alongside per-RTOS bring-up.
+pub trait PlatformScheduler {
+    /// Apply the requested policy to the calling thread.
+    ///
+    /// Default returns [`SchedError::Unsupported`] so single-core bare-
+    /// metal targets and RTOS impls without per-thread scheduling
+    /// pickup the no-op behavior automatically. Platforms with a
+    /// real scheduler override this.
+    fn set_current_thread_policy(_p: SchedPolicy) -> Result<(), SchedError> {
+        Err(SchedError::Unsupported)
+    }
+
+    /// Cooperative yield. Same semantics as
+    /// [`PlatformYield::yield_now`]; mirrored here so consumers don't
+    /// need to import both traits when only the scheduler control
+    /// surface is in scope. Default is a `core::hint::spin_loop()`.
+    fn yield_now() {
+        core::hint::spin_loop();
+    }
+
+    /// Pin the calling thread to the CPUs whose bit is set in
+    /// `cpu_mask`. Default returns [`SchedError::Unsupported`] —
+    /// platforms with affinity APIs override.
+    fn set_affinity(_cpu_mask: u32) -> Result<(), SchedError> {
+        Err(SchedError::Unsupported)
+    }
+}
+
+// ============================================================================
 // Random number generation
 // ============================================================================
 

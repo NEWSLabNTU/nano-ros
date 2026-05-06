@@ -109,6 +109,84 @@ impl nros_platform_api::PlatformYield for PosixPlatform {
 }
 
 // ============================================================================
+// Phase 110.D — PlatformScheduler (Linux + NuttX share the POSIX path)
+// ============================================================================
+
+impl nros_platform_api::PlatformScheduler for PosixPlatform {
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::{SchedError, SchedPolicy};
+        let (policy, sched_priority) = match p {
+            SchedPolicy::Fifo { os_pri } => (libc::SCHED_FIFO, os_pri as libc::c_int),
+            SchedPolicy::RoundRobin {
+                os_pri,
+                quantum_ms: _,
+            } => (libc::SCHED_RR, os_pri as libc::c_int),
+            // SCHED_DEADLINE is Linux-specific via sched_setattr.
+            // libc doesn't yet expose it through a stable wrapper —
+            // surface as Unsupported until Phase 110.E adds the
+            // direct-syscall path.
+            SchedPolicy::Deadline { .. } => return Err(SchedError::Unsupported),
+            // SCHED_SPORADIC is NuttX-only and lands in 110.E with
+            // its budget-refill plumbing.
+            SchedPolicy::Sporadic { .. } => return Err(SchedError::Unsupported),
+        };
+        // SAFETY: passing a stack-allocated sched_param to libc.
+        let param = libc::sched_param { sched_priority };
+        let ret = unsafe { libc::pthread_setschedparam(libc::pthread_self(), policy, &param) };
+        if ret == 0 {
+            Ok(())
+        } else if ret == libc::EINVAL {
+            Err(SchedError::OutOfRange)
+        } else {
+            Err(SchedError::KernelError)
+        }
+    }
+
+    #[inline]
+    fn yield_now() {
+        unsafe {
+            libc::sched_yield();
+        }
+    }
+
+    fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::SchedError;
+        // Linux + NuttX both expose pthread_setaffinity_np with cpu_set_t.
+        #[cfg(target_os = "linux")]
+        unsafe {
+            let mut set: libc::cpu_set_t = core::mem::zeroed();
+            libc::CPU_ZERO(&mut set);
+            for cpu in 0..32u32 {
+                if cpu_mask & (1u32 << cpu) != 0 {
+                    libc::CPU_SET(cpu as usize, &mut set);
+                }
+            }
+            let ret = libc::pthread_setaffinity_np(
+                libc::pthread_self(),
+                core::mem::size_of::<libc::cpu_set_t>(),
+                &set,
+            );
+            return if ret == 0 {
+                Ok(())
+            } else if ret == libc::EINVAL {
+                Err(SchedError::OutOfRange)
+            } else {
+                Err(SchedError::KernelError)
+            };
+        }
+        // Non-Linux POSIX (macOS / NuttX without affinity support):
+        // surface unsupported rather than silently no-op.
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = cpu_mask;
+            Err(SchedError::Unsupported)
+        }
+    }
+}
+
+// ============================================================================
 // Random — /dev/urandom via getrandom(2) or read()
 // ============================================================================
 
