@@ -101,6 +101,29 @@ impl PlatformYield for OrinSpe {
     }
 }
 
+// Phase 110.D — Orin SPE runs on NVIDIA's FreeRTOS FSP (Cortex-R5F).
+// Forward every `PlatformScheduler` entry point to the FreeRTOS
+// impl; the priority direction (high-numeric = high) and per-thread
+// `vTaskPrioritySet` semantics are identical.
+impl nros_platform_api::PlatformScheduler for OrinSpe {
+    #[inline]
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        <FreeRtosPlatform as nros_platform_api::PlatformScheduler>::set_current_thread_policy(p)
+    }
+
+    #[inline]
+    fn yield_now() {
+        <FreeRtosPlatform as nros_platform_api::PlatformScheduler>::yield_now()
+    }
+
+    #[inline]
+    fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        <FreeRtosPlatform as nros_platform_api::PlatformScheduler>::set_affinity(cpu_mask)
+    }
+}
+
 impl PlatformTime for OrinSpe {
     #[inline]
     fn time_now_ms() -> u64 {

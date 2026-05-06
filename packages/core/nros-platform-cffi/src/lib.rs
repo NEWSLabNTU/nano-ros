@@ -271,6 +271,20 @@ impl nros_platform_api::PlatformYield for CffiPlatform {
     }
 }
 
+// Phase 110.D — `PlatformScheduler` lives behind the C vtable in
+// principle, but the v1 vtable doesn't yet expose per-thread
+// scheduling controls. Inherit the trait's `Unsupported` defaults
+// so the type compiles without an ABI-breaking vtable extension.
+// Full plumbing (`vtable.set_current_thread_policy`,
+// `vtable.set_affinity`) lands when a cffi consumer needs
+// hard-RT preemption.
+impl nros_platform_api::PlatformScheduler for CffiPlatform {
+    #[inline]
+    fn yield_now() {
+        unsafe { (get_vtable().yield_now)() }
+    }
+}
+
 impl nros_platform_api::PlatformRandom for CffiPlatform {
     #[inline]
     fn random_u8() -> u8 {
