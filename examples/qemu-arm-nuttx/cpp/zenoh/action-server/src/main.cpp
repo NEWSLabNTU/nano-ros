@@ -12,13 +12,6 @@
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
 
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
-
 using Fibonacci = example_interfaces::action::Fibonacci;
 
 static nros::ActionServer<Fibonacci>* g_srv = nullptr;

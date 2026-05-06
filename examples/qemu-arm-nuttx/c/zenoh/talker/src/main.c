@@ -17,14 +17,6 @@
 #include <nros/app_config.h>
 #include "std_msgs.h"
 
-// NuttX embedded config — matches board crate defaults (talker = 192.0.3.10)
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
-
 typedef struct {
     nros_publisher_t* publisher;
     std_msgs_msg_int32 message;

@@ -133,7 +133,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     }
 }
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -170,7 +170,8 @@ int nros_app_main(int argc, char **argv) {
 
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
                                            &fibonacci_type, goal_callback, cancel_callback,
-                                           accepted_callback, &app.ctx), 1);
+                                           accepted_callback, &app.ctx),
+                   1);
     printf("Action server created: /fibonacci\n");
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);

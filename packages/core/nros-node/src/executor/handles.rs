@@ -270,6 +270,22 @@ pub(crate) type EventRegs = heapless::Vec<EventReg, MAX_EVENTS_PER_ENTITY>;
 #[derive(Default, Clone, Copy)]
 pub(crate) struct EventRegs;
 
+/// Empty initial value for the `event_regs` field. Selected at compile
+/// time so call sites are uniform across feature combinations
+/// (`heapless::Vec::new()` for `alloc`; unit-struct constructor
+/// otherwise — clippy's `default_constructed_unit_structs` lint
+/// rejects the `EventRegs::default()` form on the unit-struct branch).
+#[cfg(feature = "alloc")]
+#[inline]
+pub(crate) fn empty_event_regs() -> EventRegs {
+    heapless::Vec::new()
+}
+#[cfg(not(feature = "alloc"))]
+#[inline]
+pub(crate) fn empty_event_regs() -> EventRegs {
+    EventRegs
+}
+
 #[cfg(feature = "alloc")]
 pub(crate) fn drop_event_regs(regs: &mut EventRegs) {
     while let Some(reg) = regs.pop() {
@@ -607,7 +623,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         Self {
             handle,
             arena: TxArena::new(),
-            event_regs: EventRegs::default(),
+            event_regs: empty_event_regs(),
         }
     }
 
@@ -1223,7 +1239,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         Self {
             handle,
             buffer: [0u8; RX_BUF],
-            event_regs: EventRegs::default(),
+            event_regs: empty_event_regs(),
         }
     }
 

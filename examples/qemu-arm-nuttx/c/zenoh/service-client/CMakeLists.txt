@@ -13,7 +13,8 @@ nano_ros_generate_config_header(
 
 nuttx_build_example(nuttx_c_service_client
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.c"
-    INCLUDE_DIRS "${example_interfaces_INCLUDE_DIRS}"
+    INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include"
+                 "${example_interfaces_INCLUDE_DIRS}"
                  "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c"
     SOURCES      ${example_interfaces_GENERATED_SOURCES}
 )

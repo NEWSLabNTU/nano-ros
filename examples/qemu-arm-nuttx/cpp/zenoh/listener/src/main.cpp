@@ -12,13 +12,6 @@
 #include <nros/app_config.h>
 #include "std_msgs.hpp"
 
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
-
 extern "C" int sleep(unsigned int);
 int nros_app_main(int argc, char **argv) {
     (void)argc;

@@ -16,13 +16,6 @@
 #include <nros/app_config.h>
 #include "std_msgs.h"
 
-// NuttX embedded config — matches board crate defaults (listener = 192.0.3.11)
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
 #define MAX_MESSAGES 10
 
 typedef struct {

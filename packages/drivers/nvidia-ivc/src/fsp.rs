@@ -34,8 +34,10 @@
 //! 1)`. This matches the way zenoh-pico's link-layer
 //! `__z_ivc_send_batch` / `__z_ivc_recv_batch` consume frames.
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
 // =============================================================================
 // FSP `tegra-ivc.h` C ABI — see SDK Manager-installed header for the
@@ -51,8 +53,10 @@ unsafe extern "C" {
     // RX path.
     fn tegra_ivc_rx_get_read_available(ch: *mut c_void) -> core::ffi::c_uint;
     fn tegra_ivc_rx_get_read_frame(ch: *mut c_void, n: core::ffi::c_uint) -> *const u8;
-    fn tegra_ivc_rx_notify_buffers_consumed(ch: *mut c_void, count: core::ffi::c_int)
-        -> core::ffi::c_int;
+    fn tegra_ivc_rx_notify_buffers_consumed(
+        ch: *mut c_void,
+        count: core::ffi::c_int,
+    ) -> core::ffi::c_int;
 
     // TX path.
     fn tegra_ivc_tx_get_write_space(ch: *mut c_void) -> core::ffi::c_uint;
@@ -143,9 +147,7 @@ pub unsafe fn register_fsp_channel(id: u32, ch: *mut c_void) {
             return;
         }
     }
-    panic!(
-        "nvidia-ivc fsp: no free slot for channel id {id} (max {MAX_CHANNELS})"
-    );
+    panic!("nvidia-ivc fsp: no free slot for channel id {id} (max {MAX_CHANNELS})");
 }
 
 fn lookup(id: u32) -> *mut c_void {

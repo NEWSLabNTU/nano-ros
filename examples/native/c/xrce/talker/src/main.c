@@ -121,7 +121,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -150,8 +150,8 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_talker", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
-                                       &std_msgs_Int32_type, "/chatter"), 1);
+    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter"),
+                   1);
     printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     app.talker_ctx = (talker_context_t){
@@ -160,8 +160,9 @@ int nros_app_main(int argc, char **argv) {
         .count = 0,
     };
 
-    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
-                                   timer_callback, &app.talker_ctx), 1);
+    NROS_CHECK_RET(
+        nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+        1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
     NROS_CHECK_RET(nros_executor_add_timer(&app.executor, &app.timer), 1);

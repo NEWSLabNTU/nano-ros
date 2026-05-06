@@ -106,7 +106,7 @@ static void result_callback(const nros_goal_uuid_t* goal_uuid, nros_goal_status_
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -144,14 +144,14 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
-                                           &fibonacci_type), 1);
+    NROS_CHECK_RET(
+        nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
     printf("Action client created: /fibonacci\n");
 
-    NROS_SOFTCHECK(nros_action_client_set_feedback_callback(&app.action_client,
-                                                            feedback_callback, NULL));
-    NROS_SOFTCHECK(nros_action_client_set_result_callback(&app.action_client,
-                                                          result_callback, NULL));
+    NROS_SOFTCHECK(
+        nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL));
+    NROS_SOFTCHECK(
+        nros_action_client_set_result_callback(&app.action_client, result_callback, NULL));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);

@@ -218,7 +218,7 @@ static void demo_guard_condition(void) {
 // Main
 // ============================================================================
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 

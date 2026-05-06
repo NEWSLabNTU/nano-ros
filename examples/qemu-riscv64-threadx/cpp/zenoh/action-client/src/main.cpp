@@ -103,7 +103,7 @@ int nros_app_main(int argc, char **argv) {
     if (!ret.ok()) {
         printf("Failed to send goal: %d\n", ret.raw());
         nros::shutdown();
-        return;
+        return 1;
     }
 
     for (int i = 0; i < 1000 && !g_result_received; i++) {

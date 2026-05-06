@@ -31,7 +31,7 @@
 
 #ifndef NROS_CHECK_LOG
 #include <stdio.h>
-#define NROS_CHECK_LOG(file, line, expr, ret) \
+#define NROS_CHECK_LOG(file, line, expr, ret)                                                      \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 #endif
 
@@ -40,13 +40,13 @@
  * not `NROS_RET_OK`, log the failure and `return` from the enclosing
  * function (which must return `void` or accept a bare `return;`).
  */
-#define NROS_CHECK(call) \
-    do { \
-        nros_ret_t _nros_check_ret = (call); \
-        if (_nros_check_ret != NROS_RET_OK) { \
-            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_check_ret); \
-            return; \
-        } \
+#define NROS_CHECK(call)                                                                           \
+    do {                                                                                           \
+        nros_ret_t _nros_check_ret = (call);                                                       \
+        if (_nros_check_ret != NROS_RET_OK) {                                                      \
+            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_check_ret);                            \
+            return;                                                                                \
+        }                                                                                          \
     } while (0)
 
 /**
@@ -54,25 +54,25 @@
  * Use for "best effort" calls (e.g. publishing a heartbeat) where one
  * dropped iteration shouldn't tear down the node.
  */
-#define NROS_SOFTCHECK(call) \
-    do { \
-        nros_ret_t _nros_softcheck_ret = (call); \
-        if (_nros_softcheck_ret != NROS_RET_OK) { \
-            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_softcheck_ret); \
-        } \
+#define NROS_SOFTCHECK(call)                                                                       \
+    do {                                                                                           \
+        nros_ret_t _nros_softcheck_ret = (call);                                                   \
+        if (_nros_softcheck_ret != NROS_RET_OK) {                                                  \
+            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_softcheck_ret);                        \
+        }                                                                                          \
     } while (0)
 
 /**
  * Like `NROS_CHECK` but for callers that need a custom return value
  * (non-`void` functions). Returns @p retval on failure.
  */
-#define NROS_CHECK_RET(call, retval) \
-    do { \
-        nros_ret_t _nros_check_ret = (call); \
-        if (_nros_check_ret != NROS_RET_OK) { \
-            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_check_ret); \
-            return (retval); \
-        } \
+#define NROS_CHECK_RET(call, retval)                                                               \
+    do {                                                                                           \
+        nros_ret_t _nros_check_ret = (call);                                                       \
+        if (_nros_check_ret != NROS_RET_OK) {                                                      \
+            NROS_CHECK_LOG(__FILE__, __LINE__, #call, _nros_check_ret);                            \
+            return (retval);                                                                       \
+        }                                                                                          \
     } while (0)
 
 #endif /* NROS_CHECK_H */

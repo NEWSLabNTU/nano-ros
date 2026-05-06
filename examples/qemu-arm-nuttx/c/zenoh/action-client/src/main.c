@@ -16,14 +16,6 @@
 #include <nros/app_config.h>
 #include "example_interfaces.h"
 
-// NuttX embedded config — matches board crate defaults (client = 192.0.3.11)
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
-
 static struct {
     nros_support_t support;
     nros_node_t node;

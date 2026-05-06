@@ -29,32 +29,14 @@
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
 
-// FFI declarations (from nros-cpp generated header)
+// FFI declarations (from nros-cpp generated header). nros_cpp_qos_t
+// + its enum policies live in <nros/qos.hpp>; included via the
+// `#include "nros/qos.hpp"` above so this file doesn't redeclare
+// them (Phase 108.B.7 added fields the older local copy was
+// missing).
 extern "C" {
 
 typedef int nros_cpp_ret_t;
-
-enum nros_cpp_qos_reliability_t {
-    NROS_CPP_QOS_RELIABLE = 0,
-    NROS_CPP_QOS_BEST_EFFORT = 1,
-};
-
-enum nros_cpp_qos_durability_t {
-    NROS_CPP_QOS_VOLATILE = 0,
-    NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
-};
-
-enum nros_cpp_qos_history_t {
-    NROS_CPP_QOS_KEEP_LAST = 0,
-    NROS_CPP_QOS_KEEP_ALL = 1,
-};
-
-struct nros_cpp_qos_t {
-    nros_cpp_qos_reliability_t reliability;
-    nros_cpp_qos_durability_t durability;
-    nros_cpp_qos_history_t history;
-    int depth;
-};
 
 struct nros_cpp_node_t {
     void* executor;

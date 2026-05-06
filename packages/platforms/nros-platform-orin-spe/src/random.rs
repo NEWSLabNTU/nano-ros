@@ -20,8 +20,10 @@
 //! impl `Send`-able across FreeRTOS tasks without a mutex.
 
 use crate::OrinSpe;
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicU32, Ordering},
+};
 use nros_platform_api::{PlatformClock, PlatformRandom};
 
 static STATE: AtomicU32 = AtomicU32::new(0);

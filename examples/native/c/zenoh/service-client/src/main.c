@@ -32,7 +32,7 @@ static struct {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -67,7 +67,8 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
+    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"),
+                   1);
     printf("Client created for service: %s\n", nros_client_get_service_name(&app.client));
 
     // Phase 82: clients must be registered with an executor before use.

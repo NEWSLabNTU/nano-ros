@@ -337,9 +337,7 @@ fn try_probe(
             // build. (Pointer/int sizes are ABI-determined, so the probe
             // would pick `(2, 6)` even without these flags — they exist
             // for parity, not correctness.)
-            build
-                .flag("-mfpu=vfpv3-d16")
-                .flag("-mfloat-abi=hard");
+            build.flag("-mfpu=vfpv3-d16").flag("-mfloat-abi=hard");
         }
     } else if platform == ProbePlatform::Linux {
         build.define("ZENOH_LINUX", None);

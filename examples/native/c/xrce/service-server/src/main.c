@@ -70,7 +70,7 @@ static bool service_callback(const uint8_t* request_data, size_t request_len,
     return true;
 }
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -102,8 +102,9 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_service_server", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type,
-                                     "/add_two_ints", service_callback, &app.ctx), 1);
+    NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type, "/add_two_ints",
+                                     service_callback, &app.ctx),
+                   1);
     printf("Service created: %s\n", nros_service_get_service_name(&app.service));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);

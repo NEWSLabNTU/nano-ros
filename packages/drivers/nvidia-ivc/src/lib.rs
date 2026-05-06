@@ -55,9 +55,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 #[cfg(all(feature = "fsp", feature = "unix-mock"))]
-compile_error!(
-    "nvidia-ivc: features `fsp` and `unix-mock` are mutually exclusive — pick one"
-);
+compile_error!("nvidia-ivc: features `fsp` and `unix-mock` are mutually exclusive — pick one");
 
 mod error;
 pub use error::IvcError;
@@ -142,7 +140,12 @@ impl Channel {
         if ptr.is_null() {
             None
         } else {
-            Some(TxFrame { ch: self, ptr, capacity, committed: false })
+            Some(TxFrame {
+                ch: self,
+                ptr,
+                capacity,
+                committed: false,
+            })
         }
     }
 
@@ -209,7 +212,11 @@ impl<'a> TxFrame<'a> {
     /// visible to the peer. Doorbell is **not** rung — call
     /// [`Channel::notify`] separately so writers can batch.
     pub fn commit(mut self, len: usize) {
-        assert!(len <= self.capacity, "TxFrame::commit len {len} > capacity {}", self.capacity);
+        assert!(
+            len <= self.capacity,
+            "TxFrame::commit len {len} > capacity {}",
+            self.capacity
+        );
         unsafe { backend::tx_commit(self.ch.0, len) };
         self.committed = true;
     }

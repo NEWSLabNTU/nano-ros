@@ -23,7 +23,11 @@ fn loopback_round_trip_and_fragmentation() {
     let spe = Channel::open(100).expect("channel 100");
     let ccplex = Channel::open(101).expect("channel 101");
 
-    assert_eq!(spe.frame_size(), 64, "frame size matches NVIDIA IVC default");
+    assert_eq!(
+        spe.frame_size(),
+        64,
+        "frame size matches NVIDIA IVC default"
+    );
     assert_eq!(ccplex.frame_size(), 64);
 
     // Empty queue → read_frame returns None.
@@ -68,7 +72,11 @@ fn loopback_round_trip_and_fragmentation() {
     while reassembled.len() < payload.len() {
         let rx = ccplex.read_frame().expect("read fragment");
         let bytes = rx.as_slice();
-        assert!(!bytes.is_empty() && bytes.len() <= 64, "frame size in IVC bounds: {}", bytes.len());
+        assert!(
+            !bytes.is_empty() && bytes.len() <= 64,
+            "frame size in IVC bounds: {}",
+            bytes.len()
+        );
         reassembled.extend_from_slice(bytes);
         frame_count += 1;
         // implicit ack via Drop
@@ -86,7 +94,10 @@ fn loopback_round_trip_and_fragmentation() {
         tx.as_mut_slice()[..3].copy_from_slice(b"xyz");
         // Drop without commit
     }
-    assert!(ccplex.read_frame().is_none(), "abandoned slot must not deliver");
+    assert!(
+        ccplex.read_frame().is_none(),
+        "abandoned slot must not deliver"
+    );
 
     unix_mock::reset_for_tests();
 }

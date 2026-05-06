@@ -23,16 +23,22 @@ include(nros-nuttx)
 nros_nuttx_validate(REQUIRE NanoRos_DIR)
 nros_nuttx_set_cargo_target("armv7a-nuttx-eabihf")
 
-# FFI crate ships under share/nano_ros/platform/nuttx/.
-get_filename_component(_NUTTX_SUPPORT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-get_filename_component(_NROS_INSTALL_PREFIX "${_NUTTX_SUPPORT_DIR}/../../.." ABSOLUTE)
-set(_NUTTX_FFI_CRATE_DIR
-    "${_NROS_INSTALL_PREFIX}/share/nano_ros/platform/nuttx/nros-nuttx-ffi")
-if(NOT EXISTS "${_NUTTX_FFI_CRATE_DIR}/Cargo.toml")
-    message(FATAL_ERROR
-        "nuttx-support: nros-nuttx-ffi crate not found at ${_NUTTX_FFI_CRATE_DIR}. "
-        "Reinstall NanoRos (`just nuttx install`).")
+# FFI crate path. Phase 112.E.deferred — NuttX FFI crate has nested
+# path deps on workspace board crates that would dangle if relocated
+# under <prefix>/share/. Until a workspace-flattening installer
+# lands, examples pass `-DNUTTX_FFI_CRATE_DIR=<repo>/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi`
+# (or set the env var) so this support file can locate the in-tree
+# crate.
+if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})
+    set(NUTTX_FFI_CRATE_DIR "$ENV{NUTTX_FFI_CRATE_DIR}")
 endif()
+if(NOT NUTTX_FFI_CRATE_DIR OR NOT EXISTS "${NUTTX_FFI_CRATE_DIR}/Cargo.toml")
+    message(FATAL_ERROR
+        "nuttx-support: NUTTX_FFI_CRATE_DIR not set or invalid. Pass "
+        "-DNUTTX_FFI_CRATE_DIR=<path>/nros-nuttx-ffi (or export the env var). "
+        "In-tree path: <repo>/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi.")
+endif()
+set(_NUTTX_FFI_CRATE_DIR "${NUTTX_FFI_CRATE_DIR}")
 
 # Backward-compat wrapper. Existing per-example CMakeLists.txt files
 # call `nuttx_build_example(<name> <main> ...)` (positional name +

@@ -10,12 +10,43 @@
 #ifndef NROS_CPP_QOS_HPP
 #define NROS_CPP_QOS_HPP
 
-#include <cstdint>
+#include <stdint.h>
 
-// Forward-declare the FFI types so we don't need to include the generated header
-// in user-facing code. The implementation maps these enums to the FFI equivalents.
+// FFI struct definition — mirrors `nros_cpp_qos_t` in
+// nros_cpp_ffi.h. Defined here (not forward-declared) so user-facing
+// hpp files that copy QoS settings into `nros_cpp_qos_t` instances
+// (publisher, subscription, service, client, action_*) can access
+// every field without pulling the cbindgen-generated FFI header.
 extern "C" {
-struct nros_cpp_qos_t;
+enum nros_cpp_qos_reliability_t {
+    NROS_CPP_QOS_RELIABLE = 0,
+    NROS_CPP_QOS_BEST_EFFORT = 1,
+};
+enum nros_cpp_qos_durability_t {
+    NROS_CPP_QOS_VOLATILE = 0,
+    NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
+};
+enum nros_cpp_qos_history_t {
+    NROS_CPP_QOS_KEEP_LAST = 0,
+    NROS_CPP_QOS_KEEP_ALL = 1,
+};
+enum nros_cpp_qos_liveliness_t {
+    NROS_CPP_QOS_LIVELINESS_NONE = 0,
+    NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
+    NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
+    NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+};
+struct nros_cpp_qos_t {
+    enum nros_cpp_qos_reliability_t reliability;
+    enum nros_cpp_qos_durability_t durability;
+    enum nros_cpp_qos_history_t history;
+    enum nros_cpp_qos_liveliness_t liveliness_kind;
+    int depth;
+    uint32_t deadline_ms;
+    uint32_t lifespan_ms;
+    uint32_t liveliness_lease_ms;
+    uint8_t avoid_ros_namespace_conventions;
+};
 }
 
 namespace nros {
@@ -89,13 +120,13 @@ class QoS {
 
     /// Subscriber max-inter-arrival / publisher offered-rate.
     /// `0` = infinite (no deadline check).
-    constexpr QoS& deadline_ms(std::uint32_t ms) {
+    constexpr QoS& deadline_ms(uint32_t ms) {
         deadline_ms_ = ms;
         return *this;
     }
 
     /// Sample expiry. `0` = infinite.
-    constexpr QoS& lifespan_ms(std::uint32_t ms) {
+    constexpr QoS& lifespan_ms(uint32_t ms) {
         lifespan_ms_ = ms;
         return *this;
     }
@@ -108,7 +139,7 @@ class QoS {
     }
 
     /// Liveliness lease duration. `0` = infinite.
-    constexpr QoS& liveliness_lease_ms(std::uint32_t ms) {
+    constexpr QoS& liveliness_lease_ms(uint32_t ms) {
         liveliness_lease_ms_ = ms;
         return *this;
     }
@@ -144,11 +175,11 @@ class QoS {
     /// Configured queue depth (only meaningful for `KEEP_LAST`).
     constexpr int depth() const { return depth_; }
     /// Deadline in ms (`0` = infinite).
-    constexpr std::uint32_t deadline_ms() const { return deadline_ms_; }
+    constexpr uint32_t deadline_ms() const { return deadline_ms_; }
     /// Lifespan in ms (`0` = infinite).
-    constexpr std::uint32_t lifespan_ms() const { return lifespan_ms_; }
+    constexpr uint32_t lifespan_ms() const { return lifespan_ms_; }
     /// Liveliness lease in ms (`0` = infinite).
-    constexpr std::uint32_t liveliness_lease_ms() const { return liveliness_lease_ms_; }
+    constexpr uint32_t liveliness_lease_ms() const { return liveliness_lease_ms_; }
     /// Whether to skip the `/rt/` ROS topic-name prefix.
     constexpr bool avoid_ros_namespace_conventions() const {
         return avoid_ros_namespace_conventions_ != 0;
@@ -160,10 +191,10 @@ class QoS {
     enum History { KeepLast = 0, KeepAll = 1 } history_;
     Liveliness liveliness_;
     int depth_;
-    std::uint32_t deadline_ms_;
-    std::uint32_t lifespan_ms_;
-    std::uint32_t liveliness_lease_ms_;
-    std::uint8_t avoid_ros_namespace_conventions_;
+    uint32_t deadline_ms_;
+    uint32_t lifespan_ms_;
+    uint32_t liveliness_lease_ms_;
+    uint8_t avoid_ros_namespace_conventions_;
 };
 
 } // namespace nros

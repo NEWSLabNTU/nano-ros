@@ -76,7 +76,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -148,7 +148,8 @@ int nros_app_main(int argc, char **argv) {
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
-                                       std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
+                                       std_msgs_msg_int32_get_type_support(), "/chatter"),
+                   1);
     printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     // Create application context
@@ -159,8 +160,9 @@ int nros_app_main(int argc, char **argv) {
     };
     std_msgs_msg_int32_init(&app.talker_ctx.message);
 
-    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
-                                   timer_callback, &app.talker_ctx), 1);
+    NROS_CHECK_RET(
+        nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+        1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
     NROS_CHECK_RET(nros_executor_add_timer(&app.executor, &app.timer), 1);

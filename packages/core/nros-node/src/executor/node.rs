@@ -156,7 +156,7 @@ impl<'a> Node<'a> {
             .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
         Ok(EmbeddedPublisher {
             handle,
-            event_regs: crate::executor::handles::EventRegs::default(),
+            event_regs: crate::executor::handles::empty_event_regs(),
             _phantom: PhantomData,
         })
     }
@@ -200,7 +200,7 @@ impl<'a> Node<'a> {
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
             arena: crate::executor::handles::TxArena::new(),
-            event_regs: crate::executor::handles::EventRegs::default(),
+            event_regs: crate::executor::handles::empty_event_regs(),
         })
     }
 
@@ -245,7 +245,7 @@ impl<'a> Node<'a> {
         Ok(Subscription {
             handle,
             buffer: [0u8; RX_BUF],
-            event_regs: crate::executor::handles::EventRegs::default(),
+            event_regs: crate::executor::handles::empty_event_regs(),
             _phantom: PhantomData,
         })
     }
@@ -284,7 +284,7 @@ impl<'a> Node<'a> {
         Ok(crate::executor::handles::RawSubscription {
             handle,
             buffer: [0u8; RX_BUF],
-            event_regs: crate::executor::handles::EventRegs::default(),
+            event_regs: crate::executor::handles::empty_event_regs(),
         })
     }
 

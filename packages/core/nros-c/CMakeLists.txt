@@ -90,6 +90,14 @@ if(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
 endif()
 
 # ---- Headers ----
+# Per-example `nros/app_config.h` lives in the build dir (emitted by
+# `nano_ros_generate_config_header()`); the Zephyr Kconfig synthesis
+# variant ships under `include/nros/zephyr/app_config.h` and the
+# Zephyr module adds that to the include path conditionally. Both
+# stay out of the default `<prefix>/include/nros/` namespace so the
+# install fallback can't shadow per-example codegen on toolchains
+# where the install include path appears before the build dir
+# (NuttX cc-rs).
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     DESTINATION include
     FILES_MATCHING PATTERN "*.h"
@@ -147,12 +155,14 @@ install(DIRECTORY
     "${_PROJECT_ROOT}/examples/qemu-riscv64-threadx/cmake/cxx-compat"
     DESTINATION share/nano_ros/platform/threadx-riscv64)
 
-# NuttX — FFI crate (sources only; cargo builds at example time)
-install(DIRECTORY
-    "${_PROJECT_ROOT}/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi"
-    DESTINATION share/nano_ros/platform/nuttx
-    PATTERN "target" EXCLUDE
-    PATTERN "Cargo.lock" EXCLUDE)
+# NuttX — FFI crate is NOT installed under share/. The crate's
+# `Cargo.toml` carries path deps on workspace board crates
+# (`../../../../packages/boards/nros-board-nuttx-qemu-arm` etc.) that
+# would dangle once relocated to <prefix>/share/nano_ros/. NuttX
+# self-containment requires a workspace-flattening installer (out of
+# scope for Phase 112.E). `nuttx-support.cmake` resolves the crate
+# via `NUTTX_FFI_CRATE_DIR` (env or -D) — examples set it to the
+# in-tree path for now.
 
 # Toolchain files — out-of-tree examples reference these via
 # -DCMAKE_TOOLCHAIN_FILE=<prefix>/share/nano_ros/toolchains/<plat>.cmake.

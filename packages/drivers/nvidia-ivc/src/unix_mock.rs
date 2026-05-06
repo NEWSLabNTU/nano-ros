@@ -27,11 +27,14 @@
 //! 2. **Cross-process bring-up** ([`register_fd`]) — each side
 //!    registers its own end of an AF_UNIX *connected* pair.
 
-use core::cell::Cell;
-use core::ffi::c_void;
-use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
-use std::sync::Mutex;
+use core::{cell::Cell, ffi::c_void};
+use std::{
+    os::{
+        fd::{AsRawFd, IntoRawFd, RawFd},
+        unix::net::UnixDatagram,
+    },
+    sync::Mutex,
+};
 
 const FRAME_SIZE: u32 = 64;
 const FRAME_SIZE_USIZE: usize = 64;
@@ -70,11 +73,16 @@ struct Registry {
 
 impl Registry {
     const fn new() -> Self {
-        Self { channels: Vec::new() }
+        Self {
+            channels: Vec::new(),
+        }
     }
 
     fn lookup(&self, id: u32) -> Option<&MockChannel> {
-        self.channels.iter().find(|c| c.id == id).map(|b| b.as_ref())
+        self.channels
+            .iter()
+            .find(|c| c.id == id)
+            .map(|b| b.as_ref())
     }
 
     fn insert(&mut self, id: u32, fd: RawFd) -> *mut c_void {
@@ -111,7 +119,9 @@ pub fn register_fd(id: u32, sock: UnixDatagram) {
     sock.set_nonblocking(true)
         .expect("nvidia-ivc unix-mock: set_nonblocking failed");
     let fd = sock.into_raw_fd();
-    let mut reg = REGISTRY.lock().expect("nvidia-ivc unix-mock registry poisoned");
+    let mut reg = REGISTRY
+        .lock()
+        .expect("nvidia-ivc unix-mock registry poisoned");
     reg.insert(id, fd);
 }
 
@@ -122,13 +132,14 @@ pub fn register_fd(id: u32, sock: UnixDatagram) {
 /// Panics if either ID is already registered.
 pub fn register_pair(id_a: u32, id_b: u32) {
     assert!(id_a != id_b, "register_pair: IDs must differ");
-    let (a, b) =
-        UnixDatagram::pair().expect("nvidia-ivc unix-mock: UnixDatagram::pair failed");
+    let (a, b) = UnixDatagram::pair().expect("nvidia-ivc unix-mock: UnixDatagram::pair failed");
     a.set_nonblocking(true).expect("set_nonblocking a");
     b.set_nonblocking(true).expect("set_nonblocking b");
     let fd_a = a.into_raw_fd();
     let fd_b = b.into_raw_fd();
-    let mut reg = REGISTRY.lock().expect("nvidia-ivc unix-mock registry poisoned");
+    let mut reg = REGISTRY
+        .lock()
+        .expect("nvidia-ivc unix-mock registry poisoned");
     reg.insert(id_a, fd_a);
     reg.insert(id_b, fd_b);
 }
@@ -137,7 +148,9 @@ pub fn register_pair(id_a: u32, id_b: u32) {
 /// registered fd. Not exposed for production use.
 #[doc(hidden)]
 pub fn reset_for_tests() {
-    let mut reg = REGISTRY.lock().expect("nvidia-ivc unix-mock registry poisoned");
+    let mut reg = REGISTRY
+        .lock()
+        .expect("nvidia-ivc unix-mock registry poisoned");
     for c in reg.channels.drain(..) {
         // Reclaim the dup'd fd so we don't leak it across tests.
         unsafe { libc_close(c.fd) };
@@ -157,7 +170,9 @@ unsafe fn libc_close(fd: RawFd) {
 // =============================================================================
 
 pub(crate) fn channel_get(id: u32) -> *mut c_void {
-    let reg = REGISTRY.lock().expect("nvidia-ivc unix-mock registry poisoned");
+    let reg = REGISTRY
+        .lock()
+        .expect("nvidia-ivc unix-mock registry poisoned");
     match reg.lookup(id) {
         Some(c) => c as *const MockChannel as *mut c_void,
         None => core::ptr::null_mut(),

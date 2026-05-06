@@ -62,7 +62,10 @@ mod ids {
 /// `__z_ivc_send_batch`. Returns `()` on success or panics if the
 /// mock ring is full (shouldn't happen with a fresh pair).
 fn send_framed(tx: &Channel, payload: &[u8]) {
-    assert!(payload.len() <= u16::MAX as usize, "payload fits in u16 total_len");
+    assert!(
+        payload.len() <= u16::MAX as usize,
+        "payload fits in u16 total_len"
+    );
     let total = payload.len() as u16;
     let mut off: u16 = 0;
     while (off as usize) < payload.len() {

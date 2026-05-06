@@ -14,5 +14,6 @@ nano_ros_generate_config_header(
 
 nuttx_build_example(nuttx_cpp_service_client
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include"
     LINK_INTERFACES example_interfaces__nano_ros_cpp
 )

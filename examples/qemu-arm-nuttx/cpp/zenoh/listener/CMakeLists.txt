@@ -15,5 +15,6 @@ nano_ros_generate_config_header(
 # Build NuttX kernel ELF with this C++ source
 nuttx_build_example(nuttx_cpp_listener
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include"
     LINK_INTERFACES std_msgs__nano_ros_cpp
 )

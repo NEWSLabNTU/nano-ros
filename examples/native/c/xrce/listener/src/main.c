@@ -104,7 +104,7 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -133,17 +133,19 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_listener", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    app.listener_ctx = (listener_context_t){ .message_count = 0 };
+    app.listener_ctx = (listener_context_t){.message_count = 0};
 
     NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node, &std_msgs_Int32_type,
-                                          "/chatter", subscription_callback, &app.listener_ctx), 1);
+                                          "/chatter", subscription_callback, &app.listener_ctx),
+                   1);
     printf("Subscription created for topic: %s\n",
            nros_subscription_get_topic_name(&app.subscription));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(nros_executor_add_subscription(&app.executor, &app.subscription,
-                                                  NROS_EXECUTOR_ON_NEW_DATA), 1);
+    NROS_CHECK_RET(
+        nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA),
+        1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     signal(SIGINT, signal_handler);

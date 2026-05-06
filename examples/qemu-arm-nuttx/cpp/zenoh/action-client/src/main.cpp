@@ -14,13 +14,6 @@
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
 
-#ifndef NROS_APP_CONFIG.zenoh.locator
-#define NROS_APP_CONFIG.zenoh.locator "tcp/192.0.3.1:7447"
-#endif
-#ifndef NROS_APP_CONFIG.zenoh.domain_id
-#define NROS_APP_CONFIG.zenoh.domain_id 0
-#endif
-
 using Fibonacci = example_interfaces::action::Fibonacci;
 
 static volatile bool g_result_received = false;
@@ -122,7 +115,7 @@ int nros_app_main(int argc, char **argv) {
     if (!ret.ok()) {
         printf("Failed to send goal: %d\n", ret.raw());
         nros::shutdown();
-        return;
+        return 1;
     }
 
     for (int i = 0; i < 1000 && !g_result_received; i++) {

@@ -36,8 +36,8 @@
 
 typedef struct {
     struct {
-        const char *locator;
-        uint32_t    domain_id;
+        const char* locator;
+        uint32_t domain_id;
     } zenoh;
     struct {
         uint8_t ip[4];
@@ -79,15 +79,16 @@ typedef struct {
 __attribute__((unused))
 #endif
 static const nros_app_config_t NROS_APP_CONFIG = {
-    .zenoh = {
-        .locator   = CONFIG_NROS_ZENOH_LOCATOR,
-        .domain_id = CONFIG_NROS_DOMAIN_ID,
-    },
+    .zenoh =
+        {
+            .locator = CONFIG_NROS_ZENOH_LOCATOR,
+            .domain_id = CONFIG_NROS_DOMAIN_ID,
+        },
     /* Zephyr provides network configuration via DTS / NET_CONFIG; the
      * struct stays present so portable code references it uniformly,
      * but the values default to zero — examples that need static IP
      * read from device-tree / Kconfig directly. */
-    .network    = {{0}, {0}, {0}, {0}, 0},
+    .network = {{0}, {0}, {0}, {0}, 0},
     .scheduling = {0, 0, 0, 0, 0, 0, 0, 0},
 };
 

@@ -43,7 +43,7 @@ extern "C" {
 /// Returns 0 on success, non-zero on failure (forwarded by the
 /// platform shim where a return code matters; ignored on RTOS targets
 /// where the entry shim returns void).
-int nros_app_main(int argc, char **argv);
+int nros_app_main(int argc, char** argv);
 
 #ifdef __cplusplus
 }
@@ -62,16 +62,16 @@ int nros_app_main(int argc, char **argv);
 
 #define NROS_APP_MAIN_REGISTER_VOID()                                                              \
     NROS_APP_MAIN_LINKAGE void app_main(void) {                                                    \
-        (void)nros_app_main(0, (char **)0);                                                        \
+        (void)nros_app_main(0, (char**)0);                                                         \
     }
 
 #define NROS_APP_MAIN_REGISTER_ZEPHYR()                                                            \
     NROS_APP_MAIN_LINKAGE int main(void) {                                                         \
-        return nros_app_main(0, (char **)0);                                                       \
+        return nros_app_main(0, (char**)0);                                                        \
     }
 
 #define NROS_APP_MAIN_REGISTER_POSIX()                                                             \
-    NROS_APP_MAIN_LINKAGE int main(int argc, char **argv) {                                        \
+    NROS_APP_MAIN_LINKAGE int main(int argc, char** argv) {                                        \
         return nros_app_main(argc, argv);                                                          \
     }
 
