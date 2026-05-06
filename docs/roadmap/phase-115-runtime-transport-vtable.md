@@ -129,7 +129,7 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 ## Work Items
 
 - [x] **115.A** `nros_rmw::custom_transport` — `NrosTransportOps` (`#[repr(C)]`, four `unsafe extern "C" fn` fields + `user_data: *mut c_void`, `unsafe impl Send + Sync` on the vtable struct itself). Storage is `static SLOT: Mutex<Option<NrosTransportOps>>` (the existing `nros_rmw::sync::Mutex`, no extra deps). Public API: `set_custom_transport(Option<NrosTransportOps>)` (unsafe — caller owns the threading contract), `peek_custom_transport()`, `take_custom_transport()`. Module-level docs cover the threading contract (no concurrent read/write, no ISR invocation, `user_data` outlives `close`) and the no-`dyn` rationale (cross-link to § A.1). 3 unit tests: lifecycle (set → peek → take → empty), explicit clear, and `Copy + Send + Sync` static assertion. (`<this commit>`)
-- [ ] **115.B — DEFERRED to 115.X-zenoh.** `zpico-platform-custom` crate. zenoh-pico's custom-link API (`_z_link_t` extension) needs a per-platform C-side shim plus a `link-custom` feature in `zpico-sys`. Significant plumbing; tracked separately. Zenoh users with custom transports today fork a `zpico-platform-*` crate; the runtime hook on XRCE (115.E) covers the primary use case.
+- [ ] **115.B — Design captured in § Appendix B. Implementation queued for 115.X-zenoh.** `link-custom` feature in zpico-sys + `_Z_LINK_TYPE_CUSTOM` extension in the zenoh-pico fork.
 - [x] **115.C** `nros-c` C API: `nros_transport_ops_t` (`#[repr(C)]` — same layout as `nros_rmw::NrosTransportOps`), `nros_set_custom_transport(*const ops)`, `nros_clear_custom_transport()`, `nros_has_custom_transport()`. cbindgen-emitted into `nros_generated.h`. Docs cover threading + return-code conventions. (`<this commit>`)
 - [x] **115.D** `nros-cpp` C++ wrapper: `nros::TransportOps` POD-style struct (no STL), `nros::set_custom_transport(const TransportOps&) -> Result`, `nros::clear_custom_transport()`, `nros::has_custom_transport() -> bool`. Inline header `<nros/transport.hpp>` + Rust-side FFI in `nros-cpp/src/transport.rs`. (`<this commit>`)
 - [x] **115.E** XRCE plumbing — `nros_rmw_xrce::init_transport_from_custom_ops(framing)` drains `nros_rmw::take_custom_transport()`, copies the four fn pointers + user_data into XRCE-local trampoline state, and registers C trampolines with `uxr_set_custom_transport_callbacks` + `uxr_init_custom_transport`. Bridges the v1 ABI mismatch: XRCE's `open` / `close` callbacks take `*mut uxrCustomTransport`; ours take `*mut c_void user_data`. The trampolines pull `user_data` from the static slot and forward. (`<this commit>`)
@@ -165,3 +165,142 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 - Risk: registration after `nros_support_init`. v1 rejects late registration with `NROS_RET_ALREADY_INIT`. Documented in `book/src/porting/custom-transport.md`.
 - Out of scope: dust-dds DDS support (file as 115.X follow-up).
 - Out of scope: zero-copy custom transports (Phase 99 scope).
+
+---
+
+## Appendix B — zenoh-pico custom-link design (115.B)
+
+### B.1 Surface
+
+zenoh-pico's link layer is selected by **locator scheme**. The
+existing schemes (`tcp/`, `udp/`, `serial/`, `ivc/`, `tls/`, …) each
+have a `_z_endpoint_*_valid` predicate + `_z_new_link_*` factory.
+`_z_open_link` (in `src/link/link.c`) walks the predicates as an
+`if-else` chain and picks the matching factory.
+
+For 115.B we add a new scheme — `custom://` — that routes every
+read/write through `nros_rmw::peek_custom_transport()`. Locator
+syntax:
+
+```
+custom:///                       # default: no params
+custom:///?framing=hdlc          # request HDLC framing on top of the user vtable
+```
+
+The opaque `?key=val` suffix is parsed by `_z_endpoint_custom_valid`
+and threaded into the user vtable's `params` argument. v1 reserves
+the `framing` key only.
+
+### B.2 zenoh-pico fork patch — 6 files
+
+Use the existing IVC link (`Z_FEATURE_LINK_IVC`, ~378 LOC, landed
+in Phase 100.4) as the template. Mirror its layout:
+
+1. **`include/zenoh-pico/system/link/custom.h`** (~30 LOC) —
+   `_z_custom_socket_t` struct holding the `NrosTransportOps` vtable
+   snapshot + a small recv-side buffer. `Z_FEATURE_LINK_CUSTOM`
+   compile-time gate.
+
+2. **`include/zenoh-pico/link/config/custom.h`** (~20 LOC) —
+   `CUSTOM_CONFIG_FRAMING_KEY` + `CUSTOM_SCHEMA = "custom"`.
+
+3. **`src/link/config/custom.c`** (~40 LOC) — `_z_custom_config_*`
+   intmap helpers. Boilerplate; copy-modify from `serial.c`.
+
+4. **`src/link/unicast/custom.c`** (~250 LOC) — the heart of the
+   patch. Implements:
+   - `_z_endpoint_custom_valid` (locator-scheme check).
+   - `_z_f_link_open_custom`: snapshot the vtable via
+     `nros_zpico_custom_take()` (new C entry exposed by
+     `zpico-platform-custom`) and call its `open` fn.
+   - `_z_f_link_close_custom`, `_z_f_link_write_custom`,
+     `_z_f_link_write_all_custom`, `_z_f_link_read_custom`,
+     `_z_f_link_read_exact_custom`: forward to vtable methods.
+   - `_z_new_link_custom`: wires the `_z_link_t` callbacks +
+     advertises `_Z_LINK_CAP_TRANSPORT_UNICAST` /
+     `_Z_LINK_CAP_FLOW_DATAGRAM` (or `STREAM` per `framing` key).
+
+5. **Patch `include/zenoh-pico/link/link.h`** — add
+   `_Z_LINK_TYPE_CUSTOM` to `_z_link_type_e`; add `_z_custom_socket_t
+   _custom;` member to the `_socket` union under
+   `Z_FEATURE_LINK_CUSTOM == 1`.
+
+6. **Patch `src/link/link.c`** — splice an extra
+   `_z_endpoint_custom_valid` arm into `_z_open_link`'s if-else
+   chain. Mirror in `_z_listen_link` if listen support is wanted
+   (v1 skips listen — pure client only).
+
+### B.3 zpico-sys feature wiring (~30 LOC)
+
+`packages/zpico/zpico-sys/Cargo.toml`:
+
+```toml
+link-custom = []
+```
+
+`zpico-sys/build.rs`:
+
+```rust
+fn link_custom_flag(link: &LinkFeatures) -> u8 {
+    env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok() as u8
+}
+
+// In generate_config_header:
+writeln!(header, "#define Z_FEATURE_LINK_CUSTOM {}", link.custom_flag()).unwrap();
+```
+
+The feature pulls in `zenoh-pico/src/link/{config,unicast}/custom.c`
+on the cc::Build invocation.
+
+### B.4 `zpico-platform-custom` (~150 LOC)
+
+New crate at `packages/zpico/zpico-platform-custom/`:
+
+- `Cargo.toml` — depends on `nros-rmw`. No `default = []`, single
+  feature `active` toggled by `zpico-sys/link-custom`.
+- `src/lib.rs` — exposes one `extern "C" fn nros_zpico_custom_take(...)`
+  that internally calls `nros_rmw::take_custom_transport()` and
+  copies the four fn pointers + user_data into a `*mut
+  zpico_custom_ops_c_t` buffer the C side hands in. Mirrors
+  `nros-rmw-xrce::init_transport_from_custom_ops`.
+
+### B.5 RTOS feature mutex
+
+`zpico-sys/Cargo.toml` already enforces "exactly one platform-*"
+via compile_error!. Adding `link-custom` is orthogonal to the
+platform-* mutex (the platform crate provides clock/alloc/sync;
+link-custom doesn't); the existing rule still holds.
+
+### B.6 Locator hook in nros-rmw-zenoh
+
+`nros-rmw-zenoh::ZenohSession::new` already accepts a locator
+through `TransportConfig`. Users register their `NrosTransportOps`
+via `nros_rmw::set_custom_transport(...)` BEFORE `Rmw::open`, then
+pass `locator: Some("custom:///")` in `TransportConfig`. zenoh-pico's
+locator dispatch pulls our custom link factory; the factory drains
+the slot and proceeds. No additional Rust glue beyond the platform
+crate.
+
+### B.7 LOC estimate
+
+| Component | LOC |
+|-----------|-----|
+| zenoh-pico fork — 4 new files + 2 patches | ~340 |
+| zpico-sys build.rs + Cargo.toml | ~30 |
+| zpico-platform-custom crate | ~150 |
+| Integration test (zenohd-fixture-style loopback) | ~80 |
+| **Total** | **~600** |
+
+### B.8 Risks
+
+- **Fork drift.** Adds 4 new files + 2 patches to the zenoh-pico
+  fork. Future upstream merges will conflict on `link.c` /
+  `link.h`. Mitigation: keep the patches small + clearly tagged
+  with `// nros: link-custom` so they're easy to rebase.
+- **MTU.** v1 picks 4096 bytes. Make this a build-time
+  `ZPICO_LINK_CUSTOM_MTU` env to match the existing MTU knobs.
+- **Threading.** zenoh-pico's reader thread calls `read_*` from a
+  background task on threaded backends (FreeRTOS, NuttX, ThreadX);
+  the user vtable must be reentrant w.r.t. its own `write` only if
+  the platform is multi-threaded. Document in
+  `book/src/porting/custom-transport.md` once 115.B lands.
