@@ -850,6 +850,22 @@ impl Session for DdsSession {
         Ok(())
     }
 
+    /// Phase 110.0 — bound the executor's `drive_io` wait against
+    /// dust-DDS's heartbeat cadence.
+    ///
+    /// dust-DDS's writer-side heartbeat period defaults to 2 s
+    /// (Phase 97 bumped from 200 ms; see commit `6cc2c92d`).
+    /// Returning that interval caps the executor's wait so quiet links
+    /// don't outrun a heartbeat round. A precise per-writer
+    /// `next_event_time` readout would walk every active writer's
+    /// `next_heartbeat_timestamp` — defer until the dust-DDS
+    /// `DdsRuntime` exposes that hook.
+    fn next_deadline_ms(&self) -> Option<u32> {
+        // dust-DDS default heartbeat_period (post-Phase-97 bump)
+        const DDS_HEARTBEAT_PERIOD_MS: u32 = 2_000;
+        Some(DDS_HEARTBEAT_PERIOD_MS)
+    }
+
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
         // Phase 108.B — dust-dds maps every DDS QoS policy nano-ros
         // exposes (durability TL, deadline, lifespan, all liveliness

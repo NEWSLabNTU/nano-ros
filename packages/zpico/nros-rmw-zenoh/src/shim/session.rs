@@ -332,6 +332,24 @@ impl Session for ZenohSession {
         self.spin_once(timeout_ms as u32).map(|_| ())
     }
 
+    /// Phase 110.0 — bound the executor's `drive_io` wait against
+    /// zenoh-pico's transport keepalive interval.
+    ///
+    /// zenoh-pico does not expose its internal "next keepalive
+    /// timestamp" through FFI, so the shim returns a conservative
+    /// upper-bound: `Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`.
+    /// With the upstream defaults (lease = 10 000 ms, factor = 3) that
+    /// caps wake-late to ~3.3 s on a quiet link — the runtime never
+    /// blocks longer than one keepalive interval before returning
+    /// control to the executor. Tracking the precise per-call
+    /// timestamp would need a hook in `_z_send_keep_alive`; out of
+    /// scope for the v1 surface.
+    fn next_deadline_ms(&self) -> Option<u32> {
+        // Z_TRANSPORT_LEASE = 10000 ms, Z_TRANSPORT_LEASE_EXPIRE_FACTOR = 3
+        const ZENOH_KEEPALIVE_INTERVAL_MS: u32 = 10_000 / 3;
+        Some(ZENOH_KEEPALIVE_INTERVAL_MS)
+    }
+
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
         // Phase 108.B/C — zenoh-pico's wire protocol has no native
         // DDS QoS, so the shim emulates everything:

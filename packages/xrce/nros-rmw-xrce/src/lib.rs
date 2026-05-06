@@ -1620,6 +1620,23 @@ impl Session for XrceSession {
         Ok(())
     }
 
+    /// Phase 110.0 — bound the executor's `drive_io` wait against
+    /// XRCE-DDS's heartbeat / session-ping cadence.
+    ///
+    /// micro-XRCE-DDS-Client schedules per-stream heartbeats off
+    /// `UCLIENT_MIN_HEARTBEAT_TIME_INTERVAL` (default 100 ms) and
+    /// session pings on a similar cadence. Returning that interval
+    /// caps the executor's wait so quiet links don't block past the
+    /// next backend internal event. A tighter "exact next_heartbeat"
+    /// readout would need to walk the `output_reliable_stream`
+    /// `next_heartbeat_timestamp` field per active stream — out of
+    /// scope for v1.
+    fn next_deadline_ms(&self) -> Option<u32> {
+        // UCLIENT_MIN_HEARTBEAT_TIME_INTERVAL default
+        const XRCE_HEARTBEAT_INTERVAL_MS: u32 = 100;
+        Some(XRCE_HEARTBEAT_INTERVAL_MS)
+    }
+
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
         // Phase 108.B — Core QoS (reliability, durability V/TL,
         // history, depth) goes through the binary `uxrQoS_t` profile.
