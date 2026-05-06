@@ -123,14 +123,45 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
                 os_pri,
                 quantum_ms: _,
             } => (libc::SCHED_RR, os_pri as libc::c_int),
-            // SCHED_DEADLINE is Linux-specific via sched_setattr.
-            // libc doesn't yet expose it through a stable wrapper —
-            // surface as Unsupported until Phase 110.E adds the
-            // direct-syscall path.
-            SchedPolicy::Deadline { .. } => return Err(SchedError::Unsupported),
-            // SCHED_SPORADIC is NuttX-only and lands in 110.E with
-            // its budget-refill plumbing.
-            SchedPolicy::Sporadic { .. } => return Err(SchedError::Unsupported),
+            // Phase 110.E — Linux `SCHED_DEADLINE` via direct
+            // `sched_setattr` syscall. libc doesn't expose
+            // `sched_attr` so we declare the struct here. NuttX +
+            // macOS POSIX targets surface Unsupported.
+            SchedPolicy::Deadline {
+                runtime_ns,
+                period_ns,
+                deadline_ns,
+            } => {
+                #[cfg(target_os = "linux")]
+                {
+                    return set_linux_sched_deadline(runtime_ns, deadline_ns, period_ns);
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let _ = (runtime_ns, period_ns, deadline_ns);
+                    return Err(SchedError::Unsupported);
+                }
+            }
+            // Phase 110.E — NuttX `SCHED_SPORADIC` via
+            // `sched_setscheduler` with `struct sched_param` budget /
+            // period fields. Linux + macOS POSIX targets surface
+            // Unsupported (no kernel-side sporadic class).
+            SchedPolicy::Sporadic {
+                budget_us,
+                period_us,
+                hi_pri,
+                lo_pri,
+            } => {
+                #[cfg(target_os = "nuttx")]
+                {
+                    return set_nuttx_sched_sporadic(budget_us, period_us, hi_pri, lo_pri);
+                }
+                #[cfg(not(target_os = "nuttx"))]
+                {
+                    let _ = (budget_us, period_us, hi_pri, lo_pri);
+                    return Err(SchedError::Unsupported);
+                }
+            }
         };
         // SAFETY: passing a stack-allocated sched_param to libc.
         let param = libc::sched_param { sched_priority };
@@ -183,6 +214,134 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
             let _ = cpu_mask;
             Err(SchedError::Unsupported)
         }
+    }
+}
+
+// ============================================================================
+// Phase 110.E — SCHED_DEADLINE (Linux) + SCHED_SPORADIC (NuttX) helpers
+// ============================================================================
+
+#[cfg(target_os = "linux")]
+fn set_linux_sched_deadline(
+    runtime_ns: u64,
+    deadline_ns: u64,
+    period_ns: u64,
+) -> Result<(), nros_platform_api::SchedError> {
+    use nros_platform_api::SchedError;
+
+    // `sched_setattr(2)` isn't wrapped by libc — declare the struct
+    // and invoke through `syscall(2)`. Layout matches Linux 3.14+
+    // `<linux/sched.h>` exactly. Keeping `sched_attr` local to the
+    // function so the type doesn't leak into the public API.
+    #[repr(C)]
+    #[derive(Default)]
+    struct SchedAttr {
+        size: u32,
+        sched_policy: u32,
+        sched_flags: u64,
+        sched_nice: i32,
+        sched_priority: u32,
+        sched_runtime: u64,
+        sched_deadline: u64,
+        sched_period: u64,
+    }
+    const SCHED_DEADLINE: u32 = 6;
+    // SYS_sched_setattr is 314 on x86_64 Linux. Other arches differ
+    // — matrix lives in <bits/syscall.h>; we read it through libc's
+    // `SYS_sched_setattr` constant when available. Fallback to the
+    // x86_64 number with a compile-time arch guard.
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))]
+    const SYS_SCHED_SETATTR: libc::c_long = match () {
+        #[cfg(target_arch = "x86_64")]
+        () => 314,
+        #[cfg(target_arch = "aarch64")]
+        () => 274,
+        #[cfg(target_arch = "riscv64")]
+        () => 274,
+    };
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+    const SYS_SCHED_SETATTR: libc::c_long = -1;
+
+    if SYS_SCHED_SETATTR < 0 {
+        return Err(SchedError::Unsupported);
+    }
+
+    let attr = SchedAttr {
+        size: core::mem::size_of::<SchedAttr>() as u32,
+        sched_policy: SCHED_DEADLINE,
+        sched_runtime: runtime_ns,
+        sched_deadline: deadline_ns,
+        sched_period: period_ns,
+        ..SchedAttr::default()
+    };
+    // SAFETY: pid=0 means current thread; flags=0 has no special
+    // meaning for sched_setattr.
+    let ret = unsafe { libc::syscall(SYS_SCHED_SETATTR, 0, &attr as *const _, 0u32) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        // EINVAL fires for out-of-range runtime/deadline/period;
+        // EPERM fires without CAP_SYS_NICE (or systemd's
+        // RTKit-mediated permission). Surface OutOfRange for the
+        // common SchedDeadline misuse, KernelError otherwise.
+        let err = unsafe { *libc::__errno_location() };
+        if err == libc::EINVAL {
+            Err(SchedError::OutOfRange)
+        } else {
+            Err(SchedError::KernelError)
+        }
+    }
+}
+
+#[cfg(target_os = "nuttx")]
+fn set_nuttx_sched_sporadic(
+    budget_us: u32,
+    period_us: u32,
+    hi_pri: u8,
+    _lo_pri: u8,
+) -> Result<(), nros_platform_api::SchedError> {
+    use nros_platform_api::SchedError;
+    // NuttX's `sched_setscheduler(2)` accepts `SCHED_SPORADIC` when
+    // `CONFIG_SCHED_SPORADIC=y` (with `CONFIG_SCHED_SPORADIC_MAXREPL`
+    // tuned ≥ 16 per Phase 110.E notes). The `sched_param` struct is
+    // augmented with `sched_ss_*` fields on NuttX; we declare a
+    // shadow here since libc doesn't expose them on this target.
+    #[repr(C)]
+    struct NuttxSchedParam {
+        sched_priority: i32,
+        sched_ss_low_priority: i32,
+        sched_ss_max_repl: i32,
+        sched_ss_repl_period: libc::timespec,
+        sched_ss_init_budget: libc::timespec,
+    }
+    const SCHED_SPORADIC: libc::c_int = 4;
+
+    let period = libc::timespec {
+        tv_sec: (period_us / 1_000_000) as libc::time_t,
+        tv_nsec: ((period_us % 1_000_000) * 1_000) as libc::c_long,
+    };
+    let budget = libc::timespec {
+        tv_sec: (budget_us / 1_000_000) as libc::time_t,
+        tv_nsec: ((budget_us % 1_000_000) * 1_000) as libc::c_long,
+    };
+    let param = NuttxSchedParam {
+        sched_priority: hi_pri as i32,
+        sched_ss_low_priority: _lo_pri as i32,
+        sched_ss_max_repl: 16,
+        sched_ss_repl_period: period,
+        sched_ss_init_budget: budget,
+    };
+    // SAFETY: NuttX's sched_setscheduler(0, SCHED_SPORADIC, &param) acts
+    // on the calling task. The ABI of NuttxSchedParam matches NuttX's
+    // `struct sched_param` when `CONFIG_SCHED_SPORADIC=y` (verified
+    // against include/sched.h).
+    let ret = unsafe {
+        libc::sched_setscheduler(0, SCHED_SPORADIC, &param as *const _ as *const libc::sched_param)
+    };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(SchedError::KernelError)
     }
 }
 
@@ -517,3 +676,4 @@ impl nros_platform_api::PlatformThreading for PosixPlatform {
         Self::condvar_wait_until(cv, m, abstime)
     }
 }
+
