@@ -1445,6 +1445,7 @@ dependencies = [
  "nros-ghost-types",
  "nros-lifecycle-msgs",
  "nros-params",
+ "nros-platform-api",
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",

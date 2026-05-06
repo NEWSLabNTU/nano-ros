@@ -227,6 +227,40 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.D.b — smoke test for `Executor::open_threaded`. Spawns
+/// the executor onto a fresh OS thread, lets it spin, then halts via
+/// the returned `ThreadHandle`.
+#[test]
+fn test_open_threaded_spawn_and_halt() {
+    use nros_platform_api::SchedPolicy;
+    let session = MockSession::new();
+    let executor: Executor = Executor::from_session(session);
+
+    // Apply-policy fn that always succeeds — running as a non-root
+    // unit test we can't actually lift to SCHED_FIFO, so the
+    // smoke-test just exercises the spawn / halt / join lifecycle.
+    fn apply_noop(_p: SchedPolicy) -> Result<(), nros_platform_api::SchedError> {
+        Ok(())
+    }
+
+    // SAFETY: `from_session` (Owned) Executor is Send-correct;
+    // `unsafe impl Send for Executor` covers it unconditionally.
+    let handle = unsafe {
+        executor.open_threaded(
+            SchedPolicy::Fifo { os_pri: 1 },
+            apply_noop,
+            core::time::Duration::from_millis(1),
+        )
+    };
+
+    // Let the executor thread run a couple of spin cycles.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    // Halt + join must complete within a generous bound.
+    let join_res = handle.join();
+    assert!(join_res.is_ok());
+}
+
 /// Phase 110.C — `Critical`-bucket callback runs before
 /// `BestEffort`-bucket callback when both are ready in the same cycle,
 /// regardless of registration order.

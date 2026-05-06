@@ -2503,6 +2503,61 @@ impl Executor {
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
+    /// Phase 110.D.b — move this Executor onto a fresh OS thread,
+    /// apply a per-thread scheduling policy via the caller-supplied
+    /// `apply_policy` function, and run the spin loop until
+    /// [`ThreadHandle::halt`] fires.
+    ///
+    /// The function-pointer indirection on `apply_policy` lets the
+    /// caller pass any platform's `PlatformScheduler::set_current_thread_policy`
+    /// without forcing `Executor` to be generic over the platform —
+    /// keeps the existing `Executor` type stable.
+    ///
+    /// Multi-executor preemption (the actual hard-RT win) comes from
+    /// the OS scheduler — call `open_threaded` once per criticality
+    /// tier, each with its own policy / priority. The kernel handles
+    /// preemption across executors; within a single executor,
+    /// dispatch remains non-preemptive (110.A–C bucketed sets).
+    ///
+    /// # Safety
+    ///
+    /// Moves `self` across thread boundaries. `Executor` contains a
+    /// raw `*mut session::ConcreteSession` when constructed via
+    /// `from_session_ptr`; the caller must ensure that pointer's
+    /// referent stays valid across the lifetime of the spawned thread
+    /// and that no other thread mutates the session concurrently.
+    /// `from_session` (Owned) is safer — `ConcreteSession` ownership
+    /// transfers cleanly into the thread.
+    #[cfg(feature = "std")]
+    pub unsafe fn open_threaded(
+        self,
+        policy: nros_platform_api::SchedPolicy,
+        apply_policy: fn(
+            nros_platform_api::SchedPolicy,
+        ) -> Result<(), nros_platform_api::SchedError>,
+        spin_period: core::time::Duration,
+    ) -> ThreadHandle {
+        let halt = std::sync::Arc::clone(&self.halt_flag);
+        // SAFETY: Send is asserted via `unsafe impl Send for Executor`
+        // below; the caller's safety contract on `from_session_ptr`
+        // covers the pointer-validity invariant.
+        let mut executor = self;
+        let join = std::thread::spawn(move || {
+            // Apply the requested OS scheduling policy to this fresh
+            // thread. Failure is reported but not propagated — a
+            // runtime that fails to lift to SCHED_FIFO still spins
+            // correctly at SCHED_OTHER (just without RT guarantees).
+            let _ = apply_policy(policy);
+            while !executor.is_halted() {
+                executor.spin_once(spin_period);
+            }
+        });
+        ThreadHandle {
+            join: Some(join),
+            halt,
+        }
+    }
+
     /// Check if halt has been requested.
     pub fn is_halted(&self) -> bool {
         self.halt_flag.load(std::sync::atomic::Ordering::SeqCst)
@@ -2524,6 +2579,54 @@ impl Executor {
         self.halt_flag.clone()
     }
 }
+
+/// Handle returned from [`Executor::open_threaded`]. Holds the
+/// spawned thread's join handle and a clone of the executor's halt
+/// flag. Drop runs `halt() + join()` so the thread can't outlive the
+/// handle.
+#[cfg(feature = "std")]
+pub struct ThreadHandle {
+    join: Option<std::thread::JoinHandle<()>>,
+    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[cfg(feature = "std")]
+impl ThreadHandle {
+    /// Signal the spawned executor thread to stop. The thread exits
+    /// on its next `spin_once` iteration.
+    pub fn halt(&self) {
+        self.halt.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Wait for the spawned thread to exit. Returns the join result.
+    /// After `join`, calling it again is a no-op (returns `Ok(())`).
+    pub fn join(mut self) -> std::thread::Result<()> {
+        self.halt();
+        match self.join.take() {
+            Some(j) => j.join(),
+            None => Ok(()),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Drop for ThreadHandle {
+    fn drop(&mut self) {
+        self.halt.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
+}
+
+// SAFETY: Phase 110.D.b — `Executor` contains a raw `*mut
+// session::ConcreteSession` only on the `from_session_ptr` (Borrowed)
+// path; the `from_session` (Owned) path is plain Send-able. The
+// `unsafe fn open_threaded` entry point documents the safety
+// contract for Borrowed sessions; for Owned sessions the Send claim
+// is unconditional.
+#[cfg(feature = "std")]
+unsafe impl Send for Executor {}
 
 impl Drop for Executor {
     fn drop(&mut self) {

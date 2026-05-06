@@ -71,6 +71,9 @@ lifecycle-services = ["dep:nros-lifecycle-msgs", "alloc"]
 [dependencies]
 nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
+# Phase 110.D — `Executor::open_threaded` consumes the `SchedPolicy`
+# enum from the platform-api types layer.
+nros-platform-api = { version = "0.1.0", path = "../nros-platform-api", default-features = false }
 nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
 nros-rmw-dds = { workspace = true, default-features = false, optional = true }
