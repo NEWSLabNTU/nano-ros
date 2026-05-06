@@ -225,6 +225,62 @@ impl nros_platform_api::PlatformYield for FreeRtosPlatform {
 }
 
 // ============================================================================
+// Phase 110.D — PlatformScheduler (FreeRTOS)
+// ============================================================================
+//
+// FreeRTOS priorities run high-numeric = high-priority (same direction
+// as POSIX), so the `os_pri` field maps directly to
+// `vTaskPrioritySet`'s `new_priority` argument. SCHED_RR has no
+// FreeRTOS analog — every task is preemptive-priority by default;
+// configUSE_TIME_SLICING (round-robin among same-priority tasks) is a
+// global build-time knob, not per-task. We accept `RoundRobin` and
+// just set the priority, treating `quantum_ms` as advisory.
+//
+// `Deadline` (Linux SCHED_DEADLINE) and `Sporadic` (NuttX
+// SCHED_SPORADIC) have no FreeRTOS analog; both surface
+// `Unsupported`. Affinity needs FreeRTOS V11+'s
+// `vTaskCoreAffinitySet`; on single-core ports the affinity surface
+// stays `Unsupported`.
+
+impl nros_platform_api::PlatformScheduler for FreeRtosPlatform {
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::{SchedError, SchedPolicy};
+        let new_priority = match p {
+            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => {
+                os_pri as u32
+            }
+            SchedPolicy::Deadline { .. } | SchedPolicy::Sporadic { .. } => {
+                return Err(SchedError::Unsupported);
+            }
+        };
+        // SAFETY: `xTaskGetCurrentTaskHandle` returns the calling
+        // task's TCB pointer; `vTaskPrioritySet(NULL, ...)` would do
+        // the same but the explicit form is clearer.
+        unsafe {
+            let task = ffi::xTaskGetCurrentTaskHandle();
+            ffi::vTaskPrioritySet(task, new_priority);
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn yield_now() {
+        // Reuse the same `vTaskDelay(1)` trick as `PlatformYield`.
+        unsafe { ffi::vTaskDelay(1) };
+    }
+
+    fn set_affinity(_cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        // FreeRTOS V11 introduces `vTaskCoreAffinitySet` for SMP
+        // ports. Single-core builds (the QEMU MPS2-AN385 default)
+        // have no affinity API; surface Unsupported until the SMP
+        // bring-up phase ships.
+        Err(nros_platform_api::SchedError::Unsupported)
+    }
+}
+
+// ============================================================================
 // Random — xorshift (shared helpers from nros_platform_api::xorshift32)
 // ============================================================================
 

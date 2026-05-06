@@ -35,6 +35,10 @@ unsafe extern "C" {
     ) -> i32;
     pub fn vTaskDelete(task_handle: *mut c_void);
 
+    // Phase 110.D — per-task scheduling priority knob.
+    pub fn vTaskPrioritySet(task_handle: *mut c_void, new_priority: u32);
+    pub fn xTaskGetCurrentTaskHandle() -> *mut c_void;
+
     // Event groups (real functions, not macros)
     pub fn xEventGroupCreate() -> *mut c_void;
     pub fn xEventGroupSetBits(group: *mut c_void, bits: u32) -> u32;
