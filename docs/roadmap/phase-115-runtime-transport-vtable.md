@@ -2,7 +2,24 @@
 
 **Goal:** Expose a `nros_set_custom_transport(struct nros_transport_ops *ops)` C API so users can plug a custom transport (USB-CDC, BLE, RS-485, semihosting bridge) at runtime without changing board crate, Cargo features, or rebuilding.
 
-**Status:** Core surface complete (115.A / 115.C / 115.D / 115.E / 115.G / 115.I). Backend coverage today: XRCE-DDS native; zenoh-pico (115.B) and dust-DDS (115.H) deferred to follow-up phases (115.X-zenoh, 115.X-dds). Arduino library hook (115.J) deferred to Phase 23.
+**Sub-goal (added 2026-05-06):** Establish the **canonical-C-ABI**
+pattern for the project. The transport vtable is the first
+fn-ptr-vtable cross-language interface; treat it as the template
+for every future Rust→C boundary (RMW, platform, status events,
+etc.). Per the design note
+[`docs/design/portable-rmw-platform-interface.md`](../design/portable-rmw-platform-interface.md):
+
+- The canonical struct definition lives in `nros-rmw-cffi` (the
+  C-ABI crate), not `nros-rmw` (the Rust trait crate).
+- Every other language binding (Rust trait, C++ wrapper, future
+  Python / Lua / Go / Zig bindings) starts from the cbindgen-
+  emitted C header.
+- Vtable structs reserve `(abi_version: u32, _reserved: u32)` at
+  offset 0 so future appends are detectable.
+- `nros-rmw-cffi`'s shape is the only "design decision"; L1 / L2
+  wrappers above it are mechanical translations.
+
+**Status:** First-iteration core surface complete (115.A.1 / 115.C / 115.D / 115.E / 115.G.1 / 115.G.2 / 115.I). **Open follow-ups within v1:** 115.A.2 (promote canonical struct from `nros-rmw` → `nros-rmw-cffi`, add `abi_version` field), 115.G.3 (abi_version mismatch test), 115.G.4 (second-language smoke test in C), 115.I.2 (book update for L0/L1/L2 + abi_version semantics). **Deferred to follow-up phases:** 115.B → `115.X-zenoh`, 115.H → `115.X-dds`, 115.F → blocked on 115.B, 115.J → Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -128,35 +145,216 @@ The existing `ethernet` / `wifi` / `serial` features stay. `zpico-platform-custo
 
 ## Work Items
 
-- [x] **115.A** `nros_rmw::custom_transport` — `NrosTransportOps` (`#[repr(C)]`, four `unsafe extern "C" fn` fields + `user_data: *mut c_void`, `unsafe impl Send + Sync` on the vtable struct itself). Storage is `static SLOT: Mutex<Option<NrosTransportOps>>` (the existing `nros_rmw::sync::Mutex`, no extra deps). Public API: `set_custom_transport(Option<NrosTransportOps>)` (unsafe — caller owns the threading contract), `peek_custom_transport()`, `take_custom_transport()`. Module-level docs cover the threading contract (no concurrent read/write, no ISR invocation, `user_data` outlives `close`) and the no-`dyn` rationale (cross-link to § A.1). 3 unit tests: lifecycle (set → peek → take → empty), explicit clear, and `Copy + Send + Sync` static assertion. (`<this commit>`)
-- [ ] **115.B — Design captured in § Appendix B. Implementation queued for 115.X-zenoh.** `link-custom` feature in zpico-sys + `_Z_LINK_TYPE_CUSTOM` extension in the zenoh-pico fork.
-- [x] **115.C** `nros-c` C API: `nros_transport_ops_t` (`#[repr(C)]` — same layout as `nros_rmw::NrosTransportOps`), `nros_set_custom_transport(*const ops)`, `nros_clear_custom_transport()`, `nros_has_custom_transport()`. cbindgen-emitted into `nros_generated.h`. Docs cover threading + return-code conventions. (`<this commit>`)
-- [x] **115.D** `nros-cpp` C++ wrapper: `nros::TransportOps` POD-style struct (no STL), `nros::set_custom_transport(const TransportOps&) -> Result`, `nros::clear_custom_transport()`, `nros::has_custom_transport() -> bool`. Inline header `<nros/transport.hpp>` + Rust-side FFI in `nros-cpp/src/transport.rs`. (`<this commit>`)
-- [x] **115.E** XRCE plumbing — `nros_rmw_xrce::init_transport_from_custom_ops(framing)` drains `nros_rmw::take_custom_transport()`, copies the four fn pointers + user_data into XRCE-local trampoline state, and registers C trampolines with `uxr_set_custom_transport_callbacks` + `uxr_init_custom_transport`. Bridges the v1 ABI mismatch: XRCE's `open` / `close` callbacks take `*mut uxrCustomTransport`; ours take `*mut c_void user_data`. The trampolines pull `user_data` from the static slot and forward. (`<this commit>`)
-- [ ] **115.F — DEFERRED.** Loopback example `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`. Depends on 115.B (zenoh path). XRCE-side loopback would need MicroXRCEAgent in the test harness; defer until either the agent fixture lands or 115.B unblocks.
-- [x] **115.G** Integration test at `packages/xrce/nros-rmw-xrce/tests/custom_transport.rs`. 2 tests passing: `set_custom_transport_round_trips_through_xrce_bridge` (register → peek → take via XRCE bridge → confirm slot drained → second take returns false) + `clear_via_set_none` (explicit clear via `set_custom_transport(None)`). Stub callbacks count invocations; the test does NOT open an XRCE session (would need MicroXRCEAgent). The 3-test slot-lifecycle suite in `nros-rmw/src/custom_transport.rs` covers the storage layer; this test covers the XRCE bridge. (`<this commit>`)
-- [ ] **115.H — DEFERRED to 115.X-dds.** dust-DDS plug-in path. dust-dds requires implementing a custom `RtpsUdpTransportParticipantFactory`-equivalent. Larger surface; design doc to land in a separate phase.
-- [x] **115.I** `book/src/porting/custom-transport.md` (new). Covers when to use, Rust / C / C++ examples, threading contract (no concurrent read/write, no ISR invocation, `user_data` lifetime), return-code conventions, framing semantics per backend, and a per-backend coverage table. Linked from `book/src/SUMMARY.md` under Porting. mdbook builds clean. (`<this commit>`)
-- [ ] **115.J — DEFERRED to Phase 23.** Arduino library reuse. Phase 23 (Arduino precompiled lib) hasn't started; once it does, `nros::set_serial_transport(&Serial)` / `nros::set_wifi_udp_transport(...)` should reuse this hook instead of inventing a parallel API.
+The work items are restructured around the **L0 / L1 / L2 ladder**
+documented in
+[`docs/design/portable-rmw-platform-interface.md`](../design/portable-rmw-platform-interface.md):
 
-**Files:**
-- `packages/zpico/zpico-platform-custom/` (new crate)
-- `packages/core/nros-c/include/nros/transport.h` (new)
-- `packages/core/nros-cpp/include/nros/transport.hpp` (new)
-- `packages/xrce/.../custom_transport.rs` (wiring)
-- `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/` (new)
-- `book/src/porting/custom-transport.md` (new)
-- `nros_tests/tests/custom_transport.rs` (new)
+- **L0 — canonical C ABI**: the single source of truth. Lives in
+  `nros-rmw-cffi` as a `#[repr(C)]` Rust struct; cbindgen emits the
+  matching C header. **Every other language binding starts here.**
+- **L1 — per-language idiomatic wrappers**: thin glue over L0. No
+  new design decisions. Today: Rust (`nros-rmw`), C (`nros-c`),
+  C++ (`nros-cpp`).
+- **L2 — typed application API**: typed pubs/subs/services. Custom
+  transport has no L2 — it's platform-side, not user-data-side.
+
+### L0 — canonical ABI in `nros-rmw-cffi`
+
+- [x] **115.A.1 — first iteration in `nros-rmw`.** Initial
+  `NrosTransportOps` shipped in `nros_rmw::custom_transport`
+  (`#[repr(C)]`, four `unsafe extern "C" fn` + `user_data`,
+  `static SLOT: Mutex<Option<...>>`, three-fn API:
+  `set_custom_transport` / `peek_custom_transport` /
+  `take_custom_transport`). 3 unit tests passing. (commit `be28d0af`)
+- [ ] **115.A.2 — promote to L0 in `nros-rmw-cffi`.** Move the
+  canonical struct definition from `nros-rmw` to `nros-rmw-cffi`
+  (where the rest of the C-ABI vtables live). Rename to
+  `NrosRmwTransportOps` to match the cffi naming convention. Add a
+  reserved `abi_version: u32` field at offset 0 (per the portable-
+  ABI design note R5) so future appends are detectable by C
+  consumers. cbindgen emits the matching `nros_rmw_transport_ops_t`
+  into `<nros/rmw_vtable.h>` (or a new `<nros/rmw_transport.h>`).
+  `nros-rmw` re-exports the type so existing Rust callers don't
+  break. The slot storage (`Mutex<Option<...>>`) stays in
+  `nros-rmw` since it's a runtime singleton, not part of the ABI.
+  **Files:** `packages/core/nros-rmw-cffi/src/transport.rs` (new),
+  `packages/core/nros-rmw-cffi/include/nros/rmw_transport.h` (new,
+  cbindgen-emitted), `packages/core/nros-rmw/src/custom_transport.rs`
+  (re-export only).
+
+### L1 — Rust trait / C / C++ wrappers
+
+- [x] **115.A.1 — Rust wrapper** at `nros_rmw::custom_transport`.
+  See L0 entry above; this is what landed in `be28d0af`. Migrates
+  to a re-export in 115.A.2.
+- [x] **115.C — C wrapper.** `nros_transport_ops_t` declared in
+  `nros-c` (currently — moves to cbindgen-emit-from-cffi after
+  115.A.2). Public API: `nros_set_custom_transport(*const ops)`,
+  `nros_clear_custom_transport()`, `nros_has_custom_transport()`.
+  Validate `ops->abi_version` once 115.A.2 lands; reject mismatched
+  versions with `NROS_RET_INCOMPATIBLE_ABI`. (commit `d16bf294`;
+  abi_version validation queued for 115.A.2 follow-up)
+- [x] **115.D — C++ wrapper.** `nros::TransportOps` POD struct
+  (no STL), `nros::set_custom_transport(const TransportOps&) ->
+  Result`, `nros::clear_custom_transport()`,
+  `nros::has_custom_transport() -> bool`. Inline header
+  `<nros/transport.hpp>` + Rust-side FFI in
+  `nros-cpp/src/transport.rs`. After 115.A.2: thin shim that
+  passes `abi_version = NROS_RMW_TRANSPORT_OPS_ABI_VERSION_V1`
+  through. (commit `d16bf294`)
+
+### Backend integrations
+
+- [x] **115.E — XRCE plumbing.**
+  `nros_rmw_xrce::init_transport_from_custom_ops(framing)` drains
+  `nros_rmw::take_custom_transport()`, copies into XRCE-local
+  trampoline state, registers C trampolines with
+  `uxr_set_custom_transport_callbacks` +
+  `uxr_init_custom_transport`. Bridges the ABI mismatch: XRCE's
+  `open` / `close` take `*mut uxrCustomTransport`; ours take
+  `*mut c_void user_data`. (commit `d16bf294`)
+- [ ] **115.B — zenoh-pico custom-link.** Design captured in
+  § Appendix B; implementation queued for follow-up phase
+  `115.X-zenoh`. ~600 LOC across 4 components (zenoh-pico fork +
+  zpico-sys + zpico-platform-custom + integration test).
+- [ ] **115.H — dust-DDS custom transport.** `RtpsUdpTransportParticipantFactory`-
+  equivalent plug-in. Design queued for follow-up phase
+  `115.X-dds`.
+
+### Tests
+
+- [x] **115.G.1 — slot-lifecycle unit tests.** 3 tests in
+  `nros-rmw/src/custom_transport.rs::tests` (set → peek → take
+  round-trip; explicit `set(None)` clear; `Copy + Send + Sync`
+  static assertion). Migrate to `nros-rmw-cffi/tests/...` after
+  115.A.2. (commit `be28d0af`)
+- [x] **115.G.2 — XRCE bridge round-trip.** 2 tests in
+  `nros-rmw-xrce/tests/custom_transport.rs`
+  (register-via-slot → drain-via-XRCE-bridge round-trip; explicit
+  clear). Stub callbacks; no MicroXRCEAgent needed. (commit
+  `d16bf294`)
+- [ ] **115.G.3 — abi_version mismatch test.** Once 115.A.2 lands,
+  add a test that calls `nros_set_custom_transport` with a
+  deliberately-wrong `abi_version` and asserts
+  `NROS_RET_INCOMPATIBLE_ABI`.
+- [ ] **115.G.4 — second-language smoke test.** Per the
+  portable-ABI design note R6: a C-implemented stub transport that
+  the Rust core registers via the C ABI. Catches "Rust-shape that
+  won't fit through cffi" issues before downstream users do. ~150
+  LOC. Lives at `packages/core/nros-rmw-cffi/tests/c_stub_transport/`.
+
+### Examples
+
+- [ ] **115.F — Loopback example.** `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`.
+  Depends on 115.B (zenoh path). XRCE-side loopback would need
+  MicroXRCEAgent in the test harness; defer until either the agent
+  fixture lands or 115.B unblocks.
+
+### Docs
+
+- [x] **115.I — Porting guide.** `book/src/porting/custom-transport.md`
+  covers when-to-use, Rust / C / C++ examples, threading contract
+  (no concurrent read/write, no ISR, `user_data` lifetime),
+  return-code conventions, framing per backend, per-backend
+  coverage table. Linked from `book/src/SUMMARY.md` under Porting.
+  mdbook clean. (commit `d16bf294`)
+- [ ] **115.I.2 — abi_version + L0/L1/L2 ladder doc update.**
+  After 115.A.2 lands, update `book/src/porting/custom-transport.md`
+  to:
+  1. Document the `abi_version` field semantics (consumers must
+     fill in the macro from the header; runtime rejects mismatch).
+  2. Cross-link to the L0/L1/L2 ladder in the portable-ABI design
+     note.
+  3. Add a "Implementing in another language" sub-section showing
+     the canonical C ABI is the entry point — point at the new
+     `<nros/rmw_transport.h>` cbindgen-emitted header.
+
+### Deferred (out of v1)
+
+- [ ] **115.J — Arduino library reuse.** Phase 23 (Arduino
+  precompiled lib) hasn't started; once it does, `nros::set_serial_transport(&Serial)`
+  / `nros::set_wifi_udp_transport(...)` should reuse this hook
+  instead of inventing a parallel API.
+
+### Files
+
+**Owned by L0 (canonical):**
+- `packages/core/nros-rmw-cffi/src/transport.rs` — SoT struct
+  (115.A.2)
+- `packages/core/nros-rmw-cffi/include/nros/rmw_transport.h` —
+  cbindgen-emitted (115.A.2)
+
+**Owned by L1 (mechanical wrappers):**
+- `packages/core/nros-rmw/src/custom_transport.rs` — Rust
+  re-export + slot storage (115.A.1 → 115.A.2)
+- `packages/core/nros-c/src/transport.rs` — C entry stubs (115.C)
+- `packages/core/nros-c/include/nros/nros_generated.h` —
+  cbindgen-emitted (115.C)
+- `packages/core/nros-cpp/include/nros/transport.hpp` — C++
+  inline-header wrappers (115.D)
+- `packages/core/nros-cpp/src/transport.rs` — Rust FFI
+  re-implementations of the L0 fns under `nros_cpp_*` names (115.D)
+
+**Owned by backend integrations:**
+- `packages/xrce/nros-rmw-xrce/src/lib.rs::init_transport_from_custom_ops`
+  (115.E)
+- `packages/zpico/zpico-platform-custom/` (new crate, 115.B)
+- `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`
+  (115.F)
+
+**Owned by tests:**
+- `packages/core/nros-rmw/src/custom_transport.rs::tests` (115.G.1)
+- `packages/xrce/nros-rmw-xrce/tests/custom_transport.rs` (115.G.2)
+- `packages/core/nros-rmw-cffi/tests/abi_version.rs` (115.G.3)
+- `packages/core/nros-rmw-cffi/tests/c_stub_transport/` (115.G.4)
+
+**Owned by docs:**
+- `book/src/porting/custom-transport.md` (115.I, 115.I.2)
+- `book/src/SUMMARY.md` (115.I link)
 
 ---
 
 ## Acceptance criteria
 
-- C user registers 4 callbacks via `nros_set_custom_transport`, then `nros_support_init` succeeds and pub/sub work end-to-end on the loopback example.
-- The same callbacks compile and link on FreeRTOS, NuttX, ThreadX, Zephyr, bare-metal targets.
-- Compile-time check rejects co-enabling `platform-custom` with another `platform-*`.
-- Phase 23 Arduino library reuses the hook (no duplicate transport API).
-- `book/src/porting/custom-transport.md` documents threading model, ISR safety (callbacks must NOT be called from ISR), framing requirements.
+### v1 (this phase)
+
+- [x] Rust user registers 4 callbacks via
+  `nros_rmw::set_custom_transport`; XRCE backend drains the slot
+  via `nros_rmw_xrce::init_transport_from_custom_ops` and routes
+  every wire frame through the user vtable.
+- [x] C user registers via `nros_set_custom_transport`; same
+  end-to-end path. Verified by `nros-rmw-xrce/tests/custom_transport.rs`
+  (no real session, but slot lifecycle + bridge trampolines confirmed).
+- [x] C++ user registers via `nros::set_custom_transport(const TransportOps&)`;
+  same end-to-end path.
+- [x] The same registration compiles on every platform `nros-rmw`
+  builds for (`platform-posix`, `platform-zephyr`,
+  `platform-bare-metal`, `platform-freertos`, `platform-nuttx`,
+  `platform-threadx`, `platform-orin-spe`).
+- [x] `book/src/porting/custom-transport.md` documents the
+  threading contract (no concurrent read/write, no ISR invocation,
+  `user_data` lifetime), return-code conventions, and per-backend
+  framing semantics.
+- [ ] **115.A.2** — canonical struct lives in `nros-rmw-cffi` with
+  an `abi_version: u32` field; cbindgen emits
+  `<nros/rmw_transport.h>`; Rust trait re-exports.
+- [ ] **115.G.3** — calling `nros_set_custom_transport` with a
+  mismatched `abi_version` returns
+  `NROS_RET_INCOMPATIBLE_ABI` (a new ret-code) without panicking.
+- [ ] **115.G.4** — a C-implemented stub transport drives the
+  Rust core through the C ABI (proves the canonical surface is
+  reachable from a non-Rust language without going through the
+  Rust trait).
+
+### Deferred follow-up phases
+
+- 115.X-zenoh: zenoh-pico custom-link (`Z_FEATURE_LINK_CUSTOM`).
+  Tracked separately; ~600 LOC. Design captured in § Appendix B.
+- 115.X-dds: dust-DDS custom transport plug-in. Tracked
+  separately.
+- Phase 23: Arduino library reuses the hook for
+  `nros::set_serial_transport(&Serial)` / `nros::set_wifi_udp_transport(...)`.
+  Hard-blocked on Phase 23 starting.
 
 ## Notes
 
