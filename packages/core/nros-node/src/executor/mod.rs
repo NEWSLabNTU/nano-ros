@@ -30,6 +30,12 @@ mod handles;
 #[cfg(any(has_rmw, test))]
 mod node;
 #[cfg(any(has_rmw, test))]
+pub(crate) mod activator;
+#[cfg(any(has_rmw, test))]
+pub(crate) mod dispatcher;
+#[cfg(any(has_rmw, test))]
+pub(crate) mod ready_set;
+#[cfg(any(has_rmw, test))]
 mod spin;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spsc_ring;
