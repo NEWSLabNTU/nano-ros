@@ -76,6 +76,7 @@ impl<const N: usize> FifoReadySet<N> {
     /// Bulk-set the presence bitmap. Used by the default
     /// [`Activator`](super::activator::Activator) impl which produces
     /// a full `u64` mask in one pass and writes it through.
+    #[allow(dead_code)] // 110.A.b uses per-bit insert; kept for 110.C bucketed.
     pub fn set_bits(&mut self, bits: u64) {
         self.bits = bits;
     }

@@ -231,6 +231,16 @@ pub struct Executor {
     pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],
     pub(crate) arena_used: usize,
     pub(crate) entries: [Option<CallbackMeta>; crate::config::MAX_CBS],
+    /// Phase 110.B — registered scheduling contexts. Slot 0 is
+    /// auto-populated with a `Fifo` SC at construction; every entry
+    /// without an explicit binding maps to it via
+    /// `sched_context_bindings`.
+    pub(crate) sched_contexts:
+        [Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
+    /// Per-entry SC binding parallel to `entries`. Defaults to
+    /// `SchedContextId(0)` (the auto-created Fifo SC).
+    pub(crate) sched_context_bindings:
+        [super::sched_context::SchedContextId; crate::config::MAX_CBS],
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -270,6 +280,13 @@ impl Executor {
             arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
             arena_used: 0,
             entries: [None; crate::config::MAX_CBS],
+            sched_contexts: {
+                let mut s = [None; crate::config::MAX_SC];
+                s[0] = Some(super::sched_context::SchedContext::default());
+                s
+            },
+            sched_context_bindings: [super::sched_context::SchedContextId(0);
+                crate::config::MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -307,6 +324,13 @@ impl Executor {
             arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
             arena_used: 0,
             entries: [None; crate::config::MAX_CBS],
+            sched_contexts: {
+                let mut s = [None; crate::config::MAX_SC];
+                s[0] = Some(super::sched_context::SchedContext::default());
+                s
+            },
+            sched_context_bindings: [super::sched_context::SchedContextId(0);
+                crate::config::MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -344,6 +368,65 @@ impl Executor {
             self.namespace.clear();
             let _ = self.namespace.push_str(namespace);
         }
+    }
+
+    // =========================================================================
+    // Phase 110.B — SchedContext API
+    // =========================================================================
+
+    /// Identifier of the auto-created default `Fifo`-class scheduling
+    /// context. Every callback registered without an explicit
+    /// [`bind_handle_to_sched_context`] binds to this SC.
+    pub fn default_sched_context_id(&self) -> super::sched_context::SchedContextId {
+        super::sched_context::SchedContextId(0)
+    }
+
+    /// Register a new scheduling context. Returns a [`SchedContextId`]
+    /// callers pass to [`bind_handle_to_sched_context`] to attach
+    /// callbacks. Phase 110.B.
+    pub fn create_sched_context(
+        &mut self,
+        sc: super::sched_context::SchedContext,
+    ) -> Result<super::sched_context::SchedContextId, NodeError> {
+        // Slot 0 is reserved for the default Fifo SC; search 1..MAX_SC.
+        for (i, slot) in self.sched_contexts.iter_mut().enumerate().skip(1) {
+            if slot.is_none() {
+                *slot = Some(sc);
+                return Ok(super::sched_context::SchedContextId(i as u8));
+            }
+        }
+        Err(NodeError::NoSchedContextSlot)
+    }
+
+    /// Bind a registered callback to a scheduling context. The next
+    /// `spin_once` cycle dispatches the callback through that SC's
+    /// queue (FIFO bitmap or EDF heap). Phase 110.B.
+    pub fn bind_handle_to_sched_context(
+        &mut self,
+        handle: HandleId,
+        sc_id: super::sched_context::SchedContextId,
+    ) -> Result<(), NodeError> {
+        let i = handle.0;
+        if i >= crate::config::MAX_CBS {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        if self.entries[i].is_none() {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        let sc_idx = sc_id.0 as usize;
+        if sc_idx >= crate::config::MAX_SC || self.sched_contexts[sc_idx].is_none() {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        self.sched_context_bindings[i] = sc_id;
+        Ok(())
+    }
+
+    /// Inspect a registered scheduling context. Phase 110.B.
+    pub fn sched_context(
+        &self,
+        sc_id: super::sched_context::SchedContextId,
+    ) -> Option<&super::sched_context::SchedContext> {
+        self.sched_contexts.get(sc_id.0 as usize)?.as_ref()
     }
 
     /// Create a node on this executor.
@@ -1658,56 +1741,97 @@ impl Executor {
             }
         }
 
-        // Phase 3: Dispatch (Phase 110.A.b — drains via FifoReadySet).
+        // Phase 3: Dispatch (Phase 110.B — split between EdfReadySet
+        // and FifoReadySet by per-entry SchedContext class).
         //
-        // Walking `pop_next` on a bitmap-backed FifoReadySet pops in
-        // registration order (lowest bit first), exactly matching the
-        // pre-refactor `for (i, meta) in entries.iter().enumerate()`
-        // walk — every existing test's dispatch ordering is preserved.
+        // Each ready entry is queued onto the EDF heap when its bound
+        // SC has `class = Edf` (`sort_key = deadline_us` from the SC),
+        // otherwise onto the registration-order FIFO bitmap. EDF
+        // drains first so deadline-prioritised callbacks pre-empt
+        // FIFO peers when both are ready in the same cycle. Default
+        // workloads — every entry bound to the auto-created Fifo SC
+        // — never touch the EDF heap, so dispatch order is
+        // bit-identical to pre-110.B.
         let mut result = SpinOnceResult::new();
-        let mut ready: super::ready_set::FifoReadySet<{ crate::config::MAX_CBS }> =
+        let mut fifo: super::ready_set::FifoReadySet<{ crate::config::MAX_CBS }> =
             super::ready_set::FifoReadySet::new();
-        ready.set_bits(bits | always_mask);
-
-        // SAFETY: `ready` only has bits set for slots that were `Some`
-        // during the readiness scan above; no Executor mutation
-        // happens between the scan and dispatch, so each `desc_idx`
-        // we pop still indexes a `Some(meta)` slot.
-        use super::ready_set::ReadySet as _;
-        while let Some(job) = ready.pop_next() {
-            let i = job.desc_idx as usize;
-            let Some(meta) = self.entries[i].as_ref() else {
+        let mut edf: super::ready_set::EdfReadySet<{ crate::config::MAX_CBS }> =
+            super::ready_set::EdfReadySet::new();
+        let active_mask = bits | always_mask;
+        for i in 0..crate::config::MAX_CBS {
+            if active_mask & (1u64 << i) == 0 {
                 continue;
+            }
+            let sc_idx = self.sched_context_bindings[i].0 as usize;
+            let is_edf = self
+                .sched_contexts
+                .get(sc_idx)
+                .and_then(|s| s.as_ref())
+                .map(|sc| matches!(sc.class, super::sched_context::SchedClass::Edf))
+                .unwrap_or(false);
+            let job = super::types::ActiveJob {
+                sort_key: if is_edf {
+                    self.sched_contexts[sc_idx]
+                        .as_ref()
+                        .and_then(|sc| sc.deadline_us.get())
+                        .map(|nz| nz.get())
+                        .unwrap_or(u32::MAX)
+                } else {
+                    i as u32
+                },
+                desc_idx: i as super::types::DescIdx,
             };
+            use super::ready_set::ReadySet as _;
+            if is_edf {
+                let _ = edf.insert(job);
+            } else {
+                let _ = fifo.insert(job);
+            }
+        }
 
+        // SAFETY: each `desc_idx` we pop was set above only when the
+        // corresponding `entries[i]` slot was `Some`; no Executor
+        // mutation happens between that scan and this dispatch.
+        use super::ready_set::ReadySet as _;
+        let dispatch_one = |meta: &CallbackMeta,
+                            arena_ptr: *mut u8,
+                            delta_ms: u64,
+                            result: &mut SpinOnceResult| {
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
                 Ok(true) => match meta.kind {
-                    EntryKind::Subscription => {
-                        result.subscriptions_processed += 1;
-                    }
+                    EntryKind::Subscription => result.subscriptions_processed += 1,
                     EntryKind::Service
                     | EntryKind::ServiceClient
                     | EntryKind::ActionServer
-                    | EntryKind::ActionClient => {
-                        result.services_handled += 1;
-                    }
+                    | EntryKind::ActionClient => result.services_handled += 1,
                     EntryKind::Timer => result.timers_fired += 1,
                     EntryKind::GuardCondition => {}
                 },
                 Ok(false) => {}
                 Err(_) => match meta.kind {
-                    EntryKind::Subscription => {
-                        result.subscription_errors += 1;
-                    }
+                    EntryKind::Subscription => result.subscription_errors += 1,
                     EntryKind::Service
                     | EntryKind::ServiceClient
                     | EntryKind::ActionServer
-                    | EntryKind::ActionClient => {
-                        result.service_errors += 1;
-                    }
+                    | EntryKind::ActionClient => result.service_errors += 1,
                     EntryKind::Timer | EntryKind::GuardCondition => {}
                 },
+            }
+        };
+
+        // Drain EDF first — deadline-prioritised work pre-empts FIFO.
+        while let Some(job) = edf.pop_next() {
+            let i = job.desc_idx as usize;
+            if let Some(meta) = self.entries[i].as_ref() {
+                dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+            }
+        }
+        // Drain FIFO — registration-order legacy path.
+        while let Some(job) = fifo.pop_next() {
+            let i = job.desc_idx as usize;
+            if let Some(meta) = self.entries[i].as_ref() {
+                dispatch_one(meta, arena_ptr, delta_ms, &mut result);
             }
         }
 

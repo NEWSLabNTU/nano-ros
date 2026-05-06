@@ -26,6 +26,7 @@ fn main() {
 
     // --- Primary user-facing knobs ---
     let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
+    let max_sc = env_usize("NROS_EXECUTOR_MAX_SC", 8);
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
     let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
 
@@ -42,6 +43,10 @@ fn main() {
         "/// Maximum number of executor callback slots \
          (set via NROS_EXECUTOR_MAX_CBS, default 4).\n\
          pub const MAX_CBS: usize = {max_cbs};\n\
+         \n\
+         /// Maximum number of `SchedContext` slots per executor \
+         (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
+         pub const MAX_SC: usize = {max_sc};\n\
          \n\
          /// Executor arena size in bytes (derived from MAX_CBS and RX_BUF_SIZE).\n\
          pub const ARENA_SIZE: usize = {arena_size};\n\

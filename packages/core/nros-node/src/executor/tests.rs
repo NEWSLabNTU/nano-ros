@@ -158,6 +158,123 @@ fn test_multiple_subscriptions() {
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
 
+/// Phase 110.B — when two subscriptions are bound to `Edf` SCs,
+/// the one with the earlier deadline dispatches first regardless of
+/// registration order.
+#[test]
+fn test_edf_dispatch_order() {
+    use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // `firing_order` records the data field of every msg the callbacks
+    // see, in dispatch order.
+    let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let order_late = firing_order.clone();
+    let order_early = firing_order.clone();
+
+    // Registered first → has lower DescIdx → would normally dispatch
+    // first under the FIFO path. Bind to a *later* deadline.
+    let h_late = executor
+        .add_subscription::<TestMsg, _>("/late", move |msg: &TestMsg| {
+            order_late.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+
+    // Registered second → higher DescIdx → would dispatch second under
+    // FIFO. Bind to an *earlier* deadline so EDF promotes it.
+    let h_early = executor
+        .add_subscription::<TestMsg, _>("/early", move |msg: &TestMsg| {
+            order_early.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+
+    let sc_late = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Edf,
+            deadline_us: OptUs::from_us(1000),
+            deadline_policy: DeadlinePolicy::Activated,
+            ..Default::default()
+        })
+        .unwrap();
+    let sc_early = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Edf,
+            deadline_us: OptUs::from_us(100),
+            deadline_policy: DeadlinePolicy::Activated,
+            ..Default::default()
+        })
+        .unwrap();
+
+    executor.bind_handle_to_sched_context(h_late, sc_late).unwrap();
+    executor.bind_handle_to_sched_context(h_early, sc_early).unwrap();
+
+    // Load data into both subscribers — `data` field identifies which
+    // is which in the firing log.
+    let (d_late, n_late) = encode_test_msg(10);
+    let (d_early, n_early) = encode_test_msg(20);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off_late = executor.entries[0].as_ref().unwrap().offset;
+    let off_early = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off_late) as *const MockSubscriber) }.load(d_late, n_late);
+    unsafe { &*(arena_ptr.add(off_early) as *const MockSubscriber) }.load(d_early, n_early);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 2);
+
+    let order = firing_order.lock().unwrap();
+    // Earlier-deadline (data=20) must precede later-deadline (data=10).
+    assert_eq!(*order, std::vec![20, 10]);
+}
+
+/// Phase 110.B — default `Fifo` SC binding preserves registration
+/// order even when other entries are bound to `Edf` SCs.
+#[test]
+fn test_fifo_default_binding_preserved_alongside_edf() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let o1 = firing_order.clone();
+    let o2 = firing_order.clone();
+
+    let _h1 = executor
+        .add_subscription::<TestMsg, _>("/fifo1", move |msg: &TestMsg| {
+            o1.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+    let h2 = executor
+        .add_subscription::<TestMsg, _>("/edf", move |msg: &TestMsg| {
+            o2.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+
+    let sc_edf = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Edf,
+            deadline_us: OptUs::from_us(50),
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h2, sc_edf).unwrap();
+
+    let (d1, n1) = encode_test_msg(1);
+    let (d2, n2) = encode_test_msg(2);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off1 = executor.entries[0].as_ref().unwrap().offset;
+    let off2 = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off1) as *const MockSubscriber) }.load(d1, n1);
+    unsafe { &*(arena_ptr.add(off2) as *const MockSubscriber) }.load(d2, n2);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 2);
+
+    // EDF-bound entry (data=2) drains first; FIFO-bound (data=1) second.
+    let order = firing_order.lock().unwrap();
+    assert_eq!(*order, std::vec![2, 1]);
+}
+
 #[test]
 fn test_arena_overflow() {
     let session = MockSession::new();

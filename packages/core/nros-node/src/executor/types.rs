@@ -335,6 +335,13 @@ pub enum NodeError {
     /// to be delivered to the *next* call. Resolve by either polling the
     /// existing promise to completion or calling `reset_in_flight()`.
     RequestInFlight,
+    /// Phase 110.B — `create_sched_context` ran out of slots
+    /// (`MAX_SC` exceeded).
+    NoSchedContextSlot,
+    /// Phase 110.B — `bind_handle_to_sched_context` was called with
+    /// an out-of-range handle, an empty entry slot, or an unknown
+    /// `SchedContextId`.
+    InvalidSchedContextBinding,
 }
 
 impl From<TransportError> for NodeError {
