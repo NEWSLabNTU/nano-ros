@@ -41,6 +41,24 @@ unsafe extern "C" {
     #[link_name = "_tx_thread_relinquish"]
     pub fn tx_thread_relinquish();
 
+    // Phase 110.D — per-thread scheduling controls.
+    #[link_name = "_tx_thread_identify"]
+    pub fn tx_thread_identify() -> *mut c_void;
+    #[link_name = "_tx_thread_priority_change"]
+    pub fn tx_thread_priority_change(
+        thread: *mut c_void,
+        new_priority: u32,
+        old_priority: *mut u32,
+    ) -> u32;
+    #[link_name = "_tx_thread_preemption_change"]
+    pub fn tx_thread_preemption_change(
+        thread: *mut c_void,
+        new_threshold: u32,
+        old_threshold: *mut u32,
+    ) -> u32;
+    #[link_name = "_tx_thread_smp_core_exclude"]
+    pub fn tx_thread_smp_core_exclude(thread: *mut c_void, exclude_map: u32) -> u32;
+
     // Threads
     #[link_name = "_tx_thread_create"]
     pub fn tx_thread_create(

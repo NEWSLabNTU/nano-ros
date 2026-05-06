@@ -193,6 +193,90 @@ impl nros_platform_api::PlatformYield for ThreadxPlatform {
 }
 
 // ============================================================================
+// Phase 110.D — PlatformScheduler (ThreadX)
+// ============================================================================
+//
+// ThreadX priorities run **direction-flipped**: 0 = highest, larger
+// = lower. `os_pri` from `SchedPolicy` is interpreted as the raw
+// ThreadX numeric priority (0 = highest); the abstract
+// `Priority::{Critical, Normal, BestEffort}` mapping lives in a
+// future layer.
+//
+// `RoundRobin`'s `quantum_ms` would map to `tx_thread_time_slice_change`
+// — left out of v1 since same-priority round-robin is a niche knob;
+// land alongside the time-slice surface when 110.E ships.
+//
+// `Deadline` / `Sporadic` have no ThreadX analog; both surface
+// `Unsupported`.
+
+const TX_SUCCESS: u32 = 0;
+
+impl nros_platform_api::PlatformScheduler for ThreadxPlatform {
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::{SchedError, SchedPolicy};
+        let new_priority = match p {
+            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => {
+                os_pri as u32
+            }
+            SchedPolicy::Deadline { .. } | SchedPolicy::Sporadic { .. } => {
+                return Err(SchedError::Unsupported);
+            }
+        };
+        // SAFETY: `tx_thread_identify` returns the calling thread's
+        // TX_THREAD pointer (or NULL when called from ISR / scheduler
+        // — surface KernelError if so). `tx_thread_priority_change`
+        // ignores `old_priority` when NULL is passed.
+        let mut old: u32 = 0;
+        let ret = unsafe {
+            let me = ffi::tx_thread_identify();
+            if me.is_null() {
+                return Err(SchedError::KernelError);
+            }
+            ffi::tx_thread_priority_change(me, new_priority, &mut old as *mut u32)
+        };
+        if ret == TX_SUCCESS {
+            Ok(())
+        } else {
+            // ThreadX returns TX_PRIORITY_ERROR (0x0F) for out-of-range
+            // priorities, TX_THREAD_ERROR (0x0E) for invalid handles.
+            Err(SchedError::OutOfRange)
+        }
+    }
+
+    #[inline]
+    fn yield_now() {
+        unsafe { ffi::tx_thread_relinquish() };
+    }
+
+    fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::SchedError;
+        if cpu_mask == 0 {
+            return Err(SchedError::OutOfRange);
+        }
+        // ThreadX SMP affinity is expressed as an *exclude* mask
+        // (`tx_thread_smp_core_exclude`): bits set = cores to avoid.
+        // Translate the user-supplied "include" mask into the
+        // complementary exclude mask. 32-core cap matches u32 width.
+        let exclude = !cpu_mask;
+        let ret = unsafe {
+            let me = ffi::tx_thread_identify();
+            if me.is_null() {
+                return Err(SchedError::KernelError);
+            }
+            ffi::tx_thread_smp_core_exclude(me, exclude)
+        };
+        if ret == TX_SUCCESS {
+            Ok(())
+        } else {
+            // Non-SMP ThreadX builds return TX_NOT_SUPPORTED (0x09).
+            Err(SchedError::Unsupported)
+        }
+    }
+}
+
+// ============================================================================
 // Random — xorshift (shared helpers from nros_platform_api::xorshift32)
 // ============================================================================
 
