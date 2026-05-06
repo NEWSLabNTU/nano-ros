@@ -451,6 +451,12 @@ pub struct NrosRmwVtable {
     // ---- Phase 108.B — manual liveliness assertion (optional) ----
     pub assert_publisher_liveliness:
         unsafe extern "C" fn(publisher: *mut NrosRmwPublisher) -> NrosRmwRet,
+
+    // ---- Phase 110.0 — backend's next internal-event deadline ----
+    /// Returns next deadline in ms (≥ 0) or a negative value for
+    /// "no deadline". NULL function pointer = treat as no deadline.
+    pub next_deadline_ms:
+        Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
 }
 
 // ============================================================================
@@ -884,6 +890,21 @@ impl Session for CffiSession {
             return Err(error_from_ret(ret));
         }
         Ok(())
+    }
+
+    fn next_deadline_ms(&self) -> Option<u32> {
+        let f = self.vtable.next_deadline_ms?;
+        // SAFETY: build a transient `&self`-only view of the session
+        // fields the C side may inspect; matches the layout `make_view`
+        // produces but doesn't require `&mut self`.
+        let view = NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr(),
+            namespace_: self.namespace_buf.as_ptr(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        let ret = unsafe { f(&view as *const _) };
+        if ret < 0 { None } else { Some(ret as u32) }
     }
 }
 
@@ -1588,6 +1609,7 @@ mod tests {
         register_subscriber_event: stub_register_subscriber_event,
         register_publisher_event: stub_register_publisher_event,
         assert_publisher_liveliness: stub_assert_publisher_liveliness,
+        next_deadline_ms: None,
     };
 
     #[test]

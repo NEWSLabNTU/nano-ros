@@ -890,6 +890,22 @@ pub trait Session {
     fn supported_qos_policies(&self) -> QosPolicyMask {
         QosPolicyMask::CORE
     }
+
+    /// Phase 110.0 — backend's next internal-event deadline in
+    /// milliseconds from now (lease keepalive, heartbeat, reader
+    /// ACK-NACK timeout, etc.).
+    ///
+    /// The executor caps its `drive_io` timeout against
+    /// `min(user_timeout, timer_deadline, this)` so quiet links don't
+    /// wake early, see no user-visible work, and round-trip back into
+    /// `drive_io`. Returns `None` when the backend has no internal
+    /// deadlines or chooses not to expose them.
+    ///
+    /// Default `None` keeps existing backends working unchanged; opt-in
+    /// per backend.
+    fn next_deadline_ms(&self) -> Option<u32> {
+        None
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See

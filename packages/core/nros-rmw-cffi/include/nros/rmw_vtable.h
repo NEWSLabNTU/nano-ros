@@ -125,6 +125,20 @@ typedef struct nros_rmw_vtable_t {
      *  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*. */
     nros_rmw_ret_t (*assert_publisher_liveliness)(
         nros_rmw_publisher_t *publisher);
+
+    /** Phase 110.0 — backend's next internal-event deadline in
+     *  milliseconds from now (lease keepalive, heartbeat, reader
+     *  ACK-NACK timeout, etc.). The runtime caps its `drive_io`
+     *  timeout against `min(user_timeout, timer_deadline, this)` so
+     *  quiet links don't wake early, see no user-visible work, and
+     *  round-trip back into `drive_io`.
+     *
+     *  Returns a non-negative milliseconds value, or a negative value
+     *  meaning "no internal deadline" (treat as `None`).
+     *
+     *  NULL function pointer is permitted — the runtime treats it the
+     *  same as a negative return. */
+    int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend. Call before creating any sessions.

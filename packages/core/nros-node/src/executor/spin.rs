@@ -1498,6 +1498,15 @@ impl Executor {
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
 
+        // Phase 110.0 — cap against the backend's next internal-event
+        // deadline (lease keepalive, heartbeat, ACK-NACK timeout, ...).
+        // Default backend impl returns `None`, so this is a no-op
+        // unless the active backend opts in.
+        let timeout_ms = match self.session.next_deadline_ms() {
+            Some(next) => timeout_ms.min(next.min(i32::MAX as u32) as i32),
+            None => timeout_ms,
+        };
+
         // Wall-clock-accurate timer accumulation. Measure real time
         // since the previous `spin_once` exited (or, on the first call,
         // since `drive_io` started). Two failure modes the requested
