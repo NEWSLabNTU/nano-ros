@@ -78,6 +78,29 @@ impl PlatformYield for NuttxPlatform {
     }
 }
 
+// Phase 110.D — NuttX shares the POSIX scheduler path
+// (pthread_setschedparam → SCHED_FIFO / SCHED_RR). Native
+// SCHED_SPORADIC support lands with Phase 110.E once the budget-
+// refill plumbing exists.
+impl nros_platform_api::PlatformScheduler for NuttxPlatform {
+    #[inline]
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        <PosixPlatform as nros_platform_api::PlatformScheduler>::set_current_thread_policy(p)
+    }
+
+    #[inline]
+    fn yield_now() {
+        <PosixPlatform as nros_platform_api::PlatformScheduler>::yield_now()
+    }
+
+    #[inline]
+    fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        <PosixPlatform as nros_platform_api::PlatformScheduler>::set_affinity(cpu_mask)
+    }
+}
+
 impl PlatformRandom for NuttxPlatform {
     #[inline]
     fn random_u8() -> u8 {
