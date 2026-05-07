@@ -287,6 +287,50 @@ impl nros_platform_api::PlatformTimer for PosixPlatform {
             let _ = j.join();
         }
     }
+
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if timeout_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_clone = std::sync::Arc::clone(&stop);
+        let user_data_addr = user_data as usize;
+        let timeout = std::time::Duration::from_micros(timeout_us as u64);
+        let join = std::thread::Builder::new()
+            .name("nros-oneshot".into())
+            .spawn(move || {
+                std::thread::sleep(timeout);
+                if !stop_clone.load(std::sync::atomic::Ordering::Acquire) {
+                    callback(user_data_addr as *mut c_void);
+                }
+            })
+            .map_err(|_| TimerError::KernelError)?;
+        Ok(PosixTimerHandle {
+            stop,
+            join: Some(join),
+        })
+    }
+
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        // `compare_exchange` so we can detect whether we won the
+        // race against the timer firing. Returns true when stop
+        // flipped from false→true (cancellation prevented the
+        // callback).
+        handle
+            .stop
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_ok()
+    }
 }
 
 // ============================================================================
@@ -779,5 +823,46 @@ mod tests_e_b {
         extern "C" fn noop(_: *mut c_void) {}
         let r = PosixPlatform::create_periodic(0, noop, core::ptr::null_mut());
         assert_eq!(r.err(), Some(nros_platform_api::TimerError::OutOfRange));
+    }
+}
+
+#[cfg(test)]
+mod tests_e_b_oneshot {
+    use super::*;
+    use nros_platform_api::PlatformTimer;
+
+    #[test]
+    fn posix_oneshot_fires_once() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let counter_addr = std::sync::Arc::as_ptr(&counter) as *mut c_void;
+        extern "C" fn bump(user_data: *mut c_void) {
+            let c = unsafe { &*(user_data as *const std::sync::atomic::AtomicU32) };
+            c.fetch_add(1, std::sync::atomic::Ordering::Release);
+        }
+        let handle = PosixPlatform::create_oneshot(5_000, bump, counter_addr).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        PosixPlatform::destroy(handle);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn posix_oneshot_cancel_prevents_callback() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let counter_addr = std::sync::Arc::as_ptr(&counter) as *mut c_void;
+        extern "C" fn bump(user_data: *mut c_void) {
+            let c = unsafe { &*(user_data as *const std::sync::atomic::AtomicU32) };
+            c.fetch_add(1, std::sync::atomic::Ordering::Release);
+        }
+        let mut handle = PosixPlatform::create_oneshot(50_000, bump, counter_addr).unwrap();
+        // Cancel before the 50 ms timeout fires.
+        let cancelled = PosixPlatform::cancel(&mut handle);
+        assert!(cancelled, "cancel should win the race");
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        PosixPlatform::destroy(handle);
+        assert_eq!(
+            counter.load(std::sync::atomic::Ordering::Acquire),
+            0,
+            "cancelled oneshot must not fire callback"
+        );
     }
 }

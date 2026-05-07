@@ -1944,17 +1944,45 @@ impl Executor {
                 u32::MAX,
             ));
             // Phase 110.E — Sporadic SC dispatch is suppressed when
-            // its budget is exhausted. `tick` already refilled at
-            // period boundary above; here we just gate.
+            // its budget is exhausted. Atomic path (110.E.b PlatformTimer
+            // refill) takes precedence when registered; polled path
+            // (cycle-level delta_us attribution) handles the unregistered
+            // case. Either way, exhausted budget skips dispatch.
             if matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
-                let has_budget = self
-                    .sporadic_states
+                #[cfg(feature = "alloc")]
+                let atomic_has_budget = self
+                    .sporadic_atomic_states
                     .get(sc_idx)
                     .and_then(|s| s.as_ref())
-                    .map(|s| s.budget_remaining_us > 0)
-                    .unwrap_or(true);
+                    .map(|(state, _)| state.has_budget());
+                #[cfg(not(feature = "alloc"))]
+                let atomic_has_budget: Option<bool> = None;
+                let has_budget = match atomic_has_budget {
+                    Some(b) => b,
+                    None => self
+                        .sporadic_states
+                        .get(sc_idx)
+                        .and_then(|s| s.as_ref())
+                        .map(|s| s.budget_remaining_us > 0)
+                        .unwrap_or(true),
+                };
                 if !has_budget {
                     continue;
+                }
+                // Consume cycle-level `delta_us` against the atomic
+                // budget so it drains until the PlatformTimer fires
+                // a refill. Per-callback runtime measurement (replaces
+                // this worst-case attribution) lands with item 2 of
+                // the 110.E.b follow-up — `PlatformTimer::cancel` +
+                // `restart_oneshot`.
+                #[cfg(feature = "alloc")]
+                if let Some((state, _)) = self
+                    .sporadic_atomic_states
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                {
+                    let delta_us = (delta_ms as u32).saturating_mul(1000);
+                    state.consume(delta_us);
                 }
             }
             // Phase 110.F — per-callback OS priority routing. Entries

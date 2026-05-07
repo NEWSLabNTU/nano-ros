@@ -100,6 +100,22 @@ impl nros_platform_api::PlatformTimer for NuttxPlatform {
     fn destroy(handle: Self::TimerHandle) {
         <PosixPlatform as nros_platform_api::PlatformTimer>::destroy(handle)
     }
+
+    #[inline]
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        <PosixPlatform as nros_platform_api::PlatformTimer>::create_oneshot(
+            timeout_us, callback, user_data,
+        )
+    }
+
+    #[inline]
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        <PosixPlatform as nros_platform_api::PlatformTimer>::cancel(handle)
+    }
 }
 
 // Phase 110.D — NuttX shares the POSIX scheduler path

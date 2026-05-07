@@ -262,6 +262,32 @@ pub trait PlatformTimer {
     /// handles. Must drain in-flight callback invocations before
     /// returning so the user_data pointer is no longer accessed.
     fn destroy(_handle: Self::TimerHandle) {}
+
+    /// Phase 110.E.b follow-up — register a one-shot timer that
+    /// fires `callback(user_data)` exactly once after `timeout_us`
+    /// microseconds. Used by per-callback runtime measurement: arm
+    /// just before dispatch with `timeout_us = budget_us`; on
+    /// callback completion call `cancel`. If the timer fires first
+    /// the callback overran its budget.
+    ///
+    /// Default returns `Unsupported` so platforms without a oneshot
+    /// surface inherit safe behavior.
+    fn create_oneshot(
+        _timeout_us: u32,
+        _callback: extern "C" fn(*mut c_void),
+        _user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, TimerError> {
+        Err(TimerError::Unsupported)
+    }
+
+    /// Phase 110.E.b follow-up — cancel a previously-armed oneshot
+    /// timer. Returns `true` when the cancellation prevented the
+    /// callback from firing, `false` when the callback already
+    /// fired (or the timer was already cancelled). Default is a
+    /// no-op returning `false`.
+    fn cancel(_handle: &mut Self::TimerHandle) -> bool {
+        false
+    }
 }
 
 pub trait PlatformScheduler {
