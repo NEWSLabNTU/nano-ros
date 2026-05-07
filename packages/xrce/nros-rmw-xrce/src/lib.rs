@@ -44,8 +44,10 @@ pub mod platform_udp;
 pub mod platform_serial;
 
 use atomic_waker::AtomicWaker;
-use core::ffi::{c_char, c_int, c_void};
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::{
+    ffi::{c_char, c_int, c_void},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 // Phase 108.C.xrce.2 — AtomicU32/U64 for deadline accounting.
 // portable-atomic provides software fallbacks for targets without
 // native u64/u32 atomics (Cortex-M0+ when ESP32-style xtensa is in
@@ -370,7 +372,10 @@ impl SubscriberSlot {
             return;
         }
         self.last_deadline_fire_ms.store(now, Ordering::Release);
-        let total = self.deadline_total.fetch_add(1, Ordering::AcqRel).saturating_add(1);
+        let total = self
+            .deadline_total
+            .fetch_add(1, Ordering::AcqRel)
+            .saturating_add(1);
         let status = nros_rmw::CountStatus {
             total_count: total,
             total_count_change: 1,
@@ -563,10 +568,7 @@ fn emit_history(
 
 /// Phase 108.C.xrce.3 — emit `<deadline>` if non-zero (zero ⇒ infinite,
 /// FastDDS default — omit element).
-fn emit_deadline(
-    buf: &mut heapless::String<XML_BUF_SIZE>,
-    deadline_ms: u32,
-) -> core::fmt::Result {
+fn emit_deadline(buf: &mut heapless::String<XML_BUF_SIZE>, deadline_ms: u32) -> core::fmt::Result {
     use core::fmt::Write as _;
     if deadline_ms == 0 {
         return Ok(());
@@ -579,10 +581,7 @@ fn emit_deadline(
 }
 
 /// Phase 108.C.xrce.3 — emit `<lifespan>` if non-zero.
-fn emit_lifespan(
-    buf: &mut heapless::String<XML_BUF_SIZE>,
-    lifespan_ms: u32,
-) -> core::fmt::Result {
+fn emit_lifespan(buf: &mut heapless::String<XML_BUF_SIZE>, lifespan_ms: u32) -> core::fmt::Result {
     use core::fmt::Write as _;
     if lifespan_ms == 0 {
         return Ok(());
@@ -648,14 +647,12 @@ fn build_datawriter_xml(
     .map_err(|_| TransportError::TopicNameInvalid)?;
     emit_durability(&mut buf, qos.durability).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_reliability(&mut buf, qos.reliability).map_err(|_| TransportError::TopicNameInvalid)?;
-    emit_history(&mut buf, qos.history, qos.depth)
-        .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_history(&mut buf, qos.history, qos.depth).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_deadline(&mut buf, qos.deadline_ms).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_lifespan(&mut buf, qos.lifespan_ms).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_liveliness(&mut buf, qos.liveliness_kind, qos.liveliness_lease_ms)
         .map_err(|_| TransportError::TopicNameInvalid)?;
-    write!(&mut buf, "</qos></data_writer></dds>")
-        .map_err(|_| TransportError::TopicNameInvalid)?;
+    write!(&mut buf, "</qos></data_writer></dds>").map_err(|_| TransportError::TopicNameInvalid)?;
     Ok(buf)
 }
 
@@ -674,14 +671,12 @@ fn build_datareader_xml(
     .map_err(|_| TransportError::TopicNameInvalid)?;
     emit_durability(&mut buf, qos.durability).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_reliability(&mut buf, qos.reliability).map_err(|_| TransportError::TopicNameInvalid)?;
-    emit_history(&mut buf, qos.history, qos.depth)
-        .map_err(|_| TransportError::TopicNameInvalid)?;
+    emit_history(&mut buf, qos.history, qos.depth).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_deadline(&mut buf, qos.deadline_ms).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_lifespan(&mut buf, qos.lifespan_ms).map_err(|_| TransportError::TopicNameInvalid)?;
     emit_liveliness(&mut buf, qos.liveliness_kind, qos.liveliness_lease_ms)
         .map_err(|_| TransportError::TopicNameInvalid)?;
-    write!(&mut buf, "</qos></data_reader></dds>")
-        .map_err(|_| TransportError::TopicNameInvalid)?;
+    write!(&mut buf, "</qos></data_reader></dds>").map_err(|_| TransportError::TopicNameInvalid)?;
     Ok(buf)
 }
 
@@ -770,6 +765,133 @@ pub unsafe fn init_transport(
         );
         xrce_sys::uxr_init_custom_transport(&raw mut state().transport, core::ptr::null_mut());
     }
+}
+
+// ============================================================================
+// Phase 115.E — bridge `nros_rmw::NrosTransportOps` to XRCE custom-transport
+// ============================================================================
+
+/// Phase 115.E — slot holding the registered `NrosTransportOps`.
+///
+/// `init_transport_from_custom_ops` writes here and the four trampolines
+/// below read back. We can't use `nros_rmw::peek_custom_transport`
+/// directly from the trampolines because each call would re-acquire
+/// the `Mutex`; this slot is set once at registration and read many
+/// times under XRCE's single-threaded session loop.
+///
+/// `*const c_void` instead of `unsafe extern "C" fn` because Rust
+/// 2024 strictness around fn-pointer-in-static-mut is awkward and we
+/// only need pointer-typed storage to feed the C ABI back.
+struct XrceCustomOps {
+    user_data: *mut c_void,
+    write: Option<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> i32>,
+    read: Option<unsafe extern "C" fn(*mut c_void, *mut u8, usize, u32) -> i32>,
+    open: Option<unsafe extern "C" fn(*mut c_void, *const c_void) -> i32>,
+    close: Option<unsafe extern "C" fn(*mut c_void)>,
+}
+
+/// SAFETY: same Sync/Send rationale as `nros_rmw::NrosTransportOps` —
+/// fn-ptr fields are Send+Sync; `user_data` discipline is the caller's
+/// responsibility per the threading contract.
+unsafe impl Sync for XrceCustomOps {}
+
+static XRCE_CUSTOM_OPS: SharedCell<XrceCustomOps> = SharedCell::new(XrceCustomOps {
+    user_data: core::ptr::null_mut(),
+    write: None,
+    read: None,
+    open: None,
+    close: None,
+});
+
+#[inline(always)]
+unsafe fn xrce_custom_ops() -> &'static mut XrceCustomOps {
+    unsafe { &mut *XRCE_CUSTOM_OPS.0.get() }
+}
+
+unsafe extern "C" fn xrce_custom_open_trampoline(_t: *mut xrce_sys::uxrCustomTransport) -> bool {
+    let ops = unsafe { xrce_custom_ops() };
+    let Some(open_fn) = ops.open else {
+        return true; // No open callback registered → nothing to do, success.
+    };
+    let ret = unsafe { open_fn(ops.user_data, core::ptr::null()) };
+    ret == 0
+}
+
+unsafe extern "C" fn xrce_custom_close_trampoline(_t: *mut xrce_sys::uxrCustomTransport) -> bool {
+    let ops = unsafe { xrce_custom_ops() };
+    if let Some(close_fn) = ops.close {
+        unsafe { close_fn(ops.user_data) };
+    }
+    true
+}
+
+unsafe extern "C" fn xrce_custom_write_trampoline(
+    _t: *mut xrce_sys::uxrCustomTransport,
+    buf: *const u8,
+    len: usize,
+    _err: *mut u8,
+) -> usize {
+    let ops = unsafe { xrce_custom_ops() };
+    let Some(write_fn) = ops.write else {
+        return 0;
+    };
+    let ret = unsafe { write_fn(ops.user_data, buf, len) };
+    if ret == 0 { len } else { 0 }
+}
+
+unsafe extern "C" fn xrce_custom_read_trampoline(
+    _t: *mut xrce_sys::uxrCustomTransport,
+    buf: *mut u8,
+    len: usize,
+    timeout: c_int,
+    _err: *mut u8,
+) -> usize {
+    let ops = unsafe { xrce_custom_ops() };
+    let Some(read_fn) = ops.read else {
+        return 0;
+    };
+    let timeout_ms = if timeout < 0 { 0u32 } else { timeout as u32 };
+    let ret = unsafe { read_fn(ops.user_data, buf, len, timeout_ms) };
+    if ret < 0 { 0 } else { ret as usize }
+}
+
+/// Phase 115.E — wire a runtime-registered `NrosTransportOps` into the
+/// XRCE-DDS custom-transport machinery. Idempotent — calling twice
+/// overwrites the slot.
+///
+/// Pulls the most recently registered `nros_rmw::NrosTransportOps`
+/// out of the shared slot, copies it into XRCE-local trampoline state,
+/// then calls [`init_transport`] with C-side trampolines that fan back
+/// out to the user's callbacks.
+///
+/// Returns `false` if no transport was registered (caller must call
+/// `nros_rmw::set_custom_transport(...)` first); `true` on success.
+///
+/// # Safety
+///
+/// Must be called before `XrceRmw::open()`. The user_data pointer
+/// stored in the registered `NrosTransportOps` must remain valid until
+/// session close (same rule as `init_transport`).
+pub unsafe fn init_transport_from_custom_ops(framing: bool) -> bool {
+    let Some(ops) = nros_rmw::take_custom_transport() else {
+        return false;
+    };
+    unsafe {
+        let slot = xrce_custom_ops();
+        slot.user_data = ops.user_data;
+        slot.open = Some(ops.open);
+        slot.close = Some(ops.close);
+        slot.write = Some(ops.write);
+        slot.read = Some(ops.read);
+        init_transport(
+            Some(xrce_custom_open_trampoline),
+            Some(xrce_custom_close_trampoline),
+            Some(xrce_custom_write_trampoline),
+            Some(xrce_custom_read_trampoline),
+            framing,
+        );
+    }
+    true
 }
 
 // ============================================================================
@@ -1172,7 +1294,8 @@ impl Session for XrceSession {
             let dw_obj_id = alloc_entity_id(UXR_DATAWRITER_ID);
 
             // Format DDS topic name
-            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
+            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
             let mut topic_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
 
@@ -1289,7 +1412,8 @@ impl Session for XrceSession {
             let dr_obj_id = alloc_entity_id(UXR_DATAREADER_ID);
 
             // Format DDS topic name
-            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
+            let dds_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_topic_name(topic.name, qos.avoid_ros_namespace_conventions);
             let mut topic_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
 
@@ -2378,7 +2502,11 @@ mod xml_tests {
             "<lifespan><duration><sec>1</sec><nanosec>0</nanosec></duration></lifespan>"
         ));
         assert!(xml.contains("<kind>MANUAL_BY_TOPIC</kind>"));
-        assert!(xml.contains("<lease_duration><sec>2</sec><nanosec>500000000</nanosec></lease_duration>"));
+        assert!(
+            xml.contains(
+                "<lease_duration><sec>2</sec><nanosec>500000000</nanosec></lease_duration>"
+            )
+        );
         assert!(xml.ends_with("</qos></data_writer></dds>"));
     }
 

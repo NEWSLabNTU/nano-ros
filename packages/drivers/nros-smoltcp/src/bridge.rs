@@ -8,18 +8,23 @@
 //! This crate is RMW-agnostic — it can be used by zenoh-pico, XRCE-DDS,
 //! or any other middleware that needs TCP/UDP networking on bare-metal.
 
-use smoltcp::iface::{Interface, PollResult, SocketHandle, SocketSet};
-use smoltcp::phy::Device;
-use smoltcp::socket::tcp::{Socket as TcpSocket, State as TcpState};
-use smoltcp::socket::udp::{Socket as UdpSocket, UdpMetadata};
-use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
+use smoltcp::{
+    iface::{Interface, PollResult, SocketHandle, SocketSet},
+    phy::Device,
+    socket::{
+        tcp::{Socket as TcpSocket, State as TcpState},
+        udp::{Socket as UdpSocket, UdpMetadata},
+    },
+    wire::{IpAddress, IpEndpoint, Ipv4Address},
+};
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-pub use crate::config::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
-pub use crate::config::{MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE};
+pub use crate::config::{
+    CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
+};
 
 /// RFC 6056 ephemeral port range lower bound.
 const EPHEMERAL_PORT_START: u16 = 49152;
@@ -352,13 +357,10 @@ pub fn queue_multicast_join(group: Ipv4Address) -> bool {
 }
 
 // Phase 97.3 mcast-join diagnostic counters.
-static MCAST_JOIN_ATTEMPTS: portable_atomic::AtomicU32 =
-    portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_ATTEMPTS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 static MCAST_JOIN_OK: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
-static MCAST_JOIN_ERR_UNADDR: portable_atomic::AtomicU32 =
-    portable_atomic::AtomicU32::new(0);
-static MCAST_JOIN_ERR_FULL: portable_atomic::AtomicU32 =
-    portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_UNADDR: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static MCAST_JOIN_ERR_FULL: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
 /// Snapshot of multicast-join counters (attempts, ok, err_unaddressable, err_full).
 pub fn mcast_join_counters() -> (u32, u32, u32, u32) {

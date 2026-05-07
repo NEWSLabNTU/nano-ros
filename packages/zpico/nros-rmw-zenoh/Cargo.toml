@@ -19,6 +19,11 @@ platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 link-tcp = ["zpico-sys/link-tcp"]
 link-udp-unicast = ["zpico-sys/link-udp-unicast"]
 link-tls = ["zpico-sys/link-tls"]
+# Phase 115.B — runtime-pluggable user transport. Enables the
+# `custom://` locator scheme; users register a `NrosTransportOps`
+# vtable via `nros_rmw::set_custom_transport(...)` BEFORE opening
+# the session.
+link-custom = ["zpico-sys/link-custom"]
 std = ["alloc", "zpico-sys/std", "nros-rmw/std", "log"]
 alloc = ["nros-rmw/alloc"]
 rtic = []

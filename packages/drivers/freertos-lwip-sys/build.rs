@@ -7,8 +7,7 @@
 //!   FREERTOS_CONFIG_DIR — Directory with FreeRTOSConfig.h and lwipopts.h
 //!   LWIP_DIR           — lwIP source (e.g., third-party/freertos/lwip)
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 fn main() {
     let freertos_dir = match env::var("FREERTOS_DIR") {

@@ -13,8 +13,7 @@
 //! invocation. Multi-device platforms can still be reused from other
 //! callers (`zpico-serial` et al.) without interference.
 
-use core::cell::UnsafeCell;
-use core::ffi::c_int;
+use core::{cell::UnsafeCell, ffi::c_int};
 
 use nros_platform::{ConcretePlatform, PlatformSerial};
 

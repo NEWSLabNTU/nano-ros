@@ -231,6 +231,13 @@ endif()
 if(CONFIG_NROS_CPP_API)
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
+    # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
+    # unified user-entry contract used by both C and C++ examples).
+    # Cpp Zephyr builds need the nros-c include dir for that header
+    # plus the Zephyr Kconfig synthesis variant of `<nros/app_config.h>`
+    # under `nros/zephyr/`.
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include)
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include/nros/zephyr)
 
     # Make nros_generate_interfaces() available for C++ examples
     include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)

@@ -1,0 +1,19 @@
+[package]
+name = "zpico-platform-custom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Phase 115.B — Rust extern that the zenoh-pico custom-link scheme calls to drain the registered NrosTransportOps"
+
+[dependencies]
+nros-rmw = { workspace = true, default-features = false }
+
+[features]
+default = []
+# Activated by `zpico-sys/link-custom` to ensure the
+# `nros_zpico_custom_take` extern symbol is force-linked.
+active = []
+
+[lints]
+workspace = true

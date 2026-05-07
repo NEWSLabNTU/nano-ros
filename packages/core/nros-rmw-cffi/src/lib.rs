@@ -69,6 +69,38 @@ pub const NROS_RMW_RET_BUFFER_TOO_SMALL: NrosRmwRet = -12;
 /// Incoming message exceeded the backend's static capacity.
 pub const NROS_RMW_RET_MESSAGE_TOO_LARGE: NrosRmwRet = -13;
 
+// Phase 115.G.4 — anchor every C-stub-transport symbol so they
+// survive `--gc-sections` when integration tests link against
+// `libnros_rmw_cffi`. Only compiled when the c-stub-test feature
+// is on; otherwise no C anchor + no toolchain dep.
+#[cfg(feature = "c-stub-test")]
+unsafe extern "C" {
+    fn nros_c_stub_make_ops(out: *mut core::ffi::c_void);
+    fn nros_c_stub_reset_counters();
+    fn nros_c_stub_get_open_calls() -> u32;
+    fn nros_c_stub_get_close_calls() -> u32;
+    fn nros_c_stub_get_write_calls() -> u32;
+    fn nros_c_stub_get_read_calls() -> u32;
+}
+#[cfg(feature = "c-stub-test")]
+#[doc(hidden)]
+pub fn _phase_115_g4_anchor() -> [*const core::ffi::c_void; 6] {
+    [
+        nros_c_stub_make_ops as *const _,
+        nros_c_stub_reset_counters as *const _,
+        nros_c_stub_get_open_calls as *const _,
+        nros_c_stub_get_close_calls as *const _,
+        nros_c_stub_get_write_calls as *const _,
+        nros_c_stub_get_read_calls as *const _,
+    ]
+}
+/// Phase 115.A.2 — caller's vtable struct has an `abi_version` the
+/// runtime doesn't know. Returned by entry points that take a
+/// versioned vtable struct (`nros_set_custom_transport`,
+/// `nros_cpp_set_custom_transport`, …) when
+/// `vtable.abi_version != NROS_RMW_*_ABI_VERSION_VN`.
+pub const NROS_RMW_RET_INCOMPATIBLE_ABI: NrosRmwRet = -14;
+
 /// Map a `TransportError` to the corresponding `nros_rmw_ret_t` code.
 ///
 /// By-reference because `TransportError` carries a `String` on its
@@ -91,6 +123,7 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         TransportError::NodeNameNonExistent => NROS_RMW_RET_NODE_NAME_NON_EXISTENT,
         TransportError::LoanNotSupported => NROS_RMW_RET_LOAN_NOT_SUPPORTED,
         TransportError::NoData => NROS_RMW_RET_NO_DATA,
+        TransportError::IncompatibleAbi => NROS_RMW_RET_INCOMPATIBLE_ABI,
         // Everything else collapses to NROS_RMW_RET_ERROR. Backends
         // that want fine-grained reporting should adopt the named
         // variants above (Phase 102.2 sweep).
@@ -126,6 +159,7 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         NROS_RMW_RET_WOULD_BLOCK => TransportError::WouldBlock,
         NROS_RMW_RET_BUFFER_TOO_SMALL => TransportError::BufferTooSmall,
         NROS_RMW_RET_MESSAGE_TOO_LARGE => TransportError::MessageTooLarge,
+        NROS_RMW_RET_INCOMPATIBLE_ABI => TransportError::IncompatibleAbi,
         _ => TransportError::Backend("unknown rmw_ret_t"),
     }
 }
@@ -455,8 +489,7 @@ pub struct NrosRmwVtable {
     // ---- Phase 110.0 — backend's next internal-event deadline ----
     /// Returns next deadline in ms (≥ 0) or a negative value for
     /// "no deadline". NULL function pointer = treat as no deadline.
-    pub next_deadline_ms:
-        Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
+    pub next_deadline_ms: Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
 }
 
 // ============================================================================

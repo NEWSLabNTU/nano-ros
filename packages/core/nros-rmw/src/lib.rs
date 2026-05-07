@@ -52,7 +52,8 @@ pub use event::{
 
 // Phase 115.A — runtime-pluggable custom transport vtable.
 pub use custom_transport::{
-    NrosTransportOps, peek_custom_transport, set_custom_transport, take_custom_transport,
+    NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, peek_custom_transport,
+    set_custom_transport, take_custom_transport,
 };
 
 // Re-export safety types when feature is enabled

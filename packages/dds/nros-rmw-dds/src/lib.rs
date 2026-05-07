@@ -55,6 +55,8 @@ mod session;
 mod subscriber;
 mod transport;
 #[cfg(feature = "alloc")]
+pub mod transport_custom;
+#[cfg(feature = "alloc")]
 pub mod transport_nros;
 mod waker_cell;
 

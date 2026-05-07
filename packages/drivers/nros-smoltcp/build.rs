@@ -3,8 +3,7 @@
 //! Reads NROS_SMOLTCP_* environment variables (with ZPICO_SMOLTCP_* fallback)
 //! and generates `nros_smoltcp_config.rs` with compile-time configurable constants.
 
-use std::env;
-use std::path::Path;
+use std::{env, path::Path};
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();

@@ -39,11 +39,16 @@ pub use bridge::{
 };
 
 // Re-export smoltcp types needed by board crates
-pub use smoltcp::iface::{Interface, SocketSet, SocketStorage};
-pub use smoltcp::phy::Device;
-pub use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
-pub use smoltcp::socket::udp::{
-    PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata, Socket as UdpSocket,
+pub use smoltcp::{
+    iface::{Interface, SocketSet, SocketStorage},
+    phy::Device,
+    socket::{
+        tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
+        udp::{
+            PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata,
+            Socket as UdpSocket,
+        },
+    },
 };
 // Phase 71.26 — re-export `Ipv4Address` so the
 // `define_smoltcp_platform!` macro can construct multicast group

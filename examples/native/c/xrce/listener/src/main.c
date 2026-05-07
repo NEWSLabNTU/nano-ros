@@ -130,6 +130,7 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     NROS_CHECK_RET(nros_support_init(&app.support, agent_addr, domain_id), 1);
+    printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_listener", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 

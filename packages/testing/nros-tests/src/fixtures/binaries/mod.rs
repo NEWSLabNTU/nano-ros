@@ -27,6 +27,12 @@ static NATIVE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-listener binary
 static NATIVE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 115.F — cached path to the custom-transport-talker example.
+static NATIVE_CT_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Phase 115.F — cached path to the custom-transport-listener example.
+static NATIVE_CT_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -272,6 +278,34 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
         .get_or_try_init(|| build_example("native/rust/zenoh/listener", "listener", None, None))
+        .map(|p| p.as_path())
+}
+
+/// Phase 115.F — build the custom-transport talker example (cached).
+pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
+    NATIVE_CT_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/custom-transport-talker",
+                "talker",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 115.F — build the custom-transport listener example (cached).
+pub fn build_native_custom_transport_listener() -> TestResult<&'static Path> {
+    NATIVE_CT_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/custom-transport-listener",
+                "listener",
+                None,
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 

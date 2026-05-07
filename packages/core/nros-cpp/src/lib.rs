@@ -188,6 +188,10 @@ mod timer;
 ))]
 mod action;
 
+// Phase 115.D — runtime-pluggable custom transport. Always-on (no
+// rmw-* gate) because the registration is platform-side, not RMW-side.
+mod transport;
+
 // ============================================================================
 // Error codes (mirror nros-c for consistency)
 // ============================================================================

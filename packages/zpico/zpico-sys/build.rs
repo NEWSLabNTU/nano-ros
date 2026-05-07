@@ -25,6 +25,8 @@ struct LinkFeatures {
     tls: bool,
     // Phase 100.4 — NVIDIA Tegra IVC link transport.
     ivc: bool,
+    // Phase 115.B — runtime-pluggable user transport.
+    custom: bool,
 }
 
 impl LinkFeatures {
@@ -38,6 +40,7 @@ impl LinkFeatures {
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
+            custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok(),
         }
     }
 
@@ -61,6 +64,9 @@ impl LinkFeatures {
     }
     fn ivc_flag(&self) -> u8 {
         self.ivc as u8
+    }
+    fn custom_flag(&self) -> u8 {
+        self.custom as u8
     }
 }
 
@@ -290,6 +296,12 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_LINK_WS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_SERIAL_USB 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_IVC {}", link.ivc_flag()).unwrap();
+    writeln!(
+        header,
+        "#define Z_FEATURE_LINK_CUSTOM {}",
+        link.custom_flag()
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,
@@ -314,7 +326,17 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header).unwrap();
     writeln!(header, "// Protocol Features").unwrap();
     writeln!(header, "#define Z_FEATURE_FRAGMENTATION 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_ENCODING_VALUES 1").unwrap();
+    // Encoding-name strings (`text/plain`, `application/json`, ...). ROS-over-
+    // Zenoh uses CDR; encoding name is never consulted. SPE drops it; other
+    // platforms keep the upstream default.
+    let orin_spe = env::var("CARGO_FEATURE_ORIN_SPE").is_ok();
+    let encoding_values = if orin_spe { 0 } else { 1 };
+    writeln!(
+        header,
+        "#define Z_FEATURE_ENCODING_VALUES {}",
+        encoding_values
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_TCP_NODELAY 1").unwrap();
     writeln!(header, "#define Z_FEATURE_LOCAL_SUBSCRIBER 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LOCAL_QUERYABLE 0").unwrap();
@@ -325,7 +347,16 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_MATCHING 0").unwrap();
     writeln!(header, "#define Z_FEATURE_RX_CACHE 0").unwrap();
     writeln!(header, "#define Z_FEATURE_UNICAST_PEER 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_AUTO_RECONNECT 1").unwrap();
+    // Auto-reconnect is dead code on the IVC link (fixed-frame mailbox, no
+    // disconnect path). SPE drops it; other platforms keep the upstream
+    // default for transport-level reconnect on TCP / serial / TLS.
+    let auto_reconnect = if orin_spe { 0 } else { 1 };
+    writeln!(
+        header,
+        "#define Z_FEATURE_AUTO_RECONNECT {}",
+        auto_reconnect
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_MULTICAST_DECLARATIONS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_PERIODIC_TASKS 0").unwrap();
     writeln!(header).unwrap();
@@ -1165,6 +1196,14 @@ fn build_zenoh_pico_native(
             },
         )
         .define(
+            "Z_FEATURE_LINK_CUSTOM",
+            if env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok() {
+                "1"
+            } else {
+                "0"
+            },
+        )
+        .define(
             "Z_FEATURE_UNSTABLE_API",
             if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
                 "1"
@@ -1419,6 +1458,7 @@ fn build_c_shim(
         );
         build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
         build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+        build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
         build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
         build.define(
             "Z_FEATURE_RAWETH_TRANSPORT",
@@ -1568,6 +1608,7 @@ fn build_zenoh_pico_embedded(
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
@@ -1776,6 +1817,7 @@ fn build_zenoh_pico_orin_spe(
     build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0");
     build.define("Z_FEATURE_LINK_SERIAL", "0");
     build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_TLS", "0");
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
@@ -1950,6 +1992,7 @@ fn build_zenoh_pico_freertos(
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(
@@ -2095,6 +2138,7 @@ fn build_zenoh_pico_nuttx(
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(
@@ -2326,6 +2370,7 @@ fn build_zenoh_pico_threadx(
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(

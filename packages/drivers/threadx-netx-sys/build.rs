@@ -7,8 +7,7 @@
 //!   NETX_DIR           — NetX Duo source
 //!   NETX_CONFIG_DIR    — (optional, defaults to THREADX_CONFIG_DIR)
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
