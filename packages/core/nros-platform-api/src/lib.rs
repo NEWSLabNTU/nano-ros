@@ -205,6 +205,65 @@ pub enum SchedPolicy {
 ///
 /// Phase 110.D wires this for Linux + NuttX (via POSIX) at v1; Zephyr
 /// / FreeRTOS / ThreadX impls land alongside per-RTOS bring-up.
+// ============================================================================
+// Phase 110.E.b — `PlatformTimer` (ISR-driven periodic refill)
+// ============================================================================
+
+/// Errors returned by [`PlatformTimer`] entry points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimerError {
+    /// The active platform doesn't expose a periodic-timer surface
+    /// (e.g. bare-metal without a board-side `SysTickHook`).
+    Unsupported,
+    /// `period_us` is below the platform's minimum timer resolution
+    /// or above its maximum representable interval.
+    OutOfRange,
+    /// A platform-specific syscall / kernel call failed; check
+    /// `errno` (POSIX) or the RTOS error code for details.
+    KernelError,
+}
+
+/// Periodic timer for ISR-driven sporadic-server budget refill
+/// (Phase 110.E.b). The trait factors out the per-platform timer
+/// surface so the executor (`nros-node`) can register an atomic
+/// refill callback without becoming generic over the platform —
+/// see `docs/design/phase-110-e-platform-timer.md`.
+///
+/// Default `create_periodic` returns [`TimerError::Unsupported`] so
+/// platforms without a timer surface inherit safe behavior; `destroy`
+/// is a no-op default for the same reason.
+pub trait PlatformTimer {
+    /// Opaque per-platform handle (FreeRTOS `TimerHandle_t`,
+    /// Zephyr `*mut k_timer`, ThreadX `*mut TX_TIMER`, POSIX
+    /// `timer_t`). Must be `Send + Sync + 'static` so the executor
+    /// can stash it across thread boundaries.
+    type TimerHandle: Send + Sync + 'static;
+
+    /// Register a periodic timer that fires `callback(user_data)`
+    /// every `period_us` microseconds. Returns the platform-native
+    /// handle for later destruction.
+    ///
+    /// # Safety
+    ///
+    /// `user_data` must outlive the returned handle. The callback is
+    /// invoked from a platform-defined timer context (direct ISR on
+    /// Zephyr / bare-metal, deferred via `xTimerPendFunctionCall` on
+    /// FreeRTOS, signal handler on POSIX) — bodies should be
+    /// short and use atomic ops only.
+    fn create_periodic(
+        _period_us: u32,
+        _callback: extern "C" fn(*mut c_void),
+        _user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, TimerError> {
+        Err(TimerError::Unsupported)
+    }
+
+    /// Cancel + free the timer. Idempotent on already-destroyed
+    /// handles. Must drain in-flight callback invocations before
+    /// returning so the user_data pointer is no longer accessed.
+    fn destroy(_handle: Self::TimerHandle) {}
+}
+
 pub trait PlatformScheduler {
     /// Apply the requested policy to the calling thread.
     ///

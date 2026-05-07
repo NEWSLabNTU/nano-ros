@@ -218,6 +218,78 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
 }
 
 // ============================================================================
+// Phase 110.E.b — `PlatformTimer` (POSIX `timer_create` + SIGEV_THREAD)
+// ============================================================================
+
+/// POSIX `PlatformTimer` handle — a stop flag + the dedicated refill
+/// thread's join handle. Phase 110.E.b uses a thread-per-timer
+/// model rather than `timer_create` + `SIGEV_THREAD` so the
+/// implementation works without depending on libc's union-member
+/// access (which isn't exposed in stable Rust). Equivalent
+/// semantics; trades one thread per active Sporadic SC for portable
+/// safe code.
+pub struct PosixTimerHandle {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl core::fmt::Debug for PosixTimerHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PosixTimerHandle").finish_non_exhaustive()
+    }
+}
+
+impl nros_platform_api::PlatformTimer for PosixPlatform {
+    type TimerHandle = PosixTimerHandle;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if period_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_clone = std::sync::Arc::clone(&stop);
+        // SAFETY contract: caller of `create_periodic` keeps
+        // `user_data` alive until `destroy` returns. We send the
+        // pointer across the thread boundary as a `usize` to side-
+        // step the missing `Send` impl on raw pointers; Rust treats
+        // this as an opaque integer and never derefs it on the
+        // thread-spawn side.
+        let user_data_addr = user_data as usize;
+        let period = std::time::Duration::from_micros(period_us as u64);
+        let join = std::thread::Builder::new()
+            .name("nros-sporadic-refill".into())
+            .spawn(move || {
+                while !stop_clone.load(std::sync::atomic::Ordering::Acquire) {
+                    std::thread::sleep(period);
+                    if stop_clone.load(std::sync::atomic::Ordering::Acquire) {
+                        break;
+                    }
+                    callback(user_data_addr as *mut c_void);
+                }
+            })
+            .map_err(|_| TimerError::KernelError)?;
+        Ok(PosixTimerHandle {
+            stop,
+            join: Some(join),
+        })
+    }
+
+    fn destroy(mut handle: Self::TimerHandle) {
+        handle
+            .stop
+            .store(true, std::sync::atomic::Ordering::Release);
+        if let Some(j) = handle.join.take() {
+            let _ = j.join();
+        }
+    }
+}
+
+// ============================================================================
 // Phase 110.E — SCHED_DEADLINE (Linux) + SCHED_SPORADIC (NuttX) helpers
 // ============================================================================
 
@@ -677,3 +749,35 @@ impl nros_platform_api::PlatformThreading for PosixPlatform {
     }
 }
 
+
+#[cfg(test)]
+mod tests_e_b {
+    use super::*;
+    use nros_platform_api::PlatformTimer;
+
+    #[test]
+    fn posix_timer_invokes_callback_periodically() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let counter_addr = std::sync::Arc::as_ptr(&counter) as *mut c_void;
+
+        extern "C" fn bump(user_data: *mut c_void) {
+            let c = unsafe { &*(user_data as *const std::sync::atomic::AtomicU32) };
+            c.fetch_add(1, std::sync::atomic::Ordering::Release);
+        }
+
+        // Period 5 ms; sleep 30 ms — should see ≥3 callbacks.
+        let handle = PosixPlatform::create_periodic(5_000, bump, counter_addr).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        PosixPlatform::destroy(handle);
+
+        let n = counter.load(std::sync::atomic::Ordering::Acquire);
+        assert!(n >= 3, "expected ≥3 callbacks in 30 ms @ 5 ms period, got {n}");
+    }
+
+    #[test]
+    fn posix_timer_zero_period_is_out_of_range() {
+        extern "C" fn noop(_: *mut c_void) {}
+        let r = PosixPlatform::create_periodic(0, noop, core::ptr::null_mut());
+        assert_eq!(r.err(), Some(nros_platform_api::TimerError::OutOfRange));
+    }
+}

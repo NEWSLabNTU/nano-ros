@@ -150,6 +150,78 @@ pub struct SchedContext {
     pub deadline_policy: DeadlinePolicy,
 }
 
+/// Phase 110.E.b — atomic sporadic-server state for ISR-driven
+/// refill. ISR / timer-thread context calls `refill_thunk` to top up
+/// the budget; spin_once reads atomically without any `&mut` access.
+///
+/// Replaces the polled-clock `SporadicState` shape on platforms with
+/// a `PlatformTimer` impl. The Executor still keeps the legacy
+/// `SporadicState` path active on `feature = "std"` so the
+/// transition is non-breaking.
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
+pub struct AtomicSporadicState {
+    pub budget_remaining_us: core::sync::atomic::AtomicU32,
+    pub last_refill_ms: core::sync::atomic::AtomicU64,
+    pub budget_capacity_us: u32,
+    pub period_us: u32,
+}
+
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
+impl AtomicSporadicState {
+    pub const fn new(budget_us: u32, period_us: u32) -> Self {
+        Self {
+            budget_remaining_us: core::sync::atomic::AtomicU32::new(budget_us),
+            last_refill_ms: core::sync::atomic::AtomicU64::new(0),
+            budget_capacity_us: budget_us,
+            period_us,
+        }
+    }
+
+    /// Read the budget atomically; spin_once consults this to decide
+    /// whether to skip the SC's entries this cycle.
+    pub fn has_budget(&self) -> bool {
+        self.budget_remaining_us
+            .load(core::sync::atomic::Ordering::Acquire)
+            > 0
+    }
+
+    /// Saturating subtract — used by spin_once after dispatching a
+    /// callback bound to this SC.
+    pub fn consume(&self, us: u32) {
+        let mut cur = self.budget_remaining_us.load(core::sync::atomic::Ordering::Acquire);
+        loop {
+            let next = cur.saturating_sub(us);
+            match self.budget_remaining_us.compare_exchange_weak(
+                cur,
+                next,
+                core::sync::atomic::Ordering::Release,
+                core::sync::atomic::Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(observed) => cur = observed,
+            }
+        }
+    }
+}
+
+/// C-callable refill thunk that `PlatformTimer::create_periodic`
+/// invokes from the platform's timer context. Single atomic store —
+/// safe in any thread / ISR context.
+///
+/// # Safety
+/// `user_data` must point at a live `AtomicSporadicState`; the caller
+/// of `PlatformTimer::create_periodic` owns the lifetime contract.
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
+pub extern "C" fn atomic_sporadic_refill_thunk(user_data: *mut core::ffi::c_void) {
+    if user_data.is_null() {
+        return;
+    }
+    let state = unsafe { &*(user_data as *const AtomicSporadicState) };
+    state
+        .budget_remaining_us
+        .store(state.budget_capacity_us, core::sync::atomic::Ordering::Release);
+}
+
 /// Phase 110.E — user-space sporadic-server runtime state.
 ///
 /// Tracks remaining `budget_us` for the current period and the wall-
