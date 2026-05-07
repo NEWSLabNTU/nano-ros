@@ -19,7 +19,7 @@ etc.). Per the design note
 - `nros-rmw-cffi`'s shape is the only "design decision"; L1 / L2
   wrappers above it are mechanical translations.
 
-**Status:** v1 + 115.B + 115.F (native) + 115.H scaffolding complete. Three RMW backends now expose the runtime-pluggable transport vtable: XRCE-DDS via 115.E (full), zenoh-pico via 115.B (full + 115.F native loopback E2E), dust-DDS via 115.H scaffolding (factory + smoke test landed; `DdsRmw` locator-scheme dispatch + discovery-over-byte-pipe deferred to `115.H.2-discovery`). All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.B / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`, second-language smoke test) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.F (bare-metal C variant) blocked on a bare-metal C example harness, 115.H.2 (DDS dispatch + discovery) tracked separately, 115.J → Phase 23.
+**Status:** v1 + 115.B + 115.F (native) + 115.H scaffolding complete. Three RMW backends now expose the runtime-pluggable transport vtable: XRCE-DDS via 115.E (full), zenoh-pico via 115.B (full + 115.F native loopback E2E), dust-DDS via 115.H scaffolding (factory + smoke test landed; `DdsRmw` locator-scheme dispatch + discovery-over-byte-pipe deferred to `115.H.2-discovery`). All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.B / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`, second-language smoke test) is the template for future Rust→C boundaries — **Phase 117 generalised it to the full RMW backend surface (`nros_rmw_vtable_t`, ~17 fn ptrs)** and shipped Cyclone DDS as the first native-language consumer (C++). The transport vtable is now a sub-case of the canonical RMW-backend ABI: native backends compose Phase 115 (transport pluggability) on top of Phase 117 (backend pluggability). **Phase 115.K — native-language backend ports** (see § Work Items, tier added 2026-05-07) tracks the question of porting existing Rust backends to their underlying-library native languages. **Deferred to follow-up phases:** 115.F (bare-metal C variant) blocked on a bare-metal C example harness, 115.H.2 (DDS dispatch + discovery) tracked separately, 115.J → Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -272,6 +272,73 @@ documented in
   factory) and a discovery-over-byte-pipe story (no multicast
   SPDP; needs static-peer mode in dust-dds). Tracked as
   `115.H.2-discovery`. Design surface in Appendix C below.
+
+### Native-language backend ports (115.K)
+
+Added 2026-05-07 after Phase 117 landed `nros_rmw_vtable_t` + Cyclone
+DDS C++ backend. The canonical-C-ABI hierarchy now reads:
+
+```
+nros-core (Rust) ──→ Rmw trait
+                        ├──→ dust-dds (Rust direct impl, no FFI hop)
+                        └──→ nros-rmw-cffi (C ABI bridge via vtable)
+                                ↓ nros_rmw_vtable_t
+                                ├──→ cyclonedds  (C++ direct, no Rust)
+                                ├──→ XRCE        (Rust over xrce-sys, today)
+                                ├──→ zenoh-pico  (Rust over zpico-sys, today)
+                                └──→ uORB        (Rust over px4-rs, today)
+```
+
+The project rule going forward: **a backend's host language matches
+its underlying library's native language unless there is a concrete
+reason otherwise**. dust-dds stays Rust because dust-dds is a Rust
+crate. cyclonedds is C++ because Cyclone DDS is a C/C++ library.
+The three remaining Rust-wrapping backends (XRCE, zenoh-pico, uORB)
+each sit on a non-Rust underlying library; they are candidates for
+re-hosting in the native language. The decisions below capture the
+ROI analysis from 2026-05-07.
+
+- [ ] **115.K.1 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
+  generated FFI, ~4.4k LOC) and rewrite `nros-rmw-xrce` as a C
+  backend that consumes `nros_rmw_vtable_t` directly over micro-XRCE-
+  DDS-Client's `uxr_*` C API. Mirrors `nros-rmw-cyclonedds`'s layout
+  (1.7k LOC C++ over Cyclone's C API). LOC trade: ~3k Rust + 4.4k
+  -sys → ~2k C. Phase 115.E's custom-transport bridge stays usable
+  — the slot-drain helpers are already C-callable (`init_transport_from_custom_ops`,
+  Appendix D §D.2). Tier-2 priority: micro-ROS reference impl is C,
+  port aligns the project with that lineage and lightens the Rust
+  dep tree on Zephyr / FreeRTOS / NuttX targets.
+
+- [~] **115.K.2 — zenoh-pico C/C++ port (deferred).** Underlying
+  library is C, so the canonical pattern says C/C++ backend. Cost
+  estimate is high (1.5k Rust glue + 14k of FFI / platform-shim /
+  custom-transport plumbing, all of which would have to be re-
+  implemented in C). The `zpico-platform-shim` socket-size probe is
+  particularly load-bearing — it exists because `_z_sys_net_socket_t`
+  changes layout per platform, and the Rust `cc::Build`-driven probe
+  would have to be re-derived in a C-only world. The zenoh path is
+  also the most-tested backend (every QEMU + bare-metal + RTOS
+  example exercises it). Verdict: defer until a concrete pressure
+  surfaces (e.g. upstream alignment with micro-ROS's zenoh-pico
+  binding, or a customer-driven request to drop Rust from the zenoh
+  path). Document the deferral; do not start the rewrite.
+
+- [~] **115.K.3 — uORB stays Rust (deferred / closed as won't-do).**
+  Underlying lib is C++ (PX4 modules), but uORB is the **in-process**
+  case — the nros code runs INSIDE a PX4 module, not over a network.
+  `px4-rs`'s value is module init + topic-registration derive macros
+  + workqueue-async tooling; a C++ port would replace those with
+  hand-written PX4 module idioms (which already exist in PX4 native
+  but not for the nros API surface). Net cost very high, net benefit
+  low. Closing as **won't-do**; nros-rmw-uorb is documented as
+  deliberately Rust-only in `book/src/internals/rmw-backends.md`
+  (115.K.4).
+
+- [ ] **115.K.4 — backend host-language docs.** Add
+  `book/src/internals/rmw-backends.md` documenting the per-backend
+  host-language decision matrix (the table above plus rationale).
+  Cross-link from the porting guide (`book/src/porting/custom-transport.md`)
+  and `CLAUDE.md`'s "Platform Backends" section.
 
 ### Tests
 
@@ -704,3 +771,104 @@ Total: ~600 LOC, broadly matching the original 115.X-dds estimate
 in this doc's deferral note. The scaffolding now landed clears
 the plug-in surface; what remains is the discovery layer, which
 is the genuinely hard part.
+
+---
+
+## Appendix D — native-language backend ports (115.K)
+
+### D.1 Hierarchy after Phase 117
+
+Phase 117 generalised the Phase 115 canonical-C-ABI pattern from a
+4-fn-ptr transport vtable to the full RMW backend surface
+(`nros_rmw_vtable_t`, ~17 fn ptrs covering session lifecycle,
+publisher / subscriber / service entities, and Phase 108 status
+events). The two vtables compose:
+
+| Vtable | Phase | Surface | First consumer |
+|--------|-------|---------|----------------|
+| `NrosTransportOps` | 115 | open / close / read / write byte pipe | XRCE (115.E), zenoh-pico (115.B), dust-DDS (115.H) |
+| `nros_rmw_vtable_t` | 117 | session + entity + event lifecycle | Cyclone DDS (117.3+) |
+
+A native-language RMW backend (Phase 117 client) can register its
+own byte pipe via Phase 115 — the two layers are orthogonal.
+
+### D.2 Decision matrix (frozen 2026-05-07)
+
+| Backend | Underlying lib | Underlying lang | Today's host | Recommended host | Verdict |
+|---------|----------------|-----------------|--------------|------------------|---------|
+| dust-dds | dust-dds | Rust | Rust (`Rmw` trait direct) | Rust | keep |
+| cyclonedds | Cyclone DDS | C / C++ | C++ via vtable | C++ | keep |
+| **XRCE** | micro-XRCE-DDS-Client | C | Rust over `xrce-sys` | **C via vtable** | **port (115.K.1)** |
+| zenoh-pico | zenoh-pico | C | Rust over `zpico-sys` | C/C++ via vtable | **defer (115.K.2)** |
+| uORB | PX4 / `px4-rs` | C++ (with Rust derive layer) | Rust over `px4-rs` | Rust | **won't-do (115.K.3)** |
+
+### D.3 Per-port ROI sizing
+
+LOC counts as of 2026-05-07:
+
+| Backend | Rust glue | -sys / FFI | Native rewrite est. |
+|---------|-----------|-----------|---------------------|
+| zenoh-pico | 1,464 | 14,396 (zpico-sys + zpico-platform-shim + zpico-platform-custom) | ~3 kLOC C |
+| XRCE | 3,083 | 4,446 (xrce-sys) | ~2 kLOC C |
+| uORB | 878 | (px4-rs ecosystem, shared with non-nros consumers) | n/a |
+
+Reference: Cyclone DDS backend (117.3 baseline) is 1,721 LOC C++
+across 13 files for a complete vtable consumer. XRCE's surface area
+is comparable; zenoh-pico's is larger because it carries its own
+platform-abstraction shim layer that Cyclone delegates to its host
+runtime.
+
+### D.4 115.K.1 work-item shape (XRCE port)
+
+Mirrors Cyclone DDS layout:
+
+```
+packages/xrce/nros-rmw-xrce-c/             — new C backend crate
+├── CMakeLists.txt                         — produces static lib
+├── include/nros_rmw_xrce.h                — register entry point
+└── src/
+    ├── vtable.c                           — kVtable definition
+    ├── session.c                          — open / close / drive_io
+    ├── publisher.c                        — create / destroy / publish_raw
+    ├── subscriber.c                       — create / destroy / try_recv_raw / has_data
+    ├── service.c                          — server + client paths
+    ├── transport.c                        — bridges Phase 115 NrosTransportOps slot
+    │                                        into uxr_set_custom_transport_callbacks
+    │                                        (today's Rust `init_transport_from_custom_ops`
+    │                                        ported verbatim)
+    └── internal.h
+```
+
+The existing `nros-rmw-xrce` Rust crate stays as the deprecation-
+bridge for one release cycle, then is removed. CMake option
+`-DNROS_C_RMW=xrce` selects the C backend the same way
+`-DNROS_C_RMW=cyclonedds` does today.
+
+### D.5 Risks
+
+- **xrce-sys consumers.** Any other workspace crate that imports
+  `xrce-sys` directly (e.g. test fixtures) needs a parallel migration
+  or stays on the Rust path during the transition.
+- **micro-XRCE-DDS-Client API churn.** The C API is stable but not
+  versioned aggressively; the C backend needs the same `abi_version`
+  discipline Phase 115.A.2 enforces on the transport vtable.
+- **CFFI vtable evolution.** `nros_rmw_vtable_t` is still on its
+  first major version. Adding a fn ptr breaks every C/C++ backend at
+  build time — manageable now (only Cyclone DDS and a future XRCE-C),
+  bigger lift once more native backends ship. Phase 117 follow-up
+  to add the same `abi_version` field to the RMW vtable is queued.
+- **zenoh-pico deferral re-eval trigger.** Re-open 115.K.2 if (a)
+  micro-ROS's upstream ships a zenoh-pico binding the project wants
+  to align with, (b) a deployment surfaces concrete Rust-on-RTOS
+  flash-size or boot-time pressure, or (c) zpico-sys breaks under a
+  zenoh-pico bump in a way that costs more to fix than to rewrite.
+
+### D.6 LOC estimate (entire 115.K tier)
+
+- 115.K.1 XRCE port: ~2,000 LOC C + ~200 LOC test harness; remove
+  ~3,000 LOC Rust + ~4,400 LOC -sys.
+- 115.K.4 Docs: ~150 LOC markdown.
+- 115.K.2 / 115.K.3: zero (deferral / won't-do; doc-only entries).
+
+Net LOC change for the tier: roughly −5,000 LOC (mostly auto-
+generated FFI bindings going away).
