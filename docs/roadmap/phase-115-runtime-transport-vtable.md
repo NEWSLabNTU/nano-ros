@@ -300,15 +300,13 @@ ROI analysis from 2026-05-07.
 
 Ordered execution-first (policy → port → tracking entries):
 
-- [ ] **115.K.1 — backend host-language policy doc.** Add
+- [x] **115.K.1 — backend host-language policy doc.** Added
   `book/src/internals/rmw-backends.md` codifying the rule "a
   backend's host language matches its underlying library's native
   language unless there is a concrete reason otherwise" and the
-  per-backend decision matrix (Appendix D §D.2). Lands first so
-  every later K.* item points at a single source of truth instead of
-  re-deriving the policy in commit messages. Cross-link from the
-  porting guide (`book/src/porting/custom-transport.md`) and
-  `CLAUDE.md`'s "Platform Backends" section.
+  per-backend decision matrix (Appendix D §D.2). Cross-linked from
+  the porting guide (`book/src/porting/custom-transport.md`),
+  `CLAUDE.md`'s "Platform Backends" section, and `SUMMARY.md`.
 
 - [ ] **115.K.2 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
   generated FFI, ~4.4k LOC) and rewrite `nros-rmw-xrce` as a C

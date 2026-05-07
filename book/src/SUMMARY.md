@@ -61,6 +61,7 @@
 
 # Internals
 
+- [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Formal Verification](./internals/verification.md)

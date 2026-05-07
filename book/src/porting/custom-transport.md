@@ -38,6 +38,11 @@ interface, designed per
 callback — lands in the L0 struct first; L1 wrappers follow
 mechanically.
 
+The same canonical-C-ABI pattern was generalised in Phase 117 to
+the full RMW backend surface (`nros_rmw_vtable_t`). For the
+host-language policy that decides whether a given backend lives in
+Rust, C, or C++, see [RMW Backends — Host-Language Policy](../internals/rmw-backends.md).
+
 ## ABI versioning
 
 The `abi_version: u32` field at the head of the struct is mandatory.
