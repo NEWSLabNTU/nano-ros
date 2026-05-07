@@ -104,7 +104,7 @@ set(UCLIENT_PLATFORM_ZEPHYR)
 configure_file("${_uxr_config_in}" "${_uxr_config_out}" @ONLY)
 
 # micro-CDR config.h — same configure_file pattern.
-set(CONFIG_MACHINE_ENDIANNESS 0)  # 0 = little-endian (assume x86 / ARM common case)
+set(CONFIG_MACHINE_ENDIANNESS 1)  # ucdrEndianness: BIG=0, LITTLE=1 (x86 / ARM common case)
 configure_file(
     "${MICROCDR_DIR}/include/ucdr/config.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated/ucdr/config.h"

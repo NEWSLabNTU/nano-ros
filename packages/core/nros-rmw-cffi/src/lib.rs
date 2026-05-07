@@ -939,6 +939,33 @@ impl Session for CffiSession {
         let ret = unsafe { f(&view as *const _) };
         if ret < 0 { None } else { Some(ret as u32) }
     }
+
+    /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
+    /// here so backends behind the cffi vtable don't get rejected by
+    /// the runtime's pre-validate step before they ever see the
+    /// `create_publisher` / `create_subscriber` call. The vtable
+    /// doesn't expose a per-backend policy mask yet; until it does,
+    /// the cffi route has to assume the registered backend supports
+    /// the union of every policy any nros-supported RMW honours.
+    /// Backends that don't support a policy MUST surface
+    /// `NROS_RMW_RET_INCOMPATIBLE_QOS` from `create_publisher` etc.
+    /// to keep the no-silent-degradation contract.
+    ///
+    /// TODO 115.K.2.x: extend `nros_rmw_vtable_t` with a
+    /// `supported_qos_policies()` callback so the runtime queries
+    /// the backend instead of guessing.
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        use nros_rmw::QosPolicyMask;
+        QosPolicyMask::CORE
+            | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            | QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
+            | QosPolicyMask::DEADLINE
+            | QosPolicyMask::LIFESPAN
+            | QosPolicyMask::LIVELINESS_AUTOMATIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
+            | QosPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            | QosPolicyMask::LIVELINESS_LEASE
+    }
 }
 
 impl Drop for CffiSession {

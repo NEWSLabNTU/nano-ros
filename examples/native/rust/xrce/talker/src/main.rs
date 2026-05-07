@@ -24,6 +24,10 @@ fn main() {
 
     eprintln!("XRCE Talker: agent={}, domain={}", agent_addr, domain_id);
 
+    // Phase 115.K.2.5.1.2 — register the C XRCE backend's vtable
+    // before opening the session. Idempotent.
+    nros_rmw_xrce_cffi::register().expect("nros_rmw_xrce_cffi::register");
+
     // Open session with callback arena
     let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)

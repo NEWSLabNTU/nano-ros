@@ -33,6 +33,7 @@ fn main() {
     let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_service_server");
+    nros_rmw_xrce_cffi::register().expect("nros_rmw_xrce_cffi::register");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 

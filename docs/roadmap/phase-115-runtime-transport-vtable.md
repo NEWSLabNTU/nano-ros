@@ -421,19 +421,34 @@ Ordered execution-first (policy → port → tracking entries):
         to djb2 to match the Rust impl's `hash_session_key` —
         same node name now produces the same XRCE session key
         on both backends.
-      - [~] **115.K.2.5.1.2** — migrate
+      - [x] **115.K.2.5.1.2** — migrate
         `examples/native/rust/xrce/{talker,listener,service-*,
-        action-*,serial-*,stress-test,large-msg-test}` (10
-        examples) — switch `rmw-xrce` → `rmw-xrce-cffi` in
-        Cargo.toml, add `nros_rmw_xrce_cffi::register()` call
-        before `Executor::open` in `src/main.rs`.
+        action-*,stress-test,large-msg-test}` (8 examples) —
+        switch `rmw-xrce` → `rmw-xrce-cffi` in Cargo.toml, add
+        `nros_rmw_xrce_cffi::register()` call before
+        `Executor::open` in `src/main.rs`. Two examples
+        (`serial-talker`, `serial-listener`) stay on the legacy
+        `rmw-xrce` path because the cffi shim only ships POSIX UDP
+        as v1; serial transport via cffi is queued as
+        `115.K.2.5.1.5-serial`. Validated via
+        `cargo test -p nros-tests --test xrce`: 14/14 pass.
 
-        Status: build wiring proven (talker links + register()
-        succeeds against live agent). `Executor::open` against a
-        live agent on UDP returns `ConnectionFailed` though.
-        Tracked as `115.K.2.5.1.2.a`.
+        **Resolved 2026-05-08** — root cause was endianness:
+        the cffi shim's generated `<ucdr/config.h>` set
+        `UCDR_MACHINE_ENDIANNESS=0`. ucdr's `ucdrEndianness` enum
+        defines `BIG=0, LITTLE=1`, so 0 = big-endian on an x86 /
+        ARM little-endian box. This dropped the `FLAG_ENDIANNESS`
+        bit from every outgoing submessage; the agent parsed
+        payloads big-endian and silently rejected them. Fixed by
+        flipping the macro to `1` in both
+        `nros-rmw-xrce-cffi/build.rs` and
+        `nros-rmw-xrce-c/CMakeLists.txt`. Side-fix (also needed):
+        `CffiSession::supported_qos_policies` returns the same
+        broad mask Rust XRCE does — without it the runtime
+        pre-validate rejected default QoS (which sets
+        `LIVELINESS_AUTOMATIC`) before reaching the backend.
 
-        **Debug findings (2026-05-08):**
+        **Debug history (kept for reference):**
 
         1. C backend reaches `uxr_create_session_retries` and it
            returns OK against the live agent — the XRCE session
