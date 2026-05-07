@@ -785,6 +785,12 @@ pub struct nros_cpp_sched_context_t {
     pub period_us: u32,
     pub budget_us: u32,
     pub deadline_us: u32,
+    /// Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+    pub os_pri: u8,
+    /// Phase 110.G — TT-window offset within the executor's major frame.
+    pub tt_window_offset_us: u32,
+    /// Phase 110.G — TT-window length in microseconds.
+    pub tt_window_duration_us: u32,
 }
 
 /// Identifier of the auto-created default `Fifo` SC. Phase 110.B.
@@ -828,13 +834,17 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
     };
     let ctx = unsafe { &mut *(handle as *mut CppContext) };
     let cfg = unsafe { &*cfg };
+    #[allow(deprecated)]
     let sc = SchedContext {
         class: match cfg.class {
             nros_cpp_sched_class_t::Fifo => SchedClass::Fifo,
             nros_cpp_sched_class_t::Edf => SchedClass::Edf,
             nros_cpp_sched_class_t::Sporadic => SchedClass::Sporadic,
             nros_cpp_sched_class_t::BestEffort => SchedClass::BestEffort,
-            nros_cpp_sched_class_t::TimeTriggered => SchedClass::TimeTriggered,
+            // Phase 110.G refactor — TimeTriggered is now an
+            // orthogonal slot annotation; route to Fifo + populate
+            // tt_window_*.
+            nros_cpp_sched_class_t::TimeTriggered => SchedClass::Fifo,
         },
         priority: match cfg.priority {
             nros_cpp_priority_t::Critical => Priority::Critical,
@@ -849,6 +859,9 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
         period_us: OptUs::from_us(cfg.period_us),
         budget_us: OptUs::from_us(cfg.budget_us),
         deadline_us: OptUs::from_us(cfg.deadline_us),
+        os_pri: cfg.os_pri,
+        tt_window_offset_us: OptUs::from_us(cfg.tt_window_offset_us),
+        tt_window_duration_us: OptUs::from_us(cfg.tt_window_duration_us),
     };
     match ctx.executor.create_sched_context(sc) {
         Ok(id) => {

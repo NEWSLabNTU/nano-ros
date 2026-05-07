@@ -149,6 +149,18 @@ typedef struct nros_cpp_sched_context_t {
   uint32_t period_us;
   uint32_t budget_us;
   uint32_t deadline_us;
+  /**
+   * Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+   */
+  uint8_t os_pri;
+  /**
+   * Phase 110.G — TT-window offset within the executor's major frame.
+   */
+  uint32_t tt_window_offset_us;
+  /**
+   * Phase 110.G — TT-window length in microseconds.
+   */
+  uint32_t tt_window_duration_us;
 } nros_cpp_sched_context_t;
 
 /**

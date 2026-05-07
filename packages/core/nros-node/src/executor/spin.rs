@@ -256,6 +256,11 @@ pub struct Executor {
             alloc::sync::Arc<super::sched_context::AtomicSporadicState>,
             OpaqueTimerHandle,
         )>; crate::config::MAX_SC],
+    /// Phase 110.G — major-frame length for time-triggered dispatch.
+    /// `0` (default) disables the TT gate entirely; non-zero enables
+    /// gating per
+    /// `SchedContext.tt_window_offset_us / tt_window_duration_us`.
+    pub(crate) major_frame_us: u32,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -305,6 +310,7 @@ impl Executor {
             sporadic_states: [None; crate::config::MAX_SC],
             #[cfg(feature = "alloc")]
             sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
+            major_frame_us: 0,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -352,6 +358,7 @@ impl Executor {
             sporadic_states: [None; crate::config::MAX_SC],
             #[cfg(feature = "alloc")]
             sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
+            major_frame_us: 0,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -451,6 +458,21 @@ impl Executor {
         }
         self.sched_context_bindings[i] = sc_id;
         Ok(())
+    }
+
+    /// Phase 110.G — enable time-triggered dispatch by setting the
+    /// executor's major-frame length. Once set, every `spin_once`
+    /// cycle gates dispatch through each entry's bound SC's
+    /// `tt_window_offset_us` / `tt_window_duration_us` fields:
+    /// dispatch only fires when the current monotonic time falls
+    /// inside the window `[off, off + duration) mod major_frame`.
+    ///
+    /// `major_frame_us = 0` disables the TT gate (default state).
+    /// Setting a non-zero major frame after callbacks are already
+    /// registered is allowed — TT gates take effect on the next
+    /// `spin_once` cycle.
+    pub fn register_time_triggered_dispatcher(&mut self, major_frame_us: u32) {
+        self.major_frame_us = major_frame_us;
     }
 
     /// Phase 110.E.b — register an ISR-driven refill timer for an
@@ -1884,6 +1906,51 @@ impl Executor {
                     .unwrap_or(true);
                 if !has_budget {
                     continue;
+                }
+            }
+            // Phase 110.G — TT window gate, orthogonal to class.
+            // Skips dispatch when the SC has a TT window AND the
+            // current monotonic time is outside it. Both gates apply
+            // independently — a Sporadic SC with a TT window must
+            // pass both.
+            if self.major_frame_us > 0 {
+                let sc_opt = self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref());
+                if let Some(sc) = sc_opt {
+                    let off = sc.tt_window_offset_us.get().map(|nz| nz.get()).unwrap_or(0);
+                    let dur = sc
+                        .tt_window_duration_us
+                        .get()
+                        .map(|nz| nz.get())
+                        .unwrap_or(0);
+                    if dur > 0 {
+                        // Compute current phase within the major
+                        // frame using the accumulated `delta_ms` clock
+                        // (std-only precise; no_std uses `delta_ms`
+                        // approximation from spin cadence).
+                        #[cfg(feature = "std")]
+                        let now_us = {
+                            use std::sync::OnceLock;
+                            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
+                            std::time::Instant::now()
+                                .saturating_duration_since(
+                                    *EPOCH.get_or_init(std::time::Instant::now),
+                                )
+                                .as_micros() as u64
+                        };
+                        #[cfg(not(feature = "std"))]
+                        let now_us = (delta_ms.saturating_mul(1000)) as u64;
+                        let phase = (now_us % self.major_frame_us as u64) as u32;
+                        let in_window = if off + dur <= self.major_frame_us {
+                            phase >= off && phase < off + dur
+                        } else {
+                            // Window wraps the major frame boundary.
+                            let end = (off as u64 + dur as u64) % self.major_frame_us as u64;
+                            phase >= off || (phase as u64) < end
+                        };
+                        if !in_window {
+                            continue;
+                        }
+                    }
                 }
             }
             let is_edf = matches!(sc_class, super::sched_context::SchedClass::Edf);

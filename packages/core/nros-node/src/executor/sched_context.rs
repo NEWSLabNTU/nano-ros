@@ -69,6 +69,17 @@ pub enum SchedClass {
     Edf,
     Sporadic,
     BestEffort,
+    /// Deprecated as of Phase 110.G refactor — TT is now an
+    /// orthogonal slot-membership annotation via
+    /// `SchedContext.tt_window_offset_us` /
+    /// `tt_window_duration_us`, not a class. Keeping the variant
+    /// for one release so exhaustive matches don't break; treated
+    /// as `Fifo` in dispatch.
+    #[deprecated(
+        since = "0.1.0",
+        note = "use SchedContext.tt_window_offset_us + tt_window_duration_us instead; \
+                TT now cooperates with Fifo / Edf / Sporadic / BestEffort classes"
+    )]
     TimeTriggered,
 }
 
@@ -148,6 +159,35 @@ pub struct SchedContext {
     pub budget_us: OptUs,
     pub deadline_us: OptUs,
     pub deadline_policy: DeadlinePolicy,
+    /// Phase 110.F — opt-in OS-level priority for per-callback
+    /// dispatch. `0` (default) means "no per-callback OS priority"
+    /// — the executor's cooperative dispatch path runs every
+    /// callback bound to this SC. Non-zero values trigger the
+    /// per-priority worker-pool path (registered via
+    /// `Executor::register_os_priority_dispatcher`); each callback
+    /// then runs on a worker thread the OS scheduler has elevated
+    /// to that numeric priority.
+    ///
+    /// Numeric meaning is platform-defined (POSIX 1..99 for
+    /// SCHED_FIFO; FreeRTOS 0..configMAX_PRIORITIES-1; Zephyr
+    /// direction-flipped). Chain-priority assignment + chain
+    /// grouping happen at the orchestration layer and are out of
+    /// executor scope.
+    pub os_pri: u8,
+    /// Phase 110.G — time-triggered window offset within the
+    /// executor's major frame. `None` (sentinel `0`) = always
+    /// eligible (no TT gate); `Some(off)` + `tt_window_duration_us`
+    /// gates dispatch to the half-open interval
+    /// `[off, off + duration) mod major_frame`.
+    ///
+    /// Independent of `class` — a `Sporadic`-class SC can also be TT-
+    /// gated; both gates apply (skip dispatch when EITHER fails).
+    /// Pairs with `Executor::register_time_triggered_dispatcher`
+    /// which sets the major-frame length.
+    pub tt_window_offset_us: OptUs,
+    /// Phase 110.G — time-triggered window length. See
+    /// `tt_window_offset_us`.
+    pub tt_window_duration_us: OptUs,
 }
 
 /// Phase 110.E.b — atomic sporadic-server state for ISR-driven
@@ -278,6 +318,9 @@ impl SchedContext {
             budget_us: OptUs::NONE,
             deadline_us: OptUs::NONE,
             deadline_policy: DeadlinePolicy::Activated,
+            os_pri: 0,
+            tt_window_offset_us: OptUs::NONE,
+            tt_window_duration_us: OptUs::NONE,
         }
     }
 }

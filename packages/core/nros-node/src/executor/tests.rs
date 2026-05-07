@@ -227,6 +227,55 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.G — TT-window gate suppresses dispatch when the
+/// current monotonic time falls outside `[off, off + duration)`.
+/// Coexists with the existing class-based dispatch — this test uses
+/// a `Fifo` SC with a TT window set, demonstrating that the gate is
+/// orthogonal to class.
+#[test]
+fn test_tt_window_gate_suppresses_outside_window() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // Window = [50ms..51ms) within a 60-second major frame.
+    // Test runs in a single spin_once well under 50 ms after the
+    // executor's epoch — phase < 50 ms → outside window → dispatch
+    // suppressed.
+    executor.register_time_triggered_dispatcher(60_000_000);
+
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_cb = count.clone();
+    let h = executor
+        .add_subscription::<TestMsg, _>("/tt", move |_msg: &TestMsg| {
+            count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // Far-future window so the spin happens outside it.
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            tt_window_offset_us: OptUs::from_us(50_000_000),
+            tt_window_duration_us: OptUs::from_us(1_000),
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h, sc_id).unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let (d, n) = encode_test_msg(1);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "TT window gate must suppress dispatch outside the active slot"
+    );
+}
+
 /// Phase 110.E — `SchedClass::Sporadic` budget suppression. After the
 /// budget is exhausted within a period, the bound subscription's
 /// callback no longer fires until the next period boundary refills

@@ -1465,6 +1465,17 @@ pub struct nros_sched_context_t {
     pub budget_us: u32,
     /// Deadline in microseconds (0 = absent).
     pub deadline_us: u32,
+    /// Phase 110.F — opt-in OS-level priority for per-callback
+    /// dispatch. `0` = no per-callback OS priority (default cooperative
+    /// path runs every callback). Numeric meaning is platform-defined.
+    pub os_pri: u8,
+    /// Phase 110.G — TT-window offset within the executor's major
+    /// frame, microseconds. `0` (with `tt_window_duration_us = 0`) =
+    /// no TT gate.
+    pub tt_window_offset_us: u32,
+    /// Phase 110.G — TT-window length in microseconds. `0` disables
+    /// the TT gate for this SC.
+    pub tt_window_duration_us: u32,
 }
 
 /// Identifier of a registered scheduling context. `0` is the
@@ -1487,13 +1498,18 @@ fn convert_sched_context(
     use nros_node::executor::sched_context::{
         DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
     };
+    #[allow(deprecated)]
     SchedContext {
         class: match cfg.class {
             nros_sched_class_t::NROS_SCHED_CLASS_FIFO => SchedClass::Fifo,
             nros_sched_class_t::NROS_SCHED_CLASS_EDF => SchedClass::Edf,
             nros_sched_class_t::NROS_SCHED_CLASS_SPORADIC => SchedClass::Sporadic,
             nros_sched_class_t::NROS_SCHED_CLASS_BEST_EFFORT => SchedClass::BestEffort,
-            nros_sched_class_t::NROS_SCHED_CLASS_TIME_TRIGGERED => SchedClass::TimeTriggered,
+            // Phase 110.G refactor: TimeTriggered class is deprecated;
+            // accept the C-side enum value but route to Fifo. Callers
+            // should switch to populating tt_window_offset_us /
+            // tt_window_duration_us for the gate semantics.
+            nros_sched_class_t::NROS_SCHED_CLASS_TIME_TRIGGERED => SchedClass::Fifo,
         },
         priority: match cfg.priority {
             nros_sched_priority_t::NROS_SCHED_PRIORITY_CRITICAL => Priority::Critical,
@@ -1508,7 +1524,31 @@ fn convert_sched_context(
         period_us: OptUs::from_us(cfg.period_us),
         budget_us: OptUs::from_us(cfg.budget_us),
         deadline_us: OptUs::from_us(cfg.deadline_us),
+        os_pri: cfg.os_pri,
+        tt_window_offset_us: OptUs::from_us(cfg.tt_window_offset_us),
+        tt_window_duration_us: OptUs::from_us(cfg.tt_window_duration_us),
     }
+}
+
+/// Phase 110.G — enable TT dispatch on this executor by setting the
+/// major-frame length in microseconds. `0` disables the gate.
+///
+/// # Safety
+/// `executor` must be a valid pointer to an initialized executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_register_time_triggered_dispatcher(
+    executor: *mut nros_executor_t,
+    major_frame_us: u32,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    rust_exec.register_time_triggered_dispatcher(major_frame_us);
+    NROS_RET_OK
 }
 
 /// Register a new scheduling context with the executor. Phase 110.B.

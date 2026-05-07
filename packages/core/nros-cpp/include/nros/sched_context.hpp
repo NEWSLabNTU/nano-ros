@@ -32,6 +32,12 @@ struct nros_cpp_sched_context_ffi {
     uint32_t period_us;
     uint32_t budget_us;
     uint32_t deadline_us;
+    // Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+    uint8_t os_pri;
+    // Phase 110.G — TT-window offset within the executor's major frame.
+    uint32_t tt_window_offset_us;
+    // Phase 110.G — TT-window length in microseconds.
+    uint32_t tt_window_duration_us;
 };
 
 uint8_t nros_cpp_default_sched_context_id(void);
@@ -84,6 +90,14 @@ struct SchedContext {
     uint32_t period_us = 0;
     uint32_t budget_us = 0;
     uint32_t deadline_us = 0;
+    /// Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+    /// `0` = no per-callback OS priority (cooperative path).
+    uint8_t os_pri = 0;
+    /// Phase 110.G — TT-window offset within the executor's major
+    /// frame. `0` (with `tt_window_duration_us = 0`) = no TT gate.
+    uint32_t tt_window_offset_us = 0;
+    /// Phase 110.G — TT-window length in microseconds. `0` disables the gate.
+    uint32_t tt_window_duration_us = 0;
 };
 
 /// Identifier of the auto-created default `Fifo`-class SC.
@@ -100,6 +114,9 @@ inline ::nros_cpp_sched_context_ffi to_ffi(const SchedContext& sc) {
     ffi.period_us = sc.period_us;
     ffi.budget_us = sc.budget_us;
     ffi.deadline_us = sc.deadline_us;
+    ffi.os_pri = sc.os_pri;
+    ffi.tt_window_offset_us = sc.tt_window_offset_us;
+    ffi.tt_window_duration_us = sc.tt_window_duration_us;
     return ffi;
 }
 } // namespace detail
