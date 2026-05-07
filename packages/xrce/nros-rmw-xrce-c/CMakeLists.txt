@@ -172,6 +172,7 @@ add_library(nros_rmw_xrce_c STATIC
     src/publisher.c
     src/subscriber.c
     src/service.c
+    src/transport_custom.c
     ${_uxr_all_src}
     ${_ucdr_all_src}
 )

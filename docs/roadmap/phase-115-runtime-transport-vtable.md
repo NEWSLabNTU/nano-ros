@@ -342,8 +342,19 @@ Ordered execution-first (policy → port → tracking entries):
     against a dead agent on port 1 and confirms ERROR (3 s retry
     budget). Pub/sub/service paths still hit K.2.0 UNSUPPORTED
     stubs.
-  - [ ] **115.K.2.2** — pub/sub topic/writer/reader create + publish_raw
-    + try_recv_raw.
+  - [x] **115.K.2.2** — pub/sub topic/writer/reader create + publish_raw
+    + try_recv_raw. `xrce_publisher_create` allocates 3 entity ids
+    (TOPIC/PUBLISHER/DATAWRITER) and creates them via
+    `uxr_buffer_create_*_bin`; `publish_raw` goes through
+    `uxr_buffer_topic` + a 0-ms flush. `xrce_subscriber_create`
+    allocates a slot from the per-session pool of 8 (default
+    `XRCE_MAX_SUBSCRIBERS`) and issues `uxr_buffer_request_data`.
+    The single per-session topic callback (registered once at
+    `xrce_session_open`) dispatches by datareader id. `try_recv_raw`
+    drains the slot's single-msg ringbuffer; oversize messages flag
+    overflow and drop. K.2 scope gaps (XML QoS, deadline tracking,
+    fragmented publish, async wakers) are tagged `TODO 115.K.2.x` in
+    source for follow-up commits.
   - [ ] **115.K.2.3** — service server + client paths.
   - [ ] **115.K.2.4** — port Phase 115.E's
     `init_transport_from_custom_ops` slot-drain helper to a C TU.

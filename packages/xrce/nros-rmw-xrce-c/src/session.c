@@ -1,12 +1,12 @@
-/* Phase 115.K.2.1 — session lifecycle implementation.
+/* Phase 115.K.2 — session lifecycle implementation.
  *
  * Mirrors the Rust `nros-rmw-xrce::XrceRmw::open` shape but in pure
- * C against `uxr_*`. v1 supports UDP transport only; serial / custom
- * lands in 115.K.2.4 alongside the Phase 115.E custom-transport
- * bridge port.
+ * C against `uxr_*`. Phase 115.K.2.1 supported UDP only; 115.K.2.4
+ * adds a `custom://` locator scheme that routes through the runtime
+ * transport vtable bridge in `transport_custom.c`.
  *
- * Allocation: a single `struct xrce_session_state` per session
- * lives on the heap (`malloc`). The pointer is parked in
+ * Allocation: a single `struct xrce_session_state` per session lives
+ * on the heap (`malloc`). The pointer is parked in
  * `nros_rmw_session_t::backend_data`. The runtime owns the entity-
  * shell `nros_rmw_session_t` struct itself.
  */
@@ -18,40 +18,179 @@
 #include <uxr/client/client.h>
 #include <uxr/client/profile/transport/ip/udp/udp_transport.h>
 #include <uxr/client/profile/transport/ip/udp/udp_transport_posix.h>
+#include <uxr/client/profile/transport/custom/custom_transport.h>
+#include <uxr/client/core/session/object_id.h>
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Default agent UDP port, matches Micro-XRCE-DDS-Agent's default. */
-#define XRCE_DEFAULT_AGENT_PORT 2018
+/* ---- Helpers ------------------------------------------------------- */
 
-/* Session-creation retry budget. Mirrors `SESSION_CREATION_RETRIES`
- * in the Rust impl. */
-#define XRCE_SESSION_CREATION_RETRIES 3
+uxrObjectId xrce_alloc_entity_id(xrce_session_state_t *st, uint8_t type) {
+    uint16_t id = st->next_entity_id++;
+    return uxr_object_id(id, type);
+}
 
-/* Output / input reliable stream config. Mirrors the Rust impl's
- * `STREAM_BUFFER_SIZE` + `STREAM_HISTORY`. */
-#define XRCE_STREAM_BUFFER_SIZE 1024
-#define XRCE_STREAM_HISTORY 8
+nros_rmw_ret_t xrce_confirm_entities(xrce_session_state_t *st,
+                                     const uint16_t *requests,
+                                     uint8_t        *statuses,
+                                     size_t          count) {
+    bool ok = uxr_run_session_until_all_status(
+        &st->session, XRCE_ENTITY_CREATION_TIMEOUT_MS,
+        requests, statuses, count);
+    if (!ok) {
+        return NROS_RMW_RET_ERROR;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (statuses[i] != UXR_STATUS_OK && statuses[i] != UXR_STATUS_OK_MATCHED) {
+            return NROS_RMW_RET_ERROR;
+        }
+    }
+    return NROS_RMW_RET_OK;
+}
 
-struct xrce_session_state {
-    uxrUDPTransport     udp;
-    uxrSession          session;
+/* Naming helpers — pure-C ports of `naming.rs`. */
+static void copy_truncating(char *out, size_t out_cap, const char *src) {
+    if (out == NULL || out_cap == 0) {
+        return;
+    }
+    size_t len = strlen(src);
+    if (len + 1 > out_cap) {
+        len = out_cap - 1;
+    }
+    memcpy(out, src, len);
+    out[len] = '\0';
+}
 
-    /* Reliable stream buffers. The streams themselves are referred
-     * to by id (`uxrStreamId`); the underlying memory must outlive
-     * the session. */
-    uint8_t             output_reliable_buf[XRCE_STREAM_BUFFER_SIZE * XRCE_STREAM_HISTORY];
-    uint8_t             input_reliable_buf [XRCE_STREAM_BUFFER_SIZE * XRCE_STREAM_HISTORY];
-    uxrStreamId         output_reliable;
-    uxrStreamId         input_reliable;
-};
+static void append_truncating(char *out, size_t out_cap, const char *src) {
+    if (out == NULL || out_cap == 0) {
+        return;
+    }
+    size_t cur = strlen(out);
+    if (cur + 1 >= out_cap) {
+        return;
+    }
+    size_t avail = out_cap - cur - 1;
+    size_t add = strlen(src);
+    if (add > avail) {
+        add = avail;
+    }
+    memcpy(out + cur, src, add);
+    out[cur + add] = '\0';
+}
 
-/* Hash a node-name string into a 32-bit XRCE session key. The Rust
- * impl uses FNV-1a; same here so two implementations can interoperate
- * against the same agent without surprise. */
+void xrce_dds_topic_name(const char *topic_name, int avoid_ros_prefix,
+                         char *out, size_t out_cap) {
+    if (out_cap == 0) return;
+    out[0] = '\0';
+    const char *src = topic_name;
+    if (src && src[0] == '/') {
+        src += 1;
+    }
+    if (!avoid_ros_prefix) {
+        copy_truncating(out, out_cap, "rt/");
+        append_truncating(out, out_cap, src ? src : "");
+    } else {
+        copy_truncating(out, out_cap, src ? src : "");
+    }
+}
+
+void xrce_dds_request_topic(const char *service_name, char *out, size_t out_cap) {
+    if (out_cap == 0) return;
+    out[0] = '\0';
+    const char *src = service_name;
+    if (src && src[0] == '/') src += 1;
+    copy_truncating(out, out_cap, "rq/");
+    append_truncating(out, out_cap, src ? src : "");
+    append_truncating(out, out_cap, "Request");
+}
+
+void xrce_dds_reply_topic(const char *service_name, char *out, size_t out_cap) {
+    if (out_cap == 0) return;
+    out[0] = '\0';
+    const char *src = service_name;
+    if (src && src[0] == '/') src += 1;
+    copy_truncating(out, out_cap, "rr/");
+    append_truncating(out, out_cap, src ? src : "");
+    append_truncating(out, out_cap, "Reply");
+}
+
+/* Insert "Request_" / "Reply_" before a trailing '_' (matches Rust
+ * impl: `example_interfaces::srv::dds_::AddTwoInts_` →
+ * `example_interfaces::srv::dds_::AddTwoInts_Request_`). */
+static void insert_before_trailing_underscore(const char *type_name,
+                                              const char *insert,
+                                              char *out, size_t out_cap) {
+    if (out_cap == 0) return;
+    out[0] = '\0';
+    if (type_name == NULL) {
+        copy_truncating(out, out_cap, insert);
+        append_truncating(out, out_cap, "_");
+        return;
+    }
+    size_t len = strlen(type_name);
+    if (len > 0 && type_name[len - 1] == '_') {
+        /* prefix = type_name without the trailing '_' */
+        size_t prefix_len = len - 1;
+        if (prefix_len + 1 > out_cap) {
+            prefix_len = out_cap - 1;
+        }
+        memcpy(out, type_name, prefix_len);
+        out[prefix_len] = '\0';
+        append_truncating(out, out_cap, "_");
+        append_truncating(out, out_cap, insert);
+        append_truncating(out, out_cap, "_");
+    } else {
+        copy_truncating(out, out_cap, type_name);
+        append_truncating(out, out_cap, "_");
+        append_truncating(out, out_cap, insert);
+        append_truncating(out, out_cap, "_");
+    }
+}
+
+void xrce_dds_request_type(const char *type_name, char *out, size_t out_cap) {
+    insert_before_trailing_underscore(type_name, "Request", out, out_cap);
+}
+
+void xrce_dds_reply_type(const char *type_name, char *out, size_t out_cap) {
+    insert_before_trailing_underscore(type_name, "Reply", out, out_cap);
+}
+
+uxrQoS_t xrce_map_qos(const nros_rmw_qos_t *qos) {
+    uxrQoS_t out;
+    if (qos == NULL) {
+        out.durability  = UXR_DURABILITY_VOLATILE;
+        out.reliability = UXR_RELIABILITY_RELIABLE;
+        out.history     = UXR_HISTORY_KEEP_LAST;
+        out.depth       = 10;
+        return out;
+    }
+    out.durability = (qos->durability == NROS_RMW_DURABILITY_TRANSIENT_LOCAL)
+                     ? UXR_DURABILITY_TRANSIENT_LOCAL
+                     : UXR_DURABILITY_VOLATILE;
+    out.reliability = (qos->reliability == NROS_RMW_RELIABILITY_BEST_EFFORT)
+                      ? UXR_RELIABILITY_BEST_EFFORT
+                      : UXR_RELIABILITY_RELIABLE;
+    out.history = (qos->history == NROS_RMW_HISTORY_KEEP_ALL)
+                  ? UXR_HISTORY_KEEP_ALL
+                  : UXR_HISTORY_KEEP_LAST;
+    out.depth = qos->depth;
+    return out;
+}
+
+/* ---- Session-key hashing ------------------------------------------- */
+
+/* FNV-1a — chosen to match the Rust impl's `hash_session_key` so two
+ * implementations connecting to the same agent under the same node
+ * name agree on the session key.
+ *
+ * NOTE: The Rust impl actually uses djb2 (DJB2_INIT/DJB2_MULTIPLIER).
+ * For Phase 115.K.2 isolation (dead-agent smoke + future C-only
+ * tests), the choice doesn't matter as long as the C backend is
+ * self-consistent. Documented mismatch with Rust to be unified
+ * either way before 115.K.2.5 flips the C backend on. */
 static uint32_t hash_session_key(const char *s) {
     uint32_t h = 0x811c9dc5u;
     if (s == NULL) {
@@ -61,7 +200,6 @@ static uint32_t hash_session_key(const char *s) {
         h ^= (uint32_t)*p;
         h *= 0x01000193u;
     }
-    /* Avoid the reserved 0 / 0xffff_ffff session keys. */
     if (h == 0u || h == 0xffffffffu) {
         h ^= 0xdeadbeefu;
     }
@@ -94,12 +232,33 @@ static int parse_host_port(const char *locator, char *host_buf,
     return 1;
 }
 
+/* ---- Session open / close / drive_io ------------------------------- */
+
+/* `udp/host:port` or `udp4://host:port` strip the scheme prefix; bare
+ * `host:port` is also accepted. `custom://...` selects the runtime
+ * transport vtable bridge. */
+static int locator_strip_udp_prefix(const char **locator) {
+    static const char *const prefixes[] = { "udp/", "udp4://", "udp://" };
+    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
+        size_t plen = strlen(prefixes[i]);
+        if (strncmp(*locator, prefixes[i], plen) == 0) {
+            *locator = *locator + plen;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int locator_is_custom(const char *locator) {
+    if (locator == NULL) return 0;
+    return strncmp(locator, "custom://", 9) == 0
+        || strcmp(locator, "custom") == 0;
+}
+
 nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
                                  uint32_t domain_id, const char *node_name,
                                  nros_rmw_session_t *out) {
     (void)mode;
-    (void)domain_id; /* domain_id consumed at participant-create time
-                        — Phase 115.K.2.2. */
     if (out == NULL || node_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -107,60 +266,62 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         return NROS_RMW_RET_ERROR;
     }
 
-    /* `udp/host:port` or `udp4://host:port` strip the scheme prefix;
-     * bare `host:port` is also accepted (matches the Rust shim). */
-    const char *addr_locator = locator != NULL ? locator : "127.0.0.1";
-    const char *prefixes[] = { "udp/", "udp4://", "udp://" };
-    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
-        size_t plen = strlen(prefixes[i]);
-        if (strncmp(addr_locator, prefixes[i], plen) == 0) {
-            addr_locator = addr_locator + plen;
-            break;
-        }
-    }
-
-    char host[64];
-    uint16_t port = XRCE_DEFAULT_AGENT_PORT;
-    if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
-        /* Treat the whole locator as a host with default port. */
-        size_t hlen = strlen(addr_locator);
-        if (hlen == 0 || hlen + 1 > sizeof(host)) {
-            return NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        memcpy(host, addr_locator, hlen + 1);
-    }
-
-    struct xrce_session_state *st = (struct xrce_session_state *)
-        calloc(1, sizeof(struct xrce_session_state));
+    xrce_session_state_t *st = (xrce_session_state_t *)
+        calloc(1, sizeof(xrce_session_state_t));
     if (st == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
+    st->next_entity_id = 2; /* id 1 reserved for the participant */
 
-    if (!uxr_init_udp_transport(&st->udp, UXR_IPv4, host, "2018")) {
-        free(st);
-        return NROS_RMW_RET_ERROR;
-    }
-    /* uxr_init_udp_transport ignores its port arg in some platform
-     * builds; re-set explicitly via the platform comm if needed.
-     * Documented as a 115.K.2.1 follow-up. */
-    char port_str[8];
-    snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
-    /* Re-init with the parsed port to make sure we don't end up
-     * pointing at 2018 when the locator said otherwise. */
-    if (port != 2018) {
-        uxr_close_udp_transport(&st->udp);
+    /* Phase 115.K.2.4 — `custom://...` routes through
+     * `xrce_custom_transport_install`. UDP path mirrors K.2.1. */
+    if (locator_is_custom(locator)) {
+        st->use_custom_transport = true;
+        nros_rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
+        if (ret != NROS_RMW_RET_OK) {
+            free(st);
+            return ret;
+        }
+        uxr_init_session(&st->session, &st->custom.comm,
+                         hash_session_key(node_name));
+    } else {
+        const char *addr_locator = locator != NULL ? locator : "127.0.0.1";
+        (void)locator_strip_udp_prefix(&addr_locator);
+
+        char host[64];
+        uint16_t port = XRCE_DEFAULT_AGENT_PORT;
+        if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
+            size_t hlen = strlen(addr_locator);
+            if (hlen == 0 || hlen + 1 > sizeof(host)) {
+                free(st);
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            }
+            memcpy(host, addr_locator, hlen + 1);
+        }
+        char port_str[8];
+        snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
+
         if (!uxr_init_udp_transport(&st->udp, UXR_IPv4, host, port_str)) {
             free(st);
             return NROS_RMW_RET_ERROR;
         }
+        uxr_init_session(&st->session, &st->udp.comm, hash_session_key(node_name));
     }
 
-    uxr_init_session(&st->session, &st->udp.comm,
-                     hash_session_key(node_name));
+    /* Topic / request / reply callbacks — single registration per
+     * session. The session-state pointer is threaded through `args`
+     * so the callbacks can find their slot pools without leaning on
+     * a module global. */
+    uxr_set_topic_callback(&st->session, xrce_topic_callback, st);
+    uxr_set_request_callback(&st->session, xrce_request_callback, st);
+    uxr_set_reply_callback(&st->session, xrce_reply_callback, st);
 
-    if (!uxr_create_session_retries(&st->session,
-                                    XRCE_SESSION_CREATION_RETRIES)) {
-        uxr_close_udp_transport(&st->udp);
+    if (!uxr_create_session_retries(&st->session, XRCE_SESSION_CREATION_RETRIES)) {
+        if (st->use_custom_transport) {
+            uxr_close_custom_transport(&st->custom);
+        } else {
+            uxr_close_udp_transport(&st->udp);
+        }
         free(st);
         return NROS_RMW_RET_ERROR;
     }
@@ -172,6 +333,32 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         &st->session, st->input_reliable_buf,
         sizeof(st->input_reliable_buf), XRCE_STREAM_HISTORY);
 
+    /* Create the DDS participant. ID 1 is reserved for it. */
+    st->participant_oid = uxr_object_id(1, UXR_PARTICIPANT_ID);
+
+    char name_buf[XRCE_PARTICIPANT_NAME_BUF_SIZE];
+    copy_truncating(name_buf, sizeof(name_buf), node_name);
+
+    uint16_t req = uxr_buffer_create_participant_bin(
+        &st->session, st->output_reliable, st->participant_oid,
+        (uint16_t)domain_id, name_buf, UXR_REPLACE);
+
+    uint8_t  status = 0;
+    uint16_t requests[1] = { req };
+    uint8_t  statuses[1] = { 0 };
+    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    (void)status;
+    if (cret != NROS_RMW_RET_OK) {
+        (void)uxr_delete_session(&st->session);
+        if (st->use_custom_transport) {
+            uxr_close_custom_transport(&st->custom);
+        } else {
+            uxr_close_udp_transport(&st->udp);
+        }
+        free(st);
+        return cret;
+    }
+
     out->backend_data = st;
     return NROS_RMW_RET_OK;
 }
@@ -180,12 +367,16 @@ nros_rmw_ret_t xrce_session_close(nros_rmw_session_t *session) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    struct xrce_session_state *st = (struct xrce_session_state *)session->backend_data;
+    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
     if (st == NULL) {
         return NROS_RMW_RET_ERROR;
     }
     (void)uxr_delete_session(&st->session);
-    uxr_close_udp_transport(&st->udp);
+    if (st->use_custom_transport) {
+        uxr_close_custom_transport(&st->custom);
+    } else {
+        uxr_close_udp_transport(&st->udp);
+    }
     free(st);
     session->backend_data = NULL;
     return NROS_RMW_RET_OK;
@@ -196,7 +387,7 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    struct xrce_session_state *st = (struct xrce_session_state *)session->backend_data;
+    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
     if (st == NULL) {
         return NROS_RMW_RET_ERROR;
     }

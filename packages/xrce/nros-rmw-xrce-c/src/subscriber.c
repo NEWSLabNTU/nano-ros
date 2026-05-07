@@ -1,8 +1,67 @@
-/* Subscriber stubs — see session.c for the Phase 115.K.2 scaffold rationale. */
+/* Phase 115.K.2.2 — subscriber path.
+ *
+ * Mirrors the Rust impl's `XrceSession::create_subscriber` /
+ * `XrceSubscriber::try_recv_raw`. Single-slot ringbuffer: callbacks
+ * overwrite stale data; oversize messages flag overflow and drop.
+ *
+ * The topic callback dispatches by datareader_id to the matching
+ * slot in the per-session pool. It's registered ONCE in
+ * `xrce_session_open` (see session.c) — re-registering per
+ * subscriber would race with concurrent inbound messages.
+ */
 
 #include "internal.h"
 
 #include "nros/rmw_ret.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#include <uxr/client/client.h>
+#include <uxr/client/core/session/object_id.h>
+
+/* Topic callback — dispatches by datareader id. Registered once at
+ * session_open via `uxr_set_topic_callback(..., xrce_topic_callback,
+ * st)`. */
+void xrce_topic_callback(uxrSession *session,
+                         uxrObjectId object_id,
+                         uint16_t request_id,
+                         uxrStreamId stream_id,
+                         struct ucdrBuffer *ub,
+                         uint16_t length,
+                         void *args) {
+    (void)session;
+    (void)request_id;
+    (void)stream_id;
+
+    xrce_session_state_t *st = (xrce_session_state_t *)args;
+    if (st == NULL || ub == NULL) {
+        return;
+    }
+    size_t len = (size_t)length;
+    for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
+        xrce_subscriber_slot *slot = &st->subscriber_slots[i];
+        if (!slot->active || slot->datareader_id != object_id.id) {
+            continue;
+        }
+        /* Reader currently reading the slot — drop. */
+        if (slot->locked) {
+            return;
+        }
+        if (len > XRCE_BUFFER_SIZE) {
+            slot->overflow = true;
+            slot->has_data = true;
+            return;
+        }
+        memcpy(slot->data, ub->iterator, len);
+        slot->len = len;
+        slot->overflow = false;
+        slot->has_data = true;
+        return;
+    }
+    /* TODO 115.K.2.x: bump a per-session "unmatched callback" counter
+     * for diagnostics when the slot pool is full. */
+}
 
 nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,
                                       const char *topic_name,
@@ -11,29 +70,154 @@ nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,
                                       uint32_t domain_id,
                                       const nros_rmw_qos_t *qos,
                                       nros_rmw_subscriber_t *out) {
-    (void)session;
-    (void)topic_name;
-    (void)type_name;
     (void)type_hash;
     (void)domain_id;
-    (void)qos;
-    (void)out;
-    return NROS_RMW_RET_UNSUPPORTED;
+
+    if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
+    if (st == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+
+    /* Find a free slot. */
+    xrce_subscriber_slot *slot = NULL;
+    for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
+        if (!st->subscriber_slots[i].active) {
+            slot = &st->subscriber_slots[i];
+            break;
+        }
+    }
+    if (slot == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+
+    xrce_subscriber_state *ss = (xrce_subscriber_state *)
+        calloc(1, sizeof(xrce_subscriber_state));
+    if (ss == NULL) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    ss->session_state = st;
+    ss->slot          = slot;
+
+    uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
+    uxrObjectId sub_oid   = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
+    uxrObjectId dr_oid    = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
+
+    int avoid_ros = 0;
+    if (qos != NULL) {
+        avoid_ros = qos->avoid_ros_namespace_conventions != 0;
+    }
+
+    char dds_topic[XRCE_DDS_NAME_BUF_SIZE];
+    char dds_type[XRCE_DDS_NAME_BUF_SIZE];
+    xrce_dds_topic_name(topic_name, avoid_ros, dds_topic, sizeof(dds_topic));
+    size_t tn_len = strlen(type_name);
+    if (tn_len + 1 > sizeof(dds_type)) tn_len = sizeof(dds_type) - 1;
+    memcpy(dds_type, type_name, tn_len);
+    dds_type[tn_len] = '\0';
+
+    uxrQoS_t xrce_qos = xrce_map_qos(qos);
+
+    uint16_t req_topic = uxr_buffer_create_topic_bin(
+        &st->session, st->output_reliable, topic_oid, st->participant_oid,
+        dds_topic, dds_type, UXR_REPLACE);
+    uint16_t req_sub = uxr_buffer_create_subscriber_bin(
+        &st->session, st->output_reliable, sub_oid, st->participant_oid,
+        UXR_REPLACE);
+    uint16_t req_dr = uxr_buffer_create_datareader_bin(
+        &st->session, st->output_reliable, dr_oid, sub_oid, topic_oid,
+        xrce_qos, UXR_REPLACE);
+
+    uint16_t requests[3] = { req_topic, req_sub, req_dr };
+    uint8_t  statuses[3] = { 0, 0, 0 };
+    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    if (cret != NROS_RMW_RET_OK) {
+        free(ss);
+        return cret;
+    }
+
+    /* Register slot for callback dispatch. */
+    slot->datareader_id = dr_oid.id;
+    slot->has_data      = false;
+    slot->overflow      = false;
+    slot->locked        = false;
+    slot->len           = 0;
+    slot->active        = true;
+    ss->datareader_oid  = dr_oid;
+
+    /* Request continuous data delivery. */
+    uxrDeliveryControl delivery = {
+        .max_samples           = UXR_MAX_SAMPLES_UNLIMITED,
+        .max_elapsed_time      = UXR_MAX_ELAPSED_TIME_UNLIMITED,
+        .max_bytes_per_second  = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+        .min_pace_period       = 0,
+    };
+    (void)uxr_buffer_request_data(&st->session, st->output_reliable,
+                                  dr_oid, st->input_reliable, &delivery);
+    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+
+    out->backend_data = ss;
+    out->can_loan_messages = false;
+    return NROS_RMW_RET_OK;
 }
 
 void xrce_subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
-    (void)subscriber;
+    if (subscriber == NULL || subscriber->backend_data == NULL) {
+        return;
+    }
+    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
+    xrce_session_state_t *st = ss->session_state;
+
+    if (ss->slot != NULL) {
+        ss->slot->active = false;
+        ss->slot->has_data = false;
+    }
+    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable,
+                                   ss->datareader_oid);
+    (void)uxr_run_session_time(&st->session, 0);
+
+    free(ss);
+    subscriber->backend_data = NULL;
 }
 
 int32_t xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
                                      uint8_t *buf, size_t buf_len) {
-    (void)subscriber;
-    (void)buf;
-    (void)buf_len;
-    return NROS_RMW_RET_UNSUPPORTED;
+    if (subscriber == NULL || subscriber->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
+    xrce_subscriber_slot *slot = ss->slot;
+    if (slot == NULL || !slot->has_data) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+    if (slot->overflow) {
+        slot->overflow = false;
+        slot->has_data = false;
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
+    size_t len = slot->len;
+    if (len > buf_len) {
+        slot->has_data = false;
+        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    }
+    slot->locked = true;
+    if (buf != NULL && len > 0) {
+        memcpy(buf, slot->data, len);
+    }
+    slot->locked = false;
+    slot->has_data = false;
+    return (int32_t)len;
 }
 
 int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
-    (void)subscriber;
-    return 0;
+    if (subscriber == NULL || subscriber->backend_data == NULL) {
+        return 0;
+    }
+    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
+    if (ss->slot == NULL) {
+        return 0;
+    }
+    return ss->slot->has_data ? 1 : 0;
 }

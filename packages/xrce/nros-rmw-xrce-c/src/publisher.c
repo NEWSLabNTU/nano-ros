@@ -1,8 +1,20 @@
-/* Publisher stubs — see session.c for the Phase 115.K.2 scaffold rationale. */
+/* Phase 115.K.2.2 — publisher path.
+ *
+ * Mirrors the Rust impl's `XrceSession::create_publisher` /
+ * `XrcePublisher::publish_raw` shape; bin-create only (no QoS XML
+ * fallback in the C backend — see internal.h for the K.2 scope
+ * gaps).
+ */
 
 #include "internal.h"
 
 #include "nros/rmw_ret.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#include <uxr/client/client.h>
+#include <uxr/client/core/session/object_id.h>
 
 nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
                                      const char *topic_name,
@@ -11,24 +23,113 @@ nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
                                      uint32_t domain_id,
                                      const nros_rmw_qos_t *qos,
                                      nros_rmw_publisher_t *out) {
-    (void)session;
-    (void)topic_name;
-    (void)type_name;
     (void)type_hash;
     (void)domain_id;
-    (void)qos;
-    (void)out;
-    return NROS_RMW_RET_UNSUPPORTED;
+
+    if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
+    if (st == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+
+    xrce_publisher_state *ps = (xrce_publisher_state *)
+        calloc(1, sizeof(xrce_publisher_state));
+    if (ps == NULL) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    ps->session_state = st;
+
+    /* Allocate 3 entity ids (TOPIC, PUBLISHER, DATAWRITER). */
+    uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
+    uxrObjectId pub_oid   = xrce_alloc_entity_id(st, UXR_PUBLISHER_ID);
+    uxrObjectId dw_oid    = xrce_alloc_entity_id(st, UXR_DATAWRITER_ID);
+
+    int avoid_ros = 0;
+    if (qos != NULL) {
+        avoid_ros = qos->avoid_ros_namespace_conventions != 0;
+    }
+
+    char dds_topic[XRCE_DDS_NAME_BUF_SIZE];
+    char dds_type[XRCE_DDS_NAME_BUF_SIZE];
+    xrce_dds_topic_name(topic_name, avoid_ros, dds_topic, sizeof(dds_topic));
+    /* Type name: copy as-is. */
+    size_t tn_len = strlen(type_name);
+    if (tn_len + 1 > sizeof(dds_type)) {
+        tn_len = sizeof(dds_type) - 1;
+    }
+    memcpy(dds_type, type_name, tn_len);
+    dds_type[tn_len] = '\0';
+
+    uxrQoS_t xrce_qos = xrce_map_qos(qos);
+
+    uint16_t req_topic = uxr_buffer_create_topic_bin(
+        &st->session, st->output_reliable, topic_oid, st->participant_oid,
+        dds_topic, dds_type, UXR_REPLACE);
+    uint16_t req_pub = uxr_buffer_create_publisher_bin(
+        &st->session, st->output_reliable, pub_oid, st->participant_oid,
+        UXR_REPLACE);
+    uint16_t req_dw = uxr_buffer_create_datawriter_bin(
+        &st->session, st->output_reliable, dw_oid, pub_oid, topic_oid,
+        xrce_qos, UXR_REPLACE);
+
+    uint16_t requests[3] = { req_topic, req_pub, req_dw };
+    uint8_t  statuses[3] = { 0, 0, 0 };
+    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    if (cret != NROS_RMW_RET_OK) {
+        free(ps);
+        return cret;
+    }
+
+    ps->datawriter_oid = dw_oid;
+    out->backend_data = ps;
+    out->can_loan_messages = false;
+    return NROS_RMW_RET_OK;
 }
 
 void xrce_publisher_destroy(nros_rmw_publisher_t *publisher) {
-    (void)publisher;
+    if (publisher == NULL || publisher->backend_data == NULL) {
+        return;
+    }
+    xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
+    xrce_session_state_t *st = ps->session_state;
+
+    /* Best-effort delete of the datawriter entity. We don't wait for
+     * status — close-time teardown should not block on agent acks. */
+    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable,
+                                   ps->datawriter_oid);
+    (void)uxr_run_session_time(&st->session, 0);
+
+    free(ps);
+    publisher->backend_data = NULL;
 }
 
 nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
                                           const uint8_t *data, size_t len) {
-    (void)publisher;
-    (void)data;
-    (void)len;
-    return NROS_RMW_RET_UNSUPPORTED;
+    if (publisher == NULL || publisher->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    if (data == NULL && len > 0) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
+    xrce_session_state_t *st = ps->session_state;
+
+    /* Try the non-fragmented fast path first. */
+    uint16_t req = uxr_buffer_topic(
+        &st->session, st->output_reliable, ps->datawriter_oid,
+        (uint8_t *)(uintptr_t)data, len);
+    if (req != UXR_INVALID_REQUEST_ID) {
+        /* Flush so the bytes reach the agent without waiting for the
+         * next drive_io tick. Mirrors the Rust impl. */
+        (void)uxr_run_session_time(&st->session, 0);
+        return NROS_RMW_RET_OK;
+    }
+
+    /* TODO 115.K.2.x: fragmented fallback via
+     * `uxr_prepare_output_stream_fragmented` for messages larger than
+     * a single stream slot. The Rust impl has it; skipped here until
+     * a smoke test demonstrates the need. */
+    return NROS_RMW_RET_MESSAGE_TOO_LARGE;
 }

@@ -73,17 +73,45 @@ int main(void) {
         g_received_vtable->close(&session);
     }
 
-    /* The publish_raw / try_recv_raw / service paths still hit the
-     * K.2.0 stubs; confirm at least one. */
+    /* Phase 115.K.2.2 — publish_raw on a NULL backend_data publisher
+     * must reach the backend (no longer the K.2.0 UNSUPPORTED stub)
+     * and return INVALID_ARGUMENT. */
     nros_rmw_publisher_t pub = {0};
     r = g_received_vtable->publish_raw(&pub, NULL, 0);
-    if (r != NROS_RMW_RET_UNSUPPORTED) {
+    if (r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
-                "FAIL: publish_raw returned %d, expected UNSUPPORTED (K.2.2 not landed yet)\n",
+                "FAIL: publish_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)r);
         return EXIT_FAILURE;
     }
 
-    printf("ok: vtable wired; session.open reaches backend; pub/sub stubs still UNSUPPORTED\n");
+    /* Phase 115.K.2.2 — try_recv_raw / has_data on a fresh subscriber
+     * shell with NULL backend_data must reach the backend. */
+    nros_rmw_subscriber_t sub = {0};
+    int32_t rr = g_received_vtable->try_recv_raw(&sub, NULL, 0);
+    if (rr != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr,
+                "FAIL: try_recv_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                (int)rr);
+        return EXIT_FAILURE;
+    }
+    int32_t hd = g_received_vtable->has_data(&sub);
+    if (hd != 0) {
+        fprintf(stderr, "FAIL: has_data on NULL backend_data returned %d, expected 0\n", (int)hd);
+        return EXIT_FAILURE;
+    }
+
+    /* Service paths still UNSUPPORTED until K.2.3 lands. */
+    nros_rmw_service_server_t srv = {0};
+    nros_rmw_ret_t srv_r = g_received_vtable->create_service_server(
+        NULL, "/foo", "Foo_", NULL, 0, &srv);
+    if (srv_r != NROS_RMW_RET_UNSUPPORTED) {
+        fprintf(stderr,
+                "FAIL: create_service_server returned %d, expected UNSUPPORTED (K.2.3 not yet)\n",
+                (int)srv_r);
+        return EXIT_FAILURE;
+    }
+
+    printf("ok: pub/sub wired (K.2.2); service paths still UNSUPPORTED until K.2.3\n");
     return EXIT_SUCCESS;
 }

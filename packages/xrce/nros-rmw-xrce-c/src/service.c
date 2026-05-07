@@ -1,10 +1,85 @@
-/* Service server + client stubs — see session.c for the Phase 115.K.2
- * scaffold rationale.
+/* Phase 115.K.2 — service server / client paths.
+ *
+ * Phase 115.K.2.2 lands the request/reply callback stubs (registered
+ * once at session_open) so the link satisfies. Phase 115.K.2.3 fills
+ * in `xrce_service_*_create` / `xrce_service_call_raw` /
+ * `xrce_service_send_reply` against `uxr_buffer_create_replier_bin`
+ * and friends.
  */
 
 #include "internal.h"
 
 #include "nros/rmw_ret.h"
+
+#include <string.h>
+
+/* Single-session callbacks — registered once at session_open via
+ * `uxr_set_request_callback` / `uxr_set_reply_callback`. Phase
+ * 115.K.2.3 dispatches by object_id to the matching slot in the
+ * per-session pool. The K.2.2 stubs below are link-only. */
+
+void xrce_request_callback(uxrSession *session,
+                           uxrObjectId object_id,
+                           uint16_t request_id,
+                           SampleIdentity *sample_id,
+                           struct ucdrBuffer *ub,
+                           uint16_t length,
+                           void *args) {
+    (void)session; (void)request_id;
+    if (args == NULL || ub == NULL || sample_id == NULL) {
+        return;
+    }
+    xrce_session_state_t *st = (xrce_session_state_t *)args;
+    size_t len = (size_t)length;
+    for (size_t i = 0; i < XRCE_MAX_SERVICE_SERVERS; ++i) {
+        xrce_service_server_slot *slot = &st->service_server_slots[i];
+        if (!slot->active || slot->replier_id != object_id.id) {
+            continue;
+        }
+        if (len > XRCE_BUFFER_SIZE) {
+            slot->overflow = true;
+            slot->has_request = true;
+            return;
+        }
+        slot->overflow = false;
+        memcpy(slot->data, ub->iterator, len);
+        slot->len = len;
+        slot->sample_id = *sample_id;
+        slot->has_request = true;
+        return;
+    }
+}
+
+void xrce_reply_callback(uxrSession *session,
+                         uxrObjectId object_id,
+                         uint16_t request_id,
+                         uint16_t reply_id,
+                         struct ucdrBuffer *ub,
+                         uint16_t length,
+                         void *args) {
+    (void)session; (void)request_id; (void)reply_id;
+    if (args == NULL || ub == NULL) {
+        return;
+    }
+    xrce_session_state_t *st = (xrce_session_state_t *)args;
+    size_t len = (size_t)length;
+    for (size_t i = 0; i < XRCE_MAX_SERVICE_CLIENTS; ++i) {
+        xrce_service_client_slot *slot = &st->service_client_slots[i];
+        if (!slot->active || slot->requester_id != object_id.id) {
+            continue;
+        }
+        if (len > XRCE_BUFFER_SIZE) {
+            slot->overflow = true;
+            slot->has_reply = true;
+            return;
+        }
+        slot->overflow = false;
+        memcpy(slot->data, ub->iterator, len);
+        slot->len = len;
+        slot->has_reply = true;
+        return;
+    }
+}
 
 /* ---- Service server -------------------------------------------------- */
 
