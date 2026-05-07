@@ -175,10 +175,10 @@ static SLOT: Mutex<Option<NrosTransportOps>> = Mutex::new(None);
 pub unsafe fn set_custom_transport(
     ops: Option<NrosTransportOps>,
 ) -> Result<(), crate::TransportError> {
-    if let Some(o) = ops.as_ref() {
-        if o.abi_version != NROS_TRANSPORT_OPS_ABI_VERSION_V1 {
-            return Err(crate::TransportError::IncompatibleAbi);
-        }
+    if let Some(o) = ops.as_ref()
+        && o.abi_version != NROS_TRANSPORT_OPS_ABI_VERSION_V1
+    {
+        return Err(crate::TransportError::IncompatibleAbi);
     }
     SLOT.with(|slot| *slot = ops);
     Ok(())
