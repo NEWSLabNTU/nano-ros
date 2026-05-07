@@ -87,7 +87,7 @@ build-rmw: setup
 test: build-rmw
     ctest --test-dir packages/dds/nros-rmw-cyclonedds/build --output-on-failure
 
-# Composite: setup Cyclone + build RMW backend + run tests.
-#
-# Wired into `just ci` once Phase 117 lands.
+# Composite: setup Cyclone + build RMW backend + run tests. Wired
+# into top-level `just ci` via the `cyclonedds-ci` wrapper as of
+# Phase 117.16.
 ci: setup build-rmw test

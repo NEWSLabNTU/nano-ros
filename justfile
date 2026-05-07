@@ -448,9 +448,27 @@ test-all verbose="": build-zenohd
     fi
 
 # Run CI: format check + clippy + every test tier (never modifies code).
-# `test-all` already covers test-doc + test-miri internally.
-ci: check test-all
+# `test-all` already covers test-doc + test-miri internally. Phase
+# 117.16 — `cyclonedds::ci` runs the C++ Cyclone DDS RMW backend's
+# CTest harnesses (entity smoke + POSIX E2E vs stock
+# `rmw_cyclonedds_cpp`). Skips cleanly if the Cyclone submodule
+# isn't initialised; otherwise fully gated.
+ci: check test-all cyclonedds-ci
     @echo "CI passed!"
+
+# Cyclone DDS module CI step. Best-effort: skips cleanly when the
+# pinned Cyclone submodule hasn't been initialised (typical for
+# contributors not touching Phase 117). The `cyclonedds::ci` recipe
+# itself fails hard on actual test failures.
+cyclonedds-ci:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
+        echo "Cyclone DDS skip: submodule not initialised"
+        echo "  (run \`just cyclonedds setup\` to enable)"
+        exit 0
+    fi
+    just cyclonedds ci
 
 # =============================================================================
 # Test Infrastructure

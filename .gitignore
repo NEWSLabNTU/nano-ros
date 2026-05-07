@@ -41,3 +41,12 @@ tools/*
 # upstream source — Phase 100 SPE port pulls FreeRTOS-Kernel here for
 # its Cortex-R5 GCC port + POSIX simulator port).
 /external/
+
+# Per-session scratch — CLAUDE.md "Temp files in $project/tmp/ (gitignored)".
+/tmp/
+# Test runner log dir created by tests/run-test.sh.
+/test-logs/
+# One-off build smoke logs (e.g. just zephyr build-s32z's best-effort log).
+/build-*.log
+# Claude Code session/agent state.
+/.claude/
