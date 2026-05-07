@@ -32,9 +32,7 @@ fn main() {
     // `/dev/...` path) and routes to `xrce_posix_serial_init`. Wrap
     // arbitrary tty/pty paths so the `serial://` scheme drives the
     // selector regardless of where the device lives in the filesystem.
-    let locator = if pty_path.starts_with("serial://")
-        || pty_path.starts_with("/dev/")
-    {
+    let locator = if pty_path.starts_with("serial://") || pty_path.starts_with("/dev/") {
         pty_path.clone()
     } else {
         format!("serial://{pty_path}")
