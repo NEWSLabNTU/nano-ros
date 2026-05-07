@@ -12,6 +12,24 @@ links = "nros_node"
 default = ["std"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "nros-rmw-uorb?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
+
+# Phase 110 — compile-time scheduler selection. Default ships only
+# `scheduler-fifo` so MCU builds drop unused scheduler code. Each
+# flag is independent; multiple may be on simultaneously when
+# runtime selection across classes is needed.
+scheduler-fifo = []
+scheduler-edf = []
+scheduler-bucketed = []
+scheduler-sporadic = []
+# Phase 110.F — opt-in PiCAS-style per-callback OS priority.
+# Useful only on platforms with enough OS pri slots (Linux, NuttX
+# 1..255). Disqualified on Cortex-M0+ (4 NVIC levels). Adds a
+# thread-pool-per-priority dispatch model — substantial additional
+# runtime cost; users opt in explicitly.
+scheduler-os-priority = []
+# Phase 110.G — opt-in ARINC-653 cyclic executive (TimeTriggered
+# class). Adds schedule-table parser + spin_once mode selector.
+scheduler-time-triggered = []
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds"]
