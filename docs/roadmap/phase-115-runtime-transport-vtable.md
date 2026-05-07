@@ -19,7 +19,7 @@ etc.). Per the design note
 - `nros-rmw-cffi`'s shape is the only "design decision"; L1 / L2
   wrappers above it are mechanical translations.
 
-**Status:** v1 + 115.B complete (XRCE-DDS via 115.E + zenoh-pico via 115.B). All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.B / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`, second-language smoke test) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.H → `115.X-dds`, 115.F (loopback example) blocked on a multi-process zenohd-fixture harness, 115.J → Phase 23.
+**Status:** v1 + 115.B + 115.F (native) + 115.H scaffolding complete. Three RMW backends now expose the runtime-pluggable transport vtable: XRCE-DDS via 115.E (full), zenoh-pico via 115.B (full + 115.F native loopback E2E), dust-DDS via 115.H scaffolding (factory + smoke test landed; `DdsRmw` locator-scheme dispatch + discovery-over-byte-pipe deferred to `115.H.2-discovery`). All v1 acceptance criteria satisfied (115.A.1 / 115.A.2 / 115.B / 115.C / 115.D / 115.E / 115.G.1–4 / 115.I / 115.I.2). The transport vtable is the project's first canonical-C-ABI interface; the design + test pattern (`abi_version` field, `tests/c_stubs/`, second-language smoke test) is the template for future Rust→C boundaries (Phase 117 will roll the same shape across the wider RMW + Platform vtables). **Deferred to follow-up phases:** 115.F (bare-metal C variant) blocked on a bare-metal C example harness, 115.H.2 (DDS dispatch + discovery) tracked separately, 115.J → Phase 23.
 **Priority:** Medium
 **Depends on:** Phase 79 (unified platform abstraction), Phase 102 (RMW API alignment)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-22; reference `rmw_uros_set_custom_transport` in micro-ROS
@@ -257,9 +257,21 @@ documented in
   Locator surface for users: `custom/<addr>`. The `<addr>` segment
   is opaque to v1 (no configurable keys); future minor-version
   bumps may thread it through `params` to the user's `open()`. (`<this commit>`)
-- [ ] **115.H — dust-DDS custom transport.** `RtpsUdpTransportParticipantFactory`-
-  equivalent plug-in. Design queued for follow-up phase
-  `115.X-dds`.
+- [~] **115.H — dust-DDS custom transport.** Transport-layer
+  scaffolding landed:
+  `packages/dds/nros-rmw-dds/src/transport_custom.rs` ships
+  `NrosCustomTransportParticipantFactory<P>` mirroring
+  `NrosUdpTransportFactory<P>`'s shape (slot drain via
+  `nros_rmw::take_custom_transport`, single-task recv loop,
+  `WriteMessage` impl funneling every datagram through `cb_write`).
+  Smoke test
+  `packages/dds/nros-rmw-dds/tests/custom_transport.rs` validates
+  `cb_open`/`cb_write`/`cb_read` all trip via stub callbacks (no
+  agent / multicast required). **Remaining v1 work** —
+  `DdsRmw::open` locator-scheme dispatch (`custom/...` → custom
+  factory) and a discovery-over-byte-pipe story (no multicast
+  SPDP; needs static-peer mode in dust-dds). Tracked as
+  `115.H.2-discovery`. Design surface in Appendix C below.
 
 ### Tests
 
@@ -417,7 +429,7 @@ documented in
 - Risk: ABI commitment. `nros_transport_ops_t` field order must be stable. Lock it before 1.0. The Rust-side `NrosTransportOps` is `#[repr(C)]` so the two share a single layout — no parallel definitions to drift.
 - Risk: re-entrancy. The vtable contract must specify whether `read` may be called from a different thread than `write`. v1: same thread only; document.
 - Risk: registration after `nros_support_init`. v1 rejects late registration with `NROS_RET_ALREADY_INIT`. Documented in `book/src/porting/custom-transport.md`.
-- Out of scope: dust-dds DDS support (file as 115.X follow-up).
+- 115.H scaffolding (factory + smoke test) landed in this phase; remaining work (locator-scheme dispatch in `DdsRmw::open` + discovery-over-byte-pipe) tracked as `115.H.2-discovery`.
 - Out of scope: zero-copy custom transports (Phase 99 scope).
 
 ---
@@ -558,3 +570,137 @@ crate.
   the user vtable must be reentrant w.r.t. its own `write` only if
   the platform is multi-threaded. Document in
   `book/src/porting/custom-transport.md` once 115.B lands.
+
+---
+
+## Appendix C — dust-DDS custom transport design (115.H)
+
+### C.1 Surface
+
+dust-dds's transport plug-in point is the `TransportParticipantFactory` trait:
+
+```rust
+pub trait TransportParticipantFactory: Send + 'static {
+    fn create_participant(
+        &self,
+        domain_id: i32,
+        data_channel_sender: MpscSender<Arc<[u8]>>,
+    ) -> impl Future<Output = RtpsTransportParticipant> + Send;
+}
+```
+
+`RtpsTransportParticipant` is a struct: a `Box<dyn WriteMessage>` and four `Vec<Locator>` lists + `fragment_size`. dust-dds calls `write_message` for outbound traffic and pulls inbound bytes off the `MpscSender` the factory hands the receiver-half of.
+
+The Phase 115 vtable maps to this shape directly:
+
+| dust-dds layer            | 115 vtable                      |
+|---------------------------|---------------------------------|
+| factory `create_participant` start | `cb_open(user_data, NULL)` |
+| `WriteMessage::write_message`      | `cb_write(user_data, buf, len)` |
+| recv task `recv` step              | `cb_read(user_data, buf, len, 0)` |
+| participant `Drop`                 | `cb_close(user_data)` (TODO — see C.4) |
+
+### C.2 What landed in 115.H
+
+- `packages/dds/nros-rmw-dds/src/transport_custom.rs`:
+  `NrosCustomTransportParticipantFactory<P>` factory type with
+  `from_slot()` / `with_ops()` constructors, `with_fragment_size`
+  builder, full `TransportParticipantFactory` impl. Reader runs as
+  a single async task spawned on the `NrosPlatformRuntime` spawner
+  with a `YieldOnce`-after-zero-bytes pattern matching the existing
+  UDP recv loops.
+- `tests/custom_transport.rs`: smoke test via stub callbacks. No
+  RTPS handshake — exits as soon as the four counters confirm
+  plumbing is wired. Same template as 115.B's
+  `custom_transport.rs` test in `nros-rmw-zenoh`.
+- Lib re-export: `pub mod transport_custom;` alongside
+  `transport_nros`.
+
+### C.3 What is NOT yet wired
+
+- **`DdsRmw::open` dispatch.** Currently always uses
+  `NrosUdpTransportFactory` (no_std path) or dust-dds's stock
+  threaded factory (std path). 115.H follow-up adds locator-scheme
+  inspection: `RmwConfig::locator.starts_with("custom/")` →
+  `NrosCustomTransportParticipantFactory::from_slot(runtime)` →
+  fall through to the existing UDP path otherwise.
+- **Std-path support.** Stock `DomainParticipantFactory::get_instance()`
+  is a singleton bound to the UDP transport. Custom factories need
+  the async `DomainParticipantFactoryAsync::new` constructor. v1
+  follow-up will route POSIX `custom/...` through the async
+  factory + a `NrosPlatformRuntime<PosixPlatform>` runtime, same
+  shape as the no_std path.
+- **Discovery over a byte pipe.** RTPS SPDP uses
+  `239.255.0.1:port_metatraffic_multicast`. Custom transport has
+  no multicast equivalent. Three ways forward:
+  1. **Static peer mode** — both peers register matching vtables
+     and share a pre-agreed `GuidPrefix`. Skips SPDP entirely;
+     dust-dds upper layers need a "fake the peer is already
+     known" code path.
+  2. **Unicast SPDP rendezvous** — first message either side
+     sends is a hand-rolled "I'm here" announce that includes
+     the `GuidPrefix`. Higher-level than RTPS SPDP, lives in
+     `transport_custom.rs`.
+  3. **Tunnel multicast** — wrap multicast packets in an envelope
+     header on the byte pipe, deliver to both sides as if from
+     multicast. Easiest to fit dust-dds, hardest user surface.
+  v1 picks (1) — static peer mode — to match the typical
+  custom-transport use case (point-to-point bridge to a known
+  peer). Tracked separately from this phase under
+  `115.H.2-discovery`.
+
+### C.4 `cb_close` lifetime
+
+The current scaffolding does NOT call `cb_close` on participant
+drop. `RtpsTransportParticipant` is a `pub struct`, not a
+`Drop`-equipped opaque type — dust-dds expects the embedded
+writer / locator state to clean up via field-level `Drop`s.
+
+Two options for wiring close:
+
+- **Box the writer with a custom `Drop`** that calls `cb_close`
+  inside `WriteMessage::Drop`. Risk: dust-dds may clone the
+  `Box<dyn WriteMessage>` (or move it across thread boundaries),
+  invoking close at an unexpected point.
+- **Track participant lifetime in `nros-rmw-dds::session`** and
+  call `cb_close` from `DdsSession::Drop`. Cleanest semantically
+  — the session is the user-visible RAII handle.
+
+v1 follow-up picks the second option. Until then, `cb_close` is
+the consumer's responsibility (call `set_custom_transport(None)`
+manually before exit, or rely on process teardown).
+
+### C.5 Risks
+
+- **`MpscSender` shutdown.** When the participant drops, the
+  recv task's `sender.send().await` returns `Err`, the loop
+  exits cleanly. No leak.
+- **Long-running `cb_read`.** v1 passes `timeout_ms = 0` (non-
+  blocking poll). User implementations that block longer
+  starve the runtime. Documented in
+  `book/src/porting/custom-transport.md`.
+- **Fragment size mismatch.** Default 1344 bytes assumes IPv4
+  MTU minus headers — for byte-pipe transports without
+  packet-level MTU, this is fine but suboptimal. `with_fragment_size`
+  builder lets consumers pick anything in `8..=65000`.
+- **Multi-participant in one process.** Each participant pulls a
+  vtable copy out of the slot via `take`. Two participants in the
+  same process clobber each other (slot is single-shot). Same
+  constraint as 115.B's zpico-platform-custom; documented as
+  "register-once-per-process" in v1.
+
+### C.6 LOC estimate (remaining 115.H follow-up)
+
+- `DdsRmw::open` locator-scheme dispatch — ~30 LOC.
+- POSIX std-path async factory wiring — ~80 LOC.
+- Static-peer SPDP shim — ~250 LOC inside `transport_custom.rs`,
+  plus dust-dds-side discovery hook (~100 LOC if dust-dds gains a
+  static-peer config knob).
+- Lifetime-driven `cb_close` from `DdsSession::Drop` — ~20 LOC.
+- E2E test mirroring 115.F's two-process loopback (DDS variant) —
+  ~150 LOC.
+
+Total: ~600 LOC, broadly matching the original 115.X-dds estimate
+in this doc's deferral note. The scaffolding now landed clears
+the plug-in surface; what remains is the discovery layer, which
+is the genuinely hard part.
