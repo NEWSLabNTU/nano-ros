@@ -82,7 +82,7 @@ fn generate_config(
     // Layout: SessionStore + arena + entries + trigger + misc fields
     let session_upper = 512; // SessionStore enum (Owned or Borrowed)
     let entries_upper = max_cbs * 80; // Option<CallbackMeta> ~72 bytes, rounded up
-    let overhead = 1024; // Trigger + semantics + node_name + namespace + halt_flag + padding
+    let overhead = 1536; // Trigger + semantics + node_name + namespace + halt_flag + Phase 110 sched fields + padding
     let executor_bytes = session_upper + arena_size + entries_upper + overhead;
     let executor_opaque_u64s = executor_bytes.div_ceil(8);
     let executor_storage_bytes = executor_opaque_u64s * 8;

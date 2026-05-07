@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /** Inline opaque storage size (bytes) for nros_executor_t. */
-#define NROS_EXECUTOR_STORAGE_SIZE 18240
+#define NROS_EXECUTOR_STORAGE_SIZE 18752
 
 /* ── Probe-derived inline storage sizes ──────────────────────
  * Each constant below is the byte size of the corresponding
@@ -14,7 +14,7 @@
  * C handle types so callers can declare them on the stack or
  * inside their own structs without dynamic allocation.
  */
-#define NROS_EXECUTOR_SIZE 17456
+#define NROS_EXECUTOR_SIZE 17424
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 120
 #define NROS_SUBSCRIBER_SIZE 400
@@ -31,7 +31,7 @@
  */
 #define SESSION_OPAQUE_U64S 0
 #define PUBLISHER_OPAQUE_U64S 15
-#define EXECUTOR_OPAQUE_U64S 2280
+#define EXECUTOR_OPAQUE_U64S 2344
 #define GUARD_HANDLE_OPAQUE_U64S 1
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
 

@@ -11,7 +11,7 @@ links = "nros_node"
 [features]
 default = ["std"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "nros-rmw-uorb?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc", "dep:portable-atomic-util"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only
 # `scheduler-fifo` so MCU builds drop unused scheduler code. Each
@@ -100,6 +100,7 @@ nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-f
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
+portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }

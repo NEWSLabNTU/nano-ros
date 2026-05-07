@@ -562,6 +562,7 @@ dependencies = [
  "log",
  "nros-core",
  "nros-params",
+ "nros-platform-api",
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-dds",
@@ -569,6 +570,7 @@ dependencies = [
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
  "portable-atomic",
+ "portable-atomic-util",
 ]
 
 [[package]]

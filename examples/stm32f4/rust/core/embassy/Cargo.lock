@@ -645,6 +645,7 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-params",
+ "nros-platform-api",
  "nros-rmw",
  "portable-atomic",
 ]

@@ -253,7 +253,7 @@ pub struct Executor {
     #[cfg(feature = "alloc")]
     pub(crate) sporadic_atomic_states:
         [Option<(
-            alloc::sync::Arc<super::sched_context::AtomicSporadicState>,
+            portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
             OpaqueTimerHandle,
         )>; crate::config::MAX_SC],
     /// Phase 110.G — major-frame length for time-triggered dispatch.
@@ -540,7 +540,7 @@ impl Executor {
         &mut self,
         sc_id: super::sched_context::SchedContextId,
         timer: OpaqueTimerHandle,
-    ) -> Result<alloc::sync::Arc<super::sched_context::AtomicSporadicState>, NodeError> {
+    ) -> Result<portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>, NodeError> {
         let i = sc_id.0 as usize;
         if i >= crate::config::MAX_SC {
             return Err(NodeError::InvalidSchedContextBinding);
@@ -553,10 +553,10 @@ impl Executor {
         }
         let budget = sc.budget_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
         let period = sc.period_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
-        let state = alloc::sync::Arc::new(
+        let state = portable_atomic_util::Arc::new(
             super::sched_context::AtomicSporadicState::new(budget, period),
         );
-        self.sporadic_atomic_states[i] = Some((alloc::sync::Arc::clone(&state), timer));
+        self.sporadic_atomic_states[i] = Some((portable_atomic_util::Arc::clone(&state), timer));
         Ok(state)
     }
 

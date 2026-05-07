@@ -1257,6 +1257,7 @@ dependencies = [
  "heapless 0.8.0",
  "nros-core",
  "nros-params",
+ "nros-platform-api",
  "nros-rmw",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",

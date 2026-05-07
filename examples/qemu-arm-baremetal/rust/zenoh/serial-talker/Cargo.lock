@@ -506,6 +506,7 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-params",
+ "nros-platform-api",
  "nros-rmw",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",

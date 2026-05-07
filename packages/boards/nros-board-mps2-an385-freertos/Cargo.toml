@@ -15,7 +15,7 @@ name = "nros_board_mps2_an385_freertos"
 # `nros-platform-freertos`'s `PlatformUdp` impl directly.
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, optional = true }
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
 
 # Semihosting for QEMU output

@@ -3,7 +3,7 @@
 #define NROS_CPP_CONFIG_GENERATED_H
 
 /** Inline opaque storage size (bytes) for nros::Executor. */
-#define NROS_CPP_EXECUTOR_STORAGE_SIZE 18240
+#define NROS_CPP_EXECUTOR_STORAGE_SIZE 18752
 
 /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */
 #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 72

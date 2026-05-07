@@ -200,14 +200,12 @@ pub struct SchedContext {
 /// transition is non-breaking.
 #[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
 pub struct AtomicSporadicState {
-    pub budget_remaining_us: core::sync::atomic::AtomicU32,
-    /// Last-refill wall-clock in ms. `AtomicU32` for cross-platform
-    /// support — Cortex-M3 (`thumbv7m-none-eabi`) lacks
-    /// `core::sync::atomic::AtomicU64`. 32 bits gives ~49.7 days of
-    /// monotonic ms; long-running deployments wrap, but the only
-    /// consumer is a delta read against a recent prior value, so
-    /// wrapping is benign.
-    pub last_refill_ms: core::sync::atomic::AtomicU32,
+    pub budget_remaining_us: portable_atomic::AtomicU32,
+    /// Wraps every ~50 days at ms resolution; saturates per
+    /// `tick`'s monotonic-clock contract. portable-atomic provides
+    /// AtomicU32 even on RISC-V `riscv32imc` / Cortex-M0+ that lack
+    /// native 32-bit atomics.
+    pub last_refill_ms: portable_atomic::AtomicU32,
     pub budget_capacity_us: u32,
     pub period_us: u32,
 }
@@ -216,8 +214,8 @@ pub struct AtomicSporadicState {
 impl AtomicSporadicState {
     pub const fn new(budget_us: u32, period_us: u32) -> Self {
         Self {
-            budget_remaining_us: core::sync::atomic::AtomicU32::new(budget_us),
-            last_refill_ms: core::sync::atomic::AtomicU32::new(0),
+            budget_remaining_us: portable_atomic::AtomicU32::new(budget_us),
+            last_refill_ms: portable_atomic::AtomicU32::new(0),
             budget_capacity_us: budget_us,
             period_us,
         }
@@ -227,21 +225,21 @@ impl AtomicSporadicState {
     /// whether to skip the SC's entries this cycle.
     pub fn has_budget(&self) -> bool {
         self.budget_remaining_us
-            .load(core::sync::atomic::Ordering::Acquire)
+            .load(portable_atomic::Ordering::Acquire)
             > 0
     }
 
     /// Saturating subtract — used by spin_once after dispatching a
     /// callback bound to this SC.
     pub fn consume(&self, us: u32) {
-        let mut cur = self.budget_remaining_us.load(core::sync::atomic::Ordering::Acquire);
+        let mut cur = self.budget_remaining_us.load(portable_atomic::Ordering::Acquire);
         loop {
             let next = cur.saturating_sub(us);
             match self.budget_remaining_us.compare_exchange_weak(
                 cur,
                 next,
-                core::sync::atomic::Ordering::Release,
-                core::sync::atomic::Ordering::Acquire,
+                portable_atomic::Ordering::Release,
+                portable_atomic::Ordering::Acquire,
             ) {
                 Ok(_) => return,
                 Err(observed) => cur = observed,
@@ -265,7 +263,7 @@ pub extern "C" fn atomic_sporadic_refill_thunk(user_data: *mut core::ffi::c_void
     let state = unsafe { &*(user_data as *const AtomicSporadicState) };
     state
         .budget_remaining_us
-        .store(state.budget_capacity_us, core::sync::atomic::Ordering::Release);
+        .store(state.budget_capacity_us, portable_atomic::Ordering::Release);
 }
 
 /// Phase 110.E — user-space sporadic-server runtime state.
