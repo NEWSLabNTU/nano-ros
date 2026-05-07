@@ -267,10 +267,18 @@ documented in
   Smoke test
   `packages/dds/nros-rmw-dds/tests/custom_transport.rs` validates
   `cb_open`/`cb_write`/`cb_read` all trip via stub callbacks (no
-  agent / multicast required). **Remaining v1 work** —
-  `DdsRmw::open` locator-scheme dispatch (`custom/...` → custom
-  factory) and a discovery-over-byte-pipe story (no multicast
-  SPDP; needs static-peer mode in dust-dds). Tracked as
+  agent / multicast required). **115.H follow-up landed
+  (this commit):** `DdsRmw::open` locator-scheme dispatch on the
+  no_std path (`custom/...` → `NrosCustomTransportParticipantFactory`
+  via `DomainParticipantFactoryAsync`); std-build returns
+  `ConnectionFailed` for `custom/...` so the std-async-wiring
+  follow-up is visible as a hard error rather than a silent UDP
+  fall-through; lifetime-driven `cb_close` from `DdsSession::Drop`
+  via a new `close_ops` field + `new_nostd_custom` constructor;
+  `tests/locator_dispatch.rs` covers the std rejection path.
+  **Remaining v1 work** — std-path async factory wiring and a
+  discovery-over-byte-pipe story (no multicast SPDP; needs
+  static-peer mode in dust-dds upstream). Tracked as
   `115.H.2-discovery`. Design surface in Appendix C below.
 
 ### Native-language backend ports (115.K)
@@ -1003,28 +1011,45 @@ The Phase 115 vtable maps to this shape directly:
   builder, full `TransportParticipantFactory` impl. Reader runs as
   a single async task spawned on the `NrosPlatformRuntime` spawner
   with a `YieldOnce`-after-zero-bytes pattern matching the existing
-  UDP recv loops.
+  UDP recv loops. **Phase 115.H follow-up** added an `ops()`
+  accessor so `DdsRmw::open` can thread the same vtable copy into
+  `DdsSession` for `cb_close` on drop.
 - `tests/custom_transport.rs`: smoke test via stub callbacks. No
   RTPS handshake — exits as soon as the four counters confirm
   plumbing is wired. Same template as 115.B's
   `custom_transport.rs` test in `nros-rmw-zenoh`.
+- `tests/locator_dispatch.rs` (Phase 115.H follow-up): asserts
+  `DdsRmw::open` rejects `custom/...` locators on `std + platform-posix`
+  with `ConnectionFailed`, so the std-path-async-factory limitation
+  surfaces as a hard error rather than a silent UDP fall-through.
+- `DdsRmw::open` (`transport.rs`): locator-scheme dispatch.
+  `config.locator.starts_with("custom/")` on the no_std path now
+  drains the registered vtable into `NrosCustomTransportParticipantFactory`
+  and feeds it to `DomainParticipantFactoryAsync::new` instead of
+  the UDP factory. Non-`custom/` locators fall through to the
+  existing UDP path on both std and no_std builds.
+- `DdsSession`: `close_ops: Option<NrosTransportOps>` field +
+  `Drop` impl that fires `cb_close` once on drop. Populated by
+  the new `new_nostd_custom` constructor when the open path took
+  the custom branch; UDP sessions leave it `None` so the impl is
+  a single `Option::take` on the hot release path.
 - Lib re-export: `pub mod transport_custom;` alongside
   `transport_nros`.
 
 ### C.3 What is NOT yet wired
 
-- **`DdsRmw::open` dispatch.** Currently always uses
-  `NrosUdpTransportFactory` (no_std path) or dust-dds's stock
-  threaded factory (std path). 115.H follow-up adds locator-scheme
-  inspection: `RmwConfig::locator.starts_with("custom/")` →
-  `NrosCustomTransportParticipantFactory::from_slot(runtime)` →
-  fall through to the existing UDP path otherwise.
-- **Std-path support.** Stock `DomainParticipantFactory::get_instance()`
+- **Std-path custom transport.** Stock `DomainParticipantFactory::get_instance()`
   is a singleton bound to the UDP transport. Custom factories need
-  the async `DomainParticipantFactoryAsync::new` constructor. v1
-  follow-up will route POSIX `custom/...` through the async
-  factory + a `NrosPlatformRuntime<PosixPlatform>` runtime, same
-  shape as the no_std path.
+  the async `DomainParticipantFactoryAsync::new` constructor.
+  Phase 115.H follow-up surfaces the limitation cleanly
+  (`ConnectionFailed` from `DdsRmw::open` when locator starts with
+  `custom/` on a std build); fully wiring std `custom/...` through
+  the async factory + a `NrosPlatformRuntime<PosixPlatform>` runtime
+  remains. The session.rs sync/async split needs a third arm
+  ("std build, custom locator → async participant") that mirrors
+  the no_std arm. Tracked under `115.H.2-discovery` alongside the
+  static-peer SPDP work below — same async-path machinery
+  unblocks both.
 - **Discovery over a byte pipe.** RTPS SPDP uses
   `239.255.0.1:port_metatraffic_multicast`. Custom transport has
   no multicast equivalent. Three ways forward:
@@ -1042,16 +1067,23 @@ The Phase 115 vtable maps to this shape directly:
   v1 picks (1) — static peer mode — to match the typical
   custom-transport use case (point-to-point bridge to a known
   peer). Tracked separately from this phase under
-  `115.H.2-discovery`.
+  `115.H.2-discovery`. The dust-dds-side change (a "static peer
+  config" knob that bypasses SPDP) is the genuinely upstream
+  blocker — the in-tree shim is small once dust-dds exposes the
+  hook.
 
-### C.4 `cb_close` lifetime
+### C.4 `cb_close` lifetime — RESOLVED in 115.H follow-up
 
-The current scaffolding does NOT call `cb_close` on participant
-drop. `RtpsTransportParticipant` is a `pub struct`, not a
-`Drop`-equipped opaque type — dust-dds expects the embedded
-writer / locator state to clean up via field-level `Drop`s.
+Phase 115.H follow-up wires `cb_close` from `DdsSession::Drop`,
+matching option (b) below. The vtable copy is threaded from
+`DdsRmw::open` (which obtains it via
+`NrosCustomTransportParticipantFactory::ops()`) into the new
+`DdsSession::new_nostd_custom` constructor and stowed in a
+`close_ops: Option<NrosTransportOps>` field. Drop drains the
+option, so a re-drop is structurally impossible.
 
-Two options for wiring close:
+Historical context (kept for the design log) — two options were
+considered:
 
 - **Box the writer with a custom `Drop`** that calls `cb_close`
   inside `WriteMessage::Drop`. Risk: dust-dds may clone the
@@ -1059,11 +1091,7 @@ Two options for wiring close:
   invoking close at an unexpected point.
 - **Track participant lifetime in `nros-rmw-dds::session`** and
   call `cb_close` from `DdsSession::Drop`. Cleanest semantically
-  — the session is the user-visible RAII handle.
-
-v1 follow-up picks the second option. Until then, `cb_close` is
-the consumer's responsibility (call `set_custom_transport(None)`
-manually before exit, or rely on process teardown).
+  — the session is the user-visible RAII handle. **Picked.**
 
 ### C.5 Risks
 
@@ -1086,19 +1114,26 @@ manually before exit, or rely on process teardown).
 
 ### C.6 LOC estimate (remaining 115.H follow-up)
 
-- `DdsRmw::open` locator-scheme dispatch — ~30 LOC.
-- POSIX std-path async factory wiring — ~80 LOC.
+- ~~`DdsRmw::open` locator-scheme dispatch — ~30 LOC.~~ **Landed
+  in 115.H follow-up.**
+- POSIX std-path async factory wiring — ~80 LOC. (Tracked under
+  `115.H.2-discovery`; std-build now errors out cleanly on
+  `custom/...` so the limitation is visible.)
 - Static-peer SPDP shim — ~250 LOC inside `transport_custom.rs`,
   plus dust-dds-side discovery hook (~100 LOC if dust-dds gains a
-  static-peer config knob).
-- Lifetime-driven `cb_close` from `DdsSession::Drop` — ~20 LOC.
+  static-peer config knob). **Upstream blocker.**
+- ~~Lifetime-driven `cb_close` from `DdsSession::Drop` — ~20 LOC.~~
+  **Landed in 115.H follow-up.**
 - E2E test mirroring 115.F's two-process loopback (DDS variant) —
-  ~150 LOC.
+  ~150 LOC. (Blocked on static-peer SPDP — without discovery
+  there is nothing to E2E-test beyond the existing
+  `custom_transport.rs` byte-counter smoke test.)
 
-Total: ~600 LOC, broadly matching the original 115.X-dds estimate
-in this doc's deferral note. The scaffolding now landed clears
-the plug-in surface; what remains is the discovery layer, which
-is the genuinely hard part.
+Total remaining: ~430 LOC + dust-dds upstream change. The
+plug-in surface, locator dispatch, and close-on-drop are all
+done; what remains is the discovery layer (and its std
+companion), which is the genuinely hard part and is gated on a
+dust-dds upstream patch.
 
 ---
 

@@ -256,6 +256,15 @@ impl<P> NrosCustomTransportParticipantFactory<P> {
         self.fragment_size = size;
         self
     }
+
+    /// Read back the vtable copy this factory will hand to participants
+    /// it creates. Used by `DdsRmw::open` to thread the same vtable
+    /// into `DdsSession` so `cb_close` can fire on session drop —
+    /// `take_custom_transport` consumed the global slot, the factory
+    /// is the surviving owner.
+    pub fn ops(&self) -> NrosTransportOps {
+        self.ops
+    }
 }
 
 impl<P> TransportParticipantFactory for NrosCustomTransportParticipantFactory<P>

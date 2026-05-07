@@ -64,6 +64,12 @@ pub struct DdsSession {
     /// no_std path where dust-dds has no background threads.
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+    /// Phase 115.H follow-up — when this session was opened over a
+    /// custom transport (locator `custom/...`), keep a copy of the
+    /// vtable so `Drop` can fire `cb_close` and let the user release
+    /// the byte-pipe handle. None for UDP-backed sessions.
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+    close_ops: Option<nros_rmw::NrosTransportOps>,
     _domain_id: u32,
 }
 
@@ -89,7 +95,44 @@ impl DdsSession {
         Self {
             participant_async,
             runtime,
+            close_ops: None,
             _domain_id: domain_id,
+        }
+    }
+
+    /// Phase 115.H follow-up — no_std custom-transport session
+    /// constructor. Identical to [`new_nostd`] but additionally stows
+    /// the transport vtable copy that `Drop` will use to fire
+    /// `cb_close`.
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+    pub(crate) fn new_nostd_custom(
+        runtime: Arc<NrosPlatformRuntime<nros_platform::ConcretePlatform>>,
+        participant_async: dust_dds::dds_async::domain_participant::DomainParticipantAsync,
+        domain_id: u32,
+        close_ops: nros_rmw::NrosTransportOps,
+    ) -> Self {
+        Self {
+            participant_async,
+            runtime,
+            close_ops: Some(close_ops),
+            _domain_id: domain_id,
+        }
+    }
+}
+
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+impl Drop for DdsSession {
+    fn drop(&mut self) {
+        // Phase 115.H follow-up — fire `cb_close` for custom-transport
+        // sessions so the user can release the byte pipe (close fd,
+        // free a ring buffer, etc.). UDP-backed sessions have no
+        // close hook to call; the `Option` stays `None` for them.
+        if let Some(ops) = self.close_ops.take() {
+            // SAFETY: registration contract has the user keep
+            // `ops.user_data` valid until `cb_close` runs. We drain
+            // the option so a re-drop (impossible, but defensive)
+            // can't double-fire the callback.
+            unsafe { (ops.close)(ops.user_data) };
         }
     }
 }
