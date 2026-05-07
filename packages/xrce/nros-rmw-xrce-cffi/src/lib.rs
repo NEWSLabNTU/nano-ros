@@ -48,5 +48,9 @@ pub fn register() -> Result<(), RegisterError> {
     // the runtime contract documented in
     // `book/src/internals/rmw-backends.md` (Phase 115.K.1).
     let rc = unsafe { nros_rmw_xrce_register() };
-    if rc == 0 { Ok(()) } else { Err(RegisterError(rc)) }
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(RegisterError(rc))
+    }
 }

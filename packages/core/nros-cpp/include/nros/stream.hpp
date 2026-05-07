@@ -19,6 +19,10 @@
 extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/// Monotonic time in nanoseconds. Stream::wait_next() budgets its spin
+/// loop by wall-clock, not iteration count (Phase 118.C — same fix
+/// Future::wait() got in Phase 89.2; Stream was missed).
+uint64_t nros_cpp_time_ns(void);
 }
 
 namespace nros {
@@ -69,11 +73,16 @@ template <typename T> class Stream {
     Result wait_next(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
         if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
         if (poll_ms == 0) poll_ms = 1;
-        uint32_t elapsed = 0;
-        while (elapsed < timeout_ms) {
-            uint32_t step = poll_ms;
-            if (elapsed + step > timeout_ms) step = timeout_ms - elapsed;
-            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(step));
+        // Phase 118.C: budget by wall-clock. Accumulating `step` per
+        // iteration breaks when `zpico_spin_once` returns early on a
+        // signaled condvar (keep-alives, discovery gossip) — the
+        // iteration loop collapses into milliseconds and returns
+        // Timeout before the message has a chance to land. Mirrors the
+        // Phase 89.2 fix on Future::wait().
+        const uint64_t start_ns = nros_cpp_time_ns();
+        const uint64_t budget_ns = static_cast<uint64_t>(timeout_ms) * 1000000ULL;
+        while (true) {
+            nros_cpp_ret_t ret = nros_cpp_spin_once(executor_handle, static_cast<int32_t>(poll_ms));
             // Transient conditions: keep polling. Anything else propagates.
             if (ret != 0 && ret != static_cast<nros_cpp_ret_t>(ErrorCode::Timeout) &&
                 ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
@@ -86,7 +95,8 @@ template <typename T> class Stream {
             if (rn.code() != ErrorCode::TryAgain && rn.code() != ErrorCode::NotInitialized) {
                 return rn;
             }
-            elapsed += step;
+            const uint64_t now_ns = nros_cpp_time_ns();
+            if (now_ns - start_ns >= budget_ns) break;
         }
         return Result(ErrorCode::Timeout);
     }

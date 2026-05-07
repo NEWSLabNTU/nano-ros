@@ -96,10 +96,14 @@ inline Result set_custom_transport(const TransportOps& ops) {
 }
 
 /// Phase 115.D — clear any previously-registered transport.
-inline Result clear_custom_transport() { return Result(nros_cpp_clear_custom_transport()); }
+inline Result clear_custom_transport() {
+    return Result(nros_cpp_clear_custom_transport());
+}
 
 /// Phase 115.D — `true` if a custom transport is currently registered.
-inline bool has_custom_transport() { return nros_cpp_has_custom_transport() == 1; }
+inline bool has_custom_transport() {
+    return nros_cpp_has_custom_transport() == 1;
+}
 
 } // namespace nros
 

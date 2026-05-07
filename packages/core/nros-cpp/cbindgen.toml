@@ -38,6 +38,12 @@ rename_fields = "None"
 
 [enum]
 rename_variants = "None"
+# Phase 118.D: prefix variants with the enum name so consumers including
+# the cbindgen output get scoped names (`nros_cpp_sched_class_t_Fifo`
+# instead of bare `Fifo`). Without this, two unscoped enums sharing a
+# variant name (`BestEffort` in `nros_cpp_sched_class_t` and
+# `nros_cpp_priority_t`) collide at C++ compile time.
+prefix_with_name = true
 
 [parse]
 parse_deps = false

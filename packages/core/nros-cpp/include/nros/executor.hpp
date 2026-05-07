@@ -28,6 +28,9 @@ nros_cpp_ret_t nros_cpp_fini(void* storage);
 nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
                                     nros_cpp_node_t* out_node);
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/// Monotonic time in nanoseconds. Executor::spin() budgets by wall-clock
+/// (Phase 118.C — same fix Future::wait() got in Phase 89.2).
+uint64_t nros_cpp_time_ns(void);
 } // extern "C"
 
 namespace nros {
@@ -124,14 +127,18 @@ class Executor {
     /// @return Result from the last spin_once call.
     Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint32_t elapsed = 0;
+        // Phase 118.C: budget by wall-clock. Iteration-count budgeting
+        // (`elapsed += timeout`) breaks when `nros_cpp_spin_once` returns
+        // early on a signaled condvar — the loop collapses into
+        // milliseconds. Same fix Future::wait() got in Phase 89.2.
+        const uint64_t start_ns = nros_cpp_time_ns();
+        const uint64_t budget_ns = static_cast<uint64_t>(duration_ms) * 1000000ULL;
         Result last = Result::success();
-        while (elapsed < duration_ms) {
-            int32_t remaining = static_cast<int32_t>(duration_ms - elapsed);
-            int32_t timeout = remaining < poll_ms ? remaining : poll_ms;
-            last = Result(nros_cpp_spin_once(storage_, timeout));
+        while (true) {
+            last = Result(nros_cpp_spin_once(storage_, poll_ms));
             if (!last.ok()) return last;
-            elapsed += static_cast<uint32_t>(timeout);
+            const uint64_t now_ns = nros_cpp_time_ns();
+            if (now_ns - start_ns >= budget_ns) break;
         }
         return last;
     }

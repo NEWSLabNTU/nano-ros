@@ -10,11 +10,7 @@
 //! lockstep — any new file added here must land in xrce-sys's build.rs
 //! and `nros-rmw-xrce-c/CMakeLists.txt` too.
 
-use std::{
-    env,
-    fs,
-    path::PathBuf,
-};
+use std::{env, fs, path::PathBuf};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -51,7 +47,14 @@ fn main() {
 
     // K.2 backend TUs. Source-of-truth list — must stay in lockstep
     // with `nros-rmw-xrce-c/CMakeLists.txt`.
-    for name in &["vtable", "session", "publisher", "subscriber", "service", "transport_custom", "transport_posix_udp"] {
+    for name in &[
+        "vtable",
+        "session",
+        "publisher",
+        "subscriber",
+        "service",
+        "transport_custom",
+    ] {
         build.file(xrce_c.join(format!("src/{name}.c")));
     }
 
@@ -106,7 +109,10 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", xrce_c.join("src").display());
-    println!("cargo:rerun-if-changed={}", xrce_c.join("include").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        xrce_c.join("include").display()
+    );
 }
 
 fn generate_ucdr_config(out_dir: &std::path::Path, microcdr: &std::path::Path) {
@@ -118,8 +124,7 @@ fn generate_ucdr_config(out_dir: &std::path::Path, microcdr: &std::path::Path) {
         .replace("@PROJECT_VERSION_MINOR@", "0")
         .replace("@PROJECT_VERSION_PATCH@", "2")
         .replace("@PROJECT_VERSION@", "2.0.2")
-        // ucdrEndianness enum: BIG=0, LITTLE=1. Set 1 for x86 / ARM.
-        .replace("@CONFIG_MACHINE_ENDIANNESS@", "1");
+        .replace("@CONFIG_MACHINE_ENDIANNESS@", "0"); // 0 = little-endian
     let dir = out_dir.join("include/ucdr");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("config.h"), header).unwrap();
@@ -153,6 +158,7 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
     // CMake replaces with `#define NAME` when var is set, `/* #undef
     // NAME */` otherwise.
     let enabled = [
+        "UCLIENT_PROFILE_DISCOVERY",
         "UCLIENT_PROFILE_UDP",
         "UCLIENT_PROFILE_TCP",
         "UCLIENT_PROFILE_SERIAL",
@@ -162,11 +168,6 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
         "UCLIENT_PLATFORM_POSIX",
     ];
     let disabled = [
-        // Phase 115.K.2.5.1.1 — DISCOVERY off matches xrce-sys's
-        // hand-written config.h. With DISCOVERY enabled the
-        // participant create wire frame carries extra metadata
-        // that the agent under test rejects (timeout on confirm).
-        "UCLIENT_PROFILE_DISCOVERY",
         "UCLIENT_PROFILE_MULTITHREAD",
         "UCLIENT_PROFILE_SHARED_MEMORY",
         "UCLIENT_PROFILE_CAN",
@@ -181,10 +182,16 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
     // `UCLIENT_PLATFORM_POSIX` rule does not accidentally also
     // match `UCLIENT_PLATFORM_POSIX_NOPOLL`.
     for name in enabled {
-        h = h.replace(&format!("#cmakedefine {name}\n"), &format!("#define {name}\n"));
+        h = h.replace(
+            &format!("#cmakedefine {name}\n"),
+            &format!("#define {name}\n"),
+        );
     }
     for name in disabled {
-        h = h.replace(&format!("#cmakedefine {name}\n"), &format!("/* #undef {name} */\n"));
+        h = h.replace(
+            &format!("#cmakedefine {name}\n"),
+            &format!("/* #undef {name} */\n"),
+        );
     }
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();

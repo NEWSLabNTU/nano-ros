@@ -400,8 +400,7 @@ impl<const NB: usize, const N: usize> Default for BucketedEdfSet<NB, N> {
 mod tests {
     use super::*;
     extern crate alloc;
-    use alloc::vec::Vec;
-    use alloc::vec;
+    use alloc::{vec, vec::Vec};
 
     #[test]
     fn fifo_empty_after_new() {

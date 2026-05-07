@@ -12,8 +12,7 @@
 //! dispatch through it. Default impl reproduces the pre-refactor
 //! `try_process` loop bit-for-bit.
 
-use super::ready_set::ReadySet;
-use super::types::SpinOnceResult;
+use super::{ready_set::ReadySet, types::SpinOnceResult};
 
 #[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) trait Dispatcher {

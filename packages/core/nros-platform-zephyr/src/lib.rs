@@ -173,7 +173,8 @@ impl nros_platform_api::PlatformTimer for ZephyrPlatform {
         // SAFETY: shim allocates a `struct k_timer` + bridge struct,
         // initialises both, and starts the timer. Returns NULL on
         // alloc failure.
-        let timer = unsafe { ffi::nros_zephyr_timer_create_periodic(period_us, callback, user_data) };
+        let timer =
+            unsafe { ffi::nros_zephyr_timer_create_periodic(period_us, callback, user_data) };
         if timer.is_null() {
             return Err(TimerError::KernelError);
         }

@@ -30,11 +30,11 @@ enum nros_cpp_sched_class_t
   : uint8_t
 #endif // __cplusplus
  {
-  Fifo = 0,
-  Edf = 1,
-  Sporadic = 2,
-  BestEffort = 3,
-  TimeTriggered = 4,
+  nros_cpp_sched_class_t_Fifo = 0,
+  nros_cpp_sched_class_t_Edf = 1,
+  nros_cpp_sched_class_t_Sporadic = 2,
+  nros_cpp_sched_class_t_BestEffort = 3,
+  nros_cpp_sched_class_t_TimeTriggered = 4,
 };
 #ifndef __cplusplus
 typedef uint8_t nros_cpp_sched_class_t;
@@ -48,9 +48,9 @@ enum nros_cpp_priority_t
   : uint8_t
 #endif // __cplusplus
  {
-  Critical = 0,
-  Normal = 1,
-  BestEffort = 2,
+  nros_cpp_priority_t_Critical = 0,
+  nros_cpp_priority_t_Normal = 1,
+  nros_cpp_priority_t_BestEffort = 2,
 };
 #ifndef __cplusplus
 typedef uint8_t nros_cpp_priority_t;
@@ -64,9 +64,9 @@ enum nros_cpp_deadline_policy_t
   : uint8_t
 #endif // __cplusplus
  {
-  Released = 0,
-  Activated = 1,
-  Inherited = 2,
+  nros_cpp_deadline_policy_t_Released = 0,
+  nros_cpp_deadline_policy_t_Activated = 1,
+  nros_cpp_deadline_policy_t_Inherited = 2,
 };
 #ifndef __cplusplus
 typedef uint8_t nros_cpp_deadline_policy_t;
@@ -76,34 +76,34 @@ typedef uint8_t nros_cpp_deadline_policy_t;
  * QoS reliability policy.
  */
 typedef enum nros_cpp_qos_reliability_t {
-  NROS_CPP_QOS_RELIABLE = 0,
-  NROS_CPP_QOS_BEST_EFFORT = 1,
+  nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABLE = 0,
+  nros_cpp_qos_reliability_t_NROS_CPP_QOS_BEST_EFFORT = 1,
 } nros_cpp_qos_reliability_t;
 
 /**
  * QoS durability policy.
  */
 typedef enum nros_cpp_qos_durability_t {
-  NROS_CPP_QOS_VOLATILE = 0,
-  NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
+  nros_cpp_qos_durability_t_NROS_CPP_QOS_VOLATILE = 0,
+  nros_cpp_qos_durability_t_NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
 } nros_cpp_qos_durability_t;
 
 /**
  * QoS history policy.
  */
 typedef enum nros_cpp_qos_history_t {
-  NROS_CPP_QOS_KEEP_LAST = 0,
-  NROS_CPP_QOS_KEEP_ALL = 1,
+  nros_cpp_qos_history_t_NROS_CPP_QOS_KEEP_LAST = 0,
+  nros_cpp_qos_history_t_NROS_CPP_QOS_KEEP_ALL = 1,
 } nros_cpp_qos_history_t;
 
 /**
  * QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
  */
 typedef enum nros_cpp_qos_liveliness_t {
-  NROS_CPP_QOS_LIVELINESS_NONE = 0,
-  NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
-  NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
-  NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_NONE = 0,
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_AUTOMATIC = 1,
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
 } nros_cpp_qos_liveliness_t;
 
 typedef struct Option_CppCancelCallback Option_CppCancelCallback;

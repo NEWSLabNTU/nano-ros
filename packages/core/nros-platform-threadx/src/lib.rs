@@ -257,7 +257,7 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
         }
         // ThreadX ticks: assume 1 ms tick (TX_TIMER_TICKS_PER_SECOND
         // default 1000); sub-ms periods round up to 1 tick.
-        let ticks = ((period_us + 999) / 1000).max(1);
+        let ticks = period_us.div_ceil(1000).max(1);
 
         extern crate alloc;
         let bridge = alloc::boxed::Box::new(ThreadxTimerBridge {
@@ -278,7 +278,7 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
             let timer_ptr = alloc::boxed::Box::into_raw(timer_box) as *mut core::ffi::c_void;
             let ret = ffi::tx_timer_create(
                 timer_ptr,
-                b"nros_sporadic\0".as_ptr() as *const _,
+                c"nros_sporadic".as_ptr() as *const _,
                 threadx_timer_thunk,
                 cookie,
                 ticks,
@@ -286,7 +286,9 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
                 1, /* TX_AUTO_ACTIVATE */
             );
             if ret != TX_SUCCESS {
-                drop(alloc::boxed::Box::from_raw(timer_ptr as *mut core::mem::MaybeUninit<[u8; 96]>));
+                drop(alloc::boxed::Box::from_raw(
+                    timer_ptr as *mut core::mem::MaybeUninit<[u8; 96]>,
+                ));
                 drop(alloc::boxed::Box::from_raw(bridge_ptr));
                 return Err(TimerError::KernelError);
             }
@@ -320,7 +322,7 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
         if timeout_us == 0 {
             return Err(TimerError::OutOfRange);
         }
-        let ticks = ((timeout_us + 999) / 1000).max(1);
+        let ticks = timeout_us.div_ceil(1000).max(1);
         extern crate alloc;
         let bridge = alloc::boxed::Box::new(ThreadxTimerBridge {
             user_callback: callback,
@@ -334,7 +336,7 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
             // reschedule_ticks = 0 → oneshot.
             let ret = ffi::tx_timer_create(
                 timer_ptr,
-                b"nros_oneshot\0".as_ptr() as *const _,
+                c"nros_oneshot".as_ptr() as *const _,
                 threadx_timer_thunk,
                 cookie,
                 ticks,
@@ -391,9 +393,7 @@ impl nros_platform_api::PlatformScheduler for ThreadxPlatform {
     ) -> Result<(), nros_platform_api::SchedError> {
         use nros_platform_api::{SchedError, SchedPolicy};
         let new_priority = match p {
-            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => {
-                os_pri as u32
-            }
+            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => os_pri as u32,
             SchedPolicy::Deadline { .. } | SchedPolicy::Sporadic { .. } => {
                 return Err(SchedError::Unsupported);
             }

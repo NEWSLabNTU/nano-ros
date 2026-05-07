@@ -205,13 +205,13 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
                 core::mem::size_of::<libc::cpu_set_t>(),
                 &set,
             );
-            return if ret == 0 {
+            if ret == 0 {
                 Ok(())
             } else if ret == libc::EINVAL {
                 Err(SchedError::OutOfRange)
             } else {
                 Err(SchedError::KernelError)
-            };
+            }
         }
         // Non-Linux POSIX (macOS / NuttX without affinity support):
         // surface unsupported rather than silently no-op.
@@ -372,7 +372,11 @@ fn set_linux_sched_deadline(
     // — matrix lives in <bits/syscall.h>; we read it through libc's
     // `SYS_sched_setattr` constant when available. Fallback to the
     // x86_64 number with a compile-time arch guard.
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))]
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    ))]
     const SYS_SCHED_SETATTR: libc::c_long = match () {
         #[cfg(target_arch = "x86_64")]
         () => 314,
@@ -381,7 +385,11 @@ fn set_linux_sched_deadline(
         #[cfg(target_arch = "riscv64")]
         () => 274,
     };
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )))]
     const SYS_SCHED_SETATTR: libc::c_long = -1;
 
     if SYS_SCHED_SETATTR < 0 {
@@ -469,7 +477,11 @@ fn set_nuttx_sched_sporadic(
         ) -> libc::c_int;
     }
     let ret = unsafe {
-        sched_setscheduler(0, SCHED_SPORADIC, &param as *const _ as *const core::ffi::c_void)
+        sched_setscheduler(
+            0,
+            SCHED_SPORADIC,
+            &param as *const _ as *const core::ffi::c_void,
+        )
     };
     if ret == 0 {
         Ok(())
@@ -810,7 +822,6 @@ impl nros_platform_api::PlatformThreading for PosixPlatform {
     }
 }
 
-
 #[cfg(test)]
 mod tests_e_b {
     use super::*;
@@ -832,7 +843,10 @@ mod tests_e_b {
         PosixPlatform::destroy(handle);
 
         let n = counter.load(std::sync::atomic::Ordering::Acquire);
-        assert!(n >= 3, "expected ≥3 callbacks in 30 ms @ 5 ms period, got {n}");
+        assert!(
+            n >= 3,
+            "expected ≥3 callbacks in 30 ms @ 5 ms period, got {n}"
+        );
     }
 
     #[test]

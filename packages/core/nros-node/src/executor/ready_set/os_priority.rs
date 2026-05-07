@@ -41,8 +41,10 @@
 
 #![cfg(feature = "scheduler-os-priority")]
 
-use super::super::types::{ActiveJob, DescIdx};
-use super::{Overflow, ReadySet};
+use super::{
+    super::types::{ActiveJob, DescIdx},
+    Overflow, ReadySet,
+};
 
 /// Stub — see module docs. Cross-thread per-priority dispatch lives
 /// outside the `ReadySet` abstraction (worker pool + mailboxes), so

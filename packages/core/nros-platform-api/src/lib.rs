@@ -197,14 +197,15 @@ pub enum SchedPolicy {
     },
 }
 
-/// Per-thread OS-scheduling control surface.
-///
-/// Each platform implements as much of this trait as its kernel
-/// supports. `bare-metal` returns [`SchedError::Unsupported`] from
-/// every entry point — there is no scheduler to talk to.
-///
-/// Phase 110.D wires this for Linux + NuttX (via POSIX) at v1; Zephyr
-/// / FreeRTOS / ThreadX impls land alongside per-RTOS bring-up.
+// Per-thread OS-scheduling control surface.
+//
+// Each platform implements as much of this trait as its kernel
+// supports. `bare-metal` returns [`SchedError::Unsupported`] from
+// every entry point — there is no scheduler to talk to.
+//
+// Phase 110.D wires this for Linux + NuttX (via POSIX) at v1; Zephyr
+// / FreeRTOS / ThreadX impls land alongside per-RTOS bring-up.
+
 // ============================================================================
 // Phase 110.E.b — `PlatformTimer` (ISR-driven periodic refill)
 // ============================================================================

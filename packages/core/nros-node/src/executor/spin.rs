@@ -235,8 +235,7 @@ pub struct Executor {
     /// auto-populated with a `Fifo` SC at construction; every entry
     /// without an explicit binding maps to it via
     /// `sched_context_bindings`.
-    pub(crate) sched_contexts:
-        [Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
+    pub(crate) sched_contexts: [Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
     /// Per-entry SC binding parallel to `entries`. Defaults to
     /// `SchedContextId(0)` (the auto-created Fifo SC).
     pub(crate) sched_context_bindings:
@@ -251,11 +250,10 @@ pub struct Executor {
     /// `register_sporadic_timer`; dropped on Executor `Drop` via the
     /// stored `destroy_fn`.
     #[cfg(feature = "alloc")]
-    pub(crate) sporadic_atomic_states:
-        [Option<(
-            portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
-            OpaqueTimerHandle,
-        )>; crate::config::MAX_SC],
+    pub(crate) sporadic_atomic_states: [Option<(
+        portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
+        OpaqueTimerHandle,
+    )>; crate::config::MAX_SC],
     /// Phase 110.G — major-frame length for time-triggered dispatch.
     /// `0` (default) disables the TT gate entirely; non-zero enables
     /// gating per
@@ -266,8 +264,7 @@ pub struct Executor {
     /// behind `feature = "scheduler-os-priority"` + `feature =
     /// "std"` because workers need `std::thread` + `mpsc`.
     #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
-    pub(crate) os_priority_workers:
-        std::collections::HashMap<u8, OsPriorityWorker>,
+    pub(crate) os_priority_workers: std::collections::HashMap<u8, OsPriorityWorker>,
     /// Phase 110.F — caller-supplied `apply_policy` function pointer
     /// each worker invokes at startup to elevate its OS priority.
     /// `None` = the worker pool is disabled; entries bound to non-
@@ -540,7 +537,8 @@ impl Executor {
         &mut self,
         sc_id: super::sched_context::SchedContextId,
         timer: OpaqueTimerHandle,
-    ) -> Result<portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>, NodeError> {
+    ) -> Result<portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>, NodeError>
+    {
         let i = sc_id.0 as usize;
         if i >= crate::config::MAX_SC {
             return Err(NodeError::InvalidSchedContextBinding);
@@ -553,9 +551,9 @@ impl Executor {
         }
         let budget = sc.budget_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
         let period = sc.period_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
-        let state = portable_atomic_util::Arc::new(
-            super::sched_context::AtomicSporadicState::new(budget, period),
-        );
+        let state = portable_atomic_util::Arc::new(super::sched_context::AtomicSporadicState::new(
+            budget, period,
+        ));
         self.sporadic_atomic_states[i] = Some((portable_atomic_util::Arc::clone(&state), timer));
         Ok(state)
     }
@@ -2046,7 +2044,7 @@ impl Executor {
                                 .as_micros() as u64
                         };
                         #[cfg(not(feature = "std"))]
-                        let now_us = (delta_ms.saturating_mul(1000)) as u64;
+                        let now_us = delta_ms.saturating_mul(1000);
                         let phase = (now_us % self.major_frame_us as u64) as u32;
                         let in_window = if off + dur <= self.major_frame_us {
                             phase >= off && phase < off + dur
@@ -3015,8 +3013,7 @@ impl OsPriorityWorker {
                             // outlives the worker per Drop ordering
                             // (Executor::Drop halts + joins workers
                             // before the arena is freed).
-                            let data = (item.arena_base as *mut u8)
-                                .wrapping_add(item.arena_offset);
+                            let data = (item.arena_base as *mut u8).wrapping_add(item.arena_offset);
                             let _ = unsafe { (item.try_process)(data, item.delta_ms) };
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
@@ -3040,8 +3037,7 @@ impl OsPriorityWorker {
 #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
 impl Drop for OsPriorityWorker {
     fn drop(&mut self) {
-        self.halt
-            .store(true, std::sync::atomic::Ordering::Release);
+        self.halt.store(true, std::sync::atomic::Ordering::Release);
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }

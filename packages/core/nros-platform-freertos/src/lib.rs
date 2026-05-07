@@ -272,7 +272,8 @@ unsafe impl Sync for FreeRtosTimerHandle {}
 
 impl core::fmt::Debug for FreeRtosTimerHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FreeRtosTimerHandle").finish_non_exhaustive()
+        f.debug_struct("FreeRtosTimerHandle")
+            .finish_non_exhaustive()
     }
 }
 
@@ -290,7 +291,7 @@ impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
         }
         // Assume 1 ms tick (default `configTICK_RATE_HZ = 1000`);
         // sub-ms periods round up to 1 tick.
-        let period_ticks = ((period_us + 999) / 1000).max(1);
+        let period_ticks = period_us.div_ceil(1000).max(1);
 
         // Box the bridge + leak. `destroy` re-acquires via Box::from_raw.
         // SAFETY: requires `feature = "alloc"`; FreeRTOS platform
@@ -305,7 +306,7 @@ impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
 
         let timer = unsafe {
             ffi::xTimerCreate(
-                b"nros_sporadic\0".as_ptr() as *const _,
+                c"nros_sporadic".as_ptr() as *const _,
                 period_ticks,
                 1, // pdTRUE — auto-reload
                 bridge_ptr as *mut c_void,
@@ -352,7 +353,7 @@ impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
         if timeout_us == 0 {
             return Err(TimerError::OutOfRange);
         }
-        let period_ticks = ((timeout_us + 999) / 1000).max(1);
+        let period_ticks = timeout_us.div_ceil(1000).max(1);
         extern crate alloc;
         let bridge = alloc::boxed::Box::new(FreeRtosTimerBridge {
             user_callback: callback,
@@ -362,7 +363,7 @@ impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
         // pdFALSE (0) for `auto_reload` = oneshot.
         let timer = unsafe {
             ffi::xTimerCreate(
-                b"nros_oneshot\0".as_ptr() as *const _,
+                c"nros_oneshot".as_ptr() as *const _,
                 period_ticks,
                 0,
                 bridge_ptr as *mut c_void,
@@ -420,9 +421,7 @@ impl nros_platform_api::PlatformScheduler for FreeRtosPlatform {
     ) -> Result<(), nros_platform_api::SchedError> {
         use nros_platform_api::{SchedError, SchedPolicy};
         let new_priority = match p {
-            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => {
-                os_pri as u32
-            }
+            SchedPolicy::Fifo { os_pri } | SchedPolicy::RoundRobin { os_pri, .. } => os_pri as u32,
             SchedPolicy::Deadline { .. } | SchedPolicy::Sporadic { .. } => {
                 return Err(SchedError::Unsupported);
             }

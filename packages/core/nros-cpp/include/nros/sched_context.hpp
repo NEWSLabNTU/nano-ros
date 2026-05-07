@@ -19,6 +19,7 @@
 #define NROS_CPP_SCHED_CONTEXT_HPP
 
 #include <cstdint>
+#include <cstddef>
 
 #include "nros/result.hpp"
 
@@ -41,12 +42,9 @@ struct nros_cpp_sched_context_ffi {
 };
 
 uint8_t nros_cpp_default_sched_context_id(void);
-int nros_cpp_create_sched_context(void* handle,
-                                  const struct nros_cpp_sched_context_ffi* cfg,
+int nros_cpp_create_sched_context(void* handle, const struct nros_cpp_sched_context_ffi* cfg,
                                   uint8_t* out_sc_id);
-int nros_cpp_bind_handle_to_sched_context(void* handle,
-                                          size_t callback_handle,
-                                          uint8_t sc_id);
+int nros_cpp_bind_handle_to_sched_context(void* handle, size_t callback_handle, uint8_t sc_id);
 
 } // extern "C"
 

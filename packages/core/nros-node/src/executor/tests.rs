@@ -206,8 +206,12 @@ fn test_edf_dispatch_order() {
         })
         .unwrap();
 
-    executor.bind_handle_to_sched_context(h_late, sc_late).unwrap();
-    executor.bind_handle_to_sched_context(h_early, sc_early).unwrap();
+    executor
+        .bind_handle_to_sched_context(h_late, sc_late)
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(h_early, sc_early)
+        .unwrap();
 
     // Load data into both subscribers — `data` field identifies which
     // is which in the firing log.
@@ -380,7 +384,10 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     let after = count.load(std::sync::atomic::Ordering::SeqCst);
 
     // Strictly assert no new dispatch on cycle 2.
-    assert_eq!(after, initial, "Sporadic SC must suppress dispatch when budget exhausted");
+    assert_eq!(
+        after, initial,
+        "Sporadic SC must suppress dispatch when budget exhausted"
+    );
 }
 
 /// Phase 110.D — multi-executor smoke test. Spawns two Executors,
@@ -503,7 +510,9 @@ fn test_bucketed_priority_dispatch_order() {
         })
         .unwrap();
     executor.bind_handle_to_sched_context(h_be, sc_be).unwrap();
-    executor.bind_handle_to_sched_context(h_crit, sc_crit).unwrap();
+    executor
+        .bind_handle_to_sched_context(h_crit, sc_crit)
+        .unwrap();
 
     let (d_be, n_be) = encode_test_msg(1);
     let (d_crit, n_crit) = encode_test_msg(2);

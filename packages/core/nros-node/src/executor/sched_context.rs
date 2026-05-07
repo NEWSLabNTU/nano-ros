@@ -232,7 +232,9 @@ impl AtomicSporadicState {
     /// Saturating subtract — used by spin_once after dispatching a
     /// callback bound to this SC.
     pub fn consume(&self, us: u32) {
-        let mut cur = self.budget_remaining_us.load(portable_atomic::Ordering::Acquire);
+        let mut cur = self
+            .budget_remaining_us
+            .load(portable_atomic::Ordering::Acquire);
         loop {
             let next = cur.saturating_sub(us);
             match self.budget_remaining_us.compare_exchange_weak(
@@ -348,10 +350,7 @@ mod tests {
         // ABI guard — `OptUs` MUST stay `#[repr(transparent)]` over
         // `u32` so cbindgen emits a plain `uint32_t`.
         assert_eq!(core::mem::size_of::<OptUs>(), core::mem::size_of::<u32>());
-        assert_eq!(
-            core::mem::align_of::<OptUs>(),
-            core::mem::align_of::<u32>()
-        );
+        assert_eq!(core::mem::align_of::<OptUs>(), core::mem::align_of::<u32>());
     }
 
     #[test]
