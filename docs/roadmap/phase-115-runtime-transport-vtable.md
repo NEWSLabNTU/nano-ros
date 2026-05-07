@@ -298,18 +298,30 @@ each sit on a non-Rust underlying library; they are candidates for
 re-hosting in the native language. The decisions below capture the
 ROI analysis from 2026-05-07.
 
-- [ ] **115.K.1 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
+Ordered execution-first (policy → port → tracking entries):
+
+- [ ] **115.K.1 — backend host-language policy doc.** Add
+  `book/src/internals/rmw-backends.md` codifying the rule "a
+  backend's host language matches its underlying library's native
+  language unless there is a concrete reason otherwise" and the
+  per-backend decision matrix (Appendix D §D.2). Lands first so
+  every later K.* item points at a single source of truth instead of
+  re-deriving the policy in commit messages. Cross-link from the
+  porting guide (`book/src/porting/custom-transport.md`) and
+  `CLAUDE.md`'s "Platform Backends" section.
+
+- [ ] **115.K.2 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
   generated FFI, ~4.4k LOC) and rewrite `nros-rmw-xrce` as a C
   backend that consumes `nros_rmw_vtable_t` directly over micro-XRCE-
   DDS-Client's `uxr_*` C API. Mirrors `nros-rmw-cyclonedds`'s layout
   (1.7k LOC C++ over Cyclone's C API). LOC trade: ~3k Rust + 4.4k
   -sys → ~2k C. Phase 115.E's custom-transport bridge stays usable
-  — the slot-drain helpers are already C-callable (`init_transport_from_custom_ops`,
-  Appendix D §D.2). Tier-2 priority: micro-ROS reference impl is C,
-  port aligns the project with that lineage and lightens the Rust
-  dep tree on Zephyr / FreeRTOS / NuttX targets.
+  — the slot-drain helpers are already C-callable
+  (`init_transport_from_custom_ops`, Appendix D §D.4). Highest-ROI
+  active port; only K.* item that ships code. Depends on K.1
+  landing the policy doc that justifies the migration.
 
-- [~] **115.K.2 — zenoh-pico C/C++ port (deferred).** Underlying
+- [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost
   estimate is high (1.5k Rust glue + 14k of FFI / platform-shim /
   custom-transport plumbing, all of which would have to be re-
@@ -321,24 +333,16 @@ ROI analysis from 2026-05-07.
   example exercises it). Verdict: defer until a concrete pressure
   surfaces (e.g. upstream alignment with micro-ROS's zenoh-pico
   binding, or a customer-driven request to drop Rust from the zenoh
-  path). Document the deferral; do not start the rewrite.
+  path). Re-eval triggers in Appendix D §D.5. Tracking-only entry.
 
-- [~] **115.K.3 — uORB stays Rust (deferred / closed as won't-do).**
-  Underlying lib is C++ (PX4 modules), but uORB is the **in-process**
-  case — the nros code runs INSIDE a PX4 module, not over a network.
+- [~] **115.K.4 — uORB stays Rust (closed as won't-do).** Underlying
+  lib is C++ (PX4 modules), but uORB is the **in-process** case —
+  the nros code runs INSIDE a PX4 module, not over a network.
   `px4-rs`'s value is module init + topic-registration derive macros
   + workqueue-async tooling; a C++ port would replace those with
   hand-written PX4 module idioms (which already exist in PX4 native
   but not for the nros API surface). Net cost very high, net benefit
-  low. Closing as **won't-do**; nros-rmw-uorb is documented as
-  deliberately Rust-only in `book/src/internals/rmw-backends.md`
-  (115.K.4).
-
-- [ ] **115.K.4 — backend host-language docs.** Add
-  `book/src/internals/rmw-backends.md` documenting the per-backend
-  host-language decision matrix (the table above plus rationale).
-  Cross-link from the porting guide (`book/src/porting/custom-transport.md`)
-  and `CLAUDE.md`'s "Platform Backends" section.
+  low. Won't-do; rationale captured in K.1's host-language doc.
 
 ### Tests
 
@@ -798,9 +802,9 @@ own byte pipe via Phase 115 — the two layers are orthogonal.
 |---------|----------------|-----------------|--------------|------------------|---------|
 | dust-dds | dust-dds | Rust | Rust (`Rmw` trait direct) | Rust | keep |
 | cyclonedds | Cyclone DDS | C / C++ | C++ via vtable | C++ | keep |
-| **XRCE** | micro-XRCE-DDS-Client | C | Rust over `xrce-sys` | **C via vtable** | **port (115.K.1)** |
-| zenoh-pico | zenoh-pico | C | Rust over `zpico-sys` | C/C++ via vtable | **defer (115.K.2)** |
-| uORB | PX4 / `px4-rs` | C++ (with Rust derive layer) | Rust over `px4-rs` | Rust | **won't-do (115.K.3)** |
+| **XRCE** | micro-XRCE-DDS-Client | C | Rust over `xrce-sys` | **C via vtable** | **port (115.K.2)** |
+| zenoh-pico | zenoh-pico | C | Rust over `zpico-sys` | C/C++ via vtable | **defer (115.K.3)** |
+| uORB | PX4 / `px4-rs` | C++ (with Rust derive layer) | Rust over `px4-rs` | Rust | **won't-do (115.K.4)** |
 
 ### D.3 Per-port ROI sizing
 
@@ -818,7 +822,7 @@ is comparable; zenoh-pico's is larger because it carries its own
 platform-abstraction shim layer that Cyclone delegates to its host
 runtime.
 
-### D.4 115.K.1 work-item shape (XRCE port)
+### D.4 115.K.2 work-item shape (XRCE port)
 
 Mirrors Cyclone DDS layout:
 
@@ -857,7 +861,7 @@ bridge for one release cycle, then is removed. CMake option
   build time — manageable now (only Cyclone DDS and a future XRCE-C),
   bigger lift once more native backends ship. Phase 117 follow-up
   to add the same `abi_version` field to the RMW vtable is queued.
-- **zenoh-pico deferral re-eval trigger.** Re-open 115.K.2 if (a)
+- **zenoh-pico deferral re-eval trigger.** Re-open 115.K.3 if (a)
   micro-ROS's upstream ships a zenoh-pico binding the project wants
   to align with, (b) a deployment surfaces concrete Rust-on-RTOS
   flash-size or boot-time pressure, or (c) zpico-sys breaks under a
@@ -865,10 +869,11 @@ bridge for one release cycle, then is removed. CMake option
 
 ### D.6 LOC estimate (entire 115.K tier)
 
-- 115.K.1 XRCE port: ~2,000 LOC C + ~200 LOC test harness; remove
+- 115.K.1 host-language policy doc: ~150 LOC markdown.
+- 115.K.2 XRCE port: ~2,000 LOC C + ~200 LOC test harness; remove
   ~3,000 LOC Rust + ~4,400 LOC -sys.
-- 115.K.4 Docs: ~150 LOC markdown.
-- 115.K.2 / 115.K.3: zero (deferral / won't-do; doc-only entries).
+- 115.K.3 / 115.K.4: zero (deferral / won't-do; tracking-only
+  entries, rationale captured in K.1's doc).
 
 Net LOC change for the tier: roughly −5,000 LOC (mostly auto-
 generated FFI bindings going away).
