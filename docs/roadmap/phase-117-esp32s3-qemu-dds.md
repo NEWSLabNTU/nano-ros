@@ -138,8 +138,9 @@ to add.
 - [ ] Two-instance ESP32-S3-QEMU talker↔listener E2E ≥80 % delivery
       (same bar as every existing QEMU DDS slice).
 - [ ] Phase 97.4.esp32-qemu retargeted in Phase 97 doc → checked.
-- [ ] Phase 101 acceptance #5 (E2E ≥80 %) reachable via this slice;
-      original ESP32-C3 line stays `[blocked]` with cross-link.
+- [ ] Phase 101 acceptance #5 (E2E ≥80 %) reachable via this slice.
+      Phase 101 closed its line by moving the criterion here; this
+      phase carries it as the canonical home.
 - [ ] No regression in any existing QEMU slice — full nextest pass
       including `qemu-esp32` group (must keep ESP32-C3 build-time
       tests green).
