@@ -5,7 +5,7 @@ targets — primarily ESP32-C3 (`riscv32imc`) — by substituting `alloc::sync::
 `Weak` with the `portable-atomic-util` polyfill at the dependency level. Closes the
 last open Phase 97 slice (`97.4.esp32-qemu`) without forking the regex stack.
 
-**Status:** Not Started.
+**Status:** API-complete; runtime E2E deferred to Phase 117 (ESP32-S3-QEMU retarget). 101.1–101.6 landed; dust-dds + nros-rmw-dds + ESP32-QEMU example crates all build clean for `riscv32imc-unknown-none-elf` with the new `portable-atomic` feature. 101.7 stayed `[~]` — both peers boot but `DcpsDomainParticipant::new` panics inside `handle_alloc_error` because ESP32-C3 has only ~400 KiB DRAM and dust-dds's ~13 builtin actors need more headroom than the 192 KiB heap that fits. Heap-fix path (move to ESP32-S3 with PSRAM) tracked separately as `phase-117-esp32s3-qemu-dds.md`. Upstream PR to `s2e-systems/dust-dds` is a follow-up — Option B is upstream-friendly but doesn't block any in-tree consumer.
 **Priority:** Low — esp32-qemu DDS is bonus coverage; 6 of 7 Phase 97 slices already
 green. Drives forward only if (a) ESP32-C3 DDS becomes a user request, or (b) we
 adopt another `riscv32imc`-class target where the same `Arc` gating bites.
