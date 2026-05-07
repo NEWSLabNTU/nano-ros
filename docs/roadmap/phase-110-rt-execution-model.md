@@ -78,9 +78,15 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       Per-callback runtime measurement + `cancel` / `restart_oneshot`
       land in a follow-up to 110.E.b once `PlatformTimer` is in
       place.
-- [ ] 110.F — `OsPrioritySet` (PiCAS-style, opt-in) — design-locked,
-      impl deferred. Needs one OS thread per priority slot; usable
-      only on platforms with enough OS pri slots (Linux, NuttX).
+- [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
+      **Reframed:** Cargo feature `scheduler-os-priority` + stub
+      `OsPrioritySet<N>` shipped to lock the namespace; real
+      dispatch model intentionally **deferred to a future
+      node-orchestration phase** that will pick the canonical
+      callback-to-priority mapping. nano-ros may not adopt PiCAS as
+      written. Trait surface (`ReadySet`) stays compatible; whatever
+      orchestration model lands plugs into the existing
+      Activator/Dispatcher seams from 110.A.
 - [ ] 110.G — `SchedClass::TimeTriggered` (ARINC-653-style cyclic
       executive) — design-locked, impl deferred. Needs schedule-table
       parser + spin_once mode selector.

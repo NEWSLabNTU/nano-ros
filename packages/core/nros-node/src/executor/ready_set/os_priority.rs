@@ -1,63 +1,54 @@
-//! Phase 110.F — `OsPrioritySet` (PiCAS-style per-callback OS priority).
+//! Phase 110.F — `OsPrioritySet` (per-priority OS-thread dispatch).
 //!
-//! **Status:** stub. Type surface locked; dispatch impl deferred.
+//! **Status:** stub + reserved namespace. Dispatch model intentionally
+//! left unspecified pending the future **node-orchestration phase**,
+//! which will define the canonical mapping from callback / chain
+//! identity to OS priority. nano-ros may not adopt PiCAS as written —
+//! the orchestration phase will pick the actual approach (PiCAS,
+//! per-SC priority, chain-derived priority, or something else).
 //!
-//! ## What PiCAS does
+//! ## Shape that's locked now
 //!
-//! The PiCAS Algorithm 1 (RTAS '21) burns one OS priority slot per
-//! `(callback × chain)`: every callback dispatches on a thread that
-//! the OS scheduler runs at that callback's bound priority. Cross-
-//! callback preemption falls out of OS scheduling for free — no
-//! cooperative ready-set required.
+//! Phase 110.A–E share one Executor thread (or one per
+//! `open_threaded` call) and dispatch cooperatively from a
+//! `ReadySet`. The `scheduler-os-priority` feature gate carves out
+//! a slot for a future model where dispatch crosses thread
+//! boundaries — workers keyed by OS priority, callbacks dispatched
+//! to the worker matching their bound priority.
 //!
-//! ## Why this is a different dispatch model
+//! ## Cross-cutting concerns the orchestration phase must address
 //!
-//! Phase 110.A–E share one Executor thread (or one per `open_threaded`
-//! call) and dispatch callbacks cooperatively from a `ReadySet`.
-//! `OsPrioritySet` instead maintains a thread pool keyed by OS
-//! priority: each entry's bound `SchedContext.os_pri` (when the SC's
-//! class is `Fifo`-like) selects the worker thread to dispatch on.
+//! Independent of which exact model lands, the executor side will
+//! need:
 //!
-//! ## What's needed for a real impl
+//! 1. **Callback closures `Send + 'static`** for any cross-thread
+//!    dispatch path. Current `add_subscription<F>` already requires
+//!    `F: FnMut(&M) + Send + 'static` for std workloads, so this
+//!    side is mostly settled.
+//! 2. **Per-`DescIdx` exclusive arena access.** Each entry's arena
+//!    slot is touched by at most one worker → `unsafe impl Send`
+//!    with a documented invariant covers it; no per-entry mutex
+//!    needed.
+//! 3. **Worker-pool lifecycle.** Spawn lazily on first opt-in;
+//!    halt + join in `Drop for Executor`.
+//! 4. **Worker self-elevation** via
+//!    `PlatformScheduler::set_current_thread_policy` at startup.
+//! 5. **Trigger-eval consistency** — cross-thread dispatch races
+//!    against the next `spin_once` cycle's activator scan.
 //!
-//! 1. **Callback closures `Send + 'static`.** Today's `add_subscription`
-//!    accepts `FnMut` closures that may capture non-Send references
-//!    (typical for executor-local state). PiCAS workers run on a
-//!    different thread than `spin_once` so the closures must move.
-//!    Either reshape the public `add_*` API to require `Send` (mild
-//!    breakage) or restrict `OsPrioritySet` to a separate
-//!    `add_*_picas` constructor surface.
-//! 2. **Arena `Send`-shareable.** `Executor.arena` is a stack-
-//!    allocated `[MaybeUninit<u8>]`; workers reading from it across
-//!    threads need `&Arena: Send` plus interior synchronisation to
-//!    avoid races on entry buffers. Easiest path: per-entry `Mutex`
-//!    or move to `Box<[u8]>` shared via `Arc`.
-//! 3. **Worker pool lifecycle.** Spawn one worker per distinct
-//!    `os_pri` observed across registered SCs; `Drop for Executor`
-//!    halts + joins all workers.
-//! 4. **Per-worker mailbox.** SPSC channel from `spin_once` to each
-//!    worker; activator scan dispatches `DescIdx` into the matching
-//!    priority slot.
-//! 5. **PlatformScheduler call from worker startup.** Each worker
-//!    sets its own thread priority via
-//!    `PlatformScheduler::set_current_thread_policy(SchedPolicy::Fifo
-//!    { os_pri })` before draining its mailbox.
-//!
-//! Until those land, `OsPrioritySet` is reserved nomenclature only.
-//! Enabling `feature = "scheduler-os-priority"` compiles this module
-//! but doesn't change dispatch behavior.
+//! Reference reading: PiCAS (RTAS '21), CIL-EDF, HSE. None are
+//! adopted prescriptively.
 
 #![cfg(feature = "scheduler-os-priority")]
 
 use super::super::types::{ActiveJob, DescIdx};
 use super::{Overflow, ReadySet};
 
-/// Stub — see module docs. The actual PiCAS dispatch model lives
-/// outside the `ReadySet` abstraction (worker threads + mailboxes,
-/// not a single in-process queue), so this type currently delegates
-/// to [`super::FifoReadySet`] semantics. Real impl ships once the
-/// callback-Send + arena-share constraints from the module docs are
-/// solved.
+/// Stub — see module docs. Cross-thread per-priority dispatch lives
+/// outside the `ReadySet` abstraction (worker pool + mailboxes), so
+/// this type currently delegates to [`super::FifoReadySet`]
+/// semantics. Real impl shape is intentionally deferred to the
+/// future node-orchestration phase.
 #[allow(dead_code)]
 #[derive(Debug, Default)]
 pub(crate) struct OsPrioritySet<const N: usize> {
