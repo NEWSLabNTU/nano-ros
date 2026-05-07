@@ -78,8 +78,12 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
     talker.kill();
     listener.kill();
 
-    let talker_out = talker.wait_for_all_output(Duration::from_secs(2)).unwrap_or_default();
-    let listener_out = listener.wait_for_all_output(Duration::from_secs(2)).unwrap_or_default();
+    let talker_out = talker
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    let listener_out = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
 
     println!("=== Talker output ===\n{talker_out}");
     println!("=== Listener output ===\n{listener_out}");

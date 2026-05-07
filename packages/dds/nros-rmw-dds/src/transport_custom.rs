@@ -170,10 +170,7 @@ impl YieldOnce {
 
 impl Future for YieldOnce {
     type Output = ();
-    fn poll(
-        mut self: Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<()> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<()> {
         if self.0 {
             core::task::Poll::Ready(())
         } else {

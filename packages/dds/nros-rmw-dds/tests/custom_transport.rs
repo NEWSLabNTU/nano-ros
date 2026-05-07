@@ -31,14 +31,14 @@ use core::{
 };
 use std::time::Duration;
 
-use dust_dds::dcps::channels::mpsc::mpsc_channel;
-use dust_dds::transport::interface::TransportParticipantFactory;
+use dust_dds::{
+    dcps::channels::mpsc::mpsc_channel, sync::Arc,
+    transport::interface::TransportParticipantFactory,
+};
 use nros_platform_posix::PosixPlatform;
 use nros_rmw::{NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, set_custom_transport};
-use dust_dds::sync::Arc;
 use nros_rmw_dds::{
-    runtime::NrosPlatformRuntime,
-    transport_custom::NrosCustomTransportParticipantFactory,
+    runtime::NrosPlatformRuntime, transport_custom::NrosCustomTransportParticipantFactory,
 };
 
 static OPEN_CALLS: AtomicU32 = AtomicU32::new(0);
