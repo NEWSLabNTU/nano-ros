@@ -51,7 +51,7 @@ fn main() {
 
     // K.2 backend TUs. Source-of-truth list — must stay in lockstep
     // with `nros-rmw-xrce-c/CMakeLists.txt`.
-    for name in &["vtable", "session", "publisher", "subscriber", "service", "transport_custom"] {
+    for name in &["vtable", "session", "publisher", "subscriber", "service", "transport_custom", "transport_posix_udp"] {
         build.file(xrce_c.join(format!("src/{name}.c")));
     }
 

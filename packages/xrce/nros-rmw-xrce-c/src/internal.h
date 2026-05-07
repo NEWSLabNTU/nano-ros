@@ -102,6 +102,13 @@ struct xrce_session_state {
     uxrUDPTransport      udp;
     uxrCustomTransport   custom;
     bool                 use_custom_transport;
+    /* Phase 115.K.2.5.1.2.a-fix-transport — POSIX UDP via custom
+     * transport. `udp_bridge.fd` is set by `xrce_posix_udp_init`
+     * and read by the per-session trampolines through
+     * `uxrCustomTransport.args`. */
+    struct {
+        int fd;
+    }                    udp_bridge;
 
     uxrSession           session;
 
@@ -274,6 +281,16 @@ struct xrce_custom_ops_slot;
 int  xrce_custom_transport_is_armed(void);
 nros_rmw_ret_t xrce_custom_transport_install(xrce_session_state_t *st,
                                              bool framing);
+
+/* Phase 115.K.2.5.1.2.a-fix-transport — POSIX UDP via custom
+ * transport. Replaces the K.2.1 `uxr_init_udp_transport` direct
+ * path. Resolves `host`/`port`, opens a connected UDP socket,
+ * and wires `xrce_session_state_t::custom` with trampolines that
+ * drive the socket via `poll()` + `recv()` / `send()`. The
+ * resulting transport behaves like the legacy `xrce-sys` shape
+ * the agent has interop'd with for years. */
+nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
+                                   const char *host, const char *port);
 
 #ifdef __cplusplus
 }

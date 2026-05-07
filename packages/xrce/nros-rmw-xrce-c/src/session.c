@@ -293,11 +293,17 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         char port_str[8];
         snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
 
-        if (!uxr_init_udp_transport(&st->udp, UXR_IPv4, host, port_str)) {
+        /* Phase 115.K.2.5.1.2.a-fix-transport — route UDP through
+         * the custom-transport surface (matching `xrce-sys`'s
+         * legacy shape). `uxr_init_udp_transport` had reliable
+         * confirm-timeout issues against the upstream agent. */
+        nros_rmw_ret_t udp_ret = xrce_posix_udp_init(st, host, port_str);
+        if (udp_ret != NROS_RMW_RET_OK) {
             free(st);
-            return NROS_RMW_RET_ERROR;
+            return udp_ret;
         }
-        uxr_init_session(&st->session, &st->udp.comm, hash_session_key(node_name));
+        uxr_init_session(&st->session, &st->custom.comm,
+                         hash_session_key(node_name));
     }
 
     /* Topic / request / reply callbacks — single registration per
@@ -309,11 +315,9 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
     uxr_set_reply_callback(&st->session, xrce_reply_callback, st);
 
     if (!uxr_create_session_retries(&st->session, XRCE_SESSION_CREATION_RETRIES)) {
-        if (st->use_custom_transport) {
-            uxr_close_custom_transport(&st->custom);
-        } else {
-            uxr_close_udp_transport(&st->udp);
-        }
+        /* Both UDP and `custom://` paths now go through
+         * uxrCustomTransport — close via custom_transport. */
+        uxr_close_custom_transport(&st->custom);
         free(st);
         return NROS_RMW_RET_ERROR;
     }
@@ -342,11 +346,7 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
     (void)status;
     if (cret != NROS_RMW_RET_OK) {
         (void)uxr_delete_session(&st->session);
-        if (st->use_custom_transport) {
-            uxr_close_custom_transport(&st->custom);
-        } else {
-            uxr_close_udp_transport(&st->udp);
-        }
+        uxr_close_custom_transport(&st->custom);
         free(st);
         return cret;
     }

@@ -468,13 +468,49 @@ Ordered execution-first (policy → port → tracking entries):
         path; the upstream path may need the same treatment but
         applied to its own `poll_fd`.
 
-        **Next step:** re-route the K.2 C backend's UDP transport
-        through `uxr_set_custom_transport_callbacks` +
-        `uxr_init_custom_transport` (matching the `xrce-sys`
-        shape) instead of `uxr_init_udp_transport`. Custom
-        transport with POSIX UDP under the hood is what the
-        legacy path proves works against the agent. Tracked as
-        `115.K.2.5.1.2.a-fix-transport`.
+        **115.K.2.5.1.2.a-fix-transport (in progress, this commit):**
+
+        New file `packages/xrce/nros-rmw-xrce-c/src/transport_posix_udp.c`
+        replaces `uxr_init_udp_transport` with a custom-transport
+        + POSIX-UDP shape that mirrors what `xrce-sys` /
+        `nros-rmw-xrce`'s `platform_udp.rs` does — open a
+        connected UDP fd, register four trampolines that drive
+        the fd via `poll()` + `recv()` / `send()`, hand the bridge
+        struct to `uxr_init_custom_transport` so its `args`
+        field carries the bridge through every callback. Built;
+        K.2.0 smoke against a live agent now exercises the path
+        but session-open still fails its participant-create
+        confirm.
+
+        **Wire-level diagnosis (byte trace through the new
+        transport):**
+
+        1. session-create handshake works:
+           write 24 bytes → read 19 bytes containing
+           `STATUS_AGENT` (submessage id 0x04). Session created.
+        2. participant-create writes 36 bytes. Agent replies with
+           a 32-byte packet whose submessage header is `0f 01 18 00`
+           — submessage id 15 = `SUBMESSAGE_ID_TIMESTAMP_REPLY`.
+           Plus a 13-byte `ACKNACK` (submessage id 10).
+        3. Agent does NOT send `STATUS` (id 5).
+           `uxr_run_session_until_all_status` waits for STATUS,
+           never sees one, returns false with `s[0]=255`
+           (`UXR_STATUS_NONE`).
+
+        Hypothesis: the upstream client somehow asked for a
+        timestamp, OR the agent treats our CREATE_PARTICIPANT
+        submessage as a timestamp request. The session header
+        we put on the wire (`81 00 00 00`) suggests session_id
+        bit 0x80 + stream_id 0x00 (NONE). If the CREATE went out
+        on the NONE stream instead of an output_reliable stream,
+        the agent might process it but reply over a different
+        path that uxr's status tracker doesn't see.
+
+        Tracked as `115.K.2.5.1.2.a-stream-id`. Needs further
+        wire-level investigation comparing the legacy
+        `xrce-sys` byte stream against ours, ideally with both
+        running side-by-side under tcpdump. Out of scope for
+        this commit's window.
       - [ ] **115.K.2.5.1.3** — migrate
         `examples/zephyr/rust/xrce/*` (6 examples) — same
         pattern. Zephyr build harness needs the C static lib
