@@ -57,14 +57,27 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
 ### Post-v1 (Phases 110.E–110.G)
 
 - [~] 110.E — `SchedClass::Sporadic` + budget refill timer (NuttX-native + user-space fallback)
-      Native syscall paths landed: Linux `SCHED_DEADLINE` via direct
-      `sched_setattr` syscall (x86_64 / aarch64 / riscv64), NuttX
-      `SCHED_SPORADIC` via `sched_setscheduler` + augmented
-      `sched_param`. User-space refill timers (FreeRTOS / Zephyr /
-      ThreadX / bare-metal SysTick) — deferred. Both syscall paths
-      need privileged execution + matching kernel config to actually
-      take effect; per-platform integration tests follow once the
-      privileged-scheduling harness ships.
+      v1 landed:
+      * Linux `SCHED_DEADLINE` via direct `sched_setattr` syscall
+        (x86_64 / aarch64 / riscv64).
+      * NuttX `SCHED_SPORADIC` via `sched_setscheduler` + augmented
+        `sched_param`.
+      * User-space `SporadicState` w/ polled-clock refill — std-only.
+      Both syscall paths need privileged execution + matching kernel
+      config to actually take effect; per-platform integration tests
+      follow once the privileged-scheduling harness ships.
+
+      **110.E.b deferred** — ISR-driven refill on no-std platforms
+      (FreeRTOS / Zephyr / ThreadX / bare-metal). Requires
+      `PlatformTimer` trait + `AtomicSporadicState` rewrite — design
+      locked in
+      [`docs/design/phase-110-e-platform-timer.md`](../design/phase-110-e-platform-timer.md).
+      ~620 LOC across 5 crates, ~3-5 dedicated sessions. Executor
+      stays platform-agnostic via opaque-handle pattern (mirrors
+      `Executor::open_threaded`'s `apply_policy: fn(...)` shape).
+      Per-callback runtime measurement + `cancel` / `restart_oneshot`
+      land in a follow-up to 110.E.b once `PlatformTimer` is in
+      place.
 - [ ] 110.F — `OsPrioritySet` (PiCAS-style, opt-in) — design-locked,
       impl deferred. Needs one OS thread per priority slot; usable
       only on platforms with enough OS pri slots (Linux, NuttX).
