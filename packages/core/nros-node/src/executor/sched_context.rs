@@ -201,7 +201,13 @@ pub struct SchedContext {
 #[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
 pub struct AtomicSporadicState {
     pub budget_remaining_us: core::sync::atomic::AtomicU32,
-    pub last_refill_ms: core::sync::atomic::AtomicU64,
+    /// Last-refill wall-clock in ms. `AtomicU32` for cross-platform
+    /// support — Cortex-M3 (`thumbv7m-none-eabi`) lacks
+    /// `core::sync::atomic::AtomicU64`. 32 bits gives ~49.7 days of
+    /// monotonic ms; long-running deployments wrap, but the only
+    /// consumer is a delta read against a recent prior value, so
+    /// wrapping is benign.
+    pub last_refill_ms: core::sync::atomic::AtomicU32,
     pub budget_capacity_us: u32,
     pub period_us: u32,
 }
@@ -211,7 +217,7 @@ impl AtomicSporadicState {
     pub const fn new(budget_us: u32, period_us: u32) -> Self {
         Self {
             budget_remaining_us: core::sync::atomic::AtomicU32::new(budget_us),
-            last_refill_ms: core::sync::atomic::AtomicU64::new(0),
+            last_refill_ms: core::sync::atomic::AtomicU32::new(0),
             budget_capacity_us: budget_us,
             period_us,
         }

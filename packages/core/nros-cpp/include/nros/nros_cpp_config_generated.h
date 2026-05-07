@@ -3,7 +3,7 @@
 #define NROS_CPP_CONFIG_GENERATED_H
 
 /** Inline opaque storage size (bytes) for nros::Executor. */
-#define NROS_CPP_EXECUTOR_STORAGE_SIZE 17728
+#define NROS_CPP_EXECUTOR_STORAGE_SIZE 18240
 
 /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */
 #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 72
@@ -12,13 +12,13 @@
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 48
 
 /* ── Probe-derived inline storage sizes ──────────────────────
-* Each constant below is the byte size of the corresponding
-* runtime type, extracted from the compiled runtime by the
-* build script. The C++ public templates use these as the
-* `_opaque` buffer size so handles can live on the stack or
-* inside user structs without dynamic allocation.
-*/
-#define NROS_EXECUTOR_SIZE 16808
+ * Each constant below is the byte size of the corresponding
+ * runtime type, extracted from the compiled runtime by the
+ * build script. The C++ public templates use these as the
+ * `_opaque` buffer size so handles can live on the stack or
+ * inside user structs without dynamic allocation.
+ */
+#define NROS_EXECUTOR_SIZE 17424
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 120
 #define NROS_SUBSCRIBER_SIZE 400

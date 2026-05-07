@@ -69,7 +69,7 @@ fn generate_config(
     //   Executor ≈ SessionStore + arena + entries + trigger + misc
     let session_upper = 512;
     let entries_upper = max_cbs * 80;
-    let overhead = 512; // trigger + semantics + strings + halt_flag + domain_id + padding
+    let overhead = 1024; // trigger + semantics + strings + halt_flag + domain_id + padding
     let total_bytes = session_upper + arena_size + entries_upper + overhead;
     let opaque_u64s = total_bytes.div_ceil(8);
     let storage_bytes = opaque_u64s * 8;
