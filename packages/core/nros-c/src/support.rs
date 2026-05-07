@@ -149,7 +149,23 @@ pub unsafe extern "C" fn nros_support_init_named(
             not(feature = "rmw-xrce")
         ))]
         let default_locator = b"\0";
-        #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
+        // Phase 115.K.2.5.2: rmw-cffi covers the C/C++-API XRCE C
+        // backend. Same default agent locator as the legacy
+        // rmw-xrce path so consumers that omit the locator
+        // continue connecting to a local agent on `:2019`.
+        #[cfg(all(
+            feature = "rmw-cffi",
+            not(feature = "rmw-zenoh"),
+            not(feature = "rmw-xrce"),
+            not(feature = "rmw-dds"),
+        ))]
+        let default_locator = b"127.0.0.1:2019\0";
+        #[cfg(not(any(
+            feature = "rmw-zenoh",
+            feature = "rmw-xrce",
+            feature = "rmw-dds",
+            feature = "rmw-cffi",
+        )))]
         let default_locator = b"\0";
 
         let len = default_locator.len() - 1;
@@ -158,8 +174,30 @@ pub unsafe extern "C" fn nros_support_init_named(
         support.locator_len = len;
     }
 
+    // Phase 115.K.2.5.2 — register the micro-XRCE-DDS-Client C
+    // backend's vtable before opening the session. Mirrors the
+    // C++ path's `nros::init` hook (gated on `NROS_RMW_XRCE_C`
+    // there). The link to `NrosRmwXrceC::NrosRmwXrceC` from
+    // CMake provides the symbol; this `cffi-xrce-c` feature is
+    // set by the same CMake glue.
+    #[cfg(feature = "cffi-xrce-c")]
+    {
+        unsafe extern "C" {
+            fn nros_rmw_xrce_register() -> i32;
+        }
+        let rc = unsafe { nros_rmw_xrce_register() };
+        if rc != 0 {
+            return NROS_RET_ERROR;
+        }
+    }
+
     // Initialize the middleware session
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi",
+    ))]
     {
         use nros_node::SessionMode;
 
@@ -208,7 +246,12 @@ pub unsafe extern "C" fn nros_support_init_named(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi",
+    )))]
     {
         NROS_RET_ERROR
     }
@@ -241,7 +284,12 @@ pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros
     }
 
     // Drop the inline RMW session
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi",
+    ))]
     {
         core::ptr::drop_in_place(support._opaque.as_mut_ptr() as *mut nros::internals::RmwSession);
     }

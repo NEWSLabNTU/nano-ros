@@ -33,6 +33,24 @@ build-agent:
 clean-agent:
     ./scripts/xrce-agent/build.sh --clean
 
+# Phase 115.K.2.5.2: build the standalone `nros-rmw-xrce-c` CMake
+# project and install into the shared `build/install/` prefix so
+# downstream `find_package(NrosRmwXrceC)` resolves it. Mirrors the
+# cyclonedds `build-rmw` recipe — runs ahead of `install-local-posix`'s
+# `xrce` iteration so the nros-c xrce variant links cleanly against
+# `NrosRmwXrceC::NrosRmwXrceC`.
+build-rmw:
+    #!/usr/bin/env bash
+    set -e
+    PROJ="packages/xrce/nros-rmw-xrce-c"
+    cmake -S "$PROJ" -B "$PROJ/build" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="$PWD/build/install" \
+        -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
+        -DNROS_RMW_XRCE_C_BUILD_TESTS=OFF
+    cmake --build "$PROJ/build" --parallel
+    cmake --install "$PROJ/build"
+
 # Run XRCE-DDS integration tests (requires: just xrce build-agent)
 test verbose="":
     #!/usr/bin/env bash

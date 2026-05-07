@@ -42,7 +42,7 @@ pub(crate) type CExecutor = nros_node::Executor;
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
     feature = "rmw-dds",
-    feature = "rmw-dds"
+    feature = "rmw-cffi"
 ))]
 const _: () = assert!(
     core::mem::size_of::<CExecutor>() <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),

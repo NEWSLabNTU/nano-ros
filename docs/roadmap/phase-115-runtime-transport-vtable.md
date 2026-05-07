@@ -545,18 +545,85 @@ Ordered execution-first (policy → port → tracking entries):
         (`test_xrce_serial_talker_starts`,
         `test_xrce_serial_listener_starts`,
         `test_xrce_serial_communication`).
-      - [ ] **115.K.2.5.1.3** — migrate
+      - [~] **115.K.2.5.1.3-zephyr-deferred** — migrate
         `examples/zephyr/rust/xrce/*` (6 examples) — same
-        pattern. Zephyr build harness needs the C static lib
-        cross-compiled for the Cortex-M target; that's an
-        additional CMake plumbing step.
+        pattern, but the Zephyr cross-compile bring-up is its
+        own work item:
+        1. The cffi shim's `build.rs` hard-codes
+           `_POSIX_C_SOURCE=200809L`, `UCLIENT_PLATFORM_POSIX`,
+           and unconditionally compiles `transport_posix_udp.c`
+           + `transport_posix_serial.c` (which include
+           `<sys/socket.h>` / `<termios.h>`) and the upstream
+           `udp_transport_posix.c` + `util/time.c`. None of
+           these resolve on `thumbv7em-none-eabihf`. Need
+           target-aware cc::Build setup (a `posix` cfg gate
+           via `CARGO_CFG_TARGET_OS == "none"`-style detection).
+        2. Zephyr-side serial / UDP trampolines must be
+           supplied by `xrce-zephyr` (or a successor
+           `nros-rmw-xrce-c-zephyr` C TU). Today
+           `xrce-zephyr/src/xrce_zephyr.c` only handles L4
+           readiness + `uxr_millis`/`uxr_nanos`; it does NOT
+           ship XRCE custom-transport callbacks — those came
+           from `nros-rmw-xrce`'s `platform_udp.rs`. The C
+           backend's session-open path needs an alternative
+           init when the locator scheme is `udp://` or
+           `serial://` and the build is no_std (call into a
+           Zephyr-provided init shim instead of the POSIX one).
+        3. `zephyr/CMakeLists.txt` would need to switch
+           `CONFIG_NROS_RMW_XRCE` from
+           `rmw-xrce,platform-zephyr,ros-humble` to
+           `rmw-xrce-cffi,platform-zephyr,ros-humble`, plus
+           pull in the cffi shim's static lib through
+           Corrosion (or the existing `rust_cargo_application`
+           hook).
+        Out of scope for the K.2.5 close-out: the work is
+        ~3–5 commits' worth of cross-compile plumbing and the
+        Zephyr examples remain functional on the legacy
+        `rmw-xrce` path. K.2.5.2 / K.2.5.3 retain the legacy
+        `rmw-xrce` Rust crate + `xrce-zephyr` for now;
+        K.2.5.3 explicitly carries them through.
       - [ ] **115.K.2.5.1.4** — migrate Rust XRCE tests
         (`packages/testing/nros-tests/tests/xrce.rs`,
         `xrce_ros2_interop.rs`) — switch their fixtures over.
         Expected: 14/14 still pass via the C backend.
-    - [ ] **115.K.2.5.2** — flip default `xrce` selector to mean
+    - [x] **115.K.2.5.2** — flip default `xrce` selector to mean
       the C backend (deprecate Rust path). Now safe because every
       previous Rust user is on the cffi-via-C-backend path.
+
+      **Landed:** `NANO_ROS_RMW=xrce` now routes to `rmw-cffi` +
+      `cffi-xrce-c` Cargo features in both `packages/core/nros-c/CMakeLists.txt`
+      and `packages/core/nros-cpp/CMakeLists.txt`, plus the matching
+      `find_package(NrosRmwXrceC)` + `NROS_RMW_XRCE_C=1` link block
+      that previously lived under the `xrce-c` selector. The
+      separate `xrce-c` selector is removed.
+
+      Implementation notes:
+      - `packages/core/nros-c/Cargo.toml` adds the `cffi-xrce-c`
+        feature. When set, `nros_support_init` calls
+        `nros_rmw_xrce_register()` (extern "C", resolved via the
+        linked `NrosRmwXrceC::NrosRmwXrceC` archive) before the
+        session opens. Mirrors the C++ path's `nros::init` hook.
+      - `packages/core/nros-c/cmake/NanoRosCTargets.cmake` and
+        `packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake`
+        gain `find_dependency(NrosRmwXrceC)` + link / define on
+        `NANO_ROS_RMW=xrce`. Mirrors the cyclonedds wiring.
+      - All `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds))` gates inside
+        `packages/core/nros-c/src/` widen to include
+        `feature = "rmw-cffi"` so the support / publisher /
+        service / lifecycle / parameter / executor symbols
+        compile under the new `rmw-cffi+cffi-xrce-c` axis.
+      - New `xrce::build-rmw` justfile recipe builds the
+        `nros-rmw-xrce-c` standalone CMake project + installs
+        into `build/install/`. `install-local-posix` depends on
+        it, mirroring `cyclonedds::build-rmw`.
+
+      Validation:
+      - `cargo test -p nros-tests --test xrce -- --test-threads=1`:
+        14/14 pass (Rust `nros-rmw-xrce-cffi` consumers).
+      - `cargo test -p nros-tests --test c_xrce_api -- --test-threads=1`:
+        5/5 pass — the C/C++ API path now exercises the C
+        backend end-to-end (was previously gated on the Rust
+        `nros-rmw-xrce` crate via `NANO_ROS_RMW=xrce`).
     - [ ] **115.K.2.5.3** — remove `nros-rmw-xrce` Rust crate +
       `xrce-sys` + `xrce-platform-shim` + `xrce-zephyr` from the
       workspace. The cffi shim crate

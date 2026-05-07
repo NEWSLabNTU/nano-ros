@@ -21,6 +21,13 @@ rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-xrce = ["nros/rmw-xrce"]
 rmw-dds = ["nros/rmw-dds"]
 rmw-cffi = ["nros/rmw-cffi"]
+# Phase 115.K.2.5.2 — under the `xrce` CMake selector the C/C++ APIs
+# go through the rmw-cffi axis with the micro-XRCE-DDS-Client C
+# backend providing the vtable. This Cargo feature flips a one-line
+# call inside `nros_support_init` that registers that vtable before
+# the session opens — matches the C++ path's `nros::init` hook.
+# The C/C++ build glue sets it from CMake when `NANO_ROS_RMW=xrce`.
+cffi-xrce-c = ["rmw-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh)
 link-tcp = ["nros/link-tcp"]

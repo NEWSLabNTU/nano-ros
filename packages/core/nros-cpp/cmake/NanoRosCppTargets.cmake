@@ -105,6 +105,20 @@ if(NOT TARGET NanoRos::NanoRosCpp)
       INTERFACE_COMPILE_DEFINITIONS NROS_RMW_CYCLONEDDS=1)
   endif()
 
+  # Phase 115.K.2.5.2: micro-XRCE-DDS-Client C backend rides the same
+  # rmw-cffi axis. `xrce` is now the canonical selector (the legacy
+  # `xrce-c` selector was retired in K.2.5.2).
+  if(NANO_ROS_RMW STREQUAL "xrce")
+    if(NOT TARGET NrosRmwXrceC::NrosRmwXrceC)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosRmwXrceC CONFIG)
+    endif()
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES NrosRmwXrceC::NrosRmwXrceC)
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE_C=1)
+  endif()
+
   # --- Rust multi-staticlib link fix ---------------------------------------
   #
   # nros-cpp apps typically link two Rust-produced static archives:

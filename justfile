@@ -128,7 +128,7 @@ install-local: \
 # (`libnros_c_dds.a` / `libnros_cpp_dds.a`), so all three coexist in
 # the install prefix.
 [private]
-install-local-posix: cyclonedds::build-rmw
+install-local-posix: cyclonedds::build-rmw xrce::build-rmw
     #!/usr/bin/env bash
     set -e
     PREFIX="$(pwd)/build/install"
@@ -137,6 +137,10 @@ install-local-posix: cyclonedds::build-rmw
     # this loop (via the `cyclonedds::build-rmw` dep), so the
     # NanoRosCpp cmake build can `find_package(NrosRmwCyclonedds)`
     # against the same install prefix when NANO_ROS_RMW=cyclonedds.
+    # Phase 115.K.2.5.2: `xrce::build-rmw` does the same for
+    # `nros-rmw-xrce-c` so the C/C++ APIs can `find_package(NrosRmwXrceC)`
+    # under the canonical `NANO_ROS_RMW=xrce` selector (which now
+    # routes to the C backend).
     for rmw in zenoh xrce dds cyclonedds; do
         echo "=== Building posix RMW=$rmw ==="
         cmake -S . -B "build/cmake-$rmw" \

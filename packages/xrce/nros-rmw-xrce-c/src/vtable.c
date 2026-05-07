@@ -55,3 +55,25 @@ static const nros_rmw_vtable_t kVtable = {
 nros_rmw_ret_t nros_rmw_xrce_register(void) {
     return nros_rmw_cffi_register(&kVtable);
 }
+
+/* Phase 115.K.2.5.2 — auto-register on library load.
+ *
+ * The C/C++ APIs go through `nros_support_init` (C) or `nros::init`
+ * (C++). The C++ path explicitly calls `nros_rmw_xrce_register`
+ * inside `nros::init` (gated on `NROS_RMW_XRCE_C` from CMake). The
+ * pure-C path doesn't have an analogous explicit hook today, so we
+ * piggy-back on the loader's GCC/Clang `__attribute__((constructor))`
+ * hook. The constructor runs before `main()` (and on RTOS targets
+ * before `app_main`) on every toolchain we currently target
+ * (gcc/clang on glibc, musl, newlib + the rust-staticlib link path).
+ *
+ * MSVC users (out-of-scope today) would need a `#pragma section`
+ * `.CRT$XCU` shim instead. The C++ explicit-call path remains the
+ * portable fallback if a target lacks ELF/COFF constructor support.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((constructor))
+static void nros_rmw_xrce_register_ctor(void) {
+    (void)nros_rmw_cffi_register(&kVtable);
+}
+#endif
