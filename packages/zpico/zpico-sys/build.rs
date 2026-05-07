@@ -314,7 +314,17 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header).unwrap();
     writeln!(header, "// Protocol Features").unwrap();
     writeln!(header, "#define Z_FEATURE_FRAGMENTATION 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_ENCODING_VALUES 1").unwrap();
+    // Encoding-name strings (`text/plain`, `application/json`, ...). ROS-over-
+    // Zenoh uses CDR; encoding name is never consulted. SPE drops it; other
+    // platforms keep the upstream default.
+    let orin_spe = env::var("CARGO_FEATURE_ORIN_SPE").is_ok();
+    let encoding_values = if orin_spe { 0 } else { 1 };
+    writeln!(
+        header,
+        "#define Z_FEATURE_ENCODING_VALUES {}",
+        encoding_values
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_TCP_NODELAY 1").unwrap();
     writeln!(header, "#define Z_FEATURE_LOCAL_SUBSCRIBER 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LOCAL_QUERYABLE 0").unwrap();
@@ -325,7 +335,16 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_MATCHING 0").unwrap();
     writeln!(header, "#define Z_FEATURE_RX_CACHE 0").unwrap();
     writeln!(header, "#define Z_FEATURE_UNICAST_PEER 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_AUTO_RECONNECT 1").unwrap();
+    // Auto-reconnect is dead code on the IVC link (fixed-frame mailbox, no
+    // disconnect path). SPE drops it; other platforms keep the upstream
+    // default for transport-level reconnect on TCP / serial / TLS.
+    let auto_reconnect = if orin_spe { 0 } else { 1 };
+    writeln!(
+        header,
+        "#define Z_FEATURE_AUTO_RECONNECT {}",
+        auto_reconnect
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_MULTICAST_DECLARATIONS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_PERIODIC_TASKS 0").unwrap();
     writeln!(header).unwrap();
