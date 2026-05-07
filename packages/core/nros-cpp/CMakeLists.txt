@@ -29,10 +29,16 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # `NROS_RMW_CYCLONEDDS=1` flips on the auto-register call inside
     # `nros::init`.
     set(_rmw_features rmw-cffi)
+elseif(NANO_ROS_RMW STREQUAL "xrce-c")
+    # Phase 115.K.2.5: micro-XRCE-DDS-Client backend in C. Mirrors
+    # the cyclonedds path — `rmw-cffi` Rust feature plus
+    # `NrosRmwXrceC::NrosRmwXrceC` + `NROS_RMW_XRCE_C=1` for the
+    # auto-register hook.
+    set(_rmw_features rmw-cffi)
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, xrce, xrce-c, dds, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----
@@ -84,6 +90,12 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds")
     target_link_libraries(nros-cpp-headers INTERFACE
         NrosRmwCyclonedds::NrosRmwCyclonedds)
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
+elseif(NANO_ROS_RMW STREQUAL "xrce-c")
+    # Phase 115.K.2.5: micro-XRCE-DDS-Client C backend.
+    find_package(NrosRmwXrceC CONFIG REQUIRED)
+    target_link_libraries(nros-cpp-headers INTERFACE
+        NrosRmwXrceC::NrosRmwXrceC)
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_C=1)
 endif()
 
 # Require at least C++14

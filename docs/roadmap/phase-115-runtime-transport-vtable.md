@@ -383,8 +383,23 @@ Ordered execution-first (policy → port → tracking entries):
     `nros-rmw-cffi` that doesn't exist yet — documented in
     `packages/xrce/nros-rmw-xrce-c/KNOWN-LIMITATIONS.md`. Pure-C
     clients route around via the direct-pass entry point.
-  - [ ] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`
+  - [~] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`
     over to the C backend.
+    - [x] **115.K.2.5.0** — wire the C backend behind a new
+      `NANO_ROS_RMW=xrce-c` selector in `nros-c` + `nros-cpp`,
+      mirroring the cyclonedds shape (`rmw-cffi` Rust feature +
+      `find_package(NrosRmwXrceC)` + `NROS_RMW_XRCE_C=1`
+      auto-register macro in `nros::init`). Rust path under
+      `NANO_ROS_RMW=xrce` stays unchanged. Validated via
+      `cargo test --test xrce` (14/14 pass — Rust path regression
+      check) and a top-level cmake configure +
+      `cmake --build` with `NANO_ROS_RMW=xrce-c` (clean build,
+      `libnros_c_xrce-c.a` + `libnros_cpp_xrce-c.a` produced).
+    - [ ] **115.K.2.5.1** — flip default `xrce` selector to mean
+      the C backend (deprecate Rust path).
+    - [ ] **115.K.2.5.2** — remove `nros-rmw-xrce` Rust crate +
+      `xrce-sys` from the workspace once Rust API users have
+      migrated to the cffi-via-C-backend path.
 
 - [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost

@@ -26,10 +26,16 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # the Rust side. Backend wiring + auto-register happens C++-side
     # via `NrosRmwCyclonedds::NrosRmwCyclonedds` in nros-cpp.
     set(_rmw_features rmw-cffi)
+elseif(NANO_ROS_RMW STREQUAL "xrce-c")
+    # Phase 115.K.2.5: micro-XRCE-DDS-Client backend in C, mirroring
+    # the cyclonedds path. The Rust crate `nros-rmw-xrce` stays
+    # available under the legacy `NANO_ROS_RMW=xrce` selector for
+    # Rust API users until the Rust path is separately retired.
+    set(_rmw_features rmw-cffi)
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, xrce, xrce-c, dds, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----

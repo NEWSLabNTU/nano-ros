@@ -231,6 +231,23 @@ install(EXPORT NrosRmwXrceCTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
 )
 
+# ---- find_package(NrosRmwXrceC) config ----
+configure_package_config_file(
+    cmake/NrosRmwXrceCConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
+)
+
 # ---- Tests -----------------------------------------------------------------
 option(NROS_RMW_XRCE_C_BUILD_TESTS "Build CTest harness" ON)
 if(NROS_RMW_XRCE_C_BUILD_TESTS)

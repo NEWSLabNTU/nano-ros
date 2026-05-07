@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+
+# Phase 115.K.2.5: makes `find_package(NrosRmwXrceC CONFIG)` resolve
+# the imported target `NrosRmwXrceC::NrosRmwXrceC`. Downstream
+# consumers (nros-c, nros-cpp) link against it when
+# `NANO_ROS_RMW=xrce-c` is selected; the auto-register hook lives
+# inline in `nros::init` (gated by `NROS_RMW_XRCE_C=1`).
+
+include("${CMAKE_CURRENT_LIST_DIR}/NrosRmwXrceCTargets.cmake")
+
+check_required_components(NrosRmwXrceC)
