@@ -19,33 +19,14 @@
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
 
-// FFI declarations (create is declared in node.hpp with full type info)
-extern "C" {
-typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_action_client_send_goal(void* handle, const uint8_t* goal_buf,
-                                                size_t goal_len, uint8_t goal_id_out[16]);
-nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void* handle, const uint8_t* goal_buf,
-                                                      size_t goal_len, uint8_t goal_id_out[16]);
-nros_cpp_ret_t nros_cpp_action_client_get_result(void* handle, void* executor_handle,
-                                                 const uint8_t goal_id[16], uint8_t* result_buf,
-                                                 size_t result_buf_len, size_t* result_len);
-nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8_t goal_id[16]);
-nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
-                                                        size_t buf_len, size_t* feedback_len);
-nros_cpp_ret_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out_data,
-                                                             size_t out_capacity, size_t* out_len);
-nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data,
-                                                      size_t out_capacity, size_t* out_len);
-nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
-    void* handle, void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
-    void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx),
-    void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len,
-                   void* ctx),
-    void* context);
-nros_cpp_ret_t nros_cpp_action_client_poll(void* handle);
-nros_cpp_ret_t nros_cpp_action_client_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_action_client_relocate(void* old_storage, void* new_storage);
-} // extern "C"
+// Phase 118.D: FFI declarations sourced from cbindgen-generated
+// `nros_cpp_ffi.h`. cbindgen renders Rust `*const [u8; 16]` /
+// `*mut [u8; 16]` parameters as C++ pointer-to-array
+// (`const uint8_t (*goal_id)[16]`); member-function bodies below
+// take `goal_id` as a 16-byte array (decays to `uint8_t*`) and
+// `reinterpret_cast` at the call site to bridge the two ABI
+// equivalent shapes.
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 
@@ -106,7 +87,8 @@ template <typename A> class ActionClient {
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_action_client_send_goal(storage_, buf, len, goal_id));
+        return Result(nros_cpp_action_client_send_goal(storage_, buf, len,
+                                                       reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// Get the result for a goal (blocking with timeout).
@@ -122,8 +104,9 @@ template <typename A> class ActionClient {
 
         uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
-        nros_cpp_ret_t ret =
-            nros_cpp_action_client_get_result(storage_, executor_, goal_id, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = nros_cpp_action_client_get_result(
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, sizeof(buf),
+            &len);
         if (ret != 0) return Result(ret);
 
         if (ResultType::ffi_deserialize(buf, len, &result) != 0) {
@@ -162,7 +145,8 @@ template <typename A> class ActionClient {
         }
 
         uint8_t goal_id[16];
-        nros_cpp_ret_t ret = nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id);
+        nros_cpp_ret_t ret = nros_cpp_action_client_send_goal_async(
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id));
         if (ret != 0) return Future<GoalAccept>();
 
         return Future<GoalAccept>(storage_, &nros_cpp_action_client_try_recv_goal_response,
@@ -189,7 +173,8 @@ template <typename A> class ActionClient {
     Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
         if (!initialized_) return Future<ResultType>();
 
-        nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(storage_, goal_id);
+        nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id));
         if (ret != 0) return Future<ResultType>();
 
         return Future<ResultType>(storage_, &nros_cpp_action_client_try_recv_result,
@@ -289,7 +274,8 @@ template <typename A> class ActionClient {
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id));
+        return Result(nros_cpp_action_client_send_goal_async(
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// Request the result for a goal asynchronously (non-blocking).
@@ -301,7 +287,8 @@ template <typename A> class ActionClient {
     /// @return Result indicating success or failure.
     Result get_result_async(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_action_client_get_result_async(storage_, goal_id));
+        return Result(nros_cpp_action_client_get_result_async(
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// Register async callbacks for goal response, feedback, and result.

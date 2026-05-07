@@ -18,41 +18,7 @@
 #include "nros/result.hpp"
 #include "nros/stream.hpp"
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void* storage, uint8_t* out_data,
-                                                  size_t out_capacity, size_t* out_len);
-nros_cpp_ret_t nros_cpp_subscription_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_subscription_relocate(void* old_storage, void* new_storage);
-
-// Phase 108 — status-event setters. Each returns `nros_cpp_ret_t`
-// matching `nros_ret_t` from the C surface; `NROS_RET_UNSUPPORTED`
-// (-16) is returned until backend wiring lands per phase (109+).
-struct nros_cpp_liveliness_changed_status_t {
-    uint16_t alive_count;
-    uint16_t not_alive_count;
-    int16_t alive_count_change;
-    int16_t not_alive_count_change;
-};
-struct nros_cpp_count_status_t {
-    uint32_t total_count;
-    uint32_t total_count_change;
-};
-typedef void (*nros_cpp_liveliness_changed_cb_t)(void* storage,
-                                                 nros_cpp_liveliness_changed_status_t status,
-                                                 void* user_context);
-typedef void (*nros_cpp_subscriber_count_cb_t)(void* storage, nros_cpp_count_status_t status,
-                                               void* user_context);
-nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void* storage,
-                                                            nros_cpp_liveliness_changed_cb_t cb,
-                                                            void* user_context);
-nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(
-    void* storage, uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb, void* user_context);
-nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void* storage,
-                                                      nros_cpp_subscriber_count_cb_t cb,
-                                                      void* user_context);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

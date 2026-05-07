@@ -12,6 +12,11 @@
 #ifndef NROS_CPP_HPP
 #define NROS_CPP_HPP
 
+// Phase 118.D — pull cbindgen-generated FFI before any wrapper hpp so
+// `nros/qos.hpp`'s `#ifndef NROS_CPP_FFI_H` guard skips its local
+// fallback definitions in favor of the canonical types.
+#include "nros_cpp_ffi.h"
+
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
 #include "nros/future.hpp"

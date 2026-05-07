@@ -17,35 +17,7 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
-nros_cpp_ret_t nros_cpp_publisher_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_publisher_relocate(void* old_storage, void* new_storage);
-
-// Phase 108 — publisher-side status-event setters. Returns
-// NROS_CPP_RET_UNSUPPORTED until backend wiring lands per-phase.
-struct nros_cpp_pub_count_status_t {
-    uint32_t total_count;
-    uint32_t total_count_change;
-};
-typedef void (*nros_cpp_publisher_count_cb_t)(void* storage, nros_cpp_pub_count_status_t status,
-                                              void* user_context);
-nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void* storage,
-                                                      nros_cpp_publisher_count_cb_t cb,
-                                                      void* user_context);
-nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void* storage, uint32_t deadline_ms,
-                                                              nros_cpp_publisher_count_cb_t cb,
-                                                              void* user_context);
-
-/// Phase 108.B.7 — manually assert this publisher's liveliness.
-/// Required for entities created with `liveliness_kind =
-/// LivelinessManualByTopic` / `ManualByNode`. No-op otherwise. Backends
-/// that don't implement manual assertion treat this as a no-op and
-/// return success.
-nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void* storage);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

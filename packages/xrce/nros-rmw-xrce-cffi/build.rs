@@ -47,16 +47,24 @@ fn main() {
 
     // K.2 backend TUs. Source-of-truth list — must stay in lockstep
     // with `nros-rmw-xrce-c/CMakeLists.txt`.
-    for name in &[
+    let mut backend_tus = vec![
         "vtable",
         "session",
         "publisher",
         "subscriber",
         "service",
         "transport_custom",
-        "transport_posix_udp",
-        "transport_posix_serial",
-    ] {
+    ];
+    // Phase 118 — `transport_posix_{udp,serial}.c` define
+    // `xrce_posix_{udp,serial}_init`. The TUs only build where
+    // `<sys/socket.h>` / `<termios.h>` are available; bare-metal
+    // targets must inject their own custom transport instead.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if matches!(target_os.as_str(), "linux" | "macos" | "freebsd" | "netbsd" | "openbsd") {
+        backend_tus.push("transport_posix_udp");
+        backend_tus.push("transport_posix_serial");
+    }
+    for name in &backend_tus {
         build.file(xrce_c.join(format!("src/{name}.c")));
     }
 

@@ -23,30 +23,7 @@
 
 #include "nros/result.hpp"
 
-extern "C" {
-
-// Mirrors the Rust `nros_cpp_*` FFI in `nros-cpp/src/lib.rs`.
-struct nros_cpp_sched_context_ffi {
-    uint8_t class_;
-    uint8_t priority;
-    uint8_t deadline_policy;
-    uint32_t period_us;
-    uint32_t budget_us;
-    uint32_t deadline_us;
-    // Phase 110.F — opt-in OS-level priority for per-callback dispatch.
-    uint8_t os_pri;
-    // Phase 110.G — TT-window offset within the executor's major frame.
-    uint32_t tt_window_offset_us;
-    // Phase 110.G — TT-window length in microseconds.
-    uint32_t tt_window_duration_us;
-};
-
-uint8_t nros_cpp_default_sched_context_id(void);
-int nros_cpp_create_sched_context(void* handle, const struct nros_cpp_sched_context_ffi* cfg,
-                                  uint8_t* out_sc_id);
-int nros_cpp_bind_handle_to_sched_context(void* handle, size_t callback_handle, uint8_t sc_id);
-
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 
@@ -104,11 +81,11 @@ inline SchedContextId default_sched_context_id() {
 }
 
 namespace detail {
-inline ::nros_cpp_sched_context_ffi to_ffi(const SchedContext& sc) {
-    ::nros_cpp_sched_context_ffi ffi{};
-    ffi.class_ = static_cast<uint8_t>(sc.class_);
-    ffi.priority = static_cast<uint8_t>(sc.priority);
-    ffi.deadline_policy = static_cast<uint8_t>(sc.deadline_policy);
+inline ::nros_cpp_sched_context_t to_ffi(const SchedContext& sc) {
+    ::nros_cpp_sched_context_t ffi{};
+    ffi.class_ = static_cast<::nros_cpp_sched_class_t>(sc.class_);
+    ffi.priority = static_cast<::nros_cpp_priority_t>(sc.priority);
+    ffi.deadline_policy = static_cast<::nros_cpp_deadline_policy_t>(sc.deadline_policy);
     ffi.period_us = sc.period_us;
     ffi.budget_us = sc.budget_us;
     ffi.deadline_us = sc.deadline_us;

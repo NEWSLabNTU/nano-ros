@@ -1914,7 +1914,7 @@ impl Executor {
             // Use the cycle's `delta_ms` as the per-SC consumption
             // estimate — worst-case attribution. Per-callback
             // measurement lands with a higher-precision clock hook.
-            let delta_us = (delta_ms as u32).saturating_mul(1000).min(u32::MAX);
+            let delta_us = (delta_ms as u32).saturating_mul(1000);
             for slot in self.sporadic_states.iter_mut().flatten() {
                 let _ = slot.tick(now_ms, delta_us);
             }

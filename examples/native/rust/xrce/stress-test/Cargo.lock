@@ -434,6 +434,7 @@ name = "native-rs-xrce-stress-test"
 version = "0.1.0"
 dependencies = [
  "nros",
+ "nros-rmw-xrce-cffi",
  "std_msgs",
 ]
 
@@ -469,9 +470,11 @@ dependencies = [
  "nros-params",
  "nros-platform",
  "nros-rmw",
+ "nros-rmw-cffi",
  "nros-rmw-dds",
  "nros-rmw-uorb",
  "nros-rmw-xrce",
+ "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
@@ -506,9 +509,11 @@ dependencies = [
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
+ "nros-rmw-cffi",
  "nros-rmw-dds",
  "nros-rmw-uorb",
  "nros-rmw-xrce",
+ "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
  "portable-atomic",
  "portable-atomic-util",
@@ -551,6 +556,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-cffi"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "nros-rmw",
+ "portable-atomic",
+]
+
+[[package]]
 name = "nros-rmw-dds"
 version = "0.1.0"
 dependencies = [
@@ -586,6 +600,13 @@ dependencies = [
  "nros-rmw",
  "portable-atomic",
  "xrce-sys",
+]
+
+[[package]]
+name = "nros-rmw-xrce-cffi"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

@@ -21,17 +21,7 @@
 #include <memory>
 #endif
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-typedef void (*nros_cpp_guard_callback_t)(void* context);
-nros_cpp_ret_t nros_cpp_guard_condition_create(void* executor_handle,
-                                               nros_cpp_guard_callback_t callback, void* context,
-                                               void* storage);
-nros_cpp_ret_t nros_cpp_guard_condition_trigger(void* storage);
-nros_cpp_ret_t nros_cpp_guard_condition_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_guard_condition_relocate(void* old_storage, void* new_storage);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

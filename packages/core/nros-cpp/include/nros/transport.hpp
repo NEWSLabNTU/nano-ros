@@ -15,28 +15,13 @@
 
 #include "nros/result.hpp"
 
-extern "C" {
-// Mirrors `nros_transport_ops_t` from <nros/nros_generated.h>. Kept
-// inline here so user code only needs `#include <nros/transport.hpp>`.
-typedef int nros_cpp_transport_ret_t;
-struct nros_cpp_transport_ops_t {
-    std::uint32_t abi_version;
-    std::uint32_t _reserved;
-    void* user_data;
-    nros_cpp_transport_ret_t (*open)(void* user_data, const void* params);
-    void (*close)(void* user_data);
-    nros_cpp_transport_ret_t (*write)(void* user_data, const std::uint8_t* buf, std::size_t len);
-    std::int32_t (*read)(void* user_data, std::uint8_t* buf, std::size_t len,
-                         std::uint32_t timeout_ms);
-};
-extern const std::uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
+#include "nros_cpp_ffi.h"
 
-/// Phase 115.D — Rust-side entry that copies the vtable into
-/// `nros_rmw::set_custom_transport`. Implemented in `transport.rs`.
-nros_cpp_transport_ret_t nros_cpp_set_custom_transport(const nros_cpp_transport_ops_t* ops);
-nros_cpp_transport_ret_t nros_cpp_clear_custom_transport();
-nros_cpp_transport_ret_t nros_cpp_has_custom_transport();
-} // extern "C"
+// `nros_cpp_transport_ret_t` was a transport-layer-local typedef
+// before Phase 118.D consolidated FFI declarations into
+// `nros_cpp_ffi.h`. Keep as an alias for source compatibility — new
+// code should use `nros_cpp_ret_t` directly.
+using nros_cpp_transport_ret_t = nros_cpp_ret_t;
 
 namespace nros {
 

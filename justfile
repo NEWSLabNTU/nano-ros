@@ -561,7 +561,9 @@ check-workspace-embedded:
         --exclude nros-platform-nuttx \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
-        --exclude xrce-platform-shim
+        --exclude xrce-platform-shim \
+        --exclude nros-rmw-xrce-c \
+        --exclude nros-rmw-xrce-cffi
 
 # Check workspace with various feature combinations
 [private]

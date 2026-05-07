@@ -106,10 +106,6 @@ typedef enum nros_cpp_qos_liveliness_t {
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
 } nros_cpp_qos_liveliness_t;
 
-typedef struct Option_CppCancelCallback Option_CppCancelCallback;
-
-typedef struct Option_CppGoalCallback Option_CppGoalCallback;
-
 /**
  * Return type for nros C++ FFI functions.
  */
@@ -902,24 +898,6 @@ nros_cpp_ret_t nros_cpp_action_server_register(void *storage,
                                                const char *type_hash);
 
 /**
- * Register callbacks on the action server.
- *
- * The goal callback receives raw CDR goal bytes and returns `1`
- * (AcceptAndExecute), `2` (AcceptAndDefer), or `0` (Reject). The cancel
- * callback returns `1` (Accept) or `0` (Reject). Either callback may be
- * null — a null goal callback causes every request to be rejected; a
- * null cancel callback causes every cancel to be accepted. The C++
- * template header translates typed callables into this raw-bytes form.
- *
- * # Safety
- * `handle` must be a valid initialized action server storage.
- */
-nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void *handle,
-                                                    struct Option_CppGoalCallback goal_cb,
-                                                    struct Option_CppCancelCallback cancel_cb,
-                                                    void *ctx);
-
-/**
  * Publish feedback for an active goal.
  *
  * # Parameters
@@ -1160,28 +1138,6 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
  * All pointers must be valid.
  */
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8_t (*goal_id)[16]);
-
-/**
- * Register async callbacks on the action client.
- *
- * # Safety
- * `handle` must be a valid action client storage. Function pointers
- * may be null (no callback for that event).
- */
-nros_cpp_ret_t nros_cpp_action_client_set_callbacks(void *handle,
-                                                    void (*goal_response)(bool,
-                                                                          const uint8_t(*)[16],
-                                                                          void*),
-                                                    void (*feedback)(const uint8_t(*)[16],
-                                                                     const uint8_t*,
-                                                                     size_t,
-                                                                     void*),
-                                                    void (*result)(const uint8_t(*)[16],
-                                                                   int32_t,
-                                                                   const uint8_t*,
-                                                                   size_t,
-                                                                   void*),
-                                                    void *context);
 
 /**
  * Poll action client for pending replies (non-blocking).

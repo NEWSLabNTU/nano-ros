@@ -16,17 +16,7 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void* storage, uint8_t* out_data,
-                                                    size_t out_capacity, size_t* out_len,
-                                                    int64_t* out_sequence);
-nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void* storage, int64_t sequence_number,
-                                                      const uint8_t* data, size_t len);
-nros_cpp_ret_t nros_cpp_service_server_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_service_server_relocate(void* old_storage, void* new_storage);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

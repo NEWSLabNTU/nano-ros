@@ -13,10 +13,12 @@
 #include <stdint.h>
 
 // FFI struct definition — mirrors `nros_cpp_qos_t` in
-// nros_cpp_ffi.h. Defined here (not forward-declared) so user-facing
-// hpp files that copy QoS settings into `nros_cpp_qos_t` instances
-// (publisher, subscription, service, client, action_*) can access
-// every field without pulling the cbindgen-generated FFI header.
+// nros_cpp_ffi.h. Phase 118.D: guarded by `NROS_CPP_FFI_H`. If
+// `nros_cpp_ffi.h` was included earlier (it sets that guard), the
+// canonical types are already in scope; otherwise emit local
+// definitions so this header stays self-contained for callers that
+// don't pull the cbindgen header directly.
+#ifndef NROS_CPP_FFI_H
 extern "C" {
 enum nros_cpp_qos_reliability_t {
     NROS_CPP_QOS_RELIABLE = 0,
@@ -48,6 +50,7 @@ struct nros_cpp_qos_t {
     uint8_t avoid_ros_namespace_conventions;
 };
 }
+#endif // NROS_CPP_FFI_H
 
 namespace nros {
 

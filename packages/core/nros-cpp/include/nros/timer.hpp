@@ -20,20 +20,7 @@
 #include <memory>
 #endif
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-typedef void (*nros_cpp_timer_callback_t)(void* context);
-nros_cpp_ret_t nros_cpp_timer_create(void* executor_handle, uint64_t period_ms,
-                                     nros_cpp_timer_callback_t callback, void* context,
-                                     size_t* out_handle_id);
-nros_cpp_ret_t nros_cpp_timer_create_oneshot(void* executor_handle, uint64_t delay_ms,
-                                             nros_cpp_timer_callback_t callback, void* context,
-                                             size_t* out_handle_id);
-nros_cpp_ret_t nros_cpp_timer_cancel(void* executor_handle, size_t handle_id);
-nros_cpp_ret_t nros_cpp_timer_reset(void* executor_handle, size_t handle_id);
-bool nros_cpp_timer_is_cancelled(void* executor_handle, size_t handle_id);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

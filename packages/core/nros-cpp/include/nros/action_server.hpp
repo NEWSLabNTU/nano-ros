@@ -17,31 +17,26 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 
-// FFI declarations (create is declared in node.hpp with full type info)
-extern "C" {
-typedef int nros_cpp_ret_t;
+// Phase 118.D — most action_server FFI symbols come from
+// `nros_cpp_ffi.h`; cbindgen renders Rust `*const [u8; 16]` as
+// pointer-to-array (`const uint8_t (*goal_id)[16]`), so callsites
+// below `reinterpret_cast` from the array-decay shape used in C++
+// member-function signatures.
+//
+// `nros_cpp_action_server_set_callbacks` is excluded from cbindgen
+// output (its Rust signature uses `Option<extern "C" fn(...)>`,
+// which cbindgen renders as opaque structs). Declare locally below
+// with plain function-pointer typedefs that match the actual ABI.
+#include "nros_cpp_ffi.h"
 
+extern "C" {
 typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                             size_t len, void* ctx);
 typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
-typedef void (*nros_cpp_active_goal_visitor_t)(const uint8_t goal_id[16], int8_t status, void* ctx);
 
 nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void* handle, nros_cpp_goal_callback_t goal_cb,
                                                     nros_cpp_cancel_callback_t cancel_cb,
                                                     void* ctx);
-
-nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void* handle, void* executor_handle,
-                                                       const uint8_t goal_id[16],
-                                                       const uint8_t* feedback_buf,
-                                                       size_t feedback_len);
-nros_cpp_ret_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
-                                                    const uint8_t goal_id[16],
-                                                    const uint8_t* result_buf, size_t result_len);
-nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void* handle, void* executor_handle,
-                                                           nros_cpp_active_goal_visitor_t visitor,
-                                                           void* ctx);
-nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_action_server_relocate(void* old_storage, void* new_storage);
 } // extern "C"
 
 namespace nros {
@@ -179,8 +174,8 @@ template <typename A> class ActionServer {
         if (FeedbackType::ffi_serialize(&feedback, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(
-            nros_cpp_action_server_publish_feedback(storage_, executor_, goal_id, buf, len));
+        return Result(nros_cpp_action_server_publish_feedback(
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
     /// Complete a goal with a result.
@@ -192,7 +187,8 @@ template <typename A> class ActionServer {
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_action_server_complete_goal(storage_, executor_, goal_id, buf, len));
+        return Result(nros_cpp_action_server_complete_goal(
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
     /// Iterate over every currently live goal and invoke `f(uuid, status)`.
@@ -213,8 +209,9 @@ template <typename A> class ActionServer {
             if (!self || self->user_visitor_fn_ == nullptr) return;
             self->user_visitor_fn_(goal_id, static_cast<GoalStatus>(status));
         };
-        Result ret(
-            nros_cpp_action_server_for_each_active_goal(storage_, executor_, +trampoline, this));
+        Result ret(nros_cpp_action_server_for_each_active_goal(
+            storage_, executor_,
+            reinterpret_cast<void (*)(const uint8_t(*)[16], int8_t, void*)>(+trampoline), this));
         user_visitor_fn_ = nullptr; // one-shot — don't leak the function pointer between calls
         return ret;
     }

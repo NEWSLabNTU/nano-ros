@@ -13,6 +13,11 @@
 #include <cstdint>
 #include <cstddef>
 
+// Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
+// `#ifndef NROS_CPP_FFI_H` guard sees the canonical types and skips
+// its local redefinitions.
+#include "nros_cpp_ffi.h"
+
 #include "nros/result.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
@@ -28,65 +33,6 @@
 #include "nros/timer.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
-
-// FFI declarations (from nros-cpp generated header). nros_cpp_qos_t
-// + its enum policies live in <nros/qos.hpp>; included via the
-// `#include "nros/qos.hpp"` above so this file doesn't redeclare
-// them (Phase 108.B.7 added fields the older local copy was
-// missing).
-extern "C" {
-
-typedef int nros_cpp_ret_t;
-
-struct nros_cpp_node_t {
-    void* executor;
-    uint8_t name[64];
-    uint8_t namespace_[64];
-};
-
-nros_cpp_ret_t nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
-                             const char* ns, void* storage);
-
-nros_cpp_ret_t nros_cpp_fini(void* storage);
-
-nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
-                                    nros_cpp_node_t* out_node);
-
-nros_cpp_ret_t nros_cpp_node_destroy(nros_cpp_node_t* node);
-
-const char* nros_cpp_node_get_name(const nros_cpp_node_t* node);
-const char* nros_cpp_node_get_namespace(const nros_cpp_node_t* node);
-
-nros_cpp_ret_t nros_cpp_publisher_create(const nros_cpp_node_t* node, const char* topic,
-                                         const char* type_name, const char* type_hash,
-                                         nros_cpp_qos_t qos, void* storage);
-
-nros_cpp_ret_t nros_cpp_subscription_create(const nros_cpp_node_t* node, const char* topic,
-                                            const char* type_name, const char* type_hash,
-                                            nros_cpp_qos_t qos, void* storage);
-
-nros_cpp_ret_t nros_cpp_service_server_create(const nros_cpp_node_t* node, const char* service_name,
-                                              const char* type_name, const char* type_hash,
-                                              nros_cpp_qos_t qos, void* storage);
-
-nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* service_name,
-                                              const char* type_name, const char* type_hash,
-                                              nros_cpp_qos_t qos, void* storage);
-
-nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
-                                             const char* type_name, const char* type_hash,
-                                             nros_cpp_qos_t qos, void* storage);
-nros_cpp_ret_t nros_cpp_action_server_register(void* storage, void* executor_handle,
-                                               const char* action_name, const char* type_name,
-                                               const char* type_hash);
-
-nros_cpp_ret_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
-                                             const char* type_name, const char* type_hash,
-                                             nros_cpp_qos_t qos, void* storage);
-
-nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
-
-} // extern "C"
 
 namespace nros {
 

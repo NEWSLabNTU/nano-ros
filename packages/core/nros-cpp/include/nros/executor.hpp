@@ -16,22 +16,7 @@
 #include "nros/result.hpp"
 #include "nros/nros_cpp_config_generated.h"
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-
-struct nros_cpp_node_t;
-
-nros_cpp_ret_t nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
-                             const char* ns, void* storage);
-nros_cpp_ret_t nros_cpp_fini(void* storage);
-nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
-                                    nros_cpp_node_t* out_node);
-nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
-/// Monotonic time in nanoseconds. Executor::spin() budgets by wall-clock
-/// (Phase 118.C — same fix Future::wait() got in Phase 89.2).
-uint64_t nros_cpp_time_ns(void);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

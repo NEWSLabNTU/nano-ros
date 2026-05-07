@@ -17,16 +17,7 @@
 #include "nros/result.hpp"
 #include "nros/future.hpp"
 
-// FFI declarations
-extern "C" {
-typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_service_client_send_request(void* storage, const uint8_t* req_data,
-                                                    size_t req_len);
-nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data,
-                                                      size_t resp_capacity, size_t* resp_len);
-nros_cpp_ret_t nros_cpp_service_client_destroy(void* storage);
-nros_cpp_ret_t nros_cpp_service_client_relocate(void* old_storage, void* new_storage);
-} // extern "C"
+#include "nros_cpp_ffi.h"
 
 namespace nros {
 

@@ -29,6 +29,17 @@ cpp_compat = true
 usize_is_size_t = true
 
 [export]
+# Phase 118.D — exclude FFI symbols whose Rust signature uses
+# `Option<extern "C" fn(...)>`. cbindgen renders those as opaque
+# `Option_CppGoalCallback` / `Option_CppCancelCallback` structs that
+# C++ callers can't construct. The hand-written `extern "C"` blocks
+# in action_server.hpp use plain function-pointer typedefs that
+# match the actual ABI. Excluded here to avoid signature conflict
+# at the consolidation boundary.
+exclude = [
+    "nros_cpp_action_server_set_callbacks",
+    "nros_cpp_action_client_set_callbacks",
+]
 
 [fn]
 rename_args = "None"
