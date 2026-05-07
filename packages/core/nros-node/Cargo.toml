@@ -34,6 +34,11 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
+# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce-c).
+# Pulls in the cffi vtable consumer + the xrce-cffi shim crate that
+# auto-builds + auto-links the C lib. Consumer must call
+# `nros_rmw_xrce_cffi::register()` before opening the session.
+rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb"]
 
 # Phase 99: backend native slot lending (zero-copy publish via
@@ -96,6 +101,9 @@ nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
 nros-rmw-dds = { workspace = true, default-features = false, optional = true }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
+# Phase 115.K.2.5.1.0 — Rust shim that auto-builds + auto-links the
+# C XRCE backend. Pulled in by `rmw-xrce-cffi` feature.
+nros-rmw-xrce-cffi = { workspace = true, default-features = false, optional = true }
 nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }

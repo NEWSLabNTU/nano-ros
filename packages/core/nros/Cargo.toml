@@ -46,6 +46,11 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
 rmw-dds = ["dep:nros-rmw-dds", "nros-node/rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
+# Phase 115.K.2.5.1.1 — XRCE via the C backend
+# (nros-rmw-xrce-c). Mutually exclusive with `rmw-xrce` (which
+# routes to the Rust direct impl). Consumer must call
+# `nros_rmw_xrce_cffi::register()` before opening the session.
+rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi", "nros-node/rmw-xrce-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb", "nros-node/rmw-uorb"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
@@ -174,6 +179,8 @@ nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", defau
 nros-rmw-xrce = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
 nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+# Phase 115.K.2.5.1.0 — XRCE via the C backend.
+nros-rmw-xrce-cffi = { workspace = true, optional = true }
 nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }

@@ -413,17 +413,36 @@ Ordered execution-first (policy → port → tracking entries):
         crate in the project. Smoke test (`tests/register_smoke.rs`)
         stubs `nros_rmw_cffi_register` and confirms the symbol
         chain resolves.
-      - [ ] **115.K.2.5.1.1** — wire `nros-cli` / `nros` /
-        `nros-node` umbrella crates to expose an
-        `rmw-xrce-cffi` Cargo feature that pulls in the shim
+      - [x] **115.K.2.5.1.1** — `rmw-xrce-cffi` Cargo feature on
+        `nros-node` + `nros` umbrella crates pulls in the shim
         crate and `rmw-cffi`. Existing `rmw-xrce` feature stays
-        for now (still routes to the Rust direct impl).
-      - [ ] **115.K.2.5.1.2** — migrate
+        for now (still routes to the Rust direct impl). Also
+        unified the K.2 backend's session-key hash from FNV-1a
+        to djb2 to match the Rust impl's `hash_session_key` —
+        same node name now produces the same XRCE session key
+        on both backends.
+      - [~] **115.K.2.5.1.2** — migrate
         `examples/native/rust/xrce/{talker,listener,service-*,
         action-*,serial-*,stress-test,large-msg-test}` (10
         examples) — switch `rmw-xrce` → `rmw-xrce-cffi` in
         Cargo.toml, add `nros_rmw_xrce_cffi::register()` call
         before `Executor::open` in `src/main.rs`.
+
+        Status: build wiring proven (talker links + register()
+        succeeds against live agent). `Executor::open` against a
+        live agent on UDP returns `ConnectionFailed` though —
+        the CFFI vtable gets called with the right locator/node,
+        the K.2.0 smoke test against the same agent passes, and
+        register() succeeds, but the full Rust → cffi → vtable
+        path against the running agent fails to complete the
+        XRCE session handshake. Likely a difference in stream
+        handshake timing or in how the cffi runtime's
+        return-value mapping interacts with our backend's
+        transient `uxr_run_session_*` calls. Tracked as
+        `115.K.2.5.1.2.a`. Examples revert to legacy `rmw-xrce`
+        until the regression is debugged. K.2.5.1.0/.1 land in
+        the meantime so subsequent debugging can iterate on the
+        shim crate without re-establishing infrastructure.
       - [ ] **115.K.2.5.1.3** — migrate
         `examples/zephyr/rust/xrce/*` (6 examples) — same
         pattern. Zephyr build harness needs the C static lib

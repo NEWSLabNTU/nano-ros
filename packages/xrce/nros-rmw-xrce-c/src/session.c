@@ -182,28 +182,20 @@ uxrQoS_t xrce_map_qos(const nros_rmw_qos_t *qos) {
 
 /* ---- Session-key hashing ------------------------------------------- */
 
-/* FNV-1a — chosen to match the Rust impl's `hash_session_key` so two
- * implementations connecting to the same agent under the same node
- * name agree on the session key.
- *
- * NOTE: The Rust impl actually uses djb2 (DJB2_INIT/DJB2_MULTIPLIER).
- * For Phase 115.K.2 isolation (dead-agent smoke + future C-only
- * tests), the choice doesn't matter as long as the C backend is
- * self-consistent. Documented mismatch with Rust to be unified
- * either way before 115.K.2.5 flips the C backend on. */
+/* djb2 — matches the Rust impl's `hash_session_key`
+ * (DJB2_INIT=5381, multiplier=33). Two implementations connecting
+ * to the same agent under the same node name now agree on the
+ * session key. */
 static uint32_t hash_session_key(const char *s) {
-    uint32_t h = 0x811c9dc5u;
+    uint32_t h = 5381u;
     if (s == NULL) {
         return h;
     }
     for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
-        h ^= (uint32_t)*p;
-        h *= 0x01000193u;
+        h = h * 33u + (uint32_t)*p;
     }
-    if (h == 0u || h == 0xffffffffu) {
-        h ^= 0xdeadbeefu;
-    }
-    return h;
+    /* Ensure non-zero (XRCE-DDS may treat 0 specially). */
+    return h == 0u ? 1u : h;
 }
 
 /* Parse `host:port`. On failure, returns 0 and leaves outputs

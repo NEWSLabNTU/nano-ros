@@ -303,6 +303,10 @@ nros-params = { version = "0.1.0", path = "packages/core/nros-params", default-f
 nros-rmw = { version = "0.1.0", path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
 nros-rmw-xrce = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce", default-features = false }
+# Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend.
+# Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
+# by example crates that opt into the cffi-via-C-backend path.
+nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
 nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
