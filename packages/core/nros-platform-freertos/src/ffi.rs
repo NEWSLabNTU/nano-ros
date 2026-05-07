@@ -39,6 +39,22 @@ unsafe extern "C" {
     pub fn vTaskPrioritySet(task_handle: *mut c_void, new_priority: u32);
     pub fn xTaskGetCurrentTaskHandle() -> *mut c_void;
 
+    // Phase 110.E.b — FreeRTOS software timers.
+    // `xTimerCreate(name, period_ticks, autoreload, id, callback)`
+    // returns a `TimerHandle_t` (= `*mut c_void`). Callback signature
+    // is `void(*)(TimerHandle_t)` — id passed by reference via
+    // `pvTimerGetTimerID(timer)`.
+    pub fn xTimerCreate(
+        name: *const core::ffi::c_char,
+        period_in_ticks: u32,
+        auto_reload: u32,
+        timer_id: *mut c_void,
+        callback: extern "C" fn(*mut c_void),
+    ) -> *mut c_void;
+    pub fn xTimerStart(timer: *mut c_void, ticks_to_wait: u32) -> i32;
+    pub fn xTimerDelete(timer: *mut c_void, ticks_to_wait: u32) -> i32;
+    pub fn pvTimerGetTimerID(timer: *mut c_void) -> *mut c_void;
+
     // Event groups (real functions, not macros)
     pub fn xEventGroupCreate() -> *mut c_void;
     pub fn xEventGroupSetBits(group: *mut c_void, bits: u32) -> u32;

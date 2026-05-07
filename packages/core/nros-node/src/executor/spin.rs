@@ -246,6 +246,16 @@ pub struct Executor {
     /// Sporadic slots stay `None`.
     pub(crate) sporadic_states:
         [Option<super::sched_context::SporadicState>; crate::config::MAX_SC],
+    /// Phase 110.E.b — atomic sporadic state + opaque platform-timer
+    /// handle for ISR-driven refill. Populated by
+    /// `register_sporadic_timer`; dropped on Executor `Drop` via the
+    /// stored `destroy_fn`.
+    #[cfg(feature = "alloc")]
+    pub(crate) sporadic_atomic_states:
+        [Option<(
+            alloc::sync::Arc<super::sched_context::AtomicSporadicState>,
+            OpaqueTimerHandle,
+        )>; crate::config::MAX_SC],
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -293,6 +303,8 @@ impl Executor {
             sched_context_bindings: [super::sched_context::SchedContextId(0);
                 crate::config::MAX_CBS],
             sporadic_states: [None; crate::config::MAX_SC],
+            #[cfg(feature = "alloc")]
+            sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -338,6 +350,8 @@ impl Executor {
             sched_context_bindings: [super::sched_context::SchedContextId(0);
                 crate::config::MAX_CBS],
             sporadic_states: [None; crate::config::MAX_SC],
+            #[cfg(feature = "alloc")]
+            sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -437,6 +451,42 @@ impl Executor {
         }
         self.sched_context_bindings[i] = sc_id;
         Ok(())
+    }
+
+    /// Phase 110.E.b — register an ISR-driven refill timer for an
+    /// already-created Sporadic SC. The caller invokes their
+    /// platform's `PlatformTimer::create_periodic` with the returned
+    /// `Arc<AtomicSporadicState>` as `user_data` and the
+    /// `atomic_sporadic_refill_thunk` as the callback, then hands
+    /// the resulting platform handle to this method via
+    /// `OpaqueTimerHandle::new(handle, destroy_fn)`.
+    ///
+    /// The Executor stores both the Arc and the handle so Drop can
+    /// clean them up. Calling this on a non-Sporadic SC returns
+    /// `Err(InvalidSchedContextBinding)`.
+    #[cfg(feature = "alloc")]
+    pub fn register_sporadic_timer(
+        &mut self,
+        sc_id: super::sched_context::SchedContextId,
+        timer: OpaqueTimerHandle,
+    ) -> Result<alloc::sync::Arc<super::sched_context::AtomicSporadicState>, NodeError> {
+        let i = sc_id.0 as usize;
+        if i >= crate::config::MAX_SC {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        let sc = self.sched_contexts[i]
+            .as_ref()
+            .ok_or(NodeError::InvalidSchedContextBinding)?;
+        if !matches!(sc.class, super::sched_context::SchedClass::Sporadic) {
+            return Err(NodeError::InvalidSchedContextBinding);
+        }
+        let budget = sc.budget_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+        let period = sc.period_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+        let state = alloc::sync::Arc::new(
+            super::sched_context::AtomicSporadicState::new(budget, period),
+        );
+        self.sporadic_atomic_states[i] = Some((alloc::sync::Arc::clone(&state), timer));
+        Ok(state)
     }
 
     /// Inspect a registered scheduling context. Phase 110.B.
@@ -2637,6 +2687,49 @@ impl Executor {
     /// ```
     pub fn halt_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.halt_flag.clone()
+    }
+}
+
+/// Phase 110.E.b — opaque per-platform timer handle. Stores the
+/// raw platform handle (POSIX `timer_t` boxed via `PosixTimerHandle`,
+/// FreeRTOS `TimerHandle_t`, etc.) plus a destroy thunk so the
+/// Executor can clean up without being generic over the platform.
+///
+/// Caller of `register_sporadic_timer` builds this via
+/// `OpaqueTimerHandle::new(handle, destroy_fn)` after their
+/// `PlatformTimer::create_periodic` call returns.
+#[cfg(feature = "alloc")]
+pub struct OpaqueTimerHandle {
+    handle: *mut core::ffi::c_void,
+    destroy_fn: extern "C" fn(*mut core::ffi::c_void),
+}
+
+#[cfg(feature = "alloc")]
+unsafe impl Send for OpaqueTimerHandle {}
+#[cfg(feature = "alloc")]
+unsafe impl Sync for OpaqueTimerHandle {}
+
+#[cfg(feature = "alloc")]
+impl OpaqueTimerHandle {
+    /// # Safety
+    /// `handle` must be a live platform-specific timer handle that
+    /// `destroy_fn` knows how to drop. Caller surrenders ownership
+    /// of the underlying handle to the Executor.
+    pub unsafe fn new(
+        handle: *mut core::ffi::c_void,
+        destroy_fn: extern "C" fn(*mut core::ffi::c_void),
+    ) -> Self {
+        Self { handle, destroy_fn }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Drop for OpaqueTimerHandle {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            (self.destroy_fn)(self.handle);
+            self.handle = core::ptr::null_mut();
+        }
     }
 }
 

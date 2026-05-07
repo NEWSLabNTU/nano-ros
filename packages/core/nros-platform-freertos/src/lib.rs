@@ -225,6 +225,126 @@ impl nros_platform_api::PlatformYield for FreeRtosPlatform {
 }
 
 // ============================================================================
+// Phase 110.E.b — PlatformTimer (FreeRTOS xTimerCreate)
+// ============================================================================
+//
+// FreeRTOS callback signature is `void(TimerHandle_t)` — single
+// timer-handle arg, no user_data slot. We pack the user callback +
+// data via the timer ID slot:
+//   id = Box::leak(Box::new(BridgeData { user_callback, user_data }))
+// then the static thunk reads `pvTimerGetTimerID(timer)` to recover
+// the bridge struct and dispatch.
+//
+// FreeRTOS ticks: period_us / portTICK_PERIOD_MS — we assume 1 ms
+// tick (default `configTICK_RATE_HZ = 1000`). Sub-ms periods round
+// up to 1 tick.
+
+#[allow(dead_code)] // Phase 110.E.b — keeps the bridge alive across timer lifetime.
+struct FreeRtosTimerBridge {
+    user_callback: extern "C" fn(*mut c_void),
+    user_data: *mut c_void,
+}
+
+unsafe impl Send for FreeRtosTimerBridge {}
+unsafe impl Sync for FreeRtosTimerBridge {}
+
+extern "C" fn freertos_timer_thunk(timer: *mut c_void) {
+    // SAFETY: `xTimerCreate` was passed a leaked Box pointer as
+    // `timer_id`; we recover it via `pvTimerGetTimerID`. The bridge
+    // outlives the timer because `destroy` joins before freeing.
+    let bridge_ptr = unsafe { ffi::pvTimerGetTimerID(timer) } as *const FreeRtosTimerBridge;
+    if bridge_ptr.is_null() {
+        return;
+    }
+    let bridge = unsafe { &*bridge_ptr };
+    (bridge.user_callback)(bridge.user_data);
+}
+
+/// FreeRTOS timer handle — packs the native `TimerHandle_t` plus the
+/// leaked bridge box so destroy can free both atomically.
+pub struct FreeRtosTimerHandle {
+    timer: *mut c_void,
+    bridge: *mut FreeRtosTimerBridge,
+}
+
+unsafe impl Send for FreeRtosTimerHandle {}
+unsafe impl Sync for FreeRtosTimerHandle {}
+
+impl core::fmt::Debug for FreeRtosTimerHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FreeRtosTimerHandle").finish_non_exhaustive()
+    }
+}
+
+impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
+    type TimerHandle = FreeRtosTimerHandle;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if period_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        // Assume 1 ms tick (default `configTICK_RATE_HZ = 1000`);
+        // sub-ms periods round up to 1 tick.
+        let period_ticks = ((period_us + 999) / 1000).max(1);
+
+        // Box the bridge + leak. `destroy` re-acquires via Box::from_raw.
+        // SAFETY: requires `feature = "alloc"`; FreeRTOS platform
+        // is std-incompatible but always has `alloc` (heapless via
+        // `pvPortMalloc`).
+        extern crate alloc;
+        let bridge = alloc::boxed::Box::new(FreeRtosTimerBridge {
+            user_callback: callback,
+            user_data,
+        });
+        let bridge_ptr = alloc::boxed::Box::into_raw(bridge);
+
+        let timer = unsafe {
+            ffi::xTimerCreate(
+                b"nros_sporadic\0".as_ptr() as *const _,
+                period_ticks,
+                1, // pdTRUE — auto-reload
+                bridge_ptr as *mut c_void,
+                freertos_timer_thunk,
+            )
+        };
+        if timer.is_null() {
+            // Recover the leaked bridge.
+            unsafe { drop(alloc::boxed::Box::from_raw(bridge_ptr)) };
+            return Err(TimerError::KernelError);
+        }
+        let started = unsafe { ffi::xTimerStart(timer, 0) };
+        if started == 0 {
+            unsafe {
+                ffi::xTimerDelete(timer, 0);
+                drop(alloc::boxed::Box::from_raw(bridge_ptr));
+            }
+            return Err(TimerError::KernelError);
+        }
+        Ok(FreeRtosTimerHandle {
+            timer,
+            bridge: bridge_ptr,
+        })
+    }
+
+    fn destroy(handle: Self::TimerHandle) {
+        // SAFETY: timer + bridge are owned by `handle`; deleting the
+        // FreeRTOS timer drains in-flight callbacks (kernel guarantees
+        // delete blocks until the timer-service-task finishes any
+        // pending invocation), so the bridge box is safe to drop after.
+        unsafe {
+            ffi::xTimerDelete(handle.timer, 0);
+            extern crate alloc;
+            drop(alloc::boxed::Box::from_raw(handle.bridge));
+        }
+    }
+}
+
+// ============================================================================
 // Phase 110.D — PlatformScheduler (FreeRTOS)
 // ============================================================================
 //

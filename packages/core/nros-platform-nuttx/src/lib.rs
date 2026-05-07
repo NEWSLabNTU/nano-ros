@@ -78,6 +78,30 @@ impl PlatformYield for NuttxPlatform {
     }
 }
 
+// Phase 110.E.b — NuttX shares the POSIX `PlatformTimer` path
+// (std::thread per timer; pthread_create resolves through NuttX's
+// libc compat layer). Native NuttX `timer_create` integration would
+// avoid the spawn cost — follow-up.
+impl nros_platform_api::PlatformTimer for NuttxPlatform {
+    type TimerHandle = <PosixPlatform as nros_platform_api::PlatformTimer>::TimerHandle;
+
+    #[inline]
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        <PosixPlatform as nros_platform_api::PlatformTimer>::create_periodic(
+            period_us, callback, user_data,
+        )
+    }
+
+    #[inline]
+    fn destroy(handle: Self::TimerHandle) {
+        <PosixPlatform as nros_platform_api::PlatformTimer>::destroy(handle)
+    }
+}
+
 // Phase 110.D — NuttX shares the POSIX scheduler path
 // (pthread_setschedparam → SCHED_FIFO / SCHED_RR). Native
 // SCHED_SPORADIC support lands with Phase 110.E once the budget-
