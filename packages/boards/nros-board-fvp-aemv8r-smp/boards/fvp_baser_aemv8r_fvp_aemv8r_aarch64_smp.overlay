@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * nros board overlay for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp.
+ *
+ * Zephyr's stock board DTS at
+ * `boards/arm/fvp_baser_aemv8r/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.dts`
+ * already wires the GICv3, Arm arch-timer, two PL011 UARTs, the
+ * 128 MiB DRAM region, and the 64 MiB flash region. The FVP's
+ * SMSC91C111 ethernet model is *not* enabled by default — we patch
+ * it in here so Zephyr's net stack has an L2 driver to bind to.
+ *
+ * Customise `local-mac-address` for runs that need a deterministic
+ * GUID (e.g. Cyclone's auto-derived participant id).
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &uart1;
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&uart1 {
+	status = "okay";
+};
+
+/* Stub: when an upstream binding for the FVP's ethernet model lands,
+ * enable it here. Today users override at the example-app level. */

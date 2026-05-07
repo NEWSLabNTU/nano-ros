@@ -231,6 +231,14 @@ exclude = [
     "packages/boards/nros-board-orin-spe",
     "packages/boards/nros-board-threadx-linux",
     "packages/boards/nros-board-threadx-qemu-riscv64",
+    # Phase 117.10 — ARM FVP Base_RevC AEMv8-R Cortex-A SMP under Zephyr.
+    # Build via `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` from
+    # an example app; cargo `check` works on host for the Rust surface.
+    "packages/boards/nros-board-fvp-aemv8r-smp",
+    # Phase 117.11 — NXP X-S32Z270-DC (DC2) Cortex-R52 RTU0 under Zephyr.
+    # Build via `west build -b s32z2xxdc2/s32z270/rtu0/D`; cargo check
+    # works on host for the Rust surface.
+    "packages/boards/nros-board-s32z270dc2-r52",
     # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)
     "examples/threadx-linux/rust/zenoh/talker",
     "examples/threadx-linux/rust/zenoh/listener",

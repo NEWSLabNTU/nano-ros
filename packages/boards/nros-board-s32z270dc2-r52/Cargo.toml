@@ -1,0 +1,26 @@
+[package]
+name = "nros-board-s32z270dc2-r52"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "NXP S32Z270 X-S32Z270-DC (DC2) Cortex-R52 RTU0 (Zephyr) board crate for nano-ros"
+
+[lib]
+name = "nros_board_s32z270dc2_r52"
+# `rlib` only — example app provides its own `staticlib` + panic
+# handler. Same pattern as nros-board-fvp-aemv8r-smp.
+
+[features]
+default = ["ethernet"]
+# Transport — S32Z's ENETC PSI0 hooked to Zephyr's net stack via the
+# net_eth_nxp_s32 driver.
+ethernet = []
+# RMW backend selection. Cyclone is the Phase-117 default for this
+# board (Autoware safety-island stack); actual backend is wired at
+# the CMake level (`-DNANO_ROS_RMW=cyclonedds`).
+rmw-cyclonedds = []
+rmw-zenoh      = ["nros/rmw-zenoh"]
+
+[dependencies]
+nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
+nros-platform-zephyr = { path = "../../core/nros-platform-zephyr" }

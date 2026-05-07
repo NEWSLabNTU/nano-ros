@@ -34,12 +34,33 @@ function(nros_detect_rust_target)
         endif()
     elseif(CONFIG_SOC_SERIES_ESP32C3)
         set(NROS_RUST_TARGET "riscv32imc-unknown-none-elf" PARENT_SCOPE)
+    elseif(CONFIG_CPU_AARCH32_CORTEX_R OR CONFIG_CPU_CORTEX_R52 OR CONFIG_CPU_CORTEX_R5)
+        # AArch32 Cortex-R (ARMv7-R / ARMv8-R) — Phase 117.11's
+        # NXP S32Z R52. zephyr-lang-rust learns the matching
+        # triple via `scripts/zephyr/cortex-r-rust-patch.sh`. The
+        # FPU bit decides hard-float vs soft-float; both triples
+        # are tier-2 Rust.
+        if(CONFIG_FPU)
+            set(NROS_RUST_TARGET "armv7r-none-eabihf" PARENT_SCOPE)
+        else()
+            set(NROS_RUST_TARGET "armv7r-none-eabi" PARENT_SCOPE)
+        endif()
     elseif(CONFIG_CPU_CORTEX_A9 OR CONFIG_CPU_CORTEX_A7 OR CONFIG_CPU_AARCH32_CORTEX_A)
         # Cortex-A 32-bit (Phase 92's qemu_cortex_a9 + future Zynq /
         # i.MX targets). The zephyr-lang-rust workspace patches set
         # the same triple for the Rust API path; the C/C++ FFI must
         # match so the codegen FFI staticlib links cleanly.
         set(NROS_RUST_TARGET "armv7a-none-eabi" PARENT_SCOPE)
+    elseif(CONFIG_ARM64 OR CONFIG_CPU_AARCH64_CORTEX_A OR
+           CONFIG_CPU_AARCH64_CORTEX_R OR
+           CONFIG_CPU_CORTEX_A53 OR CONFIG_CPU_CORTEX_A72)
+        # AArch64 Cortex-A / Cortex-R — Phase 117.10's FVP Base_RevC
+        # AEMv8-R SMP is actually AArch64 Cortex-R (CPU_AARCH64_CORTEX_R)
+        # despite the name. Same Rust triple covers both. zephyr-lang-rust
+        # learns the matching triple via
+        # `scripts/zephyr/aarch64-rust-patch.sh`, applied at `just zephyr
+        # build-fixtures` time.
+        set(NROS_RUST_TARGET "aarch64-unknown-none" PARENT_SCOPE)
     else()
         message(WARNING "nros: Unknown Zephyr target, defaulting to host")
         set(NROS_RUST_TARGET "" PARENT_SCOPE)

@@ -1,0 +1,28 @@
+[package]
+name = "nros-board-fvp-aemv8r-smp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ARM FVP Base_RevC AEMv8-R Cortex-A SMP (Zephyr) board crate for nano-ros"
+
+[lib]
+name = "nros_board_fvp_aemv8r_smp"
+# `rlib` only — the example app crate (consumed by `rust_cargo_application()`
+# in Zephyr's CMake glue) is responsible for the `staticlib` wrap-up plus
+# its own `#[panic_handler]`. Same pattern as `nros-board-orin-spe` /
+# `nros-board-mps2-an385-freertos`.
+
+[features]
+default = ["ethernet"]
+# Transport
+ethernet = []
+# RMW backend selection. `rmw-cyclonedds` is the Phase-117 default
+# for this board (Autoware safety-island stack); the actual backend
+# wiring is done at the CMake level (`-DNANO_ROS_RMW=cyclonedds`),
+# this feature only flips the matching `nros::*` cargo cfg.
+rmw-cyclonedds = []
+rmw-zenoh      = ["nros/rmw-zenoh"]
+
+[dependencies]
+nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
+nros-platform-zephyr = { path = "../../core/nros-platform-zephyr" }

@@ -76,6 +76,12 @@ critical-section = { version = "1.1", optional = true }
 [target.'cfg(target_arch = "arm")'.dependencies]
 critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }
 
+# AArch64 Zephyr (Phase 117.10/13) — DAIF mask used by
+# `nros_zephyr_irq_{lock,unlock}` is a 32-bit value, same width as the
+# armv7 path above.
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }
+
 [build-dependencies]
 cbindgen = "0.29"
 nros-sizes-build = { workspace = true }

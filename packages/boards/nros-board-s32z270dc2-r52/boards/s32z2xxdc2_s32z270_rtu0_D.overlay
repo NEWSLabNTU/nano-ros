@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * nros board overlay for s32z2xxdc2/s32z270/rtu0/D.
+ *
+ * The stock Zephyr board DTS at
+ * `boards/nxp/s32z2xxdc2/s32z2xxdc2_s32z270_rtu0.dts` already wires
+ * SRAM, the Cortex-R52 GIC, the LPUART console (uart0), the ENETC
+ * PSI0 + MRU0 mailbox, and the watchdog. This overlay enables the
+ * ENETC port for net stack and pins the chosen console / canbus.
+ */
+
+/ {
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+	};
+};
+
+&enetc_psi0 {
+	status = "okay";
+	local-mac-address = [02 00 00 00 52 01];
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};
