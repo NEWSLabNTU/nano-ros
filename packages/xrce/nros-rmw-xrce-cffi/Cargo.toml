@@ -1,0 +1,27 @@
+[package]
+name = "nros-rmw-xrce-cffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust shim for nros-rmw-xrce-c — links the C XRCE backend + exposes the auto-register entry point"
+publish = false
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+
+# Phase 115.K.2.5.1.0 — single feature axis for picking the host
+# platform's POSIX / bare-metal mode at the cc::Build layer. v1
+# supports posix only; embedded targets land alongside the K.2.5.1.3
+# example migration when needed.
+posix = []
+
+[build-dependencies]
+cc = "1"
+
+[lints]
+workspace = true

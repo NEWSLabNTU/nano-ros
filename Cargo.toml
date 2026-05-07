@@ -61,6 +61,11 @@ members = [
     "packages/zpico/zpico-platform-shim",
     "packages/zpico/zpico-platform-custom",
     "packages/xrce/xrce-platform-shim",
+    # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
+    # (nros-rmw-xrce-c) and exposes its register entry point. Future
+    # Rust API users of XRCE go through this crate instead of the
+    # legacy direct-Rust-impl `nros-rmw-xrce`.
+    "packages/xrce/nros-rmw-xrce-cffi",
     # PX4 RMW backend (uORB transport) + board crate
     "packages/px4/nros-rmw-uorb",
     "packages/px4/nros-px4",

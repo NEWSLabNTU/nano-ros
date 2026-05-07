@@ -401,15 +401,18 @@ Ordered execution-first (policy → port → tracking entries):
       XRCE example + the workspace umbrella crates) need a path
       to the C backend that doesn't depend on the Rust direct
       impl. Sub-steps:
-      - [ ] **115.K.2.5.1.0** — new shim crate
-        `packages/xrce/nros-rmw-xrce-cffi`: builds + links the
-        `nros_rmw_xrce_c` static lib via `cc::Build` /
-        `cmake::Config`, exposes
-        `extern "C" { fn nros_rmw_xrce_register(); }` as a safe
-        Rust `pub fn register()`. Mirrors the role
-        `nros-rmw-cyclonedds` Rust crate would play if Cyclone
-        had Rust users — it doesn't, so this is the first
-        cffi-shim crate in the project.
+      - [x] **115.K.2.5.1.0** — new shim crate
+        `packages/xrce/nros-rmw-xrce-cffi`: builds the K.2 backend
+        sources + vendored micro-XRCE-DDS-Client + micro-CDR via
+        `cc::Build`, exposes
+        `extern "C" { fn nros_rmw_xrce_register() -> c_int; }` as
+        a safe Rust `pub fn register() -> Result<(),
+        RegisterError>`. `no_std`. Mirrors the role
+        `nros-rmw-cyclonedds` Rust crate would play if Cyclone had
+        Rust users — it doesn't, so this is the first cffi-shim
+        crate in the project. Smoke test (`tests/register_smoke.rs`)
+        stubs `nros_rmw_cffi_register` and confirms the symbol
+        chain resolves.
       - [ ] **115.K.2.5.1.1** — wire `nros-cli` / `nros` /
         `nros-node` umbrella crates to expose an
         `rmw-xrce-cffi` Cargo feature that pulls in the shim
