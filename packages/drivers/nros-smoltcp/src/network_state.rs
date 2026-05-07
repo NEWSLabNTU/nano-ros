@@ -16,8 +16,10 @@
 
 use core::sync::atomic::{AtomicPtr, Ordering};
 
-use smoltcp::iface::{Interface, SocketSet};
-use smoltcp::phy::Device;
+use smoltcp::{
+    iface::{Interface, SocketSet},
+    phy::Device,
+};
 
 use crate::SmoltcpBridge;
 

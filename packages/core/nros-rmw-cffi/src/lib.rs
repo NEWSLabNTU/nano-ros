@@ -489,8 +489,7 @@ pub struct NrosRmwVtable {
     // ---- Phase 110.0 — backend's next internal-event deadline ----
     /// Returns next deadline in ms (≥ 0) or a negative value for
     /// "no deadline". NULL function pointer = treat as no deadline.
-    pub next_deadline_ms:
-        Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
+    pub next_deadline_ms: Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
 }
 
 // ============================================================================

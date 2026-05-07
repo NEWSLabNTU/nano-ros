@@ -82,8 +82,8 @@ unsafe extern "C" fn cb_read(ud: *mut c_void, buf: *mut u8, len: usize, timeout_
 fn main() {
     env_logger::init();
 
-    let target = std::env::var("NROS_CUSTOM_TCP_TARGET")
-        .unwrap_or_else(|_| "127.0.0.1:7447".to_string());
+    let target =
+        std::env::var("NROS_CUSTOM_TCP_TARGET").unwrap_or_else(|_| "127.0.0.1:7447".to_string());
 
     info!("nros Custom-Transport Listener — bridging to TCP {target}");
 
