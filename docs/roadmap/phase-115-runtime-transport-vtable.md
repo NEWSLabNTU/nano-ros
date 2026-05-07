@@ -624,11 +624,26 @@ Ordered execution-first (policy → port → tracking entries):
         5/5 pass — the C/C++ API path now exercises the C
         backend end-to-end (was previously gated on the Rust
         `nros-rmw-xrce` crate via `NANO_ROS_RMW=xrce`).
-    - [ ] **115.K.2.5.3** — remove `nros-rmw-xrce` Rust crate +
-      `xrce-sys` + `xrce-platform-shim` + `xrce-zephyr` from the
-      workspace. The cffi shim crate
-      (`nros-rmw-xrce-cffi`) is the only Rust-side XRCE artifact
-      that survives.
+    - [~] **115.K.2.5.3-deferred** — remove `nros-rmw-xrce` Rust
+      crate + `xrce-platform-shim` + `xrce-zephyr` + `xrce-sys`
+      Rust shell from the workspace. Blocked on
+      `115.K.2.5.1.3-zephyr-deferred`: the 6 Zephyr Rust XRCE
+      examples in `examples/zephyr/rust/xrce/*` still depend on
+      `nros-rmw-xrce` + `xrce-sys` + `xrce-platform-shim` (via
+      `xrce-zephyr`). Until the cffi shim cross-compiles cleanly
+      to `thumbv7em-none-eabihf` + the Zephyr CMake glue learns
+      to pull `rmw-xrce-cffi` (see K.2.5.1.3 notes for the
+      build.rs + zephyr/CMakeLists.txt + xrce-zephyr work
+      required), the legacy Rust XRCE stack must remain in the
+      workspace. The cffi shim crate (`nros-rmw-xrce-cffi`) is
+      already the canonical Rust artifact for native (POSIX +
+      `127.0.0.1:2019` UDP, `serial://...`) targets — K.2.5.1.2 +
+      K.2.5.1.5-serial closed those out — and the C/C++ APIs have
+      flipped to the C backend per K.2.5.2. So K.2.5.3's
+      remaining work is strictly the Zephyr cross-compile +
+      removal sweep, not new XRCE feature work. Tracking a clean
+      sweep as the K.2.5.1.3 + K.2.5.3 close-out under the
+      Zephyr cross-compile bring-up phase.
 
 - [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost
