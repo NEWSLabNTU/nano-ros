@@ -14,7 +14,7 @@
  * C handle types so callers can declare them on the stack or
  * inside their own structs without dynamic allocation.
  */
-#define NROS_EXECUTOR_SIZE 17424
+#define NROS_EXECUTOR_SIZE 17456
 #define NROS_GUARD_CONDITION_SIZE 8
 #define NROS_PUBLISHER_SIZE 120
 #define NROS_SUBSCRIBER_SIZE 400

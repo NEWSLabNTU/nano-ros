@@ -56,6 +56,11 @@ unsafe extern "C" {
         new_threshold: u32,
         old_threshold: *mut u32,
     ) -> u32;
+    /// Phase 110.D — only present in ThreadX SMP builds. Gate the
+    /// extern decl behind `feature = "threadx-smp"` so single-core
+    /// targets (QEMU, ThreadX-Linux) don't reference an unresolved
+    /// symbol at link time.
+    #[cfg(feature = "threadx-smp")]
     #[link_name = "_tx_thread_smp_core_exclude"]
     pub fn tx_thread_smp_core_exclude(thread: *mut c_void, exclude_map: u32) -> u32;
 

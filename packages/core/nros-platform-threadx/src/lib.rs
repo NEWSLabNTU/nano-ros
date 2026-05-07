@@ -424,6 +424,7 @@ impl nros_platform_api::PlatformScheduler for ThreadxPlatform {
         unsafe { ffi::tx_thread_relinquish() };
     }
 
+    #[cfg(feature = "threadx-smp")]
     fn set_affinity(cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
         use nros_platform_api::SchedError;
         if cpu_mask == 0 {
@@ -447,6 +448,14 @@ impl nros_platform_api::PlatformScheduler for ThreadxPlatform {
             // Non-SMP ThreadX builds return TX_NOT_SUPPORTED (0x09).
             Err(SchedError::Unsupported)
         }
+    }
+
+    /// Single-core ThreadX (QEMU, ThreadX-Linux): the SMP exclude
+    /// API isn't linked in. Surface Unsupported so the trait is
+    /// still implemented.
+    #[cfg(not(feature = "threadx-smp"))]
+    fn set_affinity(_cpu_mask: u32) -> Result<(), nros_platform_api::SchedError> {
+        Err(nros_platform_api::SchedError::Unsupported)
     }
 }
 

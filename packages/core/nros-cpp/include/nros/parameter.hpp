@@ -20,6 +20,10 @@
 
 #include <cstddef>
 #include <cstdint>
+// Freestanding C++ (`-ffreestanding`) often only puts `size_t` in the
+// global namespace via `<stddef.h>`; include it so `::size_t` (used
+// below instead of `std::size_t`) is always resolvable.
+#include <stddef.h>
 
 #include "nros/result.hpp"
 
@@ -45,7 +49,7 @@ namespace nros {
 /// double v = 0.0;
 /// NROS_TRY(params.get_parameter<double>("ctrl_period", v));
 /// ```
-template <std::size_t Capacity> class ParameterServer {
+template <::size_t Capacity> class ParameterServer {
   public:
     ParameterServer() : server_(nros_param_server_get_zero_initialized()) {
         nros_param_server_init(&server_, storage_, Capacity);
@@ -83,7 +87,7 @@ template <std::size_t Capacity> class ParameterServer {
     /// @param name      Parameter name.
     /// @param out       Output buffer (null-terminated on success).
     /// @param max_len   Buffer capacity in bytes.
-    Result get_parameter(const char* name, char* out, std::size_t max_len) const {
+    Result get_parameter(const char* name, char* out, ::size_t max_len) const {
         return Result(nros_param_get_string(&server_, name, out, max_len));
     }
 
@@ -96,7 +100,7 @@ template <std::size_t Capacity> class ParameterServer {
     bool has_parameter(const char* name) const { return nros_param_has(&server_, name); }
 
     /// Number of declared parameters.
-    std::size_t parameter_count() const { return nros_param_server_get_count(&server_); }
+    ::size_t parameter_count() const { return nros_param_server_get_count(&server_); }
 
     /// Get the underlying C server pointer.
     ///

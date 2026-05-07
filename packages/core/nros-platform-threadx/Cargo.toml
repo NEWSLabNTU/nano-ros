@@ -18,6 +18,12 @@ default = []
 # feature instead, so this is opt-in.
 critical-section = ["dep:critical-section"]
 
+# Phase 110.D — opt in to ThreadX-SMP affinity wiring.
+# `_tx_thread_smp_core_exclude` only exists in ThreadX builds with
+# `TX_THREAD_SMP=y`. Single-core ThreadX (most QEMU + ThreadX-Linux)
+# leaves the symbol unresolved, so leave the call out by default.
+threadx-smp = []
+
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 # Bindgen-generated NetX Duo BSD socket FFI (struct nx_bsd_sockaddr_in, nx_bsd_* functions)

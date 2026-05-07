@@ -113,6 +113,7 @@ impl nros_platform_api::PlatformYield for PosixPlatform {
 // ============================================================================
 
 impl nros_platform_api::PlatformScheduler for PosixPlatform {
+    #[cfg(target_os = "linux")]
     fn set_current_thread_policy(
         p: nros_platform_api::SchedPolicy,
     ) -> Result<(), nros_platform_api::SchedError> {
@@ -123,47 +124,24 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
                 os_pri,
                 quantum_ms: _,
             } => (libc::SCHED_RR, os_pri as libc::c_int),
-            // Phase 110.E — Linux `SCHED_DEADLINE` via direct
-            // `sched_setattr` syscall. libc doesn't expose
-            // `sched_attr` so we declare the struct here. NuttX +
-            // macOS POSIX targets surface Unsupported.
             SchedPolicy::Deadline {
                 runtime_ns,
                 period_ns,
                 deadline_ns,
             } => {
-                #[cfg(target_os = "linux")]
-                {
-                    return set_linux_sched_deadline(runtime_ns, deadline_ns, period_ns);
-                }
-                #[cfg(not(target_os = "linux"))]
-                {
-                    let _ = (runtime_ns, period_ns, deadline_ns);
-                    return Err(SchedError::Unsupported);
-                }
+                return set_linux_sched_deadline(runtime_ns, deadline_ns, period_ns);
             }
-            // Phase 110.E — NuttX `SCHED_SPORADIC` via
-            // `sched_setscheduler` with `struct sched_param` budget /
-            // period fields. Linux + macOS POSIX targets surface
-            // Unsupported (no kernel-side sporadic class).
+            // Sporadic is NuttX-only; Linux returns Unsupported.
             SchedPolicy::Sporadic {
                 budget_us,
                 period_us,
                 hi_pri,
                 lo_pri,
             } => {
-                #[cfg(target_os = "nuttx")]
-                {
-                    return set_nuttx_sched_sporadic(budget_us, period_us, hi_pri, lo_pri);
-                }
-                #[cfg(not(target_os = "nuttx"))]
-                {
-                    let _ = (budget_us, period_us, hi_pri, lo_pri);
-                    return Err(SchedError::Unsupported);
-                }
+                let _ = (budget_us, period_us, hi_pri, lo_pri);
+                return Err(SchedError::Unsupported);
             }
         };
-        // SAFETY: passing a stack-allocated sched_param to libc.
         let param = libc::sched_param { sched_priority };
         let ret = unsafe { libc::pthread_setschedparam(libc::pthread_self(), policy, &param) };
         if ret == 0 {
@@ -173,6 +151,34 @@ impl nros_platform_api::PlatformScheduler for PosixPlatform {
         } else {
             Err(SchedError::KernelError)
         }
+    }
+
+    /// NuttX target: only Sporadic is wired (via the extern shim).
+    /// libc-rs's NuttX bindings don't expose
+    /// `SCHED_FIFO` / `pthread_setschedparam`, so other classes
+    /// surface `Unsupported`.
+    #[cfg(target_os = "nuttx")]
+    fn set_current_thread_policy(
+        p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        use nros_platform_api::{SchedError, SchedPolicy};
+        match p {
+            SchedPolicy::Sporadic {
+                budget_us,
+                period_us,
+                hi_pri,
+                lo_pri,
+            } => set_nuttx_sched_sporadic(budget_us, period_us, hi_pri, lo_pri),
+            _ => Err(SchedError::Unsupported),
+        }
+    }
+
+    /// Other POSIX (macOS, etc.): no scheduler-policy API wired.
+    #[cfg(not(any(target_os = "linux", target_os = "nuttx")))]
+    fn set_current_thread_policy(
+        _p: nros_platform_api::SchedPolicy,
+    ) -> Result<(), nros_platform_api::SchedError> {
+        Err(nros_platform_api::SchedError::Unsupported)
     }
 
     #[inline]
@@ -451,8 +457,19 @@ fn set_nuttx_sched_sporadic(
     // on the calling task. The ABI of NuttxSchedParam matches NuttX's
     // `struct sched_param` when `CONFIG_SCHED_SPORADIC=y` (verified
     // against include/sched.h).
+    //
+    // libc-rs's NuttX target doesn't surface `sched_setscheduler` or
+    // `sched_param`; declare an extern "C" shim against the void-ptr
+    // signature.
+    unsafe extern "C" {
+        fn sched_setscheduler(
+            pid: libc::pid_t,
+            policy: libc::c_int,
+            param: *const core::ffi::c_void,
+        ) -> libc::c_int;
+    }
     let ret = unsafe {
-        libc::sched_setscheduler(0, SCHED_SPORADIC, &param as *const _ as *const libc::sched_param)
+        sched_setscheduler(0, SCHED_SPORADIC, &param as *const _ as *const core::ffi::c_void)
     };
     if ret == 0 {
         Ok(())
