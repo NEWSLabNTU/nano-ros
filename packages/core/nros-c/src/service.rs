@@ -658,7 +658,12 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
 ) -> nros_ret_t {
     validate_not_null!(client);
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::ServiceClientTrait;
 
@@ -744,7 +749,12 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         let _ = (client, timeout_ms);
         NROS_RET_OK
@@ -762,7 +772,12 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
     if client.is_null() {
         return false;
     }
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::ServiceClientTrait;
 
@@ -781,7 +796,12 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
             None => false,
         }
     }
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         let _ = client;
         true
@@ -807,7 +827,12 @@ pub unsafe extern "C" fn nros_client_send_request_async(
 ) -> nros_ret_t {
     validate_not_null!(client, request_data);
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::ServiceClientTrait;
 
@@ -851,7 +876,12 @@ pub unsafe extern "C" fn nros_client_send_request_async(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         let _ = (client, request_data, request_len);
         NROS_RET_ERROR
@@ -874,7 +904,12 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
 ) -> nros_ret_t {
     validate_not_null!(client, response_data, response_len);
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::ServiceClientTrait;
 
@@ -913,7 +948,12 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         let _ = (client, response_data, response_capacity, response_len);
         NROS_RET_ERROR

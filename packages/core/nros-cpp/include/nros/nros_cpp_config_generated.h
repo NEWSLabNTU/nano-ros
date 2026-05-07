@@ -3,7 +3,7 @@
 #define NROS_CPP_CONFIG_GENERATED_H
 
 /** Inline opaque storage size (bytes) for nros::Executor. */
-#define NROS_CPP_EXECUTOR_STORAGE_SIZE 18752
+#define NROS_CPP_EXECUTOR_STORAGE_SIZE 17464
 
 /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */
 #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 72
@@ -18,11 +18,11 @@
  * `_opaque` buffer size so handles can live on the stack or
  * inside user structs without dynamic allocation.
  */
-#define NROS_EXECUTOR_SIZE 17968
+#define NROS_EXECUTOR_SIZE 17456
 #define NROS_GUARD_CONDITION_SIZE 8
-#define NROS_PUBLISHER_SIZE 560
-#define NROS_SUBSCRIBER_SIZE 560
-#define NROS_SERVICE_CLIENT_SIZE 4632
-#define NROS_SERVICE_SERVER_SIZE 528
+#define NROS_PUBLISHER_SIZE 120
+#define NROS_SUBSCRIBER_SIZE 400
+#define NROS_SERVICE_CLIENT_SIZE 568
+#define NROS_SERVICE_SERVER_SIZE 296
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */

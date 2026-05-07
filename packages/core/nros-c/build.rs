@@ -75,21 +75,36 @@ fn generate_config(
     // --- C API knobs (nros-c only, not shared with nros-node) ---
     let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
 
-    // --- Opaque storage upper bound ---
-    // This MUST be >= size_of::<Executor>(). We use a generous estimate;
-    // the compile-time assertion in executor.rs catches any undercount.
-    //
-    // Layout: SessionStore + arena + entries + trigger + misc fields
-    let session_upper = 512; // SessionStore enum (Owned or Borrowed)
-    let entries_upper = max_cbs * 80; // Option<CallbackMeta> ~72 bytes, rounded up
-    let overhead = 1536; // Trigger + semantics + node_name + namespace + halt_flag + Phase 110 sched fields + padding
-    let executor_bytes = session_upper + arena_size + entries_upper + overhead;
-    let executor_opaque_u64s = executor_bytes.div_ceil(8);
-    let executor_storage_bytes = executor_opaque_u64s * 8;
+    // --- Opaque storage from probe (Phase 118.B closure of Phase 87.6) ---
+    // `EXECUTOR_SIZE` comes from `nros::sizes::EXECUTOR_SIZE` exported via
+    // the `__NROS_SIZE_*` symbols. The hand-math upper bound that used to
+    // live here (Phase 87.4) is gone — the probe is now the single source
+    // of truth. `probe_executor == 0` only happens during `cargo check
+    // --no-default-features` (no RMW backend wired); pad to a placeholder
+    // u64 in that case so cbindgen can still emit a syntactically valid
+    // `_opaque[]` array, but flag it visibly. Real builds always probe a
+    // non-zero size.
+    let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    if probe_executor == 0 {
+        println!(
+            "cargo:warning=nros-c: EXECUTOR_SIZE probe returned 0 — \
+             likely a `cargo check --no-default-features` run. The emitted \
+             `EXECUTOR_OPAQUE_U64S` will be 1; do not link the resulting \
+             rlib."
+        );
+    }
+    let executor_storage_bytes = probe_executor.max(8);
+    let executor_opaque_u64s = executor_storage_bytes.div_ceil(8);
 
     // Phase 87.5 (full): all four `*Internal` shim types are now
     // `#[repr(C)]` and embedded directly in their outer `nros_*_t`
     // structs. No hand-math storage upper bounds needed.
+
+    // `max_cbs` is consumed below in `NROS_EXECUTOR_MAX_HANDLES`;
+    // `arena_size` is no longer referenced now that hand-math is gone but
+    // the `dep_usize` call still triggers Cargo's
+    // `cargo:rerun-if-env-changed` plumbing on `DEP_NROS_NODE_ARENA_SIZE`.
+    let _ = arena_size;
 
     let contents = format!(
         "/// Maximum number of handles in an executor \
@@ -116,12 +131,9 @@ fn generate_config(
 
     // --- Phase 87: probe-derived sizes (Rust-as-SSoT) ------------------------
     //
-    // These come from `nros`'s `export_size!` symbols, read out of the rlib by
-    // `nros_sizes_build`. During the Phase 87 transition they exist alongside
-    // the hand-math values above — once every downstream consumer is switched
-    // over (Phase 87.4 / 87.6), the hand-math and its assertions will be
-    // deleted.
-    let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    // Phase 118.B: hand-math upper bound for `EXECUTOR_SIZE` deleted —
+    // `executor_storage_bytes` above now reads directly from the probe.
+    // The other sizes have always been probe-only.
     let probe_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
     let probe_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
     let probe_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
@@ -137,18 +149,6 @@ fn generate_config(
         .get("ACTION_SERVER_RAW_HANDLE_SIZE")
         .copied()
         .unwrap_or(0) as usize;
-
-    // Invariant during the transition: the existing hand-math upper bound for
-    // Executor must envelope the exact Rust size. If this ever flips the build
-    // should fail loudly — that's the 32-bit ARM under-count we are replacing.
-    if probe_executor > 0 {
-        assert!(
-            probe_executor <= executor_storage_bytes,
-            "nros-c: probed size_of::<Executor>()={probe_executor} exceeds hand-math \
-             upper bound {executor_storage_bytes}. Raise hand-math (nros-c/build.rs) \
-             or drop it per Phase 87.4."
-        );
-    }
 
     // Inline opaque storage in u64 units. cbindgen-generated nros_generated.h
     // references these by name (`uint64_t _opaque[SESSION_OPAQUE_U64S]`,

@@ -764,7 +764,12 @@ pub unsafe extern "C" fn nros_param_server_fini(server: *mut nros_param_server_t
 
 #[cfg(all(
     feature = "param-services",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")
+    any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )
 ))]
 mod service_backed {
     use super::*;
@@ -1013,7 +1018,12 @@ mod service_backed {
 
 #[cfg(all(
     feature = "param-services",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")
+    any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )
 ))]
 pub use service_backed::*;
 

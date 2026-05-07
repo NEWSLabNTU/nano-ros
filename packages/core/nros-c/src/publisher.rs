@@ -191,7 +191,12 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     };
 
     // Create the internal publisher
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::{Session, TopicInfo};
 
@@ -250,7 +255,12 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
         NROS_RET_OK
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         NROS_RET_ERROR
     }
@@ -290,7 +300,12 @@ pub unsafe extern "C" fn nros_publish_raw(
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::Publisher;
 
@@ -303,7 +318,12 @@ pub unsafe extern "C" fn nros_publish_raw(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         NROS_RET_ERROR
     }
@@ -341,7 +361,12 @@ pub unsafe extern "C" fn nros_publisher_assert_liveliness(
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
 
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         use nros_node::Publisher;
 
@@ -352,7 +377,12 @@ pub unsafe extern "C" fn nros_publisher_assert_liveliness(
         }
     }
 
-    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi")))]
+    #[cfg(not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )))]
     {
         NROS_RET_ERROR
     }
@@ -382,7 +412,12 @@ pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -
     );
 
     // Drop the inline RMW publisher handle
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     {
         core::ptr::drop_in_place(
             publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher

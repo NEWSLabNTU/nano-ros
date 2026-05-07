@@ -60,19 +60,33 @@ fn generate_config(
     probed: &std::collections::HashMap<String, u64>,
 ) {
     // Read executor layout from nros-node via Cargo `links` metadata.
-    // nros-node is the single source of truth.
-    let max_cbs = dep_usize("DEP_NROS_NODE_MAX_CBS");
-    let arena_size = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
+    // Kept for `cargo:rerun-if-env-changed` plumbing now that hand-math
+    // is gone (Phase 118.B closure of Phase 87.6).
+    let _ = dep_usize("DEP_NROS_NODE_MAX_CBS");
+    let _ = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
 
-    // Upper bound for CppContext size (in bytes):
-    //   CppContext = Executor + domain_id (u32) + padding
-    //   Executor ≈ SessionStore + arena + entries + trigger + misc
-    let session_upper = 512;
-    let entries_upper = max_cbs * 80;
-    let overhead = 1536; // trigger + semantics + strings + halt_flag + domain_id + Phase 110 sched fields + padding
-    let total_bytes = session_upper + arena_size + entries_upper + overhead;
-    let opaque_u64s = total_bytes.div_ceil(8);
-    let storage_bytes = opaque_u64s * 8;
+    // CppContext = Executor + domain_id (u32) + padding. Phase 118.B —
+    // sourced from `nros::sizes::EXECUTOR_SIZE` via the probe; the
+    // hand-math upper bound that lived here is gone.
+    //
+    // `CppContext` adds a `u32 domain_id` field after the embedded
+    // `CppExecutor`. With `repr(Rust)` and align=8 (Executor's max
+    // alignment), the trailing field rounds the struct size up by one
+    // u64 word: `size_of::<CppContext>() = size_of::<Executor>() + 8`
+    // — verified by the const-assert in `lib.rs`. Probe = 0 only
+    // happens on `cargo check --no-default-features` (no RMW).
+    const CPP_CONTEXT_OVERHEAD: usize = 8;
+    let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    if probe_executor_pre == 0 {
+        println!(
+            "cargo:warning=nros-cpp: EXECUTOR_SIZE probe returned 0 — \
+             likely a `cargo check --no-default-features` run. The emitted \
+             `CPP_EXECUTOR_OPAQUE_U64S` will be 1; do not link the \
+             resulting rlib."
+        );
+    }
+    let storage_bytes = probe_executor_pre.max(8) + CPP_CONTEXT_OVERHEAD;
+    let opaque_u64s = storage_bytes.div_ceil(8);
 
     // Phase 87.11: action server/client storage sizes are now sourced
     // from `nros::sizes::CppActionServerLayout` /
@@ -159,17 +173,10 @@ fn generate_config(
     let probe_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
     let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
 
-    // Transition invariant: hand-math `NROS_CPP_EXECUTOR_STORAGE_SIZE` must
-    // envelope the exact Rust `size_of::<Executor>()`. Build fails with a
-    // clear message if this ever flips.
-    if probe_executor > 0 {
-        assert!(
-            probe_executor <= storage_bytes,
-            "nros-cpp: probed size_of::<Executor>()={probe_executor} exceeds hand-math \
-             upper bound {storage_bytes}. Raise hand-math (nros-cpp/build.rs) or \
-             drop it per Phase 87.4."
-        );
-    }
+    // Phase 118.B closure of Phase 87.6: hand-math vs probe assert
+    // removed — `storage_bytes` is the probe value now, no upper bound
+    // to compare against.
+    let _ = probe_executor;
 
     // Generate C++ config header with all storage sizes (local include/nros/)
     // Use raw line literals (no `\` continuation) so leading whitespace

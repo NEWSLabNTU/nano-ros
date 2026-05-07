@@ -80,27 +80,31 @@ and a fix sketch. Severity:
   264` and `goal_size: 8` repeated 5+ times.
 - **Fix:** module-local consts.
 
-### 118.B — Size hand-math
+### 118.B — Size hand-math ✅ CLOSED
 
-Status: **controlled** — every hand-math has a sibling probe + compile-time
-assert. Phase 87.4 / 87.6 mark drop-points.
+Closed 2026-05-08 — Phase 87.6 deletion of executor hand-math.
 
-#### B.1 Executor opaque storage (nros-c + nros-cpp)
-- `packages/core/nros-c/build.rs:83-87` — `session_upper=512` +
-  `entries_upper=max_cbs*80` + `overhead=1536`.
-- `packages/core/nros-cpp/build.rs:70-75` — identical formula.
-- Probes at `nros-c/build.rs:124+` and `nros-cpp/build.rs:155+`. Asserts at
-  `:144-150` / `:165-171`.
-- **Fix (Phase 87.6):** drop hand-math; use probed `EXECUTOR_SIZE` directly.
-  Risks: probe machinery must work for every `(rmw, platform)` combo before
-  drop.
+#### B.1 Executor opaque storage (nros-c + nros-cpp) ✅
+- `packages/core/nros-c/build.rs`: `executor_storage_bytes` now reads
+  directly from `probe_executor` (with `cargo:warning` if probe=0
+  during `--no-default-features` runs). Hand-math constants
+  (`session_upper`, `entries_upper`, `overhead=1536`) deleted along
+  with the post-probe assert.
+- `packages/core/nros-cpp/build.rs`: same. `CppContext` adds 8 bytes
+  (`u32 domain_id` + alignment padding) on top of `Executor`; the +8
+  is now an explicit `CPP_CONTEXT_OVERHEAD` const documented inline.
+- Verified: `just check` clean, `just test-unit` 330/330. Probe-only
+  flow + `const _: () = assert!(size_of::<Ty>() <= STORAGE_SIZE …)`
+  in `*.rs` consumers preserves the safety net (any drift fails
+  compile-time, not link-time).
 
-#### B.2 Action server/client fallback (nros-cpp)
+#### B.2 Action server/client fallback (nros-cpp) — still open
 - `nros-cpp/build.rs:101-104` — pointer-width fallback used when LTO bitcode
   rlib returns 0 from probe (`action_server_fallback = ptr_bytes * 9`).
 - Phase 77.23/77.24 documented.
 - **Fix:** make probe machinery LTO-aware (read bitcode types directly, or run
-  probe pre-LTO).
+  probe pre-LTO). Lower priority than B.1 (only triggers on fat-LTO release
+  builds; debug + thin-LTO already use the probe path).
 
 #### B.3 div-ceil conversions (NOT hand-math)
 - `nros-c/build.rs:159-165` — `probe.div_ceil(8)` for u64 alignment. Derives

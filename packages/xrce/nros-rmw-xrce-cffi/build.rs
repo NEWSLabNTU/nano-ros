@@ -60,7 +60,10 @@ fn main() {
     // `<sys/socket.h>` / `<termios.h>` are available; bare-metal
     // targets must inject their own custom transport instead.
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if matches!(target_os.as_str(), "linux" | "macos" | "freebsd" | "netbsd" | "openbsd") {
+    if matches!(
+        target_os.as_str(),
+        "linux" | "macos" | "freebsd" | "netbsd" | "openbsd"
+    ) {
         backend_tus.push("transport_posix_udp");
         backend_tus.push("transport_posix_serial");
     }
