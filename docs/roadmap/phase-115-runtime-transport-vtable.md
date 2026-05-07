@@ -395,11 +395,49 @@ Ordered execution-first (policy → port → tracking entries):
       check) and a top-level cmake configure +
       `cmake --build` with `NANO_ROS_RMW=xrce-c` (clean build,
       `libnros_c_xrce-c.a` + `libnros_cpp_xrce-c.a` produced).
-    - [ ] **115.K.2.5.1** — flip default `xrce` selector to mean
-      the C backend (deprecate Rust path).
-    - [ ] **115.K.2.5.2** — remove `nros-rmw-xrce` Rust crate +
-      `xrce-sys` from the workspace once Rust API users have
-      migrated to the cffi-via-C-backend path.
+    - [ ] **115.K.2.5.1** — Rust API user migration. The 22
+      `Cargo.toml` files referencing `rmw-xrce` / `nros-rmw-xrce`
+      today (every native Rust XRCE example + every Zephyr Rust
+      XRCE example + the workspace umbrella crates) need a path
+      to the C backend that doesn't depend on the Rust direct
+      impl. Sub-steps:
+      - [ ] **115.K.2.5.1.0** — new shim crate
+        `packages/xrce/nros-rmw-xrce-cffi`: builds + links the
+        `nros_rmw_xrce_c` static lib via `cc::Build` /
+        `cmake::Config`, exposes
+        `extern "C" { fn nros_rmw_xrce_register(); }` as a safe
+        Rust `pub fn register()`. Mirrors the role
+        `nros-rmw-cyclonedds` Rust crate would play if Cyclone
+        had Rust users — it doesn't, so this is the first
+        cffi-shim crate in the project.
+      - [ ] **115.K.2.5.1.1** — wire `nros-cli` / `nros` /
+        `nros-node` umbrella crates to expose an
+        `rmw-xrce-cffi` Cargo feature that pulls in the shim
+        crate and `rmw-cffi`. Existing `rmw-xrce` feature stays
+        for now (still routes to the Rust direct impl).
+      - [ ] **115.K.2.5.1.2** — migrate
+        `examples/native/rust/xrce/{talker,listener,service-*,
+        action-*,serial-*,stress-test,large-msg-test}` (10
+        examples) — switch `rmw-xrce` → `rmw-xrce-cffi` in
+        Cargo.toml, add `nros_rmw_xrce_cffi::register()` call
+        before `Executor::open` in `src/main.rs`.
+      - [ ] **115.K.2.5.1.3** — migrate
+        `examples/zephyr/rust/xrce/*` (6 examples) — same
+        pattern. Zephyr build harness needs the C static lib
+        cross-compiled for the Cortex-M target; that's an
+        additional CMake plumbing step.
+      - [ ] **115.K.2.5.1.4** — migrate Rust XRCE tests
+        (`packages/testing/nros-tests/tests/xrce.rs`,
+        `xrce_ros2_interop.rs`) — switch their fixtures over.
+        Expected: 14/14 still pass via the C backend.
+    - [ ] **115.K.2.5.2** — flip default `xrce` selector to mean
+      the C backend (deprecate Rust path). Now safe because every
+      previous Rust user is on the cffi-via-C-backend path.
+    - [ ] **115.K.2.5.3** — remove `nros-rmw-xrce` Rust crate +
+      `xrce-sys` + `xrce-platform-shim` + `xrce-zephyr` from the
+      workspace. The cffi shim crate
+      (`nros-rmw-xrce-cffi`) is the only Rust-side XRCE artifact
+      that survives.
 
 - [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost
