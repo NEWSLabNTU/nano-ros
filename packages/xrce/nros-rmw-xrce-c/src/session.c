@@ -247,6 +247,32 @@ static int locator_is_custom(const char *locator) {
         || strcmp(locator, "custom") == 0;
 }
 
+/* Phase 115.K.2.5.1.5-serial — recognise locator forms that name a
+ * serial / pty device:
+ *   - `serial://<path>`
+ *   - `serial:/<path>`        (some callers omit the second slash)
+ *   - `/dev/...`              (bare absolute device path)
+ *
+ * Returns the substring pointing at the device path on match (caller
+ * passes that to `xrce_posix_serial_init`), or NULL on no-match. */
+static const char *locator_serial_path(const char *locator) {
+    if (locator == NULL) return NULL;
+    static const char *const sch_two = "serial://";
+    static const char *const sch_one = "serial:/";
+    if (strncmp(locator, sch_two, 9) == 0) {
+        return locator + 9;
+    }
+    /* Match `serial:/` *only* if `serial://` did not match — checked
+     * via prefix length above (9 vs 8). */
+    if (strncmp(locator, sch_one, 8) == 0 && locator[8] != '/') {
+        return locator + 8;
+    }
+    if (strncmp(locator, "/dev/", 5) == 0) {
+        return locator;
+    }
+    return NULL;
+}
+
 nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
                                  uint32_t domain_id, const char *node_name,
                                  nros_rmw_session_t *out) {
@@ -266,13 +292,25 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
     st->next_entity_id = 2; /* id 1 reserved for the participant */
 
     /* Phase 115.K.2.4 — `custom://...` routes through
-     * `xrce_custom_transport_install`. UDP path mirrors K.2.1. */
+     * `xrce_custom_transport_install`. UDP path mirrors K.2.1.
+     * Phase 115.K.2.5.1.5-serial — `serial://...` / `/dev/...`
+     * routes through `xrce_posix_serial_init`. */
+    const char *serial_path = locator_serial_path(locator);
     if (locator_is_custom(locator)) {
         st->use_custom_transport = true;
         nros_rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
         if (ret != NROS_RMW_RET_OK) {
             free(st);
             return ret;
+        }
+        uxr_init_session(&st->session, &st->custom.comm,
+                         hash_session_key(node_name));
+    } else if (serial_path != NULL) {
+        st->use_custom_transport = true;
+        nros_rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
+        if (sret != NROS_RMW_RET_OK) {
+            free(st);
+            return sret;
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
@@ -364,11 +402,11 @@ nros_rmw_ret_t xrce_session_close(nros_rmw_session_t *session) {
         return NROS_RMW_RET_ERROR;
     }
     (void)uxr_delete_session(&st->session);
-    if (st->use_custom_transport) {
-        uxr_close_custom_transport(&st->custom);
-    } else {
-        uxr_close_udp_transport(&st->udp);
-    }
+    /* All three transport paths (custom://, serial://, udp://) now
+     * sit on top of uxrCustomTransport — the K.2.5.1.2.a fix routed
+     * UDP through the same surface to match xrce-sys's legacy
+     * shape. Close once, regardless of `use_custom_transport`. */
+    uxr_close_custom_transport(&st->custom);
     free(st);
     session->backend_data = NULL;
     return NROS_RMW_RET_OK;

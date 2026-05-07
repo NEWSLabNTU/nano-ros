@@ -174,6 +174,7 @@ add_library(nros_rmw_xrce_c STATIC
     src/service.c
     src/transport_custom.c
     src/transport_posix_udp.c
+    src/transport_posix_serial.c
     ${_uxr_all_src}
     ${_ucdr_all_src}
 )

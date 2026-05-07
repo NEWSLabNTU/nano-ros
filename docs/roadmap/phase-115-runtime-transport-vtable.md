@@ -526,6 +526,25 @@ Ordered execution-first (policy → port → tracking entries):
         `xrce-sys` byte stream against ours, ideally with both
         running side-by-side under tcpdump. Out of scope for
         this commit's window.
+      - [x] **115.K.2.5.1.5-serial** — POSIX serial via the
+        cffi backend. New TU
+        `packages/xrce/nros-rmw-xrce-c/src/transport_posix_serial.c`
+        opens a tty/pty, configures termios (raw, 8N1, baud from
+        `XRCE_SERIAL_BAUD` env or 115200), and registers four
+        trampolines that drive `read()` / `write()` via `poll()`.
+        Mirrors `transport_posix_udp.c` but with `framing=true`
+        because serial is byte-stream — HDLC framing comes from
+        `UCLIENT_PROFILE_STREAM_FRAMING`. `session.c` recognises
+        `serial://<path>` / `/dev/...` locator schemes and routes
+        to `xrce_posix_serial_init` before the UDP fall-through.
+        Migrated `serial-talker` + `serial-listener` examples to
+        `rmw-xrce-cffi` (drop `xrce-serial` feature; cffi handles
+        serial via locator parse). Validated via
+        `cargo test -p nros-tests --test xrce -- --test-threads=1`:
+        14/14 pass, including the 3 serial tests
+        (`test_xrce_serial_talker_starts`,
+        `test_xrce_serial_listener_starts`,
+        `test_xrce_serial_communication`).
       - [ ] **115.K.2.5.1.3** — migrate
         `examples/zephyr/rust/xrce/*` (6 examples) — same
         pattern. Zephyr build harness needs the C static lib

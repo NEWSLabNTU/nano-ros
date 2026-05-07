@@ -54,6 +54,8 @@ fn main() {
         "subscriber",
         "service",
         "transport_custom",
+        "transport_posix_udp",
+        "transport_posix_serial",
     ] {
         build.file(xrce_c.join(format!("src/{name}.c")));
     }
@@ -124,7 +126,8 @@ fn generate_ucdr_config(out_dir: &std::path::Path, microcdr: &std::path::Path) {
         .replace("@PROJECT_VERSION_MINOR@", "0")
         .replace("@PROJECT_VERSION_PATCH@", "2")
         .replace("@PROJECT_VERSION@", "2.0.2")
-        .replace("@CONFIG_MACHINE_ENDIANNESS@", "0"); // 0 = little-endian
+        // ucdrEndianness enum: BIG=0, LITTLE=1. Set 1 for x86 / ARM.
+        .replace("@CONFIG_MACHINE_ENDIANNESS@", "1");
     let dir = out_dir.join("include/ucdr");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("config.h"), header).unwrap();

@@ -109,6 +109,12 @@ struct xrce_session_state {
     struct {
         int fd;
     }                    udp_bridge;
+    /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via
+     * custom transport. Same shape as `udp_bridge`: an `int fd`
+     * threaded through the trampolines via `uxrCustomTransport.args`. */
+    struct {
+        int fd;
+    }                    serial_bridge;
 
     uxrSession           session;
 
@@ -291,6 +297,13 @@ nros_rmw_ret_t xrce_custom_transport_install(xrce_session_state_t *st,
  * the agent has interop'd with for years. */
 nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
                                    const char *host, const char *port);
+
+/* Phase 115.K.2.5.1.5-serial — POSIX serial transport via custom
+ * transport. Opens a tty/pty `path`, configures termios (raw mode,
+ * 8N1, baud from `XRCE_SERIAL_BAUD` env or 115200), and registers
+ * read/write trampolines. framing=true (HDLC). */
+nros_rmw_ret_t xrce_posix_serial_init(xrce_session_state_t *st,
+                                      const char *path);
 
 #ifdef __cplusplus
 }

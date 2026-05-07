@@ -24,8 +24,24 @@ fn main() {
 
     eprintln!("XRCE Serial Talker: pty={}, domain={}", pty_path, domain_id);
 
+    // Phase 115.K.2.5.1.5-serial — register the C XRCE backend's
+    // vtable before opening the session. Idempotent.
+    nros_rmw_xrce_cffi::register().expect("nros_rmw_xrce_cffi::register");
+
+    // The C backend's `session.c` parses `serial://<path>` (or a bare
+    // `/dev/...` path) and routes to `xrce_posix_serial_init`. Wrap
+    // arbitrary tty/pty paths so the `serial://` scheme drives the
+    // selector regardless of where the device lives in the filesystem.
+    let locator = if pty_path.starts_with("serial://")
+        || pty_path.starts_with("/dev/")
+    {
+        pty_path.clone()
+    } else {
+        format!("serial://{pty_path}")
+    };
+
     // Open session with callback arena
-    let config = ExecutorConfig::new(&pty_path)
+    let config = ExecutorConfig::new(&locator)
         .domain_id(domain_id)
         .node_name("xrce_serial_talker");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
