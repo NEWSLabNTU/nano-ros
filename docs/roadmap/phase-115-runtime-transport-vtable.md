@@ -430,19 +430,51 @@ Ordered execution-first (policy → port → tracking entries):
 
         Status: build wiring proven (talker links + register()
         succeeds against live agent). `Executor::open` against a
-        live agent on UDP returns `ConnectionFailed` though —
-        the CFFI vtable gets called with the right locator/node,
-        the K.2.0 smoke test against the same agent passes, and
-        register() succeeds, but the full Rust → cffi → vtable
-        path against the running agent fails to complete the
-        XRCE session handshake. Likely a difference in stream
-        handshake timing or in how the cffi runtime's
-        return-value mapping interacts with our backend's
-        transient `uxr_run_session_*` calls. Tracked as
-        `115.K.2.5.1.2.a`. Examples revert to legacy `rmw-xrce`
-        until the regression is debugged. K.2.5.1.0/.1 land in
-        the meantime so subsequent debugging can iterate on the
-        shim crate without re-establishing infrastructure.
+        live agent on UDP returns `ConnectionFailed` though.
+        Tracked as `115.K.2.5.1.2.a`.
+
+        **Debug findings (2026-05-08):**
+
+        1. C backend reaches `uxr_create_session_retries` and it
+           returns OK against the live agent — the XRCE session
+           handshake itself succeeds.
+        2. The next step (`uxr_buffer_create_participant_bin` +
+           `uxr_run_session_until_all_status` for status
+           confirmation) times out with `status[0]=255` (no status
+           received). Participant request goes out but no reply
+           arrives within the 1000 ms confirmation budget.
+        3. The K.2.0 smoke test "passing" against a live agent was
+           misleading — open() returns `NROS_RMW_RET_ERROR` there
+           too, but the smoke logic doesn't assert OK; it just
+           checks the call is not the `UNSUPPORTED` stub. Same
+           failure mode as the talker.
+        4. Same agent works with the legacy `xrce-sys` path. The
+           legacy path uses `uxr_set_custom_transport_callbacks` +
+           `uxr_init_custom_transport` with `xrce-platform-shim`
+           providing UDP under the custom-transport hood — it does
+           NOT call `uxr_init_udp_transport` directly. The K.2 C
+           backend uses the upstream UDP transport path directly.
+        5. Disabling `UCLIENT_PROFILE_DISCOVERY` in the cffi shim
+           build (to match `xrce-sys`'s hand-written config.h) did
+           not fix the timeout.
+
+        **Working theory:** the upstream uxr UDP transport
+        (`udp_transport_posix.c`) uses POLL with a different
+        recv-timing profile than the custom-transport-via-shim
+        path, and the agent's reply to participant create is
+        getting dropped or arriving outside the poll window. The
+        legacy path's read-via-`PlatformUdp` shim drains the
+        socket through `nros-platform-posix`'s `set_recv_timeout`
+        path; the upstream path may need the same treatment but
+        applied to its own `poll_fd`.
+
+        **Next step:** re-route the K.2 C backend's UDP transport
+        through `uxr_set_custom_transport_callbacks` +
+        `uxr_init_custom_transport` (matching the `xrce-sys`
+        shape) instead of `uxr_init_udp_transport`. Custom
+        transport with POSIX UDP under the hood is what the
+        legacy path proves works against the agent. Tracked as
+        `115.K.2.5.1.2.a-fix-transport`.
       - [ ] **115.K.2.5.1.3** — migrate
         `examples/zephyr/rust/xrce/*` (6 examples) — same
         pattern. Zephyr build harness needs the C static lib

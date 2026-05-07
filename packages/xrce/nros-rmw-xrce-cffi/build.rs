@@ -152,7 +152,6 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
     // CMake replaces with `#define NAME` when var is set, `/* #undef
     // NAME */` otherwise.
     let enabled = [
-        "UCLIENT_PROFILE_DISCOVERY",
         "UCLIENT_PROFILE_UDP",
         "UCLIENT_PROFILE_TCP",
         "UCLIENT_PROFILE_SERIAL",
@@ -162,6 +161,11 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
         "UCLIENT_PLATFORM_POSIX",
     ];
     let disabled = [
+        // Phase 115.K.2.5.1.1 — DISCOVERY off matches xrce-sys's
+        // hand-written config.h. With DISCOVERY enabled the
+        // participant create wire frame carries extra metadata
+        // that the agent under test rejects (timeout on confirm).
+        "UCLIENT_PROFILE_DISCOVERY",
         "UCLIENT_PROFILE_MULTITHREAD",
         "UCLIENT_PROFILE_SHARED_MEMORY",
         "UCLIENT_PROFILE_CAN",
