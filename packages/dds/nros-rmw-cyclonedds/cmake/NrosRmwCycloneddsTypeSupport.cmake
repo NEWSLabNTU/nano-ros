@@ -24,10 +24,16 @@
 #
 # Notes:
 #  - Cyclone 0.10.5's idlc currently fails when emitting XTypes
-#    type-discovery metadata in some configurations. We pass `-t` to
-#    skip that section; the produced descriptor still works for pub/
-#    sub against `rmw_cyclonedds_cpp` peers (the metadata is optional
-#    on the wire — peers fall back to typename matching).
+#    type-discovery metadata. The `-t` flag skips that section; the
+#    produced descriptor still works for pub/sub + services against
+#    `rmw_cyclonedds_cpp` peers (the metadata is optional on the wire
+#    — peers fall back to typename matching). Phase 117.X.6 makes the
+#    `-t` choice opt-out: define `NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO`
+#    (cache var or env) to drop `-t` once Cyclone is upgraded past the
+#    bug. The helper validates the option at configure time by running
+#    `idlc -l c` on a synthetic minimal IDL — if the upstream bug is
+#    still present the option is rejected with a clear error rather
+#    than silently producing truncated descriptors at build time.
 #  - Generated .c / .h are written to `${CMAKE_CURRENT_BINARY_DIR}` so
 #    consumers don't have to manage their own scratch dirs.
 
@@ -87,6 +93,53 @@ if(NOT NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
         "NROS_RMW_CYCLONEDDS_SCRIPTS_DIR.")
 endif()
 
+# Phase 117.X.6 — validate the type-info opt-in at configure time.
+# Cyclone 0.10.5's idlc produces a truncated `.c` (just the ops
+# array, no descriptor) when type-info emission is requested. If the
+# consumer opts in we run idlc on a synthetic minimal IDL and check
+# the descriptor symbol lands in the output; otherwise we error out
+# with a clear pointer to the upstream bug rather than letting the
+# build fail later with confusing link errors.
+if(NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO OR
+   "$ENV{NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO}")
+    if(TARGET CycloneDDS::idlc)
+        get_target_property(_probe_idlc CycloneDDS::idlc IMPORTED_LOCATION)
+        if(NOT _probe_idlc)
+            get_target_property(_probe_idlc CycloneDDS::idlc IMPORTED_LOCATION_RELEASE)
+        endif()
+    else()
+        set(_probe_idlc "${IDLC_EXECUTABLE}")
+    endif()
+    set(_probe_dir "${CMAKE_CURRENT_BINARY_DIR}/_nros_rmw_cyclonedds_xtypes_probe")
+    file(MAKE_DIRECTORY "${_probe_dir}")
+    file(WRITE "${_probe_dir}/probe.idl"
+        "@final struct NrosRmwCycloneddsTypeinfoProbe { long x; };\n")
+    execute_process(
+        COMMAND "${_probe_idlc}" -l c -o "${_probe_dir}" "${_probe_dir}/probe.idl"
+        OUTPUT_QUIET ERROR_QUIET
+        RESULT_VARIABLE _probe_rc
+    )
+    set(_probe_c "${_probe_dir}/probe.c")
+    set(_probe_ok FALSE)
+    if(_probe_rc EQUAL 0 AND EXISTS "${_probe_c}")
+        file(READ "${_probe_c}" _probe_contents)
+        if(_probe_contents MATCHES
+                "NrosRmwCycloneddsTypeinfoProbe_desc[ \t]*=")
+            set(_probe_ok TRUE)
+        endif()
+    endif()
+    if(NOT _probe_ok)
+        message(FATAL_ERROR
+            "NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO is ON but the bundled "
+            "Cyclone DDS idlc fails to emit XTypes type-info "
+            "(produces a truncated descriptor). This is a known upstream "
+            "bug in Cyclone 0.10.5. Either upgrade the Cyclone pin past "
+            "the fixed release or unset the option. See "
+            "docs/reference/cyclonedds-known-limitations.md.")
+    endif()
+    message(STATUS "Cyclone idlc XTypes type-info probe: OK")
+endif()
+
 #
 # nros_rmw_cyclonedds_idlc_compile
 #
@@ -119,9 +172,21 @@ function(nros_rmw_cyclonedds_idlc_compile output_var)
         set(_idlc "${IDLC_EXECUTABLE}")
     endif()
 
+    # Phase 117.X.6 — opt-in XTypes type-info emission. Default keeps
+    # the `-t` flag (omits type-info) because Cyclone 0.10.5's idlc
+    # produces truncated descriptors when type-info is requested.
+    # Downstream consumers on a fixed Cyclone build flip the flag via
+    # `-DNROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO=ON` (cache var) or
+    # `NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO=1` (env).
+    set(_idlc_flags "-t" "-l" "c")
+    if(NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO OR
+       "$ENV{NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO}")
+        set(_idlc_flags "-l" "c")
+    endif()
+
     add_custom_command(
         OUTPUT  "${_gen_c}" "${_gen_h}"
-        COMMAND "${_idlc}" -t -l c -o "${_arg_OUTPUT_DIR}" "${_idl_abs}"
+        COMMAND "${_idlc}" ${_idlc_flags} -o "${_arg_OUTPUT_DIR}" "${_idl_abs}"
         DEPENDS "${_idl_abs}"
         COMMENT "idlc ${_idl_stem}.idl"
         VERBATIM

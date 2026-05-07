@@ -88,11 +88,17 @@ parallel clients no longer interleave.
 clients against one server and asserts each client receives only
 its own replies in order.
 
-**Caveat — wire compat:** the envelope pattern is **not** the
-upstream `rmw_cyclonedds_cpp` shape (which puts a
-`cdds_request_header_t` inside the typed IDL). Service traffic
-between nano-ros and stock ROS 2 nodes does **not** interoperate.
-Same trade-off as our zenoh backend.
+**Wire compat — done (Phase 117.12.B).** The interim
+`ServiceEnvelope` was replaced by stock `rmw_cyclonedds_cpp`'s
+`cdds_request_header_t` (`{uint64_t guid; int64_t seq;}`, 16 bytes,
+see upstream `src/serdata.hpp:73-77`). Codegen now injects
+`unsigned long long rmw_writer_guid; long long rmw_sequence_number;`
+into every `_Request_` / `_Response_` IDL struct, and the
+backend's `(build|split)_wire_header` helpers serialise / parse the
+matching 16-byte header at the front of each CDR. Bidirectional
+interop validated by `nros_rmw_cyclonedds_ros2_srv_e2e` against
+`ros2 service call` and `ros2 run demo_nodes_cpp
+add_two_ints_server`.
 
 **Caveat — cap:** the server-side slot table is fixed at 32. A
 server with more than 32 outstanding requests will report
@@ -120,19 +126,26 @@ investigation; closing the gap likely requires explicit
 publication-matched-status polling in
 `service_client_create` and is tracked separately.
 
-## ROS 2 wire interop: untested vs stock `rmw_cyclonedds_cpp`
+## ROS 2 wire interop — done (Phase 117.12)
 
-Phase 117.12 (POSIX E2E against a stock ROS 2 publisher /
-subscriber on the same domain) is **not yet executed**. The
-deserialise/reserialise path produces canonical XCDR1 native-
-byte-order CDR — the same shape `rmw_cyclonedds_cpp` emits — so
-basic pub/sub *should* interop, but no end-to-end test confirms it
-yet.
+POSIX E2E against stock ROS 2 nodes on the same domain is
+validated bidirectionally by two CTest harnesses
+(`nros_rmw_cyclonedds_ros2_pubsub_e2e`,
+`nros_rmw_cyclonedds_ros2_srv_e2e`):
 
-**Path forward:** a CTest harness that runs a ROS 2 node from
-`/opt/ros/humble` against an nros-rmw-cyclonedds peer on the same
-domain, asserts byte-exact + structural equality on a `std_msgs/
-String` round-trip. Blocked on Phase 117.12.
+- **Pub/sub:** nano-ros publisher ↔ `ros2 topic echo /chatter`
+  (byte-equal `std_msgs/msg/String` payload) and `ros2 topic pub`
+  ↔ nano-ros subscriber.
+- **Services:** nano-ros server ↔ `ros2 service call /add_two_ints
+  example_interfaces/srv/AddTwoInts` and stock `ros2 run
+  demo_nodes_cpp add_two_ints_server` ↔ nano-ros client.
+
+The harness picks a multicast-capable ethernet interface
+(auto-detect, override via `NROS_RMW_CYCLONEDDS_E2E_IFACE`) and
+writes a per-test `CYCLONEDDS_URI` config so SPDP works on hosts
+where `lo` is non-multicast. Both harnesses skip cleanly with
+`[SKIPPED]` if `/opt/ros/humble/setup.bash`, the `ros2` CLI, or a
+suitable interface is missing.
 
 ## QoS coverage
 
@@ -146,10 +159,10 @@ liveliness+lease) **except**:
   to match `rmw_cyclonedds_cpp`. Surfacing it through
   `nros_rmw_qos_t._reserved` is a follow-up.
 
-## Type discovery (XTypes metadata) — Phase 117.X.6 deferred
+## Type discovery (XTypes metadata) — Phase 117.X.6 opt-in
 
-The codegen helper passes `idlc -t` which **omits the XTypes type-
-information section** from the generated descriptor.
+By default the codegen helper passes `idlc -t` which **omits the
+XTypes type-information section** from the generated descriptor.
 
 **Why.** Cyclone 0.10.5's `idlc` segfaults emitting type-info on
 **any** input — verified with the trivial `@final struct Simple {
@@ -158,24 +171,23 @@ long x; };` (runs `idlc -l c`, prints `Failed to compile`, output
 is independent of our IDL shape. Tag `0.10.5` is the latest patch
 on the upstream `0.10.*` branch (no `0.10.6`).
 
-**Why we keep `-t` and accept the limit.** Type-info is optional
-on the wire — peers fall back to typename matching, which is what
-nano-ros publishers / subscribers / services already use end-to-
-end. Stock ROS 2 `rclcpp` apps interop fine. Only `ros2 topic
-info -v` (which queries `DCPSPublication` / `DCPSSubscription`
-builtin topics for XTypes metadata) shows blank type info for
-nano-ros endpoints.
+**Why we default to `-t`.** Type-info is optional on the wire —
+peers fall back to typename matching, which is what nano-ros
+publishers / subscribers / services already use end-to-end. Stock
+ROS 2 `rclcpp` apps interop fine. Only `ros2 topic info -v` (which
+queries `DCPSPublication` / `DCPSSubscription` builtin topics for
+XTypes metadata) shows blank type info for nano-ros endpoints.
 
-**Resolution candidates considered:**
-- **Bump Cyclone pin to `0.11.x`** — risks wire-format drift vs
-  the system-installed `ros-humble-cyclonedds 0.10.5`; breaks the
-  Humble interop guarantee the pin choice was made for.
-- **Carry a patch on the 0.10.5 submodule** investigating the
-  idlc internal failure — several hours of cyclonedds-internals
-  work for marginal benefit.
-- **Accept the limit.** Current state. Re-open when a real
-  consumer needs introspection, or when Phase 117 bumps the
-  Cyclone pin for an unrelated reason.
+**Opt-in once the upstream bug is fixed.** Set
+`-DNROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO=ON` (cmake cache var) or
+`NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO=1` (env). The cmake helper
+runs an idlc probe at configure time against a synthetic minimal
+IDL — if Cyclone still has the type-info bug the configure errors
+out with a pointer to this doc; otherwise the helper drops `-t`
+and the regenerated descriptors carry full type-info. Today the
+probe fails on the bundled Cyclone 0.10.5 submodule; the option
+lights up automatically the day the pin moves past the fixed
+release.
 
 ## Test rpath / `LD_LIBRARY_PATH`
 

@@ -109,17 +109,15 @@ _STRUCT_RE = re.compile(
 )
 
 
-# Phase 117.X.3 — leading-fields injected into every `_Request_` /
-# `_Response_` struct so their wire CDR matches stock
-# `rmw_cyclonedds_cpp`'s `cdds_request_header_t { uint8_t guid[16];
-# int64_t seq; }` layout. We inline the two primitive fields rather
-# than declaring a nested struct, so each IDL stays self-contained
-# (no shared preamble dependency) — the wire bytes are identical
-# either way (CDR for `octet[16]` is 16 inline bytes; `long long`
-# is 8-byte aligned with no padding given the preceding 16-byte
-# alignment-1 array).
+# Phase 117.X.3 / 117.12.B — leading fields injected into every
+# `_Request_` / `_Response_` struct so the wire CDR matches stock
+# `rmw_cyclonedds_cpp`'s `cdds_request_header_t { uint64_t guid;
+# int64_t seq; }` layout (16 bytes total, see upstream
+# `src/serdata.hpp:73-77`). We inline the two primitive fields rather
+# than declare a nested struct so each IDL stays self-contained — the
+# wire bytes are identical either way.
 SERVICE_HEADER_FIELDS = [
-    "octet rmw_writer_guid[16];",
+    "unsigned long long rmw_writer_guid;",
     "long long rmw_sequence_number;",
 ]
 
@@ -131,8 +129,8 @@ def mangle_idl(src: str, inject_service_header: bool = False) -> str:
     well-behaved enough that a line-oriented rewrite is sufficient — no
     full IDL parser needed.
 
-    When ``inject_service_header`` is true, also injects the 24-byte
-    request-id header fields (`octet rmw_writer_guid[16]` +
+    When ``inject_service_header`` is true, also injects the 16-byte
+    request-id header fields (`unsigned long long rmw_writer_guid` +
     `long long rmw_sequence_number`) as the first two fields of every
     rewritten struct. Used for `.srv` inputs to make the wire CDR
     match stock `rmw_cyclonedds_cpp`'s `cdds_request_header_t` layout.

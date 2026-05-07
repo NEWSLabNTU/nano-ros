@@ -10,10 +10,11 @@
 //   .srv  → `<pkg>::srv::dds_::<Svc>_Request_`
 //          + `<pkg>::srv::dds_::<Svc>_Response_`
 //
-// Plus: each Request / Response descriptor's first 24 bytes of CDR
-// represent the `cdds_request_header_t` (writer_guid[16] +
-// sequence_number) — verified by checking m_size includes the
-// header (≥ 24 bytes).
+// Plus: each Request / Response descriptor's first 16 bytes of CDR
+// represent the `cdds_request_header_t` (uint64 writer_guid +
+// int64 sequence_number) — verified by checking m_size includes the
+// header (≥ 16 bytes), matching upstream `rmw_cyclonedds_cpp`'s
+// `serdata.hpp:73-77` layout.
 
 #include <cstdio>
 #include <cstring>
@@ -59,10 +60,11 @@ int main() {
     // .msg → exactly the rosidl-shape mangling.
     check_descriptor("std_msgs::msg::dds_::String_", 0);
 
-    // .srv → both Request and Response, each ≥ 24 bytes (header
-    // alone is 24 bytes; AddTwoInts adds two int64s = 16 more).
-    check_descriptor("nros_test::srv::dds_::AddTwoInts_Request_", 24 + 16);
-    check_descriptor("nros_test::srv::dds_::AddTwoInts_Response_", 24 + 8);
+    // .srv → both Request and Response, each ≥ 16 bytes (header
+    // alone is 16 bytes; AddTwoInts adds two int64s = 16 more for
+    // the request, one int64 = 8 more for the response).
+    check_descriptor("nros_test::srv::dds_::AddTwoInts_Request_", 16 + 16);
+    check_descriptor("nros_test::srv::dds_::AddTwoInts_Response_", 16 + 8);
 
     if (fail_count > 0) {
         std::fprintf(stderr, "%d descriptor mismatch(es)\n", fail_count);

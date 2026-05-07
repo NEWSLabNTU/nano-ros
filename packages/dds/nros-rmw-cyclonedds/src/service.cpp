@@ -1,4 +1,4 @@
-// Services — Phase 117.X.3 (cdds_request_header_t-shaped wire).
+// Services — Phase 117.X.3 + 117.12.B (cdds_request_header_t-shaped wire).
 //
 // Service traffic uses per-service typed Request / Response topics
 // matching stock `rmw_cyclonedds_cpp`'s shape. Each typed struct
@@ -6,16 +6,16 @@
 // fields:
 //
 //     struct <Pkg>::srv::dds_::<Svc>_Request_ {
-//         octet     rmw_writer_guid[16];   // RTPS GUID of client writer
-//         long long rmw_sequence_number;   // monotonic per-client
+//         unsigned long long rmw_writer_guid;   // lower 8 bytes of RTPS GUID
+//         long long          rmw_sequence_number;  // monotonic per-client
 //         /* user fields ... */
 //     };
 //
-// This is bit-equivalent to upstream's
-// `cdds_request_header_t request_header;` followed by user fields
-// (cdds_request_header_t = `{uint8_t guid[16]; int64_t seq;}` —
-// same 24-byte layout). Stock `rclcpp` clients/servers therefore
-// match by `(topic_name, type_name)` and exchange compatible bytes.
+// This is bit-equivalent to upstream's `cdds_request_header_t
+// request_header;` (see `rmw_cyclonedds_cpp/src/serdata.hpp:73-77`,
+// `{uint64_t guid; int64_t seq;}` — 16 bytes) followed by user
+// fields. Stock `rclcpp` clients/servers therefore match by
+// `(topic_name, type_name)` and exchange byte-equal CDR.
 //
 // The 117.X.1 codegen helper injects the two header fields at IDL
 // time when processing `.srv` inputs; consumers call
@@ -25,7 +25,7 @@
 // Wire data path (per-call):
 //
 //   service_call_raw   user-CDR bytes
-//                       → build wire CDR `[encap][24-byte-header]
+//                       → build wire CDR `[encap][16-byte-header]
 //                          [user CDR after-encap]`
 //                       → dds_stream_read_sample into typed struct
 //                       → dds_write
@@ -69,11 +69,11 @@ namespace {
 
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
-constexpr std::size_t kHeaderBytes  = 24;  // 16-byte guid + 8-byte seq
+constexpr std::size_t kHeaderBytes  = 16;  // 8-byte guid + 8-byte seq
 
 struct RequestId {
-    uint8_t guid[16];
-    int64_t seq;
+    uint64_t guid;
+    int64_t  seq;
 };
 
 struct RequestSlot {
@@ -102,7 +102,7 @@ struct ClientState {
     const dds_topic_descriptor_t *rep_desc{nullptr};
     SertypeMin                   *req_st{nullptr};
     SertypeMin                   *rep_st{nullptr};
-    uint8_t                       my_guid[16]{};
+    uint64_t                      my_guid{0};
     std::atomic<int64_t>          next_seq{0};
 };
 
@@ -141,13 +141,17 @@ uint32_t cdr_xcdr_version(const uint8_t *bytes) {
     return 1;
 }
 
-// Pull the 16-byte RTPS GUID from a Cyclone writer.
-void writer_guid_bytes(dds_entity_t writer, uint8_t out[16]) {
+// Pull the lower 8 bytes of the 16-byte RTPS GUID from a Cyclone
+// writer. Upstream `rmw_cyclonedds_cpp` stashes a 64-bit guid in
+// `cdds_request_header_t` rather than the full 128-bit RTPS GUID, so
+// we follow the same convention to stay wire-compatible. Returns 0 if
+// dds_get_guid fails — caller must fall back to a random value.
+uint64_t writer_guid_lo64(dds_entity_t writer) {
     dds_guid_t g{};
-    std::memset(out, 0, 16);
-    if (dds_get_guid(writer, &g) == DDS_RETCODE_OK) {
-        std::memcpy(out, g.v, 16);
-    }
+    if (dds_get_guid(writer, &g) != DDS_RETCODE_OK) return 0;
+    uint64_t v = 0;
+    std::memcpy(&v, g.v, 8);
+    return v;
 }
 
 // Encode int64 little-endian into 8 bytes.
@@ -164,13 +168,13 @@ inline int64_t get_le64(const uint8_t *in) {
     return v;
 }
 
-// Construct the wire CDR for a typed struct that has the 24-byte
+// Construct the wire CDR for a typed struct that has the 16-byte
 // request_header inlined at offset 0. Inputs:
 //   user_bytes    runtime-supplied CDR with 4-byte encap + user fields
 //                 (no header).
 //   id            request_id to inject.
 // Outputs:
-//   wire_cdr      buffer of size at least len(user_bytes) + 24.
+//   wire_cdr      buffer of size at least len(user_bytes) + 16.
 // Returns total wire byte count, or negative on error.
 int32_t build_wire_with_header(const uint8_t *user_bytes, size_t user_len,
                                const RequestId &id, uint8_t *wire_cdr,
@@ -180,12 +184,12 @@ int32_t build_wire_with_header(const uint8_t *user_bytes, size_t user_len,
     if (total > wire_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
     // 4-byte encap copied verbatim.
     std::memcpy(wire_cdr, user_bytes, 4);
-    // 16-byte guid.
-    std::memcpy(wire_cdr + 4, id.guid, 16);
+    // 8-byte little-endian guid.
+    put_le64(wire_cdr + 4, static_cast<int64_t>(id.guid));
     // 8-byte little-endian seq.
-    put_le64(wire_cdr + 4 + 16, id.seq);
+    put_le64(wire_cdr + 4 + 8, id.seq);
     // User payload after encap.
-    std::memcpy(wire_cdr + 4 + 24, user_bytes + 4, user_len - 4);
+    std::memcpy(wire_cdr + 4 + kHeaderBytes, user_bytes + 4, user_len - 4);
     return static_cast<int32_t>(total);
 }
 
@@ -201,8 +205,8 @@ int32_t split_wire_header(const uint8_t *wire_cdr, size_t wire_len,
                           uint8_t *user_out, size_t user_cap) {
     if (wire_len < 4 + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
     if (out_id != nullptr) {
-        std::memcpy(out_id->guid, wire_cdr + 4, 16);
-        out_id->seq = get_le64(wire_cdr + 4 + 16);
+        out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + 4));
+        out_id->seq  = get_le64(wire_cdr + 4 + 8);
     }
     size_t user_len = wire_len - kHeaderBytes;  // (encap stays + user fields)
     if (user_len > user_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -310,11 +314,8 @@ uint64_t random_seed_word() {
     return (static_cast<uint64_t>(rd()) << 32) ^ rd();
 }
 
-void fill_random_guid(uint8_t out[16]) {
-    uint64_t a = random_seed_word();
-    uint64_t b = random_seed_word();
-    std::memcpy(out, &a, 8);
-    std::memcpy(out + 8, &b, 8);
+uint64_t random_guid64() {
+    return random_seed_word();
 }
 
 } // namespace
@@ -561,15 +562,12 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
-    // Use the writer's RTPS GUID as the client identity. Falls back
-    // to a random 128-bit value if dds_get_guid fails.
-    writer_guid_bytes(state->writer, state->my_guid);
-    bool guid_zero = true;
-    for (int i = 0; i < 16; ++i) {
-        if (state->my_guid[i] != 0) { guid_zero = false; break; }
-    }
-    if (guid_zero) {
-        fill_random_guid(state->my_guid);
+    // Use the lower 8 bytes of the writer's RTPS GUID as the client
+    // identity. Falls back to a random 64-bit value if dds_get_guid
+    // fails or returns an all-zero prefix.
+    state->my_guid = writer_guid_lo64(state->writer);
+    if (state->my_guid == 0) {
+        state->my_guid = random_guid64();
     }
 
     out->backend_data = state;
@@ -599,8 +597,8 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
     auto *state = static_cast<ClientState *>(client->backend_data);
 
     RequestId my_id{};
-    std::memcpy(my_id.guid, state->my_guid, 16);
-    my_id.seq = state->next_seq.fetch_add(1, std::memory_order_relaxed);
+    my_id.guid = state->my_guid;
+    my_id.seq  = state->next_seq.fetch_add(1, std::memory_order_relaxed);
 
     uint8_t wire_req[kWireScratch];
     int32_t wire_len = build_wire_with_header(request, req_len, my_id,
@@ -636,8 +634,7 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
                 split_wire_header(wire_rep, static_cast<size_t>(wlen),
                                   &got_id, reply_buf, reply_buf_len);
             if (user_len < 0) return user_len;
-            if (got_id.seq == my_id.seq &&
-                std::memcmp(got_id.guid, my_id.guid, 16) == 0) {
+            if (got_id.seq == my_id.seq && got_id.guid == my_id.guid) {
                 return user_len;
             }
             // Reply for a different in-flight call from the same

@@ -250,6 +250,93 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
     set_tests_properties(nros_rmw_cyclonedds_from_msg_smoke
         PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
 
+    # Phase 117.12.A: nano-ros pub/sub ↔ stock rmw_cyclonedds_cpp
+    # round-trip. Two binaries (publisher + subscriber) drive the
+    # codegen-emitted std_msgs::msg::dds_::String_ descriptor; a
+    # bash harness pairs each with a `ros2 topic echo|pub` call
+    # over /opt/ros/humble. Skips cleanly when ros2 isn't on PATH.
+    add_executable(nros_rmw_cyclonedds_ros2_pub
+        ros2_pub.cpp
+        ${_from_msg_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_ros2_pub
+        PRIVATE
+            nros_rmw_cyclonedds
+    )
+    target_include_directories(nros_rmw_cyclonedds_ros2_pub
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+
+    add_executable(nros_rmw_cyclonedds_ros2_sub
+        ros2_sub.cpp
+        ${_from_msg_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_ros2_sub
+        PRIVATE
+            nros_rmw_cyclonedds
+    )
+    target_include_directories(nros_rmw_cyclonedds_ros2_sub
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+
+    add_test(
+        NAME nros_rmw_cyclonedds_ros2_pubsub_e2e
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ros2_pubsub_e2e.sh"
+    )
+    set_tests_properties(nros_rmw_cyclonedds_ros2_pubsub_e2e
+        PROPERTIES
+            ENVIRONMENT
+                "NROS_RMW_CYCLONEDDS_PUB_BIN=$<TARGET_FILE:nros_rmw_cyclonedds_ros2_pub>;NROS_RMW_CYCLONEDDS_SUB_BIN=$<TARGET_FILE:nros_rmw_cyclonedds_ros2_sub>;${_nros_rmw_test_env}"
+    )
+
+    # Phase 117.12.B: nano-ros service server ↔ stock `ros2 service
+    # call` round-trip on `example_interfaces/srv/AddTwoInts`. The
+    # codegen helper emits the stock-shape mangled type
+    # `example_interfaces::srv::dds_::AddTwoInts_{Request,Response}_`
+    # so the wire matches `rmw_cyclonedds_cpp` byte-for-byte.
+    nros_rmw_cyclonedds_generate_from_msg(_example_addtwoints_sources
+        PKG_NAME example_interfaces
+        PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/example_interfaces"
+        INTERFACES srv/AddTwoInts.srv
+    )
+    if(_example_addtwoints_sources)
+        add_executable(nros_rmw_cyclonedds_ros2_srv_server
+            ros2_srv_server.cpp
+            ${_example_addtwoints_sources}
+        )
+        target_link_libraries(nros_rmw_cyclonedds_ros2_srv_server
+            PRIVATE
+                nros_rmw_cyclonedds
+        )
+        target_include_directories(nros_rmw_cyclonedds_ros2_srv_server
+            PRIVATE
+                ${NROS_RMW_CFFI_DIR}
+        )
+        add_executable(nros_rmw_cyclonedds_ros2_srv_client
+            ros2_srv_client.cpp
+            ${_example_addtwoints_sources}
+        )
+        target_link_libraries(nros_rmw_cyclonedds_ros2_srv_client
+            PRIVATE
+                nros_rmw_cyclonedds
+        )
+        target_include_directories(nros_rmw_cyclonedds_ros2_srv_client
+            PRIVATE
+                ${NROS_RMW_CFFI_DIR}
+        )
+        add_test(
+            NAME nros_rmw_cyclonedds_ros2_srv_e2e
+            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ros2_srv_e2e.sh"
+        )
+        set_tests_properties(nros_rmw_cyclonedds_ros2_srv_e2e
+            PROPERTIES
+                ENVIRONMENT
+                    "NROS_RMW_CYCLONEDDS_SRV_SERVER_BIN=$<TARGET_FILE:nros_rmw_cyclonedds_ros2_srv_server>;NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN=$<TARGET_FILE:nros_rmw_cyclonedds_ros2_srv_client>;${_nros_rmw_test_env}"
+        )
+    endif()
+
     # Phase 117.X.4: codegen pipeline produces stock-RMW-shape type
     # names. Reuses the std_msgs::msg::String_ + nros_test::srv::
     # AddTwoInts_{Request,Response}_ descriptors registered by
