@@ -101,6 +101,38 @@ void nros_zephyr_timer_destroy(void *timer) {
     k_free(t);
 }
 
+/* Phase 110.E.b follow-up — oneshot variant (period = K_NO_WAIT
+ * means fire once and stop).
+ */
+void * nros_zephyr_timer_create_oneshot(unsigned int timeout_us,
+                                         void (*cb)(void *),
+                                         void *user_data) {
+    struct k_timer *t = k_malloc(sizeof(*t));
+    if (!t) return NULL;
+    nros_zephyr_timer_bridge_t *b = k_malloc(sizeof(*b));
+    if (!b) { k_free(t); return NULL; }
+    b->cb = cb;
+    b->user_data = user_data;
+    k_timer_init(t, nros_zephyr_timer_expiry, NULL);
+    k_timer_user_data_set(t, b);
+    /* Second arg = period; K_NO_WAIT (0) makes this a oneshot. */
+    k_timer_start(t, K_USEC(timeout_us), K_NO_WAIT);
+    return t;
+}
+
+/* Stop the timer without freeing. Returns 1 if the timer was running
+ * and got stopped, 0 if it had already expired or was never started.
+ */
+int nros_zephyr_timer_cancel(void *timer) {
+    if (!timer) return 0;
+    struct k_timer *t = (struct k_timer *) timer;
+    /* k_timer_status_get reports remaining time; 0 means already
+     * fired. We use k_timer_remaining_get which returns 0 on fired. */
+    unsigned int remaining = k_timer_remaining_get(t);
+    k_timer_stop(t);
+    return remaining > 0 ? 1 : 0;
+}
+
 /* ── BSD socket wrappers ────────────────────────────────────────────
  *
  * On native_sim, glibc's getaddrinfo/freeaddrinfo symbols override

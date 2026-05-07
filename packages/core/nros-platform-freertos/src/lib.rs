@@ -342,6 +342,58 @@ impl nros_platform_api::PlatformTimer for FreeRtosPlatform {
             drop(alloc::boxed::Box::from_raw(handle.bridge));
         }
     }
+
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if timeout_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        let period_ticks = ((timeout_us + 999) / 1000).max(1);
+        extern crate alloc;
+        let bridge = alloc::boxed::Box::new(FreeRtosTimerBridge {
+            user_callback: callback,
+            user_data,
+        });
+        let bridge_ptr = alloc::boxed::Box::into_raw(bridge);
+        // pdFALSE (0) for `auto_reload` = oneshot.
+        let timer = unsafe {
+            ffi::xTimerCreate(
+                b"nros_oneshot\0".as_ptr() as *const _,
+                period_ticks,
+                0,
+                bridge_ptr as *mut c_void,
+                freertos_timer_thunk,
+            )
+        };
+        if timer.is_null() {
+            unsafe { drop(alloc::boxed::Box::from_raw(bridge_ptr)) };
+            return Err(TimerError::KernelError);
+        }
+        if unsafe { ffi::xTimerStart(timer, 0) } == 0 {
+            unsafe {
+                ffi::xTimerDelete(timer, 0);
+                drop(alloc::boxed::Box::from_raw(bridge_ptr));
+            }
+            return Err(TimerError::KernelError);
+        }
+        Ok(FreeRtosTimerHandle {
+            timer,
+            bridge: bridge_ptr,
+        })
+    }
+
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        // FreeRTOS doesn't expose "did this stop in time vs. already
+        // fired" cleanly — `xTimerStop` returns pdPASS even if the
+        // timer already fired. We optimistically return true on
+        // success; per-callback runtime measurement uses the timer-
+        // delete path on cleanup so duplicate fires aren't a concern.
+        unsafe { ffi::xTimerStop(handle.timer, 0) != 0 }
+    }
 }
 
 // ============================================================================

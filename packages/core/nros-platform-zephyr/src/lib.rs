@@ -185,6 +185,27 @@ impl nros_platform_api::PlatformTimer for ZephyrPlatform {
         // k_timer storage.
         unsafe { ffi::nros_zephyr_timer_destroy(handle.0) };
     }
+
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if timeout_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        let timer =
+            unsafe { ffi::nros_zephyr_timer_create_oneshot(timeout_us, callback, user_data) };
+        if timer.is_null() {
+            return Err(TimerError::KernelError);
+        }
+        Ok(ZephyrTimerHandle(timer))
+    }
+
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        unsafe { ffi::nros_zephyr_timer_cancel(handle.0) != 0 }
+    }
 }
 
 // ============================================================================

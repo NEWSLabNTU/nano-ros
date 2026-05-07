@@ -310,6 +310,60 @@ impl nros_platform_api::PlatformTimer for ThreadxPlatform {
             drop(alloc::boxed::Box::from_raw(handle.bridge));
         }
     }
+
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if timeout_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        let ticks = ((timeout_us + 999) / 1000).max(1);
+        extern crate alloc;
+        let bridge = alloc::boxed::Box::new(ThreadxTimerBridge {
+            user_callback: callback,
+            user_data,
+        });
+        let bridge_ptr = alloc::boxed::Box::into_raw(bridge);
+        let cookie = bridge_ptr as usize as u32;
+        let timer = unsafe {
+            let timer_box = alloc::boxed::Box::new(core::mem::MaybeUninit::<[u8; 96]>::zeroed());
+            let timer_ptr = alloc::boxed::Box::into_raw(timer_box) as *mut core::ffi::c_void;
+            // reschedule_ticks = 0 → oneshot.
+            let ret = ffi::tx_timer_create(
+                timer_ptr,
+                b"nros_oneshot\0".as_ptr() as *const _,
+                threadx_timer_thunk,
+                cookie,
+                ticks,
+                0,
+                1, /* TX_AUTO_ACTIVATE */
+            );
+            if ret != TX_SUCCESS {
+                drop(alloc::boxed::Box::from_raw(
+                    timer_ptr as *mut core::mem::MaybeUninit<[u8; 96]>,
+                ));
+                drop(alloc::boxed::Box::from_raw(bridge_ptr));
+                return Err(TimerError::KernelError);
+            }
+            timer_ptr
+        };
+        Ok(ThreadxTimerHandle {
+            timer,
+            bridge: bridge_ptr,
+        })
+    }
+
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        // ThreadX's `tx_timer_deactivate` returns TX_SUCCESS on
+        // success regardless of whether the timer was active. Treat
+        // any successful call as cancelled — duplicate fires after
+        // deactivate aren't a concern because the per-callback
+        // measurement path runs `destroy` on cleanup anyway.
+        unsafe { ffi::tx_timer_deactivate(handle.timer) == TX_SUCCESS }
+    }
 }
 
 // ============================================================================

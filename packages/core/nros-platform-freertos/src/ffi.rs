@@ -52,6 +52,7 @@ unsafe extern "C" {
         callback: extern "C" fn(*mut c_void),
     ) -> *mut c_void;
     pub fn xTimerStart(timer: *mut c_void, ticks_to_wait: u32) -> i32;
+    pub fn xTimerStop(timer: *mut c_void, ticks_to_wait: u32) -> i32;
     pub fn xTimerDelete(timer: *mut c_void, ticks_to_wait: u32) -> i32;
     pub fn pvTimerGetTimerID(timer: *mut c_void) -> *mut c_void;
 

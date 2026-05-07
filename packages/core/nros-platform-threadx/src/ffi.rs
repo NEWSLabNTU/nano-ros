@@ -77,6 +77,8 @@ unsafe extern "C" {
     ) -> u32;
     #[link_name = "_tx_timer_delete"]
     pub fn tx_timer_delete(timer: *mut c_void) -> u32;
+    #[link_name = "_tx_timer_deactivate"]
+    pub fn tx_timer_deactivate(timer: *mut c_void) -> u32;
 
     // Threads
     #[link_name = "_tx_thread_create"]

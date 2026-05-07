@@ -72,6 +72,12 @@ unsafe extern "C" {
         user_data: *mut c_void,
     ) -> *mut c_void;
     pub fn nros_zephyr_timer_destroy(timer: *mut c_void);
+    pub fn nros_zephyr_timer_create_oneshot(
+        timeout_us: u32,
+        cb: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> *mut c_void;
+    pub fn nros_zephyr_timer_cancel(timer: *mut c_void) -> core::ffi::c_int;
 
     /// Read Zephyr's per-thread `errno` value. Phase 92.5 diagnostic.
     pub fn nros_zephyr_errno() -> i32;
