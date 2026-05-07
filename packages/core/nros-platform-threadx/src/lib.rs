@@ -193,6 +193,126 @@ impl nros_platform_api::PlatformYield for ThreadxPlatform {
 }
 
 // ============================================================================
+// Phase 110.E.b — PlatformTimer (ThreadX `tx_timer_create`, 32-bit only)
+// ============================================================================
+//
+// ThreadX's `expiration_input` is a `ULONG` (u32 on every shipping
+// port, including the 64-bit ones — ABI compat constraint). We
+// truncate a leaked `Box<Bridge>` pointer to u32 to pass user data
+// through; works only on 32-bit `target_pointer_width`. 64-bit
+// ports (currently no shipping nano-ros target) would need a
+// static cookie→bridge slab — deferred.
+
+#[cfg(target_pointer_width = "32")]
+struct ThreadxTimerBridge {
+    user_callback: extern "C" fn(*mut core::ffi::c_void),
+    user_data: *mut core::ffi::c_void,
+}
+
+#[cfg(target_pointer_width = "32")]
+unsafe impl Send for ThreadxTimerBridge {}
+#[cfg(target_pointer_width = "32")]
+unsafe impl Sync for ThreadxTimerBridge {}
+
+#[cfg(target_pointer_width = "32")]
+extern "C" fn threadx_timer_thunk(input: u32) {
+    let bridge_ptr = input as usize as *const ThreadxTimerBridge;
+    if bridge_ptr.is_null() {
+        return;
+    }
+    let bridge = unsafe { &*bridge_ptr };
+    (bridge.user_callback)(bridge.user_data);
+}
+
+#[cfg(target_pointer_width = "32")]
+pub struct ThreadxTimerHandle {
+    timer: *mut core::ffi::c_void,
+    bridge: *mut ThreadxTimerBridge,
+}
+
+#[cfg(target_pointer_width = "32")]
+unsafe impl Send for ThreadxTimerHandle {}
+#[cfg(target_pointer_width = "32")]
+unsafe impl Sync for ThreadxTimerHandle {}
+
+#[cfg(target_pointer_width = "32")]
+impl core::fmt::Debug for ThreadxTimerHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ThreadxTimerHandle").finish_non_exhaustive()
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+impl nros_platform_api::PlatformTimer for ThreadxPlatform {
+    type TimerHandle = ThreadxTimerHandle;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if period_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        // ThreadX ticks: assume 1 ms tick (TX_TIMER_TICKS_PER_SECOND
+        // default 1000); sub-ms periods round up to 1 tick.
+        let ticks = ((period_us + 999) / 1000).max(1);
+
+        extern crate alloc;
+        let bridge = alloc::boxed::Box::new(ThreadxTimerBridge {
+            user_callback: callback,
+            user_data,
+        });
+        let bridge_ptr = alloc::boxed::Box::into_raw(bridge);
+        let cookie = bridge_ptr as usize as u32;
+
+        // SAFETY: timer storage is owned by the bridge box too —
+        // allocate together so destroy can free both.
+        let timer = unsafe {
+            // TX_TIMER size is 56 bytes on 32-bit Cortex-M ThreadX
+            // (verified against tx_api.h; carries 8 ULONGs + 8
+            // pointers + a few flags). Use Box::new_zeroed via
+            // MaybeUninit::zeroed so the storage is properly aligned.
+            let timer_box = alloc::boxed::Box::new(core::mem::MaybeUninit::<[u8; 96]>::zeroed());
+            let timer_ptr = alloc::boxed::Box::into_raw(timer_box) as *mut core::ffi::c_void;
+            let ret = ffi::tx_timer_create(
+                timer_ptr,
+                b"nros_sporadic\0".as_ptr() as *const _,
+                threadx_timer_thunk,
+                cookie,
+                ticks,
+                ticks,
+                1, /* TX_AUTO_ACTIVATE */
+            );
+            if ret != TX_SUCCESS {
+                drop(alloc::boxed::Box::from_raw(timer_ptr as *mut core::mem::MaybeUninit<[u8; 96]>));
+                drop(alloc::boxed::Box::from_raw(bridge_ptr));
+                return Err(TimerError::KernelError);
+            }
+            timer_ptr
+        };
+        Ok(ThreadxTimerHandle {
+            timer,
+            bridge: bridge_ptr,
+        })
+    }
+
+    fn destroy(handle: Self::TimerHandle) {
+        // SAFETY: tx_timer_delete drains in-flight expirations, so
+        // both bridge and timer storage are safe to drop after.
+        unsafe {
+            ffi::tx_timer_delete(handle.timer);
+            extern crate alloc;
+            drop(alloc::boxed::Box::from_raw(
+                handle.timer as *mut core::mem::MaybeUninit<[u8; 96]>,
+            ));
+            drop(alloc::boxed::Box::from_raw(handle.bridge));
+        }
+    }
+}
+
+// ============================================================================
 // Phase 110.D — PlatformScheduler (ThreadX)
 // ============================================================================
 //

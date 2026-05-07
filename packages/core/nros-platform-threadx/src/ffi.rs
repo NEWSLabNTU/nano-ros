@@ -59,6 +59,25 @@ unsafe extern "C" {
     #[link_name = "_tx_thread_smp_core_exclude"]
     pub fn tx_thread_smp_core_exclude(thread: *mut c_void, exclude_map: u32) -> u32;
 
+    // Phase 110.E.b — application timers. `tx_timer_create`'s
+    // `expiration_input` is a `ULONG` (32-bit on every supported
+    // ThreadX target — even the 64-bit ports keep ULONG = u32 for
+    // ABI compat). We pack a leaked Bridge pointer through this
+    // slot — works only on 32-bit targets; 64-bit ports need a
+    // static cookie→bridge slab (deferred).
+    #[link_name = "_tx_timer_create"]
+    pub fn tx_timer_create(
+        timer: *mut c_void,
+        name: *const core::ffi::c_char,
+        expiration: extern "C" fn(u32),
+        expiration_input: u32,
+        initial_ticks: u32,
+        reschedule_ticks: u32,
+        auto_activate: u32,
+    ) -> u32;
+    #[link_name = "_tx_timer_delete"]
+    pub fn tx_timer_delete(timer: *mut c_void) -> u32;
+
     // Threads
     #[link_name = "_tx_thread_create"]
     pub fn tx_thread_create(

@@ -144,6 +144,50 @@ impl nros_platform_api::PlatformYield for ZephyrPlatform {
 }
 
 // ============================================================================
+// Phase 110.E.b — PlatformTimer (Zephyr k_timer via shim)
+// ============================================================================
+
+pub struct ZephyrTimerHandle(*mut core::ffi::c_void);
+
+unsafe impl Send for ZephyrTimerHandle {}
+unsafe impl Sync for ZephyrTimerHandle {}
+
+impl core::fmt::Debug for ZephyrTimerHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ZephyrTimerHandle").finish_non_exhaustive()
+    }
+}
+
+impl nros_platform_api::PlatformTimer for ZephyrPlatform {
+    type TimerHandle = ZephyrTimerHandle;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        use nros_platform_api::TimerError;
+        if period_us == 0 {
+            return Err(TimerError::OutOfRange);
+        }
+        // SAFETY: shim allocates a `struct k_timer` + bridge struct,
+        // initialises both, and starts the timer. Returns NULL on
+        // alloc failure.
+        let timer = unsafe { ffi::nros_zephyr_timer_create_periodic(period_us, callback, user_data) };
+        if timer.is_null() {
+            return Err(TimerError::KernelError);
+        }
+        Ok(ZephyrTimerHandle(timer))
+    }
+
+    fn destroy(handle: Self::TimerHandle) {
+        // SAFETY: shim stops the timer + frees the bridge + the
+        // k_timer storage.
+        unsafe { ffi::nros_zephyr_timer_destroy(handle.0) };
+    }
+}
+
+// ============================================================================
 // Phase 110.D — PlatformScheduler (Zephyr)
 // ============================================================================
 //

@@ -57,6 +57,50 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
 #endif
 }
 
+/* Phase 110.E.b — periodic timer for Sporadic-server budget refill.
+ * Wraps `k_timer_*` (static inlines) plus a per-timer bridge struct
+ * holding (callback, user_data) so the Rust side can pass an
+ * `extern "C" fn(*mut c_void)` despite Zephyr's
+ * `void(*)(struct k_timer *)` expiration signature.
+ */
+typedef struct {
+    void (*cb)(void *);
+    void *user_data;
+} nros_zephyr_timer_bridge_t;
+
+static void nros_zephyr_timer_expiry(struct k_timer *t) {
+    nros_zephyr_timer_bridge_t *b =
+        (nros_zephyr_timer_bridge_t *) k_timer_user_data_get(t);
+    if (b && b->cb) {
+        b->cb(b->user_data);
+    }
+}
+
+void * nros_zephyr_timer_create_periodic(unsigned int period_us,
+                                          void (*cb)(void *),
+                                          void *user_data) {
+    struct k_timer *t = k_malloc(sizeof(*t));
+    if (!t) return NULL;
+    nros_zephyr_timer_bridge_t *b = k_malloc(sizeof(*b));
+    if (!b) { k_free(t); return NULL; }
+    b->cb = cb;
+    b->user_data = user_data;
+    k_timer_init(t, nros_zephyr_timer_expiry, NULL);
+    k_timer_user_data_set(t, b);
+    k_timer_start(t, K_USEC(period_us), K_USEC(period_us));
+    return t;
+}
+
+void nros_zephyr_timer_destroy(void *timer) {
+    if (!timer) return;
+    struct k_timer *t = (struct k_timer *) timer;
+    nros_zephyr_timer_bridge_t *b =
+        (nros_zephyr_timer_bridge_t *) k_timer_user_data_get(t);
+    k_timer_stop(t);
+    if (b) k_free(b);
+    k_free(t);
+}
+
 /* ── BSD socket wrappers ────────────────────────────────────────────
  *
  * On native_sim, glibc's getaddrinfo/freeaddrinfo symbols override
