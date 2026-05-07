@@ -227,6 +227,57 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
+/// Phase 110.F — `os_pri` worker-pool dispatch routes the bound
+/// callback through a worker thread instead of the cooperative path.
+/// Smoke test: register a sub bound to an SC with `os_pri = 1`, fire
+/// spin_once, verify the worker eventually drains + dispatches.
+/// Uses a no-op `apply_policy` (non-root tests can't lift to
+/// SCHED_FIFO).
+#[cfg(feature = "scheduler-os-priority")]
+#[test]
+fn test_os_priority_worker_dispatches_callback() {
+    use crate::executor::sched_context::{SchedClass, SchedContext};
+    use nros_platform_api::SchedPolicy;
+    fn apply_noop(_p: SchedPolicy) -> Result<(), nros_platform_api::SchedError> {
+        Ok(())
+    }
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    executor.register_os_priority_dispatcher(apply_noop);
+
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_cb = count.clone();
+    let h = executor
+        .add_subscription::<TestMsg, _>("/picas", move |_msg: &TestMsg| {
+            count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            os_pri: 1,
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h, sc_id).unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let (d, n) = encode_test_msg(7);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+
+    // spin_once routes to worker; sleep gives worker time to drain.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "os_pri-bound callback must dispatch via worker"
+    );
+}
+
 /// Phase 110.G — TT-window gate suppresses dispatch when the
 /// current monotonic time falls outside `[off, off + duration)`.
 /// Coexists with the existing class-based dispatch — this test uses

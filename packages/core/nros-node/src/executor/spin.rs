@@ -261,6 +261,22 @@ pub struct Executor {
     /// gating per
     /// `SchedContext.tt_window_offset_us / tt_window_duration_us`.
     pub(crate) major_frame_us: u32,
+    /// Phase 110.F — per-OS-priority worker pool. Lazily populated
+    /// on first dispatch routing to a non-zero `os_pri`. Lives
+    /// behind `feature = "scheduler-os-priority"` + `feature =
+    /// "std"` because workers need `std::thread` + `mpsc`.
+    #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+    pub(crate) os_priority_workers:
+        std::collections::HashMap<u8, OsPriorityWorker>,
+    /// Phase 110.F — caller-supplied `apply_policy` function pointer
+    /// each worker invokes at startup to elevate its OS priority.
+    /// `None` = the worker pool is disabled; entries bound to non-
+    /// zero `os_pri` SCs fall back to the cooperative path.
+    /// Mirrors `Executor::open_threaded`'s `apply_policy: fn(...)`
+    /// shape — keeps Executor non-generic over Platform.
+    #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+    pub(crate) os_priority_apply_policy:
+        Option<fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>>,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -311,6 +327,10 @@ impl Executor {
             #[cfg(feature = "alloc")]
             sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
             major_frame_us: 0,
+            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+            os_priority_workers: std::collections::HashMap::new(),
+            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+            os_priority_apply_policy: None,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -359,6 +379,10 @@ impl Executor {
             #[cfg(feature = "alloc")]
             sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
             major_frame_us: 0,
+            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+            os_priority_workers: std::collections::HashMap::new(),
+            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+            os_priority_apply_policy: None,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -458,6 +482,31 @@ impl Executor {
         }
         self.sched_context_bindings[i] = sc_id;
         Ok(())
+    }
+
+    /// Phase 110.F — opt in to per-callback OS-priority dispatch.
+    /// Once registered, every `spin_once` cycle routes ready entries
+    /// whose bound SC has `os_pri > 0` onto a worker thread the OS
+    /// scheduler has elevated to that numeric priority. Workers are
+    /// spawned lazily on first use and self-halt when the Executor
+    /// drops.
+    ///
+    /// `apply_policy` is the same `fn(SchedPolicy) -> Result<(),
+    /// SchedError>` shape `open_threaded` takes — keeps the
+    /// Executor non-generic over Platform.
+    ///
+    /// Calling this with `apply_policy = noop` is fine for testing
+    /// (workers spawn but don't actually elevate priority); real
+    /// hard-RT use needs `CAP_SYS_NICE` on Linux or the equivalent
+    /// kernel config on RTOSes.
+    #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+    pub fn register_os_priority_dispatcher(
+        &mut self,
+        apply_policy: fn(
+            nros_platform_api::SchedPolicy,
+        ) -> Result<(), nros_platform_api::SchedError>,
+    ) {
+        self.os_priority_apply_policy = Some(apply_policy);
     }
 
     /// Phase 110.G — enable time-triggered dispatch by setting the
@@ -1908,6 +1957,37 @@ impl Executor {
                     continue;
                 }
             }
+            // Phase 110.F — per-callback OS priority routing. Entries
+            // bound to an SC with `os_pri > 0` dispatch onto a worker
+            // thread the OS has elevated to that priority; the
+            // cooperative path is skipped for those entries. Workers
+            // are spawned lazily.
+            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+            {
+                let os_pri = self
+                    .sched_contexts
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|sc| sc.os_pri)
+                    .unwrap_or(0);
+                if os_pri > 0
+                    && let Some(apply_policy) = self.os_priority_apply_policy
+                {
+                    let worker = self
+                        .os_priority_workers
+                        .entry(os_pri)
+                        .or_insert_with(|| OsPriorityWorker::spawn(os_pri, apply_policy));
+                    if let Some(meta) = self.entries[i].as_ref() {
+                        let _ = worker.try_dispatch(WorkItem {
+                            arena_base: arena_ptr as usize,
+                            arena_offset: meta.offset,
+                            try_process: meta.try_process,
+                            delta_ms,
+                        });
+                    }
+                    continue;
+                }
+            }
             // Phase 110.G — TT window gate, orthogonal to class.
             // Skips dispatch when the SC has a TT window AND the
             // current monotonic time is outside it. Both gates apply
@@ -2847,6 +2927,98 @@ impl Drop for ThreadHandle {
 // is unconditional.
 #[cfg(feature = "std")]
 unsafe impl Send for Executor {}
+
+// =============================================================================
+// Phase 110.F — `OsPriorityWorker` + `WorkItem`
+// =============================================================================
+
+/// One worker thread per distinct `SchedContext.os_pri` value used
+/// across registered SCs. Self-elevates via the executor's stored
+/// `apply_policy` fn pointer at startup; drains a bounded mpsc
+/// mailbox of `WorkItem`s. Phase 110.F.
+#[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+pub(crate) struct OsPriorityWorker {
+    sender: std::sync::mpsc::Sender<WorkItem>,
+    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+struct WorkItem {
+    arena_base: usize,
+    arena_offset: usize,
+    try_process: unsafe fn(*mut u8, u64) -> Result<bool, nros_rmw::TransportError>,
+    delta_ms: u64,
+}
+
+// SAFETY: Phase 110.F per-DescIdx exclusive-access invariant — the
+// activator scan in `spin_once` only sends a `WorkItem` for a given
+// `arena_offset` to one worker per cycle, and won't re-send the same
+// offset until the worker drains the previous one (`os_pri` dispatch
+// is the worker's exclusive path; cooperative dispatch is skipped
+// for SCs with non-zero `os_pri`). The fn pointer is Send-clean.
+#[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+unsafe impl Send for WorkItem {}
+
+#[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+impl OsPriorityWorker {
+    fn spawn(
+        os_pri: u8,
+        apply_policy: fn(
+            nros_platform_api::SchedPolicy,
+        ) -> Result<(), nros_platform_api::SchedError>,
+    ) -> Self {
+        use std::sync::atomic::Ordering;
+        let (tx, rx) = std::sync::mpsc::channel::<WorkItem>();
+        let halt = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let halt_w = std::sync::Arc::clone(&halt);
+        let join = std::thread::Builder::new()
+            .name(alloc::format!("nros-os-pri-{os_pri}"))
+            .spawn(move || {
+                // Self-elevate. Failure is logged but doesn't stop
+                // the worker — running at SCHED_OTHER is still
+                // correct, just without the priority guarantee.
+                let _ = apply_policy(nros_platform_api::SchedPolicy::Fifo { os_pri });
+                while !halt_w.load(Ordering::Acquire) {
+                    match rx.recv_timeout(core::time::Duration::from_millis(10)) {
+                        Ok(item) => {
+                            // SAFETY: arena_base + arena_offset point
+                            // into the executor's arena, which
+                            // outlives the worker per Drop ordering
+                            // (Executor::Drop halts + joins workers
+                            // before the arena is freed).
+                            let data = (item.arena_base as *mut u8)
+                                .wrapping_add(item.arena_offset);
+                            let _ = unsafe { (item.try_process)(data, item.delta_ms) };
+                        }
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            })
+            .expect("os-priority worker spawn");
+        Self {
+            sender: tx,
+            halt,
+            join: Some(join),
+        }
+    }
+
+    fn try_dispatch(&self, item: WorkItem) -> bool {
+        self.sender.send(item).is_ok()
+    }
+}
+
+#[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
+impl Drop for OsPriorityWorker {
+    fn drop(&mut self) {
+        self.halt
+            .store(true, std::sync::atomic::Ordering::Release);
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
+}
 
 impl Drop for Executor {
     fn drop(&mut self) {
