@@ -327,9 +327,21 @@ Ordered execution-first (policy → port → tracking entries):
     register entry point hands a populated vtable through and stubs
     return UNSUPPORTED. Builds with `cmake -DNROS_RMW_CFFI_DIR=...`.
     Does not yet link against micro-XRCE-DDS-Client.
-  - [ ] **115.K.2.1** — session lifecycle (`xrce_session_open` →
-    `uxr_init_*_transport` + `uxr_create_session`; drive_io →
-    `uxr_run_session_*`; close → `uxr_close_session`).
+  - [x] **115.K.2.1** — session lifecycle. `xrce_session_open`
+    parses `udp/host:port` (or bare `host:port`), calls
+    `uxr_init_udp_transport` + `uxr_init_session` +
+    `uxr_create_session_retries`, allocates output / input reliable
+    streams, parks the per-session state in
+    `nros_rmw_session_t::backend_data`. `xrce_session_close` calls
+    `uxr_delete_session` + `uxr_close_udp_transport` + frees the
+    state. `xrce_session_drive_io` forwards to `uxr_run_session_time`.
+    CMakeLists now compiles the vendored micro-xrce-dds-client +
+    micro-cdr sources directly (mirrors xrce-sys's source list);
+    config.h headers generated via `configure_file` from the
+    upstream `.in` templates. Smoke test reaches the backend
+    against a dead agent on port 1 and confirms ERROR (3 s retry
+    budget). Pub/sub/service paths still hit K.2.0 UNSUPPORTED
+    stubs.
   - [ ] **115.K.2.2** — pub/sub topic/writer/reader create + publish_raw
     + try_recv_raw.
   - [ ] **115.K.2.3** — service server + client paths.
