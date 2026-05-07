@@ -308,7 +308,7 @@ Ordered execution-first (policy → port → tracking entries):
   the porting guide (`book/src/porting/custom-transport.md`),
   `CLAUDE.md`'s "Platform Backends" section, and `SUMMARY.md`.
 
-- [ ] **115.K.2 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
+- [~] **115.K.2 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
   generated FFI, ~4.4k LOC) and rewrite `nros-rmw-xrce` as a C
   backend that consumes `nros_rmw_vtable_t` directly over micro-XRCE-
   DDS-Client's `uxr_*` C API. Mirrors `nros-rmw-cyclonedds`'s layout
@@ -318,6 +318,25 @@ Ordered execution-first (policy → port → tracking entries):
   (`init_transport_from_custom_ops`, Appendix D §D.4). Highest-ROI
   active port; only K.* item that ships code. Depends on K.1
   landing the policy doc that justifies the migration.
+
+  - [x] **115.K.2.0** — vtable scaffold. New crate
+    `packages/xrce/nros-rmw-xrce-c/` mirrors `nros-rmw-cyclonedds`'s
+    layout (CMakeLists + public header + per-area C TUs). Every
+    vtable entry returns `NROS_RMW_RET_UNSUPPORTED`; the scaffold
+    is wired-but-inert. Smoke test `tests/smoke.c` passes — confirms
+    register entry point hands a populated vtable through and stubs
+    return UNSUPPORTED. Builds with `cmake -DNROS_RMW_CFFI_DIR=...`.
+    Does not yet link against micro-XRCE-DDS-Client.
+  - [ ] **115.K.2.1** — session lifecycle (`xrce_session_open` →
+    `uxr_init_*_transport` + `uxr_create_session`; drive_io →
+    `uxr_run_session_*`; close → `uxr_close_session`).
+  - [ ] **115.K.2.2** — pub/sub topic/writer/reader create + publish_raw
+    + try_recv_raw.
+  - [ ] **115.K.2.3** — service server + client paths.
+  - [ ] **115.K.2.4** — port Phase 115.E's
+    `init_transport_from_custom_ops` slot-drain helper to a C TU.
+  - [ ] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`
+    over to the C backend.
 
 - [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost
