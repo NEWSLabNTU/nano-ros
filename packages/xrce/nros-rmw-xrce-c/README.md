@@ -30,7 +30,16 @@ a static library + a single public header carrying the
   (registered at `xrce_session_open`) dispatches by datareader id
   to the matching slot. `try_recv_raw` reads the slot's single-msg
   ringbuffer; oversize messages flag overflow and drop.
-- [ ] **115.K.2.3 — services.** Mirror the Rust service paths.
+- [x] **115.K.2.3 — services.** `xrce_service_server_create` allocates
+  a REPLIER entity via `uxr_buffer_create_replier_bin` and a slot
+  from the per-session pool of `XRCE_MAX_SERVICE_SERVERS=4`.
+  Per-session `request_callback` (registered at session_open)
+  dispatches by replier id; the captured `SampleIdentity` rides in
+  the slot for `xrce_service_send_reply` to feed
+  `uxr_buffer_reply`. Symmetric REQUESTER path on the client side;
+  `xrce_service_call_raw` busy-waits via `uxr_run_session_time` for
+  up to `XRCE_SERVICE_REPLY_TOTAL_MS=5000 ms`. Single-slot inbox
+  per server / client.
 - [ ] **115.K.2.4 — Phase 115.E custom-transport bridge.** Port the
   existing `init_transport_from_custom_ops` Rust helper to a C TU
   in this crate so consumers can drain the runtime's

@@ -355,7 +355,20 @@ Ordered execution-first (policy → port → tracking entries):
     overflow and drop. K.2 scope gaps (XML QoS, deadline tracking,
     fragmented publish, async wakers) are tagged `TODO 115.K.2.x` in
     source for follow-up commits.
-  - [ ] **115.K.2.3** — service server + client paths.
+  - [x] **115.K.2.3** — service server + client paths.
+    `xrce_service_server_create` allocates a REPLIER entity via
+    `uxr_buffer_create_replier_bin` plus a slot from the per-session
+    pool of `XRCE_MAX_SERVICE_SERVERS=4`. The per-session
+    `request_callback` (registered once at session_open) dispatches
+    by replier id and copies the inbound `SampleIdentity` into the
+    slot. `xrce_service_send_reply` reads it back through
+    `uxr_buffer_reply`, mirroring the Rust impl's
+    `last_sample_id` flow. Symmetric REQUESTER path for the client;
+    `xrce_service_call_raw` busy-waits via `uxr_run_session_time`
+    for up to `XRCE_SERVICE_REPLY_TOTAL_MS=5000 ms` before returning
+    `NROS_RMW_RET_TIMEOUT`. Service-default QoS only; the
+    runtime's int64_t `seq` is unused (XRCE correlates via
+    `SampleIdentity`, not seq numbers).
   - [ ] **115.K.2.4** — port Phase 115.E's
     `init_transport_from_custom_ops` slot-drain helper to a C TU.
   - [ ] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`

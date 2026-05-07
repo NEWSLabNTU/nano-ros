@@ -101,17 +101,39 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    /* Service paths still UNSUPPORTED until K.2.3 lands. */
+    /* Phase 115.K.2.3 — service paths must reach the backend. With a
+     * NULL session, create_service_server returns INVALID_ARGUMENT
+     * (no longer UNSUPPORTED stub). */
     nros_rmw_service_server_t srv = {0};
     nros_rmw_ret_t srv_r = g_received_vtable->create_service_server(
         NULL, "/foo", "Foo_", NULL, 0, &srv);
-    if (srv_r != NROS_RMW_RET_UNSUPPORTED) {
+    if (srv_r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
-                "FAIL: create_service_server returned %d, expected UNSUPPORTED (K.2.3 not yet)\n",
+                "FAIL: create_service_server with NULL session returned %d, expected INVALID_ARGUMENT\n",
                 (int)srv_r);
         return EXIT_FAILURE;
     }
 
-    printf("ok: pub/sub wired (K.2.2); service paths still UNSUPPORTED until K.2.3\n");
+    /* try_recv_request / has_request / send_reply / call_raw on
+     * NULL backend_data also reach the backend. */
+    int64_t seq = 0;
+    int32_t tr = g_received_vtable->try_recv_request(&srv, NULL, 0, &seq);
+    if (tr != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr,
+                "FAIL: try_recv_request on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                (int)tr);
+        return EXIT_FAILURE;
+    }
+
+    nros_rmw_service_client_t cli = {0};
+    int32_t cr = g_received_vtable->call_raw(&cli, NULL, 0, NULL, 0);
+    if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr,
+                "FAIL: call_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                (int)cr);
+        return EXIT_FAILURE;
+    }
+
+    printf("ok: pub/sub + services wired (K.2.2 + K.2.3); errors propagate cleanly\n");
     return EXIT_SUCCESS;
 }
