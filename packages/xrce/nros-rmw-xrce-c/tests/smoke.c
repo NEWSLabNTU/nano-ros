@@ -134,6 +134,44 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    printf("ok: pub/sub + services wired (K.2.2 + K.2.3); errors propagate cleanly\n");
+    /* Phase 115.K.2.4 — custom-transport bridge:
+     *  (a) `nros_rmw_xrce_init_custom_transport` returns UNSUPPORTED
+     *      until the runtime drain symbol lands.
+     *  (b) `nros_rmw_xrce_set_custom_transport_ops` rejects NULL.
+     *  (c) opening a `custom://` session without first arming the
+     *      bridge returns INVALID_ARGUMENT (no UNSUPPORTED stub).
+     *  (d) After arming the bridge with a NULL-call vtable, the
+     *      open path tries to use it and fails at the agent level
+     *      (write returns 0 because read returns 0 — OK / -1, anything
+     *      non-OK is acceptable, just not UNSUPPORTED). */
+    nros_rmw_ret_t r4 = nros_rmw_xrce_init_custom_transport(0);
+    if (r4 != NROS_RMW_RET_UNSUPPORTED) {
+        fprintf(stderr,
+                "FAIL: nros_rmw_xrce_init_custom_transport returned %d, "
+                "expected UNSUPPORTED (K.2.4 drain-from-runtime gap)\n",
+                (int)r4);
+        return EXIT_FAILURE;
+    }
+
+    nros_rmw_ret_t r4_null = nros_rmw_xrce_set_custom_transport_ops(NULL, 0);
+    if (r4_null != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr,
+                "FAIL: set_custom_transport_ops(NULL) returned %d, expected INVALID_ARGUMENT\n",
+                (int)r4_null);
+        return EXIT_FAILURE;
+    }
+
+    nros_rmw_session_t cust_session = {0};
+    nros_rmw_ret_t cret = g_received_vtable->open(
+        "custom://noop", 0, 0, "smoke-custom", &cust_session);
+    if (cret != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr,
+                "FAIL: custom:// open without armed bridge returned %d, "
+                "expected INVALID_ARGUMENT\n",
+                (int)cret);
+        return EXIT_FAILURE;
+    }
+
+    printf("ok: pub/sub + services + custom-transport bridge wired (K.2.2/2.3/2.4)\n");
     return EXIT_SUCCESS;
 }

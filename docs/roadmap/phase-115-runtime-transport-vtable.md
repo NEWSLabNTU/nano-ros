@@ -369,8 +369,20 @@ Ordered execution-first (policy → port → tracking entries):
     `NROS_RMW_RET_TIMEOUT`. Service-default QoS only; the
     runtime's int64_t `seq` is unused (XRCE correlates via
     `SampleIdentity`, not seq numbers).
-  - [ ] **115.K.2.4** — port Phase 115.E's
+  - [x] **115.K.2.4** — port Phase 115.E's
     `init_transport_from_custom_ops` slot-drain helper to a C TU.
+    `nros_rmw_xrce_set_custom_transport_ops(ops, framing)` copies a
+    caller-supplied vtable into backend-local storage; the four
+    trampolines (`xrce_custom_open_trampoline` etc.) fan out to the
+    user's open / close / write / read. `xrce_session_open` invoked
+    with a `custom://` locator routes through
+    `uxr_set_custom_transport_callbacks` +
+    `uxr_init_custom_transport` instead of UDP. The
+    drain-from-runtime variant (`nros_rmw_xrce_init_custom_transport`)
+    needs a `nros_rmw_take_custom_transport` C export from
+    `nros-rmw-cffi` that doesn't exist yet — documented in
+    `packages/xrce/nros-rmw-xrce-c/KNOWN-LIMITATIONS.md`. Pure-C
+    clients route around via the direct-pass entry point.
   - [ ] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`
     over to the C backend.
 

@@ -40,10 +40,17 @@ a static library + a single public header carrying the
   `xrce_service_call_raw` busy-waits via `uxr_run_session_time` for
   up to `XRCE_SERVICE_REPLY_TOTAL_MS=5000 ms`. Single-slot inbox
   per server / client.
-- [ ] **115.K.2.4 — Phase 115.E custom-transport bridge.** Port the
-  existing `init_transport_from_custom_ops` Rust helper to a C TU
-  in this crate so consumers can drain the runtime's
-  `NrosTransportOps` slot into `uxr_set_custom_transport_callbacks`.
+- [x] **115.K.2.4 — Phase 115.E custom-transport bridge.**
+  `nros_rmw_xrce_set_custom_transport_ops(ops, framing)` (declared
+  in `<nros_rmw_xrce.h>`) installs a runtime-supplied vtable into
+  backend-local storage. `xrce_session_open` invoked with a
+  `custom://` locator routes through
+  `uxr_set_custom_transport_callbacks` +
+  `uxr_init_custom_transport`; trampolines fan back out to the
+  user's open / close / write / read. The drain-from-runtime path
+  (`nros_rmw_xrce_init_custom_transport(framing)`) is a stub
+  pending a `nros_rmw_take_custom_transport` C export from
+  `nros-rmw-cffi`; see `KNOWN-LIMITATIONS.md`.
 - [ ] **115.K.2.5 — drop the Rust crate.** Once feature parity lands,
   remove `nros-rmw-xrce` and `xrce-sys` from the workspace; the
   CMake `-DNROS_C_RMW=xrce` selector switches over.
