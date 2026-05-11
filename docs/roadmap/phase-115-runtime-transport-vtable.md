@@ -1687,12 +1687,21 @@ service-less variant, +1 week for service-over-topics emulation.
   CMake hooks `find_package(PX4)` (or equivalent for PX4's
   module-build SDK; details settled when K.4.1 lands).
 
-- [ ] **115.K.4.1 — session lifecycle.** `uorb_session_open`
-  parses no locator (uORB is in-process; the locator string is
-  ignored). Stash node_name / namespace as backend state.
-  `uorb_session_close` frees state. `uorb_session_drive_io` is
-  a no-op on uORB (push-based delivery via
-  `orb_register_callback`); returns OK immediately.
+- [x] **115.K.4.1 — session lifecycle.** Landed.
+  `session_open` allocates a `SessionState { node_name[64],
+  namespace_[64], domain_id }` via `malloc` + placement-new,
+  stashes the pointer into `out->backend_data`. Locator + mode
+  ignored (uORB is in-process; broker is process-wide).
+  `session_close` runs the destructor, `free`s the state, clears
+  `backend_data`. `session_drive_io` returns `OK` immediately
+  (push-based delivery via `orb_register_callback` — nothing to
+  pump in the runtime's poll loop).
+
+  Smoke test extended to round-trip
+  open → drive_io → close + spot-check that K.4.2/K.4.3/K.4.4
+  slots still return `UNSUPPORTED`. Null-arg rejection on open
+  validated. 1/1 passing via
+  `build/nros-rmw-uorb-cpp/nros_rmw_uorb_register_smoke`.
 
 - [ ] **115.K.4.2 — pub/sub data plane.** `uorb_publisher_create`
   resolves the topic name → `orb_metadata*` via the topic
