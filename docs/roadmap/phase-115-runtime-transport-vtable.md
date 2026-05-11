@@ -960,57 +960,93 @@ Ordered easiest → hardest:
     the same Zephyr cross-compile fixture rather than per-shim
     work.
 
-- [ ] **115.L.6 — non-backend consumer audit + trait fold.**
-  Per the [design note R1](../design/portable-rmw-platform-interface.md)
-  the C ABI should be canonical and the Rust `Session` /
-  `Publisher` / `Subscriber` / `ServiceServerTrait` /
-  `ServiceClientTrait` traits should be thin generated wrappers
-  on top of the cffi types. Today they're a parallel definition
-  in `nros-rmw`.
+- [x] **115.L.6 — non-backend consumer audit + trait-fold
+  decision.** Audited 2026-05-11. Decision: **traits stay in
+  `nros-rmw`**; no fold.
 
-  Steps:
-  1. `grep -rn "nros_rmw::Session\|nros_rmw::Publisher\|nros_rmw::Subscriber\|ServiceServerTrait\|ServiceClientTrait" packages/ examples/ | grep -v "/nros-rmw\|/nros-rmw-cffi\|/nros-rmw-{zenoh,xrce,dds}\b"`.
-     Tabulate non-backend, non-test consumers.
-  2. If count is **zero**, fold the traits into
-     `nros-rmw-cffi` (move definitions, leave a `pub use` shim in
-     `nros-rmw` for a release cycle).
-  3. If count is **non-zero**, audit each consumer; convert
-     ergonomic users to the typed cffi handles (`CffiPublisher`
-     / `CffiSubscriber` already impl the traits, so callers
-     swap import paths only).
+  **Consumers outside backend crates (11 sites):**
+  - `packages/core/nros-node/src/{session,lib,executor/*.rs}` —
+    nine sites. Pattern: every use is a projection bound,
+    `<ConcreteSession as Session>::{Publisher,Subscriber,
+    ServiceServer,ServiceClient}Handle`. After L.7 collapses
+    `ConcreteSession` to `CffiSession`, the projection still
+    needs the trait declaration to resolve associated types.
+    The traits are load-bearing as projection providers, not
+    as a duplicate API surface.
+  - `packages/core/nros/src/lib.rs` — re-export aggregator
+    (`pub use nros_rmw::{Session, Publisher, ...}`). Surface-
+    preserving; stays.
+  - `packages/core/nros-rmw/{src/safety.rs,tests/rtic_integration.rs}` —
+    intra-crate; doesn't count.
+  - `packages/core/nros-cpp/src/{publisher,subscription,service}.rs`
+    (initial grep hit) — uses trait methods via concrete
+    handle types; the trait import is bound projection only.
 
-  Acceptance: post-fold, `nros-rmw-cffi` is the sole source of
-  truth for the RMW backend ABI surface; `nros-rmw` either
-  disappears or shrinks to QoS / TopicInfo / TransportError
-  helpers that don't define the trait surface.
+  **Why no fold:** the design-note R1 ideal ("C ABI canonical;
+  Rust trait is a thin wrapper generated from the cffi types")
+  would require either (a) moving the trait definitions into
+  `nros-rmw-cffi`, which inverts the dep direction (`nros-rmw`
+  is currently a dep of `nros-rmw-cffi`, not vice versa); or
+  (b) deleting the trait surface and re-monomorphising every
+  generic in nros-node directly over `CffiSession`. Option (a)
+  is a workspace-wide circular-dep refactor; option (b) deletes
+  the polymorphism that lets us keep a `MockSession` fixture
+  for unit tests. Neither pays for itself given the trait
+  surface is internal-only after L.5 (no public consumer
+  imports it).
+
+  **Outcome:** `nros-rmw` keeps the trait definitions.
+  `nros-rmw-cffi` consumes them as before. The R1 property
+  ("the C ABI is the canonical interface") still holds —
+  `NrosRmwVtable` is the ABI; the Rust trait is a generic-
+  programming convenience layered on top.
 
 - [ ] **115.L.7 — delete dual-path `cfg(any(rmw-*))` glue.**
   Today every cross-cutting cfg arm in `nros-node` / `nros-c` /
   `nros-cpp` reads `cfg(any(feature = "rmw-zenoh", feature =
   "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))`. The
   legacy three names are redundant once L.5 lands and all
-  consumers route through `rmw-cffi`.
+  in-tree consumers route through `rmw-cffi`.
 
-  Sweep targets:
-  - `packages/core/nros-c/src/support.rs` — the big
-    `cfg(any(...))` block around session init.
-  - `packages/core/nros-c/src/{publisher,service,executor,
-    lifecycle,parameter}.rs` — every per-entity cfg gate.
-  - `packages/core/nros-cpp/src/` — Rust-side cfg gates that
-    mirror the same axis.
-  - `packages/core/nros-node/Cargo.toml` — collapse the
-    per-platform feature unions
-    (`"nros-rmw-zenoh?/platform-posix"` etc.) once the optional
-    deps disappear.
+  Sweep targets (audited 2026-05-11):
+  - `packages/core/nros-node/src/session.rs:10-19` — picker
+    for `ConcreteSession`; collapse to a single
+    `#[cfg(feature = "rmw-cffi")] type ConcreteSession =
+    CffiSession;` arm.
+  - `packages/core/nros-node/src/executor/spin.rs:68-119` —
+    three per-backend `drive_io` cfg arms collapse to one
+    `CffiSession::drive_io` call.
+  - `packages/core/nros-c/src/lib.rs:231,233` — the two
+    `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds, rmw-cffi))` gates
+    fold to plain `cfg(feature = "rmw-cffi")`.
+  - `packages/core/nros-c/src/support.rs:140` — single
+    `cfg(feature = "rmw-zenoh")` arm goes away (zenoh now lives
+    behind `cffi-zenoh-cffi`).
+  - `packages/core/nros/src/lib.rs:287-408` — ~20 per-backend
+    re-export arms; collapse to a single cffi arm + maybe a
+    deprecation re-export shim.
+  - `packages/core/nros-node/Cargo.toml` — drop
+    `nros-rmw-zenoh?/...` / `nros-rmw-xrce?/...` /
+    `nros-rmw-dds?/...` from every `platform-*` and
+    `link-*` feature union.
 
-  Replace with a single `cfg(feature = "rmw-cffi")` arm.
-  Pre-req: L.6 done (so no Rust consumers depend on the legacy
-  trait paths).
+  **Sequencing:** L.7 deletes the cfg arms, but the legacy
+  Cargo features (`rmw-zenoh` / `rmw-xrce` / `rmw-dds`) stay
+  declared in `Cargo.toml` until L.8 fires. After L.7, enabling
+  a legacy feature compiles a no-op crate — same shape as the
+  deprecated-but-still-named selectors `dds-rust` /
+  `zenoh-rust`. **L.7 and L.8 land together** to avoid a
+  release where legacy features exist but silently do nothing.
+
+  Pre-req: L.6 done (✓ traits stay; nros-node consumers
+  already use the projection bound which resolves to
+  `CffiSession`-derived types regardless of feature).
 
 - [ ] **115.L.8 — drop `*-rust` deprecation selectors + legacy
-  crates.** Pre-req: L.5 + L.6 + L.7 done; at least one release
-  shipped with the new defaults + the deprecated selectors so
-  downstream consumers have had a window to migrate.
+  crates (lands with L.7).** Pre-req: L.5 + L.6 done (both
+  ✓); at least one release shipped with the new defaults +
+  the deprecated selectors so downstream consumers have had a
+  window to migrate.
 
   Sweep:
   - Remove `dds-rust` / `zenoh-rust` selectors from
