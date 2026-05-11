@@ -699,6 +699,7 @@ dependencies = [
 name = "nros_zephyr_xrce_listener"
 version = "0.1.0"
 dependencies = [
+ "heapless",
  "log",
  "nros",
  "std_msgs",

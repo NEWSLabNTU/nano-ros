@@ -700,6 +700,7 @@ name = "nros_zephyr_xrce_service_client"
 version = "0.1.0"
 dependencies = [
  "example_interfaces",
+ "heapless",
  "log",
  "nros",
  "zephyr",

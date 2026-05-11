@@ -1,7 +1,7 @@
 # Phase 120 — Pre-Existing Baseline Failures
 
 **Goal:** Drive the 4 pre-existing `just test-all` failures left over from Phase 119 down to zero.
-**Status:** 1 fixed (`test_xrce_action_fibonacci`); 3 remain (Zephyr/ThreadX RTOS embedded tests with hardcoded XRCE agent port + similar infrastructure-level issues, deferred to a follow-up).
+**Status:** 2 fixed (`test_xrce_action_fibonacci`, `test_zephyr_xrce_rust_action_e2e`). 2 remain on ThreadX RISC-V QEMU (transport-timing on the zenoh-pico backend, pre-existing — out of scope for a quick session). Net `just test-all` result: 717/720 passed, 2 hard fails + 1 flaky.
 **Priority:** Medium (cleanup; no test is gating a release).
 **Depends on:** Phase 119.3.
 
@@ -55,12 +55,12 @@ The fix shape: have the Rust embedded examples read `zephyr::kconfig::CONFIG_NRO
 - **Files:** `packages/core/nros-node/src/executor/action_core.rs`, `packages/core/nros-node/src/executor/handles.rs`.
 - [x] Six `map_err(...)` sites that collapsed all transport errors to `ServiceRequestFailed` now match-on `TransportError::NoData` and return `Ok(None)` for the steady-state polling case.
 
-### 120.2 — Zephyr Rust XRCE locator from Kconfig — **TODO**
+### 120.2 — Zephyr Rust XRCE locator from Kconfig — **DONE**
 
-Make the Zephyr Rust XRCE examples (`examples/zephyr/rust/xrce/{talker,listener,service-{server,client},action-{server,client}}/src/lib.rs`) read `zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR` + `CONFIG_NROS_XRCE_AGENT_PORT` instead of hardcoding `"127.0.0.1:2018"`. Requires either:
-
-- A no_std-friendly `const_str` macro (since `ExecutorConfig::new` wants `&str`), or
-- A `heapless::String<64>` built at `run()` entry from `write!(...)`.
+- **Files:** `examples/zephyr/rust/xrce/{talker,listener,service-{server,client},action-{server,client}}/src/lib.rs`, matching `Cargo.toml`s.
+- [x] Each example's `run()` body now assembles the XRCE locator from `zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR` and `CONFIG_NROS_XRCE_AGENT_PORT` into a `heapless::String<48>`, then passes that to `ExecutorConfig::new(&locator)`.
+- [x] Added `heapless = "0.8"` to the five `Cargo.toml` files that didn't already have it (action-server already had it).
+- [x] Verified: `test_zephyr_xrce_rust_action_e2e` passes after the fix; was failing with `Transport(ConnectionFailed)` because the agent ran on port 2038 but the binary hardcoded `127.0.0.1:2018`.
 
 ### 120.3 — ThreadX Rust XRCE locator — **TODO**
 
