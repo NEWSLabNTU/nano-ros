@@ -810,6 +810,11 @@ verify-verus:
     cargo verus verify
     echo "[OK] All Verus proofs verified"
 
+# Verify Phase 118.E size-probe rigorization: cross-mode parity,
+# cross-target build under isolated mode, concurrency soak.
+verify-size-probe:
+    bash packages/testing/nros-tests/tests/size_probe_verify.sh
+
 # Run all verification: Kani bounded model checking + Verus deductive verification
 verify: verify-kani verify-verus
 

@@ -5,40 +5,65 @@
 //! This crate provides two helpers that consumer build scripts (`nros-c/build.rs`,
 //! `nros-cpp/build.rs`) can call to recover those sizes at build time:
 //!
-//! * [`find_dep_rlib`] — locate the rlib for a direct dependency in the current
-//!   cargo build.
+//! * [`find_dep_rlib`] — locate the rlib for a direct dependency by spawning
+//!   a nested `cargo build --message-format=json` and parsing the artifact event.
 //! * [`extract_sizes`] — parse an rlib as an `ar` archive and, for every defined
 //!   symbol whose name begins with a given prefix, record its storage size.
 //!
 //! See [Phase 87](../../../../docs/roadmap/phase-87-nros-cpp-compile-time-sizes.md)
 //! for the motivating design; [Phase 118.E](../../../../docs/roadmap/phase-118-E-size-probe-rigorization.md)
-//! for the current race-hardening approach.
+//! for the race-hardening rewrite.
 //!
-//! # Probe modes
+//! # Probe mechanism
 //!
-//! Selected via the `NROS_SIZES_PROBE_MODE` env var:
+//! Two layered paths. The first that succeeds wins.
 //!
-//! * `filesystem` (default) — use `cargo metadata` to locate the workspace
-//!   target dir deterministically, then watch
-//!   `<target>/<triple>/<profile>/deps/` for the rlib, with bounded retry. This
-//!   relies on the outer cargo's build-graph ordering (which guarantees `nros`
-//!   lib compile completes before `nros-c` lib compile) but races with the
-//!   parallel scheduler at build-script time.
+//! 1. **Isolated nested cargo (primary).** Spawns `cargo build -p <crate>
+//!    --target=<triple> --no-default-features --features=<resolved>
+//!    --message-format=json` against a probe-only target dir
+//!    (`$OUT_DIR/sizes-probe-target-<rustc-slug>/` by default; override
+//!    via `NROS_SIZES_PROBE_TARGET_DIR`). The probe-only target dir
+//!    sidesteps the outer cargo's exclusive flock on its target dir —
+//!    same-dir nested invocations deadlock because cargo holds the lock
+//!    for the entire outer build, including time waiting on build-script
+//!    subprocesses. The `compiler-artifact` JSON event reports the
+//!    canonical rlib path deterministically on completion. Cost: one
+//!    duplicate compile of the probed crate per (target, features) on a
+//!    cold probe cache; warm-cache reruns are sub-second.
 //!
-//! * `isolated` — spawn a nested `cargo build -p <crate> --target=<triple>
-//!   --message-format=json` against a probe-only target dir
-//!   (`$OUT_DIR/sizes-probe-target`). Deterministic — the artifact event
-//!   reports the canonical rlib path on completion. Costs a duplicate
-//!   compile of the probed crate on cold cache; subsequent runs hit the
-//!   probe cache and are sub-second. Useful for strict-determinism builds
-//!   (CI, release tagging) where the retry-based filesystem path's tail
-//!   latency is unacceptable.
+//! 2. **Filesystem watch (fallback).** Used when the isolated path can't
+//!    reproduce the outer build's environment — typically custom-target
+//!    JSON specs (`armv7a-nuttx-eabihf`) that need `[unstable] build-std`
+//!    configs which don't propagate cleanly across `CARGO_TARGET_DIR`
+//!    boundaries. Watches `<target>/<triple>/<profile>/deps/` for the
+//!    rlib produced by the outer build, with a configurable timeout
+//!    (`NROS_SIZES_PROBE_TIMEOUT_SECS`, default 60s).
 //!
-//! # Timeouts
+//! Force the fallback path with `NROS_SIZES_PROBE_MODE=filesystem` (e.g.
+//! when nested cargo is undesirable on slow filesystems / CI runners
+//! where the extra compile cost outweighs the determinism benefit).
 //!
-//! `NROS_SIZES_PROBE_TIMEOUT_SECS` (default `60`) bounds the filesystem-mode
-//! wait. Set higher on cold-cache CI runners that compile `nros` from
-//! scratch in parallel; set lower for fast-fail in interactive development.
+//! # Corrosion / cross-toolchain compatibility
+//!
+//! Cross-build env (corrosion-driven CMake, etc.) leaks target-side
+//! `RUSTFLAGS` into every rustc invocation, which breaks host-side
+//! proc-macro compiles inside the nested cargo. The probe strips
+//! `RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`,
+//! `CARGO_BUILD_TARGET`, and `CARGO_BUILD_TARGET_DIR` from the nested
+//! env. Safe because:
+//!
+//! * Rlibs don't link → link-args don't apply.
+//! * `size_of::<T>()` depends on the target *triple*'s data layout, not on
+//!   `-C target-cpu` / `-C target-feature` (those affect codegen, not layout).
+//!
+//! `--no-default-features` is mandatory on the nested invocation: most
+//! nros crates default to `std`, which would auto-link on bare-metal
+//! targets and fail. The explicit `--features` arg below restores
+//! whatever the consumer activated (including `std` when target=host).
+//!
+//! When even the env scrubbing isn't enough (e.g. custom-target JSON
+//! specs that don't resolve in the nested invocation), the filesystem
+//! fallback takes over.
 
 use std::{
     collections::HashMap,
@@ -103,58 +128,50 @@ impl From<object::Error> for Error {
     }
 }
 
-/// Probe-strategy selector. See module docs for the env-var contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProbeMode {
-    /// Watch `<target>/<triple>/<profile>/deps/` for the rlib emitted by
-    /// the outer cargo build. Fast on a warm cache; races against the
-    /// outer cargo's parallel scheduler so requires bounded retry.
-    Filesystem,
-    /// Spawn a nested `cargo build -p <crate>` against
-    /// `$OUT_DIR/sizes-probe-target/` and parse the JSON artifact event.
-    /// Deterministic; pays one extra compile per (target, features) on a
-    /// cold cache.
-    Isolated,
-}
-
-impl ProbeMode {
-    /// Read `NROS_SIZES_PROBE_MODE` (case-insensitive) — `isolated` selects
-    /// the nested-cargo path; anything else (including unset) selects the
-    /// filesystem path.
-    pub fn from_env() -> Self {
-        match env::var("NROS_SIZES_PROBE_MODE").as_deref().map(str::trim) {
-            Ok(s) if s.eq_ignore_ascii_case("isolated") => Self::Isolated,
-            _ => Self::Filesystem,
-        }
-    }
-}
-
-/// Locate the rlib for `crate_name` that contains Phase 87's size-probe
+/// Locate the rlib for `crate_name` containing Phase 87's size-probe
 /// symbols (any defined symbol starting with `symbol_prefix`).
 ///
-/// Dispatches on [`ProbeMode::from_env`]. See module docs for the two paths.
+/// Tries the deterministic nested-cargo path first; on failure falls
+/// back to watching the outer cargo's target dir for the rlib (the
+/// pre-118.E behaviour, retained for cases where nested cargo can't
+/// reproduce the build environment — typically custom-target JSON
+/// specs with `[unstable] build-std` configs that don't propagate
+/// across `CARGO_TARGET_DIR` boundaries).
+///
+/// Disable the isolated path entirely with
+/// `NROS_SIZES_PROBE_MODE=filesystem`.
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
-    match ProbeMode::from_env() {
-        ProbeMode::Filesystem => find_dep_rlib_filesystem(crate_name, symbol_prefix),
-        ProbeMode::Isolated => find_dep_rlib_isolated(crate_name, symbol_prefix),
+    let force_fs = env::var("NROS_SIZES_PROBE_MODE")
+        .ok()
+        .is_some_and(|s| s.eq_ignore_ascii_case("filesystem"));
+    if !force_fs {
+        match find_dep_rlib_isolated(crate_name, symbol_prefix) {
+            Ok(p) => return Ok(p),
+            Err(e) => {
+                println!(
+                    "cargo:warning=nros-sizes-build: isolated probe failed; \
+                     falling back to filesystem watch. cause: {e}"
+                );
+            }
+        }
     }
+    find_dep_rlib_filesystem(crate_name, symbol_prefix)
 }
 
-/// Default filesystem-watch path. Uses `cargo metadata` to resolve the
-/// workspace target dir, then waits for the rlib to appear at
-/// `<target>/<triple>/<profile>/deps/lib<crate>-*.rlib`, polling at 200 ms
-/// ticks. Timeout configurable via `NROS_SIZES_PROBE_TIMEOUT_SECS`
-/// (default 60s). After the rlib appears, retries `extract_sizes` for up
-/// to 5s for the symbol table to flush.
+/// Filesystem-watch fallback path. Used when the nested-cargo probe
+/// fails (custom-target JSON specs, `build-std` configs, etc.) or
+/// when `NROS_SIZES_PROBE_MODE=filesystem` is set explicitly.
+///
+/// Resolves the workspace target dir via `cargo metadata` (or
+/// `CARGO_TARGET_DIR` / OUT_DIR walking) and polls
+/// `<target>/<triple>/<profile>/deps/` for the rlib. Timeout via
+/// `NROS_SIZES_PROBE_TIMEOUT_SECS` (default 60s).
 fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let target_dir = cargo_target_dir()?;
     let triple = env::var("TARGET").ok();
     let host = env::var("HOST").ok();
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
-    // Phase 77.25: under cross-compile, only the target-triple rlib has
-    // correct pointer-size-dependent sizes. The host-triple rlib (a
-    // build-dep artefact) must NOT be read when target != host.
     let mut searched = Vec::new();
     if let Some(triple) = triple.as_deref() {
         searched.push(target_dir.join(triple).join(&profile).join("deps"));
@@ -197,14 +214,13 @@ fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<Pat
                 }
             }
         }
-
         if !candidates.is_empty() || start.elapsed() >= timeout {
             break;
         }
         if last_progress.elapsed() >= std::time::Duration::from_secs(10) {
             println!(
                 "cargo:warning=nros-sizes-build: waiting for lib{crate_name}-*.rlib \
-                 (elapsed {}s of {}s timeout) — outer cargo still building?",
+                 (elapsed {}s of {}s timeout)",
                 start.elapsed().as_secs(),
                 timeout_secs
             );
@@ -241,28 +257,24 @@ fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<Pat
         })
 }
 
-/// Phase 118.E: deterministic nested-cargo probe.
-///
-/// Spawns `cargo build -p <crate> --target=<triple> [--release]
-/// --message-format=json` against a probe-only target dir to avoid
-/// flock contention with the outer cargo (cargo holds an exclusive
-/// flock on the target dir for the entire build; nested invocations
-/// against the same dir deadlock). Parses `compiler-artifact` events
-/// for the requested crate name; returns the first rlib filename.
-///
-/// Probe target dir defaults to `$OUT_DIR/sizes-probe-target` so it
-/// lives alongside the consumer's build artefacts and cleans up with
-/// `cargo clean`. Override via `NROS_SIZES_PROBE_TARGET_DIR`.
 fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target = env::var("TARGET").map_err(|_| Error::MalformedMetadata("TARGET"))?;
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
+    // Phase 118.E.2 (rustc isolation): include a slug derived from
+    // `rustc -V` in the probe target dir name. Without it, switching
+    // toolchains (e.g. rustup nightly → stable, or a corrosion build
+    // that overrides CARGO_BUILD_RUSTC) leaves rmeta files in the
+    // probe dir compiled by the previous rustc; the next cargo run
+    // explodes with E0514 "found crate `X` compiled by an incompatible
+    // version of rustc" instead of recompiling from scratch.
     let probe_target_dir = if let Ok(dir) = env::var("NROS_SIZES_PROBE_TARGET_DIR") {
         PathBuf::from(dir)
     } else {
         let out_dir = env::var("OUT_DIR").map_err(|_| Error::MalformedMetadata("OUT_DIR"))?;
-        PathBuf::from(out_dir).join("sizes-probe-target")
+        let rustc_slug = rustc_version_slug();
+        PathBuf::from(out_dir).join(format!("sizes-probe-target-{rustc_slug}"))
     };
 
     let mut cmd = Command::new(&cargo);
@@ -272,18 +284,57 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         .arg(crate_name)
         .arg("--target")
         .arg(&target)
+        // Phase 118.E.2: must disable default features so the nested
+        // invocation matches the outer's intent. Most nros crates
+        // default to `std`; on bare-metal targets (`thumbv7m-none-eabi`
+        // etc.) auto-enabling `std` makes `nros-serdes` and friends
+        // emit `extern crate std` and fail with E0463 "can't find crate
+        // for `std`". The explicit `--features` arg below restores
+        // whatever the consumer actually activated (including `std`
+        // when target=host).
+        .arg("--no-default-features")
         .arg("--message-format=json-render-diagnostics");
     if profile == "release" {
         cmd.arg("--release");
     }
 
-    // Forward the consumer's active feature set. The build script's
-    // `CARGO_FEATURE_<NAME>` env vars describe the consumer crate's
-    // features, not the probed crate's — but downstream forwarding via
-    // a `--features` arg works if the names match. Consumer crates
-    // (`nros-c`, `nros-cpp`) re-export `nros`'s RMW backend features
-    // by the same names, so this is a safe identity forward.
-    let forwarded = forwarded_features();
+    // Phase 118.E.2 (corrosion compat): scrub env vars that the outer
+    // cross-build (typically corrosion-driven CMake) injects globally
+    // and which break the nested cargo's host-side proc-macro compiles.
+    // `RUSTFLAGS` applies to every rustc invocation under cargo,
+    // including host crates like `proc-macro2`; cross-target link-args
+    // (`-C link-arg=...`, `-C linker=...`) make those fail. Stripping
+    // them is safe for size-probing because:
+    //   * rlibs don't link, so link-args don't matter;
+    //   * `size_of::<T>()` depends on the target *triple*'s data
+    //     layout, not on `-C target-cpu` / `-C target-feature` (those
+    //     control codegen, not layout).
+    // We keep `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` because it's already
+    // target-scoped and won't poison host builds.
+    for var in [
+        "RUSTFLAGS",
+        "CARGO_BUILD_RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "CARGO_BUILD_TARGET",
+        "CARGO_BUILD_TARGET_DIR",
+    ] {
+        cmd.env_remove(var);
+    }
+
+    // Phase 118.E.2: derive the feature set for the nested invocation
+    // by intersecting the consumer's active features (CARGO_FEATURE_*
+    // env vars) with the probed crate's declared features (queried via
+    // `cargo metadata --no-deps`). This filter is necessary because
+    // consumer crates may carry features the probed crate doesn't
+    // (e.g. `unstable-zenoh-api` is exposed by nros-cpp but not by
+    // nros), and `cargo build --features <unknown>` errors out.
+    let forwarded = resolved_features_for(crate_name).unwrap_or_else(|e| {
+        println!(
+            "cargo:warning=nros-sizes-build: feature-set resolution \
+             failed ({e}); falling back to identity forwarding"
+        );
+        forwarded_features()
+    });
     if !forwarded.is_empty() {
         cmd.arg("--features").arg(forwarded.join(","));
     }
@@ -292,9 +343,30 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         .output()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
     if !output.status.success() {
+        // Write full stderr to a debug log next to the probe target dir
+        // so the user can inspect the actual rustc error message; the
+        // `cargo:warning=` carries only a path pointer + short summary.
+        let log_path = probe_target_dir.join("nested-cargo-stderr.log");
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&log_path, &output.stderr);
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let last = stderr
+            .lines()
+            .filter(|l| l.starts_with("error") || l.starts_with("  --> ") || l.starts_with("note:"))
+            .take(6)
+            .collect::<Vec<_>>()
+            .join(" | ");
         return Err(Error::CargoMetadata(format!(
-            "nested cargo build failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "nested cargo build failed (full log: {}): {}",
+            log_path.display(),
+            if last.is_empty() {
+                "(no error-prefixed lines captured)"
+            } else {
+                &last
+            }
         )));
     }
 
@@ -342,6 +414,103 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         crate_name: crate_name.to_string(),
         searched: vec![probe_target_dir],
     })
+}
+
+/// Phase 118.E.2: intersect consumer's active features with the probed
+/// crate's declared features.
+///
+/// Algorithm:
+///
+/// 1. Read consumer's `CARGO_FEATURE_<NAME>=1` env vars (via
+///    [`forwarded_features`]) — the names the outer cargo activated on
+///    the consumer crate.
+/// 2. Run `cargo metadata --format-version=1 --no-deps` from
+///    `CARGO_MANIFEST_DIR` to list workspace packages. Walk packages
+///    for one named `crate_name` (the probed crate) and read its
+///    `features` table (the full feature universe declared in its
+///    `Cargo.toml`).
+/// 3. Return the intersection — features the consumer activated AND
+///    the probed crate actually declares. Anything else would cause
+///    `cargo build --features <unknown>` to error.
+///
+/// Returns an empty Vec (not an error) if the probed crate isn't
+/// listed in the workspace metadata; isolated-mode callers fall back
+/// to identity forwarding in that case via [`forwarded_features`].
+fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
+    use std::collections::HashSet;
+
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| Error::MalformedMetadata("CARGO_MANIFEST_DIR"))?;
+
+    let output = Command::new(&cargo)
+        .arg("metadata")
+        .arg("--format-version=1")
+        .arg("--no-deps")
+        .current_dir(&manifest_dir)
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(Error::CargoMetadata(
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ));
+    }
+
+    let meta: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| Error::CargoMetadata(format!("invalid JSON: {e}")))?;
+
+    let packages = meta
+        .get("packages")
+        .and_then(|p| p.as_array())
+        .ok_or(Error::MalformedMetadata("packages"))?;
+
+    let declared: HashSet<String> = packages
+        .iter()
+        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some(crate_name))
+        .and_then(|p| p.get("features"))
+        .and_then(|f| f.as_object())
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+
+    if declared.is_empty() {
+        // Crate not listed in `--no-deps` workspace metadata (e.g. a
+        // git or registry dep). Caller's fallback handles it.
+        return Ok(Vec::new());
+    }
+
+    Ok(forwarded_features()
+        .into_iter()
+        .filter(|f| declared.contains(f))
+        .collect())
+}
+
+/// Produce a path-safe slug from `rustc -V` (or `$CARGO_BUILD_RUSTC -V`
+/// when set) for use as a probe target dir suffix. Keeps probe
+/// artefacts from different rustc versions / channels from colliding.
+fn rustc_version_slug() -> String {
+    let rustc = env::var_os("CARGO_BUILD_RUSTC")
+        .or_else(|| env::var_os("RUSTC"))
+        .unwrap_or_else(|| "rustc".into());
+    let output = Command::new(&rustc).arg("-V").output();
+    let version = output
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_else(|| "unknown".to_string());
+    // Sanitize: keep [A-Za-z0-9._-], replace others with '-'.
+    let mut slug = String::with_capacity(version.len());
+    for c in version.trim().chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+            slug.push(c);
+        } else {
+            slug.push('-');
+        }
+    }
+    if slug.is_empty() {
+        slug.push_str("unknown");
+    }
+    slug
 }
 
 /// Collect feature names the consumer build script was invoked with.
@@ -544,22 +713,17 @@ fn rustc_host_triple() -> Result<String, Error> {
     ))
 }
 
-/// Parse `cargo metadata --format-version=1 --no-deps` and return `target_directory`.
+/// Resolve the workspace target directory for the filesystem-fallback path.
+///
+/// Order: `CARGO_TARGET_DIR` env override → walk `OUT_DIR` for the
+/// `<target>/[triple]/<profile>/build/` ancestor → `cargo metadata`.
 fn cargo_target_dir() -> Result<PathBuf, Error> {
-    // Respect an explicit override first — keeps downstream builds that set
-    // CARGO_TARGET_DIR (e.g. cargo-chef) working without a metadata hop.
     if let Ok(dir) = env::var("CARGO_TARGET_DIR")
         && !dir.is_empty()
     {
         return Ok(PathBuf::from(dir));
     }
 
-    // Corrosion (CMake) invokes cargo with `--target-dir <custom>` which
-    // doesn't export `CARGO_TARGET_DIR`, and `cargo metadata` returns the
-    // workspace default rather than the active `--target-dir`. Derive the
-    // real target dir from `OUT_DIR`, which cargo sets to
-    // `<target>/[triple]/<profile>/build/<pkg>-<hash>/out` for every build
-    // script.
     if let Ok(out) = env::var("OUT_DIR") {
         let out = PathBuf::from(out);
         let mut p = out.as_path();
@@ -569,10 +733,6 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
                 && let Some(triple_or_target) = profile_dir.parent()
                 && let Some(name) = triple_or_target.file_name().and_then(|s| s.to_str())
             {
-                // Structure above "build" is .../<target>/[triple]/<profile>/build.
-                // If the dir name looks like a target triple (contains '-'),
-                // the target directory is one level higher; otherwise this IS
-                // the target directory.
                 if name.contains('-') {
                     if let Some(target) = triple_or_target.parent() {
                         return Ok(target.to_path_buf());
@@ -588,7 +748,6 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest_dir = env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| Error::MalformedMetadata("CARGO_MANIFEST_DIR"))?;
-
     let output = Command::new(&cargo)
         .arg("metadata")
         .arg("--format-version=1")
@@ -596,16 +755,13 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
         .current_dir(&manifest_dir)
         .output()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
-
     if !output.status.success() {
         return Err(Error::CargoMetadata(
             String::from_utf8_lossy(&output.stderr).into_owned(),
         ));
     }
-
     let meta: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|e| Error::CargoMetadata(format!("invalid JSON: {e}")))?;
-
     meta.get("target_directory")
         .and_then(|v| v.as_str())
         .map(PathBuf::from)
@@ -621,44 +777,6 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    #[test]
-    fn probe_mode_default_is_filesystem() {
-        let _g = env_lock();
-        // SAFETY: protected by env_lock; no concurrent reads/writes
-        unsafe {
-            env::remove_var("NROS_SIZES_PROBE_MODE");
-        }
-        assert_eq!(ProbeMode::from_env(), ProbeMode::Filesystem);
-    }
-
-    #[test]
-    fn probe_mode_isolated_via_env() {
-        let _g = env_lock();
-        unsafe {
-            env::set_var("NROS_SIZES_PROBE_MODE", "isolated");
-        }
-        assert_eq!(ProbeMode::from_env(), ProbeMode::Isolated);
-        unsafe {
-            env::set_var("NROS_SIZES_PROBE_MODE", "ISOLATED");
-        }
-        assert_eq!(ProbeMode::from_env(), ProbeMode::Isolated);
-        unsafe {
-            env::remove_var("NROS_SIZES_PROBE_MODE");
-        }
-    }
-
-    #[test]
-    fn probe_mode_unknown_value_falls_back_to_filesystem() {
-        let _g = env_lock();
-        unsafe {
-            env::set_var("NROS_SIZES_PROBE_MODE", "garbage");
-        }
-        assert_eq!(ProbeMode::from_env(), ProbeMode::Filesystem);
-        unsafe {
-            env::remove_var("NROS_SIZES_PROBE_MODE");
-        }
     }
 
     #[test]

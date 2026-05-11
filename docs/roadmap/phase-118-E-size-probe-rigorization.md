@@ -1,7 +1,7 @@
 # Phase 118.E — Size-Probe Rigorization
 
 **Goal:** Replace the parallel-build retry loop in `nros-sizes-build::find_dep_rlib` with a deterministic mechanism. Investigate cbindgen const propagation as the leading candidate; document findings; pick an actionable path.
-**Status:** 118.E.1 + .5 + .6-prep landed (probe-mode dispatch, env-var contract, unit tests, doc updates, llvm-nm portability fixes). Filesystem mode remains default; `isolated` opt-in works end-to-end. .2/.3/.4 pending.
+**Status:** **DONE** for the common case. Layered probe: isolated nested-cargo path primary (deterministic, default), filesystem watch fallback (handles custom-target JSON specs with `build-std` configs that the nested invocation can't reproduce). 118.E.1/.2/.3/.4/.5 landed; .6 (filesystem path removal) deferred — the fallback is load-bearing for custom-target builds.
 **Priority:** Medium (build reliability; current retry loop works but flakes under parallel + slow filesystems).
 **Depends on:** Phase 118.B (rlib probe canonical, hand-math deleted), Phase 118.C (retry loop introduced as stopgap).
 
@@ -127,6 +127,64 @@ script-driven codegen (cxx, cbindgen, autocxx, bindgen-with-types).
 Track as a stretch goal; not blocking.
 
 ## Work Items
+
+### 118.E.6 — Filesystem path retirement — **WON'T-DO**
+
+Initial plan called for deleting the filesystem-watch path once
+isolated mode was validated. Empirically the filesystem path is
+load-bearing for custom-target JSON specs (e.g. `armv7a-nuttx-eabihf`)
+that need `[unstable] build-std` configs which don't propagate cleanly
+across the nested invocation's `CARGO_TARGET_DIR` boundary. Removing
+it would break NuttX cross builds. The two paths are now layered:
+isolated primary (deterministic, default), filesystem fallback
+(transparent on isolated-path failure). `NROS_SIZES_PROBE_MODE=filesystem`
+opts out of the isolated path entirely (e.g. on slow CI runners
+where the duplicate compile is more expensive than the retry).
+
+### 118.E.4 — Concurrency soak — **DONE**
+
+- **Files:** `packages/testing/nros-tests/tests/size_probe_verify.sh`, `justfile`.
+- [x] Added `just verify-size-probe` recipe + shell script that
+  exercises both probe modes back-to-back. Parity check: filesystem
+  mode and isolated mode produce bit-identical `#define NROS_*_SIZE`
+  values. 3-round soak under each mode (cargo clean + rebuild)
+  validates that no flake mode has crept in across consecutive
+  parallel builds with `-j 8`.
+
+### 118.E.3 — Cross-pointer-size validation — **PARTIAL**
+
+- **Files:** `packages/testing/nros-tests/tests/size_probe_verify.sh`.
+- [x] Optional 32-bit-target probe check (opt-in via
+  `rustup target add i686-unknown-linux-gnu`).
+- Cross-target validation across the ARM / RISC-V matrix is implicit:
+  `just build-all` exercises 24+ cross-target builds (FreeRTOS,
+  NuttX, ThreadX, Zephyr, ESP32), each of which invokes the probe.
+  All pass with `--features` resolution working correctly.
+
+### 118.E.2 — Feature-set resolver via `cargo metadata` — **DONE**
+
+- **Files:** `packages/core/nros-sizes-build/src/lib.rs` (`resolved_features_for`).
+- [x] `resolved_features_for(crate_name)` runs `cargo metadata
+  --format-version=1 --no-deps`, finds the workspace package for
+  `crate_name`, and intersects the consumer's `CARGO_FEATURE_*` env
+  with the probed crate's declared features. Fixes the issue where
+  identity-forwarding would pass consumer-only features (e.g.
+  `unstable-zenoh-api`) and cause `cargo build --features <unknown>`
+  to error.
+- [x] Nested-cargo invocation now also passes `--no-default-features`
+  so cross-builds for bare-metal targets don't auto-enable `std`
+  (which would trigger E0463 "can't find crate for `std`" on
+  `thumbv7m-none-eabi` etc.).
+- [x] `rustc_version_slug()` discriminates the probe target dir
+  per-toolchain so rustup channel switches (nightly ↔ stable) or
+  corrosion's `CARGO_BUILD_RUSTC` overrides don't poison the dir
+  with rmeta files compiled by a different rustc → E0514 "found
+  crate `X` compiled by an incompatible version of rustc".
+- [x] Env scrubbing: strip `RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS`,
+  `CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_TARGET`,
+  `CARGO_BUILD_TARGET_DIR` from the nested invocation's env so
+  corrosion-injected target-side flags don't poison host-side
+  proc-macro compiles.
 
 ### 118.E.1 — Prototype nested-cargo probe — **DONE**
 
