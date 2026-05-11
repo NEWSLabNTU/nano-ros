@@ -62,20 +62,50 @@ The fix shape: have the Rust embedded examples read `zephyr::kconfig::CONFIG_NRO
 - [x] Added `heapless = "0.8"` to the five `Cargo.toml` files that didn't already have it (action-server already had it).
 - [x] Verified: `test_zephyr_xrce_rust_action_e2e` passes after the fix; was failing with `Transport(ConnectionFailed)` because the agent ran on port 2038 but the binary hardcoded `127.0.0.1:2018`.
 
-### 120.3 — ThreadX Rust XRCE locator — **TODO**
+### 120.3 — ThreadX RV64 Rust action E2E — **DEFERRED (best-effort attempted)**
 
-Same fix in `examples/threadx-riscv64/rust/xrce/*` (or wherever the ThreadX action example lives).
+`test_rtos_action_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust`.
+Path is the **zenoh-pico** action client/server (not XRCE — separate failure
+shape from 120.2). C and C++ on the same QEMU/transport pass; only Rust
+manual-poll fails.
 
-### 120.4 — ThreadX DDS talker→listener — **TODO**
+What landed (still red after):
 
-`test_threadx_rv64_dds_rust_talker_to_listener_e2e` — needs investigation. Likely separate from the port-hardcoding issue.
+- `nros-rmw-zenoh::shim::service::send_request_raw` no_std path: replaced
+  3-attempt tight retry with `80 × 5 ms z_sleep_ms` (400 ms budget) so
+  transient query-slot contention has time to clear.
+- `examples/qemu-riscv64-threadx/rust/zenoh/action-client/src/main.rs`:
+  outer 5-attempt retry around send_goal + accept-poll, matching the C
+  action client's structure.
+
+Symptom after both changes: `send_goal` returns Ok on attempt 1, but the
+50 s accept-poll window expires with no reply. Subsequent retries fail
+with `RequestInFlight` because the in-flight promise from attempt 1 still
+holds the goal-service slot.
+
+Suspected root cause: server-side queryable on this transport (NetX Duo
+BSD + zenoh-pico) never sees the request, or reply path doesn't make it
+back. Confirming would need server-side stdout capture in the test
+fixture (currently only client output is captured) and likely zenoh-pico
+trace logging on both sides. Out of scope for this session — booked as a
+follow-up; pre-existing failure, not a Phase 119/120 regression.
+
+### 120.4 — ThreadX RV64 DDS talker→listener — **DEFERRED**
+
+`test_threadx_rv64_dds_rust_talker_to_listener_e2e`. Different backend
+(dust-dds Rust, not zenoh-pico), not investigated this session. Pre-existing.
 
 ## Acceptance
 
 - [x] 120.1 lands; `test_xrce_action_fibonacci` passes.
-- [ ] 120.2 + 120.3 land; Zephyr + ThreadX Rust XRCE tests pass.
-- [ ] 120.4 lands; ThreadX DDS talker test passes.
+- [x] 120.2 lands; Zephyr Rust XRCE tests pass.
+- [ ] 120.3 lands; ThreadX RV64 Rust action zenoh-pico E2E passes (deferred — server-side investigation needed).
+- [ ] 120.4 lands; ThreadX RV64 Rust DDS talker test passes (deferred).
 - [ ] `just test-all`: 720/720 pass.
+
+Net result this session: 8 of 13 pre-existing baseline failures fixed
+(Phase 119 + 120.1 + 120.2). The remaining 2 hard fails are both on
+ThreadX RV64 Rust embedded targets and need separate investigation.
 
 ## Notes
 
