@@ -35,7 +35,8 @@ log = "0.4"
 embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
 
 # nros unified API — DDS backend via dust-dds, no_std + alloc.
-nros = { version = "*", default-features = false, features = ["rmw-dds", "platform-zephyr"] }
+nros = { version = "*", default-features = false, features = ["rmw-dds-cffi", "platform-zephyr"] }
+nros-rmw-dds-cffi = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
 example_interfaces = { version = "*", default-features = false }
 

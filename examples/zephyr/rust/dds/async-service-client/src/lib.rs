@@ -75,6 +75,9 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
     let config = nros::ExecutorConfig::new("")
         .domain_id(0)
         .node_name("dds_async_service_client");
+    // Phase 115.L.5-zephyr — install dds C-vtable backend.
+    nros_rmw_dds_cffi::register().expect("dds RMW register failed");
+
     let mut nros_exec = nros::Executor::open(&config)?;
 
     let mut client = {

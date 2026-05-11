@@ -61,6 +61,9 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
     let config = nros::ExecutorConfig::new("tcp/127.0.0.1:7466");
+    // Phase 115.L.5-zephyr — install zenoh C-vtable backend.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let mut nros_exec = nros::Executor::open(&config)?;
 
     // Create client — it's an owned type (no lifetime tied to node or executor).

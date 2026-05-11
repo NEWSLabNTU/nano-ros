@@ -28,6 +28,9 @@ fn run() -> Result<(), NodeError> {
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
     let config = ExecutorConfig::new("").domain_id(0).node_name("listener");
+    // Phase 115.L.5-zephyr — install dds C-vtable backend.
+    nros_rmw_dds_cffi::register().expect("dds RMW register failed");
+
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut count: u32 = 0;

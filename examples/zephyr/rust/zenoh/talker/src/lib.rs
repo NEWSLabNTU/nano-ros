@@ -32,6 +32,9 @@ fn run() -> Result<(), NodeError> {
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
     let config = ExecutorConfig::new("tcp/127.0.0.1:7456");
+    // Phase 115.L.5-zephyr — install zenoh C-vtable backend.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("talker")?;

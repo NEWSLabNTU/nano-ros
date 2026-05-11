@@ -34,6 +34,9 @@ fn run() -> Result<(), NodeError> {
     let _ = nros::platform::zephyr::wait_for_network(2000);
 
     let config = ExecutorConfig::new("tcp/127.0.0.1:7476");
+    // Phase 115.L.5-zephyr — install zenoh C-vtable backend.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;
     let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;

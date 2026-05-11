@@ -36,6 +36,9 @@ fn run() -> Result<(), NodeError> {
     // DDS uses domain_id, not a locator string. Pass an empty locator
     // and let dust-dds derive the RTPS port set from the domain id.
     let config = ExecutorConfig::new("").domain_id(0).node_name("talker");
+    // Phase 115.L.5-zephyr — install dds C-vtable backend.
+    nros_rmw_dds_cffi::register().expect("dds RMW register failed");
+
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("talker")?;

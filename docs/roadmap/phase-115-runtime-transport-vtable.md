@@ -936,13 +936,29 @@ Ordered easiest → hardest:
     `nros_rmw::set_custom_transport(Some(ops))` so zenoh-pico's
     session open drains the slot once the vtable is installed.
     Both examples build clean.
-  - [ ] `115.L.5-zephyr` — `examples/zephyr/rust/zenoh/*` +
-    `examples/zephyr/rust/dds/*` blocked on cross-compile
-    bring-up of the cffi shim crates for the Zephyr embedded
-    targets (`native_sim/native/64`, board variants). Same
-    shape as `115.K.2.5.1.3-zephyr-deferred` for XRCE; requires
-    Zephyr SDK + west fixture which is validated end-to-end via
-    `just zephyr build-fixtures` rather than direct `cargo build`.
+  - [~] `115.L.5-zephyr` — mechanical migration landed (14
+    examples: 7 zenoh + 7 dds under `examples/zephyr/rust/{zenoh,dds}/*`).
+    Per example:
+    - `Cargo.toml`: swap `"rmw-{zenoh,dds}"` →
+      `"rmw-{zenoh,dds}-cffi"`; add
+      `nros-rmw-{zenoh,dds}-cffi` direct dep with
+      `["platform-zephyr", …]` features.
+    - `.cargo/config.toml`: extend `[patch.crates-io]` with
+      local paths for `nros-rmw-cffi` + `nros-rmw-{zenoh,dds}-cffi`.
+    - `src/lib.rs`: insert
+      `nros_rmw_{zenoh,dds}_cffi::register().expect(...)`
+      before the first `Executor::open` inside the
+      `extern "C" fn rust_main()` entry point.
+
+    **Validation pending:** Zephyr Rust examples don't build via
+    plain `cargo build` — they go through `west build -b
+    native_sim/native/64 -d build-<ex> -p auto` (or a board
+    variant) which needs the Zephyr SDK + west workspace. Run
+    `just zephyr build-fixtures` from a Zephyr-set-up checkout
+    to validate end-to-end. Same constraint as
+    `115.K.2.5.1.3-zephyr-deferred` for XRCE; both gated on
+    the same Zephyr cross-compile fixture rather than per-shim
+    work.
 
 - [ ] **115.L.6 — non-backend consumer audit + trait fold.**
   Per the [design note R1](../design/portable-rmw-platform-interface.md)
