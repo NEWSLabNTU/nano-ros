@@ -36,9 +36,11 @@ impl XrceAgent {
         let binary = xrce_agent_binary_path();
 
         let mut cmd = std::process::Command::new(&binary);
+        let log_path = crate::project_root().join(format!("xrce-agent-{}.log", port));
+        let log_file = std::fs::File::create(&log_path).expect("failed to create log file");
         cmd.args(["udp4", "-p", &port.to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(log_file.try_clone().expect("failed to clone log file"))
+            .stderr(log_file);
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn().map_err(|e| {
