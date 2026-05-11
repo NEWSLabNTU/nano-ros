@@ -530,6 +530,7 @@ build-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
+        --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-uorb \
         --exclude nros-px4
 
