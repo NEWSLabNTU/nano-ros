@@ -290,9 +290,15 @@ exclude = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>", "NEWSLabNTU"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/NEWSLabNTU/nano-ros"
+homepage = "https://github.com/NEWSLabNTU/nano-ros"
+documentation = "https://docs.rs/nros"
+readme = "README.md"
 rust-version = "1.75"
+categories = ["embedded", "no-std", "network-programming"]
+keywords = ["ros2", "robotics", "embedded", "no-std", "rtos"]
 
 [workspace.dependencies]
 # Internal crates — version required for crates.io; path used locally.

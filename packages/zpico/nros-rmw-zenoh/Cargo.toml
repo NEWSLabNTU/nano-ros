@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Zenoh-pico RMW backend for nros"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "zenoh", "rmw", "embedded", "no-std"]
+categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []

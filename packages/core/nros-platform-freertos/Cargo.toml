@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for FreeRTOS (calls FreeRTOS C APIs via FFI)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "freertos", "platform", "rtos", "no-std"]
+categories = ["embedded", "no-std", "os"]
 
 [features]
 default = ["lwip"]

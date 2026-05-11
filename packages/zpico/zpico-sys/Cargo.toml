@@ -6,6 +6,12 @@ license.workspace = true
 repository.workspace = true
 description = "C shim library for zenoh-pico with FFI bindings"
 links = "zpico"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["zenoh", "ffi", "embedded", "no-std", "sys"]
+categories = ["embedded", "no-std", "external-ffi-bindings", "network-programming"]
 
 [lib]
 name = "zpico_sys"

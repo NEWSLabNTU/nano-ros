@@ -6,6 +6,12 @@ license.workspace = true
 repository.workspace = true
 description = "FFI bindings for Micro-XRCE-DDS-Client"
 links = "xrce_client"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["xrce", "dds", "ros2", "ffi", "sys"]
+categories = ["embedded", "no-std", "external-ffi-bindings", "network-programming"]
 
 [features]
 default = []

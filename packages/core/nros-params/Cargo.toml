@@ -5,12 +5,17 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "ROS 2 parameter server for nros"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "parameters", "embedded", "no-std"]
+categories = ["embedded", "no-std"]
 
 [features]
 default = ["std"]
 std = []
 alloc = []
-
 
 [dependencies]
 heapless = { workspace = true }

@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "RMW abstraction layer for nros (middleware-agnostic traits)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "rmw", "middleware", "embedded", "no-std"]
+categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 # Default: no-std. Depending crates that want `std` must opt in

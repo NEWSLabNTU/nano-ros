@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for Zephyr RTOS (calls Zephyr + POSIX APIs via FFI)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "zephyr", "platform", "rtos", "no-std"]
+categories = ["embedded", "no-std", "os"]
 
 [features]
 default = []

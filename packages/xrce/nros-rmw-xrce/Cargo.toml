@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "XRCE-DDS RMW backend for nros"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "xrce", "dds", "rmw", "embedded"]
+categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []

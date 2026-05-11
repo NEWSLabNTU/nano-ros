@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Thin forwarders from XRCE-DDS C symbols to nros-platform traits"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "xrce", "platform", "ffi"]
+categories = ["embedded", "no-std"]
 
 [features]
 default = []

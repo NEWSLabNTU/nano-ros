@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Platform capability traits for nros (no deps; platform crates impl these)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "no-std", "rtos", "traits"]
+categories = ["embedded", "no-std", "os"]
 
 [lints]
 workspace = true

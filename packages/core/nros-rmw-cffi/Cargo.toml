@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "C function table adapter for nros RMW backends"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "rmw", "ffi", "embedded"]
+categories = ["embedded", "no-std", "api-bindings"]
 
 [lib]
 name = "nros_rmw_cffi"

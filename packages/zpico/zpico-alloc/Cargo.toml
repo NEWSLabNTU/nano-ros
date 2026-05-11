@@ -5,6 +5,12 @@ edition = "2024"
 description = "Free-list allocator for zenoh-pico z_malloc/z_free on bare-metal"
 license = "Apache-2.0"
 repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["allocator", "bare-metal", "no-std", "embedded", "zenoh"]
+categories = ["embedded", "no-std", "memory-management"]
 
 [features]
 default = []

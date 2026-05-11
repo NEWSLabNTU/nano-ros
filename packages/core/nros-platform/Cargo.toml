@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Unified platform abstraction traits for nros"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "no-std", "rtos", "platform-abstraction"]
+categories = ["embedded", "no-std", "os"]
 
 [features]
 default = ["std"]

@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "nros platform implementation for NuttX (POSIX-compatible, delegates to nros-platform-posix)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "nuttx", "platform", "rtos", "no-std"]
+categories = ["embedded", "no-std", "os"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }

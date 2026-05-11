@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Proc macros for nros message type generation"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "macros", "embedded", "no-std"]
+categories = ["embedded", "no-std", "development-tools"]
 
 [lib]
 proc-macro = true

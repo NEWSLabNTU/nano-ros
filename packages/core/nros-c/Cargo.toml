@@ -7,6 +7,10 @@ license = "Apache-2.0"
 repository.workspace = true
 keywords = ["ros", "ros2", "embedded", "c", "ffi"]
 categories = ["embedded", "robotics", "api-bindings"]
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
 
 [lib]
 crate-type = ["staticlib", "cdylib", "lib"]
@@ -95,7 +99,6 @@ nros-sizes-build = { workspace = true }
 # Phase 77.25: same reason as nros-cpp — force nros to compile before
 # this build.rs runs so the size probe has a rlib to read.
 nros = { version = "0.1.0", path = "../nros", default-features = false }
-
 
 [package.metadata.docs.rs]
 all-features = true

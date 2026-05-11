@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Phase 115.B — Rust extern that the zenoh-pico custom-link scheme calls to drain the registered NrosTransportOps"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "zenoh", "transport", "no-std", "ffi"]
+categories = ["embedded", "no-std", "network-programming"]
 
 [dependencies]
 nros-rmw = { workspace = true, default-features = false }

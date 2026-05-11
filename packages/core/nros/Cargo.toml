@@ -7,6 +7,10 @@ license = "Apache-2.0"
 repository.workspace = true
 keywords = ["ros", "ros2", "embedded", "no_std"]
 categories = ["embedded", "no-std", "robotics"]
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
 
 [features]
 default = ["std", "ffi-size-markers"]

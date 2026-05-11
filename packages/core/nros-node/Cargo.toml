@@ -6,7 +6,12 @@ license.workspace = true
 repository.workspace = true
 description = "Node abstraction for nros"
 links = "nros_node"
-
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "node", "executor", "embedded", "no-std"]
+categories = ["embedded", "no-std"]
 
 [features]
 default = ["std"]
