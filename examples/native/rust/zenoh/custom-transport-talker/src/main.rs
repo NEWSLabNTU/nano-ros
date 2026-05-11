@@ -163,6 +163,13 @@ fn main() {
     }
     info!("Custom transport vtable registered");
 
+    // Phase 115.L.5-custom-transport — install zenoh-pico C-vtable
+    // backend before Executor::open. Order matters: the custom-
+    // transport slot set above is drained by zenoh-pico during
+    // session open, so the cffi register must happen first so the
+    // runtime knows which backend's open() to dispatch to.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     // Open zenoh session via the custom-link locator. Address is
     // opaque to v1; just needs to be non-empty.
     let config = ExecutorConfig::new("custom/loopback").node_name("talker");

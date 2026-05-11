@@ -143,7 +143,7 @@ link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast", "nros-rmw-zenoh-cffi?/li
 link-tls = ["nros-rmw-zenoh?/link-tls", "nros-rmw-zenoh-cffi?/link-tls"]
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme.
-link-custom = ["nros-rmw-zenoh?/link-custom"]
+link-custom = ["nros-rmw-zenoh?/link-custom", "nros-rmw-zenoh-cffi?/link-custom"]
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features)
 platform-udp = ["nros-node/platform-udp"]
