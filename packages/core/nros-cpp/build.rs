@@ -75,8 +75,14 @@ fn generate_config(
     // u64 word: `size_of::<CppContext>() = size_of::<Executor>() + 8`
     // — verified by the const-assert in `lib.rs`. Probe = 0 only
     // happens on `cargo check --no-default-features` (no RMW).
+    // Phase 119.1: merge against any prior header in the package source
+    // tree so multi-variant cmake builds end up with the MAX across
+    // variants. See merge_header_max_values doc for why.
+    let header_path_for_merge = manifest_dir.join("include/nros/nros_cpp_config_generated.h");
+    let merged = nros_sizes_build::merge_header_max_values(&header_path_for_merge, "NROS_", probed);
+
     const CPP_CONTEXT_OVERHEAD: usize = 8;
-    let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    let probe_executor_pre = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor_pre == 0 {
         println!(
             "cargo:warning=nros-cpp: EXECUTOR_SIZE probe returned 0 — \
@@ -118,11 +124,11 @@ fn generate_config(
     let action_client_fallback = ptr_bytes * 5 + if ptr_bytes == 8 { 8 } else { 4 };
 
     let action_server_storage = non_zero_or(
-        probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
+        merged.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
         action_server_fallback,
     );
     let action_client_storage = non_zero_or(
-        probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
+        merged.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
         action_client_fallback,
     );
 
@@ -166,12 +172,13 @@ fn generate_config(
     // Phase 87.3 transition they live alongside the hand-math `NROS_CPP_*`
     // values; once the thin-wrapper refactor (87.6) lands the hand-math
     // consumers can switch to these macros directly.
-    let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
-    let probe_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    // Phase 119.1: `merged` was computed at the top of this function.
+    let probe_executor = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    let probe_guard = merged.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_publisher = merged.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_subscriber = merged.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_client = merged.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_server = merged.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
 
     // Phase 118.B closure of Phase 87.6: hand-math vs probe assert
     // removed — `storage_bytes` is the probe value now, no upper bound

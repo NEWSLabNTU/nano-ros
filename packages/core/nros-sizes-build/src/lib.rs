@@ -513,6 +513,75 @@ fn rustc_version_slug() -> String {
     slug
 }
 
+/// Phase 119.1: merge `new_values` against any matching `#define NAME N`
+/// already present in `header_path`, taking the max of each pair. Returns
+/// the merged map.
+///
+/// `header_prefix` is prepended to each `new_values` key when matching
+/// against the header's `#define NAME N` lines — e.g. probed key
+/// `EXECUTOR_SIZE` matches header define `NROS_EXECUTOR_SIZE` when
+/// `header_prefix = "NROS_"`. Pass an empty string for an exact match.
+///
+/// Rationale: each consumer crate (`nros-c`, `nros-cpp`) writes its
+/// generated header into the package source tree. Multiple cmake builds
+/// (posix/zenoh, posix/xrce, freertos, threadx-riscv, ...) all run in
+/// sequence against the same source tree and overwrite the header. The
+/// installed library variants then have target-specific sizes that
+/// don't match the last-write-wins header → memory corruption when the
+/// C/C++ wrapper allocates opaque storage smaller than what the linked
+/// Rust runtime actually writes.
+///
+/// Taking the max across all variants makes the shared header a safe
+/// upper bound — every variant fits. Wastes a few bytes per executor
+/// on variants whose actual size is smaller; correctness > frugality
+/// for the public include path.
+pub fn merge_header_max_values(
+    header_path: &Path,
+    header_prefix: &str,
+    new_values: &HashMap<String, u64>,
+) -> HashMap<String, u64> {
+    let existing = read_header_defines(header_path).unwrap_or_default();
+    let mut merged = new_values.clone();
+    // Pull existing header values into the merged map (stripping the
+    // header_prefix). Also covers the case where the current probe
+    // returned an empty map (e.g. `cargo check --no-default-features`):
+    // we still preserve the prior header values.
+    for (full_key, &old_val) in &existing {
+        let Some(key) = full_key.strip_prefix(header_prefix) else {
+            continue;
+        };
+        let entry = merged.entry(key.to_string()).or_insert(0);
+        if old_val > *entry {
+            *entry = old_val;
+        }
+    }
+    merged
+}
+
+/// Parse `#define NAME N` lines from a C header. Used by
+/// [`merge_header_max_values`] to recover prior probe results before
+/// overwriting the file.
+pub fn read_header_defines(header_path: &Path) -> Result<HashMap<String, u64>, Error> {
+    let text = std::fs::read_to_string(header_path)?;
+    let mut out = HashMap::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("#define") else {
+            continue;
+        };
+        let mut parts = rest.split_whitespace();
+        let Some(name) = parts.next() else { continue };
+        let Some(value_str) = parts.next() else {
+            continue;
+        };
+        let Ok(value) = value_str.parse::<u64>() else {
+            continue;
+        };
+        out.insert(name.to_string(), value);
+    }
+    Ok(out)
+}
+
 /// Collect feature names the consumer build script was invoked with.
 ///
 /// Cargo exposes them as `CARGO_FEATURE_<NAME>=1` env vars with name

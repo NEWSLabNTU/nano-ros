@@ -79,12 +79,23 @@ fn generate_config(
     // `EXECUTOR_SIZE` comes from `nros::sizes::EXECUTOR_SIZE` exported via
     // the `__NROS_SIZE_*` symbols. The hand-math upper bound that used to
     // live here (Phase 87.4) is gone — the probe is now the single source
-    // of truth. `probe_executor == 0` only happens during `cargo check
+    // of truth.
+    //
+    // Phase 119.1: merge against any prior header in the package source
+    // tree so multi-variant cmake builds end up with the MAX across
+    // variants (a safe upper bound that every variant fits into).
+    // Without this the last cmake build's target-specific sizes
+    // pollute every other variant's installed header → opaque-storage
+    // overflow at runtime.
+    let header_path_for_merge = manifest_dir.join("include/nros/nros_config_generated.h");
+    let merged = nros_sizes_build::merge_header_max_values(&header_path_for_merge, "NROS_", probed);
+
+    // `probe_executor == 0` only happens during `cargo check
     // --no-default-features` (no RMW backend wired); pad to a placeholder
     // u64 in that case so cbindgen can still emit a syntactically valid
     // `_opaque[]` array, but flag it visibly. Real builds always probe a
     // non-zero size.
-    let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    let probe_executor = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor == 0 {
         println!(
             "cargo:warning=nros-c: EXECUTOR_SIZE probe returned 0 — \
@@ -134,18 +145,18 @@ fn generate_config(
     // Phase 118.B: hand-math upper bound for `EXECUTOR_SIZE` deleted —
     // `executor_storage_bytes` above now reads directly from the probe.
     // The other sizes have always been probe-only.
-    let probe_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
-    let probe_action_server_internal = probed
+    let probe_guard = merged.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_publisher = merged.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_subscriber = merged.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_client = merged.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_server = merged.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_session = merged.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_lifecycle_ctx = merged.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
+    let probe_action_server_internal = merged
         .get("ACTION_SERVER_INTERNAL_SIZE")
         .copied()
         .unwrap_or(0) as usize;
-    let probe_action_server_raw_handle = probed
+    let probe_action_server_raw_handle = merged
         .get("ACTION_SERVER_RAW_HANDLE_SIZE")
         .copied()
         .unwrap_or(0) as usize;
