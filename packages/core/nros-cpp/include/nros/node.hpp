@@ -393,6 +393,19 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
         }
     }
 #endif
+#ifdef NROS_RMW_UORB
+    // Phase 115.K.4: PX4 uORB backend (C++ port). Selected via
+    // `NANO_ROS_RMW=uorb`. The PX4 module must call
+    // `nros_rmw_uorb_register_topic(...)` for each topic before
+    // `nros::init` runs; the vtable register itself happens here.
+    extern "C" int32_t nros_rmw_uorb_register(void);
+    {
+        int32_t reg_ret = nros_rmw_uorb_register();
+        if (reg_ret != 0) {
+            return Result(reg_ret);
+        }
+    }
+#endif
     nros_cpp_ret_t ret =
         nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {

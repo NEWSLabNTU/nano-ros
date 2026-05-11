@@ -1763,6 +1763,16 @@ service-less variant, +1 week for service-over-topics emulation.
   nros_rmw_uorb_register();
   ```
 
+- [x] **115.K.4-cmake — `NANO_ROS_RMW=uorb` selector landed.**
+  `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt` recognise
+  the `uorb` value and route to `rmw-cffi`. `nros-cpp` pulls
+  `find_package(NrosRmwUorb)` + defines `NROS_RMW_UORB=1`.
+  `node.hpp::nros::init` auto-fires `nros_rmw_uorb_register()`
+  before session open (mirrors `NROS_RMW_CYCLONEDDS` /
+  `NROS_RMW_XRCE_C` hooks). PX4 module wires its topic
+  registrations via `nros_rmw_uorb_register_topic(...)` before
+  calling `nros::init`.
+
 - [ ] **115.K.4.4 — services (optional, service-over-topics).**
   uORB has no native request/reply primitive. Either:
   (a) Build req/reply over two uORB topics with rt-style
