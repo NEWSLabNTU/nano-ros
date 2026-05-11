@@ -115,34 +115,60 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
         searched.push(target_dir.join(&profile).join("deps"));
     }
 
+    // Phase 118.C: in parallel builds (e.g. `nros-c` + `nros`), the
+    // target-triple rlib may be still being written by another cargo
+    // instance when this build script runs. Retry for up to 10 seconds.
     let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     let lib_prefix = format!("lib{crate_name}-");
-    for dir in &searched {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        for entry in read_dir.flatten() {
-            let path = entry.path();
-            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
-                continue;
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(10);
+
+    loop {
+        candidates.clear();
+        for dir in &searched {
+            let read_dir = match std::fs::read_dir(dir) {
+                Ok(r) => r,
+                Err(_) => continue,
             };
-            if !fname.starts_with(&lib_prefix) || !fname.ends_with(".rlib") {
-                continue;
+            for entry in read_dir.flatten() {
+                let path = entry.path();
+                let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if !fname.starts_with(&lib_prefix) || !fname.ends_with(".rlib") {
+                    continue;
+                }
+                if let Ok(meta) = entry.metadata() {
+                    candidates.push((meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH), path));
+                }
             }
-            let meta = entry.metadata()?;
-            candidates.push((meta.modified()?, path));
         }
+
+        if !candidates.is_empty() || start.elapsed() >= timeout {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     candidates.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime));
 
-    for (_, path) in &candidates {
-        if let Ok(sizes) = extract_sizes(path, symbol_prefix)
-            && !sizes.is_empty()
-        {
-            return Ok(path.clone());
+    // Phase 118.C.2: even if the rlib exists on disk, it might be
+    // partially written or its symbols might not have landed yet.
+    // Retry for another 5 seconds to find an rlib with actual symbols.
+    let probe_start = std::time::Instant::now();
+    let probe_timeout = std::time::Duration::from_secs(5);
+    loop {
+        for (_, path) in &candidates {
+            if let Ok(sizes) = extract_sizes(path, symbol_prefix)
+                && !sizes.is_empty()
+            {
+                return Ok(path.clone());
+            }
         }
+        if probe_start.elapsed() >= probe_timeout {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     candidates
@@ -343,15 +369,33 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
     // doesn't export `CARGO_TARGET_DIR`, and `cargo metadata` returns the
     // workspace default rather than the active `--target-dir`. Derive the
     // real target dir from `OUT_DIR`, which cargo sets to
-    // `<target>/<triple>/<profile>/build/<pkg>-<hash>/out` for every build
-    // script. `ancestors().nth(5)` steps back through out → <pkg-hash> →
-    // build → <profile> → <triple> → <target>.
+    // `<target>/[triple]/<profile>/build/<pkg>-<hash>/out` for every build
+    // script.
     if let Ok(out) = env::var("OUT_DIR") {
         let out = PathBuf::from(out);
-        if let Some(target) = out.ancestors().nth(5)
-            && target.join("CACHEDIR.TAG").exists()
-        {
-            return Ok(target.to_path_buf());
+        let mut p = out.as_path();
+        while let Some(parent) = p.parent() {
+            if parent.file_name().and_then(|s| s.to_str()) == Some("build") {
+                // Found the "build" directory. The structure above it is
+                // .../<target>/[triple]/<profile>/build.
+                if let Some(profile_dir) = parent.parent() {
+                    if let Some(triple_or_target) = profile_dir.parent() {
+                        if let Some(name) = triple_or_target.file_name().and_then(|s| s.to_str()) {
+                            // If the directory name looks like a target triple (contains '-'),
+                            // the target directory is one level higher.
+                            if name.contains('-') {
+                                if let Some(target) = triple_or_target.parent() {
+                                    return Ok(target.to_path_buf());
+                                }
+                            } else {
+                                // Otherwise, this is the target directory.
+                                return Ok(triple_or_target.to_path_buf());
+                            }
+                        }
+                    }
+                }
+            }
+            p = parent;
         }
     }
 
