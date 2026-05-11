@@ -1071,6 +1071,7 @@ unsafe extern "C" fn reply_callback(
 /// the caller wants to pin the agent address on the factory rather
 /// than the transport-side init hook.
 #[derive(Default)]
+#[derive(Default)]
 pub struct XrceRmw {
     /// Optional pre-configured agent. If `None`, the transport init
     /// hook (e.g. `platform_udp::init_platform_udp_transport`) must

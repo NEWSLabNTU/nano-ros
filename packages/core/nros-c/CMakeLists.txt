@@ -16,6 +16,16 @@ endif()
 
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
+    # Phase 115.L.2: `zenoh` selector routes through the C vtable
+    # via `nros-rmw-zenoh-cffi`. The legacy Rust-direct-trait path
+    # is retained behind the `zenoh-rust` selector for a
+    # deprecation window — to be removed once consumers have
+    # migrated.
+    set(_rmw_features rmw-cffi cffi-zenoh-cffi)
+elseif(NANO_ROS_RMW STREQUAL "zenoh-rust")
+    # Phase 115.L (deprecated): legacy Rust direct-trait path.
+    # Will be removed alongside `nros-rmw-zenoh-cffi` reaching
+    # parity on every transport refinement.
     set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` now selects the C backend
@@ -27,6 +37,12 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     # K.2.5.3.
     set(_rmw_features rmw-cffi cffi-xrce-c)
 elseif(NANO_ROS_RMW STREQUAL "dds")
+    # Phase 115.L.1: `dds` selector routes through the C vtable
+    # via `nros-rmw-dds-cffi`. Legacy Rust-direct-trait path
+    # available behind `dds-rust` during the deprecation window.
+    set(_rmw_features rmw-cffi cffi-dds-cffi)
+elseif(NANO_ROS_RMW STREQUAL "dds-rust")
+    # Phase 115.L (deprecated): legacy Rust direct-trait path.
     set(_rmw_features rmw-dds)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS rides the generic `rmw-cffi` axis on
@@ -36,7 +52,7 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----

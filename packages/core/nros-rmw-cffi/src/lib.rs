@@ -27,6 +27,15 @@ use nros_rmw::{
     TransportError,
 };
 
+// Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
+// `alloc` feature because each entity handle is boxed for stable
+// address mgmt; every nros backend already requires alloc.
+#[cfg(feature = "alloc")]
+pub mod rust_adapter;
+
+#[cfg(feature = "alloc")]
+pub use rust_adapter::{RustBackend, RustBackendAdapter};
+
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes
 // ============================================================================
@@ -1687,7 +1696,7 @@ mod tests {
             namespace: "",
             properties: &[],
         };
-        let mut session = CffiRmw.open(&cfg).expect("session open");
+        let mut session = Rmw::open(CffiRmw, &cfg).expect("session open");
         assert!(unsafe { *(&raw const STUB_OPEN_CALLED) });
         assert_eq!(session.node_name(), "test_node");
 

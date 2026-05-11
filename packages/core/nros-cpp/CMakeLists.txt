@@ -16,6 +16,12 @@ endif()
 
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
+    # Phase 115.L.2: `zenoh` now routes through the C vtable via
+    # `nros-rmw-zenoh-cffi`. Legacy Rust-direct path retained
+    # under `zenoh-rust` for a deprecation window.
+    set(_rmw_features rmw-zenoh-cffi)
+elseif(NANO_ROS_RMW STREQUAL "zenoh-rust")
+    # Phase 115.L (deprecated): Rust direct trait impl.
     set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` now selects the C backend
@@ -26,6 +32,11 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     # link block below).
     set(_rmw_features rmw-cffi)
 elseif(NANO_ROS_RMW STREQUAL "dds")
+    # Phase 115.L.1: `dds` now routes through the C vtable via
+    # `nros-rmw-dds-cffi`. Legacy `dds-rust` selector retained.
+    set(_rmw_features rmw-dds-cffi)
+elseif(NANO_ROS_RMW STREQUAL "dds-rust")
+    # Phase 115.L (deprecated): Rust direct trait impl.
     set(_rmw_features rmw-dds)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS backend lives behind the `rmw-cffi`
@@ -38,7 +49,7 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, or cyclonedds)")
 endif()
 
 # ---- Map platform to Cargo features ----
@@ -98,6 +109,19 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     target_link_libraries(nros-cpp-headers INTERFACE
         NrosRmwXrceC::NrosRmwXrceC)
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_C=1)
+elseif(NANO_ROS_RMW STREQUAL "dds")
+    # Phase 115.L.1: dust-DDS via the C vtable. The register
+    # entry point `nros_rmw_dds_register()` ships from the
+    # Rust-side `nros-rmw-dds-cffi` shim crate (pulled via the
+    # `rmw-dds-cffi` Cargo feature), so no extra find_package
+    # is required — the symbol is in the staticlib produced by
+    # corrosion_import_crate above.
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_DDS_CFFI=1)
+elseif(NANO_ROS_RMW STREQUAL "zenoh")
+    # Phase 115.L.2: zenoh-pico via the C vtable. Same shape as
+    # the `dds` path above — `nros_rmw_zenoh_register()` lives
+    # in the Rust shim.
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_ZENOH_CFFI=1)
 endif()
 
 # Require at least C++14

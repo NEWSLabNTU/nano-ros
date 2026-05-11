@@ -25,6 +25,10 @@ rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-xrce = ["nros/rmw-xrce"]
 rmw-dds = ["nros/rmw-dds"]
 rmw-cffi = ["nros/rmw-cffi"]
+# Phase 115.L.1 / L.2 — Rust-backend cffi shims. Same shape as
+# the existing `rmw-*` features but routes through the C vtable.
+rmw-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
+rmw-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh)
 link-tcp = ["nros/link-tcp"]

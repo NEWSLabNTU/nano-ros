@@ -369,6 +369,30 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
         }
     }
 #endif
+#ifdef NROS_RMW_DDS_CFFI
+    // Phase 115.L.1: dust-DDS via the C vtable. Selected via
+    // `NANO_ROS_RMW=dds`. The `nros-rmw-dds-cffi` crate provides
+    // `nros_rmw_dds_register()` which installs a
+    // `RustBackendAdapter::<DdsRmw>::VTABLE` into the cffi runtime.
+    extern "C" int32_t nros_rmw_dds_register(void);
+    {
+        int32_t reg_ret = nros_rmw_dds_register();
+        if (reg_ret != 0) {
+            return Result(reg_ret);
+        }
+    }
+#endif
+#ifdef NROS_RMW_ZENOH_CFFI
+    // Phase 115.L.2: zenoh-pico via the C vtable. Selected via
+    // `NANO_ROS_RMW=zenoh`.
+    extern "C" int32_t nros_rmw_zenoh_register(void);
+    {
+        int32_t reg_ret = nros_rmw_zenoh_register();
+        if (reg_ret != 0) {
+            return Result(reg_ret);
+        }
+    }
+#endif
     nros_cpp_ret_t ret =
         nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {
