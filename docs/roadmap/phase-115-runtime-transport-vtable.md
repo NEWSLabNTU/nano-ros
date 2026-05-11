@@ -902,30 +902,41 @@ Ordered easiest → hardest:
   would also need a `*-cffi` facade. In-process-only nature means
   the audience is small; tracking-only entry.
 
-- [ ] **115.L.5 — Rust example migration onto cffi features.**
+- [~] **115.L.5 — Rust example migration onto cffi features.**
   L.3 flipped the C/C++ `NANO_ROS_RMW=zenoh|dds` selectors. Rust
   examples bind to nros features directly (no CMake selector) so
   each `Cargo.toml` + `src/main.rs` needs a one-line edit.
 
-  Sweep targets (~15 native + ~6 Zephyr per backend):
-  - `examples/native/rust/zenoh/{talker,listener,service-*,
-    action-*,fairness-bench,custom-transport-*,rtic-*}/` →
-    swap `rmw-zenoh` → `rmw-zenoh-cffi`, add
-    `nros_rmw_zenoh_cffi::register().expect(...)` before
-    `Executor::open` in `src/main.rs`.
-  - `examples/native/rust/dds/*/` → same shape with
-    `rmw-dds-cffi` + `nros_rmw_dds_cffi::register()`.
-  - `examples/zephyr/rust/zenoh/*`, `examples/zephyr/rust/dds/*` →
-    same edit. Bare-metal/Zephyr cross-compile of the cffi shims
-    is not yet validated; expect the same `build.rs` target-aware
-    `cc::Build` work that 115.K.2.5.1.3-zephyr-deferred captures
-    for XRCE.
+  **Native sweep landed:** 18 zenoh + 6 dds examples (`talker`,
+  `listener`, `service-{server,client}`, `action-{server,client}`,
+  `async-{action,service}-client`, `custom-msg`, `fairness-bench`,
+  `lifecycle-node`, `rtic-{talker,listener,service-server,
+  service-client,action-server,action-client}`, `stress-test` for
+  zenoh; `talker`, `listener`, `service-{server,client}`,
+  `action-{server,client}` for dds). Per example:
+  - Cargo.toml: swap `"rmw-zenoh"` → `"rmw-zenoh-cffi"`
+    (resp. dds); add `nros-rmw-{zenoh,dds}-cffi` direct dep
+    with matching `platform-posix` (+ zenoh: `link-tcp`,
+    `ros-humble`).
+  - main.rs: insert
+    `nros_rmw_{zenoh,dds}_cffi::register().expect(...)` before
+    the first `Executor::open`. Idempotent.
 
-  Acceptance: `cargo test -p nros-tests --test native_api` +
-  `--test nano2nano` still pass with every binary built against
-  the cffi feature. The two-process talker/listener path
-  end-to-end-verifies the L.2 cffi data flow that the in-process
-  smoke test cannot exercise (zpico-sys static-slot limitation).
+  Each example builds clean. Acceptance (full
+  `cargo test -p nros-tests --test native_api` +
+  `--test nano2nano` sweep) tracked separately.
+
+  **Deferred sub-items:**
+  - `115.L.5-custom-transport` —
+    `examples/native/rust/zenoh/custom-transport-{talker,listener}`
+    depend on `link-custom` on `nros-rmw-zenoh`;
+    `nros-rmw-zenoh-cffi` needs an equivalent `link-custom`
+    feature forward before they can flip.
+  - `115.L.5-zephyr` — `examples/zephyr/rust/zenoh/*` +
+    `examples/zephyr/rust/dds/*` blocked on cross-compile
+    bring-up of the cffi shim crates for
+    `thumbv7em-none-eabihf` etc. Same shape as
+    `115.K.2.5.1.3-zephyr-deferred` for XRCE.
 
 - [ ] **115.L.6 — non-backend consumer audit + trait fold.**
   Per the [design note R1](../design/portable-rmw-platform-interface.md)
