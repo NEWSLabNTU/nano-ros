@@ -6,12 +6,39 @@
 //! `nros-cpp/build.rs`) can call to recover those sizes at build time:
 //!
 //! * [`find_dep_rlib`] — locate the rlib for a direct dependency in the current
-//!   cargo build, using `cargo metadata` + a newest-mtime glob.
+//!   cargo build.
 //! * [`extract_sizes`] — parse an rlib as an `ar` archive and, for every defined
 //!   symbol whose name begins with a given prefix, record its storage size.
 //!
 //! See [Phase 87](../../../../docs/roadmap/phase-87-nros-cpp-compile-time-sizes.md)
-//! for the motivating design.
+//! for the motivating design; [Phase 118.E](../../../../docs/roadmap/phase-118-E-size-probe-rigorization.md)
+//! for the current race-hardening approach.
+//!
+//! # Probe modes
+//!
+//! Selected via the `NROS_SIZES_PROBE_MODE` env var:
+//!
+//! * `filesystem` (default) — use `cargo metadata` to locate the workspace
+//!   target dir deterministically, then watch
+//!   `<target>/<triple>/<profile>/deps/` for the rlib, with bounded retry. This
+//!   relies on the outer cargo's build-graph ordering (which guarantees `nros`
+//!   lib compile completes before `nros-c` lib compile) but races with the
+//!   parallel scheduler at build-script time.
+//!
+//! * `isolated` — spawn a nested `cargo build -p <crate> --target=<triple>
+//!   --message-format=json` against a probe-only target dir
+//!   (`$OUT_DIR/sizes-probe-target`). Deterministic — the artifact event
+//!   reports the canonical rlib path on completion. Costs a duplicate
+//!   compile of the probed crate on cold cache; subsequent runs hit the
+//!   probe cache and are sub-second. Useful for strict-determinism builds
+//!   (CI, release tagging) where the retry-based filesystem path's tail
+//!   latency is unacceptable.
+//!
+//! # Timeouts
+//!
+//! `NROS_SIZES_PROBE_TIMEOUT_SECS` (default `60`) bounds the filesystem-mode
+//! wait. Set higher on cold-cache CI runners that compile `nros` from
+//! scratch in parallel; set lower for fast-fail in interactive development.
 
 use std::{
     collections::HashMap,
@@ -76,37 +103,58 @@ impl From<object::Error> for Error {
     }
 }
 
+/// Probe-strategy selector. See module docs for the env-var contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeMode {
+    /// Watch `<target>/<triple>/<profile>/deps/` for the rlib emitted by
+    /// the outer cargo build. Fast on a warm cache; races against the
+    /// outer cargo's parallel scheduler so requires bounded retry.
+    Filesystem,
+    /// Spawn a nested `cargo build -p <crate>` against
+    /// `$OUT_DIR/sizes-probe-target/` and parse the JSON artifact event.
+    /// Deterministic; pays one extra compile per (target, features) on a
+    /// cold cache.
+    Isolated,
+}
+
+impl ProbeMode {
+    /// Read `NROS_SIZES_PROBE_MODE` (case-insensitive) — `isolated` selects
+    /// the nested-cargo path; anything else (including unset) selects the
+    /// filesystem path.
+    pub fn from_env() -> Self {
+        match env::var("NROS_SIZES_PROBE_MODE").as_deref().map(str::trim) {
+            Ok(s) if s.eq_ignore_ascii_case("isolated") => Self::Isolated,
+            _ => Self::Filesystem,
+        }
+    }
+}
+
 /// Locate the rlib for `crate_name` that contains Phase 87's size-probe
-/// symbols (any defined symbol starting with `symbol_prefix`), falling back
-/// to the newest matching rlib if none do.
+/// symbols (any defined symbol starting with `symbol_prefix`).
 ///
-/// Uses `cargo metadata --format-version=1 --no-deps` to find the workspace
-/// target directory, then globs `{target}/<triple>/<profile>/deps/lib<crate_name>-*.rlib`
-/// (plus the no-triple fallback for native builds) and ranks the matches:
-///
-/// 1. Among rlibs that contain at least one symbol starting with
-///    `symbol_prefix`, pick the newest by mtime. This is the primary path —
-///    a cargo build with `--features rmw-zenoh` (etc.) produces an rlib
-///    that emits the `__NROS_SIZE_*` statics.
-/// 2. If no rlib contains any probe symbol, fall back to the newest rlib
-///    of any flavour. The caller's `extract_sizes` will then return an
-///    empty map and emit a `cargo:warning=`. Build proceeds without probe
-///    values (useful for `cargo check` without feature flags).
+/// Dispatches on [`ProbeMode::from_env`]. See module docs for the two paths.
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
+    match ProbeMode::from_env() {
+        ProbeMode::Filesystem => find_dep_rlib_filesystem(crate_name, symbol_prefix),
+        ProbeMode::Isolated => find_dep_rlib_isolated(crate_name, symbol_prefix),
+    }
+}
+
+/// Default filesystem-watch path. Uses `cargo metadata` to resolve the
+/// workspace target dir, then waits for the rlib to appear at
+/// `<target>/<triple>/<profile>/deps/lib<crate>-*.rlib`, polling at 200 ms
+/// ticks. Timeout configurable via `NROS_SIZES_PROBE_TIMEOUT_SECS`
+/// (default 60s). After the rlib appears, retries `extract_sizes` for up
+/// to 5s for the symbol table to flush.
+fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let target_dir = cargo_target_dir()?;
     let triple = env::var("TARGET").ok();
     let host = env::var("HOST").ok();
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
-    // Phase 77.25: under cross-compile, the target-triple rlib may not
-    // exist yet when this build script runs (regular deps are compiled
-    // in parallel with build scripts), but the host-triple rlib almost
-    // certainly does (it's a build-dep — see nros-c / nros-cpp
-    // Cargo.toml). We MUST NOT read host-rlib sizes when the
-    // downstream consumer is building for a different target, because
-    // pointer-size-dependent structs (e.g. anything holding *mut)
-    // would give wrong values. Only search the host deps dir when
-    // target == host.
+    // Phase 77.25: under cross-compile, only the target-triple rlib has
+    // correct pointer-size-dependent sizes. The host-triple rlib (a
+    // build-dep artefact) must NOT be read when target != host.
     let mut searched = Vec::new();
     if let Some(triple) = triple.as_deref() {
         searched.push(target_dir.join(triple).join(&profile).join("deps"));
@@ -115,13 +163,16 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
         searched.push(target_dir.join(&profile).join("deps"));
     }
 
-    // Phase 118.C: in parallel builds (e.g. `nros-c` + `nros`), the
-    // target-triple rlib may be still being written by another cargo
-    // instance when this build script runs. Retry for up to 10 seconds.
-    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    let timeout_secs = env::var("NROS_SIZES_PROBE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60);
+    let timeout = std::time::Duration::from_secs(timeout_secs);
     let lib_prefix = format!("lib{crate_name}-");
+
+    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(10);
+    let mut last_progress = std::time::Instant::now();
 
     loop {
         candidates.clear();
@@ -139,7 +190,10 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
                     continue;
                 }
                 if let Ok(meta) = entry.metadata() {
-                    candidates.push((meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH), path));
+                    candidates.push((
+                        meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                        path,
+                    ));
                 }
             }
         }
@@ -147,14 +201,20 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
         if !candidates.is_empty() || start.elapsed() >= timeout {
             break;
         }
+        if last_progress.elapsed() >= std::time::Duration::from_secs(10) {
+            println!(
+                "cargo:warning=nros-sizes-build: waiting for lib{crate_name}-*.rlib \
+                 (elapsed {}s of {}s timeout) — outer cargo still building?",
+                start.elapsed().as_secs(),
+                timeout_secs
+            );
+            last_progress = std::time::Instant::now();
+        }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     candidates.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime));
 
-    // Phase 118.C.2: even if the rlib exists on disk, it might be
-    // partially written or its symbols might not have landed yet.
-    // Retry for another 5 seconds to find an rlib with actual symbols.
     let probe_start = std::time::Instant::now();
     let probe_timeout = std::time::Duration::from_secs(5);
     loop {
@@ -179,6 +239,128 @@ pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, E
             crate_name: crate_name.to_string(),
             searched,
         })
+}
+
+/// Phase 118.E: deterministic nested-cargo probe.
+///
+/// Spawns `cargo build -p <crate> --target=<triple> [--release]
+/// --message-format=json` against a probe-only target dir to avoid
+/// flock contention with the outer cargo (cargo holds an exclusive
+/// flock on the target dir for the entire build; nested invocations
+/// against the same dir deadlock). Parses `compiler-artifact` events
+/// for the requested crate name; returns the first rlib filename.
+///
+/// Probe target dir defaults to `$OUT_DIR/sizes-probe-target` so it
+/// lives alongside the consumer's build artefacts and cleans up with
+/// `cargo clean`. Override via `NROS_SIZES_PROBE_TARGET_DIR`.
+fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let target = env::var("TARGET").map_err(|_| Error::MalformedMetadata("TARGET"))?;
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+
+    let probe_target_dir = if let Ok(dir) = env::var("NROS_SIZES_PROBE_TARGET_DIR") {
+        PathBuf::from(dir)
+    } else {
+        let out_dir = env::var("OUT_DIR").map_err(|_| Error::MalformedMetadata("OUT_DIR"))?;
+        PathBuf::from(out_dir).join("sizes-probe-target")
+    };
+
+    let mut cmd = Command::new(&cargo);
+    cmd.env("CARGO_TARGET_DIR", &probe_target_dir)
+        .arg("build")
+        .arg("-p")
+        .arg(crate_name)
+        .arg("--target")
+        .arg(&target)
+        .arg("--message-format=json-render-diagnostics");
+    if profile == "release" {
+        cmd.arg("--release");
+    }
+
+    // Forward the consumer's active feature set. The build script's
+    // `CARGO_FEATURE_<NAME>` env vars describe the consumer crate's
+    // features, not the probed crate's — but downstream forwarding via
+    // a `--features` arg works if the names match. Consumer crates
+    // (`nros-c`, `nros-cpp`) re-export `nros`'s RMW backend features
+    // by the same names, so this is a safe identity forward.
+    let forwarded = forwarded_features();
+    if !forwarded.is_empty() {
+        cmd.arg("--features").arg(forwarded.join(","));
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+    if !output.status.success() {
+        return Err(Error::CargoMetadata(format!(
+            "nested cargo build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    for line in output.stdout.split(|&b| b == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(json) = serde_json::from_slice::<serde_json::Value>(line) else {
+            continue;
+        };
+        if json.get("reason").and_then(|r| r.as_str()) != Some("compiler-artifact") {
+            continue;
+        }
+        let Some(target_obj) = json.get("target") else {
+            continue;
+        };
+        if target_obj.get("name").and_then(|n| n.as_str()) != Some(crate_name) {
+            continue;
+        }
+        let Some(filenames) = json.get("filenames").and_then(|f| f.as_array()) else {
+            continue;
+        };
+        for fname in filenames {
+            let Some(s) = fname.as_str() else { continue };
+            if s.ends_with(".rlib") {
+                let path = PathBuf::from(s);
+                // Validate symbols are present before returning. If the
+                // rlib was compiled without RMW features (e.g. workspace
+                // default `cargo check`), the probe symbols won't exist
+                // and the consumer should fall through to its
+                // `unwrap_or(0)` path.
+                if let Ok(sizes) = extract_sizes(&path, symbol_prefix)
+                    && !sizes.is_empty()
+                {
+                    return Ok(path);
+                }
+                // Symbol-less rlib — still return the path so callers
+                // can emit a warning and fall back.
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(Error::RlibNotFound {
+        crate_name: crate_name.to_string(),
+        searched: vec![probe_target_dir],
+    })
+}
+
+/// Collect feature names the consumer build script was invoked with.
+///
+/// Cargo exposes them as `CARGO_FEATURE_<NAME>=1` env vars with name
+/// upper-cased and `-` replaced by `_`. Reverse the transform so the
+/// nested invocation sees the original lowercase-with-dashes form.
+fn forwarded_features() -> Vec<String> {
+    let mut out = Vec::new();
+    for (k, v) in env::vars() {
+        if v != "1" {
+            continue;
+        }
+        let Some(rest) = k.strip_prefix("CARGO_FEATURE_") else {
+            continue;
+        };
+        out.push(rest.to_ascii_lowercase().replace('_', "-"));
+    }
+    out
 }
 
 /// Extract the sizes of every defined symbol with the given prefix from an rlib.
@@ -274,10 +456,12 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
 fn extract_sizes_via_llvm_nm(rlib: &Path) -> Result<HashMap<String, u64>, Error> {
     let sysroot = rustc_sysroot()?;
     let triple = rustc_host_triple()?;
+    let exe_suffix = if cfg!(windows) { ".exe" } else { "" };
     let llvm_nm = sysroot
         .join("lib/rustlib")
         .join(&triple)
-        .join("bin/llvm-nm");
+        .join("bin")
+        .join(format!("llvm-nm{exe_suffix}"));
     if !llvm_nm.exists() {
         return Err(Error::CargoMetadata(format!(
             "llvm-nm not found at {}",
@@ -335,12 +519,13 @@ fn rustc_sysroot() -> Result<PathBuf, Error> {
     ))
 }
 
+/// Resolve the rustc *host* triple (the triple of the toolchain itself).
+///
+/// `llvm-nm` is bundled at `<sysroot>/lib/rustlib/<host>/bin/`; cross-target
+/// directories don't carry the host tools, so this must return the host
+/// triple, not the build's `TARGET`. Phase 118.E fixes the prior behavior
+/// which preferred `TARGET` and broke on cross-builds.
 fn rustc_host_triple() -> Result<String, Error> {
-    // Prefer the triple the current build is compiling *for*
-    // (matters for cross-compile); fall back to rustc -vV.
-    if let Ok(t) = env::var("TARGET") {
-        return Ok(t);
-    }
     let output = Command::new(env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
         .arg("-vV")
         .output()
@@ -349,6 +534,10 @@ fn rustc_host_triple() -> Result<String, Error> {
         if let Some(rest) = line.strip_prefix("host: ") {
             return Ok(rest.trim().to_string());
         }
+    }
+    // Last-resort fallback: cargo's `HOST` env (set in build scripts).
+    if let Ok(t) = env::var("HOST") {
+        return Ok(t);
     }
     Err(Error::CargoMetadata(
         "could not determine rustc host triple".into(),
@@ -375,24 +564,21 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
         let out = PathBuf::from(out);
         let mut p = out.as_path();
         while let Some(parent) = p.parent() {
-            if parent.file_name().and_then(|s| s.to_str()) == Some("build") {
-                // Found the "build" directory. The structure above it is
-                // .../<target>/[triple]/<profile>/build.
-                if let Some(profile_dir) = parent.parent() {
-                    if let Some(triple_or_target) = profile_dir.parent() {
-                        if let Some(name) = triple_or_target.file_name().and_then(|s| s.to_str()) {
-                            // If the directory name looks like a target triple (contains '-'),
-                            // the target directory is one level higher.
-                            if name.contains('-') {
-                                if let Some(target) = triple_or_target.parent() {
-                                    return Ok(target.to_path_buf());
-                                }
-                            } else {
-                                // Otherwise, this is the target directory.
-                                return Ok(triple_or_target.to_path_buf());
-                            }
-                        }
+            if parent.file_name().and_then(|s| s.to_str()) == Some("build")
+                && let Some(profile_dir) = parent.parent()
+                && let Some(triple_or_target) = profile_dir.parent()
+                && let Some(name) = triple_or_target.file_name().and_then(|s| s.to_str())
+            {
+                // Structure above "build" is .../<target>/[triple]/<profile>/build.
+                // If the dir name looks like a target triple (contains '-'),
+                // the target directory is one level higher; otherwise this IS
+                // the target directory.
+                if name.contains('-') {
+                    if let Some(target) = triple_or_target.parent() {
+                        return Ok(target.to_path_buf());
                     }
+                } else {
+                    return Ok(triple_or_target.to_path_buf());
                 }
             }
             p = parent;
@@ -424,4 +610,82 @@ fn cargo_target_dir() -> Result<PathBuf, Error> {
         .and_then(|v| v.as_str())
         .map(PathBuf::from)
         .ok_or(Error::MalformedMetadata("target_directory"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each test mutates process-global env state, so they share a mutex to
+    /// avoid clobbering each other under `cargo test`'s default parallelism.
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn probe_mode_default_is_filesystem() {
+        let _g = env_lock();
+        // SAFETY: protected by env_lock; no concurrent reads/writes
+        unsafe {
+            env::remove_var("NROS_SIZES_PROBE_MODE");
+        }
+        assert_eq!(ProbeMode::from_env(), ProbeMode::Filesystem);
+    }
+
+    #[test]
+    fn probe_mode_isolated_via_env() {
+        let _g = env_lock();
+        unsafe {
+            env::set_var("NROS_SIZES_PROBE_MODE", "isolated");
+        }
+        assert_eq!(ProbeMode::from_env(), ProbeMode::Isolated);
+        unsafe {
+            env::set_var("NROS_SIZES_PROBE_MODE", "ISOLATED");
+        }
+        assert_eq!(ProbeMode::from_env(), ProbeMode::Isolated);
+        unsafe {
+            env::remove_var("NROS_SIZES_PROBE_MODE");
+        }
+    }
+
+    #[test]
+    fn probe_mode_unknown_value_falls_back_to_filesystem() {
+        let _g = env_lock();
+        unsafe {
+            env::set_var("NROS_SIZES_PROBE_MODE", "garbage");
+        }
+        assert_eq!(ProbeMode::from_env(), ProbeMode::Filesystem);
+        unsafe {
+            env::remove_var("NROS_SIZES_PROBE_MODE");
+        }
+    }
+
+    #[test]
+    fn forwarded_features_reverses_cargo_feature_transform() {
+        let _g = env_lock();
+        // Clear any pre-existing CARGO_FEATURE_* the test runner may have set.
+        let prior: Vec<String> = env::vars()
+            .filter(|(k, _)| k.starts_with("CARGO_FEATURE_"))
+            .map(|(k, _)| k)
+            .collect();
+        for k in &prior {
+            unsafe {
+                env::remove_var(k);
+            }
+        }
+        unsafe {
+            env::set_var("CARGO_FEATURE_RMW_ZENOH", "1");
+            env::set_var("CARGO_FEATURE_PLATFORM_POSIX", "1");
+            env::set_var("CARGO_FEATURE_SOMETHING_ELSE", "0"); // value != "1" → filtered
+        }
+        let mut got = forwarded_features();
+        got.sort();
+        assert_eq!(got, vec!["platform-posix", "rmw-zenoh"]);
+        unsafe {
+            env::remove_var("CARGO_FEATURE_RMW_ZENOH");
+            env::remove_var("CARGO_FEATURE_PLATFORM_POSIX");
+            env::remove_var("CARGO_FEATURE_SOMETHING_ELSE");
+        }
+    }
 }

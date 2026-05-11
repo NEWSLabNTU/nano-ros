@@ -1,7 +1,7 @@
 # Phase 118.E — Size-Probe Rigorization
 
 **Goal:** Replace the parallel-build retry loop in `nros-sizes-build::find_dep_rlib` with a deterministic mechanism. Investigate cbindgen const propagation as the leading candidate; document findings; pick an actionable path.
-**Status:** Investigation. cbindgen route ruled out — see Decision below. Implementation pending.
+**Status:** 118.E.1 + .5 + .6-prep landed (probe-mode dispatch, env-var contract, unit tests, doc updates, llvm-nm portability fixes). Filesystem mode remains default; `isolated` opt-in works end-to-end. .2/.3/.4 pending.
 **Priority:** Medium (build reliability; current retry loop works but flakes under parallel + slow filesystems).
 **Depends on:** Phase 118.B (rlib probe canonical, hand-math deleted), Phase 118.C (retry loop introduced as stopgap).
 
@@ -96,9 +96,9 @@ Parse stdout for `{"reason":"compiler-artifact","target":{"name":"nros",...},"fi
 
 #### Concerns and mitigations
 
-1. **Lockfile contention.** Cargo workspaces hold `<target>/.cargo-lock` flocks. A nested invocation from a build script can deadlock against the outer cargo if both try to lock the same target dir.
-   - Mitigation: cargo since 1.74 supports `CARGO_TARGET_DIR` override per-invocation; nested `cargo build` reusing the same target dir actually re-acquires the lock cleanly because the outer cargo has already released it for the duration of build-script execution (build scripts run in their own subprocess; cargo's job-server hands off the lock).
-   - Verified path forward: corrosion, cargo-c, and cargo-make all use this pattern in production without deadlocks.
+1. **Lockfile contention — IMPORTANT correction.** Cargo workspaces hold an exclusive flock on `<target>/.cargo-lock` for the **entire** outer build, including the time spent waiting on build-script subprocesses. A nested `cargo build` from a build script targeting the **same** dir deadlocks. The earlier draft of this doc mis-stated this — corrosion/cargo-c/cargo-make invoke nested cargo from CMake/Make at a layer *outside* any in-progress cargo build, not from a build script.
+   - **Mitigation actually used in implementation:** the nested invocation uses a **separate** target dir (`$OUT_DIR/sizes-probe-target/` by default; overridable via `NROS_SIZES_PROBE_TARGET_DIR`). This sidesteps the flock at the cost of a duplicate compile of the probed crate on cold cache. Subsequent runs hit the probe dir's own cache and are fast (<1s).
+   - Empirically verified on x86_64-linux: full `just build-all` passes under both `NROS_SIZES_PROBE_MODE=filesystem` (default) and `NROS_SIZES_PROBE_MODE=isolated`. Generated `#define NROS_*_SIZE` values are bit-identical between the two modes.
 
 2. **Feature set propagation.** The nested invocation must build `nros` with the *same* feature set the outer build is resolving. Build scripts receive features as `CARGO_FEATURE_<NAME>=1` env vars but only for the *current* crate's features. The active feature set for `nros` is recoverable via `cargo metadata --filter-platform=$TARGET --format-version=1` and walking the resolve tree.
    - Cost: one `cargo metadata` call before the nested `cargo build`.
@@ -128,11 +128,17 @@ Track as a stretch goal; not blocking.
 
 ## Work Items
 
-### 118.E.1 — Prototype nested-cargo probe
+### 118.E.1 — Prototype nested-cargo probe — **DONE**
 
 - **Files:** `packages/core/nros-sizes-build/src/lib.rs`.
-- Add `cargo_run_json(crate_name, target, features)` returning the rlib path.
-- Wire `find_dep_rlib` to call it; keep filesystem path behind `NROS_SIZES_PROBE_MODE=filesystem` env override.
+- [x] Add `ProbeMode::{Filesystem,Isolated}` enum + `from_env` reading `NROS_SIZES_PROBE_MODE` (case-insensitive; default `filesystem` for safety during transition).
+- [x] Refactor `find_dep_rlib` to dispatch on `ProbeMode`.
+- [x] Implement `find_dep_rlib_isolated`: spawn `cargo build -p <crate> --target=<triple> [--release] --features=<...> --message-format=json-render-diagnostics` against `$OUT_DIR/sizes-probe-target/`. Parse `compiler-artifact` events; return the first `.rlib` filename whose `target.name` matches.
+- [x] Implement `forwarded_features()` that reverses cargo's `CARGO_FEATURE_<NAME>=1` upper-case-with-underscore transform back to the lowercase-with-dashes form expected by `--features`.
+- [x] Make filesystem-path timeout configurable via `NROS_SIZES_PROBE_TIMEOUT_SECS` (default 60s, up from a hard-coded 10s+5s) with progress `cargo:warning=` every 10s.
+- [x] Fix `extract_sizes_via_llvm_nm` portability: `llvm-nm` → `llvm-nm.exe` on Windows; `rustc_host_triple()` actually returns the *host* triple (was returning `TARGET`, which broke cross-builds because `lib/rustlib/<target>/bin/` doesn't carry the host toolchain).
+- [x] Unit tests for `ProbeMode::from_env` and `forwarded_features`.
+- [x] End-to-end smoke: `just build-all` passes (EXIT=0) under default (`filesystem`) mode; `cargo build -p nros-c --features rmw-zenoh,platform-posix,ros-humble` passes under both modes with identical generated sizes.
 
 ### 118.E.2 — Active-feature resolution
 
