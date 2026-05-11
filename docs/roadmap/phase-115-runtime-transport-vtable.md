@@ -667,14 +667,38 @@ Ordered execution-first (policy → port → tracking entries):
   binding, or a customer-driven request to drop Rust from the zenoh
   path). Re-eval triggers in Appendix D §D.5. Tracking-only entry.
 
-- [~] **115.K.4 — uORB stays Rust (closed as won't-do).** Underlying
-  lib is C++ (PX4 modules), but uORB is the **in-process** case —
-  the nros code runs INSIDE a PX4 module, not over a network.
-  `px4-rs`'s value is module init + topic-registration derive macros
-  + workqueue-async tooling; a C++ port would replace those with
-  hand-written PX4 module idioms (which already exist in PX4 native
-  but not for the nros API surface). Net cost very high, net benefit
-  low. Won't-do; rationale captured in K.1's host-language doc.
+- [~] **115.K.4 — uORB C++ port (REOPENED 2026-05-11).** Originally
+  closed as won't-do on the basis that `px4-rs`'s value (module
+  init + workqueue-async tooling + msg codegen) outweighed the
+  benefit of a C++ port. The 2026-05-11 effort re-estimate flipped
+  that conclusion:
+
+  **What the original won't-do missed:** every one of
+  `px4-rs`'s "value adds" is a Rust re-implementation of something
+  PX4 native already provides:
+  - `px4-workqueue` (1483 LOC) ↔ PX4's `ScheduledWorkItem` class
+    (~50 LOC to subclass in C++).
+  - `px4-msg-codegen` (956 LOC) ↔ upstream `msggen.py → .hpp`
+    (zero new C++ code).
+  - `px4-log` (525 LOC) ↔ `PX4_INFO` / `PX4_WARN` macros (zero
+    new C++ code).
+  - `#[px4_module]` derive (201 LOC) ↔ `class : ModuleBase<T>`
+    boilerplate (~30 LOC per module).
+
+  Plus `nros-rmw-uorb` (443 LOC) + `nros-px4` (654 LOC) + the
+  `px4-rs` vendored submodule (5.3k LOC). Net **~6.4k LOC of
+  Rust maintenance burden** to keep nros-on-PX4 in Rust.
+
+  **Effort to port (cffi shape, mirrors `nros-rmw-cyclonedds`):**
+  ~1.5–2k LOC C++, **2-3 engineer-weeks**. Drops the 6.4k Rust
+  LOC and aligns with K.1 host-language policy (PX4 is C++ →
+  backend is C++).
+
+  See [§D.7 — uORB port (115.K.4)](#d7--uorb-port-115k4) for the
+  detailed plan; the work-item tree lands as 115.K.4.0 (scaffold)
+  through 115.K.4.5 (Rust-stack removal). 115.L.4 is **rolled
+  into K.4** — the C++ backend ships its own vtable directly, no
+  Rust-facade adapter needed.
 
 ### Rust-backend cffi exposure (115.L)
 
@@ -896,11 +920,12 @@ Ordered easiest → hardest:
   tracked as separate work items so each can land + ship
   independently.**
 
-- [ ] **115.L.4 — uORB cffi (deferred-with-K.4).** uORB stayed Rust
-  per K.4. If we still want the design-note R1 property "every
-  backend is reachable via the C vtable from any language," uORB
-  would also need a `*-cffi` facade. In-process-only nature means
-  the audience is small; tracking-only entry.
+- [x] **115.L.4 — rolled into K.4 (2026-05-11).** Originally
+  intended as a Rust-shim cffi facade over `UorbRmw`; superseded
+  when K.4 flipped to active C++ port. The C++ backend
+  registers `nros_rmw_vtable_t` directly via
+  `nros_rmw_uorb_register()` — no Rust adapter sits in the
+  middle. Tracking entry kept for cross-reference.
 
 - [~] **115.L.5 — Rust example migration onto cffi features.**
   L.3 flipped the C/C++ `NANO_ROS_RMW=zenoh|dds` selectors. Rust
@@ -1620,8 +1645,111 @@ bridge for one release cycle, then is removed. CMake option
 - 115.K.1 host-language policy doc: ~150 LOC markdown.
 - 115.K.2 XRCE port: ~2,000 LOC C + ~200 LOC test harness; remove
   ~3,000 LOC Rust + ~4,400 LOC -sys.
-- 115.K.3 / 115.K.4: zero (deferral / won't-do; tracking-only
-  entries, rationale captured in K.1's doc).
+- 115.K.3 zenoh-pico C/C++ port: zero (deferred; cffi facade via
+  L.2 covers the integration without re-implementing).
+- 115.K.4 uORB C++ port: ~1.5–2k LOC C++; remove ~6.4k LOC Rust
+  (nros-rmw-uorb + nros-px4 + px4-rs submodule).
 
-Net LOC change for the tier: roughly −5,000 LOC (mostly auto-
-generated FFI bindings going away).
+Net LOC change for the tier: roughly **−10,000 LOC** once K.2
++ K.4 complete (most of the delta is auto-generated FFI bindings
+and Rust-side re-implementations of native PX4 idioms going away).
+
+### D.7 — uORB port (115.K.4)
+
+Reopened 2026-05-11. Effort estimate ~2-3 engineer-weeks for the
+service-less variant, +1 week for service-over-topics emulation.
+
+**Existing Rust stack to be retired:**
+
+| Crate | LOC | Replacement in C++ port |
+|------|-----|-------------------------|
+| `packages/px4/nros-rmw-uorb` | 443 | folded into `nros-rmw-uorb-cpp/src/` |
+| `packages/px4/nros-px4` | 654 | module host becomes `class : ModuleBase<T>` boilerplate (~300 LOC) |
+| `third-party/px4/px4-rs/crates/px4-workqueue` | 1483 | direct `ScheduledWorkItem` subclass (~50 LOC) |
+| `third-party/px4/px4-rs/crates/px4-uorb` | 1134 | direct `orb_*` calls in vtable impl |
+| `third-party/px4/px4-rs/crates/px4-msg-codegen` + macros | 956 | upstream PX4 `msggen.py → .hpp` |
+| `third-party/px4/px4-rs/crates/px4-log` | 525 | `PX4_INFO` / `PX4_WARN` macros direct |
+| `third-party/px4/px4-rs/crates/px4-macros` | 201 | `class : ModuleBase<T>` ~30 LOC per module |
+| `third-party/px4/px4-rs/crates/px4-sys` | 35 | not needed (no FFI layer) |
+| **Total Rust LOC retired** | **~5,400** | |
+
+**Work items:**
+
+- [ ] **115.K.4.0 — `nros-rmw-uorb-cpp` scaffold.** New
+  standalone CMake project at `packages/px4/nros-rmw-uorb-cpp/`
+  mirroring `packages/dds/nros-rmw-cyclonedds/`'s layout. Public
+  header `nros_rmw_uorb.h` exposing
+  `nros_rmw_uorb_register()`. Per-area `.cpp` files: `vtable.cpp`,
+  `session.cpp`, `publisher.cpp`, `subscriber.cpp`, `service.cpp`,
+  `topic_registry.cpp`. Every vtable slot stubs out to
+  `NROS_RMW_RET_UNSUPPORTED`. Smoke test
+  `tests/register_smoke.cpp` validates the register entry point.
+  CMake hooks `find_package(PX4)` (or equivalent for PX4's
+  module-build SDK; details settled when K.4.1 lands).
+
+- [ ] **115.K.4.1 — session lifecycle.** `uorb_session_open`
+  parses no locator (uORB is in-process; the locator string is
+  ignored). Stash node_name / namespace as backend state.
+  `uorb_session_close` frees state. `uorb_session_drive_io` is
+  a no-op on uORB (push-based delivery via
+  `orb_register_callback`); returns OK immediately.
+
+- [ ] **115.K.4.2 — pub/sub data plane.** `uorb_publisher_create`
+  resolves the topic name → `orb_metadata*` via the topic
+  registry, calls `orb_advertise_multi`. `publish_raw` calls
+  `orb_publish`. `uorb_subscriber_create` calls
+  `orb_subscribe_multi` + `orb_register_callback` that signals
+  a per-subscriber ringbuffer. `try_recv_raw` drains the ring;
+  `has_data` polls the ready flag. Topic registry built from
+  the generated `<topic>.hpp` headers (PX4 native msggen output).
+
+- [ ] **115.K.4.3 — type-hash correlation.** uORB has no hash
+  concept. Map `(name, type_name) → orb_metadata*` via a
+  static lookup table generated alongside the topic registry.
+  Type-hash field on the cffi side is ignored at create time
+  (returned in topic listings as the literal "uORB" sentinel,
+  same shape that 115.K.2's XRCE port uses for its no-hash
+  flavour).
+
+- [ ] **115.K.4.4 — services (optional, service-over-topics).**
+  uORB has no native request/reply primitive. Either:
+  (a) Build req/reply over two uORB topics with rt-style
+      mangling and an in-payload `cdds_request_header_t`-style
+      correlator. Mirrors 117.X.3's approach for Cyclone. ~400 LOC.
+  (b) Return `UNSUPPORTED` from `create_service_*`. Acceptable
+      if PX4 applications don't need ROS-2-shape services
+      (most don't — uORB is pubsub-only by convention).
+  Decision deferred to K.4.4 work-item resolution; defaults to
+  (b) for the initial port.
+
+- [ ] **115.K.4.5 — Rust-stack removal.** After K.4.0–K.4.4
+  land + at least one release ships with the C++ backend:
+  - Delete `packages/px4/nros-rmw-uorb` (443 LOC).
+  - Delete `packages/px4/nros-px4` (654 LOC).
+  - Remove the `third-party/px4/px4-rs` submodule (5.3k LOC).
+  - Remove `rmw-uorb` Cargo feature from `nros-node` + `nros`.
+  - Remove `nros-rmw-uorb` from the workspace `Cargo.toml`.
+  Pre-req: any external Rust-on-PX4 users (if they exist) have
+  migrated to writing PX4 modules directly in C++.
+
+  Mirrors `115.K.2.5.3-deferred`'s shape but cleaner — uORB has
+  no Zephyr cross-compile dependency, so the legacy-Rust window
+  can close as soon as the C++ backend ships.
+
+**Risks:**
+- PX4 module build system integration. Per K.1, backends live
+  in CMake projects that downstream consumers pull via
+  `find_package(...)`. PX4 modules use a custom px4_add_module
+  CMake function; nros-rmw-uorb-cpp may need to be built **inside**
+  the PX4 module's CMake context rather than standalone. Resolve
+  during K.4.0.
+- `orb_metadata` ABI: the registry needs the static descriptor
+  pointers. PX4's generated `<topic>.hpp` exports them as
+  `extern const orb_metadata __orb_<topic>;`. Backend code
+  references them via dlsym-free static linkage; build-system
+  glue ensures the right `.hpp` is included per topic.
+- Service-over-topics correlation: if K.4.4 chooses (a), the
+  request_id correlation pattern reuses 117.X.3's
+  cdds_request_header_t shape; otherwise services stay
+  unimplemented and downstream applications use uORB pubsub
+  only. Decision logged at K.4.4 resolution.
