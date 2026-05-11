@@ -1703,10 +1703,11 @@ service-less variant, +1 week for service-over-topics emulation.
   validated. 1/1 passing via
   `build/nros-rmw-uorb-cpp/nros_rmw_uorb_register_smoke`.
 
-- [~] **115.K.4.2 — pub/sub data plane.** Publisher path landed
-  (this commit); subscriber path queued. `publisher_create`
-  resolves `(topic_name) → orb_metadata *` via the K.4.3
-  registry, allocates a `PublisherState { meta, advert, instance }`,
+- [x] **115.K.4.2 — pub/sub data plane.** Landed.
+
+  **Publisher:** `publisher_create` resolves
+  `(topic_name) → orb_metadata *` via the K.4.3 registry,
+  allocates a `PublisherState { meta, advert, instance }`,
   and lazy-advertises on first `publish_raw` (uORB needs a
   sample payload to advertise; we don't have one until the
   user publishes). Second-and-later `publish_raw` calls
@@ -1715,12 +1716,20 @@ service-less variant, +1 week for service-over-topics emulation.
   `BUFFER_TOO_SMALL` — uORB's advertise/publish would otherwise
   overread the caller buffer.
 
-  **Remaining (K.4.2-subscriber):** `subscriber_create` →
-  `orb_subscribe_multi` + per-subscriber ringbuffer.
-  `try_recv_raw` drains the ring; `has_data` polls the ready
-  flag. uORB's `orb_register_callback` fires from the broker's
-  workqueue context — signals an atomic ready-bit so the next
-  `try_recv_raw` returns the cached sample without a syscall.
+  **Subscriber:** `subscriber_create` registry-resolves, calls
+  `orb_subscribe_multi`, allocates a `SubscriberState { meta,
+  sub_handle }`. `try_recv_raw` polls via `orb_check`; if
+  updated, `orb_copy`s into the caller buffer (rejects with
+  `BUFFER_TOO_SMALL` *without* draining when `buf_len <
+  o_size`, so a retry with a larger buffer succeeds). `has_data`
+  polls `orb_check` and returns the flag.
+  `destroy_subscriber` unsubscribes + frees.
+
+  **Queued (K.4.2-subscriber-push):** wire
+  `orb_register_callback` so the broker thread signals an
+  atomic ready-bit that the executor's spin wake-up condvar
+  observes; eliminates the polling overhead between
+  `drive_io` iterations.
 
 - [x] **115.K.4.3 — topic registry.** Landed. uORB has no
   built-in name-keyed metadata lookup; the host PX4 module

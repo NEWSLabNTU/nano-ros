@@ -21,13 +21,22 @@ namespace {
 const nros_rmw_vtable_t *g_stashed_vtable = nullptr;
 
 // uORB ABI mock — tracks call counts + most-recent payload so the
-// test can validate the publisher trampoline plumbing.
+// test can validate the pub/sub trampoline plumbing.
 struct MockOrbState {
     int advertise_calls = 0;
     int publish_calls = 0;
     int unadvertise_calls = 0;
+    int subscribe_calls = 0;
+    int unsubscribe_calls = 0;
+    int check_calls = 0;
+    int copy_calls = 0;
     uint8_t last_payload[64] = {};
     size_t last_payload_len = 0;
+    // Subscriber side — queue a single pending sample.
+    bool pending = false;
+    uint8_t pending_payload[64] = {};
+    size_t pending_len = 0;
+    int next_sub_handle = 1;
 };
 MockOrbState g_orb;
 } // namespace
@@ -79,16 +88,28 @@ int orb_unadvertise(orb_advert_t /*handle*/) {
     return 0;
 }
 
-// K.4.2 publisher uses only advertise/publish/unadvertise; stub the
-// subscriber surface as well so future K.4.2 subscriber work can
-// share this test driver.
-int orb_subscribe_multi(const struct orb_metadata *, unsigned) {
-    return 1; // sentinel handle
+int orb_subscribe_multi(const struct orb_metadata * /*meta*/, unsigned) {
+    g_orb.subscribe_calls++;
+    return g_orb.next_sub_handle++;
 }
-int orb_unsubscribe(int) { return 0; }
-int orb_copy(const struct orb_metadata *, int, void *) { return -1; }
-int orb_check(int, bool *updated) {
-    if (updated != nullptr) *updated = false;
+int orb_unsubscribe(int /*handle*/) {
+    g_orb.unsubscribe_calls++;
+    return 0;
+}
+int orb_copy(const struct orb_metadata *meta, int /*handle*/, void *buf) {
+    g_orb.copy_calls++;
+    if (!g_orb.pending || buf == nullptr || meta == nullptr) {
+        return -1;
+    }
+    size_t n = meta->o_size;
+    if (n > g_orb.pending_len) n = g_orb.pending_len;
+    std::memcpy(buf, g_orb.pending_payload, n);
+    g_orb.pending = false;
+    return 0;
+}
+int orb_check(int /*handle*/, bool *updated) {
+    g_orb.check_calls++;
+    if (updated != nullptr) *updated = g_orb.pending;
     return 0;
 }
 
@@ -249,12 +270,100 @@ int main() {
         return 1;
     }
 
-    // -- Subscriber + service slots still UNSUPPORTED --
+    // -- K.4.2 subscriber path --
+    //
+    // Without a registered topic, create_subscriber must reject
+    // with TOPIC_NAME_INVALID.
     nros_rmw_subscriber_t subp{};
+    rc = vt->create_subscriber(&session, "/unregistered", "T", "H", 0,
+                               nullptr, &subp);
+    if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
+        std::fprintf(stderr,
+                     "create_subscriber on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
+                     rc);
+        return 1;
+    }
+
     rc = vt->create_subscriber(&session, "/test_topic", "test::Msg", "H", 0,
                                nullptr, &subp);
-    if (rc != NROS_RMW_RET_UNSUPPORTED) {
-        std::fprintf(stderr, "create_subscriber returned %d, expected UNSUPPORTED\n", rc);
+    if (rc != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "create_subscriber returned %d, expected OK\n", rc);
+        return 1;
+    }
+    if (subp.backend_data == nullptr) {
+        std::fprintf(stderr, "create_subscriber did not populate backend_data\n");
+        return 1;
+    }
+    if (g_orb.subscribe_calls != 1) {
+        std::fprintf(stderr, "expected 1 subscribe call, got %d\n",
+                     g_orb.subscribe_calls);
+        return 1;
+    }
+
+    // No pending sample → has_data 0 + try_recv_raw NO_DATA.
+    if (vt->has_data(&subp) != 0) {
+        std::fprintf(stderr, "has_data on empty queue returned non-zero\n");
+        return 1;
+    }
+    uint8_t rxbuf[16] = {};
+    int32_t n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
+    if (n != NROS_RMW_RET_NO_DATA) {
+        std::fprintf(stderr, "try_recv_raw empty returned %d, expected NO_DATA\n", n);
+        return 1;
+    }
+
+    // Stage a sample and drain.
+    g_orb.pending = true;
+    g_orb.pending_len = kFakeMeta.o_size;
+    for (size_t i = 0; i < kFakeMeta.o_size; ++i) {
+        g_orb.pending_payload[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    if (vt->has_data(&subp) != 1) {
+        std::fprintf(stderr, "has_data with pending returned 0\n");
+        return 1;
+    }
+    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
+    if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
+        std::fprintf(stderr, "try_recv_raw returned %d, expected %u\n",
+                     n, kFakeMeta.o_size);
+        return 1;
+    }
+    for (size_t i = 0; i < kFakeMeta.o_size; ++i) {
+        if (rxbuf[i] != static_cast<uint8_t>(0xA0 + i)) {
+            std::fprintf(stderr, "rxbuf[%zu] = 0x%02x, expected 0x%02x\n",
+                         i, rxbuf[i], 0xA0 + (int)i);
+            return 1;
+        }
+    }
+
+    // Short buffer rejects without draining.
+    g_orb.pending = true;
+    g_orb.pending_len = kFakeMeta.o_size;
+    n = vt->try_recv_raw(&subp, rxbuf, /*too small*/ 4);
+    if (n != NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        std::fprintf(stderr, "short try_recv_raw returned %d, expected BUFFER_TOO_SMALL\n", n);
+        return 1;
+    }
+    if (!g_orb.pending) {
+        std::fprintf(stderr, "short try_recv_raw drained the queue (should not)\n");
+        return 1;
+    }
+    // Retry with full buffer drains.
+    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
+    if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
+        std::fprintf(stderr, "retry try_recv_raw returned %d, expected %u\n",
+                     n, kFakeMeta.o_size);
+        return 1;
+    }
+
+    vt->destroy_subscriber(&subp);
+    if (g_orb.unsubscribe_calls != 1) {
+        std::fprintf(stderr, "expected 1 unsubscribe call, got %d\n",
+                     g_orb.unsubscribe_calls);
+        return 1;
+    }
+    if (subp.backend_data != nullptr) {
+        std::fprintf(stderr, "destroy_subscriber did not clear backend_data\n");
         return 1;
     }
 
@@ -267,6 +376,6 @@ int main() {
         return 1;
     }
 
-    std::printf("[OK] nros_rmw_uorb K.4.0–K.4.3 (publisher) passes\n");
+    std::printf("[OK] nros_rmw_uorb K.4.0–K.4.3 (pub + sub) passes\n");
     return 0;
 }
