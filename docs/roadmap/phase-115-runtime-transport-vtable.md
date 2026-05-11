@@ -667,11 +667,20 @@ Ordered execution-first (policy → port → tracking entries):
   binding, or a customer-driven request to drop Rust from the zenoh
   path). Re-eval triggers in Appendix D §D.5. Tracking-only entry.
 
-- [~] **115.K.4 — uORB C++ port (REOPENED 2026-05-11).** Originally
-  closed as won't-do on the basis that `px4-rs`'s value (module
-  init + workqueue-async tooling + msg codegen) outweighed the
-  benefit of a C++ port. The 2026-05-11 effort re-estimate flipped
-  that conclusion:
+- [x] **115.K.4 — uORB C++ port (FINISHED 2026-05-12).**
+  Reopened 2026-05-11 after re-estimating effort. C++ backend
+  shipped K.4.0 → K.4-cmake in five days; in-scope sub-items
+  K.4.0 / K.4.1 / K.4.2 / K.4.3 / K.4.4 / K.4-cmake all closed.
+  K.4.5 (legacy Rust-stack removal) stays `[~]`-deferred pending
+  one release cycle of the C++ backend as the
+  `NANO_ROS_RMW=uorb` default; K.4.2-subscriber-push (callback
+  wake optimisation) is also `[~]`-deferred (polling correct,
+  just less efficient).
+
+  Originally closed as won't-do on the basis that `px4-rs`'s
+  value (module init + workqueue-async tooling + msg codegen)
+  outweighed the benefit of a C++ port. The 2026-05-11 effort
+  re-estimate flipped that conclusion:
 
   **What the original won't-do missed:** every one of
   `px4-rs`'s "value adds" is a Rust re-implementation of something
@@ -1773,30 +1782,52 @@ service-less variant, +1 week for service-over-topics emulation.
   registrations via `nros_rmw_uorb_register_topic(...)` before
   calling `nros::init`.
 
-- [ ] **115.K.4.4 — services (optional, service-over-topics).**
-  uORB has no native request/reply primitive. Either:
-  (a) Build req/reply over two uORB topics with rt-style
-      mangling and an in-payload `cdds_request_header_t`-style
-      correlator. Mirrors 117.X.3's approach for Cyclone. ~400 LOC.
-  (b) Return `UNSUPPORTED` from `create_service_*`. Acceptable
-      if PX4 applications don't need ROS-2-shape services
-      (most don't — uORB is pubsub-only by convention).
-  Decision deferred to K.4.4 work-item resolution; defaults to
-  (b) for the initial port.
+- [x] **115.K.4.4 — services: permanent UNSUPPORTED (decision
+  locked 2026-05-12).** uORB has no native request/reply
+  primitive; PX4 modules use pubsub-only by convention (the
+  community asserts the same point in the PX4 dev docs).
+  Service-over-topics emulation would cost ~400 LOC + a
+  per-process correlator + a topic-namespace convention; no
+  in-tree consumer needs it, and the L tier's cyclonedds path
+  already covers any application that does want ROS-shape
+  services on PX4. Verdict: `create_service_*` returns
+  `UNSUPPORTED` permanently. If a real customer surfaces, the
+  service-over-topics option (a) reopens as `K.4.4-revisit`.
 
-- [ ] **115.K.4.5 — Rust-stack removal.** After K.4.0–K.4.4
-  land + at least one release ships with the C++ backend:
-  - Delete `packages/px4/nros-rmw-uorb` (443 LOC).
-  - Delete `packages/px4/nros-px4` (654 LOC).
-  - Remove the `third-party/px4/px4-rs` submodule (5.3k LOC).
-  - Remove `rmw-uorb` Cargo feature from `nros-node` + `nros`.
-  - Remove `nros-rmw-uorb` from the workspace `Cargo.toml`.
-  Pre-req: any external Rust-on-PX4 users (if they exist) have
-  migrated to writing PX4 modules directly in C++.
+- [~] **115.K.4.5 — Rust-stack removal (deferred).** K.4.0–K.4.4
+  + K.4-cmake all landed. Removal pre-reqs (all gating the
+  delete sweep):
+  1. **Real-PX4 build validation.** `NROS_RMW_UORB_LINK_PX4=ON`
+     branch in `nros-rmw-uorb-cpp/CMakeLists.txt` shipped (this
+     commit) — accepts `PX4_FIRMWARE_DIR=<path>` + the matching
+     include-dir / library cache vars. Needs end-to-end build
+     inside a PX4-Autopilot checkout (manual on-host validation;
+     PX4 module test harness lives outside this repo).
+  2. **At least one release cycle** with the C++ backend as the
+     `NANO_ROS_RMW=uorb` default so any downstream Rust-on-PX4
+     user has a window to migrate to writing PX4 modules
+     directly in C++.
+
+  Delete sweep (when pre-reqs satisfied):
+  - `packages/px4/nros-rmw-uorb` (443 LOC).
+  - `packages/px4/nros-px4` (654 LOC).
+  - `third-party/px4/px4-rs` submodule (5.3k LOC).
+  - `rmw-uorb` Cargo feature from `nros-node` + `nros`.
+  - `nros-rmw-uorb` workspace member entry.
 
   Mirrors `115.K.2.5.3-deferred`'s shape but cleaner — uORB has
   no Zephyr cross-compile dependency, so the legacy-Rust window
-  can close as soon as the C++ backend ships.
+  closes as soon as the pre-reqs above clear.
+
+- [~] **115.K.4.2-subscriber-push — `orb_register_callback`
+  optimization (deferred).** Current K.4.2 subscriber polls
+  `orb_check` on every `try_recv_raw`. The optimisation: wire
+  `orb_register_callback(meta, sub_handle, cb, user)` so the
+  broker's workqueue thread fires a callback that signals an
+  atomic ready-bit + wakes the executor's spin condvar.
+  Eliminates the per-iteration syscall. Not blocking — polling
+  via `orb_check` is correct, just slightly less efficient.
+  Reopens when a profiling pass surfaces uORB poll overhead.
 
 **Risks:**
 - PX4 module build system integration. Per K.1, backends live

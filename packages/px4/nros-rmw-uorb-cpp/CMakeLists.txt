@@ -44,10 +44,27 @@ if(NROS_RMW_UORB_LINK_PX4)
             "NROS_RMW_UORB_LINK_PX4=ON requires -DPX4_FIRMWARE_DIR=<path> "
             "(typically the consumer's PX4-Autopilot checkout).")
     endif()
-    # K.4.1 wires the actual include dirs + link targets; K.4.0 leaves
-    # this branch as a placeholder so the option exists on the cmake
-    # command line.
     message(STATUS "nros-rmw-uorb-cpp: PX4 SDK path = ${PX4_FIRMWARE_DIR}")
+    # PX4-Autopilot ships `<uORB/uORB.h>` under
+    # `<repo>/platforms/common/uORB`. The exact include layout shifts
+    # per PX4 release; the path expressions below match the upstream
+    # 1.14+ tree. Older releases that staged the headers elsewhere
+    # need a fork-side override of NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS.
+    if(NOT DEFINED NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS)
+        set(NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS
+            "${PX4_FIRMWARE_DIR}/platforms/common/uORB"
+            "${PX4_FIRMWARE_DIR}/platforms/common/include"
+            "${PX4_FIRMWARE_DIR}/src/include"
+            "${PX4_FIRMWARE_DIR}/src/lib")
+    endif()
+    # uORB symbol resolution at link time comes from the per-module
+    # `px4_add_module()` macro which already brings uORB in scope; we
+    # rely on that for both `orb_advertise_multi` / `orb_publish` /
+    # ... declarations and definitions. Inside the PX4 module's
+    # CMake context, NROS_RMW_UORB_PX4_UORB_LIBRARIES typically stays
+    # empty (the module pulls uORB transitively via its module
+    # dependency list). Standalone builds that link against a
+    # pre-built uORB archive populate it on the cmake command line.
 endif()
 
 # ---- Static library --------------------------------------------------------
@@ -69,6 +86,19 @@ target_include_directories(nros_rmw_uorb
         ${NROS_RMW_CFFI_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+if(NROS_RMW_UORB_LINK_PX4)
+    # Flip uorb_abi.hpp from "declare the ABI ourselves" to
+    # "#include <uORB/uORB.h>" from the PX4 SDK.
+    target_compile_definitions(nros_rmw_uorb PRIVATE
+        NROS_RMW_UORB_USE_PX4_HEADER=1)
+    target_include_directories(nros_rmw_uorb PRIVATE
+        ${NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS})
+    if(DEFINED NROS_RMW_UORB_PX4_UORB_LIBRARIES)
+        target_link_libraries(nros_rmw_uorb PUBLIC
+            ${NROS_RMW_UORB_PX4_UORB_LIBRARIES})
+    endif()
+endif()
 
 target_compile_options(nros_rmw_uorb PRIVATE
     -Wall -Wextra -Wpedantic
