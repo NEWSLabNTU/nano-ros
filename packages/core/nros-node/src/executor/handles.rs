@@ -1762,11 +1762,13 @@ impl<T> Promise<'_, T> {
     /// Returns `Ok(Some(reply))` if the reply has arrived,
     /// `Ok(None)` if still pending.
     pub fn try_recv(&mut self) -> Result<Option<T>, NodeError> {
-        match self
-            .handle
-            .try_recv_reply_raw(self.reply_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?
-        {
+        // Phase 120: NoData (no reply yet) is the steady-state polling
+        // condition — map to Ok(None) instead of ServiceRequestFailed.
+        match match self.handle.try_recv_reply_raw(self.reply_buffer) {
+            Ok(opt) => opt,
+            Err(TransportError::NoData) => return Ok(None),
+            Err(_) => return Err(NodeError::ServiceRequestFailed),
+        } {
             Some(len) => {
                 let reply = (self.parse)(&self.reply_buffer[..len])?;
                 // Reply consumed — allow the client to issue another call.

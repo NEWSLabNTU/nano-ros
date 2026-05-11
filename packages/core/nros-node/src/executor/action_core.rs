@@ -133,10 +133,15 @@ impl<
         // CDR payload; reading the buffer from offset 0 unconditionally
         // would feed the prefix bytes to the deserializer.
         let buf_start = self.goal_buffer.as_ptr() as usize;
-        let request = self
-            .send_goal_server
-            .try_recv_request(&mut self.goal_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
+        // Phase 120: NoData (no pending request) is the steady-state
+        // expected condition — collapse it to `Ok(None)` instead of
+        // surfacing as ServiceRequestFailed. Any other transport
+        // error remains ServiceRequestFailed.
+        let request = match self.send_goal_server.try_recv_request(&mut self.goal_buffer) {
+            Ok(opt) => opt,
+            Err(TransportError::NoData) => return Ok(None),
+            Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
+        };
 
         let request = match request {
             Some(r) => r,
@@ -285,14 +290,14 @@ impl<
         cancel_handler: impl FnOnce(&GoalId, GoalStatus) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
         let buf_start = self.cancel_buffer.as_ptr() as usize;
-        let request = self
+        // Phase 120: NoData == steady-state idle; map to Ok(None).
+        let request = match self
             .cancel_goal_server
             .try_recv_request(&mut self.cancel_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
-
-        let request = match request {
-            Some(r) => r,
-            None => return Ok(None),
+        {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 
         let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
@@ -355,14 +360,14 @@ impl<
         default_result_cdr: &[u8],
     ) -> Result<Option<GoalId>, NodeError> {
         let buf_start = self.goal_buffer.as_ptr() as usize;
-        let request = self
+        // Phase 120: NoData == steady-state idle; map to Ok(None).
+        let request = match self
             .get_result_server
             .try_recv_request(&mut self.goal_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
-
-        let request = match request {
-            Some(r) => r,
-            None => return Ok(None),
+        {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 
         let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
@@ -699,9 +704,15 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// to access the raw CDR data. The layout is: CDR header (4) + status
     /// byte (1) + result data.
     pub fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
-        self.get_result_client
+        // Phase 120: NoData == steady-state polling; map to Ok(None).
+        match self
+            .get_result_client
             .try_recv_reply_raw(&mut self.result_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+        {
+            Ok(opt) => Ok(opt),
+            Err(TransportError::NoData) => Ok(None),
+            Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
+        }
     }
 
     /// Poll for the send_goal acceptance reply (non-blocking, raw bytes).
@@ -711,9 +722,15 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// The reply CDR contains: header (4) + accepted (u8) + stamp (i32 + u32).
     pub fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
-        self.send_goal_client
+        // Phase 120: NoData == steady-state polling; map to Ok(None).
+        match self
+            .send_goal_client
             .try_recv_reply_raw(&mut self.result_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+        {
+            Ok(opt) => Ok(opt),
+            Err(TransportError::NoData) => Ok(None),
+            Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
+        }
     }
 
     /// Blocking get_result request — sends the request and blocks until
