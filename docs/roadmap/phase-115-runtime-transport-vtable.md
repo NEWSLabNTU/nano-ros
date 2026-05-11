@@ -926,17 +926,23 @@ Ordered easiest → hardest:
   `cargo test -p nros-tests --test native_api` +
   `--test nano2nano` sweep) tracked separately.
 
-  **Deferred sub-items:**
-  - `115.L.5-custom-transport` —
+  **Sub-items:**
+  - [x] `115.L.5-custom-transport` —
     `examples/native/rust/zenoh/custom-transport-{talker,listener}`
-    depend on `link-custom` on `nros-rmw-zenoh`;
-    `nros-rmw-zenoh-cffi` needs an equivalent `link-custom`
-    feature forward before they can flip.
-  - `115.L.5-zephyr` — `examples/zephyr/rust/zenoh/*` +
+    migrated. `nros-rmw-zenoh-cffi` now exposes a `link-custom`
+    feature that forwards to `nros-rmw-zenoh/link-custom`; the
+    umbrella `nros/link-custom` feature pulls it transitively.
+    Example main.rs calls `nros_rmw_zenoh_cffi::register()` AFTER
+    `nros_rmw::set_custom_transport(Some(ops))` so zenoh-pico's
+    session open drains the slot once the vtable is installed.
+    Both examples build clean.
+  - [ ] `115.L.5-zephyr` — `examples/zephyr/rust/zenoh/*` +
     `examples/zephyr/rust/dds/*` blocked on cross-compile
-    bring-up of the cffi shim crates for
-    `thumbv7em-none-eabihf` etc. Same shape as
-    `115.K.2.5.1.3-zephyr-deferred` for XRCE.
+    bring-up of the cffi shim crates for the Zephyr embedded
+    targets (`native_sim/native/64`, board variants). Same
+    shape as `115.K.2.5.1.3-zephyr-deferred` for XRCE; requires
+    Zephyr SDK + west fixture which is validated end-to-end via
+    `just zephyr build-fixtures` rather than direct `cargo build`.
 
 - [ ] **115.L.6 — non-backend consumer audit + trait fold.**
   Per the [design note R1](../design/portable-rmw-platform-interface.md)

@@ -107,6 +107,11 @@ fn main() {
     unsafe { nros_rmw::set_custom_transport(Some(ops)).expect("abi v1 ok") };
     info!("Custom transport vtable registered");
 
+    // Phase 115.L.5-custom-transport — install zenoh-pico C-vtable
+    // backend after staging the custom-transport slot (zenoh-pico
+    // drains the slot during session_open).
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let config = ExecutorConfig::new("custom/loopback").node_name("listener");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 

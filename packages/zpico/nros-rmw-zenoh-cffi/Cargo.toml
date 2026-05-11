@@ -31,6 +31,13 @@ platform-threadx = ["nros-rmw-zenoh/platform-threadx", "nros-platform/platform-t
 link-tcp = ["nros-rmw-zenoh/link-tcp"]
 link-udp-unicast = ["nros-rmw-zenoh/link-udp-unicast"]
 link-tls = ["nros-rmw-zenoh/link-tls"]
+# Phase 115.B / 115.L.5-custom-transport — runtime-pluggable
+# custom transport (`custom://` locator). Forwarded to the
+# underlying zenoh-pico crate; the user `register()`s the cffi
+# vtable, then drains `nros_rmw::take_custom_transport()` into
+# `zpico-platform-custom`'s slot the same way the direct Rust
+# path does.
+link-custom = ["nros-rmw-zenoh/link-custom"]
 
 # ROS edition pass-through.
 ros-humble = ["nros-rmw-zenoh/ros-humble"]
