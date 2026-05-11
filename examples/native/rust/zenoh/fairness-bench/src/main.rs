@@ -101,6 +101,9 @@ fn spawn_publisher(scenario: &str) -> Child {
 /// Publish /bench1/fast at 100Hz and /bench1/slow at 10Hz for 20s.
 fn publish_scenario_1() {
     let config = ExecutorConfig::from_env().node_name("pub1");
+    // Phase 115.L.5 — install zenoh-pico C-vtable backend.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub1").expect("Node");
 

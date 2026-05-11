@@ -10,7 +10,10 @@ name = "talker"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-dds", "platform-posix"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-dds-cffi", "platform-posix"] }
+# Phase 115.L.5 — pull cffi shim that exposes dust-dds via
+# `nros_rmw_vtable_t`. main.rs calls register() before Executor::open.
+nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-posix"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

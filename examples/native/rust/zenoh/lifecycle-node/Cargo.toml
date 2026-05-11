@@ -14,6 +14,10 @@ default = ["lifecycle-services"]
 lifecycle-services = ["nros/lifecycle-services"]
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "lifecycle-services"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix", "lifecycle-services"] }
+# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
+# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
+# `Executor::open`.
+nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-posix", "link-tcp", "ros-humble"] }
 log = "0.4"
 env_logger = "0.11"

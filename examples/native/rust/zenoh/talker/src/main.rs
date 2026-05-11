@@ -61,6 +61,10 @@ fn main() {
     info!("nros Native Talker (Zenoh Transport)");
     info!("=========================================");
 
+    // Phase 115.L.5 — install the zenoh-pico C-vtable backend into
+    // the cffi runtime before opening any session. Idempotent.
+    nros_rmw_zenoh_cffi::register().expect("Failed to register zenoh RMW backend");
+
     // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
     let config = ExecutorConfig::from_env().node_name("talker");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");

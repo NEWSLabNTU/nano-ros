@@ -11,7 +11,11 @@ name = "rtic-action-server"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix"] }
+# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
+# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
+# `Executor::open`.
+nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-posix", "link-tcp", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 heapless = "0.8"
 log = "0.4"
