@@ -28,8 +28,20 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), NodeError> {
-    // XRCE locator: "agent_addr:port" (no tcp/ prefix).
-    let config = ExecutorConfig::new("127.0.0.1:2018").node_name("xrce_action_server");
+    // XRCE locator: "agent_addr:port" (no tcp/ prefix). Phase 120.2:
+    // assembled from `CONFIG_NROS_XRCE_AGENT_ADDR` + `CONFIG_NROS_XRCE_AGENT_PORT`
+    // so test fixtures can override the port per (variant, lang)
+    // pair via `-DCONFIG_NROS_XRCE_AGENT_PORT=<port>` at west-build
+    // time.
+    use core::fmt::Write;
+    let mut locator: heapless::String<48> = heapless::String::new();
+    let _ = write!(
+        locator,
+        "{}:{}",
+        zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR,
+        zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
+    );
+    let config = ExecutorConfig::new(&locator).node_name("xrce_action_server");
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;
     let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;

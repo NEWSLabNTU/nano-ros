@@ -18,6 +18,7 @@ name = "rustapp"
 crate-type = ["staticlib"]
 
 [dependencies]
+heapless = "0.8"
 # Zephyr support from zephyr-lang-rust module
 zephyr = "0.1.0"
 log = "0.4"
