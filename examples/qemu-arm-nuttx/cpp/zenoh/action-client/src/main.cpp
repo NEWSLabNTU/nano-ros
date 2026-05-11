@@ -45,7 +45,7 @@ static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data,
     }
 }
 
-static void result_cb(const uint8_t goal_id[16], int status,
+static void result_cb(const uint8_t goal_id[16], int32_t status,
                       const uint8_t* data, size_t len, void* ctx) {
     (void)goal_id;
     (void)status;

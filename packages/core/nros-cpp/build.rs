@@ -276,10 +276,10 @@ fn dep_usize(name: &str) -> usize {
         .unwrap_or_else(|_| panic!("{name} is not a valid usize"))
 }
 
-/// Generate `include/nros_cpp_ffi.h` using cbindgen.
+/// Generate `include/nros/nros_cpp_ffi.h` using cbindgen.
 fn generate_header(manifest_dir: &std::path::Path) {
     let config_path = manifest_dir.join("cbindgen.toml");
-    let output_path = manifest_dir.join("include/nros_cpp_ffi.h");
+    let output_path = manifest_dir.join("include/nros/nros_cpp_ffi.h");
 
     let config = match cbindgen::Config::from_file(&config_path) {
         Ok(c) => c,

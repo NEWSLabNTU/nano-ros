@@ -28,6 +28,22 @@
 // equivalent shapes.
 #include "nros_cpp_ffi.h"
 
+extern "C" {
+typedef void (*nros_cpp_action_client_goal_response_callback_t)(bool accepted,
+                                                               const uint8_t goal_id[16],
+                                                               void* ctx);
+typedef void (*nros_cpp_action_client_feedback_callback_t)(const uint8_t goal_id[16],
+                                                          const uint8_t* data, size_t len,
+                                                          void* ctx);
+typedef void (*nros_cpp_action_client_result_callback_t)(const uint8_t goal_id[16], int32_t status,
+                                                        const uint8_t* data, size_t len, void* ctx);
+
+nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
+    void* handle, nros_cpp_action_client_goal_response_callback_t goal_response,
+    nros_cpp_action_client_feedback_callback_t feedback,
+    nros_cpp_action_client_result_callback_t result, void* context);
+} // extern "C"
+
 namespace nros {
 
 /// Typed action client for a ROS 2 action.
@@ -249,7 +265,7 @@ template <typename A> class ActionClient {
         /// Called when feedback is received for the goal.
         void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx);
         /// Called when the result is received.
-        void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len,
+        void (*result)(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
                        void* ctx);
         /// User context pointer passed to all callbacks.
         void* context;
