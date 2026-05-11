@@ -820,9 +820,15 @@ fn test_rtos_action_e2e(
     };
     let client_out = client.wait_for_output(client_timeout).unwrap_or_default();
 
+    let server_post = server
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
     server.kill();
     client.kill();
 
+    eprintln!("Server boot:\n{}", server_boot);
+    eprintln!("Server post-boot:\n{}", server_post);
     eprintln!("Client output:\n{}", client_out);
 
     let goal_accepted = client_out.contains("Goal accepted");

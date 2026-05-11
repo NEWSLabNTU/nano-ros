@@ -62,20 +62,77 @@ The fix shape: have the Rust embedded examples read `zephyr::kconfig::CONFIG_NRO
 - [x] Added `heapless = "0.8"` to the five `Cargo.toml` files that didn't already have it (action-server already had it).
 - [x] Verified: `test_zephyr_xrce_rust_action_e2e` passes after the fix; was failing with `Transport(ConnectionFailed)` because the agent ran on port 2038 but the binary hardcoded `127.0.0.1:2018`.
 
-### 120.3 — ThreadX Rust XRCE locator — **TODO**
+### 120.3 — ThreadX RV64 Rust action E2E (zenoh-pico) — **DEFERRED**
 
-Same fix in `examples/threadx-riscv64/rust/xrce/*` (or wherever the ThreadX action example lives).
+`test_rtos_action_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust`.
+**Same platform, same QEMU, same zenoh-pico, same NetX BSD — C and C++
+pass, only Rust fails.** Manual-poll vs callback path is the only
+functional difference; both delegate to the same `Node::create_action_*`
+and `session.drive_io()` primitives.
 
-### 120.4 — ThreadX DDS talker→listener — **TODO**
+Investigation this session:
 
-`test_threadx_rv64_dds_rust_talker_to_listener_e2e` — needs investigation. Likely separate from the port-hardcoding issue.
+- Captured server output (added `server.wait_for_output` drain after
+  client_timeout in `rtos_e2e.rs:803-810`). Server prints `Waiting for
+  goals...` then **nothing** — `try_accept_goal` never sees a request,
+  i.e. the queryable callback never fires for the send_goal key.
+- Client side: `send_goal` returns Ok on attempt 1 (z_get sent), then
+  the 50 s accept-poll window expires with no reply. Retries fail with
+  `RequestInFlight` (in-flight slot from attempt 1).
+- Confirmed key-expression composition matches between client and
+  server (both go through `Node::create_action_*` with node identity).
+- Confirmed network setup: both QEMU instances on slirp NAT to host
+  loopback, both connect to zenohd on port 7473 (per-(variant, lang)
+  allocation; C uses 7573 and passes).
+- Confirmed buffer pool sizes: `ZPICO_MAX_QUERYABLES=8` (action server
+  uses 3); `ZPICO_MAX_PUBLISHERS=8` (uses 2); `APP_THREAD_STACK_SIZE=64K`.
+  Nothing exhausted.
+- Defensive landings shipped on branch `phase-120-threadx-fixes`:
+  `send_request_raw` no_std-path retry budget (80 × 5 ms z_sleep_ms vs
+  the prior 3-attempt tight loop) + client-side 5-attempt outer retry.
+  Neither addresses the root cause but both are improvements; keep.
+
+Real fix needs zenoh-pico tracing on both sides — verify the server's
+queryable is actually registered with the router (gossip vs declare
+liveliness), and that the router forwards the z_get to it. May also
+need a smaller repro outside the action protocol (e.g. raw service
+call via manual-poll) to isolate whether this is action-specific or
+generic to manual-poll services on this transport.
+
+### 120.4 — ThreadX RV64 Rust DDS talker→listener — **DEFERRED**
+
+`test_threadx_rv64_dds_rust_talker_to_listener_e2e`. Listener crashes
+with RISC-V `Instruction access fault` (mepc=0, mtval=0) immediately
+after printing `Waiting for messages...`. Code jumped to a null
+function pointer.
+
+Symptoms:
+
+- Crash inside the `loop { spin_once; try_recv; }` body, not in setup.
+- Listener trap-handler prints `ra=0x80014ca6` (just after a `jal
+  uart_puts` inside the trap printer itself — disassembly confirms
+  this is the handler's own ra after printing). Captured-at-trap ra
+  doesn't unambiguously point to the faulting caller.
+- Possibly related to the existing `project_threadx_linux_pointer_truncation`
+  memory note: `ULONG → ALIGN_TYPE` mismatch for BSD socket pointer
+  casts on 64-bit. dust-dds-rs on NetX BSD may have the same shape.
+
+Real fix needs in-QEMU debug (gdb attach via `-S -s` flag), or static
+analysis of `nros-rmw-dustdds` + NetX BSD shim for `(ULONG)pointer`
+truncation on rv64.
 
 ## Acceptance
 
 - [x] 120.1 lands; `test_xrce_action_fibonacci` passes.
-- [ ] 120.2 + 120.3 land; Zephyr + ThreadX Rust XRCE tests pass.
-- [ ] 120.4 lands; ThreadX DDS talker test passes.
+- [x] 120.2 lands; Zephyr Rust XRCE tests pass.
+- [ ] 120.3 lands; ThreadX RV64 Rust action zenoh-pico E2E passes.
+- [ ] 120.4 lands; ThreadX RV64 Rust DDS listener stops crashing.
 - [ ] `just test-all`: 720/720 pass.
+
+Final this session: 11/13 baseline failures fixed (Phase 119 + 120.1 +
+120.2). Remaining 2 are both on ThreadX RV64 Rust embedded targets —
+one a transport/manual-poll issue, one a 64-bit pointer-truncation
+crash. Both need real debugger sessions, not source inspection.
 
 ## Notes
 
