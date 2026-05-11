@@ -57,6 +57,7 @@ add_library(nros_rmw_uorb STATIC
     src/publisher.cpp
     src/subscriber.cpp
     src/service.cpp
+    src/topic_registry.cpp
 )
 add_library(NrosRmwUorb::NrosRmwUorb ALIAS nros_rmw_uorb)
 
@@ -91,6 +92,7 @@ if(NROS_RMW_UORB_BUILD_TESTS)
     target_link_libraries(nros_rmw_uorb_register_smoke PRIVATE nros_rmw_uorb)
     target_include_directories(nros_rmw_uorb_register_smoke PRIVATE
         ${NROS_RMW_CFFI_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     # nros_rmw_cffi_register lives in the Rust-side staticlib; the
     # smoke test stubs it locally (see tests/register_smoke.cpp) so
@@ -107,6 +109,7 @@ install(TARGETS nros_rmw_uorb
 
 install(FILES
     include/nros_rmw_uorb.h
+    include/nros_rmw_uorb_registry.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
