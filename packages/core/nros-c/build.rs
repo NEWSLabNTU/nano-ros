@@ -87,15 +87,11 @@ fn generate_config(
     // Without this the last cmake build's target-specific sizes
     // pollute every other variant's installed header → opaque-storage
     // overflow at runtime.
-    let header_path_for_merge = manifest_dir.join("include/nros/nros_config_generated.h");
-    let merged = nros_sizes_build::merge_header_max_values(&header_path_for_merge, "NROS_", probed);
-
-    // `probe_executor == 0` only happens during `cargo check
-    // --no-default-features` (no RMW backend wired); pad to a placeholder
-    // u64 in that case so cbindgen can still emit a syntactically valid
-    // `_opaque[]` array, but flag it visibly. Real builds always probe a
-    // non-zero size.
-    let probe_executor = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    // Phase 119.3: merge is gone. Each cargo invocation writes its
+    // per-build header to
+    // `$CARGO_TARGET_DIR/nros-c-generated/<variant_slug>/nros/...`
+    // and `nros_c_setup()` CMake function finds it.
+    let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor == 0 {
         println!(
             "cargo:warning=nros-c: EXECUTOR_SIZE probe returned 0 — \
@@ -145,18 +141,18 @@ fn generate_config(
     // Phase 118.B: hand-math upper bound for `EXECUTOR_SIZE` deleted —
     // `executor_storage_bytes` above now reads directly from the probe.
     // The other sizes have always been probe-only.
-    let probe_guard = merged.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_publisher = merged.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_subscriber = merged.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_client = merged.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_server = merged.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_session = merged.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_lifecycle_ctx = merged.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
-    let probe_action_server_internal = merged
+    let probe_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    let probe_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
+    let probe_action_server_internal = probed
         .get("ACTION_SERVER_INTERNAL_SIZE")
         .copied()
         .unwrap_or(0) as usize;
-    let probe_action_server_raw_handle = merged
+    let probe_action_server_raw_handle = probed
         .get("ACTION_SERVER_RAW_HANDLE_SIZE")
         .copied()
         .unwrap_or(0) as usize;
@@ -239,43 +235,26 @@ typedef struct ActionServerRawHandle {{
 #endif /* NROS_CONFIG_GENERATED_H */
 "
     );
-    let config_header_path = manifest_dir.join("include/nros/nros_config_generated.h");
-    let probe_failed = probe_executor == 0; // see write_header_preserve_nonzero below
-    write_header_preserve_nonzero(&config_header_path, &c_header, "nros-c", probe_failed);
-
-    // Phase 119.2: also write an EXACT (unmerged) header to
-    // CORROSION_BUILD_DIR for cmake builds. cmake installs this file
-    // to a variant-specific subdir so per-cmake-build storage sizes
-    // survive alongside every other variant's. Source-tree header
-    // above remains for direct cargo users (max-merged upper bound).
-    let exact_executor_raw = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
-    if exact_executor_raw > 0 {
-        let exact_executor = exact_executor_raw;
-        let exact_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
-        let exact_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-        let exact_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
-        let exact_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
-        let exact_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
-        let exact_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
-        let exact_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
-        let exact_action_server_internal = probed
-            .get("ACTION_SERVER_INTERNAL_SIZE")
-            .copied()
-            .unwrap_or(0) as usize;
-        let exact_action_server_raw_handle = probed
-            .get("ACTION_SERVER_RAW_HANDLE_SIZE")
-            .copied()
-            .unwrap_or(0) as usize;
-        let exact_executor_storage = exact_executor.max(8);
-        let exact_executor_u64s = exact_executor_storage.div_ceil(8);
-        let exact_session_u64s = exact_session.div_ceil(8);
-        let exact_publisher_u64s = exact_publisher.div_ceil(8);
-        let exact_guard_u64s = exact_guard.div_ceil(8);
-        let exact_lifecycle_u64s = exact_lifecycle_ctx.div_ceil(8);
-        let exact_raw_handle_u64s = exact_action_server_raw_handle.div_ceil(8);
-        let exact_header = format!(
-            "\
-/* Auto-generated by nros-c build.rs — do not edit (Phase 119.2 variant-specific) */
+    // Phase 119.3: source-tree header is now a committed STUB that
+    // `#error`s. Real header gets written PER-BUILD to
+    // `$CARGO_TARGET_DIR/nros-c-generated/<variant_slug>/nros/`.
+    // `nros_c_setup()` CMake function finds it.
+    let _ = (manifest_dir, c_header);
+    if probe_executor == 0 {
+        // `cargo check --no-default-features` / `cargo doc` — no probe
+        // result, skip writing.
+        return;
+    }
+    let exact_executor_storage = probe_executor.max(8);
+    let exact_executor_u64s = exact_executor_storage.div_ceil(8);
+    let exact_session_u64s = probe_session.div_ceil(8);
+    let exact_publisher_u64s = probe_publisher.div_ceil(8);
+    let exact_guard_u64s = probe_guard.div_ceil(8);
+    let exact_lifecycle_u64s = probe_lifecycle_ctx.div_ceil(8);
+    let exact_raw_handle_u64s = probe_action_server_raw_handle.div_ceil(8);
+    let exact_header = format!(
+        "\
+/* Auto-generated by nros-c build.rs — do not edit (Phase 119.3 per-build variant header) */
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
@@ -283,15 +262,15 @@ typedef struct ActionServerRawHandle {{
 
 #define NROS_EXECUTOR_STORAGE_SIZE {exact_executor_storage}
 
-#define NROS_EXECUTOR_SIZE {exact_executor}
-#define NROS_GUARD_CONDITION_SIZE {exact_guard}
-#define NROS_PUBLISHER_SIZE {exact_publisher}
-#define NROS_SUBSCRIBER_SIZE {exact_subscriber}
-#define NROS_SERVICE_CLIENT_SIZE {exact_service_client}
-#define NROS_SERVICE_SERVER_SIZE {exact_service_server}
-#define NROS_SESSION_SIZE {exact_session}
-#define NROS_LIFECYCLE_CTX_SIZE {exact_lifecycle_ctx}
-#define NROS_ACTION_SERVER_INTERNAL_SIZE {exact_action_server_internal}
+#define NROS_EXECUTOR_SIZE {probe_executor}
+#define NROS_GUARD_CONDITION_SIZE {probe_guard}
+#define NROS_PUBLISHER_SIZE {probe_publisher}
+#define NROS_SUBSCRIBER_SIZE {probe_subscriber}
+#define NROS_SERVICE_CLIENT_SIZE {probe_service_client}
+#define NROS_SERVICE_SERVER_SIZE {probe_service_server}
+#define NROS_SESSION_SIZE {probe_session}
+#define NROS_LIFECYCLE_CTX_SIZE {probe_lifecycle_ctx}
+#define NROS_ACTION_SERVER_INTERNAL_SIZE {probe_action_server_internal}
 
 #define SESSION_OPAQUE_U64S {exact_session_u64s}
 #define PUBLISHER_OPAQUE_U64S {exact_publisher_u64s}
@@ -311,23 +290,32 @@ typedef struct ActionServerRawHandle {{
 
 #endif /* NROS_CONFIG_GENERATED_H */
 "
+    );
+
+    // Phase 119.3: two stable per-build locations (see nros-cpp/build.rs
+    // for rationale).
+    let write_to = |dest: PathBuf| {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).expect("nros-c: create per-build header dir");
+        }
+        std::fs::write(&dest, &exact_header).expect("nros-c: write per-build header");
+    };
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        write_to(
+            PathBuf::from(target_dir)
+                .join("nros-c-generated")
+                .join("nros")
+                .join("nros_config_generated.h"),
         );
-        let write_to = |dest: PathBuf| {
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            std::fs::write(&dest, &exact_header).unwrap();
-        };
-        if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
-            write_to(PathBuf::from(corrosion_dir).join("nros_config_generated.h"));
-        }
-        if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-            write_to(
-                PathBuf::from(target_dir)
-                    .join("nros")
-                    .join("nros_config_generated.h"),
-            );
-        }
+    } else if let Ok(td) = nros_sizes_build::cargo_target_dir() {
+        write_to(
+            td.join("nros-c-generated")
+                .join("nros")
+                .join("nros_config_generated.h"),
+        );
+    }
+    if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
+        write_to(PathBuf::from(corrosion_dir).join("nros_config_generated.h"));
     }
 }
 
@@ -341,6 +329,7 @@ typedef struct ActionServerRawHandle {{
 /// the caller because only it knows which probe keys are expected to be
 /// populated. See Phase 77.24 in
 /// `docs/roadmap/phase-77-async-action-client.md`.
+#[allow(dead_code)] // Phase 119.3: kept for direct-cargo source-tree fallback in future
 fn write_header_preserve_nonzero(
     path: &std::path::Path,
     new_contents: &str,

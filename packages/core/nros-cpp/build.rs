@@ -75,14 +75,12 @@ fn generate_config(
     // u64 word: `size_of::<CppContext>() = size_of::<Executor>() + 8`
     // — verified by the const-assert in `lib.rs`. Probe = 0 only
     // happens on `cargo check --no-default-features` (no RMW).
-    // Phase 119.1: merge against any prior header in the package source
-    // tree so multi-variant cmake builds end up with the MAX across
-    // variants. See merge_header_max_values doc for why.
-    let header_path_for_merge = manifest_dir.join("include/nros/nros_cpp_config_generated.h");
-    let merged = nros_sizes_build::merge_header_max_values(&header_path_for_merge, "NROS_", probed);
-
+    // Phase 119.3: merge is gone. Use probe values directly — each
+    // cargo invocation gets its own per-build header in
+    // `$CARGO_TARGET_DIR/nros-cpp-generated/<variant_slug>/`, so the
+    // source-tree merging from 119.1 is unnecessary.
     const CPP_CONTEXT_OVERHEAD: usize = 8;
-    let probe_executor_pre = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor_pre == 0 {
         println!(
             "cargo:warning=nros-cpp: EXECUTOR_SIZE probe returned 0 — \
@@ -124,11 +122,11 @@ fn generate_config(
     let action_client_fallback = ptr_bytes * 5 + if ptr_bytes == 8 { 8 } else { 4 };
 
     let action_server_storage = non_zero_or(
-        merged.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
+        probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
         action_server_fallback,
     );
     let action_client_storage = non_zero_or(
-        merged.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
+        probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
         action_client_fallback,
     );
 
@@ -172,126 +170,34 @@ fn generate_config(
     // Phase 87.3 transition they live alongside the hand-math `NROS_CPP_*`
     // values; once the thin-wrapper refactor (87.6) lands the hand-math
     // consumers can switch to these macros directly.
-    // Phase 119.1: `merged` was computed at the top of this function.
-    // 119.2: ALSO compute exact (unmerged) values for variant-specific
-    // header. Two formatters below — `header_for(values)` produces a
-    // header string from either map.
-    let probe_executor = merged.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
-    let probe_guard = merged.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
-    let probe_publisher = merged.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_subscriber = merged.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_client = merged.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
-    let probe_service_server = merged.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
-
-    // Exact (unmerged) variant values — used for the per-build header
-    // installed into the variant-specific include subdir.
-    let exact_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
-    let exact_storage_bytes = exact_executor.max(8) + CPP_CONTEXT_OVERHEAD;
-    let exact_action_server = non_zero_or(
-        probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,
-        action_server_fallback,
-    );
-    let exact_action_client = non_zero_or(
-        probed.get("CPP_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize,
-        action_client_fallback,
-    );
+    // Phase 119.3: probe values feed the per-build header directly.
+    let exact_executor = probe_executor_pre;
+    let exact_storage_bytes = storage_bytes;
+    let exact_action_server = action_server_storage;
+    let exact_action_client = action_client_storage;
     let exact_guard = probed.get("GUARD_CONDITION_SIZE").copied().unwrap_or(0) as usize;
     let exact_publisher = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
     let exact_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
     let exact_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
     let exact_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let _ = (manifest_dir, action_client_fallback);
 
-    // Phase 118.B closure of Phase 87.6: hand-math vs probe assert
-    // removed — `storage_bytes` is the probe value now, no upper bound
-    // to compare against.
-    let _ = probe_executor;
+    // Phase 119.3: source-tree header is a committed STUB that errors
+    // out (see `include/nros/nros_cpp_config_generated.h`). Real header
+    // gets written PER-BUILD to a variant-slug subdir under the cargo
+    // target directory; `nros_cpp_setup()` CMake function finds it.
+    if exact_executor == 0 {
+        // `cargo check --no-default-features` / `cargo doc` path —
+        // probe yielded nothing. Skip writing the per-build header.
+        // Consumer code that #includes nros_cpp_config_generated.h
+        // hits the stub `#error`, which is the desired behavior (no
+        // RMW backend means no executor sizes to ship).
+        return;
+    }
 
-    // Generate C++ config header with all storage sizes (local include/nros/)
-    // Use raw line literals (no `\` continuation) so leading whitespace
-    // inside C block comments (` * Each constant ...`) is preserved.
-    // `\` continuation strips leading whitespace on the next line, which
-    // produces clang-format violations on the ` *` comment alignment.
-    let cpp_header = format!(
+    let exact_header = format!(
         "\
-/* Auto-generated by nros-cpp build.rs — do not edit */
-#ifndef NROS_CPP_CONFIG_GENERATED_H
-#define NROS_CPP_CONFIG_GENERATED_H
-
-/** Inline opaque storage size (bytes) for nros::Executor. */
-#define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}
-
-/** Inline opaque storage size (bytes) for nros::ActionServer<A>. */
-#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE {action_server_storage}
-
-/** Inline opaque storage size (bytes) for nros::ActionClient<A>. */
-#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE {action_client_storage}
-
-/* ── Probe-derived inline storage sizes ──────────────────────
- * Each constant below is the byte size of the corresponding
- * runtime type, extracted from the compiled runtime by the
- * build script. The C++ public templates use these as the
- * `_opaque` buffer size so handles can live on the stack or
- * inside user structs without dynamic allocation.
- */
-#define NROS_EXECUTOR_SIZE {probe_executor}
-#define NROS_GUARD_CONDITION_SIZE {probe_guard}
-#define NROS_PUBLISHER_SIZE {probe_publisher}
-#define NROS_SUBSCRIBER_SIZE {probe_subscriber}
-#define NROS_SERVICE_CLIENT_SIZE {probe_service_client}
-#define NROS_SERVICE_SERVER_SIZE {probe_service_server}
-
-#endif /* NROS_CPP_CONFIG_GENERATED_H */
-"
-    );
-    let include_dir = manifest_dir.join("include/nros");
-    std::fs::create_dir_all(&include_dir).ok();
-    let header_path = include_dir.join("nros_cpp_config_generated.h");
-    // Phase 77.24: if the probe silently returned 0 (LTO bitcode rlib),
-    // keep the checked-in committed header rather than clobbering it
-    // with zeros. `action_server_storage` / `action_client_storage` are
-    // safe even on probe failure because `nros-cpp/build.rs` has the
-    // hand-math fallback for those two — the `NROS_*_SIZE` macros on
-    // the other hand have no fallback and would silently produce
-    // `_opaque[0]` arrays.
-    let probe_failed = probe_executor == 0;
-    if probe_failed && header_path.exists() {
-        // Expected on `cargo doc` / `cargo check --workspace` (LTO bitcode
-        // rlib has no readable layout) — fall back to the committed header.
-        // `eprintln!` rather than `cargo:warning` so this doesn't surface
-        // as a yellow warning on every workspace build (Phase 77.24 stopgap).
-        eprintln!(
-            "nros-cpp: probe returned all-zero sizes (LTO bitcode rlib?); \
-             keeping existing committed header at {}",
-            header_path.display()
-        );
-    } else if probe_failed {
-        panic!(
-            "nros-cpp: probe returned all-zero sizes and no committed \
-             header exists at {}. Run a non-LTO build (e.g. debug \
-             profile) once to seed the header.",
-            header_path.display()
-        );
-    } else {
-        std::fs::write(&header_path, &cpp_header).unwrap();
-
-        // Phase 119.2: also write an EXACT (unmerged) header to
-        // per-build locations. Two destinations covered:
-        //
-        // 1. CORROSION_BUILD_DIR — cmake-corrosion (install-local builds)
-        //    installs from there to a variant-specific subdir under
-        //    `include/nros_cpp_<rmw>_<platform>/nros/`.
-        // 2. $CARGO_TARGET_DIR/nros/ — Zephyr (and any cmake setup that
-        //    sets CARGO_TARGET_DIR to drive cargo as an external
-        //    project). The Zephyr CMakeLists.txt adds CARGO_TARGET_DIR
-        //    to `zephyr_include_directories` BEFORE the source-tree
-        //    nros-cpp include dir so the per-build header wins.
-        //
-        // Source-tree header (max-merged above) remains for direct
-        // cargo users.
-        if exact_executor > 0 {
-            let exact_header = format!(
-                "\
-/* Auto-generated by nros-cpp build.rs — do not edit */
+/* Auto-generated by nros-cpp build.rs — do not edit (Phase 119.3 per-build variant header) */
 #ifndef NROS_CPP_CONFIG_GENERATED_H
 #define NROS_CPP_CONFIG_GENERATED_H
 
@@ -313,26 +219,128 @@ fn generate_config(
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
 "
-            );
-            let write_to = |dest: std::path::PathBuf| {
-                if let Some(parent) = dest.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                std::fs::write(&dest, &exact_header).unwrap();
-            };
-            if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
-                write_to(
-                    std::path::PathBuf::from(corrosion_dir).join("nros_cpp_config_generated.h"),
-                );
-            }
-            if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-                write_to(
-                    std::path::PathBuf::from(target_dir)
-                        .join("nros")
-                        .join("nros_cpp_config_generated.h"),
-                );
-            }
+    );
+
+    // Phase 119.3: write the per-build header to two stable locations.
+    // 1. `$CARGO_TARGET_DIR/nros-cpp-generated/nros/...` — Zephyr (and
+    //    any in-tree caller that explicitly sets CARGO_TARGET_DIR)
+    //    prepends `$CARGO_TARGET_DIR/nros-cpp-generated` to its
+    //    include path.
+    // 2. `$CORROSION_BUILD_DIR/nros_cpp_config_generated.h` — cmake-
+    //    corrosion's install rule reads from CMAKE_CURRENT_BINARY_DIR
+    //    (== CORROSION_BUILD_DIR) and installs to
+    //    `include/nros_cpp_<variant>/nros/`.
+    // Within ANY single build context only one cargo invocation runs
+    // against its target dir, so no variant slug is needed — each
+    // build context owns its own target dir.
+    let write_to = |dest: PathBuf| {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).expect("create per-build header dir");
         }
+        std::fs::write(&dest, &exact_header).expect("write per-build header");
+    };
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        write_to(
+            PathBuf::from(target_dir)
+                .join("nros-cpp-generated")
+                .join("nros")
+                .join("nros_cpp_config_generated.h"),
+        );
+    } else if let Ok(td) = nros_sizes_build::cargo_target_dir() {
+        write_to(
+            td.join("nros-cpp-generated")
+                .join("nros")
+                .join("nros_cpp_config_generated.h"),
+        );
+    }
+    if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
+        write_to(PathBuf::from(corrosion_dir).join("nros_cpp_config_generated.h"));
+    }
+
+    // Phase 119.3: also write a nros-c-format header to
+    // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user
+    // code transitively includes the C-side `<nros/parameter.h>` →
+    // `<nros/types.h>` → `<nros/nros_config_generated.h>`, but in
+    // Zephyr CPP-only builds nros-c isn't compiled (its build.rs
+    // doesn't run), so without this fallback the C header would
+    // resolve to the source-tree stub. The cpp + c sizes are
+    // identical (same nros rlib), so it's safe to emit both from
+    // nros-cpp's build script.
+    let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
+    let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
+    let probe_action_server_internal = probed
+        .get("ACTION_SERVER_INTERNAL_SIZE")
+        .copied()
+        .unwrap_or(0) as usize;
+    let probe_action_server_raw_handle = probed
+        .get("ACTION_SERVER_RAW_HANDLE_SIZE")
+        .copied()
+        .unwrap_or(0) as usize;
+    let exec_storage_c = exact_executor.max(8);
+    let exec_u64s_c = exec_storage_c.div_ceil(8);
+    let session_u64s_c = probe_session.div_ceil(8);
+    let publisher_u64s_c = exact_publisher.div_ceil(8);
+    let guard_u64s_c = exact_guard.div_ceil(8);
+    let lifecycle_u64s_c = probe_lifecycle_ctx.div_ceil(8);
+    let raw_handle_u64s_c = probe_action_server_raw_handle.div_ceil(8);
+    let c_format_header = format!(
+        "\
+/* Auto-generated by nros-cpp build.rs (nros-c-format companion) — do not edit */
+#ifndef NROS_CONFIG_GENERATED_H
+#define NROS_CONFIG_GENERATED_H
+
+#include <stdint.h>
+
+#define NROS_EXECUTOR_STORAGE_SIZE {exec_storage_c}
+
+#define NROS_EXECUTOR_SIZE {exact_executor}
+#define NROS_GUARD_CONDITION_SIZE {exact_guard}
+#define NROS_PUBLISHER_SIZE {exact_publisher}
+#define NROS_SUBSCRIBER_SIZE {exact_subscriber}
+#define NROS_SERVICE_CLIENT_SIZE {exact_service_client}
+#define NROS_SERVICE_SERVER_SIZE {exact_service_server}
+#define NROS_SESSION_SIZE {probe_session}
+#define NROS_LIFECYCLE_CTX_SIZE {probe_lifecycle_ctx}
+#define NROS_ACTION_SERVER_INTERNAL_SIZE {probe_action_server_internal}
+
+#define SESSION_OPAQUE_U64S {session_u64s_c}
+#define PUBLISHER_OPAQUE_U64S {publisher_u64s_c}
+#define EXECUTOR_OPAQUE_U64S {exec_u64s_c}
+#define GUARD_HANDLE_OPAQUE_U64S {guard_u64s_c}
+#define NROS_LIFECYCLE_CTX_OPAQUE_U64S {lifecycle_u64s_c}
+
+#ifdef __cplusplus
+extern \"C\" {{
+#endif
+typedef struct ActionServerRawHandle {{
+    uint64_t _opaque[{raw_handle_u64s_c}];
+}} ActionServerRawHandle;
+#ifdef __cplusplus
+}}
+#endif
+
+#endif /* NROS_CONFIG_GENERATED_H */
+"
+    );
+    let c_write_to = |dest: PathBuf| {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).expect("create per-build c-header dir");
+        }
+        std::fs::write(&dest, &c_format_header).expect("write per-build c-header");
+    };
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        c_write_to(
+            PathBuf::from(target_dir)
+                .join("nros-c-generated")
+                .join("nros")
+                .join("nros_config_generated.h"),
+        );
+    } else if let Ok(td) = nros_sizes_build::cargo_target_dir() {
+        c_write_to(
+            td.join("nros-c-generated")
+                .join("nros")
+                .join("nros_config_generated.h"),
+        );
     }
 }
 

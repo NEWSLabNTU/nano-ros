@@ -95,15 +95,16 @@ if(NOT TARGET NanoRos::NanoRosCpp)
   endif()
 
   add_library(NanoRos::NanoRosCpp INTERFACE IMPORTED)
-  # Phase 119.2: variant-specific include path first; shared headers
-  # (the bulk of the API) come from the unsuffixed include dir.
+  # Phase 119.3: only the variant subdir here. NanoRos::NanoRos
+  # (linked transitively below) provides the shared `include/` dir,
+  # so both variant subdirs end up BEFORE shared in the final
+  # include order — without this both `<nros/nros_cpp_config_generated.h>`
+  # (cpp side) and `<nros/nros_config_generated.h>` (c side, included
+  # via parameter.hpp -> parameter.h -> types.h) would resolve to the
+  # shared stub and trip its `#error`.
   if(EXISTS "${_nros_cpp_variant_include}/nros/nros_cpp_config_generated.h")
     set_property(TARGET NanoRos::NanoRosCpp PROPERTY
-      INTERFACE_INCLUDE_DIRECTORIES
-        "${_nros_cpp_variant_include}" "${_nros_cpp_include}")
-  else()
-    set_property(TARGET NanoRos::NanoRosCpp PROPERTY
-      INTERFACE_INCLUDE_DIRECTORIES "${_nros_cpp_include}")
+      INTERFACE_INCLUDE_DIRECTORIES "${_nros_cpp_variant_include}")
   endif()
   # Phase 117.9: parameter.hpp (and any future header-only wrappers over
   # nros-c symbols) need the C library symbols at link time. Pull

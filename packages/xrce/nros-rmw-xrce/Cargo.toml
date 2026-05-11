@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "XRCE-DDS RMW backend for nros"
-authors.workspace = true
-homepage.workspace = true
-documentation.workspace = true
+# nros-rmw-xrce is workspace-excluded (standalone build for xrce-sys
+# linking), so it can't inherit `[workspace.package]` fields. Phase
+# 111.B.1 added inheritance markers here that fail to resolve;
+# reverted to literals.
+authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>", "NEWSLabNTU"]
+homepage = "https://github.com/NEWSLabNTU/nano-ros"
+documentation = "https://docs.rs/nros-rmw-xrce"
 readme = "README.md"
 keywords = ["ros2", "xrce", "dds", "rmw", "embedded"]
 categories = ["embedded", "no-std", "network-programming"]

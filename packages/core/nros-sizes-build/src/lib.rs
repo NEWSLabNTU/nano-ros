@@ -582,6 +582,28 @@ pub fn read_header_defines(header_path: &Path) -> Result<HashMap<String, u64>, E
     Ok(out)
 }
 
+/// Phase 119.3: derive a deterministic variant slug from the consumer
+/// crate's active cargo features. Used by `nros-c`/`nros-cpp` build
+/// scripts to scope per-build generated headers under
+/// `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/<slug>/`.
+///
+/// The slug is the sorted, underscore-joined list of all features
+/// (lowercase-with-dashes). Example with rmw-zenoh + platform-posix +
+/// ros-humble + std:
+///   `platform-posix_rmw-zenoh_ros-humble_std`
+///
+/// Sorting makes the slug independent of cargo's iteration order.
+/// Returns `"default"` when no features are set (workspace-default
+/// `cargo check`).
+pub fn variant_slug_from_env() -> String {
+    let mut features = forwarded_features();
+    if features.is_empty() {
+        return "default".to_string();
+    }
+    features.sort();
+    features.join("_")
+}
+
 /// Collect feature names the consumer build script was invoked with.
 ///
 /// Cargo exposes them as `CARGO_FEATURE_<NAME>=1` env vars with name
@@ -786,7 +808,7 @@ fn rustc_host_triple() -> Result<String, Error> {
 ///
 /// Order: `CARGO_TARGET_DIR` env override → walk `OUT_DIR` for the
 /// `<target>/[triple]/<profile>/build/` ancestor → `cargo metadata`.
-fn cargo_target_dir() -> Result<PathBuf, Error> {
+pub fn cargo_target_dir() -> Result<PathBuf, Error> {
     if let Ok(dir) = env::var("CARGO_TARGET_DIR")
         && !dir.is_empty()
     {
