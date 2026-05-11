@@ -1703,22 +1703,56 @@ service-less variant, +1 week for service-over-topics emulation.
   validated. 1/1 passing via
   `build/nros-rmw-uorb-cpp/nros_rmw_uorb_register_smoke`.
 
-- [ ] **115.K.4.2 — pub/sub data plane.** `uorb_publisher_create`
-  resolves the topic name → `orb_metadata*` via the topic
-  registry, calls `orb_advertise_multi`. `publish_raw` calls
-  `orb_publish`. `uorb_subscriber_create` calls
-  `orb_subscribe_multi` + `orb_register_callback` that signals
-  a per-subscriber ringbuffer. `try_recv_raw` drains the ring;
-  `has_data` polls the ready flag. Topic registry built from
-  the generated `<topic>.hpp` headers (PX4 native msggen output).
+- [~] **115.K.4.2 — pub/sub data plane.** Publisher path landed
+  (this commit); subscriber path queued. `publisher_create`
+  resolves `(topic_name) → orb_metadata *` via the K.4.3
+  registry, allocates a `PublisherState { meta, advert, instance }`,
+  and lazy-advertises on first `publish_raw` (uORB needs a
+  sample payload to advertise; we don't have one until the
+  user publishes). Second-and-later `publish_raw` calls
+  `orb_publish`. `destroy_publisher` calls `orb_unadvertise` +
+  frees the state. Short payloads (`len < o_size`) reject with
+  `BUFFER_TOO_SMALL` — uORB's advertise/publish would otherwise
+  overread the caller buffer.
 
-- [ ] **115.K.4.3 — type-hash correlation.** uORB has no hash
-  concept. Map `(name, type_name) → orb_metadata*` via a
-  static lookup table generated alongside the topic registry.
-  Type-hash field on the cffi side is ignored at create time
-  (returned in topic listings as the literal "uORB" sentinel,
-  same shape that 115.K.2's XRCE port uses for its no-hash
-  flavour).
+  **Remaining (K.4.2-subscriber):** `subscriber_create` →
+  `orb_subscribe_multi` + per-subscriber ringbuffer.
+  `try_recv_raw` drains the ring; `has_data` polls the ready
+  flag. uORB's `orb_register_callback` fires from the broker's
+  workqueue context — signals an atomic ready-bit so the next
+  `try_recv_raw` returns the cached sample without a syscall.
+
+- [x] **115.K.4.3 — topic registry.** Landed. uORB has no
+  built-in name-keyed metadata lookup; the host PX4 module
+  registers each topic by mapping a ROS-style
+  `(topic_name, type_name)` pair to the static
+  `const struct orb_metadata *` emitted by `msggen.py`.
+
+  Public C entry points (in
+  `include/nros_rmw_uorb_registry.h`):
+  - `nros_rmw_uorb_register_topic(name, type, meta)` — adds an
+    entry to the static table. Idempotent for the same triple;
+    returns `BAD_ALLOC` if the cap is exceeded.
+  - `nros_rmw_uorb_lookup_topic(name)` — returns the
+    `orb_metadata *` or NULL. Used by `publisher_create` and
+    (queued) `subscriber_create`.
+  - `nros_rmw_uorb_clear_registry()` — test-only helper.
+
+  Capacity: `NROS_RMW_UORB_REGISTRY_CAPACITY` (default 64).
+  Type-hash is ignored at lookup time — PX4 topic names are
+  globally unique, so the (name → meta) projection suffices.
+
+  Typical PX4 module wiring:
+  ```cpp
+  #include <uORB/topics/vehicle_status.h>
+  #include "nros_rmw_uorb.h"
+  #include "nros_rmw_uorb_registry.h"
+
+  nros_rmw_uorb_register_topic("/vehicle_status",
+      "px4_msgs::msg::VehicleStatus",
+      ORB_ID(vehicle_status));
+  nros_rmw_uorb_register();
+  ```
 
 - [ ] **115.K.4.4 — services (optional, service-over-topics).**
   uORB has no native request/reply primitive. Either:
