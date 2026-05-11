@@ -891,25 +891,110 @@ Ordered easiest → hardest:
     --features "std,platform-posix,cffi-dds-cffi,ros-humble"`
     and the matching cffi-zenoh-cffi + nros-cpp invocations.
 
-  **Remaining (deprecate phase):**
-  1. Audit every in-tree consumer that imports `nros_rmw::Session`
-     / `Publisher` / `Subscriber` / etc. outside backend crates.
-     If the count is zero, fold those traits into `nros-rmw-cffi`
-     as the canonical home; else keep them as a thin re-export
-     for the holdouts.
-  2. Delete the dual-path `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds))`
-     glue from `nros-node` / `nros-c` / `nros-cpp` once every
-     consumer has flipped (today the new `cfg(feature =
-     "rmw-cffi")` and `cfg(feature = "cffi-*-cffi")` arms sit
-     alongside the legacy gates).
-  3. Drop the `*-rust` deprecation selectors after one release
-     cycle.
+  **L.3 covers the C/C++ default flip + Cargo feature plumbing.
+  The deprecate-phase tasks below (L.5 / L.6 / L.7 / L.8) are
+  tracked as separate work items so each can land + ship
+  independently.**
 
 - [ ] **115.L.4 — uORB cffi (deferred-with-K.4).** uORB stayed Rust
   per K.4. If we still want the design-note R1 property "every
   backend is reachable via the C vtable from any language," uORB
   would also need a `*-cffi` facade. In-process-only nature means
   the audience is small; tracking-only entry.
+
+- [ ] **115.L.5 — Rust example migration onto cffi features.**
+  L.3 flipped the C/C++ `NANO_ROS_RMW=zenoh|dds` selectors. Rust
+  examples bind to nros features directly (no CMake selector) so
+  each `Cargo.toml` + `src/main.rs` needs a one-line edit.
+
+  Sweep targets (~15 native + ~6 Zephyr per backend):
+  - `examples/native/rust/zenoh/{talker,listener,service-*,
+    action-*,fairness-bench,custom-transport-*,rtic-*}/` →
+    swap `rmw-zenoh` → `rmw-zenoh-cffi`, add
+    `nros_rmw_zenoh_cffi::register().expect(...)` before
+    `Executor::open` in `src/main.rs`.
+  - `examples/native/rust/dds/*/` → same shape with
+    `rmw-dds-cffi` + `nros_rmw_dds_cffi::register()`.
+  - `examples/zephyr/rust/zenoh/*`, `examples/zephyr/rust/dds/*` →
+    same edit. Bare-metal/Zephyr cross-compile of the cffi shims
+    is not yet validated; expect the same `build.rs` target-aware
+    `cc::Build` work that 115.K.2.5.1.3-zephyr-deferred captures
+    for XRCE.
+
+  Acceptance: `cargo test -p nros-tests --test native_api` +
+  `--test nano2nano` still pass with every binary built against
+  the cffi feature. The two-process talker/listener path
+  end-to-end-verifies the L.2 cffi data flow that the in-process
+  smoke test cannot exercise (zpico-sys static-slot limitation).
+
+- [ ] **115.L.6 — non-backend consumer audit + trait fold.**
+  Per the [design note R1](../design/portable-rmw-platform-interface.md)
+  the C ABI should be canonical and the Rust `Session` /
+  `Publisher` / `Subscriber` / `ServiceServerTrait` /
+  `ServiceClientTrait` traits should be thin generated wrappers
+  on top of the cffi types. Today they're a parallel definition
+  in `nros-rmw`.
+
+  Steps:
+  1. `grep -rn "nros_rmw::Session\|nros_rmw::Publisher\|nros_rmw::Subscriber\|ServiceServerTrait\|ServiceClientTrait" packages/ examples/ | grep -v "/nros-rmw\|/nros-rmw-cffi\|/nros-rmw-{zenoh,xrce,dds}\b"`.
+     Tabulate non-backend, non-test consumers.
+  2. If count is **zero**, fold the traits into
+     `nros-rmw-cffi` (move definitions, leave a `pub use` shim in
+     `nros-rmw` for a release cycle).
+  3. If count is **non-zero**, audit each consumer; convert
+     ergonomic users to the typed cffi handles (`CffiPublisher`
+     / `CffiSubscriber` already impl the traits, so callers
+     swap import paths only).
+
+  Acceptance: post-fold, `nros-rmw-cffi` is the sole source of
+  truth for the RMW backend ABI surface; `nros-rmw` either
+  disappears or shrinks to QoS / TopicInfo / TransportError
+  helpers that don't define the trait surface.
+
+- [ ] **115.L.7 — delete dual-path `cfg(any(rmw-*))` glue.**
+  Today every cross-cutting cfg arm in `nros-node` / `nros-c` /
+  `nros-cpp` reads `cfg(any(feature = "rmw-zenoh", feature =
+  "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))`. The
+  legacy three names are redundant once L.5 lands and all
+  consumers route through `rmw-cffi`.
+
+  Sweep targets:
+  - `packages/core/nros-c/src/support.rs` — the big
+    `cfg(any(...))` block around session init.
+  - `packages/core/nros-c/src/{publisher,service,executor,
+    lifecycle,parameter}.rs` — every per-entity cfg gate.
+  - `packages/core/nros-cpp/src/` — Rust-side cfg gates that
+    mirror the same axis.
+  - `packages/core/nros-node/Cargo.toml` — collapse the
+    per-platform feature unions
+    (`"nros-rmw-zenoh?/platform-posix"` etc.) once the optional
+    deps disappear.
+
+  Replace with a single `cfg(feature = "rmw-cffi")` arm.
+  Pre-req: L.6 done (so no Rust consumers depend on the legacy
+  trait paths).
+
+- [ ] **115.L.8 — drop `*-rust` deprecation selectors + legacy
+  crates.** Pre-req: L.5 + L.6 + L.7 done; at least one release
+  shipped with the new defaults + the deprecated selectors so
+  downstream consumers have had a window to migrate.
+
+  Sweep:
+  - Remove `dds-rust` / `zenoh-rust` selectors from
+    `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`. Reduce
+    the error message accordingly.
+  - Delete `rmw-zenoh` / `rmw-dds` / `rmw-xrce` Cargo features
+    on `nros` + `nros-node`. Drop the corresponding optional
+    `dep:nros-rmw-{zenoh,dds,xrce}` lines.
+  - Delete `nros-rmw-zenoh` / `nros-rmw-dds` / `nros-rmw-xrce`
+    crates from the workspace (mirrors 115.K.2.5.3-deferred for
+    XRCE; Zephyr-side bring-up needed first per K.2.5.1.3
+    notes).
+  - Update `book/src/internals/rmw-backends.md` host-language
+    decision matrix: every backend now reaches the runtime via
+    `nros_rmw_vtable_t`, so the table collapses to "host
+    language = whichever the upstream library prefers; vtable
+    bridge is uniform."
 
 ### Tests
 
