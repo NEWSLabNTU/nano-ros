@@ -55,6 +55,12 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # routes to the Rust direct impl). Consumer must call
 # `nros_rmw_xrce_cffi::register()` before opening the session.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi", "nros-node/rmw-xrce-cffi"]
+# Phase 115.L.1 — dust-DDS via the C vtable. Mutually exclusive
+# with `rmw-dds` (Rust direct impl).
+rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds-cffi", "nros-node/rmw-dds-cffi"]
+# Phase 115.L.2 — zenoh-pico via the C vtable. Mutually exclusive
+# with `rmw-zenoh` (Rust direct impl).
+rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh-cffi", "nros-node/rmw-zenoh-cffi"]
 rmw-uorb = ["dep:nros-rmw-uorb", "nros-node/rmw-uorb"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
@@ -69,6 +75,8 @@ platform-posix = [
     "nros-rmw-zenoh?/platform-posix",
     "nros-rmw-xrce?/platform-posix",
     "nros-rmw-dds?/platform-posix",
+    "nros-rmw-dds-cffi?/platform-posix",
+    "nros-rmw-zenoh-cffi?/platform-posix",
     "platform-udp",
 ]
 platform-zephyr = [
@@ -77,6 +85,8 @@ platform-zephyr = [
     "nros-rmw-zenoh?/platform-zephyr",
     "nros-rmw-xrce?/platform-zephyr",
     "nros-rmw-dds?/platform-zephyr",
+    "nros-rmw-dds-cffi?/platform-zephyr",
+    "nros-rmw-zenoh-cffi?/platform-zephyr",
     "platform-udp",
 ]
 platform-bare-metal = [
@@ -84,6 +94,7 @@ platform-bare-metal = [
     "nros-rmw-zenoh?/platform-bare-metal",
     "nros-rmw-xrce?/platform-bare-metal",
     "nros-rmw-dds?/platform-bare-metal",
+    "nros-rmw-zenoh-cffi?/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",
@@ -91,6 +102,8 @@ platform-freertos = [
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-xrce?/platform-freertos",
     "nros-rmw-dds?/platform-freertos",
+    "nros-rmw-dds-cffi?/platform-freertos",
+    "nros-rmw-zenoh-cffi?/platform-freertos",
     "platform-udp",
 ]
 platform-nuttx = [
@@ -99,6 +112,8 @@ platform-nuttx = [
     "nros-rmw-zenoh?/platform-nuttx",
     "nros-rmw-xrce?/platform-nuttx",
     "nros-rmw-dds?/platform-nuttx",
+    "nros-rmw-dds-cffi?/platform-nuttx",
+    "nros-rmw-zenoh-cffi?/platform-nuttx",
     "platform-udp",
 ]
 platform-threadx = [
@@ -107,6 +122,8 @@ platform-threadx = [
     "nros-rmw-zenoh?/platform-threadx",
     "nros-rmw-xrce?/platform-threadx",
     "nros-rmw-dds?/platform-threadx",
+    "nros-rmw-dds-cffi?/platform-threadx",
+    "nros-rmw-zenoh-cffi?/platform-threadx",
     "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
@@ -121,9 +138,9 @@ platform-orin-spe = [
 ]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
-link-tcp = ["nros-rmw-zenoh?/link-tcp"]
-link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
-link-tls = ["nros-rmw-zenoh?/link-tls"]
+link-tcp = ["nros-rmw-zenoh?/link-tcp", "nros-rmw-zenoh-cffi?/link-tcp"]
+link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast", "nros-rmw-zenoh-cffi?/link-udp-unicast"]
+link-tls = ["nros-rmw-zenoh?/link-tls", "nros-rmw-zenoh-cffi?/link-tls"]
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme.
 link-custom = ["nros-rmw-zenoh?/link-custom"]
@@ -170,8 +187,8 @@ param-services = ["nros-node/param-services"]
 lifecycle-services = ["nros-node/lifecycle-services"]
 
 # ROS edition feature flags
-ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
-ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
+ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble", "nros-rmw-zenoh-cffi?/ros-humble"]
+ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron", "nros-rmw-zenoh-cffi?/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support)
@@ -185,6 +202,9 @@ nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-fea
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
 # Phase 115.K.2.5.1.0 — XRCE via the C backend.
 nros-rmw-xrce-cffi = { workspace = true, optional = true }
+# Phase 115.L.1 / L.2 — Rust-backend cffi shims.
+nros-rmw-dds-cffi = { workspace = true, optional = true }
+nros-rmw-zenoh-cffi = { workspace = true, optional = true }
 nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }

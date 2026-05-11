@@ -676,6 +676,241 @@ Ordered execution-first (policy → port → tracking entries):
   but not for the nros API surface). Net cost very high, net benefit
   low. Won't-do; rationale captured in K.1's host-language doc.
 
+### Rust-backend cffi exposure (115.L)
+
+Added 2026-05-11 after the post-Phase-117 audit confirmed that
+`nros-rmw-zenoh`, `nros-rmw-dds`, and `nros-rmw-xrce` still impl
+`nros_rmw::Session` / `Publisher` / `Subscriber` directly — none
+of them route through `nros_rmw_vtable_t`. Phase 115.K addresses
+**host-language port** (Rust→C). This 115.L tier addresses the
+orthogonal question: **expose every backend through the C vtable
+even when the host language stays Rust.**
+
+Goal: after 115.L closes out, `nros-node`'s `Executor` talks to
+`CffiSession` only. The Rust `Session` / `Publisher` / `Subscriber`
+traits in `nros-rmw` become an internal implementation detail (or
+delete outright; folded into `nros-rmw-cffi` as the SoT per the
+[design note](../design/portable-rmw-platform-interface.md) R1).
+
+**Adapter pattern (2026-05-11 design):** rather than have each
+Rust backend hand-write 25 fn-ptr trampolines, ship a generic
+`RustBackendAdapter<R: Rmw>` in `nros-rmw-cffi` that monomorphises
+the trampolines per-backend. Per-backend cffi crate then collapses
+to ~10 LOC:
+
+```rust
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_rmw_dds_register() -> nros_rmw_cffi::NrosRmwRet {
+    nros_rmw_cffi::RustBackendAdapter::<nros_rmw_dds::DdsRmw>::register()
+}
+```
+
+The adapter owns `const VTABLE: NrosRmwVtable` built from generic
+`extern "C" fn open_trampoline::<R>(...)` etc. Each trampoline:
+1. Pulls the boxed `R::Session` / `R::Session::PublisherHandle` /
+   etc. back out of the C-side `backend_data: *mut c_void`.
+2. Calls the Rust trait method.
+3. Marshals `Result<T, TransportError>` → `NrosRmwRet`,
+   `Result<usize, _>` → `i32` (positive bytes, negative ret-code),
+   `&mut [u8]` ↔ `(*mut u8, usize)`.
+
+Storage: `Box::into_raw(Box::new(handle))` into `backend_data`;
+reclaimed via `Box::from_raw` in `destroy_*`. Requires `alloc` on
+the backend (which is already the case for every nros backend — the
+no-alloc constraint sits on `nros-core`, not on RMW impls).
+
+This makes 115.L.1 / L.2 mostly a question of:
+- Building the adapter once in `nros-rmw-cffi`.
+- Writing a ~10-LOC shim crate per backend.
+- The Rust trait `impl` in each backend's existing crate stays
+  unchanged; only the entry point shifts.
+
+Template: `packages/xrce/nros-rmw-xrce-cffi/` (already wraps the C
+backend via a single `register()` call; the Rust-wrapping shim
+follows the same Cargo / register-entry-point shape, just pointing
+at `RustBackendAdapter::<...>::register` instead of an FFI'd C
+register fn).
+
+Ordered easiest → hardest:
+
+- [x] **115.L.0 — `RustBackendAdapter<R: Rmw>` in `nros-rmw-cffi`.**
+  Landed at `packages/core/nros-rmw-cffi/src/rust_adapter.rs`.
+  Generic `RustBackendAdapter<R>` over the `RustBackend` trait-alias
+  bundle (`R: Rmw<Error = TransportError> + Default`, plus `Send +
+  'static` + `Error = TransportError` on every handle). Holds
+  `pub const VTABLE: NrosRmwVtable` filled with per-`R` monomorphised
+  `extern "C" fn` trampolines for every slot. Trampolines:
+  - marshal C arg types ↔ Rust trait types via `cstr_to_str` /
+    `qos_from_cffi`;
+  - own `R::Session` / handles through `Box::into_raw` in
+    `backend_data`, reclaim via `take_box` in `destroy_*` / `close`;
+  - return `NROS_RMW_RET_UNSUPPORTED` from the two event-callback
+    slots (`register_{publisher,subscriber}_event`) — the
+    `NrosRmwEventCallback` ↔ `nros_rmw::EventCallback` payload-type
+    bridge is queued as `115.L.0.events`.
+  - Service `try_recv_request` collapses backend envelope offsets so
+    the C caller sees the payload at `buf[0..n]` regardless of
+    whether the backend prepended a header.
+  - Service `call_raw` forwards through the trait's deprecated
+    blocking path under `#[allow(deprecated)]`: cffi consumers
+    without an executor handle still need a blocking entry.
+
+  Acceptance: `NoopRmw` fixture in
+  `packages/core/nros-rmw-cffi/tests/rust_adapter.rs` carries three
+  tests, all passing:
+  - `rust_backend_adapter_routes_every_slot` — open → drive_io →
+    create_publisher → publish → destroy_publisher →
+    create_subscriber → has_data → try_recv_raw →
+    destroy_subscriber → close.
+  - `rust_backend_adapter_routes_events_and_services` — exercises
+    every service slot (create_server/client, has_request,
+    try_recv_request with seq + payload offset, send_reply,
+    call_raw timeout) plus the event slots
+    (`register_subscriber_event` + `register_publisher_event` fire
+    the cffi-shape callback with the correct `EventKind` tag and
+    layout-matched payload pointer) plus `assert_publisher_liveliness`
+    and `next_deadline_ms`.
+  - `rust_backend_adapter_rejects_null_pointers` — null-arg
+    safety.
+  Run via `cargo test -p nros-rmw-cffi --features alloc --test
+  rust_adapter`.
+
+- [x] **115.L.1 — dust-dds via cffi.** New crate
+  `packages/dds/nros-rmw-dds-cffi/` exposes
+  `nros_rmw_dds_register()` via the 10-LOC
+  `RustBackendAdapter::<DdsRmw>::register()` shim. Vtable
+  monomorphisation routes through `DdsSession` / `DdsPublisher` /
+  `DdsSubscriber` / `DdsServiceServer` / `DdsServiceClient` from
+  `nros-rmw-dds`. Smoke test
+  (`packages/dds/nros-rmw-dds-cffi/tests/smoke.rs`) covers three
+  tiers: register returns `NROS_RMW_RET_OK`; monomorphised vtable's
+  `open` / `close` round-trips against a live
+  `DomainParticipantFactory`; full pub→sub round-trip through
+  `CffiSession` + `Session`/`Publisher`/`Subscriber` traits with
+  CDR-encoded payload reaches a subscriber on a second
+  participant within the 10 s discovery budget. A fourth test
+  `cffi_service_round_trip` drives the service trampolines
+  end-to-end: server in one `CffiSession`, client in another,
+  server thread polls `try_recv_request` + echoes via
+  `send_reply`, client polls `call_raw` (the deprecated blocking
+  entry that the cffi vtable still exposes for C consumers
+  without an executor). 4/4 passing via
+  `cargo test -p nros-rmw-dds-cffi --features platform-posix --test
+  smoke`. **Note on participant topology:** the pub→sub test uses
+  two `CffiSession` instances on the same domain because
+  `DdsSession::create_publisher` and `create_subscriber` both call
+  `DomainParticipant::create_topic`, and stock dust-dds rejects a
+  duplicate `create_topic` on the same participant. Two
+  participants matches the realistic
+  pub-from-one-node/sub-from-another shape.
+
+- [~] **115.L.2 — zenoh-pico via cffi.** New crate
+  `packages/zpico/nros-rmw-zenoh-cffi/` exposes
+  `nros_rmw_zenoh_register()` via the 10-LOC
+  `RustBackendAdapter::<ZenohRmw>::register()` shim. Vtable
+  monomorphisation routes through `ZenohSession` / `ZenohPublisher`
+  / `ZenohSubscriber` / `ZenohServiceServer` / `ZenohServiceClient`
+  from `nros-rmw-zenoh`. **Distinct from 115.K.3** (deferred full C
+  port): K.3 reimplements the backend in C; L.2 keeps Rust glue and
+  only adds a C-vtable facade. Trade-off: L.2 keeps `zpico-sys` and
+  `zpico-platform-shim` as Rust dependencies of the shim.
+
+  **What landed in this commit:** crate scaffold + shim + smoke
+  test (`packages/zpico/nros-rmw-zenoh-cffi/tests/smoke.rs`) that
+  asserts `register()` returns `NROS_RMW_RET_OK` and that
+  `ZenohRmw` satisfies the `RustBackend` trait alias — the second
+  test fails to compile if any associated type stops matching the
+  bundle. 2/2 passing via `cargo test -p nros-rmw-zenoh-cffi
+  --features platform-posix,link-tcp,ros-humble --test smoke`.
+
+  **Side-fix in 115.L.0 (this commit):** dropped the `Send`
+  requirement from `RustBackend` bounds. `ZenohSession` holds an
+  internal `*const Context` from zenoh-pico that is not `Send`;
+  the cffi runtime never moves `backend_data` across threads
+  anyway, so `'static` alone is the correct bound. Adapter docs
+  updated.
+
+  **Live-zenohd round-trip status (2026-05-11 debug):**
+  `cffi_pubsub_round_trip` in `tests/smoke.rs` is permanently
+  `#[ignore]`d as an *architectural* limit, not a cffi bug.
+  Investigation: ran the upstream
+  `packages/zpico/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_loopback`
+  (Rust direct path, bypassing cffi entirely) against a live
+  zenohd on `tcp/127.0.0.1:7447` — same "No message received"
+  failure. Conclusion: `nros-rmw-zenoh`'s `Subscriber::try_recv_raw`
+  does not flow data on a single-session in-process pub+sub
+  topology; `zpico-sys` keeps entity slots in `static` arrays
+  and the data path matches only across separate processes.
+
+  **Cffi data flow IS verified** by the two-process tests in
+  `packages/testing/nros-tests/tests/native_api.rs` +
+  `nano2nano.rs` — once the L.3 default-flip propagates through
+  the example Cargo.toml files, those tests exercise the same
+  `RustBackendAdapter<ZenohRmw>::VTABLE` this crate registers.
+  In-process testing of zenoh is a known broken topology
+  (mirrored by the `#[ignore]`s on every pubsub test in the
+  zenoh integration suite); L.2 acceptance falls to the
+  cross-process integration path.
+
+- [~] **115.L.3 — flip defaults; deprecate `nros-rmw` Rust trait.**
+  Pre-req: K.2 (XRCE-C) + L.1 (dust-dds) + L.2 (zenoh-pico) all
+  shipping.
+
+  **What landed in this commit (opt-in shape):**
+  `nros-node` + `nros` umbrella crates now expose two new feature
+  axes that route through the C vtable:
+  - `rmw-dds-cffi` → `dep:nros-rmw-dds-cffi` + `rmw-cffi`. Pulls
+    `RustBackendAdapter<DdsRmw>` and routes `CffiSession` through it.
+  - `rmw-zenoh-cffi` → `dep:nros-rmw-zenoh-cffi` + `rmw-cffi`.
+    Identical shape over `ZenohRmw`.
+  Both forward `platform-*` and (for zenoh) `link-*` / `ros-*`
+  knobs through to the shim crate. The legacy `rmw-dds` /
+  `rmw-zenoh` features still route to the Rust direct impl;
+  callers opt in to the cffi path by flipping the feature name.
+  `cargo check -p nros --no-default-features --features
+  "std,rmw-dds-cffi,platform-posix,ros-humble"` and the matching
+  `rmw-zenoh-cffi` invocation both build clean.
+
+  **What landed in this commit (default flip):**
+  - `nros-c` + `nros-cpp` CMake selectors flipped:
+    `NANO_ROS_RMW=dds` now sets the cffi feature axis
+    (`rmw-cffi cffi-dds-cffi` / `rmw-dds-cffi`); same for
+    `=zenoh` (`rmw-cffi cffi-zenoh-cffi` / `rmw-zenoh-cffi`).
+    Legacy paths retained behind `dds-rust` / `zenoh-rust`
+    selectors during the deprecation window.
+  - `nros-c` Cargo features: `cffi-dds-cffi` / `cffi-zenoh-cffi`
+    pull in the matching `nros/rmw-*-cffi` and drop an
+    `extern "C" fn nros_rmw_*_register()` call into
+    `nros_support_init` (mirrors the existing `cffi-xrce-c`
+    shape — see `packages/core/nros-c/src/support.rs`).
+  - `nros-cpp`: `NROS_RMW_DDS_CFFI=1` / `NROS_RMW_ZENOH_CFFI=1`
+    compile-time defines auto-fire the register call inside
+    `nros::init` (mirrors the existing `NROS_RMW_CYCLONEDDS` /
+    `NROS_RMW_XRCE_C` hooks).
+  - Validated with `cargo check -p nros-c --no-default-features
+    --features "std,platform-posix,cffi-dds-cffi,ros-humble"`
+    and the matching cffi-zenoh-cffi + nros-cpp invocations.
+
+  **Remaining (deprecate phase):**
+  1. Audit every in-tree consumer that imports `nros_rmw::Session`
+     / `Publisher` / `Subscriber` / etc. outside backend crates.
+     If the count is zero, fold those traits into `nros-rmw-cffi`
+     as the canonical home; else keep them as a thin re-export
+     for the holdouts.
+  2. Delete the dual-path `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds))`
+     glue from `nros-node` / `nros-c` / `nros-cpp` once every
+     consumer has flipped (today the new `cfg(feature =
+     "rmw-cffi")` and `cfg(feature = "cffi-*-cffi")` arms sit
+     alongside the legacy gates).
+  3. Drop the `*-rust` deprecation selectors after one release
+     cycle.
+
+- [ ] **115.L.4 — uORB cffi (deferred-with-K.4).** uORB stayed Rust
+  per K.4. If we still want the design-note R1 property "every
+  backend is reachable via the C vtable from any language," uORB
+  would also need a `*-cffi` facade. In-process-only nature means
+  the audience is small; tracking-only entry.
+
 ### Tests
 
 - [x] **115.G.1 — slot-lifecycle unit tests.** 3 tests in

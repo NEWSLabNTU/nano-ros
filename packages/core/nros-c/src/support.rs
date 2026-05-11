@@ -191,6 +191,34 @@ pub unsafe extern "C" fn nros_support_init_named(
         }
     }
 
+    // Phase 115.L.1 — dust-DDS via C vtable. `nros-rmw-dds-cffi`'s
+    // `nros_rmw_dds_register()` installs a
+    // `RustBackendAdapter::<DdsRmw>::VTABLE`. The link is provided
+    // by the `nros/rmw-dds-cffi` feature pulling `nros-rmw-dds-cffi`
+    // into the dep graph.
+    #[cfg(feature = "cffi-dds-cffi")]
+    {
+        unsafe extern "C" {
+            fn nros_rmw_dds_register() -> i32;
+        }
+        let rc = unsafe { nros_rmw_dds_register() };
+        if rc != 0 {
+            return NROS_RET_ERROR;
+        }
+    }
+
+    // Phase 115.L.2 — zenoh-pico via C vtable.
+    #[cfg(feature = "cffi-zenoh-cffi")]
+    {
+        unsafe extern "C" {
+            fn nros_rmw_zenoh_register() -> i32;
+        }
+        let rc = unsafe { nros_rmw_zenoh_register() };
+        if rc != 0 {
+            return NROS_RET_ERROR;
+        }
+    }
+
     // Initialize the middleware session
     #[cfg(any(
         feature = "rmw-zenoh",

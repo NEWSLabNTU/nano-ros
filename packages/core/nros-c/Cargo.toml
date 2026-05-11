@@ -32,6 +32,13 @@ rmw-cffi = ["nros/rmw-cffi"]
 # the session opens — matches the C++ path's `nros::init` hook.
 # The C/C++ build glue sets it from CMake when `NANO_ROS_RMW=xrce`.
 cffi-xrce-c = ["rmw-cffi"]
+# Phase 115.L.1 — dust-DDS via the C vtable. Forwards to the
+# `rmw-dds-cffi` axis on `nros` + drops an `extern "C"
+# nros_rmw_dds_register()` call into `nros_support_init`.
+cffi-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
+# Phase 115.L.2 — zenoh-pico via the C vtable. Same shape as
+# `cffi-dds-cffi` but routes through `nros-rmw-zenoh-cffi`.
+cffi-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh)
 link-tcp = ["nros/link-tcp"]
