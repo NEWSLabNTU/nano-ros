@@ -48,5 +48,7 @@ tools/*
 /test-logs/
 # One-off build smoke logs (e.g. just zephyr build-s32z's best-effort log).
 /build-*.log
+# XRCE agent stdout/stderr captured by nros-tests fixture (per port).
+/xrce-agent-*.log
 # Claude Code session/agent state.
 /.claude/
