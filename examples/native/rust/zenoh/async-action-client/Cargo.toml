@@ -5,7 +5,11 @@ edition = "2024"
 description = "Example async action client using nros with tokio background spin and StreamExt"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "stream"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix", "stream"] }
+# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
+# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
+# `Executor::open`.
+nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-posix", "link-tcp", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt", "macros", "time"] }

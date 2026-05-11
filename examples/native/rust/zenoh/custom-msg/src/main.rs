@@ -207,6 +207,9 @@ fn main() {
         println!("Testing pub/sub with custom messages:");
 
         let config = ExecutorConfig::from_env().node_name("custom_msg_node");
+        // Phase 115.L.5 — install zenoh-pico C-vtable backend.
+        nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
         let mut executor: Executor = match Executor::open(&config) {
             Ok(e) => e,
             Err(e) => {

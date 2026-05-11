@@ -24,6 +24,9 @@ fn main() {
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_server");
+    // Phase 115.L.5 — install dust-dds C-vtable backend.
+    nros_rmw_dds_cffi::register().expect("dds RMW register failed");
+
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     // Create node and action server

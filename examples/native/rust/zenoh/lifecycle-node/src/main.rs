@@ -68,6 +68,9 @@ fn main() {
     info!("Lifecycle demo starting…");
 
     let config = ExecutorConfig::from_env().node_name("lifecycle_demo");
+    // Phase 115.L.5 — install zenoh-pico C-vtable backend.
+    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     executor
