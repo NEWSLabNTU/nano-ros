@@ -555,8 +555,23 @@ impl ServiceClientTrait for ZenohServiceClient {
         }
         #[cfg(not(feature = "std"))]
         {
-            const MAX_ATTEMPTS: u32 = 3;
-            for _ in 0..MAX_ATTEMPTS {
+            // Phase 120.3: no_std path covers two backend shapes —
+            // single-threaded bare-metal (where the dropper races
+            // resolve in a few micros and a tight retry suffices)
+            // and multi-threaded RTOS (Zephyr / FreeRTOS / NuttX /
+            // ThreadX) where the background read/lease tasks need
+            // scheduler time to drain pending-query state. Yield
+            // 5 ms between attempts via `z_sleep_ms` (zenoh-pico's
+            // platform-agnostic sleep — bare-metal stubs to a tight
+            // loop; RTOS implementations release the scheduler).
+            // 80 attempts × 5 ms = 400 ms total budget — covers
+            // cold-boot discovery on QEMU.
+            unsafe extern "C" {
+                fn z_sleep_ms(time: usize) -> i8;
+            }
+            const MAX_ATTEMPTS: u32 = 80;
+            const SLEEP_MS: usize = 5;
+            for attempt in 0..MAX_ATTEMPTS {
                 match context.get_start(
                     &self.keyexpr[..=self.keyexpr_len],
                     request,
@@ -567,6 +582,9 @@ impl ServiceClientTrait for ZenohServiceClient {
                         return Ok(());
                     }
                     Err(e) => last_err = Some(e),
+                }
+                if attempt + 1 < MAX_ATTEMPTS {
+                    unsafe { z_sleep_ms(SLEEP_MS) };
                 }
             }
         }

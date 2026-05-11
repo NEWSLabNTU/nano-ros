@@ -29,22 +29,57 @@ extern "C" fn main() -> ! {
         let goal = FibonacciGoal { order: 5 };
         println!("Sending goal: order={}", goal.order);
 
-        let (goal_id, mut promise) = client.send_goal(&goal)?;
-
-        // Poll for goal acceptance
-        let mut accepted = false;
-        for _ in 0..5000 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            if let Some(result) = promise.try_recv()? {
-                accepted = result;
-                break;
+        // Phase 120.3: retry the full send_goal + accept-poll cycle
+        // on send_goal failure OR transient query errors during
+        // try_recv. Matches the C action client's retry loop —
+        // discovery may need more time after the 5 s prelude on
+        // multi-threaded RTOS, and transient zenoh-pico query
+        // errors (Phase 120.1 left NoData as Ok(None); other
+        // backend errors still surface as ServiceRequestFailed
+        // and shouldn't kill the example).
+        let mut accepted_goal_id: Option<nros::GoalId> = None;
+        'outer: for attempt in 0..5 {
+            match client.send_goal(&goal) {
+                Ok((gid, mut promise)) => {
+                    let mut got_response = false;
+                    for _ in 0..5000 {
+                        executor.spin_once(core::time::Duration::from_millis(10));
+                        match promise.try_recv() {
+                            Ok(Some(result)) => {
+                                if result {
+                                    accepted_goal_id = Some(gid);
+                                }
+                                got_response = true;
+                                break;
+                            }
+                            Ok(None) => {}
+                            Err(_) => {
+                                // transient backend error; drop this
+                                // promise and re-send_goal next outer.
+                                break;
+                            }
+                        }
+                    }
+                    if got_response {
+                        break 'outer;
+                    }
+                    println!("Goal accept timed out (attempt {})", attempt + 1);
+                }
+                Err(e) => {
+                    println!("Goal attempt {} failed: {:?}, retrying...", attempt + 1, e);
+                    for _ in 0..500 {
+                        executor.spin_once(core::time::Duration::from_millis(10));
+                    }
+                }
             }
         }
-
-        if !accepted {
-            println!("Goal was rejected or timed out");
-            return Ok(());
-        }
+        let goal_id = match accepted_goal_id {
+            Some(g) => g,
+            None => {
+                println!("Goal was rejected or timed out");
+                return Ok(());
+            }
+        };
         println!("Goal accepted: {:?}", goal_id);
 
         // Poll for result
