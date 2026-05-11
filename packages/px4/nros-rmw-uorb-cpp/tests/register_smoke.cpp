@@ -43,13 +43,50 @@ int main() {
         std::fprintf(stderr, "required vtable slot is NULL\n");
         return 1;
     }
-    // And confirm a stub returns UNSUPPORTED — this is what K.4.0
-    // documents as the scaffold contract.
-    rc = vt->open(nullptr, 0, 0, nullptr, nullptr);
-    if (rc != NROS_RMW_RET_UNSUPPORTED) {
-        std::fprintf(stderr, "open returned %d, expected UNSUPPORTED\n", rc);
+    // K.4.1 — open + close round-trip. uORB ignores the locator,
+    // session mode, and domain id; the only validated state is
+    // `backend_data` allocated by open and freed by close.
+    nros_rmw_session_t session{};
+    rc = vt->open("/* ignored */", 0, 0, "test_module", &session);
+    if (rc != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "open returned %d, expected OK\n", rc);
         return 1;
     }
-    std::printf("[OK] nros_rmw_uorb K.4.0 scaffold passes\n");
+    if (session.backend_data == nullptr) {
+        std::fprintf(stderr, "open did not populate backend_data\n");
+        return 1;
+    }
+    // drive_io is a no-op for uORB (push-based delivery).
+    rc = vt->drive_io(&session, 0);
+    if (rc != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "drive_io returned %d, expected OK\n", rc);
+        return 1;
+    }
+    rc = vt->close(&session);
+    if (rc != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "close returned %d, expected OK\n", rc);
+        return 1;
+    }
+    if (session.backend_data != nullptr) {
+        std::fprintf(stderr, "close did not clear backend_data\n");
+        return 1;
+    }
+
+    // K.4.2 / K.4.3 / K.4.4 still UNSUPPORTED — spot check.
+    nros_rmw_publisher_t pubp{};
+    rc = vt->create_publisher(&session, "/t", "T", "H", 0, nullptr, &pubp);
+    if (rc != NROS_RMW_RET_UNSUPPORTED) {
+        std::fprintf(stderr, "create_publisher returned %d, expected UNSUPPORTED\n", rc);
+        return 1;
+    }
+
+    // Null-arg rejection on open.
+    rc = vt->open(nullptr, 0, 0, nullptr, nullptr);
+    if (rc != NROS_RMW_RET_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "open(null out) returned %d, expected INVALID_ARGUMENT\n", rc);
+        return 1;
+    }
+
+    std::printf("[OK] nros_rmw_uorb K.4.1 session lifecycle passes\n");
     return 0;
 }
