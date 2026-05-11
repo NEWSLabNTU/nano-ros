@@ -49,10 +49,17 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # the Rust side. Backend wiring + auto-register happens C++-side
     # via `NrosRmwCyclonedds::NrosRmwCyclonedds` in nros-cpp.
     set(_rmw_features rmw-cffi)
+elseif(NANO_ROS_RMW STREQUAL "uorb")
+    # Phase 115.K.4: PX4 uORB backend (C++ port). Same shape as
+    # cyclonedds — `rmw-cffi` Rust axis + C++ register hook driven
+    # by nros-cpp's nros::init (or the PX4 module's startup if it
+    # calls `nros_rmw_uorb_register()` itself).
+    set(_rmw_features rmw-cffi)
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, or cyclonedds)")
+        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, "
+        "cyclonedds, or uorb)")
 endif()
 
 # ---- Map platform to Cargo features ----

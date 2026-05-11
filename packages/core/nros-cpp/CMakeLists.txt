@@ -46,6 +46,12 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # `NROS_RMW_CYCLONEDDS=1` flips on the auto-register call inside
     # `nros::init`.
     set(_rmw_features rmw-cffi)
+elseif(NANO_ROS_RMW STREQUAL "uorb")
+    # Phase 115.K.4: PX4 uORB backend — C++ port replacing the
+    # legacy Rust `nros-rmw-uorb`. Rust runtime sees the same
+    # `rmw-cffi` axis; the C++ static lib registers its vtable via
+    # `nros_rmw_uorb_register()` inside the `nros::init` hook below.
+    set(_rmw_features rmw-cffi)
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
@@ -122,6 +128,14 @@ elseif(NANO_ROS_RMW STREQUAL "zenoh")
     # the `dds` path above — `nros_rmw_zenoh_register()` lives
     # in the Rust shim.
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_ZENOH_CFFI=1)
+elseif(NANO_ROS_RMW STREQUAL "uorb")
+    # Phase 115.K.4: PX4 uORB backend (C++ port). Mirrors
+    # cyclonedds shape — find_package + link + auto-register
+    # via the `NROS_RMW_UORB` define in nros::init.
+    find_package(NrosRmwUorb CONFIG REQUIRED)
+    target_link_libraries(nros-cpp-headers INTERFACE
+        NrosRmwUorb::NrosRmwUorb)
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_UORB=1)
 endif()
 
 # Require at least C++14
