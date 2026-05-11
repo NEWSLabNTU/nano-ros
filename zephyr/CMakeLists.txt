@@ -191,6 +191,13 @@ endif()
 # =============================================================================
 
 if(CONFIG_NROS_C_API)
+    # Phase 119.2: prepend `${CMAKE_BINARY_DIR}/nros-rust/nros` to include
+    # path. nros-c's build.rs writes a per-build (variant-exact)
+    # `nros_config_generated.h` to that location so the storage sizes
+    # match this Zephyr build's linked Rust runtime. The source-tree
+    # header is max-merged for direct-cargo users and would oversize
+    # the Zephyr binary if used here.
+    zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust)
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include)
 
@@ -229,6 +236,13 @@ endif()
 # =============================================================================
 
 if(CONFIG_NROS_CPP_API)
+    # Phase 119.2: prepend `${CMAKE_BINARY_DIR}/nros-rust/nros` to include
+    # path. nros-cpp's build.rs writes a per-build (variant-exact)
+    # `nros_cpp_config_generated.h` to that location so the storage
+    # sizes match this Zephyr build's linked Rust runtime. The
+    # source-tree header is max-merged for direct-cargo users and
+    # would oversize the Zephyr binary if used here.
+    zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust)
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the

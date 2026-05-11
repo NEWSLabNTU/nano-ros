@@ -76,6 +76,21 @@ else()
 endif()
 set(_nros_c_include "${_NANO_ROS_PREFIX}/include")
 
+# Phase 119.2: variant-specific generated header dir. Each cmake build
+# of nros-c installs `nros_config_generated.h` into a variant-named
+# subdir under `include/` (e.g. `include/nros_c_zenoh_posix/nros/...`).
+# Listed BEFORE the shared `include` dir on
+# `INTERFACE_INCLUDE_DIRECTORIES` so user code's
+# `#include <nros/nros_config_generated.h>` resolves to the variant's
+# storage sizes that match the linked library.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+  set(_nros_c_variant_include
+      "${_NANO_ROS_PREFIX}/include/nros_c_${NANO_ROS_RMW}")
+else()
+  set(_nros_c_variant_include
+      "${_NANO_ROS_PREFIX}/include/nros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+endif()
+
 if(NOT EXISTS "${_nros_c_lib}")
   # List all installed variants for a helpful error message
   file(GLOB _variants "${_NANO_ROS_PREFIX}/lib/libnros_c_*.a")
@@ -106,10 +121,20 @@ endif()
 
 if(NOT TARGET NanoRos::NanoRos)
   add_library(NanoRos::NanoRos STATIC IMPORTED)
-  set_target_properties(NanoRos::NanoRos PROPERTIES
-    IMPORTED_LOCATION "${_nros_c_lib}"
-    INTERFACE_INCLUDE_DIRECTORIES "${_nros_c_include}"
-  )
+  # Phase 119.2: prepend variant-specific include path when the
+  # generated header exists there. Other headers come from shared dir.
+  if(EXISTS "${_nros_c_variant_include}/nros/nros_config_generated.h")
+    set_target_properties(NanoRos::NanoRos PROPERTIES
+      IMPORTED_LOCATION "${_nros_c_lib}"
+      INTERFACE_INCLUDE_DIRECTORIES
+        "${_nros_c_variant_include};${_nros_c_include}"
+    )
+  else()
+    set_target_properties(NanoRos::NanoRos PROPERTIES
+      IMPORTED_LOCATION "${_nros_c_lib}"
+      INTERFACE_INCLUDE_DIRECTORIES "${_nros_c_include}"
+    )
+  endif()
 
   # Propagate the platform compile definition so that generated C code
   # (and user code) sees the correct NROS_PLATFORM_* macro.

@@ -1,7 +1,7 @@
 # Phase 119 — C++ Executor Storage Corruption + Timer First-Tick
 
 **Goal:** Fix the pre-existing test failures in `test_native_*::Cpp`, `test_cpp_*`, `test_c_xrce_*`, and `test_xrce_action_*` caused by C++ executor opaque-storage overflow and first-spin-tick delta starvation.
-**Status:** 119.1 landed (max-merge across cmake variants). Empirically: 5 of 6 originally-failing tests now PASS; 1 (`test_xrce_action_fibonacci`) still fails for an unrelated XRCE-protocol reason. 1 regression introduced: `test_zephyr_cpp_action_server_to_client_e2e` (was passing pre-119) now fails because the merged Zephyr-variant header allocates 4× larger service-client buffer (cyclonedds outlier dominates the max). Followups in 119.2 (variant-specific headers).
+**Status:** 119.1 + 119.2 landed. All 5 originally-failing tests in this category now PASS. `test_xrce_action_fibonacci` still fails for an unrelated XRCE-protocol reason (not in 119's scope). `test_all`: 720 tests, 713 passed, 7 failed — all 7 pre-existing (4 Zephyr XRCE + 1 ThreadxRiscv64 RTOS + 1 ThreadxRv64 DDS + 1 XRCE fibonacci). Zero regressions from 119.
 **Priority:** High — blocks `just test-all` from green; all C/C++ side examples affected.
 **Depends on:** Phase 87 (size probe), Phase 118.E (probe race-hardening).
 
@@ -146,22 +146,33 @@ Likely (A). Finding 1 fix dissolves this symptom.
 
 `just test-all` count: 13 failed → 9 failed (net −4).
 
-### 119.2 — Variant-specific generated headers — **TODO**
+### 119.2 — Variant-specific generated headers — **DONE**
 
-**Why:** the max-merge in 119.1 is a safe upper bound that fits every variant, but it forces every variant to allocate buffers sized for the LARGEST variant (cyclonedds dominates `NROS_SERVICE_CLIENT_SIZE` at 4632 bytes vs ~568 for the others). On memory-constrained Zephyr targets the extra .bss bloat is rejected — e.g. `test_zephyr_cpp_action_server_to_client_e2e` regressed (action goal returns `send_goal: -1` likely from socket-allocation failure under increased static-memory pressure).
+Fixes the Zephyr regression introduced by 119.1's max-merge: cyclonedds's outlier service-client size (4632 bytes vs ~568 elsewhere) bloated Zephyr's static memory beyond what the binary tolerated.
 
-**Architecture:**
+**Architecture: Option B (variant install subdir).**
 
-- Each cmake build (`<rmw>_<platform>`) gets its OWN per-variant header at a variant-specific path. Either:
-  - **Option A**: `packages/core/nros-cpp/include/nros/nros_cpp_config_generated_<variant>.h` (variant-suffixed siblings in the same dir; a stub `nros_cpp_config_generated.h` selects via `#ifdef NROS_RMW_* && NROS_PLATFORM_*`).
-  - **Option B**: install to `build/install/<variant>/include/nros/...`; CMake's exported `INTERFACE_INCLUDE_DIRECTORIES` lists the variant's dir before the shared dir.
-- Option A is less invasive (no CMakeLists.txt changes). Option B is more idiomatic to CMake/find_package conventions.
+- **`packages/core/nros-cpp/build.rs` (+ nros-c):** writes TWO headers when a probe value is available.
+  1. Source-tree (max-merged): `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`. Used by direct-cargo workflows. Safe upper bound.
+  2. Per-build (exact, unmerged):
+     - `$CORROSION_BUILD_DIR/nros_cpp_config_generated.h` when cmake-corrosion sets that env (install-local builds).
+     - `$CARGO_TARGET_DIR/nros/nros_cpp_config_generated.h` when CARGO_TARGET_DIR is set (Zephyr's `nros_cargo_build.cmake` does this).
+- **`packages/core/nros-cpp/CMakeLists.txt` (+ nros-c):** installs the per-build header from `${CMAKE_CURRENT_BINARY_DIR}` (== `$CORROSION_BUILD_DIR`) to `include/nros_cpp_<rmw>[_<platform>]/nros/` — a variant-specific subdir.
+- **`packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake` (+ nros-c):** prepends `include/nros_cpp_<rmw>[_<platform>]` to `INTERFACE_INCLUDE_DIRECTORIES` when the variant header exists; user code's `#include "nros/nros_cpp_config_generated.h"` resolves to the variant-specific file before the shared one.
+- **`zephyr/CMakeLists.txt`:** prepends `${CMAKE_BINARY_DIR}/nros-rust` (Zephyr's `CARGO_TARGET_DIR`) to `zephyr_include_directories` for both `CONFIG_NROS_C_API` and `CONFIG_NROS_CPP_API` blocks. nros-c/nros-cpp's build.rs writes the per-build header into the `nros/` subdir of that target dir, where Zephyr's compiler finds it via the prepended include path.
 
-**Files (Option A):**
+**Empirical results after 119.2:**
 
-- `packages/core/nros-cpp/build.rs`: derive variant string from cargo features (`rmw_*` + `platform_*`); write to a variant-named file; stub `nros_cpp_config_generated.h` includes the right variant header via `#ifdef`.
-- `packages/core/nros-c/build.rs`: same pattern.
-- Update Doxyfile excludes if needed.
+| Test | Pre-119 | Post-119.1 | Post-119.2 |
+|---|---|---|---|
+| `test_native_talker_listener_communication::Cpp` | FAIL | PASS | PASS |
+| `test_native_service_communication::Cpp` | FAIL | PASS | PASS |
+| `test_cpp_action_communication` | FAIL | PASS | PASS |
+| `test_cpp_rust_pubsub_interop` | FAIL | PASS | PASS |
+| `test_c_xrce_talker_listener_communication` | FAIL | PASS | PASS |
+| `test_zephyr_cpp_action_server_to_client_e2e` | PASS | REGRESS | **PASS** |
+
+`just test-all`: 13 → 7 failures (all 7 remaining are pre-existing baseline; zero regressions).
 
 ### 119.3 — Add a guard byte after `storage_` in `GlobalStorageHolder`
 

@@ -109,6 +109,26 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
+# Phase 119.2: install variant-specific generated header to a variant
+# subdir so each cmake build's exact storage sizes survive alongside
+# every other variant. The source-tree `nros_cpp_config_generated.h`
+# (max-merged upper bound for direct cargo users) is also installed
+# above as a fallback.
+#
+# nros-cpp's build.rs writes the per-build header to
+# `${CORROSION_BUILD_DIR}/nros_cpp_config_generated.h` (== this
+# CMakeLists.txt's CMAKE_CURRENT_BINARY_DIR — corrosion sets that env
+# var to point here).
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_RMW}")
+else()
+    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+endif()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
+    DESTINATION "include/${_cpp_variant_subdir}/nros"
+    OPTIONAL
+)
+
 # posix uses the legacy unsuffixed name; all other platforms use a suffixed name.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_cpp_lib_name "libnros_cpp_${NANO_ROS_RMW}.a")

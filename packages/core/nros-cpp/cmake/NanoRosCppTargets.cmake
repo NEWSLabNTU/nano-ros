@@ -43,6 +43,21 @@ else()
 endif()
 set(_nros_cpp_include "${_NANO_ROS_PREFIX}/include")
 
+# Phase 119.2: variant-specific generated header dir. Each cmake build of
+# nros-cpp installs `nros_cpp_config_generated.h` into a variant-named
+# subdir under `include/` (e.g. `include/nros_cpp_zenoh_posix/nros/...`).
+# Listed BEFORE the shared `include` dir on `INTERFACE_INCLUDE_DIRECTORIES`
+# so user code's `#include "nros/nros_cpp_config_generated.h"` resolves to
+# the variant's storage sizes that match the linked library. Shared dir
+# still wins for every other header (api .hpp files, codegen .h, etc.).
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+  set(_nros_cpp_variant_include
+      "${_NANO_ROS_PREFIX}/include/nros_cpp_${NANO_ROS_RMW}")
+else()
+  set(_nros_cpp_variant_include
+      "${_NANO_ROS_PREFIX}/include/nros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+endif()
+
 if(NOT EXISTS "${_nros_cpp_lib}")
   file(GLOB _cpp_variants "${_NANO_ROS_PREFIX}/lib/libnros_cpp_*.a")
   set(_cpp_available "")
@@ -80,8 +95,16 @@ if(NOT TARGET NanoRos::NanoRosCpp)
   endif()
 
   add_library(NanoRos::NanoRosCpp INTERFACE IMPORTED)
-  set_property(TARGET NanoRos::NanoRosCpp PROPERTY
-    INTERFACE_INCLUDE_DIRECTORIES "${_nros_cpp_include}")
+  # Phase 119.2: variant-specific include path first; shared headers
+  # (the bulk of the API) come from the unsuffixed include dir.
+  if(EXISTS "${_nros_cpp_variant_include}/nros/nros_cpp_config_generated.h")
+    set_property(TARGET NanoRos::NanoRosCpp PROPERTY
+      INTERFACE_INCLUDE_DIRECTORIES
+        "${_nros_cpp_variant_include}" "${_nros_cpp_include}")
+  else()
+    set_property(TARGET NanoRos::NanoRosCpp PROPERTY
+      INTERFACE_INCLUDE_DIRECTORIES "${_nros_cpp_include}")
+  endif()
   # Phase 117.9: parameter.hpp (and any future header-only wrappers over
   # nros-c symbols) need the C library symbols at link time. Pull
   # NanoRos::NanoRos in transitively so consumers only need to link

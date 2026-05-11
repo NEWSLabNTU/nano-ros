@@ -117,6 +117,21 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     FILES_MATCHING PATTERN "*.h"
 )
 
+# Phase 119.2: install variant-specific generated header so each cmake
+# build's exact storage sizes are preserved. nros-c's build.rs writes
+# the per-build header to `${CORROSION_BUILD_DIR}/nros_config_generated.h`
+# (== this CMakeLists.txt's CMAKE_CURRENT_BINARY_DIR — corrosion sets
+# that env var to point here).
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set(_c_variant_subdir "nros_c_${NANO_ROS_RMW}")
+else()
+    set(_c_variant_subdir "nros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+endif()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+    DESTINATION "include/${_c_variant_subdir}/nros"
+    OPTIONAL
+)
+
 # ---- CMake config-mode package ----
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosConfig.cmake"
