@@ -1449,6 +1449,7 @@ dependencies = [
  "critical-section",
  "freertos-lwip-sys",
  "nros-platform-api",
+ "nros-platform-cffi",
 ]
 
 [[package]]
@@ -1467,6 +1468,7 @@ name = "nros-platform-nuttx"
 version = "0.1.0"
 dependencies = [
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-platform-posix",
  "nuttx-sys",
 ]
@@ -1486,6 +1488,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "nros-platform-api",
+ "nros-platform-cffi",
 ]
 
 [[package]]
@@ -1506,6 +1509,7 @@ version = "0.1.0"
 dependencies = [
  "critical-section",
  "nros-platform-api",
+ "nros-platform-cffi",
  "threadx-netx-sys",
 ]
 
@@ -1514,6 +1518,7 @@ name = "nros-platform-zephyr"
 version = "0.1.0"
 dependencies = [
  "nros-platform-api",
+ "nros-platform-cffi",
 ]
 
 [[package]]

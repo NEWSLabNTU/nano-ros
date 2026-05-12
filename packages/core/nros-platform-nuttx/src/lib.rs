@@ -23,6 +23,10 @@ use nros_platform_posix::PosixPlatform;
 /// NuttX-specific types from nuttx-sys.
 pub struct NuttxPlatform;
 
+// Phase 121.2 — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(NuttxPlatform);
+
 // ============================================================================
 // System primitives — delegate to PosixPlatform
 // ============================================================================

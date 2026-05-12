@@ -30,8 +30,12 @@ critical-section = ["dep:critical-section"]
 # leaves the symbol unresolved, so leave the call out by default.
 threadx-smp = []
 
+# Phase 121.2 — emit the canonical `nros_platform_*` C ABI symbols.
+cffi-export = ["dep:nros-platform-cffi"]
+
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
 # Bindgen-generated NetX Duo BSD socket FFI (struct nx_bsd_sockaddr_in, nx_bsd_* functions)
 threadx-netx-sys = { path = "../../drivers/threadx-netx-sys" }
 # Phase 97.4.threadx — `critical_section::Impl` for no_std ThreadX

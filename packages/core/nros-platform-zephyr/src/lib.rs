@@ -48,6 +48,10 @@ pub use net::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKE
 /// Zero-sized type implementing all platform methods for Zephyr.
 pub struct ZephyrPlatform;
 
+// Phase 121.2 — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(ZephyrPlatform);
+
 // ============================================================================
 // Clock — k_uptime_get (monotonic, milliseconds since boot)
 // ============================================================================

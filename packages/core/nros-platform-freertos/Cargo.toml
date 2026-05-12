@@ -37,9 +37,12 @@ cortex-r = ["dep:critical-section"]
 # multicast bind path. Off by default; enable from a board /
 # example crate's Cargo.toml when bring-up needs visibility.
 debug-cortex-m-semihosting = ["dep:cortex-m-semihosting"]
+# Phase 121.2 — emit the canonical `nros_platform_*` C ABI symbols.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
 # Bindgen-generated lwIP BSD socket FFI (struct timeval, addrinfo, lwip_* functions)
 freertos-lwip-sys = { path = "../../drivers/freertos-lwip-sys", optional = true }
 # Phase 97.1.cs — Cortex-M PRIMASK manipulation for `critical_section::Impl`.

@@ -24,6 +24,13 @@ use core::{ffi::c_void, ptr};
 /// Zero-sized type implementing all platform traits via POSIX APIs.
 pub struct PosixPlatform;
 
+// Phase 121.2 — emit the canonical `nros_platform_*` C ABI symbols
+// declared in `<nros/platform.h>` when the `cffi-export` feature is
+// enabled. The `nros-platform-cffi` crate owns the macro definitions
+// and the corresponding `unsafe extern "C" {}` declarations.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(PosixPlatform);
+
 // ============================================================================
 // Clock — clock_gettime(CLOCK_MONOTONIC)
 // ============================================================================

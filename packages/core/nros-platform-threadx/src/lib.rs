@@ -29,6 +29,10 @@ pub mod net;
 /// Zero-sized type implementing all platform methods for ThreadX.
 pub struct ThreadxPlatform;
 
+// Phase 121.2 — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(ThreadxPlatform);
+
 // ============================================================================
 // Phase 97.4.threadx — `critical_section::Impl` for no_std targets
 // ============================================================================

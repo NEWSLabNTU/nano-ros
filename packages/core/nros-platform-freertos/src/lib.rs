@@ -26,6 +26,10 @@ mod types;
 /// Zero-sized type implementing all platform methods for FreeRTOS.
 pub struct FreeRtosPlatform;
 
+// Phase 121.2 — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(FreeRtosPlatform);
+
 // ============================================================================
 // Phase 97.1.cs / 100.1 — `critical_section::Impl` (Cortex-M or Cortex-R)
 // ============================================================================

@@ -18,9 +18,12 @@ default = []
 # `net::ZephyrPlatform::mcast_read`. Off by default; enabled via the
 # example crate when investigating NSOS RX delivery gaps.
 debug-mcast-read = []
+# Phase 121.2 — emit the canonical `nros_platform_*` C ABI symbols.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
 # Other Zephyr APIs are extern "C", resolved at link time by Zephyr's build
 # system (kernel + POSIX subsystem).
 
