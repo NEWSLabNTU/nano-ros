@@ -1,10 +1,11 @@
-//! Phase 121.4.c — confirm `nros_platform_cffi::nros_platform_export!`
-//! emits every `nros_platform_*` symbol declared in `<nros/platform.h>`
-//! when invoked against `PosixPlatform`, and that each symbol
-//! dispatches to the underlying PosixPlatform trait impl.
+//! Phase 121.4.c + 121.6.macros — confirm that
+//! `nros_platform_cffi::nros_platform_export!` (core 39) and
+//! `nros_platform_cffi::nros_platform_export_net!` (28 net symbols)
+//! together emit every name declared in `<nros/platform.h>` and
+//! `<nros/platform_net.h>` when invoked against `PosixPlatform`.
 //!
-//! Gated behind the `cffi-export` feature — without it the macro is
-//! never invoked and the symbols never emitted.
+//! Gated behind the `cffi-export` feature — without it neither macro
+//! is invoked.
 
 #![cfg(feature = "cffi-export")]
 
@@ -64,6 +65,88 @@ unsafe extern "C" {
     fn nros_platform_condvar_signal_all(cv: *mut c_void) -> i8;
     fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
+
+    // Mirror of `<nros/platform_net.h>` (emitted by
+    // `nros_platform_export_net!` in posix's lib.rs).
+    fn nros_platform_tcp_create_endpoint(
+        ep: *mut c_void,
+        address: *const u8,
+        port: *const u8,
+    ) -> i8;
+    fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
+    fn nros_platform_tcp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    fn nros_platform_tcp_listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
+    fn nros_platform_tcp_close(sock: *mut c_void);
+    fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn nros_platform_tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn nros_platform_tcp_send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
+    fn nros_platform_udp_create_endpoint(
+        ep: *mut c_void,
+        address: *const u8,
+        port: *const u8,
+    ) -> i8;
+    fn nros_platform_udp_free_endpoint(ep: *mut c_void);
+    fn nros_platform_udp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    fn nros_platform_udp_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+    ) -> i8;
+    fn nros_platform_udp_close(sock: *mut c_void);
+    fn nros_platform_udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn nros_platform_udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn nros_platform_udp_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize;
+    fn nros_platform_udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32);
+    fn nros_platform_udp_mcast_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+    ) -> i8;
+    fn nros_platform_udp_mcast_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+        join: *const u8,
+    ) -> i8;
+    fn nros_platform_udp_mcast_close(
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
+        rep: *const c_void,
+        lep: *const c_void,
+    );
+    fn nros_platform_udp_mcast_read(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize;
+    fn nros_platform_udp_mcast_read_exact(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize;
+    fn nros_platform_udp_mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize;
+    fn nros_platform_socket_set_non_blocking(sock: *const c_void) -> i8;
+    fn nros_platform_socket_accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8;
+    fn nros_platform_socket_close(sock: *mut c_void);
+    fn nros_platform_socket_wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8;
+    fn nros_platform_network_poll();
 }
 
 #[test]
@@ -87,7 +170,7 @@ fn posix_macro_emits_every_symbol() {
     // Just touch every other symbol as a fn pointer so the linker
     // keeps them — these calls aren't safe to actually invoke under
     // libc, but `as *const ()` is sound and pins the externs.
-    let pins: [*const (); 31] = [
+    let pins: [*const (); 59] = [
         nros_platform_alloc as *const (),
         nros_platform_realloc as *const (),
         nros_platform_dealloc as *const (),
@@ -119,6 +202,35 @@ fn posix_macro_emits_every_symbol() {
         nros_platform_condvar_signal_all as *const (),
         nros_platform_condvar_wait as *const (),
         nros_platform_condvar_wait_until as *const (),
+        // 121.6.macros — 28 net symbols
+        nros_platform_tcp_create_endpoint as *const (),
+        nros_platform_tcp_free_endpoint as *const (),
+        nros_platform_tcp_open as *const (),
+        nros_platform_tcp_listen as *const (),
+        nros_platform_tcp_close as *const (),
+        nros_platform_tcp_read as *const (),
+        nros_platform_tcp_read_exact as *const (),
+        nros_platform_tcp_send as *const (),
+        nros_platform_udp_create_endpoint as *const (),
+        nros_platform_udp_free_endpoint as *const (),
+        nros_platform_udp_open as *const (),
+        nros_platform_udp_listen as *const (),
+        nros_platform_udp_close as *const (),
+        nros_platform_udp_read as *const (),
+        nros_platform_udp_read_exact as *const (),
+        nros_platform_udp_send as *const (),
+        nros_platform_udp_set_recv_timeout as *const (),
+        nros_platform_udp_mcast_open as *const (),
+        nros_platform_udp_mcast_listen as *const (),
+        nros_platform_udp_mcast_close as *const (),
+        nros_platform_udp_mcast_read as *const (),
+        nros_platform_udp_mcast_read_exact as *const (),
+        nros_platform_udp_mcast_send as *const (),
+        nros_platform_socket_set_non_blocking as *const (),
+        nros_platform_socket_accept as *const (),
+        nros_platform_socket_close as *const (),
+        nros_platform_socket_wait_event as *const (),
+        nros_platform_network_poll as *const (),
     ];
     for p in pins {
         assert!(!p.is_null(), "every exported symbol must resolve");

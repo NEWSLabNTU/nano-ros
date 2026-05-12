@@ -31,6 +31,12 @@ pub struct PosixPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(PosixPlatform);
 
+// Phase 121.6.macros — emit the extended-surface networking symbols
+// (`platform_net.h`) from the same trait impls. Gated on the same
+// `cffi-export` feature.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(PosixPlatform);
+
 // ============================================================================
 // Clock — clock_gettime(CLOCK_MONOTONIC)
 // ============================================================================

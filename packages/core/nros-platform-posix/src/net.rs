@@ -1241,3 +1241,11 @@ impl nros_platform_api::PlatformUdpMulticast for PosixPlatform {
         Self::mcast_send(sock, buf, len, endpoint)
     }
 }
+
+// Phase 121.6.macros — PosixPlatform has a kernel-driven socket
+// layer, so `network_poll` is a no-op. Added so
+// `nros_platform_export_net!(PosixPlatform)` can emit the
+// `nros_platform_network_poll` symbol.
+impl nros_platform_api::PlatformNetworkPoll for PosixPlatform {
+    fn network_poll() {}
+}
