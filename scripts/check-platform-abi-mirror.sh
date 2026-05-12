@@ -18,58 +18,100 @@
 
 set -euo pipefail
 
-HEADER="packages/core/nros-platform-cffi/include/nros/platform.h"
 RUST="packages/core/nros-platform-cffi/src/lib.rs"
+INCLUDE_DIR="packages/core/nros-platform-cffi/include/nros"
 
-if [[ ! -f "$HEADER" ]]; then
-    echo "error: header not found: $HEADER" >&2
-    exit 2
-fi
+# Each header lists the symbols whose Rust mirror must include both:
+#   (a) a `pub fn <name>(` declaration inside an `unsafe extern "C" {}` block
+#   (b) a `pub extern "C" fn <name>(` emission from one of the
+#       `nros_platform_export_*!` macros — only required for the core ABI
+#       symbols today; the extended ABI (`platform_net.h` /
+#       `platform_timer.h`) ships macros in 121.6.macros.
+#
+# We track per-header expectations via a small table so future ABI surfaces
+# (e.g. interrupt / DMA) drop in by adding a row.
+HEADERS_REQUIRE_MACRO=(
+    "platform.h"
+    "platform_net.h"
+)
+HEADERS_EXTERN_ONLY=(
+    # platform_timer.h's `export_timer!` macro is deferred until the
+    # opaque-handle adapter design lands (TimerHandle associated type
+    # → *mut c_void coercion); extern decls are present so consumers
+    # can dispatch manually for now.
+    "platform_timer.h"
+)
+
 if [[ ! -f "$RUST" ]]; then
     echo "error: rust mirror not found: $RUST" >&2
     exit 2
 fi
 
-# Extract function names declared in the header. Match any line that
-# contains `nros_platform_<ident>(` followed eventually by `;`.
-# Strips the call-site form returned later by the `as` cast in tests.
-mapfile -t SYMBOLS < <(
-    grep -oE 'nros_platform_[a-zA-Z0-9_]+[[:space:]]*\(' "$HEADER" \
+extract_symbols() {
+    local header="$1"
+    if [[ ! -f "$header" ]]; then
+        echo "error: header not found: $header" >&2
+        return 2
+    fi
+    grep -oE 'nros_platform_[a-zA-Z0-9_]+[[:space:]]*\(' "$header" \
         | sed -E 's/[[:space:]]*\($//' \
         | sort -u
-)
+}
 
-if (( ${#SYMBOLS[@]} == 0 )); then
-    echo "error: no nros_platform_* symbols found in $HEADER" >&2
-    exit 2
-fi
-
+total=0
 fail=0
-missing_extern=()
-missing_macro=()
 
-for sym in "${SYMBOLS[@]}"; do
-    if ! grep -qE "pub fn ${sym}\s*\(" "$RUST"; then
-        missing_extern+=("$sym")
+check_header() {
+    local header_name="$1"
+    local require_macro="$2"  # "1" or "0"
+    local header_path="$INCLUDE_DIR/$header_name"
+
+    mapfile -t SYMBOLS < <(extract_symbols "$header_path")
+    if (( ${#SYMBOLS[@]} == 0 )); then
+        echo "error: no nros_platform_* symbols found in $header_path" >&2
         fail=1
+        return
     fi
-    if ! grep -qE "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
-        missing_macro+=("$sym")
+
+    local missing_extern=()
+    local missing_macro=()
+    for sym in "${SYMBOLS[@]}"; do
+        if ! grep -qE "pub fn ${sym}\s*\(" "$RUST"; then
+            missing_extern+=("$sym")
+        fi
+        if [[ "$require_macro" == "1" ]]; then
+            if ! grep -qE "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
+                missing_macro+=("$sym")
+            fi
+        fi
+    done
+
+    if (( ${#missing_extern[@]} > 0 || ${#missing_macro[@]} > 0 )); then
+        echo "drift detected between $header_path and $RUST" >&2
+        if (( ${#missing_extern[@]} > 0 )); then
+            echo "  missing from unsafe extern \"C\" block:" >&2
+            printf '    - %s\n' "${missing_extern[@]}" >&2
+        fi
+        if (( ${#missing_macro[@]} > 0 )); then
+            echo "  missing from nros_platform_export_*! macro emission:" >&2
+            printf '    - %s\n' "${missing_macro[@]}" >&2
+        fi
         fail=1
+    else
+        echo "$header_name clean: ${#SYMBOLS[@]} symbols match"
     fi
+    total=$(( total + ${#SYMBOLS[@]} ))
+}
+
+for h in "${HEADERS_REQUIRE_MACRO[@]}"; do
+    check_header "$h" "1"
+done
+for h in "${HEADERS_EXTERN_ONLY[@]}"; do
+    check_header "$h" "0"
 done
 
 if (( fail )); then
-    echo "platform C ABI drift detected between $HEADER and $RUST" >&2
-    if (( ${#missing_extern[@]} > 0 )); then
-        echo "  missing from unsafe extern \"C\" block:" >&2
-        printf '    - %s\n' "${missing_extern[@]}" >&2
-    fi
-    if (( ${#missing_macro[@]} > 0 )); then
-        echo "  missing from nros_platform_export_*! macro emission:" >&2
-        printf '    - %s\n' "${missing_macro[@]}" >&2
-    fi
     exit 1
 fi
 
-echo "platform C ABI mirror clean: ${#SYMBOLS[@]} symbols match in $RUST"
+echo "platform C ABI mirror clean: $total symbols total across $(( ${#HEADERS_REQUIRE_MACRO[@]} + ${#HEADERS_EXTERN_ONLY[@]} )) headers"

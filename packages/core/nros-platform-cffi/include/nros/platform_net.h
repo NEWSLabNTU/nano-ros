@@ -103,32 +103,44 @@ size_t nros_platform_udp_send(const void *sock,
 /** Set the recv timeout in milliseconds; `0` means block indefinitely. */
 void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms);
 
-/* ---- UDP multicast (optional) ---- */
+/* ---- UDP multicast (optional) ----
+ *
+ * Signatures mirror the Rust `PlatformUdpMulticast` trait. `lep`
+ * is the local-endpoint storage (caller-allocated); `iface` /
+ * `join` are NUL-terminated strings naming the network interface
+ * and the multicast group to join.
+ */
 
-/** Join the multicast group at `endpoint` for sends. Optional. */
 int8_t nros_platform_udp_mcast_open(void *sock,
                                     const void *endpoint,
+                                    void *lep,
                                     uint32_t timeout_ms,
-                                    const void *iface);
+                                    const uint8_t *iface);
 
-/** Bind a listening multicast socket. Optional. */
 int8_t nros_platform_udp_mcast_listen(void *sock,
                                       const void *endpoint,
                                       uint32_t timeout_ms,
-                                      const void *iface);
+                                      const uint8_t *iface,
+                                      const uint8_t *join);
 
-void nros_platform_udp_mcast_close(void *sock);
+void nros_platform_udp_mcast_close(void *sockrecv,
+                                   void *socksend,
+                                   const void *rep,
+                                   const void *lep);
 
 size_t nros_platform_udp_mcast_read(const void *sock,
                                     uint8_t *buf, size_t len,
-                                    void *src_endpoint_out);
+                                    const void *lep,
+                                    void *addr);
 
 size_t nros_platform_udp_mcast_read_exact(const void *sock,
                                           uint8_t *buf, size_t len,
-                                          void *src_endpoint_out);
+                                          const void *lep,
+                                          void *addr);
 
 size_t nros_platform_udp_mcast_send(const void *sock,
-                                    const uint8_t *buf, size_t len);
+                                    const uint8_t *buf, size_t len,
+                                    const void *endpoint);
 
 /* ---- Socket helpers ---- */
 

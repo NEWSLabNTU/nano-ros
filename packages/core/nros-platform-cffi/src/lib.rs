@@ -109,6 +109,122 @@ unsafe extern "C" {
 }
 
 // ============================================================================
+// Phase 121.6.rust-mirror — extended canonical ABI
+// ----------------------------------------------------------------------------
+// Mirrors `<nros/platform_timer.h>` + `<nros/platform_net.h>`. Declarations
+// only — definitions are supplied by whichever provider the binary links
+// (a per-RTOS C port via 121.6.<port>-c, or a future macro-expanded Rust
+// impl). Anyone NOT pulling these via `CffiPlatform`'s extended-surface
+// trait impls (those land in a follow-up commit) gets dead-code-stripped
+// extern refs at link time — no symbol resolution required.
+// ============================================================================
+
+unsafe extern "C" {
+    // -- Timer (platform_timer.h) --
+    pub fn nros_platform_timer_create_periodic(
+        period_us: u32,
+        callback: unsafe extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> *mut c_void;
+    pub fn nros_platform_timer_create_oneshot(
+        timeout_us: u32,
+        callback: unsafe extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> *mut c_void;
+    pub fn nros_platform_timer_destroy(handle: *mut c_void);
+    pub fn nros_platform_timer_cancel(handle: *mut c_void) -> i8;
+
+    // -- TCP (platform_net.h) --
+    pub fn nros_platform_tcp_create_endpoint(
+        ep: *mut c_void,
+        address: *const u8,
+        port: *const u8,
+    ) -> i8;
+    pub fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
+    pub fn nros_platform_tcp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    pub fn nros_platform_tcp_listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
+    pub fn nros_platform_tcp_close(sock: *mut c_void);
+    pub fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    pub fn nros_platform_tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    pub fn nros_platform_tcp_send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
+
+    // -- UDP unicast --
+    pub fn nros_platform_udp_create_endpoint(
+        ep: *mut c_void,
+        address: *const u8,
+        port: *const u8,
+    ) -> i8;
+    pub fn nros_platform_udp_free_endpoint(ep: *mut c_void);
+    pub fn nros_platform_udp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    pub fn nros_platform_udp_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+    ) -> i8;
+    pub fn nros_platform_udp_close(sock: *mut c_void);
+    pub fn nros_platform_udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    pub fn nros_platform_udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    pub fn nros_platform_udp_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize;
+    pub fn nros_platform_udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32);
+
+    // -- UDP multicast --
+    pub fn nros_platform_udp_mcast_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+    ) -> i8;
+    pub fn nros_platform_udp_mcast_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+        join: *const u8,
+    ) -> i8;
+    pub fn nros_platform_udp_mcast_close(
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
+        rep: *const c_void,
+        lep: *const c_void,
+    );
+    pub fn nros_platform_udp_mcast_read(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize;
+    pub fn nros_platform_udp_mcast_read_exact(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize;
+    pub fn nros_platform_udp_mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize;
+
+    // -- Socket helpers --
+    pub fn nros_platform_socket_set_non_blocking(sock: *const c_void) -> i8;
+    pub fn nros_platform_socket_accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8;
+    pub fn nros_platform_socket_close(sock: *mut c_void);
+    pub fn nros_platform_socket_wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8;
+
+    // -- Network poll --
+    pub fn nros_platform_network_poll();
+}
+
+// ============================================================================
 // Return codes (mirrors header)
 // ============================================================================
 
@@ -571,6 +687,255 @@ macro_rules! nros_platform_export {
         $crate::nros_platform_export_random!($ty);
         $crate::nros_platform_export_time!($ty);
         $crate::nros_platform_export_threading!($ty);
+    };
+}
+
+// ============================================================================
+// Phase 121.6.macros — extended-surface export macros
+// ----------------------------------------------------------------------------
+// `nros_platform_export_net!` mirrors `<nros/platform_net.h>` 1:1; trait
+// signatures match the C ABI byte-for-byte. `nros_platform_export_timer!`
+// (deferred — needs an opaque-handle adapter; the macro lands when the
+// Rust `PlatformTimer::TimerHandle` representation is pinned to a
+// pointer type per kernel).
+// ============================================================================
+
+/// Emit every `nros_platform_tcp_*` / `nros_platform_udp_*` /
+/// `nros_platform_udp_mcast_*` / `nros_platform_socket_*` /
+/// `nros_platform_network_poll` symbol declared in
+/// `<nros/platform_net.h>` by delegating to the corresponding trait
+/// method on `$ty`. The caller must implement `PlatformTcp`,
+/// `PlatformUdp`, `PlatformUdpMulticast`, `PlatformSocketHelpers`, and
+/// `PlatformNetworkPoll`.
+#[macro_export]
+macro_rules! nros_platform_export_net {
+    ($ty:ty) => {
+        // ---- TCP ----
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_create_endpoint(
+            ep: *mut ::core::ffi::c_void,
+            address: *const u8,
+            port: *const u8,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformTcp>::create_endpoint(ep, address, port)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_free_endpoint(ep: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformTcp>::free_endpoint(ep)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_open(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformTcp>::open(sock, endpoint, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_listen(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformTcp>::listen(sock, endpoint)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_close(sock: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformTcp>::close(sock)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_read(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformTcp>::read(sock, buf, len)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_read_exact(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformTcp>::read_exact(sock, buf, len)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_send(
+            sock: *const ::core::ffi::c_void,
+            buf: *const u8,
+            len: usize,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformTcp>::send(sock, buf, len)
+        }
+
+        // ---- UDP unicast ----
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_create_endpoint(
+            ep: *mut ::core::ffi::c_void,
+            address: *const u8,
+            port: *const u8,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdp>::create_endpoint(ep, address, port)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_free_endpoint(ep: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformUdp>::free_endpoint(ep)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_open(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdp>::open(sock, endpoint, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_listen(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdp>::listen(sock, endpoint, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_close(sock: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformUdp>::close(sock)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_read(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdp>::read(sock, buf, len)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_read_exact(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdp>::read_exact(sock, buf, len)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_send(
+            sock: *const ::core::ffi::c_void,
+            buf: *const u8,
+            len: usize,
+            endpoint: *const ::core::ffi::c_void,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdp>::send(sock, buf, len, endpoint)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_set_recv_timeout(
+            sock: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+        ) {
+            <$ty as ::nros_platform_api::PlatformUdp>::set_recv_timeout(sock, timeout_ms)
+        }
+
+        // ---- UDP multicast ----
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_open(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            lep: *mut ::core::ffi::c_void,
+            timeout_ms: u32,
+            iface: *const u8,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_open(
+                sock, endpoint, lep, timeout_ms, iface,
+            )
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_listen(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+            iface: *const u8,
+            join: *const u8,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_listen(
+                sock, endpoint, timeout_ms, iface, join,
+            )
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_close(
+            sockrecv: *mut ::core::ffi::c_void,
+            socksend: *mut ::core::ffi::c_void,
+            rep: *const ::core::ffi::c_void,
+            lep: *const ::core::ffi::c_void,
+        ) {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_close(
+                sockrecv, socksend, rep, lep,
+            )
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_read(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+            lep: *const ::core::ffi::c_void,
+            addr: *mut ::core::ffi::c_void,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_read(
+                sock, buf, len, lep, addr,
+            )
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_read_exact(
+            sock: *const ::core::ffi::c_void,
+            buf: *mut u8,
+            len: usize,
+            lep: *const ::core::ffi::c_void,
+            addr: *mut ::core::ffi::c_void,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_read_exact(
+                sock, buf, len, lep, addr,
+            )
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_mcast_send(
+            sock: *const ::core::ffi::c_void,
+            buf: *const u8,
+            len: usize,
+            endpoint: *const ::core::ffi::c_void,
+        ) -> usize {
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_send(
+                sock, buf, len, endpoint,
+            )
+        }
+
+        // ---- Socket helpers ----
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_socket_set_non_blocking(
+            sock: *const ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformSocketHelpers>::set_non_blocking(sock)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_socket_accept(
+            sock_in: *const ::core::ffi::c_void,
+            sock_out: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformSocketHelpers>::accept(sock_in, sock_out)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_socket_close(sock: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformSocketHelpers>::close(sock)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_socket_wait_event(
+            peers: *mut ::core::ffi::c_void,
+            mutex: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformSocketHelpers>::wait_event(peers, mutex)
+        }
+
+        // ---- Network poll ----
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_network_poll() {
+            <$ty as ::nros_platform_api::PlatformNetworkPoll>::network_poll()
+        }
     };
 }
 
