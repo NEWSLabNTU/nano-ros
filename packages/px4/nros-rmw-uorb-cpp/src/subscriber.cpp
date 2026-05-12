@@ -98,7 +98,9 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
     // K.4.2-sub-push: try push-wake. Failure leaves callback_active
     // = false; we pin `ready` to true so try_recv_raw degrades
     // gracefully to the slow polling path.
-    int reg_rc = nros_orb_register_callback(handle,
+    int reg_rc = nros_orb_register_callback(meta,
+                                            /*instance=*/0,
+                                            handle,
                                             subscriber_ready_callback,
                                             state);
     if (reg_rc == 0) {

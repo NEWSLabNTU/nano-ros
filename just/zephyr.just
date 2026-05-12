@@ -116,6 +116,7 @@ build-fixtures:
       "native_sim/native/64|build-service-client|zephyr/rust/zenoh/service-client|0"
       "native_sim/native/64|build-action-server|zephyr/rust/zenoh/action-server|0"
       "native_sim/native/64|build-action-client|zephyr/rust/zenoh/action-client|0"
+      "native_sim/native/64|build-async-service-client|zephyr/rust/zenoh/async-service-client|0"
       # Zenoh C++ (native_sim) — talker/listener required, service+action best-effort
       "native_sim/native/64|build-cpp-talker|zephyr/cpp/zenoh/talker|0"
       "native_sim/native/64|build-cpp-listener|zephyr/cpp/zenoh/listener|0"

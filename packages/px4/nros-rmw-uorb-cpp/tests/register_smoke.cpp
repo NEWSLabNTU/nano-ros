@@ -125,7 +125,11 @@ struct PushWakeState {
     int unregister_calls = 0;
 } g_push;
 
-int nros_orb_register_callback(int handle, nros_orb_callback_t cb, void *arg) {
+int nros_orb_register_callback(const struct orb_metadata * /*meta*/,
+                               uint8_t /*instance*/,
+                               int handle,
+                               nros_orb_callback_t cb,
+                               void *arg) {
     g_push.register_calls++;
     g_push.cb = cb;
     g_push.arg = arg;

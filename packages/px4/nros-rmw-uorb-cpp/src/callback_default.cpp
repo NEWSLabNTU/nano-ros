@@ -26,7 +26,9 @@ extern "C" {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
-int nros_orb_register_callback(int /*handle*/,
+int nros_orb_register_callback(const struct orb_metadata * /*meta*/,
+                               uint8_t /*instance*/,
+                               int /*handle*/,
                                nros_orb_callback_t /*cb*/,
                                void * /*arg*/) {
     return -1;
