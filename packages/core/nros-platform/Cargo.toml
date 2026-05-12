@@ -35,6 +35,11 @@ cffi-export = [
     "nros-platform-nuttx?/cffi-export",
     "nros-platform-threadx?/cffi-export",
     "nros-platform-zephyr?/cffi-export",
+    "nros-platform-mps2-an385?/cffi-export",
+    "nros-platform-stm32f4?/cffi-export",
+    "nros-platform-esp32?/cffi-export",
+    "nros-platform-esp32-qemu?/cffi-export",
+    "nros-platform-orin-spe?/cffi-export",
 ]
 platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
 platform-stm32f4 = ["dep:nros-platform-stm32f4"]
