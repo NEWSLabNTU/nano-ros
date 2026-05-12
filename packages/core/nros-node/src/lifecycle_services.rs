@@ -644,13 +644,7 @@ mod tests {
     // one of the rmw-* features through downstream crates (e.g.
     // nros-px4), at which point `Executor::from_session` expects a
     // different concrete session and these tests stop type-checking.
-    #[cfg(not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    )))]
+    #[cfg(not(feature = "rmw-cffi"))]
     mod mock_integration {
         use super::*;
         use crate::{executor::Executor, mock::MockSession};

@@ -27,14 +27,14 @@ nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2
 #   * `critical-section` — Cortex-M PRIMASK → `critical_section::Impl`,
 #     resolves the `_critical_section_1_0_*` symbols dust-dds
 #     references.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-bare-metal", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
 
-# Phase 97.3 bring-up trace — Cortex-M semihosting trace inside
-# `transport_nros::create_participant` + `write_message`. Off in
-# shipped examples; flip the feature on locally to surface the
-# last-reached step.
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }
+# Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
+# `main.rs` calls `register()` before `Executor::open`. The
+# `nros-rmw-dds` consumer picks the `platform-bare-metal` cfg via the
+# cffi shim's matching feature.
+nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-bare-metal"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

@@ -30,8 +30,12 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # nros
 nros = { path = "../../../core/nros", default-features = false }
 
-# zenoh transport with smoltcp platform backend
-nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal"] }
+# Phase 115.L.5 — cffi shim that exposes zenoh-pico via `nros_rmw_vtable_t`.
+# `register()` would be called before `Executor::open` once a live data path
+# is wired up; the porting example currently keeps every nros API call
+# commented out, so depending on the shim is enough to validate link-time
+# integration.
+nros-rmw-zenoh-cffi = { path = "../../../zpico/nros-rmw-zenoh-cffi", default-features = false, features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
 
 # smoltcp TCP bridge for zenoh-pico
 nros-smoltcp = { path = "../../../../drivers/nros-smoltcp" }

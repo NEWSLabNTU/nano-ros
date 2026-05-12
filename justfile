@@ -570,17 +570,17 @@ check-workspace-embedded:
 [private]
 check-workspace-features:
     @echo "Checking feature combinations..."
-    @echo "  - nros: zenoh + posix + humble"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble"
-    @echo "  - nros: zenoh + posix + iron"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-iron"
-    @echo "  - nros-c: zenoh + posix + humble"
-    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble"
+    @echo "  - nros: zenoh-cffi + posix + humble"
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
+    @echo "  - nros: zenoh-cffi + posix + iron"
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-iron"
+    @echo "  - nros-c: zenoh-cffi + posix + humble"
+    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
     cargo clippy -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
     cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
-    @echo "  - zenoh transport (std)"
+    @echo "  - nros-rmw (std)"
     cargo clippy -p nros-rmw --features "std"
     @echo "All feature checks passed!"
 

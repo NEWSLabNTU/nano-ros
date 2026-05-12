@@ -18,11 +18,8 @@ default = []
 nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
 # `alloc` (not `std`) — bare-metal RISC-V target with no_std. The
 # nros-rmw-dds nostd-runtime path is the only option.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-threadx", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 std_msgs = { version = "*", default-features = false }
-# Phase 97.4.threadx-riscv64 — `nros-rmw-dds` is a transitive dep
-# of `nros` already; we list it here only to opt the example in to
-# the `debug-uart` feature when bringing up the DDS-on-no_std stack.
-# Off by default in shipped examples.
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false }
+# Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
+nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-threadx"] }

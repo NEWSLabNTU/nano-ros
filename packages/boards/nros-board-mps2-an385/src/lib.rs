@@ -24,7 +24,7 @@
 // Phase 97.1.board-decouple — force-link the zenoh-pico shim whenever a
 // zenoh-pico-backed transport is active (rmw-zenoh ethernet OR rmw-zenoh
 // serial). DDS-only builds drop this dep.
-#[cfg(any(feature = "rmw-zenoh", feature = "serial"))]
+#[cfg(feature = "serial")]
 extern crate zpico_platform_shim;
 
 // Phase 97.3.mps2-an385 — `nros-smoltcp::bridge` references
@@ -32,7 +32,7 @@ extern crate zpico_platform_shim;
 // supplies it for zenoh-pico builds; DDS-only builds drop that shim
 // crate, so provide the same forwarder directly here. Cfg-gated to
 // avoid a duplicate-symbol clash when both transports are active.
-#[cfg(all(feature = "ethernet", not(any(feature = "rmw-zenoh", feature = "serial"))))]
+#[cfg(all(feature = "ethernet", not(feature = "serial")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     use nros_platform_api::PlatformClock;

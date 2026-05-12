@@ -120,7 +120,6 @@ where
     // only push them into zenoh-pico when the matching feature is
     // active — DDS-only builds reach the linker without
     // `zpico_set_task_config` undefined.
-    #[cfg(feature = "rmw-zenoh")]
     {
         let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
         let lease_pri = Config::to_freertos_priority(ctx.config.zenoh_lease_priority);

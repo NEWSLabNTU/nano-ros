@@ -93,21 +93,9 @@
 #![no_std]
 
 // ── Feature validation (mutual exclusivity) ─────────────────────────────
-// At most one RMW backend.
-#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-compile_error!("`rmw-zenoh` and `rmw-xrce` are mutually exclusive — select one RMW backend.");
-#[cfg(all(feature = "rmw-cffi", feature = "rmw-zenoh"))]
-compile_error!("`rmw-cffi` and `rmw-zenoh` are mutually exclusive.");
-#[cfg(all(feature = "rmw-cffi", feature = "rmw-xrce"))]
-compile_error!("`rmw-cffi` and `rmw-xrce` are mutually exclusive.");
-#[cfg(all(feature = "rmw-uorb", feature = "rmw-zenoh"))]
-compile_error!("`rmw-uorb` and `rmw-zenoh` are mutually exclusive.");
-#[cfg(all(feature = "rmw-uorb", feature = "rmw-xrce"))]
-compile_error!("`rmw-uorb` and `rmw-xrce` are mutually exclusive.");
-#[cfg(all(feature = "rmw-uorb", feature = "rmw-dds"))]
-compile_error!("`rmw-uorb` and `rmw-dds` are mutually exclusive.");
-#[cfg(all(feature = "rmw-uorb", feature = "rmw-cffi"))]
-compile_error!("`rmw-uorb` and `rmw-cffi` are mutually exclusive.");
+// At most one RMW backend. Today only `rmw-cffi` is exposed at this layer;
+// the cffi shim further selects between `rmw-{zenoh,xrce,dds}-cffi` /
+// cyclonedds at the C ABI level.
 
 // At most one platform.
 #[cfg(any(
@@ -283,73 +271,9 @@ pub mod platform {
 }
 
 pub mod internals {
-    // Zenoh backend internal types
-    #[cfg(feature = "rmw-zenoh")]
-    pub use nros_rmw_zenoh::{
-        LivelinessToken, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ZenohId, ZenohPublisher,
-        ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohSubscriber, ZenohTransport,
-    };
-
     // ── Backend-agnostic type aliases ────────────────────────────────────
     // These resolve to the concrete types of the active RMW backend.
-
-    #[cfg(feature = "rmw-zenoh")]
-    pub type RmwSession = nros_rmw_zenoh::ZenohSession;
-    #[cfg(feature = "rmw-zenoh")]
-    pub type RmwPublisher = nros_rmw_zenoh::ZenohPublisher;
-    #[cfg(feature = "rmw-zenoh")]
-    pub type RmwSubscriber = nros_rmw_zenoh::ZenohSubscriber;
-    #[cfg(feature = "rmw-zenoh")]
-    pub type RmwServiceServer = nros_rmw_zenoh::ZenohServiceServer;
-    #[cfg(feature = "rmw-zenoh")]
-    pub type RmwServiceClient = nros_rmw_zenoh::ZenohServiceClient;
-
-    #[cfg(feature = "rmw-xrce")]
-    pub use nros_rmw_xrce::{
-        XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
-    };
-
-    /// XRCE-DDS transport initialization helpers.
-    ///
-    /// Most users should use `Executor::open()` which auto-initializes
-    /// the transport. These are provided for advanced use cases.
-    #[cfg(feature = "rmw-xrce")]
-    pub mod xrce_transport {
-        /// Initialize platform UDP transport for XRCE-DDS.
-        ///
-        /// # Safety
-        ///
-        /// Must not be called concurrently. Only one transport may be active.
-        #[cfg(feature = "platform-udp")]
-        pub unsafe fn init_platform_udp(agent_addr: &str) {
-            unsafe {
-                nros_rmw_xrce::platform_udp::init_platform_udp_transport(agent_addr);
-            }
-        }
-
-        /// Initialize POSIX serial transport for XRCE-DDS.
-        ///
-        /// # Safety
-        ///
-        /// Must not be called concurrently. Only one transport may be active.
-        #[cfg(feature = "xrce-serial")]
-        pub unsafe fn init_posix_serial(pty_path: &str) {
-            unsafe {
-                nros_rmw_xrce::platform_serial::init_platform_serial_transport(pty_path);
-            }
-        }
-    }
-
-    #[cfg(feature = "rmw-xrce")]
-    pub type RmwSession = nros_rmw_xrce::XrceSession;
-    #[cfg(feature = "rmw-xrce")]
-    pub type RmwPublisher = nros_rmw_xrce::XrcePublisher;
-    #[cfg(feature = "rmw-xrce")]
-    pub type RmwSubscriber = nros_rmw_xrce::XrceSubscriber;
-    #[cfg(feature = "rmw-xrce")]
-    pub type RmwServiceServer = nros_rmw_xrce::XrceServiceServer;
-    #[cfg(feature = "rmw-xrce")]
-    pub type RmwServiceClient = nros_rmw_xrce::XrceServiceClient;
+    // Today the only exposed backend at this layer is the cffi shim.
 
     #[cfg(feature = "rmw-cffi")]
     pub type RmwSession = nros_rmw_cffi::CffiSession;
@@ -362,156 +286,30 @@ pub mod internals {
     #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
 
-    #[cfg(feature = "rmw-dds")]
-    pub type RmwSession = nros_rmw_dds::DdsSession;
-    #[cfg(feature = "rmw-dds")]
-    pub type RmwPublisher = nros_rmw_dds::DdsPublisher;
-    #[cfg(feature = "rmw-dds")]
-    pub type RmwSubscriber = nros_rmw_dds::DdsSubscriber;
-    #[cfg(feature = "rmw-dds")]
-    pub type RmwServiceServer = nros_rmw_dds::DdsServiceServer;
-    #[cfg(feature = "rmw-dds")]
-    pub type RmwServiceClient = nros_rmw_dds::DdsServiceClient;
-
-    #[cfg(feature = "rmw-uorb")]
-    pub type RmwSession = nros_rmw_uorb::UorbSession;
-    #[cfg(feature = "rmw-uorb")]
-    pub type RmwPublisher = nros_rmw_uorb::UorbPublisher;
-    #[cfg(feature = "rmw-uorb")]
-    pub type RmwSubscriber = nros_rmw_uorb::UorbSubscriber;
-    #[cfg(feature = "rmw-uorb")]
-    pub type RmwServiceServer = nros_rmw_uorb::UorbServiceServer;
-    #[cfg(feature = "rmw-uorb")]
-    pub type RmwServiceClient = nros_rmw_uorb::UorbServiceClient;
-
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
     /// Used by the C API (`nros-c`); Rust users should prefer `Executor::open()`.
-    ///
-    /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
-    /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
-    ///   Transport must match the active transport feature (`xrce-udp` or `xrce-serial`).
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
         domain_id: u32,
         node_name: &str,
     ) -> Result<RmwSession, nros_rmw::TransportError> {
-        #[cfg(feature = "rmw-zenoh")]
-        {
-            use nros_rmw::TransportConfig;
+        use nros_rmw::Rmw;
 
-            let _ = (domain_id, node_name);
-            let config = TransportConfig {
-                locator: Some(locator),
-                mode,
-                properties: &[],
-            };
-            RmwSession::new(&config).map_err(|_| nros_rmw::TransportError::ConnectionFailed)
-        }
-
-        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
-        {
-            use nros_rmw::Rmw;
-
-            // Initialize transport based on active transport feature
-            #[cfg(feature = "platform-udp")]
-            unsafe {
-                nros_rmw_xrce::platform_udp::init_platform_udp_transport(locator);
-            }
-
-            #[cfg(feature = "xrce-serial")]
-            unsafe {
-                nros_rmw_xrce::platform_serial::init_platform_serial_transport(locator);
-            }
-
-            let config = nros_rmw::RmwConfig {
-                locator,
-                mode,
-                domain_id,
-                node_name,
-                namespace: "",
-                properties: &[],
-            };
-            nros_rmw_xrce::XrceRmw::default()
-                .open(&config)
-                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
-        }
-
-        #[cfg(all(
-            feature = "rmw-dds",
-            not(feature = "rmw-zenoh"),
-            not(feature = "rmw-xrce"),
-        ))]
-        {
-            use nros_rmw::Rmw;
-
-            let config = nros_rmw::RmwConfig {
-                locator,
-                mode,
-                domain_id,
-                node_name,
-                namespace: "",
-                properties: &[],
-            };
-            nros_rmw_dds::DdsRmw
-                .open(&config)
-                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
-        }
-
-        #[cfg(all(
-            feature = "rmw-cffi",
-            not(feature = "rmw-zenoh"),
-            not(feature = "rmw-xrce"),
-            not(feature = "rmw-dds"),
-            not(feature = "rmw-uorb"),
-        ))]
-        {
-            use nros_rmw::Rmw;
-
-            let config = nros_rmw::RmwConfig {
-                locator,
-                mode,
-                domain_id,
-                node_name,
-                namespace: "",
-                properties: &[],
-            };
-            nros_rmw_cffi::CffiRmw
-                .open(&config)
-                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
-        }
-
-        #[cfg(all(
-            feature = "rmw-uorb",
-            not(feature = "rmw-zenoh"),
-            not(feature = "rmw-xrce"),
-            not(feature = "rmw-dds"),
-            not(feature = "rmw-cffi"),
-        ))]
-        {
-            use nros_rmw::Rmw;
-
-            let config = nros_rmw::RmwConfig {
-                locator,
-                mode,
-                domain_id,
-                node_name,
-                namespace: "",
-                properties: &[],
-            };
-            nros_rmw_uorb::UorbRmw
-                .open(&config)
-                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
-        }
+        let config = nros_rmw::RmwConfig {
+            locator,
+            mode,
+            domain_id,
+            node_name,
+            namespace: "",
+            properties: &[],
+        };
+        nros_rmw_cffi::CffiRmw
+            .open(&config)
+            .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
     }
 
     /// Drive middleware I/O for pull-based backends.
@@ -521,13 +319,7 @@ pub mod internals {
     /// poll for pull-based).
     ///
     /// Used by the C API executor before polling handles.
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
         use nros_rmw::Session;
         let _ = session.drive_io(timeout_ms);
@@ -542,13 +334,7 @@ pub use nros_node::{
 };
 
 // Re-export RMW-dependent types (require an active transport backend)
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi",
-    feature = "rmw-uorb"
-))]
+#[cfg(feature = "rmw-cffi")]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
@@ -556,16 +342,7 @@ pub use nros_node::{
     LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, Subscription,
 };
 
-#[cfg(all(
-    feature = "std",
-    any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    )
-))]
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub use nros_node::SpinPeriodResult;
 
 // Re-export service types
@@ -620,13 +397,7 @@ pub mod prelude {
     };
 
     // Re-export RMW-dependent executor + handle types
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     pub use crate::{
         EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
         Subscription,
@@ -635,16 +406,7 @@ pub mod prelude {
     // Publisher/Subscriber options (topic + QoS).
     pub use crate::{PublisherOptions, SubscriberOptions};
 
-    #[cfg(all(
-        feature = "std",
-        any(
-            feature = "rmw-zenoh",
-            feature = "rmw-xrce",
-            feature = "rmw-dds",
-            feature = "rmw-cffi",
-            feature = "rmw-uorb"
-        )
-    ))]
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub use crate::SpinPeriodResult;
 
     // Re-export parameter types
