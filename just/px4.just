@@ -51,6 +51,21 @@ doctor:
     else
         echo "  [INFO] arm-none-eabi-gcc not installed — only SITL host build available"
     fi
+    # PX4's uORB topic-header generator + Kconfig step pull in Python
+    # modules listed in `Tools/setup/requirements.txt`. The few that
+    # are load-bearing for `build-sitl{,-cpp}` (and which silently
+    # break the build with "No module named X" if they're missing
+    # after a submodule update) get spot-checked here so doctor
+    # surfaces the staleness before the user spends 30s waiting for
+    # ninja to fail at step [2/1140].
+    for mod in genmsg kconfiglib jinja2 em; do
+        if python3 -c "import $mod" >/dev/null 2>&1; then
+            echo "  [OK] python3: $mod"
+        else
+            echo "  [MISSING] python3: $mod — run: just px4 setup"
+            fail=1
+        fi
+    done
     if [ -n "${PX4_AUTOPILOT_DIR:-}" ]; then
         echo "  [INFO] PX4_AUTOPILOT_DIR set to $PX4_AUTOPILOT_DIR (overrides submodule)"
     fi
@@ -75,6 +90,29 @@ build-targets:
     @echo "→ thumbv8m.main-none-eabihf (Cortex-M7 / STM32H7)"
     cargo build -p nros-rmw-uorb \
         --target thumbv8m.main-none-eabihf --no-default-features --features alloc
+
+# Build PX4 SITL with the nano-ros uORB C++ register-check module
+# linked in via EXTERNAL_MODULES_LOCATION. This is the Phase 115.K.4.5
+# validation gate: it compiles the entire `nros-rmw-uorb-cpp` library
+# inline inside a real `px4_add_module()` build context, including the
+# `SubscriptionCallbackWorkItem` push-wake glue that requires
+# `<px4_boardconfig.h>` (per-board Kconfig output, only exists during
+# a SITL build).
+#
+# Cold build ~10 min; warm <2 s. Requires `just px4 setup`.
+build-sitl-cpp:
+    #!/usr/bin/env bash
+    set -e
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    EXT_DIR="$(pwd)/examples/px4/cpp/uorb"
+    if [ ! -d "$PX4_DIR/Tools" ]; then
+        echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
+        echo "Run: just px4 setup"
+        exit 1
+    fi
+    echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
+    make -C "$PX4_DIR" px4_sitl_default \
+        EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
 # Build PX4 SITL with the nano-ros uORB examples linked in via
 # EXTERNAL_MODULES_LOCATION. Cold build ~10 min; warm <2 s (ninja

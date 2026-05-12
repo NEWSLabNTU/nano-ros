@@ -38,6 +38,16 @@ endif()
 # is wrapped in a guard so the smoke test can build on hosts that
 # don't have PX4 installed.
 option(NROS_RMW_UORB_LINK_PX4 "Link against the PX4 module SDK (uORB, workqueue)" OFF)
+# Push-wake glue.cpp pulls in `<uORB/SubscriptionCallback.hpp>` which
+# transitively requires `<px4_boardconfig.h>` — a per-board Kconfig
+# output that only exists inside a real `px4_add_module()` build
+# (under `$PX4_BINARY_DIR`). Standalone consumers building only the
+# Rust-side ABI (host-validation, smoke) keep this OFF; the actual
+# PX4-module integration build flips it ON via the module's own
+# CMakeLists, where the include path resolves automatically.
+option(NROS_RMW_UORB_BUILD_PX4_GLUE
+    "Compile the SubscriptionCallbackWorkItem push-wake glue (requires a px4_add_module build context)"
+    OFF)
 if(NROS_RMW_UORB_LINK_PX4)
     if(NOT DEFINED PX4_FIRMWARE_DIR)
         message(FATAL_ERROR
@@ -51,10 +61,16 @@ if(NROS_RMW_UORB_LINK_PX4)
     # 1.14+ tree. Older releases that staged the headers elsewhere
     # need a fork-side override of NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS.
     if(NOT DEFINED NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS)
+        # `<uORB/uORB.h>` lives at `platforms/common/uORB/uORB.h` —
+        # the include base is `platforms/common`, not `platforms/common/uORB`.
+        # `<px4_platform_common/...>` resolves via `platforms/common/include`.
+        # `<containers/...>`, `<px4.h>` resolve via `src/include`.
+        # `<drivers/...>`, `<lib/...>` resolve via `src/`.
         set(NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS
-            "${PX4_FIRMWARE_DIR}/platforms/common/uORB"
+            "${PX4_FIRMWARE_DIR}/platforms/common"
             "${PX4_FIRMWARE_DIR}/platforms/common/include"
             "${PX4_FIRMWARE_DIR}/src/include"
+            "${PX4_FIRMWARE_DIR}/src"
             "${PX4_FIRMWARE_DIR}/src/lib")
     endif()
     # uORB symbol resolution at link time comes from the per-module
@@ -77,7 +93,11 @@ set(_nros_rmw_uorb_sources
     src/topic_registry.cpp
     src/callback_default.cpp
 )
-if(NROS_RMW_UORB_LINK_PX4)
+if(NROS_RMW_UORB_BUILD_PX4_GLUE)
+    if(NOT NROS_RMW_UORB_LINK_PX4)
+        message(FATAL_ERROR
+            "NROS_RMW_UORB_BUILD_PX4_GLUE=ON requires NROS_RMW_UORB_LINK_PX4=ON.")
+    endif()
     list(APPEND _nros_rmw_uorb_sources src/px4_callback_glue.cpp)
 endif()
 
@@ -100,6 +120,11 @@ if(NROS_RMW_UORB_LINK_PX4)
         NROS_RMW_UORB_USE_PX4_HEADER=1)
     target_include_directories(nros_rmw_uorb PRIVATE
         ${NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS})
+    # PX4's `<uORB/uORB.h>` uses `__EXPORT` / `__PRIVATE` macros
+    # supplied by PX4's toolchain via `-include visibility.h`.
+    # Replicate that contract for standalone host builds.
+    target_compile_options(nros_rmw_uorb PRIVATE
+        -include visibility.h)
     if(DEFINED NROS_RMW_UORB_PX4_UORB_LIBRARIES)
         target_link_libraries(nros_rmw_uorb PUBLIC
             ${NROS_RMW_UORB_PX4_UORB_LIBRARIES})

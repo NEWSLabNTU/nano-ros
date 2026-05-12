@@ -1794,24 +1794,56 @@ service-less variant, +1 week for service-over-topics emulation.
   `UNSUPPORTED` permanently. If a real customer surfaces, the
   service-over-topics option (a) reopens as `K.4.4-revisit`.
 
-- [~] **115.K.4.5 — Rust-stack removal (external blockers
-  only).** K.4.0–K.4.4 + K.4-cmake + K.4.2-subscriber-push all
-  landed. Every blocker I can clear from this repo IS cleared.
-  The two remaining gates are **outside this repo**:
+- [~] **115.K.4.5 — Rust-stack removal (release-cycle gate
+  only; PX4 SDK validation done 2026-05-12).** K.4.0–K.4.4 +
+  K.4-cmake + K.4.2-subscriber-push all landed. The PX4 SDK
+  integration validation also landed — see (1) below. The single
+  remaining gate is the release-cycle deprecation window, which
+  is **outside this repo**:
 
-  1. **Real-PX4 build validation (gate: PX4 hardware/SDK
-     access).** `NROS_RMW_UORB_LINK_PX4=ON` branch ships
-     complete: PX4 1.14+ include-dir layout, override hooks for
-     older releases (`NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS`,
-     `NROS_RMW_UORB_PX4_UORB_LIBRARIES`), `uorb_abi.hpp` flip
-     to `#include <uORB/uORB.h>` via
-     `NROS_RMW_UORB_USE_PX4_HEADER`, and the
-     `px4_callback_glue.cpp` SubscriptionCallbackWorkItem
-     adapter for push-wake. **Validation requires running
-     `west build` (or PX4's `make`) inside a PX4-Autopilot
-     checkout against a real or sim board.** That's a manual
-     step a PX4 developer takes; can't run from this repo's
-     CI. **Not a code blocker** — the code is there.
+  1. ✅ **Real-PX4 build validation — DONE.** End-to-end SITL
+     integration shipped at `examples/px4/cpp/uorb/` (driven by
+     `just px4 build-sitl-cpp`). The build:
+     - Pulls all eight `nros-rmw-uorb-cpp` sources (incl.
+       `px4_callback_glue.cpp`, the push-wake
+       SubscriptionCallbackWorkItem adapter) into a real
+       `px4_add_module()` build context.
+     - Flips `uorb_abi.hpp` to `#include <uORB/uORB.h>` via
+       `NROS_RMW_UORB_USE_PX4_HEADER=1`.
+     - Resolves `<uORB/SubscriptionCallback.hpp>` +
+       `<px4_platform_common/...>` + per-board
+       `<px4_boardconfig.h>` (Kconfig output, only exists inside
+       a SITL build).
+     - Links every nros symbol into the final `bin/px4` —
+       `nm bin/px4 | grep nros_` lists 18+ entries
+       (`nros_rmw_uorb_register`, `nros_orb_register_callback`,
+       all `nros_rmw_uorb::*` mangled), and the module's
+       `nros_register_check_main` exports as `T` (PX4-callable
+       from `pxh>`).
+
+     Two CMake fixes landed at the standalone-build layer:
+     - `packages/px4/nros-rmw-uorb-cpp/CMakeLists.txt` now sets
+       the include base to `${PX4_FIRMWARE_DIR}/platforms/common`
+       (parent of `uORB/`) — earlier `…/uORB` made
+       `<uORB/uORB.h>` unresolvable.
+     - Pre-includes `visibility.h` via `-include visibility.h`
+       because PX4's `<uORB/uORB.h>` references `__EXPORT` /
+       `__PRIVATE` macros that the upstream header doesn't pull
+       in itself (PX4 expects its build pipeline to inject
+       them).
+     - Adds `NROS_RMW_UORB_BUILD_PX4_GLUE` option so host /
+       smoke builds keep `px4_callback_glue.cpp` out of the
+       compile list (it depends on `<px4_boardconfig.h>`,
+       which only exists inside a `px4_add_module()` build).
+
+     One callback-API correction landed in
+     `src/px4_callback_glue.cpp`: PX4 1.14+'s push-wake API is
+     compositional, not subclass-based. The adapter now
+     subclasses `px4::WorkItem` (overrides `Run()`) and owns a
+     placement-new'd `uORB::SubscriptionCallbackWorkItem`
+     pointing back at itself. The pool is lazy-constructed —
+     `WorkItem`'s ctor calls `Init(config)` which can't run
+     before the WQ manager comes up.
 
   2. **One release cycle as `NANO_ROS_RMW=uorb` default (gate:
      release schedule).** Gives any external Rust-on-PX4 user a
