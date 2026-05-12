@@ -559,6 +559,31 @@ explain why this corruption fires only on rv64 (where the
 override applies) and only with the heavier action-server entity
 load.
 
+### TX_TCB_*_OFF offsets verified — NOT the bug
+
+User asked whether TX_TCB_*_OFF constants come from manual math
+or are derived. Answer: hand-coded in the board's
+`tx_port.h:54-61`, based on the comment block's documented
+layout. Verified via a cross-compiled `_Static_assert` (see
+`tmp/verify_offsets.c`): all 8 offsets match `offsetof(TX_THREAD,
+field)` as the C compiler computes it under the board's ULONG=u32
+override. So the asm offsets DO match the C struct.
+
+That rules out the "asm-offset / C-struct mismatch" hypothesis.
+The `0x80251630` bad-JALR target value must come from a different
+mechanism. Candidates remaining:
+
+1. A struct field stores `&socket_array[0]` (full 8-byte pointer)
+   in a slot the caller later interprets as a function pointer.
+   `nx_bsd_socket_pool_memory + 8` skips over the block-pool's
+   prepended next-link pointer and lands at the start of the
+   first `NX_TCP_SOCKET` block. So the bad value IS the first
+   socket's base address.
+2. A callback registration somewhere passes `&socket[0]` where it
+   should have passed a function pointer. Most likely candidate:
+   any `nx_*_set_*_notify` API where the callback argument is
+   confused with the user-context argument by a Rust-side caller.
+
 ### Next: identify the bad STORE
 
 Watch for any STORE to addresses `0x800380c0..0x80039000` (the
