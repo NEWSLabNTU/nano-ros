@@ -16,8 +16,12 @@
 #include "nros/rmw_ret.h"
 
 #include <uxr/client/client.h>
-#include <uxr/client/profile/transport/ip/udp/udp_transport.h>
-#include <uxr/client/profile/transport/ip/udp/udp_transport_posix.h>
+#if defined(UCLIENT_PROFILE_UDP)
+#  include <uxr/client/profile/transport/ip/udp/udp_transport.h>
+#endif
+#if defined(UCLIENT_PROFILE_UDP) && defined(UCLIENT_PLATFORM_POSIX)
+#  include <uxr/client/profile/transport/ip/udp/udp_transport_posix.h>
+#endif
 #include <uxr/client/profile/transport/custom/custom_transport.h>
 #include <uxr/client/core/session/object_id.h>
 
@@ -294,8 +298,17 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
     /* Phase 115.K.2.4 — `custom://...` routes through
      * `xrce_custom_transport_install`. UDP path mirrors K.2.1.
      * Phase 115.K.2.5.1.5-serial — `serial://...` / `/dev/...`
-     * routes through `xrce_posix_serial_init`. */
+     * routes through `xrce_posix_serial_init`.
+     * Phase 115.K.2.5.1.3-zephyr — POSIX-specific UDP / serial
+     * paths only compile when `UCLIENT_PLATFORM_POSIX` is on; on
+     * Zephyr / bare-metal builds the consumer MUST use
+     * `custom://` and pre-register a Zephyr-side transport via
+     * `nros_rmw_cffi_set_custom_transport`. */
+#if defined(UCLIENT_PLATFORM_POSIX)
     const char *serial_path = locator_serial_path(locator);
+#else
+    const char *serial_path = NULL;
+#endif
     if (locator_is_custom(locator)) {
         st->use_custom_transport = true;
         nros_rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
@@ -305,6 +318,7 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
+#if defined(UCLIENT_PLATFORM_POSIX)
     } else if (serial_path != NULL) {
         st->use_custom_transport = true;
         nros_rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
@@ -342,6 +356,15 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
+#else
+    } else {
+        /* Embedded build — caller must pass `custom://` and have
+         * pre-registered the transport via
+         * `nros_rmw_cffi_set_custom_transport`. UDP / serial
+         * locator schemes are unreachable here. */
+        free(st);
+        return NROS_RMW_RET_UNSUPPORTED;
+#endif
     }
 
     /* Topic / request / reply callbacks — single registration per

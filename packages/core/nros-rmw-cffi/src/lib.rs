@@ -582,6 +582,39 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
     NROS_RMW_RET_OK
 }
 
+/// Phase 115.A.2 — C entry point for installing a custom transport.
+///
+/// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`
+/// (or `None` when `ops == NULL`) but returns the canonical
+/// `nros_rmw_ret_t` codes so non-Rust consumers don't have to
+/// reach into nros-c's higher-level error enum.
+///
+/// The struct's contents are copied internally; the caller may
+/// stack-allocate. Pass `NULL` to clear the slot.
+///
+/// # Safety
+///
+/// `ops` must either be `NULL` or point at a valid
+/// `nros_transport_ops_t` whose four fn pointers stay live for the
+/// lifetime of the registration (i.e. until a subsequent
+/// `nros_rmw_cffi_set_custom_transport(NULL)` or a replacement
+/// install).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
+    ops: *const nros_rmw::NrosTransportOps,
+) -> NrosRmwRet {
+    if ops.is_null() {
+        // Clear: ignore any error (None is always accepted).
+        let _ = unsafe { nros_rmw::set_custom_transport(None) };
+        return NROS_RMW_RET_OK;
+    }
+    let copy = unsafe { *ops };
+    match unsafe { nros_rmw::set_custom_transport(Some(copy)) } {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
 fn get_vtable() -> Result<&'static NrosRmwVtable, TransportError> {
     let ptr = VTABLE.load(Ordering::Acquire);
     if ptr.is_null() {

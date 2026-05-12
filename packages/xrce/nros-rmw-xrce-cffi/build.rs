@@ -27,15 +27,35 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
+    // Platform fanout. Exactly one of `platform-{posix,zephyr,
+    // bare-metal,freertos,nuttx,threadx}` should be on; the legacy
+    // `posix` alias forwards to `platform-posix`. Default (none set):
+    // fall back to the host-OS heuristic so `cargo check` /
+    // `cargo build` w/o an explicit feature still works on
+    // linux/macos hosts.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let feat_posix = env::var_os("CARGO_FEATURE_PLATFORM_POSIX").is_some()
+        || env::var_os("CARGO_FEATURE_POSIX").is_some();
+    let feat_zephyr = env::var_os("CARGO_FEATURE_PLATFORM_ZEPHYR").is_some();
+    let feat_baremetal = env::var_os("CARGO_FEATURE_PLATFORM_BARE_METAL").is_some()
+        || env::var_os("CARGO_FEATURE_PLATFORM_FREERTOS").is_some()
+        || env::var_os("CARGO_FEATURE_PLATFORM_NUTTX").is_some()
+        || env::var_os("CARGO_FEATURE_PLATFORM_THREADX").is_some();
+    let host_is_posix = matches!(
+        target_os.as_str(),
+        "linux" | "macos" | "freebsd" | "netbsd" | "openbsd"
+    );
+    let is_posix = feat_posix || (!feat_zephyr && !feat_baremetal && host_is_posix);
+    let is_embedded = feat_zephyr || feat_baremetal || !host_is_posix;
+
     // Generate config headers.
     generate_ucdr_config(&out_dir, &microcdr);
-    generate_uxr_config(&out_dir, &microxrce);
+    generate_uxr_config(&out_dir, &microxrce, feat_zephyr, is_posix);
 
     let mut build = cc::Build::new();
     build
         .std("c99")
         .warnings(false)
-        .define("_POSIX_C_SOURCE", Some("200809L"))
         .define("_DEFAULT_SOURCE", None)
         .include(out_dir.join("include"))
         .include(microcdr.join("include"))
@@ -44,6 +64,14 @@ fn main() {
         .include(xrce_c.join("src"))
         .include(xrce_c.join("include"))
         .include(workspace.join("packages/core/nros-rmw-cffi/include"));
+    if is_posix {
+        // `_POSIX_C_SOURCE` is what unlocks `clock_gettime`,
+        // `getaddrinfo`, etc in `<sys/socket.h>` + `<time.h>` on
+        // glibc / musl / macOS. Bare-metal & Zephyr stdlibs don't
+        // ship these — gating the define keeps the embedded build
+        // from pulling in headers it can't satisfy.
+        build.define("_POSIX_C_SOURCE", Some("200809L"));
+    }
 
     // K.2 backend TUs. Source-of-truth list — must stay in lockstep
     // with `nros-rmw-xrce-c/CMakeLists.txt`.
@@ -57,13 +85,9 @@ fn main() {
     ];
     // Phase 118 — `transport_posix_{udp,serial}.c` define
     // `xrce_posix_{udp,serial}_init`. The TUs only build where
-    // `<sys/socket.h>` / `<termios.h>` are available; bare-metal
+    // `<sys/socket.h>` / `<termios.h>` are available; embedded
     // targets must inject their own custom transport instead.
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if matches!(
-        target_os.as_str(),
-        "linux" | "macos" | "freebsd" | "netbsd" | "openbsd"
-    ) {
+    if is_posix {
         backend_tus.push("transport_posix_udp");
         backend_tus.push("transport_posix_serial");
     }
@@ -112,11 +136,24 @@ fn main() {
         build.file(ser_dir.join(format!("{name}.c")));
     }
     build.file(uxr_src.join("util/ping.c"));
-    build.file(uxr_src.join("util/time.c"));
     build.file(uxr_src.join("profile/transport/custom/custom_transport.c"));
     build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
-    build.file(uxr_src.join("profile/transport/ip/udp/udp_transport.c"));
-    build.file(uxr_src.join("profile/transport/ip/udp/udp_transport_posix.c"));
+
+    // POSIX-only TUs. `util/time.c` calls `clock_gettime` /
+    // `nanosleep`. `udp_transport.c` + `udp_transport_posix.c`
+    // open `socket(AF_INET, …)` directly. Embedded targets supply
+    // their own time + transport via the registry.
+    if is_posix {
+        build.file(uxr_src.join("util/time.c"));
+        build.file(uxr_src.join("profile/transport/ip/udp/udp_transport.c"));
+        build.file(uxr_src.join("profile/transport/ip/udp/udp_transport_posix.c"));
+    }
+
+    if is_embedded {
+        // Tell `<uxr/client/config_internal.h>` not to require the
+        // POSIX TUs we've just dropped from the source list.
+        build.define("UCLIENT_PLATFORM_NO_POSIX", None);
+    }
 
     build.compile("nros_rmw_xrce_c_inline");
 
@@ -144,7 +181,12 @@ fn generate_ucdr_config(out_dir: &std::path::Path, microcdr: &std::path::Path) {
     fs::write(dir.join("config.h"), header).unwrap();
 }
 
-fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
+fn generate_uxr_config(
+    out_dir: &std::path::Path,
+    microxrce: &std::path::Path,
+    is_zephyr: bool,
+    is_posix: bool,
+) {
     let template = fs::read_to_string(microxrce.join("include/uxr/client/config.h.in"))
         .expect("read uxr config.h.in");
     // Substitute @TOKEN@ placeholders.
@@ -171,27 +213,58 @@ fn generate_uxr_config(out_dir: &std::path::Path, microxrce: &std::path::Path) {
     // #cmakedefine handling. The template uses `#cmakedefine NAME` —
     // CMake replaces with `#define NAME` when var is set, `/* #undef
     // NAME */` otherwise.
-    let enabled = [
+    let mut enabled = vec![
         "UCLIENT_PROFILE_DISCOVERY",
-        "UCLIENT_PROFILE_UDP",
-        "UCLIENT_PROFILE_TCP",
-        "UCLIENT_PROFILE_SERIAL",
         "UCLIENT_PROFILE_CUSTOM_TRANSPORT",
         "UCLIENT_PROFILE_STREAM_FRAMING",
         "UCLIENT_TWEAK_XRCE_WRITE_LIMIT",
-        "UCLIENT_PLATFORM_POSIX",
     ];
-    let disabled = [
+    let mut disabled = vec![
         "UCLIENT_PROFILE_MULTITHREAD",
         "UCLIENT_PROFILE_SHARED_MEMORY",
         "UCLIENT_PROFILE_CAN",
         "UCLIENT_HARD_LIVELINESS_CHECK",
-        "UCLIENT_PLATFORM_POSIX_NOPOLL",
-        "UCLIENT_PLATFORM_WINDOWS",
-        "UCLIENT_PLATFORM_FREERTOS_PLUS_TCP",
-        "UCLIENT_PLATFORM_RTEMS_BSD_NET",
-        "UCLIENT_PLATFORM_ZEPHYR",
     ];
+    // Platform fanout — POSIX gets the full UDP/TCP/SERIAL profile
+    // set; Zephyr emits its own platform define so any upstream
+    // `#ifdef UCLIENT_PLATFORM_ZEPHYR` branch picks the right path.
+    // Pure bare-metal / FreeRTOS / NuttX / ThreadX gets the
+    // freestanding core only — consumers wire their own transport
+    // via `nros_rmw_cffi_set_custom_transport(...)`.
+    if is_posix {
+        enabled.push("UCLIENT_PROFILE_UDP");
+        enabled.push("UCLIENT_PROFILE_TCP");
+        enabled.push("UCLIENT_PROFILE_SERIAL");
+        enabled.push("UCLIENT_PLATFORM_POSIX");
+        disabled.push("UCLIENT_PLATFORM_POSIX_NOPOLL");
+        disabled.push("UCLIENT_PLATFORM_WINDOWS");
+        disabled.push("UCLIENT_PLATFORM_FREERTOS_PLUS_TCP");
+        disabled.push("UCLIENT_PLATFORM_RTEMS_BSD_NET");
+        disabled.push("UCLIENT_PLATFORM_ZEPHYR");
+    } else if is_zephyr {
+        enabled.push("UCLIENT_PLATFORM_ZEPHYR");
+        // UDP / TCP / SERIAL profile defines stay off — Zephyr's
+        // transport is custom (CMake glue wires the callbacks).
+        disabled.push("UCLIENT_PROFILE_UDP");
+        disabled.push("UCLIENT_PROFILE_TCP");
+        disabled.push("UCLIENT_PROFILE_SERIAL");
+        disabled.push("UCLIENT_PLATFORM_POSIX");
+        disabled.push("UCLIENT_PLATFORM_POSIX_NOPOLL");
+        disabled.push("UCLIENT_PLATFORM_WINDOWS");
+        disabled.push("UCLIENT_PLATFORM_FREERTOS_PLUS_TCP");
+        disabled.push("UCLIENT_PLATFORM_RTEMS_BSD_NET");
+    } else {
+        // Bare-metal / FreeRTOS / NuttX / ThreadX.
+        disabled.push("UCLIENT_PROFILE_UDP");
+        disabled.push("UCLIENT_PROFILE_TCP");
+        disabled.push("UCLIENT_PROFILE_SERIAL");
+        disabled.push("UCLIENT_PLATFORM_POSIX");
+        disabled.push("UCLIENT_PLATFORM_POSIX_NOPOLL");
+        disabled.push("UCLIENT_PLATFORM_WINDOWS");
+        disabled.push("UCLIENT_PLATFORM_FREERTOS_PLUS_TCP");
+        disabled.push("UCLIENT_PLATFORM_RTEMS_BSD_NET");
+        disabled.push("UCLIENT_PLATFORM_ZEPHYR");
+    }
     // Match the entire line (`\n` boundary) so e.g. the
     // `UCLIENT_PLATFORM_POSIX` rule does not accidentally also
     // match `UCLIENT_PLATFORM_POSIX_NOPOLL`.
