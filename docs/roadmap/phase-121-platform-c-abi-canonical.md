@@ -2,7 +2,7 @@
 
 **Goal:** Promote the C ABI declared in `<nros/platform.h>` to the canonical platform interface. Every platform port — current Rust crates and future C-native ports — provides the same flat set of `extern "C"` symbols. The Rust `nros_platform_api` traits stay as the ergonomic Rust surface, dispatched through `CffiPlatform` for cffi consumers. Rust platform crates expose the C ABI in-place via an `export_platform!` macro from `nros-platform-cffi`, gated behind each crate's own `cffi-export` feature — no sibling crates.
 
-**Status:** 121.1 (header + Rust mirror), 121.2.a (macros), 121.2.{posix,freertos,nuttx,threadx,zephyr} (RTOS crate wiring), 121.2.embedded (five bare-metal / FSP crates), 121.2.wire-feature (nros-platform fan-out covering all ten crates), and 121.4 (drift gate + C-stub harness + POSIX parity test) all landed. Remaining work: 121.2.rtic (future, on-demand); 121.3.* (C-native ports per RTOS, long arc); 121.5 (porter / internals docs); per-RTOS parity tests for freertos/nuttx/threadx/zephyr/embedded (require cross toolchains, deferred).
+**Status:** 121.1 (header + Rust mirror), 121.2.a (macros), 121.2.{posix,freertos,nuttx,threadx,zephyr} (RTOS crate wiring), 121.2.embedded (five bare-metal / FSP crates), 121.2.wire-feature (nros-platform fan-out covering all ten crates), 121.3.posix (POSIX C reference port + CMake + integration test), and 121.4 (drift gate + C-stub harness + POSIX parity test) all landed. Remaining work: 121.2.rtic (future, on-demand); 121.3.{freertos,nuttx,threadx,zephyr,esp-idf} (each requires its kernel SDK + QEMU runner, deferred); 121.5 (porter / internals docs); per-RTOS parity tests for freertos/nuttx/threadx/zephyr/embedded (require cross toolchains, deferred).
 
 **Priority:** Medium. Not blocking active features. Unblocks (a) writing a platform port in C/C++/Zig without touching Rust, (b) sharing one ABI across the project's language surfaces, (c) eventually rehosting RTOS-native platform code (Zephyr, FreeRTOS, NuttX, ThreadX, ESP-IDF) in the SDK's native language so each port reads idiomatically to its kernel community.
 
@@ -197,13 +197,13 @@ Replacing each Rust platform crate with a hand-written C port against the host R
 
 These are independent of 121.2 — 121.2 unblocks Rust callers immediately via macro export, 121.3 lets contributors who don't write Rust ship a port directly against the canonical ABI. A C port and the macro-exported Rust impl provide the same symbol set; only one may be linked into a given binary.
 
-- [ ] **121.3.posix** — POSIX C port (`platform_posix.c`). Lowest cost — `clock_gettime`, `malloc`, `pthread_*` straight through. Strongest correctness target since POSIX is the default test bed.
-- [ ] **121.3.freertos** — FreeRTOS C port. `xTaskGetTickCount`, `pvPortMalloc`/`vPortFree`, `xTaskCreate`, `xSemaphoreCreateRecursiveMutex`, condvar via counting semaphores.
-- [ ] **121.3.nuttx** — NuttX C port. POSIX-shaped (uses `pthread_*`, `sem_timedwait`); large parts share with 121.3.posix.
-- [ ] **121.3.threadx** — ThreadX C port. `tx_thread_*`, `tx_mutex_*`, `tx_event_flags_*` for condvar.
-- [ ] **121.3.zephyr** — Zephyr C port. `k_uptime_get`, `k_thread_create`, `k_mutex_*`, `k_condvar_*` (Zephyr ≥ 2.5).
-- [ ] **121.3.esp-idf** — ESP-IDF C port (separate from FreeRTOS one because IDF exposes additional ergonomic helpers and a different randomness source).
-- [ ] **121.3.deprecate-rust** — Once a C port exists and parity is proven, deprecate the macro-exported path on the corresponding Rust platform crate (drop the `cffi-export` feature). The Rust trait impls themselves stay for in-process Rust callers; only the C-ABI emission goes away.
+- [x] **121.3.posix** — POSIX C port shipped at `packages/core/nros-platform-posix-c/`. `clock_gettime`, `malloc`, `pthread_*`, `nanosleep`, `sched_yield` straight through. Builds standalone via CMake (`libnros_platform_posix.a`, 39 `T nros_platform_*` symbols) and via Cargo through `nros-platform-cffi`'s new `posix-c-port` feature (cc-rs invokes the same source file). Integration test `tests/c_port_posix.rs` runs eight host tests exercising clock monotonicity, blocking sleep, alloc/realloc/free round-trip, non-recursive + recursive mutex semantics, condvar signal/wake, and task_init/task_join round-trip.
+- [ ] **121.3.freertos** — FreeRTOS C port. `xTaskGetTickCount`, `pvPortMalloc`/`vPortFree`, `xTaskCreate`, `xSemaphoreCreateRecursiveMutex`, condvar via counting semaphores. Build/test requires FreeRTOS SDK + QEMU runner; defer.
+- [ ] **121.3.nuttx** — NuttX C port. POSIX-shaped (uses `pthread_*`, `sem_timedwait`); large parts share with 121.3.posix. Defer until NuttX in-tree build wiring lands.
+- [ ] **121.3.threadx** — ThreadX C port. `tx_thread_*`, `tx_mutex_*`, `tx_event_flags_*` for condvar. Defer.
+- [ ] **121.3.zephyr** — Zephyr C port. `k_uptime_get`, `k_thread_create`, `k_mutex_*`, `k_condvar_*` (Zephyr ≥ 2.5). Defer.
+- [ ] **121.3.esp-idf** — ESP-IDF C port (separate from FreeRTOS one because IDF exposes additional ergonomic helpers and a different randomness source). Defer.
+- [ ] **121.3.deprecate-rust** — Once a C port exists and parity is proven, deprecate the macro-exported path on the corresponding Rust platform crate (drop the `cffi-export` feature). The Rust trait impls themselves stay for in-process Rust callers; only the C-ABI emission goes away. Not started for POSIX — the Rust path is still useful as a side-by-side parity oracle.
 
 **Files (per port):**
 - `packages/core/nros-platform-<rtos>-c/CMakeLists.txt`
