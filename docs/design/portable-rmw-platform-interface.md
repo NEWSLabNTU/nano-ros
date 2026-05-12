@@ -129,17 +129,27 @@ pub trait Subscriber {
 Rust apps still write `sub.try_recv_raw(&mut buf)?`. No idiom loss.
 But the *definition* lives in cffi.
 
-### R2. Single-source the layout via cbindgen
+### R2. Hand-written canonical C headers
 
-We already use cbindgen for `nros_generated.h`. Extend the same
-flow to the vtable headers (`rmw_vtable.h`, `platform_vtable.h`).
-Annotate every C-surface struct with `#[repr(C)]` + cbindgen
-directives. The `cargo nano-ros generate-bindings` recipe runs
-cbindgen across the whole surface.
+cbindgen is the wrong direction for the ABI surface. The header
+is the source of truth and the Rust struct mirrors it. Drift is
+caught by `#[repr(C)]` + compile-time `assert!(size_of::<T>() == ...)`
+checks where layout matters, and by the C-stub integration tests
+that pin every function signature.
 
-**Test gate:** `just check` runs `cbindgen --check` to fail CI if
-the committed header diverges from what the Rust source would
-generate. We do this for `nros_generated.h` already; extend.
+Concrete shape per layer:
+
+- **RMW vtable** (`<nros/rmw_vtable.h>`) — hand-written canonical
+  struct of fn pointers with `abi_version` first field;
+  `nros_rmw_register()` rejects mismatched versions. Phase 117 pattern.
+- **Platform ABI** (`<nros/platform.h>`) — hand-written canonical
+  set of free `extern "C"` symbols (no vtable struct, no register
+  call). Link-time resolution; one platform per binary. Diverges
+  from the RMW shape because platforms never swap at runtime.
+
+cbindgen still produces `nros_generated.h` for message types —
+that surface is data-only, machine-derivable, and a poor fit for
+hand maintenance. The ABI tier headers are not.
 
 ### R3. Avoid Rust-only shapes in the public ABI
 
