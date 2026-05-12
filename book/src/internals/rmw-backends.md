@@ -32,7 +32,7 @@ nros-core (Rust) ──→ Rmw trait (internal; bridged by RustBackendAdapter<R>
                                 ├──→ nros-rmw-dds-cffi      (wraps Rust nros-rmw-dds)
                                 ├──→ nros-rmw-xrce-cffi     (links C nros-rmw-xrce-c)
                                 ├──→ nros-rmw-cyclonedds    (C++ direct, no Rust)
-                                └──→ nros-rmw-uorb-cpp      (C++ direct, no Rust)
+                                └──→ nros-rmw-uorb      (C++ direct, no Rust)
 ```
 
 The shims are the canonical consumer surface. Public Cargo features
@@ -54,7 +54,7 @@ startup.
 | Cyclone DDS | Cyclone DDS | C / C++ | `nros-rmw-cyclonedds` (C++ direct vtable) | keep |
 | XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce-c` static lib; 115.K.2 ported) | keep |
 | zenoh-pico | zenoh-pico | C | `nros-rmw-zenoh-cffi` (Rust → vtable via `RustBackendAdapter<ZenohRmw>`) | keep |
-| uORB | PX4 module SDK | C++ | `nros-rmw-uorb-cpp` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
+| uORB | PX4 module SDK | C++ | `nros-rmw-uorb` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
 
 ### Rust-backend cffi shape
 
@@ -101,5 +101,5 @@ The rule stays. Only per-backend verdicts and shim shapes move.
   RMW vtable.
 - `packages/dds/nros-rmw-cyclonedds/` — reference layout for the
   C++ vtable consumer (Phase 117).
-- `packages/px4/nros-rmw-uorb-cpp/` — reference layout for the
+- `packages/px4/nros-rmw-uorb/` — reference layout for the
   C++ vtable consumer with PX4 SDK integration (Phase 115.K.4).
