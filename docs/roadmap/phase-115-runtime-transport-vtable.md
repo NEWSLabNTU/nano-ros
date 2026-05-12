@@ -1192,10 +1192,40 @@ Ordered easiest → hardest:
 
 ### Examples
 
-- [ ] **115.F — Loopback example.** `examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`.
-  Depends on 115.B (zenoh path). XRCE-side loopback would need
-  MicroXRCEAgent in the test harness; defer until either the agent
-  fixture lands or 115.B unblocks.
+- [x] **115.F — Loopback example (landed 2026-05-12; native
+  variant).** Native-POSIX C demonstration of the
+  runtime-pluggable transport vtable at
+  `examples/native/c/zenoh/custom-transport-loopback/`.
+
+  Single executable that:
+  1. Installs a ring-buffer-backed `nros_transport_ops_t` via
+     `nros_set_custom_transport` w/ `abi_version = V1`.
+  2. Brings up the nros stack pointed at `custom://loopback`.
+     The active zenoh-pico backend routes every wire frame
+     through the user-supplied transport callbacks.
+  3. Publishes std_msgs/Int32 frames on a 500ms timer for ~3s.
+  4. Tears down + clears the registered transport via
+     `nros_set_custom_transport(NULL)` to fire `close`.
+  5. Asserts each of the four callbacks (`open`, `close`,
+     `write`, `read`) fired at least once. Exits non-zero if
+     any never fired.
+
+  The transport callbacks are platform-neutral — every line of
+  the loopback ring-buffer + the four `nros_transport_ops_t`
+  fn pointers would compile unchanged on Cortex-M / Zephyr /
+  FreeRTOS / NuttX. POSIX was chosen for the host so
+  `find_package(NanoRos)` + pthread synchronisation primitives
+  drop in cleanly.
+
+  The bare-metal QEMU MPS2-AN385 variant
+  (`examples/qemu-arm-baremetal/c/zenoh/custom-transport-loopback/`)
+  is still **deferred** — the QEMU C example harness itself
+  doesn't exist yet (no `examples/qemu-arm-baremetal/c/` tree),
+  and standing one up is its own multi-commit effort
+  (Cortex-M startup + linker script + CMSDK UART driver in C +
+  Cortex-M cross-compile glue around `nros-c.a`). When that
+  harness lands the loopback example will port over with no
+  callback-code changes.
 
 ### Docs
 
