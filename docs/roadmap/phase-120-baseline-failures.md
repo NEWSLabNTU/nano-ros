@@ -181,6 +181,29 @@ ThreadX kernel path. Candidates:
 - `Z_TASK_PREEMPT_THRESHOLD == Z_TASK_PRIORITY == 14` may interact
   badly with the timer thread's wake-up path on rv64.
 
+**Bare-metal zenoh-pico debug logging (commit `25a4973c`):** added a
+vsnprintf + UART sink (`packages/zpico/zpico-sys/c/platform/threadx/log_uart.c`)
+opt-in via `NROS_ZPICO_LOG_TO_UART=1` + `NROS_ZENOH_DEBUG=3`. Replaces
+`ZENOH_LOG_PRINT=printf` (which pulls in stdio not available on
+bare-metal) with `zpico_log_print(fmt, …)`. With this enabled, the
+threadx-rv64 action server's full handshake is visible on UART:
+
+```
+Sending Z_INIT(Syn) → Received Z_INIT(Ack)
+Sending Z_OPEN(Syn) → Received Z_OPEN(Ack)
+Allocating queryable for (0/fibonacci/_action/send_goal/…)
+Allocating queryable for (0/fibonacci/_action/cancel_goal/…)
+Allocating queryable for (0/fibonacci/_action/get_result/…)
+Allocating interest  for (0/fibonacci/_action/feedback/…)
+Allocating interest  for (0/fibonacci/_action/status/…)
+Received Z_FRAME message → Handling _Z_N_DECLARE: 8
+Received Z_FRAME message → Handling _Z_N_DECLARE: 8
+```
+
+So the **handshake is healthy**, all 6 entities are declared, and the
+read task processes the router's 2 DECLARE responses. The crash is
+strictly in the **post-handshake** code path; setup is fine.
+
 **gdb-multiarch findings (via QEMU `-s` gdb stub):**
 
 The "lease task hang" is actually a silent crash. Attaching gdb to a
