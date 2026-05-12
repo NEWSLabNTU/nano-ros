@@ -125,11 +125,61 @@ output for 2s after client_timeout, surface it in failure context.
 This is how the crash became visible in the first place — without it
 the failure looks like "stuck server" rather than "server crashed".
 
-**Next step for a future session:** instrument zpico-sys NetX BSD
-shim (`packages/zpico/zpico-sys/c/zpico/` and the NetX BSD socket
-wrappers) with print-on-entry/exit for the call sites that take or
-return pointers. Bisect to find which call corrupts the function
-pointer that eventually gets invoked.
+**Investigation update — root cause #1 fixed, root cause #2 identified.**
+
+Two stacked bugs:
+
+1. **ThreadX FFI ULONG width** (FIXED, commit `57669ba`):
+   `nros-platform-threadx::ffi` declared every `ULONG` parameter as
+   `u32`. On LP64 (rv64, x86_64 host-mode) ULONG is 8 bytes. Garbage
+   in the upper 32 bits of every `tx_byte_allocate` / `tx_thread_*` /
+   `tx_semaphore_*` call's ULONG-typed register. Z_malloc'd
+   zenoh-pico structs landed with corrupted size / wait_option,
+   surfacing as the `Illegal instruction` at NetX `packet_pool+4`
+   crash once enough structs piled up. With the fix the server
+   no longer crashes — it now reaches the spin loop cleanly and
+   completes the full 4-way zenoh-pico handshake.
+
+2. **`tx_thread_sleep` blocks indefinitely for the zenoh-pico lease
+   task** (OPEN). Confirmed via UART trace: lease task enters
+   `tx_thread_sleep(334)` (3.34 s sleep, 100 Hz tick) but never
+   returns. The same `tx_thread_sleep` works for the app thread's
+   pre-closure 0.5 s sleep, so the regression is specific to
+   zenoh-pico-spawned tasks (priority 14, created via
+   `_z_task_trampoline` → `tx_thread_create`). Net effect: lease
+   task never sends keep-alives → router unregisters every server
+   resource at exactly T+10 s (the negotiated `_lease`) → client
+   queries arriving after T+10 s route to nobody →
+   `ServiceRequestFailed`.
+
+Evidence chain for #2:
+
+- `tshark` on `lo:7473` shows zenohd → server keep-alives every 2.5 s
+  (3-byte payloads). TCP path is healthy in both directions.
+- `ZENOHD_LOG=trace` shows `Declare queryable 2 (0/fibonacci/...)`
+  at T+0, `Unregister resource` at T+10.0 s, exactly the lease
+  expiry. No errors.
+- UART trace of the wrapped `sleep_ms` prints `[slp 334t]` (entry,
+  ticks=334) but never the matching exit marker `[e]`. App_thread's
+  earlier `[slp 50t]` did pair with `[e]` correctly.
+- Trampoline trace confirms two tasks start
+  (`[zpico] task trampoline start` ×2) and both reach their `_fun`.
+  Neither prints `_fun returned` — so they're stuck inside their
+  bodies, not crashing.
+
+Open question for follow-up: why does `tx_thread_sleep` work for the
+user-spawned app_thread but not for the zenoh-pico tasks spawned by
+`_z_task_init` via `tx_thread_create`? Both go through the same
+ThreadX kernel path. Candidates:
+
+- Stack size (`Z_TASK_STACK_SIZE = 8192`) — bumping to 32 KB shifted
+  the failure to a different fn-pointer crash, suggesting linker
+  layout sensitivity.
+- `TX_TIMER_PROCESS_IN_ISR` is undefined → timer-thread (priority 0)
+  decrements sleep counters. May not be processing the zenoh tasks'
+  timer entries.
+- `Z_TASK_PREEMPT_THRESHOLD == Z_TASK_PRIORITY == 14` may interact
+  badly with the timer thread's wake-up path on rv64.
 
 ### 120.4 — ThreadX RV64 Rust DDS talker→listener — **DEFERRED, likely same root cause as 120.3**
 
