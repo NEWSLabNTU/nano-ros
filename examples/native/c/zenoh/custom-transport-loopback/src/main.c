@@ -37,39 +37,39 @@
 #define LOOPBACK_RING_CAPACITY 4096
 
 typedef struct {
-    uint8_t          buf[LOOPBACK_RING_CAPACITY];
-    size_t           head;
-    size_t           tail;
-    size_t           len;
-    pthread_mutex_t  mu;
-    pthread_cond_t   data_ready;
-    atomic_int       open_count;
-    atomic_int       close_count;
-    atomic_int       write_count;
-    atomic_int       read_count;
+    uint8_t buf[LOOPBACK_RING_CAPACITY];
+    size_t head;
+    size_t tail;
+    size_t len;
+    pthread_mutex_t mu;
+    pthread_cond_t data_ready;
+    atomic_int open_count;
+    atomic_int close_count;
+    atomic_int write_count;
+    atomic_int read_count;
 } loopback_state_t;
 
 static loopback_state_t g_loop = {
     .head = 0,
     .tail = 0,
-    .len  = 0,
+    .len = 0,
     .mu = PTHREAD_MUTEX_INITIALIZER,
     .data_ready = PTHREAD_COND_INITIALIZER,
 };
 
-static nros_ret_t loopback_open(void *user_data, const void *params) {
+static nros_ret_t loopback_open(void* user_data, const void* params) {
     (void)user_data;
     (void)params;
     atomic_fetch_add(&g_loop.open_count, 1);
     return NROS_RET_OK;
 }
 
-static void loopback_close(void *user_data) {
+static void loopback_close(void* user_data) {
     (void)user_data;
     atomic_fetch_add(&g_loop.close_count, 1);
 }
 
-static nros_ret_t loopback_write(void *user_data, const uint8_t *buf, size_t len) {
+static nros_ret_t loopback_write(void* user_data, const uint8_t* buf, size_t len) {
     (void)user_data;
     if (buf == NULL || len == 0) {
         return NROS_RET_OK;
@@ -92,7 +92,7 @@ static nros_ret_t loopback_write(void *user_data, const uint8_t *buf, size_t len
     return NROS_RET_OK;
 }
 
-static int32_t loopback_read(void *user_data, uint8_t *buf, size_t len, uint32_t timeout_ms) {
+static int32_t loopback_read(void* user_data, uint8_t* buf, size_t len, uint32_t timeout_ms) {
     (void)user_data;
     if (buf == NULL || len == 0) {
         return 0;
@@ -101,10 +101,10 @@ static int32_t loopback_read(void *user_data, uint8_t *buf, size_t len, uint32_t
 
     struct timespec deadline;
     clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec  += (time_t)(timeout_ms / 1000);
+    deadline.tv_sec += (time_t)(timeout_ms / 1000);
     deadline.tv_nsec += (long)((timeout_ms % 1000) * 1000000L);
     if (deadline.tv_nsec >= 1000000000L) {
-        deadline.tv_sec  += 1;
+        deadline.tv_sec += 1;
         deadline.tv_nsec -= 1000000000L;
     }
 
@@ -134,25 +134,25 @@ static int32_t loopback_read(void *user_data, uint8_t *buf, size_t len, uint32_t
  * -------------------------------------------------------------- */
 
 typedef struct {
-    nros_publisher_t        *publisher;
-    std_msgs_msg_int32       message;
-    int32_t                  tick;
+    nros_publisher_t* publisher;
+    std_msgs_msg_int32 message;
+    int32_t tick;
 } demo_ctx_t;
 
 static struct {
-    nros_clock_t        clock;
-    nros_parameter_t    param_storage[4];
+    nros_clock_t clock;
+    nros_parameter_t param_storage[4];
     nros_param_server_t params;
-    nros_support_t      support;
-    nros_node_t         node;
-    nros_publisher_t    publisher;
-    nros_timer_t        timer;
-    nros_executor_t     executor;
-    demo_ctx_t          demo_ctx;
+    nros_support_t support;
+    nros_node_t node;
+    nros_publisher_t publisher;
+    nros_timer_t timer;
+    nros_executor_t executor;
+    demo_ctx_t demo_ctx;
 } app;
 
-static volatile sig_atomic_t g_running   = 1;
-static nros_executor_t      *g_executor  = NULL;
+static volatile sig_atomic_t g_running = 1;
+static nros_executor_t* g_executor = NULL;
 
 static void signal_handler(int signum) {
     (void)signum;
@@ -162,9 +162,9 @@ static void signal_handler(int signum) {
     }
 }
 
-static void timer_callback(nros_timer_t *timer, void *arg) {
+static void timer_callback(nros_timer_t* timer, void* arg) {
     (void)timer;
-    demo_ctx_t *ctx = (demo_ctx_t *)arg;
+    demo_ctx_t* ctx = (demo_ctx_t*)arg;
     ctx->message.data = ctx->tick++;
     (void)nros_publisher_publish(ctx->publisher, &ctx->message);
 }
@@ -173,7 +173,7 @@ static void timer_callback(nros_timer_t *timer, void *arg) {
  * main (via nros_app_main — see <nros/app_main.h>)
  * -------------------------------------------------------------- */
 
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -182,12 +182,12 @@ int nros_app_main(int argc, char **argv) {
     /* 1. Install the custom transport BEFORE session bring-up. */
     const nros_transport_ops_t ops = {
         .abi_version = NROS_TRANSPORT_OPS_ABI_VERSION_V1,
-        ._reserved   = 0,
-        .user_data   = NULL,
-        .open        = loopback_open,
-        .close       = loopback_close,
-        .write       = loopback_write,
-        .read        = loopback_read,
+        ._reserved = 0,
+        .user_data = NULL,
+        .open = loopback_open,
+        .close = loopback_close,
+        .write = loopback_write,
+        .read = loopback_read,
     };
     nros_ret_t set_rc = nros_set_custom_transport(&ops);
     if (set_rc != NROS_RET_OK) {
@@ -205,16 +205,14 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "loopback_demo", "/"), 1);
 
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
-                                       std_msgs_msg_int32_get_type_support(),
-                                       "/loopback_chatter"),
+                                       std_msgs_msg_int32_get_type_support(), "/loopback_chatter"),
                    1);
 
     app.demo_ctx.publisher = &app.publisher;
-    app.demo_ctx.tick      = 0;
+    app.demo_ctx.tick = 0;
     std_msgs_msg_int32_init(&app.demo_ctx.message);
 
-    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support,
-                                   500ULL * 1000 * 1000 /* 500ms */,
+    NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 500ULL * 1000 * 1000 /* 500ms */,
                                    timer_callback, &app.demo_ctx),
                    1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
@@ -261,10 +259,22 @@ int nros_app_main(int argc, char **argv) {
     fprintf(stdout, "  close: %d\n", cc);
 
     int fail = 0;
-    if (oc < 1) { fprintf(stderr, "FAIL: open callback never fired\n");  fail = 1; }
-    if (wc < 1) { fprintf(stderr, "FAIL: write callback never fired\n"); fail = 1; }
-    if (rc < 1) { fprintf(stderr, "FAIL: read callback never fired\n");  fail = 1; }
-    if (cc < 1) { fprintf(stderr, "FAIL: close callback never fired\n"); fail = 1; }
+    if (oc < 1) {
+        fprintf(stderr, "FAIL: open callback never fired\n");
+        fail = 1;
+    }
+    if (wc < 1) {
+        fprintf(stderr, "FAIL: write callback never fired\n");
+        fail = 1;
+    }
+    if (rc < 1) {
+        fprintf(stderr, "FAIL: read callback never fired\n");
+        fail = 1;
+    }
+    if (cc < 1) {
+        fprintf(stderr, "FAIL: close callback never fired\n");
+        fail = 1;
+    }
 
     return fail;
 }

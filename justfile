@@ -640,7 +640,16 @@ check-c:
     echo "  - clang-format (C examples)"
     find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format --dry-run --Werror
     echo "  - syntax (nros-c umbrella header)"
+    # The per-variant `<nros/nros_config_generated.h>` (defining the
+    # OPAQUE_U64S macros referenced by `<nros/nros_generated.h>`) is
+    # emitted by `nros-c`'s build.rs into `target/nros-c-generated/`.
+    # Build first so the syntax check has those macros; otherwise
+    # the source-tree stub fires its `#error`.
+    cargo build -p nros-c --no-default-features --features "std,rmw-cffi,cffi-zenoh-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    # Variant dir FIRST so its `nros_config_generated.h` (with the
+    # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
+        -Itarget/nros-c-generated \
         -Ipackages/core/nros-c/include \
         -include packages/core/nros-c/include/nros/nros.h \
         -x c /dev/null
@@ -657,14 +666,24 @@ check-cpp:
     echo "  - freestanding syntax (c++14)"
     # parameter.hpp re-exposes the C-side `nros_param_*` API from
     # nros-c, so the syntax probe needs nros-c on the include path too.
+    # The per-variant `<nros/nros_cpp_config_generated.h>` (defining
+    # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by
+    # `executor.hpp`'s `uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]`)
+    # is emitted by `nros-cpp`'s build.rs into
+    # `target/nros-cpp-generated/`. Same C-side header for nros-c.
+    # Build both first; variant dirs go FIRST on the include path so
+    # their real headers win over the source-tree stubs.
+    cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,cffi-zenoh-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
     for hdr in packages/core/nros-cpp/include/nros/*.hpp; do
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
+            -Itarget/nros-cpp-generated \
+            -Itarget/nros-c-generated \
             -Ipackages/core/nros-cpp/include \
             -Ipackages/core/nros-c/include \
             -include "$hdr" -x c++ /dev/null
     done
-    echo "  - nros-cpp clippy (zenoh + posix + humble)"
-    cargo clippy -p nros-cpp --features "rmw-zenoh,platform-posix,ros-humble"
+    echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
+    cargo clippy -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # Check Python code: formatting + linting with ruff
