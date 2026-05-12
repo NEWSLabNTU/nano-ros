@@ -102,9 +102,19 @@ impl ZenohRouter {
         let locator = format!("tcp/{}:{}", bind_addr, port);
 
         let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
-        cmd.args(["--listen", &locator, "--no-multicast-scouting"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+        cmd.args(["--listen", &locator, "--no-multicast-scouting"]);
+        // Diagnostic log capture per port. Set ZENOHD_LOG=trace|debug in env
+        // to capture; defaults to null sinks otherwise.
+        if let Ok(level) = std::env::var("ZENOHD_LOG") {
+            let log_path = format!("/tmp/zenohd-{port}.log");
+            let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
+            cmd.env("RUST_LOG", level)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::from(log));
+        } else {
+            cmd.stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+        }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn()?;

@@ -62,42 +62,81 @@ The fix shape: have the Rust embedded examples read `zephyr::kconfig::CONFIG_NRO
 - [x] Added `heapless = "0.8"` to the five `Cargo.toml` files that didn't already have it (action-server already had it).
 - [x] Verified: `test_zephyr_xrce_rust_action_e2e` passes after the fix; was failing with `Transport(ConnectionFailed)` because the agent ran on port 2038 but the binary hardcoded `127.0.0.1:2018`.
 
-### 120.3 — ThreadX RV64 Rust action E2E (zenoh-pico) — **DEFERRED**
+### 120.3 — ThreadX RV64 Rust action E2E (zenoh-pico) — **DEFERRED, root cause identified**
 
 `test_rtos_action_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust`.
-**Same platform, same QEMU, same zenoh-pico, same NetX BSD — C and C++
-pass, only Rust fails.** Manual-poll vs callback path is the only
-functional difference; both delegate to the same `Node::create_action_*`
-and `session.drive_io()` primitives.
 
-Investigation this session:
+**Findings (this session, via tshark on lo + zenohd RUST_LOG=trace + manual
+QEMU run with diagnostic prints in server):**
 
-- Captured server output (added `server.wait_for_output` drain after
-  client_timeout in `rtos_e2e.rs:803-810`). Server prints `Waiting for
-  goals...` then **nothing** — `try_accept_goal` never sees a request,
-  i.e. the queryable callback never fires for the send_goal key.
-- Client side: `send_goal` returns Ok on attempt 1 (z_get sent), then
-  the 50 s accept-poll window expires with no reply. Retries fail with
-  `RequestInFlight` (in-flight slot from attempt 1).
-- Confirmed key-expression composition matches between client and
-  server (both go through `Node::create_action_*` with node identity).
-- Confirmed network setup: both QEMU instances on slirp NAT to host
-  loopback, both connect to zenohd on port 7473 (per-(variant, lang)
-  allocation; C uses 7573 and passes).
-- Confirmed buffer pool sizes: `ZPICO_MAX_QUERYABLES=8` (action server
-  uses 3); `ZPICO_MAX_PUBLISHERS=8` (uses 2); `APP_THREAD_STACK_SIZE=64K`.
-  Nothing exhausted.
-- Defensive landings shipped on branch `phase-120-threadx-fixes`:
-  `send_request_raw` no_std-path retry budget (80 × 5 ms z_sleep_ms vs
-  the prior 3-attempt tight loop) + client-side 5-attempt outer retry.
-  Neither addresses the root cause but both are improvements; keep.
+1. **Server CRASHES with illegal instruction**, not stuck. The crash
+   sits behind the `wait_for_output_pattern("Waiting for goals")` boot
+   gate, so the test fixture's `wait_for_output` captures the boot
+   header but misses the post-boot crash. Manual QEMU run with the
+   diagnostic heartbeat (`println!("[server] iter {}", iter)` every
+   100 loop iters) prints `iter 0` then immediately traps:
+   ```
+   [EXCEPTION] mcause=0x2  (Illegal instruction)
+                mepc=0x8023aa94    (inside .bss at packet_pool+4)
+                mtval=0x0
+   ```
+   `packet_pool` is NetX Duo's `NX_PACKET_POOL` static in `.bss` — the
+   CPU jumped to data via a corrupted function-pointer call.
 
-Real fix needs zenoh-pico tracing on both sides — verify the server's
-queryable is actually registered with the router (gossip vs declare
-liveliness), and that the router forwards the z_get to it. May also
-need a smaller repro outside the action protocol (e.g. raw service
-call via manual-poll) to isolate whether this is action-specific or
-generic to manual-poll services on this transport.
+2. **zenohd is healthy.** Full 4-way handshake (InitSyn / InitAck /
+   OpenSyn / OpenAck) completes; lease negotiated at 10 s. Server
+   declares all 3 queryables (`send_goal`, `cancel_goal`,
+   `get_result`) plus 2 publisher tokens on the correct keyexprs and
+   they are registered in the router's routing table. Then the
+   server's session times out at exactly `T+10s` and zenohd unregisters
+   every resource. Client connects ~4s later, sends the z_get, router
+   has nothing to forward to. Confirms: the server is dead before the
+   client ever sends a goal.
+
+3. **Crash is service-count-correlated, not action-protocol-specific.**
+   On ThreadX RV64 Rust:
+   - pubsub (1 pub + 1 sub): **PASS**
+   - service (1 service_server): **PASS**
+   - action (3 service_servers + 2 publishers + status publisher = 6
+     entities + 5 liveliness tokens): **FAIL**
+   - C / C++ action (same shape): **PASS**
+
+   Wire format is identical between C and Rust action server's
+   declarations (verified via tshark hex). Difference is something
+   Rust-specific in the build's interaction with NetX BSD / zenoh-pico
+   beyond the ~5-entity threshold.
+
+4. **Same crash shape as 120.4 (DDS listener).** DDS listener traps
+   with `mepc=0` (null jump); action server with `mepc=0x8023aa94`
+   (inside NetX packet_pool). Both are corrupted function-pointer
+   indirections; almost certainly the same underlying root cause
+   (likely the `ULONG → ALIGN_TYPE` shape already noted in
+   `project_threadx_linux_pointer_truncation` — NetX BSD socket
+   pointer truncation on 64-bit, but applied to a different code path
+   than the threadx-linux fix).
+
+**Defensive landings** shipped on branch `phase-120-threadx-fixes`:
+`send_request_raw` no_std-path retry budget (80 × 5 ms z_sleep_ms vs
+the prior 3-attempt tight loop) + client-side 5-attempt outer retry.
+Neither addresses the root cause but both are improvements; keep.
+
+**Test fixture improvement** (landed in `rtos_e2e.rs`): drain server
+output for 2s after client_timeout, surface it in failure context.
+This is how the crash became visible in the first place — without it
+the failure looks like "stuck server" rather than "server crashed".
+
+**Next step for a future session:** instrument zpico-sys NetX BSD
+shim (`packages/zpico/zpico-sys/c/zpico/` and the NetX BSD socket
+wrappers) with print-on-entry/exit for the call sites that take or
+return pointers. Bisect to find which call corrupts the function
+pointer that eventually gets invoked.
+
+### 120.4 — ThreadX RV64 Rust DDS talker→listener — **DEFERRED, likely same root cause as 120.3**
+
+`test_threadx_rv64_dds_rust_talker_to_listener_e2e`. Listener crashes
+with `mepc=0` (null jump) after `Waiting for messages...`. Same
+corrupted-function-pointer signature as 120.3 — likely the same NetX
+BSD pointer truncation, hit via a different (DDS RTPS) code path.
 
 ### 120.4 — ThreadX RV64 Rust DDS talker→listener — **DEFERRED**
 
