@@ -189,32 +189,112 @@ writes `sp → TCB.stack_ptr` at line 262 of the board-local copy.
 For the field to end up with a code address, the saved `sp` had to
 be pointing into `.text` at save time.
 
-Strong evidence of a **nested-trap-during-context-save** pattern: an
-interrupt (most likely the tick timer) fires while a thread is mid-
-context-save, the inner trap re-enters `_tx_thread_context_save`
-itself, the second pass writes its own runtime SP (which is
-literally inside the function's instruction stream) into the TCB.
-That corrupted stack-pointer is what causes the eventual
-recursive trap in `trap_entry`'s `STORE x1, 28*REGBYTES(sp)`.
+CPU is sitting in `trap_entry`'s first instruction
+(`addi sp, sp, -66*REGBYTES`). Successive gdb attaches always show
+PC at this address — a **recursive trap loop**. Each time `trap_entry`
+runs, the very next instruction `STORE x1, 28*REGBYTES(sp)` faults
+because `sp` is bad, triggering another trap that re-enters
+`trap_entry`, and so on forever. The `[EXCEPTION] mcause=...` text
+that `trap_handler` prints visibly does land on UART, but the
+handler ends with `while (1) ;` so once any first exception fires
+the system is wedged.
 
-Closing the loop needs nested-interrupt guards in `trap_entry` /
-`_tx_thread_context_save`. The RV64 ThreadX port may be missing
-the `_tx_thread_system_state` increment + tick-pending defer that
-the Cortex-M port uses. Out of scope for this session.
+### Why "nested-interrupt guards" was the working hypothesis
 
-The matching ABI fix (5-asm 65 → 66 REGBYTES alignment) in
-`c6274bb1` is independent and correct regardless of this nested-
-trap bug — keep it. Test still fails because the nested-trap
-corruption strikes before the action server can serve a goal.
+`_tx_thread_context_save` lines 86–94 are:
 
-Result is the same end-state on the test (T+10s router unregisters
-the server's queryables, client `ServiceRequestFailed`), but the
-root cause is now identified as **a kernel-level rv64 ThreadX bug
-in nested-interrupt handling**, not in our Rust application code
-or the zenoh-pico wire-protocol. The bug affects the lease task's
-sleep specifically because the lease task's `tx_thread_sleep` is
-where the thread voluntarily suspends and is most likely to
-collide with a tick interrupt mid-context-save.
+```
+la      x5, _tx_thread_system_state
+lwu     x6, 0(x5)                  # read state
+beqz    x6, _tx_thread_not_nested_save
+addi    x6, x6, 1                  # nested path: increment
+sw      x6, 0(x5)
+```
+
+The not-nested path (line 178–179) increments state again after the
+branch. The read-check-store sequence is **not atomic**. If a second
+trap fires between the load (line 87) and the store (line 179 in the
+not-nested path), both passes can read `state == 0`, both take the
+not-nested branch, and both perform the full save — the second pass's
+save writes its own runtime SP (which is wherever the inner trap
+landed in the call chain — e.g. inside `_tx_thread_context_save+100`
+itself) into TCB.stack_ptr.
+
+On RISC-V, `mstatus.MIE` is auto-cleared by hardware on every trap
+entry, so a *timer interrupt* can't fire during this window. But
+**synchronous exceptions** (load/store access fault, illegal
+instruction, page fault) are unconditional — they fire even with MIE
+cleared. The trap_entry's own `STORE x1, 28*REGBYTES(sp)` (line 79
+of `tx_initialize_low_level.S`) is itself a memory access. If `sp`
+points into a region that faults on store, that very instruction
+triggers an inner trap with `mcause = Store/AMO access fault`.
+
+The hypothetical fix: protect the state-update with the same
+"already inside a trap" guard the Cortex-M ports use — set a
+TCB-or-global flag in the *first* instruction of `trap_entry`,
+check it on entry, and take a different (write-nothing, just
+restart) path when the flag is already set. Same shape as
+`_tx_thread_system_state` but updated before any memory access
+that could itself fault.
+
+### Why that hypothesis is probably wrong as the *root* cause
+
+The nested-trap protection would prevent the *second* trap from
+corrupting `TCB.stack_ptr`. It would NOT prevent the *first* trap's
+SP from being bad in the first place. Once SP is bad, every trap
+entry — even with perfect nested-trap handling — would still fault
+on its own `STORE x1, 28*REGBYTES(sp)`.
+
+So the actual root cause is whatever set SP to a `.text` address
+*before* the first trap fired. Candidates:
+
+1. **Rust task stack overflow inside the trampoline path.** The
+   `_z_task_t.threadx_stack[8192]` field is 8 KB. NetX BSD send
+   paths use 100+ byte frames on rv64 with the LP64D ABI, so a
+   moderate call chain could exhaust it. Stack-checking enabled
+   (`TX_ENABLE_STACK_CHECKING`) didn't trip — but that flag only
+   compares against a sentinel **at context switch**, so a
+   transient overflow that races a stop-at-zero-then-recover
+   pattern can go undetected.
+2. **`ULONG` width mismatch.** This board's `tx_port.h` re-defines
+   `ULONG` as `unsigned int` (4 bytes) — see the header comment at
+   the top of `packages/boards/nros-board-threadx-qemu-riscv64/config/tx_port.h`:
+   > "Shadows ... to fix the ULONG typedef. The upstream port
+   > incorrectly defines ULONG as 'unsigned long' (8 bytes) —
+   > kernel code uses `ULONG *` pointer arithmetic assuming 4-byte
+   > words."
+
+   This contradicts the assumption behind commit `57669baf` (which
+   bumped Rust FFI's ULONG params from `u32` to `c_ulong = u64`).
+   The RV64 ABI passes both u32 and u64 in the same a-register
+   with zero-extension for u32, so for **small values** Rust→C
+   still receives the correct low 32 bits. But the Rust shim
+   *now passes* 64-bit values to a C side that *reads* 32-bit
+   words — the upper 32 bits land in the next ULONG-typed field
+   if the C side does pointer-arithmetic. Worth re-evaluating.
+3. **Rust→C calling convention near a callback.** The crash
+   reliably reproduces only when the action server's full set of
+   entities (3 services + 2 publishers + status publisher) is
+   declared. Pubsub (2 entities) and service (1 entity) pass on
+   the same path. The 6th entity (status publisher) registers a
+   subscriber-side handler. The cb dispatch path may pass an
+   argument with the wrong width and corrupt SP indirectly via a
+   later spill.
+
+### Next steps for a fresh session
+
+- Re-read board's `tx_port.h` ULONG-is-u32 note and revert the FFI
+  ULONG widths to `u32` on `nros-platform-threadx`, **but only for
+  this specific port**. Verify pubsub/service Rust tests still pass
+  (they may already work coincidentally on RV64 ABI even with the
+  wider type).
+- Bump `_z_task_t.threadx_stack[]` to 32 KB and recompile *without
+  the alignment attribute* — verify whether 8 KB is the cliff and
+  whether the alignment attribute itself shifts the failure.
+- Single-step the lease task at the first `tx_thread_sleep` call
+  via gdb breakpoint, capture sp / ra / mstatus on every instruction
+  until the trap fires, identify the exact instruction that
+  corrupts SP.
 
 **Bare-metal zenoh-pico debug logging (commit `25a4973c`):** added a
 vsnprintf + UART sink (`packages/zpico/zpico-sys/c/platform/threadx/log_uart.c`)
