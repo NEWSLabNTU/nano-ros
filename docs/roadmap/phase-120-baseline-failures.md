@@ -313,6 +313,64 @@ restore in `tx_thread_schedule.S` bumped from `29` to `30`. Commit
 (non-breaking), but action Rust still fails — alignment is not
 the cause of THIS specific bug.
 
+### Caught the bad SP via in-kernel UART trace
+
+Patched `trap_entry` (Phase-120.3-only, reverted after capture) to
+emit `!sp=<sp> epc=<mepc> ra=<ra>` and spin if the trapped SP lies
+inside `.bss` between TX globals and `byte_pool_storage` (range
+`0x80038000..0x80039000` — does NOT include the 2 MB byte-pool
+heap where legitimate thread stacks live).
+
+First reliable capture:
+
+```
+!sp=0000000080038e70 epc=0000000080016c96 ra=0000000080016bb0
+```
+
+Decoded:
+
+- `sp = 0x80038e70`  →  original sp (pre-trap_entry's -528 decrement)
+  was `0x80039080`. That's the **gap between TX globals
+  (~0x80038200) and `app_thread` TCB (0x800391e0)** — uninitialized
+  `.bss`. Not a valid stack region. (Real stacks come out of
+  `byte_pool_storage` which starts at `0x80039368`.)
+- `epc = 0x80016c96`  →  `sd t0, 504(sp)` inside
+  `_tx_thread_context_save` — the FCSR-save instruction near the
+  function's tail. With sp = 0x80038e70, this STOREs to
+  `0x80038e70 + 504 = 0x80039068` (still inside the gap).
+- `ra = 0x80016bb0`  →  inside `trap_entry`, just after
+  `call _tx_thread_context_save`. The trap_entry chain ran fine
+  this far — context_save was still running when whatever exception
+  fired.
+
+Reading: a thread's TCB-stored `stack_ptr` (offset 8) was set to
+`0x80039080` somewhere upstream of the trap. The next time that
+thread was scheduled, `_tx_thread_context_restore` loaded sp from
+TCB.stack_ptr → sp became bad. The thread then ran (or trap_entry
+ran) until the next memory access faulted, at which point the
+recursive trap loop began.
+
+**This is the actual mechanism behind the gdb-observed
+`_tx_thread_current_ptr = 0x800380e8` corruption.** Both
+observations describe the same underlying state — the TX globals
+block is being overwritten by something writing into the .bss gap
+between TX globals and `app_thread`'s TCB.
+
+### Next: identify the bad STORE
+
+Watch for any STORE to addresses `0x800380c0..0x80039000` (the
+TX-globals block, including the gap up to `app_thread` TCB). Most
+likely culprit: a function pointer or buffer-with-bad-offset that
+treats the .bss gap as available memory. Possible candidates:
+
+1. NetX BSD socket / addrinfo pool init writing past end of pool
+   (saw the `(UINT) socket_ptr->nx_tcp_socket_reserved_ptr`
+   pointer-truncation warnings during `build-fixtures`).
+2. ThreadX run_count / time_slice writes via a stale TCB pointer
+   inside `_tx_thread_schedule.S` lines 109-112.
+3. zenoh-pico's `_z_task_t` malloc returning a pointer whose
+   stack region overlaps the gap because of misaligned heap layout.
+
 ### gdb session findings — ThreadX globals intermittently corrupted
 
 Sampled `_tx_thread_current_ptr` at multiple gdb-attach points after

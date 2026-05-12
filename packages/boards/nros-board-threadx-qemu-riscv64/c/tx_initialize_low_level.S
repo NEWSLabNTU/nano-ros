@@ -68,12 +68,10 @@
     trap_entry:
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
 	/* Phase 120.3: was -65*REGBYTES (520 B → SP 8-byte misaligned on
-	 * rv64 LP64D). Bumped to -66*REGBYTES (528 B → 16-aligned). All
-	 * matching tx_thread_context_save / context_restore / stack_build
-	 * sites use 66 as well. */
+	 * rv64 LP64D). Bumped to -66*REGBYTES (528 B → 16-aligned). */
 	addi sp, sp, -66*REGBYTES
 #else
-	addi sp, sp, -32*REGBYTES         // Allocate space for all registers - without floating point enabled
+	addi sp, sp, -32*REGBYTES
 #endif
 
 	STORE   x1, 28*REGBYTES(sp)       // Store RA, 28*REGBYTES(because call will override ra [ra is a calle register in riscv])
