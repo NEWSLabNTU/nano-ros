@@ -169,10 +169,10 @@ pub unsafe extern "C" fn nros_support_init_named(
         }
     }
 
-    // Phase 115.L.1 — dust-DDS via C vtable. `nros-rmw-dds-cffi`'s
+    // Phase 115.L.1 — dust-DDS via C vtable. `nros-rmw-dds`'s
     // `nros_rmw_dds_register()` installs a
     // `RustBackendAdapter::<DdsRmw>::VTABLE`. The link is provided
-    // by the `nros/rmw-dds-cffi` feature pulling `nros-rmw-dds-cffi`
+    // by the `nros/rmw-dds-cffi` feature pulling `nros-rmw-dds`
     // into the dep graph.
     #[cfg(feature = "cffi-dds-cffi")]
     {

@@ -17,7 +17,7 @@ endif()
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
     # Phase 115.L.2: `zenoh` selector routes through the C vtable
-    # via `nros-rmw-zenoh-cffi`.
+    # via `nros-rmw-zenoh`.
     set(_rmw_features rmw-cffi cffi-zenoh-cffi)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` selects the C backend
@@ -25,7 +25,7 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_rmw_features rmw-cffi cffi-xrce-c)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: `dds` selector routes through the C vtable
-    # via `nros-rmw-dds-cffi`.
+    # via `nros-rmw-dds`.
     set(_rmw_features rmw-cffi cffi-dds-cffi)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS rides the generic `rmw-cffi` axis on

@@ -35,7 +35,7 @@ fn main() -> ! {
                 .domain_id(config.domain_id)
                 .node_name("talker");
             // Phase 115.L.x — install C-vtable backend before session open.
-            nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+            nros_rmw_zenoh::register().expect("zenoh RMW register failed");
             let mut executor = Executor::open(&exec_config)?;
             let mut node = executor.create_node("talker")?;
 

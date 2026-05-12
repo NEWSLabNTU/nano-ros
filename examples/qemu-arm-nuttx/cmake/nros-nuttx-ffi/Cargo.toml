@@ -17,7 +17,7 @@ nros-cpp = { path = "../../../../packages/core/nros-cpp", features = [
 ] }
 # Phase 115.L.x — link cffi shim directly so `register()` is callable
 # from main.rs before app_main() jumps into C/C++ code.
-nros-rmw-zenoh-cffi = { path = "../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-nuttx", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-nuttx", "link-tcp", "ros-humble"] }
 
 [build-dependencies]
 cc = "1"

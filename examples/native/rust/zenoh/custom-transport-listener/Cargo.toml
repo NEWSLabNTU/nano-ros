@@ -15,7 +15,7 @@ default = []
 [dependencies]
 # Phase 115.L.5-custom-transport — see talker for migration notes.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix", "link-tcp", "link-custom"] }
-nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-posix", "link-tcp", "link-custom", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "link-custom", "ros-humble"] }
 nros-rmw = { path = "../../../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"

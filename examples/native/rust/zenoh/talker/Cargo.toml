@@ -17,12 +17,12 @@ link-tls = ["nros/link-tls"]
 
 [dependencies]
 # Phase 115.L.5 — routes through `nros_rmw_vtable_t` via
-# `nros-rmw-zenoh-cffi`. The shim crate exposes
+# `nros-rmw-zenoh`. The shim crate exposes
 # `nros_rmw_zenoh_register()` which `src/main.rs` calls before
 # `Executor::open`. Legacy `rmw-zenoh` (direct Rust trait) path
 # still selectable but slated for L.8 removal.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix"] }
-nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-posix", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

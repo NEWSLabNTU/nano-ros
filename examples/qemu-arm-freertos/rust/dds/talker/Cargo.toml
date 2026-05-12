@@ -29,7 +29,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # Phase 115.L.5 — cffi shim that exposes dust-dds via `nros_rmw_vtable_t`.
 # `main.rs` calls `register()` before `Executor::open`. `debug-cortex-m-semihosting`
 # forwards to the underlying nros-rmw-dds via the shim's transitive features.
-nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-freertos"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-freertos"] }
 nros-platform-freertos = { path = "../../../../../packages/core/nros-platform-freertos", default-features = false, features = ["debug-cortex-m-semihosting"] }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }

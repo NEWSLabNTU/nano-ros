@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-nuttx", "link-tcp", "ros-humble"] }
-nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-nuttx", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-nuttx", "link-tcp", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 
 [profile.release]

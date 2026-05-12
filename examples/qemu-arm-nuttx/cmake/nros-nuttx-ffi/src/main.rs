@@ -8,7 +8,7 @@
 extern crate nros_board_nuttx_qemu_arm;
 extern crate nros_c;
 extern crate nros_cpp;
-extern crate nros_rmw_zenoh_cffi;
+extern crate nros_rmw_zenoh;
 
 unsafe extern "C" {
     fn app_main();
@@ -17,6 +17,6 @@ unsafe extern "C" {
 fn main() {
     // Phase 115.L.x — install zenoh-pico C-vtable backend before
     // the C/C++ entry point opens its nros session.
-    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
     unsafe { app_main() };
 }

@@ -282,8 +282,6 @@ test-unit verbose="":
     # Real coverage of these shims comes from their per-feature
     # invocations under `check-workspace-features`.
     args=(--workspace --exclude nros-tests \
-          --exclude nros-rmw-zenoh-cffi \
-          --exclude nros-rmw-dds-cffi \
           --exclude nros-rmw-xrce-cffi \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
@@ -563,8 +561,6 @@ check-workspace:
     cargo +{{NIGHTLY}} fmt --check
     cargo clippy --workspace --no-default-features \
         --exclude nros-c --exclude nros-cpp \
-        --exclude nros-rmw-zenoh-cffi \
-        --exclude nros-rmw-dds-cffi \
         --exclude nros-rmw-xrce-cffi
 
 # Check workspace for embedded target (Cortex-M4F)
@@ -586,8 +582,6 @@ check-workspace-embedded:
         --exclude xrce-platform-shim \
         --exclude nros-rmw-xrce \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-zenoh-cffi \
-        --exclude nros-rmw-dds-cffi
 
 # Check workspace with various feature combinations
 [private]

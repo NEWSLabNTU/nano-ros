@@ -56,7 +56,7 @@ mod app {
             .domain_id(config.domain_id)
             .node_name("add_server");
         // Phase 115.L.x — install C-vtable backend before session open.
-        nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+        nros_rmw_zenoh::register().expect("zenoh RMW register failed");
         let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("add_server").unwrap();
         let service = node.create_service::<AddTwoInts>("/add_two_ints").unwrap();

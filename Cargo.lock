@@ -1279,9 +1279,9 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds-cffi",
+ "nros-rmw-dds",
  "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh-cffi",
+ "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
 ]
@@ -1374,9 +1374,9 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds-cffi",
+ "nros-rmw-dds",
  "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh-cffi",
+ "nros-rmw-zenoh",
  "portable-atomic",
  "portable-atomic-util",
 ]
@@ -1560,16 +1560,8 @@ dependencies = [
  "nros-platform",
  "nros-platform-posix",
  "nros-rmw",
- "spin",
-]
-
-[[package]]
-name = "nros-rmw-dds-cffi"
-version = "0.1.0"
-dependencies = [
- "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
+ "spin",
 ]
 
 [[package]]
@@ -1591,18 +1583,9 @@ dependencies = [
  "nros-ghost-types",
  "nros-platform",
  "nros-rmw",
+ "nros-rmw-cffi",
  "portable-atomic",
  "zpico-sys",
-]
-
-[[package]]
-name = "nros-rmw-zenoh-cffi"
-version = "0.1.0"
-dependencies = [
- "nros-platform",
- "nros-rmw",
- "nros-rmw-cffi",
- "nros-rmw-zenoh",
 ]
 
 [[package]]
