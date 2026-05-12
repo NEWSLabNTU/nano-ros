@@ -1,20 +1,30 @@
 // Phase 115.K.4.2-subscriber-push — PX4-side push-wake glue.
 //
-// Compiled only when NROS_RMW_UORB_LINK_PX4=ON. Provides strong
-// definitions of `nros_orb_register_callback` /
-// `nros_orb_unregister_callback` that wrap PX4's
-// `uORB::SubscriptionCallbackWorkItem`.
+// Compiled only when NROS_RMW_UORB_BUILD_PX4_GLUE=ON (which itself
+// implies NROS_RMW_UORB_LINK_PX4=ON). Provides strong definitions
+// of `nros_orb_register_callback` / `nros_orb_unregister_callback`
+// that wrap PX4's `uORB::SubscriptionCallbackWorkItem`.
 //
-// uORB's callback API in PX4 1.14+ is class-based: callers
-// subclass `uORB::SubscriptionCallbackWorkItem` and the broker
-// invokes `Run()` from its workqueue. We adapt that to the
-// C-shaped `nros_orb_callback_t` ABI by holding one adapter
-// instance per registered handle.
+// PX4's push-wake API in 1.14+ is **compositional**, not
+// subclass-based:
+//   * `uORB::SubscriptionCallbackWorkItem` holds a pointer to a
+//     `px4::WorkItem` (separate object) and calls `ScheduleNow()`
+//     on it when the broker publishes.
+//   * The `WorkItem`'s `Run()` override does the actual work,
+//     dispatched on a worker thread owned by the configured WQ.
+//
+// We expose a C ABI shaped like
+// `int register(handle, fn, arg)`, so we adapt the compositional
+// API by creating one **adapter object per registration** that:
+//   1. Subclasses `px4::WorkItem` (so its `Run()` invokes our C fn).
+//   2. Owns a placement-new'd `SubscriptionCallbackWorkItem` that
+//      points back at itself.
 //
 // Capacity is bounded at compile time
-// (`NROS_RMW_UORB_PX4_MAX_CALLBACKS`, default 64). The same
-// table that the topic registry uses is fine here — PX4 modules
-// rarely declare more than a few dozen distinct subscriptions.
+// (`NROS_RMW_UORB_PX4_MAX_CALLBACKS`, default 64). Adapters are
+// stored in a fixed pool with `alignas` storage so we can build
+// them lazily (PX4's WQs aren't running yet when firmware-level
+// static globals construct).
 
 #include "uorb_abi.hpp"
 
@@ -23,17 +33,12 @@
 #endif
 
 #include <uORB/SubscriptionCallback.hpp>
-#include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
-#include <px4_platform_common/px4_work_queue/WorkItemSingleShot.hpp>
-// PX4's default work queue for low-rate periodic / event-driven
-// callbacks. Real-time-sensitive subscribers (IMU drivers) override
-// to a higher-priority WQ via the upstream API; nano-ros doesn't
-// expose that knob yet — defaults are correct for the
-// commander-style cadence the cffi runtime expects.
+#include <px4_platform_common/px4_work_queue/WorkItem.hpp>
 #include <px4_platform_common/px4_work_queue/WorkQueueManager.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
 namespace {
 
@@ -41,37 +46,33 @@ namespace {
 #define NROS_RMW_UORB_PX4_MAX_CALLBACKS 64
 #endif
 
-// Adapter: subclass SubscriptionCallbackWorkItem so PX4 can dispatch
-// to a C fn pointer. Run() fires on the work queue's context; the
-// callback must be non-blocking (atomic flag flip + return).
-class CallbackAdapter : public uORB::SubscriptionCallbackWorkItem {
+// One adapter per registration. The WorkItem half handles the WQ
+// dispatch; the SubscriptionCallbackWorkItem half is constructed in
+// `install()` (after PX4's WQs have come up) and points back at
+// the WorkItem half via `this`.
+class CallbackAdapter : public px4::WorkItem {
 public:
     CallbackAdapter()
-        : uORB::SubscriptionCallbackWorkItem(
-              px4::wq_configurations::lp_default,
-              ORB_ID(parameter_update) /* placeholder; overwritten in install */) {}
+        : px4::WorkItem("nros_orb_cb", px4::wq_configurations::lp_default) {}
 
-    void install(int handle, nros_orb_callback_t cb, void *arg) {
-        // PX4 1.14's SubscriptionCallbackWorkItem doesn't expose a
-        // "rebind handle" API; we install by re-constructing the
-        // base subscription via assignment. The upstream class
-        // explicitly supports this for callback re-targeting.
-        //
-        // NOTE: handle here is the *PX4 subscription handle*, not
-        // the orb_metadata pointer — the runtime's K.4.2-sub
-        // wiring already holds the metadata pointer via the
-        // SubscriberState, and PX4's class API needs the
-        // metadata to set up the wq dispatch. The glue below
-        // resolves metadata via a side-channel lookup (the
-        // backend stashes meta-by-handle in a parallel array).
-        sub_handle = handle;
-        callback   = cb;
-        user_arg   = arg;
-        registerCallback();
+    ~CallbackAdapter() override = default;
+
+    bool install(const orb_metadata *meta, uint8_t instance,
+                 int handle_in, nros_orb_callback_t cb, void *arg) {
+        new (sub_cb_storage) uORB::SubscriptionCallbackWorkItem(this, meta, instance);
+        sub_cb_constructed = true;
+        sub_handle         = handle_in;
+        callback           = cb;
+        user_arg           = arg;
+        return sub_cb()->registerCallback();
     }
 
     void uninstall() {
-        unregisterCallback();
+        if (sub_cb_constructed) {
+            sub_cb()->unregisterCallback();
+            sub_cb()->~SubscriptionCallbackWorkItem();
+            sub_cb_constructed = false;
+        }
         sub_handle = -1;
         callback   = nullptr;
         user_arg   = nullptr;
@@ -87,20 +88,43 @@ protected:
     }
 
 private:
-    int sub_handle = -1;
-    nros_orb_callback_t callback = nullptr;
-    void *user_arg = nullptr;
+    alignas(uORB::SubscriptionCallbackWorkItem) unsigned char
+        sub_cb_storage[sizeof(uORB::SubscriptionCallbackWorkItem)]{};
+    bool                sub_cb_constructed = false;
+    int                 sub_handle         = -1;
+    nros_orb_callback_t callback           = nullptr;
+    void               *user_arg           = nullptr;
+
+    uORB::SubscriptionCallbackWorkItem *sub_cb() {
+        return reinterpret_cast<uORB::SubscriptionCallbackWorkItem *>(sub_cb_storage);
+    }
 };
 
-// Bounded pool. Linear scan for the matching handle on uninstall —
-// fine at this capacity. If the cap is hit we return -1; caller
-// falls back to the polling path automatically.
-CallbackAdapter g_pool[NROS_RMW_UORB_PX4_MAX_CALLBACKS];
+// Lazy-constructed pool. We can't put CallbackAdapter directly in a
+// global array because its `WorkItem` base constructor runs at
+// firmware-boot static-init time — well before the WQ manager is up.
+// Each slot tracks construction state; first install() in that slot
+// placement-new's the adapter.
+struct Slot {
+    alignas(CallbackAdapter) unsigned char storage[sizeof(CallbackAdapter)]{};
+    bool constructed = false;
 
-CallbackAdapter *find_free() {
+    CallbackAdapter *adapter() {
+        return reinterpret_cast<CallbackAdapter *>(storage);
+    }
+};
+
+Slot g_pool[NROS_RMW_UORB_PX4_MAX_CALLBACKS];
+
+CallbackAdapter *find_free_or_construct() {
     for (auto &slot : g_pool) {
-        if (slot.handle() < 0) {
-            return &slot;
+        if (!slot.constructed) {
+            new (slot.storage) CallbackAdapter();
+            slot.constructed = true;
+            return slot.adapter();
+        }
+        if (slot.adapter()->handle() < 0) {
+            return slot.adapter();
         }
     }
     return nullptr;
@@ -108,8 +132,8 @@ CallbackAdapter *find_free() {
 
 CallbackAdapter *find_by_handle(int handle) {
     for (auto &slot : g_pool) {
-        if (slot.handle() == handle) {
-            return &slot;
+        if (slot.constructed && slot.adapter()->handle() == handle) {
+            return slot.adapter();
         }
     }
     return nullptr;
@@ -120,25 +144,47 @@ CallbackAdapter *find_by_handle(int handle) {
 extern "C" {
 
 int nros_orb_register_callback(int handle, nros_orb_callback_t cb, void *arg) {
-    if (handle < 0 || cb == nullptr) {
-        return -1;
-    }
-    CallbackAdapter *slot = find_free();
-    if (slot == nullptr) {
-        // Pool exhausted. Caller falls back to polling.
-        return -1;
-    }
-    slot->install(handle, cb, arg);
-    return 0;
+    // The data-plane only has the handle at this point; metadata for
+    // PX4's compositional API would need to be threaded through. Until
+    // the runtime adds a (meta, instance) channel, decline the
+    // registration. Subscriber falls back to the polling path.
+    //
+    // NOTE: leaving this as a stub on the strong-symbol side keeps the
+    // K.4.5 SITL build honest — the glue compiles, links, and the
+    // class hierarchy is exercised by the compiler; runtime push-wake
+    // remains gated on the subscriber-side ABI extension.
+    (void)handle;
+    (void)cb;
+    (void)arg;
+    return -1;
 }
 
 int nros_orb_unregister_callback(int handle) {
     CallbackAdapter *slot = find_by_handle(handle);
     if (slot == nullptr) {
-        return 0; // idempotent: not-found counts as success
+        return 0;
     }
     slot->uninstall();
     return 0;
+}
+
+// Internal hook for a future (meta, instance)-aware register ABI.
+// Referenced from the C-side once `SubscriberState` carries
+// metadata + instance through. Today the symbol just keeps the
+// pool's install path linked and type-checked.
+int nros_orb_register_callback_with_meta(const struct orb_metadata *meta,
+                                         uint8_t instance,
+                                         int handle,
+                                         nros_orb_callback_t cb,
+                                         void *arg) {
+    if (meta == nullptr || cb == nullptr || handle < 0) {
+        return -1;
+    }
+    CallbackAdapter *slot = find_free_or_construct();
+    if (slot == nullptr) {
+        return -1;
+    }
+    return slot->install(meta, instance, handle, cb, arg) ? 0 : -1;
 }
 
 } // extern "C"
