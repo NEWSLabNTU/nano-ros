@@ -174,12 +174,47 @@ ThreadX kernel path. Candidates:
 
 - Stack size (`Z_TASK_STACK_SIZE = 8192`) — bumping to 32 KB shifted
   the failure to a different fn-pointer crash, suggesting linker
-  layout sensitivity.
+  layout sensitivity. 64 KB doesn't unblock either.
 - `TX_TIMER_PROCESS_IN_ISR` is undefined → timer-thread (priority 0)
   decrements sleep counters. Setting the flag exposes an FPU-not-
   enabled trap in the rv64 context-save (frcsr at trap entry).
 - `Z_TASK_PREEMPT_THRESHOLD == Z_TASK_PRIORITY == 14` may interact
   badly with the timer thread's wake-up path on rv64.
+
+**gdb memory-dump finding** (later session): at the stuck point, the
+trapped thread's TCB stack-pointer field (`TX_TCB_STACK_PTR_OFF = 8`)
+holds `0x80016b56` — resolves to **inside `_tx_thread_context_save+100`**,
+a code address, not a stack address. `_tx_thread_context_save`
+writes `sp → TCB.stack_ptr` at line 262 of the board-local copy.
+For the field to end up with a code address, the saved `sp` had to
+be pointing into `.text` at save time.
+
+Strong evidence of a **nested-trap-during-context-save** pattern: an
+interrupt (most likely the tick timer) fires while a thread is mid-
+context-save, the inner trap re-enters `_tx_thread_context_save`
+itself, the second pass writes its own runtime SP (which is
+literally inside the function's instruction stream) into the TCB.
+That corrupted stack-pointer is what causes the eventual
+recursive trap in `trap_entry`'s `STORE x1, 28*REGBYTES(sp)`.
+
+Closing the loop needs nested-interrupt guards in `trap_entry` /
+`_tx_thread_context_save`. The RV64 ThreadX port may be missing
+the `_tx_thread_system_state` increment + tick-pending defer that
+the Cortex-M port uses. Out of scope for this session.
+
+The matching ABI fix (5-asm 65 → 66 REGBYTES alignment) in
+`c6274bb1` is independent and correct regardless of this nested-
+trap bug — keep it. Test still fails because the nested-trap
+corruption strikes before the action server can serve a goal.
+
+Result is the same end-state on the test (T+10s router unregisters
+the server's queryables, client `ServiceRequestFailed`), but the
+root cause is now identified as **a kernel-level rv64 ThreadX bug
+in nested-interrupt handling**, not in our Rust application code
+or the zenoh-pico wire-protocol. The bug affects the lease task's
+sleep specifically because the lease task's `tx_thread_sleep` is
+where the thread voluntarily suspends and is most likely to
+collide with a tick interrupt mid-context-save.
 
 **Bare-metal zenoh-pico debug logging (commit `25a4973c`):** added a
 vsnprintf + UART sink (`packages/zpico/zpico-sys/c/platform/threadx/log_uart.c`)
