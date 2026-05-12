@@ -253,8 +253,15 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
+    check-platform-abi-mirror \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
+
+# Phase 121.4.b — verify <nros/platform.h> matches the Rust extern block
+# and the `nros_platform_export_*!` macro emissions in nros-platform-cffi.
+[private]
+check-platform-abi-mirror:
+    @bash scripts/check-platform-abi-mirror.sh
 
 # Test tiers (each tier is a strict superset of the previous):
 #
