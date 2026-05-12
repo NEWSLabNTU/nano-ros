@@ -66,9 +66,7 @@ members = [
     "packages/zpico/zpico-platform-custom",
     "packages/xrce/xrce-platform-shim",
     # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
-    # (nros-rmw-xrce-c) and exposes its register entry point. Future
-    # Rust API users of XRCE go through this crate instead of the
-    # legacy direct-Rust-impl `nros-rmw-xrce`.
+    # (nros-rmw-xrce-c) and exposes its register entry point.
     "packages/xrce/nros-rmw-xrce-cffi",
 ]
 
@@ -204,8 +202,6 @@ exclude = [
     "packages/drivers/cmsdk-uart",
     # STM32F4 USART driver (embedded-only, Cortex-M)
     "packages/drivers/stm32f4-usart",
-    # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)
-    "packages/xrce/nros-rmw-xrce",
     # Native XRCE-DDS examples (requires XRCE Agent)
     "examples/native/rust/xrce/talker",
     "examples/native/rust/xrce/listener",
@@ -305,7 +301,6 @@ nros-macros = { version = "0.1.0", path = "packages/core/nros-macros" }
 nros-params = { version = "0.1.0", path = "packages/core/nros-params", default-features = false }
 nros-rmw = { version = "0.1.0", path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
-nros-rmw-xrce = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce", default-features = false }
 # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend.
 # Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
 # by example crates that opt into the cffi-via-C-backend path.

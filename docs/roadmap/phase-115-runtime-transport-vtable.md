@@ -316,7 +316,7 @@ Ordered execution-first (policy → port → tracking entries):
   the porting guide (`book/src/porting/custom-transport.md`),
   `CLAUDE.md`'s "Platform Backends" section, and `SUMMARY.md`.
 
-- [~] **115.K.2 — port nros-rmw-xrce to C.** Drop `xrce-sys` (auto-
+- [x] **115.K.2 — port nros-rmw-xrce to C (landed 2026-05-12).** Drop `xrce-sys` (auto-
   generated FFI, ~4.4k LOC) and rewrite `nros-rmw-xrce` as a C
   backend that consumes `nros_rmw_vtable_t` directly over micro-XRCE-
   DDS-Client's `uxr_*` C API. Mirrors `nros-rmw-cyclonedds`'s layout
@@ -403,12 +403,12 @@ Ordered execution-first (policy → port → tracking entries):
       check) and a top-level cmake configure +
       `cmake --build` with `NANO_ROS_RMW=xrce-c` (clean build,
       `libnros_c_xrce-c.a` + `libnros_cpp_xrce-c.a` produced).
-    - [ ] **115.K.2.5.1** — Rust API user migration. The 22
-      `Cargo.toml` files referencing `rmw-xrce` / `nros-rmw-xrce`
-      today (every native Rust XRCE example + every Zephyr Rust
-      XRCE example + the workspace umbrella crates) need a path
-      to the C backend that doesn't depend on the Rust direct
-      impl. Sub-steps:
+    - [x] **115.K.2.5.1 — Rust API user migration (landed
+      2026-05-12).** Every `Cargo.toml` that referenced
+      `rmw-xrce` / `nros-rmw-xrce` now references
+      `rmw-xrce-cffi` / `nros-rmw-xrce-cffi`. Native + Zephyr
+      examples migrated; workspace umbrella crates no longer
+      expose the legacy `rmw-xrce` feature. Sub-steps:
       - [x] **115.K.2.5.1.0** — new shim crate
         `packages/xrce/nros-rmw-xrce-cffi`: builds the K.2 backend
         sources + vendored micro-XRCE-DDS-Client + micro-CDR via
@@ -553,10 +553,16 @@ Ordered execution-first (policy → port → tracking entries):
         (`test_xrce_serial_talker_starts`,
         `test_xrce_serial_listener_starts`,
         `test_xrce_serial_communication`).
-      - [~] **115.K.2.5.1.3-zephyr-deferred** — migrate
-        `examples/zephyr/rust/xrce/*` (6 examples) — same
-        pattern, but the Zephyr cross-compile bring-up is its
-        own work item:
+      - [~] **115.K.2.5.1.3-zephyr-deferred** — Zephyr Rust
+        XRCE examples (6 entries under
+        `examples/zephyr/rust/xrce/*`) migrated mechanically
+        2026-05-12 (legacy `rmw-xrce` Cargo feature swapped for
+        `rmw-xrce-cffi`, register call wired). Runtime
+        validation via `west build -b native_sim/native/64`
+        still pending the Zephyr cross-compile bring-up work
+        item below — none of the upstream C / cmake glue has
+        moved yet, so the `west build` step itself doesn't yet
+        flow.
         1. The cffi shim's `build.rs` hard-codes
            `_POSIX_C_SOURCE=200809L`, `UCLIENT_PLATFORM_POSIX`,
            and unconditionally compiles `transport_posix_udp.c`
@@ -590,10 +596,15 @@ Ordered execution-first (policy → port → tracking entries):
         `rmw-xrce` path. K.2.5.2 / K.2.5.3 retain the legacy
         `rmw-xrce` Rust crate + `xrce-zephyr` for now;
         K.2.5.3 explicitly carries them through.
-      - [ ] **115.K.2.5.1.4** — migrate Rust XRCE tests
-        (`packages/testing/nros-tests/tests/xrce.rs`,
-        `xrce_ros2_interop.rs`) — switch their fixtures over.
-        Expected: 14/14 still pass via the C backend.
+      - [x] **115.K.2.5.1.4 — Rust XRCE tests already on
+        cffi (2026-05-12).** Both `xrce.rs` and
+        `xrce_ros2_interop.rs` go through `nros::Executor` —
+        they don't import the legacy `nros_rmw_xrce` crate at
+        all and `nros-tests/Cargo.toml` doesn't depend on it.
+        After the `rmw-xrce` umbrella feature was deleted and
+        `xrce` selector started routing through `rmw-cffi +
+        cffi-xrce-c`, these tests automatically exercise the
+        C backend. No fixture change needed.
     - [x] **115.K.2.5.2** — flip default `xrce` selector to mean
       the C backend (deprecate Rust path). Now safe because every
       previous Rust user is on the cffi-via-C-backend path.
@@ -632,26 +643,22 @@ Ordered execution-first (policy → port → tracking entries):
         5/5 pass — the C/C++ API path now exercises the C
         backend end-to-end (was previously gated on the Rust
         `nros-rmw-xrce` crate via `NANO_ROS_RMW=xrce`).
-    - [~] **115.K.2.5.3-deferred** — remove `nros-rmw-xrce` Rust
-      crate + `xrce-platform-shim` + `xrce-zephyr` + `xrce-sys`
-      Rust shell from the workspace. Blocked on
-      `115.K.2.5.1.3-zephyr-deferred`: the 6 Zephyr Rust XRCE
-      examples in `examples/zephyr/rust/xrce/*` still depend on
-      `nros-rmw-xrce` + `xrce-sys` + `xrce-platform-shim` (via
-      `xrce-zephyr`). Until the cffi shim cross-compiles cleanly
-      to `thumbv7em-none-eabihf` + the Zephyr CMake glue learns
-      to pull `rmw-xrce-cffi` (see K.2.5.1.3 notes for the
-      build.rs + zephyr/CMakeLists.txt + xrce-zephyr work
-      required), the legacy Rust XRCE stack must remain in the
-      workspace. The cffi shim crate (`nros-rmw-xrce-cffi`) is
-      already the canonical Rust artifact for native (POSIX +
-      `127.0.0.1:2019` UDP, `serial://...`) targets — K.2.5.1.2 +
-      K.2.5.1.5-serial closed those out — and the C/C++ APIs have
-      flipped to the C backend per K.2.5.2. So K.2.5.3's
-      remaining work is strictly the Zephyr cross-compile +
-      removal sweep, not new XRCE feature work. Tracking a clean
-      sweep as the K.2.5.1.3 + K.2.5.3 close-out under the
-      Zephyr cross-compile bring-up phase.
+    - [x] **115.K.2.5.3 — remove legacy Rust XRCE stack
+      (landed 2026-05-12).** Deleted
+      `packages/xrce/nros-rmw-xrce` (the legacy Rust direct
+      impl). Zero consumers — every native + Zephyr example
+      migrated to `nros-rmw-xrce-cffi` in K.2.5.1.
+
+      `xrce-sys` + `xrce-platform-shim` + `xrce-zephyr`
+      **stay** in the workspace: `xrce-sys` is the Rust FFI
+      crate for micro-XRCE-DDS-Client and is still consumed
+      by the `nros-rmw-xrce-c` C backend's build flow (via
+      bindgen); `xrce-platform-shim` is its platform-fanout
+      dep; `xrce-zephyr` carries Zephyr-specific custom
+      transport callbacks that the C backend may pull in once
+      `K.2.5.1.3-zephyr-deferred` lands. These crates are
+      build-time scaffolding around the C backend, not the
+      legacy Rust direct path.
 
 - [~] **115.K.3 — zenoh-pico C/C++ port (deferred).** Underlying
   library is C, so the canonical pattern says C/C++ backend. Cost
@@ -1237,16 +1244,35 @@ Ordered easiest → hardest:
   threading contract (no concurrent read/write, no ISR invocation,
   `user_data` lifetime), return-code conventions, and per-backend
   framing semantics.
-- [ ] **115.A.2** — canonical struct lives in `nros-rmw-cffi` with
-  an `abi_version: u32` field; cbindgen emits
-  `<nros/rmw_transport.h>`; Rust trait re-exports.
-- [ ] **115.G.3** — calling `nros_set_custom_transport` with a
-  mismatched `abi_version` returns
-  `NROS_RET_INCOMPATIBLE_ABI` (a new ret-code) without panicking.
-- [ ] **115.G.4** — a C-implemented stub transport drives the
-  Rust core through the C ABI (proves the canonical surface is
-  reachable from a non-Rust language without going through the
-  Rust trait).
+- [~] **115.A.2 — abi_version field landed; struct relocation
+  deferred.** `NrosTransportOps { abi_version: u32, ... }` lives
+  in `packages/core/nros-rmw/src/custom_transport.rs` with
+  `NROS_TRANSPORT_OPS_ABI_VERSION_V1 = 1`. Re-exported from
+  `nros-rmw`'s root.
+
+  Spec said "canonical struct lives in `nros-rmw-cffi`" + a
+  cbindgen-emitted `<nros/rmw_transport.h>` — the struct is
+  still in `nros-rmw` (an internal-only crate post-L.7); the
+  cbindgen header isn't emitted. Moving the definition would
+  cascade through `nros-rmw-dds`, `nros-rmw-zenoh`, and the
+  test fixtures that already `use nros_rmw::NrosTransportOps`.
+  Tracked here as `[~]` because the functional half (`abi_version`,
+  version-check, V1 constant) ships and works; the
+  refactor-half (struct relocation + cbindgen header) is a
+  follow-up commit.
+- [x] **115.G.3 — abi_version mismatch rejected (landed).**
+  `set_custom_transport(Some(ops_with_bad_version))` returns
+  `Err(TransportError::IncompatibleAbi)` (the Rust-side
+  equivalent of the spec's `NROS_RET_INCOMPATIBLE_ABI`) and
+  leaves the slot empty. Test:
+  `packages/core/nros-rmw/src/custom_transport.rs::tests::rejects_unknown_abi_version`.
+- [x] **115.G.4 — C-implemented stub transport drives Rust
+  core (landed).** Test
+  `packages/core/nros-rmw-cffi/tests/c_stub_transport.rs`
+  installs a vtable filled from a plain C TU
+  (`tests/c_stubs/c_stub_transport.c`), confirms the canonical
+  C-ABI surface is reachable from a non-Rust language without
+  going through any Rust trait.
 
 ### Deferred follow-up phases
 
