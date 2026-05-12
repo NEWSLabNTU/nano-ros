@@ -15,9 +15,18 @@ categories = ["embedded", "no-std", "os"]
 [features]
 default = []
 threading = []
+# Phase 121.4.a — compile `tests/c_stubs/platform_stubs.c` into a
+# static lib that provides every `nros_platform_*` symbol with
+# per-category counters. Only the in-crate integration test
+# (`tests/c_stub_platform.rs`) consumes this; regular consumers
+# never enable it.
+c-stub-test = ["dep:cc"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+
+[build-dependencies]
+cc = { version = "1", optional = true }
 
 [lints]
 workspace = true

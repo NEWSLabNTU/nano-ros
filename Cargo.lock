@@ -1415,6 +1415,7 @@ version = "0.1.0"
 name = "nros-platform-cffi"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "nros-platform-api",
 ]
 
