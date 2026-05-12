@@ -8,18 +8,35 @@
 //! Rust FFI can't call C macros, so we declare the underlying `_tx_*` functions
 //! directly (same approach as nros-platform-freertos with FreeRTOS macros).
 //!
-//! ABI note: ThreadX `ULONG` is `unsigned long`, which is **8 bytes on
-//! LP64 targets (Linux x86_64, RISC-V64)** and 4 bytes on ILP32 / Cortex-M.
-//! Declarations below use `TxUlong` (alias for `core::ffi::c_ulong`) so the
-//! signature stays correct on both. The prior `u32` declarations caused
-//! upper-32-bit garbage in argument registers on rv64, surfacing as
-//! corrupted-function-pointer crashes in NetX BSD shim once enough
-//! z_malloc-allocated structures piled up (Phase 120.3 / 120.4).
+//! ABI note: ThreadX `ULONG` is **4 bytes on every port supported here**.
+//! - Cortex-M: native `unsigned long` is 4 bytes (ILP32).
+//! - Linux x86_64 (upstream `tx_port.h`): `#if defined(__x86_64__) typedef
+//!   unsigned int ULONG`. The upstream port deliberately makes ULONG 4
+//!   bytes on LP64 to keep TCB / pool / message-queue offset arithmetic
+//!   stable; the comment in our board override
+//!   (`packages/boards/nros-board-threadx-qemu-riscv64/config/tx_port.h`)
+//!   notes the kernel code uses `ULONG *` pointer arithmetic assuming
+//!   4-byte words.
+//! - ThreadX RV64 (board override): same `typedef unsigned int ULONG`
+//!   for the same reason.
+//!
+//! So `TxUlong = u32` across every threadx target. The Phase 120.3
+//! commit `57669baf` mistakenly aliased `TxUlong` to `c_ulong` (u64 on
+//! LP64). That happened to work for small values because the RV64 ABI
+//! zero-extends u32 → u64 in the argument register, but it caused
+//! systematic 4-byte over-reservation on every `tx_byte_allocate` and
+//! widened the wait-option / count fields out of band — the corrected
+//! width is `u32`, matching the C side.
+//!
+//! Pointer arguments stay `*mut c_void` (8 bytes on LP64, 4 on ILP32);
+//! ULONG-typed scalar arguments (size, ticks, wait_option, count) are
+//! `u32`.
 
-use core::ffi::{c_ulong, c_void};
+use core::ffi::c_void;
 
-/// Matches ThreadX `ULONG` width across 32-bit and 64-bit ports.
-pub type TxUlong = c_ulong;
+/// Matches ThreadX `ULONG` width across every supported port (Cortex-M,
+/// Linux x86_64, RV64). Always 4 bytes; do not change to `c_ulong`.
+pub type TxUlong = u32;
 
 /// ThreadX success return code.
 pub const TX_SUCCESS: u32 = 0;
