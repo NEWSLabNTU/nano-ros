@@ -276,7 +276,16 @@ check: \
 # Workspace lib/bin/unit tests, excluding the integration crate.
 test-unit verbose="":
     #!/usr/bin/env bash
-    args=(--workspace --exclude nros-tests --no-fail-fast)
+    # `nros-rmw-{zenoh,dds,xrce}-cffi` excluded for the same reason as
+    # `check-workspace`: their `*Rmw` type imports are platform-feature
+    # gated, and `cargo nextest run --workspace` activates no features.
+    # Real coverage of these shims comes from their per-feature
+    # invocations under `check-workspace-features`.
+    args=(--workspace --exclude nros-tests \
+          --exclude nros-rmw-zenoh-cffi \
+          --exclude nros-rmw-dds-cffi \
+          --exclude nros-rmw-xrce-cffi \
+          --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
