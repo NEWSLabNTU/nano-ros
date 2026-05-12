@@ -21,12 +21,24 @@ threading = []
 # (`tests/c_stub_platform.rs`) consumes this; regular consumers
 # never enable it.
 c-stub-test = ["dep:cc"]
+# Phase 121.3.posix — compile the sibling `nros-platform-posix-c`
+# crate's `src/platform.c` into a static lib that supplies every
+# `nros_platform_*` symbol with a real POSIX implementation. The
+# in-crate integration test `tests/c_port_posix.rs` consumes it.
+# Mutually exclusive with `c-stub-test` (both would supply
+# definitions for the same symbols).
+posix-c-port = ["dep:cc"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
 
 [build-dependencies]
 cc = { version = "1", optional = true }
+
+[dev-dependencies]
+# Required by the `posix-c-port` integration test for pthread_mutex_t /
+# pthread_cond_t / pthread_t type layouts.
+libc = "0.2"
 
 [lints]
 workspace = true

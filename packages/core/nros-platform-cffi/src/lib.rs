@@ -587,7 +587,7 @@ macro_rules! nros_platform_export {
 // and never compile this module (it is gated on `cfg(test)`).
 // ============================================================================
 
-#[cfg(all(test, not(feature = "c-stub-test")))]
+#[cfg(all(test, not(feature = "c-stub-test"), not(feature = "posix-c-port")))]
 mod test_self_export {
     use core::ffi::c_void;
     use nros_platform_api::{
