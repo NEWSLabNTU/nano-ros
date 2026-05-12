@@ -20,6 +20,8 @@
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
+// clang-format off
 #error "nros_config_generated.h must be supplied per-build by the build system; see this stub for guidance."
+// clang-format on
 
 #endif /* NROS_CONFIG_GENERATED_H */
