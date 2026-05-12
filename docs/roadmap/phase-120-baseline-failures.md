@@ -492,6 +492,73 @@ pointer ABI mismatch), the call goes to 0x0.
   Rust ABI mismatch on the `extern "C" fn` signature passed
   through the table.
 
+### First-trap capture confirms the bad fn pointer target
+
+Patched `trap_entry` to dump `sp / mepc / mcause / mtval` on the
+**first** non-interrupt trap (gated by a `_trap_caught` flag in
+`.data`) and spin. Result:
+
+```
+!t1 sp=0x80046f40 ep=0x80251630 mc=5 mt=0x800393d8
+```
+
+- `sp = 0x80046f40` → legitimate thread-stack address inside
+  `byte_pool_storage`. Sp itself is NOT corrupted on the first
+  trap — the earlier "sp in .bss-gap" observations were the
+  result of *subsequent* recursive trap_entry calls walking sp
+  downward (each decrement another 528 bytes).
+- `mepc = 0x80251630` → inside **`nx_bsd_socket_pool_memory`**
+  (NetX BSD socket-pool data). Same address every run.
+- `mcause = 5` (Load access fault), `mtval = 0x800393d8` →
+  the load address that faulted. That's `s0 + 96` where `s0`
+  happens to hold `0x80039378` (~start of `byte_pool_storage`)
+  — the data at the bad PC decoded as `lw s0, 96(s0)`, so the
+  load came from interpreting socket-pool data bytes as an
+  instruction stream.
+
+**So the first trap is already a consequence of a JALR landing
+inside `nx_bsd_socket_pool_memory`.** A function-pointer field
+somewhere holds the value `0x80251630`. When user code (or
+zenoh-pico) calls that fn pointer, the CPU jumps to socket-pool
+data bytes, decodes them as RISC-V instructions, and the load
+inside the garbage instruction stream faults.
+
+The corrupt fn pointer value is **deterministic** across runs —
+same `0x80251630` every time. Suggests a specific data field that
+gets set deterministically wrong, NOT a randomized memory bug.
+
+### Note on nx_bsd_socket_pool_memory layout
+
+```c
+static ULONG nx_bsd_socket_pool_memory[NX_BSD_MAX_SOCKETS *
+    (sizeof(NX_TCP_SOCKET) + sizeof(VOID *)) / sizeof(ULONG)];
+```
+
+In `third-party/threadx/netxduo/addons/BSD/nxd_bsd.c:97`. The
+`sizeof(VOID *)` is 8 bytes on rv64; `sizeof(ULONG)` is **4 bytes**
+under our board's `tx_port.h` override. NetX uses this as the
+backing memory for `nx_bsd_socket_block_pool`, which stores
+NX_TCP_SOCKET-sized blocks. Each block has an 8-byte
+linked-list pointer prepended by `_nx_block_pool_create`.
+
+The arithmetic `* (size + 8) / 4 * 4` reduces to the correct
+total bytes, but the block-pool's block-size argument is
+`sizeof(NX_TCP_SOCKET) + sizeof(VOID *)`. If the C compiler
+computes `sizeof(NX_TCP_SOCKET)` based on a different `ULONG`
+width than the kernel asm assumes, blocks land at unexpected
+offsets and the "next" pointer of one block ends up pointing
+inside the data area of another.
+
+**Concrete fix candidate:** check whether `sizeof(NX_TCP_SOCKET)`
+computed by C includes any ULONG fields whose width changed by
+the board's `tx_port.h` override. If yes, every cmake build of
+NetX uses the same ULONG override so sizes stay consistent, but
+the asm-coded TCB offset constants (`TX_TCB_*_OFF`) are hand-
+written assuming the same ULONG=4 layout. A mismatch would
+explain why this corruption fires only on rv64 (where the
+override applies) and only with the heavier action-server entity
+load.
+
 ### Next: identify the bad STORE
 
 Watch for any STORE to addresses `0x800380c0..0x80039000` (the
