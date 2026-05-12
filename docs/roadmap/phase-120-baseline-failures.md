@@ -313,6 +313,50 @@ restore in `tx_thread_schedule.S` bumped from `29` to `30`. Commit
 (non-breaking), but action Rust still fails — alignment is not
 the cause of THIS specific bug.
 
+### gdb session findings — ThreadX globals intermittently corrupted
+
+Sampled `_tx_thread_current_ptr` at multiple gdb-attach points after
+the action server hung:
+
+- Sample 1 (`tmp/gdb-watch.sh`, 8s after server start):
+  - `_tx_thread_current_ptr` (address 0x800380c8) = `0x800380e8`
+    (= address of `_tx_thread_preempt_disable`, NOT a TCB pointer)
+  - `_tx_thread_execute_ptr` = `0`
+  - PC stuck at `trap_entry` (recursive trap loop)
+- Sample 2 (`tmp/gdb-globals.sh`, 6s after server start):
+  - `_tx_thread_current_ptr` = `0x80253428` (a valid TCB address)
+  - `_tx_thread_execute_ptr` = `0x80253428`
+  - PC at `trap_handler` (in the `while(1)` after the EXCEPTION print)
+
+So the ThreadX globals **are being corrupted intermittently** —
+sometimes they hold valid TCB addresses, sometimes they hold
+addresses of *adjacent globals* (current_ptr ← preempt_disable's
+address). This is consistent with an off-by-one or off-by-N memory
+write that lands inside the `.bss` block holding the ThreadX globals
+(`0x800380c0` .. `0x80038200` region).
+
+The corruption appears WHILE the system is mid-trap (PC in
+`trap_entry` / `trap_handler`), suggesting the trap entry asm itself
+may be writing into this region — either because the trap stack
+pointer was bad before the trap fired (we ended up using `.bss`
+addresses as stack), or because the context-save's `STORE sp,
+TX_TCB_STACK_PTR_OFF(t1)` ran with `t1` already pointing into the
+globals block instead of into a real TCB.
+
+The "PC ends inside `nx_bsd_socket_pool_memory + 8`" observation
+from earlier sessions is consistent — that's just a different
+recursive-trap landing point depending on linker layout and which
+.bss region the bad SP wandered into.
+
+Watchpoint experiment (`tmp/gdb-watchpoint.sh`): set hardware watch
+on `*0x800380c8`. Caught the initial write (current_ptr =
+`0x800391e0` at `app_thread_entry`, a valid TCB) and the
+clear-to-zero (at `_tx_thread_dont_save_ts`, expected). Subsequent
+writes weren't captured cleanly because of gdb-batch script
+limitations on `commands`/`silent`. Re-attempt needs an interactive
+gdb session or a Python-scripted gdb to step through every
+watchpoint hit and dump PC + ra.
+
 ### Next steps for a fresh session
 
 - Re-read board's `tx_port.h` ULONG-is-u32 note and revert the FFI
