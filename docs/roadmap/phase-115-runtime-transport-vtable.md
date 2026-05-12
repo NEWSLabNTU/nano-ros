@@ -1794,40 +1794,93 @@ service-less variant, +1 week for service-over-topics emulation.
   `UNSUPPORTED` permanently. If a real customer surfaces, the
   service-over-topics option (a) reopens as `K.4.4-revisit`.
 
-- [~] **115.K.4.5 — Rust-stack removal (deferred).** K.4.0–K.4.4
-  + K.4-cmake all landed. Removal pre-reqs (all gating the
-  delete sweep):
-  1. **Real-PX4 build validation.** `NROS_RMW_UORB_LINK_PX4=ON`
-     branch in `nros-rmw-uorb-cpp/CMakeLists.txt` shipped (this
-     commit) — accepts `PX4_FIRMWARE_DIR=<path>` + the matching
-     include-dir / library cache vars. Needs end-to-end build
-     inside a PX4-Autopilot checkout (manual on-host validation;
-     PX4 module test harness lives outside this repo).
-  2. **At least one release cycle** with the C++ backend as the
-     `NANO_ROS_RMW=uorb` default so any downstream Rust-on-PX4
-     user has a window to migrate to writing PX4 modules
-     directly in C++.
+- [~] **115.K.4.5 — Rust-stack removal (external blockers
+  only).** K.4.0–K.4.4 + K.4-cmake + K.4.2-subscriber-push all
+  landed. Every blocker I can clear from this repo IS cleared.
+  The two remaining gates are **outside this repo**:
 
-  Delete sweep (when pre-reqs satisfied):
-  - `packages/px4/nros-rmw-uorb` (443 LOC).
-  - `packages/px4/nros-px4` (654 LOC).
-  - `third-party/px4/px4-rs` submodule (5.3k LOC).
-  - `rmw-uorb` Cargo feature from `nros-node` + `nros`.
-  - `nros-rmw-uorb` workspace member entry.
+  1. **Real-PX4 build validation (gate: PX4 hardware/SDK
+     access).** `NROS_RMW_UORB_LINK_PX4=ON` branch ships
+     complete: PX4 1.14+ include-dir layout, override hooks for
+     older releases (`NROS_RMW_UORB_PX4_UORB_INCLUDE_DIRS`,
+     `NROS_RMW_UORB_PX4_UORB_LIBRARIES`), `uorb_abi.hpp` flip
+     to `#include <uORB/uORB.h>` via
+     `NROS_RMW_UORB_USE_PX4_HEADER`, and the
+     `px4_callback_glue.cpp` SubscriptionCallbackWorkItem
+     adapter for push-wake. **Validation requires running
+     `west build` (or PX4's `make`) inside a PX4-Autopilot
+     checkout against a real or sim board.** That's a manual
+     step a PX4 developer takes; can't run from this repo's
+     CI. **Not a code blocker** — the code is there.
+
+  2. **One release cycle as `NANO_ROS_RMW=uorb` default (gate:
+     release schedule).** Gives any external Rust-on-PX4 user a
+     migration window. **Not a code blocker** — release
+     management.
+
+  Delete sweep (when both external gates clear):
+  - `packages/px4/nros-rmw-uorb` (443 LOC)
+  - `packages/px4/nros-px4` (654 LOC)
+  - `third-party/px4/px4-rs` submodule (5.3k LOC)
+  - `rmw-uorb` Cargo feature from `nros-node` + `nros`
+  - `nros-rmw-uorb` workspace member entry
 
   Mirrors `115.K.2.5.3-deferred`'s shape but cleaner — uORB has
   no Zephyr cross-compile dependency, so the legacy-Rust window
-  closes as soon as the pre-reqs above clear.
+  closes as soon as the external gates above clear.
 
-- [~] **115.K.4.2-subscriber-push — `orb_register_callback`
-  optimization (deferred).** Current K.4.2 subscriber polls
-  `orb_check` on every `try_recv_raw`. The optimisation: wire
-  `orb_register_callback(meta, sub_handle, cb, user)` so the
-  broker's workqueue thread fires a callback that signals an
-  atomic ready-bit + wakes the executor's spin condvar.
-  Eliminates the per-iteration syscall. Not blocking — polling
-  via `orb_check` is correct, just slightly less efficient.
-  Reopens when a profiling pass surfaces uORB poll overhead.
+  **Tracking this `[~]` instead of `[x]` because the *outcome*
+  (legacy crates deleted) hasn't shipped yet, but no code work
+  remains.**
+
+- [x] **115.K.4.2-subscriber-push — push-wake landed
+  (2026-05-12).** Two-tier delivery on `subscriber.cpp`:
+
+  - **Fast path** (PX4 build, callback registration succeeds):
+    `subscriber_create` calls `nros_orb_register_callback(handle,
+    subscriber_ready_callback, state)`. PX4's broker workqueue
+    fires the callback → `state->ready.store(true,
+    memory_order_release)`. `has_data` / `try_recv_raw` short-
+    circuit on the atomic *before* calling `orb_check`, so the
+    common "no fresh sample" branch skips a syscall.
+    `try_recv_raw` re-arms the flag (clears to `false`) after
+    each drain *or* when `orb_check` returns no-update, so the
+    next broker fire propagates.
+
+  - **Slow path** (host build / `nros_orb_register_callback`
+    returns -1): `callback_active = false`; `ready` pinned to
+    `true`; `has_data` / `try_recv_raw` always fall through to
+    `orb_check`. Same behaviour as the pre-push-wake build.
+
+  ABI surface (in `src/uorb_abi.hpp`):
+  ```c
+  typedef void (*nros_orb_callback_t)(void *arg);
+  int nros_orb_register_callback(int handle,
+                                 nros_orb_callback_t cb, void *arg);
+  int nros_orb_unregister_callback(int handle);
+  ```
+
+  Default implementation in `src/callback_default.cpp` —
+  `__attribute__((weak))` symbols returning -1. PX4 build path
+  (`NROS_RMW_UORB_LINK_PX4=ON`) compiles
+  `src/px4_callback_glue.cpp` instead: subclasses
+  `uORB::SubscriptionCallbackWorkItem` (PX4 1.14+ class API),
+  pools 64 adapters by default
+  (`NROS_RMW_UORB_PX4_MAX_CALLBACKS`), linear-scan
+  install/uninstall. Strong-override beats the weak default.
+
+  `destroy_subscriber` calls `nros_orb_unregister_callback`
+  before `orb_unsubscribe` so the broker thread can't fire a
+  stale callback into freed state.
+
+  Smoke test extended:
+  - asserts `register_callback` fires once during create
+  - verifies fast-path skip: with `ready` cleared, `has_data`
+    + `try_recv_raw` must NOT call `orb_check`
+  - fires the callback manually → `ready` flips → next poll
+    propagates to `orb_check` + sees the staged sample
+  - asserts `unregister_callback` fires once during destroy
+  1/1 passing.
 
 **Risks:**
 - PX4 module build system integration. Per K.1, backends live
