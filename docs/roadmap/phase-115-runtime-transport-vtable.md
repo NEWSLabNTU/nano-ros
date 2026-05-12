@@ -970,7 +970,7 @@ Ordered easiest → hardest:
     `nros_rmw::set_custom_transport(Some(ops))` so zenoh-pico's
     session open drains the slot once the vtable is installed.
     Both examples build clean.
-  - [~] `115.L.5-zephyr` — mechanical migration landed (14
+  - [x] `115.L.5-zephyr` — landed + validated 2026-05-12 (14
     examples: 7 zenoh + 7 dds under `examples/zephyr/rust/{zenoh,dds}/*`).
     Per example:
     - `Cargo.toml`: swap `"rmw-{zenoh,dds}"` →
@@ -984,15 +984,14 @@ Ordered easiest → hardest:
       before the first `Executor::open` inside the
       `extern "C" fn rust_main()` entry point.
 
-    **Validation pending:** Zephyr Rust examples don't build via
-    plain `cargo build` — they go through `west build -b
-    native_sim/native/64 -d build-<ex> -p auto` (or a board
-    variant) which needs the Zephyr SDK + west workspace. Run
-    `just zephyr build-fixtures` from a Zephyr-set-up checkout
-    to validate end-to-end. Same constraint as
-    `115.K.2.5.1.3-zephyr-deferred` for XRCE; both gated on
-    the same Zephyr cross-compile fixture rather than per-shim
-    work.
+    **Validated 2026-05-12 via `just zephyr build-fixtures`**
+    (Zephyr SDK + west workspace at `../nano-ros-workspace/`).
+    All 14 cffi fixtures produce a
+    `build-*/zephyr/zephyr.elf` on `native_sim/native/64`. The
+    7 dds-rust fixtures and 7 zenoh-rust fixtures are all
+    listed in `just/zephyr.just` (the zenoh `async-service-client`
+    entry was added in the same commit that landed K.4.2-sub-push
+    real-PX4 wiring — earlier transcription gap).
 
 - [x] **115.L.6 — non-backend consumer audit + trait-fold
   decision.** Audited 2026-05-11. Decision: **traits stay in
@@ -1869,7 +1868,8 @@ service-less variant, +1 week for service-over-topics emulation.
   (2026-05-12).** Two-tier delivery on `subscriber.cpp`:
 
   - **Fast path** (PX4 build, callback registration succeeds):
-    `subscriber_create` calls `nros_orb_register_callback(handle,
+    `subscriber_create` calls
+    `nros_orb_register_callback(meta, 0, handle,
     subscriber_ready_callback, state)`. PX4's broker workqueue
     fires the callback → `state->ready.store(true,
     memory_order_release)`. `has_data` / `try_recv_raw` short-
@@ -1884,20 +1884,36 @@ service-less variant, +1 week for service-over-topics emulation.
     `true`; `has_data` / `try_recv_raw` always fall through to
     `orb_check`. Same behaviour as the pre-push-wake build.
 
-  ABI surface (in `src/uorb_abi.hpp`):
+  ABI surface (in `src/uorb_abi.hpp`, real-PX4 wiring landed
+  2026-05-12):
   ```c
   typedef void (*nros_orb_callback_t)(void *arg);
-  int nros_orb_register_callback(int handle,
-                                 nros_orb_callback_t cb, void *arg);
+  int nros_orb_register_callback(const struct orb_metadata *meta,
+                                 uint8_t instance,
+                                 int handle,
+                                 nros_orb_callback_t cb,
+                                 void *arg);
   int nros_orb_unregister_callback(int handle);
   ```
 
+  The `(meta, instance)` pair is load-bearing for the real-PX4
+  glue: `uORB::SubscriptionCallbackWorkItem` is constructed
+  from `(WorkItem *, orb_metadata *, instance)`, not the
+  subscription handle that `orb_subscribe_multi` returns —
+  PX4's broker derives the subscription internally. The handle
+  is still passed because it's the bookkeeping key for
+  `unregister_callback`.
+
   Default implementation in `src/callback_default.cpp` —
   `__attribute__((weak))` symbols returning -1. PX4 build path
-  (`NROS_RMW_UORB_LINK_PX4=ON`) compiles
-  `src/px4_callback_glue.cpp` instead: subclasses
-  `uORB::SubscriptionCallbackWorkItem` (PX4 1.14+ class API),
-  pools 64 adapters by default
+  (`NROS_RMW_UORB_LINK_PX4=ON` + `NROS_RMW_UORB_BUILD_PX4_GLUE=ON`)
+  compiles `src/px4_callback_glue.cpp` instead:
+  `CallbackAdapter` subclasses `px4::WorkItem` (overrides
+  `Run()`) and owns a placement-new'd
+  `uORB::SubscriptionCallbackWorkItem` pointing back at itself
+  (PX4 1.14+'s push-wake is compositional, not subclass-based).
+  Pool is lazy-constructed — `WorkItem`'s ctor needs the WQ
+  manager to be up. Pools 64 adapters by default
   (`NROS_RMW_UORB_PX4_MAX_CALLBACKS`), linear-scan
   install/uninstall. Strong-override beats the weak default.
 
