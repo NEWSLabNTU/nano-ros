@@ -42,7 +42,10 @@ extern "C" {
 #endif
 
 #ifndef Z_TASK_TIME_SLICE
-#define Z_TASK_TIME_SLICE 1
+/* TX_NO_TIME_SLICE (= 0). Per-tick time-slicing across same-priority
+ * threads on rv64 ThreadX appeared to interfere with the timer chain
+ * for sleeping threads. Match app_thread (also TX_NO_TIME_SLICE). */
+#define Z_TASK_TIME_SLICE 0
 #endif
 
 typedef struct {
