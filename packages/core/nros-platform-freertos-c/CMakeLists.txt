@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.20)
+project(nros-platform-freertos-c
+    VERSION 0.1.0
+    DESCRIPTION "Native C implementation of the nros canonical platform ABI for FreeRTOS"
+    LANGUAGES C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
+    get_filename_component(NROS_PLATFORM_CFFI_INCLUDE
+        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-cffi/include" ABSOLUTE)
+    set(NROS_PLATFORM_CFFI_INCLUDE "${NROS_PLATFORM_CFFI_INCLUDE}"
+        CACHE PATH "Path to nros-platform-cffi include directory")
+endif()
+
+# FreeRTOS-Kernel + a target-specific `FreeRTOSConfig.h` must be on
+# the include path. The application build system (per board / per
+# example) supplies both via target_link_libraries / target_include_directories
+# on an INTERFACE target. Configure those by passing FREERTOS_KERNEL_TARGET
+# and FREERTOS_CONFIG_TARGET on the cmake command line:
+#
+#   cmake -B build \
+#     -DFREERTOS_KERNEL_TARGET=freertos_kernel \
+#     -DFREERTOS_CONFIG_TARGET=my_board_freertos_config
+#
+# Both targets must already be declared by the parent build.
+
+if(NOT DEFINED FREERTOS_KERNEL_TARGET)
+    set(FREERTOS_KERNEL_TARGET freertos_kernel CACHE STRING
+        "Name of the imported FreeRTOS-Kernel CMake target")
+endif()
+
+add_library(nros_platform_freertos STATIC src/platform.c)
+target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
+target_compile_options(nros_platform_freertos PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+# Pull FreeRTOS headers + FreeRTOSConfig from the parent build's
+# imported targets. Both targets are expected to exist; we don't
+# attempt to locate them through find_package because FreeRTOS
+# distribution shapes vary too widely (vendor SDKs, vanilla kernel
+# checkouts, Zephyr-style modules).
+if(TARGET ${FREERTOS_KERNEL_TARGET})
+    target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_KERNEL_TARGET})
+else()
+    message(WARNING
+        "FREERTOS_KERNEL_TARGET '${FREERTOS_KERNEL_TARGET}' not declared. "
+        "Configure the parent build to provide it, or pass "
+        "-DFREERTOS_KERNEL_TARGET=<name> on the command line.")
+endif()
+
+if(DEFINED FREERTOS_CONFIG_TARGET AND TARGET ${FREERTOS_CONFIG_TARGET})
+    target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_CONFIG_TARGET})
+endif()
+
+install(TARGETS nros_platform_freertos
+    EXPORT NrosPlatformFreeRtosCTargets
+    ARCHIVE DESTINATION lib)
+install(EXPORT NrosPlatformFreeRtosCTargets
+    NAMESPACE NrosPlatformFreeRtosC::
+    DESTINATION lib/cmake/NrosPlatformFreeRtosC)
