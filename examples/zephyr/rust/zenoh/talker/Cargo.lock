@@ -577,10 +577,8 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
+ "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh-cffi",
  "nros-serdes",
  "paste",
@@ -615,10 +613,7 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
  "nros-rmw-zenoh-cffi",
  "portable-atomic",
 ]
@@ -688,15 +683,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-rmw-xrce"
+name = "nros-rmw-xrce-cffi"
 version = "0.1.0"
 dependencies = [
- "atomic-waker",
- "heapless",
- "nros-platform",
- "nros-rmw",
- "portable-atomic",
- "xrce-sys",
+ "cc",
 ]
 
 [[package]]
@@ -1310,13 +1300,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "xrce-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "zephyr"

@@ -37,7 +37,14 @@ extern "C" {
 #define XRCE_MAX_SERVICE_CLIENTS   4
 #define XRCE_BUFFER_SIZE           1024
 #define XRCE_STREAM_HISTORY        4
+/* Stream buffer sized after the largest MTU compiled in. Embedded
+ * (no_POSIX) builds drop the UDP profile, so fall back to the custom
+ * transport MTU. */
+#if defined(UCLIENT_PROFILE_UDP)
 #define XRCE_STREAM_BUFFER_SIZE    (UXR_CONFIG_UDP_TRANSPORT_MTU * XRCE_STREAM_HISTORY)
+#else
+#define XRCE_STREAM_BUFFER_SIZE    (UXR_CONFIG_CUSTOM_TRANSPORT_MTU * XRCE_STREAM_HISTORY)
+#endif
 #define XRCE_DDS_NAME_BUF_SIZE     128
 #define XRCE_PARTICIPANT_NAME_BUF_SIZE 64
 #define XRCE_ENTITY_CREATION_TIMEOUT_MS 1000
@@ -97,9 +104,14 @@ typedef struct xrce_service_client_slot {
 /* ---- Per-session state ---------------------------------------------- */
 
 struct xrce_session_state {
-    /* Transport — UDP or custom. Only one is live at a time; the
-     * mode is captured at open via the locator scheme. */
+    /* Transport — UDP (POSIX builds only) or custom. Only one is
+     * live at a time; the mode is captured at open via the locator
+     * scheme. Embedded builds drop the UDP profile entirely, so the
+     * field is gated to keep the struct size predictable across
+     * targets. */
+#if defined(UCLIENT_PROFILE_UDP)
     uxrUDPTransport      udp;
+#endif
     uxrCustomTransport   custom;
     bool                 use_custom_transport;
     /* Phase 115.K.2.5.1.2.a-fix-transport — POSIX UDP via custom

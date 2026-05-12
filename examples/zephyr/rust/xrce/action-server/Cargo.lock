@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.61"
+version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
+checksum = "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -439,9 +439,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
+checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "heapless"
@@ -478,7 +478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.0",
+ "hashbrown 0.17.1",
  "serde",
  "serde_core",
 ]
@@ -576,10 +576,9 @@ dependencies = [
  "nros-params",
  "nros-platform",
  "nros-rmw",
- "nros-rmw-dds",
+ "nros-rmw-cffi",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
+ "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh-cffi",
  "nros-serdes",
  "paste",
@@ -613,10 +612,9 @@ dependencies = [
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
- "nros-rmw-dds",
+ "nros-rmw-cffi",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
+ "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh-cffi",
  "portable-atomic",
 ]
@@ -686,15 +684,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-rmw-xrce"
+name = "nros-rmw-xrce-cffi"
 version = "0.1.0"
 dependencies = [
- "atomic-waker",
- "heapless",
- "nros-platform",
- "nros-rmw",
- "portable-atomic",
- "xrce-sys",
+ "cc",
 ]
 
 [[package]]
@@ -735,6 +728,7 @@ dependencies = [
  "heapless",
  "log",
  "nros",
+ "nros-rmw-xrce-cffi",
  "zephyr",
  "zephyr-build",
 ]
@@ -1306,13 +1300,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
-name = "xrce-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "zephyr"
 version = "0.1.0"
 dependencies = [
@@ -1396,3 +1383,7 @@ version = "1.2.2"
 [[patch.unused]]
 name = "unique_identifier_msgs"
 version = "2.2.1"
+
+[[patch.unused]]
+name = "xrce-sys"
+version = "0.1.0"

@@ -209,9 +209,15 @@ if(CONFIG_NROS_C_API)
     if(CONFIG_NROS_RMW_ZENOH)
         set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
-        set(_nros_features "rmw-xrce,platform-zephyr,ros-humble")
+        # Phase 115.K.2.5.1.3-zephyr — XRCE now routes through the C
+        # backend's cffi shim instead of the deleted Rust direct-impl.
+        # `cffi-xrce-c` flips on the auto-register hook inside
+        # `nros_support_init` (mirrors the cyclonedds wiring); the
+        # cffi shim's `platform-zephyr` feature drops every POSIX TU
+        # and emits `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
+        set(_nros_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_features "rmw-dds,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-dds-cffi,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
@@ -257,9 +263,11 @@ if(CONFIG_NROS_CPP_API)
     if(CONFIG_NROS_RMW_ZENOH)
         set(_nros_cpp_features "rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
-        set(_nros_cpp_features "rmw-xrce,platform-zephyr,ros-humble")
+        # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
+        # above: cffi runtime + C backend + Zephyr platform feature.
+        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_cpp_features "rmw-dds,platform-zephyr,ros-humble")
+        set(_nros_cpp_features "rmw-dds-cffi,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)

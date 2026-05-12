@@ -92,4 +92,10 @@ typedef int32_t nros_rmw_ret_t;
 /** Incoming message exceeded the backend's static capacity. */
 #define NROS_RMW_RET_MESSAGE_TOO_LARGE      -13
 
+/** Phase 115.A.2 — caller-supplied versioned struct
+ *  (e.g. `nros_transport_ops_t`) carries an `abi_version` the
+ *  runtime does not understand. The previously installed copy (if
+ *  any) is left untouched. */
+#define NROS_RMW_RET_INCOMPATIBLE_ABI       -14
+
 #endif /* NROS_RMW_RET_H */

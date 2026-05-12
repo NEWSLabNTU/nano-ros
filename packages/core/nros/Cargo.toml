@@ -62,6 +62,7 @@ platform-posix = [
     "nros-node/platform-posix",
     "nros-rmw-dds-cffi?/platform-posix",
     "nros-rmw-zenoh-cffi?/platform-posix",
+    "nros-rmw-xrce-cffi?/platform-posix",
     "platform-udp",
 ]
 platform-zephyr = [
@@ -69,18 +70,21 @@ platform-zephyr = [
     "nros-node/platform-zephyr",
     "nros-rmw-dds-cffi?/platform-zephyr",
     "nros-rmw-zenoh-cffi?/platform-zephyr",
+    "nros-rmw-xrce-cffi?/platform-zephyr",
     "platform-udp",
 ]
 platform-bare-metal = [
     "nros-node/platform-bare-metal",
     "nros-rmw-dds-cffi?/platform-bare-metal",
     "nros-rmw-zenoh-cffi?/platform-bare-metal",
+    "nros-rmw-xrce-cffi?/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",
     "nros-node/platform-freertos",
     "nros-rmw-dds-cffi?/platform-freertos",
     "nros-rmw-zenoh-cffi?/platform-freertos",
+    "nros-rmw-xrce-cffi?/platform-freertos",
     "platform-udp",
 ]
 platform-nuttx = [
@@ -88,6 +92,7 @@ platform-nuttx = [
     "nros-node/platform-nuttx",
     "nros-rmw-dds-cffi?/platform-nuttx",
     "nros-rmw-zenoh-cffi?/platform-nuttx",
+    "nros-rmw-xrce-cffi?/platform-nuttx",
     "platform-udp",
 ]
 platform-threadx = [
@@ -95,6 +100,7 @@ platform-threadx = [
     "nros-node/platform-threadx",
     "nros-rmw-dds-cffi?/platform-threadx",
     "nros-rmw-zenoh-cffi?/platform-threadx",
+    "nros-rmw-xrce-cffi?/platform-threadx",
     "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
