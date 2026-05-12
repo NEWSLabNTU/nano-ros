@@ -1,0 +1,53 @@
+cmake_minimum_required(VERSION 3.20)
+project(nros-platform-nuttx-c
+    VERSION 0.1.0
+    DESCRIPTION "Native C implementation of the nros canonical platform ABI for NuttX (delegates to nros-platform-posix-c)"
+    LANGUAGES C)
+
+# NuttX exposes a POSIX-compatible surface (`pthread_*`, `clock_gettime`,
+# `nanosleep`, `sched_yield`). The Rust `NuttxPlatform` mirrors this by
+# forwarding to `PosixPlatform`; the C port does the same — it compiles
+# the very same source file shipped by `nros-platform-posix-c`. Drop the
+# crate boundary here so there is no chance of the two ports drifting.
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
+    get_filename_component(NROS_PLATFORM_CFFI_INCLUDE
+        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-cffi/include" ABSOLUTE)
+    set(NROS_PLATFORM_CFFI_INCLUDE "${NROS_PLATFORM_CFFI_INCLUDE}"
+        CACHE PATH "Path to nros-platform-cffi include directory")
+endif()
+
+if(NOT DEFINED NROS_PLATFORM_POSIX_C_SOURCE)
+    get_filename_component(NROS_PLATFORM_POSIX_C_SOURCE
+        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-posix-c/src/platform.c"
+        ABSOLUTE)
+    set(NROS_PLATFORM_POSIX_C_SOURCE "${NROS_PLATFORM_POSIX_C_SOURCE}"
+        CACHE FILEPATH "Path to nros-platform-posix-c/src/platform.c")
+endif()
+
+if(NOT EXISTS "${NROS_PLATFORM_POSIX_C_SOURCE}")
+    message(FATAL_ERROR
+        "Cannot find sibling POSIX source; pass -DNROS_PLATFORM_POSIX_C_SOURCE=<path> "
+        "(currently: ${NROS_PLATFORM_POSIX_C_SOURCE})")
+endif()
+
+add_library(nros_platform_nuttx STATIC "${NROS_PLATFORM_POSIX_C_SOURCE}")
+target_include_directories(nros_platform_nuttx PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
+target_compile_options(nros_platform_nuttx PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+# NuttX's libc supplies pthread + libc functions; no extra link required
+# in a NuttX application build (the NuttX build system already pulls
+# them in). For host-side bring-up against the POSIX simulator port,
+# downstream CMake can `target_link_libraries(nros_platform_nuttx
+# PUBLIC Threads::Threads)` after `find_package(Threads)`.
+
+install(TARGETS nros_platform_nuttx
+    EXPORT NrosPlatformNuttxCTargets
+    ARCHIVE DESTINATION lib)
+install(EXPORT NrosPlatformNuttxCTargets
+    NAMESPACE NrosPlatformNuttxC::
+    DESTINATION lib/cmake/NrosPlatformNuttxC)
