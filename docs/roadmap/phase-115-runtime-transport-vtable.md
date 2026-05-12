@@ -1034,69 +1034,72 @@ Ordered easiest → hardest:
   `NrosRmwVtable` is the ABI; the Rust trait is a generic-
   programming convenience layered on top.
 
-- [ ] **115.L.7 — delete dual-path `cfg(any(rmw-*))` glue.**
-  Today every cross-cutting cfg arm in `nros-node` / `nros-c` /
-  `nros-cpp` reads `cfg(any(feature = "rmw-zenoh", feature =
-  "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))`. The
-  legacy three names are redundant once L.5 lands and all
-  in-tree consumers route through `rmw-cffi`.
+- [x] **115.L.7 — delete dual-path `cfg(any(rmw-*))` glue
+  (landed 2026-05-12).** Every cross-cutting cfg arm in
+  `nros-node` / `nros-c` / `nros-cpp` that read
+  `cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature
+  = "rmw-dds", feature = "rmw-cffi"))` now reads plain
+  `cfg(feature = "rmw-cffi")`. `tmp/strip_legacy_cfg.py`
+  mechanically dropped the legacy entries from every `any(…)`
+  list across 11 files and removed standalone
+  `cfg(feature = "rmw-{zenoh,xrce,dds,uorb}")` items
+  unconditionally.
 
-  Sweep targets (audited 2026-05-11):
-  - `packages/core/nros-node/src/session.rs:10-19` — picker
-    for `ConcreteSession`; collapse to a single
-    `#[cfg(feature = "rmw-cffi")] type ConcreteSession =
-    CffiSession;` arm.
-  - `packages/core/nros-node/src/executor/spin.rs:68-119` —
-    three per-backend `drive_io` cfg arms collapse to one
-    `CffiSession::drive_io` call.
-  - `packages/core/nros-c/src/lib.rs:231,233` — the two
-    `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds, rmw-cffi))` gates
-    fold to plain `cfg(feature = "rmw-cffi")`.
-  - `packages/core/nros-c/src/support.rs:140` — single
-    `cfg(feature = "rmw-zenoh")` arm goes away (zenoh now lives
-    behind `cffi-zenoh-cffi`).
-  - `packages/core/nros/src/lib.rs:287-408` — ~20 per-backend
-    re-export arms; collapse to a single cffi arm + maybe a
-    deprecation re-export shim.
-  - `packages/core/nros-node/Cargo.toml` — drop
-    `nros-rmw-zenoh?/...` / `nros-rmw-xrce?/...` /
-    `nros-rmw-dds?/...` from every `platform-*` and
-    `link-*` feature union.
+  Coincident **L.8 sweep also landed**: legacy `rmw-zenoh` /
+  `rmw-xrce` / `rmw-dds` / `rmw-uorb` Cargo features were
+  removed from `nros` + `nros-node` + `nros-c` + `nros-cpp`,
+  along with the optional `dep:nros-rmw-{zenoh,xrce,dds,uorb}`
+  lines. `nros-rmw-uorb` + `nros-px4` Rust crates **deleted**
+  (replaced by `nros-rmw-uorb-cpp` from K.4).
+  `nros-rmw-{zenoh,xrce,dds}` legacy impl crates **stay** in
+  the workspace because the matching `-cffi` shims wrap them
+  via `RustBackendAdapter<R>`; they're internal-only now
+  (zero public Cargo features reach them).
 
-  **Sequencing:** L.7 deletes the cfg arms, but the legacy
-  Cargo features (`rmw-zenoh` / `rmw-xrce` / `rmw-dds`) stay
-  declared in `Cargo.toml` until L.8 fires. After L.7, enabling
-  a legacy feature compiles a no-op crate — same shape as the
-  deprecated-but-still-named selectors `dds-rust` /
-  `zenoh-rust`. **L.7 and L.8 land together** to avoid a
-  release where legacy features exist but silently do nothing.
+  Sweep targets resolved:
+  - `packages/core/nros-node/src/{session,executor/spin}.rs` —
+    cfg arms folded to `rmw-cffi` only.
+  - `packages/core/nros-c/src/lib.rs`,
+    `packages/core/nros-cpp/src/lib.rs`,
+    `packages/core/nros-c/src/{support,executor,parameter,
+    service,lifecycle,action/client}.rs` — same.
+  - `packages/boards/nros-board-{esp32-qemu,mps2-an385,
+    mps2-an385-freertos,stm32f4}/src/lib.rs` — restored after
+    over-strip (board-local `rmw-zenoh` feature gates
+    `zpico-platform-shim` linkage and is unrelated to the
+    deleted nros feature; the mechanical scrub had to be
+    reverted by file).
+  - Workspace Cargo.toml + every consumer Cargo.toml in
+    `packages/{core,testing,reference}/...` and
+    `examples/{native,zephyr,qemu-arm-*,qemu-riscv64-threadx,
+    threadx-linux,esp32}/...` (57 examples migrated in one
+    follow-up commit; 10 DDS QEMU fixtures + 2 STM32 reference
+    crates done in the agent batch before).
 
-  Pre-req: L.6 done (✓ traits stay; nros-node consumers
-  already use the projection bound which resolves to
-  `CffiSession`-derived types regardless of feature).
+  Coupled `*-rust` CMake selectors (`dds-rust` / `zenoh-rust`)
+  remain TBD — see L.8 note below.
 
-- [ ] **115.L.8 — drop `*-rust` deprecation selectors + legacy
-  crates (lands with L.7).** Pre-req: L.5 + L.6 done (both
-  ✓); at least one release shipped with the new defaults +
-  the deprecated selectors so downstream consumers have had a
-  window to migrate.
+- [~] **115.L.8 — drop `*-rust` deprecation selectors (CMake
+  side only).** The Rust-side sweep landed alongside L.7
+  above. The remaining piece is the
+  `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`
+  `*-rust` selectors and their corresponding error messages;
+  these still exist for callers passing `NANO_ROS_RMW=dds-rust`
+  / `NANO_ROS_RMW=zenoh-rust` from cmake. Once the C/C++
+  examples that still use those selectors flip to plain
+  `dds-cffi` / `zenoh-cffi`, drop the selectors + reduce the
+  error-message lists. Low-risk follow-up; safe to ship in a
+  later commit.
 
-  Sweep:
-  - Remove `dds-rust` / `zenoh-rust` selectors from
-    `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`. Reduce
-    the error message accordingly.
-  - Delete `rmw-zenoh` / `rmw-dds` / `rmw-xrce` Cargo features
-    on `nros` + `nros-node`. Drop the corresponding optional
-    `dep:nros-rmw-{zenoh,dds,xrce}` lines.
-  - Delete `nros-rmw-zenoh` / `nros-rmw-dds` / `nros-rmw-xrce`
-    crates from the workspace (mirrors 115.K.2.5.3-deferred for
-    XRCE; Zephyr-side bring-up needed first per K.2.5.1.3
-    notes).
-  - Update `book/src/internals/rmw-backends.md` host-language
-    decision matrix: every backend now reaches the runtime via
-    `nros_rmw_vtable_t`, so the table collapses to "host
-    language = whichever the upstream library prefers; vtable
-    bridge is uniform."
+  Already-done parts of the L.8 sweep:
+  - `rmw-{zenoh,xrce,dds,uorb}` Cargo features deleted from
+    `nros` + `nros-node`. ✓
+  - `dep:nros-rmw-{zenoh,xrce,dds,uorb}` optional deps deleted. ✓
+  - `nros-rmw-uorb` + `nros-px4` Rust crates deleted; replaced
+    by `nros-rmw-uorb-cpp` (K.4.5 SITL-validated). ✓
+  - `book/src/internals/rmw-backends.md` host-language matrix
+    pending update — every backend now reaches the runtime via
+    `nros_rmw_vtable_t`.
 
 ### Tests
 
