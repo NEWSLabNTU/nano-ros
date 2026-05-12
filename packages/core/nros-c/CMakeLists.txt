@@ -17,33 +17,16 @@ endif()
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
     # Phase 115.L.2: `zenoh` selector routes through the C vtable
-    # via `nros-rmw-zenoh-cffi`. The legacy Rust-direct-trait path
-    # is retained behind the `zenoh-rust` selector for a
-    # deprecation window — to be removed once consumers have
-    # migrated.
+    # via `nros-rmw-zenoh-cffi`.
     set(_rmw_features rmw-cffi cffi-zenoh-cffi)
-elseif(NANO_ROS_RMW STREQUAL "zenoh-rust")
-    # Phase 115.L (deprecated): legacy Rust direct-trait path.
-    # Will be removed alongside `nros-rmw-zenoh-cffi` reaching
-    # parity on every transport refinement.
-    set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 115.K.2.5.2: `xrce` now selects the C backend
-    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`) — the project's
-    # canonical XRCE path. Mirrors the cyclonedds wiring: `rmw-cffi`
-    # Rust feature + `NrosRmwXrceC::NrosRmwXrceC` link + the
-    # `NROS_RMW_XRCE_C=1` macro that flips on the auto-register hook.
-    # The legacy Rust `nros-rmw-xrce` crate is being retired in
-    # K.2.5.3.
+    # Phase 115.K.2.5.2: `xrce` selects the C backend
+    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`).
     set(_rmw_features rmw-cffi cffi-xrce-c)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: `dds` selector routes through the C vtable
-    # via `nros-rmw-dds-cffi`. Legacy Rust-direct-trait path
-    # available behind `dds-rust` during the deprecation window.
+    # via `nros-rmw-dds-cffi`.
     set(_rmw_features rmw-cffi cffi-dds-cffi)
-elseif(NANO_ROS_RMW STREQUAL "dds-rust")
-    # Phase 115.L (deprecated): legacy Rust direct-trait path.
-    set(_rmw_features rmw-dds)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS rides the generic `rmw-cffi` axis on
     # the Rust side. Backend wiring + auto-register happens C++-side
@@ -58,8 +41,7 @@ elseif(NANO_ROS_RMW STREQUAL "uorb")
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, "
-        "cyclonedds, or uorb)")
+        "(expected: zenoh, xrce, dds, cyclonedds, or uorb)")
 endif()
 
 # ---- Map platform to Cargo features ----

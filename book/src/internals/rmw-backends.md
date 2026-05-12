@@ -1,137 +1,96 @@
 # RMW Backends — Host-Language Policy
 
 This page documents which language each RMW backend is implemented in,
-and the rule that decides it. The decision matrix is **frozen
-2026-05-07** under Phase 115.K.1; future backends inherit the same rule.
+and the rule that decides it. The matrix was originally frozen
+2026-05-07 under Phase 115.K.1; the L tier (Phase 115.L.7 + L.8,
+landed 2026-05-12) collapsed the public RMW surface so every backend
+now reaches the runtime via the same `nros_rmw_vtable_t` bridge. The
+underlying implementations still ship in whichever language their
+upstream library prefers, but consumers never see that — they only
+see the C vtable.
 
-## The rule
+## The rule (post-115.L)
 
-> **A backend's host language matches its underlying library's native
-> language unless there is a concrete reason otherwise.**
+> **Every backend installs itself via the `nros_rmw_vtable_t`
+> bridge.** The underlying library's host language is an
+> implementation detail of the per-backend `-cffi` shim; it does
+> not appear on the consumer surface.
 
-Concrete reasons that override the default:
-
-- The underlying library is a thin shim around a Rust ecosystem
-  (e.g. `px4-rs` for uORB) — staying in that ecosystem keeps derive
-  macros and async tooling first-class.
-- A port costs more than its expected benefit (existing Rust glue
-  is well-tested, FFI surface is auto-generated, downstream pressure
-  is absent).
+The original rule (a backend's host language matches its underlying
+library's native language unless overridden) is still how we pick
+the inside of each `-cffi` shim — but the shim itself is uniform:
+a small Rust or C++ TU that fills in a vtable and calls
+`nros_rmw_cffi_register(&vtable)` once at startup.
 
 ## Hierarchy
 
 ```
-nros-core (Rust) ──→ Rmw trait
-                        ├──→ dust-dds        (Rust direct impl, no FFI hop)
-                        └──→ nros-rmw-cffi   (C ABI bridge)
-                                ↓ nros_rmw_vtable_t  (Phase 117 — ~17 fn ptrs)
-                                ├──→ cyclonedds       (C++ direct, no Rust)
-                                ├──→ XRCE             (Rust over xrce-sys today;
-                                │                       C native after 115.K.2)
-                                ├──→ zenoh-pico       (Rust over zpico-sys; deferred)
-                                └──→ uORB             (Rust over px4-rs; won't-do)
+nros-core (Rust) ──→ Rmw trait (internal; bridged by RustBackendAdapter<R>)
+                        └──→ nros-rmw-cffi   (C ABI bridge, registry)
+                                ↓ nros_rmw_vtable_t  (~17 fn ptrs)
+                                ├──→ nros-rmw-zenoh-cffi    (wraps Rust nros-rmw-zenoh)
+                                ├──→ nros-rmw-dds-cffi      (wraps Rust nros-rmw-dds)
+                                ├──→ nros-rmw-xrce-cffi     (links C nros-rmw-xrce-c)
+                                ├──→ nros-rmw-cyclonedds    (C++ direct, no Rust)
+                                └──→ nros-rmw-uorb-cpp      (C++ direct, no Rust)
 ```
 
-`nros_rmw_vtable_t` is the canonical RMW backend surface. Any
-language with stable C-ABI interop (C, C++, Zig, Rust, Go-via-cgo,
-Python-via-ctypes…) can implement a backend by filling in the vtable
-and calling `nros_rmw_cffi_register(&vtable)` once at startup.
+The shims are the canonical consumer surface. Public Cargo features
+on `nros` / `nros-c` / `nros-cpp` (`rmw-{zenoh,dds,xrce}-cffi`,
+`cffi-{zenoh-cffi,dds-cffi,xrce-c}`) all route through the same
+`nros_rmw_vtable_t` runtime. The pre-L.7 direct-Rust-trait features
+(`rmw-zenoh`, `rmw-dds`, `rmw-xrce`, `rmw-uorb`) are gone.
 
-The Phase 115 transport vtable (`NrosTransportOps`) is a sub-case:
-backends consume it on top of their own RMW vtable when they want
-runtime-pluggable byte pipes.
+Any language with stable C-ABI interop (C, C++, Zig, Rust,
+Go-via-cgo, Python-via-ctypes…) can implement a backend by filling
+in the vtable and calling `nros_rmw_cffi_register(&vtable)` once at
+startup.
 
-## Decision matrix
+## Decision matrix (post-115.L)
 
-| Backend | Underlying lib | Underlying lang | Host today | Host policy | Verdict |
-|---------|----------------|-----------------|------------|-------------|---------|
-| dust-dds | dust-dds | Rust | Rust (`Rmw` trait direct) | Rust | keep |
-| cyclonedds | Cyclone DDS | C / C++ | C++ via vtable | C++ | keep |
-| **XRCE** | micro-XRCE-DDS-Client | C | Rust over `xrce-sys` | **C via vtable** | **port (115.K.2)** |
-| zenoh-pico | zenoh-pico | C | Rust over `zpico-sys` | C/C++ via vtable | defer (115.K.3) |
-| uORB | PX4 / `px4-rs` | C++ via Rust derive layer | Rust over `px4-rs` | Rust | won't-do (115.K.4) |
+| Backend | Underlying lib | Underlying lang | Shim crate | Verdict |
+|---------|----------------|-----------------|------------|---------|
+| dust-DDS | dust-dds | Rust | `nros-rmw-dds-cffi` (Rust → vtable via `RustBackendAdapter<DdsRmw>`) | keep |
+| Cyclone DDS | Cyclone DDS | C / C++ | `nros-rmw-cyclonedds` (C++ direct vtable) | keep |
+| XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce-c` static lib; 115.K.2 ported) | keep |
+| zenoh-pico | zenoh-pico | C | `nros-rmw-zenoh-cffi` (Rust → vtable via `RustBackendAdapter<ZenohRmw>`) | keep |
+| uORB | PX4 module SDK | C++ | `nros-rmw-uorb-cpp` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
 
-### dust-dds — keep Rust
+### Rust-backend cffi shape
 
-dust-dds is a Rust crate. The natural backend implements the `Rmw`
-trait directly with no FFI hop. No reason to introduce a C ABI here.
+For backends whose upstream library is Rust (dust-DDS, zenoh-pico)
+the cffi shim ships as a tiny crate that calls
+`RustBackendAdapter::<UnderlyingRmw>::register()`. The adapter
+monomorphizes a static `nros_rmw_vtable_t` over the Rust `Rmw`
+trait impl and installs it into the C registry. Consumer code never
+sees the trait surface; it only sees the vtable.
 
-### Cyclone DDS — keep C++
+The legacy direct-Rust-trait crates (`nros-rmw-zenoh`,
+`nros-rmw-dds`, `nros-rmw-xrce`) stay in the workspace as
+internal-only implementation libs of these shims. They have no
+public Cargo feature reaching them after Phase 115.L.7.
 
-Cyclone DDS ships a C/C++ public API. The Phase 117 backend
-(`packages/dds/nros-rmw-cyclonedds`) is a 1.7 kLOC C++ static lib
-that implements `nros_rmw_vtable_t` over Cyclone's C entities. No
-Rust glue, no `-sys` crate, no FFI marshalling.
+### C-/C++-backend cffi shape
 
-### XRCE — port to C (115.K.2)
-
-micro-XRCE-DDS-Client is a small, stable C library. The micro-ROS
-reference impl is C. Today's `nros-rmw-xrce` is ~3 kLOC of Rust
-sitting on ~4.4 kLOC of auto-generated `xrce-sys` bindings; a C
-backend implementing `nros_rmw_vtable_t` directly over `uxr_*`
-would be ~2 kLOC C, mirroring the Cyclone DDS layout.
-
-ROI is high enough that the port is queued as Phase 115.K.2. It is
-the only active code item in the K tier — the rest are policy or
-tracking-only.
-
-### zenoh-pico — defer (115.K.3)
-
-zenoh-pico is a C library. By the rule, the canonical backend is
-C/C++. But the cost-benefit doesn't pencil out today:
-
-- The Rust glue is small (1.5 kLOC `nros-rmw-zenoh`); the bulk of
-  the dep tree (~14 kLOC across `zpico-sys` + `zpico-platform-shim`
-  + `zpico-platform-custom`) is auto-generated FFI plus a load-
-  bearing platform-abstraction layer.
-- `zpico-platform-shim` does compile-time per-platform socket-size
-  probing via `cc::Build`. Replicating that in a pure-C backend
-  means re-deriving the probe — non-trivial.
-- The zenoh path is the most-tested backend in the project. Every
-  QEMU + bare-metal + RTOS example exercises it. A rewrite would
-  reset the verification clock.
-
-Re-eval triggers (any one re-opens K.3):
-
-1. Upstream micro-ROS ships a zenoh-pico binding the project wants
-   to align with.
-2. A deployment surfaces concrete Rust-on-RTOS flash-size or
-   boot-time pressure that a C rewrite would meaningfully cut.
-3. `zpico-sys` breaks under a zenoh-pico bump in a way that costs
-   more to fix than to rewrite.
-
-Until then: tracking-only entry, no rewrite work.
-
-### uORB — won't-do (115.K.4)
-
-uORB sits in a different category from the network RMWs. It runs
-**in-process** inside a PX4 module — there is no transport layer,
-no discovery, no wire format. The host-language rule pulls toward
-C++ (PX4 modules are C++), but the override applies:
-
-- `px4-rs` provides PX4 module init macros, topic-registration
-  derive macros, and async workqueue integration. Those idioms are
-  the value `nros-rmw-uorb` brings; without them the user is back
-  to writing native PX4 modules.
-- A C++ backend would have to re-implement the derive-macro
-  ergonomics in a C++ shape that does not exist yet upstream.
-- nros-rmw-uorb is 878 LOC. The thinnest backend in the project.
-
-Net cost very high, net benefit low. Closed as won't-do; this
-file is the canonical location of that decision.
+For backends whose upstream library is C/C++ (Cyclone DDS, uORB,
+XRCE) the cffi shim is a standalone CMake project that builds a
+static C/C++ library and registers a `nros_rmw_vtable_t` at startup
+via `nros_rmw_cffi_register`. No `RustBackendAdapter` is involved.
+The Rust runtime sees these via the same registry; the
+`NANO_ROS_RMW=<name>` CMake selector flips a build-time macro that
+ensures the register call is wired into `nros::init`.
 
 ## When to revisit
 
 This matrix is a snapshot. Update it when any backend's situation
 changes:
 
-- A new backend lands → add a row + verdict + rationale.
+- A new backend lands → add a row + shim-crate + verdict.
 - An existing backend's underlying library changes language (e.g.
-  zenoh-pico ships a Rust port upstream) → re-derive the verdict.
-- A re-eval trigger fires for a deferred entry (115.K.3) → flip
-  the verdict and open a phase to do the work.
+  zenoh-pico ships a Rust port upstream) → swap the shim shape
+  (Rust adapter vs. C/C++ direct) but the vtable bridge stays.
 
-The rule itself stays. Only per-backend verdicts move.
+The rule stays. Only per-backend verdicts and shim shapes move.
 
 ## See also
 
@@ -142,3 +101,5 @@ The rule itself stays. Only per-backend verdicts move.
   RMW vtable.
 - `packages/dds/nros-rmw-cyclonedds/` — reference layout for the
   C++ vtable consumer (Phase 117).
+- `packages/px4/nros-rmw-uorb-cpp/` — reference layout for the
+  C++ vtable consumer with PX4 SDK integration (Phase 115.K.4).

@@ -1079,27 +1079,28 @@ Ordered easiest → hardest:
   Coupled `*-rust` CMake selectors (`dds-rust` / `zenoh-rust`)
   remain TBD — see L.8 note below.
 
-- [~] **115.L.8 — drop `*-rust` deprecation selectors (CMake
-  side only).** The Rust-side sweep landed alongside L.7
-  above. The remaining piece is the
-  `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`
-  `*-rust` selectors and their corresponding error messages;
-  these still exist for callers passing `NANO_ROS_RMW=dds-rust`
-  / `NANO_ROS_RMW=zenoh-rust` from cmake. Once the C/C++
-  examples that still use those selectors flip to plain
-  `dds-cffi` / `zenoh-cffi`, drop the selectors + reduce the
-  error-message lists. Low-risk follow-up; safe to ship in a
-  later commit.
+- [x] **115.L.8 — drop `*-rust` deprecation selectors
+  (landed 2026-05-12).** The full sweep landed in two parts:
 
-  Already-done parts of the L.8 sweep:
+  Rust-side (commit `392c28da`):
   - `rmw-{zenoh,xrce,dds,uorb}` Cargo features deleted from
     `nros` + `nros-node`. ✓
-  - `dep:nros-rmw-{zenoh,xrce,dds,uorb}` optional deps deleted. ✓
+  - `dep:nros-rmw-{zenoh,xrce,dds,uorb}` optional deps
+    deleted. ✓
   - `nros-rmw-uorb` + `nros-px4` Rust crates deleted; replaced
     by `nros-rmw-uorb-cpp` (K.4.5 SITL-validated). ✓
+
+  CMake-side (this commit):
+  - `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`
+    `dds-rust` / `zenoh-rust` selectors removed.
+  - The error-message list updates to
+    `(expected: zenoh, xrce, dds, cyclonedds, or uorb)`.
+
+  Outstanding doc follow-up:
   - `book/src/internals/rmw-backends.md` host-language matrix
-    pending update — every backend now reaches the runtime via
-    `nros_rmw_vtable_t`.
+    update — every backend now reaches the runtime via
+    `nros_rmw_vtable_t`; the per-backend host-language column
+    collapses.
 
 ### Tests
 

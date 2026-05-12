@@ -16,46 +16,34 @@ endif()
 
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
-    # Phase 115.L.2: `zenoh` now routes through the C vtable via
-    # `nros-rmw-zenoh-cffi`. Legacy Rust-direct path retained
-    # under `zenoh-rust` for a deprecation window.
+    # Phase 115.L.2: `zenoh` routes through the C vtable via
+    # `nros-rmw-zenoh-cffi`.
     set(_rmw_features rmw-zenoh-cffi)
-elseif(NANO_ROS_RMW STREQUAL "zenoh-rust")
-    # Phase 115.L (deprecated): Rust direct trait impl.
-    set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 115.K.2.5.2: `xrce` now selects the C backend
-    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`). Mirrors the
-    # cyclonedds path — `rmw-cffi` Rust feature plus
-    # `NrosRmwXrceC::NrosRmwXrceC` link + `NROS_RMW_XRCE_C=1` for the
-    # auto-register hook (see the corresponding find_package +
-    # link block below).
+    # Phase 115.K.2.5.2: `xrce` selects the C backend
+    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`).
     set(_rmw_features rmw-cffi)
 elseif(NANO_ROS_RMW STREQUAL "dds")
-    # Phase 115.L.1: `dds` now routes through the C vtable via
-    # `nros-rmw-dds-cffi`. Legacy `dds-rust` selector retained.
+    # Phase 115.L.1: `dds` routes through the C vtable via
+    # `nros-rmw-dds-cffi`.
     set(_rmw_features rmw-dds-cffi)
-elseif(NANO_ROS_RMW STREQUAL "dds-rust")
-    # Phase 115.L (deprecated): Rust direct trait impl.
-    set(_rmw_features rmw-dds)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS backend lives behind the `rmw-cffi`
-    # Rust feature axis (the nano-ros runtime sees it as a generic
-    # "registered C ABI vtable backend"). The actual Cyclone wiring
-    # comes from linking `NrosRmwCyclonedds::NrosRmwCyclonedds` below;
-    # `NROS_RMW_CYCLONEDDS=1` flips on the auto-register call inside
-    # `nros::init`.
+    # Rust feature axis. The actual Cyclone wiring comes from
+    # linking `NrosRmwCyclonedds::NrosRmwCyclonedds` below;
+    # `NROS_RMW_CYCLONEDDS=1` flips on the auto-register call
+    # inside `nros::init`.
     set(_rmw_features rmw-cffi)
 elseif(NANO_ROS_RMW STREQUAL "uorb")
-    # Phase 115.K.4: PX4 uORB backend — C++ port replacing the
-    # legacy Rust `nros-rmw-uorb`. Rust runtime sees the same
-    # `rmw-cffi` axis; the C++ static lib registers its vtable via
-    # `nros_rmw_uorb_register()` inside the `nros::init` hook below.
+    # Phase 115.K.4: PX4 uORB backend — C++ port. Rust runtime
+    # sees the same `rmw-cffi` axis; the C++ static lib registers
+    # its vtable via `nros_rmw_uorb_register()` inside the
+    # `nros::init` hook below.
     set(_rmw_features rmw-cffi)
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, zenoh-rust, xrce, dds, dds-rust, or cyclonedds)")
+        "(expected: zenoh, xrce, dds, cyclonedds, or uorb)")
 endif()
 
 # ---- Map platform to Cargo features ----
