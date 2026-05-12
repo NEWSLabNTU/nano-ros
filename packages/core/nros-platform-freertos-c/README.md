@@ -34,6 +34,16 @@ The parent build must declare two imported CMake targets:
 
 Both shapes are common: vanilla FreeRTOS-Kernel checkouts ship a CMake target named `freertos_kernel`; vendor SDKs name it differently. The defaults assume the vanilla naming.
 
+### `FreeRTOSConfig.h` requirements
+
+`task_join` polls `eTaskGetState`, so the config target must define:
+
+```c
+#define INCLUDE_eTaskGetState    1
+```
+
+Without it the C file fails to compile (`eTaskGetState` is gated by an `#if`).
+
 ## License
 
 Apache-2.0 or MIT at your option.
