@@ -26,7 +26,6 @@ fn main() {
 
     // Phase 115.K.2.5.1.5-serial — register the C XRCE backend's
     // vtable before opening the session. Idempotent.
-    nros_rmw_xrce_cffi::register().expect("nros_rmw_xrce_cffi::register");
 
     // The C backend's `session.c` parses `serial://<path>` (or a bare
     // `/dev/...` path) and routes to `xrce_posix_serial_init`. Wrap

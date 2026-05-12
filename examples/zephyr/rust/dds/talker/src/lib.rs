@@ -37,7 +37,6 @@ fn run() -> Result<(), NodeError> {
     // and let dust-dds derive the RTPS port set from the domain id.
     let config = ExecutorConfig::new("").domain_id(0).node_name("talker");
     // Phase 115.L.5-zephyr — install dds C-vtable backend.
-    nros_rmw_dds::register().expect("dds RMW register failed");
 
     let mut executor: Executor = Executor::open(&config)?;
 

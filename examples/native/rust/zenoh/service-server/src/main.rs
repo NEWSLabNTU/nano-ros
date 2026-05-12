@@ -29,7 +29,6 @@ fn main() {
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("add_two_ints_server");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 

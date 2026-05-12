@@ -44,6 +44,14 @@ use super::{
 impl Executor {
     /// Open a new executor session using the active RMW backend.
     ///
+    /// Phase 115.M.4 — auto-registers the cffi vtable for whichever
+    /// backend the build was configured for, mirroring the C++ side's
+    /// `#ifdef NROS_RMW_<NAME>` fan-out in `<nros/node.hpp>`. The
+    /// runtime's atomic vtable slot is idempotent: a re-call of any
+    /// backend's `register()` is a no-op, so the fan-out below is safe
+    /// to invoke on every `Executor::open` (cheaper than a `Once` and
+    /// doesn't pull in `std::sync` for no_std targets).
+    ///
     /// Connects to the middleware at the locator specified in `config`.
     ///
     /// # Example
@@ -54,6 +62,8 @@ impl Executor {
     /// ```
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
+
+        register_active_backend()?;
 
         let rmw_config = nros_rmw::RmwConfig {
             locator: config.locator,
@@ -70,6 +80,32 @@ impl Executor {
         executor.set_node_identity(config.node_name, config.namespace);
         Ok(executor)
     }
+}
+
+/// Phase 115.M.4 — register the active backend's cffi vtable. Each
+/// arm below is compile-time-gated on the backend's public feature
+/// flag; consumers that enable e.g. `rmw-zenoh-cffi` pick up the
+/// matching `register()` automatically. Cyclone DDS and uORB (C/C++
+/// backends with no Rust caller) are registered via the C++ side's
+/// `nros::init` hook instead — see `nros-cpp/include/nros/node.hpp`.
+#[cfg(feature = "rmw-cffi")]
+fn register_active_backend() -> Result<(), NodeError> {
+    #[cfg(feature = "rmw-zenoh-cffi")]
+    {
+        nros_rmw_zenoh::register()
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+    }
+    #[cfg(feature = "rmw-dds-cffi")]
+    {
+        nros_rmw_dds::register()
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+    }
+    #[cfg(feature = "rmw-xrce-cffi")]
+    {
+        nros_rmw_xrce_cffi::register()
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+    }
+    Ok(())
 }
 
 // ============================================================================

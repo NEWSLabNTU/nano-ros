@@ -17,6 +17,5 @@ unsafe extern "C" {
 fn main() {
     // Phase 115.L.x — install zenoh-pico C-vtable backend before
     // the C/C++ entry point opens its nros session.
-    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
     unsafe { app_main() };
 }
