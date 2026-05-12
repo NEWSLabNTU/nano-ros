@@ -1,4 +1,4 @@
-# Phase 121 — Unify C / C++ / Rust API code paths
+# Phase 122 — Unify C / C++ / Rust API code paths
 
 **Goal:** Eliminate code-path divergence between Rust user-facing API
 and the path C/C++ wrappers invoke internally. Reduce test-surface
