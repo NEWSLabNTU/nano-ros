@@ -408,6 +408,39 @@ out-of-bounds buffer write lands in the .bss gap.
 - Else: bisect by removing fields from the action server's
   buffer slabs to find which write goes out of bounds.
 
+**Hypothesis-1 result (verified):** `ActionServer` address is
+`0x800554b8` (size 5896 B) — in `byte_pool_storage` (= app_thread's
+ThreadX-allocated stack region). NOT in `.bss` / TX-globals.
+ActionServer placement is legitimate; the buffer slabs aren't the
+SP-corruption source.
+
+### Why C vs Rust take different paths inside nros-node
+
+The CLAUDE.md says "C API: thin wrapper delegates to nros-node".
+The wrapper IS thin — but it delegates to a **different nros-node
+entry point** than the Rust example uses:
+
+| | Rust example | C example (nros-c thin wrapper) |
+|---|---|---|
+| User-facing API | `node.create_action_server::<A>(name)` | `nros_action_server_init` + `nros_executor_add_action_server` |
+| Internal nros-node call | `Node::create_action_server_sized` (manual-poll) | `Executor::add_action_server_raw_sized` (callback model + arena) |
+| ActionServer storage | returned by value, lives on caller's stack | inside `Executor.arena[slot]` (16 KB inline buffer in `Executor`) |
+| App loop pattern | `try_accept_goal()` + `spin_once()` | `nros_executor_spin_some()` which dispatches via callbacks |
+
+Both create the same 6 zenoh entities (3 queryables + 2 publishers
++ status publisher) with the same node identity, so wire-level
+state is identical. The CRUD difference is the **post-handshake
+spin loop**: arena-based callback dispatch on the C side vs
+explicit `try_*` polling on the Rust side. The .bss-gap SP
+corruption is somewhere in **the Rust manual-poll spin loop**.
+
+A clean re-test would be to write a Rust example that uses
+`executor.add_action_server` (= callback model, same Rust path C
+ultimately calls). If that passes the rv64 test, the bug is
+narrowed to the manual-poll-specific path; if it fails, the bug
+is in the Rust→C calling-convention layer common to both Rust
+paths.
+
 ### Next: identify the bad STORE
 
 Watch for any STORE to addresses `0x800380c0..0x80039000` (the
