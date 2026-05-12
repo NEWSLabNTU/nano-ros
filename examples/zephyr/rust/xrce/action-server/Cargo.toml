@@ -24,7 +24,8 @@ log = "0.4"
 heapless = "0.8"
 
 # nros unified API (patched to local via .cargo/config.toml)
-nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+nros = { version = "*", default-features = false, features = ["rmw-xrce-cffi", "platform-zephyr"] }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }
 
 # Generated message types (patched to local via .cargo/config.toml)
 example_interfaces = { version = "*", default-features = false }

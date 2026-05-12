@@ -11,7 +11,7 @@ name = "nros_board_mps2_an385"
 [dependencies]
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-mps2-an385 = { path = "../../platforms/nros-platform-mps2-an385" }
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
 # Phase 97.3.mps2-an385 — `smoltcp_clock_now_ms` extern shim needs the
 # trait import. Only used inside the cfg-gated forwarder in lib.rs.
 nros-platform-api = { path = "../../core/nros-platform-api" }

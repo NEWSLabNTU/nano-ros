@@ -137,7 +137,10 @@ impl<
         // expected condition — collapse it to `Ok(None)` instead of
         // surfacing as ServiceRequestFailed. Any other transport
         // error remains ServiceRequestFailed.
-        let request = match self.send_goal_server.try_recv_request(&mut self.goal_buffer) {
+        let request = match self
+            .send_goal_server
+            .try_recv_request(&mut self.goal_buffer)
+        {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),

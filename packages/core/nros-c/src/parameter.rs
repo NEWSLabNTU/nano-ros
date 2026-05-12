@@ -762,10 +762,7 @@ pub unsafe extern "C" fn nros_param_server_fini(server: *mut nros_param_server_t
 // The RMW backend must be compiled in (`rmw-zenoh` or `rmw-xrce`) because
 // the Executor type is only defined under those features.
 
-#[cfg(all(
-    feature = "param-services",
-    feature = "rmw-cffi"
-))]
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 mod service_backed {
     use super::*;
     use crate::executor::{get_executor, nros_executor_t};
@@ -1011,10 +1008,7 @@ mod service_backed {
     }
 }
 
-#[cfg(all(
-    feature = "param-services",
-    feature = "rmw-cffi"
-))]
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 pub use service_backed::*;
 
 #[cfg(test)]

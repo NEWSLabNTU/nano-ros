@@ -12,6 +12,8 @@ fn main() {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_server");
+        // Phase 115.L.x — install C-vtable backend before session open.
+        nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
         let mut executor: Executor = Executor::open(&exec_config)?;
 
         println!("Registering service: /add_two_ints (AddTwoInts)");

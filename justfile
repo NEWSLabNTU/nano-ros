@@ -540,11 +540,23 @@ format-workspace:
     cargo +{{NIGHTLY}} fmt
 
 # Check workspace: formatting and clippy (no_std, native)
-# nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
+# nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std).
+# nros-rmw-{zenoh,dds,xrce}-cffi excluded because their `*Rmw` type
+# imports are platform-feature-gated by the underlying impl crate
+# (e.g. `ZenohRmw` only exists when one of `platform-{posix,zephyr,…}`
+# is on). `--no-default-features --workspace` strips every feature
+# from every member at once, so the cffi shim's `RustBackendAdapter<R>`
+# can't resolve its type parameter. Real consumers always specify
+# a platform; the per-feature combinations are covered by
+# `check-workspace-features` further down.
 [private]
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
-    cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp
+    cargo clippy --workspace --no-default-features \
+        --exclude nros-c --exclude nros-cpp \
+        --exclude nros-rmw-zenoh-cffi \
+        --exclude nros-rmw-dds-cffi \
+        --exclude nros-rmw-xrce-cffi
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -564,7 +576,9 @@ check-workspace-embedded:
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
         --exclude nros-rmw-xrce-c \
-        --exclude nros-rmw-xrce-cffi
+        --exclude nros-rmw-xrce-cffi \
+        --exclude nros-rmw-zenoh-cffi \
+        --exclude nros-rmw-dds-cffi
 
 # Check workspace with various feature combinations
 [private]
@@ -575,7 +589,7 @@ check-workspace-features:
     @echo "  - nros: zenoh-cffi + posix + iron"
     cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
-    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
+    cargo clippy -p nros-c --no-default-features --features "std,cffi-zenoh-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
     cargo clippy -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
