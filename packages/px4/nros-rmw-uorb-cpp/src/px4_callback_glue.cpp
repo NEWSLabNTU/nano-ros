@@ -143,48 +143,29 @@ CallbackAdapter *find_by_handle(int handle) {
 
 extern "C" {
 
-int nros_orb_register_callback(int handle, nros_orb_callback_t cb, void *arg) {
-    // The data-plane only has the handle at this point; metadata for
-    // PX4's compositional API would need to be threaded through. Until
-    // the runtime adds a (meta, instance) channel, decline the
-    // registration. Subscriber falls back to the polling path.
-    //
-    // NOTE: leaving this as a stub on the strong-symbol side keeps the
-    // K.4.5 SITL build honest — the glue compiles, links, and the
-    // class hierarchy is exercised by the compiler; runtime push-wake
-    // remains gated on the subscriber-side ABI extension.
-    (void)handle;
-    (void)cb;
-    (void)arg;
-    return -1;
-}
-
-int nros_orb_unregister_callback(int handle) {
-    CallbackAdapter *slot = find_by_handle(handle);
-    if (slot == nullptr) {
-        return 0;
-    }
-    slot->uninstall();
-    return 0;
-}
-
-// Internal hook for a future (meta, instance)-aware register ABI.
-// Referenced from the C-side once `SubscriberState` carries
-// metadata + instance through. Today the symbol just keeps the
-// pool's install path linked and type-checked.
-int nros_orb_register_callback_with_meta(const struct orb_metadata *meta,
-                                         uint8_t instance,
-                                         int handle,
-                                         nros_orb_callback_t cb,
-                                         void *arg) {
+int nros_orb_register_callback(const struct orb_metadata *meta,
+                               uint8_t instance,
+                               int handle,
+                               nros_orb_callback_t cb,
+                               void *arg) {
     if (meta == nullptr || cb == nullptr || handle < 0) {
         return -1;
     }
     CallbackAdapter *slot = find_free_or_construct();
     if (slot == nullptr) {
+        // Pool exhausted. Caller falls back to polling.
         return -1;
     }
     return slot->install(meta, instance, handle, cb, arg) ? 0 : -1;
+}
+
+int nros_orb_unregister_callback(int handle) {
+    CallbackAdapter *slot = find_by_handle(handle);
+    if (slot == nullptr) {
+        return 0; // idempotent: not-found counts as success
+    }
+    slot->uninstall();
+    return 0;
 }
 
 } // extern "C"

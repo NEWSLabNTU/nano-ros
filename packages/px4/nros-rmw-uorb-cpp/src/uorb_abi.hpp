@@ -79,9 +79,16 @@ int orb_check(int handle, bool *updated);
  *  flip an atomic flag and return. */
 typedef void (*nros_orb_callback_t)(void *arg);
 
-/** Register a push-wake callback on a uORB subscription handle.
+/** Register a push-wake callback on a uORB subscription.
  *  Returns 0 on success, negative on failure (e.g. PX4 build was
  *  configured without callback support).
+ *
+ *  PX4's `SubscriptionCallbackWorkItem` is constructed from
+ *  `(meta, instance)`, not the subscription handle that
+ *  `orb_subscribe_multi` returns — the broker derives the
+ *  subscription internally from the metadata. We mirror that
+ *  shape here; the handle parameter is the bookkeeping key the
+ *  data plane uses on `unregister_callback`.
  *
  *  The shim defines this function. Two paths:
  *   - PX4 path (NROS_RMW_UORB_USE_PX4_HEADER): wraps
@@ -91,11 +98,13 @@ typedef void (*nros_orb_callback_t)(void *arg);
  *   - Standalone path: weak default that returns -1 (unsupported).
  *     The test driver provides a strong override that stashes
  *     (cb, arg) so the test can fire the callback synthetically. */
-int nros_orb_register_callback(int handle,
+int nros_orb_register_callback(const struct orb_metadata *meta,
+                               uint8_t instance,
+                               int handle,
                                nros_orb_callback_t cb, void *arg);
 
-/** Unregister a previously-installed callback. Returns 0 on
- *  success. NULL `handle` is a no-op. */
+/** Unregister a previously-installed callback by handle. Returns
+ *  0 on success. Unknown handle is a no-op (returns 0). */
 int nros_orb_unregister_callback(int handle);
 
 } // extern "C"
@@ -106,7 +115,9 @@ int nros_orb_unregister_callback(int handle);
 
 extern "C" {
 typedef void (*nros_orb_callback_t)(void *arg);
-int nros_orb_register_callback(int handle,
+int nros_orb_register_callback(const struct orb_metadata *meta,
+                               uint8_t instance,
+                               int handle,
                                nros_orb_callback_t cb, void *arg);
 int nros_orb_unregister_callback(int handle);
 }
