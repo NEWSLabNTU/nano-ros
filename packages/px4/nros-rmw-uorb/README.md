@@ -1,4 +1,4 @@
-# nros-rmw-uorb-cpp
+# nros-rmw-uorb
 
 Phase 115.K.4 — C++ port of `nros-rmw-uorb` (the previous Rust
 implementation, slated for retirement once this backend reaches
@@ -7,7 +7,7 @@ parity).
 ## Layout
 
 ```
-packages/px4/nros-rmw-uorb-cpp/
+packages/px4/nros-rmw-uorb/
 ├── CMakeLists.txt          standalone CMake project
 ├── cmake/
 │   └── NrosRmwUorbConfig.cmake.in
@@ -29,10 +29,10 @@ packages/px4/nros-rmw-uorb-cpp/
 Standalone (smoke test only):
 
 ```bash
-cmake -S packages/px4/nros-rmw-uorb-cpp -B build/nros-rmw-uorb-cpp \
+cmake -S packages/px4/nros-rmw-uorb -B build/nros-rmw-uorb \
     -DNROS_RMW_CFFI_DIR=$PWD/packages/core/nros-rmw-cffi/include
-cmake --build build/nros-rmw-uorb-cpp
-./build/nros-rmw-uorb-cpp/nros_rmw_uorb_register_smoke
+cmake --build build/nros-rmw-uorb
+./build/nros-rmw-uorb/nros_rmw_uorb_register_smoke
 ```
 
 Inside a PX4 module (K.4.1 onward):

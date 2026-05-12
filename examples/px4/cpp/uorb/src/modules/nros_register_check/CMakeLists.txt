@@ -1,6 +1,6 @@
-# Phase 115.K.4.5 — PX4-SITL validation module for nros-rmw-uorb-cpp.
+# Phase 115.K.4.5 — PX4-SITL validation module for nros-rmw-uorb.
 #
-# Compiles the C++ uORB RMW backend (`packages/px4/nros-rmw-uorb-cpp/`)
+# Compiles the C++ uORB RMW backend (`packages/px4/nros-rmw-uorb/`)
 # inline into a PX4 module so that:
 #   - The core data-plane sources see real `<uORB/uORB.h>` declarations.
 #   - The push-wake glue (`px4_callback_glue.cpp`) sees real
@@ -14,17 +14,17 @@
 #
 # This is the only build path that exercises the K.4.2-sub-push glue
 # end-to-end against real PX4 sources; the standalone smoke under
-# `packages/px4/nros-rmw-uorb-cpp/tests/register_smoke.cpp` covers the
+# `packages/px4/nros-rmw-uorb/tests/register_smoke.cpp` covers the
 # pure data-plane via a mock uORB ABI.
 
 set(NROS_RMW_UORB_CPP_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../../../../../../packages/px4/nros-rmw-uorb-cpp)
+    ${CMAKE_CURRENT_LIST_DIR}/../../../../../../../packages/px4/nros-rmw-uorb)
 set(NROS_RMW_CFFI_INCLUDE_DIR
     ${CMAKE_CURRENT_LIST_DIR}/../../../../../../../packages/core/nros-rmw-cffi/include)
 
 if(NOT EXISTS "${NROS_RMW_UORB_CPP_DIR}/src/vtable.cpp")
     message(FATAL_ERROR
-        "nros-rmw-uorb-cpp sources not found at NROS_RMW_UORB_CPP_DIR='${NROS_RMW_UORB_CPP_DIR}'")
+        "nros-rmw-uorb sources not found at NROS_RMW_UORB_CPP_DIR='${NROS_RMW_UORB_CPP_DIR}'")
 endif()
 if(NOT EXISTS "${NROS_RMW_CFFI_INCLUDE_DIR}/nros/rmw_vtable.h")
     message(FATAL_ERROR

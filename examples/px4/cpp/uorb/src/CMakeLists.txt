@@ -8,7 +8,7 @@
 #
 # Today this tree carries a single module — `nros_register_check` —
 # which is the Phase 115.K.4.5 validation gate: it links the
-# `nros-rmw-uorb-cpp` static library (including the
+# `nros-rmw-uorb` static library (including the
 # `SubscriptionCallbackWorkItem` push-wake glue) inside a real PX4
 # SITL build and confirms `nros_rmw_uorb_register()` succeeds.
 

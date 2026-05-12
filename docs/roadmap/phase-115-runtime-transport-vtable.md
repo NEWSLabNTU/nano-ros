@@ -1158,6 +1158,60 @@ Ordered easiest → hardest:
     `nros_rmw_vtable_t`; the per-backend host-language column
     collapses.
 
+- [~] **115.M — unify per-backend package shape.**
+  Cosmetic / convergence sweep flagged after the L.7 dust
+  settled: today's per-backend packages have three different
+  shapes, the third (XRCE) being a wart. Unify on the rule:
+
+  - **Rust-impl backend** → two Cargo crates:
+    `nros-rmw-{name}` (Rust trait impl) +
+    `nros-rmw-{name}-cffi` (Rust shim, monomorphises
+    `RustBackendAdapter<*Rmw>`).
+  - **C/C++-impl backend** → one CMake package
+    `nros-rmw-{name}` shipping a static lib + cmake-config.
+    Rust callers (when they exist) consume it via an optional
+    tiny `nros-rmw-{name}-sys` Cargo crate that finds the
+    install via env var / `find_package` — no source
+    recompile.
+
+  Wart to fix: `nros-rmw-xrce-c` (CMake) +
+  `nros-rmw-xrce-cffi` (Cargo `cc::Build` recompile of the
+  same C sources). Drift risk between the two; redundant
+  compile.
+
+  Sub-items:
+  - [x] **115.M.1 — rename `nros-rmw-uorb-cpp` →
+    `nros-rmw-uorb`.** Legacy Rust `nros-rmw-uorb` deleted in
+    K.4.5 (commit `392c28da`), so the `-cpp` disambiguator is
+    no longer needed. Internal CMake target name + public
+    `find_package(NrosRmwUorb)` already drop the `-cpp` —
+    only the directory + a few path references to update.
+
+  - [ ] **115.M.2 — XRCE convergence.** Replace today's
+    `nros-rmw-xrce-c` (CMake) + `nros-rmw-xrce-cffi` (Cargo
+    `cc::Build`) pair with:
+    1. `packages/xrce/nros-rmw-xrce/` — standalone CMake
+       project, source-of-truth for the C sources. Builds a
+       static lib + ships `find_package(NrosRmwXrce)`
+       cmake-config. Mirrors `packages/dds/nros-rmw-cyclonedds/`.
+    2. `packages/xrce/nros-rmw-xrce-sys/` — Cargo crate
+       consumed by Rust XRCE examples. `build.rs` finds the
+       install via `NROS_RMW_XRCE_PREFIX` env var or
+       `pkg-config` and emits
+       `cargo:rustc-link-lib=static=nros_rmw_xrce`. No
+       source recompile.
+    3. Migrate consumers: native + Zephyr Rust XRCE
+       examples' Cargo.toml + `.cargo/config.toml` patch
+       paths swap from `nros-rmw-xrce-cffi` to
+       `nros-rmw-xrce-sys`.
+    4. Update Zephyr CMake glue to install
+       `nros-rmw-xrce` ahead of the Cargo build (same
+       pattern Cyclone DDS already uses via
+       `just cyclonedds build-rmw`).
+    5. Delete `packages/xrce/nros-rmw-xrce-c/` (replaced by
+       `nros-rmw-xrce`) + `packages/xrce/nros-rmw-xrce-cffi/`
+       (replaced by `-sys`).
+
 ### Tests
 
 - [x] **115.G.1 — slot-lifecycle unit tests.** 3 tests in
