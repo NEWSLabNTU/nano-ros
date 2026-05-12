@@ -68,14 +68,20 @@ if(NROS_RMW_UORB_LINK_PX4)
 endif()
 
 # ---- Static library --------------------------------------------------------
-add_library(nros_rmw_uorb STATIC
+set(_nros_rmw_uorb_sources
     src/vtable.cpp
     src/session.cpp
     src/publisher.cpp
     src/subscriber.cpp
     src/service.cpp
     src/topic_registry.cpp
+    src/callback_default.cpp
 )
+if(NROS_RMW_UORB_LINK_PX4)
+    list(APPEND _nros_rmw_uorb_sources src/px4_callback_glue.cpp)
+endif()
+
+add_library(nros_rmw_uorb STATIC ${_nros_rmw_uorb_sources})
 add_library(NrosRmwUorb::NrosRmwUorb ALIAS nros_rmw_uorb)
 
 target_include_directories(nros_rmw_uorb

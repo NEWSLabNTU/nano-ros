@@ -113,6 +113,36 @@ int orb_check(int /*handle*/, bool *updated) {
     return 0;
 }
 
+// Push-wake ABI override. Strong symbols beat the weak default in
+// callback_default.cpp at link time. The test driver stashes the
+// (cb, arg) pair so it can fire the callback synthetically and
+// verify subscriber.cpp's atomic flag latches.
+struct PushWakeState {
+    nros_orb_callback_t cb = nullptr;
+    void *arg = nullptr;
+    int last_handle = -1;
+    int register_calls = 0;
+    int unregister_calls = 0;
+} g_push;
+
+int nros_orb_register_callback(int handle, nros_orb_callback_t cb, void *arg) {
+    g_push.register_calls++;
+    g_push.cb = cb;
+    g_push.arg = arg;
+    g_push.last_handle = handle;
+    return 0;
+}
+
+int nros_orb_unregister_callback(int handle) {
+    g_push.unregister_calls++;
+    if (g_push.last_handle == handle) {
+        g_push.cb = nullptr;
+        g_push.arg = nullptr;
+        g_push.last_handle = -1;
+    }
+    return 0;
+}
+
 } // extern "C"
 
 int main() {
@@ -299,18 +329,53 @@ int main() {
                      g_orb.subscribe_calls);
         return 1;
     }
+    // K.4.2-sub-push: subscriber_create must register a callback.
+    if (g_push.register_calls != 1 || g_push.cb == nullptr) {
+        std::fprintf(stderr,
+                     "expected 1 register_callback call with non-null cb, got %d / %p\n",
+                     g_push.register_calls, (void *)g_push.cb);
+        return 1;
+    }
 
-    // No pending sample → has_data 0 + try_recv_raw NO_DATA.
+    // First try_recv_raw: the create-time `ready` pin makes us fall
+    // through to orb_check even before the broker fires anything;
+    // orb_check returns no-update, we re-arm. After re-arm,
+    // has_data must short-circuit to 0 *without* an extra orb_check
+    // syscall.
+    uint8_t rxbuf[16] = {};
+    int32_t n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
+    if (n != NROS_RMW_RET_NO_DATA) {
+        std::fprintf(stderr, "try_recv_raw empty[0] returned %d, expected NO_DATA\n", n);
+        return 1;
+    }
+    int check_after_first = g_orb.check_calls;
+    // Fast-path check: with `ready` cleared by the re-arm above,
+    // has_data must NOT call orb_check.
     if (vt->has_data(&subp) != 0) {
         std::fprintf(stderr, "has_data on empty queue returned non-zero\n");
         return 1;
     }
-    uint8_t rxbuf[16] = {};
-    int32_t n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
-    if (n != NROS_RMW_RET_NO_DATA) {
-        std::fprintf(stderr, "try_recv_raw empty returned %d, expected NO_DATA\n", n);
+    if (g_orb.check_calls != check_after_first) {
+        std::fprintf(stderr,
+                     "has_data fast-path missed: orb_check called %d times, expected %d\n",
+                     g_orb.check_calls, check_after_first);
         return 1;
     }
+    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
+    if (n != NROS_RMW_RET_NO_DATA) {
+        std::fprintf(stderr, "try_recv_raw empty[1] returned %d, expected NO_DATA\n", n);
+        return 1;
+    }
+    if (g_orb.check_calls != check_after_first) {
+        std::fprintf(stderr,
+                     "try_recv_raw fast-path missed: orb_check called %d times, expected %d\n",
+                     g_orb.check_calls, check_after_first);
+        return 1;
+    }
+
+    // Broker fires the callback → ready flips → next poll goes
+    // through to orb_check.
+    g_push.cb(g_push.arg);
 
     // Stage a sample and drain.
     g_orb.pending = true;
@@ -336,9 +401,14 @@ int main() {
         }
     }
 
-    // Short buffer rejects without draining.
+    // Short buffer rejects without draining. Re-stage sample +
+    // fire callback (push-wake builds need both: the pending flag
+    // tells orb_check there's data, and the callback flips
+    // SubscriberState::ready so the fast-path doesn't short-
+    // circuit).
     g_orb.pending = true;
     g_orb.pending_len = kFakeMeta.o_size;
+    g_push.cb(g_push.arg);
     n = vt->try_recv_raw(&subp, rxbuf, /*too small*/ 4);
     if (n != NROS_RMW_RET_BUFFER_TOO_SMALL) {
         std::fprintf(stderr, "short try_recv_raw returned %d, expected BUFFER_TOO_SMALL\n", n);
@@ -360,6 +430,11 @@ int main() {
     if (g_orb.unsubscribe_calls != 1) {
         std::fprintf(stderr, "expected 1 unsubscribe call, got %d\n",
                      g_orb.unsubscribe_calls);
+        return 1;
+    }
+    if (g_push.unregister_calls != 1) {
+        std::fprintf(stderr, "expected 1 unregister_callback call, got %d\n",
+                     g_push.unregister_calls);
         return 1;
     }
     if (subp.backend_data != nullptr) {

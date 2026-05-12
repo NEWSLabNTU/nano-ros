@@ -74,11 +74,42 @@ int orb_copy(const struct orb_metadata *meta, int handle, void *buffer);
  *  negative when no fresh sample. */
 int orb_check(int handle, bool *updated);
 
+/** Push-wake callback signature. Fires on the broker's workqueue
+ *  context when a fresh sample lands. The callback must NOT block —
+ *  flip an atomic flag and return. */
+typedef void (*nros_orb_callback_t)(void *arg);
+
+/** Register a push-wake callback on a uORB subscription handle.
+ *  Returns 0 on success, negative on failure (e.g. PX4 build was
+ *  configured without callback support).
+ *
+ *  The shim defines this function. Two paths:
+ *   - PX4 path (NROS_RMW_UORB_USE_PX4_HEADER): wraps
+ *     `uORB::SubscriptionCallbackWorkItem`. Ships in a separate
+ *     translation unit (px4_callback_glue.cpp) so the C++-only
+ *     PX4 class doesn't bleed into the standalone build.
+ *   - Standalone path: weak default that returns -1 (unsupported).
+ *     The test driver provides a strong override that stashes
+ *     (cb, arg) so the test can fire the callback synthetically. */
+int nros_orb_register_callback(int handle,
+                               nros_orb_callback_t cb, void *arg);
+
+/** Unregister a previously-installed callback. Returns 0 on
+ *  success. NULL `handle` is a no-op. */
+int nros_orb_unregister_callback(int handle);
+
 } // extern "C"
 
 #else // NROS_RMW_UORB_USE_PX4_HEADER
 
 #include <uORB/uORB.h>
+
+extern "C" {
+typedef void (*nros_orb_callback_t)(void *arg);
+int nros_orb_register_callback(int handle,
+                               nros_orb_callback_t cb, void *arg);
+int nros_orb_unregister_callback(int handle);
+}
 
 #endif // NROS_RMW_UORB_USE_PX4_HEADER
 
