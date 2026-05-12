@@ -441,6 +441,57 @@ narrowed to the manual-poll-specific path; if it fails, the bug
 is in the Rust→C calling-convention layer common to both Rust
 paths.
 
+### Per-iteration heartbeat narrows the crash to `spin_once`
+
+Patched the rv64 Rust action server to print
+`[iter N] before/after try_accept_goal/spin_once` for every
+iteration. Result:
+
+```
+[iter 47] before try_accept_goal
+[iter 47] before spin_once
+[iter 47] after spin_once
+[iter 48] before try_accept_goal
+[iter 48] before spin_once
+   <crash>
+
+[EXCEPTION] mcause=0x1 (Instruction access fault)
+mepc=0x0 mtval=0x0
+```
+
+**The crash is reproducibly inside `executor.spin_once(10 ms)` at
+iteration 48** (~480 ms after the spin loop starts, BEFORE the
+client even connects). `try_accept_goal` returns cleanly all the
+way through iter 48. `mepc=0` means a NULL function-pointer JALR.
+
+iter 48 = 0.48 s in. zenoh-pico's lease task's first keep-alive
+isn't due until ~3.34 s, so that's not the trigger. Read task
+processed the router's 2 DECLARE responses earlier (~T+0.1 s).
+Whatever fires the NULL JALR happens deep inside `drive_io →
+context.spin_once → zpico_spin_once → condvar_wait_until`, OR in
+a callback dispatched from the read task during the condvar wait.
+
+Most likely candidate: the `queryable_callback` Rust fn registered
+via `context.declare_queryable_raw(keyexpr, queryable_callback,
+ctx)` (see `nros-rmw-zenoh/src/shim/service.rs:244`). The C-side
+`g_queryables[idx].callback` field gets `queryable_callback`'s
+function pointer; the C-side `query_handler` then invokes it as
+`entry->callback(...)`. If `queryable_callback`'s function pointer
+ever lands at NULL (table corruption, wrong idx, or Rust fn-
+pointer ABI mismatch), the call goes to 0x0.
+
+### Next: instrument zenoh-pico's query_handler / sample_handler
+
+- Add printk to `query_handler` (in
+  `packages/zpico/zpico-sys/c/zpico/zpico.c`) right before
+  `entry->callback(...)`. Print `entry->callback` pointer value.
+  If 0x0, confirms the callback table is being NULL'd.
+- Same for `sample_handler` (subscribers) and the get-reply
+  handler — any of them may share the corruption.
+- If callback pointers look fine but the call still goes to NULL:
+  Rust ABI mismatch on the `extern "C" fn` signature passed
+  through the table.
+
 ### Next: identify the bad STORE
 
 Watch for any STORE to addresses `0x800380c0..0x80039000` (the
