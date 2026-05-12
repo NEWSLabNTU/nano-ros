@@ -24,16 +24,21 @@ if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
         "(currently: ${NROS_PLATFORM_CFFI_INCLUDE})")
 endif()
 
-add_library(nros_platform_posix STATIC src/platform.c)
+add_library(nros_platform_posix STATIC
+    src/platform.c
+    src/net.c
+    src/timer.c)
 target_include_directories(nros_platform_posix PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_posix PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
 
-# pthread is the only runtime dependency. Cargo's cc-rs path handles
-# this via `cargo:rustc-link-lib`; the CMake target carries it as an
-# INTERFACE link library so downstream find_package consumers inherit it.
+# pthread + rt are the runtime dependencies (rt supplies timer_*).
+# Cargo's cc-rs path handles linking via `cargo:rustc-link-lib`; the
+# CMake target carries them as INTERFACE link libraries so downstream
+# find_package consumers inherit both.
 find_package(Threads REQUIRED)
 target_link_libraries(nros_platform_posix PUBLIC Threads::Threads)
+target_link_libraries(nros_platform_posix PUBLIC rt)
 
 install(TARGETS nros_platform_posix
     EXPORT NrosPlatformPosixCTargets
