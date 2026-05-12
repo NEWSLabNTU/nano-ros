@@ -1158,10 +1158,10 @@ Ordered easiest → hardest:
     `nros_rmw_vtable_t`; the per-backend host-language column
     collapses.
 
-- [~] **115.M — unify per-backend package shape.** Cosmetic
-  / convergence sweep flagged after the L.7 dust settled and
-  expanded after a 2026-05-12 design discussion that pinned
-  down the cross-language invariant:
+- [x] **115.M — unify per-backend package shape (landed
+  2026-05-12).** Cosmetic / convergence sweep flagged after
+  the L.7 dust settled and expanded after a 2026-05-12 design
+  discussion that pinned down the cross-language invariant:
 
   > **The vtable IS the cross-language boundary.** Once a
   > backend's vtable is registered, runtime dispatch goes
@@ -1187,7 +1187,8 @@ Ordered easiest → hardest:
     `b4db8877`). `-cpp` disambiguator no longer needed after
     K.4.5 deleted the legacy Rust `nros-rmw-uorb`.
 
-  - [~] **115.M.2 — XRCE convergence.** Replace the
+  - [x] **115.M.2 — XRCE convergence (landed 2026-05-12,
+    commit `80d571fd`).** Replace the
     `nros-rmw-xrce-c` (CMake) + `nros-rmw-xrce-cffi` (Cargo
     `cc::Build`) pair with a single `nros-rmw-xrce` CMake
     package. Steps:
@@ -1206,7 +1207,8 @@ Ordered easiest → hardest:
     4. Validate native + Zephyr Rust XRCE examples still
        build via `just zephyr build-fixtures`.
 
-  - [ ] **115.M.3 — merge `*-cffi` into Rust-impl crates.**
+  - [x] **115.M.3 — merge `*-cffi` into Rust-impl crates
+    (landed 2026-05-12, commit `61235b44`).**
     Drop the two-crate split for Rust-impl backends.
     Today's `nros-rmw-{zenoh,dds}-cffi` shims are thin
     `RustBackendAdapter::<*Rmw>::register()` wrappers; the
@@ -1245,7 +1247,8 @@ Ordered easiest → hardest:
        entirely if M.4 lands first).
     8. Delete `packages/{zpico,dds}/nros-rmw-{zenoh,dds}-cffi/`.
 
-  - [ ] **115.M.4 — auto-register inside `nros::init`.**
+  - [x] **115.M.4 — auto-register inside `Executor::open`
+    (landed 2026-05-12, commit `99100661`).**
     Mirror the C++ side's `#ifdef NROS_RMW_CYCLONEDDS`
     pattern. `nros_support_init` / `Executor::new` checks
     compile-time backend features and calls the right
