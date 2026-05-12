@@ -176,10 +176,45 @@ ThreadX kernel path. Candidates:
   the failure to a different fn-pointer crash, suggesting linker
   layout sensitivity.
 - `TX_TIMER_PROCESS_IN_ISR` is undefined → timer-thread (priority 0)
-  decrements sleep counters. May not be processing the zenoh tasks'
-  timer entries.
+  decrements sleep counters. Setting the flag exposes an FPU-not-
+  enabled trap in the rv64 context-save (frcsr at trap entry).
 - `Z_TASK_PREEMPT_THRESHOLD == Z_TASK_PRIORITY == 14` may interact
   badly with the timer thread's wake-up path on rv64.
+
+**gdb-multiarch findings (via QEMU `-s` gdb stub):**
+
+The "lease task hang" is actually a silent crash. Attaching gdb to a
+running stuck server shows PC sitting in `trap_handler`'s `j .L33`
+infinite loop (`while (1)` after the exception print). With a
+patched `tx_initialize_low_level.S` that passes the trapped ra to
+trap_handler from `28*REGBYTES(saved_sp)`, the crash dump shows:
+
+```
+mepc       = 0x80251630   nx_bsd_socket_pool_memory + 8
+mtval      = 0x8003a0a8   byte_pool_storage + 3392
+mcause     = 5            Load access fault
+```
+
+PC is **inside `nx_bsd_socket_pool_memory`** — NetX BSD's backing
+storage for the BSD socket block pool. The CPU jumped to data via a
+JALR through a fn-pointer field of an allocated NX_BSD_SOCKET struct
+(offset 8 of the second socket in the pool, given `nx_bsd_socket_array`
+starts at the pool base). When that data is executed as instruction
+stream, an LD inside it tries to load from `byte_pool_storage + 3392`
+(plausibly the trapped thread's stack frame on the byte pool), which
+also fails — `Load access fault` rather than `Illegal instruction`
+just because the garbage decoded to a valid LD opcode first.
+
+This matches the shape of the existing
+`project_threadx_linux_pointer_truncation` memory note (NetX BSD's
+ULONG-cast-pointer pattern misbehaving on 64-bit), but rv64's
+`ULONG = unsigned long = 8 bytes` natively, so the threadx-linux x86_64
+`NX_THREAD_EXTENSION_PTR_*` workaround macros aren't directly the fix
+here. The bug is a different ULONG-vs-pointer interaction inside the
+NetX BSD shim layer (`packages/zpico/zpico-sys/c/platform/threadx/network.c`)
+or in `nxd_bsd.c` itself. Bisecting it needs a series of `nx_bsd_*`
+print-on-entry/exit prints in network.c — out of scope for this
+session.
 
 ### 120.4 — ThreadX RV64 Rust DDS talker→listener — **DEFERRED, likely same root cause as 120.3**
 
