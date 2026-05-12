@@ -22,10 +22,15 @@ unix-mock = ["nvidia-ivc/unix-mock"]
 # Phase 100.1 — register `critical_section::Impl` against the ARMv7-R
 # CPSR I-bit. Forwards to nros-platform-freertos's `cortex-r` feature.
 cortex-r = ["nros-platform-freertos/cortex-r"]
+# Phase 121.2.embedded — canonical C ABI export. Mutually exclusive
+# in any single binary with `nros-platform-freertos/cffi-export`
+# since both delegate to the same FreeRTOS-backed symbol set.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 # Trait definitions
 nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
+nros-platform-cffi = { version = "0.1.0", path = "../../core/nros-platform-cffi", optional = true }
 # Reuse FreeRTOS trait impls — FSP exposes the same FreeRTOS V10.4.3
 # tick / xTaskCreate / pvPortMalloc surface as the upstream kernel.
 nros-platform-freertos = { version = "0.1.0", path = "../../core/nros-platform-freertos", default-features = false }

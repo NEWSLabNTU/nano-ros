@@ -1426,6 +1426,7 @@ dependencies = [
  "esp-hal",
  "nros-baremetal-common",
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1437,6 +1438,7 @@ dependencies = [
  "esp-hal",
  "nros-baremetal-common",
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1460,6 +1462,7 @@ dependencies = [
  "cortex-m",
  "nros-baremetal-common",
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1479,6 +1482,7 @@ name = "nros-platform-orin-spe"
 version = "0.1.0"
 dependencies = [
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-platform-freertos",
  "nvidia-ivc",
 ]
@@ -1500,6 +1504,7 @@ dependencies = [
  "defmt 0.3.100",
  "nros-baremetal-common",
  "nros-platform-api",
+ "nros-platform-cffi",
  "nros-smoltcp",
  "zpico-alloc",
 ]

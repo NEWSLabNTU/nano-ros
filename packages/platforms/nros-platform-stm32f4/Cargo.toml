@@ -11,9 +11,12 @@ name = "nros_platform_stm32f4"
 
 [features]
 default = []
+# Phase 121.2.embedded — canonical C ABI export.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"

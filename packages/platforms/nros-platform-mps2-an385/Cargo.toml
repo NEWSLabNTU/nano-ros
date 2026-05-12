@@ -22,10 +22,15 @@ dds-heap = []
 # `nros-platform/critical-section` when the bare-metal platform feature
 # is on. Same flag the FreeRTOS / ThreadX paths use.
 critical-section = ["cortex-m/critical-section-single-core"]
+# Phase 121.2.embedded — emit the canonical `nros_platform_*` C ABI
+# symbols by expanding the `nros-platform-cffi` macro against
+# `Mps2An385Platform`.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 # Platform trait definitions (trait impls live in lib.rs)
 nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
 # Free-list allocator for heap
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 # Cortex-M register access

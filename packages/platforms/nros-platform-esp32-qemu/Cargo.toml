@@ -15,9 +15,12 @@ default = []
 # tightest fit on ESP32-C3's 400 KB SRAM). Off by default so zenoh
 # / xrce builds keep their 32 KB footprint.
 dds-heap = []
+# Phase 121.2.embedded — canonical C ABI export.
+cffi-export = ["dep:nros-platform-cffi"]
 
 [dependencies]
 nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32c3", "unstable"] }
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

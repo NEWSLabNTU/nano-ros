@@ -27,6 +27,10 @@ pub mod timing;
 /// xrce-platform-shim (delegating to the hardware-specific modules).
 pub struct Mps2An385Platform;
 
+// Phase 121.2.embedded — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(Mps2An385Platform);
+
 // ============================================================================
 // Clock
 // ============================================================================
@@ -82,6 +86,17 @@ impl nros_platform_api::PlatformSleep for Mps2An385Platform {
     #[inline]
     fn sleep_s(s: usize) {
         sleep::sleep_ms(s * 1000);
+    }
+}
+
+// ============================================================================
+// Yield — single-core no-preempt bare-metal: spin_loop hint only
+// ============================================================================
+
+impl nros_platform_api::PlatformYield for Mps2An385Platform {
+    #[inline]
+    fn yield_now() {
+        core::hint::spin_loop();
     }
 }
 

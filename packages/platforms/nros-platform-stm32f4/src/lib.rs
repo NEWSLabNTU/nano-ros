@@ -19,6 +19,17 @@ pub mod timing;
 /// Zero-sized type implementing all platform methods for STM32F4.
 pub struct Stm32f4Platform;
 
+// Phase 121.2.embedded — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(Stm32f4Platform);
+
+impl nros_platform_api::PlatformYield for Stm32f4Platform {
+    #[inline]
+    fn yield_now() {
+        core::hint::spin_loop();
+    }
+}
+
 impl nros_platform_api::PlatformClock for Stm32f4Platform {
     #[inline]
     fn clock_ms() -> u64 {

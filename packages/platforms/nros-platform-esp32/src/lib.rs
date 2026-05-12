@@ -15,6 +15,17 @@ pub mod timing;
 /// Zero-sized type implementing all platform methods for ESP32-C3.
 pub struct Esp32Platform;
 
+// Phase 121.2.embedded — canonical C ABI export. See `nros-platform-cffi`.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(Esp32Platform);
+
+impl nros_platform_api::PlatformYield for Esp32Platform {
+    #[inline]
+    fn yield_now() {
+        core::hint::spin_loop();
+    }
+}
+
 impl nros_platform_api::PlatformClock for Esp32Platform {
     #[inline]
     fn clock_ms() -> u64 {

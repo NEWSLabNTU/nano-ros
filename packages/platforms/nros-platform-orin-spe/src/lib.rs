@@ -42,6 +42,12 @@ mod random;
 /// when the `platform-orin-spe` feature is enabled on `nros-platform`.
 pub struct OrinSpe;
 
+// Phase 121.2.embedded — canonical C ABI export. See `nros-platform-cffi`.
+// Mutually exclusive with `nros-platform-freertos/cffi-export` in the
+// same binary (both delegate to FreeRtosPlatform's symbol set).
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export!(OrinSpe);
+
 // =============================================================================
 // Trait impls — forward to FreeRtosPlatform.
 //
