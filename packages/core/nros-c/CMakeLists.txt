@@ -21,7 +21,7 @@ if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_rmw_features rmw-cffi cffi-zenoh-cffi)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` selects the C backend
-    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`).
+    # (micro-XRCE-DDS-Client via `nros-rmw-xrce`).
     set(_rmw_features rmw-cffi cffi-xrce-c)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: `dds` selector routes through the C vtable

@@ -30,7 +30,7 @@ nros-core (Rust) ──→ Rmw trait (internal; bridged by RustBackendAdapter<R>
                                 ↓ nros_rmw_vtable_t  (~17 fn ptrs)
                                 ├──→ nros-rmw-zenoh-cffi    (wraps Rust nros-rmw-zenoh)
                                 ├──→ nros-rmw-dds-cffi      (wraps Rust nros-rmw-dds)
-                                ├──→ nros-rmw-xrce-cffi     (links C nros-rmw-xrce-c)
+                                ├──→ nros-rmw-xrce-cffi     (links C nros-rmw-xrce)
                                 ├──→ nros-rmw-cyclonedds    (C++ direct, no Rust)
                                 └──→ nros-rmw-uorb      (C++ direct, no Rust)
 ```
@@ -52,7 +52,7 @@ startup.
 |---------|----------------|-----------------|------------|---------|
 | dust-DDS | dust-dds | Rust | `nros-rmw-dds-cffi` (Rust → vtable via `RustBackendAdapter<DdsRmw>`) | keep |
 | Cyclone DDS | Cyclone DDS | C / C++ | `nros-rmw-cyclonedds` (C++ direct vtable) | keep |
-| XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce-c` static lib; 115.K.2 ported) | keep |
+| XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce` static lib; 115.K.2 ported) | keep |
 | zenoh-pico | zenoh-pico | C | `nros-rmw-zenoh-cffi` (Rust → vtable via `RustBackendAdapter<ZenohRmw>`) | keep |
 | uORB | PX4 module SDK | C++ | `nros-rmw-uorb` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
 

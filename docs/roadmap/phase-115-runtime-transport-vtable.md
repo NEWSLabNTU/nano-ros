@@ -328,7 +328,7 @@ Ordered execution-first (policy → port → tracking entries):
   landing the policy doc that justifies the migration.
 
   - [x] **115.K.2.0** — vtable scaffold. New crate
-    `packages/xrce/nros-rmw-xrce-c/` mirrors `nros-rmw-cyclonedds`'s
+    `packages/xrce/nros-rmw-xrce/` mirrors `nros-rmw-cyclonedds`'s
     layout (CMakeLists + public header + per-area C TUs). Every
     vtable entry returns `NROS_RMW_RET_UNSUPPORTED`; the scaffold
     is wired-but-inert. Smoke test `tests/smoke.c` passes — confirms
@@ -389,14 +389,14 @@ Ordered execution-first (policy → port → tracking entries):
     drain-from-runtime variant (`nros_rmw_xrce_init_custom_transport`)
     needs a `nros_rmw_take_custom_transport` C export from
     `nros-rmw-cffi` that doesn't exist yet — documented in
-    `packages/xrce/nros-rmw-xrce-c/KNOWN-LIMITATIONS.md`. Pure-C
+    `packages/xrce/nros-rmw-xrce/KNOWN-LIMITATIONS.md`. Pure-C
     clients route around via the direct-pass entry point.
   - [~] **115.K.2.5** — drop the Rust crate; flip `-DNROS_C_RMW=xrce`
     over to the C backend.
     - [x] **115.K.2.5.0** — wire the C backend behind a new
       `NANO_ROS_RMW=xrce-c` selector in `nros-c` + `nros-cpp`,
       mirroring the cyclonedds shape (`rmw-cffi` Rust feature +
-      `find_package(NrosRmwXrceC)` + `NROS_RMW_XRCE_C=1`
+      `find_package(NrosRmwXrce)` + `NROS_RMW_XRCE_C=1`
       auto-register macro in `nros::init`). Rust path under
       `NANO_ROS_RMW=xrce` stays unchanged. Validated via
       `cargo test --test xrce` (14/14 pass — Rust path regression
@@ -450,7 +450,7 @@ Ordered execution-first (policy → port → tracking entries):
         payloads big-endian and silently rejected them. Fixed by
         flipping the macro to `1` in both
         `nros-rmw-xrce-cffi/build.rs` and
-        `nros-rmw-xrce-c/CMakeLists.txt`. Side-fix (also needed):
+        `nros-rmw-xrce/CMakeLists.txt`. Side-fix (also needed):
         `CffiSession::supported_qos_policies` returns the same
         broad mask Rust XRCE does — without it the runtime
         pre-validate rejected default QoS (which sets
@@ -493,7 +493,7 @@ Ordered execution-first (policy → port → tracking entries):
 
         **115.K.2.5.1.2.a-fix-transport (in progress, this commit):**
 
-        New file `packages/xrce/nros-rmw-xrce-c/src/transport_posix_udp.c`
+        New file `packages/xrce/nros-rmw-xrce/src/transport_posix_udp.c`
         replaces `uxr_init_udp_transport` with a custom-transport
         + POSIX-UDP shape that mirrors what `xrce-sys` /
         `nros-rmw-xrce`'s `platform_udp.rs` does — open a
@@ -536,7 +536,7 @@ Ordered execution-first (policy → port → tracking entries):
         this commit's window.
       - [x] **115.K.2.5.1.5-serial** — POSIX serial via the
         cffi backend. New TU
-        `packages/xrce/nros-rmw-xrce-c/src/transport_posix_serial.c`
+        `packages/xrce/nros-rmw-xrce/src/transport_posix_serial.c`
         opens a tty/pty, configures termios (raw, 8N1, baud from
         `XRCE_SERIAL_BAUD` env or 115200), and registers four
         trampolines that drive `read()` / `write()` via `poll()`.
@@ -577,7 +577,7 @@ Ordered execution-first (policy → port → tracking entries):
           `platform-{posix,zephyr,bare-metal,freertos,nuttx,
           threadx}`. Legacy `posix` aliases `platform-posix`.
 
-        K.2 backend (`packages/xrce/nros-rmw-xrce-c/`)
+        K.2 backend (`packages/xrce/nros-rmw-xrce/`)
         gates landed alongside:
         - `internal.h`: `uxrUDPTransport udp` field gated on
           `UCLIENT_PROFILE_UDP`; `XRCE_STREAM_BUFFER_SIZE`
@@ -618,7 +618,7 @@ Ordered execution-first (policy → port → tracking entries):
            via `CARGO_CFG_TARGET_OS == "none"`-style detection).
         2. Zephyr-side serial / UDP trampolines must be
            supplied by `xrce-zephyr` (or a successor
-           `nros-rmw-xrce-c-zephyr` C TU). Today
+           `nros-rmw-xrce-zephyr` C TU). Today
            `xrce-zephyr/src/xrce_zephyr.c` only handles L4
            readiness + `uxr_millis`/`uxr_nanos`; it does NOT
            ship XRCE custom-transport callbacks — those came
@@ -656,7 +656,7 @@ Ordered execution-first (policy → port → tracking entries):
       **Landed:** `NANO_ROS_RMW=xrce` now routes to `rmw-cffi` +
       `cffi-xrce-c` Cargo features in both `packages/core/nros-c/CMakeLists.txt`
       and `packages/core/nros-cpp/CMakeLists.txt`, plus the matching
-      `find_package(NrosRmwXrceC)` + `NROS_RMW_XRCE_C=1` link block
+      `find_package(NrosRmwXrce)` + `NROS_RMW_XRCE_C=1` link block
       that previously lived under the `xrce-c` selector. The
       separate `xrce-c` selector is removed.
 
@@ -664,11 +664,11 @@ Ordered execution-first (policy → port → tracking entries):
       - `packages/core/nros-c/Cargo.toml` adds the `cffi-xrce-c`
         feature. When set, `nros_support_init` calls
         `nros_rmw_xrce_register()` (extern "C", resolved via the
-        linked `NrosRmwXrceC::NrosRmwXrceC` archive) before the
+        linked `NrosRmwXrce::NrosRmwXrce` archive) before the
         session opens. Mirrors the C++ path's `nros::init` hook.
       - `packages/core/nros-c/cmake/NanoRosCTargets.cmake` and
         `packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake`
-        gain `find_dependency(NrosRmwXrceC)` + link / define on
+        gain `find_dependency(NrosRmwXrce)` + link / define on
         `NANO_ROS_RMW=xrce`. Mirrors the cyclonedds wiring.
       - All `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds))` gates inside
         `packages/core/nros-c/src/` widen to include
@@ -676,7 +676,7 @@ Ordered execution-first (policy → port → tracking entries):
         service / lifecycle / parameter / executor symbols
         compile under the new `rmw-cffi+cffi-xrce-c` axis.
       - New `xrce::build-rmw` justfile recipe builds the
-        `nros-rmw-xrce-c` standalone CMake project + installs
+        `nros-rmw-xrce` standalone CMake project + installs
         into `build/install/`. `install-local-posix` depends on
         it, mirroring `cyclonedds::build-rmw`.
 
@@ -696,7 +696,7 @@ Ordered execution-first (policy → port → tracking entries):
       `xrce-sys` + `xrce-platform-shim` + `xrce-zephyr`
       **stay** in the workspace: `xrce-sys` is the Rust FFI
       crate for micro-XRCE-DDS-Client and is still consumed
-      by the `nros-rmw-xrce-c` C backend's build flow (via
+      by the `nros-rmw-xrce` C backend's build flow (via
       bindgen); `xrce-platform-shim` is its platform-fanout
       dep; `xrce-zephyr` carries Zephyr-specific custom
       transport callbacks that the C backend may pull in once
@@ -1158,59 +1158,124 @@ Ordered easiest → hardest:
     `nros_rmw_vtable_t`; the per-backend host-language column
     collapses.
 
-- [~] **115.M — unify per-backend package shape.**
-  Cosmetic / convergence sweep flagged after the L.7 dust
-  settled: today's per-backend packages have three different
-  shapes, the third (XRCE) being a wart. Unify on the rule:
+- [~] **115.M — unify per-backend package shape.** Cosmetic
+  / convergence sweep flagged after the L.7 dust settled and
+  expanded after a 2026-05-12 design discussion that pinned
+  down the cross-language invariant:
 
-  - **Rust-impl backend** → two Cargo crates:
-    `nros-rmw-{name}` (Rust trait impl) +
-    `nros-rmw-{name}-cffi` (Rust shim, monomorphises
-    `RustBackendAdapter<*Rmw>`).
+  > **The vtable IS the cross-language boundary.** Once a
+  > backend's vtable is registered, runtime dispatch goes
+  > Rust → vtable → C (and vice versa) — never source-level
+  > Rust→C or C→Rust calls. Only the init handshake crosses
+  > languages: each backend's `nros_rmw_{name}_register()`
+  > calls `nros_rmw_cffi_register(&vtable)` once at startup.
+
+  Final rule (post-M):
+  - **Rust-impl backend** → one Cargo crate
+    `nros-rmw-{name}`. Trait impl is internal; the crate
+    exports `register()` (the consumer-facing entry that
+    also has an `extern "C" nros_rmw_{name}_register()`
+    twin for C consumers).
   - **C/C++-impl backend** → one CMake package
-    `nros-rmw-{name}` shipping a static lib + cmake-config.
-    Rust callers (when they exist) consume it via an optional
-    tiny `nros-rmw-{name}-sys` Cargo crate that finds the
-    install via env var / `find_package` — no source
-    recompile.
-
-  Wart to fix: `nros-rmw-xrce-c` (CMake) +
-  `nros-rmw-xrce-cffi` (Cargo `cc::Build` recompile of the
-  same C sources). Drift risk between the two; redundant
-  compile.
+    `nros-rmw-{name}`. Static lib + cmake-config + the
+    `nros_rmw_{name}_register()` C symbol.
 
   Sub-items:
-  - [x] **115.M.1 — rename `nros-rmw-uorb-cpp` →
-    `nros-rmw-uorb`.** Legacy Rust `nros-rmw-uorb` deleted in
-    K.4.5 (commit `392c28da`), so the `-cpp` disambiguator is
-    no longer needed. Internal CMake target name + public
-    `find_package(NrosRmwUorb)` already drop the `-cpp` —
-    only the directory + a few path references to update.
 
-  - [ ] **115.M.2 — XRCE convergence.** Replace today's
+  - [x] **115.M.1 — rename `nros-rmw-uorb-cpp` →
+    `nros-rmw-uorb`** (landed 2026-05-12, commit
+    `b4db8877`). `-cpp` disambiguator no longer needed after
+    K.4.5 deleted the legacy Rust `nros-rmw-uorb`.
+
+  - [~] **115.M.2 — XRCE convergence.** Replace the
     `nros-rmw-xrce-c` (CMake) + `nros-rmw-xrce-cffi` (Cargo
-    `cc::Build`) pair with:
-    1. `packages/xrce/nros-rmw-xrce/` — standalone CMake
-       project, source-of-truth for the C sources. Builds a
-       static lib + ships `find_package(NrosRmwXrce)`
-       cmake-config. Mirrors `packages/dds/nros-rmw-cyclonedds/`.
-    2. `packages/xrce/nros-rmw-xrce-sys/` — Cargo crate
-       consumed by Rust XRCE examples. `build.rs` finds the
-       install via `NROS_RMW_XRCE_PREFIX` env var or
-       `pkg-config` and emits
-       `cargo:rustc-link-lib=static=nros_rmw_xrce`. No
-       source recompile.
-    3. Migrate consumers: native + Zephyr Rust XRCE
-       examples' Cargo.toml + `.cargo/config.toml` patch
-       paths swap from `nros-rmw-xrce-cffi` to
-       `nros-rmw-xrce-sys`.
-    4. Update Zephyr CMake glue to install
-       `nros-rmw-xrce` ahead of the Cargo build (same
-       pattern Cyclone DDS already uses via
-       `just cyclonedds build-rmw`).
-    5. Delete `packages/xrce/nros-rmw-xrce-c/` (replaced by
-       `nros-rmw-xrce`) + `packages/xrce/nros-rmw-xrce-cffi/`
-       (replaced by `-sys`).
+    `cc::Build`) pair with a single `nros-rmw-xrce` CMake
+    package. Steps:
+    1. Rename `packages/xrce/nros-rmw-xrce-c/` →
+       `packages/xrce/nros-rmw-xrce/`. ✓ in flight.
+    2. Sweep `nros_rmw_xrce_c` / `NrosRmwXrceC` /
+       `nros-rmw-xrce-c` identifiers → drop the `_c` /
+       `-c` / `C` suffix everywhere. ✓ in flight.
+    3. Decide on Rust-side link path for XRCE Rust
+       examples: M.4 (below) folds `register()` into
+       `nros::init`, eliminating the explicit per-example
+       call. The shim crate `nros-rmw-xrce-cffi` then
+       reduces to link-wiring only — fold it into the
+       `nros-rmw-xrce` CMake project's install step or a
+       tiny build.rs (TBD when M.4 lands).
+    4. Validate native + Zephyr Rust XRCE examples still
+       build via `just zephyr build-fixtures`.
+
+  - [ ] **115.M.3 — merge `*-cffi` into Rust-impl crates.**
+    Drop the two-crate split for Rust-impl backends.
+    Today's `nros-rmw-{zenoh,dds}-cffi` shims are thin
+    `RustBackendAdapter::<*Rmw>::register()` wrappers; the
+    split exists only because the cffi shim post-dates the
+    trait impl. After L.7 collapse the trait crate is
+    internal-only, so there's no longer a reason to keep
+    them separate.
+
+    Steps:
+    1. Move `nros_rmw_{X}_register` extern fn +
+       `RustBackendAdapter` invocation from
+       `packages/{zpico,dds}/nros-rmw-{X}-cffi/src/lib.rs`
+       into the matching `nros-rmw-{X}/src/lib.rs`. The
+       merged crate gains a dep on `nros-rmw-cffi`
+       (already in workspace).
+    2. Add the safe `pub fn register() -> Result<(),
+       RegisterError>` wrapper alongside.
+    3. Move the smoke tests
+       (`packages/{zpico,dds}/nros-rmw-{X}-cffi/tests/*`)
+       into the merged crate's `tests/`.
+    4. Update workspace `Cargo.toml`: drop the
+       `nros-rmw-{zenoh,dds}-cffi` workspace members and
+       `workspace.dependencies` entries.
+    5. Update `nros` + `nros-node` Cargo features:
+       `rmw-{zenoh,dds}-cffi` → `dep:nros-rmw-{zenoh,dds}`
+       directly. Drop `nros-rmw-{zenoh,dds}-cffi` from
+       `[dependencies]` and every `platform-*` /
+       `link-*` / `ros-*` forwarding list.
+    6. Update every example Cargo.toml +
+       `.cargo/config.toml`:
+       `nros-rmw-{zenoh,dds}-cffi` →
+       `nros-rmw-{zenoh,dds}`.
+    7. Update every example's `lib.rs` / `main.rs`:
+       `nros_rmw_{zenoh,dds}_cffi::register()` →
+       `nros_rmw_{zenoh,dds}::register()` (or remove
+       entirely if M.4 lands first).
+    8. Delete `packages/{zpico,dds}/nros-rmw-{zenoh,dds}-cffi/`.
+
+  - [ ] **115.M.4 — auto-register inside `nros::init`.**
+    Mirror the C++ side's `#ifdef NROS_RMW_CYCLONEDDS`
+    pattern. `nros_support_init` / `Executor::new` checks
+    compile-time backend features and calls the right
+    `register()` fn before opening the session. Examples
+    drop the explicit `register().expect(...)` line.
+
+    Steps:
+    1. Add a private
+       `register_active_backend()` helper to
+       `packages/core/nros-node/src/`. Compile-time
+       `cfg(feature = "rmw-{zenoh,dds,xrce}-cffi")`
+       fan-out calls the matching backend's `register()`.
+       Idempotent — re-registration is a no-op (the cffi
+       registry stores the most-recently-registered
+       vtable atomically).
+    2. Invoke the helper from `Executor::new` (or the
+       earliest C entry point) once per session-open. Use
+       a `static Once` so it fires only once across
+       multiple sessions in the same process.
+    3. Sweep every example's `lib.rs` / `main.rs` and
+       remove the explicit `nros_rmw_*::register()` line.
+    4. For C/C++ backends with no Rust caller
+       (cyclonedds, uorb), the C++ register hook in
+       `nros-cpp/include/nros/node.hpp` stays as-is —
+       same shape, different language.
+
+    After M.4 lands the example code is uniform across
+    every backend: `nros::Executor::new(...)` and nothing
+    else. Backend selection is build-time feature flag
+    only.
 
 ### Tests
 
@@ -1786,7 +1851,7 @@ runtime.
 Mirrors Cyclone DDS layout:
 
 ```
-packages/xrce/nros-rmw-xrce-c/             — new C backend crate
+packages/xrce/nros-rmw-xrce/             — new C backend crate
 ├── CMakeLists.txt                         — produces static lib
 ├── include/nros_rmw_xrce.h                — register entry point
 └── src/

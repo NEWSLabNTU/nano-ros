@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Rust shim for nros-rmw-xrce-c — links the C XRCE backend + exposes the auto-register entry point"
+description = "Rust shim for nros-rmw-xrce — links the C XRCE backend + exposes the auto-register entry point"
 publish = false
 build = "build.rs"
 

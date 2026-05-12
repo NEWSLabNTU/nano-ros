@@ -21,7 +21,7 @@ if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_rmw_features rmw-zenoh-cffi)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` selects the C backend
-    # (micro-XRCE-DDS-Client via `nros-rmw-xrce-c`).
+    # (micro-XRCE-DDS-Client via `nros-rmw-xrce`).
     set(_rmw_features rmw-cffi)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: `dds` routes through the C vtable via
@@ -99,10 +99,10 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: micro-XRCE-DDS-Client C backend (the
     # canonical XRCE path after the K.2.5 close-out — flipped from
     # the previous `xrce-c` selector).
-    find_package(NrosRmwXrceC CONFIG REQUIRED)
+    find_package(NrosRmwXrce CONFIG REQUIRED)
     target_link_libraries(nros-cpp-headers INTERFACE
-        NrosRmwXrceC::NrosRmwXrceC)
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_C=1)
+        NrosRmwXrce::NrosRmwXrce)
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE=1)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: dust-DDS via the C vtable. The register
     # entry point `nros_rmw_dds_register()` ships from the

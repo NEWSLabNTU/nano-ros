@@ -355,7 +355,7 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
         }
     }
 #endif
-#ifdef NROS_RMW_XRCE_C
+#ifdef NROS_RMW_XRCE
     // Phase 115.K.2.5.2: same shape as the cyclonedds hook above —
     // auto-register the micro-XRCE-DDS-Client C backend's vtable.
     // Selected via `NANO_ROS_RMW=xrce` at CMake configure time (the

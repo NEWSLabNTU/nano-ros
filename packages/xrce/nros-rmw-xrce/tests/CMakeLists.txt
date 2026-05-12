@@ -6,7 +6,7 @@
 # Rust runtime).
 
 add_executable(nros_rmw_xrce_c_smoke smoke.c)
-target_link_libraries(nros_rmw_xrce_c_smoke PRIVATE nros_rmw_xrce_c)
+target_link_libraries(nros_rmw_xrce_c_smoke PRIVATE nros_rmw_xrce)
 target_include_directories(nros_rmw_xrce_c_smoke PRIVATE
     ${NROS_RMW_CFFI_DIR}
 )

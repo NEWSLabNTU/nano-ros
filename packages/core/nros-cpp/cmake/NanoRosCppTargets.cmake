@@ -133,14 +133,14 @@ if(NOT TARGET NanoRos::NanoRosCpp)
   # rmw-cffi axis. `xrce` is now the canonical selector (the legacy
   # `xrce-c` selector was retired in K.2.5.2).
   if(NANO_ROS_RMW STREQUAL "xrce")
-    if(NOT TARGET NrosRmwXrceC::NrosRmwXrceC)
+    if(NOT TARGET NrosRmwXrce::NrosRmwXrce)
       include(CMakeFindDependencyMacro)
-      find_dependency(NrosRmwXrceC CONFIG)
+      find_dependency(NrosRmwXrce CONFIG)
     endif()
     set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
-      INTERFACE_LINK_LIBRARIES NrosRmwXrceC::NrosRmwXrceC)
+      INTERFACE_LINK_LIBRARIES NrosRmwXrce::NrosRmwXrce)
     set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
-      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE_C=1)
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE=1)
   endif()
 
   # --- Rust multi-staticlib link fix ---------------------------------------
