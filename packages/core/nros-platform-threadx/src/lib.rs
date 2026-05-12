@@ -134,7 +134,12 @@ impl nros_platform_api::PlatformAlloc for ThreadxPlatform {
         let alloc_size = size + ALIGN + HEADER;
         let mut raw: *mut c_void = core::ptr::null_mut();
         let ret = unsafe {
-            ffi::tx_byte_allocate(pool, &mut raw, alloc_size as ffi::TxUlong, ffi::TX_WAIT_FOREVER)
+            ffi::tx_byte_allocate(
+                pool,
+                &mut raw,
+                alloc_size as ffi::TxUlong,
+                ffi::TX_WAIT_FOREVER,
+            )
         };
         if ret != ffi::TX_SUCCESS || raw.is_null() {
             return core::ptr::null_mut();
