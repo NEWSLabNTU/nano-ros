@@ -70,9 +70,6 @@ members = [
     # Rust API users of XRCE go through this crate instead of the
     # legacy direct-Rust-impl `nros-rmw-xrce`.
     "packages/xrce/nros-rmw-xrce-cffi",
-    # PX4 RMW backend (uORB transport) + board crate
-    "packages/px4/nros-rmw-uorb",
-    "packages/px4/nros-px4",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks
@@ -278,15 +275,11 @@ exclude = [
     "examples/qemu-esp32-baremetal/rust/zenoh/listener",
     "examples/qemu-esp32-baremetal/rust/dds/talker",
     "examples/qemu-esp32-baremetal/rust/dds/listener",
-    # PX4 examples — built into PX4 binary via px4_rust_module(); not part of
-    # nano-ros's host workspace.
-    "examples/px4/rust/uorb/talker",
-    "examples/px4/rust/uorb/listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
-    # PX4 vendored sources (submodules under third-party/px4/). Each has
-    # its own workspace / build system; excluded so cargo doesn't try to
-    # absorb their crates into nano-ros's workspace.
+    # PX4 vendored sources (submodule under third-party/px4/). Has its
+    # own workspace / build system; excluded so cargo doesn't try to
+    # absorb its crates into nano-ros's workspace.
     "third-party/px4/px4-rs",
     "third-party/px4/PX4-Autopilot",
 ]

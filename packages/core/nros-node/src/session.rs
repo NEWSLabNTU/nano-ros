@@ -7,26 +7,9 @@
 
 use nros_rmw::Session;
 
-#[cfg(feature = "rmw-zenoh")]
-pub(crate) type ConcreteSession = nros_rmw_zenoh::ZenohSession;
-#[cfg(feature = "rmw-xrce")]
-pub(crate) type ConcreteSession = nros_rmw_xrce::XrceSession;
-#[cfg(feature = "rmw-dds")]
-pub(crate) type ConcreteSession = nros_rmw_dds::DdsSession;
 #[cfg(feature = "rmw-cffi")]
 pub(crate) type ConcreteSession = nros_rmw_cffi::CffiSession;
-#[cfg(feature = "rmw-uorb")]
-pub(crate) type ConcreteSession = nros_rmw_uorb::UorbSession;
-#[cfg(all(
-    test,
-    not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))
-))]
+#[cfg(all(test, not(feature = "rmw-cffi")))]
 pub(crate) type ConcreteSession = crate::mock::MockSession;
 
 /// Concrete publisher handle for the active RMW backend.

@@ -29,10 +29,6 @@ std = [
     "nros-core/std",
     "nros-node/std",
     "nros-rmw/std",
-    "nros-rmw-zenoh?/std",
-    "nros-rmw-xrce?/std",
-    "nros-rmw-dds?/std",
-    "nros-rmw-uorb?/std",
     "nros-params/std",
     "nros-serdes/std",
 ]
@@ -40,41 +36,30 @@ alloc = [
     "nros-core/alloc",
     "nros-node/alloc",
     "nros-rmw/alloc",
-    "nros-rmw-xrce?/alloc",
     "nros-params/alloc",
     "nros-serdes/alloc",
 ]
 
-# RMW backend (select one)
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
-rmw-dds = ["dep:nros-rmw-dds", "nros-node/rmw-dds"]
+# RMW backend (select one — every backend ships as a cffi shim that
+# installs a C vtable into `nros-rmw-cffi`'s runtime registry).
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
-# Phase 115.K.2.5.1.1 — XRCE via the C backend
-# (nros-rmw-xrce-c). Mutually exclusive with `rmw-xrce` (which
-# routes to the Rust direct impl). Consumer must call
-# `nros_rmw_xrce_cffi::register()` before opening the session.
+# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce-c).
+# Consumer must call `nros_rmw_xrce_cffi::register()` before opening
+# the session.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi", "nros-node/rmw-xrce-cffi"]
-# Phase 115.L.1 — dust-DDS via the C vtable. Mutually exclusive
-# with `rmw-dds` (Rust direct impl).
+# Phase 115.L.1 — dust-DDS via the C vtable.
 rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds-cffi", "nros-node/rmw-dds-cffi"]
-# Phase 115.L.2 — zenoh-pico via the C vtable. Mutually exclusive
-# with `rmw-zenoh` (Rust direct impl).
+# Phase 115.L.2 — zenoh-pico via the C vtable.
 rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh-cffi", "nros-node/rmw-zenoh-cffi"]
-rmw-uorb = ["dep:nros-rmw-uorb", "nros-node/rmw-uorb"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
-# feature for backend support matrix. v1: only XRCE-DDS implements
-# SlotLending (via uxr_prepare_output_stream).
+# feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
 
-# Platform (select one; forwarded to RMW backends which forward to -sys crates)
+# Platform (select one; forwarded to RMW shims which forward to -sys crates).
 platform-posix = [
     "nros-platform/platform-posix",
     "nros-node/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
-    "nros-rmw-xrce?/platform-posix",
-    "nros-rmw-dds?/platform-posix",
     "nros-rmw-dds-cffi?/platform-posix",
     "nros-rmw-zenoh-cffi?/platform-posix",
     "platform-udp",
@@ -82,26 +67,18 @@ platform-posix = [
 platform-zephyr = [
     "nros-platform/platform-zephyr",
     "nros-node/platform-zephyr",
-    "nros-rmw-zenoh?/platform-zephyr",
-    "nros-rmw-xrce?/platform-zephyr",
-    "nros-rmw-dds?/platform-zephyr",
     "nros-rmw-dds-cffi?/platform-zephyr",
     "nros-rmw-zenoh-cffi?/platform-zephyr",
     "platform-udp",
 ]
 platform-bare-metal = [
     "nros-node/platform-bare-metal",
-    "nros-rmw-zenoh?/platform-bare-metal",
-    "nros-rmw-xrce?/platform-bare-metal",
-    "nros-rmw-dds?/platform-bare-metal",
+    "nros-rmw-dds-cffi?/platform-bare-metal",
     "nros-rmw-zenoh-cffi?/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",
     "nros-node/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
-    "nros-rmw-xrce?/platform-freertos",
-    "nros-rmw-dds?/platform-freertos",
     "nros-rmw-dds-cffi?/platform-freertos",
     "nros-rmw-zenoh-cffi?/platform-freertos",
     "platform-udp",
@@ -109,9 +86,6 @@ platform-freertos = [
 platform-nuttx = [
     "nros-platform/platform-nuttx",
     "nros-node/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
-    "nros-rmw-xrce?/platform-nuttx",
-    "nros-rmw-dds?/platform-nuttx",
     "nros-rmw-dds-cffi?/platform-nuttx",
     "nros-rmw-zenoh-cffi?/platform-nuttx",
     "platform-udp",
@@ -119,9 +93,6 @@ platform-nuttx = [
 platform-threadx = [
     "nros-platform/platform-threadx",
     "nros-node/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
-    "nros-rmw-xrce?/platform-threadx",
-    "nros-rmw-dds?/platform-threadx",
     "nros-rmw-dds-cffi?/platform-threadx",
     "nros-rmw-zenoh-cffi?/platform-threadx",
     "platform-udp",
@@ -129,83 +100,63 @@ platform-threadx = [
 platform-cffi = ["nros-platform/platform-cffi"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
 # IVC-only transport; no `platform-udp` (no Ethernet, no UDP socket
-# layer). zenoh-pico's `Z_FEATURE_LINK_IVC` is enabled by
-# `zpico-sys/orin-spe` transitively via the rmw-zenoh feature.
+# layer).
 platform-orin-spe = [
     "nros-platform/platform-orin-spe",
     "nros-node/platform-orin-spe",
-    "nros-rmw-zenoh?/platform-orin-spe",
 ]
 
-# Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
-link-tcp = ["nros-rmw-zenoh?/link-tcp", "nros-rmw-zenoh-cffi?/link-tcp"]
-link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast", "nros-rmw-zenoh-cffi?/link-udp-unicast"]
-link-tls = ["nros-rmw-zenoh?/link-tls", "nros-rmw-zenoh-cffi?/link-tls"]
+# Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults).
+link-tcp = ["nros-rmw-zenoh-cffi?/link-tcp"]
+link-udp-unicast = ["nros-rmw-zenoh-cffi?/link-udp-unicast"]
+link-tls = ["nros-rmw-zenoh-cffi?/link-tls"]
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme.
-link-custom = ["nros-rmw-zenoh?/link-custom", "nros-rmw-zenoh-cffi?/link-custom"]
+link-custom = ["nros-rmw-zenoh-cffi?/link-custom"]
 
-# XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features)
+# XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
 platform-udp = ["nros-node/platform-udp"]
-# XRCE transport refinements (legacy aliases)
+# XRCE transport refinements (legacy aliases).
 xrce-udp = ["platform-posix", "platform-udp"]
-xrce-serial = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
+xrce-serial = ["nros-platform/platform-posix", "nros-node/posix-serial"]
 
-# E2E safety protocol (CRC-32 + sequence tracking)
+# E2E safety protocol (CRC-32 + sequence tracking).
 safety-e2e = [
     "nros-node/safety-e2e",
     "nros-rmw/safety-e2e",
-    "nros-rmw-zenoh?/safety-e2e",
-    "nros-rmw-xrce?/safety-e2e",
 ]
 
-# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
-unstable-zenoh-api = ["nros-node/unstable-zenoh-api", "nros-rmw-zenoh?/unstable-zenoh-api"]
+# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
+unstable-zenoh-api = ["nros-node/unstable-zenoh-api"]
 
-# Async feedback stream (futures_core::Stream impl on FeedbackStream)
+# Async feedback stream (futures_core::Stream impl on FeedbackStream).
 stream = ["nros-node/stream"]
 
-# Phase 101.4 — `Arc` / `Weak` substitution in dust-dds via
-# `portable-atomic-util`. Required for CAS-poor RISC-V `imc`
-# targets (ESP32-C3) where `target_has_atomic = "ptr"` evaluates
-# false and `alloc::sync::Arc` does not exist. Off by default;
-# board crates that need it (e.g. `nros-board-esp32-qemu` with
-# `dds-heap`) forward through this feature.
-rmw-dds-portable-atomic = ["nros-rmw-dds?/portable-atomic"]
+# FFI reentrancy guards (critical-section around all RMW FFI calls).
+ffi-sync = ["nros-node/ffi-sync"]
 
-# FFI reentrancy guards (critical-section around all RMW FFI calls)
-ffi-sync = [
-    "nros-node/ffi-sync",
-    "nros-rmw-zenoh?/ffi-sync",
-    "nros-rmw-xrce?/ffi-sync",
-]
-
-# Parameter services for ROS 2 interop (ros2 param list/get/set)
+# Parameter services for ROS 2 interop (ros2 param list/get/set).
 param-services = ["nros-node/param-services"]
 
-# Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002)
+# Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
-# ROS edition feature flags
-ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble", "nros-rmw-zenoh-cffi?/ros-humble"]
-ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron", "nros-rmw-zenoh-cffi?/ros-iron"]
+# ROS edition feature flags.
+ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh-cffi?/ros-humble"]
+ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh-cffi?/ros-iron"]
 
 [dependencies]
-# Core functionality (default-features = false for no_std support)
+# Core functionality (default-features = false for no_std support).
 nros-core = { version = "0.1.0", path = "../nros-core", default-features = false }
 nros-macros = { version = "0.1.0", path = "../nros-macros" }
 nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
-nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
-nros-rmw-xrce = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
-nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
 # Phase 115.K.2.5.1.0 — XRCE via the C backend.
 nros-rmw-xrce-cffi = { workspace = true, optional = true }
 # Phase 115.L.1 / L.2 — Rust-backend cffi shims.
 nros-rmw-dds-cffi = { workspace = true, optional = true }
 nros-rmw-zenoh-cffi = { workspace = true, optional = true }
-nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }

@@ -143,49 +143,19 @@ mod threadx_alloc {
 use core::ffi::{c_char, c_int, c_void};
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod guard_condition;
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod publisher;
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod service;
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod subscription;
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod timer;
 
 // ── Action module (alloc-free — caller provides inline storage) ──
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 mod action;
 
 // Phase 115.D — runtime-pluggable custom transport. Always-on (no
@@ -383,12 +353,7 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
 // are large enough for their Rust counterparts. If a Rust type grows
 // past the estimate emitted by build.rs, compilation fails with a
 // clear error instead of silently overflowing caller-provided storage.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 const _: () = {
     // Phase 87.6: `CppPublisher`, `CppSubscription`, `CppServiceServer`,
     // and `CppServiceClient` assertions removed — all four now use
@@ -403,12 +368,7 @@ const _: () = {
 // ============================================================================
 
 /// The concrete nros-node executor type used by the C++ FFI.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 pub(crate) type CppExecutor = nros_node::Executor;
 
 /// Context wrapping the executor and the domain ID.
@@ -416,24 +376,14 @@ pub(crate) type CppExecutor = nros_node::Executor;
 /// The executor doesn't store domain_id itself — it's consumed during
 /// session open. We keep it here so publisher/subscription creation
 /// can pass the correct value to `TopicInfo::with_domain()`.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 pub(crate) struct CppContext {
     pub(crate) executor: CppExecutor,
     pub(crate) domain_id: u32,
 }
 
 // Compile-time assertion: inline storage must fit CppContext.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
     core::mem::size_of::<CppContext>() <= CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
     "CPP_EXECUTOR_OPAQUE_U64S too small for CppContext — increase NROS_EXECUTOR_ARENA_SIZE \
@@ -464,12 +414,7 @@ const _: () = assert!(
 ///
 /// # Returns
 /// `NROS_CPP_RET_OK` on success, error code otherwise.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_init(
     locator: *const c_char,
@@ -530,12 +475,7 @@ pub unsafe extern "C" fn nros_cpp_init(
 ///
 /// # Safety
 /// `storage` must point to a live `CppContext` written by `nros_cpp_init()`, or NULL (no-op).
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
     if storage.is_null() {
@@ -586,12 +526,7 @@ pub struct nros_cpp_node_t {
 ///
 /// # Returns
 /// `NROS_CPP_RET_OK` on success, error code otherwise.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_node_create(
     executor_handle: *mut c_void,
@@ -701,12 +636,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
 ///
 /// # Safety
 /// `handle` must be a valid handle returned by `nros_cpp_init()`.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,
@@ -729,12 +659,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 // =============================================================================
 
 /// `nros::SchedClass` mirror. Phase 110.B.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_sched_class_t {
     Fifo = 0,
@@ -745,12 +670,7 @@ pub enum nros_cpp_sched_class_t {
 }
 
 /// `nros::Priority` mirror. Phase 110.C.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_priority_t {
     Critical = 0,
@@ -759,12 +679,7 @@ pub enum nros_cpp_priority_t {
 }
 
 /// `nros::DeadlinePolicy` mirror. Phase 110.B.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_deadline_policy_t {
     Released = 0,
@@ -775,12 +690,7 @@ pub enum nros_cpp_deadline_policy_t {
 /// `nros::SchedContext` mirror passed to
 /// [`nros_cpp_create_sched_context`]. Time fields use `0` as
 /// "absent" sentinel (mirrors the Rust `OptUs` newtype).
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 pub struct nros_cpp_sched_context_t {
     pub class: nros_cpp_sched_class_t,
@@ -798,12 +708,7 @@ pub struct nros_cpp_sched_context_t {
 }
 
 /// Identifier of the auto-created default `Fifo` SC. Phase 110.B.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_default_sched_context_id() -> u8 {
     0
@@ -818,12 +723,7 @@ pub extern "C" fn nros_cpp_default_sched_context_id() -> u8 {
 /// # Safety
 /// All pointers must be valid; `handle` must be a context returned by
 /// `nros_cpp_init`.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_create_sched_context(
     handle: *mut c_void,
@@ -884,12 +784,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
 ///
 /// # Safety
 /// `handle` must be a context returned by `nros_cpp_init`.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     handle: *mut c_void,

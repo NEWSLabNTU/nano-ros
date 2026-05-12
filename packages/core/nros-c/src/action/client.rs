@@ -248,12 +248,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
 ) -> nros_ret_t {
     validate_not_null!(client, executor);
 
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi"
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     {
         let client_ref = &mut *client;
         if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
@@ -329,12 +324,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
         }
     }
 
-    #[cfg(not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi"
-    )))]
+    #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, executor, timeout_ms);
         NROS_RET_OK
@@ -353,12 +343,7 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
     if client.is_null() || executor.is_null() {
         return false;
     }
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi"
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     {
         let client_ref = &*client;
         if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
@@ -375,12 +360,7 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
             None => false,
         }
     }
-    #[cfg(not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi"
-    )))]
+    #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, executor);
         true

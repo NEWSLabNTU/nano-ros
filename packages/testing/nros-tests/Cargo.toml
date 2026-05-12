@@ -44,16 +44,15 @@ nros-serdes = { path = "../../core/nros-serdes", optional = true }
 # `nros-rmw` defaults to no-std; tests always run with std, so opt in
 # explicitly to keep rich error-context / logging available.
 nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"], optional = true }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix", "std"], optional = true }
 
 # Node + executor API (optional, for trigger condition integration tests)
-nros-node = { path = "../../core/nros-node", features = ["std", "rmw-zenoh", "platform-posix", "ros-humble"], optional = true }
+nros-node = { path = "../../core/nros-node", features = ["std", "rmw-zenoh-cffi", "platform-posix", "ros-humble"], optional = true }
 
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
-rmw = ["nros-rmw", "nros-rmw-zenoh", "nros-core", "nros-serdes"]
-safety-e2e = ["rmw", "nros-rmw/safety-e2e", "nros-rmw-zenoh/safety-e2e"]
+rmw = ["nros-rmw", "nros-core", "nros-serdes"]
+safety-e2e = ["rmw", "nros-rmw/safety-e2e"]
 trigger-test = ["dep:nros-node", "nros-core", "nros-serdes"]
 # PX4 SITL E2E test (requires PX4_AUTOPILOT_DIR + working PX4 build env).
 # Test FAILS (does not silently skip) if PX4_AUTOPILOT_DIR is unset; this
@@ -92,11 +91,6 @@ path = "tests/actions.rs"
 [[test]]
 name = "native_api"
 path = "tests/native_api.rs"
-
-[[test]]
-name = "rmw"
-path = "tests/rmw.rs"
-required-features = ["rmw"]
 
 [[test]]
 name = "xrce"

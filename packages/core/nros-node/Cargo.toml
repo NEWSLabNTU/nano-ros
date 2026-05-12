@@ -15,8 +15,8 @@ categories = ["embedded", "no-std"]
 
 [features]
 default = ["std"]
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "nros-rmw-uorb?/std", "nros-rmw-cffi?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc", "dep:portable-atomic-util"]
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only
 # `scheduler-fifo` so MCU builds drop unused scheduler code. Each
@@ -27,84 +27,60 @@ scheduler-edf = []
 scheduler-bucketed = []
 scheduler-sporadic = []
 # Phase 110.F — opt-in PiCAS-style per-callback OS priority.
-# Useful only on platforms with enough OS pri slots (Linux, NuttX
-# 1..255). Disqualified on Cortex-M0+ (4 NVIC levels). Adds a
-# thread-pool-per-priority dispatch model — substantial additional
-# runtime cost; users opt in explicitly.
 scheduler-os-priority = []
-# Phase 110.G — opt-in ARINC-653 cyclic executive (TimeTriggered
-# class). Adds schedule-table parser + spin_once mode selector.
+# Phase 110.G — opt-in ARINC-653 cyclic executive (TimeTriggered class).
 scheduler-time-triggered = []
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce"]
-rmw-dds = ["dep:nros-rmw-dds"]
+
+# RMW vtable runtime registry. Every backend ships as a cffi shim
+# that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
-# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce-c).
-# Pulls in the cffi vtable consumer + the xrce-cffi shim crate that
-# auto-builds + auto-links the C lib. Consumer must call
-# `nros_rmw_xrce_cffi::register()` before opening the session.
+# Phase 115.K.2.5.1.1 — XRCE via the C backend.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Phase 115.L.1 — dust-DDS via the C vtable. Pulls in the
-# `nros-rmw-dds-cffi` shim which monomorphises
-# `RustBackendAdapter<DdsRmw>` into a static vtable. Consumer
-# must call `nros_rmw_dds_cffi::register()` before opening the
-# session. Routes through the same `CffiSession` path as
-# `rmw-xrce-cffi`.
+# Phase 115.L.1 — dust-DDS via the C vtable.
 rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds-cffi"]
-# Phase 115.L.2 — zenoh-pico via the C vtable. Same shape as
-# `rmw-dds-cffi`. Consumer must call
-# `nros_rmw_zenoh_cffi::register()` before opening the session.
+# Phase 115.L.2 — zenoh-pico via the C vtable.
 rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh-cffi"]
-rmw-uorb = ["dep:nros-rmw-uorb"]
 
 # Phase 99: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
-# Backends without lending (uORB, default zenoh-pico, dds, cffi) don't
-# expose a `lending` feature; user enabling `rmw-lending` w/ such a
-# backend gets a clear compile error from the missing feature
-# (instead of an opaque trait-bound error).
-rmw-lending = ["nros-rmw/lending", "nros-rmw-xrce?/lending", "nros-rmw-zenoh?/lending"]
+rmw-lending = ["nros-rmw/lending"]
 
-# XRCE transport refinements (forwarded to nros-rmw-xrce)
-platform-udp = ["nros-rmw-xrce?/platform-udp"]
-posix-serial = ["nros-rmw-xrce?/posix-serial"]
+# XRCE transport refinements (forwarded to nros-rmw-xrce-cffi).
+platform-udp = []
+posix-serial = []
 
-# ROS edition feature flags (controls which env vars are supported)
-ros-humble = ["nros-rmw-zenoh?/ros-humble"]     # ROS_LOCALHOST_ONLY (Humble+, default)
-ros-iron = ["nros-rmw-zenoh?/ros-iron"]                # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
+# ROS edition feature flags (controls which env vars are supported).
+ros-humble = ["nros-rmw-zenoh-cffi?/ros-humble"]
+ros-iron = ["nros-rmw-zenoh-cffi?/ros-iron"]
 log = ["dep:log"]
 
-# Platform backend (select one; forwarded to active RMW backend)
-platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-posix", "nros-rmw-dds?/platform-posix", "nros-rmw-dds-cffi?/platform-posix", "nros-rmw-zenoh-cffi?/platform-posix"]
-platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr", "nros-rmw-dds?/platform-zephyr", "nros-rmw-dds-cffi?/platform-zephyr", "nros-rmw-zenoh-cffi?/platform-zephyr"]
-platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal", "nros-rmw-zenoh-cffi?/platform-bare-metal"]
-platform-freertos = ["nros-rmw-zenoh?/platform-freertos", "nros-rmw-xrce?/platform-freertos", "nros-rmw-dds?/platform-freertos", "nros-rmw-dds-cffi?/platform-freertos", "nros-rmw-zenoh-cffi?/platform-freertos"]
-platform-nuttx = ["nros-rmw-zenoh?/platform-nuttx", "nros-rmw-xrce?/platform-nuttx", "nros-rmw-dds?/platform-nuttx", "nros-rmw-dds-cffi?/platform-nuttx", "nros-rmw-zenoh-cffi?/platform-nuttx"]
-platform-threadx = ["nros-rmw-zenoh?/platform-threadx", "nros-rmw-xrce?/platform-threadx", "nros-rmw-dds?/platform-threadx", "nros-rmw-dds-cffi?/platform-threadx", "nros-rmw-zenoh-cffi?/platform-threadx"]
+# Platform backend (select one; forwarded to active RMW backend).
+platform-posix = ["nros-rmw-dds-cffi?/platform-posix", "nros-rmw-zenoh-cffi?/platform-posix"]
+platform-zephyr = ["nros-rmw-dds-cffi?/platform-zephyr", "nros-rmw-zenoh-cffi?/platform-zephyr"]
+platform-bare-metal = ["nros-rmw-dds-cffi?/platform-bare-metal", "nros-rmw-zenoh-cffi?/platform-bare-metal"]
+platform-freertos = ["nros-rmw-dds-cffi?/platform-freertos", "nros-rmw-zenoh-cffi?/platform-freertos"]
+platform-nuttx = ["nros-rmw-dds-cffi?/platform-nuttx", "nros-rmw-zenoh-cffi?/platform-nuttx"]
+platform-threadx = ["nros-rmw-dds-cffi?/platform-threadx", "nros-rmw-zenoh-cffi?/platform-threadx"]
 # Phase 11 — AGX Orin SPE (zenoh-only; IVC link).
-platform-orin-spe = ["nros-rmw-zenoh?/platform-orin-spe"]
+platform-orin-spe = []
 platform-cffi = []
 
-# E2E safety protocol (CRC-32 + sequence tracking)
-safety-e2e = [
-    "nros-rmw/safety-e2e",
-    "nros-rmw-zenoh?/safety-e2e",
-    "nros-rmw-xrce?/safety-e2e",
-]
+# E2E safety protocol (CRC-32 + sequence tracking).
+safety-e2e = ["nros-rmw/safety-e2e"]
 
-# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
-unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
+# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
+unstable-zenoh-api = []
 
-# Async feedback stream (futures_core::Stream impl on FeedbackStream)
+# Async feedback stream (futures_core::Stream impl on FeedbackStream).
 stream = ["dep:futures-core"]
 
-# FFI reentrancy guards (critical-section around all RMW FFI calls)
-ffi-sync = ["nros-rmw-zenoh?/ffi-sync", "nros-rmw-xrce?/ffi-sync"]
+# FFI reentrancy guards (critical-section around all RMW FFI calls).
+ffi-sync = []
 
-# Parameter services (ros2 param CLI support)
+# Parameter services (ros2 param CLI support).
 param-services = ["dep:nros-rcl-interfaces", "alloc"]
 
-# Lifecycle services (ros2 lifecycle CLI support — REP-2002)
+# Lifecycle services (ros2 lifecycle CLI support — REP-2002).
 lifecycle-services = ["dep:nros-lifecycle-msgs", "alloc"]
 
 [dependencies]
@@ -113,9 +89,6 @@ nros-rmw = { workspace = true, default-features = false }
 # Phase 110.D — `Executor::open_threaded` consumes the `SchedPolicy`
 # enum from the platform-api types layer.
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api", default-features = false }
-nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
-nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
-nros-rmw-dds = { workspace = true, default-features = false, optional = true }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 # Phase 115.K.2.5.1.0 — Rust shim that auto-builds + auto-links the
 # C XRCE backend. Pulled in by `rmw-xrce-cffi` feature.
@@ -125,7 +98,6 @@ nros-rmw-xrce-cffi = { workspace = true, default-features = false, optional = tr
 # Rust `Session`/`Publisher`/etc. trait surface).
 nros-rmw-dds-cffi = { workspace = true, default-features = false, optional = true }
 nros-rmw-zenoh-cffi = { workspace = true, default-features = false, optional = true }
-nros-rmw-uorb = { version = "0.1.0", path = "../../px4/nros-rmw-uorb", default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }

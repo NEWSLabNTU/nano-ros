@@ -1713,8 +1713,8 @@ pub trait Transport {
 ///
 /// Embedded crates select a backend via feature flag:
 /// ```rust,ignore
-/// #[cfg(feature = "rmw-zenoh")]
-/// type DefaultRmw = nros_rmw_zenoh::ZenohRmw;
+/// #[cfg(feature = "rmw-cffi")]
+/// type DefaultRmw = nros_rmw_cffi::CffiRmw;
 /// ```
 ///
 /// Each backend provides its own `Rmw` implementation that bridges

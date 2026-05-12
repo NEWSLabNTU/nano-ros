@@ -11,13 +11,7 @@ use crate::{session, timer::TimerDuration};
 use super::arena::{
     SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
 };
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi",
-    feature = "rmw-uorb"
-))]
+#[cfg(feature = "rmw-cffi")]
 use super::types::ExecutorConfig;
 #[cfg(feature = "std")]
 use super::types::SpinOptions;
@@ -46,13 +40,7 @@ use super::{
 // Executor::open() factory method
 // ============================================================================
 
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi",
-    feature = "rmw-uorb"
-))]
+#[cfg(feature = "rmw-cffi")]
 impl Executor {
     /// Open a new executor session using the active RMW backend.
     ///
@@ -65,114 +53,22 @@ impl Executor {
     /// let mut executor = Executor::open(&config)?;
     /// ```
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        #[cfg(feature = "rmw-zenoh")]
-        {
-            let tc = nros_rmw::TransportConfig {
-                locator: Some(config.locator),
-                mode: config.mode,
-                properties: &[],
-            };
-            let session = nros_rmw_zenoh::ZenohSession::new(&tc)
-                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-            let mut executor = Self::from_session(session);
-            executor.set_node_identity(config.node_name, config.namespace);
-            Ok(executor)
-        }
-        #[cfg(feature = "rmw-xrce")]
-        {
-            use nros_rmw::Rmw;
+        use nros_rmw::Rmw;
 
-            // Wait for network on platforms that need it
-            #[cfg(feature = "platform-zephyr")]
-            {
-                unsafe extern "C" {
-                    fn xrce_zephyr_wait_network(timeout_ms: core::ffi::c_int) -> i32;
-                }
-                unsafe { xrce_zephyr_wait_network(5000) };
-            }
-
-            // Auto-init transport based on active feature
-            #[cfg(feature = "platform-udp")]
-            unsafe {
-                nros_rmw_xrce::platform_udp::init_platform_udp_transport(config.locator);
-            }
-            #[cfg(feature = "posix-serial")]
-            unsafe {
-                nros_rmw_xrce::platform_serial::init_platform_serial_transport(config.locator);
-            }
-
-            let rmw_config = nros_rmw::RmwConfig {
-                locator: config.locator,
-                mode: config.mode,
-                domain_id: config.domain_id,
-                node_name: config.node_name,
-                namespace: config.namespace,
-                properties: &[],
-            };
-            let session = nros_rmw_xrce::XrceRmw::default()
-                .open(&rmw_config)
-                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-            let mut executor = Self::from_session(session);
-            executor.set_node_identity(config.node_name, config.namespace);
-            Ok(executor)
-        }
-        #[cfg(feature = "rmw-dds")]
-        {
-            use nros_rmw::Rmw;
-
-            let rmw_config = nros_rmw::RmwConfig {
-                locator: config.locator,
-                mode: config.mode,
-                domain_id: config.domain_id,
-                node_name: config.node_name,
-                namespace: config.namespace,
-                properties: &[],
-            };
-            let session = nros_rmw_dds::DdsRmw
-                .open(&rmw_config)
-                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-            let mut executor = Self::from_session(session);
-            executor.set_node_identity(config.node_name, config.namespace);
-            Ok(executor)
-        }
-        #[cfg(feature = "rmw-cffi")]
-        {
-            use nros_rmw::Rmw;
-
-            let rmw_config = nros_rmw::RmwConfig {
-                locator: config.locator,
-                mode: config.mode,
-                domain_id: config.domain_id,
-                node_name: config.node_name,
-                namespace: config.namespace,
-                properties: &[],
-            };
-            let session = nros_rmw_cffi::CffiRmw
-                .open(&rmw_config)
-                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-            let mut executor = Self::from_session(session);
-            executor.set_node_identity(config.node_name, config.namespace);
-            Ok(executor)
-        }
-        #[cfg(feature = "rmw-uorb")]
-        {
-            use nros_rmw::Rmw;
-
-            let rmw_config = nros_rmw::RmwConfig {
-                locator: config.locator,
-                mode: config.mode,
-                domain_id: config.domain_id,
-                node_name: config.node_name,
-                namespace: config.namespace,
-                properties: &[],
-            };
-            let session = nros_rmw_uorb::UorbRmw
-                .open(&rmw_config)
-                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-            let mut executor = Self::from_session(session);
-            executor.set_node_identity(config.node_name, config.namespace);
-            Ok(executor)
-        }
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+            properties: &[],
+        };
+        let session = nros_rmw_cffi::CffiRmw
+            .open(&rmw_config)
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        let mut executor = Self::from_session(session);
+        executor.set_node_identity(config.node_name, config.namespace);
+        Ok(executor)
     }
 }
 

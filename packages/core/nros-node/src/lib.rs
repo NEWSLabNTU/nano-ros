@@ -78,16 +78,7 @@ pub mod timer;
 // `cfg(test)` produced "never constructed / never used" warnings on
 // `cargo build --tests` when feature-unification activated a real
 // RMW backend (e.g. workspace builds with `rmw-uorb` on).
-#[cfg(all(
-    test,
-    not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))
-))]
+#[cfg(all(test, not(feature = "rmw-cffi")))]
 pub(crate) mod mock;
 
 #[cfg(feature = "param-services")]

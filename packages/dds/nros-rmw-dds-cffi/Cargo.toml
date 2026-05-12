@@ -20,6 +20,7 @@ platform-zephyr = ["nros-rmw-dds/platform-zephyr", "nros-rmw-cffi/alloc"]
 platform-freertos = ["nros-rmw-dds/platform-freertos", "nros-rmw-cffi/alloc"]
 platform-nuttx = ["nros-rmw-dds/platform-nuttx", "nros-rmw-cffi/alloc"]
 platform-threadx = ["nros-rmw-dds/platform-threadx", "nros-rmw-cffi/alloc"]
+platform-bare-metal = ["nros-rmw-dds/platform-bare-metal", "nros-rmw-cffi/alloc"]
 
 [dependencies]
 # `RustBackendAdapter` lives behind nros-rmw-cffi's `alloc` feature

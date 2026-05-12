@@ -16,19 +16,9 @@ const fn u64s_for<T>() -> usize {
 }
 
 // When an RMW backend is active, compute exact sizes from the actual types.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 pub const SESSION_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwSession>();
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublisher>();
 // Phase 82: service client opaque storage no longer holds the RMW
 // transport handle (it lives in the executor's arena). Use
@@ -36,19 +26,9 @@ pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublishe
 // instead.
 
 // Placeholders for no-RMW workspace builds.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
+#[cfg(not(feature = "rmw-cffi"))]
 pub const SESSION_OPAQUE_U64S: usize = 1;
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-)))]
+#[cfg(not(feature = "rmw-cffi"))]
 pub const PUBLISHER_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
@@ -73,12 +53,7 @@ pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition
 // that the byte sizes match. Mismatch = the C-side
 // `NROS_ACTION_SERVER_INTERNAL_SIZE` macro is wrong, which would
 // silently corrupt the `nros_action_server_t` struct layout.
-#[cfg(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-dds",
-    feature = "rmw-cffi"
-))]
+#[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
     size_of::<crate::action::ActionServerInternal>()
         == size_of::<nros::sizes::ActionServerInternalLayout>(),

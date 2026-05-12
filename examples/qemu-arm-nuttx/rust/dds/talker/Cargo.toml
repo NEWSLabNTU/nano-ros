@@ -19,11 +19,9 @@ nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-
 # `NrosUdpTransportFactory` lets pubsub share the executor with zenoh /
 # uORB code paths and dodges socket2's missing-NuttX-quirks (no
 # SO_REUSEPORT, no IovLen, …) that block compile-time.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds", "platform-nuttx", "ros-humble"] }
-# Phase 97.4 debug — surfaces the per-bind / per-write_message trace
-# through `eprintln!`. Off by default; toggle via Cargo
-# `--no-default-features` if a clean release is needed.
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["debug-stderr"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-nuttx", "ros-humble"] }
+# Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
+nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }
 # `dust-dds` references `_critical_section_1_0_*` symbols from its
 # `MpscReceiverFuture` / `OneshotReceiver` poll paths. NuttX has

@@ -136,36 +136,14 @@ pub unsafe extern "C" fn nros_support_init_named(
     if !locator.is_null() {
         support.locator_len = crate::util::copy_cstr_into(locator, &mut support.locator);
     } else {
-        // Backend-dependent default locator
-        #[cfg(feature = "rmw-zenoh")]
-        let default_locator = b"tcp/127.0.0.1:7447\0";
-        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
-        let default_locator = b"127.0.0.1:2019\0";
-        // DDS doesn't use a locator string — discovery is via SPDP on the
-        // configured domain_id. Empty default is fine.
-        #[cfg(all(
-            feature = "rmw-dds",
-            not(feature = "rmw-zenoh"),
-            not(feature = "rmw-xrce")
-        ))]
-        let default_locator = b"\0";
         // Phase 115.K.2.5.2: rmw-cffi covers the C/C++-API XRCE C
-        // backend. Same default agent locator as the legacy
-        // rmw-xrce path so consumers that omit the locator
-        // continue connecting to a local agent on `:2019`.
-        #[cfg(all(
-            feature = "rmw-cffi",
-            not(feature = "rmw-zenoh"),
-            not(feature = "rmw-xrce"),
-            not(feature = "rmw-dds"),
-        ))]
+        // backend. Default agent locator for consumers that omit
+        // the locator — points at a local agent on `:2019`. Other
+        // cffi-* sub-backends (dds, zenoh, cyclonedds) ignore the
+        // locator and use their own discovery mechanisms.
+        #[cfg(feature = "rmw-cffi")]
         let default_locator = b"127.0.0.1:2019\0";
-        #[cfg(not(any(
-            feature = "rmw-zenoh",
-            feature = "rmw-xrce",
-            feature = "rmw-dds",
-            feature = "rmw-cffi",
-        )))]
+        #[cfg(not(feature = "rmw-cffi"))]
         let default_locator = b"\0";
 
         let len = default_locator.len() - 1;
@@ -220,12 +198,7 @@ pub unsafe extern "C" fn nros_support_init_named(
     }
 
     // Initialize the middleware session
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     {
         use nros_node::SessionMode;
 
@@ -274,12 +247,7 @@ pub unsafe extern "C" fn nros_support_init_named(
         }
     }
 
-    #[cfg(not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-    )))]
+    #[cfg(not(feature = "rmw-cffi"))]
     {
         NROS_RET_ERROR
     }
@@ -312,12 +280,7 @@ pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros
     }
 
     // Drop the inline RMW session
-    #[cfg(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-    ))]
+    #[cfg(feature = "rmw-cffi")]
     {
         core::ptr::drop_in_place(support._opaque.as_mut_ptr() as *mut nros::internals::RmwSession);
     }

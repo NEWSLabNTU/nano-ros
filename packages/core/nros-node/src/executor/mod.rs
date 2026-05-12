@@ -52,16 +52,7 @@ pub mod action;
 // feature unification under `cargo test --workspace` flips `ConcreteSession`
 // to a real backend handle (e.g. UorbSession when rmw-uorb is on transitively
 // via the workspace), breaking the type signatures the tests expect.
-#[cfg(all(
-    test,
-    not(any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi",
-        feature = "rmw-uorb"
-    ))
-))]
+#[cfg(all(test, not(feature = "rmw-cffi")))]
 mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.

@@ -20,10 +20,8 @@ default = ["std"]
 std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
-# RMW backend (select one) — passed through to nros
-rmw-zenoh = ["nros/rmw-zenoh"]
-rmw-xrce = ["nros/rmw-xrce"]
-rmw-dds = ["nros/rmw-dds"]
+# RMW backend (select one) — every backend ships as a cffi shim that
+# installs a C vtable into `nros-rmw-cffi`'s runtime registry.
 rmw-cffi = ["nros/rmw-cffi"]
 # Phase 115.K.2.5.2 — under the `xrce` CMake selector the C/C++ APIs
 # go through the rmw-cffi axis with the micro-XRCE-DDS-Client C
@@ -40,11 +38,11 @@ cffi-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
 # `cffi-dds-cffi` but routes through `nros-rmw-zenoh-cffi`.
 cffi-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 
-# Zenoh transport refinements (require rmw-zenoh)
+# Zenoh transport refinements (require rmw-zenoh-cffi)
 link-tcp = ["nros/link-tcp"]
 link-udp-unicast = ["nros/link-udp-unicast"]
 
-# XRCE transport refinements (require rmw-xrce)
+# XRCE transport refinements (require rmw-xrce-cffi)
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
 

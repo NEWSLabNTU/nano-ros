@@ -108,24 +108,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.70.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
-dependencies = [
- "bitflags 2.11.1",
- "cexpr",
- "clang-sys",
- "itertools",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 1.1.0",
- "shlex",
- "syn",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -139,7 +121,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash 2.1.2",
+ "rustc-hash",
  "shlex",
  "syn",
 ]
@@ -331,16 +313,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c23234600452033cc77e4b761e740e02d2c4168e11dbf36ab14a0f58973592b0"
 dependencies = [
  "cortex-m",
-]
-
-[[package]]
-name = "cpu-time"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9e393a7668fe1fad3075085b86c781883000b4ede868f43627b34a87c8b7ded"
-dependencies = [
- "libc",
- "winapi",
 ]
 
 [[package]]
@@ -960,7 +932,7 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 name = "freertos-lwip-sys"
 version = "0.1.0"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
 ]
 
 [[package]]
@@ -973,52 +945,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "futures"
-version = "0.3.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b147ee9d1f6d097cef9ce628cd2ee62288d963e16fb287bd9286455b241382d"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-executor",
- "futures-io",
- "futures-sink",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
-name = "futures-channel"
-version = "0.3.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
-dependencies = [
- "futures-core",
- "futures-sink",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
-
-[[package]]
-name = "futures-executor"
-version = "0.3.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baf29c38818342a3b26b5b923639e7b1f4a61fc5e76102d4b1981c6dc7a7579d"
-dependencies = [
- "futures-core",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
-name = "futures-io"
-version = "0.3.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
 
 [[package]]
 name = "futures-macro"
@@ -1055,13 +985,9 @@ version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
 dependencies = [
- "futures-channel",
  "futures-core",
- "futures-io",
  "futures-macro",
- "futures-sink",
  "futures-task",
- "memchr",
  "pin-project-lite",
  "slab",
 ]
@@ -1353,12 +1279,8 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-uorb",
- "nros-rmw-xrce",
  "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
  "nros-rmw-zenoh-cffi",
  "nros-serdes",
  "paste",
@@ -1452,12 +1374,8 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-uorb",
- "nros-rmw-xrce",
  "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
  "nros-rmw-zenoh-cffi",
  "portable-atomic",
  "portable-atomic-util",
@@ -1601,23 +1519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-px4"
-version = "0.1.0"
-dependencies = [
- "cpu-time",
- "futures",
- "heapless 0.8.0",
- "nros-core",
- "nros-node",
- "nros-rmw",
- "nros-rmw-uorb",
- "px4-log",
- "px4-sys",
- "px4-uorb",
- "px4-workqueue",
-]
-
-[[package]]
 name = "nros-rcl-interfaces"
 version = "0.1.0"
 dependencies = [
@@ -1669,35 +1570,6 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-dds",
-]
-
-[[package]]
-name = "nros-rmw-uorb"
-version = "0.1.0"
-dependencies = [
- "heapless 0.8.0",
- "nros-core",
- "nros-node",
- "nros-rmw",
- "portable-atomic",
- "px4-log",
- "px4-sys",
- "px4-uorb",
- "px4-workqueue",
-]
-
-[[package]]
-name = "nros-rmw-xrce"
-version = "0.1.0"
-dependencies = [
- "atomic-waker",
- "critical-section",
- "heapless 0.8.0",
- "libc",
- "nros-platform",
- "nros-rmw",
- "portable-atomic",
- "xrce-sys",
 ]
 
 [[package]]
@@ -1768,7 +1640,6 @@ dependencies = [
  "nros-core",
  "nros-node",
  "nros-rmw",
- "nros-rmw-zenoh",
  "nros-serdes",
  "nvidia-ivc",
  "once_cell",
@@ -1793,7 +1664,7 @@ dependencies = [
 name = "nuttx-sys"
 version = "0.1.0"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
 ]
 
 [[package]]
@@ -1968,14 +1839,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "px4-log"
-version = "0.1.0"
-dependencies = [
- "log",
- "px4-sys",
-]
-
-[[package]]
 name = "px4-sitl-tests"
 version = "0.1.0"
 dependencies = [
@@ -1983,41 +1846,6 @@ dependencies = [
  "regex",
  "rstest",
  "thiserror",
-]
-
-[[package]]
-name = "px4-sys"
-version = "0.1.0"
-dependencies = [
- "bindgen 0.70.1",
- "cc",
-]
-
-[[package]]
-name = "px4-uorb"
-version = "0.1.0"
-dependencies = [
- "px4-sys",
- "px4-workqueue",
-]
-
-[[package]]
-name = "px4-workqueue"
-version = "0.1.0"
-dependencies = [
- "px4-log",
- "px4-sys",
- "px4-workqueue-macros",
-]
-
-[[package]]
-name = "px4-workqueue-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -2185,12 +2013,6 @@ dependencies = [
  "syn",
  "unicode-ident",
 ]
-
-[[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
@@ -2536,7 +2358,7 @@ dependencies = [
 name = "threadx-netx-sys"
 version = "0.1.0"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
 ]
 
 [[package]]

@@ -21,7 +21,6 @@
 
 #![no_std]
 // Phase 97.1.board-decouple — only force-link when `rmw-zenoh` active.
-#[cfg(feature = "rmw-zenoh")]
 extern crate zpico_platform_shim;
 
 // Application modules
