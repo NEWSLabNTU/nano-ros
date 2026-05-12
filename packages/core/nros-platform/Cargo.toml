@@ -18,7 +18,24 @@ std = []
 
 # Platform backends (select one)
 platform-posix = ["dep:nros-platform-posix"]
+# `platform-cffi` selects `CffiPlatform` as the `ConcretePlatform` —
+# every Rust trait call dispatches through the canonical
+# `nros_platform_*` C symbols, which something else in the binary
+# must supply (a C platform port, or a separately-built Rust platform
+# crate with `cffi-export` on).
 platform-cffi = ["dep:nros-platform-cffi"]
+# Phase 121.2 — `cffi-export` is *orthogonal* to platform selection:
+# turn it on alongside any `platform-<rtos>` feature to publish the
+# canonical `nros_platform_*` C symbols from that crate's trait impl
+# via `nros-platform-cffi`'s `nros_platform_export!` macro. Optional
+# deps that aren't pulled in are silently ignored by the `?` syntax.
+cffi-export = [
+    "nros-platform-posix?/cffi-export",
+    "nros-platform-freertos?/cffi-export",
+    "nros-platform-nuttx?/cffi-export",
+    "nros-platform-threadx?/cffi-export",
+    "nros-platform-zephyr?/cffi-export",
+]
 platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
 platform-stm32f4 = ["dep:nros-platform-stm32f4"]
 platform-esp32 = ["dep:nros-platform-esp32"]
