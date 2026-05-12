@@ -306,7 +306,9 @@ _tx_thread_synch_return:
     LOAD    t0,  14*REGBYTES(sp)                        // Recover mstatus
     csrw    mstatus, t0                                 // Store mstatus, enables interrupt
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
-    addi    sp, sp, 29*REGBYTES                         // Recover stack frame
+    /* Phase 120.3: matches the 30*REGBYTES (240 B = 16-aligned) frame
+     * allocated by tx_thread_system_return.S. Was 29 (= 232 B misalign). */
+    addi    sp, sp, 30*REGBYTES
 #else
     addi    sp, sp, 16*REGBYTES                         // Recover stack frame
 #endif

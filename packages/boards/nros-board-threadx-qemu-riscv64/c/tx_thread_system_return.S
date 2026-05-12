@@ -80,7 +80,10 @@ _tx_thread_system_return:
     /* Save minimal context on the stack.  */
 
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
-    addi    sp, sp, -29*REGBYTES                        // Allocate space on the stack - with floating point enabled
+    /* Phase 120.3: was -29*REGBYTES (232 B → SP 8-byte misaligned on
+     * rv64 LP64D). Bumped to -30*REGBYTES (240 B → 16-aligned). The
+     * matching restore in tx_thread_schedule.S uses 30 as well. */
+    addi    sp, sp, -30*REGBYTES
 #else
     addi    sp, sp, -16*REGBYTES                        // Allocate space on the stack - without floating point enabled
 #endif
