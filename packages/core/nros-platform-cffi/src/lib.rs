@@ -313,162 +313,422 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
 }
 
 // ============================================================================
-// Test-only stubs
+// Phase 121.2 — export_*! macros
 // ----------------------------------------------------------------------------
-// `cargo test -p nros-platform-cffi` builds a test binary that links
-// the rlib. Without these, the unresolved extern symbols above would
-// fail to link even when no test exercises `CffiPlatform`. Real
-// platform crates supply their own definitions and never compile this
-// module (it is gated on `cfg(test)`).
+// Each macro emits the `#[unsafe(no_mangle)] extern "C"` definitions for one
+// capability group. The macro callee must implement the matching
+// `nros_platform_api::Platform*` trait; the trait bound is checked at the
+// macro-expansion site, so a missing impl produces a clear compile error in
+// the caller crate.
+//
+// Naming the symbols exactly matches `<nros/platform.h>`. Add a new ABI
+// symbol in three coordinated places, all inside this crate:
+//   1. declare it in `include/nros/platform.h`,
+//   2. declare it in the `unsafe extern "C" { … }` block above,
+//   3. emit it from the appropriate `export_*!` macro below.
+// ============================================================================
+
+/// Emit `nros_platform_clock_{ms,us}` delegating to
+/// `<$ty as PlatformClock>`.
+#[macro_export]
+macro_rules! nros_platform_export_clock {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_clock_ms() -> u64 {
+            <$ty as ::nros_platform_api::PlatformClock>::clock_ms()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_clock_us() -> u64 {
+            <$ty as ::nros_platform_api::PlatformClock>::clock_us()
+        }
+    };
+}
+
+/// Emit `nros_platform_{alloc,realloc,dealloc}` delegating to
+/// `<$ty as PlatformAlloc>`.
+#[macro_export]
+macro_rules! nros_platform_export_alloc {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_alloc(size: usize) -> *mut ::core::ffi::c_void {
+            <$ty as ::nros_platform_api::PlatformAlloc>::alloc(size)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_realloc(
+            ptr: *mut ::core::ffi::c_void,
+            size: usize,
+        ) -> *mut ::core::ffi::c_void {
+            <$ty as ::nros_platform_api::PlatformAlloc>::realloc(ptr, size)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_dealloc(ptr: *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformAlloc>::dealloc(ptr)
+        }
+    };
+}
+
+/// Emit `nros_platform_sleep_{us,ms,s}` delegating to
+/// `<$ty as PlatformSleep>`.
+#[macro_export]
+macro_rules! nros_platform_export_sleep {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_sleep_us(us: usize) {
+            <$ty as ::nros_platform_api::PlatformSleep>::sleep_us(us)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_sleep_ms(ms: usize) {
+            <$ty as ::nros_platform_api::PlatformSleep>::sleep_ms(ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_sleep_s(s: usize) {
+            <$ty as ::nros_platform_api::PlatformSleep>::sleep_s(s)
+        }
+    };
+}
+
+/// Emit `nros_platform_yield_now` delegating to
+/// `<$ty as PlatformYield>`.
+#[macro_export]
+macro_rules! nros_platform_export_yield {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_yield_now() {
+            <$ty as ::nros_platform_api::PlatformYield>::yield_now()
+        }
+    };
+}
+
+/// Emit `nros_platform_random_*` delegating to `<$ty as PlatformRandom>`.
+#[macro_export]
+macro_rules! nros_platform_export_random {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_random_u8() -> u8 {
+            <$ty as ::nros_platform_api::PlatformRandom>::random_u8()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_random_u16() -> u16 {
+            <$ty as ::nros_platform_api::PlatformRandom>::random_u16()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_random_u32() -> u32 {
+            <$ty as ::nros_platform_api::PlatformRandom>::random_u32()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_random_u64() -> u64 {
+            <$ty as ::nros_platform_api::PlatformRandom>::random_u64()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_random_fill(buf: *mut ::core::ffi::c_void, len: usize) {
+            <$ty as ::nros_platform_api::PlatformRandom>::random_fill(buf, len)
+        }
+    };
+}
+
+/// Emit `nros_platform_time_*` delegating to `<$ty as PlatformTime>`.
+#[macro_export]
+macro_rules! nros_platform_export_time {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_time_now_ms() -> u64 {
+            <$ty as ::nros_platform_api::PlatformTime>::time_now_ms()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_time_since_epoch_secs() -> u32 {
+            <$ty as ::nros_platform_api::PlatformTime>::time_since_epoch_secs()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_time_since_epoch_nanos() -> u32 {
+            <$ty as ::nros_platform_api::PlatformTime>::time_since_epoch_nanos()
+        }
+    };
+}
+
+/// Emit `nros_platform_task_*`, `nros_platform_mutex_*`,
+/// `nros_platform_mutex_rec_*`, and `nros_platform_condvar_*` delegating
+/// to `<$ty as PlatformThreading>`. Skip this macro on platforms without
+/// kernel threads.
+#[macro_export]
+macro_rules! nros_platform_export_threading {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_init(
+            task: *mut ::core::ffi::c_void,
+            attr: *mut ::core::ffi::c_void,
+            entry: ::core::option::Option<
+                unsafe extern "C" fn(*mut ::core::ffi::c_void) -> *mut ::core::ffi::c_void,
+            >,
+            arg: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_init(task, attr, entry, arg)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_join(task: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_join(task)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_detach(task: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_detach(task)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_cancel(task: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_cancel(task)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_exit() {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_exit()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_free(task: *mut *mut ::core::ffi::c_void) {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_free(task)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_init(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_init(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_drop(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_drop(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_lock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_lock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_try_lock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_try_lock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_unlock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_unlock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_init(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_init(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_drop(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_drop(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_lock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_lock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_try_lock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_try_lock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_unlock(m: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_unlock(m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_init(cv: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_init(cv)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_drop(cv: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_drop(cv)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_signal(cv: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_signal(cv)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_signal_all(cv: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_signal_all(cv)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_wait(
+            cv: *mut ::core::ffi::c_void,
+            m: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_wait(cv, m)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_wait_until(
+            cv: *mut ::core::ffi::c_void,
+            m: *mut ::core::ffi::c_void,
+            abstime: u64,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_wait_until(cv, m, abstime)
+        }
+    };
+}
+
+/// Convenience: emit every `nros_platform_*` symbol declared in
+/// `<nros/platform.h>` by delegating to the corresponding
+/// `nros_platform_api::Platform*` trait method on `$ty`. The caller must
+/// implement every trait covered by the eight capability macros.
+#[macro_export]
+macro_rules! nros_platform_export {
+    ($ty:ty) => {
+        $crate::nros_platform_export_clock!($ty);
+        $crate::nros_platform_export_alloc!($ty);
+        $crate::nros_platform_export_sleep!($ty);
+        $crate::nros_platform_export_yield!($ty);
+        $crate::nros_platform_export_random!($ty);
+        $crate::nros_platform_export_time!($ty);
+        $crate::nros_platform_export_threading!($ty);
+    };
+}
+
+// ============================================================================
+// Test-only self-export
+// ----------------------------------------------------------------------------
+// `cargo test -p nros-platform-cffi` builds a test binary that links the
+// rlib. The `unsafe extern "C"` declarations above would fail to link
+// without definitions; we satisfy them by invoking the macro on a dummy
+// `TestPlatform` ZST defined here. This doubles as a smoke test that
+// every macro arm expands and that the trait dispatch resolves.
+//
+// Real platform crates supply their own definitions via the same macro
+// and never compile this module (it is gated on `cfg(test)`).
 // ============================================================================
 
 #[cfg(test)]
-mod test_stubs {
+mod test_self_export {
     use core::ffi::c_void;
+    use nros_platform_api::{
+        PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformThreading,
+        PlatformTime, PlatformYield,
+    };
 
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_clock_ms() -> u64 {
-        0
+    pub struct TestPlatform;
+
+    impl PlatformClock for TestPlatform {
+        fn clock_ms() -> u64 {
+            0
+        }
+        fn clock_us() -> u64 {
+            0
+        }
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_clock_us() -> u64 {
-        0
+    impl PlatformAlloc for TestPlatform {
+        fn alloc(_: usize) -> *mut c_void {
+            core::ptr::null_mut()
+        }
+        fn realloc(_: *mut c_void, _: usize) -> *mut c_void {
+            core::ptr::null_mut()
+        }
+        fn dealloc(_: *mut c_void) {}
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_alloc(_: usize) -> *mut c_void {
-        core::ptr::null_mut()
+    impl PlatformSleep for TestPlatform {
+        fn sleep_us(_: usize) {}
+        fn sleep_ms(_: usize) {}
+        fn sleep_s(_: usize) {}
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_realloc(_: *mut c_void, _: usize) -> *mut c_void {
-        core::ptr::null_mut()
+    impl PlatformYield for TestPlatform {
+        fn yield_now() {}
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_dealloc(_: *mut c_void) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_sleep_us(_: usize) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_sleep_ms(_: usize) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_sleep_s(_: usize) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_yield_now() {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_random_u8() -> u8 {
-        0
+    impl PlatformRandom for TestPlatform {
+        fn random_u8() -> u8 {
+            0
+        }
+        fn random_u16() -> u16 {
+            0
+        }
+        fn random_u32() -> u32 {
+            0
+        }
+        fn random_u64() -> u64 {
+            0
+        }
+        fn random_fill(_: *mut c_void, _: usize) {}
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_random_u16() -> u16 {
-        0
+    impl PlatformTime for TestPlatform {
+        fn time_now_ms() -> u64 {
+            0
+        }
+        fn time_since_epoch_secs() -> u32 {
+            0
+        }
+        fn time_since_epoch_nanos() -> u32 {
+            0
+        }
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_random_u32() -> u32 {
-        0
+    impl PlatformThreading for TestPlatform {
+        fn task_init(
+            _: *mut c_void,
+            _: *mut c_void,
+            _: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
+            _: *mut c_void,
+        ) -> i8 {
+            -1
+        }
+        fn task_join(_: *mut c_void) -> i8 {
+            -1
+        }
+        fn task_detach(_: *mut c_void) -> i8 {
+            -1
+        }
+        fn task_cancel(_: *mut c_void) -> i8 {
+            -1
+        }
+        fn task_exit() {}
+        fn task_free(_: *mut *mut c_void) {}
+        fn mutex_init(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_drop(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_lock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_try_lock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_unlock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_rec_init(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_rec_drop(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_rec_lock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_rec_try_lock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn mutex_rec_unlock(_: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_init(_: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_drop(_: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_signal(_: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_signal_all(_: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_wait(_: *mut c_void, _: *mut c_void) -> i8 {
+            0
+        }
+        fn condvar_wait_until(_: *mut c_void, _: *mut c_void, _: u64) -> i8 {
+            0
+        }
     }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_random_u64() -> u64 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_random_fill(_: *mut c_void, _: usize) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_time_now_ms() -> u64 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_time_since_epoch_secs() -> u32 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_time_since_epoch_nanos() -> u32 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_init(
-        _: *mut c_void,
-        _: *mut c_void,
-        _: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
-        _: *mut c_void,
-    ) -> i8 {
-        -1
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_join(_: *mut c_void) -> i8 {
-        -1
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_detach(_: *mut c_void) -> i8 {
-        -1
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_cancel(_: *mut c_void) -> i8 {
-        -1
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_exit() {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_task_free(_: *mut *mut c_void) {}
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_init(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_drop(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_lock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_try_lock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_unlock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_rec_init(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_rec_drop(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_rec_lock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_rec_try_lock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_mutex_rec_unlock(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_init(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_drop(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_signal(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_signal_all(_: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_wait(_: *mut c_void, _: *mut c_void) -> i8 {
-        0
-    }
-    #[unsafe(no_mangle)]
-    extern "C" fn nros_platform_condvar_wait_until(_: *mut c_void, _: *mut c_void, _: u64) -> i8 {
-        0
+
+    crate::nros_platform_export!(TestPlatform);
+
+    #[test]
+    fn macro_expansion_dispatches() {
+        // Touch every group through the FFI surface to confirm the
+        // generated symbols are reachable and dispatch resolves.
+        assert_eq!(super::CffiPlatform::clock_ms(), 0);
+        assert_eq!(
+            <super::CffiPlatform as ::nros_platform_api::PlatformAlloc>::alloc(0),
+            core::ptr::null_mut(),
+        );
+        <super::CffiPlatform as ::nros_platform_api::PlatformYield>::yield_now();
     }
 }
