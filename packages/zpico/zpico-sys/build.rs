@@ -2293,6 +2293,13 @@ fn build_zenoh_pico_threadx(
     // layout (TX_THREAD + embedded stack + function/arg pointers).
     let platform_dir = c_dir.join("platform");
     build.file(platform_dir.join("threadx/task.c"));
+    // Phase 120.3 diag: bare-metal-safe vsnprintf+UART backing for
+    // zenoh-pico's _Z_LOG (ZENOH_LOG_PRINT). Opt-in via the
+    // `NROS_ZPICO_LOG_TO_UART` env var.
+    if std::env::var("NROS_ZPICO_LOG_TO_UART").is_ok() {
+        build.file(platform_dir.join("threadx/log_uart.c"));
+        build.define("ZENOH_LOG_PRINT", "zpico_log_print");
+    }
     // network.c skipped — networking provided by zpico-platform-shim via
     // nros-platform-threadx (NetX Duo BSD socket calls).
 
@@ -2343,7 +2350,11 @@ fn build_zenoh_pico_threadx(
     // ZENOH_THREADX: tells zenoh_generic_platform.h to use ThreadX types and system layer
     build.define("ZENOH_GENERIC", None);
     build.define("ZENOH_THREADX", None);
-    build.define("ZENOH_DEBUG", "0");
+    // Phase 120.3 diag: gate ZENOH_DEBUG on env so we can flip from
+    // 0 → 3 without touching build.rs. Requires NROS_ZPICO_LOG_TO_UART
+    // to pick up the bare-metal vsnprintf+UART sink.
+    let zenoh_debug = std::env::var("NROS_ZENOH_DEBUG").unwrap_or_else(|_| "0".into());
+    build.define("ZENOH_DEBUG", zenoh_debug.as_str());
 
     // NetX Duo's nxd_bsd.h remaps nx_bsd_* types to standard POSIX names
     // (suseconds_t, fd_set, in_addr_t, etc.) which conflict with system headers
@@ -2398,10 +2409,13 @@ fn build_zenoh_pico_threadx(
     println!("cargo:rerun-if-changed=c/platform/threadx/task.c");
     println!("cargo:rerun-if-changed=c/platform/threadx/network.c");
     println!("cargo:rerun-if-changed=c/platform/threadx/platform.h");
+    println!("cargo:rerun-if-changed=c/platform/threadx/log_uart.c");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
     println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=NETX_DIR");
     println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
+    println!("cargo:rerun-if-env-changed=NROS_ZPICO_LOG_TO_UART");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_DEBUG");
 }
 
 /// Recursively collect all .c files from a directory and add them to a cc::Build.
