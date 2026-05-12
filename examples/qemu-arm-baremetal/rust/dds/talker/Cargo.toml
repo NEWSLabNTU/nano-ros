@@ -34,7 +34,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # `main.rs` calls `register()` before `Executor::open`. The
 # `nros-rmw-dds` consumer picks the `platform-bare-metal` cfg via the
 # cffi shim's matching feature.
-nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-bare-metal"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-bare-metal"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

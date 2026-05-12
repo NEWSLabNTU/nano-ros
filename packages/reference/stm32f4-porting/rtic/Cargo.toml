@@ -39,7 +39,7 @@ nros = { path = "../../../core/nros", default-features = false }
 # is wired up; the porting example currently keeps every nros API call
 # commented out, so depending on the shim is enough to validate link-time
 # integration.
-nros-rmw-zenoh-cffi = { path = "../../../zpico/nros-rmw-zenoh-cffi", default-features = false, features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
 
 # smoltcp TCP bridge for zenoh-pico
 nros-smoltcp = { path = "../../../../drivers/nros-smoltcp" }

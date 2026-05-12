@@ -95,3 +95,65 @@ pub use keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
+
+// ============================================================================
+// Phase 115.M.3 — C-vtable register entry (folded in from the
+// retired `nros-rmw-zenoh-cffi` crate).
+// ============================================================================
+//
+// The vtable IS the cross-language boundary. Once registered, runtime
+// dispatch goes Rust→vtable→… directly; backends never `use` each
+// other's trait surface. So the register fn lives next to the trait
+// impl, and the legacy `*-cffi` two-crate split goes away.
+
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal",
+    feature = "platform-freertos",
+    feature = "platform-nuttx",
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+))]
+mod cffi_register {
+    use core::ffi::c_int;
+
+    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet, RustBackendAdapter};
+
+    use crate::ZenohRmw;
+
+    /// C entry — installs the zenoh-pico vtable into the cffi
+    /// runtime. Returns `NROS_RMW_RET_OK` (0) on success.
+    /// Idempotent — the runtime's atomic vtable slot accepts the
+    /// most-recently-registered value, so re-calls are no-ops.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_rmw_zenoh_register() -> NrosRmwRet {
+        RustBackendAdapter::<ZenohRmw>::register()
+    }
+
+    /// Failure mode for the safe Rust wrapper.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub struct RegisterError(pub c_int);
+
+    /// Safe Rust wrapper around [`nros_rmw_zenoh_register`]. Returns
+    /// `Err(RegisterError(rc))` when the runtime rejects the vtable.
+    pub fn register() -> Result<(), RegisterError> {
+        let rc = nros_rmw_zenoh_register();
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(RegisterError(rc))
+        }
+    }
+}
+
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal",
+    feature = "platform-freertos",
+    feature = "platform-nuttx",
+    feature = "platform-threadx",
+    feature = "platform-orin-spe",
+))]
+pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};

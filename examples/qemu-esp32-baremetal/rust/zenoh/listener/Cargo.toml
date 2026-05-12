@@ -17,7 +17,7 @@ nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp3
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh-cffi", "platform-bare-metal", "link-tcp", "ros-humble"] }
-nros-rmw-zenoh-cffi = { path = "../../../../../packages/zpico/nros-rmw-zenoh-cffi", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

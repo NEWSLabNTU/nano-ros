@@ -21,7 +21,7 @@ nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-
 # SO_REUSEPORT, no IovLen, …) that block compile-time.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-nuttx", "ros-humble"] }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
-nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-nuttx"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }
 # `dust-dds` references `_critical_section_1_0_*` symbols from its
 # `MpscReceiverFuture` / `OneshotReceiver` poll paths. NuttX has

@@ -14,7 +14,7 @@ path = "src/main.rs"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-dds-cffi", "platform-posix"] }
 # Phase 115.L.5 — pull cffi shim that exposes dust-dds via
 # `nros_rmw_vtable_t`. main.rs calls register() before Executor::open.
-nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-posix"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-posix"] }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

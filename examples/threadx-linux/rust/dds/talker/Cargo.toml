@@ -22,7 +22,7 @@ nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-t
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-threadx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
-nros-rmw-dds-cffi = { path = "../../../../../packages/dds/nros-rmw-dds-cffi", features = ["platform-threadx"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-threadx"] }
 # `dust-dds` references `_critical_section_1_0_*` symbols. Linux host
 # has pthread → use the std-backed impl from the `critical-section`
 # crate.

@@ -17,7 +17,7 @@ endif()
 # ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
     # Phase 115.L.2: `zenoh` routes through the C vtable via
-    # `nros-rmw-zenoh-cffi`.
+    # `nros-rmw-zenoh`.
     set(_rmw_features rmw-zenoh-cffi)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 115.K.2.5.2: `xrce` selects the C backend
@@ -25,7 +25,7 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_rmw_features rmw-cffi)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: `dds` routes through the C vtable via
-    # `nros-rmw-dds-cffi`.
+    # `nros-rmw-dds`.
     set(_rmw_features rmw-dds-cffi)
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 117.8: Cyclone DDS backend lives behind the `rmw-cffi`
@@ -106,7 +106,7 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: dust-DDS via the C vtable. The register
     # entry point `nros_rmw_dds_register()` ships from the
-    # Rust-side `nros-rmw-dds-cffi` shim crate (pulled via the
+    # Rust-side `nros-rmw-dds` shim crate (pulled via the
     # `rmw-dds-cffi` Cargo feature), so no extra find_package
     # is required — the symbol is in the staticlib produced by
     # corrosion_import_crate above.

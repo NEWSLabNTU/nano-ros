@@ -65,3 +65,42 @@ pub use service::{DdsServiceClient, DdsServiceServer};
 pub use session::DdsSession;
 pub use subscriber::DdsSubscriber;
 pub use transport::DdsRmw;
+
+// ============================================================================
+// Phase 115.M.3 — C-vtable register entry (folded in from the
+// retired `nros-rmw-dds-cffi` crate).
+// ============================================================================
+
+mod cffi_register {
+    use core::ffi::c_int;
+
+    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet, RustBackendAdapter};
+
+    use crate::DdsRmw;
+
+    /// C entry — installs the dust-DDS vtable into the cffi runtime.
+    /// Returns `NROS_RMW_RET_OK` (0) on success. Idempotent — the
+    /// runtime's atomic vtable slot accepts the most-recently-
+    /// registered value.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_rmw_dds_register() -> NrosRmwRet {
+        RustBackendAdapter::<DdsRmw>::register()
+    }
+
+    /// Failure mode for the safe Rust wrapper.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub struct RegisterError(pub c_int);
+
+    /// Safe Rust wrapper around [`nros_rmw_dds_register`]. Returns
+    /// `Err(RegisterError(rc))` when the runtime rejects the vtable.
+    pub fn register() -> Result<(), RegisterError> {
+        let rc = nros_rmw_dds_register();
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(RegisterError(rc))
+        }
+    }
+}
+
+pub use cffi_register::{RegisterError, nros_rmw_dds_register, register};

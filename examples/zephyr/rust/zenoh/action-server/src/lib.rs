@@ -35,7 +35,7 @@ fn run() -> Result<(), NodeError> {
 
     let config = ExecutorConfig::new("tcp/127.0.0.1:7476");
     // Phase 115.L.5-zephyr — install zenoh C-vtable backend.
-    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;

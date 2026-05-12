@@ -27,7 +27,7 @@ log = "0.4"
 
 # nros unified API — DDS backend via dust-dds, no_std + alloc.
 nros = { version = "*", default-features = false, features = ["rmw-dds-cffi", "platform-zephyr"] }
-nros-rmw-dds-cffi = { version = "*", default-features = false, features = ["platform-zephyr"] }
+nros-rmw-dds = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
 example_interfaces = { version = "*", default-features = false }
 

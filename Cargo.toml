@@ -43,9 +43,7 @@ members = [
     # C function table adapter for third-party RMW backends
     "packages/core/nros-rmw-cffi",
     # Phase 115.L.1 — dust-dds via C vtable
-    "packages/dds/nros-rmw-dds-cffi",
     # Phase 115.L.2 — zenoh-pico via C vtable
-    "packages/zpico/nros-rmw-zenoh-cffi",
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
     # Unified platform abstraction
@@ -306,8 +304,6 @@ nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", de
 # by example crates that opt into the cffi-via-C-backend path.
 nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
 nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
-nros-rmw-dds-cffi = { version = "0.1.0", path = "packages/dds/nros-rmw-dds-cffi", default-features = false }
-nros-rmw-zenoh-cffi = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh-cffi", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
 nros-sizes-build = { version = "0.1.0", path = "packages/core/nros-sizes-build" }

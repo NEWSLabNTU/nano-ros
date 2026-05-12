@@ -168,7 +168,7 @@ fn main() {
     // transport slot set above is drained by zenoh-pico during
     // session open, so the cffi register must happen first so the
     // runtime knows which backend's open() to dispatch to.
-    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     // Open zenoh session via the custom-link locator. Address is
     // opaque to v1; just needs to be non-empty.

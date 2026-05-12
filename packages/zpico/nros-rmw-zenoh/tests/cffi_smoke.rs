@@ -15,7 +15,7 @@ use nros_rmw_zenoh::ZenohRmw;
 
 #[test]
 fn zenoh_cffi_register_returns_ok() {
-    let rc = nros_rmw_zenoh_cffi::register();
+    let rc = nros_rmw_zenoh::register();
     assert!(rc.is_ok(), "register failed: {rc:?}");
 }
 
@@ -122,7 +122,7 @@ impl Drop for RouterHandle {
 fn cffi_pubsub_round_trip() {
     let locator =
         router_locator().expect("zenohd unavailable at build/zenohd/zenohd — run `just setup`");
-    nros_rmw_zenoh_cffi::register().expect("register");
+    nros_rmw_zenoh::register().expect("register");
 
     let mut session = CffiSession::open(&locator, /* client */ 0, 0, "l2_pubsub").expect("open");
     // Match the existing nros-rmw-zenoh integration test shape: simple

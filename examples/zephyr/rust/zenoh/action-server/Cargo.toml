@@ -26,7 +26,7 @@ heapless = "0.8"
 
 # nros unified API (patched to local via .cargo/config.toml)
 nros = { version = "*", default-features = false, features = ["rmw-zenoh-cffi", "platform-zephyr"] }
-nros-rmw-zenoh-cffi = { version = "*", default-features = false, features = ["platform-zephyr", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "link-tcp", "ros-humble"] }
 
 # Generated message types (patched to local via .cargo/config.toml)
 example_interfaces = { version = "*", default-features = false }

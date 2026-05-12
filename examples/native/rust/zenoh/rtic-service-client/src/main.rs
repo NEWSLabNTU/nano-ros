@@ -21,7 +21,7 @@ fn main() {
 
     let config = ExecutorConfig::from_env().node_name("add_client");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-    nros_rmw_zenoh_cffi::register().expect("zenoh RMW register failed");
+    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     let mut executor = Executor::open(&config).expect("Failed to open session");
 

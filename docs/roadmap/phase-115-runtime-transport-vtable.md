@@ -860,13 +860,13 @@ Ordered easiest → hardest:
   rust_adapter`.
 
 - [x] **115.L.1 — dust-dds via cffi.** New crate
-  `packages/dds/nros-rmw-dds-cffi/` exposes
+  `packages/dds/nros-rmw-dds/` exposes
   `nros_rmw_dds_register()` via the 10-LOC
   `RustBackendAdapter::<DdsRmw>::register()` shim. Vtable
   monomorphisation routes through `DdsSession` / `DdsPublisher` /
   `DdsSubscriber` / `DdsServiceServer` / `DdsServiceClient` from
   `nros-rmw-dds`. Smoke test
-  (`packages/dds/nros-rmw-dds-cffi/tests/smoke.rs`) covers three
+  (`packages/dds/nros-rmw-dds/tests/smoke.rs`) covers three
   tiers: register returns `NROS_RMW_RET_OK`; monomorphised vtable's
   `open` / `close` round-trips against a live
   `DomainParticipantFactory`; full pub→sub round-trip through
@@ -879,7 +879,7 @@ Ordered easiest → hardest:
   `send_reply`, client polls `call_raw` (the deprecated blocking
   entry that the cffi vtable still exposes for C consumers
   without an executor). 4/4 passing via
-  `cargo test -p nros-rmw-dds-cffi --features platform-posix --test
+  `cargo test -p nros-rmw-dds --features platform-posix --test
   smoke`. **Note on participant topology:** the pub→sub test uses
   two `CffiSession` instances on the same domain because
   `DdsSession::create_publisher` and `create_subscriber` both call
@@ -890,7 +890,7 @@ Ordered easiest → hardest:
 
 - [x] **115.L.2 — zenoh-pico via cffi (landed; canonical
   consumer path post-L.7).** New crate
-  `packages/zpico/nros-rmw-zenoh-cffi/` exposes
+  `packages/zpico/nros-rmw-zenoh/` exposes
   `nros_rmw_zenoh_register()` via the 10-LOC
   `RustBackendAdapter::<ZenohRmw>::register()` shim. Vtable
   monomorphisation routes through `ZenohSession` / `ZenohPublisher`
@@ -901,11 +901,11 @@ Ordered easiest → hardest:
   `zpico-platform-shim` as Rust dependencies of the shim.
 
   **What landed in this commit:** crate scaffold + shim + smoke
-  test (`packages/zpico/nros-rmw-zenoh-cffi/tests/smoke.rs`) that
+  test (`packages/zpico/nros-rmw-zenoh/tests/smoke.rs`) that
   asserts `register()` returns `NROS_RMW_RET_OK` and that
   `ZenohRmw` satisfies the `RustBackend` trait alias — the second
   test fails to compile if any associated type stops matching the
-  bundle. 2/2 passing via `cargo test -p nros-rmw-zenoh-cffi
+  bundle. 2/2 passing via `cargo test -p nros-rmw-zenoh
   --features platform-posix,link-tcp,ros-humble --test smoke`.
 
   **Side-fix in 115.L.0 (this commit):** dropped the `Send`
@@ -947,9 +947,9 @@ Ordered easiest → hardest:
   **What landed in this commit (opt-in shape):**
   `nros-node` + `nros` umbrella crates now expose two new feature
   axes that route through the C vtable:
-  - `rmw-dds-cffi` → `dep:nros-rmw-dds-cffi` + `rmw-cffi`. Pulls
+  - `rmw-dds-cffi` → `dep:nros-rmw-dds` + `rmw-cffi`. Pulls
     `RustBackendAdapter<DdsRmw>` and routes `CffiSession` through it.
-  - `rmw-zenoh-cffi` → `dep:nros-rmw-zenoh-cffi` + `rmw-cffi`.
+  - `rmw-zenoh-cffi` → `dep:nros-rmw-zenoh` + `rmw-cffi`.
     Identical shape over `ZenohRmw`.
   Both forward `platform-*` and (for zenoh) `link-*` / `ros-*`
   knobs through to the shim crate. The legacy `rmw-dds` /
@@ -1019,10 +1019,10 @@ Ordered easiest → hardest:
   **Sub-items:**
   - [x] `115.L.5-custom-transport` —
     `examples/native/rust/zenoh/custom-transport-{talker,listener}`
-    migrated. `nros-rmw-zenoh-cffi` now exposes a `link-custom`
+    migrated. `nros-rmw-zenoh` now exposes a `link-custom`
     feature that forwards to `nros-rmw-zenoh/link-custom`; the
     umbrella `nros/link-custom` feature pulls it transitively.
-    Example main.rs calls `nros_rmw_zenoh_cffi::register()` AFTER
+    Example main.rs calls `nros_rmw_zenoh::register()` AFTER
     `nros_rmw::set_custom_transport(Some(ops))` so zenoh-pico's
     session open drains the slot once the vtable is installed.
     Both examples build clean.

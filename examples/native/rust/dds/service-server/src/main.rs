@@ -24,7 +24,7 @@ fn main() {
 
     let config = ExecutorConfig::from_env().node_name("add_two_ints_server");
     // Phase 115.L.5 — install dust-dds C-vtable backend.
-    nros_rmw_dds_cffi::register().expect("dds RMW register failed");
+    nros_rmw_dds::register().expect("dds RMW register failed");
 
     let mut executor: Executor = Executor::open(&config).expect("Failed to open DDS session");
 

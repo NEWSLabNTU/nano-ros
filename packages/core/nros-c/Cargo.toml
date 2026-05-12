@@ -35,7 +35,7 @@ cffi-xrce-c = ["rmw-cffi"]
 # nros_rmw_dds_register()` call into `nros_support_init`.
 cffi-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
 # Phase 115.L.2 — zenoh-pico via the C vtable. Same shape as
-# `cffi-dds-cffi` but routes through `nros-rmw-zenoh-cffi`.
+# `cffi-dds-cffi` but routes through `nros-rmw-zenoh`.
 cffi-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)

@@ -14,12 +14,12 @@ categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []
-platform-posix = ["zpico-sys/posix"]
-platform-zephyr = ["zpico-sys/zephyr"]
+platform-posix = ["nros-platform/platform-posix", "zpico-sys/posix"]
+platform-zephyr = ["nros-platform/platform-zephyr", "zpico-sys/zephyr"]
 platform-bare-metal = ["zpico-sys/bare-metal"]
-platform-freertos = ["zpico-sys/freertos"]
-platform-nuttx = ["zpico-sys/nuttx"]
-platform-threadx = ["zpico-sys/threadx"]
+platform-freertos = ["nros-platform/platform-freertos", "zpico-sys/freertos"]
+platform-nuttx = ["nros-platform/platform-nuttx", "zpico-sys/nuttx"]
+platform-threadx = ["nros-platform/platform-threadx", "zpico-sys/threadx"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
 platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 link-tcp = ["zpico-sys/link-tcp"]
@@ -58,6 +58,11 @@ ros-iron = []
 
 [dependencies]
 nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
+# Phase 115.M.3 — vtable register entry (previously shipped from
+# the retired `nros-rmw-zenoh-cffi` shim) now lives in this crate.
+# `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
+# unconditionally (it boxes every entity handle).
+nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
 nros-core = { workspace = true, default-features = false }
 # Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
 # for deadline / lifespan emulation. The façade crate gates the
