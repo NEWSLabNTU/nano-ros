@@ -20,6 +20,8 @@ fn main() {
     println!("cargo:rerun-if-changed=tests/c_stubs/platform_stubs.c");
     println!("cargo:rerun-if-changed=tests/c_stubs/platform_stubs.h");
     println!("cargo:rerun-if-changed=../nros-platform-posix-c/src/platform.c");
+    println!("cargo:rerun-if-changed=../nros-platform-posix-c/src/net.c");
+    println!("cargo:rerun-if-changed=../nros-platform-posix-c/src/timer.c");
 
     #[cfg(all(feature = "c-stub-test", feature = "posix-c-port"))]
     compile_error!(
@@ -39,13 +41,16 @@ fn main() {
     {
         cc::Build::new()
             .file("../nros-platform-posix-c/src/platform.c")
+            .file("../nros-platform-posix-c/src/net.c")
+            .file("../nros-platform-posix-c/src/timer.c")
             .include("include")
             .warnings(true)
             .extra_warnings(true)
             .flag_if_supported("-Wpedantic")
             .define("_POSIX_C_SOURCE", "200809L")
             .compile("nros_platform_posix_c");
-        // pthread linkage for downstream test binaries.
+        // pthread + librt for downstream test binaries (rt supplies timer_*).
         println!("cargo:rustc-link-lib=pthread");
+        println!("cargo:rustc-link-lib=rt");
     }
 }
