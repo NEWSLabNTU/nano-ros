@@ -281,6 +281,38 @@ So the actual root cause is whatever set SP to a `.text` address
    argument with the wrong width and corrupt SP indirectly via a
    later spill.
 
+### Web research findings (eclipse-threadx GitHub issues)
+
+- **Issue #269** (`Question for RISCV-64 timer interrupt`,
+  `eclipse-threadx/threadx`): user noted the upstream RV64 timer
+  interrupt was written **without** `_tx_thread_context_save` /
+  `_tx_thread_context_restore` (unlike RV32). Maintainer
+  (`@goldscott`) confirmed save/restore IS required for any
+  interrupt calling ThreadX APIs. Issue closed but not fixed
+  upstream. **Our board crate already adds save/restore via
+  `trap_entry` in `tx_initialize_low_level.S` — this is NOT the
+  bug.** Cross-checked.
+- **Issue #389** (`FPU support RISCV-64`, `eclipse-threadx/threadx`):
+  user reported `tx_thread_schedule.S` resets `mstatus.FS` to 0,
+  which traps on subsequent FP register access. Fix offered by
+  user: `li t0, 0x3880` (FS = 1 = Initial) instead of `0x1880`
+  (FS = 0 = Off) for FP builds. **Our board crate already applies
+  this conditionally**: `li t0, 0x1880; li t1, 1<<13; or t0, t1, t0`
+  under `#ifdef __riscv_float_abi_single|double`. Confirmed
+  in all 3 sites (`tx_thread_schedule.S:213`,
+  `tx_thread_context_restore.S:161`, `:275`). Not the bug.
+- **Issue closed without resolution** in both cases — upstream
+  RV64 ThreadX port has unresolved structural issues that the
+  Eclipse maintainers haven't merged comprehensive fixes for.
+
+Additional 16-byte alignment site found via this research:
+`tx_thread_system_return.S` allocated `-29*REGBYTES = -232 B`
+(misaligned). Patched to `-30*REGBYTES = -240 B`; matching
+restore in `tx_thread_schedule.S` bumped from `29` to `30`. Commit
+`bab09903`. 8/9 threadx-rv64 tests still pass after this fix
+(non-breaking), but action Rust still fails — alignment is not
+the cause of THIS specific bug.
+
 ### Next steps for a fresh session
 
 - Re-read board's `tx_port.h` ULONG-is-u32 note and revert the FFI
