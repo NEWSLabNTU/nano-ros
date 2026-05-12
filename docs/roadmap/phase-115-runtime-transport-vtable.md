@@ -837,7 +837,8 @@ Ordered easiest → hardest:
   participants matches the realistic
   pub-from-one-node/sub-from-another shape.
 
-- [~] **115.L.2 — zenoh-pico via cffi.** New crate
+- [x] **115.L.2 — zenoh-pico via cffi (landed; canonical
+  consumer path post-L.7).** New crate
   `packages/zpico/nros-rmw-zenoh-cffi/` exposes
   `nros_rmw_zenoh_register()` via the 10-LOC
   `RustBackendAdapter::<ZenohRmw>::register()` shim. Vtable
@@ -885,9 +886,12 @@ Ordered easiest → hardest:
   zenoh integration suite); L.2 acceptance falls to the
   cross-process integration path.
 
-- [~] **115.L.3 — flip defaults; deprecate `nros-rmw` Rust trait.**
+- [x] **115.L.3 — flip defaults; deprecate `nros-rmw` Rust trait
+  (landed 2026-05-12 with L.7+L.8).** Defaults flipped and the
+  legacy `nros-rmw` trait public surface is gone (collapsed into
+  internal-only impl libs wrapped by cffi shims).
   Pre-req: K.2 (XRCE-C) + L.1 (dust-dds) + L.2 (zenoh-pico) all
-  shipping.
+  shipping. ✓
 
   **What landed in this commit (opt-in shape):**
   `nros-node` + `nros` umbrella crates now expose two new feature
@@ -936,7 +940,8 @@ Ordered easiest → hardest:
   `nros_rmw_uorb_register()` — no Rust adapter sits in the
   middle. Tracking entry kept for cross-reference.
 
-- [~] **115.L.5 — Rust example migration onto cffi features.**
+- [x] **115.L.5 — Rust example migration onto cffi features
+  (landed 2026-05-12).**
   L.3 flipped the C/C++ `NANO_ROS_RMW=zenoh|dds` selectors. Rust
   examples bind to nros features directly (no CMake selector) so
   each `Cargo.toml` + `src/main.rs` needs a one-line edit.
@@ -1687,17 +1692,18 @@ service-less variant, +1 week for service-over-topics emulation.
 
 **Work items:**
 
-- [ ] **115.K.4.0 — `nros-rmw-uorb-cpp` scaffold.** New
-  standalone CMake project at `packages/px4/nros-rmw-uorb-cpp/`
-  mirroring `packages/dds/nros-rmw-cyclonedds/`'s layout. Public
-  header `nros_rmw_uorb.h` exposing
-  `nros_rmw_uorb_register()`. Per-area `.cpp` files: `vtable.cpp`,
-  `session.cpp`, `publisher.cpp`, `subscriber.cpp`, `service.cpp`,
-  `topic_registry.cpp`. Every vtable slot stubs out to
-  `NROS_RMW_RET_UNSUPPORTED`. Smoke test
-  `tests/register_smoke.cpp` validates the register entry point.
-  CMake hooks `find_package(PX4)` (or equivalent for PX4's
-  module-build SDK; details settled when K.4.1 lands).
+- [x] **115.K.4.0 — `nros-rmw-uorb-cpp` scaffold.** Landed
+  (commit `97ac6880`). Standalone CMake project at
+  `packages/px4/nros-rmw-uorb-cpp/` mirroring
+  `packages/dds/nros-rmw-cyclonedds/`'s layout. Public header
+  `nros_rmw_uorb.h` exposes `nros_rmw_uorb_register()`. Per-area
+  `.cpp` files: `vtable.cpp`, `session.cpp`, `publisher.cpp`,
+  `subscriber.cpp`, `service.cpp`, `topic_registry.cpp`. Every
+  vtable slot stubbed to `NROS_RMW_RET_UNSUPPORTED` initially;
+  K.4.1–K.4.4 filled them in. Smoke test
+  `tests/register_smoke.cpp` validates the register entry point;
+  K.4.5 SITL build (`just px4 build-sitl-cpp`) covers the full
+  PX4-link path.
 
 - [x] **115.K.4.1 — session lifecycle.** Landed.
   `session_open` allocates a `SessionState { node_name[64],
@@ -1797,8 +1803,8 @@ service-less variant, +1 week for service-over-topics emulation.
   `UNSUPPORTED` permanently. If a real customer surfaces, the
   service-over-topics option (a) reopens as `K.4.4-revisit`.
 
-- [~] **115.K.4.5 — Rust-stack removal (release-cycle gate
-  only; PX4 SDK validation done 2026-05-12).** K.4.0–K.4.4 +
+- [x] **115.K.4.5 — Rust-stack removal (landed 2026-05-12;
+  PX4 SDK validation + delete sweep done).** K.4.0–K.4.4 +
   K.4-cmake + K.4.2-subscriber-push all landed. The PX4 SDK
   integration validation also landed — see (1) below. The single
   remaining gate is the release-cycle deprecation window, which
@@ -1848,25 +1854,26 @@ service-less variant, +1 week for service-over-topics emulation.
      `WorkItem`'s ctor calls `Init(config)` which can't run
      before the WQ manager comes up.
 
-  2. **One release cycle as `NANO_ROS_RMW=uorb` default (gate:
-     release schedule).** Gives any external Rust-on-PX4 user a
-     migration window. **Not a code blocker** — release
-     management.
+  2. ✅ **Release-cycle deprecation window — N/A.** The L.7
+     sweep (commit `392c28da`, 2026-05-12) skipped the
+     deprecation window entirely on the user's instruction
+     ("clean up the old code path"). Outcome was applied in the
+     same commit that retired the public Rust features. No
+     downstream consumer broke because the in-tree consumers
+     were all migrated to cffi shims first (L.5).
 
-  Delete sweep (when both external gates clear):
-  - `packages/px4/nros-rmw-uorb` (443 LOC)
-  - `packages/px4/nros-px4` (654 LOC)
-  - `third-party/px4/px4-rs` submodule (5.3k LOC)
-  - `rmw-uorb` Cargo feature from `nros-node` + `nros`
-  - `nros-rmw-uorb` workspace member entry
+  Delete sweep (DONE in commit `392c28da`):
+  - ✓ `packages/px4/nros-rmw-uorb` (443 LOC) — deleted.
+  - ✓ `packages/px4/nros-px4` (654 LOC) — deleted.
+  - `third-party/px4/px4-rs` submodule — retained (5.3k LOC,
+    not consumed by nano-ros now but kept as a useful PX4-side
+    helper crate; doesn't compile into anything nano-ros ships).
+  - ✓ `rmw-uorb` Cargo feature from `nros-node` + `nros` —
+    deleted.
+  - ✓ `nros-rmw-uorb` workspace member entry — deleted.
 
-  Mirrors `115.K.2.5.3-deferred`'s shape but cleaner — uORB has
-  no Zephyr cross-compile dependency, so the legacy-Rust window
-  closes as soon as the external gates above clear.
-
-  **Tracking this `[~]` instead of `[x]` because the *outcome*
-  (legacy crates deleted) hasn't shipped yet, but no code work
-  remains.**
+  Replacement: `packages/px4/nros-rmw-uorb-cpp/` (C++ port),
+  SITL-validated end-to-end via `just px4 build-sitl-cpp`.
 
 - [x] **115.K.4.2-subscriber-push — push-wake landed
   (2026-05-12).** Two-tier delivery on `subscriber.cpp`:
