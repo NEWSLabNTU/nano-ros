@@ -356,6 +356,58 @@ observations describe the same underlying state — the TX globals
 block is being overwritten by something writing into the .bss gap
 between TX globals and `app_thread`'s TCB.
 
+### Confirmed Rust-only
+
+Rebuilt the C action server with the same patched `trap_entry`
+detector and ran it end-to-end against zenohd. C server output:
+
+```
+  Feedback: [0, 1, 1, 2, 3, 5]
+  Goal SUCCEEDED
+```
+
+C client output: `Action completed successfully.`
+
+**Zero `!sp=` triggers on C path.** Same ThreadX kernel build,
+same `trap_entry` asm, same `_tx_thread_context_save`, same
+zenoh-pico C library, same NetX BSD. The .bss-gap SP corruption
+fires only when the Rust action server runs.
+
+So the corrupting STORE is in code that's specific to the Rust
+path. C action server uses `nros_action_server_init` →
+`Executor::add_action_server_raw_sized` (callback model, registers
+the action server in the executor arena). Rust action server uses
+`Node::create_action_server` (manual-poll, no arena entry). Both
+create the same 6 entities (3 queryables + 2 publishers + status
+publisher), so the entity-count itself isn't the cause — the
+difference is in **the application loop pattern** afterward:
+
+| | C (callback) | Rust (manual-poll) |
+|---|---|---|
+| Spin loop | `nros_executor_spin_some(10 ms)` | `try_accept_goal(...)` then `executor.spin_once(10 ms)` |
+| Arena entries | 1 action server | 0 (manual poll bypasses arena) |
+| Buffer slabs | inside the arena entry | inside the `ActionServer` value on the app thread's stack |
+
+The Rust `ActionServer` value (`GOAL_BUF + RESULT_BUF + FEEDBACK_BUF
++ cancel_buffer + ...`) is roughly 4 KB and lives **on the app
+thread's stack** (since `Node::create_action_server` returns it by
+value). The C path keeps the same buffers inside an arena entry,
+i.e. inside the `Executor` value, which is itself either inline in
+`app_thread`'s stack or accessed via a stable address. So a likely
+mechanism: the Rust `ActionServer` lives at an app-stack offset
+that's close enough to the byte-pool / TX-globals region that an
+out-of-bounds buffer write lands in the .bss gap.
+
+### Next: instrument Rust's ActionServer construction
+
+- Print `&server as *const _ as usize` after `node.create_action_server()`.
+  If the address is `0x8003xxxx` (in .bss / TX-globals range) the
+  hypothesis is confirmed.
+- If yes: `ActionServer` is escaping stack and being placed in
+  static storage by the compiler. Track down why.
+- Else: bisect by removing fields from the action server's
+  buffer slabs to find which write goes out of bounds.
+
 ### Next: identify the bad STORE
 
 Watch for any STORE to addresses `0x800380c0..0x80039000` (the
