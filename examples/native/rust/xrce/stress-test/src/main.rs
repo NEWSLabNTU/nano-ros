@@ -81,7 +81,6 @@ fn run_talker() {
     );
 
     let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_talker");
-    nros_rmw_xrce_cffi::register().expect("nros_rmw_xrce_cffi::register");
     let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor

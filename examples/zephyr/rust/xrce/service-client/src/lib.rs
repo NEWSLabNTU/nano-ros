@@ -38,7 +38,6 @@ fn run() -> Result<(), NodeError> {
     );
     let config = ExecutorConfig::new(&locator).node_name("xrce_service_client");
     // Phase 115.L.x — install C-vtable backend before session open.
-    nros_rmw_xrce_cffi::register().expect("xrce RMW register failed");
     let mut executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("add_two_ints_client")?;

@@ -19,7 +19,6 @@ extern "C" fn _start() -> ! {
             .domain_id(config.domain_id)
             .node_name("fibonacci_action_server");
         // Phase 115.L.x — install C-vtable backend before session open.
-        nros_rmw_zenoh::register().expect("zenoh RMW register failed");
         let mut executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("fibonacci_action_server")?;
 

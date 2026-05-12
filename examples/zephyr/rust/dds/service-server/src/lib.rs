@@ -34,7 +34,6 @@ fn run() -> Result<(), NodeError> {
         .domain_id(0)
         .node_name("dds_service_server");
     // Phase 115.L.5-zephyr — install dds C-vtable backend.
-    nros_rmw_dds::register().expect("dds RMW register failed");
 
     let mut executor: Executor = Executor::open(&config)?;
 

@@ -35,7 +35,6 @@ async fn main() {
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_fibonacci_client");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     let mut executor = Executor::open(&config).expect("Failed to open session");
 

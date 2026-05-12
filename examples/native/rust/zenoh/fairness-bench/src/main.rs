@@ -102,7 +102,6 @@ fn spawn_publisher(scenario: &str) -> Child {
 fn publish_scenario_1() {
     let config = ExecutorConfig::from_env().node_name("pub1");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-    nros_rmw_zenoh::register().expect("zenoh RMW register failed");
 
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub1").expect("Node");
