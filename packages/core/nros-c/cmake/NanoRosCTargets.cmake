@@ -179,19 +179,19 @@ if(NOT TARGET NanoRos::NanoRos)
 
   # Phase 115.K.2.5.2: when the consumer asked for the XRCE C
   # backend (`-DNANO_ROS_RMW=xrce`), pull in the standalone
-  # `nros-rmw-xrce-c` library so its `nros_rmw_xrce_register`
+  # `nros-rmw-xrce` library so its `nros_rmw_xrce_register`
   # symbol resolves. The Rust support layer (compiled with the
   # `cffi-xrce-c` Cargo feature) calls that symbol from
   # `nros_support_init`.
   if(NANO_ROS_RMW STREQUAL "xrce")
-    if(NOT TARGET NrosRmwXrceC::NrosRmwXrceC)
+    if(NOT TARGET NrosRmwXrce::NrosRmwXrce)
       include(CMakeFindDependencyMacro)
-      find_dependency(NrosRmwXrceC CONFIG)
+      find_dependency(NrosRmwXrce CONFIG)
     endif()
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
-      INTERFACE_LINK_LIBRARIES NrosRmwXrceC::NrosRmwXrceC)
+      INTERFACE_LINK_LIBRARIES NrosRmwXrce::NrosRmwXrce)
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
-      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE_C=1)
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE=1)
   endif()
 endif()
 

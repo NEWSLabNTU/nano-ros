@@ -23,7 +23,7 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # RMW backend (select one) — every backend ships as a cffi shim that
 # installs a C vtable into `nros-rmw-cffi`'s runtime registry.
 rmw-cffi = ["nros/rmw-cffi"]
-# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce-c).
+# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce).
 rmw-xrce-cffi = ["rmw-cffi", "nros/rmw-xrce-cffi"]
 # Phase 115.L.1 — dust-DDS via the C vtable.
 rmw-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]

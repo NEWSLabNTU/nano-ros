@@ -1,6 +1,6 @@
 //! Build script for `nros-rmw-xrce-cffi`.
 //!
-//! Compiles the K.2.0–K.2.4 C backend (`packages/xrce/nros-rmw-xrce-c/src/*.c`)
+//! Compiles the K.2.0–K.2.4 C backend (`packages/xrce/nros-rmw-xrce/src/*.c`)
 //! plus the vendored micro-XRCE-DDS-Client + micro-CDR sources directly
 //! into a single static archive, then exposes the
 //! `nros_rmw_xrce_register` symbol to the Rust side via `extern "C"`.
@@ -8,7 +8,7 @@
 //! Source list mirrors `packages/xrce/xrce-sys/build.rs` (proven set for
 //! the same uxr core) plus the K.2 backend TUs. Keep both lists in
 //! lockstep — any new file added here must land in xrce-sys's build.rs
-//! and `nros-rmw-xrce-c/CMakeLists.txt` too.
+//! and `nros-rmw-xrce/CMakeLists.txt` too.
 
 use std::{env, fs, path::PathBuf};
 
@@ -21,7 +21,7 @@ fn main() {
         .expect("workspace root")
         .to_path_buf();
     let xrce_sys = workspace.join("packages/xrce/xrce-sys");
-    let xrce_c = workspace.join("packages/xrce/nros-rmw-xrce-c");
+    let xrce_c = workspace.join("packages/xrce/nros-rmw-xrce");
     let microcdr = xrce_sys.join("micro-cdr");
     let microxrce = xrce_sys.join("micro-xrce-dds-client");
 
@@ -74,7 +74,7 @@ fn main() {
     }
 
     // K.2 backend TUs. Source-of-truth list — must stay in lockstep
-    // with `nros-rmw-xrce-c/CMakeLists.txt`.
+    // with `nros-rmw-xrce/CMakeLists.txt`.
     let mut backend_tus = vec![
         "vtable",
         "session",

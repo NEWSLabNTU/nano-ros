@@ -138,7 +138,7 @@ install-local-posix: cyclonedds::build-rmw xrce::build-rmw
     # NanoRosCpp cmake build can `find_package(NrosRmwCyclonedds)`
     # against the same install prefix when NANO_ROS_RMW=cyclonedds.
     # Phase 115.K.2.5.2: `xrce::build-rmw` does the same for
-    # `nros-rmw-xrce-c` so the C/C++ APIs can `find_package(NrosRmwXrceC)`
+    # `nros-rmw-xrce` so the C/C++ APIs can `find_package(NrosRmwXrce)`
     # under the canonical `NANO_ROS_RMW=xrce` selector (which now
     # routes to the C backend).
     for rmw in zenoh xrce dds cyclonedds; do
@@ -584,7 +584,7 @@ check-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
-        --exclude nros-rmw-xrce-c \
+        --exclude nros-rmw-xrce \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-zenoh-cffi \
         --exclude nros-rmw-dds-cffi

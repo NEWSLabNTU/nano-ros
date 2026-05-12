@@ -1,5 +1,5 @@
 //! Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
-//! ([`nros-rmw-xrce-c`]) and exposes its register entry point.
+//! ([`nros-rmw-xrce`]) and exposes its register entry point.
 //!
 //! Mirrors the role the cyclonedds backend would play if it had Rust
 //! users — it doesn't, so this is the project's first cffi-shim crate.
@@ -23,7 +23,7 @@
 use core::ffi::c_int;
 
 unsafe extern "C" {
-    /// C entry point exported by `packages/xrce/nros-rmw-xrce-c/src/vtable.c`.
+    /// C entry point exported by `packages/xrce/nros-rmw-xrce/src/vtable.c`.
     /// Calls `nros_rmw_cffi_register(&kVtable)` internally.
     fn nros_rmw_xrce_register() -> c_int;
 }

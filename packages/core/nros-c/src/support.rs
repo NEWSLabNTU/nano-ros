@@ -154,8 +154,8 @@ pub unsafe extern "C" fn nros_support_init_named(
 
     // Phase 115.K.2.5.2 — register the micro-XRCE-DDS-Client C
     // backend's vtable before opening the session. Mirrors the
-    // C++ path's `nros::init` hook (gated on `NROS_RMW_XRCE_C`
-    // there). The link to `NrosRmwXrceC::NrosRmwXrceC` from
+    // C++ path's `nros::init` hook (gated on `NROS_RMW_XRCE`
+    // there). The link to `NrosRmwXrce::NrosRmwXrce` from
     // CMake provides the symbol; this `cffi-xrce-c` feature is
     // set by the same CMake glue.
     #[cfg(feature = "cffi-xrce-c")]

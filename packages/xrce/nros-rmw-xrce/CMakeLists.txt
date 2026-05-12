@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(nros_rmw_xrce_c
+project(nros_rmw_xrce
     VERSION 0.1.0
     DESCRIPTION "micro-XRCE-DDS-Client RMW backend for nano-ros (Phase 115.K.2)"
     LANGUAGES C
@@ -20,7 +20,7 @@ include(CMakePackageConfigHelpers)
 # nros-rmw-cffi C ABI vtable + return codes + entity structs. Headers
 # only — the backend implements the vtable and registers it via
 # `nros_rmw_cffi_register()`. Path is exposed via cache var so callers
-# (or `find_package(NrosRmwXrceC)`) can override it for out-of-tree
+# (or `find_package(NrosRmwXrce)`) can override it for out-of-tree
 # builds. Mirrors `nros-rmw-cyclonedds`'s convention.
 set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-cffi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
@@ -31,7 +31,7 @@ if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
 endif()
 
 # micro-XRCE-DDS-Client + micro-CDR (vendored under xrce-sys). Phase
-# 115.K.2.1 compiles their sources directly into nros_rmw_xrce_c
+# 115.K.2.1 compiles their sources directly into nros_rmw_xrce
 # rather than going through the upstream CMakeLists' add_subdirectory
 # / find_package machinery. The upstream client's `find_package(microcdr
 # REQUIRED CONFIG)` requires a separate install step that buys nothing
@@ -166,7 +166,7 @@ foreach(_rel IN LISTS _ucdr_src)
 endforeach()
 
 # ---- Static library --------------------------------------------------------
-add_library(nros_rmw_xrce_c STATIC
+add_library(nros_rmw_xrce STATIC
     src/vtable.c
     src/session.c
     src/publisher.c
@@ -179,7 +179,7 @@ add_library(nros_rmw_xrce_c STATIC
     ${_ucdr_all_src}
 )
 
-target_include_directories(nros_rmw_xrce_c
+target_include_directories(nros_rmw_xrce
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -193,7 +193,7 @@ target_include_directories(nros_rmw_xrce_c
         ${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated
 )
 
-target_compile_definitions(nros_rmw_xrce_c PRIVATE
+target_compile_definitions(nros_rmw_xrce PRIVATE
     # POSIX feature gate — `time.c` calls `clock_gettime`, which
     # only resolves under `_POSIX_C_SOURCE >= 199309L`. Match
     # xrce-sys's build environment.
@@ -201,7 +201,7 @@ target_compile_definitions(nros_rmw_xrce_c PRIVATE
     _DEFAULT_SOURCE
 )
 
-target_compile_options(nros_rmw_xrce_c PRIVATE
+target_compile_options(nros_rmw_xrce PRIVATE
     -Wall -Wextra -Wpedantic
     # Vendored upstream sources trip strictness our own code wants;
     # quiet just enough to keep the lint bar useful for our TUs.
@@ -209,14 +209,14 @@ target_compile_options(nros_rmw_xrce_c PRIVATE
     -Wno-pedantic
 )
 
-set_target_properties(nros_rmw_xrce_c PROPERTIES
+set_target_properties(nros_rmw_xrce PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    EXPORT_NAME NrosRmwXrceC
+    EXPORT_NAME NrosRmwXrce
 )
 
 # ---- Install ---------------------------------------------------------------
-install(TARGETS nros_rmw_xrce_c
-    EXPORT NrosRmwXrceCTargets
+install(TARGETS nros_rmw_xrce
+    EXPORT NrosRmwXrceTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -227,27 +227,27 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(EXPORT NrosRmwXrceCTargets
-    FILE NrosRmwXrceCTargets.cmake
-    NAMESPACE NrosRmwXrceC::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
+install(EXPORT NrosRmwXrceTargets
+    FILE NrosRmwXrceTargets.cmake
+    NAMESPACE NrosRmwXrce::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
 )
 
-# ---- find_package(NrosRmwXrceC) config ----
+# ---- find_package(NrosRmwXrce) config ----
 configure_package_config_file(
-    cmake/NrosRmwXrceCConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
+    cmake/NrosRmwXrceConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
 )
 write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfigVersion.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfigVersion.cmake
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceCConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrceC
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
 )
 
 # ---- Tests -----------------------------------------------------------------

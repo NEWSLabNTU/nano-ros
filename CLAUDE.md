@@ -129,7 +129,7 @@ Cooperative yield (`PlatformYield`): POSIX/NuttX `sched_yield()`, Zephyr `k_yiel
 `param-services` feature in `nros-node` → `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces`. Handlers return `Box<Response>`.
 
 ### XRCE Embedded Build (Phase 115.K.2 + 118)
-`nros-rmw-xrce-cffi` (C FFI shim) gates `UCLIENT_PROFILE_{UDP,TCP,SERIAL}` + `UCLIENT_PLATFORM_POSIX` + `transport_posix_{udp,serial}.c` source files on `target_os = linux|macos|*bsd`. Bare-metal targets (`target_os = "none"`) get only `UCLIENT_PROFILE_{DISCOVERY,CUSTOM_TRANSPORT,STREAM_FRAMING}` and must inject their own custom transport. `just check-workspace-embedded` excludes `nros-rmw-xrce-c{,-cffi}` (header-only K.2 backend's `internal.h` references UDP types unconditionally — upstream design issue).
+`nros-rmw-xrce-cffi` (C FFI shim) gates `UCLIENT_PROFILE_{UDP,TCP,SERIAL}` + `UCLIENT_PLATFORM_POSIX` + `transport_posix_{udp,serial}.c` source files on `target_os = linux|macos|*bsd`. Bare-metal targets (`target_os = "none"`) get only `UCLIENT_PROFILE_{DISCOVERY,CUSTOM_TRANSPORT,STREAM_FRAMING}` and must inject their own custom transport. `just check-workspace-embedded` excludes `nros-rmw-xrce{,-cffi}` (header-only K.2 backend's `internal.h` references UDP types unconditionally — upstream design issue).
 
 ### Verification
 - Kani: 160 bounded harnesses. `just verify-kani` (~3 min)

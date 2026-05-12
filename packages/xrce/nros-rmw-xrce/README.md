@@ -1,4 +1,4 @@
-# nros-rmw-xrce-c
+# nros-rmw-xrce
 
 Phase 115.K.2 — micro-XRCE-DDS-Client RMW backend for nano-ros, in C.
 

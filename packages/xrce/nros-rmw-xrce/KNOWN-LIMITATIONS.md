@@ -1,4 +1,4 @@
-# nros-rmw-xrce-c — known limitations
+# nros-rmw-xrce — known limitations
 
 Phase 115.K.2.0 through 115.K.2.4 ship a deliberately minimal
 re-implementation of the Rust `nros-rmw-xrce` backend in pure C99.

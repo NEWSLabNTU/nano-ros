@@ -10,7 +10,7 @@ name = "xrce-talker"
 path = "src/main.rs"
 
 [dependencies]
-# Phase 115.K.2.5.1.2 — XRCE via the C backend (nros-rmw-xrce-c)
+# Phase 115.K.2.5.1.2 — XRCE via the C backend (nros-rmw-xrce)
 # through the cffi-shim Rust crate. Replaces the legacy Rust
 # direct impl `nros-rmw-xrce`.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-xrce-cffi", "platform-posix", "ros-humble"] }

@@ -1,6 +1,6 @@
 # nros-rmw-cffi
 
-C function-table adapter for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) RMW backends. Lets a C-implemented RMW (e.g. `nros-rmw-cyclonedds`, `nros-rmw-xrce-c`) plug into the Rust `nros-rmw` trait surface at runtime.
+C function-table adapter for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) RMW backends. Lets a C-implemented RMW (e.g. `nros-rmw-cyclonedds`, `nros-rmw-xrce`) plug into the Rust `nros-rmw` trait surface at runtime.
 
 ## License
 

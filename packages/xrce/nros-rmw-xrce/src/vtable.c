@@ -60,7 +60,7 @@ nros_rmw_ret_t nros_rmw_xrce_register(void) {
  *
  * The C/C++ APIs go through `nros_support_init` (C) or `nros::init`
  * (C++). The C++ path explicitly calls `nros_rmw_xrce_register`
- * inside `nros::init` (gated on `NROS_RMW_XRCE_C` from CMake). The
+ * inside `nros::init` (gated on `NROS_RMW_XRCE` from CMake). The
  * pure-C path doesn't have an analogous explicit hook today, so we
  * piggy-back on the loader's GCC/Clang `__attribute__((constructor))`
  * hook. The constructor runs before `main()` (and on RTOS targets
