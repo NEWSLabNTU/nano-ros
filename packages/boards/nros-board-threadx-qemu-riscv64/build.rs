@@ -123,20 +123,23 @@ fn main() {
         }
     }
 
-    // QEMU virt assembly files (tx_initialize_low_level.S only — entry.s is
-    // provided by the board crate with .init section placement to guarantee
-    // _start appears at 0x80000000 before any Rust .text sections)
+    // QEMU virt assembly files — entry.s and tx_initialize_low_level.S
+    // are provided by the board crate's c/ dir. entry.s for .init section
+    // placement; tx_initialize_low_level.S patched for Phase 120.3
+    // 16-byte SP alignment in trap_entry.
+    let qemu_virt_excluded_asm = ["entry.s", "tx_initialize_low_level.S"];
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
         let ext = path.extension().and_then(|e| e.to_str());
         let name = path.file_name().unwrap().to_str().unwrap_or("");
-        if name == "entry.s" {
-            continue; // use board crate's c/entry.s instead
+        if qemu_virt_excluded_asm.contains(&name) {
+            continue;
         }
         if ext == Some("S") || ext == Some("s") {
             threadx.file(&path);
         }
     }
+    threadx.file(manifest_dir.join("c").join("tx_initialize_low_level.S"));
 
     threadx.compile("threadx");
 

@@ -286,7 +286,7 @@ _tx_thread_idle_system_save:
     /* }
 }  */
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
-    addi    sp, sp, 65*REGBYTES                         // Recover stack frame - with floating point enabled
+    addi    sp, sp, 66*REGBYTES                         /* Phase 120.3: 16-aligned frame */
 #else
     addi    sp, sp, 32*REGBYTES                         // Recover the reserved stack space
 #endif

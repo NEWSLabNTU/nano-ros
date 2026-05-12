@@ -154,10 +154,21 @@ If floating point support:
 
     /* Actually build the stack frame.  */
 
+    /* Phase 120.3: RV64 LP64D ABI requires SP to stay 16-byte aligned
+     * across function calls. The FP-enabled stack frame is 65 * 8 = 520
+     * bytes, which leaves SP at (16-aligned_base - 520) → 8-byte
+     * misaligned. Round to 66 * REGBYTES (528) so the frame size is a
+     * multiple of 16. The extra slot is unused (sits above the highest
+     * stack-frame index 64). Mismatched alignment surfaced as a hang
+     * inside `tx_thread_sleep` from any zenoh-pico-spawned task —
+     * tx_thread_sleep's internal `_tx_thread_smp_protect` etc. push
+     * additional 8-byte frames and trip an alignment check / FCSR
+     * read inside the timer-thread wake-up path on rv64.
+     */
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
-    addi    t0, t0, -65*REGBYTES
+    addi    t0, t0, -66*REGBYTES                        // 66*8 = 528 (16-aligned)
 #else
-    addi    t0, t0, -32*REGBYTES                        // Allocate space for the stack frame
+    addi    t0, t0, -32*REGBYTES                        // 32*8 = 256 (16-aligned)
 #endif
     li      t1, 1                                       // Build stack type
     STORE   t1,  0*REGBYTES(t0)                         // Place stack type on the top

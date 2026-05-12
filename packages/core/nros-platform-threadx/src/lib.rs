@@ -121,14 +121,34 @@ impl nros_platform_api::PlatformAlloc for ThreadxPlatform {
         if pool.is_null() {
             return core::ptr::null_mut();
         }
-        let mut ptr: *mut c_void = core::ptr::null_mut();
-        let ret =
-            unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as ffi::TxUlong, ffi::TX_WAIT_FOREVER) };
-        if ret == ffi::TX_SUCCESS {
-            ptr
-        } else {
-            core::ptr::null_mut()
+        // Phase 120.3: force 16-byte alignment of every returned pointer.
+        // ThreadX's `tx_byte_allocate` aligns to `ALIGN_TYPE = ULONG64 =
+        // 8 bytes`, which is short of the RV64 LP64D ABI's 16-byte SP
+        // requirement. Allocations holding RV64 task stacks (`_z_task_t`
+        // and similar) must therefore be over-allocated and the user
+        // pointer bumped to the next 16-byte boundary. We stash the raw
+        // pointer in the 8 bytes immediately preceding the user ptr so
+        // `dealloc` can recover it.
+        const ALIGN: usize = 16;
+        const HEADER: usize = core::mem::size_of::<*mut c_void>();
+        let alloc_size = size + ALIGN + HEADER;
+        let mut raw: *mut c_void = core::ptr::null_mut();
+        let ret = unsafe {
+            ffi::tx_byte_allocate(pool, &mut raw, alloc_size as ffi::TxUlong, ffi::TX_WAIT_FOREVER)
+        };
+        if ret != ffi::TX_SUCCESS || raw.is_null() {
+            return core::ptr::null_mut();
         }
+        let raw_addr = raw as usize;
+        // Skip past the header slot, then round up to ALIGN.
+        let user_addr = (raw_addr + HEADER + ALIGN - 1) & !(ALIGN - 1);
+        let user = user_addr as *mut c_void;
+        // Store raw pointer right before user_addr so dealloc can find it.
+        unsafe {
+            let slot = (user_addr - HEADER) as *mut *mut c_void;
+            slot.write(raw);
+        }
+        user
     }
 
     #[inline]
@@ -147,9 +167,15 @@ impl nros_platform_api::PlatformAlloc for ThreadxPlatform {
 
     #[inline]
     fn dealloc(ptr: *mut c_void) {
-        if !ptr.is_null() {
-            unsafe { ffi::tx_byte_release(ptr) };
+        if ptr.is_null() {
+            return;
         }
+        // Recover the raw pointer from the header slot.
+        let user_addr = ptr as usize;
+        const HEADER: usize = core::mem::size_of::<*mut c_void>();
+        let slot = (user_addr - HEADER) as *const *mut c_void;
+        let raw = unsafe { slot.read() };
+        unsafe { ffi::tx_byte_release(raw) };
     }
 }
 

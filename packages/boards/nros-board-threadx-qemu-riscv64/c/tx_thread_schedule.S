@@ -247,7 +247,7 @@ _tx_thread_schedule_loop:
     LOAD    x31, 13*REGBYTES(sp)                        // Recover t6
 
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
-    addi    sp, sp, 65*REGBYTES                         // Recover stack frame - with floating point registers
+    addi    sp, sp, 66*REGBYTES                         /* Phase 120.3: 16-aligned frame */
 #else
     addi    sp, sp, 32*REGBYTES                         // Recover stack frame - without floating point registers
 #endif
