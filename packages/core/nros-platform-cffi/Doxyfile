@@ -1,12 +1,12 @@
-# Doxyfile for nros platform-cffi vtable documentation
+# Doxyfile for nros platform-cffi C ABI documentation
 #
 # Usage: doxygen packages/core/nros-platform-cffi/Doxyfile
 # Or:    just doc-platform-cffi
 
 PROJECT_NAME           = "nros platform-cffi"
-PROJECT_BRIEF          = "C vtable for porting the nros platform abstraction in C"
+PROJECT_BRIEF          = "Canonical C ABI for porting the nros platform abstraction"
 
-INPUT                  = include/nros/platform_vtable.h \
+INPUT                  = include/nros/platform.h \
                          docs/mainpage.md
 
 RECURSIVE              = NO

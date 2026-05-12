@@ -1,6 +1,6 @@
 # nros-platform-cffi
 
-C vtable adapter for the [nano-ros](https://github.com/NEWSLabNTU/nano-ros) `nros-platform-api` traits. Lets a C-side platform integration register function pointers at runtime so nros can run on RTOSes lacking a dedicated Rust platform crate.
+Canonical C ABI for the [nano-ros](https://github.com/NEWSLabNTU/nano-ros) platform abstraction. Declares a flat set of `extern "C"` symbols (one per platform capability) that a C-implemented platform port supplies at link time. The Rust `nros_platform_api` traits remain available; this crate's `CffiPlatform` ZST dispatches every trait call to the linked C symbols.
 
 ## License
 

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "C vtable adapter for nros platform abstraction"
+description = "Rust mirror of the canonical C ABI for the nros platform abstraction"
 authors.workspace = true
 homepage.workspace = true
 documentation.workspace = true
@@ -17,11 +17,7 @@ default = []
 threading = []
 
 [dependencies]
-portable-atomic = { version = "1", default-features = false }
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
-
-[build-dependencies]
-cbindgen = "0.29"
 
 [lints]
 workspace = true
