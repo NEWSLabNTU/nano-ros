@@ -23,6 +23,8 @@ fn main() -> ! {
             let exec_config = ExecutorConfig::new("")
                 .domain_id(config.domain_id)
                 .node_name("dds_listener");
+            // Phase 115.L.x — install C-vtable backend before session open.
+            nros_rmw_dds_cffi::register().expect("dds RMW register failed");
             let mut executor = Executor::open(&exec_config)?;
             let mut node = executor.create_node("dds_listener")?;
 

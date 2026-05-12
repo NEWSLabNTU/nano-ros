@@ -826,6 +826,7 @@ dependencies = [
  "esp-hal",
  "nros",
  "nros-board-esp32",
+ "nros-rmw-zenoh-cffi",
  "std_msgs",
 ]
 
@@ -1200,9 +1201,9 @@ dependencies = [
  "nros-params",
  "nros-platform",
  "nros-rmw",
- "nros-rmw-dds",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
+ "nros-rmw-cffi",
+ "nros-rmw-dds-cffi",
+ "nros-rmw-zenoh-cffi",
  "nros-serdes",
  "paste",
 ]
@@ -1259,8 +1260,9 @@ dependencies = [
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
+ "nros-rmw-cffi",
+ "nros-rmw-dds-cffi",
+ "nros-rmw-zenoh-cffi",
  "portable-atomic",
 ]
 
@@ -1303,6 +1305,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-cffi"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "nros-rmw",
+ "portable-atomic",
+]
+
+[[package]]
 name = "nros-rmw-dds"
 version = "0.1.0"
 dependencies = [
@@ -1315,14 +1326,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-rmw-xrce"
+name = "nros-rmw-dds-cffi"
 version = "0.1.0"
 dependencies = [
- "atomic-waker",
- "heapless 0.8.0",
  "nros-rmw",
- "portable-atomic",
- "xrce-sys",
+ "nros-rmw-cffi",
+ "nros-rmw-dds",
 ]
 
 [[package]]
@@ -1336,6 +1345,16 @@ dependencies = [
  "nros-rmw",
  "portable-atomic",
  "zpico-sys",
+]
+
+[[package]]
+name = "nros-rmw-zenoh-cffi"
+version = "0.1.0"
+dependencies = [
+ "nros-platform",
+ "nros-rmw",
+ "nros-rmw-cffi",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]
@@ -2110,21 +2129,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "xrce-platform-shim"
-version = "0.1.0"
-dependencies = [
- "nros-platform",
-]
-
-[[package]]
-name = "xrce-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
- "xrce-platform-shim",
-]
 
 [[package]]
 name = "xtensa-lx"

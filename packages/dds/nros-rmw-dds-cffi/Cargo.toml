@@ -22,6 +22,11 @@ platform-nuttx = ["nros-rmw-dds/platform-nuttx", "nros-rmw-cffi/alloc"]
 platform-threadx = ["nros-rmw-dds/platform-threadx", "nros-rmw-cffi/alloc"]
 platform-bare-metal = ["nros-rmw-dds/platform-bare-metal", "nros-rmw-cffi/alloc"]
 
+# Phase 101.4 — forward dust-dds's portable-atomic feature for
+# CAS-poor RISC-V `imc` targets (ESP32-C3) where
+# `target_has_atomic = "ptr"` evaluates false.
+portable-atomic = ["nros-rmw-dds/portable-atomic"]
+
 [dependencies]
 # `RustBackendAdapter` lives behind nros-rmw-cffi's `alloc` feature
 # (it boxes every entity handle), so this crate force-enables it

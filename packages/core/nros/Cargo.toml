@@ -141,6 +141,13 @@ param-services = ["nros-node/param-services"]
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
+# Phase 101.4 — forward dust-dds's `portable-atomic` feature so
+# `Arc` / `Weak` route through `portable-atomic-util` on CAS-poor
+# RISC-V `imc` targets (ESP32-C3) where `target_has_atomic = "ptr"`
+# evaluates false. Off by default; ESP32-class board crates / examples
+# opt in.
+rmw-dds-portable-atomic = ["nros-rmw-dds-cffi?/portable-atomic"]
+
 # ROS edition feature flags.
 ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh-cffi?/ros-humble"]
 ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh-cffi?/ros-iron"]

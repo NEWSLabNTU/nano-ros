@@ -293,10 +293,7 @@ unsafe fn register(
 // standalone `nros_lifecycle_state_machine_t` used by drivers that don't
 // want ROS 2 tooling integration.
 
-#[cfg(all(
-    feature = "lifecycle-services",
-    feature = "rmw-cffi"
-))]
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 mod service_backed {
     use super::*;
     use crate::executor::{get_executor, nros_executor_t};

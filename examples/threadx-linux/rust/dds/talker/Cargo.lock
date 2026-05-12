@@ -450,10 +450,7 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
  "nros-rmw-zenoh-cffi",
  "nros-serdes",
  "paste",
@@ -496,10 +493,7 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-dds",
  "nros-rmw-dds-cffi",
- "nros-rmw-xrce",
- "nros-rmw-zenoh",
  "nros-rmw-zenoh-cffi",
  "portable-atomic",
  "portable-atomic-util",
@@ -568,18 +562,6 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-dds",
-]
-
-[[package]]
-name = "nros-rmw-xrce"
-version = "0.1.0"
-dependencies = [
- "atomic-waker",
- "heapless",
- "nros-platform",
- "nros-rmw",
- "portable-atomic",
- "xrce-sys",
 ]
 
 [[package]]
@@ -1099,21 +1081,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "xrce-platform-shim"
-version = "0.1.0"
-dependencies = [
- "nros-platform",
-]
-
-[[package]]
-name = "xrce-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
- "xrce-platform-shim",
-]
 
 [[package]]
 name = "zmij"
