@@ -50,11 +50,7 @@ extern "C" {
 
 typedef struct {
     TX_THREAD threadx_thread;
-    /* Phase 120.3: RV64 ABI requires 16-byte SP alignment. The default
-     * `tx_byte_allocate` alignment (ALIGN_TYPE = ULONG64 = 8 bytes) is
-     * insufficient — a misaligned SP made `tx_thread_sleep` from the
-     * lease task never return on rv64. */
-    uint8_t threadx_stack[Z_TASK_STACK_SIZE] __attribute__((aligned(16)));
+    uint8_t threadx_stack[Z_TASK_STACK_SIZE];
     void *(*_fun)(void *);   /* Real entry function (full pointer width) */
     void  *_arg;             /* Real argument (full pointer width) */
     /* Phase 77.21: replaces the `tx_thread_sleep(1)` polling loop in
