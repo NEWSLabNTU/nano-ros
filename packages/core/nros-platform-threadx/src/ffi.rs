@@ -7,35 +7,48 @@
 //! ThreadX exposes its API as macros (`tx_mutex_create` → `_tx_mutex_create`).
 //! Rust FFI can't call C macros, so we declare the underlying `_tx_*` functions
 //! directly (same approach as nros-platform-freertos with FreeRTOS macros).
+//!
+//! ABI note: ThreadX `ULONG` is `unsigned long`, which is **8 bytes on
+//! LP64 targets (Linux x86_64, RISC-V64)** and 4 bytes on ILP32 / Cortex-M.
+//! Declarations below use `TxUlong` (alias for `core::ffi::c_ulong`) so the
+//! signature stays correct on both. The prior `u32` declarations caused
+//! upper-32-bit garbage in argument registers on rv64, surfacing as
+//! corrupted-function-pointer crashes in NetX BSD shim once enough
+//! z_malloc-allocated structures piled up (Phase 120.3 / 120.4).
 
-use core::ffi::c_void;
+use core::ffi::{c_ulong, c_void};
+
+/// Matches ThreadX `ULONG` width across 32-bit and 64-bit ports.
+pub type TxUlong = c_ulong;
 
 /// ThreadX success return code.
 pub const TX_SUCCESS: u32 = 0;
-/// Infinite wait.
-pub const TX_WAIT_FOREVER: u32 = 0xFFFFFFFF;
+/// Infinite wait — `(ULONG)0xFFFFFFFFUL` in `tx_api.h`. The literal is the
+/// 32-bit pattern; ThreadX promotes to ULONG, which is what callers must
+/// pass. On LP64 this is `0x00000000_FFFFFFFF`, NOT `0xFFFFFFFF_FFFFFFFF`.
+pub const TX_WAIT_FOREVER: TxUlong = 0xFFFFFFFF;
 /// Non-blocking.
-pub const TX_NO_WAIT: u32 = 0;
+pub const TX_NO_WAIT: TxUlong = 0;
 
 unsafe extern "C" {
     // Clock
     #[link_name = "_tx_time_get"]
-    pub fn tx_time_get() -> u32;
+    pub fn tx_time_get() -> TxUlong;
 
     // Memory (byte pool)
     #[link_name = "_tx_byte_allocate"]
     pub fn tx_byte_allocate(
         pool: *mut c_void,
         ptr: *mut *mut c_void,
-        size: u32,
-        wait_option: u32,
+        size: TxUlong,
+        wait_option: TxUlong,
     ) -> u32;
     #[link_name = "_tx_byte_release"]
     pub fn tx_byte_release(ptr: *mut c_void) -> u32;
 
     // Sleep
     #[link_name = "_tx_thread_sleep"]
-    pub fn tx_thread_sleep(ticks: u32) -> u32;
+    pub fn tx_thread_sleep(ticks: TxUlong) -> u32;
 
     // Cooperative yield (Phase 77.22)
     #[link_name = "_tx_thread_relinquish"]
@@ -90,13 +103,13 @@ unsafe extern "C" {
     pub fn tx_thread_create(
         thread: *mut c_void,
         name: *const core::ffi::c_char,
-        entry: unsafe extern "C" fn(u32),
-        entry_input: u32,
+        entry: unsafe extern "C" fn(TxUlong),
+        entry_input: TxUlong,
         stack: *mut c_void,
-        stack_size: u32,
+        stack_size: TxUlong,
         priority: u32,
         preempt_threshold: u32,
-        time_slice: u32,
+        time_slice: TxUlong,
         auto_start: u32,
     ) -> u32;
 
@@ -105,10 +118,10 @@ unsafe extern "C" {
         thread: *mut c_void,
         name: *mut *const core::ffi::c_char,
         state: *mut u32,
-        run_count: *mut u32,
+        run_count: *mut TxUlong,
         priority: *mut u32,
         preempt_threshold: *mut u32,
-        time_slice: *mut u32,
+        time_slice: *mut TxUlong,
         next_thread: *mut *mut c_void,
         next_suspended: *mut *mut c_void,
     ) -> u32;
@@ -120,7 +133,7 @@ unsafe extern "C" {
     #[link_name = "_tx_mutex_delete"]
     pub fn tx_mutex_delete(mutex: *mut c_void) -> u32;
     #[link_name = "_tx_mutex_get"]
-    pub fn tx_mutex_get(mutex: *mut c_void, wait_option: u32) -> u32;
+    pub fn tx_mutex_get(mutex: *mut c_void, wait_option: TxUlong) -> u32;
     #[link_name = "_tx_mutex_put"]
     pub fn tx_mutex_put(mutex: *mut c_void) -> u32;
 
@@ -129,12 +142,12 @@ unsafe extern "C" {
     pub fn tx_semaphore_create(
         sem: *mut c_void,
         name: *const core::ffi::c_char,
-        initial_count: u32,
+        initial_count: TxUlong,
     ) -> u32;
     #[link_name = "_tx_semaphore_delete"]
     pub fn tx_semaphore_delete(sem: *mut c_void) -> u32;
     #[link_name = "_tx_semaphore_get"]
-    pub fn tx_semaphore_get(sem: *mut c_void, wait_option: u32) -> u32;
+    pub fn tx_semaphore_get(sem: *mut c_void, wait_option: TxUlong) -> u32;
     #[link_name = "_tx_semaphore_put"]
     pub fn tx_semaphore_put(sem: *mut c_void) -> u32;
 }

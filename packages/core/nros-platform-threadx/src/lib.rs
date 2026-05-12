@@ -123,7 +123,7 @@ impl nros_platform_api::PlatformAlloc for ThreadxPlatform {
         }
         let mut ptr: *mut c_void = core::ptr::null_mut();
         let ret =
-            unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as u32, ffi::TX_WAIT_FOREVER) };
+            unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as ffi::TxUlong, ffi::TX_WAIT_FOREVER) };
         if ret == ffi::TX_SUCCESS {
             ptr
         } else {
@@ -167,7 +167,7 @@ impl nros_platform_api::PlatformSleep for ThreadxPlatform {
     #[inline]
     fn sleep_ms(ms: usize) {
         // Convert ms to ticks (100 Hz = 10ms per tick)
-        let ticks = (ms as u32).div_ceil(10);
+        let ticks = (ms as ffi::TxUlong).div_ceil(10);
         unsafe { ffi::tx_thread_sleep(ticks) };
     }
 
@@ -624,7 +624,7 @@ impl ThreadxPlatform {
     pub fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8 {
         let now = Self::clock_ms();
         let timeout_ms = abstime.saturating_sub(now);
-        let timeout_ticks = (timeout_ms as u32).div_ceil(10); // 100 Hz
+        let timeout_ticks = (timeout_ms as ffi::TxUlong).div_ceil(10); // 100 Hz
         Self::mutex_unlock(m);
         let ret = unsafe { ffi::tx_semaphore_get(cv, timeout_ticks) };
         Self::mutex_lock(m);

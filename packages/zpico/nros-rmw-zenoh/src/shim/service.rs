@@ -555,8 +555,19 @@ impl ServiceClientTrait for ZenohServiceClient {
         }
         #[cfg(not(feature = "std"))]
         {
-            const MAX_ATTEMPTS: u32 = 3;
-            for _ in 0..MAX_ATTEMPTS {
+            // 80 × 5 ms = 400 ms budget. Covers cold-boot discovery on
+            // multi-threaded zpico backends (FreeRTOS+lwIP, ThreadX+NetX)
+            // where the lease / read task needs scheduler quanta to
+            // advance the session state past pending-query / queryable
+            // gossip. `z_sleep_ms` yields cooperatively on those
+            // backends; on bare-metal single-threaded zpico it's a
+            // busy-loop fallback but the count keeps it bounded.
+            unsafe extern "C" {
+                fn z_sleep_ms(time: usize) -> i8;
+            }
+            const MAX_ATTEMPTS: u32 = 80;
+            const SLEEP_MS: usize = 5;
+            for attempt in 0..MAX_ATTEMPTS {
                 match context.get_start(
                     &self.keyexpr[..=self.keyexpr_len],
                     request,
@@ -567,6 +578,9 @@ impl ServiceClientTrait for ZenohServiceClient {
                         return Ok(());
                     }
                     Err(e) => last_err = Some(e),
+                }
+                if attempt + 1 < MAX_ATTEMPTS {
+                    unsafe { z_sleep_ms(SLEEP_MS) };
                 }
             }
         }

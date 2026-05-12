@@ -42,7 +42,15 @@ TX_BYTE_POOL *zpico_threadx_byte_pool;
 #define ARP_POOL_SIZE           1024
 #define BSD_STACK_SIZE          2048
 #define APP_THREAD_STACK_SIZE   (64 * 1024)     /* 64 KB for Executor + zenoh-pico */
-#define APP_THREAD_PRIORITY     4
+/* zenoh-pico's read/lease tasks default to ThreadX priority 14
+ * (`Z_TASK_PRIORITY` in `zenoh-pico/src/system/threadx/.../platform.h`).
+ * The app thread must run at a strictly lower priority (= higher
+ * numeric value) than that so the zenoh-pico keep-alive task gets CPU
+ * during the action server's spin loop. Pre-fix this was 4, which
+ * preempted the keep-alive task → 10 s lease expiry → router
+ * unregisters all the server's queryables before the client's first
+ * z_get even arrives (Phase 120.3 root cause). */
+#define APP_THREAD_PRIORITY     15
 
 /* ---- Static objects ---- */
 static TX_BYTE_POOL     byte_pool;
