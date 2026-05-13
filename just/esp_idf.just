@@ -9,7 +9,7 @@ default:
 
 # Install ESP-IDF (clone + ./install.sh). Opt-in — NOT pulled by top-level
 # `just setup`, which uses esp-hal bare-metal instead. Required only when
-# driving the nros-platform-esp-idf-c C port.
+# driving the nros-platform-esp-idf C port.
 #
 # Re-running is idempotent: refreshes the checkout + re-runs install.sh.
 setup *args:
@@ -43,7 +43,7 @@ doctor:
     fi
     exit $fail
 
-# Build the ESP-IDF smoke project that pulls nros-platform-esp-idf-c.
+# Build the ESP-IDF smoke project that pulls nros-platform-esp-idf.
 # Targets are taken from IDF_TARGET (default: esp32c3).
 build-c-port target='esp32c3':
     #!/usr/bin/env bash
@@ -53,7 +53,7 @@ build-c-port target='esp32c3':
         exit 2
     fi
     source esp-idf-workspace/env.sh
-    cd tests/esp-idf-c-smoke
+    cd tests/esp-idf-smoke
     idf.py set-target "{{target}}"
     idf.py build
 
@@ -64,7 +64,7 @@ test-c-port target='esp32c3':
     set -e
     just esp_idf build-c-port "{{target}}"
     source esp-idf-workspace/env.sh
-    cd tests/esp-idf-c-smoke
+    cd tests/esp-idf-smoke
     case "{{target}}" in
         esp32c3) qemu=qemu-system-riscv32 ;;
         esp32)   qemu=qemu-system-xtensa ;;
@@ -85,7 +85,7 @@ test-c-port target='esp32c3':
 
 # Clean smoke-project build.
 clean:
-    rm -rf tests/esp-idf-c-smoke/build tests/esp-idf-c-smoke/sdkconfig*
+    rm -rf tests/esp-idf-smoke/build tests/esp-idf-smoke/sdkconfig*
 
 # CI: doctor + build-c-port.
 ci: doctor build-c-port

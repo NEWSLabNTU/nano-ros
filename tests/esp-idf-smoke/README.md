@@ -1,6 +1,6 @@
 # nros esp-idf-c smoke test
 
-Minimal ESP-IDF project that pulls `nros-platform-esp-idf-c` via
+Minimal ESP-IDF project that pulls `nros-platform-esp-idf` via
 `EXTRA_COMPONENT_DIRS` and exercises one symbol from each capability
 category. Runs on qemu-system-{riscv32,xtensa} so no real hardware
 is required.

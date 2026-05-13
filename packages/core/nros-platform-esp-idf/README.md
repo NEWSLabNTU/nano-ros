@@ -1,4 +1,4 @@
-# nros-platform-esp-idf-c
+# nros-platform-esp-idf
 
 Native C implementation of the nano-ros canonical platform ABI (`<nros/platform.h>`) for [Espressif ESP-IDF](https://docs.espressif.com/projects/esp-idf/).
 
@@ -22,7 +22,7 @@ Register the directory in your IDF project's top-level `CMakeLists.txt`:
 set(EXTRA_COMPONENT_DIRS path/to/nano-ros/packages/core)
 ```
 
-Then add `nros-platform-esp-idf-c` to your project's `REQUIRES` list.
+Then add `nros-platform-esp-idf` to your project's `REQUIRES` list.
 
 ## License
 

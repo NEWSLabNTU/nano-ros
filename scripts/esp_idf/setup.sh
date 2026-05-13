@@ -8,7 +8,7 @@
 # project's main ESP32 path is `esp-hal` bare-metal, not IDF).
 #
 # This workspace is opt-in for users who want to drive the
-# `nros-platform-esp-idf-c` C port through an actual IDF build (target
+# `nros-platform-esp-idf` C port through an actual IDF build (target
 # chips: esp32c3, esp32s3, esp32). It is NOT pulled by `just esp32 setup`.
 #
 # Usage:
