@@ -78,17 +78,18 @@ fn main() {
         info!("Parameter services registered for /talker");
     }
 
-    // Create publisher
-    let mut node = executor
-        .create_node("talker")
-        .expect("Failed to create node");
-    info!("Node created: talker");
-
-    let publisher = node
-        .create_publisher::<Int32>("/chatter")
-        .expect("Failed to create publisher");
-    info!("Publisher created for topic: /chatter");
-    info!("Publishing Int32 messages...");
+    // Create publisher (scoped so the node drops; publisher is owned).
+    let publisher = {
+        let mut node = executor
+            .create_node("talker")
+            .expect("Failed to create node");
+        info!("Node created: talker");
+        let pub_ = node
+            .create_publisher::<Int32>("/chatter")
+            .expect("Failed to create publisher");
+        info!("Publisher created for topic: /chatter");
+        pub_
+    };
 
     // Get counter start value from parameters (if available)
     #[cfg(feature = "param-services")]
@@ -100,17 +101,22 @@ fn main() {
     #[cfg(not(feature = "param-services"))]
     let counter_start = 0i32;
 
-    // Publish loop: publish, pump transport, sleep 1s (like ROS 2 demo_nodes talker).
+    // Phase 122.4 — L2 timer-driven publish. Timer fires every 1 s;
+    // closure owns the publisher + counter.
     let mut count: i32 = counter_start;
-    loop {
-        let msg = Int32 { data: count };
-        match publisher.publish(&msg) {
-            Ok(()) => info!("Published: {}", count),
-            Err(e) => error!("Publish error: {:?}", e),
-        }
-        count = count.wrapping_add(1);
+    executor
+        .register_timer(nros::TimerDuration::from_millis(1000), move || {
+            let msg = Int32 { data: count };
+            match publisher.publish(&msg) {
+                Ok(()) => info!("Published: {}", count),
+                Err(e) => error!("Publish error: {:?}", e),
+            }
+            count = count.wrapping_add(1);
+        })
+        .expect("Failed to register publish timer");
+    info!("Publishing Int32 messages every 1s...");
 
-        executor.spin_once(core::time::Duration::from_millis(10));
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    executor
+        .spin_blocking(SpinOptions::default())
+        .expect("spin_blocking error");
 }

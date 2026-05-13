@@ -32,14 +32,11 @@ use panic_probe as _;
 defmt::timestamp!("{=u64:us}", { 0 });
 
 use nros::prelude::*;
-use nros_board_stm32f4::{nros_platform_stm32f4::clock::clock_ms, prelude::*};
+use nros_board_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds
 const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
-
-/// Publish interval in milliseconds
-const PUBLISH_INTERVAL_MS: u32 = 1000;
 
 #[entry]
 fn main() -> ! {
@@ -47,30 +44,25 @@ fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
-        // Phase 115.L.x — install C-vtable backend before session open.
         let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("talker")?;
+        let publisher = {
+            let mut node = executor.create_node("talker")?;
+            info!("Creating publisher for /chatter (std_msgs/Int32)...");
+            node.create_publisher::<Int32>("/chatter")?
+        };
 
-        info!("Creating publisher for /chatter (std_msgs/Int32)...");
-        let publisher = node.create_publisher::<Int32>("/chatter")?;
-
-        info!("Starting publish loop (1 Hz)...");
+        info!("Starting publish timer (1 Hz)...");
         let mut counter: i32 = 0;
-        let mut last_publish_ms: u64 = 0;
+        executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
+            counter = counter.wrapping_add(1);
+            match publisher.publish(&Int32 { data: counter }) {
+                Ok(()) => info!("Published: {}", counter),
+                Err(e) => warn!("Publish failed: {:?}", e),
+            }
+        })?;
 
         loop {
             executor.spin_once(POLL_INTERVAL);
-
-            let now_ms = clock_ms();
-            if now_ms - last_publish_ms >= PUBLISH_INTERVAL_MS as u64 {
-                last_publish_ms = now_ms;
-                counter = counter.wrapping_add(1);
-
-                match publisher.publish(&Int32 { data: counter }) {
-                    Ok(()) => info!("Published: {}", counter),
-                    Err(e) => warn!("Publish failed: {:?}", e),
-                }
-            }
         }
     })
 }

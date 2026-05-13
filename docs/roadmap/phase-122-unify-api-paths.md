@@ -409,7 +409,7 @@ Sub-items:
     `nros/nros.hpp` pulls in both new headers, so existing
     `#include "nros/nros.hpp"` users get the new templates
     automatically.
-- [~] **122.4 — Rust example migration L1 -> L2 (callback).**
+- [x] **122.4 — Rust example migration L1 -> L2 (callback).**
   Mechanical rewrite of non-RTIC example main.rs files.
   - **Scope decision (2026-05-13).** Listeners + action
     servers migrate to L2 (`Executor::register_subscription` /
@@ -446,10 +446,42 @@ Sub-items:
     publishes feedback / completes via `handle.*` methods.
     Mirror of the threadx-rv64 example landed earlier in
     Phase 120.3.
+  - **Talkers migrated (11).** Same shape — drop the
+    handcrafted `for _ in 0..100 { spin_once } publish()`
+    loop in favour of `executor.register_timer(1s, move ||
+    publish())`. Publisher is owned (no borrow into the
+    node), so it moves into the closure once the node drops
+    at end of its scoped creation block. Files:
+    `examples/qemu-arm-baremetal/rust/{zenoh,dds}/talker/`,
+    `examples/qemu-arm-freertos/rust/{zenoh,dds}/talker/`,
+    `examples/qemu-arm-nuttx/rust/{zenoh,dds}/talker/`,
+    `examples/qemu-riscv64-threadx/rust/zenoh/talker/`,
+    `examples/qemu-esp32-baremetal/rust/{zenoh,dds}/talker/`,
+    `examples/esp32/rust/zenoh/talker/`,
+    `examples/stm32f4/rust/zenoh/talker/`,
+    `examples/threadx-linux/rust/{zenoh,dds}/talker/`,
+    `examples/native/rust/{zenoh,dds}/talker/`. The
+    `threadx-linux/zenoh/talker` is the one non-uniform
+    case (counts up to 10 and exits) — counter + stop flag
+    moved to `static AtomicI32 / AtomicBool` for the
+    `'static` closure. ESP32 variants use
+    `esp_println::println!` in place of the generic
+    `println!` macro.
   - **Stays on L1 (intentional).** Service clients
     (5 files), action clients (4 files), async client
-    examples (2 files), RTIC examples (5 files). Phase doc
-    notes this.
+    examples (2 files), RTIC examples (5 files). Service
+    + action clients have no typed `register_*_client<T>`
+    API in `nros-node` — only `register_*_raw` (untyped
+    bytes). The typed user-facing path is
+    `Node::create_client::<S>` + `client.call(&req)`
+    returning `Promise<Reply>`. The request-response +
+    `Promise::await` pattern is the L1 manual-poll shape,
+    not a callback model — migrating clients to
+    `register_*_raw` would force users to do CDR
+    serialisation by hand, worse UX. Async examples use
+    the same `Promise` mechanism, so they also stay on
+    L1. RTIC examples own scheduling — they always stay
+    on L1 by design.
   - **Validation.** `cargo build` clean for all 16 migrated
     examples across the qemu-arm-baremetal / freertos /
     nuttx / riscv64-threadx / esp32 / threadx-linux trees.

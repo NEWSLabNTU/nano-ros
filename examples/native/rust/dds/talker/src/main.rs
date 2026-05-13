@@ -1,7 +1,8 @@
 //! Native DDS Talker Example
 //!
-//! Demonstrates publishing messages using nros with the DDS/RTPS backend.
-//! Uses brokerless peer-to-peer discovery — no router or agent needed.
+//! Phase 122.4 — L2 timer-driven publisher. Demonstrates publishing
+//! messages using nros with the DDS/RTPS backend. Brokerless
+//! peer-to-peer discovery — no router or agent needed.
 //!
 //! # Usage
 //!
@@ -20,31 +21,34 @@ fn main() {
     info!("==========================================");
 
     let config = ExecutorConfig::from_env().node_name("talker");
-    // Phase 115.L.5 — install dust-dds C-vtable backend.
-
     let mut executor: Executor = Executor::open(&config).expect("Failed to open DDS session");
 
-    let mut node = executor
-        .create_node("talker")
-        .expect("Failed to create node");
-    info!("Node created: talker");
-
-    let publisher = node
-        .create_publisher::<Int32>("/chatter")
-        .expect("Failed to create publisher");
-    info!("Publisher created for topic: /chatter");
-    info!("Publishing Int32 messages...");
+    let publisher = {
+        let mut node = executor
+            .create_node("talker")
+            .expect("Failed to create node");
+        info!("Node created: talker");
+        let pub_ = node
+            .create_publisher::<Int32>("/chatter")
+            .expect("Failed to create publisher");
+        info!("Publisher created for topic: /chatter");
+        pub_
+    };
 
     let mut count: i32 = 0;
-    loop {
-        let msg = Int32 { data: count };
-        match publisher.publish(&msg) {
-            Ok(()) => info!("Published: {}", count),
-            Err(e) => error!("Publish error: {:?}", e),
-        }
-        count = count.wrapping_add(1);
+    executor
+        .register_timer(nros::TimerDuration::from_millis(1000), move || {
+            let msg = Int32 { data: count };
+            match publisher.publish(&msg) {
+                Ok(()) => info!("Published: {}", count),
+                Err(e) => error!("Publish error: {:?}", e),
+            }
+            count = count.wrapping_add(1);
+        })
+        .expect("Failed to register publish timer");
+    info!("Publishing Int32 messages every 1s...");
 
-        executor.spin_once(core::time::Duration::from_millis(10));
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    executor
+        .spin_blocking(SpinOptions::default())
+        .expect("spin_blocking error");
 }
