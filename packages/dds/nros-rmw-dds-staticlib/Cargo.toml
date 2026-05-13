@@ -1,0 +1,36 @@
+[package]
+name = "nros-rmw-dds-staticlib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Standalone staticlib wrapper for nros-rmw-dds — emits libnros_rmw_dds_staticlib.a (Phase 123.A.1.x.4)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish = false
+
+# Phase 123.A.1.x.4.a — emit `libnros_rmw_dds_staticlib.a` containing
+# the full `nros-rmw-dds` (dust-DDS) Rust dependency closure +
+# compiler_builtins. Mirrors `nros-rmw-zenoh-staticlib`. Lets the SDK
+# matrix ship the DDS RMW backend as a separate archive linked
+# alongside `libnros_c.a`.
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = []
+platform-posix = ["nros-rmw-dds/platform-posix"]
+platform-zephyr = ["nros-rmw-dds/platform-zephyr"]
+platform-freertos = ["nros-rmw-dds/platform-freertos"]
+platform-nuttx = ["nros-rmw-dds/platform-nuttx"]
+platform-threadx = ["nros-rmw-dds/platform-threadx"]
+platform-bare-metal = ["nros-rmw-dds/platform-bare-metal"]
+ros-humble = ["nros-rmw-dds/ros-humble"]
+ros-iron = ["nros-rmw-dds/ros-iron"]
+
+[dependencies]
+nros-rmw-dds = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

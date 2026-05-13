@@ -33,6 +33,10 @@ examples/**/generated/
 tools/*
 # ...but keep the pinned nightly for workspace tooling (fmt/miri/llvm-cov/etc.)
 !tools/rust-toolchain.toml
+# Phase 123.A.1.x.3 + A.1.x.4.a — install scaffolds for standalone
+# platform / RMW staticlibs. CMake projects driven by just recipes.
+!tools/install-platform/
+!tools/install-rmw/
 
 # Local environment overrides (created from .env.example)
 /.env

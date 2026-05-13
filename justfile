@@ -121,6 +121,7 @@ install-local: \
     install-platform-posix \
     freertos::install-platform \
     threadx_linux::install-platform \
+    install-rmw-zenoh install-rmw-dds \
     install-local-posix \
     freertos::install nuttx::install \
     threadx_linux::install threadx_riscv64::install
@@ -136,6 +137,38 @@ install-local: \
 # renamed the C-port from `nros-platform-posix-c` to
 # `nros-platform-posix` so the POSIX directory matches the FreeRTOS /
 # NuttX / ThreadX / Zephyr C-port-only layout from Phase 121.3.
+# Phase 123.A.1.x.4.a — build the standalone DDS RMW staticlib via
+# cargo, install into build/install/lib/libnros_rmw_dds.a + emit
+# NrosRmwDds::NrosRmwDds imported target via a tiny CMake scaffold.
+[private]
+install-rmw-dds:
+    #!/usr/bin/env bash
+    set -e
+    PREFIX="$(pwd)/build/install"
+    echo "=== Building libnros_rmw_dds_staticlib.a (posix + humble) ==="
+    cargo build -p nros-rmw-dds-staticlib \
+        --features platform-posix,ros-humble \
+        --release
+    cmake -S tools/install-rmw/dds -B build/cmake-install-rmw-dds \
+        -DSTATICLIB_SOURCE="$(pwd)/target/release/libnros_rmw_dds_staticlib.a" >/dev/null
+    cmake --install build/cmake-install-rmw-dds --prefix "$PREFIX"
+
+# Phase 123.A.1.x.4.a — build the standalone Zenoh RMW staticlib via
+# cargo, install into build/install/lib/libnros_rmw_zenoh.a + emit
+# NrosRmwZenoh::NrosRmwZenoh imported target via a tiny CMake scaffold.
+[private]
+install-rmw-zenoh:
+    #!/usr/bin/env bash
+    set -e
+    PREFIX="$(pwd)/build/install"
+    echo "=== Building libnros_rmw_zenoh_staticlib.a (posix + tcp + humble) ==="
+    cargo build -p nros-rmw-zenoh-staticlib \
+        --features platform-posix,link-tcp,ros-humble \
+        --release
+    cmake -S tools/install-rmw/zenoh -B build/cmake-install-rmw-zenoh \
+        -DSTATICLIB_SOURCE="$(pwd)/target/release/libnros_rmw_zenoh_staticlib.a" >/dev/null
+    cmake --install build/cmake-install-rmw-zenoh --prefix "$PREFIX"
+
 [private]
 install-platform-posix:
     #!/usr/bin/env bash

@@ -238,17 +238,46 @@ writes a workspace `Cargo.toml` for Rust users.
           parent IDF build already pulls the source in via
           `idf_component_register`).
 
-    - [ ] **123.A.1.x.4 — Standalone RMW archives for zenoh
-      and dds.** Today's `nros-rmw-zenoh` and `nros-rmw-dds`
-      are Rust-only crates, bundled into `nros-c`'s
-      staticlib. Two options: (a) extract into wrapper
-      staticlib crates (`nros-rmw-zenoh-staticlib` etc.,
-      crate-type `staticlib`) and accept per-archive
-      `compiler_builtins` duplication (resolve via
-      `--allow-multiple-definition` linker flag, GNU-ld
-      only); (b) C-port them to match Phase 121.6 + 117
-      precedent. Pick (a) now (fast, unblocks SDK matrix
-      collapse), defer (b) to a future phase.
+    - [~] **123.A.1.x.4 — Standalone RMW archives for zenoh
+      and dds.** Partially done — wrapper staticlibs land
+      alongside `libnros_c.a`. Final `nros-c` shrinkage
+      deferred to A.1.x.4.b.
+
+      A.1.x.4.a done in this sub-step:
+        * New `nros-rmw-zenoh-staticlib` + `nros-rmw-dds-staticlib`
+          wrapper crates (`crate-type = ["staticlib"]`) under
+          `packages/zpico/` and `packages/dds/`. Each one
+          re-exports the parent crate's public surface to keep
+          the `#[unsafe(no_mangle)] nros_rmw_<x>_register()`
+          symbol exported.
+        * Cargo builds emit
+          `libnros_rmw_zenoh_staticlib.a` (~27 MB, 463 objs,
+          `nros_rmw_zenoh_register` defined `T`) and
+          `libnros_rmw_dds_staticlib.a` (~25 MB, 341 objs,
+          `nros_rmw_dds_register` defined `T`).
+        * Tiny CMake scaffolds under
+          `tools/install-rmw/{zenoh,dds}/` package the cargo
+          output as `libnros_rmw_<x>.a` + emit a STATIC IMPORTED
+          target via `find_package(NrosRmw<X> CONFIG)`.
+        * `just install-rmw-zenoh` / `install-rmw-dds`
+          recipes, hooked into top-level `install-local`.
+        * Per-archive compiler_builtins duplication accepted;
+          downstream link will need `--allow-multiple-definition`
+          (GNU ld / lld) when both archives co-link with
+          `libnros_c.a`.
+
+      Deferred to A.1.x.4.b:
+        * Drop `nros-rmw-zenoh` + `nros-rmw-dds` from
+          `nros-c`'s Cargo dep graph so its staticlib shrinks
+          ~25 MB. Wire `NanoRos::NanoRos` to
+          `find_dependency(NrosRmw<X>)` +
+          `target_link_libraries(... NrosRmw<X>::NrosRmw<X>
+          -Wl,--allow-multiple-definition)`. Same shape as
+          XRCE's existing `find_dependency(NrosRmwXrce)` block.
+        * For now the standalone archives sit next to today's
+          monolithic `libnros_c_zenoh.a` / `libnros_c_dds.a`
+          rather than replacing them — downstream consumers
+          still use the monolithic archives.
 
     - [ ] **123.A.1.x.5 — Switch `nano_ros_link_platform` /
       `_link_rmw` to real link targets.** When A.1.x.2 +

@@ -1,0 +1,45 @@
+[package]
+name = "nros-rmw-zenoh-staticlib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Standalone staticlib wrapper for nros-rmw-zenoh — emits libnros_rmw_zenoh_staticlib.a (Phase 123.A.1.x.4)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish = false
+
+# Phase 123.A.1.x.4.a — emit `libnros_rmw_zenoh_staticlib.a` containing
+# the full `nros-rmw-zenoh` Rust dependency closure + zenoh-pico C
+# sources + compiler_builtins. Lets the SDK ship the zenoh RMW
+# backend as a separate archive that `NanoRos::NanoRos` links in
+# alongside `libnros_c.a`, mirroring the existing
+# `libnros_rmw_xrce.a` / `libnros_rmw_cyclonedds.a` split.
+#
+# A separate staticlib means a second copy of compiler_builtins is
+# embedded. Downstream link uses `--allow-multiple-definition` (GNU
+# ld / lld) to reconcile.
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = []
+platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
+platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
+platform-freertos = ["nros-rmw-zenoh/platform-freertos"]
+platform-nuttx = ["nros-rmw-zenoh/platform-nuttx"]
+platform-threadx = ["nros-rmw-zenoh/platform-threadx"]
+platform-bare-metal = ["nros-rmw-zenoh/platform-bare-metal"]
+link-tcp = ["nros-rmw-zenoh/link-tcp"]
+link-udp-unicast = ["nros-rmw-zenoh/link-udp-unicast"]
+link-tls = ["nros-rmw-zenoh/link-tls"]
+link-custom = ["nros-rmw-zenoh/link-custom"]
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]
+
+[dependencies]
+nros-rmw-zenoh = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

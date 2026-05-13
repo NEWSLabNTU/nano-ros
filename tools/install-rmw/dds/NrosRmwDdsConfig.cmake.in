@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+# Phase 123.A.1.x.4.a — `find_package(NrosRmwDds CONFIG)` exposes the
+# imported target `NrosRmwDds::NrosRmwDds`, a STATIC IMPORTED library
+# pointing at `libnros_rmw_dds.a` (renamed from cargo's
+# `libnros_rmw_dds_staticlib.a` at install time).
+
+include("${CMAKE_CURRENT_LIST_DIR}/NrosRmwDdsTargets.cmake")
+
+check_required_components(NrosRmwDds)

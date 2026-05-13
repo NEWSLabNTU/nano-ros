@@ -20,8 +20,14 @@ members = [
     "packages/xrce/xrce-sys",
     # Zenoh RMW backend (shim + zpico wrapper)
     "packages/zpico/nros-rmw-zenoh",
+    # Phase 123.A.1.x.4.a — standalone staticlib wrapper. Emits
+    # `libnros_rmw_zenoh_staticlib.a` separately from `libnros_c.a`
+    # so the SDK matrix can ship them decoupled.
+    "packages/zpico/nros-rmw-zenoh-staticlib",
     # DDS RMW backend (pure Rust, dust-dds)
     "packages/dds/nros-rmw-dds",
+    # Phase 123.A.1.x.4.a — standalone staticlib wrapper for DDS.
+    "packages/dds/nros-rmw-dds-staticlib",
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems
