@@ -198,16 +198,42 @@ Sub-items:
     `SERVICE_CLIENT_OPAQUE_U64S`; new
     `NROS_CLIENT_STATE_POLLING = 4` variant; `nros_client_fini`
     drops the inline `RawServiceClient` on POLLING state.
-  - [ ] **122.3.c.6 — `RawActionServer<...>` +
-    `RawActionClient<...>` Rust types + C entry points.** Larger
-    than the service pair (5-channel protocol, active-goal
-    tracking). `ActionServerCore` / `ActionClientCore` in
-    `nros-node` already expose the raw methods
-    (`try_recv_goal_request`, `publish_feedback_raw`,
-    `complete_goal_raw`, `try_handle_cancel`,
-    `try_handle_get_result_raw`) — wrapping is the open work,
-    plus `Node::create_action_{server,client}_raw_sized`,
-    probe sizes, and the C entry points.
+  - [~] **122.3.c.6 — action L1 polling.** Larger than the service
+    pair (5-channel protocol, active-goal tracking).
+    `ActionServerCore` / `ActionClientCore` in `nros-node`
+    already expose the raw methods, so 122.3.c.6 splits into
+    Rust scaffolding (.6.a) and the C entry points (.6.b).
+    - [x] **122.3.c.6.a — Rust scaffolding.** Landed:
+      `Node::create_action_server_raw[_sized]` /
+      `create_action_client_raw[_sized]` in
+      `nros-node/src/executor/node.rs` (typeless, take
+      `action_name + type_name + type_hash` strings, build the
+      5 channels, return `ActionServerCore` / `ActionClientCore`
+      directly). New `RAW_ACTION_SERVER_SIZE` /
+      `RAW_ACTION_CLIENT_SIZE` probes in `nros::sizes` using
+      default const generics
+      (`DEFAULT_RX_BUF_SIZE` + `MAX_GOALS = 4`). New
+      `ACTION_SERVER_OPAQUE_U64S` /
+      `ACTION_CLIENT_OPAQUE_U64S` consts in
+      `nros-c::opaque_sizes`. `nros-c/build.rs` emits the
+      corresponding `#undef` + `#define` overrides in the
+      variant header. Current values at default config:
+      action server = 786 u64 (~6.3 KB), action client =
+      2193 u64 (~17.5 KB — dominated by 3 × CffiServiceClient
+      `pending_request[4096]`).
+    - [ ] **122.3.c.6.b — C entry points.** Add `_opaque`
+      field + `STATE_POLLING` variant to
+      `nros_action_server_t` / `nros_action_client_t`. Wire
+      `nros_action_server_init_polling` /
+      `nros_action_client_init_polling` + raw methods
+      (`try_recv_goal_request_raw`, `publish_feedback_raw`,
+      `complete_goal_raw`, `try_handle_cancel_raw`,
+      `try_handle_get_result_raw` for server;
+      `send_goal_raw`, `try_recv_goal_response_raw`,
+      `cancel_goal_raw`, `try_recv_cancel_response_raw`,
+      `get_result_raw`, `try_recv_result_raw`,
+      `try_recv_feedback_raw` for client). `*_fini` extends
+      with `drop_in_place` on the inline core.
 - [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.

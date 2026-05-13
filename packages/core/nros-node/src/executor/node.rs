@@ -432,6 +432,239 @@ impl<'a> Node<'a> {
 
     // -- Actions --
 
+    /// Phase 122.3.c.6 — typeless action server. Builds the 5
+    /// transport channels (`send_goal` / `cancel_goal` / `get_result`
+    /// services + `feedback` / `status` publishers) and returns the
+    /// raw `ActionServerCore` directly. Caller owns scheduling —
+    /// drives `try_recv_goal_request` / `publish_feedback_raw` /
+    /// `complete_goal_raw` / `try_handle_cancel` /
+    /// `try_handle_get_result_raw` on the returned core.
+    pub fn create_action_server_raw(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionServerCore<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            4,
+        >,
+        NodeError,
+    > {
+        self.create_action_server_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            4,
+        >(action_name, type_name, type_hash)
+    }
+
+    /// Typeless action server with custom buffer + goal-slot sizes.
+    pub fn create_action_server_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+        NodeError,
+    > {
+        let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
+
+        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &send_goal_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let send_goal_server = self
+            .session
+            .create_service_server(&send_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash,
+        );
+        let cancel_goal_server = self
+            .session
+            .create_service_server(&cancel_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+        let get_result_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &get_result_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let get_result_server = self
+            .session
+            .create_service_server(&get_result_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = Self::topic_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &feedback_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let feedback_publisher = self
+            .session
+            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let status_keyexpr: heapless::String<256> = action_info.status_key();
+        let status_topic = Self::topic_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &status_keyexpr,
+            "action_msgs::msg::dds_::GoalStatusArray_",
+            type_hash,
+        );
+        let status_publisher = self
+            .session
+            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        Ok(super::action_core::ActionServerCore {
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            status_publisher,
+            active_goals: heapless::Vec::new(),
+            completed_results: heapless::Vec::new(),
+            result_slab: [0u8; RESULT_BUF],
+            result_slab_used: 0,
+            goal_buffer: [0u8; GOAL_BUF],
+            feedback_buffer: [0u8; FEEDBACK_BUF],
+            cancel_buffer: [0u8; 256],
+        })
+    }
+
+    /// Phase 122.3.c.6 — typeless action client. Same shape as
+    /// `create_action_server_raw` but builds the 3 service clients
+    /// + 1 feedback subscriber, returns the raw `ActionClientCore`.
+    pub fn create_action_client_raw(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionClientCore<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >,
+        NodeError,
+    > {
+        self.create_action_client_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(action_name, type_name, type_hash)
+    }
+
+    /// Typeless action client with custom buffer sizes.
+    pub fn create_action_client_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
+    {
+        let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
+
+        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &send_goal_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let send_goal_client = self
+            .session
+            .create_service_client(&send_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash,
+        );
+        let cancel_goal_client = self
+            .session
+            .create_service_client(&cancel_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+        let get_result_info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &get_result_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let get_result_client = self
+            .session
+            .create_service_client(&get_result_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = Self::topic_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            &feedback_keyexpr,
+            type_name,
+            type_hash,
+        );
+        let feedback_subscriber = self
+            .session
+            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        Ok(super::action_core::ActionClientCore::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+        ))
+    }
+
     /// Create an action server.
     pub fn create_action_server<A: RosAction>(
         &mut self,

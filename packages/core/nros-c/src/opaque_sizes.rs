@@ -49,6 +49,29 @@ pub const SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<
     >,
 >();
 
+// Phase 122.3.c.6 — typeless `ActionServerCore` / `ActionClientCore`
+// inline storage for L1 polling-mode `nros_action_server_t` /
+// `nros_action_client_t`. Buffer + goal-slot sizing matches the
+// L2 callback path (`MESSAGE_BUFFER_SIZE` triple buffers,
+// `MAX_GOALS = 4`).
+#[cfg(feature = "rmw-cffi")]
+pub const ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<
+    nros_node::ActionServerCore<
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        4,
+    >,
+>();
+#[cfg(feature = "rmw-cffi")]
+pub const ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<
+    nros_node::ActionClientCore<
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+    >,
+>();
+
 // Placeholders for no-RMW workspace builds.
 #[cfg(not(feature = "rmw-cffi"))]
 pub const SESSION_OPAQUE_U64S: usize = 1;
@@ -60,6 +83,10 @@ pub const SUBSCRIPTION_OPAQUE_U64S: usize = 1;
 pub const SERVICE_SERVER_OPAQUE_U64S: usize = 1;
 #[cfg(not(feature = "rmw-cffi"))]
 pub const SERVICE_CLIENT_OPAQUE_U64S: usize = 1;
+#[cfg(not(feature = "rmw-cffi"))]
+pub const ACTION_SERVER_OPAQUE_U64S: usize = 1;
+#[cfg(not(feature = "rmw-cffi"))]
+pub const ACTION_CLIENT_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
 

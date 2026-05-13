@@ -80,6 +80,14 @@ mod rmw_sizes {
     export_size!(pub RAW_SERVICE_SERVER_SIZE = nros_node::RawServiceServer);
     export_size!(pub RAW_SERVICE_CLIENT_SIZE = nros_node::RawServiceClient);
 
+    // Phase 122.3.c.6 — typeless action `*Core` types are the raw
+    // L1 polling-mode entities (typed `ActionServer<A>` / `ActionClient<A>`
+    // wrap them with serdes glue). Default const generics resolve to
+    // `DEFAULT_RX_BUF_SIZE` (= `MESSAGE_BUFFER_SIZE` in nros-c) and
+    // `MAX_GOALS = 4`, matching the L2 callback path.
+    export_size!(pub RAW_ACTION_SERVER_SIZE = nros_node::ActionServerCore);
+    export_size!(pub RAW_ACTION_CLIENT_SIZE = nros_node::ActionClientCore);
+
     export_size!(pub EXECUTOR_SIZE       = nros_node::Executor);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
