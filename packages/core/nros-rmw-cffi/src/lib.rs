@@ -1033,7 +1033,12 @@ impl CffiSession {
         cstr_buf_to_str(&self.node_name_buf)
     }
 
-    /// Open a new session via the registered vtable.
+    /// Open a new session via the **default** registered vtable
+    /// (first entry in the registry — the RMW_IMPLEMENTATION-style
+    /// fast path for single-backend builds).
+    ///
+    /// For explicit backend selection in multi-backend (bridge)
+    /// binaries, use [`open_named`](Self::open_named).
     pub fn open(
         locator: &str,
         mode: u8,
@@ -1041,6 +1046,44 @@ impl CffiSession {
         node_name: &str,
     ) -> Result<Self, TransportError> {
         let vtable = get_vtable()?;
+        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name)
+    }
+
+    /// Phase 104.C.1 — open a new session against a named backend.
+    /// Resolves `rmw_name` against the registry (Phase 104.B.2),
+    /// returns `Err(TransportError::InvalidArgument)` if no backend
+    /// is registered under that name.
+    pub fn open_named(
+        rmw_name: &str,
+        locator: &str,
+        mode: u8,
+        domain_id: u32,
+        node_name: &str,
+    ) -> Result<Self, TransportError> {
+        // C-string-marshal `rmw_name` on the stack — registry lookup
+        // expects NUL-terminated UTF-8.
+        let mut name_buf = [0u8; BACKEND_NAME_MAX];
+        if rmw_name.len() >= BACKEND_NAME_MAX {
+            return Err(TransportError::InvalidArgument);
+        }
+        name_buf[..rmw_name.len()].copy_from_slice(rmw_name.as_bytes());
+        // name_buf[rmw_name.len()] is already 0.
+        let raw = unsafe { nros_rmw_cffi_lookup(name_buf.as_ptr() as *const _) };
+        if raw.is_null() {
+            return Err(TransportError::InvalidArgument);
+        }
+        // SAFETY: registry-issued pointer; valid for the program's lifetime.
+        let vtable = unsafe { &*raw };
+        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name)
+    }
+
+    fn open_with_vtable(
+        vtable: &'static NrosRmwVtable,
+        locator: &str,
+        mode: u8,
+        domain_id: u32,
+        node_name: &str,
+    ) -> Result<Self, TransportError> {
         let mut loc_buf = [0u8; NAME_BUF_LEN];
         let loc_ptr = to_c_str(locator, &mut loc_buf);
 
@@ -1795,6 +1838,28 @@ impl nros_rmw::Rmw for CffiRmw {
             nros_rmw::SessionMode::Peer => 1u8,
         };
         CffiSession::open(config.locator, mode, config.domain_id, config.node_name)
+    }
+}
+
+impl CffiRmw {
+    /// Phase 104.C.1 — open a session against a named backend.
+    /// `rmw_name` selects an entry from the registry populated by
+    /// `nros_rmw_cffi_register_named` (Phase 104.B.2).
+    pub fn open_with_rmw(
+        rmw_name: &str,
+        config: &nros_rmw::RmwConfig,
+    ) -> Result<CffiSession, TransportError> {
+        let mode = match config.mode {
+            nros_rmw::SessionMode::Client => 0u8,
+            nros_rmw::SessionMode::Peer => 1u8,
+        };
+        CffiSession::open_named(
+            rmw_name,
+            config.locator,
+            mode,
+            config.domain_id,
+            config.node_name,
+        )
     }
 }
 

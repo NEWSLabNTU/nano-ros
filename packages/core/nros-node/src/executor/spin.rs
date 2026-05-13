@@ -88,6 +88,43 @@ impl Executor {
         executor.set_node_identity(config.node_name, config.namespace);
         Ok(executor)
     }
+
+    /// Phase 104.C.1 — open the Executor against a specific RMW
+    /// backend by name. Selects from the named registry (Phase
+    /// 104.B.2). `rmw_name` must match one of the names a backend
+    /// registered under (`"zenoh"`, `"dds"`, `"xrce"`, …).
+    ///
+    /// Equivalent to [`Executor::open`] when the registry has exactly
+    /// one backend (the default-backend fast path). Use this entry
+    /// point in multi-backend builds where `Executor::open` would
+    /// pick the first-registered slot.
+    ///
+    /// Single-Executor multi-Node multi-RMW (the long-term Design X
+    /// from `docs/roadmap/phase-104-multi-backend-bridges.md`) is
+    /// follow-up work — Phase 104.C.2 + C.3.
+    #[cfg(feature = "rmw-cffi")]
+    pub fn open_with_rmw(
+        rmw_name: &str,
+        config: &ExecutorConfig<'_>,
+    ) -> Result<Self, NodeError> {
+        if !nros_rmw_cffi::backend_registered() {
+            return Err(NodeError::Transport(TransportError::ConnectionFailed));
+        }
+
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+            properties: &[],
+        };
+        let session = nros_rmw_cffi::CffiRmw::open_with_rmw(rmw_name, &rmw_config)
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        let mut executor = Self::from_session(session);
+        executor.set_node_identity(config.node_name, config.namespace);
+        Ok(executor)
+    }
 }
 
 // Phase 104.A — `register_active_backend` deleted. The compile-time
