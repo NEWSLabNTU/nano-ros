@@ -120,9 +120,26 @@ writes a workspace `Cargo.toml` for Rust users.
 
 ### Stream A work items
 
-- [ ] **123.A.1 — Binary self-containedness audit.** Confirm
-  `libnros_c.a` / `libnros_cpp.a` don't bake in RMW or platform
-  internals post-115.M.4 + Phase 121. `objdump --syms` spot check.
+- [x] **123.A.1 — Binary self-containedness audit.** Done.
+  Findings: `docs/research/phase-123-A1-binary-audit.md`.
+  Verdict: **API contract decoupled** (platform-cffi + RMW-cffi
+  vtables wired); **physical archive monolithic** (one big
+  `staticlib` per RMW combo, 28 MB unstripped, embeds zenoh-pico
+  C + compiler_builtins + nros-* in 468 objects). Decoupling
+  requires Cargo build-output refactor into three separate
+  `staticlib` crates (new sub-item **123.A.1.x** below, ordered
+  before A.3). Source-path leakage also identified; mitigation
+  is `RUSTFLAGS=--remap-path-prefix=$HOME=.` + post-build
+  `strip --strip-debug` (28 MB → 16 MB, leakage from many lines
+  to 12 panic strings).
+- [ ] **123.A.1.x — Cargo staticlib split.** Refactor
+  `packages/core/nros-c/Cargo.toml` to drop RMW + platform
+  feature flags from its own dep graph; carve
+  `nros-rmw-<x>-staticlib` and `nros-platform-<y>-staticlib`
+  wrapper crates each emitting their own `.a`. Resolve
+  `compiler_builtins` ODR (likely `--allow-multiple-definition`
+  on the linker or feature-version-locking). Pre-req for the
+  matrix collapse advertised in A.3 + A.10.
 - [ ] **123.A.2 — `config/submodule-deps.toml`.** Author the
   mapping from current `.gitmodules` + per-platform recipe set.
 - [ ] **123.A.3 — `nros setup` CLI.** Implementation crate
