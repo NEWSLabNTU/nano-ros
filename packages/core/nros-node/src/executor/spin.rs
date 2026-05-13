@@ -612,15 +612,59 @@ impl Executor {
     /// slots 1..=N = the `extra_sessions` vec opened by
     /// `node_builder.rmw(name)` calls that named a backend
     /// different from the primary.
-    #[allow(dead_code)] // Phase 104.C.3 — wired in 104.C.3.2 when
-    // handle factories gain `_on(node_id, ...)` variants that route
-    // through the per-Node session.
     pub(crate) fn session_at_mut(&mut self, idx: u8) -> Option<&mut session::ConcreteSession> {
         if idx == 0 {
             Some(&mut *self.session)
         } else {
             self.extra_sessions.get_mut((idx - 1) as usize)
         }
+    }
+
+    /// Phase 104.C.3.2 — scoped Node-handle access. The closure
+    /// receives a [`Node`] bound to the requested [`NodeId`]'s
+    /// session + identity. Use the standard `Node::create_publisher`,
+    /// `create_subscription`, etc. APIs inside.
+    ///
+    /// rclcpp-aligned bridge pattern:
+    ///
+    /// ```ignore
+    /// let node_in = exec.node_builder("ingress").rmw("zenoh").build()?;
+    /// let node_out = exec.node_builder("egress").rmw("xrce").build()?;
+    ///
+    /// let pub_out = exec.with_node(node_out, |n| {
+    ///     n.create_publisher::<Int32>("/fwd")
+    /// })??;
+    ///
+    /// exec.with_node(node_in, |n| {
+    ///     n.create_subscription_buffered::<Int32, _, 1024>(
+    ///         "/src", qos(), move |m| { let _ = pub_out.publish(m); }
+    ///     )
+    /// })??;
+    /// ```
+    ///
+    /// The closure can return any type; double-`?` unwraps the
+    /// outer `Result<R, NodeError>` from `with_node` and the inner
+    /// result returned by the closure.
+    pub fn with_node<R>(
+        &mut self,
+        id: super::node_record::NodeId,
+        f: impl FnOnce(&mut Node<'_>) -> R,
+    ) -> Result<R, NodeError> {
+        let (name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let session = self
+            .session_at_mut(session_idx)
+            .ok_or(NodeError::BackendMismatch)?;
+        // SAFETY: short-lived scoped reference. `Node::new` takes
+        // `&mut ConcreteSession`; lifetime is bound to this fn's
+        // body via the closure's borrow of `node`.
+        let mut node = Node::new(name, ns, session, 0);
+        Ok(f(&mut node))
     }
 
     /// Create a node on this executor.
