@@ -37,6 +37,8 @@ tools/*
 # platform / RMW staticlibs. CMake projects driven by just recipes.
 !tools/install-platform/
 !tools/install-rmw/
+# Phase 123.A.3 — setup orchestrator (target → submodule fetch).
+!tools/setup.sh
 
 # Local environment overrides (created from .env.example)
 /.env

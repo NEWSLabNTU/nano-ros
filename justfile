@@ -1100,8 +1100,18 @@ regenerate-bindings: clean-bindings generate-bindings
 # =============================================================================
 
 # Install everything: workspace + verification + all platforms + services.
-setup:
-    @just _orchestrate setup
+#
+# Phase 123.A.4 — optional positional `target` (e.g. `just setup
+# posix-zenoh`) shim to `tools/setup.sh --target=<target>`. When
+# `target` is empty (`just setup`), runs the full contributor
+# orchestrator that walks every per-platform module.
+setup target="":
+    #!/usr/bin/env bash
+    set -e
+    if [[ -n "{{target}}" ]]; then
+        exec "$(pwd)/tools/setup.sh" --target="{{target}}"
+    fi
+    just _orchestrate setup
 
 # Diagnose install status (read-only).
 doctor:

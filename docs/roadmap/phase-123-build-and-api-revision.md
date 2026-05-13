@@ -59,15 +59,16 @@ captured in [§Stream A decisions](#stream-a-decisions) below.
    `nano_ros_link_platform(target)` + `nano_ros_link_rmw(target)`.
 5. **CMake function form** for linking. Not transparent targets.
    Functions hide the `--start-group / --end-group` ordering.
-6. **`nros` CLI is the single source of truth** for setup.
-   Replaces the per-platform `just <plat> setup` recipes. Justfile
-   stays as contributor convenience that calls `nros setup`. Users
-   never need `just`.
+6. **`tools/setup.sh` is the single source of truth** for setup
+   (pivoted 2026-05-14 from a Rust `nros setup` CLI — see A.3 for
+   why). Bash orchestrates submodule fetch + rustup + apt.
+   `just setup` is a one-line shim that `exec`s it; per-platform
+   `just <plat> setup` recipes likewise. Users never need `just`.
 7. **Selective submodule fetch.** `config/submodule-deps.toml`
    maps each submodule to the `(target, platform, rmw)` set that
-   needs it. `nros setup --target=X --platform=Y --rmw=Z` fetches
-   only the required subset. `.gitmodules` + git gitlinks own
-   URL + SHA (standard git tooling).
+   needs it. `tools/setup.sh --target=<plat>-<rmw>` fetches only
+   the required subset. `.gitmodules` + git gitlinks own URL +
+   SHA (standard git tooling).
 8. **Pattern A workspace layout** is the recommended integration
    shape — nano-ros sits as a colcon-discoverable package inside
    the user's workspace's `src/`. One nano-ros source tree per
@@ -87,36 +88,35 @@ captured in [§Stream A decisions](#stream-a-decisions) below.
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
 git clone --depth=1 --branch=v1.0.0 https://github.com/NEWSLabNTU/nano-ros.git
 cd ~/ros2_ws
-./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh
+./src/nano-ros/tools/setup.sh --target=posix-zenoh
 colcon build
 source install/setup.bash
 ```
 
-`tools/setup.sh` is the bootstrap:
-
-```bash
-#!/bin/bash
-# 1. Install rustup + nightly if missing.
-command -v cargo >/dev/null || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
-# 2. Install or update the nros CLI.
-command -v nros >/dev/null || cargo install --path packages/codegen/packages/nros-cli --locked
-# 3. Delegate.
-exec nros setup "$@"
-```
-
-`nros setup` (the canonical entry):
+`tools/setup.sh` shape:
 
 ```
-nros setup [--target=TRIPLE] [--platform=PLAT] [--rmw=RMW] [--rust-workspace]
-nros setup --doctor
-nros setup --list-targets
-nros setup --add-rmw=xrce       # extend an existing setup
+tools/setup.sh [--target=<plat>-<rmw>] [--rust-workspace]
+                [--with-dev] [--with-reference=<name>]
+                [--doctor] [--list-targets]
 ```
 
-Reads `config/submodule-deps.toml`, fetches required submodules
-via `git submodule update --init --depth=1 <path>`, installs
-cross-toolchains for the chosen target if missing, optionally
-writes a workspace `Cargo.toml` for Rust users.
+- Reads `config/submodule-deps.toml`.
+- Splits the target into `<platform>-<rmw>` and unions the
+  `required` + `platform.<plat>` + `rmw.<rmw>` path sets.
+- Runs `git submodule update --init --depth=1 <path>` for each.
+- Installs rustup (if missing) + the target's Rust triple via
+  `rustup target add`.
+- On Linux, ensures the right apt cross-toolchain packages
+  (`gcc-arm-none-eabi`, etc.) via `apt-get` or surfaces a
+  manual-install message.
+- With `--rust-workspace`, writes a workspace `Cargo.toml` for
+  the colcon-package layout.
+
+No Rust binary required; bash + standard POSIX tools only.
+TOML parsing uses a minimal grep/sed reader because the manifest
+schema is intentionally flat (key-only sections + `paths = [...]`
+arrays).
 
 ### Stream A work items
 
@@ -330,17 +330,49 @@ writes a workspace `Cargo.toml` for Rust users.
   QEMU fork) gated behind `--with-dev`; reference paths
   (PX4 1GB, Tonbandgeraet) opt-in via `--with-reference`.
   Cross-checked against `just/*.just` `git submodule update`
-  invocations. Drives A.3 (`nros setup` CLI), A.4
-  (`tools/setup.sh`).
-- [ ] **123.A.3 — `nros setup` CLI.** Implementation crate
-  `packages/codegen/packages/nros-cli/src/setup/`. Argument
-  parser, manifest reader, submodule fetcher, cross-toolchain
-  installer, optional Cargo workspace writer.
-- [ ] **123.A.4 — `tools/setup.sh` bootstrap.** ~30-line bash.
-  Auto-rustup + `cargo install` + `exec nros setup`.
+  invocations. Consumed by A.3 (`tools/setup.sh`) + A.8
+  (per-platform `just <plat> setup` shims).
+- [x] **123.A.3 — `tools/setup.sh` orchestration script.** Done.
+  Single bash impl at `tools/setup.sh`. Reads
+  `config/submodule-deps.toml` via minimal awk extractor, unions
+  `required` + `platform.<plat>` + `rmw.<rmw>` (+ optional
+  `dev_paths` under `--with-dev`, +
+  `reference.<n>` under `--with-reference=<n>`), runs
+  `git submodule update --init --depth=1 --recursive <path>`
+  for each missing path. Installs rustup via the standard
+  upstream installer if missing, adds the target's Rust triple
+  via `rustup target add`, surfaces missing apt cross-toolchain
+  packages on Linux (never auto-sudo). Supports `--dry-run`,
+  `--doctor`, `--list-targets`. Verified on `posix-zenoh`,
+  `freertos-xrce`, `threadx-dds` (dry-run); invalid target
+  produces guided error.
+
+  **Design pivot (locked 2026-05-14).** Original plan had a
+  separate Rust `nros setup` CLI behind a `tools/setup.sh`
+  bootstrap. Collapsed to one bash layer because:
+    * Bootstrap "install nros to run nros setup" is a chicken
+      -and-egg detour with no real value for our Linux/macOS/
+      WSL2 audience.
+    * Submodule fetch + rustup orchestration is bash-amenable
+      — no complex parsing, no portability beyond what
+      `tools/setup.sh` already needs.
+    * The `nros` CLI keeps its actual value-add (codegen
+      `generate-rust` / `generate-cpp`) — setup is pure
+      orchestration and doesn't justify the Rust binary.
+    * Two layers (`tools/setup.sh` + `just setup` shim) <
+      three layers (bash + Rust CLI + just shim).
+
+- [x] **123.A.4 — `just setup [target]` shim.** Done.
+  `justfile`'s top-level `setup target=""` recipe now: if
+  `target` non-empty (e.g. `just setup posix-zenoh`), `exec`s
+  `tools/setup.sh --target=<target>`; otherwise runs the
+  existing contributor-everything orchestrator. Same recipe
+  name handles both flows.
 - [ ] **123.A.5 — `cmake/bootstrap.cmake`.** CMake auto-runs
-  the same logic when invoked without `setup.sh` first. Same
-  one-shot rustup install, idempotent.
+  `tools/setup.sh` when invoked without it first. Idempotent
+  (no-op if submodules already populated). Mostly a usability
+  win for users who jump straight to `cmake -B build` without
+  reading the README.
 - [x] **123.A.6 — `nano_ros_link_platform` / `_link_rmw`
   CMake functions.** Landed. New module
   `packages/core/nros-c/cmake/NanoRosLink.cmake` exposes:
@@ -369,8 +401,9 @@ writes a workspace `Cargo.toml` for Rust users.
   `NANO_ROS_GEN_CACHE_DIR` in `NanoRosGenerateInterfaces.cmake`
   + `cargo-nano-ros`. Per-workspace singletons for
   `std_msgs__nano_ros_{c,cpp}` libs and `std_msgs` cargo crate.
-- [ ] **123.A.8 — Migrate `just <plat> setup` recipes** to call
-  `nros setup --target=...` instead of duplicating logic.
+- [ ] **123.A.8 — Migrate `just <plat> setup` recipes** to
+  `tools/setup.sh --target=<plat>-<rmw>` shims. One bash
+  implementation; just recipes become one-line `exec`s.
 - [ ] **123.A.9 — `installation.md` rewrite.** Pattern A as the
   default, source-build-via-git-clone as the only path. Drop
   references to tarballs / SDK archives.
@@ -400,20 +433,21 @@ and visible inside individual `package.xml` / `CMakeLists.txt` /
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
 git clone --depth=1 --branch=v1.0.0 https://github.com/NEWSLabNTU/nano-ros.git
 cd ~/ros2_ws
-./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh
+./src/nano-ros/tools/setup.sh --target=posix-zenoh
 # Rust users only:
-./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh --rust-workspace
+./src/nano-ros/tools/setup.sh --target=posix-zenoh --rust-workspace
 ```
 
 Step-by-step:
 
-1. `tools/setup.sh` detects no rustup → installs nightly.
-2. `cargo install nros-cli --locked` puts the `nros` CLI on
-   `$PATH`.
-3. `nros setup --target=posix --rmw=zenoh` reads
-   `config/submodule-deps.toml`, fetches only
-   `third-party/zenoh-pico/` (shallow), installs no extra
-   cross-toolchain (POSIX = host).
+1. `tools/setup.sh` parses `--target=posix-zenoh` → `platform=posix`
+   + `rmw=zenoh`. Reads `config/submodule-deps.toml`. Unions
+   `required` (codegen) + `platform.posix` (none) + `rmw.zenoh`
+   (`zenoh-pico` + `mbedtls`).
+2. Runs `git submodule update --init --depth=1 <path>` for each.
+3. Detects no rustup → installs via the standard installer.
+   `rustup target add x86_64-unknown-linux-gnu` (host = POSIX
+   no-op).
 4. `--rust-workspace` (optional) writes `~/ros2_ws/Cargo.toml`
    with `[workspace] + [workspace.dependencies] + [patch.crates-io]`
    so user Rust packages see `nros = { workspace = true }`.
@@ -533,7 +567,7 @@ env_logger = "0.11"
 `spin_blocking` (existing two-layer API; documented in
 [Two-Layer API](../../book/src/concepts/two-layer-api.md)).
 
-**Workspace `Cargo.toml`** (auto-generated by `nros setup
+**Workspace `Cargo.toml`** (auto-generated by `tools/setup.sh
 --rust-workspace`):
 
 ```toml
@@ -548,7 +582,7 @@ nros = { path = "src/nano-ros/packages/core/nros",
 
 [patch.crates-io]
 # Auto-generated. One [patch.crates-io] entry per nano-ros
-# workspace crate. Refreshed by `nros setup --refresh-cargo-patches`.
+# workspace crate. Refreshed by `tools/setup.sh --refresh-cargo-patches`.
 ```
 
 ### C — Build + run
@@ -720,8 +754,9 @@ Stream A:
 2. **A.2** — author `config/submodule-deps.toml`.
 3. **A.6** — `nano_ros_link_platform` / `_link_rmw` CMake
    functions (unblocks Pattern A docs).
-4. **A.3** — `nros setup` CLI (the load-bearing piece).
-5. **A.4** — `tools/setup.sh` bootstrap.
+4. **A.3** — `tools/setup.sh` orchestration script (the
+   load-bearing piece; pivoted from a Rust CLI design).
+5. **A.4** — `just setup` shim over `tools/setup.sh`.
 6. **A.5** — `cmake/bootstrap.cmake` auto-rustup.
 7. **A.7** — workspace-shared codegen cache.
 8. **A.8** — migrate justfile recipes.

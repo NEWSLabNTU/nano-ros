@@ -1,9 +1,8 @@
 # nano-ros submodule dependency manifest.
 #
-# Drives `nros setup --target <target>` and `tools/setup.sh
-# --target <target>` (Phase 123 Stream A). Lists which git
-# submodules need to be initialised for a given RMW backend,
-# platform, or reference build.
+# Drives `tools/setup.sh --target <target>` (Phase 123 Stream A).
+# Lists which git submodules need to be initialised for a given
+# RMW backend, platform, or reference build.
 #
 # Format:
 #   [<axis>.<value>]
@@ -16,7 +15,7 @@
 #                                  # `git submodule update`
 #                                  # (default true)
 #
-# Resolution order in `nros setup --target <foo>`:
+# Resolution order in `tools/setup.sh --target <foo>`:
 #   1. [required] always
 #   2. [rmw.<rmw>]   from --target's RMW component
 #   3. [platform.<p>] from --target's platform component
