@@ -19,8 +19,6 @@
 
 use core::{ffi::c_void, sync::atomic::Ordering};
 
-use portable_atomic::AtomicPtr;
-
 use nros_rmw::{
     Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
     ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session, TopicInfo,
@@ -567,10 +565,162 @@ pub type NrosRmwEventCallback = unsafe extern "C" fn(
 // ============================================================================
 // Registration
 // ============================================================================
+//
+// Phase 104.B.2 — named registry replaces the singleton vtable.
+// Backends register under a stable identifier (`"zenoh"`, `"dds"`,
+// `"xrce"`, future `"uorb"`, `"cyclonedds"`); consumers look up
+// vtables by name via `nros_rmw_cffi_lookup`. Multiple backends can
+// coexist in the same process (bridge nodes).
+//
+// Capacity comes from the `NROS_RMW_MAX_BACKENDS` build-time env
+// var (default 8). See `build.rs`.
+//
+// Implementation: a fixed-size `[BackendSlot; MAX_BACKENDS]`
+// guarded by an atomic length counter. No alloc; `no_std`
+// compatible. Slot scan is O(N) for lookup but N is tiny (8 by
+// default). Each slot owns its name buffer; `name_ptr` returned
+// to consumers points into the slot and stays valid for the
+// program's lifetime.
 
-static VTABLE: AtomicPtr<NrosRmwVtable> = AtomicPtr::new(core::ptr::null_mut());
+/// Compile-time max number of concurrently registered backends.
+/// Set via `NROS_RMW_MAX_BACKENDS` env var at build time
+/// (`build.rs`). Default 8.
+pub const MAX_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_MAX_BACKENDS"));
 
-/// Register a custom RMW backend vtable.
+const fn parse_max_backends(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    let mut acc: usize = 0;
+    while i < bytes.len() {
+        let d = bytes[i];
+        assert!(
+            d.is_ascii_digit(),
+            "NROS_RMW_MAX_BACKENDS must be a decimal integer"
+        );
+        acc = acc * 10 + (d - b'0') as usize;
+        i += 1;
+    }
+    acc
+}
+
+/// Maximum length of a backend name. Names are short ASCII
+/// identifiers (`"zenoh"`, `"cyclonedds"`); 32 bytes is generous.
+const BACKEND_NAME_MAX: usize = 32;
+
+#[repr(C)]
+struct BackendSlot {
+    /// Null-terminated UTF-8 backend name. Zero-initialized when
+    /// unused (`name[0] == 0`).
+    name: [u8; BACKEND_NAME_MAX],
+    vtable: *const NrosRmwVtable,
+}
+
+impl BackendSlot {
+    const fn empty() -> Self {
+        Self {
+            name: [0u8; BACKEND_NAME_MAX],
+            vtable: core::ptr::null(),
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.name[0] == 0
+    }
+
+    #[inline]
+    fn name_matches(&self, candidate: &[u8]) -> bool {
+        if self.is_empty() {
+            return false;
+        }
+        // Compare up to the first NUL or candidate length.
+        let mut i = 0usize;
+        while i < self.name.len() && i < candidate.len() {
+            if self.name[i] == 0 {
+                return false; // slot name shorter than candidate
+            }
+            if self.name[i] != candidate[i] {
+                return false;
+            }
+            i += 1;
+        }
+        // candidate fully consumed; slot must be NUL at i (same length)
+        i == candidate.len() && (i == self.name.len() || self.name[i] == 0)
+    }
+}
+
+// SAFETY: `BackendSlot::vtable` is a `*const` pointer used in a
+// `'static` context; once written it's never freed and the registry
+// is guarded by an atomic length counter for publication. Marker
+// trait implementations are required so the static array is
+// `Sync` across threads.
+unsafe impl Sync for BackendSlot {}
+
+/// Fixed-size registry. `slots[0..len]` are live; `slots[len..]`
+/// are zero-initialized. `len` is the publication fence.
+///
+/// `slots` lives in an `UnsafeCell` because we mutate through
+/// `&'static REGISTRY`. Safety invariants:
+/// * Slot writes happen only inside `nros_rmw_cffi_register_named`,
+///   which is documented "call before `Executor::open`" — backend
+///   ctors fire pre-main, manual calls precede session creation.
+/// * Slot reads via `nros_rmw_cffi_lookup` and `get_vtable` happen
+///   after `Executor::open`, well after registration completes.
+/// * The atomic `len` provides the release-acquire fence so any
+///   reader that sees `len = N` also sees the populated slot
+///   contents for indices `< N`.
+struct Registry {
+    slots: core::cell::UnsafeCell<[BackendSlot; MAX_BACKENDS]>,
+    len: portable_atomic::AtomicUsize,
+}
+
+impl Registry {
+    const fn new() -> Self {
+        let slots = {
+            #[allow(clippy::declare_interior_mutable_const)]
+            const E: BackendSlot = BackendSlot::empty();
+            [E; MAX_BACKENDS]
+        };
+        Self {
+            slots: core::cell::UnsafeCell::new(slots),
+            len: portable_atomic::AtomicUsize::new(0),
+        }
+    }
+
+    /// Borrow slot `i` immutably. Caller must guarantee
+    /// `i < self.len.load(Acquire)`.
+    #[inline]
+    unsafe fn slot(&self, i: usize) -> &BackendSlot {
+        // SAFETY: registry protocol guarantees slot stability once
+        // published via the atomic len fence.
+        unsafe { &(*self.slots.get())[i] }
+    }
+
+    /// Borrow slot `i` mutably. Caller must guarantee exclusive
+    /// access — either pre-publication (idx > current `len`) or
+    /// during an idempotent overwrite of an already-registered name.
+    #[inline]
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn slot_mut(&self, i: usize) -> &mut BackendSlot {
+        // SAFETY: see Registry doc — writer-side discipline.
+        unsafe { &mut (*self.slots.get())[i] }
+    }
+}
+
+// SAFETY: see `Registry` doc-comment on the mutation protocol.
+unsafe impl Sync for Registry {}
+
+static REGISTRY: Registry = Registry::new();
+
+/// Register a custom RMW backend vtable (legacy single-arg form).
+///
+/// Phase 104.B.2 — internally forwards to
+/// [`nros_rmw_cffi_register_named`] with the literal name `"default"`.
+/// Preserved as a one-release source-compat shim so backend ctors
+/// authored before the named-registry switchover keep working.
+///
+/// New backends should call [`nros_rmw_cffi_register_named`]
+/// directly.
 ///
 /// # Safety
 ///
@@ -578,17 +728,190 @@ static VTABLE: AtomicPtr<NrosRmwVtable> = AtomicPtr::new(core::ptr::null_mut());
 /// All function pointers in the vtable must be valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
-    VTABLE.store(vtable as *mut NrosRmwVtable, Ordering::Release);
+    unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
+}
+
+/// Register a backend under a stable name. Multiple backends can
+/// coexist; consumers select via [`nros_rmw_cffi_lookup`] or the
+/// higher-level `Executor::node_builder(...).rmw(...)` path.
+///
+/// Names must be UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
+/// Reserved names today: `"zenoh"`, `"dds"`, `"xrce"`,
+/// `"cyclonedds"`, future `"uorb"`. The string `"default"` is the
+/// implicit name used by the legacy single-arg
+/// [`nros_rmw_cffi_register`] shim.
+///
+/// Returns:
+/// * `NROS_RMW_RET_OK` on success.
+/// * `NROS_RMW_RET_INVALID_ARGUMENT` if `name` / `vtable` is
+///   NULL, the name is empty, or exceeds 31 bytes.
+/// * `NROS_RMW_RET_ERROR` if the registry is full
+///   (`MAX_BACKENDS` reached without a matching entry).
+///
+/// Duplicate registration of the same name overwrites the
+/// previous vtable (idempotent for ctor-fires-twice cases).
+///
+/// # Safety
+///
+/// * `name` must be a valid NUL-terminated UTF-8 string.
+/// * `vtable` must remain valid for the program's lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_rmw_cffi_register_named(
+    name: *const core::ffi::c_char,
+    vtable: *const NrosRmwVtable,
+) -> NrosRmwRet {
+    if name.is_null() || vtable.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+
+    // Length-check the input. We scan up to BACKEND_NAME_MAX + 1
+    // bytes; anything longer is rejected.
+    let mut len = 0usize;
+    while len < BACKEND_NAME_MAX {
+        let b = unsafe { *name.add(len) } as u8;
+        if b == 0 {
+            break;
+        }
+        len += 1;
+    }
+    if len == 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // Must have found a NUL within BACKEND_NAME_MAX.
+    if unsafe { *name.add(len) } != 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+
+    let name_bytes = unsafe { core::slice::from_raw_parts(name as *const u8, len) };
+
+    // First pass: look for existing entry with same name → overwrite.
+    let current_len = REGISTRY.len.load(Ordering::Acquire);
+    for i in 0..current_len {
+        // SAFETY: i < current_len, indices in bounds.
+        let slot = unsafe { REGISTRY.slot(i) };
+        if slot.name_matches(name_bytes) {
+            // SAFETY: writer-side idempotent overwrite. The slot is
+            // already published; concurrent readers will see either
+            // the old or new vtable consistently, both valid.
+            unsafe {
+                let slot_mut = REGISTRY.slot_mut(i);
+                slot_mut.vtable = vtable;
+            }
+            core::sync::atomic::fence(Ordering::Release);
+            return NROS_RMW_RET_OK;
+        }
+    }
+
+    // No existing entry; append. Reserve a slot via atomic increment.
+    let idx = REGISTRY.len.fetch_add(1, Ordering::AcqRel);
+    if idx >= MAX_BACKENDS {
+        // Roll back the increment so subsequent registers don't see a
+        // stale `len > MAX_BACKENDS`. (Race window negligible — once
+        // we hit capacity, no further append succeeds.)
+        REGISTRY.len.store(MAX_BACKENDS, Ordering::Release);
+        return NROS_RMW_RET_ERROR;
+    }
+
+    // SAFETY: idx < MAX_BACKENDS, mutating an as-yet-unpublished slot.
+    unsafe {
+        let slot = REGISTRY.slot_mut(idx);
+        slot.name[..len].copy_from_slice(name_bytes);
+        slot.name[len] = 0;
+        slot.vtable = vtable;
+    }
+    // Release-fence so concurrent lookups see both the name and the
+    // vtable consistently with the updated `len`.
+    core::sync::atomic::fence(Ordering::Release);
     NROS_RMW_RET_OK
 }
 
-/// Phase 104.A — registry-presence probe. Returns `true` iff a
-/// backend has called `nros_rmw_cffi_register` at least once. Used
-/// by `Executor::open` to detect "user forgot to register a backend
-/// before opening the session" and fail with a meaningful error.
+/// Look up a backend's vtable by name. Returns NULL if no backend
+/// is registered under `name`.
+///
+/// # Safety
+///
+/// * `name` must be a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_rmw_cffi_lookup(
+    name: *const core::ffi::c_char,
+) -> *const NrosRmwVtable {
+    if name.is_null() {
+        return core::ptr::null();
+    }
+    let mut len = 0usize;
+    while len < BACKEND_NAME_MAX {
+        if unsafe { *name.add(len) } == 0 {
+            break;
+        }
+        len += 1;
+    }
+    if len == 0 || len == BACKEND_NAME_MAX {
+        return core::ptr::null();
+    }
+    let name_bytes = unsafe { core::slice::from_raw_parts(name as *const u8, len) };
+
+    let current_len = REGISTRY.len.load(Ordering::Acquire);
+    for i in 0..current_len {
+        // SAFETY: i < current_len, indices in bounds; publication
+        // fence via the atomic-len Acquire load.
+        let slot = unsafe { REGISTRY.slot(i) };
+        if slot.name_matches(name_bytes) {
+            return slot.vtable;
+        }
+    }
+    core::ptr::null()
+}
+
+/// Diagnostic helper — fills `buf` with pointers to up to `cap`
+/// registered backend names. Returns the number of names available
+/// (may exceed `cap`). Pointer-valid for the program's lifetime.
+///
+/// # Safety
+///
+/// * `buf` must either be NULL (when `cap == 0`) or point at writable
+///   memory of at least `cap * sizeof(*const c_char)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
+    buf: *mut *const core::ffi::c_char,
+    cap: usize,
+) -> usize {
+    let n = REGISTRY.len.load(Ordering::Acquire);
+    if !buf.is_null() && cap > 0 {
+        let limit = n.min(cap);
+        for i in 0..limit {
+            // SAFETY: i < limit <= cap, buf capacity guaranteed by caller.
+            let slot = unsafe { REGISTRY.slot(i) };
+            unsafe { buf.add(i).write(slot.name.as_ptr() as *const core::ffi::c_char) };
+        }
+    }
+    n
+}
+
+/// Phase 104.A — registry-presence probe. Returns `true` iff at
+/// least one backend is registered. Used by `Executor::open` to
+/// detect "user forgot to register a backend before opening the
+/// session" and fail with a meaningful error.
 #[inline]
 pub fn backend_registered() -> bool {
-    !VTABLE.load(Ordering::Acquire).is_null()
+    REGISTRY.len.load(Ordering::Acquire) > 0
+}
+
+/// Phase 104.B — internal access to the registry for the Rust-side
+/// adapter. `nros-node`'s `register_active_backend` removal already
+/// switched to `backend_registered()` for the presence check; this
+/// returns the vtable for any single-backend fast-path callers.
+fn default_vtable() -> Option<&'static NrosRmwVtable> {
+    let n = REGISTRY.len.load(Ordering::Acquire);
+    if n == 0 {
+        return None;
+    }
+    // SAFETY: index 0 < n, registry's len-Acquire fence orders the
+    // slot read.
+    let slot = unsafe { REGISTRY.slot(0) };
+    if slot.vtable.is_null() {
+        return None;
+    }
+    Some(unsafe { &*slot.vtable })
 }
 
 /// Phase 115.A.2 — C entry point for installing a custom transport.
@@ -625,13 +948,11 @@ pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
 }
 
 fn get_vtable() -> Result<&'static NrosRmwVtable, TransportError> {
-    let ptr = VTABLE.load(Ordering::Acquire);
-    if ptr.is_null() {
-        // No vtable registered — caller forgot nros_rmw_cffi_register.
-        return Err(TransportError::InvalidArgument);
-    }
-    // SAFETY: Registration ensures the pointer is valid and 'static.
-    Ok(unsafe { &*ptr })
+    // Phase 104.B.2 — fast path: registry has exactly one backend.
+    // Mirror the single-backend hot path the singleton-VTABLE
+    // implementation had. Bridge / multi-backend users should call
+    // a forthcoming `get_vtable_named` API (104.C work) instead.
+    default_vtable().ok_or(TransportError::InvalidArgument)
 }
 
 // ============================================================================

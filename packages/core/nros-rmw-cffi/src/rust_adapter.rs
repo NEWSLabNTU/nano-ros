@@ -216,14 +216,30 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
     };
 
-    /// Install the per-`R` vtable into the cffi registry. Equivalent
-    /// to calling `nros_rmw_cffi_register(&Self::VTABLE)`. Idempotent
-    /// — re-registering the same vtable is a no-op from the runtime's
+    /// Install the per-`R` vtable into the cffi registry under the
+    /// implicit name `"default"`. Equivalent to calling
+    /// `nros_rmw_cffi_register(&Self::VTABLE)`. Idempotent — re-
+    /// registering the same vtable is a no-op from the runtime's
     /// perspective.
+    ///
+    /// Most backends should use [`register_named`](Self::register_named)
+    /// instead so they show up in the registry under their canonical
+    /// name (`"zenoh"`, `"dds"`, `"xrce"`, …).
     pub fn register() -> NrosRmwRet {
         // SAFETY: `&Self::VTABLE` is a reference to a const-promoted
         // static; the address is stable for the life of the program.
         unsafe { nros_rmw_cffi_register(&Self::VTABLE) }
+    }
+
+    /// Phase 104.B.2 — install the per-`R` vtable under a stable
+    /// name. Multiple backends can coexist via this entry point.
+    ///
+    /// # Safety
+    /// `name` must be a valid NUL-terminated UTF-8 string.
+    pub unsafe fn register_named(name: *const core::ffi::c_char) -> NrosRmwRet {
+        // SAFETY: `&Self::VTABLE` is a reference to a const-promoted
+        // static; address stable for the program's lifetime.
+        unsafe { crate::nros_rmw_cffi_register_named(name, &Self::VTABLE) }
     }
 }
 

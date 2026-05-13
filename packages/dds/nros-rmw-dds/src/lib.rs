@@ -78,13 +78,13 @@ mod cffi_register {
 
     use crate::DdsRmw;
 
-    /// C entry — installs the dust-DDS vtable into the cffi runtime.
-    /// Returns `NROS_RMW_RET_OK` (0) on success. Idempotent — the
-    /// runtime's atomic vtable slot accepts the most-recently-
-    /// registered value.
+    /// C entry — installs the dust-DDS vtable into the cffi runtime
+    /// under the canonical name `"dds"`. Returns `NROS_RMW_RET_OK`
+    /// (0) on success. Idempotent — duplicate `("dds", vtable)`
+    /// registrations are in-place overwrites.
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_rmw_dds_register() -> NrosRmwRet {
-        RustBackendAdapter::<DdsRmw>::register()
+        unsafe { RustBackendAdapter::<DdsRmw>::register_named(c"dds".as_ptr()) }
     }
 
     /// Failure mode for the safe Rust wrapper.

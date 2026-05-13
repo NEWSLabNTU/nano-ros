@@ -53,7 +53,10 @@ static const nros_rmw_vtable_t kVtable = {
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {
-    return nros_rmw_cffi_register(&kVtable);
+    /* Phase 104.B.2 — register under the canonical name "xrce" so
+     * bridge code (and `Executor::create_node_with_rmw("name", "xrce",
+     * ...)`) can resolve this backend through the named registry. */
+    return nros_rmw_cffi_register_named("xrce", &kVtable);
 }
 
 /* Phase 115.K.2.5.2 — auto-register on library load.
@@ -74,6 +77,6 @@ nros_rmw_ret_t nros_rmw_xrce_register(void) {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((constructor))
 static void nros_rmw_xrce_register_ctor(void) {
-    (void)nros_rmw_cffi_register(&kVtable);
+    (void)nros_rmw_cffi_register_named("xrce", &kVtable);
 }
 #endif

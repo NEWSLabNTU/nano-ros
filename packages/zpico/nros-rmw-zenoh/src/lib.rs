@@ -123,12 +123,12 @@ mod cffi_register {
     use crate::ZenohRmw;
 
     /// C entry — installs the zenoh-pico vtable into the cffi
-    /// runtime. Returns `NROS_RMW_RET_OK` (0) on success.
-    /// Idempotent — the runtime's atomic vtable slot accepts the
-    /// most-recently-registered value, so re-calls are no-ops.
+    /// runtime under the canonical name `"zenoh"`. Returns
+    /// `NROS_RMW_RET_OK` (0) on success. Idempotent — duplicate
+    /// `("zenoh", vtable)` registrations are in-place overwrites.
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_rmw_zenoh_register() -> NrosRmwRet {
-        RustBackendAdapter::<ZenohRmw>::register()
+        unsafe { RustBackendAdapter::<ZenohRmw>::register_named(c"zenoh".as_ptr()) }
     }
 
     /// Failure mode for the safe Rust wrapper.

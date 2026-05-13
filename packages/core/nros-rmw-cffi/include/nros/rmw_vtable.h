@@ -145,9 +145,45 @@ typedef struct nros_rmw_vtable_t {
     int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
 } nros_rmw_vtable_t;
 
-/** Register a custom RMW backend. Call before creating any sessions.
+/** Register a custom RMW backend under the implicit name "default".
+ *  Legacy single-arg form retained for source compatibility with
+ *  backend ctors authored before the named registry (Phase 104.B.2).
+ *  New backends should call `nros_rmw_cffi_register_named` instead.
  *  Returns NROS_RMW_RET_OK. */
 nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
+
+/** Phase 104.B.2 — register a backend under a stable name. Multiple
+ *  backends can coexist (bridge nodes); consumers select via
+ *  `nros_rmw_cffi_lookup` or the higher-level
+ *  `Executor::node_builder(...).rmw(...)` path.
+ *
+ *  Names: UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
+ *  Reserved: "zenoh", "dds", "xrce", "cyclonedds", future "uorb".
+ *  "default" is the implicit name used by `nros_rmw_cffi_register`.
+ *
+ *  Duplicate registration of the same name overwrites the previous
+ *  vtable (idempotent for ctor-fires-twice).
+ *
+ *  Returns:
+ *    * NROS_RMW_RET_OK on success.
+ *    * NROS_RMW_RET_INVALID_ARGUMENT if name or vtable is NULL,
+ *      the name is empty, or exceeds 31 bytes.
+ *    * NROS_RMW_RET_ERROR if the registry is full
+ *      (NROS_RMW_MAX_BACKENDS reached). */
+nros_rmw_ret_t nros_rmw_cffi_register_named(const char *name,
+                                            const nros_rmw_vtable_t *vtable);
+
+/** Look up a backend's vtable by name. Returns NULL if no backend is
+ *  registered under `name`. The returned pointer is valid for the
+ *  program's lifetime. */
+const nros_rmw_vtable_t *nros_rmw_cffi_lookup(const char *name);
+
+/** Diagnostic helper — fills `buf` with pointers to up to `cap`
+ *  registered backend names. Returns the total number of registered
+ *  backends (may exceed `cap`; caller can re-query with a larger
+ *  buffer). Pointer-valid for the program's lifetime. Pass
+ *  `buf=NULL, cap=0` to query the count only. */
+size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
 
 #ifdef __cplusplus
 }

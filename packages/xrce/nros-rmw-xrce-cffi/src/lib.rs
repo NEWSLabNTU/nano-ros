@@ -24,7 +24,7 @@ use core::ffi::c_int;
 
 unsafe extern "C" {
     /// C entry point exported by `packages/xrce/nros-rmw-xrce/src/vtable.c`.
-    /// Calls `nros_rmw_cffi_register(&kVtable)` internally.
+    /// Calls `nros_rmw_cffi_register_named("xrce", &kVtable)` internally.
     fn nros_rmw_xrce_register() -> c_int;
 }
 
