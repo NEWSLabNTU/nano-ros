@@ -1,5 +1,13 @@
 # nros-platform-freertos
 
+> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
+> native C port at [`nros-platform-freertos-c`](../nros-platform-freertos-c)
+> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
+> + `<nros/platform_timer.h>` ABI directly against FreeRTOS-Kernel + lwIP
+> APIs. This Rust crate stays in tree until every consumer (board crates,
+> RMW shims, examples) has migrated. Removal tracked under Phase 121's
+> deprecate-rust work item.
+
 FreeRTOS platform implementation for nano-ros. Targets the
 `portable/GCC/ARM_*` ports of FreeRTOS (Cortex-M3 / M4 / M7 by default;
 Cortex-R5 reachable via Phase 100 work).

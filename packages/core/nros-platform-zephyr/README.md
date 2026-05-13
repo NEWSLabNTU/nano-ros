@@ -1,5 +1,13 @@
 # nros-platform-zephyr
 
+> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
+> native C port at [`nros-platform-zephyr-c`](../nros-platform-zephyr-c)
+> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
+> + `<nros/platform_timer.h>` ABI directly against Zephyr `k_*` + `zsock_*`
+> APIs and ships as a Zephyr module. This Rust crate stays in tree until
+> every consumer has migrated. Removal tracked under Phase 121's
+> deprecate-rust work item.
+
 Zephyr platform implementation for nano-ros. Sits on top of Zephyr's
 POSIX layer and native socket API.
 

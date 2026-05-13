@@ -1,5 +1,12 @@
 # nros-platform-threadx
 
+> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
+> native C port at [`nros-platform-threadx-c`](../nros-platform-threadx-c)
+> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
+> + `<nros/platform_timer.h>` ABI directly against ThreadX + NetX Duo BSD
+> addon. This Rust crate stays in tree until every consumer has migrated.
+> Removal tracked under Phase 121's deprecate-rust work item.
+
 ThreadX platform implementation for nano-ros. Backs the trait family on
 Microsoft Azure RTOS ThreadX + NetX Duo. Used by the Linux simulator
 build and the QEMU RISC-V build (and any real ThreadX target with the

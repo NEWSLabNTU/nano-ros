@@ -1,5 +1,12 @@
 # nros-platform-nuttx
 
+> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
+> native C port at [`nros-platform-nuttx-c`](../nros-platform-nuttx-c)
+> — it reuses [`nros-platform-posix-c`](../nros-platform-posix-c)'s
+> sources verbatim via CMake (NuttX provides a POSIX-compatible
+> surface). This Rust crate stays in tree until every consumer has
+> migrated. Removal tracked under Phase 121's deprecate-rust work item.
+
 NuttX platform implementation for nano-ros. NuttX exposes a near-POSIX
 syscall surface, so this crate is a thin re-export of POSIX semantics
 plus a few NuttX-specific quirks.
