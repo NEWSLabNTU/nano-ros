@@ -14,25 +14,25 @@ fn main() {
             .node_name("talker");
         // Phase 115.L.x — install C-vtable backend before session open.
         let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("talker")?;
-
-        println!("Declaring publisher on /chatter (std_msgs/Int32)");
-        let publisher = node.create_publisher::<Int32>("/chatter")?;
+        let publisher = {
+            let mut node = executor.create_node("talker")?;
+            println!("Declaring publisher on /chatter (std_msgs/Int32)");
+            node.create_publisher::<Int32>("/chatter")?
+        };
         println!("Publisher declared");
         println!("Publishing messages...");
 
         let mut count: i32 = 0;
-        loop {
-            // Poll to process network events (~1s between publishes)
-            for _ in 0..100 {
-                executor.spin_once(core::time::Duration::from_millis(10));
-            }
-
+        executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
             match publisher.publish(&Int32 { data: count }) {
                 Ok(()) => println!("Published: {}", count),
-                Err(e) => eprintln!("Publish failed: {:?}", e),
+                Err(e) => println!("Publish failed: {:?}", e),
             }
             count = count.wrapping_add(1);
+        })?;
+
+        loop {
+            executor.spin_once(core::time::Duration::from_millis(10));
         }
 
         #[allow(unreachable_code)]
