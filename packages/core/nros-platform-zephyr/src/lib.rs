@@ -56,6 +56,24 @@ nros_platform_cffi::nros_platform_export!(ZephyrPlatform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(ZephyrPlatform);
 
+// Phase 121.9 — critical section via `irq_lock` / `irq_unlock`.
+// Zephyr's kernel API returns the prior IRQ posture from
+// `irq_lock` and accepts it back in `irq_unlock`, matching the
+// canonical `acquire`/`release` token contract exactly.
+unsafe extern "C" {
+    fn irq_lock() -> u32;
+    fn irq_unlock(key: u32);
+}
+
+impl nros_platform_api::PlatformCriticalSection for ZephyrPlatform {
+    fn acquire() -> u32 {
+        unsafe { irq_lock() }
+    }
+    fn release(token: u32) {
+        unsafe { irq_unlock(token) };
+    }
+}
+
 // ============================================================================
 // Clock — k_uptime_get (monotonic, milliseconds since boot)
 // ============================================================================

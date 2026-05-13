@@ -36,6 +36,25 @@ nros_platform_cffi::nros_platform_export!(Mps2An385Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Mps2An385Platform);
 
+// Phase 121.9 — Cortex-M PRIMASK critical section. Always emitted
+// (independent of the `critical-section` feature, which only gates
+// the `critical_section::set_impl!` global registration). The
+// canonical `nros_platform_critical_section_{acquire,release}` C
+// symbols come from `nros_platform_export!` above via this impl.
+impl nros_platform_api::PlatformCriticalSection for Mps2An385Platform {
+    fn acquire() -> u32 {
+        let was_enabled = cortex_m::register::primask::read().is_active();
+        cortex_m::interrupt::disable();
+        if was_enabled { 1 } else { 0 }
+    }
+    fn release(token: u32) {
+        if token == 1 {
+            // SAFETY: prior posture was "enabled"; outermost release.
+            unsafe { cortex_m::interrupt::enable() };
+        }
+    }
+}
+
 // ============================================================================
 // Clock
 // ============================================================================

@@ -354,3 +354,18 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (rc == TX_NO_INSTANCE)   return 1;  /* timeout */
     return -1;
 }
+
+/* ============================================================
+ *   Critical section (Phase 121.9)
+ * ============================================================ */
+/* `tx_interrupt_control(TX_INT_DISABLE)` returns the prior posture
+ * (TX_INT_ENABLE or TX_INT_DISABLE); pass the same value back via
+ * `tx_interrupt_control(token)` to restore. ThreadX's port already
+ * stacks interrupt state across nested acquire/release pairs. */
+uint32_t nros_platform_critical_section_acquire(void) {
+    return (uint32_t) tx_interrupt_control(TX_INT_DISABLE);
+}
+
+void nros_platform_critical_section_release(uint32_t token) {
+    (void) tx_interrupt_control((UINT) token);
+}

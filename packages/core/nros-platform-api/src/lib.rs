@@ -493,6 +493,30 @@ pub trait PlatformNetworkPoll {
     fn network_poll() {}
 }
 
+/// Global mutual exclusion against preemption + ISR delivery
+/// (Phase 121.9).
+///
+/// Backs the Rust `critical_section::Impl` registration used by
+/// dust-dds, nros-rmw-{xrce,zenoh}, and any other no_std consumer of
+/// `critical_section::with()`. The token returned by `acquire` is
+/// passed back to `release`; it holds whatever bookkeeping the
+/// platform needs to restore the prior posture (Cortex-M PRIMASK bit,
+/// Cortex-R CPSR I-bit, RISC-V `mstatus.MIE` snapshot, pthread
+/// recursion depth, etc.) and is opaque to callers.
+///
+/// Reentrant by contract: nested `acquire` / `release` pairs must
+/// stack — the platform impl is responsible for nesting (PRIMASK
+/// already stacks; pthread side uses a recursive mutex).
+pub trait PlatformCriticalSection {
+    /// Enter a critical section. Returns an opaque token to pass to
+    /// [`Self::release`].
+    fn acquire() -> u32;
+
+    /// Leave a critical section, restoring the posture captured at
+    /// [`Self::acquire`].
+    fn release(token: u32);
+}
+
 // ============================================================================
 // Networking — TCP
 // ============================================================================

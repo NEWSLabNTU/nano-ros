@@ -1,0 +1,19 @@
+[package]
+name = "nros-platform-critical-section"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Registers a global `critical_section::Impl` backed by the canonical `nros_platform_critical_section_*` C symbols (Phase 121.9)."
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "no-std", "critical-section", "platform"]
+categories = ["embedded", "no-std"]
+
+[dependencies]
+critical-section = { version = "1.2", features = ["restore-state-u32"] }
+
+[lints]
+workspace = true

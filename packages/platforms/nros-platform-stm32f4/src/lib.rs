@@ -27,6 +27,22 @@ nros_platform_cffi::nros_platform_export!(Stm32f4Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Stm32f4Platform);
 
+// Phase 121.9 — Cortex-M PRIMASK critical section. See sibling
+// mps2-an385 for rationale.
+impl nros_platform_api::PlatformCriticalSection for Stm32f4Platform {
+    fn acquire() -> u32 {
+        let was_enabled = cortex_m::register::primask::read().is_active();
+        cortex_m::interrupt::disable();
+        if was_enabled { 1 } else { 0 }
+    }
+    fn release(token: u32) {
+        if token == 1 {
+            // SAFETY: prior posture was "enabled"; outermost release.
+            unsafe { cortex_m::interrupt::enable() };
+        }
+    }
+}
+
 impl nros_platform_api::PlatformYield for Stm32f4Platform {
     #[inline]
     fn yield_now() {

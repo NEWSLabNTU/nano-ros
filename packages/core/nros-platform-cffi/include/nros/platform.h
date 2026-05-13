@@ -186,8 +186,25 @@ int8_t nros_platform_condvar_wait(void *cv, void *m);
  *  `clock_ms` units). Returns non-zero on timeout. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
+/* ---- Critical section ---- */
+/* Phase 121.9 — global mutual exclusion against preemption + ISR
+ * delivery. Backs the Rust `critical_section::Impl` registration used
+ * by dust-dds, nros-rmw-{xrce,zenoh}, and any consumer of
+ * `critical_section::with()`. Reentrant by contract: every acquire
+ * must be paired with exactly one release, and the platform handles
+ * nesting (PRIMASK already stacks; pthread side uses a recursive
+ * mutex).
+ *
+ * The `uint32_t` token holds whatever the platform needs to restore
+ * the prior posture — Cortex-M PRIMASK bit, Cortex-R CPSR I-bit,
+ * RISC-V `mstatus.MIE` snapshot, pthread depth counter — and is
+ * opaque to the caller. */
+uint32_t nros_platform_critical_section_acquire(void);
+void     nros_platform_critical_section_release(uint32_t token);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif
 
 #endif /* NROS_PLATFORM_H */
+

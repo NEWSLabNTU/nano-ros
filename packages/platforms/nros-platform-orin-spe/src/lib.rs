@@ -244,6 +244,20 @@ impl PlatformThreading for OrinSpe {
     }
 }
 
+// Phase 121.9 — Cortex-R5 CPSR I-bit critical section. Forwards to
+// FreeRtosPlatform which carries the impl behind its `cortex-r`
+// feature. Once 121.10 lands and SPE moves to a board crate over
+// `platform-freertos`, this impl disappears with the rest of the
+// proxy.
+impl nros_platform_api::PlatformCriticalSection for OrinSpe {
+    fn acquire() -> u32 {
+        <FreeRtosPlatform as nros_platform_api::PlatformCriticalSection>::acquire()
+    }
+    fn release(token: u32) {
+        <FreeRtosPlatform as nros_platform_api::PlatformCriticalSection>::release(token)
+    }
+}
+
 // `PlatformRandom` lives in `random.rs` — best-effort xorshift32 seeded
 // from the tick. The default forward-to-FreeRtosPlatform impl would
 // give us the same shape, but the SPE has no hardware RNG and we want

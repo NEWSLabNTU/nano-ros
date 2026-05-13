@@ -371,3 +371,31 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (r == ETIMEDOUT) return 1;
     return -1;
 }
+
+/* ============================================================
+ *   Critical section (Phase 121.9)
+ * ============================================================ */
+/* Process-wide recursive mutex. Lazy-initialised on first use via
+ * pthread_once. Token is unused (returns 0) because the recursive
+ * mutex already tracks nesting. */
+static pthread_mutex_t s_cs_mutex;
+static pthread_once_t  s_cs_once = PTHREAD_ONCE_INIT;
+
+static void cs_init(void) {
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&s_cs_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+}
+
+uint32_t nros_platform_critical_section_acquire(void) {
+    pthread_once(&s_cs_once, cs_init);
+    pthread_mutex_lock(&s_cs_mutex);
+    return 0;
+}
+
+void nros_platform_critical_section_release(uint32_t token) {
+    (void) token;
+    pthread_mutex_unlock(&s_cs_mutex);
+}

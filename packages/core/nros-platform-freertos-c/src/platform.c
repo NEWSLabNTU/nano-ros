@@ -462,3 +462,23 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     }
     return 0;
 }
+
+/* ============================================================
+ *   Critical section (Phase 121.9)
+ * ============================================================ */
+/* Cortex-M PRIMASK + nested-call counter (taskENTER_CRITICAL /
+ * taskEXIT_CRITICAL already track nesting at the FreeRTOS port
+ * level via uxCriticalNesting). The canonical ABI uses the FreeRTOS
+ * primitive directly so kernel-aware bookkeeping stays consistent.
+ *
+ * Token is unused (returns 0); FreeRTOS's port layer handles the
+ * restore posture internally. */
+uint32_t nros_platform_critical_section_acquire(void) {
+    taskENTER_CRITICAL();
+    return 0;
+}
+
+void nros_platform_critical_section_release(uint32_t token) {
+    (void) token;
+    taskEXIT_CRITICAL();
+}

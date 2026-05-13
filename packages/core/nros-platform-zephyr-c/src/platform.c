@@ -262,3 +262,17 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (rc == -EAGAIN)   return 1;  /* Zephyr returns -EAGAIN on timeout */
     return -1;
 }
+
+/* ============================================================
+ *   Critical section (Phase 121.9)
+ * ============================================================ */
+/* Zephyr's `irq_lock` returns the prior IRQ posture; `irq_unlock`
+ * accepts the same value back. Reentrant: Zephyr's port layer stacks
+ * the key word correctly across nested calls. */
+uint32_t nros_platform_critical_section_acquire(void) {
+    return (uint32_t) irq_lock();
+}
+
+void nros_platform_critical_section_release(uint32_t token) {
+    irq_unlock((unsigned int) token);
+}

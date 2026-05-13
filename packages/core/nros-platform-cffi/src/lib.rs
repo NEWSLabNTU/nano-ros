@@ -106,6 +106,10 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_signal_all(cv: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
+
+    // -- Critical section (Phase 121.9) --
+    pub fn nros_platform_critical_section_acquire() -> u32;
+    pub fn nros_platform_critical_section_release(token: u32);
 }
 
 // ============================================================================
@@ -571,6 +575,15 @@ impl nros_platform_api::PlatformNetworkPoll for CffiPlatform {
     }
 }
 
+impl nros_platform_api::PlatformCriticalSection for CffiPlatform {
+    fn acquire() -> u32 {
+        unsafe { nros_platform_critical_section_acquire() }
+    }
+    fn release(token: u32) {
+        unsafe { nros_platform_critical_section_release(token) }
+    }
+}
+
 // ============================================================================
 // Phase 121.2 — export_*! macros
 // ----------------------------------------------------------------------------
@@ -816,10 +829,27 @@ macro_rules! nros_platform_export_threading {
     };
 }
 
+/// Phase 121.9 — emit the two `nros_platform_critical_section_*`
+/// symbols by delegating to the caller's `PlatformCriticalSection`
+/// impl.
+#[macro_export]
+macro_rules! nros_platform_export_critical_section {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_critical_section_acquire() -> u32 {
+            <$ty as ::nros_platform_api::PlatformCriticalSection>::acquire()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_critical_section_release(token: u32) {
+            <$ty as ::nros_platform_api::PlatformCriticalSection>::release(token)
+        }
+    };
+}
+
 /// Convenience: emit every `nros_platform_*` symbol declared in
 /// `<nros/platform.h>` by delegating to the corresponding
 /// `nros_platform_api::Platform*` trait method on `$ty`. The caller must
-/// implement every trait covered by the eight capability macros.
+/// implement every trait covered by the capability macros.
 #[macro_export]
 macro_rules! nros_platform_export {
     ($ty:ty) => {
@@ -830,6 +860,7 @@ macro_rules! nros_platform_export {
         $crate::nros_platform_export_random!($ty);
         $crate::nros_platform_export_time!($ty);
         $crate::nros_platform_export_threading!($ty);
+        $crate::nros_platform_export_critical_section!($ty);
     };
 }
 
@@ -1313,6 +1344,12 @@ mod test_self_export {
         fn condvar_wait_until(_: *mut c_void, _: *mut c_void, _: u64) -> i8 {
             0
         }
+    }
+    impl ::nros_platform_api::PlatformCriticalSection for TestPlatform {
+        fn acquire() -> u32 {
+            0
+        }
+        fn release(_: u32) {}
     }
 
     /// Pointer-sized newtype wrapping `*mut c_void` so the

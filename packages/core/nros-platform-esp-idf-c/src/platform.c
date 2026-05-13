@@ -371,3 +371,22 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     }
     return 0;
 }
+
+/* ============================================================
+ *   Critical section (Phase 121.9)
+ * ============================================================ */
+/* ESP-IDF uses a spinlock-based critical section on multicore SoCs
+ * (ESP32, ESP32-S3) and a plain interrupt-disable on single-core SoCs
+ * (ESP32-C3, ESP32-C6). `portENTER_CRITICAL` / `portEXIT_CRITICAL`
+ * wrap both; the FreeRTOS port owns the bookkeeping. */
+static portMUX_TYPE s_cs_lock = portMUX_INITIALIZER_UNLOCKED;
+
+uint32_t nros_platform_critical_section_acquire(void) {
+    portENTER_CRITICAL(&s_cs_lock);
+    return 0;
+}
+
+void nros_platform_critical_section_release(uint32_t token) {
+    (void) token;
+    portEXIT_CRITICAL(&s_cs_lock);
+}

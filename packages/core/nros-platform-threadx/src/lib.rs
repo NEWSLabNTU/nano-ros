@@ -37,6 +37,26 @@ nros_platform_cffi::nros_platform_export!(ThreadxPlatform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(ThreadxPlatform);
 
+// Phase 121.9 — critical section via `tx_interrupt_control`. The
+// ThreadX kernel disables interrupts globally with `TX_INT_DISABLE`
+// and restores the prior posture with the returned value. Reentrant
+// because the kernel call already stacks the posture word.
+unsafe extern "C" {
+    fn tx_interrupt_control(new_posture: u32) -> u32;
+}
+const TX_INT_DISABLE: u32 = 0;
+
+impl nros_platform_api::PlatformCriticalSection for ThreadxPlatform {
+    fn acquire() -> u32 {
+        unsafe { tx_interrupt_control(TX_INT_DISABLE) }
+    }
+    fn release(token: u32) {
+        unsafe {
+            tx_interrupt_control(token);
+        }
+    }
+}
+
 // ============================================================================
 // Phase 97.4.threadx — `critical_section::Impl` for no_std targets
 // ============================================================================

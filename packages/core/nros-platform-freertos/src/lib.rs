@@ -56,33 +56,94 @@ compile_error!(
      `cortex-r` (ARMv7-R CPSR I-bit) are mutually exclusive — pick one"
 );
 
+// Phase 121.9 — Cortex-M PRIMASK-backed critical-section body. The
+// `cs_impl` module still wires `critical_section::set_impl!` for
+// binaries that need the global registration directly from the
+// kernel crate (e.g. dust-dds + FreeRTOS binaries built before
+// `nros-platform-critical-section` lands). The new
+// `PlatformCriticalSection` impl below (always emitted, not
+// feature-gated) reuses the same primitive so that the canonical
+// `nros_platform_critical_section_{acquire,release}` C symbols
+// resolve to the same body when `cffi-export` is on.
 #[cfg(feature = "critical-section")]
 mod cs_impl {
-    use cortex_m::register::primask;
-
     struct FreeRtosCs;
     critical_section::set_impl!(FreeRtosCs);
 
     unsafe impl critical_section::Impl for FreeRtosCs {
         unsafe fn acquire() -> critical_section::RawRestoreState {
-            // Read prior PRIMASK (bit 0 = 1 means interrupts already
-            // disabled), then disable interrupts. The token encodes
-            // the prior state so `release` can re-enable only if we
-            // were the outermost acquire.
-            let was_enabled = primask::read().is_active();
-            cortex_m::interrupt::disable();
-            // RawRestoreState = u32 (matches the `restore-state-u32`
-            // critical-section feature).
-            if was_enabled { 1 } else { 0 }
+            super::cs_acquire()
         }
 
         unsafe fn release(token: critical_section::RawRestoreState) {
-            if token == 1 {
-                // SAFETY: prior state was "enabled"; we're at the
-                // outermost acquire.
-                unsafe { cortex_m::interrupt::enable() };
-            }
+            unsafe { super::cs_release(token) }
         }
+    }
+}
+
+// Cortex-M PRIMASK body — used when the M-profile feature is on.
+#[cfg(feature = "critical-section")]
+#[inline]
+fn cs_acquire() -> u32 {
+    let was_enabled = cortex_m::register::primask::read().is_active();
+    cortex_m::interrupt::disable();
+    if was_enabled { 1 } else { 0 }
+}
+
+#[cfg(feature = "critical-section")]
+#[inline]
+unsafe fn cs_release(token: u32) {
+    if token == 1 {
+        unsafe { cortex_m::interrupt::enable() };
+    }
+}
+
+// Cortex-R CPSR I-bit body — used by orin-spe SPE FSP builds.
+#[cfg(all(feature = "cortex-r", not(feature = "critical-section")))]
+#[inline]
+fn cs_acquire() -> u32 {
+    let cpsr: u32;
+    unsafe {
+        core::arch::asm!(
+            "mrs {0}, cpsr",
+            "cpsid i",
+            out(reg) cpsr,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    if (cpsr & (1 << 7)) == 0 { 1 } else { 0 }
+}
+
+#[cfg(all(feature = "cortex-r", not(feature = "critical-section")))]
+#[inline]
+unsafe fn cs_release(token: u32) {
+    if token == 1 {
+        unsafe {
+            core::arch::asm!(
+                "cpsie i",
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+    }
+}
+
+// Fallback (host smokes, docs.rs, threadx-linux integration).
+#[cfg(not(any(feature = "critical-section", feature = "cortex-r")))]
+#[inline]
+fn cs_acquire() -> u32 {
+    0
+}
+
+#[cfg(not(any(feature = "critical-section", feature = "cortex-r")))]
+#[inline]
+unsafe fn cs_release(_token: u32) {}
+
+impl nros_platform_api::PlatformCriticalSection for FreeRtosPlatform {
+    fn acquire() -> u32 {
+        cs_acquire()
+    }
+    fn release(token: u32) {
+        unsafe { cs_release(token) }
     }
 }
 
@@ -98,41 +159,22 @@ mod cs_impl {
 // `cortex-m` crate; raw inline asm is the standard way (the same
 // pattern used by the FreeRTOS ARM_CR5 port and by RTIC's R-profile
 // support).
-#[cfg(feature = "cortex-r")]
+// Phase 100.1 / 121.9 — ARMv7-R CPSR I-bit `critical_section::Impl`.
+// Body lives in `cs_acquire` / `cs_release` above (selected when the
+// `cortex-r` feature is on); this module just registers the global
+// `critical_section::set_impl!`.
+#[cfg(all(feature = "cortex-r", not(feature = "critical-section")))]
 mod cs_impl {
-    use core::arch::asm;
-
     struct FreeRtosCs;
     critical_section::set_impl!(FreeRtosCs);
 
     unsafe impl critical_section::Impl for FreeRtosCs {
         unsafe fn acquire() -> critical_section::RawRestoreState {
-            let cpsr: u32;
-            // Read CPSR, then mask IRQs (bit 7). Mask FIQs (bit 6) is
-            // intentionally left alone — FIQ on the Orin SPE carries
-            // the high-rate timer tick and should not be deferred.
-            unsafe {
-                asm!(
-                    "mrs {0}, cpsr",
-                    "cpsid i",
-                    out(reg) cpsr,
-                    options(nomem, nostack, preserves_flags),
-                );
-            }
-            // Bit 7 of the snapshot: 0 = IRQs were enabled, 1 = already
-            // masked. Token format matches the M-side convention: 1
-            // means "we did the masking, restore on release".
-            if (cpsr & (1 << 7)) == 0 { 1 } else { 0 }
+            super::cs_acquire()
         }
 
         unsafe fn release(token: critical_section::RawRestoreState) {
-            if token == 1 {
-                // SAFETY: prior state was "enabled"; we're at the
-                // outermost acquire.
-                unsafe {
-                    asm!("cpsie i", options(nomem, nostack, preserves_flags));
-                }
-            }
+            unsafe { super::cs_release(token) }
         }
     }
 }

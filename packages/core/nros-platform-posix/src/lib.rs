@@ -757,6 +757,55 @@ impl PosixPlatform {
     }
 }
 
+// Phase 121.9 — global critical section backed by a process-wide
+// recursive pthread mutex. Lazy-initialized on first use; subsequent
+// callers reuse the same mutex.
+mod cs_impl {
+    use core::cell::UnsafeCell;
+    use std::sync::OnceLock;
+
+    struct RecursiveMutex(UnsafeCell<libc::pthread_mutex_t>);
+    // SAFETY: pthread_mutex is internally synchronised; we only hand
+    // out a `*mut` via UnsafeCell which is what pthread_mutex_{lock,unlock}
+    // need to mutate the mutex state.
+    unsafe impl Sync for RecursiveMutex {}
+
+    static MUTEX: OnceLock<RecursiveMutex> = OnceLock::new();
+
+    fn get() -> &'static RecursiveMutex {
+        MUTEX.get_or_init(|| unsafe {
+            let mut m: libc::pthread_mutex_t = core::mem::zeroed();
+            let mut attr: libc::pthread_mutexattr_t = core::mem::zeroed();
+            assert_eq!(libc::pthread_mutexattr_init(&mut attr), 0);
+            assert_eq!(
+                libc::pthread_mutexattr_settype(&mut attr, libc::PTHREAD_MUTEX_RECURSIVE),
+                0
+            );
+            assert_eq!(libc::pthread_mutex_init(&mut m, &attr), 0);
+            libc::pthread_mutexattr_destroy(&mut attr);
+            RecursiveMutex(UnsafeCell::new(m))
+        })
+    }
+
+    pub fn acquire() -> u32 {
+        unsafe { libc::pthread_mutex_lock(get().0.get()) };
+        0
+    }
+
+    pub fn release(_token: u32) {
+        unsafe { libc::pthread_mutex_unlock(get().0.get()) };
+    }
+}
+
+impl nros_platform_api::PlatformCriticalSection for PosixPlatform {
+    fn acquire() -> u32 {
+        cs_impl::acquire()
+    }
+    fn release(token: u32) {
+        cs_impl::release(token)
+    }
+}
+
 impl nros_platform_api::PlatformThreading for PosixPlatform {
     fn task_init(
         task: *mut core::ffi::c_void,

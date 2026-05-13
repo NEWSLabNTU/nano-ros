@@ -31,6 +31,17 @@ nros_platform_cffi::nros_platform_export!(NuttxPlatform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(NuttxPlatform);
 
+// Phase 121.9 — NuttX is POSIX-compatible; forward critical-section
+// to PosixPlatform's recursive pthread_mutex implementation.
+impl nros_platform_api::PlatformCriticalSection for NuttxPlatform {
+    fn acquire() -> u32 {
+        <nros_platform_posix::PosixPlatform as nros_platform_api::PlatformCriticalSection>::acquire()
+    }
+    fn release(token: u32) {
+        <nros_platform_posix::PosixPlatform as nros_platform_api::PlatformCriticalSection>::release(token)
+    }
+}
+
 // ============================================================================
 // System primitives — delegate to PosixPlatform
 // ============================================================================

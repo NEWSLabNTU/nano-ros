@@ -50,6 +50,7 @@ members = [
     "packages/core/nros-platform",
     "packages/core/nros-platform-api",
     "packages/core/nros-platform-cffi",
+    "packages/core/nros-platform-critical-section",
     "packages/core/nros-platform-posix",
     "packages/core/nros-platform-nuttx",
     "packages/core/nros-platform-freertos",

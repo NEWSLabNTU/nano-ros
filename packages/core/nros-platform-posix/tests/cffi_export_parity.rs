@@ -147,6 +147,10 @@ unsafe extern "C" {
     fn nros_platform_socket_close(sock: *mut c_void);
     fn nros_platform_socket_wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8;
     fn nros_platform_network_poll();
+
+    // Phase 121.9 — critical section.
+    fn nros_platform_critical_section_acquire() -> u32;
+    fn nros_platform_critical_section_release(token: u32);
 }
 
 #[test]
@@ -170,7 +174,15 @@ fn posix_macro_emits_every_symbol() {
     // Just touch every other symbol as a fn pointer so the linker
     // keeps them — these calls aren't safe to actually invoke under
     // libc, but `as *const ()` is sound and pins the externs.
-    let pins: [*const (); 59] = [
+    // Phase 121.9 — reentrant critical section round-trip via the C
+    // ABI surface. PosixPlatform's pthread_mutex is recursive, so
+    // nested acquire/release pairs must stack cleanly.
+    let token1 = unsafe { nros_platform_critical_section_acquire() };
+    let token2 = unsafe { nros_platform_critical_section_acquire() };
+    unsafe { nros_platform_critical_section_release(token2) };
+    unsafe { nros_platform_critical_section_release(token1) };
+
+    let pins: [*const (); 61] = [
         nros_platform_alloc as *const (),
         nros_platform_realloc as *const (),
         nros_platform_dealloc as *const (),
@@ -231,6 +243,9 @@ fn posix_macro_emits_every_symbol() {
         nros_platform_socket_close as *const (),
         nros_platform_socket_wait_event as *const (),
         nros_platform_network_poll as *const (),
+        // 121.9 — critical section
+        nros_platform_critical_section_acquire as *const (),
+        nros_platform_critical_section_release as *const (),
     ];
     for p in pins {
         assert!(!p.is_null(), "every exported symbol must resolve");

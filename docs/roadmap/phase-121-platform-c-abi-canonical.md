@@ -216,7 +216,7 @@ These are independent of 121.2 — 121.2 unblocks Rust callers immediately via m
   - [ ] **ESP-IDF** — Deferred. Verification requires an ESP-IDF project tree; `idf_component_register` doesn't function in a standalone build.
 - **121.3.deprecate-rust** — Soft deprecation announcement landed for four RTOS Rust crates:
   - [x] **121.3.deprecate-rust-announce** — `nros-platform-{freertos,nuttx,threadx,zephyr}` Rust crates carry a Markdown deprecation banner in their README (pointing at the matching `-c` crate) and a `[deprecated]` prefix in their `Cargo.toml` description. No `#[deprecated]` attribute on Rust types yet — that would spam every consumer build with warnings before a migration plan lands.
-  - [ ] **121.3.deprecate-rust-remove** — Actually delete the four Rust crates. Gated on (a) consumer migration: board crates (`nros-board-mps2-an385-freertos`, `nros-board-threadx-*`, `nros-board-fvp-aemv8r-smp`, etc.), RMW shims (`nros-rmw-dds`, `nros-rmw-xrce-c`), examples, and `nros-platform/src/resolve.rs` switching to `CffiPlatform` for the deprecated kernels; (b) full target-board runtime parity tests per kernel (host smokes can't substitute for actual MCU / FSP / native_sim execution under realistic load).
+  - [ ] **121.3.deprecate-rust-remove** — Actually delete the four Rust crates. Gated on **121.9** (critical-section into canonical ABI so `nros-platform-freertos`'s Cortex-M PRIMASK impl has a new home), **121.10** (orin-spe refactored as a board over FreeRTOS so it stops importing `FreeRtosPlatform`), and the in-flight 121.7 prep (boards + resolve.rs decoupled — `d089c54a`).
   - POSIX intentionally stays in Rust — host needs it for the 332-test surface and its `PlatformTimer` API is consumed by Phase 110.E executor work that hasn't been ported to the C ABI.
   - ESP-IDF Rust crate doesn't exist; `nros-platform-esp32` / `-esp32-qemu` are bare-metal (esp-hal) and aren't replaced by `nros-platform-esp-idf-c` (different runtime model — IDF vs bare-metal). They stay.
 
@@ -348,6 +348,94 @@ Work items:
 5. Mixed-platform binaries (one example linking both a bare-metal board and a host probe) still compile — same one-provider-per-build invariant as 121.7.
 
 Closing 121.8 collapses the "bare-metal exception" called out in `resolve.rs` and the Notes block below, leaving a single routing rule across every supported platform.
+
+---
+
+### 121.9 — Critical section into canonical platform API
+
+**Goal.** `critical_section::Impl` is currently owned by `nros-platform-freertos` as a Cortex-M PRIMASK impl. That's the wrong scope on two counts: (a) the impl is **architecture**-specific (Cortex-M PRIMASK), not FreeRTOS-specific — bare-metal Cortex-M needs the same primitive; (b) deleting the Rust kernel crate (121.3.deprecate-rust-remove) leaves dust-dds + nros-rmw-{xrce,zenoh} with unresolved `_critical_section_1_0_acquire` / `_release` references.
+
+Promote critical-section to a canonical platform capability — same pattern as clock / alloc / sleep / yield / random / time / threading / net / timer. Each platform's C port owns the body; a thin Rust shim crate registers `critical_section::Impl` by calling the C symbols. Drops the Cortex-M-vs-Cortex-R-vs-RISC-V fan-out across Rust feature flags into one extern decl + one set of per-port C bodies.
+
+**Why critical-section is needed (not redundant with task priorities):**
+1. Preemptive same-priority tasks (default on every RTOS we target) — time-slice preemption mid-`borrow_mut` races.
+2. ISR-fired wakers — timer ISR resumes a blocked task; `Waker::wake` may touch channel state. Priorities don't gate ISRs.
+3. Cross-task channel access from talker / executor / spinner threads — even cooperative scheduling has yield points inside borrowed regions.
+
+Single-task + no-ISR-wakes builds could elide it, but the runtime can't statically prove that and dust-dds is shared with multi-task apps.
+
+**ABI additions:**
+```c
+/* <nros/platform.h> */
+uint32_t nros_platform_critical_section_acquire(void);
+void     nros_platform_critical_section_release(uint32_t token);
+```
+- Token type fixed at `uint32_t` (matches the `critical-section` crate's `restore-state-u32` feature). Holds whatever the platform needs to restore caller state (PRIMASK bit, CPSR I-bit, `mstatus.MIE` snapshot, pthread mutex handle index, …).
+- Reentrant by design: every acquire/release pair is balanced; the platform's own bookkeeping handles nesting (PRIMASK already does; pthread side uses a recursive mutex).
+
+Work items:
+
+- [ ] **121.9.a** — Add the two symbols to `<nros/platform.h>` + the `unsafe extern "C" {}` mirror block in `nros-platform-cffi`. Add `PlatformCriticalSection` trait to `nros-platform-api` (acquire returning `u32`, release taking `u32`). Add `nros_platform_export_critical_section!` macro emitting both symbols from a trait-implementing type. Extend `CffiPlatform`'s impl set + the drift gate's `HEADERS_REQUIRE_MACRO` list.
+- [ ] **121.9.b** — Per-port C bodies:
+  - POSIX C port — `pthread_mutex_t` (recursive, static-init), `pthread_mutex_lock` / `_unlock`. Token is unused (return 0).
+  - POSIX Rust crate (`nros-platform-posix`) — same pattern via `std::sync::Mutex` for the host build.
+  - FreeRTOS C port — Cortex-M PRIMASK enable/disable (matches today's Rust impl byte-for-byte). Token is the prior PRIMASK bit.
+  - ThreadX C port — `tx_interrupt_control(TX_INT_DISABLE)` / restore. Token is the prior posture.
+  - Zephyr C port — `irq_lock` / `irq_unlock`. Token is the irq_lock return.
+  - NuttX C port — `enter_critical_section` / `leave_critical_section`. Token is the returned flags.
+  - ESP-IDF C port — `portENTER_CRITICAL` against a static spinlock OR `portSET_INTERRUPT_MASK_FROM_ISR`. Decide per platform-doc.
+- [ ] **121.9.c** — New crate `packages/core/nros-platform-critical-section/` (~30 lines): `critical_section::set_impl!` body just calls the externs. Pulled in by any binary that needs the global `critical_section::Impl` registration. Drops `nros-platform-freertos`'s `critical-section` feature, drops `nros-platform-orin-spe`'s `cortex-r` feature, drops the per-arch Rust fan-out in `nros-platform`'s `Cargo.toml`.
+- [ ] **121.9.d** — Bare-metal Cortex-M boards (`mps2-an385`, `stm32f4`) reuse `nros-platform-critical-section` via the bare-metal platform crate's `cffi-export` already-emitted Cortex-M body — no extra crate needed. The crate is opt-in: `nros-platform/critical-section` feature toggles the dep so non-RMW examples don't pay for the global impl.
+- [ ] **121.9.e** — Drift-gate verification: `scripts/check-platform-abi-mirror.sh` now sees the two new symbols in `platform.h`. Add a host-runnable test under `nros-platform-posix/tests/cffi_export_parity.rs` exercising acquire/release ordering (token round-trips correctly).
+
+**Files:**
+- `packages/core/nros-platform-cffi/include/nros/platform.h` (or a new `platform_cs.h`)
+- `packages/core/nros-platform-cffi/src/lib.rs` (extern decl + macro + CffiPlatform impl)
+- `packages/core/nros-platform-api/src/lib.rs` (PlatformCriticalSection trait)
+- `packages/core/nros-platform-critical-section/` (new crate)
+- `packages/core/nros-platform-*-c/src/platform.c` (or new `cs.c` per port)
+- `packages/core/nros-platform-posix/src/lib.rs` (PlatformCriticalSection impl)
+- `packages/core/nros-platform/Cargo.toml` (drop per-arch fan-out)
+
+**Acceptance:**
+1. Drift gate sees the two new symbols across every C port + macro + extern mirror.
+2. `cargo build --workspace` clean.
+3. A FreeRTOS QEMU example builds + runs with `nros-platform-critical-section` providing `critical_section::Impl`, no reference to `nros-platform-freertos/critical-section`.
+4. Reentrant ordering test passes (acquire → acquire → release → release; release in different order errors).
+
+---
+
+### 121.10 — Refactor orin-spe as a board over FreeRTOS
+
+**Goal.** `nros-platform-orin-spe` is mislayered: it's a 250-line Rust crate whose only job is to delegate every trait to `FreeRtosPlatform`. The actual orin-spe specifics (NVIDIA FSP boot, Cortex-R5 vector wiring, IVC channel setup, PSC unit init) belong in the board crate. Promoting orin-spe from "platform" to "board over FreeRTOS" eliminates one of the two consumers of the `FreeRtosPlatform` Rust type and unblocks 121.3.deprecate-rust-remove.
+
+Work items:
+
+- [ ] **121.10.a** — Audit `nros-platform-orin-spe`: which symbols / impls are FSP-specific (move to board) vs vanilla-FreeRTOS (drop because the C port provides them)? Expected non-FreeRTOS-generic bits: IVC channel descriptor (`PlatformIvc`), Cortex-R5 critical-section body (subsumed by 121.9 once the C port covers Cortex-R), FSP-specific random source (if any).
+- [ ] **121.10.b** — Move IVC dispatch (`src/ivc.rs`) to `nros-board-orin-spe`. `PlatformIvc` trait stays in `nros-platform-api`; the board provides the impl on its own ZST (`OrinSpeBoard` or similar). RMW backends that need IVC route through the board crate, not a separate platform.
+- [ ] **121.10.c** — FreeRTOS C port gains FSP-build support. Today the port targets vanilla FreeRTOS 10.4.3 + POSIX example config. Add CMake `-DNROS_FREERTOS_VARIANT=fsp` switch that selects:
+  - FSP-style header paths (`tx_api.h`-equivalents under FSP's tree).
+  - Cortex-R5 critical-section body (CPSR I-bit) for 121.9.
+  - FSP-specific timer flavor (ARM Generic Timer vs MPS2 SysTick — both already conditional in upstream FreeRTOS, just need the right `portmacro.h`).
+- [ ] **121.10.d** — Rewrite `nros-board-orin-spe`: pulls `platform-freertos` from `nros-platform`, links the FreeRTOS C port built with `-DNROS_FREERTOS_VARIANT=fsp`, provides FSP init + IVC + PSC + interrupt vector wiring as board-local Rust + C glue. Drops dep on `nros-platform-orin-spe`.
+- [ ] **121.10.e** — Delete `packages/platforms/nros-platform-orin-spe/`. Remove from workspace `[members]`. Strip the `platform-orin-spe` feature from `nros-platform/Cargo.toml` (or repurpose as an alias for `platform-freertos` plus the board-level feature flag).
+- [ ] **121.10.f** — Update `resolve.rs`: drop the dedicated `platform-orin-spe` arm; SPE binaries use `platform-freertos`. Drop the orin-spe `NET_*_SIZE` re-exports (already done in 121.3 prep — `d089c54a`).
+- [ ] **121.10.g** — Update Phase 100 design doc + `book/src/concepts/platform-model.md` to describe orin-spe as "Cortex-R5 board over FreeRTOS-FSP", not a separate platform.
+
+**Files:**
+- `packages/boards/nros-board-orin-spe/` (absorbs IVC + FSP init)
+- `packages/platforms/nros-platform-orin-spe/` (deleted)
+- `packages/core/nros-platform-freertos-c/CMakeLists.txt` (FSP variant flag)
+- `packages/core/nros-platform/Cargo.toml`
+- `packages/core/nros-platform/src/resolve.rs`
+- `Cargo.toml` (workspace members)
+- `docs/design/orin-spe.md` (if present)
+
+**Acceptance:**
+1. `nros-board-orin-spe` builds + links against the FSP C port without referencing `nros-platform-orin-spe`.
+2. IVC roundtrip test still passes (Phase 100 acceptance).
+3. Workspace `cargo check` clean.
+4. orin-spe Rust crate directory no longer exists.
 
 ---
 

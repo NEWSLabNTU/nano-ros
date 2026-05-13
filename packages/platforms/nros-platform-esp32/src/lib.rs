@@ -23,6 +23,33 @@ nros_platform_cffi::nros_platform_export!(Esp32Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Esp32Platform);
 
+// Phase 121.9 — RISC-V (ESP32-C3) critical section via the
+// `mstatus.MIE` bit. Token = prior MIE bit; outermost release
+// re-enables.
+impl nros_platform_api::PlatformCriticalSection for Esp32Platform {
+    fn acquire() -> u32 {
+        let prior: u32;
+        unsafe {
+            core::arch::asm!(
+                "csrrci {0}, mstatus, 0x8",
+                out(reg) prior,
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+        prior & 0x8
+    }
+    fn release(token: u32) {
+        if token & 0x8 != 0 {
+            unsafe {
+                core::arch::asm!(
+                    "csrrsi zero, mstatus, 0x8",
+                    options(nomem, nostack, preserves_flags),
+                );
+            }
+        }
+    }
+}
+
 impl nros_platform_api::PlatformYield for Esp32Platform {
     #[inline]
     fn yield_now() {
