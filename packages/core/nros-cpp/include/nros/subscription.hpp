@@ -230,6 +230,18 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     return Result(ret);
 }
 
+/// Phase 123.B.4 — value-returning subscription factory. Pairs
+/// with `make_publisher` so the full pub/sub create dance is
+/// expressible as a chain of `auto`-typed factories.
+template <typename M>
+inline Expected<Subscription<M>> make_subscription(Node& node, const char* topic,
+                                                   const QoS& qos = QoS::default_profile()) {
+    Subscription<M> s;
+    Result r = node.create_subscription<M>(s, topic, qos);
+    if (!r.ok()) return Expected<Subscription<M>>::error(r);
+    return Expected<Subscription<M>>::ok(std::move(s));
+}
+
 } // namespace nros
 
 #endif // NROS_CPP_SUBSCRIPTION_HPP

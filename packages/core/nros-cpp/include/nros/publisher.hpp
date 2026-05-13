@@ -178,6 +178,20 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
     return Result(ret);
 }
 
+/// Phase 123.B.4 — value-returning publisher factory. Wraps the
+/// out-param `Node::create_publisher` in `Expected<Publisher<M>>`
+/// so users can write
+/// `auto pub = nros::make_publisher<Int32>(node, "/chatter");`
+/// in the rclcpp-style.
+template <typename M>
+inline Expected<Publisher<M>> make_publisher(Node& node, const char* topic,
+                                             const QoS& qos = QoS::default_profile()) {
+    Publisher<M> p;
+    Result r = node.create_publisher<M>(p, topic, qos);
+    if (!r.ok()) return Expected<Publisher<M>>::error(r);
+    return Expected<Publisher<M>>::ok(std::move(p));
+}
+
 } // namespace nros
 
 #endif // NROS_CPP_PUBLISHER_HPP

@@ -13,6 +13,7 @@
 #define NROS_CPP_RESULT_HPP
 
 #include <cstdint>
+#include <utility>
 
 namespace nros {
 
@@ -133,6 +134,61 @@ class Result {
             return;                                                                                \
         }                                                                                          \
     } while (0)
+
+/// Phase 123.B.4 — templated value-or-error wrapper.
+///
+/// Lets factory functions return constructed entities by value
+/// instead of forcing the out-param + Result idiom. Trade-off:
+/// requires `T` to be default-constructible and move-constructible
+/// (Node, Publisher, Subscription all satisfy both today). Storage
+/// is direct (the value lives inline, no allocation) — when the
+/// result holds an error the value member is default-constructed
+/// and idle.
+///
+/// Usage:
+/// ```cpp
+/// auto node_r = nros::Node::make("my_node");
+/// if (!node_r.ok()) return node_r.error_as_result();
+/// auto& node = node_r.value();
+/// ```
+///
+/// Out-param `create_node(node, "name")` remains the canonical
+/// zero-cost API for embedded / strictly-no-alloc code; `make()`
+/// is a hosted-friendly convenience that closes the rclcpp /
+/// rclrs idiom gap.
+template <typename T> class Expected {
+  public:
+    static Expected ok(T value) {
+        Expected e;
+        e.ok_ = true;
+        e.value_ = std::move(value);
+        return e;
+    }
+    static Expected error(ErrorCode code) {
+        Expected e;
+        e.ok_ = false;
+        e.error_ = code;
+        return e;
+    }
+    static Expected error(const Result& r) { return error(r.code()); }
+
+    bool ok() const { return ok_; }
+    explicit operator bool() const { return ok_; }
+
+    T& value() & { return value_; }
+    const T& value() const & { return value_; }
+    T&& value() && { return std::move(value_); }
+
+    ErrorCode error() const { return error_; }
+    Result error_as_result() const { return Result(error_); }
+
+  private:
+    Expected() : ok_(false), error_(ErrorCode::Error), value_() {}
+
+    bool ok_;
+    ErrorCode error_;
+    T value_;
+};
 
 } // namespace nros
 
