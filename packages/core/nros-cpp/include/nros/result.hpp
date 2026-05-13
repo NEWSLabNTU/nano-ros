@@ -92,13 +92,25 @@ class Result {
 /// Like NROS_TRY but for callers that need a custom return value
 /// (e.g. `int main` examples returning 1 on failure).
 ///
-/// By default the failure is silent — nros-cpp is freestanding and
-/// must not pull in `<cstdio>` from a public header. Override
-/// `NROS_TRY_LOG(file, line, expr, ret)` before including this header
-/// to attach a logger (`std::fprintf`, Zephyr's `LOG_ERR`, semihosting,
-/// etc.).
+/// Phase 123.B.1 — when `NROS_CPP_STD` is defined (POSIX / Zephyr
+/// native_sim / threadx-linux + any host with `<cstdio>`), the
+/// default logger writes `[nros] <file>:<line> <expr> -> <ret>` to
+/// `stderr` so first-time users see failures immediately. Embedded
+/// builds without stdio fall through to the silent default.
+///
+/// Override `NROS_TRY_LOG(file, line, expr, ret)` before including
+/// this header to attach a custom logger (Zephyr's `LOG_ERR`,
+/// semihosting, defmt, etc.). Opt out entirely with
+/// `#define NROS_TRY_LOG(file, line, expr, ret) ((void)0)`.
 #ifndef NROS_TRY_LOG
-#define NROS_TRY_LOG(file, line, expr, ret) ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#  if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
+#    include <cstdio>
+#    define NROS_TRY_LOG(file, line, expr, ret)                                                      \
+        std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+#  else
+#    define NROS_TRY_LOG(file, line, expr, ret)                                                      \
+        ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#  endif
 #endif
 
 #define NROS_TRY_RET(expr, retval)                                                                 \

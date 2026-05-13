@@ -17,6 +17,7 @@
 // fallback definitions in favor of the canonical types.
 #include "nros_cpp_ffi.h"
 
+#include "nros/log.hpp"
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
 #include "nros/future.hpp"
@@ -61,6 +62,26 @@ inline Result spin_once(int32_t timeout_ms = 10) {
         return Result(ErrorCode::NotInitialized);
     }
     return Result(nros_cpp_spin_once(Node::global_storage(), timeout_ms));
+}
+
+/// Phase 123.B.2 — block until `nros::ok()` returns false.
+///
+/// Mirror of `rclcpp::spin(node)`. The typical pattern in user
+/// code is: install a SIGINT handler that calls `nros::shutdown()`
+/// (which flips `ok()` to false), then `nros::spin()` from `main`.
+///
+/// Returns the first non-success `spin_once` result, or
+/// `Result::success()` after a clean shutdown.
+inline Result spin() {
+    if (!Node::global_initialized()) {
+        return Result(ErrorCode::NotInitialized);
+    }
+    Result last = Result::success();
+    while (ok()) {
+        last = Result(nros_cpp_spin_once(Node::global_storage(), 10));
+        if (!last.ok()) return last;
+    }
+    return last;
 }
 
 /// Spin for a duration (blocking).

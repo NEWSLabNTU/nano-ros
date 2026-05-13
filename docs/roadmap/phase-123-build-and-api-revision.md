@@ -149,8 +149,37 @@ These are answerable. The phase splits into two work streams.
 
 ### Work items
 
-- **123.B.1 — Default `NROS_TRY_LOG` to stderr.** One-line
-  header change; backward-compat opt-out.
+- [x] **123.B.1 — Default `NROS_TRY_LOG` to stderr.** Landed.
+  `nros/result.hpp` now defaults the macro to a `fprintf(stderr,
+  ...)` formatter when `NROS_CPP_STD` or `__STDC_HOSTED__` is
+  set; embedded `__STDC_HOSTED__=0` falls through to the silent
+  cast-to-void. Override semantics unchanged (still opt-out via
+  user `#define NROS_TRY_LOG(...) ((void)0)`).
+- [x] **123.B.2 — `nros::spin()` blocking entry.** Landed.
+  New free function in `nros/nros.hpp` overloads the existing
+  `spin(duration_ms, ...)` — no-arg form blocks until
+  `nros::ok()` returns false. Matches `rclcpp::spin(node)`.
+  Friend decl added to `Node`.
+- [x] **123.B.3 — Env-aware `nros::init()`.** Landed.
+  On hosted builds (`NROS_CPP_STD` or `__STDC_HOSTED__`),
+  the existing `init(locator = nullptr, domain_id = 0)`
+  overload falls through to `$NROS_LOCATOR` /
+  `$ROS_DOMAIN_ID` when its args are null/zero. Hard-coded
+  fallback `tcp/127.0.0.1:7447` kept for the
+  no-env-set case. `cstdlib` only pulled in under the
+  hosted gate.
+- [x] **123.B.6 — `create_publisher` QoS overload.** Already
+  present (`Result Node::create_publisher(out, topic, qos)`
+  default-arg, plus fluent `nros::QoS::reliable().keep_last(N)`
+  / sensor_data / services presets). Verified, no code change
+  needed — promoted to documented requirement.
+- [x] **123.B.7 — `NROS_INFO` / `NROS_WARN` / `NROS_ERROR` /
+  `NROS_DEBUG` macros.** New `nros/log.hpp`. Same hosted /
+  embedded split as `NROS_TRY_LOG`; routes through a single
+  `NROS_LOG_SINK(level, file, line, fmt, ...)` macro that
+  the user can override. `NROS_DEBUG` is a no-op under
+  `NDEBUG`. Pulled into the umbrella `nros/nros.hpp` so
+  `#include <nros/nros.hpp>` is enough.
 - **123.B.2 — `nros::spin(node)` blocking entry.** Mirror of
   `rclcpp::spin`. Wraps `while (nros::ok()) nros::spin_once`.
 - **123.B.3 — Env-aware `nros::init()`.** No-arg overload reads

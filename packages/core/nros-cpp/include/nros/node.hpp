@@ -12,6 +12,9 @@
 
 #include <cstdint>
 #include <cstddef>
+#if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
+#include <cstdlib> // getenv — Phase 123.B.3 env-aware init
+#endif
 
 // Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
 // `#ifndef NROS_CPP_FFI_H` guard sees the canonical types and skips
@@ -314,6 +317,7 @@ class Node {
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
     friend Result spin_once(int32_t timeout_ms);
+    friend Result spin();
     friend Result spin(uint32_t duration_ms, int32_t poll_ms);
     friend void* global_handle();
 
@@ -344,6 +348,39 @@ template <int N> bool Node::GlobalStorageHolder<N>::initialized = false;
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
+#if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
+    // Phase 123.B.3 — on hosted builds, fall through to env vars
+    // ($NROS_LOCATOR / $ROS_DOMAIN_ID) so the no-arg `nros::init()`
+    // call works without `getenv()` boilerplate in user code.
+    // Explicit non-null `locator` / non-zero `domain_id` still win.
+    if (locator == nullptr) {
+        const char* env_loc = std::getenv("NROS_LOCATOR");
+        if (env_loc != nullptr && env_loc[0] != '\0') {
+            locator = env_loc;
+        } else {
+            locator = "tcp/127.0.0.1:7447";
+        }
+    }
+    if (domain_id == 0) {
+        const char* env_dom = std::getenv("ROS_DOMAIN_ID");
+        if (env_dom != nullptr && env_dom[0] != '\0') {
+            // Parse decimal digits inline — no <cstdlib> dep.
+            unsigned acc = 0;
+            for (const char* p = env_dom; *p; ++p) {
+                if (*p < '0' || *p > '9') {
+                    acc = 0;
+                    break;
+                }
+                acc = acc * 10 + static_cast<unsigned>(*p - '0');
+                if (acc > 232) {
+                    acc = 0;
+                    break;
+                }
+            }
+            domain_id = static_cast<uint8_t>(acc);
+        }
+    }
+#endif
     return init(locator, domain_id, "nros_cpp");
 }
 
