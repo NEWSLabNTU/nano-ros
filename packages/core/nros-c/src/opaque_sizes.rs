@@ -20,6 +20,14 @@ const fn u64s_for<T>() -> usize {
 pub const SESSION_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwSession>();
 #[cfg(feature = "rmw-cffi")]
 pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublisher>();
+
+// Phase 122.3.b — L1 polling-mode subscription storage. Holds a
+// `RawSubscription<MESSAGE_BUFFER_SIZE>` (RmwSubscriber + buffer +
+// event regs) inline in `nros_subscription_t._opaque`. Sized so the
+// Rust value fits exactly.
+#[cfg(feature = "rmw-cffi")]
+pub const SUBSCRIPTION_OPAQUE_U64S: usize =
+    u64s_for::<nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>>();
 // Phase 82: service client opaque storage no longer holds the RMW
 // transport handle (it lives in the executor's arena). Use
 // SERVICE_CLIENT_INTERNAL_OPAQUE_U64S (from build.rs) for the C struct
@@ -30,6 +38,8 @@ pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublishe
 pub const SESSION_OPAQUE_U64S: usize = 1;
 #[cfg(not(feature = "rmw-cffi"))]
 pub const PUBLISHER_OPAQUE_U64S: usize = 1;
+#[cfg(not(feature = "rmw-cffi"))]
+pub const SUBSCRIPTION_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
 
