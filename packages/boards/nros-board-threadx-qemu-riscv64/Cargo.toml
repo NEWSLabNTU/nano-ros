@@ -9,7 +9,9 @@ description = "ThreadX QEMU RISC-V 64-bit virt board crate for nros (NetX Duo + 
 name = "nros_board_threadx_qemu_riscv64"
 
 [dependencies]
-nros-platform-threadx = { path = "../../core/nros-platform-threadx" }
+# Phase 121.3 — canonical symbols from ThreadX C port; see sibling
+# nros-board-threadx-linux for full rationale.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx"] }
 
 [build-dependencies]
 cc = "1"

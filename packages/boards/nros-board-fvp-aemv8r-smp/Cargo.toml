@@ -25,4 +25,9 @@ rmw-zenoh      = ["nros/rmw-zenoh"]
 
 [dependencies]
 nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
-nros-platform-zephyr = { path = "../../core/nros-platform-zephyr" }
+# Phase 121.3 — the Rust `nros-platform-zephyr` crate is gone; the
+# canonical `nros_platform_*` C symbols come from
+# `nros-platform-zephyr` (the C port at `packages/core/nros-platform-zephyr/`,
+# linked via Zephyr's CMake glue). The board crate pulls `nros-platform`
+# (re-exported via `nros`) to reach `ConcretePlatform = CffiPlatform`.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }

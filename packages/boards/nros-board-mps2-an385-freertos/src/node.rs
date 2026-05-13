@@ -97,7 +97,13 @@ where
         if seed == 0 {
             seed = 1;
         }
-        nros_platform_freertos::seed(seed);
+        // Phase 121.3 — seed the FreeRTOS C port's xorshift64 RNG via
+        // its C entry point (was `nros_platform_freertos::seed` when
+        // the Rust kernel crate provided the impl).
+        unsafe extern "C" {
+            fn nros_platform_freertos_seed_rng(value: u32);
+        }
+        unsafe { nros_platform_freertos_seed_rng(seed) };
     }
 
     // Resolve the FreeRTOS-native priority for the network poll task —

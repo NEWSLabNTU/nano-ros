@@ -8,7 +8,9 @@
 use crate::Config;
 
 pub fn init_hardware() {
-    let _ = nros_platform_zephyr::NET_SOCKET_SIZE;
+    // Pull the platform C ABI provider into the final link map even
+    // under LTO. (Phase 121.3 — formerly via `nros-platform-zephyr`.)
+    let _ = nros_platform::NET_SOCKET_SIZE;
 }
 
 pub fn run<F>(config: Config, app: F) -> !

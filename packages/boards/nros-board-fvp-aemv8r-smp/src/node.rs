@@ -13,9 +13,10 @@ use crate::Config;
 /// without this; on the FVP target the symbols are pulled by the
 /// Zephyr Rust application via this re-export.
 pub fn init_hardware() {
-    // Reference a public constant from `nros-platform-zephyr` so the
-    // crate gets pulled into the final link map even when LTO is on.
-    let _ = nros_platform_zephyr::NET_SOCKET_SIZE;
+    // Reference a public constant from `nros-platform` so the platform
+    // C ABI provider gets pulled into the final link map even when LTO
+    // is on. (Phase 121.3 — formerly via `nros-platform-zephyr`.)
+    let _ = nros_platform::NET_SOCKET_SIZE;
 }
 
 /// Run the user closure once hardware + network are initialised. The

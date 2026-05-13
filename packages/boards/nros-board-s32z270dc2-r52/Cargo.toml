@@ -23,4 +23,5 @@ rmw-zenoh      = ["nros/rmw-zenoh"]
 
 [dependencies]
 nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
-nros-platform-zephyr = { path = "../../core/nros-platform-zephyr" }
+# Phase 121.3 — C-port-canonical platform. See sibling fvp-aemv8r-smp board.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }

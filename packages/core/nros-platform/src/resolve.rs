@@ -78,38 +78,14 @@ pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;
 // `Socket` / `Endpoint` (Phase 71.26), they can plug in alongside the
 // RTOS variants below.
 
+// POSIX still publishes typed socket sizes (the only host-runnable
+// platform crate left + the only one whose Socket / Endpoint layout
+// varies meaningfully). Every other platform uses the 64-byte fallback
+// — bare-metal smoltcp is 2 / 6 bytes; the RTOS C ports own the layout
+// behind their `_z_sys_net_*` typedefs and can publish a tighter size
+// later if the headroom matters.
 #[cfg(feature = "platform-posix")]
 pub use nros_platform_posix::net::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
-
-#[cfg(feature = "platform-zephyr")]
-pub use nros_platform_zephyr::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
-
-#[cfg(feature = "platform-freertos")]
-pub use nros_platform_freertos::net::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
-
-#[cfg(feature = "platform-nuttx")]
-pub use nros_platform_nuttx::net::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
-
-#[cfg(feature = "platform-threadx")]
-pub use nros_platform_threadx::net::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
-
-// Phase 100 — SPE has no TCP/UDP at the platform level (IVC replaces
-// them at the link layer). The platform crate publishes the same
-// 64-byte fallback the other no-network platforms use, exposed as a
-// crate-root constant rather than a `net::` submodule because there
-// is no `net` module to host it on the SPE.
-#[cfg(feature = "platform-orin-spe")]
-pub use nros_platform_orin_spe::{
     NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
 };
 
@@ -119,6 +95,11 @@ pub use nros_platform_orin_spe::{
     feature = "platform-esp32",
     feature = "platform-esp32-qemu",
     feature = "platform-cffi",
+    feature = "platform-freertos",
+    feature = "platform-nuttx",
+    feature = "platform-threadx",
+    feature = "platform-zephyr",
+    feature = "platform-orin-spe",
 ))]
 mod fallback_net_sizes {
     pub const NET_SOCKET_SIZE: usize = 64;
@@ -133,6 +114,11 @@ mod fallback_net_sizes {
     feature = "platform-esp32",
     feature = "platform-esp32-qemu",
     feature = "platform-cffi",
+    feature = "platform-freertos",
+    feature = "platform-nuttx",
+    feature = "platform-threadx",
+    feature = "platform-zephyr",
+    feature = "platform-orin-spe",
 ))]
 pub use fallback_net_sizes::{
     NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,

@@ -11,12 +11,11 @@ name = "nros_board_mps2_an385_freertos"
 [dependencies]
 # Platform shim — only needed when `rmw-zenoh` is active. zenoh-pico's
 # C transport requires the shim to forward platform calls; DDS-only
-# builds (`rmw-dds`) drive their own transport via
-# `nros-platform-freertos`'s `PlatformUdp` impl directly.
+# builds (`rmw-dds`) drive their own transport via the FreeRTOS C
+# port's `nros_platform_udp_*` symbol set (Phase 121.3).
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, optional = true }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
-nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
 
 # Semihosting for QEMU output
 cortex-m-semihosting = "0.5"

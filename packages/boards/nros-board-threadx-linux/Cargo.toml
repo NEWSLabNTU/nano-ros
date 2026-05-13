@@ -9,10 +9,11 @@ description = "ThreadX Linux simulation board crate for nros (NetX Duo + BSD soc
 name = "nros_board_threadx_linux"
 
 [dependencies]
-# nros-platform-threadx symbols are linked via nros → nros-platform → nros-platform-threadx.
-# Direct dependency ensures the FFI symbols (nros_platform_threadx_set_byte_pool etc.)
-# are available even if the board crate is used without nros.
-nros-platform-threadx = { path = "../../core/nros-platform-threadx" }
+# Phase 121.3 — canonical `nros_platform_*` symbols come from the
+# ThreadX C port linked via CMake. The Rust dep here exists only to
+# pull `nros-platform`'s `platform-threadx` feature into the link map
+# so `ConcretePlatform = CffiPlatform` resolves.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx"] }
 
 [build-dependencies]
 cc = "1"
