@@ -489,9 +489,20 @@ arrays).
     * `--skip-rustup` / `--skip-apt-check` for shims that don't
       want the toolchain side effects (cyclonedds already
       handles its own; rmw recipes don't need rustup).
-- [ ] **123.A.9 — `installation.md` rewrite.** Pattern A as the
-  default, source-build-via-git-clone as the only path. Drop
-  references to tarballs / SDK archives.
+- [x] **123.A.9 — `installation.md` rewrite.** Done.
+  `book/src/getting-started/installation.md` now leads with
+  Pattern A (nano-ros inside the user's workspace `src/`),
+  documents the `tools/setup.sh --target=...` flow + flag table
+  (incl. `--list-targets`, `--doctor`, `--platform`, `--rmw`,
+  `--with-dev`, `--with-reference`, `--dry-run`), covers
+  per-target setup tips, the `cmake -B build` direct path
+  (with `cmake/bootstrap.cmake` auto-rescue), Rust path-dep
+  pattern + the open `nros-core` crates.io question, and
+  redirects contributors to `just setup` / `just <plat>::setup`.
+  References the multi-package demo at
+  `examples/multi-package-workspace/`. Drops all tarball /
+  SDK / `cargo install --git` legacy references. mdbook html
+  build clean.
 - [x] **123.A.10 — Multi-package workspace example.** Done.
   `examples/multi-package-workspace/` ships C + C++ + Rust
   packages sharing one nano-ros source / install:
