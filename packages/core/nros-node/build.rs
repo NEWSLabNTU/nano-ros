@@ -31,13 +31,15 @@ fn main() {
     let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
 
     // --- Derived arena size ---
-    // Arena must hold MAX_CBS entries. Subscriptions use triple buffers (3 × rx_buf)
-    // plus entry overhead. Services use rx+reply buffers. Worst case: all entries are
-    // triple-buffered subscriptions.
-    // Per subscription: 3 × rx_buf (triple buffer) + 256 (entry struct overhead)
-    // Per service: 2 × rx_buf + 256 (entry struct + req/reply buffers)
-    // Use 3 × rx_buf for the per-entry budget to cover both cases.
-    let arena_size = (max_cbs * (rx_buf_size * 3 + 512) + 2048).max(8192);
+    // Arena must hold MAX_CBS entries. Worst-case entry is an
+    // ActionClient: 3 CffiServiceClients (each carries a 4096-byte
+    // `pending_request` blocking-fallback buffer + ~256 of header) +
+    // 1 CffiSubscriber + 3 × rx_buf (goal/result/feedback) + ~256
+    // entry overhead. Subscription / service entries are strictly
+    // smaller, so budget every slot at the action-client size.
+    // Per entry: 3 × (4096 + 384) + 3 × rx_buf + 1536 ≈ 14976 + 3·rx_buf
+    let per_entry = 3 * 4480 + 3 * rx_buf_size + 1536;
+    let arena_size = (max_cbs * per_entry + 2048).max(8192);
 
     let contents = format!(
         "/// Maximum number of executor callback slots \

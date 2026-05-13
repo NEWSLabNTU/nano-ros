@@ -103,6 +103,28 @@ Sub-items:
   2026-05-13 (commit `c3c56cc7`). 123 call sites across 37 files.
 - [x] **122.2 — C/C++ `nros_executor_add_*` -> `register_*` rename.**
   Landed 2026-05-13 (commit `68e9eef5`). 53 files.
+- [x] **122.3.0 — fixture + arena follow-up (post-122.1/2).**
+  Two regressions surfaced once `just test-all` ran after the 122.1/2
+  renames:
+  1. `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` (and
+     `tests/size_probe_verify.sh`) still passed the pre-115.M.4 feature
+     name `rmw-zenoh` to `cargo build -p nros-c`. Phase 115.M.4 had
+     renamed it to `cffi-zenoh-cffi`. 27 C-build tests failed with
+     `error: the package 'nros-c' does not contain this feature:
+     rmw-zenoh`. Fixed by switching both call sites to
+     `cffi-zenoh-cffi,platform-posix,ros-humble`.
+  2. `packages/core/nros-node/build.rs` derived `ARENA_SIZE` from
+     `MAX_CBS × (rx_buf × 3 + 512)` which budgeted for a triple-
+     buffered subscription but not for an `ActionClientRawArenaEntry`.
+     Each entry carries 3 `CffiServiceClient`s (each with a 4096-byte
+     `pending_request` blocking-fallback buffer) + 3 × rx_buf + a
+     `CffiSubscriber`, totalling ~17.5 KB — over the previous 16 KB
+     default arena. `arena_alloc` returned `BufferTooSmall`, so
+     `nros_cpp_action_client_create` returned `-100`
+     (`TRANSPORT_ERROR`) before any traffic. Bumped the per-entry
+     budget to `3 × 4480 + 3 × rx_buf + 1536` (~18 KB at default
+     rx_buf=1024) so action-client allocation works at the default
+     `NROS_EXECUTOR_MAX_CBS=4`. Recovered `test_cpp_action_goal_rejection`.
 - [~] **122.3.a — nros-c thin-wrapper audit + discipline doc.**
   In flight 2026-05-13. Output: `docs/design/nros-c-thin-wrapper-discipline.md`.
   Audit result: 4 of 11 entities follow opaque-thin pattern today;

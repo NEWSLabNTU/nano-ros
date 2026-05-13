@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 HEADER="packages/core/nros-c/include/nros/nros_config_generated.h"
-FEATURES="rmw-zenoh,platform-posix,ros-humble"
+FEATURES="cffi-zenoh-cffi,platform-posix,ros-humble"
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"
 
@@ -53,7 +53,7 @@ echo "=== 118.E.3 — cross-pointer-size validation (host vs 32-bit) ==="
 if rustup target list --installed | grep -q '^i686-unknown-linux-gnu$'; then
     cargo clean -p nros-c >/dev/null
     cargo build -p nros-c --target i686-unknown-linux-gnu \
-        --features rmw-zenoh,platform-posix,ros-humble \
+        --features cffi-zenoh-cffi,platform-posix,ros-humble \
         -j "$JOBS" 2>&1 | tail -3 || true
     # nros-c emits the same header path under the 32-bit build's
     # OUT_DIR; capture sizes from the canonical install location.

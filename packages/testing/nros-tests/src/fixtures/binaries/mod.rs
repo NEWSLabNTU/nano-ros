@@ -1232,7 +1232,7 @@ pub fn build_nros_c_lib() -> TestResult<&'static Path> {
                 "nros-c",
                 "--release",
                 "--features",
-                "rmw-zenoh,platform-posix,ros-humble"
+                "cffi-zenoh-cffi,platform-posix,ros-humble"
             )
             .dir(&root)
             .stderr_to_stdout()
