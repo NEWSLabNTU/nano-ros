@@ -38,8 +38,13 @@ fn main() {
     // entry overhead. Subscription / service entries are strictly
     // smaller, so budget every slot at the action-client size.
     // Per entry: 3 × (4096 + 384) + 3 × rx_buf + 1536 ≈ 14976 + 3·rx_buf
+    //
+    // Embedded targets that never instantiate an `ActionClient` can
+    // override the derived size with `NROS_EXECUTOR_ARENA_SIZE`. A
+    // pub/sub-only workload only needs `3 × rx_buf + 512` per entry.
     let per_entry = 3 * 4480 + 3 * rx_buf_size + 1536;
-    let arena_size = (max_cbs * per_entry + 2048).max(8192);
+    let derived_arena = (max_cbs * per_entry + 2048).max(8192);
+    let arena_size = env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena);
 
     let contents = format!(
         "/// Maximum number of executor callback slots \

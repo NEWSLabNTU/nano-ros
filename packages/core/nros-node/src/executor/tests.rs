@@ -581,17 +581,20 @@ fn test_fifo_default_binding_preserved_alongside_edf() {
 #[test]
 fn test_arena_overflow() {
     let session = MockSession::new();
-    // Arena is ARENA_SIZE bytes (default ~10KB). Use large subscription buffers
-    // (4096 each) so we exhaust the arena before running out of entry slots.
-    // Each SubBufferedEntry with triple buffer (3×4096=12KB) is ~12.1KB. At least one
-    // fits in the arena but not many — arena should exhaust before 4 subscriptions.
+    // Arena is ARENA_SIZE bytes (derived to fit MAX_CBS worst-case ActionClient
+    // entries — see `nros-node/build.rs`). Use a subscription RX buffer larger
+    // than `ARENA_SIZE / MAX_CBS` so we exhaust the arena before running out
+    // of entry slots. Each SubBufferedEntry holds a triple buffer (3 × RX_BUF)
+    // plus a per-entry header, so an RX buffer of `ARENA_SIZE / 4` triggers
+    // overflow well before `MAX_CBS` registrations.
+    const OVERFLOW_RX_BUF: usize = crate::config::ARENA_SIZE / 4;
     let mut executor = Executor::from_session(session);
 
     let topics = ["/a", "/b", "/c", "/d"];
     let mut filled = 0;
     for topic in &topics {
-        let result =
-            executor.register_subscription_sized::<TestMsg, _, 4096>(topic, |_msg: &TestMsg| {});
+        let result = executor
+            .register_subscription_sized::<TestMsg, _, OVERFLOW_RX_BUF>(topic, |_msg: &TestMsg| {});
         if result.is_err() {
             break;
         }
@@ -602,12 +605,14 @@ fn test_arena_overflow() {
     assert!(filled >= 1, "Should fit at least 1 large subscription");
     assert!(
         filled < 4,
-        "Arena should overflow before 4 large subscriptions"
+        "Arena should overflow before 4 large subscriptions, got {filled}"
     );
 
     // Verify the next add fails with BufferTooSmall.
-    let result =
-        executor.register_subscription_sized::<TestMsg, _, 4096>("/overflow", |_msg: &TestMsg| {});
+    let result = executor.register_subscription_sized::<TestMsg, _, OVERFLOW_RX_BUF>(
+        "/overflow",
+        |_msg: &TestMsg| {},
+    );
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 

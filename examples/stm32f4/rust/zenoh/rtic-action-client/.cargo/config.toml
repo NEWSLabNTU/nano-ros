@@ -7,12 +7,13 @@ rustflags = [
     "link-arg=-Tlink.x",
 ]
 
-# STM32F429ZI has 192K SRAM. Action client static arenas (Phase 99.M
-# growth) overflow `.uninit` by ~1.5K with default buf sizes. Halving
-# DEFAULT_RX_BUF_SIZE 1024 → 512 saves ~7.5K (arena + 3 action bufs)
-# without functional impact for the small example messages
-# (`example_interfaces::action::Fibonacci`).
+# STM32F429ZI has 192K SRAM. The default arena (~74 KB at MAX_CBS=4)
+# overflows `.uninit`. The action client owns a single `ActionClient`
+# slot — cap `NROS_EXECUTOR_MAX_CBS` at 1 and size the arena to a
+# single action entry (`3 × 4480 + 3 × 512 + 1536 + 2048` ≈ 18 KB).
 [env]
+NROS_EXECUTOR_MAX_CBS = "1"
+NROS_EXECUTOR_ARENA_SIZE = "18432"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
 
 [patch.crates-io.nros-core]

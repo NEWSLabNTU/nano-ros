@@ -236,6 +236,12 @@ pub struct Executor {
 
 impl Executor {
     /// Create an executor from an already-opened session.
+    // The `arena` field intentionally lives inline so embedded callers can
+    // place an `Executor` in `static` storage without an allocator. The
+    // construction expression is large but is RVO'd into its destination
+    // by the optimiser; the clippy lint flags it because it can't prove
+    // the move-elision.
+    #[allow(clippy::large_stack_arrays)]
     pub fn from_session(session: session::ConcreteSession) -> Self {
         // SAFETY: MaybeUninit::uninit() is always safe; these bytes are only
         // accessed through properly-typed ptr::write / ptr::read via the
@@ -291,6 +297,8 @@ impl Executor {
     /// - `session_ptr` must point to a valid, initialized session that lives at
     ///   least as long as this executor.
     /// - The caller must not move or drop the session while the executor exists.
+    // See `from_session` for the lint rationale.
+    #[allow(clippy::large_stack_arrays)]
     pub unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
         Self {
             session: SessionStore::Borrowed(session_ptr),

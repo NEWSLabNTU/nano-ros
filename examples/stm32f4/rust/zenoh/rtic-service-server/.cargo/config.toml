@@ -7,6 +7,14 @@ rustflags = [
     "link-arg=-Tlink.x",
 ]
 
+# STM32F429ZI has 192K SRAM. Default arena (~74 KB) is sized for
+# the worst-case `ActionClient` entry; the service server owns one
+# service callback, so pin it to the small service footprint.
+[env]
+NROS_EXECUTOR_MAX_CBS = "1"
+NROS_EXECUTOR_ARENA_SIZE = "8192"
+NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
+
 [patch.crates-io.nros-core]
 path = "../../../../../packages/core/nros-core"
 

@@ -7,6 +7,15 @@ rustflags = [
     "link-arg=-Tlink.x",
 ]
 
+# STM32F429ZI has 192K SRAM. Default arena (~74 KB) is sized for
+# the worst-case `ActionClient` entry; this talker only owns one
+# publisher and never registers callbacks, so pin the arena to the
+# 4 KB floor.
+[env]
+NROS_EXECUTOR_MAX_CBS = "1"
+NROS_EXECUTOR_ARENA_SIZE = "4096"
+NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
+
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"
 

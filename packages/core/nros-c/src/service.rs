@@ -410,14 +410,9 @@ pub unsafe extern "C" fn nros_service_init_polling(
 /// POLLING state. Two `uint64_t` slots are enough to hold the
 /// `(fn_ptr, ctx)` pair plus 8-byte alignment.
 #[repr(C)]
+#[derive(Default)]
 pub struct nros_wake_state_t {
     pub _opaque: [u64; 2],
-}
-
-impl Default for nros_wake_state_t {
-    fn default() -> Self {
-        Self { _opaque: [0u64; 2] }
-    }
 }
 
 /// Phase 122.3.c.6.e — zero-initialise a wake-state slot.

@@ -211,15 +211,6 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     NROS_RET_OK
 }
 
-/// Finalize a subscription.
-///
-/// # Parameters
-/// * `subscription` - Pointer to an initialized subscription
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if subscription is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
 // ============================================================================
 // Phase 122.3.b — Layer-1 primitive entry points (caller polls)
 // ============================================================================

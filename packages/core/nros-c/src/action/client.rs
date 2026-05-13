@@ -128,6 +128,10 @@ pub struct nros_action_client_t {
 }
 
 impl Default for nros_action_client_t {
+    // The default `_opaque` array sizes to the probed ActionClient size,
+    // which exceeds clippy's 16 KB stack-array threshold. It is RVO'd
+    // into its destination by the optimiser.
+    #[allow(clippy::large_stack_arrays)]
     fn default() -> Self {
         Self {
             state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
@@ -869,6 +873,10 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
 }
 
 /// Finalize an action client.
+// The reset path zeroes the probed-size `_opaque` slot, which exceeds
+// clippy's 16 KB stack-array threshold. The assignment writes directly
+// through the existing `*mut` — no transient stack copy in release.
+#[allow(clippy::large_stack_arrays)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client_t) -> nros_ret_t {
     validate_not_null!(client);
