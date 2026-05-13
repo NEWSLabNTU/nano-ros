@@ -232,6 +232,10 @@ typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
  */
 typedef void (*nros_cpp_timer_callback_t)(void *context);
 
+typedef struct nros_cpp_wake_state_t {
+  uint64_t _opaque[2];
+} nros_cpp_wake_state_t;
+
 /**
  * Phase 115.D — C++-side mirror of
  * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
@@ -1152,6 +1156,67 @@ nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8
  * `handle` must be a valid action client storage.
  */
 nros_cpp_ret_t nros_cpp_action_client_poll(void *handle);
+
+struct nros_cpp_wake_state_t nros_cpp_wake_state_get_zero_initialized(void);
+
+/**
+ * Phase 122.3.c.6.e — wake on subscription rx.
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_wake_callback(void *storage,
+                                                       struct nros_cpp_wake_state_t *state,
+                                                       void (*cb)(void*),
+                                                       void *ctx);
+
+/**
+ * Phase 122.3.c.6.e — wake on service-server rx.
+ */
+nros_cpp_ret_t nros_cpp_service_server_set_wake_callback(void *storage,
+                                                         struct nros_cpp_wake_state_t *state,
+                                                         void (*cb)(void*),
+                                                         void *ctx);
+
+/**
+ * Phase 122.3.c.6.e — wake on service-client reply.
+ */
+nros_cpp_ret_t nros_cpp_service_client_set_wake_callback(void *storage,
+                                                         struct nros_cpp_wake_state_t *state,
+                                                         void (*cb)(void*),
+                                                         void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_server_set_goal_wake_callback(void *storage,
+                                                             struct nros_cpp_wake_state_t *state,
+                                                             void (*cb)(void*),
+                                                             void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_server_set_cancel_wake_callback(void *storage,
+                                                               struct nros_cpp_wake_state_t *state,
+                                                               void (*cb)(void*),
+                                                               void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_server_set_get_result_wake_callback(void *storage,
+                                                                   struct nros_cpp_wake_state_t *state,
+                                                                   void (*cb)(void*),
+                                                                   void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_client_set_goal_response_wake_callback(void *storage,
+                                                                      struct nros_cpp_wake_state_t *state,
+                                                                      void (*cb)(void*),
+                                                                      void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_client_set_cancel_response_wake_callback(void *storage,
+                                                                        struct nros_cpp_wake_state_t *state,
+                                                                        void (*cb)(void*),
+                                                                        void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_client_set_result_wake_callback(void *storage,
+                                                               struct nros_cpp_wake_state_t *state,
+                                                               void (*cb)(void*),
+                                                               void *ctx);
+
+nros_cpp_ret_t nros_cpp_action_client_set_feedback_wake_callback(void *storage,
+                                                                 struct nros_cpp_wake_state_t *state,
+                                                                 void (*cb)(void*),
+                                                                 void *ctx);
 
 /**
  * Phase 122.3.d — initialize an L1 polling-mode action server.

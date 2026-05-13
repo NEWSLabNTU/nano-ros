@@ -1395,6 +1395,14 @@ pub trait ServiceServerTrait {
         true
     }
 
+    /// Phase 122.3.c.6.e — register a `Waker` for event-driven
+    /// service servers. Mirrors the matching method on
+    /// `SubscriberTrait` / `ServiceClientTrait`. Backends that
+    /// surface incoming-request notifications wake `waker` when
+    /// `has_request()` flips true. Default: no-op (backends without
+    /// wake support ignore — caller falls back to polling).
+    fn register_waker(&self, _waker: &core::task::Waker) {}
+
     /// Try to receive a service request into `buf` (non-blocking).
     ///
     /// On success returns a `ServiceRequest` that borrows from

@@ -60,6 +60,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod c_waker;
 pub mod config;
 pub mod executor;
 pub mod lifecycle;

@@ -1418,6 +1418,193 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
 }
 
 // ============================================================================
+// Phase 122.3.c.6.e — C-ABI wake-state slot. Same layout as
+// `nros_c::service::nros_wake_state_t` (16 bytes / 2 u64). Caller
+// declares one per (entity, channel) pair.
+// ============================================================================
+
+#[repr(C)]
+pub struct nros_cpp_wake_state_t {
+    pub _opaque: [u64; 2],
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_wake_state_get_zero_initialized() -> nros_cpp_wake_state_t {
+    nros_cpp_wake_state_t { _opaque: [0u64; 2] }
+}
+
+unsafe fn install_waker_on(
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+    register: impl FnOnce(&core::task::Waker),
+) -> nros_cpp_ret_t {
+    if state.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+    unsafe {
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        register(&waker);
+    }
+    NROS_CPP_RET_OK
+}
+
+/// Phase 122.3.c.6.e — wake on subscription rx.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_rmw::Subscriber;
+    let sub = unsafe { &*(storage as *const nros::internals::RmwSubscriber) };
+    unsafe { install_waker_on(state, cb, ctx, |w| sub.register_waker(w)) }
+}
+
+/// Phase 122.3.c.6.e — wake on service-server rx.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_server_set_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_rmw::ServiceServerTrait;
+    let srv = unsafe { &*(storage as *const nros::internals::RmwServiceServer) };
+    unsafe { install_waker_on(state, cb, ctx, |w| srv.register_waker(w)) }
+}
+
+/// Phase 122.3.c.6.e — wake on service-client reply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_set_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_rmw::ServiceClientTrait;
+    let cli = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
+    unsafe { install_waker_on(state, cb, ctx, |w| cli.register_waker(w)) }
+}
+
+// Per-channel wake callbacks for L1 polling action server / client.
+// `storage` is the POLLING `ActionServerCore` / `ActionClientCore`
+// inline storage (i.e. what `_init_polling` wrote).
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_set_goal_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionServerCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_goal_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_set_cancel_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionServerCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_cancel_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_set_get_result_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionServerCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_get_result_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_goal_response_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionClientCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_goal_response_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_cancel_response_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionClientCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_cancel_response_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_result_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionClientCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_result_waker(w)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_feedback_wake_callback(
+    storage: *mut c_void,
+    state: *mut nros_cpp_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &*(storage as *const PollingActionClientCore) };
+    unsafe { install_waker_on(state, cb, ctx, |w| core.register_feedback_waker(w)) }
+}
+
+// ============================================================================
 // Phase 122.3.d — Layer-1 polling-mode FFI for action server / client
 // ============================================================================
 //

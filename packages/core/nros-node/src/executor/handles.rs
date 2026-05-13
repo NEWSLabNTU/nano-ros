@@ -1225,6 +1225,15 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
     }
 
+    /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
+    /// message arrives. Mirror of the existing service-server /
+    /// service-client wake plumbing. No-op on backends that don't
+    /// support waking — caller falls back to polling.
+    pub fn register_waker(&self, waker: &core::task::Waker) {
+        use nros_rmw::Subscriber;
+        self.handle.register_waker(waker);
+    }
+
     /// Phase 108.A — `true` if the active backend can fire the named
     /// event for this raw subscription.
     #[cfg(feature = "alloc")]
@@ -1427,6 +1436,15 @@ pub struct RawServiceServer<
 }
 
 impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP_BUF> {
+    /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
+    /// request arrives. Mirror of the existing subscriber /
+    /// service-client wake plumbing. No-op on backends that don't
+    /// support waking — caller falls back to polling.
+    pub fn register_waker(&self, waker: &core::task::Waker) {
+        use nros_rmw::ServiceServerTrait;
+        self.handle.register_waker(waker);
+    }
+
     /// Construct a [`RawServiceServer`] from a backend-allocated
     /// `RmwServiceServer` handle. Public so external crates and the
     /// C / C++ FFI shims can wrap a handle obtained directly from
@@ -1483,6 +1501,13 @@ pub struct RawServiceClient<
 }
 
 impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REPLY_BUF> {
+    /// Phase 122.3.c.6.e — register a `Waker` that fires when the
+    /// reply to a previously-sent request lands.
+    pub fn register_waker(&self, waker: &core::task::Waker) {
+        use nros_rmw::ServiceClientTrait;
+        self.handle.register_waker(waker);
+    }
+
     /// Construct from a backend-allocated handle. Same audience as
     /// [`RawServiceServer::new`].
     pub fn new(handle: session::RmwServiceClient) -> Self {

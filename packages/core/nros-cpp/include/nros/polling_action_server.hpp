@@ -156,6 +156,37 @@ template <typename A> class PollingActionServer {
             storage_, sequence_number, return_code, accepted, accepted_count));
     }
 
+    /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per
+    /// (channel) pair; declare next to the server, pass into
+    /// `set_*_wake_callback`. Must outlive the server.
+    struct WakeState {
+        alignas(8) uint64_t _opaque[2] = {0, 0};
+    };
+
+    /// Register a C callback fired when a goal request arrives.
+    Result set_goal_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_server_set_goal_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
+    /// Register a C callback fired when a cancel-goal request arrives.
+    Result set_cancel_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_server_set_cancel_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
+    /// Register a C callback fired when a get_result query arrives.
+    Result set_get_result_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_server_set_get_result_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
     /// Serve one pending get_result query (call from spin loop).
     /// `default_result` is returned to clients querying goals that
     /// haven't been completed yet.

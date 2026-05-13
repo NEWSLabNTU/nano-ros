@@ -1276,6 +1276,95 @@ pub unsafe extern "C" fn nros_action_client_try_recv_cancel_response_raw(
     }
 }
 
+/// Phase 122.3.c.6.e — register a C wake callback on the
+/// send_goal-reply channel of an L1 polling-mode action client.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_set_goal_response_wake_callback(
+    client: *mut nros_action_client_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::GoalResponse)
+}
+
+/// Phase 122.3.c.6.e — wake on the cancel-reply channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_set_cancel_response_wake_callback(
+    client: *mut nros_action_client_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::CancelResponse)
+}
+
+/// Phase 122.3.c.6.e — wake on the get_result-reply channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_set_result_wake_callback(
+    client: *mut nros_action_client_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::Result)
+}
+
+/// Phase 122.3.c.6.e — wake on the feedback channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_set_feedback_wake_callback(
+    client: *mut nros_action_client_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::Feedback)
+}
+
+enum ClientChannel {
+    GoalResponse,
+    CancelResponse,
+    Result,
+    Feedback,
+}
+
+unsafe fn set_action_client_wake_callback(
+    client: *mut nros_action_client_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+    channel: ClientChannel,
+) -> nros_ret_t {
+    if client.is_null() || state.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        match channel {
+            ClientChannel::GoalResponse => core.register_goal_response_waker(&waker),
+            ClientChannel::CancelResponse => core.register_cancel_response_waker(&waker),
+            ClientChannel::Result => core.register_result_waker(&waker),
+            ClientChannel::Feedback => core.register_feedback_waker(&waker),
+        }
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (state, cb, ctx, channel);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.c.6.b — L1 polling: try to receive feedback for any
 /// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
 /// `goal_id_out` filled), negative on error.

@@ -42,6 +42,9 @@ pub(super) struct ServiceBuffer {
     pub(super) keyexpr_len: AtomicUsize,
     /// Sequence number (counter)
     pub(super) sequence_number: AtomicSeqCounter,
+    /// Phase 122.3.c.6.e — waker registered by event-driven service
+    /// servers. Woken by `queryable_callback` after a request lands.
+    pub(super) waker: AtomicWaker,
 }
 
 impl ServiceBuffer {
@@ -54,6 +57,7 @@ impl ServiceBuffer {
             len: AtomicUsize::new(0),
             keyexpr_len: AtomicUsize::new(0),
             sequence_number: AtomicSeqCounter::new(0),
+            waker: AtomicWaker::new(),
         }
     }
 }
@@ -184,6 +188,10 @@ extern "C" fn queryable_callback(
         buffer.has_request.store(true, Ordering::Release);
     }
 
+    // Phase 122.3.c.6.e — wake any task that registered a Waker on
+    // this server (event-driven callers).
+    buffer.waker.wake();
+
     // Wake the executor spin loop (if waiting)
     #[cfg(feature = "std")]
     signal_executor_wake();
@@ -267,6 +275,10 @@ impl ServiceServerTrait for ZenohServiceServer {
 
     fn has_request(&self) -> bool {
         self.buf.get().has_request.load(Ordering::Acquire)
+    }
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        self.buf.get().waker.register(waker);
     }
 
     fn try_recv_request<'a>(

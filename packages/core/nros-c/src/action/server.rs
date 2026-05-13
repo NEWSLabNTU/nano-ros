@@ -1220,6 +1220,88 @@ pub unsafe extern "C" fn nros_action_server_try_handle_get_result_raw(
     }
 }
 
+/// Phase 122.3.c.6.e — register a C wake callback on the
+/// send_goal channel of an L1 polling-mode action server. `state`
+/// is a caller-owned `nros_wake_state_t` that must outlive the
+/// server and not move.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_set_goal_wake_callback(
+    server: *mut nros_action_server_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_server_wake_callback(server, state, cb, ctx, ChannelKind::Goal)
+}
+
+/// Phase 122.3.c.6.e — register a C wake callback on the
+/// cancel_goal channel of an L1 polling-mode action server. The
+/// primary use case from the .c.6.e design discussion — RTOS /
+/// event-driven cancel handling.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_set_cancel_wake_callback(
+    server: *mut nros_action_server_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_server_wake_callback(server, state, cb, ctx, ChannelKind::Cancel)
+}
+
+/// Phase 122.3.c.6.e — register a C wake callback on the
+/// get_result channel of an L1 polling-mode action server.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_set_get_result_wake_callback(
+    server: *mut nros_action_server_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    set_action_server_wake_callback(server, state, cb, ctx, ChannelKind::GetResult)
+}
+
+enum ChannelKind {
+    Goal,
+    Cancel,
+    GetResult,
+}
+
+unsafe fn set_action_server_wake_callback(
+    server: *mut nros_action_server_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+    kind: ChannelKind,
+) -> nros_ret_t {
+    if server.is_null() || state.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        match kind {
+            ChannelKind::Goal => core.register_goal_waker(&waker),
+            ChannelKind::Cancel => core.register_cancel_waker(&waker),
+            ChannelKind::GetResult => core.register_get_result_waker(&waker),
+        }
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (state, cb, ctx, kind);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.c.6.b — L1 polling: get the number of active goals.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_active_goal_count_raw(

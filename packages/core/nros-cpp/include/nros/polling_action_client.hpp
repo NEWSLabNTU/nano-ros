@@ -156,6 +156,41 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
+    /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per
+    /// (channel) pair; declare next to the client, pass into
+    /// `set_*_wake_callback`. Must outlive the client.
+    struct WakeState {
+        alignas(8) uint64_t _opaque[2] = {0, 0};
+    };
+
+    Result set_goal_response_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_set_goal_response_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
+    Result set_cancel_response_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_set_cancel_response_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
+    Result set_result_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_set_result_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
+    Result set_feedback_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_set_feedback_wake_callback(
+            storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
+            reinterpret_cast<void(*)(void*)>(cb), ctx));
+    }
+
   private:
     friend class Node;
 

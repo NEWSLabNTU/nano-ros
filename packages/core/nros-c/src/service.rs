@@ -403,6 +403,124 @@ pub unsafe extern "C" fn nros_service_init_polling(
     NROS_RET_OK
 }
 
+/// Phase 122.3.c.6.e — C-ABI wake-state slot. Caller declares one
+/// per (entity, channel) pair next to the entity, passes a pointer
+/// to it into the matching `nros_*_set_wake_callback` and keeps it
+/// alive at the same address for as long as the entity is in
+/// POLLING state. Two `uint64_t` slots are enough to hold the
+/// `(fn_ptr, ctx)` pair plus 8-byte alignment.
+#[repr(C)]
+pub struct nros_wake_state_t {
+    pub _opaque: [u64; 2],
+}
+
+impl Default for nros_wake_state_t {
+    fn default() -> Self {
+        Self { _opaque: [0u64; 2] }
+    }
+}
+
+/// Phase 122.3.c.6.e — zero-initialise a wake-state slot.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_wake_state_get_zero_initialized() -> nros_wake_state_t {
+    nros_wake_state_t::default()
+}
+
+/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// polling-mode service server. `state` must point to a
+/// `nros_wake_state_t` allocated by the caller; it must outlive
+/// the service (typically declared inline next to the
+/// `nros_service_t`) and must not move after this call.
+/// Pass `cb = NULL` to disable. The backend wakes the callback
+/// when a new request arrives.
+///
+/// # Safety
+/// All pointers valid; `state` storage stable for the entity's
+/// lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_set_wake_callback(
+    service: *mut nros_service_t,
+    state: *mut nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    if service.is_null() || state.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let service_mut = &mut *service;
+    if service_mut.state != nros_service_state_t::NROS_SERVICE_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+        // Re-initialise via volatile write — caller may pass a
+        // zero-initialised state (first call) or a state already
+        // holding an older callback (re-registration). Either way,
+        // overwriting both fields is safe before the new Waker is
+        // built.
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        let raw = &*(service_mut._opaque.as_ptr()
+            as *const nros_node::RawServiceServer<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        raw.register_waker(&waker);
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (state, cb, ctx);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// polling-mode service client. Wakes when a reply lands. See
+/// `nros_service_set_wake_callback` for the lifetime contract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_set_wake_callback(
+    client: *mut nros_client_t,
+    state: *mut nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    if client.is_null() || state.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let client_mut = &mut *client;
+    if client_mut.state != nros_client_state_t::NROS_CLIENT_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        let raw = &*(client_mut._opaque.as_ptr()
+            as *const nros_node::RawServiceClient<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        raw.register_waker(&waker);
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (state, cb, ctx);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.c.4 — non-blocking poll for a pending request on an L1
 /// polling-mode service. Writes the request bytes into the caller's
 /// `buf` and the matching `sequence_number` (required for reply).

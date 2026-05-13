@@ -382,6 +382,51 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
     NROS_RET_OK
 }
 
+/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// polling-mode subscription. `state` is a caller-owned
+/// `nros_wake_state_t` (declared next to the subscription) that
+/// must outlive the subscription and not move. Pass `cb = NULL`
+/// to disable. The backend wakes the callback when a new message
+/// arrives.
+///
+/// # Safety
+/// All pointers valid; `state` storage stable for the
+/// subscription's lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_set_wake_callback(
+    subscription: *mut nros_subscription_t,
+    state: *mut crate::service::nros_wake_state_t,
+    cb: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_ret_t {
+    if subscription.is_null() || state.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let subscription_mut = &mut *subscription;
+    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let state_ptr = state as *mut nros_node::c_waker::CWakeState;
+        core::ptr::write(
+            state_ptr,
+            nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
+        );
+        let waker = nros_node::c_waker::make_waker(state_ptr);
+        let raw = &*(subscription_mut._opaque.as_ptr()
+            as *const nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
+        raw.register_waker(&waker);
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (state, cb, ctx);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.b — non-blocking poll on an L1 polling-mode
 /// subscription. Returns the number of bytes received on success
 /// (may be 0 if no data available), or a negative `nros_ret_t` on

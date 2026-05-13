@@ -287,32 +287,62 @@ Sub-items:
          &seq, &current_status)` and
          `::send_cancel_reply(seq, return_code, accepted,
          accepted_count)` methods.
-  - [ ] **122.3.c.6.e — event-driven cancel path (waker /
-    callback).** Polling is the right primitive for tight
-    L1 loops and the C FFI surface, but RTOS / event-driven
-    callers want the kernel to wake them when a cancel
-    request lands — not to spin a poll. Plan:
-    - Add `ServiceServerTrait::register_waker(&Waker)`
-      (mirrors the existing methods on
-      `SubscriberTrait` / `ServiceClientTrait`; default no-op
-      so non-supporting backends keep compiling).
-    - Implement on the zenoh-pico / cyclonedds / XRCE
-      backends — same wake-on-rx primitive each already uses
-      for subscribers.
-    - Rust convenience: extend
-      `Executor::register_action_server` so the executor's
-      spin loop wakes only when the cancel channel signals,
-      and surface a typed `on_cancel(closure)` hook.
-    - C / C++ convenience: existing L2 callback path
-      (`nros_executor_register_action_server` +
-      `nros_cancel_callback_t` /
-      `nros_cpp_action_server_set_callbacks`) already gives
-      an "RMW wakes me" feel via the executor's per-spin
-      poll; .c.6.e gets that loop off the polling treadmill
-      by waking on actual RMW events. RMW exposes the
-      primitive; the user library (Rust closure, C function
-      pointer, C++ method override) wraps it. Defer until a
-      real RTOS user surfaces measurable wake-latency need.
+  - [x] **122.3.c.6.e — event-driven path (waker / wake
+    callback).** Polling is fine for tight L1 loops; RTOS
+    and embassy-style callers want the kernel to wake them
+    when data lands. The C ABI surface mirrors the existing
+    subscriber / service-client wake plumbing.
+    1. **nros-rmw trait.**
+       `ServiceServerTrait::register_waker(&Waker)` —
+       default no-op; non-supporting backends keep
+       compiling. Mirrors the existing methods on
+       `SubscriberTrait` / `ServiceClientTrait`.
+    2. **zenoh-pico backend.**
+       `ServiceBuffer` grew a per-buffer `AtomicWaker`;
+       `queryable_callback` calls `buffer.waker.wake()`
+       after flipping `has_request`.
+       `ZenohServiceServer::register_waker` forwards.
+    3. **nros-node convenience.** Methods on the raw
+       handles route to the underlying trait method:
+       `RawSubscription::register_waker`,
+       `RawServiceServer::register_waker`,
+       `RawServiceClient::register_waker`,
+       `ActionServerCore::register_{goal,cancel,get_result}_waker`,
+       `ActionClientCore::register_{goal_response,cancel_response,result,feedback}_waker`.
+    4. **C-ABI Waker bridge.** New module
+       `nros_node::c_waker` exposes a `CWakeState { fn_ptr,
+       ctx }` POD struct and `make_waker(*CWakeState)`. The
+       returned `Waker` calls `fn_ptr(ctx)` on wake.
+       Caller owns the state's stable address (lifetime
+       contract documented).
+    5. **C FFI surface.** `nros_wake_state_t` POD struct
+       (`[u64; 2]`) lives in nros-c. New entry points:
+       - `nros_subscription_set_wake_callback(sub, state,
+         cb, ctx)`;
+       - `nros_service_set_wake_callback(srv, state, cb,
+         ctx)`;
+       - `nros_client_set_wake_callback(cli, state, cb,
+         ctx)`;
+       - `nros_action_server_set_{goal,cancel,get_result}_wake_callback`;
+       - `nros_action_client_set_{goal_response,cancel_response,result,feedback}_wake_callback`.
+       Caller declares one `nros_wake_state_t` per
+       (entity, channel) pair next to the entity and
+       passes it in.
+    6. **nros-cpp FFI + class methods.** Mirror set:
+       `nros_cpp_wake_state_t` + per-entity / per-channel
+       `nros_cpp_*_set_*_wake_callback`. The C++ class
+       templates `PollingActionServer<A>` /
+       `PollingActionClient<A>` expose a nested
+       `WakeState` POD and typed
+       `set_{goal,cancel,get_result,goal_response,
+       cancel_response,result,feedback}_wake_callback`
+       methods, so C++ users get the wake hook through the
+       same surface they use for try_recv_*.
+    Other backends (cyclonedds, dust-dds, XRCE) inherit the
+    default no-op `register_waker` for ServiceServer; their
+    own subscriber / service-client wake-plumbing already
+    works. Future: wire those backends' wake paths through
+    once a user surfaces a need.
   - [x] **122.3.c.6.c — cancel-RPC reply receive (client
     side).** Landed: `ActionClientCore::try_recv_cancel_reply`
     in `nros-node/src/executor/action_core.rs`. Symmetric with
