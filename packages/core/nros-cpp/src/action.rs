@@ -1416,3 +1416,621 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
 
     NROS_CPP_RET_OK
 }
+
+// ============================================================================
+// Phase 122.3.d — Layer-1 polling-mode FFI for action server / client
+// ============================================================================
+//
+// Mirrors the nros-c L1 polling surface (122.3.c.6.b) for callers
+// that drive their own scheduler. `_init_polling` writes the raw
+// `ActionServerCore` / `ActionClientCore` into caller-provided
+// inline storage; raw methods delegate to the core. Storage size:
+// `NROS_CPP_RAW_ACTION_{SERVER,CLIENT}_OPAQUE_U64S` (× 8 bytes).
+//
+// The existing L2 callback path (`nros_cpp_action_{server,client}_create`
+// + executor registration) stays — callers pick at construction time.
+
+type PollingActionServerCore =
+    nros_node::ActionServerCore<DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, 4>;
+
+type PollingActionClientCore =
+    nros_node::ActionClientCore<DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE>;
+
+// CDR framing bytes prefixing the goal payload in send_goal requests
+// (CDR encapsulation header + GoalId sequence length prefix + UUID).
+const POLLING_GOAL_REQUEST_FRAMING_LEN: usize = CDR_HEADER_LEN + 4 + 16;
+
+/// Phase 122.3.d — initialize an L1 polling-mode action server.
+///
+/// Builds the 5 channels via the node's session and writes the
+/// `ActionServerCore` into `storage` (must be at least
+/// `NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S × 8` bytes,
+/// 8-byte-aligned).
+///
+/// # Safety
+/// All pointers valid; `action_name` / `type_name` / `type_hash`
+/// are valid null-terminated strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
+    node: *const nros_cpp_node_t,
+    action_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || action_name.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || storage.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let action_str = match unsafe { cstr_to_str(action_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let node_name_str = core::str::from_utf8(&node_ref.name)
+        .ok()
+        .and_then(|s| s.split('\0').next());
+    let ns_str = core::str::from_utf8(&node_ref.namespace)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .unwrap_or("/");
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+    let action_info = ActionInfo::new(action_str, type_str, hash_str).with_domain(ctx.domain_id);
+    let session = ctx.executor.session_mut();
+
+    fn with_node<'a>(info: ServiceInfo<'a>, node_name: Option<&'a str>) -> ServiceInfo<'a> {
+        match node_name {
+            Some(n) if !n.is_empty() => info.with_node_name(n),
+            _ => info,
+        }
+    }
+
+    let send_goal_keyexpr: nros::heapless::String<256> = action_info.send_goal_key();
+    let send_goal_info = with_node(
+        ServiceInfo::new(&send_goal_keyexpr, type_str, hash_str)
+            .with_domain(ctx.domain_id)
+            .with_namespace(ns_str),
+        node_name_str,
+    );
+    let send_goal_server = match session.create_service_server(&send_goal_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let cancel_goal_keyexpr: nros::heapless::String<256> = action_info.cancel_goal_key();
+    let cancel_goal_info = with_node(
+        ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            hash_str,
+        )
+        .with_domain(ctx.domain_id)
+        .with_namespace(ns_str),
+        node_name_str,
+    );
+    let cancel_goal_server = match session.create_service_server(&cancel_goal_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
+    let get_result_info = with_node(
+        ServiceInfo::new(&get_result_keyexpr, type_str, hash_str)
+            .with_domain(ctx.domain_id)
+            .with_namespace(ns_str),
+        node_name_str,
+    );
+    let get_result_server = match session.create_service_server(&get_result_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
+    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)
+        .with_domain(ctx.domain_id)
+        .with_namespace(ns_str);
+    if let Some(n) = node_name_str
+        && !n.is_empty()
+    {
+        feedback_topic = feedback_topic.with_node_name(n);
+    }
+    let feedback_publisher =
+        match session.create_publisher(&feedback_topic, QosSettings::BEST_EFFORT) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
+
+    let status_keyexpr: nros::heapless::String<256> = action_info.status_key();
+    let mut status_topic = TopicInfo::new(
+        &status_keyexpr,
+        "action_msgs::msg::dds_::GoalStatusArray_",
+        hash_str,
+    )
+    .with_domain(ctx.domain_id)
+    .with_namespace(ns_str);
+    if let Some(n) = node_name_str
+        && !n.is_empty()
+    {
+        status_topic = status_topic.with_node_name(n);
+    }
+    let status_publisher = match session.create_publisher(&status_topic, QosSettings::BEST_EFFORT) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let core = PollingActionServerCore::from_channels(
+        send_goal_server,
+        cancel_goal_server,
+        get_result_server,
+        feedback_publisher,
+        status_publisher,
+    );
+    unsafe {
+        core::ptr::write(storage as *mut PollingActionServerCore, core);
+    }
+    NROS_CPP_RET_OK
+}
+
+/// Phase 122.3.d — L1 polling: try to receive a goal request.
+///
+/// On success copies the goal payload (CDR-framing-stripped) into
+/// `buf`, fills `goal_id_out` (16 bytes) + `sequence_number_out`,
+/// returns bytes copied. `0` means no request pending; negative on
+/// error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal_request_raw(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+    sequence_number_out: *mut i64,
+) -> i32 {
+    if storage.is_null()
+        || (buf.is_null() && buf_len != 0)
+        || goal_id_out.is_null()
+        || sequence_number_out.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    match core.try_recv_goal_request() {
+        Ok(Some(req)) => {
+            let goal_buf = core.goal_buffer();
+            let payload_offset = POLLING_GOAL_REQUEST_FRAMING_LEN;
+            if payload_offset + req.data_len > goal_buf.len() {
+                return NROS_CPP_RET_ERROR;
+            }
+            let copy_len = req.data_len.min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    goal_buf.as_ptr().add(payload_offset),
+                    buf,
+                    copy_len,
+                );
+                (*goal_id_out).copy_from_slice(&req.goal_id.uuid);
+                *sequence_number_out = req.sequence_number;
+            }
+            copy_len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: accept a goal received via
+/// `try_recv_goal_request_raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
+    storage: *mut c_void,
+    goal_id: *const [u8; 16],
+    sequence_number: i64,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    let id = GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    match core.accept_goal(id, sequence_number) {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: reject a goal.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_reject_goal_raw(
+    storage: *mut c_void,
+    sequence_number: i64,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    match core.reject_goal(sequence_number) {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: publish feedback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback_raw(
+    storage: *mut c_void,
+    goal_id: *const [u8; 16],
+    feedback_cdr: *const u8,
+    feedback_len: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id.is_null() || (feedback_cdr.is_null() && feedback_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    let id = GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let slice = unsafe { core::slice::from_raw_parts(feedback_cdr, feedback_len) };
+    match core.publish_feedback_raw(&id, slice) {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: mark a goal terminal.
+/// `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
+/// the `nros_core::GoalStatus` discriminants).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
+    storage: *mut c_void,
+    goal_id: *const [u8; 16],
+    status_code: i32,
+    result_cdr: *const u8,
+    result_len: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id.is_null() || (result_cdr.is_null() && result_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    let id = GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let slice = unsafe { core::slice::from_raw_parts(result_cdr, result_len) };
+    let status = match status_code {
+        4 => nros::GoalStatus::Succeeded,
+        5 => nros::GoalStatus::Canceled,
+        6 => nros::GoalStatus::Aborted,
+        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    core.complete_goal_raw(&id, status, slice);
+    NROS_CPP_RET_OK
+}
+
+/// Phase 122.3.d — L1 polling: serve a pending get_result query.
+/// Returns `1` if served, `0` if none pending, negative on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_try_handle_get_result_raw(
+    storage: *mut c_void,
+    default_result_cdr: *const u8,
+    default_result_len: usize,
+) -> i32 {
+    if storage.is_null() || (default_result_cdr.is_null() && default_result_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    let slice = unsafe { core::slice::from_raw_parts(default_result_cdr, default_result_len) };
+    match core.try_handle_get_result_raw(slice) {
+        Ok(Some(_)) => 1,
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: drop the inline `ActionServerCore`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_destroy_polling(
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_OK;
+    }
+    unsafe {
+        core::ptr::drop_in_place(storage as *mut PollingActionServerCore);
+    }
+    NROS_CPP_RET_OK
+}
+
+// ----------------------------------------------------------------------------
+// Action client L1 polling
+// ----------------------------------------------------------------------------
+
+/// Phase 122.3.d — initialize an L1 polling-mode action client.
+///
+/// Builds the 3 service clients + feedback subscriber via the
+/// session and writes the `ActionClientCore` into `storage`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
+    node: *const nros_cpp_node_t,
+    action_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || action_name.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || storage.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let action_str = match unsafe { cstr_to_str(action_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let node_name_str = core::str::from_utf8(&node_ref.name)
+        .ok()
+        .and_then(|s| s.split('\0').next());
+    let ns_str = core::str::from_utf8(&node_ref.namespace)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .unwrap_or("/");
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+    let action_info = ActionInfo::new(action_str, type_str, hash_str).with_domain(ctx.domain_id);
+    let session = ctx.executor.session_mut();
+
+    fn with_node<'a>(info: ServiceInfo<'a>, node_name: Option<&'a str>) -> ServiceInfo<'a> {
+        match node_name {
+            Some(n) if !n.is_empty() => info.with_node_name(n),
+            _ => info,
+        }
+    }
+
+    let send_goal_keyexpr: nros::heapless::String<256> = action_info.send_goal_key();
+    let send_goal_info = with_node(
+        ServiceInfo::new(&send_goal_keyexpr, type_str, hash_str)
+            .with_domain(ctx.domain_id)
+            .with_namespace(ns_str),
+        node_name_str,
+    );
+    let send_goal_client = match session.create_service_client(&send_goal_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let cancel_goal_keyexpr: nros::heapless::String<256> = action_info.cancel_goal_key();
+    let cancel_goal_info = with_node(
+        ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            hash_str,
+        )
+        .with_domain(ctx.domain_id)
+        .with_namespace(ns_str),
+        node_name_str,
+    );
+    let cancel_goal_client = match session.create_service_client(&cancel_goal_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
+    let get_result_info = with_node(
+        ServiceInfo::new(&get_result_keyexpr, type_str, hash_str)
+            .with_domain(ctx.domain_id)
+            .with_namespace(ns_str),
+        node_name_str,
+    );
+    let get_result_client = match session.create_service_client(&get_result_info) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    };
+
+    let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
+    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)
+        .with_domain(ctx.domain_id)
+        .with_namespace(ns_str);
+    if let Some(n) = node_name_str
+        && !n.is_empty()
+    {
+        feedback_topic = feedback_topic.with_node_name(n);
+    }
+    let feedback_subscriber =
+        match session.create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
+
+    let core = PollingActionClientCore::new(
+        send_goal_client,
+        cancel_goal_client,
+        get_result_client,
+        feedback_subscriber,
+    );
+    unsafe {
+        core::ptr::write(storage as *mut PollingActionClientCore, core);
+    }
+    NROS_CPP_RET_OK
+}
+
+/// Phase 122.3.d — L1 polling: send a goal. Writes 16-byte UUID
+/// into `goal_id_out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_send_goal_raw(
+    storage: *mut c_void,
+    goal_cdr: *const u8,
+    goal_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id_out.is_null() || (goal_cdr.is_null() && goal_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    let slice = unsafe { core::slice::from_raw_parts(goal_cdr, goal_len) };
+    match core.send_goal_raw(slice) {
+        Ok(id) => {
+            unsafe {
+                (*goal_id_out).copy_from_slice(&id.uuid);
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: try receiving the send_goal RPC reply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    match core.try_recv_send_goal_reply() {
+        Ok(Some(len)) => {
+            let copy_len = len.min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+            }
+            copy_len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: send a get_result request.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_send_get_result_request_raw(
+    storage: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    let id = GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    match core.send_get_result_request(&id) {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: try receiving the get_result reply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    match core.try_recv_get_result_reply() {
+        Ok(Some(len)) => {
+            let copy_len = len.min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+            }
+            copy_len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: send a cancel request.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_send_cancel_request_raw(
+    storage: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if storage.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    let id = GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    match core.send_cancel_request(&id) {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: try receiving feedback. Writes
+/// goal_id_out + bytes copied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback_raw(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    match core.try_recv_feedback_raw() {
+        Ok(Some((id, len))) => {
+            let copy_len = len.min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(core.feedback_buffer_ref().as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
+            }
+            copy_len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.d — L1 polling: drop the inline `ActionClientCore`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_destroy_polling(
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() {
+        return NROS_CPP_RET_OK;
+    }
+    unsafe {
+        core::ptr::drop_in_place(storage as *mut PollingActionClientCore);
+    }
+    NROS_CPP_RET_OK
+}

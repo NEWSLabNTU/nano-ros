@@ -180,6 +180,24 @@ fn generate_config(
     let exact_subscriber = probed.get("SUBSCRIBER_SIZE").copied().unwrap_or(0) as usize;
     let exact_service_client = probed.get("SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
     let exact_service_server = probed.get("SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    // Phase 122.3.d — L1 polling-mode Raw* storage. Probes from
+    // `nros::sizes` (added in .c.3 / .c.6.a). Used by future
+    // C++-class polling-mode storage fields and by the new
+    // `nros_cpp_action_*_init_polling` FFI surface.
+    let exact_raw_subscription = probed.get("RAW_SUBSCRIPTION_SIZE").copied().unwrap_or(0) as usize;
+    let exact_raw_service_server =
+        probed.get("RAW_SERVICE_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let exact_raw_service_client =
+        probed.get("RAW_SERVICE_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    let exact_raw_action_server =
+        probed.get("RAW_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize;
+    let exact_raw_action_client =
+        probed.get("RAW_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+    let exact_raw_subscription_u64s = exact_raw_subscription.max(8).div_ceil(8);
+    let exact_raw_service_server_u64s = exact_raw_service_server.max(8).div_ceil(8);
+    let exact_raw_service_client_u64s = exact_raw_service_client.max(8).div_ceil(8);
+    let exact_raw_action_server_u64s = exact_raw_action_server.max(8).div_ceil(8);
+    let exact_raw_action_client_u64s = exact_raw_action_client.max(8).div_ceil(8);
     let _ = (manifest_dir, action_client_fallback);
 
     // Phase 119.3: source-tree header is a committed STUB that errors
@@ -216,6 +234,16 @@ fn generate_config(
 #define NROS_SUBSCRIBER_SIZE {exact_subscriber}
 #define NROS_SERVICE_CLIENT_SIZE {exact_service_client}
 #define NROS_SERVICE_SERVER_SIZE {exact_service_server}
+
+/* Phase 122.3.d — Layer-1 polling-mode raw handle storage. Sized to
+ * `Raw*` types in `nros-node` (the same probes nros-c emits in its
+ * variant header). Future C++ class polling fields read these.
+ */
+#define NROS_CPP_RAW_SUBSCRIPTION_OPAQUE_U64S {exact_raw_subscription_u64s}
+#define NROS_CPP_RAW_SERVICE_SERVER_OPAQUE_U64S {exact_raw_service_server_u64s}
+#define NROS_CPP_RAW_SERVICE_CLIENT_OPAQUE_U64S {exact_raw_service_client_u64s}
+#define NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S {exact_raw_action_server_u64s}
+#define NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S {exact_raw_action_client_u64s}
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
 "

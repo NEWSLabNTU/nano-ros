@@ -248,9 +248,50 @@ Sub-items:
       takes a per-call cancel-decision closure that doesn't
       cross the C FFI cleanly; tracked as a follow-up
       (.c.6.c).
-- [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
+- [~] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.
+  - **Audit (2026-05-13).** nros-cpp's
+    `nros_cpp_subscription_*` / `_service_server_*` /
+    `_service_client_*` FFI was already L1-polling (stores
+    bare `RmwSubscriber` / `RmwServiceServer` /
+    `RmwServiceClient` inline, caller drives via
+    `try_recv_raw` / `send_reply_raw` / `send_request` /
+    `try_recv_reply`). Only the action server / client were
+    L2-only (executor arena + callback). 122.3.d narrows to
+    actions.
+  - [x] **122.3.d.a — Rust FFI for action L1 polling.** New
+    functions in `nros-cpp/src/action.rs`:
+    `nros_cpp_action_server_init_polling`,
+    `_try_recv_goal_request_raw`,
+    `_accept_goal_raw` / `_reject_goal_raw`,
+    `_publish_feedback_raw`,
+    `_complete_goal_raw` (status code = 4/5/6 for
+    Succeeded / Canceled / Aborted),
+    `_try_handle_get_result_raw`,
+    `_destroy_polling`. Action client mirror:
+    `_init_polling`, `_send_goal_raw`,
+    `_try_recv_goal_response_raw`,
+    `_send_get_result_request_raw`,
+    `_try_recv_result_raw`, `_send_cancel_request_raw`,
+    `_try_recv_feedback_raw`, `_destroy_polling`. Storage
+    sized via new
+    `NROS_CPP_RAW_ACTION_{SERVER,CLIENT}_OPAQUE_U64S` macros
+    emitted in the per-build nros-cpp variant header (build.rs
+    extension reads the same `RAW_ACTION_*_SIZE` probes nros-c
+    consumes). Companion macros for subscription / service
+    server / service client are emitted too in case future
+    nros-cpp class polling fields land.
+  - [ ] **122.3.d.b — C++ class wrappers.** Add the C++ glue
+    (a polling-mode ctor / `try_recv*` / `complete_goal` etc.
+    method set on `nros::ActionServer<A>` / `nros::ActionClient<A>`,
+    or a new `nros::PollingActionServer<A>` /
+    `PollingActionClient<A>` pair) that exposes the .d.a
+    FFI through typed C++ API. Storage field
+    `polling_storage_[NROS_CPP_RAW_ACTION_{SERVER,CLIENT}_OPAQUE_U64S × 8]`
+    holds the inline core. Deferred — no urgent example
+    consumer; .d.a unblocks C-API callers (and any C++ that
+    binds the FFI directly).
 - [ ] **122.4 — Rust example migration L1 -> L2 (callback).**
   Mechanical rewrite of non-RTIC example main.rs files. Migration
   list below. RTIC examples stay on L1.

@@ -1154,6 +1154,142 @@ nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8
 nros_cpp_ret_t nros_cpp_action_client_poll(void *handle);
 
 /**
+ * Phase 122.3.d — initialize an L1 polling-mode action server.
+ *
+ * Builds the 5 channels via the node's session and writes the
+ * `ActionServerCore` into `storage` (must be at least
+ * `NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S × 8` bytes,
+ * 8-byte-aligned).
+ *
+ * # Safety
+ * All pointers valid; `action_name` / `type_name` / `type_hash`
+ * are valid null-terminated strings.
+ */
+nros_cpp_ret_t nros_cpp_action_server_init_polling(const struct nros_cpp_node_t *node,
+                                                   const char *action_name,
+                                                   const char *type_name,
+                                                   const char *type_hash,
+                                                   void *storage);
+
+/**
+ * Phase 122.3.d — L1 polling: try to receive a goal request.
+ *
+ * On success copies the goal payload (CDR-framing-stripped) into
+ * `buf`, fills `goal_id_out` (16 bytes) + `sequence_number_out`,
+ * returns bytes copied. `0` means no request pending; negative on
+ * error.
+ */
+int32_t nros_cpp_action_server_try_recv_goal_request_raw(void *storage,
+                                                         uint8_t *buf,
+                                                         size_t buf_len,
+                                                         uint8_t (*goal_id_out)[16],
+                                                         int64_t *sequence_number_out);
+
+/**
+ * Phase 122.3.d — L1 polling: accept a goal received via
+ * `try_recv_goal_request_raw`.
+ */
+nros_cpp_ret_t nros_cpp_action_server_accept_goal_raw(void *storage,
+                                                      const uint8_t (*goal_id)[16],
+                                                      int64_t sequence_number);
+
+/**
+ * Phase 122.3.d — L1 polling: reject a goal.
+ */
+nros_cpp_ret_t nros_cpp_action_server_reject_goal_raw(void *storage, int64_t sequence_number);
+
+/**
+ * Phase 122.3.d — L1 polling: publish feedback.
+ */
+nros_cpp_ret_t nros_cpp_action_server_publish_feedback_raw(void *storage,
+                                                           const uint8_t (*goal_id)[16],
+                                                           const uint8_t *feedback_cdr,
+                                                           size_t feedback_len);
+
+/**
+ * Phase 122.3.d — L1 polling: mark a goal terminal.
+ * `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
+ * the `nros_core::GoalStatus` discriminants).
+ */
+nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
+                                                        const uint8_t (*goal_id)[16],
+                                                        int32_t status_code,
+                                                        const uint8_t *result_cdr,
+                                                        size_t result_len);
+
+/**
+ * Phase 122.3.d — L1 polling: serve a pending get_result query.
+ * Returns `1` if served, `0` if none pending, negative on error.
+ */
+int32_t nros_cpp_action_server_try_handle_get_result_raw(void *storage,
+                                                         const uint8_t *default_result_cdr,
+                                                         size_t default_result_len);
+
+/**
+ * Phase 122.3.d — L1 polling: drop the inline `ActionServerCore`.
+ */
+nros_cpp_ret_t nros_cpp_action_server_destroy_polling(void *storage);
+
+/**
+ * Phase 122.3.d — initialize an L1 polling-mode action client.
+ *
+ * Builds the 3 service clients + feedback subscriber via the
+ * session and writes the `ActionClientCore` into `storage`.
+ */
+nros_cpp_ret_t nros_cpp_action_client_init_polling(const struct nros_cpp_node_t *node,
+                                                   const char *action_name,
+                                                   const char *type_name,
+                                                   const char *type_hash,
+                                                   void *storage);
+
+/**
+ * Phase 122.3.d — L1 polling: send a goal. Writes 16-byte UUID
+ * into `goal_id_out`.
+ */
+nros_cpp_ret_t nros_cpp_action_client_send_goal_raw(void *storage,
+                                                    const uint8_t *goal_cdr,
+                                                    size_t goal_len,
+                                                    uint8_t (*goal_id_out)[16]);
+
+/**
+ * Phase 122.3.d — L1 polling: try receiving the send_goal RPC reply.
+ */
+int32_t nros_cpp_action_client_try_recv_goal_response_raw(void *storage,
+                                                          uint8_t *buf,
+                                                          size_t buf_len);
+
+/**
+ * Phase 122.3.d — L1 polling: send a get_result request.
+ */
+nros_cpp_ret_t nros_cpp_action_client_send_get_result_request_raw(void *storage,
+                                                                  const uint8_t (*goal_id)[16]);
+
+/**
+ * Phase 122.3.d — L1 polling: try receiving the get_result reply.
+ */
+int32_t nros_cpp_action_client_try_recv_result_raw(void *storage, uint8_t *buf, size_t buf_len);
+
+/**
+ * Phase 122.3.d — L1 polling: send a cancel request.
+ */
+nros_cpp_ret_t nros_cpp_action_client_send_cancel_request_raw(void *storage,
+                                                              const uint8_t (*goal_id)[16]);
+
+/**
+ * Phase 122.3.d — L1 polling: try receiving feedback. Writes
+ * goal_id_out + bytes copied.
+ */
+int32_t nros_cpp_action_client_try_recv_feedback_raw(void *storage,
+                                                     uint8_t *buf,
+                                                     size_t buf_len,
+                                                     uint8_t (*goal_id_out)[16]);
+
+/**
+ * Phase 122.3.d — L1 polling: drop the inline `ActionClientCore`.
+ */
+nros_cpp_ret_t nros_cpp_action_client_destroy_polling(void *storage);
+
+/**
  * Phase 115.D — register a custom transport vtable. C++-side entry
  * for `nros::set_custom_transport`.
  *
