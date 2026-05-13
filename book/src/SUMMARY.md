@@ -31,6 +31,7 @@
 - [C++ API](./reference/cpp-api.md)
 - [RMW API](./reference/rmw-api.md)
 - [Platform API](./reference/platform-api.md)
+- [Platform Differences](./reference/platform-differences.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
 

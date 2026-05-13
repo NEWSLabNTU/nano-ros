@@ -1,6 +1,22 @@
 # Platform API Design
 
-The platform API (`nros-platform`) sits below the RMW backend. It exposes the OS or hardware primitives that zenoh-pico and XRCE-DDS need: a clock, optionally a heap, optionally threading, optionally networking. This page explains *why* the trait surface is grouped the way it is and what the **behavior contract** is for each method. For trait signatures and the implementation status matrix, see [Platform API Reference](../reference/platform-api.md). For implementing a new platform, see [Custom Platform](../porting/custom-platform.md).
+The platform API (`nros-platform`) sits below the RMW backend. It
+exposes the OS or hardware primitives that zenoh-pico and XRCE-DDS
+need: a clock, optionally a heap, optionally threading, optionally
+networking. This page explains **why** the trait surface is grouped
+the way it is.
+
+> **Canonical interface spec.** The function-pointer signatures,
+> parameter docs, ownership rules, blocking allowance, and
+> failure modes for every platform entry live in the
+> [platform-cffi Doxygen reference](../api/platform-cffi/index.html).
+> This doc is rationale, not spec — when the two disagree, the
+> Doxygen wins. The Rust trait crate `nros-platform-api` mirrors
+> the C signatures one-for-one.
+
+For per-platform behaviour comparison, see
+[Platform Differences](../reference/platform-differences.md). For
+writing a new port, see [Custom Platform](../porting/custom-platform.md).
 
 ## Trait groups and rationale
 

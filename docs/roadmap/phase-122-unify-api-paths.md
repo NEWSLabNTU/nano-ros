@@ -453,8 +453,28 @@ Sub-items:
   - **Validation.** `cargo build` clean for all 16 migrated
     examples across the qemu-arm-baremetal / freertos /
     nuttx / riscv64-threadx / esp32 / threadx-linux trees.
-- [ ] **122.5 — docs.** Update book pages, porting guide, and the
-  RT positioning page with the unified two-layer story.
+- [~] **122.5 — docs.**
+  - [x] **122.5 (platform).** Per user directive (2026-05-13):
+    the C `platform-cffi` Doxygen reference is now the
+    canonical interface spec for the platform API. The book's
+    Rust-facing pages (`reference/platform-api.md`,
+    `design/platform-api.md`, `porting/custom-platform.md`)
+    were trimmed to defer interface details to the Doxygen
+    and keep only architecture / rationale / per-port notes.
+    New `book/src/reference/platform-differences.md` cross-
+    references the platforms side-by-side (clock, allocator,
+    threading, networking, multicast, wall-clock, per-trait
+    behaviour notes). Wired into `SUMMARY.md` next to the
+    Platform API reference. The Doxygen build target was
+    already in place (`just doc-platform-cffi`); no change
+    needed there. Rust-side trait crate
+    (`nros-platform-api`) is now documented as a one-for-one
+    binding of the C signatures, not an independent spec.
+  - [ ] **122.5 (executor + two-layer story).** Remaining
+    book pages — the unified L1/L2 callback story landed in
+    122.1–122.4 isn't yet reflected in the user-guide pages
+    that mention `node.create_*` vs `executor.register_*`.
+    Defer to a follow-up doc sweep.
 
 ## Migration list
 

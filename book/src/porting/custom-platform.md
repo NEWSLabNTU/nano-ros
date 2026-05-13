@@ -2,6 +2,19 @@
 
 This guide walks through porting nano-ros to a new RTOS or bare-metal environment. A "platform" provides the OS-level primitives that nano-ros needs at runtime: clock, memory, sleep, threading, and networking. The core library is `#![no_std]` and makes zero platform calls directly -- everything flows through your platform crate.
 
+> **Canonical interface spec.** The function-pointer signatures,
+> parameter docs, ownership rules, blocking allowance, and failure
+> modes for every method live in the
+> [platform-cffi Doxygen reference](../api/platform-cffi/index.html).
+> Read it side-by-side with this guide — the tables below summarise
+> the **set** of traits you need; the Doxygen documents the
+> **contract** each call must obey.
+
+> **Quick differences table.** For a per-platform comparison
+> (clock source, allocator, threading, networking, multicast
+> support) across the platforms nano-ros already supports, see
+> [Platform Differences](../reference/platform-differences.md).
+
 ## What you implement
 
 All platform traits are defined in `nros-platform/src/traits.rs`. Your platform crate implements some or all of them as inherent methods on a zero-sized type (ZST). The set you need depends on your RMW backend.
