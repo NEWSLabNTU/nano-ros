@@ -830,13 +830,21 @@ workspaces for mixed-RMW Rust use cases.
   the user can override. `NROS_DEBUG` is a no-op under
   `NDEBUG`. Pulled into the umbrella `nros/nros.hpp` so
   `#include <nros/nros.hpp>` is enough.
-- [ ] **123.B.4 — `Publisher<M>::make` / `Node::make` convenience.**
-  Deferred. `Node` is already movable; the out-param + Result
-  pattern works. A value-returning factory needs either a
-  `Result<T>` template (the current `Result` is non-generic) or
-  a tagged-union return. Punted to a follow-up phase once the
-  std_compat layer grows an `expected`-like wrapper. Out-param
-  remains the canonical zero-alloc API for embedded.
+- [x] **123.B.4 — `Publisher<M>::make` / `Node::make` convenience.**
+  Done. Added `nros::Expected<T>` templated value-or-error
+  wrapper to `nros/result.hpp` (requires
+  `T: default+move-constructible`; stores value inline, no
+  heap), plus value-returning factories in node.hpp /
+  publisher.hpp / subscription.hpp:
+    * `nros::make_node(name, ns) -> Expected<Node>`
+    * `nros::make_publisher<M>(node, topic, qos) -> Expected<Publisher<M>>`
+    * `nros::make_subscription<M>(node, topic, qos) -> Expected<Subscription<M>>`
+  Out-param `create_*(out, ...)` remains the canonical
+  zero-alloc API for embedded paths.
+  `Expected::error_as_result()` converts back to the existing
+  Result so factories interop with `NROS_TRY` / `NROS_TRY_RET`.
+  Verified by `/tmp/expected-test/` consumer — factory chain
+  compiles + links cleanly against the installed prefix.
 - [x] **123.B.5 — Lambda-capable timer + subscription callbacks.**
   Already shipped via `nros/std_compat.hpp` —
   `nros::create_timer(node, timer, std::chrono::ms, [&](){…})`
@@ -848,22 +856,30 @@ workspaces for mixed-RMW Rust use cases.
   follow-up.
 - [x] **123.B.6 — `create_publisher` QoS overload.** Surfaced.
 - [x] **123.B.7 — `NROS_INFO` / `NROS_ERROR` macros.** Shipped.
-- [ ] **123.B.8 — Per-message codegen headers
-  (ROS-style aliases).** Deferred. Codegen today writes
-  `nano_ros_cpp/std_msgs/msg/std_msgs_msg_int32.hpp` (flat with
-  package prefix). ROS-2-conventional `<std_msgs/msg/int32.hpp>`
-  needs a generator pass that emits a one-line alias header
-  per message that `#include`s the prefixed file. Self-contained
-  but requires plumbing through `GeneratedCppPackage` +
-  `cargo-nano-ros` writer + tests. Punted to its own commit
-  once the migration-guide chapter surfaces a real
-  user-facing need.
+- [x] **123.B.8 — Per-message codegen headers
+  (ROS-style aliases).** Done. `cargo-nano-ros`
+  (`packages/cargo-nano-ros/src/lib.rs` in the codegen
+  submodule) now emits a thin alias header per generated
+  message/srv/action alongside the canonical prefixed form:
+    * canonical: `msg/std_msgs_msg_int32.hpp` (unchanged)
+    * alias:     `msg/int32.hpp` →
+      `#include "std_msgs_msg_int32.hpp"`
+  Same pattern for srv (`srv/<snake>.hpp`) and action
+  (`action/<snake>.hpp`).
+  Lets users write `#include <std_msgs/msg/int32.hpp>` —
+  the ROS-2-conventional include — without abandoning the
+  prefixed naming scheme (which prevents collisions when two
+  packages declare a `Header.msg`).
+  Alias guards use `NROS_ALIAS_<NAME>_HPP_` to avoid clashing
+  with the canonical guard.
+  Verified end-to-end: codegen produces both files; downstream
+  compile with `-I<output_parent>` + `#include
+  <std_msgs/msg/int32.hpp>` succeeds.
 
 ## Stream order
 
-Stream B (API ergonomics) lands first — 6 / 8 items already
-shipped on this branch (B.1, B.2, B.3, B.5, B.6, B.7). B.4 / B.8
-deferred with rationale. Stream B is additive; existing examples
+Stream B (API ergonomics) — all 8 items shipped (B.1, B.2, B.3,
+B.4, B.5, B.6, B.7, B.8). Stream B is additive; existing examples
 already work.
 
 Stream A (build distribution) follows after the platform-cffi /
