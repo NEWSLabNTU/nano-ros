@@ -631,8 +631,7 @@ fn test_rtos_pubsub_e2e(
         (Platform::Nuttx, Lang::C) => Duration::from_secs(45),
         _ => Duration::from_secs(15),
     };
-    let talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
-    eprintln!("Talker output:\n{}", talker_out);
+    let _talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
 
     // Collect more listener output to capture "Received:" lines.
     let listener_window = match (platform, lang) {
