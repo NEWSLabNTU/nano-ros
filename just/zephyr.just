@@ -469,6 +469,26 @@ test-all verbose="":
         exit 1
     fi
 
+# Phase 121.6 — build the Zephyr native_sim smoke test for
+# nros-platform-zephyr-c. Pulls platform.c + timer.c (not net.c)
+# directly into a minimal Zephyr application and links via west.
+build-c-port:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -f zephyr-workspace/env.sh ]; then
+        echo "zephyr-workspace/env.sh missing — run: just zephyr setup" >&2
+        exit 2
+    fi
+    source zephyr-workspace/env.sh
+    west build -b native_sim/native/64 \
+        -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke
+
+# Phase 121.6 — run the Zephyr native_sim smoke test on the host.
+test-c-port: build-c-port
+    #!/usr/bin/env bash
+    set -e
+    timeout 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
+
 # CI: doctor + test
 ci: doctor test
 
