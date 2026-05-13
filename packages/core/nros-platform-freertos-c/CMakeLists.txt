@@ -39,10 +39,18 @@ if(NOT DEFINED FREERTOS_LWIP_TARGET)
         "Name of the imported lwIP CMake target (optional)")
 endif()
 
-add_library(nros_platform_freertos STATIC
-    src/platform.c
-    src/net.c
-    src/timer.c)
+set(_nros_freertos_sources src/platform.c src/timer.c)
+
+# net.c pulls <lwip/sockets.h>; skip it when no lwIP target is around.
+# Downstream builds without networking (smoke tests, MCU profiles that
+# disable lwIP) opt out via -DNROS_PLATFORM_FREERTOS_C_WITH_NET=OFF.
+option(NROS_PLATFORM_FREERTOS_C_WITH_NET
+       "Include net.c (requires lwIP headers)" ON)
+if(NROS_PLATFORM_FREERTOS_C_WITH_NET)
+    list(APPEND _nros_freertos_sources src/net.c)
+endif()
+
+add_library(nros_platform_freertos STATIC ${_nros_freertos_sources})
 target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_freertos PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -65,19 +73,25 @@ if(DEFINED FREERTOS_CONFIG_TARGET AND TARGET ${FREERTOS_CONFIG_TARGET})
     target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_CONFIG_TARGET})
 endif()
 
-if(TARGET ${FREERTOS_LWIP_TARGET})
-    target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_LWIP_TARGET})
-else()
-    message(WARNING
-        "FREERTOS_LWIP_TARGET '${FREERTOS_LWIP_TARGET}' not declared. "
-        "net.c requires lwIP headers (<lwip/sockets.h>, <lwip/netdb.h>); "
-        "either declare the target or extend FREERTOS_KERNEL_TARGET's "
-        "INTERFACE_INCLUDE_DIRECTORIES to include them.")
+if(NROS_PLATFORM_FREERTOS_C_WITH_NET)
+    if(TARGET ${FREERTOS_LWIP_TARGET})
+        target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_LWIP_TARGET})
+    else()
+        message(WARNING
+            "FREERTOS_LWIP_TARGET '${FREERTOS_LWIP_TARGET}' not declared. "
+            "net.c requires lwIP headers (<lwip/sockets.h>, <lwip/netdb.h>); "
+            "either declare the target or extend FREERTOS_KERNEL_TARGET's "
+            "INTERFACE_INCLUDE_DIRECTORIES to include them.")
+    endif()
 endif()
 
-install(TARGETS nros_platform_freertos
-    EXPORT NrosPlatformFreeRtosCTargets
-    ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformFreeRtosCTargets
-    NAMESPACE NrosPlatformFreeRtosC::
-    DESTINATION lib/cmake/NrosPlatformFreeRtosC)
+option(NROS_PLATFORM_FREERTOS_C_INSTALL
+       "Generate install rules (skip when consumed as a subdirectory)" ON)
+if(NROS_PLATFORM_FREERTOS_C_INSTALL)
+    install(TARGETS nros_platform_freertos
+        EXPORT NrosPlatformFreeRtosCTargets
+        ARCHIVE DESTINATION lib)
+    install(EXPORT NrosPlatformFreeRtosCTargets
+        NAMESPACE NrosPlatformFreeRtosC::
+        DESTINATION lib/cmake/NrosPlatformFreeRtosC)
+endif()

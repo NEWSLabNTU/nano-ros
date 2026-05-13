@@ -154,6 +154,23 @@ test-all verbose="":
     fi
     cargo nextest run "${e2e_args[@]}"
 
+# Phase 121.6 — build the FreeRTOS Posix-port smoke test for
+# nros-platform-freertos-c. Uses the in-tree FreeRTOS-Kernel + a
+# minimal FreeRTOSConfig.h. Excludes net.c (no lwIP in this harness).
+build-c-port:
+    #!/usr/bin/env bash
+    set -e
+    cd tests/freertos-c-smoke
+    cmake -B build >/dev/null
+    cmake --build build
+
+# Phase 121.6 — run the FreeRTOS Posix-port smoke test on the host.
+# Boots FreeRTOS, runs the smoke task, exits with status 0 on PASS.
+test-c-port: build-c-port
+    #!/usr/bin/env bash
+    set -e
+    timeout 15 ./tests/freertos-c-smoke/build/nros_freertos_c_smoke
+
 # CI: check prerequisites + test
 ci: doctor test
 
