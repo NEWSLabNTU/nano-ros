@@ -140,8 +140,16 @@ writes a workspace `Cargo.toml` for Rust users.
   `compiler_builtins` ODR (likely `--allow-multiple-definition`
   on the linker or feature-version-locking). Pre-req for the
   matrix collapse advertised in A.3 + A.10.
-- [ ] **123.A.2 — `config/submodule-deps.toml`.** Author the
-  mapping from current `.gitmodules` + per-platform recipe set.
+- [x] **123.A.2 — `config/submodule-deps.toml`.** Authored.
+  21 submodules classified across axes `required` (codegen) +
+  `rmw.{zenoh,xrce,dds,cyclonedds}` + `platform.{posix,freertos,
+  threadx,nuttx,zephyr,bare-metal,esp32}` + `reference.{px4,
+  tracing}`. Dev-only paths (zenohd router, XRCE agent, ESP32
+  QEMU fork) gated behind `--with-dev`; reference paths
+  (PX4 1GB, Tonbandgeraet) opt-in via `--with-reference`.
+  Cross-checked against `just/*.just` `git submodule update`
+  invocations. Drives A.3 (`nros setup` CLI), A.4
+  (`tools/setup.sh`).
 - [ ] **123.A.3 — `nros setup` CLI.** Implementation crate
   `packages/codegen/packages/nros-cli/src/setup/`. Argument
   parser, manifest reader, submodule fetcher, cross-toolchain

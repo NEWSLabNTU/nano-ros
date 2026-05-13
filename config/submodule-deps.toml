@@ -1,0 +1,127 @@
+# nano-ros submodule dependency manifest.
+#
+# Drives `nros setup --target <target>` and `tools/setup.sh
+# --target <target>` (Phase 123 Stream A). Lists which git
+# submodules need to be initialised for a given RMW backend,
+# platform, or reference build.
+#
+# Format:
+#   [<axis>.<value>]
+#   paths      = ["<path>", ...]   # build-time required
+#   dev_paths  = ["<path>", ...]   # dev / test only (zenohd
+#                                  # router, XRCE agent, QEMU
+#                                  # fork) — opt-in via
+#                                  # --with-dev
+#   recursive  = true|false        # `--recursive` flag for
+#                                  # `git submodule update`
+#                                  # (default true)
+#
+# Resolution order in `nros setup --target <foo>`:
+#   1. [required] always
+#   2. [rmw.<rmw>]   from --target's RMW component
+#   3. [platform.<p>] from --target's platform component
+#   4. [reference.*] only if explicitly named
+#
+# Targets are colon-tuples: <platform>-<rmw> (e.g.
+# `posix-zenoh`, `freertos-xrce`).
+
+# -- Always required --------------------------------------------------
+
+[required]
+# colcon-nano-ros codegen tooling. Even pure-Rust users depend on
+# `cargo nano-ros generate-rust`, which lives here.
+paths = ["packages/codegen"]
+recursive = false
+
+# -- RMW backends -----------------------------------------------------
+
+[rmw.zenoh]
+# zenoh-pico C library + mbedtls (TLS dependency).
+paths = [
+  "packages/zpico/zpico-sys/zenoh-pico",
+  "packages/zpico/zpico-sys/mbedtls",
+]
+# Dev-only: zenohd router binary + ROS 2 interop fixture (used by
+# integration tests, not needed for embedded firmware builds).
+dev_paths = [
+  "third-party/zenoh/zenoh",
+  "third-party/zenoh/rmw_zenoh",
+]
+
+[rmw.xrce]
+# Micro-XRCE-DDS Client + Micro-CDR.
+paths = [
+  "packages/xrce/xrce-sys/micro-xrce-dds-client",
+  "packages/xrce/xrce-sys/micro-cdr",
+]
+# Dev-only: Micro-XRCE-DDS Agent (host-side bridge to ROS 2).
+dev_paths = ["third-party/xrce/agent"]
+
+[rmw.dds]
+# dust-dds: pure-Rust DDS implementation, no native deps.
+paths = ["packages/dds/dust-dds"]
+
+[rmw.cyclonedds]
+# Eclipse Cyclone DDS (C++). Tag-pinned to 0.10.5 for Humble
+# wire-compat (see CLAUDE.md "Phase 117").
+paths = ["third-party/dds/cyclonedds"]
+
+# -- Platforms --------------------------------------------------------
+
+[platform.posix]
+# Host POSIX builds use only libc + pthread. No submodules.
+paths = []
+
+[platform.freertos]
+# FreeRTOS-Kernel + lwIP (network stack).
+paths = [
+  "third-party/freertos/kernel",
+  "third-party/freertos/lwip",
+]
+
+[platform.threadx]
+# Eclipse ThreadX + NetX Duo (network stack).
+paths = [
+  "third-party/threadx/kernel",
+  "third-party/threadx/netxduo",
+]
+
+[platform.nuttx]
+# NuttX RTOS + apps + custom libc fork.
+paths = [
+  "third-party/nuttx/nuttx",
+  "third-party/nuttx/nuttx-apps",
+  "third-party/nuttx/libc",
+]
+
+[platform.zephyr]
+# Zephyr uses west, not git submodules. west.yml is shipped as
+# part of the Zephyr module setup (`just zephyr setup`).
+paths = []
+
+[platform.bare-metal]
+# Bare-metal Cortex-M / RISC-V targets use the smoltcp Rust stack
+# only — no native submodules.
+paths = []
+
+[platform.esp32]
+# ESP32 builds use ESP-IDF (installed separately) + zenoh-pico's
+# bundled lwIP. No submodule required for embedded builds.
+paths = []
+# Dev-only: Espressif's QEMU fork for ESP32 emulator testing.
+dev_paths = ["third-party/esp32/qemu"]
+
+# -- Reference / optional --------------------------------------------
+
+[reference.px4]
+# PX4 autopilot integration reference. Huge (>1 GB), not pulled
+# unless explicitly requested via `--with-reference px4`.
+paths = [
+  "third-party/px4/px4-rs",
+  "third-party/px4/PX4-Autopilot",
+]
+
+[reference.tracing]
+# Tonbandgeraet RTOS tracing/perf tooling. Opt-in via
+# `--with-reference tracing`.
+paths = ["third-party/tracing/Tonbandgeraet"]
