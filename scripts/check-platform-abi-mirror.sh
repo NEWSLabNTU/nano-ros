@@ -33,14 +33,9 @@ INCLUDE_DIR="packages/core/nros-platform-cffi/include/nros"
 HEADERS_REQUIRE_MACRO=(
     "platform.h"
     "platform_net.h"
-)
-HEADERS_EXTERN_ONLY=(
-    # platform_timer.h's `export_timer!` macro is deferred until the
-    # opaque-handle adapter design lands (TimerHandle associated type
-    # → *mut c_void coercion); extern decls are present so consumers
-    # can dispatch manually for now.
     "platform_timer.h"
 )
+HEADERS_EXTERN_ONLY=()
 
 if [[ ! -f "$RUST" ]]; then
     echo "error: rust mirror not found: $RUST" >&2

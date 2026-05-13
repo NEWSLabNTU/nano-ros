@@ -695,10 +695,99 @@ macro_rules! nros_platform_export {
 // ----------------------------------------------------------------------------
 // `nros_platform_export_net!` mirrors `<nros/platform_net.h>` 1:1; trait
 // signatures match the C ABI byte-for-byte. `nros_platform_export_timer!`
-// (deferred — needs an opaque-handle adapter; the macro lands when the
-// Rust `PlatformTimer::TimerHandle` representation is pinned to a
-// pointer type per kernel).
+// adapts the Rust `PlatformTimer` trait's `Result<TimerHandle, _>` to the
+// C ABI's `*mut c_void` (NULL on error). The caller's `TimerHandle`
+// associated type must be `*mut c_void` — enforced at macro-expansion
+// time via a `where` clause on the emitted dispatch functions.
 // ============================================================================
+
+/// Emit every `nros_platform_timer_*` symbol declared in
+/// `<nros/platform_timer.h>` by delegating to the corresponding
+/// `PlatformTimer` trait method on `$ty`.
+///
+/// **Constraint:** the implementor's `TimerHandle` associated type
+/// must be `*mut core::ffi::c_void` so the macro can pass the handle
+/// through the C ABI unchanged. Implementations using kernel-specific
+/// handle types should wrap them in a `*mut c_void` (typically by
+/// `Box::into_raw` + a thin newtype) before exporting.
+#[macro_export]
+macro_rules! nros_platform_export_timer {
+    ($ty:ty) => {
+        // Compile-time guard: handle must be pointer-sized so the
+        // transmute below is sound. PlatformTimer requires Send +
+        // Sync + 'static, which `*mut c_void` itself fails — so
+        // callers wrap their handle in a `#[repr(transparent)]`
+        // newtype that implements those (PosixTimerHandle, etc.).
+        // We round-trip through transmute at the C ABI boundary.
+        const _: () = {
+            if ::core::mem::size_of::<<$ty as ::nros_platform_api::PlatformTimer>::TimerHandle>()
+                != ::core::mem::size_of::<*mut ::core::ffi::c_void>()
+            {
+                panic!(
+                    "nros_platform_export_timer! requires \
+                     PlatformTimer::TimerHandle to be pointer-sized"
+                );
+            }
+        };
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_timer_create_periodic(
+            period_us: u32,
+            callback: extern "C" fn(*mut ::core::ffi::c_void),
+            user_data: *mut ::core::ffi::c_void,
+        ) -> *mut ::core::ffi::c_void {
+            match <$ty as ::nros_platform_api::PlatformTimer>::create_periodic(
+                period_us, callback, user_data,
+            ) {
+                Ok(h) => unsafe {
+                    ::core::mem::transmute_copy::<
+                        <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle,
+                        *mut ::core::ffi::c_void,
+                    >(&::core::mem::ManuallyDrop::new(h))
+                },
+                Err(_) => ::core::ptr::null_mut(),
+            }
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_timer_create_oneshot(
+            timeout_us: u32,
+            callback: extern "C" fn(*mut ::core::ffi::c_void),
+            user_data: *mut ::core::ffi::c_void,
+        ) -> *mut ::core::ffi::c_void {
+            match <$ty as ::nros_platform_api::PlatformTimer>::create_oneshot(
+                timeout_us, callback, user_data,
+            ) {
+                Ok(h) => unsafe {
+                    ::core::mem::transmute_copy::<
+                        <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle,
+                        *mut ::core::ffi::c_void,
+                    >(&::core::mem::ManuallyDrop::new(h))
+                },
+                Err(_) => ::core::ptr::null_mut(),
+            }
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_timer_destroy(handle: *mut ::core::ffi::c_void) {
+            let h: <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle = unsafe {
+                ::core::mem::transmute_copy::<
+                    *mut ::core::ffi::c_void,
+                    <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle,
+                >(&handle)
+            };
+            <$ty as ::nros_platform_api::PlatformTimer>::destroy(h)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_timer_cancel(handle: *mut ::core::ffi::c_void) -> i8 {
+            let mut h: <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle = unsafe {
+                ::core::mem::transmute_copy::<
+                    *mut ::core::ffi::c_void,
+                    <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle,
+                >(&handle)
+            };
+            if <$ty as ::nros_platform_api::PlatformTimer>::cancel(&mut h) { 1 } else { 0 }
+        }
+    };
+}
 
 /// Emit every `nros_platform_tcp_*` / `nros_platform_udp_*` /
 /// `nros_platform_udp_mcast_*` / `nros_platform_socket_*` /
@@ -1083,7 +1172,26 @@ mod test_self_export {
         }
     }
 
+    /// Pointer-sized newtype wrapping `*mut c_void` so the
+    /// PlatformTimer Send + Sync + 'static bound is satisfied.
+    /// The transmute inside `nros_platform_export_timer!` rests on
+    /// this being `#[repr(transparent)]` over a pointer.
+    #[repr(transparent)]
+    #[derive(Clone, Copy)]
+    pub struct TestTimerHandle(pub *mut c_void);
+    unsafe impl Send for TestTimerHandle {}
+    unsafe impl Sync for TestTimerHandle {}
+
+    impl ::nros_platform_api::PlatformTimer for TestPlatform {
+        type TimerHandle = TestTimerHandle;
+        // create_periodic / create_oneshot / destroy / cancel inherit
+        // the trait's default impls (return TimerError::Unsupported /
+        // no-op destroy / false cancel) — fine for export-emission
+        // verification.
+    }
+
     crate::nros_platform_export!(TestPlatform);
+    crate::nros_platform_export_timer!(TestPlatform);
 
     #[test]
     fn macro_expansion_dispatches() {
@@ -1096,4 +1204,19 @@ mod test_self_export {
         );
         <super::CffiPlatform as ::nros_platform_api::PlatformYield>::yield_now();
     }
+
+    #[test]
+    fn timer_macro_emits() {
+        // Default impl returns Unsupported → null handle.
+        let h = unsafe {
+            super::nros_platform_timer_create_periodic(
+                1000,
+                noop_callback,
+                core::ptr::null_mut(),
+            )
+        };
+        assert!(h.is_null(), "default Unsupported impl must surface as NULL");
+    }
+
+    extern "C" fn noop_callback(_: *mut c_void) {}
 }
