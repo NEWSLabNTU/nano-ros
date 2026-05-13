@@ -198,6 +198,24 @@ impl<'a> ExecutorConfig<'a> {
         }
     }
 
+    /// Phase 104.C.3.3.b — `Default`-style constructor with an
+    /// empty locator. Most users want `ExecutorConfig::from_env()`
+    /// to pick up `ZENOH_LOCATOR` / `ROS_DOMAIN_ID`; this is the
+    /// rclcpp-`NodeOptions{}` shape for callers that set every
+    /// field explicitly via the chaining setters.
+    pub const fn default_const() -> Self {
+        Self::new("")
+    }
+}
+
+impl Default for ExecutorConfig<'_> {
+    fn default() -> Self {
+        Self::default_const()
+    }
+}
+
+impl<'a> ExecutorConfig<'a> {
+
     /// Set the ROS 2 domain ID.
     pub const fn domain_id(mut self, id: u32) -> Self {
         self.domain_id = id;

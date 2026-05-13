@@ -44,7 +44,7 @@ fn main() {
 
     info!("=== Phase 104 bridge: Zenoh → DDS ===");
 
-    let cfg = ExecutorConfig::from_env()
+    let cfg = ExecutorConfig::default()
         .node_name("bridge_primary")
         .namespace("/");
 
@@ -74,13 +74,13 @@ fn main() {
         exec.node(node_out).unwrap().session_idx,
     );
 
-    // Egress publisher (raw bytes) via `with_node` — returns a
-    // standalone handle the ingress callback captures.
+    // Egress publisher (raw bytes) via `with_node_try` — flat
+    // `Result` shape (Phase 104.C.3.3.d).
     let pub_out = exec
-        .with_node(node_out, |n| {
+        .with_node_try(node_out, |n| {
             n.create_publisher_raw("/chatter", TYPE_NAME, TYPE_HASH)
+                .map_err(|e| e.into())
         })
-        .expect("with_node(egress)")
         .expect("create egress raw publisher");
     let pub_out = Arc::new(Mutex::new(pub_out));
     info!("Egress raw publisher created on DDS /chatter");
@@ -110,7 +110,5 @@ fn main() {
     info!("Ingress raw subscription registered on Zenoh /chatter");
 
     info!("Spinning. Publish on Zenoh /chatter; listen on DDS /chatter.");
-    loop {
-        let _ = exec.spin_once(std::time::Duration::from_millis(50));
-    }
+    exec.spin_default();
 }

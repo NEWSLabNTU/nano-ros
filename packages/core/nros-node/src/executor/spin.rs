@@ -645,6 +645,25 @@ impl Executor {
     /// The closure can return any type; double-`?` unwraps the
     /// outer `Result<R, NodeError>` from `with_node` and the inner
     /// result returned by the closure.
+    /// Phase 104.C.3.3.d — flat-Result variant of
+    /// [`with_node`](Self::with_node). When the closure already
+    /// returns `Result<R, NodeError>`, this avoids the double-`?`:
+    ///
+    /// ```ignore
+    /// // Without `with_node_try`:
+    /// let pub_ = exec.with_node(id, |n| n.create_publisher(...))??;
+    ///
+    /// // With `with_node_try`:
+    /// let pub_ = exec.with_node_try(id, |n| n.create_publisher(...))?;
+    /// ```
+    pub fn with_node_try<R>(
+        &mut self,
+        id: super::node_record::NodeId,
+        f: impl FnOnce(&mut Node<'_>) -> Result<R, NodeError>,
+    ) -> Result<R, NodeError> {
+        self.with_node(id, f)?
+    }
+
     pub fn with_node<R>(
         &mut self,
         id: super::node_record::NodeId,
@@ -2331,6 +2350,14 @@ impl Executor {
         loop {
             self.spin_once(timeout);
         }
+    }
+
+    /// Phase 104.C.3.3.c — rclcpp-`spin()`-shape no-arg variant.
+    /// Defaults the per-iteration timeout to 50 ms, which keeps
+    /// idle binaries from busy-spinning while staying responsive
+    /// enough for default-QoS messaging.
+    pub fn spin_default(&mut self) -> ! {
+        self.spin(core::time::Duration::from_millis(50))
     }
 
     /// Drive I/O and dispatch callbacks asynchronously.
