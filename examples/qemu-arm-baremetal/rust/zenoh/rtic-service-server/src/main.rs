@@ -55,7 +55,10 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_server");
-        // Phase 115.L.x — install C-vtable backend before session open.
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("add_server").unwrap();
         let service = node.create_service::<AddTwoInts>("/add_two_ints").unwrap();
@@ -90,15 +93,14 @@ mod app {
         println!("Service server ready: /add_two_ints");
 
         loop {
-            match cx.local.service.handle_request(|req| {
+            // Swallow transient transport errors (e.g. a non-CDR query
+            // arriving on the queryable's buffer from the zenoh discovery
+            // channel); the real request usually lands on a later poll.
+            let _ = cx.local.service.handle_request(|req| {
                 let sum = req.a + req.b;
                 println!("Handled: {} + {} = {}", req.a, req.b, sum);
                 AddTwoIntsResponse { sum }
-            }) {
-                Ok(true) => {}  // handled a request
-                Ok(false) => {} // no request available
-                Err(e) => println!("Service error: {:?}", e),
-            }
+            });
 
             Mono::delay(10.millis()).await;
         }

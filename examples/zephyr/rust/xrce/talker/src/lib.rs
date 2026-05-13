@@ -37,7 +37,10 @@ fn run() -> Result<(), NodeError> {
         zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
     );
     let config = ExecutorConfig::new(&locator).node_name("xrce_talker");
-    // Phase 115.L.x — install C-vtable backend before session open.
+    // Phase 104.A — bare-metal callers explicitly register the RMW
+    // backend before `Executor::open`. POSIX hosts auto-register via
+    // `.init_array`; this target doesn't walk that section.
+    nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("xrce_talker")?;

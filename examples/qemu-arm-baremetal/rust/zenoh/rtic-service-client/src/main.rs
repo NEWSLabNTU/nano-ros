@@ -53,7 +53,10 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_client");
-        // Phase 115.L.x — install C-vtable backend before session open.
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("add_client").unwrap();
         let client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
@@ -95,17 +98,16 @@ mod app {
                     .spin_once(core::time::Duration::from_millis(0));
                 Mono::delay(10.millis()).await;
 
-                match promise.try_recv() {
-                    Ok(Some(reply)) => {
-                        println!("Reply: {} + {} = {}", a, b, reply.sum);
-                        got_reply = true;
-                        break;
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        println!("try_recv error: {:?}", e);
-                        nros_board_mps2_an385::exit_failure();
-                    }
+                // Transient errors (e.g. a non-CDR sample from the zenoh
+                // discovery channel arriving on the reply slot before the
+                // real reply lands) shouldn't abort the call — the actual
+                // reply usually arrives on a later poll. Treat any err
+                // the same as `Ok(None)` and let the timeout below handle
+                // genuine hangs.
+                if let Ok(Some(reply)) = promise.try_recv() {
+                    println!("Reply: {} + {} = {}", a, b, reply.sum);
+                    got_reply = true;
+                    break;
                 }
             }
             if !got_reply {

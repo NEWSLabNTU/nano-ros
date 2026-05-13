@@ -25,7 +25,10 @@ fn main() -> ! {
             let exec_config = ExecutorConfig::new("")
                 .domain_id(config.domain_id)
                 .node_name("dds_talker");
-            // Phase 115.L.x — install C-vtable backend before session open.
+            // Phase 104.A — bare-metal callers explicitly register the RMW
+            // backend before `Executor::open`. POSIX hosts auto-register via
+            // `.init_array`; this target doesn't walk that section.
+            nros_rmw_dds::register().expect("Failed to register RMW backend");
             let mut executor = Executor::open(&exec_config)?;
             let publisher = {
                 let mut node = executor.create_node("dds_talker")?;

@@ -158,6 +158,16 @@ extern "C" fn subscriber_notify_callback(
     };
     let buffer = buf_ref.get_mut();
 
+    // Drop empty-payload samples — they reach the data callback when
+    // zenoh-pico delivers a background probe / liveliness sync through
+    // the regular subscription path. Flagging them as `has_data`
+    // consumes the slot before the real CDR-prefixed sample lands; the
+    // CDR header check then trips on the empty buffer and the typed
+    // `try_recv()` returns `DeserializationError`.
+    if len == 0 {
+        return;
+    }
+
     if len > buffer.data.len() {
         // Overflow: the C shim called us with the oversized length so we can flag it.
         buffer.overflow.store(true, Ordering::Release);

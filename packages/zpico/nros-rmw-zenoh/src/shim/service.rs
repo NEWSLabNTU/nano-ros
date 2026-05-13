@@ -163,6 +163,16 @@ extern "C" fn queryable_callback(
         .keyexpr_len
         .store(keyexpr_copy_len, Ordering::Release);
 
+    // Drop empty-payload queries — they come from background discovery /
+    // liveliness probes that zenoh-pico delivers through the same
+    // queryable callback as real service requests. Flagging them as
+    // `has_request` consumes the slot before the actual CDR-prefixed
+    // request lands; the deserializer then trips on the empty buffer
+    // and `handle_request` reports `ServiceReplyFailed`.
+    if payload.is_null() || payload_len == 0 {
+        return;
+    }
+
     if payload_len > buffer.data.len() {
         // Request exceeds static buffer capacity — flag as overflow.
         // Store keyexpr + sequence_number for diagnostics, but skip payload.
@@ -173,11 +183,9 @@ extern "C" fn queryable_callback(
     } else {
         // Normal case: copy payload
         buffer.overflow.store(false, Ordering::Release);
-        if !payload.is_null() && payload_len > 0 {
-            // Safety: payload pointer is valid for payload_len bytes (from C shim)
-            unsafe {
-                core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), payload_len);
-            }
+        // Safety: payload pointer is valid for payload_len bytes (from C shim)
+        unsafe {
+            core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), payload_len);
         }
         buffer.len.store(payload_len, Ordering::Release);
 
