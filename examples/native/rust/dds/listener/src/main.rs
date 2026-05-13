@@ -25,7 +25,7 @@ fn main() {
     let mut executor: Executor = Executor::open(&config).expect("Failed to open DDS session");
 
     executor
-        .add_subscription::<Int32, _>("/chatter", move |msg| {
+        .register_subscription::<Int32, _>("/chatter", move |msg| {
             info!("Received: {}", msg.data);
         })
         .expect("Failed to add subscription");

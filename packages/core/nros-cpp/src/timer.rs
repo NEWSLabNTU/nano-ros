@@ -51,7 +51,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
 
     match ctx
         .executor
-        .add_timer(TimerDuration::from_millis(period_ms), wrapper)
+        .register_timer(TimerDuration::from_millis(period_ms), wrapper)
     {
         Ok(handle_id) => {
             unsafe {
@@ -102,7 +102,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
 
     match ctx
         .executor
-        .add_timer_oneshot(TimerDuration::from_millis(delay_ms), wrapper)
+        .register_timer_oneshot(TimerDuration::from_millis(delay_ms), wrapper)
     {
         Ok(handle_id) => {
             unsafe {

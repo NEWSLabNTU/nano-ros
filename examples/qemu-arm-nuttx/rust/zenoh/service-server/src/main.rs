@@ -17,7 +17,7 @@ fn main() {
 
         println!("Registering service: /add_two_ints (AddTwoInts)");
         executor
-            .add_service::<AddTwoInts, _>("/add_two_ints", |request| {
+            .register_service::<AddTwoInts, _>("/add_two_ints", |request| {
                 let sum = request.a + request.b;
                 println!("Request: {} + {} = {}", request.a, request.b, sum);
                 AddTwoIntsResponse { sum }

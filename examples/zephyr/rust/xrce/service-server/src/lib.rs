@@ -40,7 +40,7 @@ fn run() -> Result<(), NodeError> {
     // Phase 115.L.x — install C-vtable backend before session open.
     let mut executor: Executor = Executor::open(&config)?;
 
-    executor.add_service::<AddTwoInts, _>("/add_two_ints", |req| {
+    executor.register_service::<AddTwoInts, _>("/add_two_ints", |req| {
         let sum = req.a + req.b;
         info!("{} + {} = {}", req.a, req.b, sum);
         AddTwoIntsResponse { sum }

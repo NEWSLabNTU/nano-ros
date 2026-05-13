@@ -1,7 +1,7 @@
 //! ThreadX QEMU RISC-V Action Server (callback model)
 //!
 //! Phase 120.3 isolation test: handles `example_interfaces/Fibonacci`
-//! goals on `/fibonacci` via `Executor::add_action_server` (arena +
+//! goals on `/fibonacci` via `Executor::register_action_server` (arena +
 //! callback model) instead of `Node::create_action_server` (manual-
 //! poll). Mirrors the structure of the C/C++ examples to determine
 //! whether the manual-poll path is what triggers the rv64 post-
@@ -25,12 +25,12 @@ extern "C" fn main() -> ! {
             .node_name("fibonacci_action_server");
         // Phase 115.L.x — install C-vtable backend before session open.
         let mut executor = Executor::open(&exec_config)?;
-        // Note: callback-model add_action_server is on Executor, not Node.
+        // Note: callback-model register_action_server is on Executor, not Node.
         // The example doesn't need a Node handle — keep `_node` alive for
         // the executor's reference into session state.
         let _node = executor.create_node("fibonacci_action_server")?;
 
-        let handle = executor.add_action_server::<Fibonacci, _, _>(
+        let handle = executor.register_action_server::<Fibonacci, _, _>(
             "/fibonacci",
             |_goal_id, goal: &FibonacciGoal| {
                 println!("Goal request: order={}", goal.order);

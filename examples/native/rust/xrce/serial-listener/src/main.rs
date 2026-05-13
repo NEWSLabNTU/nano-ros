@@ -59,7 +59,7 @@ fn main() {
     let received = Arc::new(AtomicUsize::new(0));
     let received_cb = received.clone();
     executor
-        .add_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
+        .register_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
             let n = received_cb.fetch_add(1, Ordering::SeqCst) + 1;
             println!("[{}] Received: {}", n, msg.data);
         })

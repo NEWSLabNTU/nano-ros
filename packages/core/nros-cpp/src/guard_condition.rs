@@ -47,7 +47,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
         }
     };
 
-    match ctx.executor.add_guard_condition(wrapper) {
+    match ctx.executor.register_guard_condition(wrapper) {
         Ok((_handle_id, guard_handle)) => {
             // Write directly into caller-provided storage (no heap allocation)
             unsafe {

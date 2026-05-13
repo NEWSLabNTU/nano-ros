@@ -539,7 +539,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         set_executor_node_identity(rust_exec, subscription_ref.node);
 
         // Register with the nros-node executor using MESSAGE_BUFFER_SIZE
-        let result = rust_exec.add_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
+        let result = rust_exec.register_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
             topic_str,
             type_str,
             type_hash_str,
@@ -622,7 +622,7 @@ pub unsafe extern "C" fn nros_executor_add_timer(
 
         // Register with the nros-node executor
         let period = nros_node::TimerDuration::from_millis(period_ms);
-        match rust_exec.add_timer(period, wrapper) {
+        match rust_exec.register_timer(period, wrapper) {
             Ok(handle_id) => {
                 // Store handle ID and executor pointer for cancel/reset operations
                 let timer_mut = &mut *timer;
@@ -692,7 +692,7 @@ pub unsafe extern "C" fn nros_executor_add_service(
         set_executor_node_identity(rust_exec, service_ref.node);
 
         // Register with the nros-node executor
-        let result = rust_exec.add_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+        let result = rust_exec.register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
             service_name,
             type_str,
             type_hash_str,
@@ -773,7 +773,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
 
-        let result = rust_exec.add_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
+        let result = rust_exec.register_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
             service_name,
             type_str,
             type_hash_str,
@@ -840,7 +840,7 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
             }
         };
 
-        match rust_exec.add_guard_condition(wrapper) {
+        match rust_exec.register_guard_condition(wrapper) {
             Ok((handle_id, guard_handle)) => {
                 let guard_mut = &mut *guard;
                 guard_mut.set_handle_id(handle_id);
@@ -928,7 +928,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         // accept reply is sent, so the user's long-running execution does
         // not delay the reply the client is blocking on.
         let result = rust_exec
-            .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+            .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
                 action_name,
                 type_str,
                 type_hash_str,
@@ -1022,11 +1022,11 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
 
-        // Create a NEW ActionClientCore in the arena via add_action_client_raw.
+        // Create a NEW ActionClientCore in the arena via register_action_client_raw.
         // The async send functions will use this core (not the client's original).
         // Both share the same global zenoh session, so the arena core's service
         // clients can communicate with the server independently.
-        let result = rust_exec.add_action_client_raw(
+        let result = rust_exec.register_action_client_raw(
             action_name,
             type_str,
             type_hash_str,

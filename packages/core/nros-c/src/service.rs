@@ -211,7 +211,7 @@ pub unsafe extern "C" fn nros_service_init(
     service.node = node;
 
     // Service server creation is deferred to nros_executor_add_service(),
-    // which calls nros_node::Executor::add_service_raw_sized().
+    // which calls nros_node::Executor::register_service_raw_sized().
     // Initialise the internal state (executor_ptr null until registration).
     service._internal = ServiceServerInternal::new();
     service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;

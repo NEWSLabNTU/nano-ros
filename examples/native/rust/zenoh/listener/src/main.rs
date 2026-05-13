@@ -70,7 +70,7 @@ fn main() {
 
     let mut count: u64 = 0;
     executor
-        .add_subscription_with_safety::<Int32, _>("/chatter", move |msg, status| {
+        .register_subscription_with_safety::<Int32, _>("/chatter", move |msg, status| {
             count += 1;
             let crc_str = match status.crc_valid {
                 Some(true) => "ok",
@@ -106,7 +106,7 @@ fn main() {
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     executor
-        .add_subscription_with_info::<Int32, _>("/chatter", move |msg, info| {
+        .register_subscription_with_info::<Int32, _>("/chatter", move |msg, info| {
             info!("Received: {}", msg.data);
             if let Some(info) = info {
                 let gid = info.publisher_gid();

@@ -37,7 +37,7 @@ fn run() -> Result<(), NodeError> {
 
     let mut executor: Executor = Executor::open(&config)?;
 
-    executor.add_service::<AddTwoInts, _>("/add_two_ints", |req| {
+    executor.register_service::<AddTwoInts, _>("/add_two_ints", |req| {
         let sum = req.a + req.b;
         info!("{} + {} = {}", req.a, req.b, sum);
         AddTwoIntsResponse { sum }

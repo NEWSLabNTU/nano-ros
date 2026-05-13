@@ -152,8 +152,8 @@ impl core::ops::DerefMut for SessionStore {
 /// # Callback Mode
 ///
 /// The executor supports arena-based callback registration via
-/// [`add_subscription()`](Self::add_subscription) and
-/// [`add_service()`](Self::add_service), with dispatch via
+/// [`register_subscription()`](Self::register_subscription) and
+/// [`register_service()`](Self::register_service), with dispatch via
 /// [`spin_once()`](Self::spin_once). No heap allocation is needed.
 ///
 /// The sizes are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
@@ -208,7 +208,7 @@ pub struct Executor {
         Option<fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>>,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
-    /// Node name for entities created via `add_subscription`/`add_service`.
+    /// Node name for entities created via `register_subscription`/`register_service`.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
     /// Node namespace (default: "/").
@@ -339,8 +339,8 @@ impl Executor {
 
     /// Set the node name and namespace used for liveliness tokens.
     ///
-    /// Called by `open()` to propagate config values. When `add_subscription`
-    /// or `add_service` creates entities, these values are attached to the
+    /// Called by `open()` to propagate config values. When `register_subscription`
+    /// or `register_service` creates entities, these values are attached to the
     /// `TopicInfo`/`ServiceInfo` so the zenoh backend can declare liveliness.
     pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
         self.node_name.clear();
@@ -571,7 +571,7 @@ impl Executor {
     /// Returns `None` if `entry_index` doesn't refer to a service client
     /// entry. The default reply buffer size is assumed because the C API
     /// always uses the default — the entry was registered via
-    /// `add_service_client_raw_sized::<DEFAULT_RX_BUF_SIZE>`.
+    /// `register_service_client_raw_sized::<DEFAULT_RX_BUF_SIZE>`.
     ///
     /// # Safety
     /// `entry_index` must refer to a `ServiceClientRawArenaEntry`.
@@ -675,14 +675,14 @@ impl Executor {
     ///
     /// ```ignore
     /// let mut executor = Executor::open(&config)?;
-    /// executor.add_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+    /// executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
     ///     // handle message
     /// })?;
     /// loop {
     ///     executor.spin_once(core::time::Duration::from_millis(10));
     /// }
     /// ```
-    pub fn add_subscription<M, F>(
+    pub fn register_subscription<M, F>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -691,7 +691,7 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
     {
-        self.add_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
         )
     }
@@ -699,9 +699,9 @@ impl Executor {
     /// Register a subscription callback with a custom receive buffer size.
     ///
     /// Internally uses a triple buffer (3 slots) with `KEEP_LAST(1)` QoS.
-    /// For deeper message queuing, use [`add_subscription_buffered`] with
+    /// For deeper message queuing, use [`register_subscription_buffered`] with
     /// an explicit QoS depth.
-    pub fn add_subscription_sized<M, F, const RX_BUF: usize>(
+    pub fn register_subscription_sized<M, F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -713,7 +713,7 @@ impl Executor {
         // Use depth=1 (triple buffer) to match the old single-buffer behavior.
         // The default QoS depth (10) would create an 11-slot SPSC ring, using
         // 11× the buffer memory — too expensive as an invisible default.
-        self.add_subscription_buffered::<M, F, RX_BUF>(
+        self.register_subscription_buffered::<M, F, RX_BUF>(
             topic_name,
             QosSettings::default().keep_last(1),
             callback,
@@ -728,7 +728,7 @@ impl Executor {
     ///
     /// Buffer slots are allocated as a trailing region in the arena (no
     /// separate static buffer array). `RX_BUF` sets the per-slot byte size.
-    pub fn add_subscription_buffered<M, F, const RX_BUF: usize>(
+    pub fn register_subscription_buffered<M, F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         qos: QosSettings,
@@ -799,7 +799,7 @@ impl Executor {
     /// `Image::deserialize_borrowed(data)` inside the callback:
     ///
     /// ```ignore
-    /// executor.add_subscription_buffered_raw::<1024>(
+    /// executor.register_subscription_buffered_raw::<1024>(
     ///     "/camera/image",
     ///     "sensor_msgs::msg::dds_::Image_",
     ///     "TypeHashNotSupported",
@@ -810,7 +810,7 @@ impl Executor {
     ///     },
     /// );
     /// ```
-    pub fn add_subscription_buffered_raw<F, const RX_BUF: usize>(
+    pub fn register_subscription_buffered_raw<F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         type_name: &str,
@@ -843,7 +843,7 @@ impl Executor {
     ///
     /// - **Generic ROS-typed flow**: call `Session::create_subscriber`
     ///   on `self.session_mut()` with a [`TopicInfo`].
-    ///   [`add_subscription_buffered_raw`](Self::add_subscription_buffered_raw)
+    ///   [`register_subscription_buffered_raw`](Self::register_subscription_buffered_raw)
     ///   is the convenience wrapper for this path.
     /// - **Backend-specific flow** (e.g. uORB needs `&'static orb_metadata`):
     ///   reach into the concrete session via [`Self::session_mut`] and
@@ -852,7 +852,7 @@ impl Executor {
     ///   the example.
     ///
     /// The arena-store + vtable wiring is identical to
-    /// `add_subscription_buffered_raw`; the only thing that varies is
+    /// `register_subscription_buffered_raw`; the only thing that varies is
     /// where the handle came from. Callback fires on every message
     /// delivery during [`spin_once`](Self::spin_once); bytes are
     /// passed as `&[u8]`.
@@ -914,13 +914,13 @@ impl Executor {
     /// # Example
     ///
     /// ```ignore
-    /// executor.add_subscription_with_info::<Int32, _>("/chatter", |msg, info| {
+    /// executor.register_subscription_with_info::<Int32, _>("/chatter", |msg, info| {
     ///     if let Some(info) = info {
     ///         log::trace!("seq={} gid={:02x?}", info.publication_sequence_number(), &info.publisher_gid()[..4]);
     ///     }
     /// })?;
     /// ```
-    pub fn add_subscription_with_info<M, F>(
+    pub fn register_subscription_with_info<M, F>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -929,13 +929,13 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
-        self.add_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
         )
     }
 
     /// Register a subscription callback with MessageInfo and a custom receive buffer size.
-    pub fn add_subscription_with_info_sized<M, F, const RX_BUF: usize>(
+    pub fn register_subscription_with_info_sized<M, F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -995,7 +995,7 @@ impl Executor {
     /// # Example
     ///
     /// ```ignore
-    /// executor.add_subscription_with_safety::<Int32, _>("/chatter", |msg, status| {
+    /// executor.register_subscription_with_safety::<Int32, _>("/chatter", |msg, status| {
     ///     let crc_str = match status.crc_valid {
     ///         Some(true) => "ok",
     ///         Some(false) => "FAIL",
@@ -1005,7 +1005,7 @@ impl Executor {
     /// })?;
     /// ```
     #[cfg(feature = "safety-e2e")]
-    pub fn add_subscription_with_safety<M, F>(
+    pub fn register_subscription_with_safety<M, F>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -1014,14 +1014,14 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
-        self.add_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
         )
     }
 
     /// Register a safety-validated subscription callback with a custom receive buffer size.
     #[cfg(feature = "safety-e2e")]
-    pub fn add_subscription_with_safety_sized<M, F, const RX_BUF: usize>(
+    pub fn register_subscription_with_safety_sized<M, F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         callback: F,
@@ -1076,7 +1076,7 @@ impl Executor {
     /// Register a service callback with the default buffer size.
     ///
     /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
-    pub fn add_service<Svc, F>(
+    pub fn register_service<Svc, F>(
         &mut self,
         service_name: &str,
         callback: F,
@@ -1085,11 +1085,11 @@ impl Executor {
         Svc: RosService + 'static,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
-        self.add_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
+        self.register_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
     }
 
     /// Register a service callback with custom request/reply buffer sizes.
-    pub fn add_service_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub fn register_service_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         callback: F,
@@ -1115,7 +1115,7 @@ impl Executor {
 
         let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
 
-        // SAFETY: same guarantees as add_subscription_sized.
+        // SAFETY: same guarantees as register_subscription_sized.
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr = arena_ptr.add(offset) as *mut Entry<Svc, F, REQ_BUF, REPLY_BUF>;
@@ -1151,7 +1151,7 @@ impl Executor {
     ///
     /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
     /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
-    pub fn add_timer<F>(
+    pub fn register_timer<F>(
         &mut self,
         period: TimerDuration,
         callback: F,
@@ -1193,7 +1193,7 @@ impl Executor {
     /// Register a one-shot timer callback.
     ///
     /// The callback fires once after `delay` milliseconds, then becomes inert.
-    pub fn add_timer_oneshot<F>(
+    pub fn register_timer_oneshot<F>(
         &mut self,
         delay: TimerDuration,
         callback: F,
@@ -1240,7 +1240,7 @@ impl Executor {
     ///
     /// The callback receives CDR bytes without deserialization.
     /// Used by the C API where generic type parameters are not available.
-    pub fn add_subscription_raw(
+    pub fn register_subscription_raw(
         &mut self,
         topic_name: &str,
         type_name: &str,
@@ -1248,7 +1248,7 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name,
             type_name,
             type_hash,
@@ -1259,7 +1259,7 @@ impl Executor {
     }
 
     /// Register a raw subscription callback with a custom receive buffer size.
-    pub fn add_subscription_raw_sized<const RX_BUF: usize>(
+    pub fn register_subscription_raw_sized<const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         type_name: &str,
@@ -1267,7 +1267,7 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.add_subscription_raw_with_qos_sized::<RX_BUF>(
+        self.register_subscription_raw_with_qos_sized::<RX_BUF>(
             topic_name,
             type_name,
             type_hash,
@@ -1280,7 +1280,7 @@ impl Executor {
     /// Register a raw (untyped) subscription callback with custom QoS.
     ///
     /// Used by the C API where QoS is specified at init time.
-    pub fn add_subscription_raw_with_qos(
+    pub fn register_subscription_raw_with_qos(
         &mut self,
         topic_name: &str,
         type_name: &str,
@@ -1289,7 +1289,7 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, type_name, type_hash, qos, callback, context,
         )
     }
@@ -1297,7 +1297,7 @@ impl Executor {
     /// Register a raw subscription callback with custom QoS and buffer size.
     ///
     /// Internally uses triple buffer (depth ≤ 1) or SPSC ring (depth > 1).
-    pub fn add_subscription_raw_with_qos_sized<const RX_BUF: usize>(
+    pub fn register_subscription_raw_with_qos_sized<const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         type_name: &str,
@@ -1363,7 +1363,7 @@ impl Executor {
     ///
     /// The callback receives and produces CDR bytes without typed
     /// deserialization/serialization. Used by the C API wrapper.
-    pub fn add_service_raw(
+    pub fn register_service_raw(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -1371,7 +1371,7 @@ impl Executor {
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.add_service_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_service_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             service_name,
             service_type,
             service_hash,
@@ -1385,7 +1385,7 @@ impl Executor {
     /// `REQ_BUF` and `REPLY_BUF` set the stack-allocated CDR buffers
     /// for the request and reply respectively. Increase for services
     /// with large payloads (e.g., parameter services).
-    pub fn add_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub fn register_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -1446,7 +1446,7 @@ impl Executor {
     /// dispatch polls the in-flight reply slot via `try_recv_reply_raw`
     /// and fires the registered callback when the response arrives.
     /// Used by the C API thin wrapper — see Phase 82.
-    pub fn add_service_client_raw(
+    pub fn register_service_client_raw(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -1454,7 +1454,7 @@ impl Executor {
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.add_service_client_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+        self.register_service_client_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             service_name,
             service_type,
             service_hash,
@@ -1464,7 +1464,7 @@ impl Executor {
     }
 
     /// Register a raw service client with a custom reply buffer size.
-    pub fn add_service_client_raw_sized<const REPLY_BUF: usize>(
+    pub fn register_service_client_raw_sized<const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -1522,7 +1522,7 @@ impl Executor {
     ///
     /// Returns both the [`HandleId`] for trigger configuration and a
     /// [`GuardConditionHandle`] for triggering from other threads.
-    pub fn add_guard_condition<F>(
+    pub fn register_guard_condition<F>(
         &mut self,
         callback: F,
     ) -> Result<(HandleId, GuardConditionHandle), NodeError>
@@ -2092,7 +2092,7 @@ impl Executor {
     ///
     /// ```ignore
     /// let mut executor = Executor::open(&config)?;
-    /// executor.add_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
+    /// executor.register_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
     /// executor.spin(10); // never returns
     /// ```
     pub fn spin(&mut self, timeout: core::time::Duration) -> ! {

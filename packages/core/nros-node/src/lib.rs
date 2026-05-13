@@ -18,7 +18,7 @@
 //! let mut executor: Executor = Executor::open(&config)?;
 //!
 //! // Register subscription callback
-//! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
+//! executor.register_subscription::<Int32, _>("/topic", |msg: &Int32| {
 //!     println!("Received: {}", msg.data);
 //! })?;
 //!
@@ -36,7 +36,7 @@
 //! let mut executor: Executor = Executor::open(&config)?;
 //!
 //! // Register subscription callback
-//! executor.add_subscription::<Int32, _>("/cmd", |msg: &Int32| {
+//! executor.register_subscription::<Int32, _>("/cmd", |msg: &Int32| {
 //!     // process message...
 //! })?;
 //!

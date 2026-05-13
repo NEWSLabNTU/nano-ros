@@ -17,7 +17,7 @@
 //!
 //! ```ignore
 //! // 4 KB receive buffer
-//! executor.add_subscription_sized::<MyMsg, _, 4096>("/topic", |msg| { ... })?;
+//! executor.register_subscription_sized::<MyMsg, _, 4096>("/topic", |msg| { ... })?;
 //! ```
 //!
 //! ## zenoh version mismatch

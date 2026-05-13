@@ -268,7 +268,7 @@ fn scenario_1_asymmetric_subscriptions() {
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
-        .add_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
+        .register_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
             let n = fast_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = fl_cb.lock().unwrap();
@@ -280,7 +280,7 @@ fn scenario_1_asymmetric_subscriptions() {
         .expect("Fast subscription");
 
     executor
-        .add_subscription::<Int32, _>("/bench1/slow", move |_msg: &Int32| {
+        .register_subscription::<Int32, _>("/bench1/slow", move |_msg: &Int32| {
             let n = slow_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = sl_cb.lock().unwrap();
@@ -353,7 +353,7 @@ fn scenario_2_service_burst() {
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
-        .add_service::<AddTwoInts, _>("/bench2/add", move |req: &AddTwoIntsRequest| {
+        .register_service::<AddTwoInts, _>("/bench2/add", move |req: &AddTwoIntsRequest| {
             handled_cb.fetch_add(1, Ordering::Relaxed);
             AddTwoIntsResponse { sum: req.a + req.b }
         })
@@ -413,19 +413,19 @@ fn scenario_3_mixed_load() {
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
-        .add_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {
+        .register_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {
             a_cb.fetch_add(1, Ordering::Relaxed);
         })
         .expect("Sub A");
 
     executor
-        .add_subscription::<Int32, _>("/bench3/topic_b", move |_msg: &Int32| {
+        .register_subscription::<Int32, _>("/bench3/topic_b", move |_msg: &Int32| {
             b_cb.fetch_add(1, Ordering::Relaxed);
         })
         .expect("Sub B");
 
     executor
-        .add_service::<AddTwoInts, _>("/bench3/add", move |req: &AddTwoIntsRequest| {
+        .register_service::<AddTwoInts, _>("/bench3/add", move |req: &AddTwoIntsRequest| {
             svc_cb.fetch_add(1, Ordering::Relaxed);
             AddTwoIntsResponse { sum: req.a + req.b }
         })

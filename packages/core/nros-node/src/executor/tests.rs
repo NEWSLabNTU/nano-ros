@@ -82,7 +82,7 @@ fn test_add_subscription_and_spin_once_no_data() {
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
     executor
-        .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             called2.store(true, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -101,7 +101,7 @@ fn test_add_subscription_and_spin_once_with_data() {
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
     let received2 = received.clone();
     executor
-        .add_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
             *received2.lock().unwrap() = Some(msg.data);
         })
         .unwrap();
@@ -133,13 +133,13 @@ fn test_multiple_subscriptions() {
     let count2 = count.clone();
 
     executor
-        .add_subscription::<TestMsg, _>("/topic1", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/topic1", move |_msg: &TestMsg| {
             count1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
 
     executor
-        .add_subscription::<TestMsg, _>("/topic2", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/topic2", move |_msg: &TestMsg| {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -176,7 +176,7 @@ fn test_edf_dispatch_order() {
     // Registered first → has lower DescIdx → would normally dispatch
     // first under the FIFO path. Bind to a *later* deadline.
     let h_late = executor
-        .add_subscription::<TestMsg, _>("/late", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/late", move |msg: &TestMsg| {
             order_late.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -184,7 +184,7 @@ fn test_edf_dispatch_order() {
     // Registered second → higher DescIdx → would dispatch second under
     // FIFO. Bind to an *earlier* deadline so EDF promotes it.
     let h_early = executor
-        .add_subscription::<TestMsg, _>("/early", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/early", move |msg: &TestMsg| {
             order_early.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -252,7 +252,7 @@ fn test_os_priority_worker_dispatches_callback() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .add_subscription::<TestMsg, _>("/picas", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/picas", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -302,7 +302,7 @@ fn test_tt_window_gate_suppresses_outside_window() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .add_subscription::<TestMsg, _>("/tt", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/tt", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -344,7 +344,7 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .add_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -483,14 +483,14 @@ fn test_bucketed_priority_dispatch_order() {
 
     // Registered first (lower DescIdx) — bound to BestEffort.
     let h_be = executor
-        .add_subscription::<TestMsg, _>("/be", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/be", move |msg: &TestMsg| {
             o_be.lock().unwrap().push(msg.data);
         })
         .unwrap();
     // Registered second — bound to Critical so the bucket promotion
     // beats registration order.
     let h_crit = executor
-        .add_subscription::<TestMsg, _>("/crit", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/crit", move |msg: &TestMsg| {
             o_crit.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -543,12 +543,12 @@ fn test_fifo_default_binding_preserved_alongside_edf() {
     let o2 = firing_order.clone();
 
     let _h1 = executor
-        .add_subscription::<TestMsg, _>("/fifo1", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/fifo1", move |msg: &TestMsg| {
             o1.lock().unwrap().push(msg.data);
         })
         .unwrap();
     let h2 = executor
-        .add_subscription::<TestMsg, _>("/edf", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/edf", move |msg: &TestMsg| {
             o2.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -591,7 +591,7 @@ fn test_arena_overflow() {
     let mut filled = 0;
     for topic in &topics {
         let result =
-            executor.add_subscription_sized::<TestMsg, _, 4096>(topic, |_msg: &TestMsg| {});
+            executor.register_subscription_sized::<TestMsg, _, 4096>(topic, |_msg: &TestMsg| {});
         if result.is_err() {
             break;
         }
@@ -607,7 +607,7 @@ fn test_arena_overflow() {
 
     // Verify the next add fails with BufferTooSmall.
     let result =
-        executor.add_subscription_sized::<TestMsg, _, 4096>("/overflow", |_msg: &TestMsg| {});
+        executor.register_subscription_sized::<TestMsg, _, 4096>("/overflow", |_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
@@ -620,12 +620,12 @@ fn test_entry_slots_exhausted() {
 
     for topic in &["/a", "/b", "/c", "/d"] {
         executor
-            .add_subscription_sized::<TestMsg, _, 64>(topic, |_msg: &TestMsg| {})
+            .register_subscription_sized::<TestMsg, _, 64>(topic, |_msg: &TestMsg| {})
             .unwrap();
     }
 
     // 5th registration should fail — all 4 slots are taken.
-    let result = executor.add_subscription_sized::<TestMsg, _, 64>("/e", |_msg: &TestMsg| {});
+    let result = executor.register_subscription_sized::<TestMsg, _, 64>("/e", |_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
@@ -655,7 +655,7 @@ fn test_drop_runs_without_panic() {
     let mut executor: Executor = Executor::from_session(session);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // executor drops here — Drop impl must not panic
@@ -678,7 +678,7 @@ fn test_arena_alignment() {
 
     // Add a subscription, then check the offset is properly aligned
     executor
-        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     let meta = executor.entries[0].as_ref().unwrap();
@@ -698,7 +698,7 @@ fn test_add_timer_and_fire() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
     executor
-        .add_timer(TimerDuration::from_millis(100), move || {
+        .register_timer(TimerDuration::from_millis(100), move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -722,7 +722,7 @@ fn test_timer_repeats() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
     executor
-        .add_timer(TimerDuration::from_millis(100), move || {
+        .register_timer(TimerDuration::from_millis(100), move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -742,7 +742,7 @@ fn test_timer_oneshot_fires_once() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
     executor
-        .add_timer_oneshot(TimerDuration::from_millis(50), move || {
+        .register_timer_oneshot(TimerDuration::from_millis(50), move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -766,7 +766,7 @@ fn test_timer_does_not_fire_at_zero_delta() {
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
     executor
-        .add_timer(TimerDuration::from_millis(100), move || {
+        .register_timer(TimerDuration::from_millis(100), move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -784,7 +784,7 @@ fn test_timer_with_subscriptions() {
     let timer_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let timer_count2 = timer_count.clone();
     executor
-        .add_timer(TimerDuration::from_millis(100), move || {
+        .register_timer(TimerDuration::from_millis(100), move || {
             timer_count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -792,7 +792,7 @@ fn test_timer_with_subscriptions() {
     let sub_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let sub_count2 = sub_count.clone();
     executor
-        .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             sub_count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -907,7 +907,7 @@ fn test_add_action_server_registers() {
     let mut executor = Executor::from_session(session);
 
     let handle = executor
-        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
+        .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -925,7 +925,7 @@ fn test_action_server_spin_once_no_requests() {
     let mut executor = Executor::from_session(session);
 
     let _handle = executor
-        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
+        .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -944,7 +944,7 @@ fn test_action_server_registers_and_spins() {
     let mut executor = Executor::from_session(session);
 
     let _server_handle = executor
-        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
+        .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -965,13 +965,13 @@ fn test_drop_with_mixed_entries() {
 
     // Register one of each kind — use small buffers to fit in 4096-byte arena.
     executor
-        .add_subscription_sized::<TestMsg, _, 64>("/sub", |_msg: &TestMsg| {})
+        .register_subscription_sized::<TestMsg, _, 64>("/sub", |_msg: &TestMsg| {})
         .unwrap();
     executor
-        .add_timer(TimerDuration::from_millis(100), || {})
+        .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
     let _server = executor
-        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
+        .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/act",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -1129,12 +1129,12 @@ fn test_handle_id_from_add_subscription() {
     let mut executor: Executor = Executor::from_session(session);
 
     let id = executor
-        .add_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
         .unwrap();
     assert_eq!(id, HandleId(0));
 
     let id2 = executor
-        .add_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
         .unwrap();
     assert_eq!(id2, HandleId(1));
 }
@@ -1203,7 +1203,7 @@ fn test_trigger_any_fires_on_data() {
     executor.set_trigger(Trigger::Any);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // Load data
@@ -1223,7 +1223,7 @@ fn test_trigger_any_no_data_no_dispatch() {
     executor.set_trigger(Trigger::Any);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // No data loaded → trigger should not pass (for subscriptions)
@@ -1240,7 +1240,7 @@ fn test_trigger_always_fires_without_data() {
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
     let id = executor
-        .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             called2.store(true, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -1262,10 +1262,10 @@ fn test_trigger_one_fires_on_specific_handle() {
     let mut executor: Executor = Executor::from_session(session);
 
     let _id0 = executor
-        .add_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
         .unwrap();
     let id1 = executor
-        .add_subscription::<TestMsg, _>("/topic1", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/topic1", |_: &TestMsg| {})
         .unwrap();
 
     executor.set_trigger(Trigger::One(id1));
@@ -1295,7 +1295,7 @@ fn test_trigger_predicate() {
     let mut executor: Executor = Executor::from_session(session);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Custom predicate that requires at least 1 ready handle
@@ -1321,7 +1321,7 @@ fn test_guard_condition_trigger_fires_callback() {
     let called2 = called.clone();
 
     let (_id, handle) = executor
-        .add_guard_condition(move || {
+        .register_guard_condition(move || {
             called2.store(true, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -1346,7 +1346,7 @@ fn test_guard_condition_clears_after_trigger() {
     let count2 = count.clone();
 
     let (_id, handle) = executor
-        .add_guard_condition(move || {
+        .register_guard_condition(move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -1386,7 +1386,7 @@ fn test_raw_subscription_callback() {
     RAW_CALLED.store(false, std::sync::atomic::Ordering::SeqCst);
 
     let _id = executor
-        .add_subscription_raw(
+        .register_subscription_raw(
             "/test",
             "test/msg/TestMsg",
             "test_hash",
@@ -1442,7 +1442,7 @@ fn test_set_invocation_mode() {
     let mut executor: Executor = Executor::from_session(session);
 
     let id = executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Default is OnNewData
@@ -1492,7 +1492,7 @@ fn test_let_semantics_pre_samples_data() {
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
     let received2 = received.clone();
     executor
-        .add_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+        .register_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
             *received2.lock().unwrap() = Some(msg.data);
         })
         .unwrap();
@@ -1524,7 +1524,7 @@ fn test_let_semantics_raw_subscription() {
     RAW_LET_LEN.store(0, std::sync::atomic::Ordering::SeqCst);
 
     executor
-        .add_subscription_raw(
+        .register_subscription_raw(
             "/test",
             "test/msg/TestMsg",
             "test_hash",
@@ -1557,10 +1557,10 @@ fn test_trigger_all_with_mixed_handles() {
 
     // Add a timer and a subscription
     executor
-        .add_timer(TimerDuration::from_millis(100), || {})
+        .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
     let _sub_id = executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     executor.set_trigger(Trigger::All);
@@ -1591,10 +1591,10 @@ fn test_trigger_allof_fires_when_both_ready() {
     let mut executor: Executor = Executor::from_session(session);
 
     let id_a = executor
-        .add_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
         .unwrap();
     let id_b = executor
-        .add_subscription::<TestMsg, _>("/sensor_b", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/sensor_b", |_: &TestMsg| {})
         .unwrap();
 
     // AllOf — dispatch only when BOTH subscriptions have data
@@ -1633,7 +1633,7 @@ fn test_trigger_allof_empty_set_always_fires() {
     let mut executor: Executor = Executor::from_session(session);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // AllOf with empty set → vacuously true, always dispatches
@@ -1655,10 +1655,10 @@ fn test_trigger_anyof_fires_when_one_ready() {
     let mut executor: Executor = Executor::from_session(session);
 
     let id_a = executor
-        .add_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
         .unwrap();
     let id_b = executor
-        .add_subscription::<TestMsg, _>("/topic_b", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/topic_b", |_: &TestMsg| {})
         .unwrap();
 
     // AnyOf — dispatch when ANY handle in set has data
@@ -1690,7 +1690,7 @@ fn test_trigger_anyof_empty_set_never_fires() {
     let mut executor: Executor = Executor::from_session(session);
 
     executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // AnyOf with empty set → always false, never dispatches
@@ -1722,12 +1722,12 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
     let count2 = count.clone();
 
     executor
-        .add_timer(TimerDuration::from_millis(100), move || {
+        .register_timer(TimerDuration::from_millis(100), move || {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
     let sub_id = executor
-        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Trigger requires specific handle that won't have data
@@ -1870,7 +1870,7 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
 
     // 50 ms periodic timer.
     let _timer = executor
-        .add_timer(TimerDuration::from_millis(50), || {
+        .register_timer(TimerDuration::from_millis(50), || {
             FIRES.fetch_add(1, Ordering::SeqCst);
         })
         .unwrap();

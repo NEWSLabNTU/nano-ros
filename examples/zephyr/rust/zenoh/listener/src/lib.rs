@@ -35,7 +35,7 @@ fn run() -> Result<(), NodeError> {
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut count: u32 = 0;
-    executor.add_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
+    executor.register_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
         count += 1;
         info!("Received: {}", msg.data);
     })?;

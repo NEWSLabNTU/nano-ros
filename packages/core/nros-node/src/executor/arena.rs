@@ -458,7 +458,7 @@ pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of
-/// a Rust closure. Used by the C API and by `add_subscription_raw_*` methods.
+/// a Rust closure. Used by the C API and by `register_subscription_raw_*` methods.
 #[repr(C)]
 pub(crate) struct SubBufferedRawCEntry {
     pub(crate) handle: session::RmwSubscriber,

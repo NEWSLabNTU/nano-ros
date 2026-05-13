@@ -749,7 +749,7 @@ pub enum ExecutorSemantics {
 
 /// Handle for triggering a guard condition from outside the executor.
 ///
-/// Obtained from `Executor::add_guard_condition`.
+/// Obtained from `Executor::register_guard_condition`.
 /// Safe to use from any thread — the inner `&'static AtomicBool` is inherently
 /// `Send + Sync`.
 pub struct GuardConditionHandle {

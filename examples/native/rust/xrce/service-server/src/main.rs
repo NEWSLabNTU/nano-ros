@@ -38,7 +38,7 @@ fn main() {
 
     // Register service callback
     executor
-        .add_service::<AddTwoInts, _>("/add_two_ints", |req| {
+        .register_service::<AddTwoInts, _>("/add_two_ints", |req| {
             println!("Received request: a={} b={}", req.a, req.b);
             let sum = req.a + req.b;
             println!("Sent reply: sum={}", sum);

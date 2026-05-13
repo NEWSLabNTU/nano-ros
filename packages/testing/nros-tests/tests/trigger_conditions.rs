@@ -35,7 +35,7 @@ fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
     GUARD_FIRED.store(0, Ordering::SeqCst);
 
     let (_guard_id, guard_handle) = executor
-        .add_guard_condition(|| {
+        .register_guard_condition(|| {
             GUARD_FIRED.fetch_add(1, Ordering::SeqCst);
         })
         .expect("Failed to add guard condition");

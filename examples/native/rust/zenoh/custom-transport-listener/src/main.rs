@@ -115,7 +115,7 @@ fn main() {
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     executor
-        .add_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+        .register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
             info!("Received: {}", msg.data);
         })
         .expect("Failed to add subscription");

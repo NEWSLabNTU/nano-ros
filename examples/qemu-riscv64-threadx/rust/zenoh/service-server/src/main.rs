@@ -18,7 +18,7 @@ extern "C" fn main() -> ! {
         // Phase 115.L.x — install C-vtable backend before session open.
         let mut executor: Executor = Executor::open(&exec_config)?;
 
-        executor.add_service::<AddTwoInts, _>("/add_two_ints", |request| {
+        executor.register_service::<AddTwoInts, _>("/add_two_ints", |request| {
             let sum = request.a + request.b;
             println!("Request: {} + {} = {}", request.a, request.b, sum);
             AddTwoIntsResponse { sum }

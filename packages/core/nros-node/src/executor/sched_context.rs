@@ -7,7 +7,7 @@
 //!
 //! 110.B.a (this commit) lands the type surface + `EdfReadySet`. The
 //! Executor builder methods (`create_sched_context`,
-//! `add_subscription_in`, ...) and the cbindgen / C / C++ wrappers
+//! `register_subscription_in`, ...) and the cbindgen / C / C++ wrappers
 //! land in 110.B.b once the const-generic `Executor<MAX_HANDLES,
 //! MAX_SC>` reshape is sorted.
 

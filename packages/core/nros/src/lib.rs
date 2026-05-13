@@ -25,7 +25,7 @@
 //! let publisher = node.create_publisher::<Int32>("/my_topic")?;
 //! publisher.publish(&Int32 { data: 42 })?;
 //!
-//! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
+//! executor.register_subscription::<Int32, _>("/topic", |msg: &Int32| {
 //!     println!("Received: {}", msg.data);
 //! })?;
 //!
@@ -43,7 +43,7 @@
 //!   callback closures inline.
 //!
 //! For messages larger than the default 1024-byte receive buffer, use the
-//! `_sized` method variants (e.g., `add_subscription_sized`) to specify a
+//! `_sized` method variants (e.g., `register_subscription_sized`) to specify a
 //! custom buffer size.
 //!
 //! ## Transport Backends

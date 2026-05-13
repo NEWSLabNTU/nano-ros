@@ -231,7 +231,7 @@ fn main() {
 
         // Register subscription callback
         executor
-            .add_subscription::<SensorReading, _>("/sensor_data", move |msg: &SensorReading| {
+            .register_subscription::<SensorReading, _>("/sensor_data", move |msg: &SensorReading| {
                 println!(
                     "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
                     msg.sensor_id, msg.temperature, msg.humidity

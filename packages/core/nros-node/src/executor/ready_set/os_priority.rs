@@ -22,7 +22,7 @@
 //! need:
 //!
 //! 1. **Callback closures `Send + 'static`** for any cross-thread
-//!    dispatch path. Current `add_subscription<F>` already requires
+//!    dispatch path. Current `register_subscription<F>` already requires
 //!    `F: FnMut(&M) + Send + 'static` for std workloads, so this
 //!    side is mostly settled.
 //! 2. **Per-`DescIdx` exclusive arena access.** Each entry's arena

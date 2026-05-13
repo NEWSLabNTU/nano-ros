@@ -58,7 +58,7 @@ fn main() {
     let counter = Arc::new(AtomicI32::new(0));
     let counter_cb = counter.clone();
     executor
-        .add_timer(TimerDuration::from_millis(500), move || {
+        .register_timer(TimerDuration::from_millis(500), move || {
             let i = counter_cb.fetch_add(1, Ordering::SeqCst);
             match publisher.publish(&Int32 { data: i }) {
                 Ok(()) => println!("Published: {}", i),

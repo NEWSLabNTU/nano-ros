@@ -220,7 +220,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    match ctx.executor.add_action_server_raw(
+    match ctx.executor.register_action_server_raw(
         act_str,
         type_str,
         hash_str,
@@ -662,7 +662,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 
     // Register with executor — creates the ONLY ActionClientCore in the arena.
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).
-    let handle = match ctx.executor.add_action_client_raw(
+    let handle = match ctx.executor.register_action_client_raw(
         act_str,
         type_str,
         hash_str,

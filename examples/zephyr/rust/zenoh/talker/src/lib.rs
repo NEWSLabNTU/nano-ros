@@ -40,7 +40,7 @@ fn run() -> Result<(), NodeError> {
     let publisher = node.create_publisher::<Int32>("/chatter")?;
 
     let mut counter: i32 = 0;
-    executor.add_timer(TimerDuration::from_millis(1000), move || {
+    executor.register_timer(TimerDuration::from_millis(1000), move || {
         let _ = publisher.publish(&Int32 { data: counter });
         info!("Published: {}", counter);
         counter = counter.wrapping_add(1);

@@ -38,7 +38,7 @@ impl Executor {
     /// Use the returned [`ActionServerHandle`] to publish feedback and complete goals.
     ///
     /// Uses default buffer sizes and max 4 concurrent goals.
-    pub fn add_action_server<A, GoalF, CancelF>(
+    pub fn register_action_server<A, GoalF, CancelF>(
         &mut self,
         action_name: &str,
         goal_callback: GoalF,
@@ -52,7 +52,7 @@ impl Executor {
         CancelF:
             FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
     {
-        self.add_action_server_sized::<A, GoalF, CancelF, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
+        self.register_action_server_sized::<A, GoalF, CancelF, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
             goal_callback,
             cancel_callback,
@@ -60,7 +60,7 @@ impl Executor {
     }
 
     /// Register an action server with custom buffer sizes.
-    pub fn add_action_server_sized<
+    pub fn register_action_server_sized<
         A,
         GoalF,
         CancelF,
@@ -260,7 +260,7 @@ impl Executor {
 
 /// Handle to an action server registered in the executor's arena.
 ///
-/// Returned by [`Executor::add_action_server()`]. Provides methods
+/// Returned by [`Executor::register_action_server()`]. Provides methods
 /// to interact with the server (publish feedback, complete goals) while the
 /// executor automatically handles goal acceptance, cancel requests, and
 /// result serving during [`spin_once()`](Executor::spin_once).
@@ -391,14 +391,14 @@ impl<A: RosAction> ActionServerHandle<A> {
 impl Executor {
     /// Register a raw action server with raw-bytes callbacks.
     ///
-    /// Unlike [`add_action_server()`](Executor::add_action_server), this does
+    /// Unlike [`register_action_server()`](Executor::register_action_server), this does
     /// not require `RosAction` — the goal/cancel callbacks receive raw CDR
     /// bytes. This is used by the C API thin wrapper.
     ///
     /// `type_name` and `type_hash` identify the action type for key expression
     /// construction and liveliness tokens.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_action_server_raw(
+    pub fn register_action_server_raw(
         &mut self,
         action_name: &str,
         type_name: &str,
@@ -408,7 +408,7 @@ impl Executor {
         accepted_callback: Option<RawAcceptedCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionServerRawHandle, NodeError> {
-        self.add_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
+        self.register_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
             type_name,
             type_hash,
@@ -421,7 +421,7 @@ impl Executor {
 
     /// Register a raw action server with custom buffer sizes.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_action_server_raw_sized<
+    pub fn register_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -599,7 +599,7 @@ impl Executor {
 
 /// Handle to a raw (untyped) action server registered in the executor's arena.
 ///
-/// Returned by [`Executor::add_action_server_raw()`]. Provides methods
+/// Returned by [`Executor::register_action_server_raw()`]. Provides methods
 /// to interact with the server using raw CDR bytes.
 #[repr(C)]
 #[allow(clippy::type_complexity)]
@@ -840,7 +840,7 @@ impl Executor {
     /// * `result_callback` — called when result is received
     /// * `context` — opaque pointer passed to all callbacks
     #[allow(clippy::too_many_arguments)]
-    pub fn add_action_client_raw(
+    pub fn register_action_client_raw(
         &mut self,
         action_name: &str,
         type_name: &str,
@@ -850,7 +850,7 @@ impl Executor {
         result_callback: Option<RawResultCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionClientRawHandle, NodeError> {
-        self.add_action_client_raw_sized::<
+        self.register_action_client_raw_sized::<
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -867,7 +867,7 @@ impl Executor {
 
     /// Register a raw action client with explicit buffer sizes.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_action_client_raw_sized<
+    pub fn register_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -890,7 +890,7 @@ impl Executor {
         let node_name: heapless::String<64> = self.node_name.clone();
         let ns: heapless::String<64> = self.namespace.clone();
 
-        // Mirror `add_action_server_raw_sized`: thread node identity
+        // Mirror `register_action_server_raw_sized`: thread node identity
         // through each underlying ServiceInfo / TopicInfo so the
         // client's per-entity liveliness tokens are declared and the
         // server-discovery wildcard built from `send_goal_info`
@@ -984,10 +984,10 @@ impl Executor {
 impl Executor {
     /// Register an existing `ActionClientCore` with the executor for async polling.
     ///
-    /// Unlike `add_action_client_raw` (which creates new transport handles),
+    /// Unlike `register_action_client_raw` (which creates new transport handles),
     /// this takes ownership of an existing core. Use this when the core was
     /// already created by the C/C++ action client init.
-    pub fn add_action_client_core<
+    pub fn register_action_client_core<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -1034,7 +1034,7 @@ impl Executor {
     }
 }
 
-/// Handle returned by [`Executor::add_action_client_raw()`].
+/// Handle returned by [`Executor::register_action_client_raw()`].
 ///
 /// Provides methods to send goals, request results, and cancel goals
 /// via the executor's non-blocking path.
