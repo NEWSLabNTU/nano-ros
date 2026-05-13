@@ -294,14 +294,34 @@ writes a workspace `Cargo.toml` for Rust users.
           `c/dds/talker` build + run with 0 unresolved
           `nros_*` references in the final binary.
 
-    - [ ] **123.A.1.x.5 — Switch `nano_ros_link_platform` /
-      `_link_rmw` to real link targets.** When A.1.x.2 +
-      A.1.x.3 + A.1.x.4 land, swap the validate-only branches
-      in `NanoRosLink.cmake` for actual
-      `target_link_libraries(... NanoRos::Platform::<plat>)`
-      / `NanoRos::Rmw::<rmw>`. Drop the
-      `NANO_ROS_PLATFORM` mismatch guard's "today's
-      single-combined-archive constraint" branch.
+    - [x] **123.A.1.x.5 — Switch `nano_ros_link_platform` /
+      `_link_rmw` to real link targets.** Done.
+        * `nano_ros_link_platform(target [PLATFORM <p>])` now
+          looks up `NrosPlatform<X>::nros_platform_<short>`
+          via a `_nano_ros_platform_targets` lookup table
+          (multiple input tags collapse to one CMake package,
+          e.g. `freertos_armcm3` + `freertos_armcm4` →
+          `NrosPlatformFreertos::nros_platform_freertos`),
+          `find_dependency`s the package if needed, and
+          `target_link_libraries(... PRIVATE ...)`. Mismatch
+          guard dropped — nros-c is platform-agnostic at the
+          symbol level (A.1.x.2), so per-target platform
+          override is now safe.
+        * `nano_ros_link_rmw(target [RMW <r>])` resolves to
+          `NrosRmw<X>::NrosRmw<X>` similarly and appends
+          `-Wl,--allow-multiple-definition` on Linux/macOS.
+          Mismatch guard kept — nros-c's `nros_support_init`
+          calls `extern "C" fn nros_rmw_<rmw>_register()` baked
+          at Cargo feature-flag time, so a per-target RMW
+          mismatch produces an unresolved-symbol link error
+          today. (A.1.x.4.c follow-up could land runtime-
+          pluggable register dispatch.)
+        * E2E smoke: `/tmp/nano-ros-link-test/` consumer
+          calls both helpers; properties
+          `NANO_ROS_PLATFORM=posix` / `NANO_ROS_RMW=zenoh`
+          land on the target; executable builds + links;
+          mismatch guard fires correctly when `RMW=dds` is
+          requested against a zenoh install.
 - [x] **123.A.2 — `config/submodule-deps.toml`.** Authored.
   21 submodules classified across axes `required` (codegen) +
   `rmw.{zenoh,xrce,dds,cyclonedds}` + `platform.{posix,freertos,

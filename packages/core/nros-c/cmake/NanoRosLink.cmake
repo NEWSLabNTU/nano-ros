@@ -82,6 +82,33 @@ endfunction()
 # ----------------------------------------------------------------------------
 # nano_ros_link_platform(<target> [PLATFORM <platform>])
 # ----------------------------------------------------------------------------
+# Phase 123.A.1.x.5 — map platform tag → (cmake-package, target-short-tag).
+# Multiple input tags collapse to the same short tag because the
+# install ships one `.a` per platform family (e.g.
+# `freertos_armcm3` + a future `freertos_armcm4` both consume
+# `libnros_platform_freertos.a`).
+function(_nano_ros_platform_targets OUT_PKG OUT_SHORT PLAT)
+    if(PLAT STREQUAL "posix")
+        set(${OUT_PKG} "NrosPlatformPosix" PARENT_SCOPE)
+        set(${OUT_SHORT} "posix" PARENT_SCOPE)
+    elseif(PLAT MATCHES "^freertos")
+        set(${OUT_PKG} "NrosPlatformFreertos" PARENT_SCOPE)
+        set(${OUT_SHORT} "freertos" PARENT_SCOPE)
+    elseif(PLAT MATCHES "^threadx")
+        set(${OUT_PKG} "NrosPlatformThreadx" PARENT_SCOPE)
+        set(${OUT_SHORT} "threadx" PARENT_SCOPE)
+    elseif(PLAT MATCHES "^nuttx")
+        set(${OUT_PKG} "NrosPlatformNuttx" PARENT_SCOPE)
+        set(${OUT_SHORT} "nuttx" PARENT_SCOPE)
+    elseif(PLAT STREQUAL "zephyr")
+        set(${OUT_PKG} "NrosPlatformZephyr" PARENT_SCOPE)
+        set(${OUT_SHORT} "zephyr" PARENT_SCOPE)
+    else()
+        set(${OUT_PKG} "" PARENT_SCOPE)
+        set(${OUT_SHORT} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nano_ros_link_platform TARGET)
     cmake_parse_arguments(ARG "" "PLATFORM" "" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
@@ -93,39 +120,50 @@ function(nano_ros_link_platform TARGET)
     _nano_ros_resolve_choice(_chosen "PLATFORM" "${ARG_PLATFORM}"
         "NANO_ROS_DEFAULT_PLATFORM;NANO_ROS_PLATFORM")
 
-    # Validate: today's install carries a single combined
-    # libnros_*_<rmw>[_<platform>].a per build invocation. The platform
-    # the user requests must match what NanoRos was built with — until
-    # the binary split lands and we ship libnros_platform_<plat>.a
-    # archives independently.
-    if(DEFINED NANO_ROS_PLATFORM AND NOT _chosen STREQUAL "${NANO_ROS_PLATFORM}")
-        message(FATAL_ERROR
-            "nano_ros_link_platform(${TARGET} PLATFORM ${_chosen}): NanoRos "
-            "was built with NANO_ROS_PLATFORM=${NANO_ROS_PLATFORM}, but this "
-            "call requests platform '${_chosen}'.\n"
-            "Per-target platform override requires the decoupled platform "
-            "archive layout (Phase 123 Stream A follow-up). Either rebuild "
-            "NanoRos with NANO_ROS_PLATFORM=${_chosen}, or wait for the split "
-            "archive support to land.")
-    endif()
-
     # Track the resolved platform on the target as a custom property.
     set_property(TARGET ${TARGET} PROPERTY NANO_ROS_PLATFORM "${_chosen}")
 
-    # Today's combined archive already carries the platform backend —
-    # `target_link_libraries(${TARGET} PRIVATE NanoRos::NanoRos*)` (which
-    # the user calls separately) pulls everything. The function is
-    # additive: future binary split adds an explicit
-    # `target_link_libraries(${TARGET} PRIVATE NanoRos::Platform::${_chosen})`
-    # here without breaking the API contract.
-    if(TARGET NanoRos::Platform::${_chosen})
-        target_link_libraries(${TARGET} PRIVATE NanoRos::Platform::${_chosen})
+    # Phase 123.A.1.x.5 — link the standalone platform archive.
+    # Post-A.1.x.2/3, libnros_c.a references `nros_platform_*` symbols
+    # as undefined; the platform archive supplies them. Per-target
+    # platform override works because nros-c is platform-agnostic at
+    # the symbol level.
+    _nano_ros_platform_targets(_pkg _short "${_chosen}")
+    if(_pkg)
+        if(NOT TARGET ${_pkg}::nros_platform_${_short})
+            include(CMakeFindDependencyMacro)
+            find_dependency(${_pkg} CONFIG)
+        endif()
+        if(TARGET ${_pkg}::nros_platform_${_short})
+            target_link_libraries(${TARGET}
+                PRIVATE ${_pkg}::nros_platform_${_short})
+        endif()
     endif()
 endfunction()
 
 # ----------------------------------------------------------------------------
 # nano_ros_link_rmw(<target> [RMW <rmw>])
 # ----------------------------------------------------------------------------
+# Phase 123.A.1.x.5 — map RMW tag → installed CMake package + target.
+function(_nano_ros_rmw_targets OUT_PKG OUT_NAME RMW)
+    if(RMW STREQUAL "zenoh")
+        set(${OUT_PKG} "NrosRmwZenoh" PARENT_SCOPE)
+        set(${OUT_NAME} "NrosRmwZenoh" PARENT_SCOPE)
+    elseif(RMW STREQUAL "dds")
+        set(${OUT_PKG} "NrosRmwDds" PARENT_SCOPE)
+        set(${OUT_NAME} "NrosRmwDds" PARENT_SCOPE)
+    elseif(RMW STREQUAL "xrce")
+        set(${OUT_PKG} "NrosRmwXrce" PARENT_SCOPE)
+        set(${OUT_NAME} "NrosRmwXrce" PARENT_SCOPE)
+    elseif(RMW STREQUAL "cyclonedds")
+        set(${OUT_PKG} "NrosRmwCyclonedds" PARENT_SCOPE)
+        set(${OUT_NAME} "NrosRmwCyclonedds" PARENT_SCOPE)
+    else()
+        set(${OUT_PKG} "" PARENT_SCOPE)
+        set(${OUT_NAME} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nano_ros_link_rmw TARGET)
     cmake_parse_arguments(ARG "" "RMW" "" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
@@ -137,20 +175,44 @@ function(nano_ros_link_rmw TARGET)
     _nano_ros_resolve_choice(_chosen "RMW" "${ARG_RMW}"
         "NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW")
 
+    # Phase 123.A.1.x.5 — RMW mismatch is still fatal: nros-c's
+    # `nros_support_init` calls a backend-specific
+    # `extern "C" fn nros_rmw_<rmw>_register()`, baked at Cargo
+    # feature-flag time. NanoRos built with NANO_ROS_RMW=zenoh has
+    # `nros_rmw_zenoh_register` as an UNDEFINED ref; only
+    # libnros_rmw_zenoh.a can resolve it. (Platform is decoupled at
+    # the symbol level; RMW isn't yet — A.1.x.4.c follow-up could
+    # land a runtime-pluggable register dispatch.)
     if(DEFINED NANO_ROS_RMW AND NOT _chosen STREQUAL "${NANO_ROS_RMW}")
         message(FATAL_ERROR
             "nano_ros_link_rmw(${TARGET} RMW ${_chosen}): NanoRos was built "
             "with NANO_ROS_RMW=${NANO_ROS_RMW}, but this call requests RMW "
             "'${_chosen}'.\n"
-            "Per-target RMW override requires the decoupled RMW archive "
-            "layout (Phase 123 Stream A follow-up). Either rebuild NanoRos "
-            "with NANO_ROS_RMW=${_chosen}, or wait for the split archive "
-            "support to land.")
+            "Per-target RMW override requires the support-init dispatch to "
+            "stop baking the register fn at Cargo feature-flag time "
+            "(Phase 123 Stream A follow-up). Rebuild NanoRos with "
+            "NANO_ROS_RMW=${_chosen} to satisfy this call.")
     endif()
 
     set_property(TARGET ${TARGET} PROPERTY NANO_ROS_RMW "${_chosen}")
 
-    if(TARGET NanoRos::Rmw::${_chosen})
-        target_link_libraries(${TARGET} PRIVATE NanoRos::Rmw::${_chosen})
+    # Phase 123.A.1.x.5 — link the standalone RMW archive. nros-c
+    # references `nros_rmw_<rmw>_register` as undefined; the
+    # standalone archive supplies it. `--allow-multiple-definition`
+    # reconciles per-archive copies of `compiler_builtins` +
+    # `nros-rmw-cffi` rlib content.
+    _nano_ros_rmw_targets(_pkg _name "${_chosen}")
+    if(_pkg)
+        if(NOT TARGET ${_pkg}::${_name})
+            include(CMakeFindDependencyMacro)
+            find_dependency(${_pkg} CONFIG)
+        endif()
+        if(TARGET ${_pkg}::${_name})
+            target_link_libraries(${TARGET} PRIVATE ${_pkg}::${_name})
+        endif()
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
+            target_link_options(${TARGET} PRIVATE
+                "-Wl,--allow-multiple-definition")
+        endif()
     endif()
 endfunction()
