@@ -202,14 +202,41 @@ typedef struct {
     size_t stack_depth;
 } nros_freertos_task_attr_t;
 
+/* Phase 121.3.freertos-parity — pin storage layout. zenoh-pico's
+ * `_z_task_t` allocates exactly `4 * sizeof(void*)` bytes (handle,
+ * join_event, fun, arg) when `configSUPPORT_STATIC_ALLOCATION = 0`;
+ * the trait-side opaque buffer in `zpico-platform-shim` is
+ * `[u8; 64]` which is an upper bound. A `_Static_assert` catches
+ * accidental field reordering or alignment drift at compile time
+ * without resorting to hand-math comments. */
+_Static_assert(sizeof(nros_freertos_task_t) == 4 * sizeof(void *),
+               "nros_freertos_task_t must be 4 pointers (handle, join_event, entry, arg)");
+_Static_assert(offsetof(nros_freertos_task_t, handle) == 0,
+               "handle must be the first field (matches zenoh-pico _z_task_t)");
+_Static_assert(offsetof(nros_freertos_task_t, join_event) == sizeof(void *),
+               "join_event must follow handle");
+_Static_assert(offsetof(nros_freertos_task_t, entry) == 2 * sizeof(void *),
+               "entry/fun must be the third field");
+_Static_assert(offsetof(nros_freertos_task_t, arg) == 3 * sizeof(void *),
+               "arg must be the fourth field");
+
 static void freertos_task_trampoline(void *raw) {
     nros_freertos_task_t *t = (nros_freertos_task_t *) raw;
     if (t->entry != NULL) {
         (void) t->entry(t->arg);
     }
-    /* Self-delete; the caller's task_join treats vTaskDelete as the
-     * exit signal. */
-    vTaskDelete(NULL);
+    /* Phase 121.3.freertos-parity — suspend self instead of self-
+     * deleting, matching the deleted Rust impl. The joiner calls
+     * vTaskDelete on this handle. Self-delete frees the TCB
+     * immediately, and `eTaskGetState(deleted_handle)` becomes UB
+     * (the polling loop in `nros_platform_task_join` reads freed
+     * memory). Suspended-self keeps the TCB valid until the joiner
+     * cleans up; matches what zenoh-pico's own task_wrapper does. */
+    vTaskSuspend(NULL);
+    /* Should never return. */
+    for (;;) {
+        vTaskDelay(portMAX_DELAY);
+    }
 }
 
 int8_t nros_platform_task_init(void *task, void *attr,
@@ -254,22 +281,29 @@ int8_t nros_platform_task_init(void *task, void *attr,
 }
 
 int8_t nros_platform_task_join(void *task) {
-    /* FreeRTOS provides no native join. Spin on the task handle
-     * being deleted: vTaskDelete(NULL) zeroes the eTaskGetState
-     * eventually (eDeleted). Poll. */
+    /* Phase 121.3.freertos-parity — matches deleted Rust impl: poll
+     * eTaskGetState until the task self-suspends, then vTaskDelete it.
+     * The trampoline calls vTaskSuspend(NULL) when entry returns;
+     * eTaskGetState then reports eSuspended. The task itself stays
+     * alive (TCB intact) until we delete it here. */
     if (task == NULL) return -1;
     nros_freertos_task_t *t = (nros_freertos_task_t *) task;
     if (t->handle == NULL) return -1;
-    while (eTaskGetState((TaskHandle_t) t->handle) != eDeleted) {
+    while (eTaskGetState((TaskHandle_t) t->handle) != eSuspended) {
         vTaskDelay(1);
     }
-    t->handle = NULL;
+    taskENTER_CRITICAL();
+    if (t->handle != NULL) {
+        vTaskDelete((TaskHandle_t) t->handle);
+        t->handle = NULL;
+    }
+    taskEXIT_CRITICAL();
     return 0;
 }
 
 int8_t nros_platform_task_detach(void *task) {
     if (task == NULL) return -1;
-    /* No FreeRTOS-side detach; the trampoline already self-deletes. */
+    /* No FreeRTOS-side detach. */
     ((nros_freertos_task_t *) task)->handle = NULL;
     return 0;
 }
@@ -300,6 +334,11 @@ void nros_platform_task_free(void **task) {
 typedef struct {
     void *handle;  /* SemaphoreHandle_t */
 } nros_freertos_mutex_t;
+
+_Static_assert(sizeof(nros_freertos_mutex_t) == sizeof(void *),
+               "nros_freertos_mutex_t must be one pointer (matches zenoh-pico _z_mutex_t)");
+_Static_assert(offsetof(nros_freertos_mutex_t, handle) == 0,
+               "handle must be the first / only field");
 
 /* Phase 121.3.freertos-parity — `mutex_*` (non-recursive in name) is
  * implemented over `xSemaphoreCreateRecursiveMutex` so it matches the
@@ -386,6 +425,18 @@ typedef struct {
     void *sem;       /* SemaphoreHandle_t counting semaphore */
     int32_t waiters;
 } nros_freertos_condvar_t;
+
+/* zenoh-pico's `_z_condvar_t` layout: { mutex, sem, int waiters }.
+ * On ARM32 with int=32-bit and ptr=32-bit, that's 12 bytes — matches
+ * `sizeof(void*) * 2 + sizeof(int32_t)`. The trailing alignment
+ * padding is implementation-defined; we don't pin total size, only
+ * field offsets. */
+_Static_assert(offsetof(nros_freertos_condvar_t, mutex) == 0,
+               "mutex must be the first field");
+_Static_assert(offsetof(nros_freertos_condvar_t, sem) == sizeof(void *),
+               "sem must follow mutex");
+_Static_assert(offsetof(nros_freertos_condvar_t, waiters) == 2 * sizeof(void *),
+               "waiters must follow sem");
 
 int8_t nros_platform_condvar_init(void *cv) {
     if (cv == NULL) return -1;
