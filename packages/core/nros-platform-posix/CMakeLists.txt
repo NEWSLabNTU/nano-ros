@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nros-platform-posix-c
+project(nros-platform-posix
     VERSION 0.1.0
     DESCRIPTION "Native C implementation of the nros canonical platform ABI for POSIX"
     LANGUAGES C)
@@ -40,9 +40,29 @@ find_package(Threads REQUIRED)
 target_link_libraries(nros_platform_posix PUBLIC Threads::Threads)
 target_link_libraries(nros_platform_posix PUBLIC rt)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 install(TARGETS nros_platform_posix
-    EXPORT NrosPlatformPosixCTargets
+    EXPORT NrosPlatformPosixTargets
     ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformPosixCTargets
-    NAMESPACE NrosPlatformPosixC::
-    DESTINATION lib/cmake/NrosPlatformPosixC)
+install(EXPORT NrosPlatformPosixTargets
+    NAMESPACE NrosPlatformPosix::
+    FILE NrosPlatformPosixTargets.cmake
+    DESTINATION lib/cmake/NrosPlatformPosix)
+
+# Phase 123.A.1.x.2 — emit a NrosPlatformPosixConfig.cmake so that
+# `find_package(NrosPlatformPosix CONFIG)` resolves from NanoRos's
+# `find_dependency()` call.
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformPosixConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/NrosPlatformPosix)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfigVersion.cmake"
+    DESTINATION lib/cmake/NrosPlatformPosix)

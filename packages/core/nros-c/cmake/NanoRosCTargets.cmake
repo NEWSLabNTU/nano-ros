@@ -159,6 +159,21 @@ if(NOT TARGET NanoRos::NanoRos)
       INTERFACE_LINK_LIBRARIES pthread dl m "-framework Security" "-framework CoreFoundation")
   endif()
 
+  # Phase 123.A.1.x.2: on POSIX, the Rust `nros-platform-posix` crate
+  # was deleted; canonical `nros_platform_*` symbols now come from
+  # the standalone C-port `libnros_platform_posix.a` shipped via
+  # `find_package(NrosPlatformPosix)`. Link it into `NanoRos::NanoRos`
+  # so downstream consumers don't see unresolved `nros_platform_*`
+  # refs.
+  if(NANO_ROS_PLATFORM STREQUAL "posix")
+    if(NOT TARGET NrosPlatformPosix::nros_platform_posix)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosPlatformPosix CONFIG)
+    endif()
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES NrosPlatformPosix::nros_platform_posix)
+  endif()
+
   # Treat warnings as errors for consumers of NanoRos::NanoRos. Catches
   # signature mismatches on function-pointer typedefs (e.g. action server
   # goal/cancel/accepted callbacks) that GCC otherwise reports only as

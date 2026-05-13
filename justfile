@@ -118,7 +118,7 @@ build-all: build-examples build-test-fixtures
 # Builds posix (zenoh + xrce) unconditionally, then platform-specific libraries when toolchains are available.
 install-local: \
     cyclonedds::setup \
-    install-platform-posix-c \
+    install-platform-posix \
     install-local-posix \
     freertos::install nuttx::install \
     threadx_linux::install threadx_riscv64::install
@@ -127,24 +127,23 @@ install-local: \
 # Phase 123.A.1.x — install the standalone POSIX platform C-port
 # (`libnros_platform_posix.a`) alongside the C/C++ libraries. The
 # decoupled platform `.a` exports `nros_platform_*` symbols via the
-# canonical CFFI ABI; consumers will pick it up via the upcoming
-# decoupled link path (drives A.1.x.2 / A.6 install-side wiring).
+# canonical CFFI ABI; `nano_ros_link_platform` picks it up at the
+# user's CMake site (or the in-tree consumer links it via build.rs).
 #
-# Today it sits next to the still-monolithic `libnros_c_*.a` rather
-# than replacing the in-archive Rust impl — that swap is the next
-# sub-item. Treats `nros_platform_*` symbols as additive: future
-# `nros-c` builds will drop the Rust platform shim from their dep
-# graph so only one definition remains.
+# Phase 123.A.1.x.2 deleted the Rust `nros-platform-posix` crate and
+# renamed the C-port from `nros-platform-posix-c` to
+# `nros-platform-posix` so the POSIX directory matches the FreeRTOS /
+# NuttX / ThreadX / Zephyr C-port-only layout from Phase 121.3.
 [private]
-install-platform-posix-c:
+install-platform-posix:
     #!/usr/bin/env bash
     set -e
     PREFIX="$(pwd)/build/install"
-    cmake -S packages/core/nros-platform-posix-c \
-        -B build/cmake-platform-posix-c \
+    cmake -S packages/core/nros-platform-posix \
+        -B build/cmake-platform-posix \
         -DCMAKE_BUILD_TYPE=Release >/dev/null
-    cmake --build build/cmake-platform-posix-c
-    cmake --install build/cmake-platform-posix-c --prefix "$PREFIX"
+    cmake --build build/cmake-platform-posix
+    cmake --install build/cmake-platform-posix --prefix "$PREFIX"
 
 # Build POSIX host libraries + codegen tool (zenoh + xrce + dds).
 # Phase 95.G/H — `dds` joins the loop now that nros-rmw-dds compiles
@@ -574,7 +573,6 @@ build-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-platform-posix \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
@@ -616,7 +614,6 @@ check-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-platform-posix \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
@@ -1230,8 +1227,7 @@ book:
         -p nros-rmw-cffi \
         -p nros-rmw-zenoh \
         -p nros-platform-api \
-        -p nros-platform-cffi \
-        -p nros-platform-posix
+        -p nros-platform-cffi
     just doc-c
     just doc-cpp
     just doc-rmw-cffi

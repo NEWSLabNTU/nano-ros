@@ -1,7 +1,7 @@
 //! Phase 121.3.posix — exercise the native C port via `CffiPlatform`.
 //!
 //! Drives the same symbols `c_stub_platform.rs` does, but linked
-//! against `nros-platform-posix-c/src/platform.c` instead of the
+//! against `nros-platform-posix/src/platform.c` instead of the
 //! counter-bumping stubs. Verifies the reference C implementation
 //! preserves real POSIX semantics:
 //!

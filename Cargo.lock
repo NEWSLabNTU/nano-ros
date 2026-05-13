@@ -1304,7 +1304,6 @@ dependencies = [
  "nros-platform-esp32",
  "nros-platform-esp32-qemu",
  "nros-platform-mps2-an385",
- "nros-platform-posix",
  "nros-platform-stm32f4",
 ]
 
@@ -1365,15 +1364,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-platform-posix"
-version = "0.1.0"
-dependencies = [
- "libc",
- "nros-platform-api",
- "nros-platform-cffi",
-]
-
-[[package]]
 name = "nros-platform-stm32f4"
 version = "0.1.0"
 dependencies = [
@@ -1426,7 +1416,7 @@ dependencies = [
  "heapless 0.8.0",
  "nros-core",
  "nros-platform",
- "nros-platform-posix",
+ "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-cffi",
  "spin",

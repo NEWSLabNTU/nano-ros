@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(nros-platform-nuttx-c
     VERSION 0.1.0
-    DESCRIPTION "Native C implementation of the nros canonical platform ABI for NuttX (delegates to nros-platform-posix-c)"
+    DESCRIPTION "Native C implementation of the nros canonical platform ABI for NuttX (delegates to nros-platform-posix)"
     LANGUAGES C)
 
 # NuttX exposes a POSIX-compatible surface (`pthread_*`, `clock_gettime`,
 # `nanosleep`, `sched_yield`). The Rust `NuttxPlatform` mirrors this by
 # forwarding to `PosixPlatform`; the C port does the same — it compiles
-# the very same source file shipped by `nros-platform-posix-c`. Drop the
+# the very same source file shipped by `nros-platform-posix`. Drop the
 # crate boundary here so there is no chance of the two ports drifting.
 
 set(CMAKE_C_STANDARD 11)
@@ -22,9 +22,9 @@ endif()
 
 if(NOT DEFINED NROS_PLATFORM_POSIX_C_SRC_DIR)
     get_filename_component(NROS_PLATFORM_POSIX_C_SRC_DIR
-        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-posix-c/src" ABSOLUTE)
+        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-posix/src" ABSOLUTE)
     set(NROS_PLATFORM_POSIX_C_SRC_DIR "${NROS_PLATFORM_POSIX_C_SRC_DIR}"
-        CACHE PATH "Path to nros-platform-posix-c/src directory")
+        CACHE PATH "Path to nros-platform-posix/src directory")
 endif()
 
 foreach(_src platform.c net.c timer.c)

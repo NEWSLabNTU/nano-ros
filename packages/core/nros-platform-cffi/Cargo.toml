@@ -21,7 +21,7 @@ threading = []
 # (`tests/c_stub_platform.rs`) consumes this; regular consumers
 # never enable it.
 c-stub-test = ["dep:cc"]
-# Phase 121.3.posix — compile the sibling `nros-platform-posix-c`
+# Phase 121.3.posix / 123.A.1.x.2 — compile the sibling `nros-platform-posix`
 # crate's `src/platform.c` into a static lib that supplies every
 # `nros_platform_*` symbol with a real POSIX implementation. The
 # in-crate integration test `tests/c_port_posix.rs` consumes it.

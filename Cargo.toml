@@ -51,14 +51,15 @@ members = [
     "packages/core/nros-platform-api",
     "packages/core/nros-platform-cffi",
     "packages/core/nros-platform-critical-section",
-    "packages/core/nros-platform-posix",
-    # Phase 121.3.deprecate-rust-remove — the four Rust kernel platform
-    # crates (nros-platform-{freertos,nuttx,threadx,zephyr}) were
-    # deleted. The directories `packages/core/nros-platform-{freertos,
-    # nuttx,threadx,zephyr}/` now hold the C ports (renamed from
-    # `*-c`). The canonical `nros_platform_*` symbols come from the C
-    # port compiled by the board crate's build.rs (FreeRTOS / ThreadX)
-    # or by the parent build system (NuttX `make`, Zephyr `west`).
+    # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
+    # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,
+    # posix}) were deleted. The directories
+    # `packages/core/nros-platform-{freertos,nuttx,threadx,zephyr,
+    # posix}/` now hold the C ports only (renamed from `*-c`). The
+    # canonical `nros_platform_*` symbols come from the C port compiled
+    # by the board crate's build.rs (FreeRTOS / ThreadX) or by the
+    # parent build system (NuttX `make`, Zephyr `west`, POSIX via the
+    # consumer's CMake site / build.rs).
     # Phase 121.10 — nros-platform-orin-spe was deleted. orin-spe is
     # now a board over FreeRTOS-FSP (see `packages/boards/nros-board-orin-spe`);
     # IVC + FSP init live at the board level.
@@ -312,12 +313,12 @@ nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-featu
 nros-sizes-build = { version = "0.1.0", path = "packages/core/nros-sizes-build" }
 nros-platform = { version = "0.1.0", path = "packages/core/nros-platform", default-features = false }
 nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cffi", default-features = false }
-nros-platform-posix = { version = "0.1.0", path = "packages/core/nros-platform-posix", default-features = false }
-# Phase 121.3.deprecate-rust-remove — the Rust kernel platform crates
-# (nros-platform-{freertos,nuttx,threadx,zephyr}) were deleted. The
-# `packages/core/nros-platform-{rtos}/` directories now hold the C
-# ports only — no Cargo crate. Consumers link the C port via the
-# board crate's build.rs (FreeRTOS, ThreadX) or via the parent build
+# Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
+# platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,posix})
+# were deleted. The `packages/core/nros-platform-{rtos,posix}/`
+# directories now hold the C ports only — no Cargo crate. Consumers
+# link the C port via the board crate's build.rs (FreeRTOS, ThreadX)
+# or via the parent build
 # system (Zephyr west, NuttX make).
 zpico-platform-shim = { version = "0.1.0", path = "packages/zpico/zpico-platform-shim", default-features = false }
 zpico-platform-custom = { version = "0.1.0", path = "packages/zpico/zpico-platform-custom", default-features = false }

@@ -23,11 +23,13 @@ std = []
 # `nros-platform-cffi` (for the dispatch types) and activates the
 # matching provider crate's `cffi-export` (for the symbol
 # emission). RMW + core code see only CffiPlatform.
-platform-posix = [
-    "dep:nros-platform-posix",
-    "dep:nros-platform-cffi",
-    "nros-platform-posix/cffi-export",
-]
+# Phase 123.A.1.x.2 — POSIX joins the C-port pattern. The Rust
+# `nros-platform-posix` crate was deleted; canonical `nros_platform_*`
+# symbols now come from the C library built out of
+# `packages/core/nros-platform-posix/src/{platform,net,timer}.c`,
+# linked at the consumer's CMake site (test harness build.rs or
+# `nano_ros_link_platform`).
+platform-posix = ["dep:nros-platform-cffi"]
 # `platform-cffi` selects `CffiPlatform` without pinning a Rust
 # kernel crate. The binary's C ABI symbols must come from
 # somewhere else — a hand-written C port (`nros-platform-<rtos>-c`)
@@ -39,13 +41,14 @@ platform-cffi = ["dep:nros-platform-cffi"]
 # via `nros-platform-cffi`'s `nros_platform_export!` macro. Optional
 # deps that aren't pulled in are silently ignored by the `?` syntax.
 cffi-export = [
-    "nros-platform-posix?/cffi-export",
-    # Phase 121.3.deprecate-rust-remove — FreeRTOS / NuttX / ThreadX /
-    # Zephyr no longer have Rust kernel crates that emit symbols. The
-    # canonical `nros_platform_*` symbols come from the C ports at
-    # `packages/core/nros-platform-{rtos}/src/`, linked at the board /
-    # parent-build level (FreeRTOS / ThreadX via the board's build.rs;
-    # NuttX via the NuttX build system; Zephyr via the west module).
+    # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — POSIX, FreeRTOS,
+    # NuttX, ThreadX, Zephyr no longer have Rust kernel crates that emit
+    # symbols. The canonical `nros_platform_*` symbols come from the C
+    # ports at `packages/core/nros-platform-{rtos,posix}/src/`, linked
+    # at the board / parent-build level (FreeRTOS / ThreadX via the
+    # board's build.rs; NuttX via the NuttX build system; Zephyr via
+    # the west module; POSIX via the consumer's build.rs or
+    # `nano_ros_link_platform`).
     "nros-platform-mps2-an385?/cffi-export",
     "nros-platform-stm32f4?/cffi-export",
     "nros-platform-esp32?/cffi-export",
@@ -151,7 +154,8 @@ cortex-r = []
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
-nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix", optional = true }
+# Phase 123.A.1.x.2 — POSIX Rust crate deleted; the directory at
+# `../nros-platform-posix/` now holds the C port only.
 nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
 nros-platform-mps2-an385 = { version = "0.1.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
 nros-platform-stm32f4 = { version = "0.1.0", path = "../../platforms/nros-platform-stm32f4", optional = true }

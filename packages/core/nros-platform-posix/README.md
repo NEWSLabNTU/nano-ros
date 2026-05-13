@@ -1,36 +1,32 @@
-# nros-platform-posix
+# nros-platform-posix-c
 
-POSIX platform implementation for nano-ros. **Canonical reference port** —
-every other platform crate follows the same trait-implementation pattern,
-so when writing a new port, read this crate first.
+Native C implementation of the [nano-ros](https://github.com/NEWSLabNTU/nano-ros) canonical platform ABI (`<nros/platform.h>`) for POSIX hosts.
 
-## Role
+Reference port — each of the 39 `nros_platform_*` symbols maps to the closest POSIX primitive (`clock_gettime`, `malloc`, `pthread_*`, `nanosleep`, `sched_yield`, …). Behavioural parity with the Rust `PosixPlatform` impl in [`nros-platform-posix`](../nros-platform-posix); the two share the same canonical ABI and **must not be linked into the same binary** (duplicate symbol definitions).
 
-Implements the trait family in
-[`nros-platform-api`](../nros-platform-api) on top of standard libc:
-`clock_gettime`, `malloc`/`free`, pthreads, BSD sockets,
-`/dev/urandom`. Targets Linux and macOS host development; not for
-embedded.
+## Build standalone
 
-## Source layout
+```bash
+cmake -B build -DCMAKE_PREFIX_PATH=$PWD/../../../build/install
+cmake --build build
+```
 
-| File | Role |
-|------|------|
-| `src/lib.rs` | `PosixPlatform` zero-sized type + trait impls. |
-| `src/clock.rs` | `clock_gettime(CLOCK_MONOTONIC)` for `clock_ms` / `clock_us`. |
-| `src/alloc.rs` | libc `malloc` / `realloc` / `free` shims. |
-| `src/thread.rs` | pthreads-backed `task_*` / `mutex_*` / `condvar_*`. |
-| `src/net.rs` | TCP / UDP / multicast over BSD sockets, fully Rust-side. |
-| `src/random.rs` | `getrandom`(2) entropy. |
+The default include search path points at `../nros-platform-cffi/include` (in-tree checkout). Override via:
 
-## When to use
+```bash
+cmake -B build -DNROS_PLATFORM_CFFI_INCLUDE=/path/to/include
+```
 
-- Local development + CI on Linux/macOS.
-- `cargo test` integration suites that exercise the same Rust trait
-  surface as the embedded ports.
+Produces `libnros_platform_posix.a`. Link it into a binary that expects the canonical platform ABI.
 
-## See also
+## Build via Cargo (integration tests)
 
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- [Platform API Design](../../../book/src/design/platform-api.md)
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-posix>
+The sibling [`nros-platform-cffi`](../nros-platform-cffi) crate's `posix-c-port` Cargo feature compiles this same source file through `cc` and runs an integration test that exercises every dispatch through `CffiPlatform`:
+
+```bash
+cargo test -p nros-platform-cffi --features posix-c-port --test c_port_posix
+```
+
+## License
+
+Apache-2.0 or MIT at your option. Part of the [nano-ros](https://github.com/NEWSLabNTU/nano-ros) project.

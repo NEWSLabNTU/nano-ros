@@ -151,17 +151,41 @@ writes a workspace `Cargo.toml` for Rust users.
       still-bundled Rust-shim symbols inside
       `libnros_c_zenoh.a` (next sub-item swaps them).
 
-    - [ ] **123.A.1.x.2 — Drop Rust platform crate from
-      `nros-c`'s `platform-posix` feature.** Make
-      `nros-c[platform-posix]` resolve to
-      `nros/platform-posix` → `dep:nros-platform-cffi`
-      *only* (no `dep:nros-platform-posix`). Equivalent to
-      what 121.3 already did for FreeRTOS/NuttX/ThreadX/Zephyr.
-      Then re-audit `libnros_c_zenoh.a`: should lose all 73
-      `nros_platform_*` T-symbols and drop ~32 KB; user picks
-      them up at link time from `libnros_platform_posix.a`.
-      Risk: anyone calling `nros-platform-posix` Rust API
-      directly (boards? tests?) — sweep call sites.
+    - [x] **123.A.1.x.2 — Drop Rust platform crate; rename
+      C-port to `nros-platform-posix`.** Done. Deleted
+      `packages/core/nros-platform-posix/` (Rust crate, 2398
+      LOC across `lib.rs` + `net.rs` + `serial.rs`); renamed
+      `packages/core/nros-platform-posix-c/` →
+      `packages/core/nros-platform-posix/` so POSIX matches
+      the FreeRTOS/NuttX/ThreadX/Zephyr C-port-only directory
+      layout established in 121.3. Touched 30+ files:
+        * `nros-platform`'s `platform-posix` feature now
+          resolves to `dep:nros-platform-cffi` only — same as
+          the four RTOSes.
+        * `NET_SOCKET_SIZE` / `NET_ENDPOINT_SIZE` re-export
+          replaced by inline `core::ffi::c_int` /
+          `*mut c_void` consts in `nros-platform/src/resolve.rs`.
+        * 3 host DDS tests migrated from `PosixPlatform` →
+          `CffiPlatform`; `nros-rmw-dds[dev-dependencies]`
+          swapped to `nros-platform-cffi[posix-c-port]`
+          (build.rs compiles canonical C-port into the test
+          binary). All 5 tests still pass.
+        * Renamed CMake project + target export to drop the
+          `-C` suffix (`NrosPlatformPosixTargets`,
+          `lib/cmake/NrosPlatformPosix/`); added
+          `NrosPlatformPosixConfig.cmake.in` with
+          `find_dependency(Threads)` so the imported target
+          resolves out-of-tree.
+        * `NanoRos::NanoRos` now `find_dependency(NrosPlatformPosix)`
+          + `target_link_libraries(... NrosPlatformPosix::nros_platform_posix)`
+          on POSIX, same pattern as the existing XRCE wiring.
+      Result on `build/install/lib/libnros_c_zenoh.a`:
+      0 defined `nros_platform_*` T-symbols (was 73),
+      ~32 KB smaller, undefined refs now resolved by linking
+      the 32 KB standalone `libnros_platform_posix.a`.
+      End-to-end smoke: `examples/native/c/zenoh/talker`
+      builds + runs with 0 unresolved `nros_platform_*` in
+      the final binary.
 
     - [ ] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
       ThreadX / Zephyr / ESP-IDF.** Same shape as A.1.x.1 but

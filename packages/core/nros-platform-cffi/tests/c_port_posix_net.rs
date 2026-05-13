@@ -2,7 +2,7 @@
 //!
 //! Drives a TCP loopback round-trip and a UDP loopback round-trip
 //! through the canonical `nros_platform_*` symbols defined in
-//! `../nros-platform-posix-c/src/net.c`. Multicast paths are
+//! `../nros-platform-posix/src/net.c`. Multicast paths are
 //! intentionally stubbed and not exercised here.
 
 #![cfg(feature = "posix-c-port")]
@@ -11,7 +11,7 @@ use core::ffi::c_void;
 use std::{mem::MaybeUninit, thread, time::Duration};
 
 // Force the nros-platform-cffi rlib into the test binary so cargo
-// honours its `cargo:rustc-link-lib=static=nros_platform_posix_c`
+// honours its `cargo:rustc-link-lib=static=nros_platform_posix`
 // directive. Without this the linker drops the static lib and the
 // extern "C" references below stay unresolved.
 #[allow(unused_imports)]

@@ -35,7 +35,7 @@ use dust_dds::{
     dcps::channels::mpsc::mpsc_channel, sync::Arc,
     transport::interface::TransportParticipantFactory,
 };
-use nros_platform_posix::PosixPlatform;
+use nros_platform_cffi::CffiPlatform;
 use nros_rmw::{NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, set_custom_transport};
 use nros_rmw_dds::{
     runtime::NrosPlatformRuntime, transport_custom::NrosCustomTransportParticipantFactory,
@@ -85,7 +85,7 @@ fn factory_drains_slot_and_drives_callbacks() {
     unsafe { set_custom_transport(Some(make_ops())).expect("set v1 ok") };
 
     // Step 2 — runtime + factory.
-    let runtime: NrosPlatformRuntime<PosixPlatform> = NrosPlatformRuntime::new();
+    let runtime: NrosPlatformRuntime<CffiPlatform> = NrosPlatformRuntime::new();
     let runtime_arc = Arc::new(runtime.clone());
     let factory = NrosCustomTransportParticipantFactory::from_slot(runtime_arc.clone())
         .expect("slot drained");

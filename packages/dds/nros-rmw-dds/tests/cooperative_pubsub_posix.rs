@@ -3,19 +3,19 @@
 //!
 //! `nros-rmw-dds`'s `Rmw::open()` on `platform-posix` uses dust-dds's
 //! stock threaded transport (3 OS threads per participant). This test
-//! takes the *other* path: instantiates `NrosPlatformRuntime<PosixPlatform>`
-//! and `NrosUdpTransportFactory<PosixPlatform>` directly, then drives
+//! takes the *other* path: instantiates `NrosPlatformRuntime<CffiPlatform>`
+//! and `NrosUdpTransportFactory<CffiPlatform>` directly, then drives
 //! a `DomainParticipantFactoryAsync` through `runtime.block_on(...)`.
 //!
 //! Same code path that `platform-zephyr` / `platform-freertos` /
-//! `platform-nuttx` / `platform-threadx` use — just with `PosixPlatform`
+//! `platform-nuttx` / `platform-threadx` use — just with `CffiPlatform`
 //! standing in for `ConcretePlatform`.
 //!
 //! What this proves end-to-end on Linux:
-//! * `NrosPlatformRuntime<PosixPlatform>` satisfies dust-dds's
+//! * `NrosPlatformRuntime<CffiPlatform>` satisfies dust-dds's
 //!   `DdsRuntime` bound (clock + timer + spawner all work).
 //! * `NrosUdpTransportFactory::create_participant` opens RTPS sockets
-//!   via `<PosixPlatform as PlatformUdp>::listen` (Phase 71.21) and
+//!   via `<CffiPlatform as PlatformUdp>::listen` (Phase 71.21) and
 //!   spawns the recv loops onto the runtime spawner.
 //! * `block_on` correctly drives both the caller's future and the
 //!   spawned background tasks until the participant is created.
@@ -33,7 +33,7 @@ use dust_dds::{
     infrastructure::{qos::QosKind, status::NO_STATUS},
 };
 
-use nros_platform_posix::PosixPlatform;
+use nros_platform_cffi::CffiPlatform;
 use nros_rmw_dds::{runtime::NrosPlatformRuntime, transport_nros::NrosUdpTransportFactory};
 
 struct NoListener;
@@ -46,7 +46,7 @@ fn create_participant_via_cooperative_runtime() {
     // 250·200 = 57400 + offsets — well above the registered range.
     let domain_id = 200i32;
 
-    let runtime: NrosPlatformRuntime<PosixPlatform> = NrosPlatformRuntime::new();
+    let runtime: NrosPlatformRuntime<CffiPlatform> = NrosPlatformRuntime::new();
     let runtime_arc = Arc::new(runtime.clone());
     let transport = NrosUdpTransportFactory::new(runtime_arc.clone());
 

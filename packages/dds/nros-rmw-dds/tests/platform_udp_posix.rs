@@ -3,7 +3,7 @@
 //!
 //! These tests pin down the bind / open / recv / send semantics that
 //! dust-dds's no_std transport relies on. They run against
-//! `nros_platform_posix::PosixPlatform` only — for the same coverage
+//! `nros_platform_cffi::CffiPlatform` only — for the same coverage
 //! on Zephyr / FreeRTOS / NuttX / ThreadX, see Phase 71.25's per-
 //! platform QEMU smoke binary, which exercises the same trait surface
 //! cross-compiled into each RTOS.
@@ -29,7 +29,7 @@
 use core::{ffi::c_void, time::Duration};
 
 use nros_platform::{NET_ENDPOINT_SIZE, NET_SOCKET_SIZE, PlatformUdp};
-use nros_platform_posix::PosixPlatform;
+use nros_platform_cffi::CffiPlatform;
 
 /// Allocate an opaque socket buffer matching the platform's
 /// `_z_sys_net_socket_t` size (Phase 71.22).
@@ -88,7 +88,7 @@ fn bind_recvfrom_loopback() {
 
     // Build the bound endpoint.
     let mut bound_ep = OpaqueEndpoint::new();
-    let rc = <PosixPlatform as PlatformUdp>::create_endpoint(
+    let rc = <CffiPlatform as PlatformUdp>::create_endpoint(
         bound_ep.as_mut_ptr(),
         addr.as_ptr(),
         port_str.as_ptr(),
@@ -97,7 +97,7 @@ fn bind_recvfrom_loopback() {
 
     // Bind a socket on it.
     let mut bound_sock = OpaqueSocket::new();
-    let rc = <PosixPlatform as PlatformUdp>::listen(
+    let rc = <CffiPlatform as PlatformUdp>::listen(
         bound_sock.as_mut_ptr(),
         bound_ep.as_ptr(),
         100, // timeout_ms — keeps recv from blocking forever on POSIX
@@ -109,7 +109,7 @@ fn bind_recvfrom_loopback() {
     // builds a connected-UDP socket (SOCK_DGRAM + connect()) so
     // subsequent `send()` calls reach the right peer.
     let mut dest_ep = OpaqueEndpoint::new();
-    let rc = <PosixPlatform as PlatformUdp>::create_endpoint(
+    let rc = <CffiPlatform as PlatformUdp>::create_endpoint(
         dest_ep.as_mut_ptr(),
         addr.as_ptr(),
         port_str.as_ptr(),
@@ -117,12 +117,12 @@ fn bind_recvfrom_loopback() {
     assert_eq!(rc, 0, "create_endpoint(dest) should return 0");
 
     let mut tx_sock = OpaqueSocket::new();
-    let rc = <PosixPlatform as PlatformUdp>::open(tx_sock.as_mut_ptr(), dest_ep.as_ptr(), 100);
+    let rc = <CffiPlatform as PlatformUdp>::open(tx_sock.as_mut_ptr(), dest_ep.as_ptr(), 100);
     assert_eq!(rc, 0, "open(tx) should return 0");
 
     // Send a payload; recv on the bound socket.
     let payload = b"loopback-71.24";
-    let n = <PosixPlatform as PlatformUdp>::send(
+    let n = <CffiPlatform as PlatformUdp>::send(
         tx_sock.as_ptr(),
         payload.as_ptr(),
         payload.len(),
@@ -136,12 +136,12 @@ fn bind_recvfrom_loopback() {
     std::thread::sleep(Duration::from_millis(20));
 
     let mut rx = [0u8; 64];
-    let n = <PosixPlatform as PlatformUdp>::read(bound_sock.as_ptr(), rx.as_mut_ptr(), rx.len());
+    let n = <CffiPlatform as PlatformUdp>::read(bound_sock.as_ptr(), rx.as_mut_ptr(), rx.len());
     assert_eq!(n, payload.len(), "read returned wrong byte count");
     assert_eq!(&rx[..n], payload, "received payload mismatch");
 
-    <PosixPlatform as PlatformUdp>::close(tx_sock.as_mut_ptr());
-    <PosixPlatform as PlatformUdp>::close(bound_sock.as_mut_ptr());
+    <CffiPlatform as PlatformUdp>::close(tx_sock.as_mut_ptr());
+    <CffiPlatform as PlatformUdp>::close(bound_sock.as_mut_ptr());
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn set_recv_timeout_returns_zero_on_no_data() {
 
     let mut ep = OpaqueEndpoint::new();
     assert_eq!(
-        <PosixPlatform as PlatformUdp>::create_endpoint(
+        <CffiPlatform as PlatformUdp>::create_endpoint(
             ep.as_mut_ptr(),
             addr.as_ptr(),
             port_str.as_ptr(),
@@ -162,7 +162,7 @@ fn set_recv_timeout_returns_zero_on_no_data() {
 
     let mut sock = OpaqueSocket::new();
     assert_eq!(
-        <PosixPlatform as PlatformUdp>::listen(
+        <CffiPlatform as PlatformUdp>::listen(
             sock.as_mut_ptr(),
             ep.as_ptr(),
             50, // 50 ms timeout
@@ -172,7 +172,7 @@ fn set_recv_timeout_returns_zero_on_no_data() {
 
     let start = std::time::Instant::now();
     let mut rx = [0u8; 16];
-    let n = <PosixPlatform as PlatformUdp>::read(sock.as_ptr(), rx.as_mut_ptr(), rx.len());
+    let n = <CffiPlatform as PlatformUdp>::read(sock.as_ptr(), rx.as_mut_ptr(), rx.len());
     let elapsed = start.elapsed();
 
     // No sender means recv times out. `read()` returns 0 (or
@@ -188,13 +188,13 @@ fn set_recv_timeout_returns_zero_on_no_data() {
         "recv should have returned within ~50 ms, took {elapsed:?}",
     );
 
-    <PosixPlatform as PlatformUdp>::close(sock.as_mut_ptr());
+    <CffiPlatform as PlatformUdp>::close(sock.as_mut_ptr());
 }
 
 #[test]
 fn create_endpoint_parses_ipv4_string() {
     let mut ep = OpaqueEndpoint::new();
-    let rc = <PosixPlatform as PlatformUdp>::create_endpoint(
+    let rc = <CffiPlatform as PlatformUdp>::create_endpoint(
         ep.as_mut_ptr(),
         b"10.20.30.40\0".as_ptr(),
         b"54321\0".as_ptr(),
@@ -204,5 +204,5 @@ fn create_endpoint_parses_ipv4_string() {
     // We don't assert on the layout of the opaque endpoint bytes —
     // that's an internal contract. What matters is that `listen()`
     // / `open()` accept it without error in the other tests.
-    <PosixPlatform as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
+    <CffiPlatform as PlatformUdp>::free_endpoint(ep.as_mut_ptr());
 }
