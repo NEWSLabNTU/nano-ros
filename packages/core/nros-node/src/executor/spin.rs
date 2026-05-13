@@ -1003,6 +1003,61 @@ impl Executor {
         self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)
     }
 
+    /// Phase 104.C.3.2 — Node-aware variant of
+    /// [`register_subscription_buffered_raw`](Self::register_subscription_buffered_raw).
+    /// Routes the subscriber creation through the [`NodeId`]'s
+    /// session + identity (rclcpp `add_node` pattern).
+    ///
+    /// Use this in bridge code where two Nodes bind to different RMW
+    /// backends:
+    ///
+    /// ```ignore
+    /// let node_in = exec.node_builder("ingress").rmw("zenoh").build()?;
+    /// let pub_out = exec.with_node(node_out, |n| {
+    ///     n.create_publisher_raw("/fwd", TYPE, HASH)
+    /// })??;
+    /// exec.register_subscription_buffered_raw_on::<_, 1024>(
+    ///     node_in, "/src", TYPE, HASH, qos(),
+    ///     move |bytes: &[u8]| { let _ = pub_out.publish_raw(bytes); },
+    /// )?;
+    /// ```
+    pub fn register_subscription_buffered_raw_on<F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
+        // Pull the Node's identity + session slot out first so the
+        // mutable session borrow doesn't conflict with the arena
+        // alloc inside `add_arena_subscription_callback`.
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+        self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)
+    }
+
     /// Register a raw byte-shaped callback against a pre-built
     /// `RmwSubscriber` handle.
     ///

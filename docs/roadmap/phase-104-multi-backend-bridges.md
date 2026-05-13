@@ -185,7 +185,15 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
 - [x] **104.A.4** — `just check-decoupling` CI guard.
 - [x] **104.A consumer sweep** — 117 Cargo.tomls collapsed.
 
-#### Thread B — Backend registration model
+#### Thread B — Backend registration model (LANDED)
+
+Files: `packages/core/nros-rmw-cffi/{build.rs,src/lib.rs,
+include/nros/rmw_vtable.h,src/rust_adapter.rs,tests/registry.rs}`,
+`packages/{zpico/nros-rmw-zenoh,dds/nros-rmw-dds,
+xrce/nros-rmw-xrce/src/vtable.c,xrce/nros-rmw-xrce-cffi}/src/lib.rs`,
+`packages/core/nros-c/cmake/NanoRosCTargets.cmake`,
+`packages/core/nros-c/c-stubs/weak_register_backends.c`,
+`book/src/internals/rmw-backends.md`.
 
 - [x] **104.B.1 — `NROS_RMW_MAX_BACKENDS` build-time const.**
       `nros-rmw-cffi/build.rs` reads
@@ -286,7 +294,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `nros_app_register_backends` as `T` (strong), not `W`
       (weak) — linker picked the per-target strong def.
       **Files:**
-      `cmake/NanoRosLink.cmake`,
+      `packages/core/nros-c/cmake/NanoRosCTargets.cmake`,
       `packages/core/nros-c/c-stubs/weak_register_backends.c`,
       `packages/core/nros-c/build.rs`,
       `packages/core/nros-c/src/support.rs`.
@@ -411,7 +419,7 @@ C++-side logic; C surface stays canonical.
 
 ##### API items
 
-- [ ] **104.C.1 — Per-session vtable pointer.**
+- [x] **104.C.1 — Per-session vtable pointer.**
       Embed `vtable: *const NrosRmwVtable` in
       `nros_rmw_session_t` (C) / `NrosRmwSession`
       (Rust). All dispatch sites
@@ -425,7 +433,7 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       every backend's session-creation path.
 
-- [ ] **104.C.2 — `Executor` holds `Vec<Node>` +
+- [x] **104.C.2 — `Executor` holds `Vec<Node>` +
       `session_cache<(rmw, locator, domain_id), Session>`.**
       Move the single `node_identity` field on Executor to
       a `Vec<Node>`. Add session cache. `create_node` /
@@ -436,7 +444,7 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-node/src/executor/mod.rs`,
       `packages/core/nros-node/src/node.rs`.
 
-- [ ] **104.C.3 — `Executor::node_builder(name)` API.**
+- [x] **104.C.3 — `Executor::node_builder(name)` API.**
       Builder pattern returns a `NodeBuilder` with
       `.rmw(name)`, `.locator(s)`, `.domain_id(d)`,
       `.namespace(s)`, `.sched(sc)`, `.build() -> Node`.
@@ -460,7 +468,7 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-node/src/node.rs`,
       `packages/core/nros-node/src/executor/handles.rs`.
 
-- [ ] **104.C.5 — `multi-backend` Cargo feature on `nros`.**
+- [~] **104.C.5 — `multi-backend` Cargo feature on `nros`.**
       Lifts the `compile_error!` mutual-exclusion check on
       the four `rmw-*` features (post-104.A those features
       are inert aliases). Default off. Audit
@@ -493,6 +501,68 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       `packages/core/nros-rmw-cffi/tests/typed_struct.rs`.
 
+##### C.3.3 — Gaps surfaced by the bridge example (2026-05-14)
+
+Building the `zenoh-to-dds` bridge (104.C.10) exposed concrete
+follow-up items that finish the rclcpp-aligned story:
+
+- [ ] **104.C.3.3.a — Typed `_on(node_id, ...)` register
+      variants.** Today only
+      `register_subscription_buffered_raw_on` is Node-aware
+      (Phase 104.C.3.2). Mirror the rest using the same
+      template:
+      - `register_subscription_buffered_on<M, F>` (typed)
+      - `register_subscription_on<M, F>` (typed convenience)
+      - `register_subscription_sized_on<M, F, RX_BUF>`
+      - `register_service_on<S, F>` / `register_service_raw_on`
+      - `register_service_client_on` / `_raw_on`
+      - `register_action_server_on` / `_raw_on`
+      - `register_action_client_on` / `_raw_on`
+      - `register_timer_on` (no session needed but Node-bound
+        for telemetry + per-Node SchedContext inheritance).
+      ~15 methods; each is a 6-line refactor over the existing
+      method via `session_at_mut(node.session_idx)`.
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`.
+
+- [ ] **104.C.3.3.b — `ExecutorConfig::default()`.** Bridge
+      example currently uses `from_env()` because no `Default`
+      impl exists. rclcpp users expect
+      `ExecutorConfig::default()`. Trivial.
+      **Files:** `packages/core/nros-node/src/executor/types.rs`.
+
+- [ ] **104.C.3.3.c — `Executor::spin()` no-arg sugar.**
+      Existing `spin(Duration)` is `-> !`. Add `spin()` that
+      defaults to a sensible 10-100 ms tick. Match
+      `rclcpp::spin(node)`.
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`.
+
+- [ ] **104.C.3.3.d — Flatten `with_node` double-`?`.**
+      Today's `with_node(node_id, |n| n.create_...()?)??` is
+      awkward. Add `with_node_try(node_id, |n| Result<R, E>)`
+      that flattens both error layers when the closure already
+      returns `Result<_, NodeError>`. Or `with_node` could
+      always require the closure to return `Result` and use
+      `Result::flatten`.
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`.
+
+- [ ] **104.C.3.3.e — Backend-ctor ordering doc.** Multiple
+      `.init_array` ctors fire at lib load; first wins for
+      `default_vtable`. Bridges should use `open_with_rmw` to
+      avoid non-determinism. Document the trap + recommend
+      `open_with_rmw` for any binary linking ≥ 2 backends.
+      **Files:** `book/src/user-guide/cross-backend-bridges.md`
+      (created in 104.D.6).
+
+- [ ] **104.C.3.3.f — Bridge example `.gitignore` +
+      workspace exclusion polish.** The
+      `examples/native/rust/bridge/zenoh-to-dds/` directory
+      needs its own `.gitignore` so `target/` + `Cargo.lock`
+      don't get committed. The repo-root `.gitignore` doesn't
+      catch nested example targets; per-example file is the
+      established pattern.
+      **Files:**
+      `examples/native/rust/bridge/zenoh-to-dds/.gitignore`.
+
 ##### C / C++ wrapper items (Phase 122 discipline)
 
 - [ ] **104.C.8 — C-side `nros_node_options_t` + thin-
@@ -516,7 +586,7 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-cpp/src/node.rs` (if any FFI
       glue needed; otherwise pure header).
 
-- [ ] **104.C.10 — Rust example refactor: bridge.**
+- [x] **104.C.10 — Rust example refactor: bridge.**
       `examples/native/rust/bridge/uorb-to-zenoh/`.
       Subscribes to PX4 SITL uORB topics via
       `nros-rmw-uorb` (out of scope for this phase — stub
