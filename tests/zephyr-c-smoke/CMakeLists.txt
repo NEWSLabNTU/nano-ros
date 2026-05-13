@@ -3,7 +3,7 @@
 # Phase 121.6.zephyr-c smoke test.
 #
 # Standalone Zephyr application that pulls
-# packages/core/nros-platform-zephyr-c/src/{platform,timer}.c into
+# packages/core/nros-platform-zephyr/src/{platform,timer}.c into
 # the build via `zephyr_library_sources()` and exercises every
 # capability category from the C ABI. net.c is omitted (no
 # NETWORKING enabled in this profile — would require lwip/ipv4
@@ -19,7 +19,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_c_smoke)
 
 set(NROS_PLATFORM_C_SRC
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-zephyr-c/src")
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-zephyr/src")
 set(NROS_PLATFORM_CFFI_INCLUDE
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-cffi/include")
 

@@ -39,6 +39,35 @@ doctor:
     fi
     exit $fail
 
+# Phase 123.A.1.x.3 — install the standalone FreeRTOS platform C-port
+# (`libnros_platform_freertos.a`) into build/install/lib/. Cross-builds
+# against the in-tree FreeRTOS-Kernel headers using the same
+# arm-none-eabi-gcc toolchain as the rest of FreeRTOS targets. Symbols
+# that resolve at the user's final link (`xTaskCreate`, etc.) are left
+# undefined inside the .a — same shape as `libnros_platform_posix.a`
+# on POSIX.
+install-platform:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "Skipping FreeRTOS platform C-port (arm-none-eabi-gcc not found)"
+        exit 0
+    fi
+    PREFIX="$(pwd)/build/install"
+    SCAFFOLD="$(pwd)/tools/install-platform/freertos"
+    if [[ ! -d "$SCAFFOLD" ]]; then
+        echo "ERROR: install scaffold not found at $SCAFFOLD"
+        exit 1
+    fi
+    echo "=== Building standalone libnros_platform_freertos.a ==="
+    cmake -S "$SCAFFOLD" -B build/cmake-platform-freertos \
+        -DCMAKE_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake" \
+        -DFREERTOS_KERNEL_PATH="${FREERTOS_DIR}" \
+        -DFREERTOS_CONFIG_DIR="${FREERTOS_CONFIG_DIR}" \
+        -DCMAKE_BUILD_TYPE=Release >/dev/null
+    cmake --build build/cmake-platform-freertos
+    cmake --install build/cmake-platform-freertos --prefix "$PREFIX"
+
 # Install FreeRTOS ARM Cortex-M3 libraries into build/install/
 install:
     #!/usr/bin/env bash
@@ -155,7 +184,7 @@ test-all verbose="":
     cargo nextest run "${e2e_args[@]}"
 
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
-# nros-platform-freertos-c. Uses the in-tree FreeRTOS-Kernel + a
+# nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a
 # minimal FreeRTOSConfig.h. Excludes net.c (no lwIP in this harness).
 build-c-port:
     #!/usr/bin/env bash

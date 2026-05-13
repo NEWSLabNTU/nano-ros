@@ -119,6 +119,8 @@ build-all: build-examples build-test-fixtures
 install-local: \
     cyclonedds::setup \
     install-platform-posix \
+    freertos::install-platform \
+    threadx_linux::install-platform \
     install-local-posix \
     freertos::install nuttx::install \
     threadx_linux::install threadx_riscv64::install

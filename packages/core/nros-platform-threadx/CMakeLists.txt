@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nros-platform-threadx-c
+project(nros-platform-threadx
     VERSION 0.1.0
     DESCRIPTION "Native C implementation of the nros canonical platform ABI for Azure RTOS ThreadX"
     LANGUAGES C)
@@ -36,10 +36,10 @@ set(_nros_threadx_sources src/platform.c src/timer.c)
 
 # net.c needs the NetX Duo BSD addon (<nxd_bsd.h>). Smoke harnesses
 # and consumers without NetX Duo opt out via
-# -DNROS_PLATFORM_THREADX_C_WITH_NET=OFF.
-option(NROS_PLATFORM_THREADX_C_WITH_NET
+# -DNROS_PLATFORM_THREADX_WITH_NET=OFF.
+option(NROS_PLATFORM_THREADX_WITH_NET
        "Include net.c (requires NetX Duo BSD addon headers)" ON)
-if(NROS_PLATFORM_THREADX_C_WITH_NET)
+if(NROS_PLATFORM_THREADX_WITH_NET)
     list(APPEND _nros_threadx_sources src/net.c)
 endif()
 
@@ -57,7 +57,7 @@ else()
         "-DTHREADX_KERNEL_TARGET=<name> on the command line.")
 endif()
 
-if(NROS_PLATFORM_THREADX_C_WITH_NET)
+if(NROS_PLATFORM_THREADX_WITH_NET)
     if(TARGET ${NETXDUO_TARGET})
         target_link_libraries(nros_platform_threadx PUBLIC ${NETXDUO_TARGET})
     else()
@@ -68,13 +68,30 @@ if(NROS_PLATFORM_THREADX_C_WITH_NET)
     endif()
 endif()
 
-option(NROS_PLATFORM_THREADX_C_INSTALL
+option(NROS_PLATFORM_THREADX_INSTALL
        "Generate install rules (skip when consumed as a subdirectory)" ON)
-if(NROS_PLATFORM_THREADX_C_INSTALL)
+if(NROS_PLATFORM_THREADX_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
     install(TARGETS nros_platform_threadx
-        EXPORT NrosPlatformThreadxCTargets
+        EXPORT NrosPlatformThreadxTargets
         ARCHIVE DESTINATION lib)
-    install(EXPORT NrosPlatformThreadxCTargets
-        NAMESPACE NrosPlatformThreadxC::
-        DESTINATION lib/cmake/NrosPlatformThreadxC)
+    install(EXPORT NrosPlatformThreadxTargets
+        NAMESPACE NrosPlatformThreadx::
+        FILE NrosPlatformThreadxTargets.cmake
+        DESTINATION lib/cmake/NrosPlatformThreadx)
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformThreadxConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfig.cmake"
+        INSTALL_DESTINATION lib/cmake/NrosPlatformThreadx)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfigVersion.cmake"
+        DESTINATION lib/cmake/NrosPlatformThreadx)
 endif()

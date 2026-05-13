@@ -187,13 +187,56 @@ writes a workspace `Cargo.toml` for Rust users.
       builds + runs with 0 unresolved `nros_platform_*` in
       the final binary.
 
-    - [ ] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
-      ThreadX / Zephyr / ESP-IDF.** Same shape as A.1.x.1 but
-      driven from each platform's existing module
-      (`freertos::install` etc.) so cross-toolchain builds
-      pick up the right compiler. Targets emit
-      `libnros_platform_<plat>.a` next to today's
-      `libnros_c_<rmw>_<plat>_*.a`.
+    - [~] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
+      ThreadX / Zephyr / ESP-IDF.** Partially done — FreeRTOS +
+      ThreadX standalone install live. Remaining 3 platforms
+      sketched but deferred (NuttX delegates to POSIX so
+      `libnros_platform_nuttx.a` is redundant when the NuttX
+      build system inlines POSIX source; Zephyr ships as a west
+      module so `find_package` doesn't fit the parent build's
+      discovery model; ESP-IDF registers as an IDF component
+      `idf_component_register`, also not a `find_package`
+      target).
+
+      Done in this sub-step:
+        * Dropped `-c` suffix from FreeRTOS / NuttX / ThreadX /
+          Zephyr CMake project name, EXPORT name, install dir,
+          and `_C_INSTALL` / `_C_WITH_NET` option names.
+        * Added `Config.cmake.in` template for each of the four
+          RTOSes so `find_package(NrosPlatform<X> CONFIG)`
+          resolves the imported target out-of-tree.
+        * Created `tools/install-platform/{freertos,threadx}/`
+          install scaffolds — thin CMake projects that pull in
+          the in-tree kernel headers, add the platform crate as
+          subdirectory, scrub source-tree paths from the
+          imported target, and run install. Yields
+          `libnros_platform_freertos.a` (16 KB, 46 symbols) and
+          `libnros_platform_threadx.a` (70 KB, 48 symbols)
+          alongside `libnros_platform_posix.a` in
+          `build/install/lib/`.
+        * New `just freertos::install-platform` /
+          `threadx_linux::install-platform` recipes,
+          toolchain-gated (no-op when cross-toolchain missing).
+        * Wired into top-level `install-local` ahead of the
+          existing per-RTOS `install` recipes.
+        * `net.c` deliberately omitted from the standalone
+          installs (depends on lwIP / NetX Duo headers that the
+          standalone scaffold can't pull in without copying half
+          the application build). Apps that need it compile
+          `net.c` into their binary via the board crate's
+          build.rs — the existing path.
+        * Updated `tests/{freertos,threadx,zephyr}-c-smoke/`
+          CMakeLists + 3 just module comments to use the
+          renamed paths / options.
+
+      Deferred to a follow-up:
+        * NuttX standalone `.a` install (low value — NuttX build
+          system already inlines `nros-platform-posix/src/*.c`).
+        * Zephyr standalone install (west module discovery; out
+          of scope for the find_package pattern).
+        * ESP-IDF standalone install (IDF component model;
+          parent IDF build already pulls the source in via
+          `idf_component_register`).
 
     - [ ] **123.A.1.x.4 — Standalone RMW archives for zenoh
       and dds.** Today's `nros-rmw-zenoh` and `nros-rmw-dds`

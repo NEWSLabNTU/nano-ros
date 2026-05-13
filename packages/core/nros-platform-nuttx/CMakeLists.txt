@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nros-platform-nuttx-c
+project(nros-platform-nuttx
     VERSION 0.1.0
     DESCRIPTION "Native C implementation of the nros canonical platform ABI for NuttX (delegates to nros-platform-posix)"
     LANGUAGES C)
@@ -50,9 +50,26 @@ target_compile_options(nros_platform_nuttx PRIVATE
 # downstream CMake can `target_link_libraries(nros_platform_nuttx
 # PUBLIC Threads::Threads)` after `find_package(Threads)`.
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 install(TARGETS nros_platform_nuttx
-    EXPORT NrosPlatformNuttxCTargets
+    EXPORT NrosPlatformNuttxTargets
     ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformNuttxCTargets
-    NAMESPACE NrosPlatformNuttxC::
-    DESTINATION lib/cmake/NrosPlatformNuttxC)
+install(EXPORT NrosPlatformNuttxTargets
+    NAMESPACE NrosPlatformNuttx::
+    FILE NrosPlatformNuttxTargets.cmake
+    DESTINATION lib/cmake/NrosPlatformNuttx)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformNuttxConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/NrosPlatformNuttx)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfigVersion.cmake"
+    DESTINATION lib/cmake/NrosPlatformNuttx)

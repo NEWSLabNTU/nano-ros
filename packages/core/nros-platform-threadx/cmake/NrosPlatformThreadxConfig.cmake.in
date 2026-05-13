@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+# Phase 123.A.1.x.3: `find_package(NrosPlatformThreadx CONFIG)`
+# resolves the imported target
+# `NrosPlatformThreadx::nros_platform_threadx`. The C port relies on
+# the parent build supplying the ThreadX kernel target
+# (`THREADX_TARGET`, default `threadx`) and optionally a NetX Duo
+# target (`NETXDUO_TARGET`, default `netxduo`) for `<nxd_bsd.h>`
+# socket headers. Headers-only — no symbol resolution happens at
+# config time.
+
+include("${CMAKE_CURRENT_LIST_DIR}/NrosPlatformThreadxTargets.cmake")
+
+check_required_components(NrosPlatformThreadx)

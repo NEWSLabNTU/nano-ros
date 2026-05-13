@@ -470,7 +470,7 @@ test-all verbose="":
     fi
 
 # Phase 121.6 — build the Zephyr native_sim smoke test for
-# nros-platform-zephyr-c. Pulls platform.c + timer.c (not net.c)
+# nros-platform-zephyr. Pulls platform.c + timer.c (not net.c)
 # directly into a minimal Zephyr application and links via west.
 build-c-port:
     #!/usr/bin/env bash

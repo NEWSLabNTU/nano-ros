@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nros-platform-freertos-c
+project(nros-platform-freertos
     VERSION 0.1.0
     DESCRIPTION "Native C implementation of the nros canonical platform ABI for FreeRTOS"
     LANGUAGES C)
@@ -43,10 +43,10 @@ set(_nros_freertos_sources src/platform.c src/timer.c)
 
 # net.c pulls <lwip/sockets.h>; skip it when no lwIP target is around.
 # Downstream builds without networking (smoke tests, MCU profiles that
-# disable lwIP) opt out via -DNROS_PLATFORM_FREERTOS_C_WITH_NET=OFF.
-option(NROS_PLATFORM_FREERTOS_C_WITH_NET
+# disable lwIP) opt out via -DNROS_PLATFORM_FREERTOS_WITH_NET=OFF.
+option(NROS_PLATFORM_FREERTOS_WITH_NET
        "Include net.c (requires lwIP headers)" ON)
-if(NROS_PLATFORM_FREERTOS_C_WITH_NET)
+if(NROS_PLATFORM_FREERTOS_WITH_NET)
     list(APPEND _nros_freertos_sources src/net.c)
 endif()
 
@@ -73,7 +73,7 @@ if(DEFINED FREERTOS_CONFIG_TARGET AND TARGET ${FREERTOS_CONFIG_TARGET})
     target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_CONFIG_TARGET})
 endif()
 
-if(NROS_PLATFORM_FREERTOS_C_WITH_NET)
+if(NROS_PLATFORM_FREERTOS_WITH_NET)
     if(TARGET ${FREERTOS_LWIP_TARGET})
         target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_LWIP_TARGET})
     else()
@@ -85,13 +85,30 @@ if(NROS_PLATFORM_FREERTOS_C_WITH_NET)
     endif()
 endif()
 
-option(NROS_PLATFORM_FREERTOS_C_INSTALL
+option(NROS_PLATFORM_FREERTOS_INSTALL
        "Generate install rules (skip when consumed as a subdirectory)" ON)
-if(NROS_PLATFORM_FREERTOS_C_INSTALL)
+if(NROS_PLATFORM_FREERTOS_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
     install(TARGETS nros_platform_freertos
-        EXPORT NrosPlatformFreeRtosCTargets
+        EXPORT NrosPlatformFreertosTargets
         ARCHIVE DESTINATION lib)
-    install(EXPORT NrosPlatformFreeRtosCTargets
-        NAMESPACE NrosPlatformFreeRtosC::
-        DESTINATION lib/cmake/NrosPlatformFreeRtosC)
+    install(EXPORT NrosPlatformFreertosTargets
+        NAMESPACE NrosPlatformFreertos::
+        FILE NrosPlatformFreertosTargets.cmake
+        DESTINATION lib/cmake/NrosPlatformFreertos)
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformFreertosConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfig.cmake"
+        INSTALL_DESTINATION lib/cmake/NrosPlatformFreertos)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfigVersion.cmake"
+        DESTINATION lib/cmake/NrosPlatformFreertos)
 endif()

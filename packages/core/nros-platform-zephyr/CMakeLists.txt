@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.20)
 # For a non-Zephyr CMake parent, pass -DZEPHYR_BASE=<path> + the
 # `zephyr` interface target so this CMakeLists can find headers.
 
-project(nros-platform-zephyr-c
+project(nros-platform-zephyr
     VERSION 0.1.0
     DESCRIPTION "Native C implementation of the nros canonical platform ABI for Zephyr RTOS"
     LANGUAGES C)
@@ -45,9 +45,26 @@ if(TARGET zephyr)
     target_link_libraries(nros_platform_zephyr PUBLIC zephyr)
 endif()
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 install(TARGETS nros_platform_zephyr
-    EXPORT NrosPlatformZephyrCTargets
+    EXPORT NrosPlatformZephyrTargets
     ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformZephyrCTargets
-    NAMESPACE NrosPlatformZephyrC::
-    DESTINATION lib/cmake/NrosPlatformZephyrC)
+install(EXPORT NrosPlatformZephyrTargets
+    NAMESPACE NrosPlatformZephyr::
+    FILE NrosPlatformZephyrTargets.cmake
+    DESTINATION lib/cmake/NrosPlatformZephyr)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformZephyrConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/NrosPlatformZephyr)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfigVersion.cmake"
+    DESTINATION lib/cmake/NrosPlatformZephyr)

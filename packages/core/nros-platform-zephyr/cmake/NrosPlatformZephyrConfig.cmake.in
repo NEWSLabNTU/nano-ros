@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+
+# Phase 123.A.1.x.3: `find_package(NrosPlatformZephyr CONFIG)`
+# resolves the imported target
+# `NrosPlatformZephyr::nros_platform_zephyr`. This package ships as a
+# Zephyr module — declare it in `west.yml` and the `zephyr` INTERFACE
+# target appears automatically. For a non-Zephyr CMake parent, pass
+# `-DZEPHYR_BASE=<path>` + a `zephyr` interface target supplying
+# kernel headers.
+
+include("${CMAKE_CURRENT_LIST_DIR}/NrosPlatformZephyrTargets.cmake")
+
+check_required_components(NrosPlatformZephyr)
