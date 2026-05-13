@@ -401,9 +401,28 @@ arrays).
   `NANO_ROS_GEN_CACHE_DIR` in `NanoRosGenerateInterfaces.cmake`
   + `cargo-nano-ros`. Per-workspace singletons for
   `std_msgs__nano_ros_{c,cpp}` libs and `std_msgs` cargo crate.
-- [ ] **123.A.8 — Migrate `just <plat> setup` recipes** to
-  `tools/setup.sh --target=<plat>-<rmw>` shims. One bash
-  implementation; just recipes become one-line `exec`s.
+- [x] **123.A.8 — Migrate `just <plat> setup` recipes.** Done.
+  Migrated to `tools/setup.sh --platform=<plat>` /
+  `--rmw=<rmw>` shims:
+    * `just freertos::setup` → `tools/setup.sh --platform=freertos`
+    * `just nuttx::setup` → keeps the kernel-build step;
+      submodule fetch delegated to `--platform=nuttx`
+    * `just threadx_linux::setup` /
+      `just threadx_riscv64::setup` → `--platform=threadx`
+    * `just cyclonedds::setup` → keeps the SDK build; submodule
+      fetch delegated to `--rmw=cyclonedds`
+    * `just rmw_zenoh::setup` left inline (pulls only the
+      `rmw_zenoh` dev fixture from
+      `rmw.zenoh.dev_paths` — `--with-dev` would over-fetch).
+
+  Added two `tools/setup.sh` modes to support the shims:
+    * `--platform=<plat>` — fetch only `required` +
+      `platform.<plat>` paths (no RMW).
+    * `--rmw=<rmw>` — fetch only `required` + `rmw.<rmw>` paths
+      (no platform).
+    * `--skip-rustup` / `--skip-apt-check` for shims that don't
+      want the toolchain side effects (cyclonedds already
+      handles its own; rmw recipes don't need rustup).
 - [ ] **123.A.9 — `installation.md` rewrite.** Pattern A as the
   default, source-build-via-git-clone as the only path. Drop
   references to tarballs / SDK archives.

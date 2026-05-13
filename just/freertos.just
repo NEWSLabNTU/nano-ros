@@ -4,15 +4,10 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install FreeRTOS prerequisites: initialize the FreeRTOS + lwIP submodules.
+# Phase 123.A.8 — delegates to `tools/setup.sh --platform=freertos`,
+# single source of truth.
 setup:
-    #!/usr/bin/env bash
-    set -e
-    if [ -d "$FREERTOS_DIR/include" ] && [ -d "$LWIP_DIR/src/include" ]; then
-        echo "FreeRTOS + lwIP already present at $FREERTOS_DIR and $LWIP_DIR"
-    else
-        echo "Initializing FreeRTOS + lwIP submodules..."
-        git submodule update --init --recursive third-party/freertos
-    fi
+    @"{{justfile_directory()}}/tools/setup.sh" --platform=freertos --skip-apt-check
 
 # Diagnose FreeRTOS install status (read-only).
 doctor:

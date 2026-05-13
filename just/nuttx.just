@@ -133,13 +133,12 @@ test-all verbose="":
 ci: doctor test
 
 # Install NuttX prerequisites: initialize submodules + build kernel.
+# Phase 123.A.8 — submodule fetch delegated to tools/setup.sh; kernel
+# build stays here (NuttX-specific make invocation).
 setup:
     #!/usr/bin/env bash
     set -e
-    if [ ! -d "$NUTTX_DIR/arch" ]; then
-        echo "Initializing NuttX submodules..."
-        git submodule update --init --recursive third-party/nuttx
-    fi
+    "{{justfile_directory()}}/tools/setup.sh" --platform=nuttx --skip-apt-check
     just nuttx build-kernel
     echo "NuttX setup complete!"
 

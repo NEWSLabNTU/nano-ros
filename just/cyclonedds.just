@@ -15,10 +15,8 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
-    if [ ! -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
-        echo "Initialising Cyclone DDS submodule..."
-        git submodule update --init --recursive third-party/dds/cyclonedds
-    fi
+    # Phase 123.A.8 — submodule fetch via tools/setup.sh.
+    "{{justfile_directory()}}/tools/setup.sh" --rmw=cyclonedds --skip-rustup --skip-apt-check
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
         echo "Cyclone DDS already built: build/install/lib/libddsc.so"
         echo "To rebuild: just cyclonedds clean && just cyclonedds setup"

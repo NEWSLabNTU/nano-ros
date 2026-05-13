@@ -5,15 +5,9 @@ default:
 
 # Install ThreadX Linux prerequisites: initialize submodules.
 # Does NOT build example binaries — use `just threadx_linux build` for that.
+# Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
 setup:
-    #!/usr/bin/env bash
-    set -e
-    if [ -d "$THREADX_DIR/common/inc" ] && [ -d "$NETX_DIR/common/inc" ]; then
-        echo "ThreadX + NetX Duo already present at $THREADX_DIR and $NETX_DIR"
-    else
-        echo "Initializing ThreadX + NetX Duo submodules..."
-        git submodule update --init --recursive third-party/threadx
-    fi
+    @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
 
 # Diagnose ThreadX Linux install status (read-only).
 doctor:

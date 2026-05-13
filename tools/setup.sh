@@ -28,21 +28,31 @@ MANIFEST="${REPO_ROOT}/config/submodule-deps.toml"
 # ---------------------------------------------------------------- args
 
 TARGET=""
+PLATFORM_ONLY=""
+RMW_ONLY=""
 WITH_DEV=0
 RUST_WORKSPACE=0
 DRY_RUN=0
 DOCTOR=0
 LIST_TARGETS=0
+SKIP_RUSTUP=0
+SKIP_APT=0
 declare -a WITH_REFERENCE=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target=*)         TARGET="${1#*=}" ;;
         --target)           TARGET="$2"; shift ;;
+        --platform=*)       PLATFORM_ONLY="${1#*=}" ;;
+        --platform)         PLATFORM_ONLY="$2"; shift ;;
+        --rmw=*)            RMW_ONLY="${1#*=}" ;;
+        --rmw)              RMW_ONLY="$2"; shift ;;
         --with-dev)         WITH_DEV=1 ;;
         --with-reference=*) WITH_REFERENCE+=("${1#*=}") ;;
         --with-reference)   WITH_REFERENCE+=("$2"); shift ;;
         --rust-workspace)   RUST_WORKSPACE=1 ;;
+        --skip-rustup)      SKIP_RUSTUP=1 ;;
+        --skip-apt-check)   SKIP_APT=1 ;;
         --dry-run)          DRY_RUN=1 ;;
         --doctor)           DOCTOR=1 ;;
         --list-targets)     LIST_TARGETS=1 ;;
@@ -138,36 +148,53 @@ fi
 
 # -------------------------------------------------------------- validate
 
-if [[ -z "$TARGET" ]]; then
-    err "no --target specified."
-    err "  example: --target=posix-zenoh"
-    err "  see --list-targets for available combos."
+# Mode resolution:
+# (1) --target=<plat>-<rmw> sets both axes (canonical user-facing).
+# (2) --platform=<plat> alone fetches the platform.<plat> + required
+#     paths only — used by per-platform `just <plat> setup` shims.
+# (3) --rmw=<rmw> alone fetches rmw.<rmw> + required paths only —
+#     used by `just <rmw> setup` shims (cyclonedds, rmw_zenoh).
+# (4) Combining --platform + --rmw without --target is equivalent
+#     to --target=<plat>-<rmw>.
+PLATFORM=""
+RMW=""
+
+if [[ -n "$TARGET" ]]; then
+    PLATFORM="${TARGET%-*}"
+    RMW="${TARGET##*-}"
+    if [[ "$PLATFORM" == "$TARGET" || "$RMW" == "$TARGET" ]]; then
+        err "--target='${TARGET}' is not a <platform>-<rmw> tuple."
+        err "  example: posix-zenoh, freertos-xrce, threadx-dds"
+        exit 2
+    fi
+elif [[ -n "$PLATFORM_ONLY" || -n "$RMW_ONLY" ]]; then
+    PLATFORM="$PLATFORM_ONLY"
+    RMW="$RMW_ONLY"
+else
+    err "no setup mode specified."
+    err "  --target=<plat>-<rmw>           full canonical setup"
+    err "  --platform=<plat>               platform paths only"
+    err "  --rmw=<rmw>                     rmw paths only"
+    err "  see --list-targets for known values."
     exit 2
 fi
 
-# Split <plat>-<rmw>. RMW is the last hyphen-delimited token,
-# platform is everything before. Lets the platform name itself
-# contain hyphens (none today, but future-proof).
-PLATFORM="${TARGET%-*}"
-RMW="${TARGET##*-}"
-
-if [[ "$PLATFORM" == "$TARGET" || "$RMW" == "$TARGET" ]]; then
-    err "--target='${TARGET}' is not a <platform>-<rmw> tuple."
-    err "  example: posix-zenoh, freertos-xrce, threadx-dds"
-    exit 2
-fi
-
-# Validate sections exist in manifest.
-if ! grep -qE "^\\[platform\\.${PLATFORM}\\]" "$MANIFEST"; then
+if [[ -n "$PLATFORM" ]] && ! grep -qE "^\\[platform\\.${PLATFORM}\\]" "$MANIFEST"; then
     err "unknown platform '${PLATFORM}'. --list-targets for known set."
     exit 2
 fi
-if ! grep -qE "^\\[rmw\\.${RMW}\\]" "$MANIFEST"; then
+if [[ -n "$RMW" ]] && ! grep -qE "^\\[rmw\\.${RMW}\\]" "$MANIFEST"; then
     err "unknown rmw '${RMW}'. --list-targets for known set."
     exit 2
 fi
 
-info "target = ${TARGET} (platform=${PLATFORM}, rmw=${RMW})"
+if [[ -n "$PLATFORM" && -n "$RMW" ]]; then
+    info "target = ${PLATFORM}-${RMW} (platform=${PLATFORM}, rmw=${RMW})"
+elif [[ -n "$PLATFORM" ]]; then
+    info "platform-only mode: ${PLATFORM}"
+else
+    info "rmw-only mode: ${RMW}"
+fi
 
 # ------------------------------------------------------ resolve path set
 
@@ -177,21 +204,29 @@ while IFS= read -r p; do
     [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
 done < <(read_paths_array "required" "paths")
 
-while IFS= read -r p; do
-    [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-done < <(read_paths_array "platform.${PLATFORM}" "paths")
+if [[ -n "$PLATFORM" ]]; then
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
+    done < <(read_paths_array "platform.${PLATFORM}" "paths")
+fi
 
-while IFS= read -r p; do
-    [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-done < <(read_paths_array "rmw.${RMW}" "paths")
+if [[ -n "$RMW" ]]; then
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
+    done < <(read_paths_array "rmw.${RMW}" "paths")
+fi
 
 if (( WITH_DEV )); then
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-    done < <(read_paths_array "platform.${PLATFORM}" "dev_paths")
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-    done < <(read_paths_array "rmw.${RMW}" "dev_paths")
+    if [[ -n "$PLATFORM" ]]; then
+        while IFS= read -r p; do
+            [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
+        done < <(read_paths_array "platform.${PLATFORM}" "dev_paths")
+    fi
+    if [[ -n "$RMW" ]]; then
+        while IFS= read -r p; do
+            [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
+        done < <(read_paths_array "rmw.${RMW}" "dev_paths")
+    fi
 fi
 
 for ref in "${WITH_REFERENCE[@]}"; do
@@ -250,7 +285,9 @@ declare -A RUST_TARGET_FOR_PLATFORM=(
     [esp32]="riscv32imc-unknown-none-elf"
 )
 
-if ! command -v rustup >/dev/null 2>&1; then
+if (( SKIP_RUSTUP )); then
+    info "skipping rustup install / target add (--skip-rustup)"
+elif ! command -v rustup >/dev/null 2>&1; then
     if (( DRY_RUN )); then
         info "[dry-run] would install rustup via https://sh.rustup.rs"
     else
@@ -265,8 +302,11 @@ fi
 # Use the workspace's pinned toolchain (rust-toolchain.toml) — rustup
 # picks it up automatically when run inside the repo. Add the target
 # triple if the platform needs cross-compilation.
-TRIPLE="${RUST_TARGET_FOR_PLATFORM[$PLATFORM]:-}"
-if [[ -n "$TRIPLE" ]]; then
+TRIPLE=""
+if [[ -n "$PLATFORM" ]]; then
+    TRIPLE="${RUST_TARGET_FOR_PLATFORM[$PLATFORM]:-}"
+fi
+if ! (( SKIP_RUSTUP )) && [[ -n "$TRIPLE" ]]; then
     if (( DRY_RUN )); then
         info "[dry-run] rustup target add $TRIPLE"
     else
@@ -277,7 +317,9 @@ fi
 
 # ---------------------------------------------------------- apt packages
 
-if [[ "${OSTYPE:-}" == linux* ]] && command -v apt-get >/dev/null 2>&1; then
+if (( SKIP_APT )); then
+    info "skipping apt cross-toolchain check (--skip-apt-check)"
+elif [[ -n "$PLATFORM" && "${OSTYPE:-}" == linux* ]] && command -v apt-get >/dev/null 2>&1; then
     declare -A APT_FOR_PLATFORM=(
         [freertos]="gcc-arm-none-eabi"
         [nuttx]="gcc-arm-none-eabi kconfig-frontends"
@@ -310,4 +352,10 @@ if (( RUST_WORKSPACE )); then
     info "  → 'User workflows' for the recommended template."
 fi
 
-info "setup complete for target=${TARGET}"
+if [[ -n "$PLATFORM" && -n "$RMW" ]]; then
+    info "setup complete for target=${PLATFORM}-${RMW}"
+elif [[ -n "$PLATFORM" ]]; then
+    info "setup complete (platform=${PLATFORM})"
+else
+    info "setup complete (rmw=${RMW})"
+fi

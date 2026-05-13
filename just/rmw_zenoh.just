@@ -24,6 +24,12 @@ setup:
         echo "To rebuild, run: just rmw_zenoh clean && just rmw_zenoh setup"
         exit 0
     fi
+    # Phase 123.A.8 — kept inline: this recipe pulls only the
+    # rmw_zenoh dev fixture (one submodule), which the canonical
+    # `tools/setup.sh --rmw=zenoh` would NOT include because it
+    # lives in `rmw.zenoh.dev_paths`. Adding `--with-dev` would pull
+    # zenoh-pico + mbedtls + the full zenoh router too, far more
+    # than this recipe needs.
     if [ ! -f third-party/zenoh/rmw_zenoh/rmw_zenoh_cpp/package.xml ]; then
         echo "Initialising rmw_zenoh submodule..."
         git submodule update --init third-party/zenoh/rmw_zenoh
