@@ -10,6 +10,6 @@ name = "xrce-action-server"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-xrce-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }
 example_interfaces = { version = "*", default-features = false }

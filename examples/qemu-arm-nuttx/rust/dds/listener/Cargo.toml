@@ -16,7 +16,7 @@ nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-
 # `alloc` (not `std`) so the dust-dds `nostd-runtime` path is selected
 # instead of the `rtps_udp_transport` socket2 path. See the talker's
 # Cargo.toml for the full rationale.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-nuttx", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-nuttx", "ros-humble"] }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }

@@ -16,7 +16,7 @@ default = []
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-dds-cffi", "platform-freertos", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
 # `main.rs` calls `register()` before `Executor::open`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-freertos"] }

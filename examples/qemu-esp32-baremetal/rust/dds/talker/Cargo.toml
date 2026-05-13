@@ -23,7 +23,7 @@ nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp3
 #     Rust `#[global_allocator]`.
 #   * `critical-section` provided by `esp-hal` itself (RISC-V single
 #     core via `portable-atomic/unsafe-assume-single-core`).
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-bare-metal", "ros-humble", "rmw-dds-portable-atomic"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-bare-metal"] }
 # `global-allocator` ON for DDS — registers a 256 KB static
 # `FreeListHeap` from `nros-platform-esp32-qemu/memory.rs` (gated

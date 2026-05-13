@@ -19,7 +19,7 @@ nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-
 # `NrosUdpTransportFactory` lets pubsub share the executor with zenoh /
 # uORB code paths and dodges socket2's missing-NuttX-quirks (no
 # SO_REUSEPORT, no IovLen, …) that block compile-time.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-nuttx", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-nuttx", "ros-humble"] }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }

@@ -46,7 +46,7 @@ nros-serdes = { path = "../../core/nros-serdes", optional = true }
 nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"], optional = true }
 
 # Node + executor API (optional, for trigger condition integration tests)
-nros-node = { path = "../../core/nros-node", features = ["std", "rmw-zenoh-cffi", "platform-posix", "ros-humble"], optional = true }
+nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "platform-posix", "ros-humble"], optional = true }
 
 [features]
 default = []

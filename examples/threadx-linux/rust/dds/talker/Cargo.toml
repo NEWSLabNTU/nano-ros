@@ -19,7 +19,7 @@ nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-t
 # Use `alloc` instead of `std` so the dust-dds nostd-runtime path runs
 # (the threaded `rtps_udp_transport` socket2 path doesn't apply on top
 # of NetX BSD).
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-threadx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-threadx"] }

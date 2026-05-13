@@ -27,7 +27,7 @@ nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2
 #   * `critical-section` — Cortex-M PRIMASK → `critical_section::Impl`,
 #     resolves the `_critical_section_1_0_*` symbols dust-dds
 #     references.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-dds-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
 
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.

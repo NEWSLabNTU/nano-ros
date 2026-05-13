@@ -5,7 +5,7 @@ edition = "2024"
 description = "Example ROS 2 action server using nros"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
 # Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
 # via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
 # `Executor::open`.

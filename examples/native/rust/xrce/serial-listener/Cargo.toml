@@ -14,6 +14,6 @@ path = "src/main.rs"
 # (nros-rmw-xrce) through the cffi-shim Rust crate. The `serial://`
 # / `/dev/...` locator routes to `xrce_posix_serial_init` inside
 # `session.c`; no separate `xrce-serial` Cargo feature needed.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-xrce-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }
 std_msgs = { version = "*", default-features = false }
