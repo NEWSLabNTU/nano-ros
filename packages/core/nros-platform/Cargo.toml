@@ -48,7 +48,6 @@ cffi-export = [
     "nros-platform-stm32f4?/cffi-export",
     "nros-platform-esp32?/cffi-export",
     "nros-platform-esp32-qemu?/cffi-export",
-    "nros-platform-orin-spe?/cffi-export",
 ]
 # Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
 # routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
@@ -104,12 +103,13 @@ platform-zephyr = [
     "dep:nros-platform-cffi",
     "nros-platform-zephyr/cffi-export",
 ]
-# Phase 100 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP, IVC transport).
-# IVC backend is selected by the consumer crate via
-# `nros-platform-orin-spe?/{fsp,unix-mock}`; defaults to no backend
-# (a build-time error on first use) so accidentally enabling
-# `platform-orin-spe` without picking one fails fast.
-platform-orin-spe = ["dep:nros-platform-orin-spe"]
+# Phase 100 / 121.10 — orin-spe was promoted out of the platform layer.
+# AGX Orin SPE (Cortex-R5F + FreeRTOS FSP) is now a board over
+# `platform-freertos`; `nros-board-orin-spe` selects `platform-freertos`
+# directly and wires IVC + FSP init at the board level. The
+# `platform-orin-spe` feature is kept as a back-compat alias that maps
+# to `platform-freertos` so out-of-workspace callers still build.
+platform-orin-spe = ["platform-freertos"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -147,13 +147,14 @@ critical-section = [
 # debug NSOS RX delivery on `native_sim`.
 debug-mcast-read-zephyr = ["nros-platform-zephyr?/debug-mcast-read"]
 
-# Phase 100.1 — Cortex-R5 CPSR I-bit critical-section (Orin SPE). Pulled
-# in by the SPE board crate alongside `platform-orin-spe`. Distinct from
-# the Cortex-M umbrella above so the two `set_impl!` registrations never
-# collide; `nros-platform-freertos` itself raises a `compile_error!` if
-# both are activated together.
+# Phase 100.1 / 121.10 — Cortex-R5 CPSR I-bit critical-section (Orin SPE).
+# Pulled in by the SPE board crate. Distinct from the Cortex-M umbrella
+# above so the two `set_impl!` registrations never collide;
+# `nros-platform-freertos` itself raises a `compile_error!` if both
+# are activated together. Forwards through the FreeRTOS Rust crate's
+# `cortex-r` feature now that orin-spe is a board.
 cortex-r = [
-    "nros-platform-orin-spe?/cortex-r",
+    "nros-platform-freertos?/cortex-r",
 ]
 
 [dependencies]
@@ -170,7 +171,8 @@ nros-platform-nuttx = { version = "0.1.0", path = "../nros-platform-nuttx", opti
 nros-platform-freertos = { version = "0.1.0", path = "../nros-platform-freertos", optional = true }
 nros-platform-threadx = { version = "0.1.0", path = "../nros-platform-threadx", optional = true }
 nros-platform-zephyr = { version = "0.1.0", path = "../nros-platform-zephyr", optional = true }
-nros-platform-orin-spe = { version = "0.1.0", path = "../../platforms/nros-platform-orin-spe", optional = true }
+# Phase 121.10 — nros-platform-orin-spe was deleted. `platform-orin-spe`
+# aliases `platform-freertos` for back-compat.
 
 [lints]
 workspace = true

@@ -28,16 +28,21 @@ skip-task-symbols = []
 skip-clock-symbols = []
 # Provide network forwarders (_z_open_tcp etc. → PlatformTcp/PlatformUdp traits)
 network = []
-# Phase 100.4 — provide IVC forwarders (_z_open_ivc etc. → PlatformIvc trait).
-# Activated automatically by zpico-sys's `cargo:rustc-cfg=feature="link_ivc"`
-# when its own `link-ivc` feature is on; declared here so cargo recognises
-# the cfg flag and the manifest can also activate the block directly.
-link-ivc = []
+# Phase 100.4 / 121.10 — provide IVC forwarders (`_z_open_ivc` etc.)
+# that call the `nvidia-ivc` driver crate directly. Activated
+# automatically by zpico-sys's `cargo:rustc-cfg=feature="link_ivc"`
+# when its own `link-ivc` feature is on; declared here so cargo
+# recognises the cfg flag and the manifest can also activate the
+# block directly.
+link-ivc = ["dep:nvidia-ivc"]
 # Provide smoltcp_init/cleanup/poll FFI (bare-metal only — calls nros-smoltcp)
 network-smoltcp-bridge = ["network"]
 
 [dependencies]
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
+# Phase 121.10 — IVC forwarders call the driver crate directly. Optional
+# so non-orin-spe builds don't pull the nvidia-ivc surface.
+nvidia-ivc = { version = "0.1.0", path = "../../drivers/nvidia-ivc", default-features = false, optional = true }
 
 [build-dependencies]
 cc = "1"

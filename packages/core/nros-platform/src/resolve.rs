@@ -53,12 +53,10 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 #[cfg(feature = "platform-zephyr")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
-// orin-spe has no TCP/UDP at the platform level (IVC replaces them at
-// the link layer per Phase 100 design). Keep its direct alias because
-// CffiPlatform's PlatformTcp/Udp extern decls would otherwise be
-// unresolved.
-#[cfg(feature = "platform-orin-spe")]
-pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;
+// Phase 121.10 — `platform-orin-spe` is now an alias for
+// `platform-freertos` (see Cargo.toml). The board crate
+// (`nros-board-orin-spe`) wires IVC + FSP init directly; no separate
+// platform crate.
 
 // ============================================================================
 // Phase 71.22 — opaque-buffer sizes for `_z_sys_net_socket_t` /

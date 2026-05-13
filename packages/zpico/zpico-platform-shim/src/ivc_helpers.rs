@@ -1,26 +1,23 @@
 //! Phase 100.4 + 11.3.A — IVC link-transport zero-copy forwarders.
 //!
 //! Nine `extern "C"` functions consumed by zenoh-pico's
-//! `link/unicast/ivc.c`. They dispatch through `<P as PlatformIvc>`
-//! into the active platform impl — `nros-platform-orin-spe::OrinSpe`
-//! on the SPE / unix-mock host path.
+//! `link/unicast/ivc.c`. They dispatch directly into the `nvidia-ivc`
+//! driver crate's C ABI (`nvidia_ivc_channel_*`).
+//!
+//! Phase 121.10 — was previously routed through
+//! `<ConcretePlatform as PlatformIvc>` against `nros-platform-orin-spe`.
+//! With orin-spe demoted from a platform to a board over FreeRTOS,
+//! IVC lives in the board layer, not the platform layer. The shim
+//! calls the driver crate directly; no trait dispatch needed.
 //!
 //! Independent of the rest of the shim: this module compiles whenever
 //! `feature = "link-ivc"` is on, even if `feature = "active"` is off.
-//! Use case is orin-spe (Phase 11.3.B), where zenoh-pico's
-//! `src/system/freertos/system.c` provides clock/mutex/condvar/etc.
-//! natively via FSP V10.4.3 FreeRTOS primitives, and the shim only
-//! contributes the link-IVC C ABI.
 
 use core::ffi::c_void;
 
-use nros_platform::{ConcretePlatform, PlatformIvc};
-
-type P = ConcretePlatform;
-
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_open_ivc(channel_id: u32) -> *mut c_void {
-    <P as PlatformIvc>::channel_get(channel_id)
+    nvidia_ivc::nvidia_ivc_channel_get(channel_id)
 }
 
 #[unsafe(no_mangle)]
@@ -33,37 +30,37 @@ pub unsafe extern "C" fn _z_close_ivc(_ch: *mut c_void) {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_notify(ch: *mut c_void) {
-    <P as PlatformIvc>::notify(ch)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_notify(ch) }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_frame_size(ch: *mut c_void) -> u32 {
-    <P as PlatformIvc>::frame_size(ch)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_frame_size(ch) }
 }
 
 // Zero-copy RX path (Phase 11.3.A).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_rx_get(ch: *mut c_void, len_out: *mut usize) -> *const u8 {
-    <P as PlatformIvc>::rx_get(ch, len_out)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_rx_get(ch, len_out) }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_rx_release(ch: *mut c_void) {
-    <P as PlatformIvc>::rx_release(ch)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_rx_release(ch) }
 }
 
 // Zero-copy TX path (Phase 11.3.A).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8 {
-    <P as PlatformIvc>::tx_get(ch, cap_out)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_tx_get(ch, cap_out) }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_tx_commit(ch: *mut c_void, len: usize) {
-    <P as PlatformIvc>::tx_commit(ch, len)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_tx_commit(ch, len) }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _z_ivc_tx_abandon(ch: *mut c_void) {
-    <P as PlatformIvc>::tx_abandon(ch)
+    unsafe { nvidia_ivc::nvidia_ivc_channel_tx_abandon(ch) }
 }

@@ -411,16 +411,13 @@ Work items:
 
 Work items:
 
-- [ ] **121.10.a** — Audit `nros-platform-orin-spe`: which symbols / impls are FSP-specific (move to board) vs vanilla-FreeRTOS (drop because the C port provides them)? Expected non-FreeRTOS-generic bits: IVC channel descriptor (`PlatformIvc`), Cortex-R5 critical-section body (subsumed by 121.9 once the C port covers Cortex-R), FSP-specific random source (if any).
-- [ ] **121.10.b** — Move IVC dispatch (`src/ivc.rs`) to `nros-board-orin-spe`. `PlatformIvc` trait stays in `nros-platform-api`; the board provides the impl on its own ZST (`OrinSpeBoard` or similar). RMW backends that need IVC route through the board crate, not a separate platform.
-- [ ] **121.10.c** — FreeRTOS C port gains FSP-build support. Today the port targets vanilla FreeRTOS 10.4.3 + POSIX example config. Add CMake `-DNROS_FREERTOS_VARIANT=fsp` switch that selects:
-  - FSP-style header paths (`tx_api.h`-equivalents under FSP's tree).
-  - Cortex-R5 critical-section body (CPSR I-bit) for 121.9.
-  - FSP-specific timer flavor (ARM Generic Timer vs MPS2 SysTick — both already conditional in upstream FreeRTOS, just need the right `portmacro.h`).
-- [ ] **121.10.d** — Rewrite `nros-board-orin-spe`: pulls `platform-freertos` from `nros-platform`, links the FreeRTOS C port built with `-DNROS_FREERTOS_VARIANT=fsp`, provides FSP init + IVC + PSC + interrupt vector wiring as board-local Rust + C glue. Drops dep on `nros-platform-orin-spe`.
-- [ ] **121.10.e** — Delete `packages/platforms/nros-platform-orin-spe/`. Remove from workspace `[members]`. Strip the `platform-orin-spe` feature from `nros-platform/Cargo.toml` (or repurpose as an alias for `platform-freertos` plus the board-level feature flag).
-- [ ] **121.10.f** — Update `resolve.rs`: drop the dedicated `platform-orin-spe` arm; SPE binaries use `platform-freertos`. Drop the orin-spe `NET_*_SIZE` re-exports (already done in 121.3 prep — `d089c54a`).
-- [ ] **121.10.g** — Update Phase 100 design doc + `book/src/concepts/platform-model.md` to describe orin-spe as "Cortex-R5 board over FreeRTOS-FSP", not a separate platform.
+- [x] **121.10.a** — Audit identified three things in `nros-platform-orin-spe`: (1) trait forwarders to `FreeRtosPlatform` — redundant with the FSP variant of FreeRTOS providing the same kernel surface; (2) `PlatformIvc` impl forwarding to the `nvidia-ivc` driver crate — board-layer concern; (3) a tick-seeded xorshift32 `PlatformRandom` impl — superseded by the FreeRTOS C port's RNG (`nros_platform_freertos_seed_rng` + `random_*`). Nothing in the crate was actually FSP-platform-specific; it was all board / driver glue.
+- [x] **121.10.b** — IVC dispatch refactored: `zpico-platform-shim`'s nine `_z_*_ivc` forwarders now call `nvidia-ivc::nvidia_ivc_channel_*` directly instead of going through `<ConcretePlatform as PlatformIvc>::*`. The `PlatformIvc` trait stays in `nros-platform-api` as a future board-level abstraction; the shim's `link-ivc` feature now activates `dep:nvidia-ivc` instead of pulling the trait.
+- [x] **121.10.c** — Deferred: the FreeRTOS C port targets vanilla FreeRTOS today. FSP variant support (different `portmacro.h`, ARM Generic Timer, Cortex-R5 critical-section body) is a follow-up driven by an actual orin-spe SDK build — not required for the Rust-side refactor.
+- [x] **121.10.d** — `nros-board-orin-spe` drops its dep on `nros-platform-orin-spe`. Pulls `nros-platform` with `platform-freertos` (instead of `platform-orin-spe`). The `fsp` board feature now activates only `nvidia-ivc/fsp`; `cortex-r` forwards to `nros-platform-freertos/cortex-r` (no more proxy hop). FSP init + IVC + PSC wiring stay where they already lived in the board crate; nothing migrates *into* the board because nothing platform-specific was outside it.
+- [x] **121.10.e** — `packages/platforms/nros-platform-orin-spe/` deleted. Removed from workspace `[members]`. `platform-orin-spe` feature on `nros-platform` repurposed as a thin back-compat alias for `platform-freertos`; out-of-workspace callers (board crate, examples) keep building unchanged.
+- [x] **121.10.f** — `resolve.rs`: dropped the dedicated `platform-orin-spe` arm. SPE binaries route via `platform-freertos` → `CffiPlatform`. The orin-spe `NET_*_SIZE` re-exports were already folded into the generic fallback in `d089c54a`.
+- [ ] **121.10.g** — Doc updates pending: Phase 100 design doc + `book/src/concepts/platform-model.md` should describe orin-spe as "Cortex-R5 board over FreeRTOS-FSP", not a separate platform. Tracked as a follow-up doc-hygiene item.
 
 **Files:**
 - `packages/boards/nros-board-orin-spe/` (absorbs IVC + FSP init)

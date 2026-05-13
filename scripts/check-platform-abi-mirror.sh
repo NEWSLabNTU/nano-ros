@@ -132,8 +132,8 @@ PLATFORM_CRATES=(
     "packages/platforms/nros-platform-stm32f4/src/lib.rs|core,net"
     "packages/platforms/nros-platform-esp32/src/lib.rs|core,net"
     "packages/platforms/nros-platform-esp32-qemu/src/lib.rs|core,net"
-    # orin-spe: no net surface — IVC replaces TCP/UDP at the link layer.
-    "packages/platforms/nros-platform-orin-spe/src/lib.rs|core"
+    # Phase 121.10 — orin-spe Rust crate deleted; FSP variant of FreeRTOS
+    # provides the same kernel surface via `platform-freertos`.
 )
 
 invocation_fail=0

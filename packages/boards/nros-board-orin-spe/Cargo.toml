@@ -31,26 +31,29 @@ default = ["fsp", "cortex-r"]
 # hardware-only — the `unix-mock` host bring-up path lives in
 # `autoware_sentinel`'s ivc-bridge tests and in zpico-sys's
 # integration tests (Phase 100.8), not here.
+#
+# Phase 121.10 — was previously forwarded through
+# `nros-platform-orin-spe/fsp`; the IVC backend now lives directly in
+# the board layer since orin-spe is a FreeRTOS board, not a platform.
 fsp = [
     "nvidia-ivc/fsp",
-    "nros-platform-orin-spe/fsp",
 ]
 
-# Register `critical_section::Impl` against the ARMv7-R CPSR I-bit.
-# Forwards through the platform crate; the umbrella is gated separately
-# from the IVC transport because the dust-dds RMW backend (no zenoh)
-# needs the impl too. See Phase 100.1.
+# Register `critical_section::Impl` against the ARMv7-R CPSR I-bit
+# via the FreeRTOS platform crate's `cortex-r` feature. (Was forwarded
+# through the now-deleted `nros-platform-orin-spe` proxy.) See Phase
+# 100.1 / 121.9.
 cortex-r = [
     "nros-platform/cortex-r",
-    "nros-platform-orin-spe/cortex-r",
 ]
 
 [dependencies]
-# Trait definitions + `ConcretePlatform` resolver. Selecting
-# `platform-orin-spe` here is what makes
-# `<P as PlatformIvc>::*` resolve to `OrinSpe` inside the shim.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-orin-spe"] }
-nros-platform-orin-spe = { path = "../../platforms/nros-platform-orin-spe", default-features = false }
+# Phase 121.10 — orin-spe is a board over FreeRTOS-FSP. The platform
+# Rust crate (`nros-platform-orin-spe`) was deleted; trait impls come
+# from `platform-freertos` (the FSP variant of FreeRTOS V10.4.3 exposes
+# the same kernel surface as upstream). `ConcretePlatform` resolves
+# to `CffiPlatform` per the uniform routing (Phase 121.7.b).
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
 
 # IVC driver crate (re-exported here so the firmware can call into it
 # directly without going through the trait dispatch — useful for
