@@ -50,6 +50,20 @@
 #define MS_PER_TICK ((uint64_t) (1000U / configTICK_RATE_HZ))
 #define US_PER_TICK ((uint64_t) (1000000U / configTICK_RATE_HZ))
 
+/* Phase 121.3.freertos-parity — semihosting trace for diagnostic
+ * builds. Enable by setting `NROS_PLATFORM_FREERTOS_TRACE` on the
+ * compile line. ARM Cortex-M only (uses SYS_WRITE0 / BKPT 0xAB). */
+#ifdef NROS_PLATFORM_FREERTOS_TRACE
+static void _trace(const char *s) {
+    register unsigned r0 __asm__("r0") = 0x04; /* SYS_WRITE0 */
+    register const char *r1 __asm__("r1") = s;
+    __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
+}
+#define TRACE(s) _trace(s)
+#else
+#define TRACE(s) ((void) 0)
+#endif
+
 /* ---- Clock ---- */
 
 uint64_t nros_platform_clock_ms(void) {
@@ -225,18 +239,10 @@ static void freertos_task_trampoline(void *raw) {
     if (t->entry != NULL) {
         (void) t->entry(t->arg);
     }
-    /* Phase 121.3.freertos-parity — suspend self instead of self-
-     * deleting, matching the deleted Rust impl. The joiner calls
-     * vTaskDelete on this handle. Self-delete frees the TCB
-     * immediately, and `eTaskGetState(deleted_handle)` becomes UB
-     * (the polling loop in `nros_platform_task_join` reads freed
-     * memory). Suspended-self keeps the TCB valid until the joiner
-     * cleans up; matches what zenoh-pico's own task_wrapper does. */
-    vTaskSuspend(NULL);
-    /* Should never return. */
-    for (;;) {
-        vTaskDelay(portMAX_DELAY);
-    }
+    /* Self-delete — task_join below polls `eTaskGetState` until the
+     * task hits `eDeleted`. Matches zpico's own _z_task_wrapper
+     * semantics for non-static-allocation builds. */
+    vTaskDelete(NULL);
 }
 
 int8_t nros_platform_task_init(void *task, void *attr,
@@ -281,23 +287,17 @@ int8_t nros_platform_task_init(void *task, void *attr,
 }
 
 int8_t nros_platform_task_join(void *task) {
-    /* Phase 121.3.freertos-parity — matches deleted Rust impl: poll
-     * eTaskGetState until the task self-suspends, then vTaskDelete it.
-     * The trampoline calls vTaskSuspend(NULL) when entry returns;
-     * eTaskGetState then reports eSuspended. The task itself stays
-     * alive (TCB intact) until we delete it here. */
+    /* Poll `eTaskGetState` until the trampoline has called
+     * `vTaskDelete(NULL)`. After vTaskDelete the TCB is queued for
+     * idle-task cleanup; eTaskGetState returns `eDeleted` until the
+     * idle task frees the memory. */
     if (task == NULL) return -1;
     nros_freertos_task_t *t = (nros_freertos_task_t *) task;
     if (t->handle == NULL) return -1;
-    while (eTaskGetState((TaskHandle_t) t->handle) != eSuspended) {
+    while (eTaskGetState((TaskHandle_t) t->handle) != eDeleted) {
         vTaskDelay(1);
     }
-    taskENTER_CRITICAL();
-    if (t->handle != NULL) {
-        vTaskDelete((TaskHandle_t) t->handle);
-        t->handle = NULL;
-    }
-    taskEXIT_CRITICAL();
+    t->handle = NULL;
     return 0;
 }
 

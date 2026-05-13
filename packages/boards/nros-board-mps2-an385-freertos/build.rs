@@ -419,9 +419,29 @@ void SysTick_Handler(void) {
     }
 }
 
+/* Phase 121.3.freertos-parity — semihosting print helper. */
+static void semihost_write0(const char *s) {
+    __asm__ volatile(
+        "mov r0, #4\n"  /* SYS_WRITE0 */
+        "mov r1, %0\n"
+        "bkpt #0xAB\n"
+        : : "r"(s) : "r0", "r1", "memory");
+}
+
 /* ---- FreeRTOS malloc failed hook ---- */
 void vApplicationMallocFailedHook(void) {
-    /* Loop forever — debugger can inspect xPortGetFreeHeapSize() */
+    semihost_write0("*** MALLOC FAILED ***\n");
+    for (;;) { __asm__ volatile("wfi"); }
+}
+
+/* Phase 121.3.freertos-parity diagnostic — stack overflow hook.
+ * Prints offending task name via semihosting so the regression
+ * is localized at runtime instead of silently hanging. */
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+    (void) xTask;
+    semihost_write0("*** STACK OVERFLOW: ");
+    semihost_write0(pcTaskName);
+    semihost_write0(" ***\n");
     for (;;) { __asm__ volatile("wfi"); }
 }
 
