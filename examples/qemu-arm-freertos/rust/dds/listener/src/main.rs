@@ -7,6 +7,8 @@
 #![no_main]
 
 extern crate alloc;
+// Phase 121.9 — see sibling talker for rationale.
+extern crate nros_platform_critical_section as _;
 
 use nros::prelude::*;
 use nros_board_mps2_an385_freertos::{Config, println, run};

@@ -82,6 +82,25 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", nsos_src.display());
 
+    // ---- Phase 121.3 — Build nros-platform-threadx C port ----
+    // The native C port provides the canonical `nros_platform_*`
+    // symbols against the ThreadX kernel + nsos-netx BSD shim. Built
+    // in-tree by the board because the includes (`tx_api.h`,
+    // `nx_bsd_*.h`) are already configured here.
+    let nros_platform_threadx_dir =
+        workspace_root.join("packages/core/nros-platform-threadx/src");
+    let nros_platform_cffi_include =
+        workspace_root.join("packages/core/nros-platform-cffi/include");
+    let mut platform = cc::Build::new();
+    configure_linux(&mut platform);
+    add_threadx_includes(&mut platform, &threadx_dir, &threadx_port_dir, &config_dir);
+    platform.include(&nros_platform_cffi_include);
+    platform.file(nros_platform_threadx_dir.join("platform.c"));
+    platform.file(nros_platform_threadx_dir.join("net.c"));
+    platform.file(nros_platform_threadx_dir.join("timer.c"));
+    platform.compile("nros_platform_threadx");
+    println!("cargo:rerun-if-changed={}", nros_platform_threadx_dir.display());
+
     // ---- Build C glue (app_define.c) ----
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
@@ -91,6 +110,7 @@ fn main() {
     glue.compile("glue");
 
     // ---- Link order (reverse dependency) ----
+    println!("cargo:rustc-link-lib=static=nros_platform_threadx");
     println!("cargo:rustc-link-lib=static=glue");
     println!("cargo:rustc-link-lib=static=nsos_netx");
     println!("cargo:rustc-link-lib=static=threadx");

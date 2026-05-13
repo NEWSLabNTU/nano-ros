@@ -1,45 +1,26 @@
-# nros-platform-nuttx
+# nros-platform-nuttx-c
 
-> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
-> native C port at [`nros-platform-nuttx-c`](../nros-platform-nuttx-c)
-> — it reuses [`nros-platform-posix-c`](../nros-platform-posix-c)'s
-> sources verbatim via CMake (NuttX provides a POSIX-compatible
-> surface). This Rust crate stays in tree until every consumer has
-> migrated. Removal tracked under Phase 121's deprecate-rust work item.
+Native C implementation of the nano-ros canonical platform ABI (`<nros/platform.h>`) for [NuttX](https://nuttx.apache.org/).
 
-NuttX platform implementation for nano-ros. NuttX exposes a near-POSIX
-syscall surface, so this crate is a thin re-export of POSIX semantics
-plus a few NuttX-specific quirks.
+NuttX exposes a POSIX-compatible surface (`pthread_*`, `clock_gettime`, `nanosleep`, `sched_yield`, `malloc`/`realloc`/`free`). The Rust `NuttxPlatform` mirrors this by forwarding every trait method to `PosixPlatform`; the C port follows the same pattern — it compiles the very same `src/platform.c` shipped by [`nros-platform-posix-c`](../nros-platform-posix-c) and produces `libnros_platform_nuttx.a`. No NuttX-specific source file exists.
 
-## Role
+## Build
 
-Implements the trait family in
-[`nros-platform-api`](../nros-platform-api) on top of NuttX's POSIX
-layer: `clock_gettime`, libc `malloc` / `free`, pthreads + POSIX
-semaphores. Networking is delegated to zenoh-pico's C `unix/network.c`
-since NuttX's BSD socket layer is fully POSIX-compatible.
+```bash
+cmake -B build
+cmake --build build
+```
 
-## Source layout
+By default the build picks up `<nros/platform.h>` from `../nros-platform-cffi/include` and the source from `../nros-platform-posix-c/src/platform.c`. Override via:
 
-| File | Role |
-|------|------|
-| `src/lib.rs` | `NuttXPlatform` zero-sized type + trait impls (mostly POSIX aliases). |
-| `src/sync.rs` | NuttX-specific condvar replacement using `sem_timedwait` (pthread condvars hang on NuttX — see Phase 55.12). |
+```bash
+cmake -B build \
+  -DNROS_PLATFORM_CFFI_INCLUDE=/path/to/include \
+  -DNROS_PLATFORM_POSIX_C_SOURCE=/path/to/platform.c
+```
 
-## When to use
+For a NuttX application build, the NuttX build system pulls in the libc + pthread layer automatically; no extra link library is required.
 
-- NuttX RTOS-based target, qemu-arm or real hardware.
-- POSIX-flavoured embedded development without a full Linux kernel.
+## License
 
-## Caveats
-
-- pthread condvars are unreliable on some NuttX revisions — this crate
-  uses a `sem_timedwait`-based replacement; do not switch back without
-  rerunning the full `just nuttx test` suite.
-- `z_open` first-call is sensitive to task stack size and to the order
-  of network-stack init (see the NuttX-investigation memory entry).
-
-## See also
-
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-nuttx>
+Apache-2.0 or MIT at your option.

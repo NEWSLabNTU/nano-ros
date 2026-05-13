@@ -25,11 +25,17 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 #     Rust `#[global_allocator]`.
 #   * `critical-section` — Cortex-M PRIMASK → `critical_section::Impl`,
 #     resolves the `_critical_section_1_0_*` symbols dust-dds references.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator", "critical-section"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 # Phase 115.L.5 — cffi shim that exposes dust-dds via `nros_rmw_vtable_t`.
-# `main.rs` calls `register()` before `Executor::open`. `debug-cortex-m-semihosting`
-# forwards to the underlying nros-rmw-dds via the shim's transitive features.
+# `main.rs` calls `register()` before `Executor::open`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-freertos"] }
-nros-platform-freertos = { path = "../../../../../packages/core/nros-platform-freertos", default-features = false, features = ["debug-cortex-m-semihosting"] }
+# Phase 121.3.deprecate-rust-remove — the Rust nros-platform-freertos
+# crate is gone; the C port (compiled by the board's build.rs)
+# provides the canonical `nros_platform_*` symbols. The
+# `debug-cortex-m-semihosting` trace feature has no equivalent yet;
+# add it back to the C port if needed.
+# dust-dds's `critical_section::Impl` registration now comes from
+# the `nros-platform-critical-section` shim crate (Phase 121.9).
+nros-platform-critical-section = { path = "../../../../../packages/core/nros-platform-critical-section" }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }

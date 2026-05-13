@@ -15,6 +15,12 @@
 //! - No `zpico-platform-*` or `zpico-smoltcp` crates needed
 
 #![no_std]
+// Phase 121.3 — the canonical `nros_platform_*` symbols come from the
+// FreeRTOS C port (`packages/core/nros-platform-freertos/src/*.c`)
+// compiled in-tree by build.rs. The Rust kernel crate that previously
+// emitted the same symbols via the `nros_platform_export!` macro was
+// deleted in Phase 121.3.deprecate-rust-remove.
+
 // Force-link the zenoh-pico C transport + platform shim when
 // `rmw-zenoh` is active. DDS-only builds drop both deps via
 // `default-features = false` and reach the linker without the

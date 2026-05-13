@@ -1,57 +1,50 @@
-# nros-platform-threadx
+# nros-platform-threadx-c
 
-> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
-> native C port at [`nros-platform-threadx-c`](../nros-platform-threadx-c)
-> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
-> + `<nros/platform_timer.h>` ABI directly against ThreadX + NetX Duo BSD
-> addon. This Rust crate stays in tree until every consumer has migrated.
-> Removal tracked under Phase 121's deprecate-rust work item.
+Native C implementation of the nano-ros canonical platform ABI (`<nros/platform.h>`) for [Azure RTOS ThreadX](https://azure.microsoft.com/en-us/products/rtos/).
 
-ThreadX platform implementation for nano-ros. Backs the trait family on
-Microsoft Azure RTOS ThreadX + NetX Duo. Used by the Linux simulator
-build and the QEMU RISC-V build (and any real ThreadX target with the
-same API).
+Behavioural parity with [`nros-platform-threadx`](../nros-platform-threadx)'s Rust impl:
 
-## Role
+| Capability | ThreadX primitive |
+|---|---|
+| Clock      | `tx_time_get()` scaled by `TX_TIMER_TICKS_PER_SECOND` |
+| Allocation | `tx_byte_allocate` / `tx_byte_release` against a caller-provided `TX_BYTE_POOL` (set once via `nros_platform_threadx_set_byte_pool`) |
+| Sleep      | `tx_thread_sleep(ms_to_ticks)` |
+| Yield      | `tx_thread_relinquish()` |
+| Random     | Deterministic xorshift64; seedable via `nros_platform_threadx_seed_rng(u32)` |
+| Time       | Wall clock unsupported; returns 0 |
+| Tasks      | `tx_thread_create` + `tx_thread_terminate` + `tx_thread_delete`. `task_init`'s `attr` parameter is a `nros_threadx_task_attr_t` carrying name + priority + stack pointer + stack depth — ThreadX does not allocate task stacks. |
+| Mutexes    | `tx_mutex_create(TX_INHERIT)`. ThreadX mutexes are recursive by design; `mutex_*` and `mutex_rec_*` share the same primitive. |
+| Condvars   | `tx_semaphore`-backed. `condvar_signal_all` matches the Rust impl's "wake one" approximation (ThreadX has no broadcast). |
 
-Implements the trait family in
-[`nros-platform-api`](../nros-platform-api) on top of ThreadX +
-NetX Duo: `tx_time_get` for monotonic time, `tx_byte_allocate` for
-heap, ThreadX threads + mutexes + semaphores for threading, NetX Duo
-BSD socket shim (`nxd_bsd.c`) for networking.
+## Byte-pool wiring
 
-## Source layout
+ThreadX has no global heap. Before the first `nros_platform_alloc` call, the application creates a `TX_BYTE_POOL` and registers it:
 
-| File | Role |
-|------|------|
-| `src/lib.rs` | `ThreadxPlatform` zero-sized type + trait impls. |
-| `src/clock.rs` | `tx_time_get` → ms/us. |
-| `src/alloc.rs` | `tx_byte_allocate` / `tx_byte_release` shims. |
-| `src/thread.rs` | ThreadX thread / mutex / condvar (semaphore-backed). |
-| `src/net.rs` | NetX Duo BSD socket bindings. Includes the `set_recv_timeout_ms` helper that wraps the `nx_bsd_timeval` shape mismatch (see CLAUDE.md "NetX Duo BSD Shim Pitfalls"). |
+```c
+#include <tx_api.h>
 
-## When to use
+extern void nros_platform_threadx_set_byte_pool(void *pool);
 
-- Microsoft Azure RTOS ThreadX target (Linux sim, QEMU RISC-V, real
-  Cortex-M / Cortex-R hardware running ThreadX).
-- Required: ThreadX kernel + NetX Duo source trees, located via
-  `THREADX_DIR` / `NETX_DIR` env vars (defaults to `third-party/threadx/`
-  populated by `just threadx_linux setup` / `just threadx_riscv64 setup`).
+static TX_BYTE_POOL heap_pool;
+static uint8_t heap_storage[64 * 1024];
 
-## Caveats
+void tx_application_define(void *first_unused_memory) {
+    tx_byte_pool_create(&heap_pool, "nros heap",
+                        heap_storage, sizeof(heap_storage));
+    nros_platform_threadx_set_byte_pool(&heap_pool);
+    /* ... */
+}
+```
 
-- `SO_RCVTIMEO` takes `struct nx_bsd_timeval *` (8 bytes on LP64), **not**
-  an `INT` ms — passing an INT silently sets `wait_option = NX_WAIT_FOREVER`
-  and the recv path deadlocks. Use `set_recv_timeout_ms` from this crate.
-- NetX BSD `fcntl(F_SETFL, O_NONBLOCK)` works correctly — preferred for
-  cooperative non-blocking sockets where `SO_RCVTIMEO=0` would mean
-  "wait forever".
-- Linux-sim build requires the NSOS-NetX shim (
-  [`packages/drivers/nsos-netx`](../../drivers/nsos-netx))
-  to bridge NetX BSD ↔ Linux POSIX.
+## Build
 
-## See also
+```bash
+cmake -B build -DTHREADX_KERNEL_TARGET=threadx
+cmake --build build
+```
 
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- CLAUDE.md "NetX Duo BSD Shim Pitfalls" + "ThreadX Linux x86_64 pointer truncation"
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-threadx>
+The parent build must declare an imported CMake target whose name matches `THREADX_KERNEL_TARGET` and that provides `tx_api.h` + the kernel sources for the host port (Cortex-M, Cortex-R, RISC-V, x86_64-Linux simulator, …).
+
+## License
+
+Apache-2.0 or MIT at your option.

@@ -1,53 +1,49 @@
-# nros-platform-freertos
+# nros-platform-freertos-c
 
-> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
-> native C port at [`nros-platform-freertos-c`](../nros-platform-freertos-c)
-> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
-> + `<nros/platform_timer.h>` ABI directly against FreeRTOS-Kernel + lwIP
-> APIs. This Rust crate stays in tree until every consumer (board crates,
-> RMW shims, examples) has migrated. Removal tracked under Phase 121's
-> deprecate-rust work item.
+Native C implementation of the nano-ros canonical platform ABI (`<nros/platform.h>`) for [FreeRTOS](https://www.freertos.org/).
 
-FreeRTOS platform implementation for nano-ros. Targets the
-`portable/GCC/ARM_*` ports of FreeRTOS (Cortex-M3 / M4 / M7 by default;
-Cortex-R5 reachable via Phase 100 work).
+Behavioural parity with [`nros-platform-freertos`](../nros-platform-freertos)'s Rust impl:
 
-## Role
+| Capability | FreeRTOS primitive |
+|---|---|
+| Clock      | `xTaskGetTickCount()` scaled by `configTICK_RATE_HZ` |
+| Allocation | `pvPortMalloc` / `vPortFree`. `realloc` emulated (malloc + memcpy + free; copies up to `new_size`). |
+| Sleep      | `vTaskDelay(pdMS_TO_TICKS(ms))` |
+| Yield      | `vTaskDelay(1)` (tick-quantum reschedule; matches Rust impl) |
+| Random     | Deterministic xorshift64; seedable via `nros_platform_freertos_seed_rng(u32)` |
+| Time       | Wall clock unsupported; returns 0 |
+| Tasks      | `xTaskCreate` + self-`vTaskDelete`; storage shape matches zenoh-pico's `_z_task_t` |
+| Mutexes    | `xSemaphoreCreateMutex` / `xSemaphoreCreateRecursiveMutex` |
+| Condvars   | Mutex + counting-semaphore + waiter counter (mirrors zenoh-pico's `_z_condvar_t`) |
 
-Implements the trait family in
-[`nros-platform-api`](../nros-platform-api) on top of FreeRTOS:
-`xTaskGetTickCount` for monotonic time, `pvPortMalloc` / `vPortFree`
-for heap, FreeRTOS tasks + queues + semaphores for threading, lwIP
-sockets (via [`freertos-lwip-sys`](../../drivers/freertos-lwip-sys))
-for networking.
+The internal struct layouts for `task`, `mutex`, and `condvar` storage match the Rust impl's `ZTask` / `ZMutex` / `ZCondvar` byte-for-byte, so a binary linking this C port is wire-compatible with zenoh-pico's FreeRTOS expectations.
 
-## Source layout
+## Build
 
-| File | Role |
-|------|------|
-| `src/lib.rs` | `FreeRtosPlatform` zero-sized type + trait impls. |
-| `src/clock.rs` | `xTaskGetTickCount` → ms/us. |
-| `src/alloc.rs` | `pvPortMalloc` / `vPortFree` shims. |
-| `src/thread.rs` | FreeRTOS task / mutex / condvar (semaphore-backed). |
-| `src/net.rs` | lwIP socket bindings via `freertos-lwip-sys`. |
+```bash
+cmake -B build \
+  -DFREERTOS_KERNEL_TARGET=freertos_kernel \
+  -DFREERTOS_CONFIG_TARGET=my_board_freertos_config
+cmake --build build
+```
 
-## When to use
+The parent build must declare two imported CMake targets:
 
-- FreeRTOS-based MCU board with `portable/GCC/ARM_CMx`.
-- lwIP for networking; needs `FreeRTOSConfig.h` + `lwipopts.h` from
-  the board crate's `config/` dir.
+- **`freertos_kernel`** (or whatever `FREERTOS_KERNEL_TARGET` names) — provides `FreeRTOS.h`, `task.h`, `semphr.h`, and the kernel sources.
+- **`my_board_freertos_config`** (or `FREERTOS_CONFIG_TARGET`) — provides `FreeRTOSConfig.h` on the include path.
 
-## Caveats
+Both shapes are common: vanilla FreeRTOS-Kernel checkouts ship a CMake target named `freertos_kernel`; vendor SDKs name it differently. The defaults assume the vanilla naming.
 
-- Stack overflow on `task_init` is the most common bring-up failure —
-  raise the `attr.stack_size` parameter (default FreeRTOS demos ship
-  with low values).
-- Must be paired with a board crate (e.g.
-  [`nros-board-mps2-an385-freertos`](../../boards/nros-board-mps2-an385-freertos))
-  that provides FreeRTOSConfig.h + lwipopts.h + an Ethernet driver.
+### `FreeRTOSConfig.h` requirements
 
-## See also
+`task_join` polls `eTaskGetState`, so the config target must define:
 
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- [FreeRTOS LAN9118 debugging guide](../../../docs/guides/freertos-lan9118-debugging.md)
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-freertos>
+```c
+#define INCLUDE_eTaskGetState    1
+```
+
+Without it the C file fails to compile (`eTaskGetState` is gated by an `#if`).
+
+## License
+
+Apache-2.0 or MIT at your option.

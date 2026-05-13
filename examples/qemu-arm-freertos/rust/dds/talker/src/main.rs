@@ -22,6 +22,12 @@
 #![no_main]
 
 extern crate alloc;
+// Phase 121.9 — pull the `critical_section::Impl` registration into
+// this binary. Without an explicit `extern crate`, Rust's
+// `--gc-sections` link stage strips the shim crate's static
+// `set_impl!` registration and dust-dds's `_critical_section_1_0_*`
+// references stay unresolved.
+extern crate nros_platform_critical_section as _;
 
 use nros::prelude::*;
 use nros_board_mps2_an385_freertos::{Config, println, run};

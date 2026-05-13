@@ -1,54 +1,35 @@
-# nros-platform-zephyr
+# nros-platform-zephyr-c
 
-> **⚠ Deprecated (Phase 121.3).** New downstream code should use the
-> native C port at [`nros-platform-zephyr-c`](../nros-platform-zephyr-c)
-> — it implements the canonical `<nros/platform.h>` + `<nros/platform_net.h>`
-> + `<nros/platform_timer.h>` ABI directly against Zephyr `k_*` + `zsock_*`
-> APIs and ships as a Zephyr module. This Rust crate stays in tree until
-> every consumer has migrated. Removal tracked under Phase 121's
-> deprecate-rust work item.
+Native C implementation of the nano-ros canonical platform ABI (`<nros/platform.h>`) for [Zephyr RTOS](https://www.zephyrproject.org/) (2.5+ for `k_condvar_*`).
 
-Zephyr platform implementation for nano-ros. Sits on top of Zephyr's
-POSIX layer and native socket API.
+Behavioural parity with [`nros-platform-zephyr`](../nros-platform-zephyr)'s Rust impl. The Rust port had to route through C shims for Zephyr's static-inline macros; the native C port calls them directly.
 
-## Role
+| Capability | Zephyr primitive |
+|---|---|
+| Clock      | `k_uptime_get()` (ms); `k_cyc_to_us_floor64(k_cycle_get_64())` (us) |
+| Allocation | `k_malloc` / `k_free`. `realloc` emulated (malloc + memcpy + free). |
+| Sleep      | `k_msleep` / `k_usleep` / `k_sleep(K_SECONDS(s))` |
+| Yield      | `k_yield()` |
+| Random     | `sys_rand32_get`; `sys_rand_get` for byte fills |
+| Time       | Wall clock unsupported without `CONFIG_RTC`; returns 0 |
+| Tasks      | `k_thread_create` + `k_thread_join` + `k_thread_abort`. attr carries name, priority, and the caller's `K_THREAD_STACK_DEFINE`'d stack region. |
+| Mutexes    | `k_mutex` (recursive by design); `mutex_*` and `mutex_rec_*` share the primitive. |
+| Condvars   | `k_condvar_*` (Zephyr 2.5+) |
 
-Implements the trait family in
-[`nros-platform-api`](../nros-platform-api) on top of Zephyr:
-`k_uptime_get` for monotonic time, `k_malloc` / `k_free` for heap,
-Zephyr POSIX pthreads + mutexes + condvars for threading, Zephyr POSIX
-sockets for networking. Build-time wiring goes through the Zephyr
-module at the project root (`zephyr/`).
+## Build (Zephyr module)
 
-## Source layout
+Register this directory as a Zephyr module in your `west.yml`:
 
-| File | Role |
-|------|------|
-| `src/lib.rs` | `ZephyrPlatform` zero-sized type + trait impls. |
-| `src/ffi.rs` | `printk` wrappers + Zephyr native FFI imports. |
-| `src/net.rs` | TCP / UDP / multicast over Zephyr POSIX sockets (or NSOS on `native_sim`). |
-| `../../../zephyr/` | Zephyr module manifest, Kconfig, CMakeLists.txt, C shims. |
+```yaml
+manifest:
+  projects:
+    - name: nano-ros
+      path: modules/lib/nano-ros
+      url: https://github.com/NEWSLabNTU/nano-ros
+```
 
-## When to use
+The `zephyr` interface library auto-supplies kernel headers. A Zephyr application that pulls this module then has `libnros_platform_zephyr.a` available as a CMake target.
 
-- Any Zephyr-supported board (real or `native_sim` / `native_posix`).
-- Build via `west build` against the in-tree Zephyr module.
+## License
 
-## Caveats
-
-- POSIX mutex / condvar pool defaults are **too low** for zenoh-pico —
-  set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and
-  `CONFIG_MAX_PTHREAD_COND_COUNT=16` in the board's `prj.conf`. See the
-  CLAUDE.md "Zephyr POSIX Resource Limits" section for the failure mode.
-- `native_sim` multicast requires the NSOS `IPPROTO_IP` patch
-  (`scripts/zephyr/native-sim-ipproto-ip-patch.sh`, run automatically by
-  `just zephyr setup` / `build-fixtures`).
-- Service / action client paths need
-  `CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME=y` on `native_sim` to keep
-  the QEMU virtual clock from racing past the test fixtures.
-
-## See also
-
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- CLAUDE.md "Zephyr POSIX Resource Limits" + "QEMU Clock Synchronization"
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-zephyr>
+Apache-2.0 or MIT at your option.

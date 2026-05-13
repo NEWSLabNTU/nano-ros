@@ -124,14 +124,16 @@ echo "platform C ABI mirror clean: $total symbols total across $(( ${#HEADERS_RE
 
 PLATFORM_CRATES=(
     "packages/core/nros-platform-posix/src/lib.rs|core,net"
-    "packages/core/nros-platform-freertos/src/lib.rs|core,net"
-    "packages/core/nros-platform-nuttx/src/lib.rs|core,net"
-    "packages/core/nros-platform-threadx/src/lib.rs|core,net"
-    "packages/core/nros-platform-zephyr/src/lib.rs|core,net"
     "packages/platforms/nros-platform-mps2-an385/src/lib.rs|core,net"
     "packages/platforms/nros-platform-stm32f4/src/lib.rs|core,net"
     "packages/platforms/nros-platform-esp32/src/lib.rs|core,net"
     "packages/platforms/nros-platform-esp32-qemu/src/lib.rs|core,net"
+    # Phase 121.3.deprecate-rust-remove — the four Rust kernel crates
+    # (nros-platform-{freertos,nuttx,threadx,zephyr}) were deleted.
+    # The directories `packages/core/nros-platform-{rtos}/` now hold
+    # the C ports only. No `lib.rs` invocation to check; the C source
+    # at `src/platform.c` covers the core surface, `src/net.c` the
+    # net surface, `src/timer.c` the timer surface.
     # Phase 121.10 — orin-spe Rust crate deleted; FSP variant of FreeRTOS
     # provides the same kernel surface via `platform-freertos`.
 )

@@ -191,7 +191,29 @@ fn main() {
 
     glue.compile("startup");
 
+    // --- Phase 121.3 — nros-platform-freertos C port ---
+    // The native C port (`packages/core/nros-platform-freertos/src/`)
+    // provides the canonical `nros_platform_*` symbols against the
+    // FreeRTOS kernel + lwIP. Built in-tree by the board because the
+    // C port headers (`<FreeRTOS.h>`, `<lwip/sockets.h>`) come from
+    // this build's already-configured includes.
+    let nros_platform_freertos_dir =
+        manifest_dir.join("../../../packages/core/nros-platform-freertos/src");
+    let nros_platform_cffi_include =
+        manifest_dir.join("../../../packages/core/nros-platform-cffi/include");
+    let mut platform = cc::Build::new();
+    configure_arm_cm3(&mut platform);
+    add_freertos_includes(&mut platform, &freertos_dir, &port_dir, &freertos_config_dir);
+    add_lwip_includes(&mut platform, &lwip_dir);
+    platform.include(&nros_platform_cffi_include);
+    platform.file(nros_platform_freertos_dir.join("platform.c"));
+    platform.file(nros_platform_freertos_dir.join("net.c"));
+    platform.file(nros_platform_freertos_dir.join("timer.c"));
+    platform.compile("nros_platform_freertos");
+    println!("cargo:rerun-if-changed={}", nros_platform_freertos_dir.display());
+
     // --- Link order ---
+    println!("cargo:rustc-link-lib=static=nros_platform_freertos");
     println!("cargo:rustc-link-lib=static=startup");
     println!("cargo:rustc-link-lib=static=lan9118_lwip");
     println!("cargo:rustc-link-lib=static=lwip");
