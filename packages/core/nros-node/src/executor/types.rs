@@ -342,6 +342,14 @@ pub enum NodeError {
     /// an out-of-range handle, an empty entry slot, or an unknown
     /// `SchedContextId`.
     InvalidSchedContextBinding,
+    /// Phase 104.C.2 — `Executor::node_builder(...).build()` was
+    /// called when the per-Executor node table is full
+    /// (`NROS_EXECUTOR_MAX_NODES` reached).
+    NodeTableFull,
+    /// Phase 104.C.2 — requested RMW backend does not match the
+    /// Executor's open session (single-session restriction lifts in
+    /// Phase 104.C.3 when the per-Node session cache lands).
+    BackendMismatch,
 }
 
 impl From<TransportError> for NodeError {

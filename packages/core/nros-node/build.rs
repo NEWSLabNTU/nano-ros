@@ -29,6 +29,11 @@ fn main() {
     let max_sc = env_usize("NROS_EXECUTOR_MAX_SC", 8);
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
     let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
+    // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
+    // pattern). Most apps run a single Node per Executor; bridge
+    // nodes typically need 2 (ingress + egress). Default 4 leaves
+    // headroom for multi-Node services with shared spin.
+    let max_nodes = env_usize("NROS_EXECUTOR_MAX_NODES", 4);
 
     // --- Derived arena size ---
     // Arena must hold MAX_CBS entries. Worst-case entry is an
@@ -64,7 +69,11 @@ fn main() {
          \n\
          /// Parameter service request/reply buffer size in bytes \
          (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096).\n\
-         pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n"
+         pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n\
+         \n\
+         /// Maximum number of Nodes attached to a single Executor \
+         (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
+         pub const MAX_NODES: usize = {max_nodes};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();

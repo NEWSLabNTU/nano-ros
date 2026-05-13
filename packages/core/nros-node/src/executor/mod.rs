@@ -34,6 +34,8 @@ mod handles;
 #[cfg(any(has_rmw, test))]
 mod node;
 #[cfg(any(has_rmw, test))]
+pub mod node_record;
+#[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
 #[cfg(any(has_rmw, test))]
 pub mod sched_context;
@@ -64,6 +66,8 @@ pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
 pub use handles::*;
 #[cfg(any(has_rmw, test))]
 pub use node::Node;
+#[cfg(any(has_rmw, test))]
+pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
 pub use spin::Executor;
 pub use types::*;

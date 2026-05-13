@@ -253,6 +253,15 @@ pub struct Executor {
     pub(crate) node_name: heapless::String<64>,
     /// Node namespace (default: "/").
     pub(crate) namespace: heapless::String<64>,
+    /// Phase 104.C.2 — rclcpp-style `add_node` table. Holds the
+    /// per-Node metadata (name, namespace, rmw, locator, default
+    /// SchedContext) for every Node attached to this Executor. The
+    /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
+    /// `namespace` above and is auto-populated on first use. Phase
+    /// 104.C.3 will add a parallel session cache so different Nodes
+    /// can bind to different RMW backends.
+    pub(crate) nodes:
+        heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
@@ -309,6 +318,7 @@ impl Executor {
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
+            nodes: heapless::Vec::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
@@ -363,6 +373,7 @@ impl Executor {
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
+            nodes: heapless::Vec::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
@@ -544,6 +555,49 @@ impl Executor {
         sc_id: super::sched_context::SchedContextId,
     ) -> Option<&super::sched_context::SchedContext> {
         self.sched_contexts.get(sc_id.0 as usize)?.as_ref()
+    }
+
+    /// Phase 104.C.2 — start a rclcpp-style Node builder for this
+    /// Executor. The returned [`NodeBuilder`](super::node_record::NodeBuilder)
+    /// is chainable:
+    ///
+    /// ```ignore
+    /// let id = exec.node_builder("ingress")
+    ///     .rmw("zenoh")
+    ///     .locator("tcp/127.0.0.1:7447")
+    ///     .sched(my_sc_id)
+    ///     .build()?;
+    /// ```
+    ///
+    /// In Phase 104.C.2 the Node table is storage-only — all
+    /// registered Nodes share the Executor's primary session. Per-
+    /// Node session binding (the bridge feature) lands in Phase
+    /// 104.C.3 when the session cache is wired.
+    pub fn node_builder<'a, 'cfg>(
+        &'a mut self,
+        name: &'cfg str,
+    ) -> super::node_record::NodeBuilder<'a, 'cfg> {
+        super::node_record::NodeBuilder {
+            executor: self,
+            name,
+            namespace: None,
+            rmw_name: None,
+            locator: None,
+            domain_id: None,
+            sched: None,
+        }
+    }
+
+    /// Return the Node table — Phase 104.C.2 read accessor.
+    pub fn nodes(&self) -> &[super::node_record::NodeRecord] {
+        &self.nodes
+    }
+
+    /// Borrow a Node's metadata by id, returning `None` if the id
+    /// is out of range. Phase 104.C.3+ adds per-Node session
+    /// lookups built on this.
+    pub fn node(&self, id: super::node_record::NodeId) -> Option<&super::node_record::NodeRecord> {
+        self.nodes.get(id.index())
     }
 
     /// Create a node on this executor.
