@@ -31,104 +31,374 @@ tries nano-ros":
 
 These are answerable. The phase splits into two work streams.
 
-## Stream A — Build distribution (source vs SDK)
+## Stream A — Build distribution (locked design)
 
-### Current state
+After three rounds of trade-off review (session 2026-05-13) the
+shape is **source-ship via git, no prebuilt SDK matrix**. Rationale
+captured in [§Stream A decisions](#stream-a-decisions) below.
 
-* **Source build only.** The user runs CMake against the repo and
-  installs into a prefix. Build needs a Rust nightly toolchain
-  (the rlibs that the C/C++ static libraries wrap) plus a host C
-  toolchain.
-* **Install size at default config.** ~284 MB total across
-  zenoh + xrce + dds + cyclonedds variants, both C and C++ APIs,
-  several embedded variants (`*_threadx_linux`,
-  `*_freertos_armcm3`). Per-variant `libnros_*_*.a` ranges
-  22–28 MB.
-* **Cross-targeting.** Already wired for ARM Cortex-M
-  (mps2-an385), ARM Cortex-A (NuttX QEMU), RISC-V (ThreadX
-  rv64), Xtensa ESP32, x86_64 ThreadX. Each lives behind a
-  `just <module> install` recipe — driven from the source tree.
+### Stream A decisions
 
-### Open questions
+1. **Source ship only.** Git clone is the user entry. No tarball
+   release, no prebuilt SDK archives, no `crates.io` publishing
+   for nros umbrella crates. Rust runtime + zenoh-pico/cyclonedds
+   /micro-XRCE C deps live in submodules — `crates.io` can't ship
+   them cleanly.
+2. **Pinned shallow clone is the recommended path.**
+   `git clone --depth=1 --branch=vX.Y.Z` against a release tag.
+3. **Static `.a` only.** No `.so`. RTOS / bare-metal targets need
+   static; POSIX users tolerate the same.
+4. **Three-archive split per target.** Builds inside the user's
+   install prefix produce three orthogonal pieces (per Phase 121
+   canonical platform-cffi + RMW-cffi ABI work):
+   - `libnros_c.a` + `libnros_cpp.a` (per target × C/C++ API) —
+     platform-agnostic, RMW-agnostic.
+   - `libnros_platform_<plat>.a` (per target × platform).
+   - `libnros_rmw_<rmw>.a` (per target × rmw).
+   User CMake links exactly one of each via
+   `nano_ros_link_platform(target)` + `nano_ros_link_rmw(target)`.
+5. **CMake function form** for linking. Not transparent targets.
+   Functions hide the `--start-group / --end-group` ordering.
+6. **`nros` CLI is the single source of truth** for setup.
+   Replaces the per-platform `just <plat> setup` recipes. Justfile
+   stays as contributor convenience that calls `nros setup`. Users
+   never need `just`.
+7. **Selective submodule fetch.** `config/submodule-deps.toml`
+   maps each submodule to the `(target, platform, rmw)` set that
+   needs it. `nros setup --target=X --platform=Y --rmw=Z` fetches
+   only the required subset. `.gitmodules` + git gitlinks own
+   URL + SHA (standard git tooling).
+8. **Pattern A workspace layout** is the recommended integration
+   shape — nano-ros sits as a colcon-discoverable package inside
+   the user's workspace's `src/`. One nano-ros source tree per
+   workspace, never duplicated per user package.
+9. **Workspace-shared codegen cache** via `NANO_ROS_GEN_CACHE_DIR`.
+   `std_msgs__nano_ros_{c,cpp}` static libs and the `std_msgs`
+   cargo crate generated once per workspace, reused by every user
+   package.
+10. **Three audiences, one entry.** rclcpp / rclc / rclrs users
+    share the same `git clone` + `tools/setup.sh` + `colcon build`
+    flow. Per-language differences are 5–10 lines of CMake or
+    Cargo.toml.
 
-1. **SDK package or source-only?**
-   - SDK: prebuilt `nano-ros-sdk-<api>-<rmw>-<target>.tar.zst`
-     archives published on GitHub releases. User downloads the
-     archive matching their host + target, `find_package` picks
-     up the unpacked layout. No Rust toolchain on the user box.
-   - Source: present workflow. User installs Rust nightly,
-     `git clone`, `cmake --install`.
-2. **Target / arch matrix the SDK must cover.**
-   - Host (where binaries link): `x86_64-linux-gnu`,
-     `aarch64-linux-gnu`, `x86_64-apple-darwin`,
-     `aarch64-apple-darwin`. Possibly `x86_64-windows-msvc`
-     later.
-   - Embedded targets (where binaries run): `thumbv7m-none-eabi`,
-     `thumbv7em-none-eabihf`, `riscv32imc-unknown-none-elf`,
-     `riscv64imac-unknown-none-elf`, `xtensa-esp32-none-elf`,
-     `aarch64-unknown-nuttx`, `armv7a-none-eabihf`.
-   - Each archive = (host, target, rmw, api). Cartesian product
-     is large; pick the small useful subset.
-3. **What goes in an SDK archive?**
-   - `include/` headers (cbindgen + Doxyfile output included for
-     offline reference).
-   - `lib/libnros_{c,cpp}_<rmw>[_<plat>].a` — the static
-     archives the user links.
-   - `lib/cmake/NanoRos/` — `NanoRosConfig.cmake` +
-     `NanoRos*Targets.cmake` that point at the prebuilt
-     archives (no source paths).
-   - `bin/nros-codegen` — Rust-compiled codegen tool for the
-     host. Architecture-specific binary.
-   - `share/nano-ros/interfaces/` — bundled
-     `package.xml` + `.msg` sources for `std_msgs`,
-     `builtin_interfaces`, `geometry_msgs`,
-     `action_msgs`, `example_interfaces` so the user can
-     `nros_generate_interfaces(std_msgs ...)` without a
-     separate ROS install. Already shipped today.
-4. **Versioning + reproducibility.**
-   - SDK archives tagged with the upstream git SHA + the
-     Rust toolchain channel. `nros --sdk-version` prints them.
-   - Reproducible builds via fixed nightly + locked Cargo.lock
-     (already locked).
-5. **Source path still supported.**
-   - Contributors and embedded-target users that need a custom
-     RTOS port keep the source build. SDK is the "I want to
-     try nano-ros from rclcpp" path.
+### Single user entry point
 
-### Work items
+```bash
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone --depth=1 --branch=v1.0.0 https://github.com/NEWSLabNTU/nano-ros.git
+cd ~/ros2_ws
+./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh
+colcon build
+source install/setup.bash
+```
 
-- **123.A.1 — Audit binary content + redistribution.** Confirm
-  `libnros_{c,cpp}_*.a` are self-contained (no
-  source-path-baked-in symbols, no rustc rmeta leaking) and
-  that the install layout is path-independent. Spot-check
-  with `objdump --info`. Document any rust-runtime symbols
-  the user must already have (libgcc / libstdc++).
-- **123.A.2 — Pick the host / target shipping matrix.**
-  Decision doc: which (host, rmw, api) the SDK ships first,
-  which is on-demand, which stays source-only.
-- **123.A.3 — Build CI matrix.** GitHub Actions job builds the
-  per-(host, target) archives from a tagged commit, signs them,
-  publishes via GitHub release. Reusable across all rows of
-  the matrix.
-- **123.A.4 — `nros-sdk` install/unpack helper.** Small CLI
-  (Rust or bash) that:
-    - downloads the right archive for the host + target,
-    - unpacks to `~/.local/nano-ros-sdk/<rmw>/`,
-    - prints the `CMAKE_PREFIX_PATH` to add.
-- **123.A.5 — Doc.** Update
-  `book/src/getting-started/installation.md` with the SDK
-  path as the recommended entry; demote source-build to
-  "for contributors / RTOS porters".
+`tools/setup.sh` is the bootstrap:
 
-### Open design points
+```bash
+#!/bin/bash
+# 1. Install rustup + nightly if missing.
+command -v cargo >/dev/null || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
+# 2. Install or update the nros CLI.
+command -v nros >/dev/null || cargo install --path packages/codegen/packages/nros-cli --locked
+# 3. Delegate.
+exec nros setup "$@"
+```
 
-- **Static vs dynamic libraries.** Currently static-only
-  (each binary embeds zenoh-pico, no shared `.so`). Static
-  is the right default for embedded; for posix-only users a
-  `.so` build would cut binary size dramatically. Decide
-  whether to ship both.
-- **Archive format.** `tar.zst` for size, `tar.gz` for
-  compatibility. Probably ship both; CLI picks the right one.
+`nros setup` (the canonical entry):
+
+```
+nros setup [--target=TRIPLE] [--platform=PLAT] [--rmw=RMW] [--rust-workspace]
+nros setup --doctor
+nros setup --list-targets
+nros setup --add-rmw=xrce       # extend an existing setup
+```
+
+Reads `config/submodule-deps.toml`, fetches required submodules
+via `git submodule update --init --depth=1 <path>`, installs
+cross-toolchains for the chosen target if missing, optionally
+writes a workspace `Cargo.toml` for Rust users.
+
+### Stream A work items
+
+- [ ] **123.A.1 — Binary self-containedness audit.** Confirm
+  `libnros_c.a` / `libnros_cpp.a` don't bake in RMW or platform
+  internals post-115.M.4 + Phase 121. `objdump --syms` spot check.
+- [ ] **123.A.2 — `config/submodule-deps.toml`.** Author the
+  mapping from current `.gitmodules` + per-platform recipe set.
+- [ ] **123.A.3 — `nros setup` CLI.** Implementation crate
+  `packages/codegen/packages/nros-cli/src/setup/`. Argument
+  parser, manifest reader, submodule fetcher, cross-toolchain
+  installer, optional Cargo workspace writer.
+- [ ] **123.A.4 — `tools/setup.sh` bootstrap.** ~30-line bash.
+  Auto-rustup + `cargo install` + `exec nros setup`.
+- [ ] **123.A.5 — `cmake/bootstrap.cmake`.** CMake auto-runs
+  the same logic when invoked without `setup.sh` first. Same
+  one-shot rustup install, idempotent.
+- [ ] **123.A.6 — `nano_ros_link_platform` / `_link_rmw`
+  CMake functions.** Wrap the three-archive linking, take an
+  optional `PLATFORM=` / `RMW=` keyword; defaults come from
+  workspace-level `NANO_ROS_DEFAULT_PLATFORM` /
+  `NANO_ROS_DEFAULT_RMW` cache variables.
+- [ ] **123.A.7 — Workspace-shared codegen cache.** Honour
+  `NANO_ROS_GEN_CACHE_DIR` in `NanoRosGenerateInterfaces.cmake`
+  + `cargo-nano-ros`. Per-workspace singletons for
+  `std_msgs__nano_ros_{c,cpp}` libs and `std_msgs` cargo crate.
+- [ ] **123.A.8 — Migrate `just <plat> setup` recipes** to call
+  `nros setup --target=...` instead of duplicating logic.
+- [ ] **123.A.9 — `installation.md` rewrite.** Pattern A as the
+  default, source-build-via-git-clone as the only path. Drop
+  references to tarballs / SDK archives.
+- [ ] **123.A.10 — Multi-package workspace example.** Add
+  `examples/multi-package-workspace/` with mixed C / C++ / Rust
+  packages sharing one `src/nano-ros/`. Real working
+  `colcon build`.
+
+### Open question (Stream A)
+
+- **Publish `nros-core` to crates.io?** That subset is pure Rust,
+  no C deps — type-level types, codegen scaffolds, message trait.
+  Lets third-party Rust crates depend on `nros-core = "0.1"`
+  without the git-clone dance. Full `nros` stays git-only.
+  Recommend yes for `nros-core` only; lock in v1.
+
+## User workflows (expected, locked)
+
+All three audiences share the same outer flow: git clone +
+`tools/setup.sh` + `colcon build`. Per-language deltas are minimal
+and visible inside individual `package.xml` / `CMakeLists.txt` /
+`Cargo.toml` files.
+
+### A — Workspace bootstrap (one-time per workspace)
+
+```bash
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone --depth=1 --branch=v1.0.0 https://github.com/NEWSLabNTU/nano-ros.git
+cd ~/ros2_ws
+./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh
+# Rust users only:
+./src/nano-ros/tools/setup.sh --target=posix --rmw=zenoh --rust-workspace
+```
+
+Step-by-step:
+
+1. `tools/setup.sh` detects no rustup → installs nightly.
+2. `cargo install nros-cli --locked` puts the `nros` CLI on
+   `$PATH`.
+3. `nros setup --target=posix --rmw=zenoh` reads
+   `config/submodule-deps.toml`, fetches only
+   `third-party/zenoh-pico/` (shallow), installs no extra
+   cross-toolchain (POSIX = host).
+4. `--rust-workspace` (optional) writes `~/ros2_ws/Cargo.toml`
+   with `[workspace] + [workspace.dependencies] + [patch.crates-io]`
+   so user Rust packages see `nros = { workspace = true }`.
+
+For embedded targets:
+
+```bash
+./src/nano-ros/tools/setup.sh --target=esp32 --rmw=zenoh
+# CLI installs xtensa-esp32-none-elf rust target + the
+# xtensa GCC toolchain + fetches the ESP-IDF submodule.
+```
+
+Same one-liner — only the args change.
+
+### B — Per-package skeleton (after bootstrap)
+
+#### C++ package (rclcpp-shaped audience)
+
+**Directory:**
+
+```
+src/pkg_a/
+├── package.xml
+├── CMakeLists.txt
+└── src/main.cpp
+```
+
+**`package.xml`**:
+
+```xml
+<?xml version="1.0"?>
+<package format="3">
+  <name>pkg_a</name>
+  <version>0.1.0</version>
+  <description>My rclcpp-shaped node</description>
+  <maintainer email="you@example.com">You</maintainer>
+  <license>Apache-2.0</license>
+  <depend>nano-ros</depend>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
+```
+
+**`CMakeLists.txt`** (8 lines):
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(pkg_a LANGUAGES CXX)
+find_package(NanoRos REQUIRED CONFIG)
+nano_ros_generate_interfaces(std_msgs LANGUAGE CPP SKIP_INSTALL)
+add_executable(my_node src/main.cpp)
+nano_ros_link_platform(my_node)
+nano_ros_link_rmw(my_node)
+target_link_libraries(my_node PRIVATE std_msgs__nano_ros_cpp NanoRos::NanoRosCpp)
+```
+
+**`src/main.cpp`** (~25 lines for a 1 Hz pub/sub talker, with
+lambda timer + `NROS_INFO` + `nros::spin()` from Stream B —
+see Stream B for the full snippet).
+
+#### C package (rclc-shaped audience)
+
+**Directory + `package.xml`:** identical to C++ except no
+`<build_type>` overrides.
+
+**`CMakeLists.txt`** (8 lines, 3 token swaps from the C++ form):
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(pkg_a LANGUAGES C)
+find_package(NanoRos REQUIRED CONFIG)
+nano_ros_generate_interfaces(std_msgs LANGUAGE C SKIP_INSTALL)
+add_executable(my_node src/main.c)
+nano_ros_link_platform(my_node)
+nano_ros_link_rmw(my_node)
+target_link_libraries(my_node PRIVATE std_msgs__nano_ros_c NanoRos::NanoRosC)
+```
+
+The C codegen produces a separate, source-incompatible binding
+format from upstream rclc (the `ROSIDL_GET_MSG_TYPE_SUPPORT`
+macro shape isn't mirrored). rclc users get first-class C
+support; existing rclc source files are NOT drop-in.
+
+#### Rust package (rclrs-shaped audience)
+
+**Directory:**
+
+```
+src/pkg_a/
+├── package.xml
+├── Cargo.toml
+└── src/main.rs
+```
+
+**`package.xml`**: same `<depend>nano-ros</depend>` +
+`<depend>std_msgs</depend>` declarations.
+
+**`Cargo.toml`** (workspace dependency form — feature set defined
+at workspace level):
+
+```toml
+[package]
+name = "pkg_a"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nros = { workspace = true }
+std_msgs = { path = "../../build/nros-gen-cache/std_msgs" }
+log = "0.4"
+env_logger = "0.11"
+```
+
+**`src/main.rs`** uses `nros::Executor` + `register_timer` +
+`spin_blocking` (existing two-layer API; documented in
+[Two-Layer API](../../book/src/concepts/two-layer-api.md)).
+
+**Workspace `Cargo.toml`** (auto-generated by `nros setup
+--rust-workspace`):
+
+```toml
+[workspace]
+resolver = "2"
+members = ["src/pkg_a", "src/pkg_b"]
+
+[workspace.dependencies]
+nros = { path = "src/nano-ros/packages/core/nros",
+         default-features = false,
+         features = ["rmw-zenoh-cffi", "platform-posix", "ros-humble"] }
+
+[patch.crates-io]
+# Auto-generated. One [patch.crates-io] entry per nano-ros
+# workspace crate. Refreshed by `nros setup --refresh-cargo-patches`.
+```
+
+### C — Build + run
+
+```bash
+cd ~/ros2_ws
+colcon build
+source install/setup.bash
+ros2 run pkg_a my_node                              # for C / C++ packages
+cargo run --bin pkg_a                               # alternative for Rust
+```
+
+`colcon build` walks `src/`, builds packages in dependency order
+(nano-ros first, then user packages), respects
+`<depend>nano-ros</depend>` in each user `package.xml`. The
+shared codegen cache means `std_msgs__nano_ros_{c,cpp}` and the
+`std_msgs` cargo crate are each built **once** per workspace.
+
+### D — Multi-language workspace (real-world pattern)
+
+```
+~/ros2_ws/src/
+├── nano-ros/                      ← one source tree
+├── motor_driver/                  ← C (rclc-shape firmware module)
+│   ├── package.xml                ← <depend>nano-ros</depend>
+│   ├── CMakeLists.txt             ← LANGUAGE C, NanoRos::NanoRosC
+│   └── src/main.c
+├── controller/                    ← C++ (rclcpp-shape control loop)
+│   ├── package.xml                ← <depend>nano-ros</depend>
+│   ├── CMakeLists.txt             ← LANGUAGE CPP, NanoRos::NanoRosCpp
+│   └── src/main.cpp
+└── safety_monitor/                ← Rust (rclrs-shape safety check)
+    ├── package.xml                ← <depend>nano-ros</depend>
+    ├── Cargo.toml                 ← workspace = true
+    └── src/main.rs
+```
+
+All three link the same `install/nano-ros/lib/libnros_platform_posix.a`
++ `libnros_rmw_zenoh.a`. Three API archives (`libnros_c.a` +
+`libnros_cpp.a` + `nros` rlib) live side-by-side in the install
+prefix and don't conflict.
+
+colcon-cargo-ros2 handles Rust packages; colcon's ament_cmake
+handles C/C++ packages. Both call the same shared codegen cache.
+
+### E — Switching RMW / platform later
+
+```bash
+# Inside a workspace already set up for zenoh:
+~/ros2_ws/src/nano-ros/tools/setup.sh --add-rmw=xrce
+# Fetches third-party/micro-XRCE-DDS-Client/, rebuilds nano-ros
+# to install both libnros_rmw_zenoh.a + libnros_rmw_xrce.a.
+```
+
+Per-package CMakeLists.txt overrides default:
+
+```cmake
+nano_ros_link_rmw(my_node RMW xrce)   # this target uses xrce
+```
+
+Other packages in the workspace keep using zenoh. Constraint:
+**Rust workspaces fix the RMW + platform at workspace level**
+because Cargo's feature unification doesn't allow mixed-RMW
+linking. Document this explicitly; recommend separate Cargo
+workspaces for mixed-RMW Rust use cases.
+
+### F — Limitation matrix
+
+| Scenario | C/C++ | Rust |
+|---|---|---|
+| One workspace, multiple packages, same RMW | ✅ | ✅ |
+| One workspace, multiple packages, mixed RMW | ✅ per-target | ❌ split workspaces |
+| One workspace, multiple packages, mixed platform | ✅ per-target | ❌ split workspaces |
+| Mix C, C++, Rust packages | ✅ | ✅ |
+| Embedded target | ✅ | ✅ |
+| `crates.io` published reuse | n/a | `nros-core` only (planned) |
 
 ## Stream B — C++ API revision
 
@@ -180,11 +450,6 @@ These are answerable. The phase splits into two work streams.
   the user can override. `NROS_DEBUG` is a no-op under
   `NDEBUG`. Pulled into the umbrella `nros/nros.hpp` so
   `#include <nros/nros.hpp>` is enough.
-- **123.B.2 — `nros::spin(node)` blocking entry.** Mirror of
-  `rclcpp::spin`. Wraps `while (nros::ok()) nros::spin_once`.
-- **123.B.3 — Env-aware `nros::init()`.** No-arg overload reads
-  `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`. Existing two-arg form
-  stays.
 - [ ] **123.B.4 — `Publisher<M>::make` / `Node::make` convenience.**
   Deferred. `Node` is already movable; the out-param + Result
   pattern works. A value-returning factory needs either a
@@ -216,26 +481,50 @@ These are answerable. The phase splits into two work streams.
 
 ## Stream order
 
-Likely cadence: B.1 + B.3 + B.6 first (one-line fixes), then
-B.2 + B.5 (medium), then B.4 + B.7 + B.8 (refactors). Stream A
-audit (A.1) can run in parallel; the SDK packaging itself
-(A.3 / A.4) needs B.* to stabilise so it ships a non-moving
-target.
+Stream B (API ergonomics) lands first — 6 / 8 items already
+shipped on this branch (B.1, B.2, B.3, B.5, B.6, B.7). B.4 / B.8
+deferred with rationale. Stream B is additive; existing examples
+already work.
+
+Stream A (build distribution) follows after the platform-cffi /
+RMW-cffi canonical-ABI work on phase-121 merges. Order within
+Stream A:
+
+1. **A.1** — binary audit (gate). Confirm decoupling works.
+2. **A.2** — author `config/submodule-deps.toml`.
+3. **A.6** — `nano_ros_link_platform` / `_link_rmw` CMake
+   functions (unblocks Pattern A docs).
+4. **A.3** — `nros setup` CLI (the load-bearing piece).
+5. **A.4** — `tools/setup.sh` bootstrap.
+6. **A.5** — `cmake/bootstrap.cmake` auto-rustup.
+7. **A.7** — workspace-shared codegen cache.
+8. **A.8** — migrate justfile recipes.
+9. **A.10** — multi-package workspace example.
+10. **A.9** — installation.md rewrite.
 
 ## Acceptance criteria
 
-1. A fresh rclcpp engineer can install the SDK (no Rust
-   toolchain on their box), copy-paste the migration-guide
-   snippet, and have a publisher running in under 10 minutes.
-2. The migration-guide snippet is ≤ 30 lines of C++ for a
-   1 Hz pub/sub pair.
-3. SDK + source build coexist; source build is the only path
-   for new RTOS ports.
+1. A fresh rclcpp / rclc / rclrs engineer runs three commands
+   (`git clone --depth=1`, `tools/setup.sh`, `colcon build`)
+   and has a 1 Hz publisher running in under 12 minutes
+   cold-cache.
+2. The minimal user package is ≤ 10 lines of CMake (or
+   `Cargo.toml`) + ≤ 30 lines of `main.cpp` (or `main.c` /
+   `main.rs`) — same line count across all three languages.
+3. One nano-ros source tree per workspace. No per-package
+   duplication.
+4. Source build is the only distribution path. Pattern A
+   (in-workspace colcon package) is the documented default.
 
 ## Notes
 
 - `package.xml` stays. Required for codegen; aligns with ROS
-  convention. Future colcon-like tooling can build on it.
+  convention. `colcon-cargo-ros2` already builds on it.
 - Stream B changes are additive — existing examples don't
-  need a sweep. The migration-guide chapter (separate phase)
-  consumes the new ergonomics.
+  need a sweep. The migration-guide chapter consumes the new
+  ergonomics in a follow-up phase.
+- Two limitations documented for users up-front: (1) mixed-RMW
+  Rust workspaces require splitting into two cargo workspaces
+  (Cargo feature unification), (2) `crates.io` publishing for
+  full `nros` is blocked by C/C++ deps — `nros-core` may
+  publish as the pure-Rust subset.
