@@ -31,7 +31,18 @@ if(NOT DEFINED FREERTOS_KERNEL_TARGET)
         "Name of the imported FreeRTOS-Kernel CMake target")
 endif()
 
-add_library(nros_platform_freertos STATIC src/platform.c)
+# Net.c pulls lwIP via `<lwip/sockets.h>` / `<lwip/netdb.h>`. Application
+# build provides lwIP either through an imported target (FREERTOS_LWIP_TARGET)
+# or by adding lwIP's include dirs to FREERTOS_KERNEL_TARGET. Either works.
+if(NOT DEFINED FREERTOS_LWIP_TARGET)
+    set(FREERTOS_LWIP_TARGET lwip CACHE STRING
+        "Name of the imported lwIP CMake target (optional)")
+endif()
+
+add_library(nros_platform_freertos STATIC
+    src/platform.c
+    src/net.c
+    src/timer.c)
 target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_freertos PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -52,6 +63,16 @@ endif()
 
 if(DEFINED FREERTOS_CONFIG_TARGET AND TARGET ${FREERTOS_CONFIG_TARGET})
     target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_CONFIG_TARGET})
+endif()
+
+if(TARGET ${FREERTOS_LWIP_TARGET})
+    target_link_libraries(nros_platform_freertos PUBLIC ${FREERTOS_LWIP_TARGET})
+else()
+    message(WARNING
+        "FREERTOS_LWIP_TARGET '${FREERTOS_LWIP_TARGET}' not declared. "
+        "net.c requires lwIP headers (<lwip/sockets.h>, <lwip/netdb.h>); "
+        "either declare the target or extend FREERTOS_KERNEL_TARGET's "
+        "INTERFACE_INCLUDE_DIRECTORIES to include them.")
 endif()
 
 install(TARGETS nros_platform_freertos
