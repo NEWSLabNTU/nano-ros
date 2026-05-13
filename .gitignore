@@ -20,6 +20,10 @@ __pycache__/
 
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace
+# ESP-IDF workspace (user-specific, created by scripts/esp_idf/setup.sh).
+# Pulled only when nros-platform-esp-idf-c is in use; not part of the
+# default esp32 (esp-hal bare-metal) build path.
+/esp-idf-workspace
 
 # Generated message bindings in examples (recreated by: just generate-bindings)
 # NOTE: packages/interfaces/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
