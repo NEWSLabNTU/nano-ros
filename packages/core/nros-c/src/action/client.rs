@@ -1240,6 +1240,42 @@ pub unsafe extern "C" fn nros_action_client_send_cancel_request_raw(
     }
 }
 
+/// Phase 122.3.c.6.c — L1 polling: try to receive the cancel-RPC
+/// reply. Returns `0` when no reply yet, `>0` bytes copied into
+/// `buf`, negative on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_try_recv_cancel_response_raw(
+    client: *mut nros_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_cancel_reply() {
+            Ok(Some(len)) => {
+                let src = core.result_buffer_ref();
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.c.6.b — L1 polling: try to receive feedback for any
 /// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
 /// `goal_id_out` filled), negative on error.

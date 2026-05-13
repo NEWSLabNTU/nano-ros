@@ -725,6 +725,21 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
+    /// Phase 122.3.c.6.c — poll for a cancel reply (non-blocking,
+    /// raw bytes). Returns `Ok(Some(len))` when a reply landed; the
+    /// CDR payload is in `result_buffer_ref()[..len]`. Reply layout
+    /// is action_msgs/srv/CancelGoal_Response wire CDR.
+    pub fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        match self
+            .cancel_goal_client
+            .try_recv_reply_raw(&mut self.result_buffer)
+        {
+            Ok(opt) => Ok(opt),
+            Err(TransportError::NoData) => Ok(None),
+            Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
+        }
+    }
+
     /// Poll for a get_result reply (non-blocking, raw bytes).
     ///
     /// Returns `Ok(Some(total_len))` if a reply arrived (data in result buffer),

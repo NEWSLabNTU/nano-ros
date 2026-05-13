@@ -1994,6 +1994,31 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_cancel_request_raw(
     }
 }
 
+/// Phase 122.3.d / .c.6.c — L1 polling: try receiving the cancel
+/// RPC reply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
+    match core.try_recv_cancel_reply() {
+        Ok(Some(len)) => {
+            let copy_len = len.min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+            }
+            copy_len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Phase 122.3.d — L1 polling: try receiving feedback. Writes
 /// goal_id_out + bytes copied.
 #[unsafe(no_mangle)]

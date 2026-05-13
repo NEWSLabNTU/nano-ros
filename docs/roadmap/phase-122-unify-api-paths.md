@@ -243,11 +243,21 @@ Sub-items:
       / `ActionClientCore` on POLLING. Bonus: new
       `nros_node::ActionServerCore::from_channels`
       constructor exposes the (otherwise crate-private)
-      ServerCore fields to the C shim. Cancel-handler entry
-      point is omitted from .c.6.b — `ActionServerCore::try_handle_cancel`
-      takes a per-call cancel-decision closure that doesn't
-      cross the C FFI cleanly; tracked as a follow-up
-      (.c.6.c).
+      ServerCore fields to the C shim. Server-side
+      cancel-handler entry point is omitted from .c.6.b —
+      `ActionServerCore::try_handle_cancel` takes a per-call
+      cancel-decision closure that doesn't cross the C FFI
+      cleanly; tracked as a follow-up (.c.6.d).
+  - [x] **122.3.c.6.c — cancel-RPC reply receive (client
+    side).** Landed: `ActionClientCore::try_recv_cancel_reply`
+    in `nros-node/src/executor/action_core.rs`. Symmetric with
+    the existing `try_recv_get_result_reply` — drains the
+    `cancel_goal_client`'s reply channel into the inline
+    `result_buffer`. C FFI: `nros_action_client_try_recv_cancel_response_raw`.
+    nros-cpp FFI:
+    `nros_cpp_action_client_try_recv_cancel_response_raw`
+    (consumed by `PollingActionClient<A>::try_recv_cancel_response`
+    in .d.b).
 - [~] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.
@@ -282,16 +292,28 @@ Sub-items:
     consumes). Companion macros for subscription / service
     server / service client are emitted too in case future
     nros-cpp class polling fields land.
-  - [ ] **122.3.d.b — C++ class wrappers.** Add the C++ glue
-    (a polling-mode ctor / `try_recv*` / `complete_goal` etc.
-    method set on `nros::ActionServer<A>` / `nros::ActionClient<A>`,
-    or a new `nros::PollingActionServer<A>` /
-    `PollingActionClient<A>` pair) that exposes the .d.a
-    FFI through typed C++ API. Storage field
-    `polling_storage_[NROS_CPP_RAW_ACTION_{SERVER,CLIENT}_OPAQUE_U64S × 8]`
-    holds the inline core. Deferred — no urgent example
-    consumer; .d.a unblocks C-API callers (and any C++ that
-    binds the FFI directly).
+  - [x] **122.3.d.b — C++ class wrappers.** New templates
+    `nros::PollingActionServer<A>` (in
+    `include/nros/polling_action_server.hpp`) and
+    `nros::PollingActionClient<A>` (in
+    `include/nros/polling_action_client.hpp`) expose the .d.a
+    FFI through a typed C++14 API. Storage is an inline
+    `uint64_t storage_[NROS_CPP_RAW_ACTION_{SERVER,CLIENT}_OPAQUE_U64S]`
+    field; destructor calls `_destroy_polling`. Server methods:
+    `try_recv_goal_request` (deserializes goal),
+    `accept_goal` / `reject_goal`, `publish_feedback`,
+    `complete_goal`, `try_handle_get_result(default_result)`.
+    Client methods: `send_goal`, `try_recv_goal_response` (raw
+    bytes — wire-CDR layout doc'd inline),
+    `send_get_result_request`, `try_recv_result`
+    (deserializes typed result, strips the 5-byte CDR header +
+    status-byte prefix), `send_cancel_request`,
+    `try_recv_cancel_response`, `try_recv_feedback`. Node gets
+    two new method declarations + out-of-line template defns:
+    `create_polling_action_server` / `create_polling_action_client`.
+    `nros/nros.hpp` pulls in both new headers, so existing
+    `#include "nros/nros.hpp"` users get the new templates
+    automatically.
 - [ ] **122.4 — Rust example migration L1 -> L2 (callback).**
   Mechanical rewrite of non-RTIC example main.rs files. Migration
   list below. RTIC examples stay on L1.

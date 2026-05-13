@@ -1276,6 +1276,14 @@ nros_cpp_ret_t nros_cpp_action_client_send_cancel_request_raw(void *storage,
                                                               const uint8_t (*goal_id)[16]);
 
 /**
+ * Phase 122.3.d / .c.6.c — L1 polling: try receiving the cancel
+ * RPC reply.
+ */
+int32_t nros_cpp_action_client_try_recv_cancel_response_raw(void *storage,
+                                                            uint8_t *buf,
+                                                            size_t buf_len);
+
+/**
  * Phase 122.3.d — L1 polling: try receiving feedback. Writes
  * goal_id_out + bytes copied.
  */

@@ -46,6 +46,9 @@ template <typename S> class Service;
 template <typename S> class Client;
 template <typename A> class ActionServer;
 template <typename A> class ActionClient;
+// Phase 122.3.d.b — L1 polling-mode action wrappers.
+template <typename A> class PollingActionServer;
+template <typename A> class PollingActionClient;
 
 /// Initialize an nros session.
 ///
@@ -193,6 +196,16 @@ class Node {
     template <typename A>
     Result create_action_client(ActionClient<A>& out, const char* action_name,
                                 const QoS& qos = QoS::services());
+
+    /// Phase 122.3.d.b — Create an L1 polling-mode action server.
+    /// Caller drives the lifecycle (no executor callback). See
+    /// `polling_action_server.hpp` for usage.
+    template <typename A>
+    Result create_polling_action_server(PollingActionServer<A>& out, const char* action_name);
+
+    /// Phase 122.3.d.b — Create an L1 polling-mode action client.
+    template <typename A>
+    Result create_polling_action_client(PollingActionClient<A>& out, const char* action_name);
 
     /// Create a repeating timer.
     ///
