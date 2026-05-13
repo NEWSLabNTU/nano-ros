@@ -83,6 +83,49 @@ Keep `Node::create_*` (manual-poll) APIs in the library — they're
 useful and other crates may depend on them — but examples + tests
 default to the callback model.
 
+## Work items (2026-05-13 design pass)
+
+After the initial investigation, the design pass added new
+constraints that grew the phase scope:
+
+- **Two-layer API rule.** L1 (primitive, caller polls) + L2
+  (callback, executor-managed) with verb discipline:
+  `Node::create_*` (L1) + `Executor::register_*` (L2).
+- **Cross-language consistency.** The same two-layer surface in
+  Rust, C, and C++.
+- **Thin-wrapper discipline.** nros-c / nros-cpp delegate to Rust;
+  no duplicated bookkeeping. Detailed in
+  `docs/design/nros-c-thin-wrapper-discipline.md`.
+
+Sub-items:
+
+- [x] **122.1 — Rust `add_*` -> `register_*` rename.** Landed
+  2026-05-13 (commit `c3c56cc7`). 123 call sites across 37 files.
+- [x] **122.2 — C/C++ `nros_executor_add_*` -> `register_*` rename.**
+  Landed 2026-05-13 (commit `68e9eef5`). 53 files.
+- [~] **122.3.a — nros-c thin-wrapper audit + discipline doc.**
+  In flight 2026-05-13. Output: `docs/design/nros-c-thin-wrapper-discipline.md`.
+  Audit result: 4 of 11 entities follow opaque-thin pattern today;
+  7 are field-mirror (subscription / service / client / action_server
+  / action_client / timer / guard_condition partial).
+- [ ] **122.3.b — subscription thin-wrapper refactor + L1 entry
+  points.** Template for the remaining four executor-registered
+  entities. Adds `nros_subscription_init_polling` (L1 init)
+  + `nros_subscription_try_recv_raw` (L1 op). Refactors L2 init
+  + register to match the same opaque shape.
+- [ ] **122.3.c — service / service_client / action_server /
+  action_client thin-wrapper refactor + L1 entry points.** Per
+  the pattern in 122.3.b. Per-entity L1 ops listed in the
+  discipline doc.
+- [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
+  C struct shape into the C++ headers. Add L1 constructor +
+  `try_recv` method per entity.
+- [ ] **122.4 — Rust example migration L1 -> L2 (callback).**
+  Mechanical rewrite of non-RTIC example main.rs files. Migration
+  list below. RTIC examples stay on L1.
+- [ ] **122.5 — docs.** Update book pages, porting guide, and the
+  RT positioning page with the unified two-layer story.
+
 ## Migration list
 
 Convert these Rust example files to `executor.add_*`:
