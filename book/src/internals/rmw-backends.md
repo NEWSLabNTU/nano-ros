@@ -92,6 +92,80 @@ changes:
 
 The rule stays. Only per-backend verdicts and shim shapes move.
 
+## Registry + naming (Phase 104.B.2)
+
+`nros-rmw-cffi` holds a fixed-size named registry of backend
+vtables. Each backend registers under a canonical name at
+process startup:
+
+| Backend | Name | Registered by |
+|---|---|---|
+| zenoh-pico | `"zenoh"` | `nros_rmw_zenoh_register()` (auto-ctor on POSIX) |
+| dust-DDS | `"dds"` | `nros_rmw_dds_register()` (auto-ctor on POSIX) |
+| micro-XRCE-DDS-Client | `"xrce"` | `nros_rmw_xrce_register()` (C ctor on POSIX) |
+| Cyclone DDS | `"cyclonedds"` | `nros::init` hook (C++ explicit call) |
+| uORB | `"uorb"` (future) | TBD |
+
+### Naming policy
+
+- **Lowercase ASCII** identifying the protocol / wire format.
+  Not the transport variant — `"xrce"` covers both XRCE-UDP and
+  XRCE-serial; the transport is selected via the locator (`udp/...`
+  vs `serial:/dev/...`).
+- **Stable across releases.** Renaming a registered name is a
+  breaking change for bridge code that selects backends by string.
+- **No `"default"` for new backends.** The string `"default"` is
+  reserved for the legacy single-arg `nros_rmw_cffi_register`
+  shim — single-backend builds where the backend's specific name
+  doesn't matter.
+
+### Capacity
+
+Registry size: `NROS_RMW_MAX_BACKENDS` build-time env var consumed
+by `nros-rmw-cffi/build.rs`. Default 8. Range [1, 64]. Set lower
+on Cortex-M0+ (where each slot's ~40 B costs); set higher for
+bridge nodes with 4+ backends. Hitting the cap = subsequent
+`nros_rmw_cffi_register_named` returns `NROS_RMW_RET_ERROR`.
+
+### Default-backend convention
+
+`Executor::open` and any `create_node` call without an explicit
+`.rmw(name)` selector use the **first-registered backend** — the
+nano-ros equivalent of ROS 2's `RMW_IMPLEMENTATION`. Single-
+backend binaries with one auto-registering backend Just Work
+without user code mentioning the backend's name. Build-time
+selection happens at:
+
+- **Cargo feature**: `--features cffi-zenoh-cffi` (Rust users).
+- **CMake**: `NANO_ROS_RMW=zenoh cmake ...` (C/C++ users).
+
+No runtime env-var override; selection is fixed at link time
+(RTOS-friendly, matches our static-link world).
+
+### Symbol-survival mechanism
+
+Backend register symbols must survive linker dead-strip. Three
+levers, all currently active without `--whole-archive`:
+
+1. **Rust ctor:** `#[unsafe(link_section = ".init_array")] #[used]
+   static AUTO_REGISTER_CTOR` in each backend's `src/lib.rs`.
+   `#[used]` is the load-bearing attribute — tells rustc the static
+   is reachable from outside Rust, suppressing dead-strip.
+2. **C ctor:** `__attribute__((constructor)) static void
+   nros_rmw_<name>_register_ctor`. Same survival via
+   `.init_array` walk by libc startup.
+3. **Explicit reference:** `nros_support_init` (C path) and
+   `nros::init` (C++ path) call `nros_rmw_<name>_register()`
+   directly. The reference brings in the register fn, which
+   references the vtable, which keeps everything alive.
+
+Bare-metal targets without `.init_array` walking (RTIC,
+FreeRTOS, some NuttX configs) rely on (3) — the explicit call
+from `nros_support_init` / `nros::init`. Future Phase 104.B.6
+will codify a `nano_ros_link_rmw` CMake stub that emits a
+register call for bare-metal builds when (3) is bypassed (pure-
+Rust binaries on no_std targets).
+
 ## See also
 
 - [Phase 115 roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)
