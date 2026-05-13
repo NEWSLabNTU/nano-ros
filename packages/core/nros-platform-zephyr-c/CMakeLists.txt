@@ -33,7 +33,10 @@ if(NOT TARGET zephyr)
         "INTERFACE target supplying kernel headers + macros.")
 endif()
 
-add_library(nros_platform_zephyr STATIC src/platform.c)
+add_library(nros_platform_zephyr STATIC
+    src/platform.c
+    src/net.c
+    src/timer.c)
 target_include_directories(nros_platform_zephyr PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_zephyr PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
