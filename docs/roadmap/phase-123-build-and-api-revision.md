@@ -497,8 +497,9 @@ arrays).
   `--with-dev`, `--with-reference`, `--dry-run`), covers
   per-target setup tips, the `cmake -B build` direct path
   (with `cmake/bootstrap.cmake` auto-rescue), Rust path-dep
-  pattern + the open `nros-core` crates.io question, and
-  redirects contributors to `just setup` / `just <plat>::setup`.
+  pattern (no crates.io — closed question, source-only across
+  the board), and redirects contributors to `just setup` /
+  `just <plat>::setup`.
   References the multi-package demo at
   `examples/multi-package-workspace/`. Drops all tarball /
   SDK / `cargo install --git` legacy references. mdbook html
@@ -532,13 +533,22 @@ arrays).
   scan resolves `nros_platform_*` refs from the RMW archive.
   Recorded in the example CMakeLists' inline comments.
 
-### Open question (Stream A)
+### Closed question (Stream A)
 
-- **Publish `nros-core` to crates.io?** That subset is pure Rust,
-  no C deps — type-level types, codegen scaffolds, message trait.
-  Lets third-party Rust crates depend on `nros-core = "0.1"`
-  without the git-clone dance. Full `nros` stays git-only.
-  Recommend yes for `nros-core` only; lock in v1.
+- **Publish `nros-core` to crates.io? → No (decision 2026-05-14).**
+  Considered: `nros-core` is pure Rust (no C deps) and could ship
+  via `nros-core = "0.1"` to third-party Rust libraries. Rejected:
+  contradicts the locked source-only policy + creates a hybrid
+  distribution model. Concretely: version drift between
+  `crates.io` snapshot and in-repo HEAD, mandatory semver +
+  yank-on-bug overhead, can't track in-repo work mid-cycle,
+  forces a confusing "half-published, half-not" split.
+  Pattern A already handles Rust consumers via path dep on
+  `src/nano-ros/packages/core/nros-core/`;
+  `tools/setup.sh --rust-workspace` auto-writes the
+  `[patch.crates-io]` table. If a concrete third-party Rust
+  consumer surfaces with a real need, revisit. Until then,
+  source-only across the board.
 
 ## User workflows (expected, locked)
 
@@ -778,7 +788,7 @@ workspaces for mixed-RMW Rust use cases.
 | One workspace, multiple packages, mixed platform | ✅ per-target | ❌ split workspaces |
 | Mix C, C++, Rust packages | ✅ | ✅ |
 | Embedded target | ✅ | ✅ |
-| `crates.io` published reuse | n/a | `nros-core` only (planned) |
+| `crates.io` published reuse | n/a | ❌ source-only (decision 2026-05-14) |
 
 ## Stream B — C++ API revision
 
@@ -922,6 +932,7 @@ Stream A:
   ergonomics in a follow-up phase.
 - Two limitations documented for users up-front: (1) mixed-RMW
   Rust workspaces require splitting into two cargo workspaces
-  (Cargo feature unification), (2) `crates.io` publishing for
-  full `nros` is blocked by C/C++ deps — `nros-core` may
-  publish as the pure-Rust subset.
+  (Cargo feature unification), (2) source-only distribution
+  across the board — no crates.io publishing for `nros` (C/C++
+  deps), no carve-out for `nros-core` either (closed question;
+  Pattern A path-dep already covers Rust consumers).

@@ -134,10 +134,15 @@ platform-specific build steps (NuttX kernel, Cyclone DDS SDK, etc.).
 
 ## Rust-only consumers
 
-The full `nros` crate isn't published to crates.io because it depends
-transitively on C/C++ submodules (zenoh-pico, mbedtls). Rust packages
-that consume nano-ros use a path dependency on the in-workspace
-checkout:
+nano-ros is source-only — nothing is published to crates.io
+(decision 2026-05-14). The full `nros` crate can't be published
+because it depends transitively on C/C++ submodules (zenoh-pico,
+mbedtls); `nros-core` isn't carved out for crates.io either, to
+avoid a hybrid distribution model with version drift between the
+crates.io snapshot and in-repo HEAD.
+
+Rust packages consume nano-ros via path dependency on the
+in-workspace checkout:
 
 ```toml
 [dependencies]
@@ -152,10 +157,6 @@ will auto-generate a workspace-level `Cargo.toml` with the right
 each Rust package carries its own `.cargo/config.toml` patch —
 see [`examples/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/multi-package-workspace/src/pkg_rust_publisher)
 for the pattern.
-
-There is one open question to publish `nros-core` (pure Rust, no C
-deps) to crates.io for third-party libraries that want a stable
-type-level interface — see the phase plan.
 
 ## Contributor setup (working on nano-ros itself)
 
