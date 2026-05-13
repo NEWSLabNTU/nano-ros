@@ -134,11 +134,30 @@ writes a workspace `Cargo.toml` for Rust users.
 - [ ] **123.A.5 — `cmake/bootstrap.cmake`.** CMake auto-runs
   the same logic when invoked without `setup.sh` first. Same
   one-shot rustup install, idempotent.
-- [ ] **123.A.6 — `nano_ros_link_platform` / `_link_rmw`
-  CMake functions.** Wrap the three-archive linking, take an
-  optional `PLATFORM=` / `RMW=` keyword; defaults come from
-  workspace-level `NANO_ROS_DEFAULT_PLATFORM` /
-  `NANO_ROS_DEFAULT_RMW` cache variables.
+- [x] **123.A.6 — `nano_ros_link_platform` / `_link_rmw`
+  CMake functions.** Landed. New module
+  `packages/core/nros-c/cmake/NanoRosLink.cmake` exposes:
+    - `nano_ros_link_platform(target [PLATFORM <plat>])`
+    - `nano_ros_link_rmw(target [RMW <rmw>])`
+  Resolution chain: explicit arg → `NANO_ROS_DEFAULT_*`
+  workspace cache var → `NANO_ROS_*` from the install. Fails
+  loudly with a clear error if user asks for a value the
+  installed NanoRos wasn't built with (today's single-
+  combined-archive constraint). Sets a per-target property
+  `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` for downstream tooling.
+  When the decoupled three-archive layout lands (Stream A
+  follow-ups), the function body switches from the no-op
+  validate-only path to linking
+  `NanoRos::Platform::<plat>` + `NanoRos::Rmw::<rmw>` without
+  user CMakeLists changing.
+  Pulled into `NanoRosConfig.cmake` so `find_package(NanoRos)`
+  exposes the functions automatically. Installed alongside
+  the other CMake config files.
+  Verified: walkthrough talker rebuilt with the function
+  form (`nano_ros_link_platform(my_cpp_talker)` +
+  `nano_ros_link_rmw(my_cpp_talker)`); mismatched-RMW request
+  fails with a guided error; workspace-default cache var
+  resolution works.
 - [ ] **123.A.7 — Workspace-shared codegen cache.** Honour
   `NANO_ROS_GEN_CACHE_DIR` in `NanoRosGenerateInterfaces.cmake`
   + `cargo-nano-ros`. Per-workspace singletons for

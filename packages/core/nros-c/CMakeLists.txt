@@ -142,6 +142,8 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosConfig.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCTargets.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosReadConfig.cmake"
+    # Phase 123.A.6: user-facing platform / RMW link helpers.
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLink.cmake"
     # Phase 91.E1a: per-RTOS cmake support modules. Per-platform example
     # support files (examples/<plat>/cmake/<plat>-support.cmake) reach
     # these via include(nros-threadx) etc. once `find_package(NanoRos)`

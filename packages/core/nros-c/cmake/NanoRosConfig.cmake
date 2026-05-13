@@ -42,5 +42,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCppTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosGenerateInterfaces.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReadConfig.cmake")
+# Phase 123.A.6: nano_ros_link_platform / nano_ros_link_rmw functions.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLink.cmake")
 
 set(NanoRos_FOUND TRUE)
