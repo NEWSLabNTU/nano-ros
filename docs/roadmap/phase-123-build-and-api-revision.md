@@ -185,22 +185,34 @@ These are answerable. The phase splits into two work streams.
 - **123.B.3 — Env-aware `nros::init()`.** No-arg overload reads
   `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`. Existing two-arg form
   stays.
-- **123.B.4 — `Publisher<M>::make` / `Node::make` convenience.**
-  Value-returning factories that construct into an
-  `aligned_storage` slot. Original out-param API stays for
-  zero-alloc users.
-- **123.B.5 — Lambda-capable timer + subscription callbacks.**
-  Header-only template that boxes a `std::function`-style
-  capture (under `NROS_CPP_STD`); falls back to C fn pointer
-  otherwise.
-- **123.B.6 — `create_publisher` QoS overload.** Already
-  available through the FFI; surface it.
-- **123.B.7 — `NROS_INFO` / `NROS_ERROR` macros.** Wrap a
-  printf-format call through the configurable sink.
-- **123.B.8 — Per-message codegen headers.** Update
-  `nros-codegen-cpp` to emit `std_msgs/msg/int32.hpp` etc.
-  alongside the existing flat `std_msgs.hpp`. Maintain
-  backward compat.
+- [ ] **123.B.4 — `Publisher<M>::make` / `Node::make` convenience.**
+  Deferred. `Node` is already movable; the out-param + Result
+  pattern works. A value-returning factory needs either a
+  `Result<T>` template (the current `Result` is non-generic) or
+  a tagged-union return. Punted to a follow-up phase once the
+  std_compat layer grows an `expected`-like wrapper. Out-param
+  remains the canonical zero-alloc API for embedded.
+- [x] **123.B.5 — Lambda-capable timer + subscription callbacks.**
+  Already shipped via `nros/std_compat.hpp` —
+  `nros::create_timer(node, timer, std::chrono::ms, [&](){…})`
+  and `create_timer_oneshot` + `create_guard_condition` take
+  `std::function<void()>` and box the closure inline. Activated
+  by `-DNROS_CPP_STD=1`. Verified with the walkthrough talker
+  (37-line lambda variant). Documented in the migration guide.
+  Subscription lambda variant not yet shipped — tracked as
+  follow-up.
+- [x] **123.B.6 — `create_publisher` QoS overload.** Surfaced.
+- [x] **123.B.7 — `NROS_INFO` / `NROS_ERROR` macros.** Shipped.
+- [ ] **123.B.8 — Per-message codegen headers
+  (ROS-style aliases).** Deferred. Codegen today writes
+  `nano_ros_cpp/std_msgs/msg/std_msgs_msg_int32.hpp` (flat with
+  package prefix). ROS-2-conventional `<std_msgs/msg/int32.hpp>`
+  needs a generator pass that emits a one-line alias header
+  per message that `#include`s the prefixed file. Self-contained
+  but requires plumbing through `GeneratedCppPackage` +
+  `cargo-nano-ros` writer + tests. Punted to its own commit
+  once the migration-guide chapter surfaces a real
+  user-facing need.
 
 ## Stream order
 
