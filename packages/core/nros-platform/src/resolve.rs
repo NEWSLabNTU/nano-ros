@@ -23,17 +23,26 @@ pub type ConcretePlatform = nros_platform_esp32::Esp32Platform;
 #[cfg(feature = "platform-esp32-qemu")]
 pub type ConcretePlatform = nros_platform_esp32_qemu::Esp32QemuPlatform;
 
+// Phase 121.3.deprecate-rust-migrate: the four deprecated RTOS
+// platforms resolve to `CffiPlatform` and reach their kernel impl
+// through the deprecated Rust crate's `cffi-export` macro emission
+// (enabled transitively by the `platform-<rtos>` feature). Same
+// runtime behaviour as before — every Rust trait call now hops one
+// extra `extern "C"` indirection. The deprecated Rust crates stay
+// for that transitive emission until consumers move to a C-side
+// symbol provider (`nros-platform-<rtos>-c`) and we drop the Rust
+// kernel crates entirely.
 #[cfg(feature = "platform-nuttx")]
-pub type ConcretePlatform = nros_platform_nuttx::NuttxPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-freertos")]
-pub type ConcretePlatform = nros_platform_freertos::FreeRtosPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-threadx")]
-pub type ConcretePlatform = nros_platform_threadx::ThreadxPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-zephyr")]
-pub type ConcretePlatform = nros_platform_zephyr::ZephyrPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-orin-spe")]
 pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;

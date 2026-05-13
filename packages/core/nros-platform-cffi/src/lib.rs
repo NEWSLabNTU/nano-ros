@@ -429,6 +429,149 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
 }
 
 // ============================================================================
+// Phase 121.3.deprecate-rust-migrate — extended-surface trait impls
+// ----------------------------------------------------------------------------
+// CffiPlatform dispatches PlatformTcp / PlatformUdp / PlatformUdpMulticast /
+// PlatformSocketHelpers / PlatformNetworkPoll trait calls through the
+// `unsafe extern "C"` declarations above. Whichever provider supplies the
+// matching symbol set (a per-RTOS Rust crate with `cffi-export` on, or a
+// hand-written C port) backs the dispatch transparently.
+// ============================================================================
+
+impl nros_platform_api::PlatformTcp for CffiPlatform {
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        unsafe { nros_platform_tcp_create_endpoint(ep, address, port) }
+    }
+    fn free_endpoint(ep: *mut c_void) {
+        unsafe { nros_platform_tcp_free_endpoint(ep) }
+    }
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { nros_platform_tcp_open(sock, endpoint, timeout_ms) }
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8 {
+        unsafe { nros_platform_tcp_listen(sock, endpoint) }
+    }
+    fn close(sock: *mut c_void) {
+        unsafe { nros_platform_tcp_close(sock) }
+    }
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        unsafe { nros_platform_tcp_read(sock, buf, len) }
+    }
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        unsafe { nros_platform_tcp_read_exact(sock, buf, len) }
+    }
+    fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize {
+        unsafe { nros_platform_tcp_send(sock, buf, len) }
+    }
+}
+
+impl nros_platform_api::PlatformUdp for CffiPlatform {
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        unsafe { nros_platform_udp_create_endpoint(ep, address, port) }
+    }
+    fn free_endpoint(ep: *mut c_void) {
+        unsafe { nros_platform_udp_free_endpoint(ep) }
+    }
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { nros_platform_udp_open(sock, endpoint, timeout_ms) }
+    }
+    fn listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { nros_platform_udp_listen(sock, endpoint, timeout_ms) }
+    }
+    fn close(sock: *mut c_void) {
+        unsafe { nros_platform_udp_close(sock) }
+    }
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        unsafe { nros_platform_udp_read(sock, buf, len) }
+    }
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
+        unsafe { nros_platform_udp_read_exact(sock, buf, len) }
+    }
+    fn send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize {
+        unsafe { nros_platform_udp_send(sock, buf, len, endpoint) }
+    }
+    fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
+        unsafe { nros_platform_udp_set_recv_timeout(sock, timeout_ms) }
+    }
+}
+
+impl nros_platform_api::PlatformUdpMulticast for CffiPlatform {
+    fn mcast_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        lep: *mut c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+    ) -> i8 {
+        unsafe { nros_platform_udp_mcast_open(sock, endpoint, lep, timeout_ms, iface) }
+    }
+    fn mcast_listen(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        iface: *const u8,
+        join: *const u8,
+    ) -> i8 {
+        unsafe { nros_platform_udp_mcast_listen(sock, endpoint, timeout_ms, iface, join) }
+    }
+    fn mcast_close(
+        sockrecv: *mut c_void,
+        socksend: *mut c_void,
+        rep: *const c_void,
+        lep: *const c_void,
+    ) {
+        unsafe { nros_platform_udp_mcast_close(sockrecv, socksend, rep, lep) }
+    }
+    fn mcast_read(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize {
+        unsafe { nros_platform_udp_mcast_read(sock, buf, len, lep, addr) }
+    }
+    fn mcast_read_exact(
+        sock: *const c_void,
+        buf: *mut u8,
+        len: usize,
+        lep: *const c_void,
+        addr: *mut c_void,
+    ) -> usize {
+        unsafe { nros_platform_udp_mcast_read_exact(sock, buf, len, lep, addr) }
+    }
+    fn mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize {
+        unsafe { nros_platform_udp_mcast_send(sock, buf, len, endpoint) }
+    }
+}
+
+impl nros_platform_api::PlatformSocketHelpers for CffiPlatform {
+    fn set_non_blocking(sock: *const c_void) -> i8 {
+        unsafe { nros_platform_socket_set_non_blocking(sock) }
+    }
+    fn accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8 {
+        unsafe { nros_platform_socket_accept(sock_in, sock_out) }
+    }
+    fn close(sock: *mut c_void) {
+        unsafe { nros_platform_socket_close(sock) }
+    }
+    fn wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8 {
+        unsafe { nros_platform_socket_wait_event(peers, mutex) }
+    }
+}
+
+impl nros_platform_api::PlatformNetworkPoll for CffiPlatform {
+    fn network_poll() {
+        unsafe { nros_platform_network_poll() }
+    }
+}
+
+// ============================================================================
 // Phase 121.2 — export_*! macros
 // ----------------------------------------------------------------------------
 // Each macro emits the `#[unsafe(no_mangle)] extern "C"` definitions for one

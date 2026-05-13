@@ -45,10 +45,34 @@ platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
 platform-stm32f4 = ["dep:nros-platform-stm32f4"]
 platform-esp32 = ["dep:nros-platform-esp32"]
 platform-esp32-qemu = ["dep:nros-platform-esp32-qemu"]
-platform-nuttx = ["dep:nros-platform-nuttx"]
-platform-freertos = ["dep:nros-platform-freertos"]
-platform-threadx = ["dep:nros-platform-threadx"]
-platform-zephyr = ["dep:nros-platform-zephyr"]
+# Phase 121.3.deprecate-rust-migrate (in progress): the four RTOS
+# platform features now resolve to `CffiPlatform` and rely on the
+# deprecated Rust kernel crate's `cffi-export` feature to supply the
+# canonical `nros_platform_*` C symbols. Same runtime behaviour, one
+# extra indirection through `extern "C"`; consumers that switch off
+# this dep + link a hand-written C port (or the corresponding
+# `nros-platform-<rtos>-c` static lib) flip the symbol provider
+# transparently. The Rust crate dep stays until consumers migrate.
+platform-nuttx = [
+    "dep:nros-platform-nuttx",
+    "dep:nros-platform-cffi",
+    "nros-platform-nuttx/cffi-export",
+]
+platform-freertos = [
+    "dep:nros-platform-freertos",
+    "dep:nros-platform-cffi",
+    "nros-platform-freertos/cffi-export",
+]
+platform-threadx = [
+    "dep:nros-platform-threadx",
+    "dep:nros-platform-cffi",
+    "nros-platform-threadx/cffi-export",
+]
+platform-zephyr = [
+    "dep:nros-platform-zephyr",
+    "dep:nros-platform-cffi",
+    "nros-platform-zephyr/cffi-export",
+]
 # Phase 100 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP, IVC transport).
 # IVC backend is selected by the consumer crate via
 # `nros-platform-orin-spe?/{fsp,unix-mock}`; defaults to no backend
