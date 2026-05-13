@@ -226,9 +226,13 @@ int8_t nros_platform_task_cancel(void *task) {
 void nros_platform_task_exit(void) { vTaskDelete(NULL); }
 void nros_platform_task_free(void **task) { (void) task; }
 
+/* Phase 121.3.freertos-parity — `mutex_*` is implemented over a
+ * recursive mutex so callers that take the same lock twice on the
+ * same task don't deadlock. Matches the FreeRTOS C port + the
+ * deleted Rust impl. */
 int8_t nros_platform_mutex_init(void *m) {
     if (m == NULL) return -1;
-    SemaphoreHandle_t h = xSemaphoreCreateMutex();
+    SemaphoreHandle_t h = xSemaphoreCreateRecursiveMutex();
     if (h == NULL) return -1;
     ((nros_esp_mutex_t *) m)->handle = h;
     return 0;
@@ -245,18 +249,18 @@ int8_t nros_platform_mutex_drop(void *m) {
 
 int8_t nros_platform_mutex_lock(void *m) {
     if (m == NULL) return -1;
-    return xSemaphoreTake(((nros_esp_mutex_t *) m)->handle, portMAX_DELAY) == pdTRUE
+    return xSemaphoreTakeRecursive(((nros_esp_mutex_t *) m)->handle, portMAX_DELAY) == pdTRUE
         ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_try_lock(void *m) {
     if (m == NULL) return -1;
-    return xSemaphoreTake(((nros_esp_mutex_t *) m)->handle, 0) == pdTRUE ? 0 : 1;
+    return xSemaphoreTakeRecursive(((nros_esp_mutex_t *) m)->handle, 0) == pdTRUE ? 0 : 1;
 }
 
 int8_t nros_platform_mutex_unlock(void *m) {
     if (m == NULL) return -1;
-    return xSemaphoreGive(((nros_esp_mutex_t *) m)->handle) == pdTRUE ? 0 : -1;
+    return xSemaphoreGiveRecursive(((nros_esp_mutex_t *) m)->handle) == pdTRUE ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_rec_init(void *m) {

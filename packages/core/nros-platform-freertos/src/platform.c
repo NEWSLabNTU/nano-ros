@@ -223,9 +223,14 @@ int8_t nros_platform_task_init(void *task, void *attr,
     t->entry = entry;
     t->arg = arg;
 
+    /* Phase 121.3.freertos-parity — defaults match the deleted Rust
+     * impl (`DEFAULT_PRIORITY=3`, `DEFAULT_STACK_DEPTH=5120` words).
+     * configMINIMAL_STACK_SIZE = 256 words is too small for zenoh-pico
+     * RTPS / message parsing — task overflows the stack silently and
+     * the binary appears to hang in zenoh-pico's read loop. */
     const char *name = "nros";
-    uint32_t priority = tskIDLE_PRIORITY + 1;
-    uint32_t stack_depth = configMINIMAL_STACK_SIZE;
+    uint32_t priority = 3;
+    uint32_t stack_depth = 5120;
     if (attr != NULL) {
         const nros_freertos_task_attr_t *a = (const nros_freertos_task_attr_t *) attr;
         if (a->name != NULL)      name = a->name;
@@ -296,9 +301,17 @@ typedef struct {
     void *handle;  /* SemaphoreHandle_t */
 } nros_freertos_mutex_t;
 
+/* Phase 121.3.freertos-parity — `mutex_*` (non-recursive in name) is
+ * implemented over `xSemaphoreCreateRecursiveMutex` so it matches the
+ * deleted Rust impl byte-for-byte. zenoh-pico holds the same `_z_mutex_t`
+ * recursively in several read-task code paths; a strict non-recursive
+ * mutex deadlocks the task on the second take and the listener never
+ * receives a message. Both `mutex_*` and `mutex_rec_*` share the same
+ * underlying primitive — the trait split exists for callers that need
+ * the distinction, but FreeRTOS recursive mutexes satisfy both. */
 int8_t nros_platform_mutex_init(void *m) {
     if (m == NULL) return -1;
-    SemaphoreHandle_t h = xSemaphoreCreateMutex();
+    SemaphoreHandle_t h = xSemaphoreCreateRecursiveMutex();
     if (h == NULL) return -1;
     ((nros_freertos_mutex_t *) m)->handle = h;
     return 0;
@@ -316,19 +329,19 @@ int8_t nros_platform_mutex_drop(void *m) {
 int8_t nros_platform_mutex_lock(void *m) {
     if (m == NULL) return -1;
     SemaphoreHandle_t h = (SemaphoreHandle_t) ((nros_freertos_mutex_t *) m)->handle;
-    return xSemaphoreTake(h, portMAX_DELAY) == pdTRUE ? 0 : -1;
+    return xSemaphoreTakeRecursive(h, portMAX_DELAY) == pdTRUE ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_try_lock(void *m) {
     if (m == NULL) return -1;
     SemaphoreHandle_t h = (SemaphoreHandle_t) ((nros_freertos_mutex_t *) m)->handle;
-    return xSemaphoreTake(h, 0) == pdTRUE ? 0 : 1;
+    return xSemaphoreTakeRecursive(h, 0) == pdTRUE ? 0 : 1;
 }
 
 int8_t nros_platform_mutex_unlock(void *m) {
     if (m == NULL) return -1;
     SemaphoreHandle_t h = (SemaphoreHandle_t) ((nros_freertos_mutex_t *) m)->handle;
-    return xSemaphoreGive(h) == pdTRUE ? 0 : -1;
+    return xSemaphoreGiveRecursive(h) == pdTRUE ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_rec_init(void *m) {
@@ -454,11 +467,16 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     nros_platform_mutex_lock(m);
 
     if (ret != pdTRUE) {
-        /* Timed out — decrement waiter count. */
+        /* Phase 121.3.freertos-parity — return -1 (non-zero, matches
+         * the deleted Rust impl byte-for-byte) so zenoh-pico's
+         * `_z_condvar_wait_until` callers see the same error-shaped
+         * return value they used to. Returning +1 (positive non-zero)
+         * subtly diverges and lets some callers treat it as success-
+         * with-spurious-wake. */
         xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
         c->waiters--;
         xSemaphoreGive((SemaphoreHandle_t) c->mutex);
-        return 1;
+        return -1;
     }
     return 0;
 }
