@@ -23,6 +23,10 @@ pub struct Stm32f4Platform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(Stm32f4Platform);
 
+// Phase 121.8 — net surface export.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(Stm32f4Platform);
+
 impl nros_platform_api::PlatformYield for Stm32f4Platform {
     #[inline]
     fn yield_now() {

@@ -987,3 +987,9 @@ impl nros_platform_api::PlatformUdpMulticast for FreeRtosPlatform {
         Self::mcast_send(sock, buf, len, endpoint)
     }
 }
+
+// Phase 121.7 — empty impl uses trait default (no-op). lwIP runs its own
+// rx/tx threads; the canonical `nros_platform_network_poll` symbol just
+// has to resolve at link time for binaries that pull
+// `nros_platform_export_net!` from this crate.
+impl nros_platform_api::PlatformNetworkPoll for FreeRtosPlatform {}

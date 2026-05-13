@@ -81,5 +81,15 @@ test-c verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Phase 121.7.i — `cargo check` the out-of-workspace nros-rmw-xrce Rust
+# crate so CI catches drift after platform-API or trait-surface changes.
+# Workspace `cargo check` skips it (it's workspace-excluded for xrce-sys
+# linking reasons), so this recipe is the only place it gets compiled.
+check-rust-rmw:
+    #!/usr/bin/env bash
+    set -e
+    cd packages/xrce/nros-rmw-xrce
+    cargo check --quiet
+
 # Clean XRCE build artifacts
 clean: clean-agent

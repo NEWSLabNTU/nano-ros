@@ -27,6 +27,10 @@ pub struct NuttxPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(NuttxPlatform);
 
+// Phase 121.7 — net surface export.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(NuttxPlatform);
+
 // ============================================================================
 // System primitives — delegate to PosixPlatform
 // ============================================================================

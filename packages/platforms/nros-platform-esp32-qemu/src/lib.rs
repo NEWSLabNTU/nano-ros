@@ -20,6 +20,10 @@ pub struct Esp32QemuPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(Esp32QemuPlatform);
 
+// Phase 121.8 — net surface export.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(Esp32QemuPlatform);
+
 impl nros_platform_api::PlatformYield for Esp32QemuPlatform {
     #[inline]
     fn yield_now() {

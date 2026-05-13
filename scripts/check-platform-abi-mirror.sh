@@ -110,3 +110,59 @@ if (( fail )); then
 fi
 
 echo "platform C ABI mirror clean: $total symbols total across $(( ${#HEADERS_REQUIRE_MACRO[@]} + ${#HEADERS_EXTERN_ONLY[@]} )) headers"
+
+# Phase 121.4.c.remaining — confirm each platform Rust crate invokes the
+# core + net macro under `#[cfg(feature = "cffi-export")]`. Without the
+# invocation the platform's lib.rs would still compile, but a downstream
+# binary that pins `ConcretePlatform = CffiPlatform` would fail to link
+# because no provider emits the canonical `nros_platform_*` symbols.
+#
+# Each entry: <lib.rs path>:<expected macros>.  EXPECTED_MACROS is a
+# comma-separated list drawn from {core, net}. Bare-metal `net` is
+# emitted by `nros_smoltcp::define_smoltcp_platform!` traits + then
+# `nros_platform_export_net!` on the platform ZST itself.
+
+PLATFORM_CRATES=(
+    "packages/core/nros-platform-posix/src/lib.rs|core,net"
+    "packages/core/nros-platform-freertos/src/lib.rs|core,net"
+    "packages/core/nros-platform-nuttx/src/lib.rs|core,net"
+    "packages/core/nros-platform-threadx/src/lib.rs|core,net"
+    "packages/core/nros-platform-zephyr/src/lib.rs|core,net"
+    "packages/platforms/nros-platform-mps2-an385/src/lib.rs|core,net"
+    "packages/platforms/nros-platform-stm32f4/src/lib.rs|core,net"
+    "packages/platforms/nros-platform-esp32/src/lib.rs|core,net"
+    "packages/platforms/nros-platform-esp32-qemu/src/lib.rs|core,net"
+    # orin-spe: no net surface — IVC replaces TCP/UDP at the link layer.
+    "packages/platforms/nros-platform-orin-spe/src/lib.rs|core"
+)
+
+invocation_fail=0
+for entry in "${PLATFORM_CRATES[@]}"; do
+    path="${entry%%|*}"
+    expected="${entry##*|}"
+
+    if [[ ! -f "$path" ]]; then
+        echo "error: platform crate not found: $path" >&2
+        invocation_fail=1
+        continue
+    fi
+
+    IFS=',' read -ra parts <<< "$expected"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            core) sym="nros_platform_export!" ;;
+            net)  sym="nros_platform_export_net!" ;;
+            *)    echo "internal: unknown macro tag $part" >&2; exit 2 ;;
+        esac
+        if ! grep -qF "$sym" "$path"; then
+            echo "drift: $path missing invocation of $sym" >&2
+            invocation_fail=1
+        fi
+    done
+done
+
+if (( invocation_fail )); then
+    exit 1
+fi
+
+echo "platform crate macro invocations clean: ${#PLATFORM_CRATES[@]} crates"

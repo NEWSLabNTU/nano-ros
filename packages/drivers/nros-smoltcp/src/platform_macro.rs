@@ -663,6 +663,13 @@ macro_rules! __define_smoltcp_platform_impl {
                     <crate::$plat as $crate::PlatformUdp>::send(sock, buf, len, endpoint)
                 }
             }
+
+            // Phase 121.8 — empty impl uses trait default (no-op).
+            // SmoltcpBridge already pumps internally from send / recv
+            // bodies + the timer ISR; the canonical
+            // `nros_platform_network_poll` symbol just has to resolve at
+            // link time for binaries that route through CffiPlatform.
+            impl $crate::PlatformNetworkPoll for crate::$plat {}
         }
     };
 }

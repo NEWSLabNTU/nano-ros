@@ -52,6 +52,10 @@ pub struct ZephyrPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(ZephyrPlatform);
 
+// Phase 121.7 — net surface export.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(ZephyrPlatform);
+
 // ============================================================================
 // Clock — k_uptime_get (monotonic, milliseconds since boot)
 // ============================================================================

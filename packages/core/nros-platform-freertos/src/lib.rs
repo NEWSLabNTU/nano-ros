@@ -30,6 +30,12 @@ pub struct FreeRtosPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(FreeRtosPlatform);
 
+// Phase 121.7 — net surface export gated on lwIP (the net mod above).
+// Without this, `CffiPlatform`'s `PlatformTcp`/`PlatformUdp`/... extern
+// decls would have no provider and downstream binaries fail to link.
+#[cfg(all(feature = "cffi-export", feature = "lwip"))]
+nros_platform_cffi::nros_platform_export_net!(FreeRtosPlatform);
+
 // ============================================================================
 // Phase 97.1.cs / 100.1 — `critical_section::Impl` (Cortex-M or Cortex-R)
 // ============================================================================

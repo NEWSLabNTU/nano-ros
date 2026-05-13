@@ -1201,3 +1201,8 @@ impl nros_platform_api::PlatformUdpMulticast for ZephyrPlatform {
         Self::mcast_send(sock, buf, len, endpoint)
     }
 }
+
+// Phase 121.7 — empty impl uses trait default (no-op). Zephyr's net stack
+// runs its own work-queue thread; the canonical `nros_platform_network_poll`
+// symbol just has to resolve at link time.
+impl nros_platform_api::PlatformNetworkPoll for ZephyrPlatform {}

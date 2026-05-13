@@ -50,6 +50,12 @@ cffi-export = [
     "nros-platform-esp32-qemu?/cffi-export",
     "nros-platform-orin-spe?/cffi-export",
 ]
+# Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
+# routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
+# UdpMulticast/NetworkPoll surface via `nros_smoltcp::
+# define_smoltcp_platform!` and emits the matching `nros_platform_*`
+# C symbols via `nros_platform_export!` + `nros_platform_export_net!`
+# (gated on the platform crate's `cffi-export` feature).
 platform-mps2-an385 = [
     "dep:nros-platform-mps2-an385",
     "dep:nros-platform-cffi",
@@ -103,11 +109,7 @@ platform-zephyr = [
 # `nros-platform-orin-spe?/{fsp,unix-mock}`; defaults to no backend
 # (a build-time error on first use) so accidentally enabling
 # `platform-orin-spe` without picking one fails fast.
-platform-orin-spe = [
-    "dep:nros-platform-orin-spe",
-    "dep:nros-platform-cffi",
-    "nros-platform-orin-spe/cffi-export",
-]
+platform-orin-spe = ["dep:nros-platform-orin-spe"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []

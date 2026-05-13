@@ -28,7 +28,7 @@ pub mod util;
 // via `$crate::Platform*` without the caller crate needing a direct
 // `nros-platform-api` import just to drive the macro.
 pub use nros_platform_api::{
-    PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
+    PlatformNetworkPoll, PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
 };
 
 pub use network_state::NetworkState;

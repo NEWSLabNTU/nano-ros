@@ -31,6 +31,11 @@ pub struct Mps2An385Platform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(Mps2An385Platform);
 
+// Phase 121.8 — net surface export. Backed by `define_smoltcp_platform!`
+// (PlatformTcp/Udp/SocketHelpers/UdpMulticast) + default PlatformNetworkPoll.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(Mps2An385Platform);
+
 // ============================================================================
 // Clock
 // ============================================================================

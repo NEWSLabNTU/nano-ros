@@ -33,6 +33,10 @@ pub struct ThreadxPlatform;
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export!(ThreadxPlatform);
 
+// Phase 121.7 — net surface export.
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_net!(ThreadxPlatform);
+
 // ============================================================================
 // Phase 97.4.threadx — `critical_section::Impl` for no_std targets
 // ============================================================================

@@ -84,19 +84,25 @@ build-fixtures:
           CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
           cargo build --release --quiet )
     done
-    cmake_examples=(talker listener service-server service-client action-server action-client)
-    for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → nuttx/$lang/$ex (cmake)"
-            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                -DNUTTX_DIR="$nuttx_dir" \
-                -DNUTTX_FFI_CRATE_DIR="$(pwd)/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
+    # C/C++ variant libs are skipped by `just nuttx install` (upstream
+    # libc missing _SC_HOST_NAME_MAX); skip the matching fixtures too.
+    if ! ls "$cmake_pfx"/lib/libnros_c_zenoh_nuttx_*.a >/dev/null 2>&1; then
+        echo "NuttX C/C++ fixtures skipped: nros-c variant lib not installed"
+    else
+        cmake_examples=(talker listener service-server service-client action-server action-client)
+        for lang in c cpp; do
+            for ex in "${cmake_examples[@]}"; do
+                echo "  → nuttx/$lang/$ex (cmake)"
+                dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
+                cmake -S "$dir" -B "$dir/build" \
+                    -DCMAKE_PREFIX_PATH="$cmake_pfx" \
+                    -DNUTTX_DIR="$nuttx_dir" \
+                    -DNUTTX_FFI_CRATE_DIR="$(pwd)/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi" \
+                    -DCMAKE_BUILD_TYPE=Release > /dev/null
+                cmake --build "$dir/build" --parallel > /dev/null
+            done
         done
-    done
+    fi
 
 # Run NuttX QEMU integration tests
 test verbose="":

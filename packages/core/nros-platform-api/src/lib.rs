@@ -486,7 +486,11 @@ pub trait PlatformThreading {
 /// traits; may become dispatch-active in a follow-up phase.
 pub trait PlatformNetworkPoll {
     /// Poll the network stack to process pending I/O.
-    fn network_poll();
+    ///
+    /// Default no-op — platforms with OS-level networking don't need a
+    /// pump (kernel TCP/IP stack runs in the background). Bare-metal
+    /// smoltcp providers override this.
+    fn network_poll() {}
 }
 
 // ============================================================================

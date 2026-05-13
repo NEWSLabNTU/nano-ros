@@ -5,11 +5,15 @@
 //! build), the type is not defined — downstream crates that need it must
 //! enable a platform feature.
 
-// Phase 121.7.b — uniform CffiPlatform routing. Every platform
-// feature resolves `ConcretePlatform` to `CffiPlatform`; the
-// platform-* feature pulls the matching crate's `cffi-export` to
-// emit the canonical C symbols. RMW + core libs never see the
-// kernel-specific platform type directly.
+// Phase 121.7.b / 121.8.e — uniform CffiPlatform routing for every
+// platform that impls the full canonical surface (clock + alloc +
+// sleep + yield + random + time + threading + net). POSIX, the four
+// RTOS kernels, the four bare-metal embedded crates, and platform-cffi
+// itself all route through CffiPlatform. Bare-metal net surface is
+// backed by `nros_smoltcp::define_smoltcp_platform!` (PlatformTcp /
+// Udp / SocketHelpers / UdpMulticast) emitted by each platform crate.
+// orin-spe keeps its direct alias: it has no PlatformTcp/Udp impl
+// (IVC replaces TCP/UDP at the link layer per Phase 100).
 #[cfg(feature = "platform-posix")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
@@ -49,8 +53,12 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 #[cfg(feature = "platform-zephyr")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
+// orin-spe has no TCP/UDP at the platform level (IVC replaces them at
+// the link layer per Phase 100 design). Keep its direct alias because
+// CffiPlatform's PlatformTcp/Udp extern decls would otherwise be
+// unresolved.
 #[cfg(feature = "platform-orin-spe")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
+pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;
 
 // ============================================================================
 // Phase 71.22 — opaque-buffer sizes for `_z_sys_net_socket_t` /
