@@ -15,6 +15,9 @@ plus the `nros::prelude` glob-import.
 ## Where to start
 
 - New to nano-ros? → [`nros::prelude`](../api/rust/nros/prelude/index.html)
+- Two-layer API (L1 polling vs L2 callback)? →
+  [Two-Layer API](../concepts/two-layer-api.md) — concept page
+  with the verb discipline and per-layer use cases.
 - Executor-driven app? → [`nros::Executor`](../api/rust/nros/struct.Executor.html)
 - Async/`spin_async`? → [`nros::dds_async`](../api/rust/nros/index.html) (re-exports of the async surface)
 

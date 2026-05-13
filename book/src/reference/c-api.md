@@ -22,6 +22,24 @@ public surface a user application needs.
 - [`nros/parameter.h`](../api/c/parameter_8h.html) — parameter services
 - [`nros/lifecycle.h`](../api/c/lifecycle_8h.html) — REP-2002 lifecycle states
 
+> **Two-layer API.** Every entity exposes two parallel C entry-point
+> sets: `nros_*_init` (Layer 1, caller polls) and
+> `nros_executor_register_*` (Layer 2, executor callback). Layer 1
+> grew an `_init_polling` + `try_recv_*_raw` / `send_*_raw` family
+> in Phase 122.3 for inline-storage callers (no executor arena).
+> Layer 2 keeps the existing `nros_*_init` + executor-register
+> pair. See [Two-Layer API](../concepts/two-layer-api.md) for the
+> verb discipline and per-layer trade-offs.
+
+> **Event-driven wake callbacks.** Each L1 polling entity supports
+> `nros_*_set_wake_callback(entity, &state, cb, ctx)` for event-
+> driven RTOS / embassy callers (Phase 122.3.c.6.e). State is a
+> caller-owned `nros_wake_state_t` POD; the backend fires `cb(ctx)`
+> on rx / reply / request arrival. Per-channel for actions
+> (`set_{goal,cancel,get_result}_wake_callback` on the server,
+> `set_{goal_response,cancel_response,result,feedback}_wake_callback`
+> on the client). See the Doxygen for signatures.
+
 ## CMake integration
 
 Out-of-tree projects use the `NanoRos::C` CMake target and the

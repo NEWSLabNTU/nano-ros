@@ -485,7 +485,7 @@ Sub-items:
   - **Validation.** `cargo build` clean for all 16 migrated
     examples across the qemu-arm-baremetal / freertos /
     nuttx / riscv64-threadx / esp32 / threadx-linux trees.
-- [~] **122.5 — docs.**
+- [x] **122.5 — docs.**
   - [x] **122.5 (platform).** Per user directive (2026-05-13):
     the C `platform-cffi` Doxygen reference is now the
     canonical interface spec for the platform API. The book's
@@ -502,11 +502,28 @@ Sub-items:
     needed there. Rust-side trait crate
     (`nros-platform-api`) is now documented as a one-for-one
     binding of the C signatures, not an independent spec.
-  - [ ] **122.5 (executor + two-layer story).** Remaining
-    book pages — the unified L1/L2 callback story landed in
-    122.1–122.4 isn't yet reflected in the user-guide pages
-    that mention `node.create_*` vs `executor.register_*`.
-    Defer to a follow-up doc sweep.
+  - [x] **122.5 (executor + two-layer story).** Landed:
+    * New concept page `book/src/concepts/two-layer-api.md`
+      — canonical L1 (`Node::create_*`) vs L2
+      (`Executor::register_*`) story, scope-decision table,
+      C / C++ FFI mirror, event-driven wake-callback hook.
+      Wired into SUMMARY next to Architecture Overview.
+    * `book/src/concepts/architecture.md` — Node Factory
+      section rewritten to show both flows in the mermaid
+      diagram and call out the deployment-time choice.
+    * `book/src/concepts/no-std.md` — pub/sub / service /
+      action sections refactored into per-layer bullet lists
+      (L1 vs L2). Stale `add_*` references replaced with the
+      renamed `register_*` verbs.
+    * `book/src/reference/c-api.md` — new "Two-layer API"
+      blockquote + "Event-driven wake callbacks" blockquote
+      describing the `nros_*_set_*_wake_callback` family.
+    * `book/src/reference/cpp-api.md` — adds entries for
+      `PollingActionServer<A>` / `PollingActionClient<A>` +
+      the L1 / L2 / wake-callback blockquotes.
+    * `book/src/reference/rust-api.md` — adds a "Two-layer
+      API" pointer under "Where to start".
+    Validation: `mdbook build` clean.
 
 ## Migration list
 

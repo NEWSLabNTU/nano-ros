@@ -346,32 +346,43 @@ When `MAX_CBS = 0` and `CB_ARENA = 0`, the arrays are zero-sized. This means man
 
 The executor provides several spin strategies (`spin_once`, `spin_blocking`, `spin_period`, `spin_async`) for different deployment scenarios. See [Rust API Reference: Spin Methods](../reference/rust-api.md#spin-methods) for the full list with signatures and `no_std` compatibility.
 
-### Node Factory
+### Two-Layer API (Phase 122)
 
-`Node<'a, S>` borrows the session from the executor and creates typed communication handles:
+nano-ros exposes the same communication primitives through two
+parallel layers with disjoint verbs:
+
+- **Layer 1 — `Node::create_*`** returns an owned, typed entity
+  the caller polls itself (`try_recv` / `call` / `try_accept_goal`
+  …). Good for RTIC / Embassy / single-task RTOS patterns where
+  the application owns scheduling.
+- **Layer 2 — `Executor::register_*`** registers a closure for
+  the entity. The executor's `spin_once` dispatches it on rx /
+  reply / timer fire. Good for callback-style apps and for any
+  caller that wants the executor's wake source.
 
 ```mermaid
 graph LR
     EX["Executor::open(&config)"] --> NODE["executor.create_node(name)"]
+    EX --> REG_T["executor.register_timer(...)"]
+    EX --> REG_SUB["executor.register_subscription(...)"]
+    EX --> REG_SVC["executor.register_service(...)"]
+    EX --> REG_AS["executor.register_action_server(...)"]
+    EX --> REG_AC["executor.register_action_client(...)"]
     NODE --> PUB["node.create_publisher&lt;M&gt;(topic)"]
     NODE --> SUB["node.create_subscription&lt;M&gt;(topic)"]
     NODE --> SRV["node.create_service&lt;Svc&gt;(name)"]
     NODE --> CLI["node.create_client&lt;Svc&gt;(name)"]
     NODE --> AS["node.create_action_server&lt;A&gt;(name)"]
     NODE --> AC["node.create_action_client&lt;A&gt;(name)"]
-
-    PUB --> P["EmbeddedPublisher&lt;M&gt;"]
-    SUB --> S["Subscription&lt;M&gt;"]
-    SRV --> SS["EmbeddedServiceServer&lt;Svc&gt;"]
-    CLI --> SC["EmbeddedServiceClient&lt;Svc&gt;"]
-    AS --> ASH["ActionServer&lt;A&gt; (5 channels)"]
-    AC --> ACH["ActionClient&lt;A&gt;"]
 ```
 
-Handles can be used in two modes:
+Both layers compose on the same session — a single executor can
+host L1 and L2 entities side-by-side. Picking between them per
+entity is a deployment choice, not a library configuration.
 
-1. **Callback mode** -- register with `executor.add_subscription(sub, |msg| { ... })`, dispatched by `spin_once()`
-2. **Manual-poll mode** -- call `sub.try_recv()` or `client.call()` then `Promise` directly
+For the verb discipline (L1 = `create_*` / L2 = `register_*`),
+the C / C++ FFI mirror, and the example migration tally, see
+[Phase 122 — Unify API Paths](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-122-unify-api-paths.md).
 
 ### Executor Semantics
 

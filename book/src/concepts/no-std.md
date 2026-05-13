@@ -50,26 +50,48 @@ is propagated through the feature chain but does not add any API surface.
 - `executor.create_node(name)` -- create a node
 - `executor.spin_once(timeout_ms)` -- single spin iteration
 - `executor.spin_period_polling(period_ms)` -- periodic spin without `std::thread::sleep`
-- `executor.add_subscription()`, `add_service()`, `add_timer()`, `add_action_server()`, `add_action_client()` -- arena-based callbacks
+
+**Two-layer API.** Phase 122 unified the verb discipline:
+
+- **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
+  handle. Caller drives `try_recv` / `call` / `try_accept_goal` /
+  `try_recv_request_raw` itself. Good for RTIC, Embassy,
+  task-per-entity FreeRTOS.
+- **Layer 2 (executor dispatches)** -- `Executor::register_*`
+  takes a closure; `spin_once` fires it on rx / reply / timer.
+  Good for callback-shaped applications.
+
+Both layers share the same session; mix per entity. See
+[Phase 122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-122-unify-api-paths.md)
+for the rationale and the example migration tally.
 
 **Publish/Subscribe:**
-- `node.create_publisher::<M>(topic)` -- typed publisher
-- `node.create_subscription::<M>(topic)` -- typed subscription (poll with `try_recv()`)
-- `publisher.publish(&msg)` / `publish_raw(&bytes)` -- publish messages
+- L1 — `node.create_publisher::<M>(topic)`,
+  `node.create_subscription::<M>(topic)` (poll with `try_recv()`)
+- L2 — `executor.register_timer(period, || publisher.publish(...))`,
+  `executor.register_subscription::<M, _>(topic, |msg| { ... })`
+- `publisher.publish(&msg)` / `publish_raw(&bytes)` — publish messages
 
 **Services:**
-- `node.create_service::<S>(name)` -- service server (poll with `handle_request()`)
-- `node.create_client::<S>(name)` -- service client
-- `client.call(&request)` -- non-blocking, returns `Promise<Reply>`
-- `promise.try_recv()` -- poll for reply (returns `Ok(Some(reply))` or `Ok(None)`)
-- `promise.await` -- async poll (implements `core::future::Future`)
+- L1 — `node.create_service::<S>(name)` (poll with
+  `handle_request()`), `node.create_client::<S>(name)` +
+  `client.call(&request)` → `Promise<Reply>` (poll with
+  `promise.try_recv()` or `.await`).
+- L2 — `executor.register_service::<S, _>(name, |req| reply)`.
+  Service clients keep the L1 `Promise` shape; the typed
+  callback API isn't surfaced (only `register_service_client_raw`
+  exists for byte-level use).
 
 **Actions:**
-- `node.create_action_server::<A>(name)` / `node.create_action_client::<A>(name)`
-- `action_client.send_goal(&goal)` -- returns `Promise<GoalId>`
-- `action_client.cancel_goal(&goal_id)` -- returns `Promise<CancelResponse>`
-- `action_client.get_result(&goal_id)` -- returns `Promise<(GoalStatus, Result)>`
-- Full goal lifecycle: send, cancel, get result, feedback, status
+- L1 — `node.create_action_server::<A>(name)` +
+  `try_accept_goal` / `complete_goal`, or
+  `node.create_action_client::<A>(name)` + `send_goal` →
+  `Promise<GoalId>` / `get_result` → `Promise<(GoalStatus,
+  Result)>`.
+- L2 — `executor.register_action_server::<A, _, _>(name,
+  goal_cb, cancel_cb)` returns a handle for publishing feedback
+  and completing goals. Action clients keep the L1 `Promise`
+  shape for the same reason as service clients.
 
 **Async:**
 - `executor.spin_async()` -- async spin loop (drives I/O, dispatches callbacks, yields between iterations)
