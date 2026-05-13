@@ -692,13 +692,14 @@ pub unsafe extern "C" fn nros_executor_register_service(
         set_executor_node_identity(rust_exec, service_ref.node);
 
         // Register with the nros-node executor
-        let result = rust_exec.register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
-            service_name,
-            type_str,
-            type_hash_str,
-            callback,
-            context,
-        );
+        let result = rust_exec
+            .register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+                service_name,
+                type_str,
+                type_hash_str,
+                callback,
+                context,
+            );
 
         match result {
             Ok(handle_id) => {

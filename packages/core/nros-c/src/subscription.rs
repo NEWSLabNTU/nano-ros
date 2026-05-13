@@ -220,7 +220,6 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if subscription is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
-///
 // ============================================================================
 // Phase 122.3.b — Layer-1 primitive entry points (caller polls)
 // ============================================================================
@@ -272,13 +271,7 @@ pub unsafe extern "C" fn nros_subscription_init_polling(
     type_info: *const nros_message_type_t,
     topic_name: *const c_char,
 ) -> nros_ret_t {
-    nros_subscription_init_polling_with_qos(
-        subscription,
-        node,
-        type_info,
-        topic_name,
-        ptr::null(),
-    )
+    nros_subscription_init_polling_with_qos(subscription, node, type_info, topic_name, ptr::null())
 }
 
 /// Phase 122.3.b — initialize an L1 polling-mode subscription with custom QoS.
@@ -377,9 +370,7 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
                 );
                 core::ptr::write(
                     subscription_mut._opaque.as_mut_ptr()
-                        as *mut nros_node::RawSubscription<
-                            { crate::config::MESSAGE_BUFFER_SIZE },
-                        >,
+                        as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>,
                     raw,
                 );
             }
@@ -464,12 +455,8 @@ pub unsafe extern "C" fn nros_subscription_fini(
             // (closes the underlying RMW subscriber).
             #[cfg(feature = "rmw-cffi")]
             {
-                core::ptr::drop_in_place(
-                    subscription._opaque.as_mut_ptr()
-                        as *mut nros_node::RawSubscription<
-                            { crate::config::MESSAGE_BUFFER_SIZE },
-                        >,
-                );
+                core::ptr::drop_in_place(subscription._opaque.as_mut_ptr()
+                    as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
                 subscription._opaque = [0u64; SUBSCRIPTION_OPAQUE_U64S];
             }
         }

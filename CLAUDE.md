@@ -29,6 +29,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 
 ## Practices
 - **Always `just ci` after task.** **Never `sudo`** — tell user.
+- **Always use nightly for `rustfmt` / `cargo fmt`.** `rustfmt.toml` enables nightly-only options (`imports_granularity = "Crate"`, `format_code_in_doc_comments = true`); the stable toolchain warns and skips them, producing a different output than CI. Run `cargo +nightly fmt` (or `rustup run nightly cargo fmt`).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
 - Reusable tests → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (sh). Temp tests → Bash, then promote.
 - **Tests must fail on unmet preconditions.** `assert!()`/`bail!()` for missing env/binary. `nros_tests::skip!` panics with `[SKIPPED]` (OK). Bare `eprintln!`+`return` reports PASS — never. Same rule runtime: panic, not silent early-return. Exception: `rstest #[values]` matrix unsupported via `skip_reason()`.
