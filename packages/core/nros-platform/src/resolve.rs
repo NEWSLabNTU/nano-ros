@@ -82,10 +82,27 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 // — bare-metal smoltcp is 2 / 6 bytes; the RTOS C ports own the layout
 // behind their `_z_sys_net_*` typedefs and can publish a tighter size
 // later if the headroom matters.
+// Phase 104.A.3 — POSIX net-size constants formerly re-exported from
+// `nros_platform_posix::net::*`. Inlined here so `nros-platform`
+// stops Rust-importing the concrete POSIX platform crate. The values
+// mirror `nros-platform-posix/src/net.rs`:
+//   * `Socket` = `{ int fd }` → `size_of::<c_int>() == 4` on every
+//     POSIX ABI we target.
+//   * `Endpoint` = `{ struct addrinfo* iptcp }` → native pointer
+//     size (8 on 64-bit, 4 on 32-bit).
+//
+// Both expressible via `core::ffi` without pulling libc / the
+// concrete platform crate. Phase 123's `nros-platform-posix`
+// Rust-crate deletion adopts the same inline shape on the
+// release-prep branch.
 #[cfg(feature = "platform-posix")]
-pub use nros_platform_posix::net::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
+pub const NET_SOCKET_SIZE: usize = core::mem::size_of::<core::ffi::c_int>();
+#[cfg(feature = "platform-posix")]
+pub const NET_SOCKET_ALIGN: usize = core::mem::align_of::<core::ffi::c_int>();
+#[cfg(feature = "platform-posix")]
+pub const NET_ENDPOINT_SIZE: usize = core::mem::size_of::<*mut core::ffi::c_void>();
+#[cfg(feature = "platform-posix")]
+pub const NET_ENDPOINT_ALIGN: usize = core::mem::align_of::<*mut core::ffi::c_void>();
 
 #[cfg(any(
     feature = "platform-mps2-an385",
