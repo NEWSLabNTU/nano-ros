@@ -22,7 +22,20 @@ if(NOT DEFINED THREADX_KERNEL_TARGET)
         "Name of the imported ThreadX CMake target")
 endif()
 
-add_library(nros_platform_threadx STATIC src/platform.c)
+# net.c uses NetX Duo BSD socket addon (<nxd_bsd.h>). Parent build
+# supplies the imported target name via NETXDUO_TARGET; if absent,
+# net.c will fail to compile but the symbols stay declared so
+# applications that don't need networking can omit net.c via a
+# downstream CMake flag.
+if(NOT DEFINED NETXDUO_TARGET)
+    set(NETXDUO_TARGET netxduo CACHE STRING
+        "Name of the imported NetX Duo CMake target (provides nxd_bsd.h)")
+endif()
+
+add_library(nros_platform_threadx STATIC
+    src/platform.c
+    src/net.c
+    src/timer.c)
 target_include_directories(nros_platform_threadx PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_threadx PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -34,6 +47,15 @@ else()
         "THREADX_KERNEL_TARGET '${THREADX_KERNEL_TARGET}' not declared. "
         "Configure the parent build to provide it, or pass "
         "-DTHREADX_KERNEL_TARGET=<name> on the command line.")
+endif()
+
+if(TARGET ${NETXDUO_TARGET})
+    target_link_libraries(nros_platform_threadx PUBLIC ${NETXDUO_TARGET})
+else()
+    message(WARNING
+        "NETXDUO_TARGET '${NETXDUO_TARGET}' not declared — net.c needs "
+        "<nxd_bsd.h>. Configure the parent build to provide it, or pass "
+        "-DNETXDUO_TARGET=<name>.")
 endif()
 
 install(TARGETS nros_platform_threadx
