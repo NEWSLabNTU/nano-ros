@@ -10,9 +10,9 @@ cmake_minimum_required(VERSION 3.20)
 
 if(DEFINED IDF_VERSION)
     idf_component_register(
-        SRCS src/platform.c
+        SRCS src/platform.c src/net.c src/timer.c
         INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-cffi/include"
-        REQUIRES freertos esp_timer esp_hw_support esp_system)
+        REQUIRES freertos esp_timer esp_hw_support esp_system lwip)
     return()
 endif()
 
