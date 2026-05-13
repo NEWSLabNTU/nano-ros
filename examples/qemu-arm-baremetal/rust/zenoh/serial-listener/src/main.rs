@@ -33,20 +33,18 @@ fn main() -> ! {
                 .node_name("serial_listener");
             // Phase 115.L.x — install C-vtable backend before session open.
             let mut executor = Executor::open(&exec_config)?;
-            let mut node = executor.create_node("serial_listener")?;
+            let _node = executor.create_node("serial_listener")?;
 
             println!("Subscribing to /chatter (std_msgs/Int32)");
-            let mut subscription = node.create_subscription::<Int32>("/chatter")?;
+            executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+                println!("Received: {}", msg.data);
+            })?;
             println!("Subscriber declared");
 
             println!("Waiting for messages over serial...");
 
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));
-
-                if let Some(msg) = subscription.try_recv()? {
-                    println!("Received: {}", msg.data);
-                }
             }
 
             #[allow(unreachable_code)]

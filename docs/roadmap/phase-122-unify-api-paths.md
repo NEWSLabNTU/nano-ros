@@ -409,9 +409,50 @@ Sub-items:
     `nros/nros.hpp` pulls in both new headers, so existing
     `#include "nros/nros.hpp"` users get the new templates
     automatically.
-- [ ] **122.4 — Rust example migration L1 -> L2 (callback).**
-  Mechanical rewrite of non-RTIC example main.rs files. Migration
-  list below. RTIC examples stay on L1.
+- [~] **122.4 — Rust example migration L1 -> L2 (callback).**
+  Mechanical rewrite of non-RTIC example main.rs files.
+  - **Scope decision (2026-05-13).** Listeners + action
+    servers migrate to L2 (`Executor::register_subscription` /
+    `register_action_server`). Service clients, action
+    clients, and `async` examples stay on L1 — their
+    request-response + `Promise::await` interaction model
+    fits the L1 manual-poll shape, not the L2 callback
+    arena. RTIC examples stay on L1 (RTIC owns scheduling).
+  - **Listeners migrated (13).** All 13 non-RTIC listener
+    `main.rs` files swap `node.create_subscription::<T>` +
+    `if let Some(msg) = sub.try_recv()?` polling for
+    `executor.register_subscription::<T, _>` with a closure.
+    Files touched:
+    `examples/{qemu-arm-baremetal,qemu-arm-freertos,qemu-arm-nuttx,qemu-riscv64-threadx,qemu-esp32-baremetal}/rust/{zenoh,dds}/listener/src/main.rs`,
+    `examples/qemu-arm-baremetal/rust/zenoh/serial-listener/src/main.rs`,
+    `examples/esp32/rust/zenoh/listener/src/main.rs`,
+    `examples/threadx-linux/rust/zenoh/listener/src/main.rs`.
+    Mechanical via the migration script
+    `tmp/migrate_listener.py` (kept in working tree).
+    `threadx-linux/zenoh/listener` is the one non-uniform
+    case — it counts messages and stops after 10; ported by
+    moving the counter + stop flag to `static AtomicU32 /
+    AtomicBool` so the `'static`-bound closure can reach
+    them without lifetime gymnastics.
+  - **Action servers migrated (3).**
+    `examples/qemu-arm-freertos/rust/zenoh/action-server/src/main.rs`,
+    `examples/qemu-arm-nuttx/rust/zenoh/action-server/src/main.rs`,
+    `examples/threadx-linux/rust/zenoh/action-server/src/main.rs`
+    all switch from `node.create_action_server::<A>` +
+    `try_accept_goal(|...|)` to
+    `executor.register_action_server::<A, _, _>(action,
+    goal_cb, cancel_cb)`. Goal execution loop reads
+    accepted goals via `handle.for_each_active_goal` and
+    publishes feedback / completes via `handle.*` methods.
+    Mirror of the threadx-rv64 example landed earlier in
+    Phase 120.3.
+  - **Stays on L1 (intentional).** Service clients
+    (5 files), action clients (4 files), async client
+    examples (2 files), RTIC examples (5 files). Phase doc
+    notes this.
+  - **Validation.** `cargo build` clean for all 16 migrated
+    examples across the qemu-arm-baremetal / freertos /
+    nuttx / riscv64-threadx / esp32 / threadx-linux trees.
 - [ ] **122.5 — docs.** Update book pages, porting guide, and the
   RT positioning page with the unified two-layer story.
 

@@ -25,18 +25,17 @@ fn main() -> ! {
                 .node_name("dds_listener");
             // Phase 115.L.x — install C-vtable backend before session open.
             let mut executor = Executor::open(&exec_config)?;
-            let mut node = executor.create_node("dds_listener")?;
+            let _node = executor.create_node("dds_listener")?;
 
             esp_println::println!("Subscribing to /chatter (std_msgs/Int32) over DDS");
-            let mut subscription = node.create_subscription::<Int32>("/chatter")?;
+            executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+                esp_println::println!("Received: {}", msg.data);
+            })?;
             esp_println::println!("Subscriber declared");
             esp_println::println!("Waiting for messages...");
 
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));
-                if let Some(msg) = subscription.try_recv()? {
-                    esp_println::println!("Received: {}", msg.data);
-                }
             }
 
             #[allow(unreachable_code)]
