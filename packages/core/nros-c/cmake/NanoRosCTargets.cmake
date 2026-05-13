@@ -208,6 +208,56 @@ if(NOT TARGET NanoRos::NanoRos)
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
       INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE=1)
   endif()
+
+  # Phase 123.A.1.x.4.b — `NANO_ROS_RMW=zenoh` pulls the standalone
+  # `libnros_rmw_zenoh.a` (cargo crate `nros-rmw-zenoh-staticlib`)
+  # for the `nros_rmw_zenoh_register` symbol that nros-c's
+  # `nros_support_init` calls under `cffi-zenoh-cffi`. The standalone
+  # archive carries its own copy of compiler_builtins +
+  # nros-rmw-cffi rlib content; `--allow-multiple-definition` lets
+  # the linker reconcile against the same symbols inside
+  # libnros_c.a.
+  # Phase 123.A.1.x.4.b — insert the standalone RMW archive BEFORE
+  # the platform archive in INTERFACE_LINK_LIBRARIES so static-
+  # archive link order resolves:
+  #   libnros_c_<rmw>.a    : refs nros_rmw_<rmw>_register
+  #   libnros_rmw_<rmw>.a  : refs nros_platform_*
+  #   libnros_platform_<plat>.a : defs nros_platform_*
+  # The platform archive was appended in the POSIX block above;
+  # pop it, append the RMW archive, then re-append the platform
+  # archive so the final ordering is c → rmw → platform.
+  set(_nros_rmw_target "")
+  if(NANO_ROS_RMW STREQUAL "zenoh")
+    if(NOT TARGET NrosRmwZenoh::NrosRmwZenoh)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosRmwZenoh CONFIG)
+    endif()
+    set(_nros_rmw_target NrosRmwZenoh::NrosRmwZenoh)
+  elseif(NANO_ROS_RMW STREQUAL "dds")
+    if(NOT TARGET NrosRmwDds::NrosRmwDds)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosRmwDds CONFIG)
+    endif()
+    set(_nros_rmw_target NrosRmwDds::NrosRmwDds)
+  endif()
+  if(_nros_rmw_target)
+    # Reorder: pull NrosPlatformPosix back out, append RMW first,
+    # then re-append platform.
+    get_target_property(_existing_libs NanoRos::NanoRos INTERFACE_LINK_LIBRARIES)
+    if(_existing_libs)
+      list(REMOVE_ITEM _existing_libs NrosPlatformPosix::nros_platform_posix)
+      list(APPEND _existing_libs ${_nros_rmw_target})
+      if(NANO_ROS_PLATFORM STREQUAL "posix" AND TARGET NrosPlatformPosix::nros_platform_posix)
+        list(APPEND _existing_libs NrosPlatformPosix::nros_platform_posix)
+      endif()
+      set_property(TARGET NanoRos::NanoRos PROPERTY
+        INTERFACE_LINK_LIBRARIES "${_existing_libs}")
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
+      set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+        INTERFACE_LINK_OPTIONS "-Wl,--allow-multiple-definition")
+    endif()
+  endif()
 endif()
 
 # Legacy alias for code that uses nros_c::nros_c

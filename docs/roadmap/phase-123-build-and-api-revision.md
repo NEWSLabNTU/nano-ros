@@ -266,18 +266,33 @@ writes a workspace `Cargo.toml` for Rust users.
           (GNU ld / lld) when both archives co-link with
           `libnros_c.a`.
 
-      Deferred to A.1.x.4.b:
-        * Drop `nros-rmw-zenoh` + `nros-rmw-dds` from
-          `nros-c`'s Cargo dep graph so its staticlib shrinks
-          ~25 MB. Wire `NanoRos::NanoRos` to
-          `find_dependency(NrosRmw<X>)` +
-          `target_link_libraries(... NrosRmw<X>::NrosRmw<X>
-          -Wl,--allow-multiple-definition)`. Same shape as
-          XRCE's existing `find_dependency(NrosRmwXrce)` block.
-        * For now the standalone archives sit next to today's
-          monolithic `libnros_c_zenoh.a` / `libnros_c_dds.a`
-          rather than replacing them — downstream consumers
-          still use the monolithic archives.
+      A.1.x.4.b done — final cutover landed:
+        * `nros-c[cffi-zenoh-cffi]` + `cffi-dds-cffi` now
+          resolve to `["rmw-cffi"]` only — same shape as
+          `cffi-xrce-c`. Drops `nros/rmw-{zenoh,dds}-cffi`
+          + `dep:nros-rmw-{zenoh,dds}` from `nros-c`'s
+          Cargo tree.
+        * `NanoRos::NanoRos`'s `INTERFACE_LINK_LIBRARIES` for
+          `NANO_ROS_RMW={zenoh,dds}` now
+          `find_dependency(NrosRmw<X>)` and inserts the
+          standalone archive BETWEEN nros-c and
+          NrosPlatformPosix (static-archive link order
+          matters: `libnros_c.a` needs
+          `nros_rmw_<x>_register` from
+          `libnros_rmw_<x>.a`, which in turn needs
+          `nros_platform_*` from `libnros_platform_posix.a`).
+        * `-Wl,--allow-multiple-definition` added to
+          `INTERFACE_LINK_OPTIONS` on Linux/macOS — reconciles
+          per-archive copies of `compiler_builtins` +
+          duplicated `nros-rmw-cffi` rlib content between
+          `libnros_c.a` and the standalone RMW archive.
+        * Audit (post-rebuild): `libnros_c_zenoh.a` 27.7 MB
+          → 22.6 MB (-18%); `nros_rmw_zenoh_register` now
+          UNDEFINED in the archive (resolved at final link
+          from `libnros_rmw_zenoh.a`). Same shape for dds.
+        * E2E smoke: `examples/native/c/zenoh/talker` +
+          `c/dds/talker` build + run with 0 unresolved
+          `nros_*` references in the final binary.
 
     - [ ] **123.A.1.x.5 — Switch `nano_ros_link_platform` /
       `_link_rmw` to real link targets.** When A.1.x.2 +
