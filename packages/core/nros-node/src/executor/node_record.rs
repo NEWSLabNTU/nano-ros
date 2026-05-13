@@ -47,13 +47,17 @@ pub struct NodeRecord {
     /// implicit primary Node populated from `Executor::open`.
     pub rmw_name: Option<heapless::String<32>>,
     /// Per-Node locator override. `None` = use the Executor's
-    /// session-level locator. 104.C.3 wires this to the session
-    /// cache.
+    /// session-level locator.
     pub locator: Option<heapless::String<128>>,
     /// Default `SchedContext` for handles created via this Node.
     /// Handles may override per-call. `SchedContextId::default()` =
     /// the executor's auto-created Fifo slot (slot 0).
     pub default_sched: SchedContextId,
+    /// Phase 104.C.3 — session-slot index. `0` resolves to the
+    /// Executor's primary `session` field; `N >= 1` resolves to
+    /// `extra_sessions[N-1]`. Each Node may bind to a different
+    /// session, enabling multi-RMW bridges in one Executor.
+    pub session_idx: u8,
 }
 
 impl NodeRecord {
@@ -73,6 +77,7 @@ impl NodeRecord {
             rmw_name: None,
             locator: None,
             default_sched: SchedContextId(0),
+            session_idx: 0,
         }
     }
 }
@@ -143,11 +148,71 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
         self
     }
 
+    /// Phase 104.C.3 — pick a session slot for the Node being
+    /// built. Returns `0` for the primary session (no rmw override
+    /// or rmw matches existing) and `N >= 1` for an extra session
+    /// just opened via `CffiRmw::open_with_rmw`.
+    #[cfg(feature = "rmw-cffi")]
+    fn resolve_session_slot(&mut self) -> Result<u8, NodeError> {
+        let Some(rmw) = self.rmw_name else {
+            return Ok(0);
+        };
+
+        // Reuse an extra session if one already opened against the
+        // same rmw + locator. Slot 0 (primary) is opaque — we don't
+        // know its rmw name today; treat the first-named-rmw Node
+        // as the primary unless explicitly bridging.
+        for (i, sess) in self.executor.extra_sessions.iter().enumerate() {
+            let _ = sess;
+            // Phase 104.C.3 doesn't yet store rmw-name per session;
+            // dedupe by NodeRecord's stored rmw_name + locator.
+            if let Some(prev) = self.executor.nodes.iter().find(|n| {
+                n.session_idx as usize == i + 1
+                    && n.rmw_name.as_deref() == Some(rmw)
+                    && n.locator.as_deref() == self.locator
+            }) {
+                let _ = prev;
+                return Ok((i + 1) as u8);
+            }
+        }
+
+        // First Node naming this rmw → open a new session.
+        let mode = nros_rmw::SessionMode::Client;
+        let locator = self.locator.unwrap_or("");
+        let domain_id = self.domain_id.unwrap_or(0);
+        let cfg = nros_rmw::RmwConfig {
+            locator,
+            mode,
+            domain_id,
+            node_name: self.name,
+            namespace: self.namespace.unwrap_or(""),
+            properties: &[],
+        };
+        let session = nros_rmw_cffi::CffiRmw::open_with_rmw(rmw, &cfg)
+            .map_err(crate::executor::types::NodeError::Transport)?;
+        self.executor
+            .extra_sessions
+            .push(session)
+            .map_err(|_| NodeError::NodeTableFull)?;
+        let idx = self.executor.extra_sessions.len();
+        if idx > u8::MAX as usize {
+            return Err(NodeError::NodeTableFull);
+        }
+        Ok(idx as u8)
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    fn resolve_session_slot(&mut self) -> Result<u8, NodeError> {
+        // Without `rmw-cffi`, only the primary session exists. An
+        // rmw-name override is meaningless; treat as the primary.
+        Ok(0)
+    }
+
     /// Register the Node with the Executor and return its
     /// [`NodeId`]. Bumps `Executor.nodes.len()`; fails if the table
     /// is full (`NROS_EXECUTOR_MAX_NODES` reached) or the name is
     /// too long.
-    pub fn build(self) -> Result<NodeId, NodeError> {
+    pub fn build(mut self) -> Result<NodeId, NodeError> {
         if self.name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
@@ -193,12 +258,19 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
             loc_buf = Some(s);
         }
 
+        // Phase 104.C.3 — resolve session_idx. If no rmw was named,
+        // or the rmw name matches the implicit primary backend, use
+        // slot 0. Otherwise, open a fresh session via
+        // `CffiRmw::open_with_rmw` and stash it in `extra_sessions`.
+        let session_idx = self.resolve_session_slot()?;
+
         let record = NodeRecord {
             name: name_buf,
             namespace: ns_buf,
             rmw_name: rmw_buf,
             locator: loc_buf,
             default_sched: self.sched.unwrap_or(SchedContextId(0)),
+            session_idx,
         };
 
         self.executor

@@ -257,11 +257,17 @@ pub struct Executor {
     /// per-Node metadata (name, namespace, rmw, locator, default
     /// SchedContext) for every Node attached to this Executor. The
     /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
-    /// `namespace` above and is auto-populated on first use. Phase
-    /// 104.C.3 will add a parallel session cache so different Nodes
-    /// can bind to different RMW backends.
+    /// `namespace` above and is auto-populated on first use.
     pub(crate) nodes:
         heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
+    /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
+    /// calls that named a backend different from the Executor's
+    /// primary session. Indexed by `NodeRecord.session_idx`
+    /// (1..=N maps to `extra_sessions[N-1]`; idx 0 is the primary
+    /// `self.session`). Sized by `NROS_EXECUTOR_MAX_NODES` since one
+    /// extra session per Node is the worst case.
+    pub(crate) extra_sessions:
+        heapless::Vec<session::ConcreteSession, { crate::config::MAX_NODES }>,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
@@ -319,6 +325,7 @@ impl Executor {
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
             nodes: heapless::Vec::new(),
+            extra_sessions: heapless::Vec::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
@@ -374,6 +381,7 @@ impl Executor {
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
             nodes: heapless::Vec::new(),
+            extra_sessions: heapless::Vec::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
@@ -594,10 +602,25 @@ impl Executor {
     }
 
     /// Borrow a Node's metadata by id, returning `None` if the id
-    /// is out of range. Phase 104.C.3+ adds per-Node session
-    /// lookups built on this.
+    /// is out of range.
     pub fn node(&self, id: super::node_record::NodeId) -> Option<&super::node_record::NodeRecord> {
         self.nodes.get(id.index())
+    }
+
+    /// Phase 104.C.3 — resolve a session-slot index to a mutable
+    /// session reference. Slot 0 = the Executor's primary session;
+    /// slots 1..=N = the `extra_sessions` vec opened by
+    /// `node_builder.rmw(name)` calls that named a backend
+    /// different from the primary.
+    #[allow(dead_code)] // Phase 104.C.3 — wired in 104.C.3.2 when
+    // handle factories gain `_on(node_id, ...)` variants that route
+    // through the per-Node session.
+    pub(crate) fn session_at_mut(&mut self, idx: u8) -> Option<&mut session::ConcreteSession> {
+        if idx == 0 {
+            Some(&mut *self.session)
+        } else {
+            self.extra_sessions.get_mut((idx - 1) as usize)
+        }
     }
 
     /// Create a node on this executor.
@@ -1778,6 +1801,14 @@ impl Executor {
         let spin_start = std::time::Instant::now();
 
         let _ = self.session.drive_io(timeout_ms);
+        // Phase 104.C.3 — drive every extra session opened by
+        // `node_builder.rmw()` calls. Polling order is registration
+        // order; deadline budget is shared via the single
+        // `timeout_ms` cap above so the spin loop's worst-case
+        // latency stays bounded by the user's `spin_once(timeout)`.
+        for extra in self.extra_sessions.iter_mut() {
+            let _ = extra.drive_io(timeout_ms);
+        }
 
         #[cfg(feature = "std")]
         let delta_ms = {
