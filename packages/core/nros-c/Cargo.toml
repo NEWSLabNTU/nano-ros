@@ -20,26 +20,27 @@ default = ["std"]
 std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
-# RMW backend (select one) — every backend ships as a cffi shim that
-# installs a C vtable into `nros-rmw-cffi`'s runtime registry.
+# RMW backend (cffi vtable dispatch) — every backend ships as a cffi
+# shim that installs a C vtable into `nros-rmw-cffi`'s runtime
+# registry. Each backend's standalone staticlib (`libnros_rmw_<x>.a`)
+# carries a `.init_array` ctor (phase 104.A) that runs its register fn
+# before `main()` on POSIX / macOS / Windows. `nros-c` does NOT pin a
+# specific RMW.
 rmw-cffi = ["nros/rmw-cffi"]
-# Phase 115.K.2.5.2 — under the `xrce` CMake selector the C/C++ APIs
-# go through the rmw-cffi axis with the micro-XRCE-DDS-Client C
-# backend providing the vtable. This Cargo feature flips a one-line
-# call inside `nros_support_init` that registers that vtable before
-# the session opens — matches the C++ path's `nros::init` hook.
-# The C/C++ build glue sets it from CMake when `NANO_ROS_RMW=xrce`.
+
+# Phase 123.A.11 — `cffi-xrce-c` / `cffi-dds-cffi` / `cffi-zenoh-cffi`
+# DELETED. They previously selected which `extern fn
+# nros_rmw_<x>_register()` call site got compiled into
+# `nros_support_init`. The auto-register pattern in each backend's
+# wrapper staticlib makes nros-c truly RMW-agnostic — one
+# `libnros_c.a` per target triple covers every backend.
+#
+# Compatibility shims: keep the feature names as no-op aliases of
+# `rmw-cffi` so downstream CMake glue that still passes them doesn't
+# error. To be deleted along with the CMake glue once external
+# consumers migrate.
 cffi-xrce-c = ["rmw-cffi"]
-# Phase 115.L.1 + 123.A.1.x.4.b — dust-DDS via the C vtable. Resolves
-# to `rmw-cffi` only; the actual `nros-rmw-dds` Rust impl ships in the
-# standalone `libnros_rmw_dds.a` (cargo crate
-# `nros-rmw-dds-staticlib`). nros-c's `nros_support_init` calls
-# `extern "C" fn nros_rmw_dds_register()` which the linker resolves
-# from that archive. Same shape as `cffi-xrce-c`.
 cffi-dds-cffi = ["rmw-cffi"]
-# Phase 115.L.2 + 123.A.1.x.4.b — zenoh-pico via the C vtable. Same
-# shape as `cffi-dds-cffi`; `libnros_rmw_zenoh.a` supplies the
-# register fn at final link.
 cffi-zenoh-cffi = ["rmw-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)

@@ -14,35 +14,27 @@ if(NOT DEFINED NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM "posix")
 endif()
 
-# ---- Map RMW to Cargo features ----
-if(NANO_ROS_RMW STREQUAL "zenoh")
-    # Phase 115.L.2: `zenoh` selector routes through the C vtable
-    # via `nros-rmw-zenoh`.
-    set(_rmw_features rmw-cffi cffi-zenoh-cffi)
-elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 115.K.2.5.2: `xrce` selects the C backend
-    # (micro-XRCE-DDS-Client via `nros-rmw-xrce`).
-    set(_rmw_features rmw-cffi cffi-xrce-c)
-elseif(NANO_ROS_RMW STREQUAL "dds")
-    # Phase 115.L.1: `dds` selector routes through the C vtable
-    # via `nros-rmw-dds`.
-    set(_rmw_features rmw-cffi cffi-dds-cffi)
-elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
-    # Phase 117.8: Cyclone DDS rides the generic `rmw-cffi` axis on
-    # the Rust side. Backend wiring + auto-register happens C++-side
-    # via `NrosRmwCyclonedds::NrosRmwCyclonedds` in nros-cpp.
-    set(_rmw_features rmw-cffi)
-elseif(NANO_ROS_RMW STREQUAL "uorb")
-    # Phase 115.K.4: PX4 uORB backend (C++ port). Same shape as
-    # cyclonedds — `rmw-cffi` Rust axis + C++ register hook driven
-    # by nros-cpp's nros::init (or the PX4 module's startup if it
-    # calls `nros_rmw_uorb_register()` itself).
-    set(_rmw_features rmw-cffi)
-else()
+# Phase 123.A.11 — nros-c is RMW-agnostic at the Cargo level. The
+# `cffi-{xrce,dds,zenoh}-*` features still exist as no-op aliases
+# of `rmw-cffi` (Cargo backwards compat) but choosing a backend
+# happens at LINK time via `find_package(NrosRmw<X>)` +
+# `nano_ros_link_rmw`. Each backend's `.init_array` ctor (phase
+# 104.A) registers it before `main()`; nros-c itself stays
+# unchanged across all RMW selections.
+#
+# The `NANO_ROS_RMW` value still drives downstream linkage
+# (NanoRosCTargets.cmake pulls the right standalone archive) +
+# the install lib name suffix, but feeds NOTHING extra into
+# nros-c's Cargo build. Result: one `libnros_c.a` per target
+# triple.
+if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
+        OR NANO_ROS_RMW STREQUAL "dds" OR NANO_ROS_RMW STREQUAL "cyclonedds"
+        OR NANO_ROS_RMW STREQUAL "uorb"))
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
         "(expected: zenoh, xrce, dds, cyclonedds, or uorb)")
 endif()
+set(_rmw_features rmw-cffi)
 
 # ---- Map platform to Cargo features ----
 if(NANO_ROS_PLATFORM STREQUAL "posix")

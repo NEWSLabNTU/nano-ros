@@ -664,7 +664,7 @@ check-workspace-features:
     @echo "  - nros: zenoh-cffi + posix + iron"
     cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
-    cargo clippy -p nros-c --no-default-features --features "std,cffi-zenoh-cffi,platform-posix,ros-humble"
+    cargo clippy -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
     cargo clippy -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
@@ -717,7 +717,7 @@ check-c:
     # emitted by `nros-c`'s build.rs into `target/nros-c-generated/`.
     # Build first so the syntax check has those macros; otherwise
     # the source-tree stub fires its `#error`.
-    cargo build -p nros-c --no-default-features --features "std,rmw-cffi,cffi-zenoh-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    cargo build -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
@@ -745,7 +745,7 @@ check-cpp:
     # `target/nros-cpp-generated/`. Same C-side header for nros-c.
     # Build both first; variant dirs go FIRST on the include path so
     # their real headers win over the source-tree stubs.
-    cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,cffi-zenoh-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
     for hdr in packages/core/nros-cpp/include/nros/*.hpp; do
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \

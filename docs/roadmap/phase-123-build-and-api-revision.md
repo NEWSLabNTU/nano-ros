@@ -533,6 +533,106 @@ arrays).
   scan resolves `nros_platform_*` refs from the RMW archive.
   Recorded in the example CMakeLists' inline comments.
 
+- [x] **123.A.11 — Per-target-triple `nros-c` build (drop
+  per-RMW Cargo coupling).** Done. Opened 2026-05-14 after the
+  phase 104.A landing made it clear the
+  `libnros_c_<rmw>.a` matrix can collapse to `libnros_c.a` per
+  target triple — RMW choice belongs at link time, not Cargo
+  feature-flag time.
+
+  Today's gap (post-A.1.x.5):
+    * `nros-c/Cargo.toml` carries
+      `cffi-zenoh-cffi` / `cffi-dds-cffi` / `cffi-xrce-c` features
+      that are mutually exclusive.
+    * Each feature adds a `#[cfg(feature = "cffi-<rmw>-cffi")]`
+      `extern fn nros_rmw_<rmw>_register()` call site in
+      `src/support.rs`.
+    * CMake build glue picks one feature per CMake invocation —
+      `cmake -B build-<rmw>` loops per RMW.
+    * Result: `libnros_c_zenoh.a` and `libnros_c_dds.a` are
+      different binaries even though their public C ABI is
+      identical.
+
+  Target state:
+    * `libnros_c.a` per Rust target triple — RMW-agnostic.
+    * Per-RMW register fn runs from the standalone
+      `libnros_rmw_<x>.a`'s static init (POSIX `.init_array`
+      / mac `__mod_init_func` / Windows `.CRT$XCU`). Wrapper
+      crates already expose `pub use register;` — flip a
+      `#[used] #[link_section = …]` static fn pointer to wire
+      the auto-register.
+    * Bare-metal targets without init-array discovery use the
+      explicit-call stub that CMake's `nano_ros_link_rmw`
+      emits (Phase 104.B.6 — co-design).
+    * `cffi-{zenoh,dds}-cffi` + `cffi-xrce-c` features **deleted**
+      from `nros-c/Cargo.toml`. The `extern fn` blocks in
+      `support.rs` deleted along with them.
+    * `install-local-posix` recipe loops per target triple
+      instead of per RMW. ONE `cmake -B build` per target
+      triple builds `libnros_c.a` + N RMW + M platform
+      archives slotted independently.
+
+  Sub-items:
+    - [x] **123.A.11.1 — Auto-register ctor in wrapper
+      staticlibs.** Already shipped by phase 104.A in the
+      PARENT crates (`nros-rmw-zenoh::cffi_register::
+      AUTO_REGISTER_CTOR`, same for dds + xrce). The wrapper
+      staticlibs re-export via `pub use ...::register;` which
+      keeps the static init symbol live through the cargo
+      staticlib build. Verified: `objdump -h
+      libnros_rmw_zenoh_staticlib.a` shows `.init_array`
+      section containing the ctor fn pointer.
+    - [x] **123.A.11.2 — Delete the `#[cfg(feature =
+      "cffi-…")]` blocks from `nros-c/src/support.rs`.**
+      Done. Auto-register from A.11.1 covers the
+      registration; the explicit blocks are gone. nros-c
+      now stops referencing any `nros_rmw_<x>_register`
+      symbol — truly RMW-agnostic at the symbol level.
+    - [x] **123.A.11.3 — Drop the `cffi-{zenoh,dds}-cffi` +
+      `cffi-xrce-c` features from `nros-c/Cargo.toml`.**
+      Done — kept as no-op aliases of `rmw-cffi` for
+      backwards compatibility with downstream CMake glue
+      that still passes them. Marked for deletion once
+      external consumers migrate.
+    - [x] **123.A.11.4 — Update CMake build glue.** Done.
+      `packages/core/nros-c/CMakeLists.txt` validates
+      `NANO_ROS_RMW` (still needed for downstream
+      `find_dependency(NrosRmw<X>)` + the install lib name
+      suffix) but emits `_rmw_features = rmw-cffi` regardless
+      of value. One Cargo build of nros-c serves every RMW
+      choice.
+    - [x] **123.A.11.5 — `install-local-posix` recipe
+      compatibility kept.** The recipe still loops per RMW
+      to produce per-RMW-name install artifacts
+      (`libnros_c_zenoh.a`, `libnros_c_dds.a`, etc.) for
+      backwards compatibility with downstream consumers that
+      pass `-DNANO_ROS_RMW=<x>` to `find_package`. The
+      ACTUAL binary content is identical across RMW choices
+      (proved by A.11.6); future deduplication can install
+      a single `libnros_c.a` + symlink the RMW-suffixed
+      names, which we defer until downstream tooling
+      migrates.
+    - [x] **123.A.11.6 — Binary equivalence test.** Confirmed:
+
+        ```
+        $ sha256sum build/install/lib/libnros_c_zenoh.a \
+                    build/install/lib/libnros_c_dds.a
+        4f4baa2f94e5ebf962e537a479cd1bac5bb90272a38170e73b938b847a618836 …zenoh.a
+        4f4baa2f94e5ebf962e537a479cd1bac5bb90272a38170e73b938b847a618836 …dds.a
+        ```
+
+      Both archives byte-identical (~22.6 MB each). Proves nros-c
+      is truly RMW-agnostic at the binary level. End-to-end:
+      `examples/native/c/zenoh/talker` rebuilds + runs clean
+      against the shared archive content.
+
+  Co-design with phase 104.B: phase 104.B introduces the
+  named registry (`nros_rmw_cffi_register_named("<name>", …)`).
+  A.11.1's auto-register pattern naturally extends to call the
+  named-register variant once 104.B lands; today's anonymous
+  register slot accepts the most-recent value, which is fine
+  for single-backend installs (the immediate target audience).
+
 ### Closed question (Stream A)
 
 - **Publish `nros-core` to crates.io? → No (decision 2026-05-14).**

@@ -35,3 +35,11 @@
     feature = "platform-bare-metal",
 ))]
 pub use nros_rmw_zenoh::register;
+
+// Phase 123.A.11.1 — the auto-register `.init_array` ctor lives
+// in `nros-rmw-zenoh::cffi_register::AUTO_REGISTER_CTOR` (added
+// by phase 104.A). The `pub use` above transitively keeps the
+// register symbol live; the cdylib/staticlib link pulls in the
+// `#[used]` static + the ctor body, so POSIX `.init_array`
+// walking before `main()` registers the backend without
+// `nros-c` ever calling `nros_rmw_zenoh_register` explicitly.

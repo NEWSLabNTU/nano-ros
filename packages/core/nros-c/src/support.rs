@@ -152,50 +152,16 @@ pub unsafe extern "C" fn nros_support_init_named(
         support.locator_len = len;
     }
 
-    // Phase 115.K.2.5.2 — register the micro-XRCE-DDS-Client C
-    // backend's vtable before opening the session. Mirrors the
-    // C++ path's `nros::init` hook (gated on `NROS_RMW_XRCE`
-    // there). The link to `NrosRmwXrce::NrosRmwXrce` from
-    // CMake provides the symbol; this `cffi-xrce-c` feature is
-    // set by the same CMake glue.
-    #[cfg(feature = "cffi-xrce-c")]
-    {
-        unsafe extern "C" {
-            fn nros_rmw_xrce_register() -> i32;
-        }
-        let rc = unsafe { nros_rmw_xrce_register() };
-        if rc != 0 {
-            return NROS_RET_ERROR;
-        }
-    }
-
-    // Phase 115.L.1 — dust-DDS via C vtable. `nros-rmw-dds`'s
-    // `nros_rmw_dds_register()` installs a
-    // `RustBackendAdapter::<DdsRmw>::VTABLE`. The link is provided
-    // by the `nros/rmw-dds-cffi` feature pulling `nros-rmw-dds`
-    // into the dep graph.
-    #[cfg(feature = "cffi-dds-cffi")]
-    {
-        unsafe extern "C" {
-            fn nros_rmw_dds_register() -> i32;
-        }
-        let rc = unsafe { nros_rmw_dds_register() };
-        if rc != 0 {
-            return NROS_RET_ERROR;
-        }
-    }
-
-    // Phase 115.L.2 — zenoh-pico via C vtable.
-    #[cfg(feature = "cffi-zenoh-cffi")]
-    {
-        unsafe extern "C" {
-            fn nros_rmw_zenoh_register() -> i32;
-        }
-        let rc = unsafe { nros_rmw_zenoh_register() };
-        if rc != 0 {
-            return NROS_RET_ERROR;
-        }
-    }
+    // Phase 123.A.11.2 — explicit `nros_rmw_<rmw>_register()` call
+    // sites removed. Each backend's wrapper staticlib emits a
+    // `.init_array` ctor (phase 104.A) that runs the register fn
+    // before `main()` on POSIX / macOS / Windows. Bare-metal
+    // targets without init-array discovery use the explicit-call
+    // stub that CMake's `nano_ros_link_rmw` emits (phase 104.B.6
+    // co-design).
+    //
+    // `nros-c` is now RMW-agnostic at the Cargo / Rust level —
+    // one `libnros_c.a` per target triple covers all backends.
 
     // Initialize the middleware session
     #[cfg(feature = "rmw-cffi")]
