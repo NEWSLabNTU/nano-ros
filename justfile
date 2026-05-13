@@ -264,6 +264,17 @@ check: \
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
+# Phase 104.A.4 — assert `nros` + `nros-node` Cargo deps stay free of
+# concrete RMW / platform crates. The umbrella must consume only the
+# generic ABI (`nros-rmw-cffi` vtable + `nros-platform-cffi` C header);
+# selecting a backend or platform is the outer build system's job.
+#
+# Today this guard is EXPECTED TO FAIL — Phase 104.A is the migration
+# that brings it to green. Wire it as a required check once the
+# migration completes.
+check-decoupling:
+    @bash scripts/check-decoupling.sh
+
 # Test tiers (each tier is a strict superset of the previous):
 #
 #   test-unit         workspace lib/bin tests except nros-tests crate.
