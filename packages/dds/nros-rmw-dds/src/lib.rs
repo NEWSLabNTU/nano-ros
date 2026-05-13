@@ -101,6 +101,27 @@ mod cffi_register {
             Err(RegisterError(rc))
         }
     }
+
+    // Phase 104.A — POSIX auto-registration. See
+    // `nros-rmw-zenoh/src/lib.rs::cffi_register` for the rationale.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[used]
+    #[unsafe(link_section = ".init_array")]
+    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
+
+    #[cfg(target_os = "macos")]
+    #[used]
+    #[unsafe(link_section = "__DATA,__mod_init_func")]
+    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "macos"
+    ))]
+    extern "C" fn auto_register_ctor() {
+        let _ = nros_rmw_dds_register();
+    }
 }
 
 pub use cffi_register::{RegisterError, nros_rmw_dds_register, register};

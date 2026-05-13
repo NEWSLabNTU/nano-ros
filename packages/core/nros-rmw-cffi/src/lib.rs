@@ -582,6 +582,15 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
     NROS_RMW_RET_OK
 }
 
+/// Phase 104.A — registry-presence probe. Returns `true` iff a
+/// backend has called `nros_rmw_cffi_register` at least once. Used
+/// by `Executor::open` to detect "user forgot to register a backend
+/// before opening the session" and fail with a meaningful error.
+#[inline]
+pub fn backend_registered() -> bool {
+    !VTABLE.load(Ordering::Acquire).is_null()
+}
+
 /// Phase 115.A.2 — C entry point for installing a custom transport.
 ///
 /// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`

@@ -34,12 +34,14 @@ scheduler-time-triggered = []
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
-# Phase 115.K.2.5.1.1 — XRCE via the C backend.
-rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Phase 115.L.1 — dust-DDS via the C vtable.
-rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds"]
-# Phase 115.L.2 — zenoh-pico via the C vtable.
-rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh"]
+# Phase 104.A — per-backend feature flags retained as inert aliases
+# for source compatibility. They no longer pull a concrete backend
+# crate into `nros-node`'s Cargo graph; the caller adds the backend
+# as its own direct dep and calls `nros_rmw_<name>::register()`
+# (or relies on the backend's `#[ctor]`) before `Executor::open`.
+rmw-xrce-cffi = ["rmw-cffi"]
+rmw-dds-cffi = ["rmw-cffi"]
+rmw-zenoh-cffi = ["rmw-cffi"]
 
 # Phase 99: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
@@ -50,17 +52,25 @@ platform-udp = []
 posix-serial = []
 
 # ROS edition feature flags (controls which env vars are supported).
-ros-humble = ["nros-rmw-zenoh?/ros-humble"]
-ros-iron = ["nros-rmw-zenoh?/ros-iron"]
+# Phase 104.A — formerly forwarded to `nros-rmw-zenoh?/ros-*`; now
+# inert at the umbrella level. Callers add the feature to their
+# direct `nros-rmw-<name>` dep.
+ros-humble = []
+ros-iron = []
 log = ["dep:log"]
 
-# Platform backend (select one; forwarded to active RMW backend).
-platform-posix = ["nros-rmw-dds?/platform-posix", "nros-rmw-zenoh?/platform-posix"]
-platform-zephyr = ["nros-rmw-dds?/platform-zephyr", "nros-rmw-zenoh?/platform-zephyr"]
-platform-bare-metal = ["nros-rmw-dds?/platform-bare-metal", "nros-rmw-zenoh?/platform-bare-metal"]
-platform-freertos = ["nros-rmw-dds?/platform-freertos", "nros-rmw-zenoh?/platform-freertos"]
-platform-nuttx = ["nros-rmw-dds?/platform-nuttx", "nros-rmw-zenoh?/platform-nuttx"]
-platform-threadx = ["nros-rmw-dds?/platform-threadx", "nros-rmw-zenoh?/platform-threadx"]
+# Platform backend (select one). Phase 104.A — formerly forwarded
+# `platform-*` features to the active RMW backend's matching
+# feature via `?/`. With the optional concrete-RMW deps removed
+# from this crate, those forwarding clauses are gone. Callers wire
+# their own `nros-rmw-<name>` dep with the matching `platform-*`
+# feature directly.
+platform-posix = []
+platform-zephyr = []
+platform-bare-metal = []
+platform-freertos = []
+platform-nuttx = []
+platform-threadx = []
 # Phase 11 — AGX Orin SPE (zenoh-only; IVC link).
 platform-orin-spe = []
 platform-cffi = []
@@ -90,14 +100,13 @@ nros-rmw = { workspace = true, default-features = false }
 # enum from the platform-api types layer.
 nros-platform-api = { version = "0.1.0", path = "../nros-platform-api", default-features = false }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
-# Phase 115.K.2.5.1.0 — Rust shim that auto-builds + auto-links the
-# C XRCE backend. Pulled in by `rmw-xrce-cffi` feature.
-nros-rmw-xrce-cffi = { workspace = true, default-features = false, optional = true }
-# Phase 115.L.1 / L.2 — Rust-backend cffi shims (dust-dds and
-# zenoh-pico routed through `nros_rmw_vtable_t` instead of the
-# Rust `Session`/`Publisher`/etc. trait surface).
-nros-rmw-dds = { workspace = true, default-features = false, optional = true }
-nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
+# Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
+# `nros-rmw-dds`, `nros-rmw-zenoh`) removed. The umbrella consumes
+# only the generic vtable shim (`nros-rmw-cffi`); callers depend
+# on the concrete backend crate directly and trigger
+# registration via the backend's `#[ctor]` (POSIX) or an explicit
+# `register()` call (bare-metal). See
+# `docs/roadmap/phase-104-multi-backend-bridges.md` Thread A.
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }

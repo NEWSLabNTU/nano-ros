@@ -63,7 +63,15 @@ impl Executor {
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
-        register_active_backend()?;
+        // Phase 104.A — backend registration is now the caller's
+        // responsibility. On POSIX hosts the backend crate's
+        // `#[ctor]` runs at lib load; on bare-metal the caller
+        // invokes `nros_rmw_<name>::register()` from main before
+        // `Executor::open`. The registry check below detects either
+        // path having populated the singleton vtable.
+        if !nros_rmw_cffi::backend_registered() {
+            return Err(NodeError::Transport(TransportError::ConnectionFailed));
+        }
 
         let rmw_config = nros_rmw::RmwConfig {
             locator: config.locator,
@@ -82,31 +90,26 @@ impl Executor {
     }
 }
 
-/// Phase 115.M.4 — register the active backend's cffi vtable. Each
-/// arm below is compile-time-gated on the backend's public feature
-/// flag; consumers that enable e.g. `rmw-zenoh-cffi` pick up the
-/// matching `register()` automatically. Cyclone DDS and uORB (C/C++
-/// backends with no Rust caller) are registered via the C++ side's
-/// `nros::init` hook instead — see `nros-cpp/include/nros/node.hpp`.
-#[cfg(feature = "rmw-cffi")]
-fn register_active_backend() -> Result<(), NodeError> {
-    #[cfg(feature = "rmw-zenoh-cffi")]
-    {
-        nros_rmw_zenoh::register()
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-    }
-    #[cfg(feature = "rmw-dds-cffi")]
-    {
-        nros_rmw_dds::register()
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-    }
-    #[cfg(feature = "rmw-xrce-cffi")]
-    {
-        nros_rmw_xrce_cffi::register()
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-    }
-    Ok(())
-}
+// Phase 104.A — `register_active_backend` deleted. The compile-time
+// cfg cascade pulled `nros-rmw-{zenoh,dds,xrce-cffi}` into the
+// `nros-node` dep graph; the API-decoupling thread eliminates that
+// coupling. Registration is now the caller's job, either:
+//
+//   * automatically via the backend crate's `#[ctor]` constructor
+//     (POSIX / ESP-IDF / Zephyr — anywhere libc walks
+//     `.init_array`), or
+//
+//   * explicitly via `nros_rmw_<name>::register()` from `main`
+//     before `Executor::open` (bare-metal RTOS targets).
+//
+// `Executor::open` consults `nros_rmw_cffi::backend_registered()`;
+// failure to register before `open` returns
+// `NodeError::Transport(ConnectionFailed)` with a hint pointing at
+// the registration step.
+//
+// Cyclone DDS and uORB (C/C++ backends with no Rust caller) are
+// registered via the C++ side's `nros::init` hook —
+// see `nros-cpp/include/nros/node.hpp`.
 
 // ============================================================================
 // SessionStore — owned or borrowed session

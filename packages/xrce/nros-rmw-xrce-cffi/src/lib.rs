@@ -54,3 +54,20 @@ pub fn register() -> Result<(), RegisterError> {
         Err(RegisterError(rc))
     }
 }
+
+// Phase 104.A — POSIX auto-registration. See
+// `nros-rmw-zenoh/src/lib.rs::cffi_register` for the rationale.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[used]
+#[unsafe(link_section = ".init_array")]
+static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
+
+#[cfg(target_os = "macos")]
+#[used]
+#[unsafe(link_section = "__DATA,__mod_init_func")]
+static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+extern "C" fn auto_register_ctor() {
+    let _ = unsafe { nros_rmw_xrce_register() };
+}

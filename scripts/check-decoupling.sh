@@ -38,9 +38,15 @@ check_manifest() {
         return 1
     fi
 
+    # Strip comment lines so the regex doesn't catch prose explaining
+    # the migration. We grep with `-v` first on `^\s*#` then on the
+    # actual pattern.
+    local non_comment
+    non_comment=$(grep -nv '^[[:space:]]*#' "$manifest")
+
     local dep_leaks feat_leaks
-    dep_leaks=$(grep -nE "$DEP_LINE_RE" "$manifest" || true)
-    feat_leaks=$(grep -nE "$FEATURE_RE" "$manifest" || true)
+    dep_leaks=$(echo "$non_comment" | grep -E ":${DEP_LINE_RE#^}" || true)
+    feat_leaks=$(echo "$non_comment" | grep -E "$FEATURE_RE" || true)
 
     if [[ -n "$dep_leaks" || -n "$feat_leaks" ]]; then
         echo "FAIL: $crate Cargo.toml carries concrete backend / platform refs:"

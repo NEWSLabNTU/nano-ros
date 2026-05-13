@@ -40,67 +40,53 @@ alloc = [
     "nros-serdes/alloc",
 ]
 
-# RMW backend (select one — every backend ships as a cffi shim that
-# installs a C vtable into `nros-rmw-cffi`'s runtime registry).
+# RMW vtable runtime registry. Every backend ships as a cffi shim
+# that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
-# Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce).
-# Consumer must call `nros_rmw_xrce_cffi::register()` before opening
-# the session.
-rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi", "nros-node/rmw-xrce-cffi"]
-# Phase 115.L.1 — dust-DDS via the C vtable.
-rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds", "nros-node/rmw-dds-cffi"]
-# Phase 115.L.2 — zenoh-pico via the C vtable.
-rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh", "nros-node/rmw-zenoh-cffi"]
+# Phase 104.A — per-backend feature flags retained as inert aliases
+# for source compatibility. They no longer pull a concrete backend
+# crate into `nros`'s Cargo graph; the caller adds the backend as
+# its own direct dep and calls `nros_rmw_<name>::register()`
+# (or relies on the backend's `#[ctor]`) before `Executor::open`.
+rmw-xrce-cffi = ["rmw-cffi", "nros-node/rmw-xrce-cffi"]
+rmw-dds-cffi = ["rmw-cffi", "nros-node/rmw-dds-cffi"]
+rmw-zenoh-cffi = ["rmw-cffi", "nros-node/rmw-zenoh-cffi"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
 
-# Platform (select one; forwarded to RMW shims which forward to -sys crates).
+# Platform (select one). Phase 104.A — formerly forwarded
+# `platform-*` features to the active RMW backend's matching feature
+# via `?/`. With the optional concrete-RMW deps removed from this
+# crate, those forwarding clauses are gone. Callers wire their own
+# `nros-rmw-<name>` dep with the matching `platform-*` feature.
 platform-posix = [
     "nros-platform/platform-posix",
     "nros-node/platform-posix",
-    "nros-rmw-dds?/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
-    "nros-rmw-xrce-cffi?/platform-posix",
     "platform-udp",
 ]
 platform-zephyr = [
     "nros-platform/platform-zephyr",
     "nros-node/platform-zephyr",
-    "nros-rmw-dds?/platform-zephyr",
-    "nros-rmw-zenoh?/platform-zephyr",
-    "nros-rmw-xrce-cffi?/platform-zephyr",
     "platform-udp",
 ]
 platform-bare-metal = [
     "nros-node/platform-bare-metal",
-    "nros-rmw-dds?/platform-bare-metal",
-    "nros-rmw-zenoh?/platform-bare-metal",
-    "nros-rmw-xrce-cffi?/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",
     "nros-node/platform-freertos",
-    "nros-rmw-dds?/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
-    "nros-rmw-xrce-cffi?/platform-freertos",
     "platform-udp",
 ]
 platform-nuttx = [
     "nros-platform/platform-nuttx",
     "nros-node/platform-nuttx",
-    "nros-rmw-dds?/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
-    "nros-rmw-xrce-cffi?/platform-nuttx",
     "platform-udp",
 ]
 platform-threadx = [
     "nros-platform/platform-threadx",
     "nros-node/platform-threadx",
-    "nros-rmw-dds?/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
-    "nros-rmw-xrce-cffi?/platform-threadx",
     "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
@@ -112,13 +98,16 @@ platform-orin-spe = [
     "nros-node/platform-orin-spe",
 ]
 
-# Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults).
-link-tcp = ["nros-rmw-zenoh?/link-tcp"]
-link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
-link-tls = ["nros-rmw-zenoh?/link-tls"]
+# Zenoh link-layer protocol features. Phase 104.A — formerly
+# forwarded to `nros-rmw-zenoh?/link-*`; now inert at the umbrella
+# level. Callers add the link feature to their direct
+# `nros-rmw-zenoh` dep instead.
+link-tcp = []
+link-udp-unicast = []
+link-tls = []
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme.
-link-custom = ["nros-rmw-zenoh?/link-custom"]
+link-custom = []
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
 platform-udp = ["nros-node/platform-udp"]
@@ -147,16 +136,14 @@ param-services = ["nros-node/param-services"]
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
-# Phase 101.4 — forward dust-dds's `portable-atomic` feature so
-# `Arc` / `Weak` route through `portable-atomic-util` on CAS-poor
-# RISC-V `imc` targets (ESP32-C3) where `target_has_atomic = "ptr"`
-# evaluates false. Off by default; ESP32-class board crates / examples
-# opt in.
-rmw-dds-portable-atomic = ["nros-rmw-dds?/portable-atomic"]
+# Phase 101.4 — formerly forwarded to `nros-rmw-dds?/portable-atomic`;
+# now inert at the umbrella level. ESP32-class board crates wire the
+# feature on their direct `nros-rmw-dds` dep instead.
+rmw-dds-portable-atomic = []
 
 # ROS edition feature flags.
-ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
-ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
+ros-humble = ["nros-node/ros-humble"]
+ros-iron = ["nros-node/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support).
@@ -165,11 +152,13 @@ nros-macros = { version = "0.1.0", path = "../nros-macros" }
 nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
-# Phase 115.K.2.5.1.0 — XRCE via the C backend.
-nros-rmw-xrce-cffi = { workspace = true, optional = true }
-# Phase 115.L.1 / L.2 — Rust-backend cffi shims.
-nros-rmw-dds = { workspace = true, optional = true }
-nros-rmw-zenoh = { workspace = true, optional = true }
+# Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
+# `nros-rmw-dds`, `nros-rmw-zenoh`) removed. The umbrella consumes
+# only the generic vtable shim (`nros-rmw-cffi`); callers depend on
+# the concrete backend crate directly and trigger registration via
+# the backend's `#[ctor]` (POSIX) or an explicit `register()` call
+# (bare-metal). See
+# `docs/roadmap/phase-104-multi-backend-bridges.md` Thread A.
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
