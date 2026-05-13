@@ -122,6 +122,33 @@ impl<
     const MAX_GOALS: usize,
 > ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
+    /// Phase 122.3.c.6.b — construct an `ActionServerCore` from the
+    /// 5 already-built transport channels. Caller (typically the C
+    /// API's `nros_action_server_init_polling`) owns wiring the
+    /// channels via the session's `create_*` methods.
+    pub fn from_channels(
+        send_goal_server: session::RmwServiceServer,
+        cancel_goal_server: session::RmwServiceServer,
+        get_result_server: session::RmwServiceServer,
+        feedback_publisher: session::RmwPublisher,
+        status_publisher: session::RmwPublisher,
+    ) -> Self {
+        Self {
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            status_publisher,
+            active_goals: heapless::Vec::new(),
+            completed_results: heapless::Vec::new(),
+            result_slab: [0u8; RESULT_BUF],
+            result_slab_used: 0,
+            goal_buffer: [0u8; GOAL_BUF],
+            feedback_buffer: [0u8; FEEDBACK_BUF],
+            cancel_buffer: [0u8; 256],
+        }
+    }
+
     /// Try to receive a goal request from the send_goal service.
     ///
     /// Returns the parsed GoalId, sequence number, and data length.

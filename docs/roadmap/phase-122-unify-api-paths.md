@@ -221,19 +221,33 @@ Sub-items:
       action server = 786 u64 (~6.3 KB), action client =
       2193 u64 (~17.5 KB — dominated by 3 × CffiServiceClient
       `pending_request[4096]`).
-    - [ ] **122.3.c.6.b — C entry points.** Add `_opaque`
-      field + `STATE_POLLING` variant to
-      `nros_action_server_t` / `nros_action_client_t`. Wire
-      `nros_action_server_init_polling` /
-      `nros_action_client_init_polling` + raw methods
-      (`try_recv_goal_request_raw`, `publish_feedback_raw`,
-      `complete_goal_raw`, `try_handle_cancel_raw`,
-      `try_handle_get_result_raw` for server;
-      `send_goal_raw`, `try_recv_goal_response_raw`,
-      `cancel_goal_raw`, `try_recv_cancel_response_raw`,
-      `get_result_raw`, `try_recv_result_raw`,
-      `try_recv_feedback_raw` for client). `*_fini` extends
-      with `drop_in_place` on the inline core.
+    - [x] **122.3.c.6.b — C entry points.** Landed:
+      `_opaque` field + `STATE_POLLING` variant on both
+      `nros_action_server_t` / `nros_action_client_t`. Action
+      server L1 surface:
+      `nros_action_server_init_polling`,
+      `_try_recv_goal_request_raw` (writes goal_id +
+      sequence_number out),
+      `_accept_goal_raw` / `_reject_goal_raw`,
+      `_publish_feedback_raw`, `_complete_goal_raw`,
+      `_try_handle_get_result_raw` (takes
+      `default_result_cdr`), `_active_goal_count_raw`.
+      Action client L1 surface:
+      `nros_action_client_init_polling`,
+      `_send_goal_raw` (returns generated UUID),
+      `_try_recv_goal_response_raw`,
+      `_send_get_result_request_raw`, `_try_recv_result_raw`,
+      `_send_cancel_request_raw`,
+      `_try_recv_feedback_raw` (writes goal_id out). `*_fini`
+      branches on state, drops the inline `ActionServerCore`
+      / `ActionClientCore` on POLLING. Bonus: new
+      `nros_node::ActionServerCore::from_channels`
+      constructor exposes the (otherwise crate-private)
+      ServerCore fields to the C shim. Cancel-handler entry
+      point is omitted from .c.6.b — `ActionServerCore::try_handle_cancel`
+      takes a per-call cancel-decision closure that doesn't
+      cross the C FFI cleanly; tracked as a follow-up
+      (.c.6.c).
 - [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.

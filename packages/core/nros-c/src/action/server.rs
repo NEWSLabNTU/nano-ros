@@ -32,10 +32,16 @@ const GOAL_REQUEST_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN 
 pub enum nros_action_server_state_t {
     /// Not initialized
     NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
-    /// Initialized and ready
+    /// L2 callback-mode: initialized via `nros_action_server_init`;
+    /// transport creation deferred to
+    /// `nros_executor_register_action_server`.
     NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
+    /// Phase 122.3.c.6.b — L1 polling-mode: `ActionServerCore` lives
+    /// inline in `_opaque`; caller drives via the
+    /// `nros_action_server_*_raw` family. No executor registration.
+    NROS_ACTION_SERVER_STATE_POLLING = 3,
 }
 
 /// Action server structure.
@@ -68,6 +74,10 @@ pub struct nros_action_server_t {
     /// Internal state — set by `nros_executor_register_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
+    /// Phase 122.3.c.6.b — inline opaque storage for the L1
+    /// polling-mode `ActionServerCore`. Zeroed in L2 mode; populated
+    /// by `nros_action_server_init_polling`.
+    pub _opaque: [u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
 }
 
 impl Default for nros_action_server_t {
@@ -86,6 +96,7 @@ impl Default for nros_action_server_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             _internal: ActionServerInternal::invalid_default(),
+            _opaque: [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
         }
     }
 }
@@ -617,6 +628,20 @@ fn goal_status_from_core(status: nros_node::GoalStatus) -> nros_goal_status_t {
     }
 }
 
+/// Phase 122.3.c.6.b — reverse of `goal_status_from_core`.
+fn c_status_to_rust(status: nros_goal_status_t) -> nros_node::GoalStatus {
+    use nros_node::GoalStatus;
+    match status {
+        nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN => GoalStatus::Unknown,
+        nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED => GoalStatus::Accepted,
+        nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING => GoalStatus::Executing,
+        nros_goal_status_t::NROS_GOAL_STATUS_CANCELING => GoalStatus::Canceling,
+        nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED => GoalStatus::Succeeded,
+        nros_goal_status_t::NROS_GOAL_STATUS_CANCELED => GoalStatus::Canceled,
+        nros_goal_status_t::NROS_GOAL_STATUS_ABORTED => GoalStatus::Aborted,
+    }
+}
+
 /// Finalize an action server.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server_t) -> nros_ret_t {
@@ -624,15 +649,30 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
 
     let server = &mut *server;
 
-    validate_state!(
-        server,
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
-    );
+    match server.state {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
+            // L2: action server lives in executor arena (if registered) —
+            // reset metadata only.
+        }
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+            // L1: drop the inline ActionServerCore so its 5 channel
+            // handles' Drops run.
+            #[cfg(feature = "rmw-cffi")]
+            {
+                core::ptr::drop_in_place(server._opaque.as_mut_ptr()
+                    as *mut nros_node::ActionServerCore<
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        4,
+                    >);
+                server._opaque = [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S];
+            }
+        }
+        _ => return NROS_RET_NOT_INIT,
+    }
 
-    // Reset the internal back to its sentinel (no Drop impl needed —
-    // the arena owns the actual action server).
     server._internal = ActionServerInternal::invalid_default();
-
     server.goal_callback = None;
     server.cancel_callback = None;
     server.accepted_callback = None;
@@ -641,6 +681,442 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_SHUTDOWN;
 
     NROS_RET_OK
+}
+
+// ============================================================================
+// Phase 122.3.c.6.b — Layer-1 primitive entry points (caller polls)
+// ============================================================================
+
+/// Phase 122.3.c.6.b — initialize an L1 polling-mode action server.
+///
+/// Creates the 5 transport channels immediately and stores the
+/// `ActionServerCore` inline in `_opaque`. The caller drives the
+/// goal lifecycle via:
+/// * `nros_action_server_try_recv_goal_request_raw` — poll for new
+///   goal requests (returns goal_id + sequence + payload).
+/// * `nros_action_server_accept_goal_raw` / `_reject_goal_raw` —
+///   reply to the send_goal RPC.
+/// * `nros_action_server_publish_feedback_raw` — push feedback.
+/// * `nros_action_server_complete_goal_raw` — terminate (SUCCEEDED /
+///   ABORTED / CANCELED).
+/// * `nros_action_server_try_handle_cancel_raw` /
+///   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
+///
+/// # Safety
+/// All pointers must be valid; `action_name` must be a valid
+/// null-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_init_polling(
+    server: *mut nros_action_server_t,
+    node: *const nros_node_t,
+    type_info: *const super::common::nros_action_type_t,
+    action_name: *const core::ffi::c_char,
+) -> nros_ret_t {
+    validate_not_null!(server, node, type_info, action_name);
+
+    let server_mut = &mut *server;
+    let node_ref = &*node;
+    let type_info_ref = &*type_info;
+
+    validate_state!(
+        server_mut,
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    server_mut.action_name_len =
+        crate::util::copy_cstr_into(action_name, &mut server_mut.action_name);
+    if server_mut.action_name_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    server_mut.type_name_len =
+        crate::util::copy_cstr_into(type_info_ref.type_name, &mut server_mut.type_name);
+    server_mut.type_hash_len =
+        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut server_mut.type_hash);
+
+    server_mut.node = node;
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let support_mut = match node_ref.get_support_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+        validate_state!(
+            support_mut,
+            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        );
+        let domain_id = support_mut.domain_id as u32;
+        let session = match support_mut.get_session_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let action_str =
+            core::str::from_utf8_unchecked(&server_mut.action_name[..server_mut.action_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&server_mut.type_name[..server_mut.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&server_mut.type_hash[..server_mut.type_hash_len]);
+        let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+        let namespace_str =
+            core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+
+        // Inline the 5-channel build (mirror of
+        // `Node::create_action_server_raw_sized` but operating on
+        // a raw `&mut Session` to avoid creating a temporary
+        // `Node`).
+        use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+        let action_info =
+            ActionInfo::new(action_str, type_str, type_hash_str).with_domain(domain_id);
+
+        let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = ServiceInfo::new(&send_goal_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let send_goal_server = match session.create_service_server(&send_goal_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash_str,
+        )
+        .with_domain(domain_id)
+        .with_node_name(node_name_str)
+        .with_namespace(namespace_str);
+        let cancel_goal_server = match session.create_service_server(&cancel_goal_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
+        let get_result_info = ServiceInfo::new(&get_result_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let get_result_server = match session.create_service_server(&get_result_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let feedback_publisher =
+            match session.create_publisher(&feedback_topic, QosSettings::BEST_EFFORT) {
+                Ok(h) => h,
+                Err(_) => return NROS_RET_ERROR,
+            };
+
+        let status_keyexpr: nros_core::heapless::String<256> = action_info.status_key();
+        let status_topic = TopicInfo::new(
+            &status_keyexpr,
+            "action_msgs::msg::dds_::GoalStatusArray_",
+            type_hash_str,
+        )
+        .with_domain(domain_id)
+        .with_node_name(node_name_str)
+        .with_namespace(namespace_str);
+        let status_publisher =
+            match session.create_publisher(&status_topic, QosSettings::BEST_EFFORT) {
+                Ok(h) => h,
+                Err(_) => return NROS_RET_ERROR,
+            };
+
+        type Core = nros_node::ActionServerCore<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            4,
+        >;
+        let core = Core::from_channels(
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            status_publisher,
+        );
+        core::ptr::write(server_mut._opaque.as_mut_ptr() as *mut Core, core);
+    }
+
+    server_mut.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING;
+    NROS_RET_OK
+}
+
+#[cfg(feature = "rmw-cffi")]
+type PollingServerCore = nros_node::ActionServerCore<
+    { crate::config::MESSAGE_BUFFER_SIZE },
+    { crate::config::MESSAGE_BUFFER_SIZE },
+    { crate::config::MESSAGE_BUFFER_SIZE },
+    4,
+>;
+
+#[cfg(feature = "rmw-cffi")]
+#[inline]
+unsafe fn polling_server_core(
+    server: *mut nros_action_server_t,
+) -> Option<&'static mut PollingServerCore> {
+    if server.is_null() {
+        return None;
+    }
+    let server_mut = &mut *server;
+    if server_mut.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING {
+        return None;
+    }
+    Some(&mut *(server_mut._opaque.as_mut_ptr() as *mut PollingServerCore))
+}
+
+/// Phase 122.3.c.6.b — L1 polling: try to receive a goal request.
+///
+/// On success writes the goal payload bytes (already stripped of CDR
+/// framing) into `buf`, returns the number of bytes copied (>= 0),
+/// and fills `goal_id_out` (16 bytes) + `sequence_number_out`. Use
+/// the sequence number with `nros_action_server_accept_goal_raw` /
+/// `_reject_goal_raw`.
+///
+/// Returns `0` when no request is pending; negative `nros_ret_t` on
+/// error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_try_recv_goal_request_raw(
+    server: *mut nros_action_server_t,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+    sequence_number_out: *mut i64,
+) -> i32 {
+    if server.is_null()
+        || (buf.is_null() && buf_len != 0)
+        || goal_id_out.is_null()
+        || sequence_number_out.is_null()
+    {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_goal_request() {
+            Ok(Some(req)) => {
+                // Goal payload sits in core.goal_buffer() at
+                // [GOAL_REQUEST_FRAMING_LEN..GOAL_REQUEST_FRAMING_LEN+req.data_len].
+                let goal_buf = core.goal_buffer();
+                let payload_offset = GOAL_REQUEST_FRAMING_LEN;
+                if payload_offset + req.data_len > goal_buf.len() {
+                    return NROS_RET_ERROR;
+                }
+                let copy_len = req.data_len.min(buf_len);
+                core::ptr::copy_nonoverlapping(
+                    goal_buf.as_ptr().add(payload_offset),
+                    buf,
+                    copy_len,
+                );
+                (*goal_id_out).copy_from_slice(&req.goal_id.uuid);
+                *sequence_number_out = req.sequence_number;
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len, goal_id_out, sequence_number_out);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: accept a goal received via
+/// `try_recv_goal_request_raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_accept_goal_raw(
+    server: *mut nros_action_server_t,
+    goal_id: *const [u8; 16],
+    sequence_number: i64,
+) -> nros_ret_t {
+    if server.is_null() || goal_id.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let id = nros::GoalId { uuid: *goal_id };
+        core.accept_goal(id, sequence_number)
+            .map(|_| NROS_RET_OK)
+            .unwrap_or(NROS_RET_ERROR)
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (goal_id, sequence_number);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: reject a goal received via
+/// `try_recv_goal_request_raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_reject_goal_raw(
+    server: *mut nros_action_server_t,
+    sequence_number: i64,
+) -> nros_ret_t {
+    if server.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        core.reject_goal(sequence_number)
+            .map(|_| NROS_RET_OK)
+            .unwrap_or(NROS_RET_ERROR)
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = sequence_number;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: publish a feedback message.
+///
+/// `feedback_cdr` is the CDR-encoded `<Action>_Feedback_` payload
+/// (without the goal_id prefix — the core wraps it).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_publish_feedback_raw(
+    server: *mut nros_action_server_t,
+    goal_id: *const [u8; 16],
+    feedback_cdr: *const u8,
+    feedback_len: usize,
+) -> nros_ret_t {
+    if server.is_null() || goal_id.is_null() || (feedback_cdr.is_null() && feedback_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let id = nros::GoalId { uuid: *goal_id };
+        let slice = core::slice::from_raw_parts(feedback_cdr, feedback_len);
+        core.publish_feedback_raw(&id, slice)
+            .map(|_| NROS_RET_OK)
+            .unwrap_or(NROS_RET_ERROR)
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (goal_id, feedback_cdr, feedback_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: mark a goal terminal.
+///
+/// `status` must be one of SUCCEEDED / ABORTED / CANCELED.
+/// `result_cdr` is the CDR-encoded `<Action>_Result_` payload (the
+/// core handles the status wrapper before storing in the slab).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_complete_goal_raw(
+    server: *mut nros_action_server_t,
+    goal_id: *const [u8; 16],
+    status: nros_goal_status_t,
+    result_cdr: *const u8,
+    result_len: usize,
+) -> nros_ret_t {
+    if server.is_null() || goal_id.is_null() || (result_cdr.is_null() && result_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let id = nros::GoalId { uuid: *goal_id };
+        let rust_status = c_status_to_rust(status);
+        let slice = core::slice::from_raw_parts(result_cdr, result_len);
+        core.complete_goal_raw(&id, rust_status, slice);
+        NROS_RET_OK
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (goal_id, status, result_cdr, result_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: serve a pending get_result query.
+///
+/// `default_result_cdr` is the default serialized result (without
+/// status byte / CDR header) returned to the client when no
+/// `complete_goal_raw` has been called for the queried goal yet.
+///
+/// Returns `0` when no query is pending; `1` when one was served;
+/// negative `nros_ret_t` on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_try_handle_get_result_raw(
+    server: *mut nros_action_server_t,
+    default_result_cdr: *const u8,
+    default_result_len: usize,
+) -> i32 {
+    if server.is_null() || (default_result_cdr.is_null() && default_result_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let slice = core::slice::from_raw_parts(default_result_cdr, default_result_len);
+        match core.try_handle_get_result_raw(slice) {
+            Ok(Some(_)) => 1,
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (default_result_cdr, default_result_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: get the number of active goals.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_active_goal_count_raw(
+    server: *mut nros_action_server_t,
+) -> i32 {
+    if server.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        core.active_goal_count() as i32
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        NROS_RET_NOT_INIT
+    }
 }
 
 // ============================================================================

@@ -79,10 +79,16 @@ impl Default for ActionClientInternal {
 pub enum nros_action_client_state_t {
     /// Not initialized
     NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
-    /// Initialized and ready
+    /// L2 callback-mode: initialized via `nros_action_client_init`;
+    /// transport creation deferred to
+    /// `nros_executor_register_action_client`.
     NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
+    /// Phase 122.3.c.6.b — L1 polling-mode: `ActionClientCore` lives
+    /// inline in `_opaque`; caller drives via the
+    /// `nros_action_client_*_raw` family. No executor registration.
+    NROS_ACTION_CLIENT_STATE_POLLING = 3,
 }
 
 /// Action client structure.
@@ -115,6 +121,10 @@ pub struct nros_action_client_t {
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
+    /// Phase 122.3.c.6.b — inline opaque storage for the L1
+    /// polling-mode `ActionClientCore`. Zeroed in L2 mode; populated
+    /// by `nros_action_client_init_polling`.
+    pub _opaque: [u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
 }
 
 impl Default for nros_action_client_t {
@@ -133,6 +143,7 @@ impl Default for nros_action_client_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             _internal: ActionClientInternal::new(),
+            _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
         }
     }
 }
@@ -864,14 +875,28 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
 
     let client = &mut *client;
 
-    validate_state!(
-        client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
-    );
+    match client.state {
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED => {
+            // L2: client lives in executor arena (if registered) —
+            // reset metadata only.
+        }
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING => {
+            // L1: drop the inline ActionClientCore so its channel
+            // handles' Drops run.
+            #[cfg(feature = "rmw-cffi")]
+            {
+                core::ptr::drop_in_place(client._opaque.as_mut_ptr()
+                    as *mut nros_node::ActionClientCore<
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                    >);
+                client._opaque = [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S];
+            }
+        }
+        _ => return NROS_RET_NOT_INIT,
+    }
 
-    // Reset the inline ActionClientInternal. The ActionClientCore
-    // (transport handles) lives in the executor's arena and is freed when
-    // the executor is destroyed.
     client._internal = ActionClientInternal::new();
     client.feedback_callback = None;
     client.result_callback = None;
@@ -880,6 +905,377 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
+}
+
+// ============================================================================
+// Phase 122.3.c.6.b — Layer-1 primitive entry points (caller polls)
+// ============================================================================
+
+/// Phase 122.3.c.6.b — initialize an L1 polling-mode action client.
+///
+/// Creates the 4 transport channels (3 service clients + feedback
+/// subscriber) immediately and stores the `ActionClientCore` inline
+/// in `_opaque`. The caller drives the goal lifecycle via:
+/// * `nros_action_client_send_goal_raw` — start a new goal; returns
+///   the generated 16-byte UUID.
+/// * `nros_action_client_try_recv_goal_response_raw` — poll for the
+///   send_goal RPC reply (accepted / rejected).
+/// * `nros_action_client_send_get_result_request_raw` +
+///   `_try_recv_result_raw` — fetch the terminal result.
+/// * `nros_action_client_send_cancel_request_raw` +
+///   `_try_recv_cancel_response_raw` — cancel a goal.
+/// * `nros_action_client_try_recv_feedback_raw` — drain feedback.
+///
+/// # Safety
+/// All pointers must be valid; `action_name` must be a valid
+/// null-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_init_polling(
+    client: *mut nros_action_client_t,
+    node: *const nros_node_t,
+    type_info: *const super::common::nros_action_type_t,
+    action_name: *const core::ffi::c_char,
+) -> nros_ret_t {
+    validate_not_null!(client, node, type_info, action_name);
+
+    let client_mut = &mut *client;
+    let node_ref = &*node;
+    let type_info_ref = &*type_info;
+
+    validate_state!(
+        client_mut,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    client_mut.action_name_len =
+        crate::util::copy_cstr_into(action_name, &mut client_mut.action_name);
+    if client_mut.action_name_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    client_mut.type_name_len =
+        crate::util::copy_cstr_into(type_info_ref.type_name, &mut client_mut.type_name);
+    client_mut.type_hash_len =
+        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut client_mut.type_hash);
+
+    client_mut.node = node;
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let support_mut = match node_ref.get_support_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+        validate_state!(
+            support_mut,
+            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        );
+        let domain_id = support_mut.domain_id as u32;
+        let session = match support_mut.get_session_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let action_str =
+            core::str::from_utf8_unchecked(&client_mut.action_name[..client_mut.action_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&client_mut.type_name[..client_mut.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client_mut.type_hash[..client_mut.type_hash_len]);
+        let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+        let namespace_str =
+            core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+
+        use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+        let action_info =
+            ActionInfo::new(action_str, type_str, type_hash_str).with_domain(domain_id);
+
+        let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = ServiceInfo::new(&send_goal_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let send_goal_client = match session.create_service_client(&send_goal_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash_str,
+        )
+        .with_domain(domain_id)
+        .with_node_name(node_name_str)
+        .with_namespace(namespace_str);
+        let cancel_goal_client = match session.create_service_client(&cancel_goal_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
+        let get_result_info = ServiceInfo::new(&get_result_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let get_result_client = match session.create_service_client(&get_result_info) {
+            Ok(h) => h,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+        let feedback_subscriber =
+            match session.create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT) {
+                Ok(h) => h,
+                Err(_) => return NROS_RET_ERROR,
+            };
+
+        type Core = nros_node::ActionClientCore<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+        >;
+        let core = Core::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+        );
+        core::ptr::write(client_mut._opaque.as_mut_ptr() as *mut Core, core);
+    }
+
+    client_mut.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING;
+    NROS_RET_OK
+}
+
+#[cfg(feature = "rmw-cffi")]
+type PollingClientCore = nros_node::ActionClientCore<
+    { crate::config::MESSAGE_BUFFER_SIZE },
+    { crate::config::MESSAGE_BUFFER_SIZE },
+    { crate::config::MESSAGE_BUFFER_SIZE },
+>;
+
+#[cfg(feature = "rmw-cffi")]
+#[inline]
+unsafe fn polling_client_core(
+    client: *mut nros_action_client_t,
+) -> Option<&'static mut PollingClientCore> {
+    if client.is_null() {
+        return None;
+    }
+    let client_mut = &mut *client;
+    if client_mut.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING {
+        return None;
+    }
+    Some(&mut *(client_mut._opaque.as_mut_ptr() as *mut PollingClientCore))
+}
+
+/// Phase 122.3.c.6.b — L1 polling: send a goal. Writes the generated
+/// 16-byte UUID into `goal_id_out`. Poll for the accept/reject reply
+/// via `nros_action_client_try_recv_goal_response_raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_send_goal_raw(
+    client: *mut nros_action_client_t,
+    goal_cdr: *const u8,
+    goal_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> nros_ret_t {
+    if client.is_null() || goal_id_out.is_null() || (goal_cdr.is_null() && goal_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let slice = core::slice::from_raw_parts(goal_cdr, goal_len);
+        match core.send_goal_raw(slice) {
+            Ok(id) => {
+                (*goal_id_out).copy_from_slice(&id.uuid);
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (goal_cdr, goal_len, goal_id_out);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: try to receive a send_goal reply
+/// (the accept/reject response). Returns `0` when no reply yet, `>0`
+/// bytes when one was copied into `buf`, negative on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_try_recv_goal_response_raw(
+    client: *mut nros_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_send_goal_reply() {
+            Ok(Some(len)) => {
+                let src = core.result_buffer_ref();
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: send a get_result request for the
+/// given goal. Reply lands via `_try_recv_result_raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_send_get_result_request_raw(
+    client: *mut nros_action_client_t,
+    goal_id: *const [u8; 16],
+) -> nros_ret_t {
+    if client.is_null() || goal_id.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let id = nros::GoalId { uuid: *goal_id };
+        match core.send_get_result_request(&id) {
+            Ok(_) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = goal_id;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: try to receive a get_result
+/// reply. Returns `0` when no reply yet, `>0` bytes copied, negative
+/// on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_try_recv_result_raw(
+    client: *mut nros_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_get_result_reply() {
+            Ok(Some(len)) => {
+                let src = core.result_buffer_ref();
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: send a cancel request.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_send_cancel_request_raw(
+    client: *mut nros_action_client_t,
+    goal_id: *const [u8; 16],
+) -> nros_ret_t {
+    if client.is_null() || goal_id.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let id = nros::GoalId { uuid: *goal_id };
+        match core.send_cancel_request(&id) {
+            Ok(_) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = goal_id;
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.b — L1 polling: try to receive feedback for any
+/// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
+/// `goal_id_out` filled), negative on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_try_recv_feedback_raw(
+    client: *mut nros_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_client_core(client) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_feedback_raw() {
+            Ok(Some((id, len))) => {
+                let src = core.feedback_buffer_ref();
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len, goal_id_out);
+        NROS_RET_NOT_INIT
+    }
 }
 
 // ============================================================================
