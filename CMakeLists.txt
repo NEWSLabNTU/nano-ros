@@ -41,6 +41,12 @@ set(NANO_ROS_PLATFORM "posix" CACHE STRING
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS posix freertos_armcm3 nuttx_armv7a)
 
 # ---------------------------------------------------------------------------
+# Phase 123.A.5 — auto-run tools/setup.sh if the user invoked cmake
+# without sourcing setup first. Opt out via -DNANO_ROS_SKIP_BOOTSTRAP=ON.
+# ---------------------------------------------------------------------------
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap.cmake")
+
+# ---------------------------------------------------------------------------
 # Corrosion — integrates Rust/Cargo into CMake
 # ---------------------------------------------------------------------------
 include(FetchContent)

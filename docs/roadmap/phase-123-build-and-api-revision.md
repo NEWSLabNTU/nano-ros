@@ -368,11 +368,26 @@ arrays).
   `tools/setup.sh --target=<target>`; otherwise runs the
   existing contributor-everything orchestrator. Same recipe
   name handles both flows.
-- [ ] **123.A.5 — `cmake/bootstrap.cmake`.** CMake auto-runs
-  `tools/setup.sh` when invoked without it first. Idempotent
-  (no-op if submodules already populated). Mostly a usability
-  win for users who jump straight to `cmake -B build` without
-  reading the README.
+- [x] **123.A.5 — `cmake/bootstrap.cmake`.** Done.
+  New `cmake/bootstrap.cmake` included from the root
+  `CMakeLists.txt`. On `cmake -B build` it runs
+  `git submodule status`; if any submodule is uninitialised
+  (lines starting with `-`), shells out to
+  `tools/setup.sh --target=<plat-family>-<rmw>
+  --skip-rustup --skip-apt-check`. Maps the CMake
+  `NANO_ROS_PLATFORM` sub-arch suffix
+  (`freertos_armcm3`, `threadx_linux`, `nuttx_armv7a`) to the
+  setup.sh family tag (`freertos`, `threadx`, `nuttx`) before
+  invocation.
+  Idempotent: no-op when submodules already populated
+  (verified via `git submodule status` output scan).
+  Opt out with `-DNANO_ROS_SKIP_BOOTSTRAP=ON` for CI / container
+  builds that manage submodules separately. Guards against
+  double-invocation via an internal cache var so
+  `add_subdirectory(nano-ros)` from a parent project doesn't
+  re-trigger. Returns early if not run from a checked-out
+  nano-ros source tree (e.g., `find_package(NanoRos CONFIG)`
+  from an install).
 - [x] **123.A.6 — `nano_ros_link_platform` / `_link_rmw`
   CMake functions.** Landed. New module
   `packages/core/nros-c/cmake/NanoRosLink.cmake` exposes:
