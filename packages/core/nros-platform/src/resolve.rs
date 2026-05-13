@@ -5,23 +5,28 @@
 //! build), the type is not defined — downstream crates that need it must
 //! enable a platform feature.
 
+// Phase 121.7.b — uniform CffiPlatform routing. Every platform
+// feature resolves `ConcretePlatform` to `CffiPlatform`; the
+// platform-* feature pulls the matching crate's `cffi-export` to
+// emit the canonical C symbols. RMW + core libs never see the
+// kernel-specific platform type directly.
 #[cfg(feature = "platform-posix")]
-pub type ConcretePlatform = nros_platform_posix::PosixPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-cffi")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-mps2-an385")]
-pub type ConcretePlatform = nros_platform_mps2_an385::Mps2An385Platform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-stm32f4")]
-pub type ConcretePlatform = nros_platform_stm32f4::Stm32f4Platform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-esp32")]
-pub type ConcretePlatform = nros_platform_esp32::Esp32Platform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-esp32-qemu")]
-pub type ConcretePlatform = nros_platform_esp32_qemu::Esp32QemuPlatform;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 // Phase 121.3.deprecate-rust-migrate: the four deprecated RTOS
 // platforms resolve to `CffiPlatform` and reach their kernel impl
@@ -45,7 +50,7 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-orin-spe")]
-pub type ConcretePlatform = nros_platform_orin_spe::OrinSpe;
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 // ============================================================================
 // Phase 71.22 — opaque-buffer sizes for `_z_sys_net_socket_t` /

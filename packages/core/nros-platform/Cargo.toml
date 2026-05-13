@@ -16,13 +16,22 @@ categories = ["embedded", "no-std", "os"]
 default = ["std"]
 std = []
 
-# Platform backends (select one)
-platform-posix = ["dep:nros-platform-posix"]
-# `platform-cffi` selects `CffiPlatform` as the `ConcretePlatform` —
-# every Rust trait call dispatches through the canonical
-# `nros_platform_*` C symbols, which something else in the binary
-# must supply (a C platform port, or a separately-built Rust platform
-# crate with `cffi-export` on).
+# Platform backends (select one).
+#
+# Phase 121.7.b — every `platform-*` feature resolves
+# `ConcretePlatform` to `CffiPlatform`; the feature pulls
+# `nros-platform-cffi` (for the dispatch types) and activates the
+# matching provider crate's `cffi-export` (for the symbol
+# emission). RMW + core code see only CffiPlatform.
+platform-posix = [
+    "dep:nros-platform-posix",
+    "dep:nros-platform-cffi",
+    "nros-platform-posix/cffi-export",
+]
+# `platform-cffi` selects `CffiPlatform` without pinning a Rust
+# kernel crate. The binary's C ABI symbols must come from
+# somewhere else — a hand-written C port (`nros-platform-<rtos>-c`)
+# or an external static lib.
 platform-cffi = ["dep:nros-platform-cffi"]
 # Phase 121.2 — `cffi-export` is *orthogonal* to platform selection:
 # turn it on alongside any `platform-<rtos>` feature to publish the
@@ -41,10 +50,26 @@ cffi-export = [
     "nros-platform-esp32-qemu?/cffi-export",
     "nros-platform-orin-spe?/cffi-export",
 ]
-platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
-platform-stm32f4 = ["dep:nros-platform-stm32f4"]
-platform-esp32 = ["dep:nros-platform-esp32"]
-platform-esp32-qemu = ["dep:nros-platform-esp32-qemu"]
+platform-mps2-an385 = [
+    "dep:nros-platform-mps2-an385",
+    "dep:nros-platform-cffi",
+    "nros-platform-mps2-an385/cffi-export",
+]
+platform-stm32f4 = [
+    "dep:nros-platform-stm32f4",
+    "dep:nros-platform-cffi",
+    "nros-platform-stm32f4/cffi-export",
+]
+platform-esp32 = [
+    "dep:nros-platform-esp32",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32/cffi-export",
+]
+platform-esp32-qemu = [
+    "dep:nros-platform-esp32-qemu",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32-qemu/cffi-export",
+]
 # Phase 121.3.deprecate-rust-migrate (in progress): the four RTOS
 # platform features now resolve to `CffiPlatform` and rely on the
 # deprecated Rust kernel crate's `cffi-export` feature to supply the
@@ -78,7 +103,11 @@ platform-zephyr = [
 # `nros-platform-orin-spe?/{fsp,unix-mock}`; defaults to no backend
 # (a build-time error on first use) so accidentally enabling
 # `platform-orin-spe` without picking one fails fast.
-platform-orin-spe = ["dep:nros-platform-orin-spe"]
+platform-orin-spe = [
+    "dep:nros-platform-orin-spe",
+    "dep:nros-platform-cffi",
+    "nros-platform-orin-spe/cffi-export",
+]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []

@@ -278,6 +278,44 @@ Per-port acceptance: matches the Rust crate's net+timer surface byte-for-byte (s
 
 ---
 
+### 121.7 — Consumer migration to uniform CffiPlatform routing
+
+**Goal.** Sit a Rust trait layer above + below the canonical C ABI so RMW + core libraries never see kernel-specific platform types. Above the ABI: `CffiPlatform` impls every `nros_platform_api::Platform*` trait by calling through `extern "C"` declarations. Below the ABI: any provider (Rust crate via `nros_platform_export!*` macro, or hand-written C) supplies the matching `#[no_mangle]` symbols. RMW and core code dispatch through `<ConcretePlatform as PlatformX>::method()` where `ConcretePlatform` is **always** `CffiPlatform`. Switching kernels becomes a Cargo-feature flip on the symbol provider; no consumer code touches the platform impl directly.
+
+Status as of `0e963064`: routing is in place for the four deprecated kernels (FreeRTOS / NuttX / ThreadX / Zephyr) but not for POSIX or the five embedded crates (mps2-an385 / stm32f4 / esp32 / esp32-qemu / orin-spe). RMW crates that bypass the trait surface with `ConcretePlatform::method()` inherent syntax still pin the deprecated Rust crate's concrete type.
+
+Work items:
+
+- [x] **121.7.a** — `ConcretePlatform` resolves to `CffiPlatform` for the four deprecated kernels; `CffiPlatform` impls all extended-surface traits (`PlatformTcp / Udp / UdpMulticast / SocketHelpers / NetworkPoll`). Landed in commit `0e963064`.
+- [ ] **121.7.b** — Extend the routing to POSIX + the five embedded crates so `ConcretePlatform = CffiPlatform` uniformly. Each platform feature flips to pull `nros-platform-cffi` + activate the per-platform `cffi-export` macro emission. POSIX path gains one `extern "C"` hop per call — measurable but small. Bare-metal embedded crates already have `cffi-export`; just need resolve.rs + feature wiring.
+- [ ] **121.7.c** — Audit `ConcretePlatform::*` inherent-method call sites and migrate to trait-qualified syntax. Today's grep finds 8 in `nros-rmw-xrce/src/platform_udp.rs` (out-of-workspace) — replace `ConcretePlatform::udp_open(...)` with `<ConcretePlatform as PlatformUdp>::open(...)` (note: trait method drops the `udp_` prefix). Likely a handful of other call sites once other crates are inspected. Out-of-workspace crates may not build until this lands.
+- [ ] **121.7.d** — Board crates (`nros-board-{mps2-an385-freertos,threadx-linux,threadx-qemu-riscv64,fvp-aemv8r-smp,s32z270dc2-r52}`) currently import `nros_platform_<rtos>::<KernelPlatform>` directly for board-specific init. Switch those imports to `CffiPlatform` where possible. Where the board really does need kernel-specific behavior (e.g. `nros-platform-freertos`'s lwIP helpers), keep the import but mark the board as not fully migrated.
+- [ ] **121.7.e** — `nros-platform-orin-spe` delegates every trait impl to `FreeRtosPlatform` and is itself an in-workspace platform crate, not a board crate. Decide: keep it as a thin Rust proxy (current state) or replace with a board-level CMake-link of `libnros_platform_freertos.a`. The orin-spe / freertos `cffi-export` collision (documented in Notes) becomes moot once routing is uniform: only one platform feature is active per build anyway.
+- [ ] **121.7.f** — Pre-existing `zpico-serial` workspace-root bug blocks `cargo metadata` on every example tree that pulls a board crate which pulls `zpico-serial`. Root cause: `zpico-serial/Cargo.toml`'s `authors.workspace = true` can't reach the workspace root when invoked from an external workspace context (the example's own Cargo dir). Three fixes possible: (1) replace `authors.workspace = true` with a literal `authors = [...]`; (2) add `[workspace]` section to the example's Cargo.toml; (3) move the example's workspace root higher. NOT a phase-121 regression but blocks the `just test` E2E on every cross-cutting suite (49 of 68 failures trace here). Fixing it unlocks meaningful E2E coverage of the migration.
+- [ ] **121.7.g** — `zpico-sys/build.rs` and `xrce-sys/Cargo.toml` reference platform crate names (`nros-platform-freertos`, etc.) for feature pass-through. After the uniform routing lands, those feature passes either (a) keep targeting the deprecated Rust crate for `cffi-export` emission, or (b) target `nros-platform-cffi` directly. Audit for which model each `sys` crate prefers; both work because `cffi-export` is transitively activated by `platform-<rtos>`.
+- [ ] **121.7.h** — Examples (`examples/qemu-arm-freertos/rust/dds/*`, `examples/zephyr/rust/dds/*`) keep working as-is because they consume `ConcretePlatform` through `nros-platform`, which already routes correctly post-121.7.a. Direct platform-type imports in those examples (any?) still need a sweep — file count is small (~5).
+- [ ] **121.7.i** — `nros-rmw-xrce` is out-of-workspace. After 121.7.c, decide whether to (a) bring it into the workspace + run its tests under `just test`, (b) keep it standalone and add a `just xrce check-rust-rmw` recipe, or (c) declare it legacy and freeze. Without one of those, the inherent-method audit is invisible to CI.
+
+**Files:**
+- `packages/core/nros-platform/src/resolve.rs`
+- `packages/core/nros-platform/Cargo.toml`
+- `packages/core/nros-platform-cffi/src/lib.rs` (any missing trait impls discovered during 121.7.b)
+- `packages/xrce/nros-rmw-xrce/src/platform_udp.rs` (inherent → trait-qualified)
+- `packages/zpico/zpico-serial/Cargo.toml` (workspace-root fix)
+- Board crates' `src/{lib,node}.rs`
+- Examples' `src/lib.rs` where direct platform imports show up
+
+**Acceptance:**
+1. `cargo check --workspace --all-targets` passes.
+2. `cargo check -p nros-rmw-xrce` (out-of-workspace) passes after 121.7.c lands.
+3. `just test` failure count drops below 10 (the residual being honest fixture-availability fails, not metadata-load fails).
+4. `<ConcretePlatform as PlatformX>::method()` is the only dispatch syntax in RMW + core code; no `ConcretePlatform::method()` inherent calls remain.
+5. RMW crates compile under each `platform-*` feature with **only** `dep:nros-platform-cffi + nros-platform-<provider>?/cffi-export` in their dep graph for the platform-resolution path. The platform-<rtos> Rust crate becomes a pure symbol provider, removable when its consumers all migrate.
+
+Closing 121.7 unblocks **121.3.deprecate-rust-remove** — the actual deletion of the four deprecated Rust kernel crates.
+
+---
+
 ### 121.5 — Docs + roadmap hygiene
 
 - [ ] **121.5.a** — Add a `docs/internals/platform-c-abi.md` page explaining the canonical ABI, the macro-export pattern, the rationale for free symbols vs vtable, and how to write a new port (both Rust-via-macro and pure C). Cross-link from `docs/design/portable-rmw-platform-interface.md`.
