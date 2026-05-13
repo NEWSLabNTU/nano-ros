@@ -28,10 +28,26 @@ pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublishe
 #[cfg(feature = "rmw-cffi")]
 pub const SUBSCRIPTION_OPAQUE_U64S: usize =
     u64s_for::<nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>>();
-// Phase 82: service client opaque storage no longer holds the RMW
-// transport handle (it lives in the executor's arena). Use
-// SERVICE_CLIENT_INTERNAL_OPAQUE_U64S (from build.rs) for the C struct
-// instead.
+// Phase 122.3.c — L1 polling-mode service storage. Holds the
+// `RawServiceServer<REQ, RESP>` / `RawServiceClient<REQ, REPLY>`
+// Rust value inline in the corresponding C struct's `_opaque`.
+// L2 (callback + executor arena) keeps the existing
+// `ServiceServerInternal` shim and entity lives in the executor
+// arena — those paths are unaffected.
+#[cfg(feature = "rmw-cffi")]
+pub const SERVICE_SERVER_OPAQUE_U64S: usize = u64s_for::<
+    nros_node::RawServiceServer<
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+    >,
+>();
+#[cfg(feature = "rmw-cffi")]
+pub const SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<
+    nros_node::RawServiceClient<
+        { crate::config::MESSAGE_BUFFER_SIZE },
+        { crate::config::MESSAGE_BUFFER_SIZE },
+    >,
+>();
 
 // Placeholders for no-RMW workspace builds.
 #[cfg(not(feature = "rmw-cffi"))]
@@ -40,6 +56,10 @@ pub const SESSION_OPAQUE_U64S: usize = 1;
 pub const PUBLISHER_OPAQUE_U64S: usize = 1;
 #[cfg(not(feature = "rmw-cffi"))]
 pub const SUBSCRIPTION_OPAQUE_U64S: usize = 1;
+#[cfg(not(feature = "rmw-cffi"))]
+pub const SERVICE_SERVER_OPAQUE_U64S: usize = 1;
+#[cfg(not(feature = "rmw-cffi"))]
+pub const SERVICE_CLIENT_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
 

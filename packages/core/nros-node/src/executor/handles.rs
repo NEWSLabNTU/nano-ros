@@ -1404,6 +1404,120 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     }
 }
 
+// ============================================================================
+// RawServiceServer / RawServiceClient (Phase 122.3.c — L1 polling, typeless)
+// ============================================================================
+
+/// Typeless service-server handle. L1 counterpart of
+/// [`EmbeddedServiceServer`] for callers that own their own scheduler
+/// (RTIC, embassy, FreeRTOS-task-per-entity) and the C / C++ FFI
+/// shims.
+///
+/// Holds the transport handle plus an inline request buffer. The
+/// caller polls [`try_recv_request_raw`](Self::try_recv_request_raw)
+/// and sends replies via [`send_reply_raw`](Self::send_reply_raw)
+/// with raw CDR bytes.
+pub struct RawServiceServer<
+    const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESP_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    pub(crate) handle: session::RmwServiceServer,
+    pub(crate) req_buffer: [u8; REQ_BUF],
+    pub(crate) _phantom_resp: PhantomData<[u8; RESP_BUF]>,
+}
+
+impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP_BUF> {
+    /// Construct a [`RawServiceServer`] from a backend-allocated
+    /// `RmwServiceServer` handle. Public so external crates and the
+    /// C / C++ FFI shims can wrap a handle obtained directly from
+    /// [`crate::Node::session_mut`].
+    pub fn new(handle: session::RmwServiceServer) -> Self {
+        Self {
+            handle,
+            req_buffer: [0u8; REQ_BUF],
+            _phantom_resp: PhantomData,
+        }
+    }
+
+    /// Try to receive a service request (non-blocking).
+    ///
+    /// Returns `Ok(Some((len, sequence_number)))` when a request is
+    /// available — the raw CDR bytes live in
+    /// [`req_buffer`](Self::req_buffer) at `&req_buffer()[..len]`
+    /// until the next call. The sequence number is required by
+    /// [`send_reply_raw`](Self::send_reply_raw).
+    pub fn try_recv_request_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
+        match self.handle.try_recv_request(&mut self.req_buffer) {
+            Ok(Some(req)) => Ok(Some((req.data.len(), req.sequence_number))),
+            Ok(None) => Ok(None),
+            Err(_) => Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
+        }
+    }
+
+    /// Borrow the inline request buffer. Valid after a successful
+    /// [`try_recv_request_raw`](Self::try_recv_request_raw) call.
+    pub fn req_buffer(&self) -> &[u8] {
+        &self.req_buffer
+    }
+
+    /// Send a reply with raw CDR bytes. `sequence_number` must match
+    /// the value returned by the most recent
+    /// [`try_recv_request_raw`](Self::try_recv_request_raw).
+    pub fn send_reply_raw(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), NodeError> {
+        self.handle
+            .send_reply(sequence_number, data)
+            .map_err(|_| NodeError::ServiceReplyFailed)
+    }
+}
+
+/// Typeless service-client handle. L1 counterpart of
+/// [`EmbeddedServiceClient`] for the same audience as
+/// [`RawServiceServer`].
+pub struct RawServiceClient<
+    const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    pub(crate) handle: session::RmwServiceClient,
+    pub(crate) reply_buffer: [u8; REPLY_BUF],
+    pub(crate) _phantom_req: PhantomData<[u8; REQ_BUF]>,
+}
+
+impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REPLY_BUF> {
+    /// Construct from a backend-allocated handle. Same audience as
+    /// [`RawServiceServer::new`].
+    pub fn new(handle: session::RmwServiceClient) -> Self {
+        Self {
+            handle,
+            reply_buffer: [0u8; REPLY_BUF],
+            _phantom_req: PhantomData,
+        }
+    }
+
+    /// Send a raw CDR request. Non-blocking; the reply arrives via
+    /// [`try_recv_reply_raw`](Self::try_recv_reply_raw).
+    pub fn send_request_raw(&mut self, request: &[u8]) -> Result<(), NodeError> {
+        self.handle
+            .send_request_raw(request)
+            .map_err(|_| NodeError::ServiceRequestFailed)
+    }
+
+    /// Try to receive a reply (non-blocking). Returns
+    /// `Ok(Some(len))` with the reply length on success; bytes
+    /// live in [`reply_buffer`](Self::reply_buffer) until the next
+    /// call.
+    pub fn try_recv_reply_raw(&mut self) -> Result<Option<usize>, NodeError> {
+        self.handle
+            .try_recv_reply_raw(&mut self.reply_buffer)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))
+    }
+
+    /// Borrow the inline reply buffer. Valid after a successful
+    /// [`try_recv_reply_raw`](Self::try_recv_reply_raw) call.
+    pub fn reply_buffer(&self) -> &[u8] {
+        &self.reply_buffer
+    }
+}
+
 /// Read-only view into a [`RawSubscription`]'s receive buffer.
 ///
 /// `!Send + !Sync`: cannot cross `.await` or threads. Drop releases

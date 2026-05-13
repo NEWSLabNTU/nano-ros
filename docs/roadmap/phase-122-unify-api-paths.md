@@ -135,10 +135,59 @@ Sub-items:
   entities. Adds `nros_subscription_init_polling` (L1 init)
   + `nros_subscription_try_recv_raw` (L1 op). Refactors L2 init
   + register to match the same opaque shape.
-- [ ] **122.3.c — service / service_client / action_server /
+- [~] **122.3.c — service / service_client / action_server /
   action_client thin-wrapper refactor + L1 entry points.** Per
   the pattern in 122.3.b. Per-entity L1 ops listed in the
   discipline doc.
+  - [x] **122.3.c.1 — Rust `RawServiceServer<REQ, RESP>` +
+    `RawServiceClient<REQ, REPLY>` in `nros-node`.** New types
+    parallel to `RawSubscription<RX_BUF>`. Methods:
+    `try_recv_request_raw` / `send_reply_raw` /
+    `send_request_raw` / `try_recv_reply_raw`. `Node::create_service_raw`
+    + `create_client_raw` build them. Re-exported from
+    `nros_node` crate root.
+  - [x] **122.3.c.2 — `SERVICE_SERVER_OPAQUE_U64S` +
+    `SERVICE_CLIENT_OPAQUE_U64S` in `nros-c::opaque_sizes`.**
+    `u64s_for::<RawServiceServer<MESSAGE_BUFFER_SIZE, …>>()`
+    parallels existing `SUBSCRIPTION_OPAQUE_U64S`. Placeholder
+    `= 1` when `rmw-cffi` is off.
+  - [ ] **122.3.c.3 — fix opaque-size emission in the cbindgen
+    output (blocks 122.3.c.4+).** cbindgen renders
+    `SUBSCRIPTION_OPAQUE_U64S` and the new
+    `SERVICE_SERVER_OPAQUE_U64S` / `SERVICE_CLIENT_OPAQUE_U64S`
+    as `#define … 1` in `nros_generated.h` (it picks the
+    `#[cfg(not(feature = "rmw-cffi"))]` placeholder branch
+    because cbindgen evaluates cfgs against its own command-line
+    feature set, not the build's). The variant header
+    (`target/nros-c-generated/nros/nros_config_generated.h`)
+    doesn't redefine these macros, so C consumers see
+    `_opaque[1]` (= 8 bytes) while Rust writes a much larger
+    `RawSubscription` / `RawServiceServer` value into the same
+    storage — silent struct corruption. Fix: emit
+    `SUBSCRIPTION_OPAQUE_U64S` / `SERVICE_SERVER_OPAQUE_U64S` /
+    `SERVICE_CLIENT_OPAQUE_U64S` from `nros-c/build.rs` in the
+    variant header. The variant header is included after
+    `nros_generated.h` so the `#define` wins. Needs
+    `RAW_SUBSCRIPTION_SIZE` / `RAW_SERVICE_SERVER_SIZE` /
+    `RAW_SERVICE_CLIENT_SIZE` probes in `nros::sizes`, sized
+    at `MESSAGE_BUFFER_SIZE`. Until this lands, the 122.3.b
+    `nros_subscription_init_polling` C entry point is also
+    silently broken — only Rust-internal users of
+    `RawSubscription::new` are safe.
+  - [ ] **122.3.c.4 — `nros_service_init_polling`,
+    `nros_service_try_recv_request_raw`,
+    `nros_service_send_reply_raw` C entry points.** Mirrors the
+    subscription template at `packages/core/nros-c/src/subscription.rs:269-460`.
+    Blocked on 122.3.c.3.
+  - [ ] **122.3.c.5 — `nros_service_client_init_polling`,
+    `nros_service_client_send_request_raw`,
+    `nros_service_client_try_recv_reply_raw`.** Blocked on
+    122.3.c.3.
+  - [ ] **122.3.c.6 — `RawActionServer<...>` +
+    `RawActionClient<...>` Rust types + C entry points.** Larger
+    than the service pair (5-channel protocol, active-goal
+    tracking) — schedule after the service pair lands and
+    122.3.c.3 is closed.
 - [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.

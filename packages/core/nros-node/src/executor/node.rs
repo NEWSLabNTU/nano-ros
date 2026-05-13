@@ -357,6 +357,79 @@ impl<'a> Node<'a> {
         })
     }
 
+    /// Typeless service server. L1 counterpart of [`create_service`]
+    /// for the C / C++ FFI shims and callers that own their own
+    /// scheduler. Returns a [`crate::executor::handles::RawServiceServer`]
+    /// which polls request bytes directly.
+    pub fn create_service_raw(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceServer, NodeError> {
+        self.create_service_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(service_name, type_name, type_hash)
+    }
+
+    /// Typeless service server with custom buffer sizes.
+    pub fn create_service_raw_sized<const REQ_BUF: usize, const RESP_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceServer<REQ_BUF, RESP_BUF>, NodeError> {
+        let info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            service_name,
+            type_name,
+            type_hash,
+        );
+        let handle = self
+            .session
+            .create_service_server(&info)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+        Ok(crate::executor::handles::RawServiceServer::new(handle))
+    }
+
+    /// Typeless service client. L1 counterpart of [`create_client`].
+    pub fn create_client_raw(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceClient, NodeError> {
+        self.create_client_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(service_name, type_name, type_hash)
+    }
+
+    /// Typeless service client with custom buffer sizes.
+    pub fn create_client_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceClient<REQ_BUF, REPLY_BUF>, NodeError> {
+        let info = Self::service_info(
+            self.domain_id,
+            &self.name,
+            &self.namespace,
+            service_name,
+            type_name,
+            type_hash,
+        );
+        let handle = self
+            .session
+            .create_service_client(&info)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
+        Ok(crate::executor::handles::RawServiceClient::new(handle))
+    }
+
     // -- Actions --
 
     /// Create an action server.

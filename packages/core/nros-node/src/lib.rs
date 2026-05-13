@@ -153,7 +153,8 @@ pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, Subscription,
+    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawServiceClient, RawServiceServer,
+    RawSubscription, RecvView, Subscription,
 };
 
 #[cfg(all(feature = "std", any(has_rmw, test)))]
