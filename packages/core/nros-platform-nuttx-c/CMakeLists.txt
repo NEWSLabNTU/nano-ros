@@ -20,21 +20,26 @@ if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
         CACHE PATH "Path to nros-platform-cffi include directory")
 endif()
 
-if(NOT DEFINED NROS_PLATFORM_POSIX_C_SOURCE)
-    get_filename_component(NROS_PLATFORM_POSIX_C_SOURCE
-        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-posix-c/src/platform.c"
-        ABSOLUTE)
-    set(NROS_PLATFORM_POSIX_C_SOURCE "${NROS_PLATFORM_POSIX_C_SOURCE}"
-        CACHE FILEPATH "Path to nros-platform-posix-c/src/platform.c")
+if(NOT DEFINED NROS_PLATFORM_POSIX_C_SRC_DIR)
+    get_filename_component(NROS_PLATFORM_POSIX_C_SRC_DIR
+        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-posix-c/src" ABSOLUTE)
+    set(NROS_PLATFORM_POSIX_C_SRC_DIR "${NROS_PLATFORM_POSIX_C_SRC_DIR}"
+        CACHE PATH "Path to nros-platform-posix-c/src directory")
 endif()
 
-if(NOT EXISTS "${NROS_PLATFORM_POSIX_C_SOURCE}")
-    message(FATAL_ERROR
-        "Cannot find sibling POSIX source; pass -DNROS_PLATFORM_POSIX_C_SOURCE=<path> "
-        "(currently: ${NROS_PLATFORM_POSIX_C_SOURCE})")
-endif()
+foreach(_src platform.c net.c timer.c)
+    if(NOT EXISTS "${NROS_PLATFORM_POSIX_C_SRC_DIR}/${_src}")
+        message(FATAL_ERROR
+            "Cannot find sibling POSIX source; pass "
+            "-DNROS_PLATFORM_POSIX_C_SRC_DIR=<dir> "
+            "(currently: ${NROS_PLATFORM_POSIX_C_SRC_DIR})")
+    endif()
+endforeach()
 
-add_library(nros_platform_nuttx STATIC "${NROS_PLATFORM_POSIX_C_SOURCE}")
+add_library(nros_platform_nuttx STATIC
+    "${NROS_PLATFORM_POSIX_C_SRC_DIR}/platform.c"
+    "${NROS_PLATFORM_POSIX_C_SRC_DIR}/net.c"
+    "${NROS_PLATFORM_POSIX_C_SRC_DIR}/timer.c")
 target_include_directories(nros_platform_nuttx PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_nuttx PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
