@@ -1,0 +1,9 @@
+# Phase 123.A.10 — pull workspace-internal nros-* crates by path so
+# the standalone build doesn't try to fetch them from crates.io.
+# Mirrors the patch table that
+# `tools/setup.sh --rust-workspace` would auto-generate for a real
+# multi-package workspace (deferred to A.10 follow-up).
+
+[patch.crates-io]
+nros-core = { path = "../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../packages/core/nros-serdes" }

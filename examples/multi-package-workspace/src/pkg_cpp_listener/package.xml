@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>pkg_cpp_listener</name>
+  <version>0.1.0</version>
+  <description>Multi-package-workspace demo: C++ listener using nano-ros</description>
+  <maintainer email="nano-ros@example.com">nano-ros contributors</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <depend>nano-ros</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

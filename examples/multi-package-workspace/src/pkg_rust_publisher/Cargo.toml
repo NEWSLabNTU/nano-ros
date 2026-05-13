@@ -1,0 +1,34 @@
+# Escape the in-repo nano-ros workspace — this example deliberately
+# behaves like a downstream Pattern-A consumer: standalone Cargo
+# project that path-depends on the nano-ros checkout under
+# src/nano-ros/.
+[workspace]
+
+[package]
+name = "pkg_rust_publisher"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Phase 123.A.10 — multi-package workspace demo (Rust publisher).
+#
+# Path-relative dependency on the in-workspace nano-ros checkout
+# at ../../../.., matching Pattern A (one src/nano-ros/ source tree
+# per workspace). Crates.io publishing isn't available for `nros`
+# because the package depends transitively on C/C++ submodules
+# (zenoh-pico, mbedtls); see the "Open question" in
+# docs/roadmap/phase-123-build-and-api-revision.md about
+# publishing only nros-core.
+
+[[bin]]
+name = "pkg_rust_publisher"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
+std_msgs = { path = "generated/std_msgs" }
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+log = "0.4"
+env_logger = "0.11"

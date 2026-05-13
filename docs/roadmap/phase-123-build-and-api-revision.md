@@ -492,10 +492,34 @@ arrays).
 - [ ] **123.A.9 — `installation.md` rewrite.** Pattern A as the
   default, source-build-via-git-clone as the only path. Drop
   references to tarballs / SDK archives.
-- [ ] **123.A.10 — Multi-package workspace example.** Add
-  `examples/multi-package-workspace/` with mixed C / C++ / Rust
-  packages sharing one `src/nano-ros/`. Real working
-  `colcon build`.
+- [x] **123.A.10 — Multi-package workspace example.** Done.
+  `examples/multi-package-workspace/` ships C + C++ + Rust
+  packages sharing one nano-ros source / install:
+    * `src/pkg_c_talker/` (rclc-shaped C talker).
+    * `src/pkg_cpp_listener/` (rclcpp-shaped C++ listener
+      with `NROS_CPP_STD=1` for lambda + spin).
+    * `src/pkg_rust_publisher/` (rclrs-shaped Rust alt-publisher,
+      empty `[workspace]` stanza to escape parent + a
+      `.cargo/config.toml` patch table).
+    * `build-all.sh` driver that configures both CMake
+      packages with a shared `NANO_ROS_GEN_CACHE_DIR` and
+      builds the Rust package via `cargo nano-ros
+      generate-rust` + `cargo build`.
+    * `README.md` covering Pattern A semantics + the colcon
+      integration path.
+  Each `package.xml` carries `<depend>nano-ros</depend>` +
+  `<depend>std_msgs</depend>` so `colcon build` discovers them
+  with no extra config once a ROS 2 environment is sourced.
+  Verified end-to-end: one shared cache populates
+  `build/nros-gen-cache/{nano_ros_c,nano_ros_cpp}/std_msgs/`
+  (single codegen across consumers); all three binaries link
+  cleanly + launch (fail at zenoh-connect with no router,
+  expected).
+  Helper-call order surfaced as a documented requirement:
+  `nano_ros_link_rmw()` must precede `nano_ros_link_platform()`
+  on the user target so the single-pass linker's static-archive
+  scan resolves `nros_platform_*` refs from the RMW archive.
+  Recorded in the example CMakeLists' inline comments.
 
 ### Open question (Stream A)
 
