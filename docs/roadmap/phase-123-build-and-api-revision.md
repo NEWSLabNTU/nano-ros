@@ -132,7 +132,7 @@ arrays).
   is `RUSTFLAGS=--remap-path-prefix=$HOME=.` + post-build
   `strip --strip-debug` (28 MB → 16 MB, leakage from many lines
   to 12 panic strings).
-- [~] **123.A.1.x — Decouple platform + RMW from `nros-c` archive.**
+- [x] **123.A.1.x — Decouple platform + RMW from `nros-c` archive.**
   Multi-step. Phase 121 already migrated 4 RTOS platforms +
   XRCE/Cyclone RMWs to standalone C-port `.a` files; this
   sub-plan finishes the migration so `libnros_c_*.a` is the
@@ -187,24 +187,23 @@ arrays).
       builds + runs with 0 unresolved `nros_platform_*` in
       the final binary.
 
-    - [~] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
-      ThreadX / Zephyr / ESP-IDF.** Partially done — FreeRTOS +
-      ThreadX standalone install live. Remaining 3 platforms
-      sketched but deferred (NuttX delegates to POSIX so
-      `libnros_platform_nuttx.a` is redundant when the NuttX
-      build system inlines POSIX source; Zephyr ships as a west
-      module so `find_package` doesn't fit the parent build's
-      discovery model; ESP-IDF registers as an IDF component
-      `idf_component_register`, also not a `find_package`
-      target).
+    - [x] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
+      ThreadX / Zephyr / ESP-IDF.** Done. Scope split across
+      "ship standalone `.a`" (FreeRTOS, ThreadX) and "rename +
+      Config plumbing only" (NuttX, Zephyr, ESP-IDF). The latter
+      three intentionally do NOT ship a standalone archive — each
+      consumes the platform source via a non-`find_package`
+      mechanism (see "Won't-do" below).
 
-      Done in this sub-step:
+      Shipped:
         * Dropped `-c` suffix from FreeRTOS / NuttX / ThreadX /
           Zephyr CMake project name, EXPORT name, install dir,
           and `_C_INSTALL` / `_C_WITH_NET` option names.
         * Added `Config.cmake.in` template for each of the four
           RTOSes so `find_package(NrosPlatform<X> CONFIG)`
-          resolves the imported target out-of-tree.
+          resolves the imported target out-of-tree (used today
+          by FreeRTOS + ThreadX; NuttX + Zephyr ship the
+          template as future-proofing).
         * Created `tools/install-platform/{freertos,threadx}/`
           install scaffolds — thin CMake projects that pull in
           the in-tree kernel headers, add the platform crate as
@@ -229,21 +228,44 @@ arrays).
           CMakeLists + 3 just module comments to use the
           renamed paths / options.
 
-      Deferred to a follow-up:
-        * NuttX standalone `.a` install (low value — NuttX build
-          system already inlines `nros-platform-posix/src/*.c`).
-        * Zephyr standalone install (west module discovery; out
-          of scope for the find_package pattern).
-        * ESP-IDF standalone install (IDF component model;
-          parent IDF build already pulls the source in via
-          `idf_component_register`).
+      Won't-do (architecture mismatch — closed, not deferred):
+        * **NuttX standalone `.a`:** NuttX C-port delegates to
+          `nros-platform-posix/src/*.c` (see
+          `packages/core/nros-platform-nuttx/CMakeLists.txt`).
+          A standalone `libnros_platform_nuttx.a` would emit the
+          same symbols as `libnros_platform_posix.a` — ODR clash
+          if both are linked, and NuttX targets pick ONE anyway.
+          The NuttX build system already inlines the POSIX
+          source via its config layer; that's the canonical
+          consumption path.
+        * **Zephyr standalone install:** Zephyr modules
+          self-register via `west.yml` + the parent build's
+          `zephyr` INTERFACE target. `find_package(Zephyr)` is
+          not idiomatic and the Zephyr CMake-from-within-Zephyr
+          discovery doesn't accept extra Config.cmake packages.
+          `nros-platform-zephyr` ships as a Zephyr module
+          (per its CMakeLists comment) — `find_package` not
+          applicable.
+        * **ESP-IDF standalone install:** ESP-IDF components
+          register via `idf_component_register(SRCS … REQUIRES
+          …)` and are pulled in by the parent IDF project
+          through `EXTRA_COMPONENT_DIRS`. `find_package` is not
+          the IDF discovery path; the component already returns
+          early when `IDF_VERSION` is defined.
 
-    - [~] **123.A.1.x.4 — Standalone RMW archives for zenoh
-      and dds.** Partially done — wrapper staticlibs land
-      alongside `libnros_c.a`. Final `nros-c` shrinkage
-      deferred to A.1.x.4.b.
+      Net effect: the three "won't-do" platforms keep the same
+      directory hygiene (no `-c` suffix, Config template
+      available if their build system ever grows
+      `find_package`-style discovery) but don't bloat the
+      install matrix with archives nobody links.
 
-      A.1.x.4.a done in this sub-step:
+    - [x] **123.A.1.x.4 — Standalone RMW archives for zenoh
+      and dds.** Done across two commits (A.1.x.4.a + .4.b).
+      Wrapper staticlibs ship as separate archives; nros-c drops
+      the RMW Rust deps and resolves them via
+      `find_dependency(NrosRmw<X>)` at the user's link site.
+
+      A.1.x.4.a:
         * New `nros-rmw-zenoh-staticlib` + `nros-rmw-dds-staticlib`
           wrapper crates (`crate-type = ["staticlib"]`) under
           `packages/zpico/` and `packages/dds/`. Each one
@@ -266,7 +288,7 @@ arrays).
           (GNU ld / lld) when both archives co-link with
           `libnros_c.a`.
 
-      A.1.x.4.b done — final cutover landed:
+      A.1.x.4.b — final cutover:
         * `nros-c[cffi-zenoh-cffi]` + `cffi-dds-cffi` now
           resolve to `["rmw-cffi"]` only — same shape as
           `cffi-xrce-c`. Drops `nros/rmw-{zenoh,dds}-cffi`
