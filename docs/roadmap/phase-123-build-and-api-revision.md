@@ -132,14 +132,65 @@ writes a workspace `Cargo.toml` for Rust users.
   is `RUSTFLAGS=--remap-path-prefix=$HOME=.` + post-build
   `strip --strip-debug` (28 MB → 16 MB, leakage from many lines
   to 12 panic strings).
-- [ ] **123.A.1.x — Cargo staticlib split.** Refactor
-  `packages/core/nros-c/Cargo.toml` to drop RMW + platform
-  feature flags from its own dep graph; carve
-  `nros-rmw-<x>-staticlib` and `nros-platform-<y>-staticlib`
-  wrapper crates each emitting their own `.a`. Resolve
-  `compiler_builtins` ODR (likely `--allow-multiple-definition`
-  on the linker or feature-version-locking). Pre-req for the
-  matrix collapse advertised in A.3 + A.10.
+- [~] **123.A.1.x — Decouple platform + RMW from `nros-c` archive.**
+  Multi-step. Phase 121 already migrated 4 RTOS platforms +
+  XRCE/Cyclone RMWs to standalone C-port `.a` files; this
+  sub-plan finishes the migration so `libnros_c_*.a` is the
+  pure C-API archive and platforms/RMWs ship as separate
+  `lib<…>.a`s linked at the user's CMake site via
+  `nano_ros_link_platform` / `nano_ros_link_rmw`.
+
+    - [x] **123.A.1.x.1 — Install POSIX C-port standalone.**
+      Added `install-platform-posix-c` recipe to `justfile`
+      that builds `packages/core/nros-platform-posix-c` and
+      drops `libnros_platform_posix.a` (32 KB, 3 objects, 73
+      `nros_platform_*` T-symbols) into `build/install/lib/`
+      plus a CMake config under
+      `lib/cmake/NrosPlatformPosixC/`. Hooked into the
+      top-level `install-local` target. Coexists with the
+      still-bundled Rust-shim symbols inside
+      `libnros_c_zenoh.a` (next sub-item swaps them).
+
+    - [ ] **123.A.1.x.2 — Drop Rust platform crate from
+      `nros-c`'s `platform-posix` feature.** Make
+      `nros-c[platform-posix]` resolve to
+      `nros/platform-posix` → `dep:nros-platform-cffi`
+      *only* (no `dep:nros-platform-posix`). Equivalent to
+      what 121.3 already did for FreeRTOS/NuttX/ThreadX/Zephyr.
+      Then re-audit `libnros_c_zenoh.a`: should lose all 73
+      `nros_platform_*` T-symbols and drop ~32 KB; user picks
+      them up at link time from `libnros_platform_posix.a`.
+      Risk: anyone calling `nros-platform-posix` Rust API
+      directly (boards? tests?) — sweep call sites.
+
+    - [ ] **123.A.1.x.3 — Install C-ports for FreeRTOS / NuttX /
+      ThreadX / Zephyr / ESP-IDF.** Same shape as A.1.x.1 but
+      driven from each platform's existing module
+      (`freertos::install` etc.) so cross-toolchain builds
+      pick up the right compiler. Targets emit
+      `libnros_platform_<plat>.a` next to today's
+      `libnros_c_<rmw>_<plat>_*.a`.
+
+    - [ ] **123.A.1.x.4 — Standalone RMW archives for zenoh
+      and dds.** Today's `nros-rmw-zenoh` and `nros-rmw-dds`
+      are Rust-only crates, bundled into `nros-c`'s
+      staticlib. Two options: (a) extract into wrapper
+      staticlib crates (`nros-rmw-zenoh-staticlib` etc.,
+      crate-type `staticlib`) and accept per-archive
+      `compiler_builtins` duplication (resolve via
+      `--allow-multiple-definition` linker flag, GNU-ld
+      only); (b) C-port them to match Phase 121.6 + 117
+      precedent. Pick (a) now (fast, unblocks SDK matrix
+      collapse), defer (b) to a future phase.
+
+    - [ ] **123.A.1.x.5 — Switch `nano_ros_link_platform` /
+      `_link_rmw` to real link targets.** When A.1.x.2 +
+      A.1.x.3 + A.1.x.4 land, swap the validate-only branches
+      in `NanoRosLink.cmake` for actual
+      `target_link_libraries(... NanoRos::Platform::<plat>)`
+      / `NanoRos::Rmw::<rmw>`. Drop the
+      `NANO_ROS_PLATFORM` mismatch guard's "today's
+      single-combined-archive constraint" branch.
 - [x] **123.A.2 — `config/submodule-deps.toml`.** Authored.
   21 submodules classified across axes `required` (codegen) +
   `rmw.{zenoh,xrce,dds,cyclonedds}` + `platform.{posix,freertos,

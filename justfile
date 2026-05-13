@@ -118,10 +118,33 @@ build-all: build-examples build-test-fixtures
 # Builds posix (zenoh + xrce) unconditionally, then platform-specific libraries when toolchains are available.
 install-local: \
     cyclonedds::setup \
+    install-platform-posix-c \
     install-local-posix \
     freertos::install nuttx::install \
     threadx_linux::install threadx_riscv64::install
     @echo "Installed to $(pwd)/build/install"
+
+# Phase 123.A.1.x — install the standalone POSIX platform C-port
+# (`libnros_platform_posix.a`) alongside the C/C++ libraries. The
+# decoupled platform `.a` exports `nros_platform_*` symbols via the
+# canonical CFFI ABI; consumers will pick it up via the upcoming
+# decoupled link path (drives A.1.x.2 / A.6 install-side wiring).
+#
+# Today it sits next to the still-monolithic `libnros_c_*.a` rather
+# than replacing the in-archive Rust impl — that swap is the next
+# sub-item. Treats `nros_platform_*` symbols as additive: future
+# `nros-c` builds will drop the Rust platform shim from their dep
+# graph so only one definition remains.
+[private]
+install-platform-posix-c:
+    #!/usr/bin/env bash
+    set -e
+    PREFIX="$(pwd)/build/install"
+    cmake -S packages/core/nros-platform-posix-c \
+        -B build/cmake-platform-posix-c \
+        -DCMAKE_BUILD_TYPE=Release >/dev/null
+    cmake --build build/cmake-platform-posix-c
+    cmake --install build/cmake-platform-posix-c --prefix "$PREFIX"
 
 # Build POSIX host libraries + codegen tool (zenoh + xrce + dds).
 # Phase 95.G/H — `dds` joins the loop now that nros-rmw-dds compiles
