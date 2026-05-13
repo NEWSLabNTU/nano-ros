@@ -202,10 +202,16 @@ int8_t nros_platform_task_init(void *task, void *attr,
     /* ThreadX entry signature is `void(*)(ULONG)`. We forward our
      * pointer-shaped `arg` via reinterpretation; same trick the Rust
      * impl uses. */
+    /* Reinterpret the user's `void *(*)(void *)` entry as the
+     * ThreadX-shaped `void(*)(ULONG)`. The double-cast via
+     * `void *` defeats `-Werror=cast-function-type`; ABI parity is
+     * the caller's responsibility (matches the Rust impl). */
+    union { void *(*src)(void *); VOID (*dst)(ULONG); } _entry_cvt;
+    _entry_cvt.src = entry;
     UINT rc = tx_thread_create(
         (TX_THREAD *) task,
         a->name != NULL ? (char *) a->name : (char *) "nros",
-        (VOID (*)(ULONG)) entry,
+        _entry_cvt.dst,
         (ULONG) (uintptr_t) arg,
         a->stack_base,
         (ULONG) a->stack_depth,

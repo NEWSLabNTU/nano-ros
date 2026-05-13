@@ -32,10 +32,18 @@ if(NOT DEFINED NETXDUO_TARGET)
         "Name of the imported NetX Duo CMake target (provides nxd_bsd.h)")
 endif()
 
-add_library(nros_platform_threadx STATIC
-    src/platform.c
-    src/net.c
-    src/timer.c)
+set(_nros_threadx_sources src/platform.c src/timer.c)
+
+# net.c needs the NetX Duo BSD addon (<nxd_bsd.h>). Smoke harnesses
+# and consumers without NetX Duo opt out via
+# -DNROS_PLATFORM_THREADX_C_WITH_NET=OFF.
+option(NROS_PLATFORM_THREADX_C_WITH_NET
+       "Include net.c (requires NetX Duo BSD addon headers)" ON)
+if(NROS_PLATFORM_THREADX_C_WITH_NET)
+    list(APPEND _nros_threadx_sources src/net.c)
+endif()
+
+add_library(nros_platform_threadx STATIC ${_nros_threadx_sources})
 target_include_directories(nros_platform_threadx PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
 target_compile_options(nros_platform_threadx PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -49,18 +57,24 @@ else()
         "-DTHREADX_KERNEL_TARGET=<name> on the command line.")
 endif()
 
-if(TARGET ${NETXDUO_TARGET})
-    target_link_libraries(nros_platform_threadx PUBLIC ${NETXDUO_TARGET})
-else()
-    message(WARNING
-        "NETXDUO_TARGET '${NETXDUO_TARGET}' not declared — net.c needs "
-        "<nxd_bsd.h>. Configure the parent build to provide it, or pass "
-        "-DNETXDUO_TARGET=<name>.")
+if(NROS_PLATFORM_THREADX_C_WITH_NET)
+    if(TARGET ${NETXDUO_TARGET})
+        target_link_libraries(nros_platform_threadx PUBLIC ${NETXDUO_TARGET})
+    else()
+        message(WARNING
+            "NETXDUO_TARGET '${NETXDUO_TARGET}' not declared — net.c needs "
+            "<nxd_bsd.h>. Configure the parent build to provide it, or pass "
+            "-DNETXDUO_TARGET=<name>.")
+    endif()
 endif()
 
-install(TARGETS nros_platform_threadx
-    EXPORT NrosPlatformThreadxCTargets
-    ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformThreadxCTargets
-    NAMESPACE NrosPlatformThreadxC::
-    DESTINATION lib/cmake/NrosPlatformThreadxC)
+option(NROS_PLATFORM_THREADX_C_INSTALL
+       "Generate install rules (skip when consumed as a subdirectory)" ON)
+if(NROS_PLATFORM_THREADX_C_INSTALL)
+    install(TARGETS nros_platform_threadx
+        EXPORT NrosPlatformThreadxCTargets
+        ARCHIVE DESTINATION lib)
+    install(EXPORT NrosPlatformThreadxCTargets
+        NAMESPACE NrosPlatformThreadxC::
+        DESTINATION lib/cmake/NrosPlatformThreadxC)
+endif()

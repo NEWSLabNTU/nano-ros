@@ -23,6 +23,16 @@ typedef struct {
     int                             periodic;
 } nros_threadx_timer_t;
 
+/* tx_timer_create's expiration_input is a `ULONG` — only 32 bits on
+ * 64-bit ThreadX ports (linux/gnu typedef'd `ULONG = unsigned int`).
+ * Pointer values don't fit. Maintain a small static registry of
+ * active timers indexed by a 32-bit slot id; the trampoline looks
+ * up the wrapper there. */
+#ifndef NROS_THREADX_MAX_TIMERS
+#  define NROS_THREADX_MAX_TIMERS 32
+#endif
+static nros_threadx_timer_t *s_timer_registry[NROS_THREADX_MAX_TIMERS];
+
 /* Heap allocated by the application; expose via a setter so the
  * port stays decoupled from any specific pool. */
 static TX_BYTE_POOL *s_timer_pool = NULL;
@@ -31,8 +41,25 @@ void nros_platform_threadx_set_timer_pool(void *pool) {
     s_timer_pool = (TX_BYTE_POOL *) pool;
 }
 
+static int registry_claim(nros_threadx_timer_t *t) {
+    for (int i = 0; i < NROS_THREADX_MAX_TIMERS; ++i) {
+        if (s_timer_registry[i] == NULL) {
+            s_timer_registry[i] = t;
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void registry_release(int id) {
+    if (id >= 0 && id < NROS_THREADX_MAX_TIMERS) {
+        s_timer_registry[id] = NULL;
+    }
+}
+
 static void timer_trampoline(ULONG id) {
-    nros_threadx_timer_t *t = (nros_threadx_timer_t *) (uintptr_t) id;
+    if (id >= (ULONG) NROS_THREADX_MAX_TIMERS) return;
+    nros_threadx_timer_t *t = s_timer_registry[id];
     if (t == NULL) return;
     if (t->cancelled) return;
     t->fired = 1;
@@ -59,6 +86,12 @@ static void *create_timer(uint32_t value_us, int periodic,
     t->cancelled = 0;
     t->periodic  = periodic;
 
+    int slot = registry_claim(t);
+    if (slot < 0) {
+        (void) tx_byte_release(raw);
+        return NULL;
+    }
+
     /* Convert microseconds to ThreadX ticks. configTICK_RATE is the
      * platform's TX_TIMER_TICKS_PER_SECOND. */
 #ifndef TX_TIMER_TICKS_PER_SECOND
@@ -71,13 +104,19 @@ static void *create_timer(uint32_t value_us, int periodic,
     if (tx_timer_create(&t->kernel,
                         (CHAR *) "nros_timer",
                         timer_trampoline,
-                        (ULONG) (uintptr_t) t,
+                        (ULONG) slot,
                         ticks,
                         periodic ? ticks : 0,
                         TX_AUTO_ACTIVATE) != TX_SUCCESS) {
+        registry_release(slot);
         (void) tx_byte_release(raw);
         return NULL;
     }
+    /* Stash slot id alongside the wrapper so destroy/cancel can
+     * release. Reuse `fired`'s upper bits would be hacky — overload
+     * the `periodic` field's high half instead since it's only 0/1.
+     * Bitfield avoids the hack: store slot below. */
+    t->periodic = periodic | (slot << 8);
     return (void *) t;
 }
 
@@ -96,9 +135,11 @@ void *nros_platform_timer_create_oneshot(uint32_t timeout_us,
 void nros_platform_timer_destroy(void *handle) {
     if (handle == NULL) return;
     nros_threadx_timer_t *t = (nros_threadx_timer_t *) handle;
+    int slot = t->periodic >> 8;
     t->cancelled = 1;
     (void) tx_timer_deactivate(&t->kernel);
     (void) tx_timer_delete(&t->kernel);
+    registry_release(slot);
     (void) tx_byte_release(t);
 }
 

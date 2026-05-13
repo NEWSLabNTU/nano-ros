@@ -143,6 +143,23 @@ test-all verbose="":
     cargo nextest run "${e2e_args[@]}"
 
 # CI: check prerequisites + test
+
+# Phase 121.6 — build the ThreadX-linux smoke test for
+# nros-platform-threadx-c. Uses the in-tree ThreadX linux/gnu port +
+# in-crate platform.c + timer.c. Excludes net.c (no NetX Duo).
+build-c-port:
+    #!/usr/bin/env bash
+    set -e
+    cd tests/threadx-c-smoke
+    cmake -B build >/dev/null
+    cmake --build build
+
+# Phase 121.6 — run the ThreadX-linux smoke test on the host.
+test-c-port: build-c-port
+    #!/usr/bin/env bash
+    set -e
+    timeout 15 ./tests/threadx-c-smoke/build/nros_threadx_c_smoke
+
 ci: doctor test
 
 # =============================================================================
