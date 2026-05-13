@@ -65,7 +65,7 @@ int nros_app_main(int argc, char **argv) {
                                       std_msgs_msg_int32_get_type_support(),
                                       "/chatter", subscription_callback, &app.ctx), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_subscription(&app.executor, &app.subscription,
+    NROS_CHECK_RET(nros_executor_register_subscription(&app.executor, &app.subscription,
                                               NROS_EXECUTOR_ON_NEW_DATA), 1);
 
     printf("\nWaiting for messages...\n\n");

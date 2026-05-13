@@ -48,7 +48,7 @@ pub struct nros_timer_t {
     pub support: *const nros_support_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
-    /// Opaque pointer to internal executor (set by nros_executor_add_timer)
+    /// Opaque pointer to internal executor (set by nros_executor_register_timer)
     pub _executor: *mut c_void,
 }
 
@@ -84,7 +84,7 @@ impl nros_timer_t {
         self.handle_id = id.0;
     }
 
-    /// Set the executor pointer (called by nros_executor_add_timer)
+    /// Set the executor pointer (called by nros_executor_register_timer)
     pub(crate) fn set_executor_ptr(&mut self, executor: *mut c_void) {
         self._executor = executor;
     }

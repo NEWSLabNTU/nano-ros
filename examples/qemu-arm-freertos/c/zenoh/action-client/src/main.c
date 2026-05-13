@@ -52,7 +52,7 @@ int nros_app_main(int argc, char **argv) {
                                        &fibonacci_type), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
     // Register action client with executor (creates transport handles in arena)
-    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
+    NROS_CHECK_RET(nros_executor_register_action_client(&app.executor, &app.action_client), 1);
     nros_ret_t ret = NROS_RET_OK;
 
     printf("Action client ready for /fibonacci\n");

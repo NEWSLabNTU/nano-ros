@@ -69,7 +69,7 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_action_client_init(
         &app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
+    NROS_CHECK_RET(nros_executor_register_action_client(&app.executor, &app.action_client), 1);
 
     // Race 3 fix (Phase 89.13): probe the action server's send_goal
     // queryable liveliness token before the first send_goal so we

@@ -111,7 +111,7 @@ int nros_app_main(int argc, char **argv) {
         &app.service, &app.node, &add_two_ints_type,
         "/add_two_ints", service_callback, &app.ctx), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_SOFTCHECK(nros_executor_add_service(&app.executor, &app.service));
+    NROS_SOFTCHECK(nros_executor_register_service(&app.executor, &app.service));
 
     printf("Waiting for requests...\n\n");
     // NuttX libc full-buffers stdout under the test harness's pipe.

@@ -177,7 +177,7 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
+    NROS_CHECK_RET(nros_executor_register_action_server(&app.executor, &app.action_server), 1);
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);

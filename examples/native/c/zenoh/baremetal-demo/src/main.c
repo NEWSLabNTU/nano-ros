@@ -208,7 +208,7 @@ static void demo_guard_condition(void) {
            nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // Add to executor - callback will be invoked when triggered
-    ret = nros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
+    ret = nros_executor_register_guard_condition(&app.executor, &app.shutdown_guard);
     if (ret == NROS_RET_OK) {
         printf("Guard condition added to executor\n");
     }
@@ -297,7 +297,7 @@ int nros_app_main(int argc, char** argv) {
     }
 
     // Add timer to executor
-    ret = nros_executor_add_timer(&app.executor, &app.timer);
+    ret = nros_executor_register_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
         goto cleanup_executor;

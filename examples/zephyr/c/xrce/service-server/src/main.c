@@ -87,7 +87,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
     NROS_CHECK_RET(nros_executor_init(&executor, &support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_service(&executor, &service), 1);
+    NROS_CHECK_RET(nros_executor_register_service(&executor, &service), 1);
 
     LOG_INF("Waiting for requests...");
 

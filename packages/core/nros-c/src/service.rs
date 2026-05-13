@@ -210,7 +210,7 @@ pub unsafe extern "C" fn nros_service_init(
     service.context = context;
     service.node = node;
 
-    // Service server creation is deferred to nros_executor_add_service(),
+    // Service server creation is deferred to nros_executor_register_service(),
     // which calls nros_node::Executor::register_service_raw_sized().
     // Initialise the internal state (executor_ptr null until registration).
     service._internal = ServiceServerInternal::new();
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 /// Take a service request (non-blocking).
 ///
 /// Currently not supported — service servers are callback-only through
-/// the executor. Use `nros_executor_add_service()` with a callback instead.
+/// the executor. Use `nros_executor_register_service()` with a callback instead.
 ///
 /// # Returns
 /// * `NROS_RET_NOT_INIT` always (manual poll not supported)

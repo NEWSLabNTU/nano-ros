@@ -4,7 +4,7 @@
  * @brief Periodic timer API.
  *
  * Create timers with nros_timer_init() and register them with an
- * executor via nros_executor_add_timer().
+ * executor via nros_executor_register_timer().
  */
 
 #ifndef NROS_TIMER_H

@@ -30,13 +30,13 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 ///
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
-/// created by `nros_executor_add_action_client`.
+/// created by `nros_executor_register_action_client`.
 #[repr(C)]
 pub struct ActionClientInternal {
-    /// Arena entry index (set by nros_executor_add_action_client).
+    /// Arena entry index (set by nros_executor_register_action_client).
     /// -1 means not registered with executor.
     pub arena_entry_index: i32,
-    /// Pointer to the executor (set by nros_executor_add_action_client).
+    /// Pointer to the executor (set by nros_executor_register_action_client).
     pub executor_ptr: *mut core::ffi::c_void,
 }
 
@@ -182,7 +182,7 @@ pub unsafe extern "C" fn nros_action_client_init(
     client.node = node;
 
     // Metadata only — no transport handles created here.
-    // Transport handles are created in nros_executor_add_action_client,
+    // Transport handles are created in nros_executor_register_action_client,
     // which places the ActionClientCore in the executor's arena.
     client._internal = ActionClientInternal::new();
 
@@ -259,7 +259,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
             return NROS_RET_NOT_INIT;
         }
         // Note: action clients store an opaque pointer into
-        // `executor._opaque` (see `nros_executor_add_action_client`),
+        // `executor._opaque` (see `nros_executor_register_action_client`),
         // not to the outer `nros_executor_t`, so we can't recover the
         // wrapper from `internal.executor_ptr`. Take `executor` as a
         // separate argument — same convention as

@@ -216,7 +216,7 @@ int nros_app_main(int argc, char** argv) {
                                    timer_callback, &app.demo_ctx),
                    1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_timer(&app.executor, &app.timer), 1);
+    NROS_CHECK_RET(nros_executor_register_timer(&app.executor, &app.timer), 1);
     g_executor = &app.executor;
 
     signal(SIGINT, signal_handler);

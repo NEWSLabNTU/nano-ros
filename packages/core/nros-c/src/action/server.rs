@@ -65,7 +65,7 @@ pub struct nros_action_server_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Internal state — set by `nros_executor_add_action_server`.
+    /// Internal state — set by `nros_executor_register_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
 }
@@ -301,7 +301,7 @@ pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_serve
 /// Initialize an action server.
 ///
 /// Stores metadata (name, type, callbacks). RMW entity creation is deferred
-/// to `nros_executor_add_action_server()`.
+/// to `nros_executor_register_action_server()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_init(
     server: *mut nros_action_server_t,
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn nros_action_server_init(
     server.context = context;
     server.node = node;
 
-    // RMW entity creation is deferred to nros_executor_add_action_server()
+    // RMW entity creation is deferred to nros_executor_register_action_server()
     server._internal = ActionServerInternal::invalid_default();
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 

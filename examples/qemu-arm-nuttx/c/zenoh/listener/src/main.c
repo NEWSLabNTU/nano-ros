@@ -93,7 +93,7 @@ int nros_app_main(int argc, char **argv) {
         &app.listener_ctx
     ), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_SOFTCHECK(nros_executor_add_subscription(&app.executor, &app.subscription,
+    NROS_SOFTCHECK(nros_executor_register_subscription(&app.executor, &app.subscription,
         NROS_EXECUTOR_ON_NEW_DATA));
 
     printf("Waiting for messages...\n\n");

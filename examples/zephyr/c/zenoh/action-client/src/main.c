@@ -55,7 +55,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
     NROS_CHECK_RET(nros_executor_init(&executor, &support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_action_client(&executor, &client), 1);
+    NROS_CHECK_RET(nros_executor_register_action_client(&executor, &client), 1);
     nros_ret_t ret = NROS_RET_OK;
 
     /* Send goal: compute Fibonacci sequence of order 10 */

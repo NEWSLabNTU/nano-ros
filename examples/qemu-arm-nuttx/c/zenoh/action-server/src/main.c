@@ -169,7 +169,7 @@ int nros_app_main(int argc, char **argv) {
                                        goal_callback, cancel_callback, accepted_callback, &app.ctx), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
     // Register action server with executor (creates transport handles in arena)
-    NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
+    NROS_CHECK_RET(nros_executor_register_action_server(&app.executor, &app.action_server), 1);
 
     printf("Waiting for goals...\n\n");
     // NuttX libc full-buffers stdout under the test harness's pipe, so

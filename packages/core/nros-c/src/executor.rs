@@ -486,7 +486,7 @@ pub unsafe extern "C" fn nros_executor_trigger_one(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription(
+pub unsafe extern "C" fn nros_executor_register_subscription(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
     invocation: nros_executor_invocation_t,
@@ -576,7 +576,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_timer(
+pub unsafe extern "C" fn nros_executor_register_timer(
     executor: *mut nros_executor_t,
     timer: *mut nros_timer_t,
 ) -> nros_ret_t {
@@ -646,7 +646,7 @@ pub unsafe extern "C" fn nros_executor_add_timer(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_service(
+pub unsafe extern "C" fn nros_executor_register_service(
     executor: *mut nros_executor_t,
     service: *mut nros_service_t,
 ) -> nros_ret_t {
@@ -801,7 +801,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_guard_condition(
+pub unsafe extern "C" fn nros_executor_register_guard_condition(
     executor: *mut nros_executor_t,
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
@@ -862,7 +862,7 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_action_server(
+pub unsafe extern "C" fn nros_executor_register_action_server(
     executor: *mut nros_executor_t,
     server: *mut nros_action_server_t,
 ) -> nros_ret_t {
@@ -968,7 +968,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 /// # Safety
 /// * `executor` and `client` must be valid pointers to initialized structs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_action_client(
+pub unsafe extern "C" fn nros_executor_register_action_client(
     executor: *mut nros_executor_t,
     client: *mut nros_action_client_t,
 ) -> nros_ret_t {

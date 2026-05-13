@@ -103,7 +103,7 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_timer_init(&app.timer, &app.support, 1000000000ULL,
         timer_callback, &app.talker_ctx), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_SOFTCHECK(nros_executor_add_timer(&app.executor, &app.timer));
+    NROS_SOFTCHECK(nros_executor_register_timer(&app.executor, &app.timer));
 
     printf("Publishing messages...\n\n");
     // See rationale in timer_callback (line 60). Flush here too so the

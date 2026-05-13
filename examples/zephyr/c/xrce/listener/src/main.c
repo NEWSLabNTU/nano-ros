@@ -78,7 +78,7 @@ int nros_app_main(int argc, char **argv) {
     /* Create executor and add subscription */
     nros_executor_t executor = nros_executor_get_zero_initialized();
     NROS_CHECK_RET(nros_executor_init(&executor, &support, 1), 1);
-    NROS_CHECK_RET(nros_executor_add_subscription(
+    NROS_CHECK_RET(nros_executor_register_subscription(
         &executor, &sub, NROS_EXECUTOR_ON_NEW_DATA), 1);
 
     LOG_INF("Waiting for messages...");
