@@ -145,7 +145,11 @@ unsafe extern "C" {
         port: *const u8,
     ) -> i8;
     pub fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
-    pub fn nros_platform_tcp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    pub fn nros_platform_tcp_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+    ) -> i8;
     pub fn nros_platform_tcp_listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
     pub fn nros_platform_tcp_close(sock: *mut c_void);
     pub fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
@@ -159,7 +163,11 @@ unsafe extern "C" {
         port: *const u8,
     ) -> i8;
     pub fn nros_platform_udp_free_endpoint(ep: *mut c_void);
-    pub fn nros_platform_udp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    pub fn nros_platform_udp_open(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+    ) -> i8;
     pub fn nros_platform_udp_listen(
         sock: *mut c_void,
         endpoint: *const c_void,
@@ -958,7 +966,11 @@ macro_rules! nros_platform_export_timer {
                     <$ty as ::nros_platform_api::PlatformTimer>::TimerHandle,
                 >(&handle)
             };
-            if <$ty as ::nros_platform_api::PlatformTimer>::cancel(&mut h) { 1 } else { 0 }
+            if <$ty as ::nros_platform_api::PlatformTimer>::cancel(&mut h) {
+                1
+            } else {
+                0
+            }
         }
     };
 }
@@ -1163,9 +1175,7 @@ macro_rules! nros_platform_export_net {
             len: usize,
             endpoint: *const ::core::ffi::c_void,
         ) -> usize {
-            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_send(
-                sock, buf, len, endpoint,
-            )
+            <$ty as ::nros_platform_api::PlatformUdpMulticast>::mcast_send(sock, buf, len, endpoint)
         }
 
         // ---- Socket helpers ----
@@ -1389,11 +1399,7 @@ mod test_self_export {
     fn timer_macro_emits() {
         // Default impl returns Unsupported → null handle.
         let h = unsafe {
-            super::nros_platform_timer_create_periodic(
-                1000,
-                noop_callback,
-                core::ptr::null_mut(),
-            )
+            super::nros_platform_timer_create_periodic(1000, noop_callback, core::ptr::null_mut())
         };
         assert!(h.is_null(), "default Unsupported impl must surface as NULL");
     }

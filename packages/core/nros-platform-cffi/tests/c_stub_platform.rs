@@ -23,8 +23,10 @@
 
 #![cfg(feature = "c-stub-test")]
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use nros_platform_api::{
     PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformThreading, PlatformTime,

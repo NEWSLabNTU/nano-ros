@@ -25,8 +25,10 @@
 #![cfg(feature = "posix-c-port")]
 
 use core::ffi::c_void;
-use std::mem::MaybeUninit;
-use std::time::{Duration, Instant};
+use std::{
+    mem::MaybeUninit,
+    time::{Duration, Instant},
+};
 
 use nros_platform_api::{
     PlatformAlloc, PlatformClock, PlatformSleep, PlatformThreading, PlatformYield,
@@ -114,18 +116,18 @@ fn mutex_rec_allows_reentry() {
 
 #[test]
 fn condvar_signal_wakes_waiter() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     let woken = Arc::new(AtomicBool::new(false));
     let woken_thread = Arc::clone(&woken);
 
     // Allocate cv + mutex on the heap so the worker thread shares
     // the same address with the test thread.
-    let cv = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_cond_t>::zeroed()))
-        as *mut c_void;
-    let m = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_mutex_t>::zeroed()))
-        as *mut c_void;
+    let cv = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_cond_t>::zeroed())) as *mut c_void;
+    let m = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_mutex_t>::zeroed())) as *mut c_void;
     assert_eq!(CffiPlatform::condvar_init(cv), 0);
     assert_eq!(CffiPlatform::mutex_init(m), 0);
 

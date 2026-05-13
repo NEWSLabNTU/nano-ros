@@ -77,7 +77,7 @@ template <typename A> class PollingActionClient {
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
         return Result(nros_cpp_action_client_send_goal_raw(
-            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id_out)));
+            storage_, buf, len, reinterpret_cast<uint8_t (*)[16]>(goal_id_out)));
     }
 
     /// Try to receive the send_goal RPC reply (accept / reject).
@@ -99,7 +99,7 @@ template <typename A> class PollingActionClient {
     Result send_get_result_request(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_send_get_result_request_raw(
-            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
+            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id)));
     }
 
     /// Try to receive the get_result reply as a typed result.
@@ -108,8 +108,7 @@ template <typename A> class PollingActionClient {
     Result try_recv_result(ResultType& out) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[ResultType::SERIALIZED_SIZE_MAX + 5];
-        int32_t rc =
-            nros_cpp_action_client_try_recv_result_raw(storage_, buf, sizeof(buf));
+        int32_t rc = nros_cpp_action_client_try_recv_result_raw(storage_, buf, sizeof(buf));
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
         // CDR encapsulation header (4) + status byte (1) = 5-byte
@@ -126,7 +125,7 @@ template <typename A> class PollingActionClient {
     Result send_cancel_request(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_send_cancel_request_raw(
-            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
+            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id)));
     }
 
     /// Try to receive the cancel RPC reply (raw CDR bytes).
@@ -148,7 +147,7 @@ template <typename A> class PollingActionClient {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
         int32_t rc = nros_cpp_action_client_try_recv_feedback_raw(
-            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
+            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t (*)[16]>(goal_id_out));
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
         if (FeedbackType::ffi_deserialize(buf, static_cast<size_t>(rc), &out_fb) != 0)
@@ -167,28 +166,28 @@ template <typename A> class PollingActionClient {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_set_goal_response_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     Result set_cancel_response_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_set_cancel_response_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     Result set_result_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_set_result_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     Result set_feedback_wake_callback(WakeState& state, void (*cb)(void*), void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_set_feedback_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
   private:
@@ -209,9 +208,9 @@ namespace nros {
 template <typename A>
 Result Node::create_polling_action_client(PollingActionClient<A>& out, const char* action_name) {
     if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_ret_t ret = nros_cpp_action_client_init_polling(
-        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
-        reinterpret_cast<void*>(out.storage_));
+    nros_cpp_ret_t ret =
+        nros_cpp_action_client_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
+                                            reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
     size_t name_len = 0;
     while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {

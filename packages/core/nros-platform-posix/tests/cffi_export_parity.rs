@@ -87,11 +87,7 @@ unsafe extern "C" {
     ) -> i8;
     fn nros_platform_udp_free_endpoint(ep: *mut c_void);
     fn nros_platform_udp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
-    fn nros_platform_udp_listen(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-    ) -> i8;
+    fn nros_platform_udp_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
     fn nros_platform_udp_close(sock: *mut c_void);
     fn nros_platform_udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     fn nros_platform_udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;

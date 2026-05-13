@@ -144,9 +144,9 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(
-        nros_executor_register_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA),
-        1);
+    NROS_CHECK_RET(nros_executor_register_subscription(&app.executor, &app.subscription,
+                                                       NROS_EXECUTOR_ON_NEW_DATA),
+                   1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     signal(SIGINT, signal_handler);

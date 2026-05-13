@@ -29,16 +29,13 @@ fn main() -> ! {
             println!("Publisher declared");
 
             let mut count: i32 = 0;
-            executor.register_timer(
-                nros::TimerDuration::from_millis(1000),
-                move || {
-                    match publisher.publish(&Int32 { data: count }) {
-                        Ok(()) => println!("Published: {}", count),
-                        Err(e) => println!("Publish failed: {:?}", e),
-                    }
-                    count = count.wrapping_add(1);
-                },
-            )?;
+            executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
+                match publisher.publish(&Int32 { data: count }) {
+                    Ok(()) => println!("Published: {}", count),
+                    Err(e) => println!("Publish failed: {:?}", e),
+                }
+                count = count.wrapping_add(1);
+            })?;
 
             println!("Publishing messages...");
             loop {

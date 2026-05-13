@@ -81,7 +81,7 @@ template <typename A> class PollingActionServer {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
         int32_t rc = nros_cpp_action_server_try_recv_goal_request_raw(
-            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id),
+            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t (*)[16]>(goal_id),
             &out_sequence_number);
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
@@ -94,7 +94,7 @@ template <typename A> class PollingActionServer {
     Result accept_goal(const uint8_t goal_id[16], int64_t sequence_number) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_server_accept_goal_raw(
-            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), sequence_number));
+            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id), sequence_number));
     }
 
     /// Reject a goal received via `try_recv_goal_request`.
@@ -111,7 +111,7 @@ template <typename A> class PollingActionServer {
         if (FeedbackType::ffi_serialize(&fb, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
         return Result(nros_cpp_action_server_publish_feedback_raw(
-            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
+            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id), buf, len));
     }
 
     /// Mark a goal terminal with a typed result.
@@ -122,7 +122,7 @@ template <typename A> class PollingActionServer {
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
         return Result(nros_cpp_action_server_complete_goal_raw(
-            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id),
+            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id),
             static_cast<int32_t>(status), buf, len));
     }
 
@@ -136,8 +136,8 @@ template <typename A> class PollingActionServer {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         int8_t status_raw = 0;
         int32_t rc = nros_cpp_action_server_try_recv_cancel_request_raw(
-            storage_, reinterpret_cast<uint8_t(*)[16]>(goal_id),
-            &out_sequence_number, &status_raw);
+            storage_, reinterpret_cast<uint8_t (*)[16]>(goal_id), &out_sequence_number,
+            &status_raw);
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
         out_current_status = static_cast<GoalStatus>(status_raw);
@@ -168,7 +168,7 @@ template <typename A> class PollingActionServer {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_server_set_goal_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     /// Register a C callback fired when a cancel-goal request arrives.
@@ -176,7 +176,7 @@ template <typename A> class PollingActionServer {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_server_set_cancel_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     /// Register a C callback fired when a get_result query arrives.
@@ -184,7 +184,7 @@ template <typename A> class PollingActionServer {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_server_set_get_result_wake_callback(
             storage_, reinterpret_cast<nros_cpp_wake_state_t*>(&state),
-            reinterpret_cast<void(*)(void*)>(cb), ctx));
+            reinterpret_cast<void (*)(void*)>(cb), ctx));
     }
 
     /// Serve one pending get_result query (call from spin loop).
@@ -222,9 +222,9 @@ namespace nros {
 template <typename A>
 Result Node::create_polling_action_server(PollingActionServer<A>& out, const char* action_name) {
     if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_ret_t ret = nros_cpp_action_server_init_polling(
-        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
-        reinterpret_cast<void*>(out.storage_));
+    nros_cpp_ret_t ret =
+        nros_cpp_action_server_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
+                                            reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
     size_t name_len = 0;
     while (action_name[name_len] != '\0' && name_len + 1 < sizeof(out.action_name_)) {

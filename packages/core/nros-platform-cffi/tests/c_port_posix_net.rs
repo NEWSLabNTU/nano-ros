@@ -8,9 +8,7 @@
 #![cfg(feature = "posix-c-port")]
 
 use core::ffi::c_void;
-use std::mem::MaybeUninit;
-use std::thread;
-use std::time::Duration;
+use std::{mem::MaybeUninit, thread, time::Duration};
 
 // Force the nros-platform-cffi rlib into the test binary so cargo
 // honours its `cargo:rustc-link-lib=static=nros_platform_posix_c`
@@ -96,11 +94,8 @@ fn tcp_loopback_roundtrip() {
                 0,
             );
             let mut buf = [0u8; 5];
-            let n = nros_platform_tcp_read(
-                con.as_ptr() as *const c_void,
-                buf.as_mut_ptr(),
-                buf.len(),
-            );
+            let n =
+                nros_platform_tcp_read(con.as_ptr() as *const c_void, buf.as_mut_ptr(), buf.len());
             assert_ne!(n, ERR);
             assert_eq!(&buf[..n], b"hello"[..n].as_ref());
             nros_platform_tcp_close(con.as_mut_ptr() as *mut c_void);

@@ -3,9 +3,11 @@
 #![cfg(feature = "posix-c-port")]
 
 use core::ffi::c_void;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::thread;
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    thread,
+    time::Duration,
+};
 
 #[allow(unused_imports)]
 use nros_platform_cffi::CffiPlatform;
@@ -46,18 +48,17 @@ fn periodic_timer_fires_repeatedly() {
     unsafe { nros_platform_timer_destroy(handle) };
 
     let count = counter.load(Ordering::SeqCst);
-    assert!(count >= 4, "expected at least 4 fires over 40 ms, got {count}");
+    assert!(
+        count >= 4,
+        "expected at least 4 fires over 40 ms, got {count}"
+    );
 }
 
 #[test]
 fn oneshot_timer_fires_once() {
     let counter = AtomicU32::new(0);
     let handle = unsafe {
-        nros_platform_timer_create_oneshot(
-            5_000,
-            bump,
-            &counter as *const _ as *mut c_void,
-        )
+        nros_platform_timer_create_oneshot(5_000, bump, &counter as *const _ as *mut c_void)
     };
     assert!(!handle.is_null());
 
