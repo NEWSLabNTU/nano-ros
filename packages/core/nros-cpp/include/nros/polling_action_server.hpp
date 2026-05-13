@@ -126,6 +126,36 @@ template <typename A> class PollingActionServer {
             static_cast<int32_t>(status), buf, len));
     }
 
+    /// Phase 122.3.c.6.d — peek a pending cancel-goal request.
+    /// On success fills `goal_id`, `out_sequence_number`,
+    /// `out_current_status` (matches `nros::GoalStatus` discriminants).
+    /// Returns Result::success() if a request was peeked,
+    /// ErrorCode::TryAgain if none pending.
+    Result try_recv_cancel_request(uint8_t goal_id[16], int64_t& out_sequence_number,
+                                   GoalStatus& out_current_status) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        int8_t status_raw = 0;
+        int32_t rc = nros_cpp_action_server_try_recv_cancel_request_raw(
+            storage_, reinterpret_cast<uint8_t(*)[16]>(goal_id),
+            &out_sequence_number, &status_raw);
+        if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
+        if (rc == 0) return Result(ErrorCode::TryAgain);
+        out_current_status = static_cast<GoalStatus>(status_raw);
+        return Result::success();
+    }
+
+    /// Phase 122.3.c.6.d — reply to a previously-peeked cancel
+    /// request. `return_code` matches `nros::CancelResponse`:
+    /// 0 = Ok (one+ goals canceling), 1 = Rejected, 2 = UnknownGoal,
+    /// 3 = GoalTerminated. `accepted` is a contiguous array of
+    /// 16-byte goal IDs that will transition to CANCELING.
+    Result send_cancel_reply(int64_t sequence_number, int8_t return_code,
+                             const uint8_t (*accepted)[16], size_t accepted_count) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_server_send_cancel_reply_raw(
+            storage_, sequence_number, return_code, accepted, accepted_count));
+    }
+
     /// Serve one pending get_result query (call from spin loop).
     /// `default_result` is returned to clients querying goals that
     /// haven't been completed yet.

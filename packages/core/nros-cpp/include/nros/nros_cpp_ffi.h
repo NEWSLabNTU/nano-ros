@@ -1218,6 +1218,29 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
                                                         size_t result_len);
 
 /**
+ * Phase 122.3.c.6.d / .d — L1 polling: peek a pending
+ * cancel-goal request. Writes goal_id + sequence_number +
+ * current_status (matches `nros_cpp_goal_status_t` discriminants).
+ * Returns `1` on peek, `0` if none pending, negative on error.
+ */
+int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
+                                                           uint8_t (*goal_id_out)[16],
+                                                           int64_t *sequence_number_out,
+                                                           int8_t *current_status_out);
+
+/**
+ * Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
+ * request. `return_code` matches `nros_core::CancelResponse`
+ * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated).
+ * `accepted` points to `accepted_count` 16-byte goal-id arrays.
+ */
+nros_cpp_ret_t nros_cpp_action_server_send_cancel_reply_raw(void *storage,
+                                                            int64_t sequence_number,
+                                                            int8_t return_code,
+                                                            const uint8_t (*accepted)[16],
+                                                            size_t accepted_count);
+
+/**
  * Phase 122.3.d — L1 polling: serve a pending get_result query.
  * Returns `1` if served, `0` if none pending, negative on error.
  */

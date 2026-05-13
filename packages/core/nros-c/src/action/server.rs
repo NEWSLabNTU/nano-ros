@@ -1060,6 +1060,129 @@ pub unsafe extern "C" fn nros_action_server_complete_goal_raw(
     }
 }
 
+/// Phase 122.3.c.6.d — L1 polling: peek a pending cancel-goal
+/// request. Writes the named goal_id, the matching service
+/// sequence number, and the goal's current status (matches the
+/// `nros_goal_status_t` discriminants — pass it back unchanged).
+///
+/// Returns `1` when a request was peeked, `0` when none pending,
+/// negative `nros_ret_t` on error.
+///
+/// After a successful peek, call
+/// `nros_action_server_send_cancel_reply_raw` with the recorded
+/// `sequence_number` and the list of goals to accept-cancel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_try_recv_cancel_request_raw(
+    server: *mut nros_action_server_t,
+    goal_id_out: *mut [u8; 16],
+    sequence_number_out: *mut i64,
+    current_status_out: *mut nros_goal_status_t,
+) -> i32 {
+    if server.is_null()
+        || goal_id_out.is_null()
+        || sequence_number_out.is_null()
+        || current_status_out.is_null()
+    {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        match core.try_recv_cancel_request() {
+            Ok(Some(req)) => {
+                (*goal_id_out).copy_from_slice(&req.goal_id.uuid);
+                *sequence_number_out = req.sequence_number;
+                *current_status_out = goal_status_from_core(req.current_status);
+                1
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (goal_id_out, sequence_number_out, current_status_out);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
+/// the per-goal `nros_cancel_response_t` (ACCEPT/REJECT) used by the
+/// L2 callback path. These four discriminants mirror
+/// `nros_core::CancelResponse` and the `action_msgs/srv/CancelGoal`
+/// wire-CDR `return_code` field.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum nros_cancel_return_code_t {
+    NROS_CANCEL_RC_OK = 0,
+    NROS_CANCEL_RC_REJECTED = 1,
+    NROS_CANCEL_RC_UNKNOWN_GOAL = 2,
+    NROS_CANCEL_RC_GOAL_TERMINATED = 3,
+}
+
+/// Phase 122.3.c.6.d — L1 polling: reply to a cancel-goal request
+/// previously peeked via `_try_recv_cancel_request_raw`. `accepted`
+/// points to `accepted_count` goal-ID byte arrays that will
+/// transition to `CANCELING`. Pass an empty list (`accepted=NULL,
+/// accepted_count=0`) with
+/// `return_code=NROS_CANCEL_RC_REJECTED` to refuse the request
+/// entirely.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_server_send_cancel_reply_raw(
+    server: *mut nros_action_server_t,
+    sequence_number: i64,
+    return_code: nros_cancel_return_code_t,
+    accepted: *const [u8; 16],
+    accepted_count: usize,
+) -> nros_ret_t {
+    if server.is_null() || (accepted.is_null() && accepted_count != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let core = match polling_server_core(server) {
+            Some(c) => c,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let cancel_resp = match return_code {
+            nros_cancel_return_code_t::NROS_CANCEL_RC_OK => nros::CancelResponse::Ok,
+            nros_cancel_return_code_t::NROS_CANCEL_RC_REJECTED => nros::CancelResponse::Rejected,
+            nros_cancel_return_code_t::NROS_CANCEL_RC_UNKNOWN_GOAL => {
+                nros::CancelResponse::UnknownGoal
+            }
+            nros_cancel_return_code_t::NROS_CANCEL_RC_GOAL_TERMINATED => {
+                nros::CancelResponse::GoalTerminated
+            }
+        };
+        // Build a stack-resident slice of GoalIds from the caller's
+        // contiguous byte array. Cap at 8 — the wire format allows
+        // more but no current backend handles more than a few
+        // simultaneous cancels.
+        let mut ids: nros_core::heapless::Vec<nros::GoalId, 8> = nros_core::heapless::Vec::new();
+        for i in 0..accepted_count {
+            if i >= 8 {
+                return NROS_RET_BAD_SEQUENCE;
+            }
+            let uuid = *accepted.add(i);
+            if ids.push(nros::GoalId { uuid }).is_err() {
+                return NROS_RET_ERROR;
+            }
+        }
+        match core.send_cancel_reply(sequence_number, cancel_resp, &ids) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (sequence_number, return_code, accepted, accepted_count);
+        NROS_RET_NOT_INIT
+    }
+}
+
 /// Phase 122.3.c.6.b — L1 polling: serve a pending get_result query.
 ///
 /// `default_result_cdr` is the default serialized result (without

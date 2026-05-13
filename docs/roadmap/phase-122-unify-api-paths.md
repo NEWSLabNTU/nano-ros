@@ -244,10 +244,75 @@ Sub-items:
       `nros_node::ActionServerCore::from_channels`
       constructor exposes the (otherwise crate-private)
       ServerCore fields to the C shim. Server-side
-      cancel-handler entry point is omitted from .c.6.b —
-      `ActionServerCore::try_handle_cancel` takes a per-call
-      cancel-decision closure that doesn't cross the C FFI
-      cleanly; tracked as a follow-up (.c.6.d).
+      cancel-handler entry point is split off into .c.6.d
+      below — `ActionServerCore::try_handle_cancel` takes a
+      per-call cancel-decision closure that doesn't cross the
+      C FFI cleanly, so it's exposed via a separate
+      peek-then-reply pair.
+  - [x] **122.3.c.6.d — server-side cancel-request peek +
+    reply (split pair).** Landed: closure-free C-FFI path for
+    handling cancel-goal requests. Design picked Option 2
+    (peek-then-reply) from the .c.6.d discussion to keep
+    closures off the C ABI. Three layers wired together:
+    1. `nros-node::ActionServerCore`:
+       - new struct `PendingCancelRequest { goal_id,
+         sequence_number, current_status }`;
+       - new `try_recv_cancel_request()` — non-blocking
+         peek, returns `Option<PendingCancelRequest>`;
+       - new `send_cancel_reply(sequence_number, return_code,
+         &[GoalId])` — builds the action_msgs CDR reply
+         (`return_code` + `sequence<GoalInfo>`), flips the
+         listed goals to `Canceling`, publishes the status
+         array. Existing closure-style `try_handle_cancel`
+         left untouched (the Rust-side callback path stays
+         supported).
+    2. `nros-c::action::server`:
+       - `nros_action_server_try_recv_cancel_request_raw(server,
+         goal_id_out, sequence_number_out, current_status_out)`;
+       - new POD-style enum
+         `nros_cancel_return_code_t` (OK / REJECTED /
+         UNKNOWN_GOAL / GOAL_TERMINATED — mirrors
+         `nros_core::CancelResponse`; named distinctly from
+         the pre-existing per-goal `nros_cancel_response_t`
+         ACCEPT/REJECT used by the L2 callback path);
+       - `_send_cancel_reply_raw(server, sequence_number,
+         return_code, accepted, accepted_count)` — accepts a
+         contiguous `[u8; 16]` array of goal IDs (cap 8).
+    3. `nros-cpp::src::action`:
+       - matching `nros_cpp_action_server_try_recv_cancel_request_raw`
+         + `_send_cancel_reply_raw` FFI (uses raw `int8_t`
+         return_code, defers the enum sugar to the C++ class
+         layer);
+       - `PollingActionServer<A>::try_recv_cancel_request(goal_id,
+         &seq, &current_status)` and
+         `::send_cancel_reply(seq, return_code, accepted,
+         accepted_count)` methods.
+  - [ ] **122.3.c.6.e — event-driven cancel path (waker /
+    callback).** Polling is the right primitive for tight
+    L1 loops and the C FFI surface, but RTOS / event-driven
+    callers want the kernel to wake them when a cancel
+    request lands — not to spin a poll. Plan:
+    - Add `ServiceServerTrait::register_waker(&Waker)`
+      (mirrors the existing methods on
+      `SubscriberTrait` / `ServiceClientTrait`; default no-op
+      so non-supporting backends keep compiling).
+    - Implement on the zenoh-pico / cyclonedds / XRCE
+      backends — same wake-on-rx primitive each already uses
+      for subscribers.
+    - Rust convenience: extend
+      `Executor::register_action_server` so the executor's
+      spin loop wakes only when the cancel channel signals,
+      and surface a typed `on_cancel(closure)` hook.
+    - C / C++ convenience: existing L2 callback path
+      (`nros_executor_register_action_server` +
+      `nros_cancel_callback_t` /
+      `nros_cpp_action_server_set_callbacks`) already gives
+      an "RMW wakes me" feel via the executor's per-spin
+      poll; .c.6.e gets that loop off the polling treadmill
+      by waking on actual RMW events. RMW exposes the
+      primitive; the user library (Rust closure, C function
+      pointer, C++ method override) wraps it. Defer until a
+      real RTOS user surfaces measurable wake-latency need.
   - [x] **122.3.c.6.c — cancel-RPC reply receive (client
     side).** Landed: `ActionClientCore::try_recv_cancel_reply`
     in `nros-node/src/executor/action_core.rs`. Symmetric with

@@ -39,6 +39,20 @@ pub struct CompletedResultEntry {
     pub len: usize,
 }
 
+/// Phase 122.3.c.6.d — information about a peeked cancel-goal
+/// request. Returned by
+/// [`ActionServerCore::try_recv_cancel_request`].
+pub struct PendingCancelRequest {
+    /// The goal_id named in the cancel request.
+    pub goal_id: GoalId,
+    /// Service sequence number — pass back to
+    /// [`ActionServerCore::send_cancel_reply`].
+    pub sequence_number: i64,
+    /// Snapshot of the goal's current status at peek time
+    /// (`GoalStatus::Unknown` if no matching active goal).
+    pub current_status: GoalStatus,
+}
+
 /// Information about a received goal request.
 pub struct RawGoalRequest {
     /// The parsed goal ID.
@@ -312,6 +326,99 @@ impl<
         }
 
         let _ = self.publish_status_array();
+    }
+
+    /// Phase 122.3.c.6.d — peek a pending cancel-goal request without
+    /// generating a reply. Returns the goal_id named in the request,
+    /// the matching service sequence number (use it with
+    /// [`send_cancel_reply`](Self::send_cancel_reply)), and the
+    /// goal's current status (`GoalStatus::Unknown` if no such
+    /// active goal). Returns `Ok(None)` when no cancel request is
+    /// pending.
+    ///
+    /// Used by L1 polling-mode action servers (nros-c / nros-cpp C
+    /// FFI) that want to drive cancel-decision policy without
+    /// passing a Rust closure across the C ABI. See the matching
+    /// [`send_cancel_reply`](Self::send_cancel_reply) for the reply
+    /// side. The high-level closure-based
+    /// [`try_handle_cancel`](Self::try_handle_cancel) keeps working
+    /// and now delegates to this pair.
+    pub fn try_recv_cancel_request(&mut self) -> Result<Option<PendingCancelRequest>, NodeError> {
+        let buf_start = self.cancel_buffer.as_ptr() as usize;
+        let request = match self
+            .cancel_goal_server
+            .try_recv_request(&mut self.cancel_buffer)
+        {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
+        };
+
+        let data_offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
+        let data_len = request.data.len();
+        let sequence_number = request.sequence_number;
+        #[allow(clippy::drop_non_drop)]
+        drop(request);
+
+        let mut reader =
+            CdrReader::new_with_header(&self.cancel_buffer[data_offset..data_offset + data_len])
+                .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+
+        let goal_id = read_goal_id(&mut reader)?;
+        let current_status = self.find_goal_status(&goal_id);
+
+        Ok(Some(PendingCancelRequest {
+            goal_id,
+            sequence_number,
+            current_status,
+        }))
+    }
+
+    /// Phase 122.3.c.6.d — send the reply to a previously-peeked
+    /// cancel-goal request. `sequence_number` must match the value
+    /// returned by [`try_recv_cancel_request`](Self::try_recv_cancel_request).
+    ///
+    /// `return_code` is the overall RPC status (`CancelResponse::Ok`
+    /// = at least one cancel honoured; other variants = whole-request
+    /// failure). `accepted` lists the goals that transition to
+    /// `Canceling`; this function flips their stored status before
+    /// publishing the status array.
+    pub fn send_cancel_reply(
+        &mut self,
+        sequence_number: i64,
+        return_code: nros_core::CancelResponse,
+        accepted: &[GoalId],
+    ) -> Result<(), NodeError> {
+        for id in accepted {
+            self.set_goal_status(id, GoalStatus::Canceling);
+        }
+
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+        writer
+            .write_i8(return_code as i8)
+            .map_err(|_| NodeError::Serialization)?;
+        let count = u32::try_from(accepted.len()).unwrap_or(u32::MAX);
+        writer
+            .write_u32(count)
+            .map_err(|_| NodeError::Serialization)?;
+        for id in accepted {
+            write_goal_id(&mut writer, id)?;
+            // GoalInfo.stamp — zero timestamp.
+            writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
+            writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+        }
+        let reply_len = writer.position();
+
+        self.cancel_goal_server
+            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .map_err(|_| NodeError::ServiceReplyFailed)?;
+
+        if !accepted.is_empty() {
+            let _ = self.publish_status_array();
+        }
+
+        Ok(())
     }
 
     /// Try to handle a cancel_goal request (type-agnostic).

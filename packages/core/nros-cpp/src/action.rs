@@ -1722,6 +1722,78 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
     NROS_CPP_RET_OK
 }
 
+/// Phase 122.3.c.6.d / .d — L1 polling: peek a pending
+/// cancel-goal request. Writes goal_id + sequence_number +
+/// current_status (matches `nros_cpp_goal_status_t` discriminants).
+/// Returns `1` on peek, `0` if none pending, negative on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(
+    storage: *mut c_void,
+    goal_id_out: *mut [u8; 16],
+    sequence_number_out: *mut i64,
+    current_status_out: *mut i8,
+) -> i32 {
+    if storage.is_null()
+        || goal_id_out.is_null()
+        || sequence_number_out.is_null()
+        || current_status_out.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    match core.try_recv_cancel_request() {
+        Ok(Some(req)) => {
+            unsafe {
+                (*goal_id_out).copy_from_slice(&req.goal_id.uuid);
+                *sequence_number_out = req.sequence_number;
+                *current_status_out = req.current_status as i8;
+            }
+            1
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
+/// request. `return_code` matches `nros_core::CancelResponse`
+/// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated).
+/// `accepted` points to `accepted_count` 16-byte goal-id arrays.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_send_cancel_reply_raw(
+    storage: *mut c_void,
+    sequence_number: i64,
+    return_code: i8,
+    accepted: *const [u8; 16],
+    accepted_count: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || (accepted.is_null() && accepted_count != 0) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
+    let resp = match return_code {
+        0 => nros::CancelResponse::Ok,
+        1 => nros::CancelResponse::Rejected,
+        2 => nros::CancelResponse::UnknownGoal,
+        3 => nros::CancelResponse::GoalTerminated,
+        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let mut ids: nros::heapless::Vec<nros::GoalId, 8> = nros::heapless::Vec::new();
+    for i in 0..accepted_count {
+        if i >= 8 {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let uuid = unsafe { *accepted.add(i) };
+        if ids.push(nros::GoalId { uuid }).is_err() {
+            return NROS_CPP_RET_ERROR;
+        }
+    }
+    match core.send_cancel_reply(sequence_number, resp, &ids) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Phase 122.3.d — L1 polling: serve a pending get_result query.
 /// Returns `1` if served, `0` if none pending, negative on error.
 #[unsafe(no_mangle)]
