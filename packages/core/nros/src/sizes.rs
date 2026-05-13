@@ -65,6 +65,21 @@ mod rmw_sizes {
     export_size!(pub SUBSCRIBER_SIZE     = RmwSubscriber);
     export_size!(pub SERVICE_CLIENT_SIZE = RmwServiceClient);
     export_size!(pub SERVICE_SERVER_SIZE = RmwServiceServer);
+
+    // Phase 122.3.c.3 — L1 polling-mode Raw* handles. Defaults to
+    // `DEFAULT_RX_BUF_SIZE` on each const-generic slot, which is
+    // exactly the value `nros-c::config::MESSAGE_BUFFER_SIZE` resolves
+    // to (both derive from `NROS_SUBSCRIPTION_BUFFER_SIZE` via
+    // `nros-node`'s build.rs). nros-c's build.rs reads these probe
+    // values and emits the matching `*_OPAQUE_U64S` macros into the
+    // per-build variant header so C struct `_opaque` storage agrees
+    // with the Rust struct layout. Without this probe, cbindgen
+    // ships a `_OPAQUE_U64S = 1` placeholder which silently
+    // truncates the C-side `_opaque` slot.
+    export_size!(pub RAW_SUBSCRIPTION_SIZE   = nros_node::RawSubscription);
+    export_size!(pub RAW_SERVICE_SERVER_SIZE = nros_node::RawServiceServer);
+    export_size!(pub RAW_SERVICE_CLIENT_SIZE = nros_node::RawServiceClient);
+
     export_size!(pub EXECUTOR_SIZE       = nros_node::Executor);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardConditionHandle);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);

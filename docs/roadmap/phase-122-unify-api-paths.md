@@ -151,29 +151,36 @@ Sub-items:
     `u64s_for::<RawServiceServer<MESSAGE_BUFFER_SIZE, …>>()`
     parallels existing `SUBSCRIPTION_OPAQUE_U64S`. Placeholder
     `= 1` when `rmw-cffi` is off.
-  - [ ] **122.3.c.3 — fix opaque-size emission in the cbindgen
-    output (blocks 122.3.c.4+).** cbindgen renders
-    `SUBSCRIPTION_OPAQUE_U64S` and the new
-    `SERVICE_SERVER_OPAQUE_U64S` / `SERVICE_CLIENT_OPAQUE_U64S`
-    as `#define … 1` in `nros_generated.h` (it picks the
+  - [x] **122.3.c.3 — fix opaque-size emission in the cbindgen
+    output.** cbindgen rendered `SUBSCRIPTION_OPAQUE_U64S` and the
+    new `SERVICE_SERVER_OPAQUE_U64S` / `SERVICE_CLIENT_OPAQUE_U64S`
+    as `#define … 1` in `nros_generated.h` (it picked the
     `#[cfg(not(feature = "rmw-cffi"))]` placeholder branch
-    because cbindgen evaluates cfgs against its own command-line
-    feature set, not the build's). The variant header
+    because cbindgen evaluates cfgs against its own command-
+    line feature set). The variant header
     (`target/nros-c-generated/nros/nros_config_generated.h`)
-    doesn't redefine these macros, so C consumers see
-    `_opaque[1]` (= 8 bytes) while Rust writes a much larger
+    didn't redefine these macros — C consumers saw
+    `_opaque[1]` (8 bytes) while Rust wrote a much larger
     `RawSubscription` / `RawServiceServer` value into the same
-    storage — silent struct corruption. Fix: emit
-    `SUBSCRIPTION_OPAQUE_U64S` / `SERVICE_SERVER_OPAQUE_U64S` /
-    `SERVICE_CLIENT_OPAQUE_U64S` from `nros-c/build.rs` in the
-    variant header. The variant header is included after
-    `nros_generated.h` so the `#define` wins. Needs
-    `RAW_SUBSCRIPTION_SIZE` / `RAW_SERVICE_SERVER_SIZE` /
-    `RAW_SERVICE_CLIENT_SIZE` probes in `nros::sizes`, sized
-    at `MESSAGE_BUFFER_SIZE`. Until this lands, the 122.3.b
-    `nros_subscription_init_polling` C entry point is also
-    silently broken — only Rust-internal users of
-    `RawSubscription::new` are safe.
+    storage. Silent struct corruption. Retroactive blocker on
+    122.3.b. Fix landed:
+    - `nros::sizes` exports `RAW_SUBSCRIPTION_SIZE`,
+      `RAW_SERVICE_SERVER_SIZE`, `RAW_SERVICE_CLIENT_SIZE`
+      probes via `export_size!` on
+      `nros_node::Raw{Subscription,ServiceServer,ServiceClient}`
+      with default const generics (= `DEFAULT_RX_BUF_SIZE` =
+      `MESSAGE_BUFFER_SIZE`).
+    - `nros-c/build.rs` reads the new probes and emits
+      `#undef` + `#define` overrides for
+      `SUBSCRIPTION_OPAQUE_U64S` /
+      `SERVICE_SERVER_OPAQUE_U64S` /
+      `SERVICE_CLIENT_OPAQUE_U64S` in the per-build variant
+      header. The variant header is included after
+      `nros_generated.h`, so the override wins. Current probe
+      values at default config: subscription = 205 u64
+      (~1640 B), service server = 194 u64 (~1552 B), service
+      client = 707 u64 (~5656 B — `pending_request` 4096 +
+      buffers).
   - [ ] **122.3.c.4 — `nros_service_init_polling`,
     `nros_service_try_recv_request_raw`,
     `nros_service_send_reply_raw` C entry points.** Mirrors the
