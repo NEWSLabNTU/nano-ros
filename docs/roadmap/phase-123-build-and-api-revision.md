@@ -397,10 +397,39 @@ arrays).
   `nano_ros_link_rmw(my_cpp_talker)`); mismatched-RMW request
   fails with a guided error; workspace-default cache var
   resolution works.
-- [ ] **123.A.7 — Workspace-shared codegen cache.** Honour
-  `NANO_ROS_GEN_CACHE_DIR` in `NanoRosGenerateInterfaces.cmake`
-  + `cargo-nano-ros`. Per-workspace singletons for
-  `std_msgs__nano_ros_{c,cpp}` libs and `std_msgs` cargo crate.
+- [x] **123.A.7 — Workspace-shared codegen cache.** Done (CMake
+  side). `NanoRosGenerateInterfaces.cmake` honours
+  `NANO_ROS_GEN_CACHE_DIR` (CMake var or env var):
+    * Redirects `_output_dir` from
+      `${CMAKE_CURRENT_BINARY_DIR}/nano_ros_{c,cpp}/<pkg>` to
+      `${NANO_ROS_GEN_CACHE_DIR}/nano_ros_{c,cpp}/<pkg>`.
+    * Umbrella include dir `${_umbrella_dir}` follows the same
+      redirect so cross-package include resolution works
+      (`<builtin_interfaces/msg/time.h>` from inside
+      `std_msgs_msg_header.h`).
+    * Per-target FFI crate dir
+      (`nano_ros_cpp_ffi_<pkg>`) moves into the cache too.
+    * `nano_ros_generate_<lang>_args__<pkg>.json` moves into the
+      cache so the content-comparison mtime preservation works
+      across packages.
+    * args.json only rewritten when content changes — keeps
+      mtime stable so `add_custom_command` sees outputs
+      up-to-date.
+
+  Verified: package B that consumes std_msgs after package A
+  shows **0 `nros-codegen` invocations** during B's build —
+  full cache hit. B's executable still links + runs.
+
+  Cargo-side (`cargo-nano-ros generate-rust`) still emits to the
+  per-package target dir — deferred. Today's cargo workflow
+  already shares the `std_msgs` crate across workspace members
+  via `[workspace.dependencies]`, so the cache pressure is
+  CMake-side only.
+
+  Concurrency caveat: colcon `--parallel-workers=N` can race two
+  packages on the same codegen target. Mitigation: declare an
+  explicit dependency between packages in package.xml so colcon
+  serializes them. Documented in installation.md (A.9).
 - [x] **123.A.8 — Migrate `just <plat> setup` recipes.** Done.
   Migrated to `tools/setup.sh --platform=<plat>` /
   `--rmw=<rmw>` shims:
