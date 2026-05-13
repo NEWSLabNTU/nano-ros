@@ -181,20 +181,33 @@ Sub-items:
       (~1640 B), service server = 194 u64 (~1552 B), service
       client = 707 u64 (~5656 B — `pending_request` 4096 +
       buffers).
-  - [ ] **122.3.c.4 — `nros_service_init_polling`,
+  - [x] **122.3.c.4 — `nros_service_init_polling`,
     `nros_service_try_recv_request_raw`,
-    `nros_service_send_reply_raw` C entry points.** Mirrors the
-    subscription template at `packages/core/nros-c/src/subscription.rs:269-460`.
-    Blocked on 122.3.c.3.
-  - [ ] **122.3.c.5 — `nros_service_client_init_polling`,
-    `nros_service_client_send_request_raw`,
-    `nros_service_client_try_recv_reply_raw`.** Blocked on
-    122.3.c.3.
+    `nros_service_send_reply_raw` C entry points.** Mirror of
+    the subscription template at
+    `packages/core/nros-c/src/subscription.rs:269-460`.
+    `nros_service_t` gains a `_opaque` field sized at
+    `SERVICE_SERVER_OPAQUE_U64S` and a new
+    `NROS_SERVICE_STATE_POLLING = 3` variant. `nros_service_fini`
+    branches on state — L2 only resets metadata, L1 also
+    `drop_in_place`s the inline `RawServiceServer`.
+  - [x] **122.3.c.5 — `nros_client_init_polling`,
+    `nros_client_send_request_raw`,
+    `nros_client_try_recv_reply_raw` C entry points.** Same
+    shape as .c.4. `nros_client_t._opaque` sized at
+    `SERVICE_CLIENT_OPAQUE_U64S`; new
+    `NROS_CLIENT_STATE_POLLING = 4` variant; `nros_client_fini`
+    drops the inline `RawServiceClient` on POLLING state.
   - [ ] **122.3.c.6 — `RawActionServer<...>` +
     `RawActionClient<...>` Rust types + C entry points.** Larger
     than the service pair (5-channel protocol, active-goal
-    tracking) — schedule after the service pair lands and
-    122.3.c.3 is closed.
+    tracking). `ActionServerCore` / `ActionClientCore` in
+    `nros-node` already expose the raw methods
+    (`try_recv_goal_request`, `publish_feedback_raw`,
+    `complete_goal_raw`, `try_handle_cancel`,
+    `try_handle_get_result_raw`) — wrapping is the open work,
+    plus `Node::create_action_{server,client}_raw_sized`,
+    probe sizes, and the C entry points.
 - [ ] **122.3.d — nros-cpp wrapper sync.** Mirror the refactored
   C struct shape into the C++ headers. Add L1 constructor +
   `try_recv` method per entity.

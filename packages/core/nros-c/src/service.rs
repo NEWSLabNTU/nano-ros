@@ -15,6 +15,7 @@ use crate::{
     error::*,
     executor::nros_executor_t,
     node::{nros_node_state_t, nros_node_t},
+    opaque_sizes::{SERVICE_CLIENT_OPAQUE_U64S, SERVICE_SERVER_OPAQUE_U64S},
     publisher::nros_service_type_t,
 };
 
@@ -82,10 +83,16 @@ pub type nros_service_callback_t = Option<
 pub enum nros_service_state_t {
     /// Not initialized
     NROS_SERVICE_STATE_UNINITIALIZED = 0,
-    /// Initialized and ready
+    /// L2 callback-mode: initialized via `nros_service_init`, transport
+    /// creation deferred to `nros_executor_register_service`.
     NROS_SERVICE_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_SERVICE_STATE_SHUTDOWN = 2,
+    /// Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
+    /// in `_opaque`; caller drains via
+    /// `nros_service_try_recv_request_raw` and replies via
+    /// `nros_service_send_reply_raw`. No executor registration.
+    NROS_SERVICE_STATE_POLLING = 3,
 }
 
 /// Service server structure.
@@ -114,6 +121,11 @@ pub struct nros_service_t {
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
+    /// Phase 122.3.c.4 — inline opaque storage for the L1 polling-mode
+    /// `RawServiceServer<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>`.
+    /// Zeroed in L2 (callback + executor arena) mode; populated by
+    /// `nros_service_init_polling`.
+    pub _opaque: [u64; SERVICE_SERVER_OPAQUE_U64S],
 }
 
 impl Default for nros_service_t {
@@ -130,6 +142,7 @@ impl Default for nros_service_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             _internal: ServiceServerInternal::new(),
+            _opaque: [0u64; SERVICE_SERVER_OPAQUE_U64S],
         }
     }
 }
@@ -234,15 +247,28 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 
     let service = &mut *service;
 
-    validate_state!(
-        service,
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
-    );
+    match service.state {
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED => {
+            // L2: server lives in the executor arena (if registered) —
+            // reset metadata. The arena entry's Drop runs when the
+            // executor is destroyed.
+        }
+        nros_service_state_t::NROS_SERVICE_STATE_POLLING => {
+            // L1: drop the inline RawServiceServer so its Drop runs
+            // (closes the underlying RMW server).
+            #[cfg(feature = "rmw-cffi")]
+            {
+                core::ptr::drop_in_place(service._opaque.as_mut_ptr()
+                    as *mut nros_node::RawServiceServer<
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                        { crate::config::MESSAGE_BUFFER_SIZE },
+                    >);
+                service._opaque = [0u64; SERVICE_SERVER_OPAQUE_U64S];
+            }
+        }
+        _ => return NROS_RET_NOT_INIT,
+    }
 
-    // Reset the inline ServiceServerInternal. The actual service server
-    // lives in the executor's arena and is freed when the executor is
-    // destroyed; this struct has no Drop impl, so a simple overwrite
-    // with `new()` is sufficient.
     service._internal = ServiceServerInternal::new();
     service.callback = None;
     service.context = ptr::null_mut();
@@ -250,6 +276,229 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
     service.state = nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
 
     NROS_RET_OK
+}
+
+// ============================================================================
+// Phase 122.3.c.4 — Layer-1 primitive entry points (caller polls)
+// ============================================================================
+//
+// L1 path: caller owns scheduling. The transport server is created
+// during `nros_service_init_polling` and stored inline in
+// `service._opaque`; caller drains requests via
+// `nros_service_try_recv_request_raw` and replies via
+// `nros_service_send_reply_raw`. No executor registration. Used by
+// RTIC / embassy / FreeRTOS-task-per-entity patterns and the C/C++
+// FFI shims for callers that drive their own poll loops.
+
+/// Phase 122.3.c.4 — initialize an L1 polling-mode service server.
+///
+/// Creates the underlying RMW server immediately and stores it inline
+/// in the service's `_opaque` field. The caller drains received
+/// requests via `nros_service_try_recv_request_raw` and sends replies
+/// via `nros_service_send_reply_raw`.
+///
+/// # Parameters
+/// * `service` - Pointer to a zero-initialized service
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to service type information
+/// * `service_name` - Service name (null-terminated)
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
+/// * `NROS_RET_NOT_INIT` if node / support not initialized
+/// * `NROS_RET_ERROR` if server creation failed
+///
+/// # Safety
+/// All pointers must be valid; `service_name` must be a valid
+/// null-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_init_polling(
+    service: *mut nros_service_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+) -> nros_ret_t {
+    validate_not_null!(service, node, type_info, service_name);
+
+    let service_mut = &mut *service;
+    let node_ref = &*node;
+    let type_info_ref = &*type_info;
+
+    validate_state!(
+        service_mut,
+        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    service_mut.service_name_len =
+        crate::util::copy_cstr_into(service_name, &mut service_mut.service_name);
+    if service_mut.service_name_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    service_mut.type_name_len =
+        crate::util::copy_cstr_into(type_info_ref.type_name, &mut service_mut.type_name);
+    service_mut.type_hash_len =
+        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut service_mut.type_hash);
+
+    service_mut.node = node;
+    service_mut.callback = None;
+    service_mut.context = ptr::null_mut();
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::{ServiceInfo, Session};
+
+        let support_mut = match node_ref.get_support_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+        validate_state!(
+            support_mut,
+            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        );
+        let domain_id = support_mut.domain_id as u32;
+        let session = match support_mut.get_session_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let service_str = core::str::from_utf8_unchecked(
+            &service_mut.service_name[..service_mut.service_name_len],
+        );
+        let type_str =
+            core::str::from_utf8_unchecked(&service_mut.type_name[..service_mut.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&service_mut.type_hash[..service_mut.type_hash_len]);
+        let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+        let namespace_str =
+            core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+
+        let info = ServiceInfo::new(service_str, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+
+        match session.create_service_server(&info) {
+            Ok(handle) => {
+                let raw = nros_node::RawServiceServer::<
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                >::new(handle);
+                core::ptr::write(
+                    service_mut._opaque.as_mut_ptr()
+                        as *mut nros_node::RawServiceServer<
+                            { crate::config::MESSAGE_BUFFER_SIZE },
+                            { crate::config::MESSAGE_BUFFER_SIZE },
+                        >,
+                    raw,
+                );
+            }
+            Err(_) => return NROS_RET_ERROR,
+        }
+    }
+
+    service_mut.state = nros_service_state_t::NROS_SERVICE_STATE_POLLING;
+    NROS_RET_OK
+}
+
+/// Phase 122.3.c.4 — non-blocking poll for a pending request on an L1
+/// polling-mode service. Writes the request bytes into the caller's
+/// `buf` and the matching `sequence_number` (required for reply).
+///
+/// # Returns
+/// * `>= 0` — number of bytes written to `buf` (0 = no request)
+/// * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
+/// * `NROS_RET_ERROR` on transport failure
+///
+/// # Safety
+/// `service` must be in `POLLING` state. `buf` writable for `buf_len`
+/// bytes. `sequence_number` writable for `i64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_try_recv_request_raw(
+    service: *mut nros_service_t,
+    buf: *mut u8,
+    buf_len: usize,
+    sequence_number: *mut i64,
+) -> i32 {
+    if service.is_null() || (buf.is_null() && buf_len != 0) || sequence_number.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let service_mut = &mut *service;
+    if service_mut.state != nros_service_state_t::NROS_SERVICE_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let raw = &mut *(service_mut._opaque.as_mut_ptr()
+            as *mut nros_node::RawServiceServer<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        match raw.try_recv_request_raw() {
+            Ok(Some((len, seq))) => {
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(raw.req_buffer().as_ptr(), buf, copy_len);
+                *sequence_number = seq;
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len, sequence_number);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
+///
+/// `sequence_number` must equal the value returned by the most recent
+/// `nros_service_try_recv_request_raw` for the request being replied
+/// to.
+///
+/// # Safety
+/// `service` must be in `POLLING` state. `data` readable for `len`
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_send_reply_raw(
+    service: *mut nros_service_t,
+    sequence_number: i64,
+    data: *const u8,
+    len: usize,
+) -> nros_ret_t {
+    if service.is_null() || (data.is_null() && len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let service_mut = &mut *service;
+    if service_mut.state != nros_service_state_t::NROS_SERVICE_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let raw = &mut *(service_mut._opaque.as_mut_ptr()
+            as *mut nros_node::RawServiceServer<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        let slice = core::slice::from_raw_parts(data, len);
+        match raw.send_reply_raw(sequence_number, slice) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (sequence_number, data, len);
+        NROS_RET_NOT_INIT
+    }
 }
 
 /// Take a service request (non-blocking).
@@ -432,6 +681,10 @@ pub enum nros_client_state_t {
     NROS_CLIENT_STATE_REGISTERED = 2,
     /// Shutdown
     NROS_CLIENT_STATE_SHUTDOWN = 3,
+    /// Phase 122.3.c.5 — L1 polling-mode: transport entity lives inline
+    /// in `_opaque`; caller drives via `nros_client_send_request_raw`
+    /// and `nros_client_try_recv_reply_raw`. No executor registration.
+    NROS_CLIENT_STATE_POLLING = 4,
 }
 
 /// Service client structure.
@@ -461,6 +714,11 @@ pub struct nros_client_t {
     /// Internal state (arena entry index + executor pointer + timeout).
     /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
+    /// Phase 122.3.c.5 — inline opaque storage for the L1 polling-mode
+    /// `RawServiceClient<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>`.
+    /// Zeroed in L2 (callback + executor arena) mode; populated by
+    /// `nros_client_init_polling`.
+    pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
 }
 
 impl Default for nros_client_t {
@@ -477,6 +735,7 @@ impl Default for nros_client_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             _internal: ServiceClientInternal::new(),
+            _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
     }
 }
@@ -571,6 +830,20 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
         return NROS_RET_NOT_INIT;
     }
 
+    if client.state == nros_client_state_t::NROS_CLIENT_STATE_POLLING {
+        // L1: drop the inline RawServiceClient so its Drop runs
+        // (closes the underlying RMW client).
+        #[cfg(feature = "rmw-cffi")]
+        {
+            core::ptr::drop_in_place(client._opaque.as_mut_ptr()
+                as *mut nros_node::RawServiceClient<
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                >);
+            client._opaque = [0u64; SERVICE_CLIENT_OPAQUE_U64S];
+        }
+    }
+
     // Reset the inline ServiceClientInternal. The RmwServiceClient lives
     // in the executor's arena and is freed when the executor is destroyed.
     client._internal = ServiceClientInternal::new();
@@ -580,6 +853,214 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
     client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
+}
+
+// ============================================================================
+// Phase 122.3.c.5 — Layer-1 primitive entry points for service client
+// ============================================================================
+
+/// Phase 122.3.c.5 — initialize an L1 polling-mode service client.
+///
+/// Creates the underlying RMW client immediately and stores it inline
+/// in the client's `_opaque` field. The caller drives the
+/// request/reply cycle via `nros_client_send_request_raw` +
+/// `nros_client_try_recv_reply_raw`.
+///
+/// # Parameters
+/// * `client` - Pointer to a zero-initialized client
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to service type information
+/// * `service_name` - Service name (null-terminated)
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
+/// * `NROS_RET_NOT_INIT` if node / support not initialized
+/// * `NROS_RET_ERROR` if client creation failed
+///
+/// # Safety
+/// All pointers must be valid; `service_name` must be a valid
+/// null-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_init_polling(
+    client: *mut nros_client_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+) -> nros_ret_t {
+    validate_not_null!(client, node, type_info, service_name);
+
+    let client_mut = &mut *client;
+    let node_ref = &*node;
+    let type_info_ref = &*type_info;
+
+    validate_state!(
+        client_mut,
+        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    client_mut.service_name_len =
+        crate::util::copy_cstr_into(service_name, &mut client_mut.service_name);
+    if client_mut.service_name_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    client_mut.type_name_len =
+        crate::util::copy_cstr_into(type_info_ref.type_name, &mut client_mut.type_name);
+    client_mut.type_hash_len =
+        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut client_mut.type_hash);
+
+    client_mut.node = node;
+    client_mut.response_callback = None;
+    client_mut.context = ptr::null_mut();
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::{ServiceInfo, Session};
+
+        let support_mut = match node_ref.get_support_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+        validate_state!(
+            support_mut,
+            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        );
+        let domain_id = support_mut.domain_id as u32;
+        let session = match support_mut.get_session_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let service_str =
+            core::str::from_utf8_unchecked(&client_mut.service_name[..client_mut.service_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&client_mut.type_name[..client_mut.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client_mut.type_hash[..client_mut.type_hash_len]);
+        let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+        let namespace_str =
+            core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
+
+        let info = ServiceInfo::new(service_str, type_str, type_hash_str)
+            .with_domain(domain_id)
+            .with_node_name(node_name_str)
+            .with_namespace(namespace_str);
+
+        match session.create_service_client(&info) {
+            Ok(handle) => {
+                let raw = nros_node::RawServiceClient::<
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                    { crate::config::MESSAGE_BUFFER_SIZE },
+                >::new(handle);
+                core::ptr::write(
+                    client_mut._opaque.as_mut_ptr()
+                        as *mut nros_node::RawServiceClient<
+                            { crate::config::MESSAGE_BUFFER_SIZE },
+                            { crate::config::MESSAGE_BUFFER_SIZE },
+                        >,
+                    raw,
+                );
+            }
+            Err(_) => return NROS_RET_ERROR,
+        }
+    }
+
+    client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_POLLING;
+    NROS_RET_OK
+}
+
+/// Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
+/// Non-blocking. Poll for the reply via
+/// `nros_client_try_recv_reply_raw`.
+///
+/// # Safety
+/// `client` must be in `POLLING` state. `data` readable for `len`
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_send_request_raw(
+    client: *mut nros_client_t,
+    data: *const u8,
+    len: usize,
+) -> nros_ret_t {
+    if client.is_null() || (data.is_null() && len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let client_mut = &mut *client;
+    if client_mut.state != nros_client_state_t::NROS_CLIENT_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let raw = &mut *(client_mut._opaque.as_mut_ptr()
+            as *mut nros_node::RawServiceClient<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        let slice = core::slice::from_raw_parts(data, len);
+        match raw.send_request_raw(slice) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (data, len);
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// Phase 122.3.c.5 — non-blocking poll for a reply on an L1
+/// polling-mode client. Writes reply bytes into the caller's `buf`.
+///
+/// # Returns
+/// * `>= 0` — number of bytes written to `buf` (0 = no reply yet)
+/// * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
+/// * `NROS_RET_ERROR` on transport failure
+///
+/// # Safety
+/// `client` must be in `POLLING` state. `buf` writable for `buf_len`
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_try_recv_reply_raw(
+    client: *mut nros_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let client_mut = &mut *client;
+    if client_mut.state != nros_client_state_t::NROS_CLIENT_STATE_POLLING {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let raw = &mut *(client_mut._opaque.as_mut_ptr()
+            as *mut nros_node::RawServiceClient<
+                { crate::config::MESSAGE_BUFFER_SIZE },
+                { crate::config::MESSAGE_BUFFER_SIZE },
+            >);
+        match raw.try_recv_reply_raw() {
+            Ok(Some(len)) => {
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(raw.reply_buffer().as_ptr(), buf, copy_len);
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (buf, buf_len);
+        NROS_RET_NOT_INIT
+    }
 }
 
 // ============================================================================
