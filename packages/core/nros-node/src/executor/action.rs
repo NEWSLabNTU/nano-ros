@@ -436,14 +436,95 @@ impl Executor {
         accepted_callback: Option<RawAcceptedCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionServerRawHandle, NodeError> {
+        self.register_action_server_raw_sized_inner::<
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+            MAX_GOALS,
+        >(
+            None,
+            action_name,
+            type_name,
+            type_hash,
+            goal_callback,
+            cancel_callback,
+            accepted_callback,
+            context,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_action_server_raw_sized`]. Routes the action
+    /// server's 5 underlying handles (send_goal /
+    /// cancel_goal / get_result servers + feedback / status
+    /// publishers) through the named Node's session.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_action_server_raw_sized_on<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_callback: RawGoalCallback,
+        cancel_callback: RawCancelCallback,
+        accepted_callback: Option<RawAcceptedCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionServerRawHandle, NodeError> {
+        self.register_action_server_raw_sized_inner::<
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+            MAX_GOALS,
+        >(
+            Some(node_id),
+            action_name,
+            type_name,
+            type_hash,
+            goal_callback,
+            cancel_callback,
+            accepted_callback,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_action_server_raw_sized_inner<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_callback: RawGoalCallback,
+        cancel_callback: RawCancelCallback,
+        accepted_callback: Option<RawAcceptedCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionServerRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
             ActionServerRawArenaEntry<GB, RB, FB, MG>;
 
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
 
         // Thread node identity through each underlying ServiceInfo /
         // TopicInfo so the Zenoh shim declares a liveliness token for
@@ -451,68 +532,79 @@ impl Executor {
         // `declare_entity_liveliness` short-circuits and
         // `wait_for_action_server` has nothing to find — same fix as
         // `Node::create_action_server_sized` (commit ea5e80b4).
-        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let mut send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            send_goal_info = send_goal_info.with_node_name(&node_name);
-        }
-        let send_goal_server = self
-            .session
-            .create_service_server(&send_goal_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+        // All 5 session-create calls grouped into one scope so the
+        // mutable session borrow drops before arena alloc below.
+        let (
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            status_publisher,
+        ) = {
+            let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+            let mut send_goal_info =
+                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                send_goal_info = send_goal_info.with_node_name(&node_name);
+            }
 
-        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let mut cancel_goal_info = ServiceInfo::new(
-            &cancel_goal_keyexpr,
-            "action_msgs::srv::dds_::CancelGoal_",
-            type_hash,
-        )
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
-        }
-        let cancel_goal_server = self
-            .session
-            .create_service_server(&cancel_goal_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+            let mut cancel_goal_info = ServiceInfo::new(
+                &cancel_goal_keyexpr,
+                "action_msgs::srv::dds_::CancelGoal_",
+                type_hash,
+            )
+            .with_namespace(&ns);
+            if !node_name.is_empty() {
+                cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
+            }
 
-        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let mut get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            get_result_info = get_result_info.with_node_name(&node_name);
-        }
-        let get_result_server = self
-            .session
-            .create_service_server(&get_result_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+            let mut get_result_info =
+                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                get_result_info = get_result_info.with_node_name(&node_name);
+            }
 
-        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let mut feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            feedback_topic = feedback_topic.with_node_name(&node_name);
-        }
-        let feedback_publisher = self
-            .session
-            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                feedback_topic = feedback_topic.with_node_name(&node_name);
+            }
 
-        let status_keyexpr: heapless::String<256> = action_info.status_key();
-        let mut status_topic = TopicInfo::new(
-            &status_keyexpr,
-            "action_msgs::msg::dds_::GoalStatusArray_",
-            type_hash,
-        )
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            status_topic = status_topic.with_node_name(&node_name);
-        }
-        let status_publisher = self
-            .session
-            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let status_keyexpr: heapless::String<256> = action_info.status_key();
+            let mut status_topic = TopicInfo::new(
+                &status_keyexpr,
+                "action_msgs::msg::dds_::GoalStatusArray_",
+                type_hash,
+            )
+            .with_namespace(&ns);
+            if !node_name.is_empty() {
+                status_topic = status_topic.with_node_name(&node_name);
+            }
+
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            (
+                session
+                    .create_service_server(&send_goal_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_server(&cancel_goal_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_server(&get_result_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+            )
+        };
 
         let core = ActionServerCore {
             send_goal_server,
@@ -881,67 +973,135 @@ impl Executor {
         result_callback: Option<RawResultCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionClientRawHandle, NodeError> {
+        self.register_action_client_raw_sized_inner::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
+            None,
+            action_name,
+            type_name,
+            type_hash,
+            goal_response_callback,
+            feedback_callback,
+            result_callback,
+            context,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_action_client_raw_sized`]. Routes the action
+    /// client's 4 underlying handles (send_goal / cancel_goal /
+    /// get_result service clients + feedback subscriber) through
+    /// the named Node's session.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_action_client_raw_sized_on<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_response_callback: Option<RawGoalResponseCallback>,
+        feedback_callback: Option<RawFeedbackCallback>,
+        result_callback: Option<RawResultCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionClientRawHandle, NodeError> {
+        self.register_action_client_raw_sized_inner::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
+            Some(node_id),
+            action_name,
+            type_name,
+            type_hash,
+            goal_response_callback,
+            feedback_callback,
+            result_callback,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_action_client_raw_sized_inner<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_response_callback: Option<RawGoalResponseCallback>,
+        feedback_callback: Option<RawFeedbackCallback>,
+        result_callback: Option<RawResultCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionClientRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize> =
             ActionClientRawArenaEntry<GB, RB, FB>;
 
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
 
-        // Mirror `register_action_server_raw_sized`: thread node identity
-        // through each underlying ServiceInfo / TopicInfo so the
-        // client's per-entity liveliness tokens are declared and the
-        // server-discovery wildcard built from `send_goal_info`
-        // shares a domain with the matching server tokens.
-        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let mut send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            send_goal_info = send_goal_info.with_node_name(&node_name);
-        }
-        let send_goal_client = self
-            .session
-            .create_service_client(&send_goal_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+        let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
+            let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+            let mut send_goal_info =
+                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                send_goal_info = send_goal_info.with_node_name(&node_name);
+            }
 
-        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-        let mut cancel_goal_info = ServiceInfo::new(
-            &cancel_goal_keyexpr,
-            "action_msgs::srv::dds_::CancelGoal_",
-            type_hash,
-        )
-        .with_namespace(&ns);
-        if !node_name.is_empty() {
-            cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
-        }
-        let cancel_goal_client = self
-            .session
-            .create_service_client(&cancel_goal_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+            let mut cancel_goal_info = ServiceInfo::new(
+                &cancel_goal_keyexpr,
+                "action_msgs::srv::dds_::CancelGoal_",
+                type_hash,
+            )
+            .with_namespace(&ns);
+            if !node_name.is_empty() {
+                cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
+            }
 
-        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let mut get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            get_result_info = get_result_info.with_node_name(&node_name);
-        }
-        let get_result_client = self
-            .session
-            .create_service_client(&get_result_info)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+            let mut get_result_info =
+                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                get_result_info = get_result_info.with_node_name(&node_name);
+            }
 
-        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let mut feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            feedback_topic = feedback_topic.with_node_name(&node_name);
-        }
-        let feedback_sub = self
-            .session
-            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                feedback_topic = feedback_topic.with_node_name(&node_name);
+            }
+
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            (
+                session
+                    .create_service_client(&send_goal_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_client(&cancel_goal_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_client(&get_result_info)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+            )
+        };
 
         let core = ActionClientCore::new(
             send_goal_client,
