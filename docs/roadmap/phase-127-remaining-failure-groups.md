@@ -46,10 +46,19 @@ Current signal:
 - Listener reaches `Subscriber declared` and waits.
 - No messages are delivered across ESP32-to-ESP32, ESP32-to-native, or
   native-to-ESP32 paths.
+- Router tracing on 2026-05-15 confirms the ESP32 client completes the TCP
+  Zenoh session handshake (`InitSyn`, `OpenSyn`, `OpenAck`) and is registered
+  as a client face by `zenohd`.
+- After `OpenAck`, `zenohd` receives no subscriber declaration, publisher data,
+  or keepalive from the ESP32 client; the router closes the transport after the
+  10 second lease expires.
+- The active ESP32 Zenoh-pico build has `Z_FEATURE_BATCHING=0` and negotiates a
+  1024 byte unicast batch, so the current silence is not explained by an
+  unflushed Zenoh-pico network-message batch.
 
 Subitems:
 
-- [ ] `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
+- [x] `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
   clients establish sessions with the router.
 - [ ] `127.A.2`: ESP32 publish path. Trace ESP32 talker from timer callback through
   `publish_raw` and smoltcp TX.
@@ -57,15 +66,42 @@ Subitems:
   smoltcp RX, zenoh-pico poll, subscriber ring, and executor dispatch.
 - [ ] `127.A.4`: Harness timing. Confirm startup ordering and polling windows are
   long enough after the OOM fix removed the earlier early-exit failure.
+- [ ] `127.A.5`: Post-open ESP32 outbound control path. Trace
+  `z_declare_subscriber` and `zp_send_keep_alive` through
+  `_z_transport_tx_flush_buffer`, `_z_link_send_wbuf`, `PlatformTcp::send`, and
+  `SmoltcpBridge::poll_network` after a successful `z_open`.
+- [ ] `127.A.6`: QEMU OpenETH TX evidence. Add an instrumented run or packet
+  capture equivalent that proves whether post-open bytes are queued in smoltcp,
+  handed to OpenETH, or lost before `zenohd` can read them.
 
 Done criteria:
 
-- [ ] Determine whether the break is router discovery, TCP session open, publish
+- [x] Determine whether the break is router discovery, TCP session open, publish
   path, receive path, or smoltcp polling cadence.
-- [ ] Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
+- [x] Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
   failure cause.
 - [ ] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
   smaller, newly categorized failure with no allocation panic.
+
+2026-05-15 focused evidence:
+
+- [x] `just esp32 test --no-capture`: 9 tests ran; 6 passed and the three
+  remaining failures are the 127.A delivery tests listed above.
+- [x] Manual `RUST_LOG=zenoh=trace,zenohd=trace just esp32 zenohd` plus
+  `just esp32 listener`: router accepted the ESP32 TCP connection, completed
+  `InitSyn`/`OpenSyn`/`OpenAck`, opened a client transport, then logged
+  `expired after 10000 milliseconds`.
+- [x] Same manual run: ESP32 QEMU output reached `Subscriber declared` and
+  `Waiting for messages...`; router saw no `Declare subscriber` for the
+  listener data key.
+- [x] `cargo nextest run -p nros-tests --test esp32_emulator --no-fail-fast
+  --no-capture test_native_to_esp32`: still fails with zero messages delivered.
+- [x] Rejected experiments, not committed: an extra smoltcp post-staging poll,
+  an OpenETH TX descriptor wait, and a post-`zpico_open` spin did not restore
+  delivery; the post-open spin regressed to `Transport(ConnectionFailed)`.
+- [ ] Remaining blocker: identify why ESP32 post-open Zenoh control frames
+  (`Declare subscriber`, `KeepAlive`) do not reach `zenohd` even though the
+  same TCP connection successfully carries the Zenoh open handshake.
 
 Focused commands:
 
