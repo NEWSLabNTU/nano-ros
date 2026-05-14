@@ -68,18 +68,20 @@ jobs:
         # rendered output — the reference stubs deep-link into them.
         run: |
           rm -rf target/doc target/doxygen
-          # nros-rmw-xrce is mutually exclusive with nros-rmw-zenoh
-          # (compile-time mutex on `nros`), so it cannot share this
-          # invocation.
+          # Phase 104.A: `rmw-zenoh` feature on `nros` is now
+          # `rmw-zenoh-cffi`. The Rust `nros-platform-posix` crate
+          # was deleted (123.A.1.x.2); POSIX C symbols ship from
+          # `packages/core/nros-platform-posix/src/*.c`, compiled
+          # by `nros-platform-cffi`'s `posix-c-port` feature.
           cargo doc --no-deps \
-            --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
+            --features rmw-zenoh-cffi,platform-posix,link-tcp,ros-humble \
             -p nros \
             -p nros-rmw \
             -p nros-rmw-cffi \
             -p nros-rmw-zenoh \
             -p nros-platform-api \
             -p nros-platform-cffi \
-            -p nros-platform-posix
+            -p nros-platform
 
       - name: Build Doxygen — C
         run: |

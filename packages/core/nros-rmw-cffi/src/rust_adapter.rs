@@ -184,7 +184,7 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
 // ============================================================================
 
 /// Wraps a Rust `Rmw` backend behind the canonical
-/// [`NrosRmwVtable`](crate::NrosRmwVtable) C ABI. See module docs.
+/// [`NrosRmwVtable`] C ABI. See module docs.
 pub struct RustBackendAdapter<R>(PhantomData<R>);
 
 impl<R: RustBackend> RustBackendAdapter<R> {

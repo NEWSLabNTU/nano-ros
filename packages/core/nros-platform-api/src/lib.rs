@@ -465,7 +465,7 @@ pub trait PlatformThreading {
     fn condvar_signal(cv: *mut c_void) -> i8;
     /// Wake all waiters on the condition variable.
     fn condvar_signal_all(cv: *mut c_void) -> i8;
-    /// Phase 124.B.7.a — ISR-safe variant of [`condvar_signal`].
+    /// Phase 124.B.7.a — ISR-safe variant of [`Self::condvar_signal`].
     /// Callable from interrupt / signal-handler context. Backends
     /// implement via async-signal-safe primitives (POSIX:
     /// `eventfd` write forwarded by a worker thread; RTOS:

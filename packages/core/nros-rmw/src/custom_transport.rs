@@ -7,7 +7,7 @@
 //!
 //! The shape mirrors micro-ROS's
 //! `rmw_uros_set_custom_transport(framing, params, open, close, write, read)`
-//! and the C ABI exposed by [`nros-c`] / [`nros-cpp`] as
+//! and the C ABI exposed by `nros-c` / `nros-cpp` as
 //! `nros_transport_ops_t`.
 //!
 //! ## Why a fn-pointer vtable, not a Rust trait
@@ -54,8 +54,8 @@ use crate::sync::Mutex;
 /// Embedded as the first field of the struct (see § *Versioning*
 /// below). Consumers fill in this exact value before passing the
 /// struct to [`set_custom_transport`]; runtime entry points reject
-/// any other value with [`TransportError::IncompatibleAbi`] (or
-/// `NROS_RMW_RET_INCOMPATIBLE_ABI` at the C boundary).
+/// any other value with [`crate::TransportError::IncompatibleAbi`]
+/// (or `NROS_RMW_RET_INCOMPATIBLE_ABI` at the C boundary).
 ///
 /// The version bumps under two rules (per the portable-ABI design
 /// note R5 in `docs/design/portable-rmw-platform-interface.md`):
@@ -79,7 +79,7 @@ pub const NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = 1;
 ///
 /// # Return-code conventions
 ///
-/// `open` / `write` return [`NROS_RMW_RET_OK`] (== 0) on success and
+/// `open` / `write` return `NROS_RMW_RET_OK` (== 0) on success and
 /// a negative `nros_ret_t` (see `nros-rmw-cffi`) on failure. `read`
 /// returns the non-negative byte count on success or a negative
 /// `nros_ret_t` on error / timeout.

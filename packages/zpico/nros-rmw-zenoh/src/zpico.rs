@@ -935,7 +935,7 @@ impl<'a> Publisher<'a> {
 
     /// Phase 99.F — zero-copy publish via z_bytes_from_static_buf.
     ///
-    /// Identical to [`publish_with_attachment`] but ALIASES the
+    /// Identical to [`Self::publish_with_attachment`] but ALIASES the
     /// payload pointer instead of copying. Caller MUST guarantee
     /// `data` outlives the call (zenoh-pico's posix/embedded
     /// transports consume the alias synchronously before

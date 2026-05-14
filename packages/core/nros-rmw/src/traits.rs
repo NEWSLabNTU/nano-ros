@@ -1184,8 +1184,8 @@ pub trait Publisher {
     /// this publisher. Default returns `false`; backends override per
     /// supported event kind.
     ///
-    /// Only [`EventKind::LivelinessLost`] and
-    /// [`EventKind::OfferedDeadlineMissed`] are publisher-side events;
+    /// Only [`EventKind::LivelinessLost`](crate::event::EventKind::LivelinessLost) and
+    /// [`EventKind::OfferedDeadlineMissed`](crate::event::EventKind::OfferedDeadlineMissed) are publisher-side events;
     /// other kinds always return `false` here.
     fn supports_event(&self, _kind: crate::event::EventKind) -> bool {
         false
@@ -1193,7 +1193,7 @@ pub trait Publisher {
 
     /// Phase 108 — register a callback fired when the named status
     /// event occurs. `deadline_ms` applies to
-    /// [`EventKind::OfferedDeadlineMissed`] only; ignored otherwise.
+    /// [`EventKind::OfferedDeadlineMissed`](crate::event::EventKind::OfferedDeadlineMissed) only; ignored otherwise.
     /// Default impl returns the backend's "unsupported"-shaped error.
     ///
     /// # Safety
@@ -1411,17 +1411,18 @@ pub trait Subscriber {
     /// this subscriber. Default returns `false`; backends override per
     /// supported event kind.
     ///
-    /// Subscriber-side event kinds: [`EventKind::LivelinessChanged`],
-    /// [`EventKind::RequestedDeadlineMissed`],
-    /// [`EventKind::MessageLost`]. Publisher kinds always return
-    /// `false` here.
+    /// Subscriber-side event kinds:
+    /// [`EventKind::LivelinessChanged`](crate::event::EventKind::LivelinessChanged),
+    /// [`EventKind::RequestedDeadlineMissed`](crate::event::EventKind::RequestedDeadlineMissed),
+    /// [`EventKind::MessageLost`](crate::event::EventKind::MessageLost).
+    /// Publisher kinds always return `false` here.
     fn supports_event(&self, _kind: crate::event::EventKind) -> bool {
         false
     }
 
     /// Phase 108 — register a callback fired when the named status
     /// event occurs. `deadline_ms` applies to
-    /// [`EventKind::RequestedDeadlineMissed`] only; ignored otherwise.
+    /// [`EventKind::RequestedDeadlineMissed`](crate::event::EventKind::RequestedDeadlineMissed) only; ignored otherwise.
     /// Default impl returns the backend's "unsupported"-shaped error.
     ///
     /// # Safety
