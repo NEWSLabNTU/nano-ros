@@ -301,20 +301,24 @@ pub struct ZenohSubscriber {
     /// `liveliness_get_*` poll detects an alive-state transition for
     /// any publisher matching the subscriber's wildcard liveliness
     /// keyexpr.
+    #[cfg(not(feature = "platform-bare-metal"))]
     liveliness_cb: core::cell::Cell<Option<EventReg>>,
     /// Wildcard liveliness keyexpr matching any publisher on this
     /// subscriber's (topic, type). Populated at create.
+    #[cfg(not(feature = "platform-bare-metal"))]
     liveliness_keyexpr: heapless::String<256>,
     /// Liveliness-poll context — handle of an in-flight
     /// `liveliness_get_start` query (None = idle), the timestamp of
     /// the most recent poll start, and the previously observed alive
     /// state.
+    #[cfg(not(feature = "platform-bare-metal"))]
     liveliness_poll: core::cell::Cell<LivelinessPoll>,
     /// Raw pointer to the owning session's `Context`. Used by the
     /// LIVELINESS poll loop to issue `liveliness_get_*` queries.
     /// SAFETY: the Context is owned by `ZenohSession`, which outlives
     /// every entity it spawns (entities are created via Session and
     /// dropped before Session::close).
+    #[cfg(not(feature = "platform-bare-metal"))]
     context: *const Context,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
@@ -323,6 +327,7 @@ pub struct ZenohSubscriber {
 /// Phase 108.C.zenoh.4 — liveliness-poll state. Owned by the
 /// subscriber via `Cell` since the subscriber is `!Sync`.
 #[derive(Clone, Copy)]
+#[cfg(not(feature = "platform-bare-metal"))]
 struct LivelinessPoll {
     /// Slot handle of an in-flight `liveliness_get_start` query, or
     /// `-1` when idle.
@@ -337,6 +342,7 @@ struct LivelinessPoll {
     alive_count: u16,
 }
 
+#[cfg(not(feature = "platform-bare-metal"))]
 impl LivelinessPoll {
     const IDLE: Self = Self {
         handle: -1,
@@ -351,7 +357,9 @@ impl LivelinessPoll {
 /// ~5 s loses transitions. Sub side honors `liveliness_lease_ms` from
 /// QoS by clamping the poll window to half the lease (so we observe
 /// at least two probes per lease period).
+#[cfg(not(feature = "platform-bare-metal"))]
 const LIVELINESS_POLL_DEFAULT_MS: u64 = 1_000;
+#[cfg(not(feature = "platform-bare-metal"))]
 const LIVELINESS_POLL_TIMEOUT_MS: u32 = 100;
 
 /// Phase 108.A — single-slot event registration. The cb is
@@ -380,7 +388,8 @@ impl ZenohSubscriber {
     ) -> Result<Self, TransportError> {
         // Phase 108.C.zenoh.4 — wildcard liveliness keyexpr matching
         // any publisher on this (topic, type). Built once and stored
-        // for reuse on each LIVELINESS poll.
+        // for reuse on each LIVELINESS poll on hosted targets.
+        #[cfg(not(feature = "platform-bare-metal"))]
         let liveliness_keyexpr: heapless::String<256> =
             super::Ros2Liveliness::publisher_keyexpr_wildcard(topic.domain_id, topic);
         // Allocate a buffer index
@@ -454,9 +463,13 @@ impl ZenohSubscriber {
             last_deadline_fire_ms: core::cell::Cell::new(now),
             deadline_total: core::cell::Cell::new(0),
             deadline_cb: core::cell::Cell::new(None),
+            #[cfg(not(feature = "platform-bare-metal"))]
             liveliness_cb: core::cell::Cell::new(None),
+            #[cfg(not(feature = "platform-bare-metal"))]
             liveliness_keyexpr,
+            #[cfg(not(feature = "platform-bare-metal"))]
             liveliness_poll: core::cell::Cell::new(LivelinessPoll::IDLE),
+            #[cfg(not(feature = "platform-bare-metal"))]
             context: context as *const Context,
             _phantom: PhantomData,
         })
@@ -477,63 +490,72 @@ impl ZenohSubscriber {
     /// counting needs a long-lived `z_liveliness_declare_subscriber`
     /// shim, which is the next sub-phase if requested.
     fn check_liveliness_and_fire(&self) {
-        if self.liveliness_cb.get().is_none() {
-            return; // No callback registered → don't burn cycles polling.
+        #[cfg(feature = "platform-bare-metal")]
+        {
+            return;
         }
-        // SAFETY: see `context` field doc.
-        let context: &Context = unsafe { &*self.context };
-        let now = now_ms();
-        let mut state = self.liveliness_poll.get();
 
-        // 1. If a query is in flight, poll it; on completion record
-        //    the new alive state and clear the handle.
-        //
-        // Phase 108.C.zenoh.4-followup — read `liveliness_get_count`
-        // BEFORE `liveliness_get_check` because the latter releases the
-        // slot on terminal result.
-        if state.handle >= 0 {
-            let count = context.liveliness_get_count(state.handle).unwrap_or(0);
-            match context.liveliness_get_check(state.handle) {
-                Ok(true) => {
-                    // At least one matching token responded; `count` is
-                    // the exact reply count.
-                    self.handle_count_transition(count.max(1) as u16, &mut state);
-                }
-                Ok(false) => {
-                    // Still waiting; keep handle for next poll.
-                }
-                Err(_) => {
-                    // Timeout (no matching publisher) or error → 0 alive.
-                    self.handle_count_transition(0, &mut state);
+        #[cfg(not(feature = "platform-bare-metal"))]
+        {
+            if self.liveliness_cb.get().is_none() {
+                return; // No callback registered → don't burn cycles polling.
+            }
+            // SAFETY: see `context` field doc.
+            let context: &Context = unsafe { &*self.context };
+            let now = now_ms();
+            let mut state = self.liveliness_poll.get();
+
+            // 1. If a query is in flight, poll it; on completion record
+            //    the new alive state and clear the handle.
+            //
+            // Phase 108.C.zenoh.4-followup — read `liveliness_get_count`
+            // BEFORE `liveliness_get_check` because the latter releases the
+            // slot on terminal result.
+            if state.handle >= 0 {
+                let count = context.liveliness_get_count(state.handle).unwrap_or(0);
+                match context.liveliness_get_check(state.handle) {
+                    Ok(true) => {
+                        // At least one matching token responded; `count` is
+                        // the exact reply count.
+                        self.handle_count_transition(count.max(1) as u16, &mut state);
+                    }
+                    Ok(false) => {
+                        // Still waiting; keep handle for next poll.
+                    }
+                    Err(_) => {
+                        // Timeout (no matching publisher) or error → 0 alive.
+                        self.handle_count_transition(0, &mut state);
+                    }
                 }
             }
-        }
 
-        // 2. If idle and the cadence has elapsed, start a fresh query.
-        if state.handle < 0 {
-            let interval = self.liveliness_poll_interval_ms();
-            if now >= state.started_at_ms.saturating_add(interval) {
-                // Liveliness keyexpr must be null-terminated for the
-                // C bridge.
-                let mut nul = heapless::Vec::<u8, 257>::new();
-                let _ = nul.extend_from_slice(self.liveliness_keyexpr.as_bytes());
-                let _ = nul.push(0);
-                if let Ok(handle) =
-                    context.liveliness_get_start(nul.as_slice(), LIVELINESS_POLL_TIMEOUT_MS)
-                {
-                    state.handle = handle;
-                    state.started_at_ms = now;
+            // 2. If idle and the cadence has elapsed, start a fresh query.
+            if state.handle < 0 {
+                let interval = self.liveliness_poll_interval_ms();
+                if now >= state.started_at_ms.saturating_add(interval) {
+                    // Liveliness keyexpr must be null-terminated for the
+                    // C bridge.
+                    let mut nul = heapless::Vec::<u8, 257>::new();
+                    let _ = nul.extend_from_slice(self.liveliness_keyexpr.as_bytes());
+                    let _ = nul.push(0);
+                    if let Ok(handle) =
+                        context.liveliness_get_start(nul.as_slice(), LIVELINESS_POLL_TIMEOUT_MS)
+                    {
+                        state.handle = handle;
+                        state.started_at_ms = now;
+                    }
                 }
             }
-        }
 
-        self.liveliness_poll.set(state);
+            self.liveliness_poll.set(state);
+        }
     }
 
     /// Phase 108.C.zenoh.4-followup — fire `LivelinessChanged` with
     /// the actual delta between the previous and new alive count.
     /// `new_count` is the number of unique publishers that responded
     /// to the most recent wildcard liveliness query.
+    #[cfg(not(feature = "platform-bare-metal"))]
     fn handle_count_transition(&self, new_count: u16, state: &mut LivelinessPoll) {
         // Always clear the handle on terminal result.
         state.handle = -1;
@@ -570,6 +592,7 @@ impl ZenohSubscriber {
         }
     }
 
+    #[cfg(not(feature = "platform-bare-metal"))]
     fn liveliness_poll_interval_ms(&self) -> u64 {
         // Half the lease so we observe ≥ 2 probes per lease window.
         // 0 (no lease set) → default 1s.
@@ -920,12 +943,21 @@ impl Subscriber for ZenohSubscriber {
         // subscriber bridge fires it from a session-side
         // z_liveliness_declare_subscriber callback. LIFESPAN is a
         // filter, not an event, so no event kind for it.
-        matches!(
+        if matches!(
             kind,
-            nros_rmw::EventKind::MessageLost
-                | nros_rmw::EventKind::RequestedDeadlineMissed
-                | nros_rmw::EventKind::LivelinessChanged
-        )
+            nros_rmw::EventKind::MessageLost | nros_rmw::EventKind::RequestedDeadlineMissed
+        ) {
+            return true;
+        }
+
+        #[cfg(not(feature = "platform-bare-metal"))]
+        {
+            matches!(kind, nros_rmw::EventKind::LivelinessChanged)
+        }
+        #[cfg(feature = "platform-bare-metal")]
+        {
+            false
+        }
     }
 
     unsafe fn register_event_callback(
@@ -957,12 +989,19 @@ impl Subscriber for ZenohSubscriber {
                 Ok(())
             }
             nros_rmw::EventKind::LivelinessChanged => {
-                // Slot landed; the session-side liveliness shim that
-                // routes z_liveliness_declare_subscriber callbacks to
-                // these slots is part of 108.C.zenoh.4 follow-up; for
-                // now the slot accepts registrations but never fires.
-                self.liveliness_cb.set(Some(EventReg { cb, user_ctx }));
-                Ok(())
+                #[cfg(feature = "platform-bare-metal")]
+                {
+                    Err(TransportError::Unsupported)
+                }
+                #[cfg(not(feature = "platform-bare-metal"))]
+                {
+                    // Slot landed; the session-side liveliness shim that
+                    // routes z_liveliness_declare_subscriber callbacks to
+                    // these slots is part of 108.C.zenoh.4 follow-up; for
+                    // now the slot accepts registrations but never fires.
+                    self.liveliness_cb.set(Some(EventReg { cb, user_ctx }));
+                    Ok(())
+                }
             }
             _ => Err(TransportError::Unsupported),
         }

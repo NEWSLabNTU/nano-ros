@@ -47,11 +47,80 @@ use nros_rmw::{
 };
 
 use crate::{
-    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
-    nros_rmw_cffi_register, ret_from_error,
+    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK,
+    NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher,
+    NrosRmwQos, NrosRmwRet, NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession,
+    NrosRmwSubscriber, NrosRmwVtable, nros_rmw_cffi_register, ret_from_error,
 };
+
+#[cfg(all(target_os = "none", not(feature = "std")))]
+mod static_subscriber_storage {
+    use core::{cell::UnsafeCell, mem, ptr};
+
+    use portable_atomic::{AtomicBool, Ordering};
+
+    const SLOT_COUNT: usize = 4;
+    const SLOT_SIZE: usize = 128;
+    const SLOT_ALIGN: usize = 16;
+
+    #[repr(align(16))]
+    struct Slot {
+        bytes: UnsafeCell<[u8; SLOT_SIZE]>,
+    }
+
+    unsafe impl Sync for Slot {}
+
+    impl Slot {
+        const fn new() -> Self {
+            Self {
+                bytes: UnsafeCell::new([0; SLOT_SIZE]),
+            }
+        }
+    }
+
+    static USED: [AtomicBool; SLOT_COUNT] = [const { AtomicBool::new(false) }; SLOT_COUNT];
+    static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
+
+    pub unsafe fn insert<T>(value: T) -> Option<*mut T> {
+        if mem::size_of::<T>() > SLOT_SIZE || mem::align_of::<T>() > SLOT_ALIGN {
+            return None;
+        }
+
+        for index in 0..SLOT_COUNT {
+            if USED[index]
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                continue;
+            }
+
+            let ptr = SLOTS[index].bytes.get().cast::<T>();
+            unsafe { ptr.write(value) };
+            return Some(ptr);
+        }
+
+        None
+    }
+
+    pub unsafe fn take<T>(ptr: *mut T) -> bool {
+        if ptr.is_null() {
+            return false;
+        }
+
+        for index in 0..SLOT_COUNT {
+            let slot_ptr = SLOTS[index].bytes.get().cast::<T>();
+            if ptr != slot_ptr {
+                continue;
+            }
+
+            unsafe { ptr::drop_in_place(ptr) };
+            USED[index].store(false, Ordering::Release);
+            return true;
+        }
+
+        false
+    }
+}
 
 // ============================================================================
 // Trait alias bundle
@@ -430,11 +499,24 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscriber(s, &topic, qos_settings) {
         Ok(sub_handle) => {
-            let boxed = Box::into_raw(Box::new(sub_handle));
-            unsafe {
-                (*out).backend_data = boxed as *mut c_void;
+            #[cfg(all(target_os = "none", not(feature = "std")))]
+            {
+                let Some(ptr) = (unsafe { static_subscriber_storage::insert(sub_handle) }) else {
+                    return crate::NROS_RMW_RET_BAD_ALLOC;
+                };
+                unsafe {
+                    (*out).backend_data = ptr as *mut c_void;
+                }
+                NROS_RMW_RET_OK
             }
-            NROS_RMW_RET_OK
+            #[cfg(not(all(target_os = "none", not(feature = "std"))))]
+            {
+                let boxed = Box::into_raw(Box::new(sub_handle));
+                unsafe {
+                    (*out).backend_data = boxed as *mut c_void;
+                }
+                NROS_RMW_RET_OK
+            }
         }
         Err(e) => ret_from_error(&e),
     }
@@ -443,7 +525,16 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
 unsafe extern "C" fn destroy_subscriber_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscriber,
 ) {
-    let _ = unsafe { take_box::<R::Subscriber>(subscriber_data_mut(subscriber)) };
+    let slot = unsafe { subscriber_data_mut(subscriber) };
+    #[cfg(all(target_os = "none", not(feature = "std")))]
+    {
+        if unsafe { static_subscriber_storage::take::<R::Subscriber>(*slot as *mut R::Subscriber) }
+        {
+            *slot = core::ptr::null_mut();
+            return;
+        }
+    }
+    let _ = unsafe { take_box::<R::Subscriber>(slot) };
 }
 
 unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
