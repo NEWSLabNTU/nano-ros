@@ -1291,6 +1291,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-orchestration"
+version = "0.1.0"
+dependencies = [
+ "nros-node",
+]
+
+[[package]]
 name = "nros-params"
 version = "0.1.0"
 dependencies = [
