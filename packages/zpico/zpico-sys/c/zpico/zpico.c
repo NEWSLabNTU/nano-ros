@@ -176,7 +176,11 @@ static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
 // Per-queryable storage for cloned queries (for later reply)
 static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES];
 static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES];  // zero-initialized = all false
+#if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
+static uint32_t g_session_zid_counter;
+#else
 static atomic_uint g_session_zid_counter;
+#endif
 
 // Context struct for blocking z_get reply (stack-allocated per call)
 // ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
@@ -296,6 +300,14 @@ static uint64_t zpico_splitmix64(uint64_t *state) {
     return z ^ (z >> 31);
 }
 
+static uint32_t zpico_next_session_zid_counter(void) {
+#if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
+    return g_session_zid_counter++;
+#else
+    return atomic_fetch_add(&g_session_zid_counter, 1);
+#endif
+}
+
 static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #if defined(__linux__)
     if (getrandom(bytes, ZPICO_ZID_SIZE, 0) == ZPICO_ZID_SIZE) {
@@ -304,11 +316,13 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #endif
 
     uint64_t seed = (uint64_t)(uintptr_t)&g_session;
-    seed ^= (uint64_t)atomic_fetch_add(&g_session_zid_counter, 1);
+    seed ^= (uint64_t)zpico_next_session_zid_counter();
 #if defined(__linux__)
     seed ^= (uint64_t)getpid() << 32;
 #endif
-#if defined(CLOCK_REALTIME)
+#if defined(ZPICO_SMOLTCP)
+    seed ^= smoltcp_clock_now_ms() << 1;
+#elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL)
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
         seed ^= (uint64_t)ts.tv_sec;
