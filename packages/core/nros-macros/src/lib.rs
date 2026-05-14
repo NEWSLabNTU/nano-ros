@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Fields, LitStr, parse_macro_input};
+use syn::{DeriveInput, Fields, LitStr, Path, parse_macro_input};
 
 /// Derive macro for ROS message types
 ///
@@ -122,6 +122,51 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
             const TYPE_NAME: &'static str = #type_name;
             const TYPE_HASH: &'static str = #type_hash;
         }
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// Export a Rust type implementing `nros::Component` as the package component.
+///
+/// # Example
+///
+/// ```ignore
+/// struct Talker;
+///
+/// impl nros::Component for Talker {
+///     const NAME: &'static str = "talker";
+///
+///     fn register(ctx: &mut nros::ComponentContext<'_>) -> nros::ComponentResult<()> {
+///         let mut node = ctx.create_node(
+///             nros::NodeId::new("node"),
+///             nros::NodeOptions::new("talker"),
+///         )?;
+///         let _pub = node.create_publisher::<std_msgs::msg::String>(
+///             nros::EntityId::new("pub_chatter"),
+///             "chatter",
+///         )?;
+///         Ok(())
+///     }
+/// }
+///
+/// nros::component!(Talker);
+/// ```
+#[proc_macro]
+pub fn component(input: TokenStream) -> TokenStream {
+    let component_ty = parse_macro_input!(input as Path);
+
+    let expanded = quote! {
+        #[unsafe(no_mangle)]
+        pub extern "Rust" fn __nros_component_register(
+            context: &mut nros::ComponentContext<'_>
+        ) -> nros::ComponentResult<()> {
+            <#component_ty as nros::Component>::register(context)
+        }
+
+        #[used]
+        #[unsafe(no_mangle)]
+        pub static __NROS_COMPONENT_EXPORT_PRESENT: u8 = 1;
     };
 
     TokenStream::from(expanded)
