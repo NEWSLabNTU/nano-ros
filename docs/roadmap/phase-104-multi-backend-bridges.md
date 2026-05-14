@@ -187,7 +187,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
 
 #### Thread B — Backend registration model
 
-- [ ] **104.B.1 — `NROS_RMW_MAX_BACKENDS` build-time const.**
+- [x] **104.B.1 — `NROS_RMW_MAX_BACKENDS` build-time const.**
       `nros-rmw-cffi/build.rs` reads
       `NROS_RMW_MAX_BACKENDS` env var (default 8) + emits
       `cargo:rustc-env=NROS_RMW_MAX_BACKENDS=<n>`. The crate
@@ -200,7 +200,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `packages/core/nros-rmw-cffi/build.rs`,
       `packages/core/nros-rmw-cffi/src/lib.rs`.
 
-- [ ] **104.B.2 — Named registry replaces singleton VTABLE.**
+- [x] **104.B.2 — Named registry replaces singleton VTABLE.**
       Replace `static VTABLE: AtomicPtr<NrosRmwVtable>` with
       `static REGISTRY: Mutex<heapless::Vec<Backend,
       MAX_BACKENDS>>`. New entry points:
@@ -218,7 +218,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`.
 
-- [ ] **104.B.3 — Duplicate-register semantics.**
+- [x] **104.B.3 — Duplicate-register semantics.**
       `_register_named("zenoh", v1)` then
       `_register_named("zenoh", v2)`: overwrite + log
       warning. Idempotent for ctor firing twice (e.g., the
@@ -227,7 +227,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       **Files:** test addition in
       `packages/core/nros-rmw-cffi/tests/`.
 
-- [ ] **104.B.4 — Per-backend `register_named` calls.** Each
+- [x] **104.B.4 — Per-backend `register_named` calls.** Each
       backend's existing `_register` C entry point switches
       from `nros_rmw_cffi_register(&VTABLE)` to
       `nros_rmw_cffi_register_named("<name>", &VTABLE)`. POSIX
@@ -241,17 +241,30 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `packages/xrce/nros-rmw-xrce-cffi/src/lib.rs`,
       `packages/xrce/nros-rmw-xrce/src/vtable.c`.
 
-- [ ] **104.B.5 — `nano_ros_link_rmw` whole-archive
-      audit.** Phase 123.A.6 + 123.A.1.x.5 shipped the
-      CMake helper with real link targets. Audit ensures
-      `--whole-archive` (or platform equivalent) wraps the
-      backend `.a` so the ctor symbol survives dead-strip.
-      Without it, `_register_named` is never reached and
-      `Executor::open` reports `backend_registered() ==
-      false`.
+- [x] **104.B.5 — `nano_ros_link_rmw` whole-archive
+      audit.** Done. `NanoRosCTargets.cmake`'s RMW link block
+      now wraps the imported RMW target with
+      `-Wl,--whole-archive` / `--no-whole-archive` (GNU ld /
+      lld on Linux+BSD), `-Wl,-force_load,$<TARGET_FILE:…>`
+      on macOS, `/WHOLEARCHIVE:<path>` on MSVC. The wrap
+      tokens live in `INTERFACE_LINK_LIBRARIES` (not
+      LINK_OPTIONS) so cmake preserves their position around
+      the archive.
+
+      Verified: legacy
+      `target_link_libraries(t NanoRos::NanoRos)` users whose
+      code path bypasses `nano_ros_link_rmw`'s explicit stub
+      (104.B.6) now keep the auto-register `.init_array`
+      ctor + all zenoh-pico C objects in the final binary.
+      Example: `examples/native/c/zenoh/talker` binary jumps
+      from a stub-only ~few-MB shape to 11 MB; `nm` shows
+      `nros_rmw_zenoh_register` (T) + 100+ `_z_*` zenoh-pico
+      symbols + a non-empty `.init_array` section. The
+      explicit-stub path (104.B.6) remains the canonical
+      mechanism for bare-metal targets without `.init_array`
+      walking; the two paths coexist idempotently on POSIX.
       **Files:**
-      `cmake/NanoRosLink.cmake`,
-      `cmake/NanoRosCTargets.cmake.in`.
+      `packages/core/nros-c/cmake/NanoRosCTargets.cmake`.
 
 - [x] **104.B.6 — Bare-metal explicit-call stub.** Done
       (co-implemented with 123.A.11). nros-c calls
@@ -278,7 +291,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `packages/core/nros-c/build.rs`,
       `packages/core/nros-c/src/support.rs`.
 
-- [ ] **104.B.7 — Backend-name catalogue.** Document the
+- [x] **104.B.7 — Backend-name catalogue.** Document the
       reserved names (`"zenoh"`, `"dds"`, `"xrce"`,
       `"cyclonedds"`, `"uorb"`) + the naming policy
       (lowercase, ASCII, no transport variants — XRCE-UDP

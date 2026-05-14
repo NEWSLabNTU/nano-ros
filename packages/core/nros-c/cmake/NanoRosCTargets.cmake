@@ -243,10 +243,47 @@ if(NOT TARGET NanoRos::NanoRos)
   if(_nros_rmw_target)
     # Reorder: pull NrosPlatformPosix back out, append RMW first,
     # then re-append platform.
+    #
+    # Phase 104.B.5 — wrap the RMW archive in
+    # `-Wl,--whole-archive` so the `.init_array` auto-register
+    # ctor (phase 104.A) survives the linker's default dead-strip.
+    # Without this wrap, `target_link_libraries(t NanoRos::NanoRos)`
+    # users whose code path bypasses `nano_ros_link_rmw`'s explicit
+    # stub (phase 104.B.6) silently drop the ctor — the rmw archive
+    # only gets pulled for objects that satisfy undefined refs from
+    # nros-c, and after A.11 nros-c has no `nros_rmw_<x>_register`
+    # ref. macOS uses `-force_load`; MSVC uses `/WHOLEARCHIVE`. The
+    # wrapper tokens go INTO `INTERFACE_LINK_LIBRARIES` (not
+    # LINK_OPTIONS) so cmake preserves their position around the
+    # archive.
     get_target_property(_existing_libs NanoRos::NanoRos INTERFACE_LINK_LIBRARIES)
     if(_existing_libs)
       list(REMOVE_ITEM _existing_libs NrosPlatformPosix::nros_platform_posix)
-      list(APPEND _existing_libs ${_nros_rmw_target})
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD")
+        # GNU ld / lld syntax.
+        list(APPEND _existing_libs
+          "-Wl,--whole-archive"
+          ${_nros_rmw_target}
+          "-Wl,--no-whole-archive")
+      elseif(APPLE)
+        # macOS `ld` requires `-force_load <path>` per file. CMake
+        # resolves the imported target's IMPORTED_LOCATION via the
+        # generator expression below.
+        list(APPEND _existing_libs
+          "-Wl,-force_load,$<TARGET_FILE:${_nros_rmw_target}>")
+      elseif(MSVC)
+        # MSVC link.exe: /WHOLEARCHIVE:libname.
+        get_target_property(_rmw_loc ${_nros_rmw_target} IMPORTED_LOCATION)
+        if(_rmw_loc)
+          list(APPEND _existing_libs
+            ${_nros_rmw_target}
+            "/WHOLEARCHIVE:${_rmw_loc}")
+        else()
+          list(APPEND _existing_libs ${_nros_rmw_target})
+        endif()
+      else()
+        list(APPEND _existing_libs ${_nros_rmw_target})
+      endif()
       if(NANO_ROS_PLATFORM STREQUAL "posix" AND TARGET NrosPlatformPosix::nros_platform_posix)
         list(APPEND _existing_libs NrosPlatformPosix::nros_platform_posix)
       endif()
