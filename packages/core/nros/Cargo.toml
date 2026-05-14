@@ -56,6 +56,12 @@ rmw-zenoh-cffi = ["rmw-cffi", "nros-node/rmw-zenoh-cffi"]
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
 
+# Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
+# through the cffi vtable. Forwards `lending` to the cffi crate so
+# `CffiPublisher: SlotLending` / `CffiSubscriber: SlotBorrowing`
+# come into scope.
+lending = ["rmw-cffi", "nros-rmw-cffi/lending"]
+
 # Platform (select one). Phase 104.A — formerly forwarded
 # `platform-*` features to the active RMW backend's matching feature
 # via `?/`. With the optional concrete-RMW deps removed from this

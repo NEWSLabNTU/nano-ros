@@ -17,6 +17,9 @@
 
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 use core::{ffi::c_void, sync::atomic::Ordering};
 
 use nros_rmw::{
@@ -1574,6 +1577,12 @@ pub struct CffiSlot<'a> {
     /// `None` after `commit_slot` consumes the slot — Drop skips the
     /// discard call in that case.
     publisher: Option<&'a CffiPublisher>,
+    /// Phase 124.A.3 — `true` when this slot came from the runtime's
+    /// arena fallback (backend had NULL `pub_loan`). Commit performs
+    /// a `publish_raw` of the staged bytes; discard / Drop reclaims
+    /// the staging buffer. `false` for native backend loans —
+    /// commit / discard go through the vtable slots.
+    fallback: bool,
 }
 
 #[cfg(feature = "lending")]
@@ -1585,6 +1594,17 @@ impl<'a> CffiSlot<'a> {
         debug_assert!(len <= self.cap);
         self.cursor = len.min(self.cap);
     }
+}
+
+/// Phase 124.A.3 — staging buffer for the arena-fallback loan path.
+/// Allocated on each `try_lend_slot` when the backend's `pub_loan`
+/// slot is NULL; commit copies into a `publish_raw` call; Drop /
+/// discard reclaims the allocation. `Box::into_raw` of this struct
+/// becomes the slot's opaque `token` so commit / discard can find
+/// it back.
+#[cfg(all(feature = "lending", feature = "alloc"))]
+struct ArenaStaging {
+    buf: alloc::vec::Vec<u8>,
 }
 
 #[cfg(feature = "lending")]
@@ -1601,6 +1621,18 @@ impl<'a> AsMut<[u8]> for CffiSlot<'a> {
 #[cfg(feature = "lending")]
 impl<'a> Drop for CffiSlot<'a> {
     fn drop(&mut self) {
+        if self.publisher.is_none() {
+            // commit_slot consumed the loan — nothing to release.
+            return;
+        }
+        if self.fallback {
+            // Phase 124.A.3 — reclaim the staging allocation.
+            #[cfg(feature = "alloc")]
+            unsafe {
+                let _ = alloc::boxed::Box::from_raw(self.token as *mut ArenaStaging);
+            }
+            return;
+        }
         if let Some(p) = self.publisher
             && let Some(discard) = p.vtable.pub_discard
         {
@@ -1632,10 +1664,33 @@ impl nros_rmw::SlotLending for CffiPublisher {
         len: usize,
     ) -> Result<Option<CffiSlot<'_>>, TransportError> {
         let Some(loan) = self.vtable.pub_loan else {
-            // Phase 124.A — backend doesn't natively lend; the
-            // runtime's arena fallback (124.A.3) covers this path.
-            // `None` lets the caller fall back without panicking.
-            return Ok(None);
+            // Phase 124.A.3 — backend doesn't natively lend; allocate
+            // a staging buffer and stash it in `token` so commit can
+            // memcpy → publish_raw and discard / Drop can reclaim.
+            // Requires `alloc` for the dynamic staging; no_std-no_alloc
+            // builds return None and let the caller fall back to a
+            // non-loan path.
+            #[cfg(feature = "alloc")]
+            {
+                let mut staging = alloc::boxed::Box::new(ArenaStaging {
+                    buf: alloc::vec![0u8; len],
+                });
+                let buf_ptr = staging.buf.as_mut_ptr();
+                let token = alloc::boxed::Box::into_raw(staging) as *mut c_void;
+                return Ok(Some(CffiSlot {
+                    buf: buf_ptr,
+                    cap: len,
+                    cursor: len,
+                    token,
+                    publisher: Some(self),
+                    fallback: true,
+                }));
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                let _ = len;
+                return Ok(None);
+            }
         };
         let mut view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr(),
@@ -1679,6 +1734,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
             cursor: len,
             token: out_token,
             publisher: Some(self),
+            fallback: false,
         }))
     }
 
@@ -1689,6 +1745,25 @@ impl nros_rmw::SlotLending for CffiPublisher {
             .take()
             .ok_or(TransportError::InvalidArgument)?;
         debug_assert!(core::ptr::eq(publisher, self));
+        if slot.fallback {
+            // Phase 124.A.3 — fallback path: reclaim the staging
+            // box, run a single publish_raw of the cursor-truncated
+            // contents.
+            #[cfg(feature = "alloc")]
+            {
+                // SAFETY: `slot.token` came from
+                // `Box::into_raw(Box<ArenaStaging>)` in try_lend_slot.
+                let staging = unsafe {
+                    alloc::boxed::Box::from_raw(slot.token as *mut ArenaStaging)
+                };
+                let bytes = &staging.buf[..slot.cursor.min(staging.buf.len())];
+                return Publisher::publish_raw(self, bytes);
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                return Err(TransportError::Unsupported);
+            }
+        }
         let commit = self
             .vtable
             .pub_commit

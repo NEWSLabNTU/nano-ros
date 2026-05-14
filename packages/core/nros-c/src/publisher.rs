@@ -358,6 +358,138 @@ pub unsafe extern "C" fn nros_publisher_assert_liveliness(
     }
 }
 
+// ============================================================================
+// Phase 124.A.6 — zero-copy publisher loan / commit / discard
+// ============================================================================
+
+/// Phase 124.A.6 — loan a writable slot from the publisher's outbound
+/// buffer (zero-copy publish path).
+///
+/// On success, `*out_buf` points at `*out_cap` writable bytes the
+/// caller fills in place. Pass `*out_token` back to
+/// [`nros_publisher_commit`] (to send) or [`nros_publisher_discard`]
+/// (to abandon). The slot's bytes are valid until commit / discard
+/// runs OR the publisher is finalised — whichever comes first. The
+/// caller is responsible for matching every loan with exactly one
+/// commit OR discard.
+///
+/// Falls back to a heap-allocated staging buffer when the active
+/// backend's vtable doesn't expose a native loan slot — the wire
+/// payload still takes a single memcpy at commit time. `requested_len`
+/// is the minimum capacity; `*out_cap` may exceed it.
+///
+/// # Returns
+/// * `NROS_RET_OK` — slot reserved.
+/// * `NROS_RET_TRY_AGAIN` (`-15`) — backend has no slot available;
+///   retry later or use a non-loan publish path.
+/// * `NROS_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
+/// * `NROS_RET_NOT_INIT` if publisher isn't initialised.
+///
+/// # Safety
+/// * All pointers must be valid.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_loan(
+    publisher: *const nros_publisher_t,
+    requested_len: usize,
+    out_buf: *mut *mut u8,
+    out_cap: *mut usize,
+    out_token: *mut *mut core::ffi::c_void,
+) -> nros_ret_t {
+    validate_not_null!(publisher, out_buf, out_cap, out_token);
+    if requested_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let publisher = &*publisher;
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+
+    use nros_rmw::SlotLending;
+    let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+    match pub_handle.try_lend_slot(requested_len) {
+        Ok(Some(slot)) => {
+            // SAFETY: erase the lifetime — caller is contractually
+            // responsible for commit/discard before the publisher
+            // dies. Box the slot so we have a stable token across
+            // the FFI boundary.
+            let mut slot: nros::internals::RmwSlot<'static> = core::mem::transmute(slot);
+            let buf_ptr = slot.as_mut().as_mut_ptr();
+            let cap = slot.as_mut().len();
+            let boxed = alloc::boxed::Box::new(slot);
+            *out_buf = buf_ptr;
+            *out_cap = cap;
+            *out_token = alloc::boxed::Box::into_raw(boxed) as *mut core::ffi::c_void;
+            NROS_RET_OK
+        }
+        Ok(None) => NROS_RET_TRY_AGAIN,
+        Err(_) => NROS_RET_PUBLISH_FAILED,
+    }
+}
+
+/// Phase 124.A.6 — commit a previously-loaned slot. Sends the slot's
+/// `actual_len` bytes via the active backend.
+///
+/// `token` MUST come from a prior `nros_publisher_loan` on the SAME
+/// publisher; consuming it (commit OR discard) is mandatory.
+///
+/// # Safety
+/// * `publisher` must be the same publisher the token was loaned from.
+/// * `token` must not be NULL and must not be reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_commit(
+    publisher: *const nros_publisher_t,
+    token: *mut core::ffi::c_void,
+    actual_len: usize,
+) -> nros_ret_t {
+    validate_not_null!(publisher, token);
+    let publisher = &*publisher;
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+    use nros_rmw::SlotLending;
+    let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
+        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>);
+    slot.set_len(actual_len);
+    match pub_handle.commit_slot(*slot) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_PUBLISH_FAILED,
+    }
+}
+
+/// Phase 124.A.6 — abandon a previously-loaned slot without sending.
+///
+/// `token` MUST come from a prior `nros_publisher_loan` on the SAME
+/// publisher; consuming it (commit OR discard) is mandatory.
+///
+/// # Safety
+/// * `publisher` must be the same publisher the token was loaned from.
+/// * `token` must not be NULL and must not be reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_discard(
+    publisher: *const nros_publisher_t,
+    token: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    validate_not_null!(publisher, token);
+    let publisher = &*publisher;
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+    // SAFETY: token was a Box::into_raw of `RmwSlot<'static>` from a
+    // prior `nros_publisher_loan`. Reconstitute it and drop —
+    // CffiSlot::drop fires the backend's pub_discard (or reclaims the
+    // arena staging buffer).
+    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
+        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>);
+    NROS_RET_OK
+}
+
 /// Finalize a publisher.
 ///
 /// # Parameters

@@ -28,6 +28,12 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # specific RMW.
 rmw-cffi = ["nros/rmw-cffi"]
 
+# Phase 124.A — opt in to the zero-copy publisher loan / subscriber
+# borrow surface (`nros_publisher_loan` / `_commit` / `_discard` /
+# `nros_subscription_borrow` / `_release`). Threads the
+# `nros-rmw-cffi/lending` cargo bound through.
+lending = ["rmw-cffi", "nros/lending"]
+
 # Phase 123.A.11 — `cffi-xrce-c` / `cffi-dds-cffi` / `cffi-zenoh-cffi`
 # DELETED. They previously selected which `extern fn
 # nros_rmw_<x>_register()` call site got compiled into

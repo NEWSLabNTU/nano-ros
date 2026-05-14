@@ -497,27 +497,65 @@ independent additions.
       that forwards to `nros-rmw/lending`.
       **Files:** `packages/core/nros-rmw-cffi/Cargo.toml`,
       `packages/core/nros-rmw-cffi/src/lib.rs`.
-- [ ] **124.A.3 — Arena fallback migration.** Move `TxArena<TX_BUF>`
+- [x] **124.A.3 — Arena fallback migration.** Move `TxArena<TX_BUF>`
       from `nros-node` into `nros-rmw-cffi` as the default loan
       path when `vt.pub_loan == NULL`. Single implementation
       serves Rust + C/C++.
+      **Done.** Implemented in `CffiPublisher::try_lend_slot`:
+      when `vt.pub_loan` is None, allocates an `ArenaStaging`
+      Box (Vec-backed staging buffer) under `feature = "alloc"`
+      and stashes it in the slot's `token`. `commit_slot` on a
+      fallback slot reclaims the Box and emits a single
+      `publish_raw` of the cursor-truncated bytes. `Drop` on a
+      fallback slot reclaims the Box without sending. no_std-
+      no_alloc builds return `Ok(None)` so callers fall back
+      further. Per-publisher TX-arena in nros-node stays for
+      now — Phase 99.F retains it for users who hit the path
+      directly; the cffi-side fallback covers C/C++ + the
+      generic Rust route via `CffiPublisher`.
+      Tests: `tests/loan_fallback.rs` — two nextest scenarios
+      cover commit + drop-without-commit.
       **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
-      `packages/core/nros-node/src/executor/handles.rs`.
-- [ ] **124.A.4 — Zenoh-pico backend wire-up.** Map
+      `packages/core/nros-rmw-cffi/tests/loan_fallback.rs`.
+- [~] **124.A.4 — Zenoh-pico backend wire-up.** Map
       `pub_loan` → `zp_alloc_pub_payload`, `pub_commit` → put,
       etc. Delete the legacy `nros-rmw-zenoh::shim::publisher::
       SlotLending` impl (now redundant — vtable path covers it).
+      **Partial.** ZenohPublisher's existing Rust-side
+      SlotLending (Phase 99.F, single-slot arena with
+      `publish_with_attachment_aliased`) already provides
+      zero-copy publish for direct Rust callers. Wiring it
+      through the cffi vtable's `pub_loan/commit/discard`
+      trampolines so C/C++ callers get native zenoh zero-copy
+      is a follow-up (124.A.4.b) — the arena fallback in
+      124.A.3 covers them today with a single memcpy.
       **Files:** `packages/zpico/nros-rmw-zenoh/src/shim/`.
-- [ ] **124.A.5 — XRCE / DDS / Cyclone backend stubs.** All
+- [x] **124.A.5 — XRCE / DDS / Cyclone backend stubs.** All
       three set the slots to NULL initially (arena fallback
       covers). Cyclone DDS native loan (`dds_loan_sample`) wired
       in a follow-up.
-- [ ] **124.A.6 — C user-facing wrappers.** Add
+      **Done.** XRCE C vtable, Cyclone DDS C++ vtable, and
+      both Rust adapters (RustBackendAdapter via dust-DDS +
+      zenoh) ship the 5 zero-copy slots as NULL / nullptr.
+- [~] **124.A.6 — C user-facing wrappers.** Add
       `nros_publisher_loan` / `commit` / `discard` to the C
       header that the cbindgen `nros_generated.h` exports.
       Same for subscriber borrow / release.
+      **Publisher half done.** `nros_publisher_loan` /
+      `nros_publisher_commit` / `nros_publisher_discard` added
+      to `nros-c/src/publisher.rs`, gated behind the new
+      `lending` cargo feature on `nros-c`. Token =
+      `Box::into_raw(Box<CffiSlot<'static>>)` with the
+      lifetime erased; caller MUST commit / discard before
+      finalising the publisher (documented in the doc-comment
+      contract). cbindgen emits `nros_publisher_loan` /
+      `_commit` / `_discard` into `nros_generated.h`.
+      Subscription borrow / release pending (follow-up).
       **Files:** `packages/core/nros-c/src/publisher.rs`,
-      `packages/core/nros-c/src/subscription.rs`.
+      `packages/core/nros-c/Cargo.toml`,
+      `packages/core/nros/Cargo.toml`,
+      `packages/core/nros/src/lib.rs` (RmwSlot / RmwView
+      type aliases in `internals`).
 - [ ] **124.A.7 — C++ user-facing class methods.**
       `Publisher<M>::loan(len)` / `commit(slot)` /
       `Subscription<M>::borrow()` / `release(view)` matching

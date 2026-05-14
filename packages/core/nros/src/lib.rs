@@ -286,6 +286,17 @@ pub mod internals {
     #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
 
+    /// Phase 124.A — zero-copy publisher slot type. Lives in the
+    /// `internals` module so `nros-c` can construct + transmute the
+    /// lifetime when boxing the slot for the C-side `_loan` /
+    /// `_commit` / `_discard` token plumbing.
+    #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
+    pub type RmwSlot<'a> = nros_rmw_cffi::CffiSlot<'a>;
+
+    /// Phase 124.A — zero-copy subscriber view type.
+    #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
+    pub type RmwView<'a> = nros_rmw_cffi::CffiView<'a>;
+
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
