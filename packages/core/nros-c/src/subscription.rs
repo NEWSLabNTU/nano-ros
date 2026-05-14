@@ -566,6 +566,61 @@ pub unsafe extern "C" fn nros_subscription_release(
     NROS_RET_OK
 }
 
+/// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued samples
+/// into the contiguous `buf` block in a single call, with the i-th
+/// sample at `buf + i * per_msg_cap` and length `out_lens[i]`.
+///
+/// `buf` is a caller-owned contiguous region of at least
+/// `max_msgs * per_msg_cap` bytes. `out_lens` is a writable array
+/// of at least `max_msgs` `size_t` slots.
+///
+/// Returns the number of messages delivered (`>= 0`) on success, or
+/// a negative `nros_ret_t` error code. Partial drains are reported
+/// as the count, never as an error.
+///
+/// # Safety
+/// * `subscription` must be in `POLLING` state.
+/// * `buf` must point to writable memory of at least
+///   `max_msgs * per_msg_cap` bytes.
+/// * `out_lens` must point to a writable array of at least
+///   `max_msgs` `size_t` slots.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_try_recv_sequence(
+    subscription: *mut nros_subscription_t,
+    buf: *mut u8,
+    per_msg_cap: usize,
+    max_msgs: usize,
+    out_lens: *mut usize,
+) -> i32 {
+    if subscription.is_null() || buf.is_null() || out_lens.is_null() || per_msg_cap == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let subscription_mut = &mut *subscription;
+    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING {
+        return NROS_RET_BAD_SEQUENCE;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let raw = &mut *(subscription_mut._opaque.as_mut_ptr()
+            as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
+        // `RawSubscription`'s `handle` is the cffi subscriber that
+        // drives the vtable slot (or its loop fallback). Borrow the
+        // caller buffer as a flat slice and dispatch.
+        let buf_slice = core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap));
+        let lens_slice = core::slice::from_raw_parts_mut(out_lens, max_msgs);
+        match raw.try_recv_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
+            Ok(count) => count as i32,
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (subscription_mut, buf, per_msg_cap, max_msgs, out_lens);
+        NROS_RET_ERROR
+    }
+}
+
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]

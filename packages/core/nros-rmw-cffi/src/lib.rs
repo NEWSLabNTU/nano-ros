@@ -598,6 +598,28 @@ pub struct NrosRmwVtable {
     /// missing slot to `NROS_RMW_RET_UNSUPPORTED`.
     pub service_server_available:
         Option<unsafe extern "C" fn(client: *mut NrosRmwServiceClient) -> i32>,
+
+    // ---- Phase 124.D.1 — burst-take ----
+    /// Drains up to `max_msgs` queued messages into a contiguous
+    /// caller buffer in a single backend call. The i-th delivered
+    /// message lives at `buf + i * per_msg_cap` and has length
+    /// `out_lens[i]`. Returns the message count (≥ 0) or a negative
+    /// `NrosRmwRet` error code; partial drains MUST report the
+    /// count, never error out.
+    ///
+    /// NULL fn pointer = backend doesn't batch; the runtime falls
+    /// back to a `try_recv_raw` loop in
+    /// `CffiSubscriber::try_recv_sequence` so user code can commit
+    /// to the batched API regardless of backend support.
+    pub try_recv_sequence: Option<
+        unsafe extern "C" fn(
+            subscriber: *mut NrosRmwSubscriber,
+            buf: *mut u8,
+            per_msg_cap: usize,
+            max_msgs: usize,
+            out_lens: *mut usize,
+        ) -> i32,
+    >,
 }
 
 // ============================================================================
@@ -2041,6 +2063,69 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         Ok(Some(rc as usize))
     }
 
+    fn try_recv_sequence(
+        &mut self,
+        buf: &mut [u8],
+        per_msg_cap: usize,
+        max_msgs: usize,
+        out_lens: &mut [usize],
+    ) -> Result<usize, TransportError> {
+        // Phase 124.D.2 — runtime fallback. If the backend exposes
+        // `try_recv_sequence` natively, call it in one hop; otherwise
+        // delegate to the trait's default body which loop-drives
+        // `try_recv_raw`. Either way the caller sees the same shape:
+        // contiguous slot block + per-slot length array + count
+        // return.
+        if let Some(f) = self.vtable.try_recv_sequence {
+            if per_msg_cap == 0 || max_msgs == 0 {
+                return Ok(0);
+            }
+            let limit = max_msgs.min(out_lens.len());
+            if buf.len() < limit.saturating_mul(per_msg_cap) {
+                return Err(TransportError::BufferTooSmall);
+            }
+            let mut view = self.make_view();
+            let rc = unsafe {
+                f(
+                    &mut view,
+                    buf.as_mut_ptr(),
+                    per_msg_cap,
+                    limit,
+                    out_lens.as_mut_ptr(),
+                )
+            };
+            if rc < 0 {
+                return Err(error_from_ret(rc));
+            }
+            return Ok(rc as usize);
+        }
+        // Phase 124.D.2 — `try_recv_raw` loop fallback. Inlined
+        // here (rather than dispatching back through the trait
+        // default body) so the recursion is structurally
+        // impossible — `Subscriber::try_recv_sequence` on
+        // `CffiSubscriber` is THIS function, and forwarding to
+        // the default body would deadlock the override.
+        if per_msg_cap == 0 || max_msgs == 0 {
+            return Ok(0);
+        }
+        let limit = max_msgs.min(out_lens.len());
+        if buf.len() < limit.saturating_mul(per_msg_cap) {
+            return Err(TransportError::BufferTooSmall);
+        }
+        let mut count = 0;
+        for i in 0..limit {
+            let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
+            match self.try_recv_raw(slot)? {
+                Some(len) => {
+                    out_lens[i] = len;
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        Ok(count)
+    }
+
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
     }
@@ -2583,6 +2668,7 @@ mod tests {
         sub_borrow: None,
         sub_release: None,
         service_server_available: None,
+        try_recv_sequence: None,
     };
 
     #[test]

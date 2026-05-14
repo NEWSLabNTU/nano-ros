@@ -693,12 +693,17 @@ into `Executor` alongside the existing `wake_flag`.
 
 ### Thread D — Sequence take
 
-- [ ] **124.D.1 — vtable slot.** Add `try_recv_sequence`.
-- [ ] **124.D.2 — Loop fallback.** Runtime emits a
+- [x] **124.D.1 — vtable slot.** Add `try_recv_sequence`.
+- [x] **124.D.2 — Loop fallback.** Runtime emits a
       `try_recv_raw` loop when `vt.try_recv_sequence == NULL`.
 - [ ] **124.D.3 — Backend impls.** Zenoh batch drain, Cyclone
-      `dds_take(max_samples)`, dust-dds equivalent.
-- [ ] **124.D.4 — C/C++ wrappers + test.** Test verifies 8
+      `dds_take(max_samples)`, dust-dds equivalent. Zenoh-pico
+      shim holds at most one in-flight message per subscriber so
+      the loop fallback is already optimal; deferred until a
+      backend with a real native multi-take landing path appears.
+      Cyclone DDS native take wired in 117.X follow-up; dust-dds
+      pending matched-pub plumbing (same blocker as 124.C.2).
+- [x] **124.D.4 — C/C++ wrappers + test.** Test verifies 8
       messages drained in one call delivers all 8 + correct
       lengths.
 

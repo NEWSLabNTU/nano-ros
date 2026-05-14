@@ -286,6 +286,35 @@ typedef struct nros_rmw_vtable_t {
      *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller. */
     int32_t (*service_server_available)(
         nros_rmw_service_client_t *client);
+
+    /** Phase 124.D.1 — burst-take.
+     *
+     *  Drains up to `max_msgs` queued messages into a contiguous
+     *  caller buffer in a single backend call, avoiding N × vtable
+     *  dispatch when a burst-sensor subscriber catches up on a
+     *  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).
+     *
+     *  Storage contract:
+     *    * `buf` is a contiguous `max_msgs * per_msg_cap` block.
+     *    * The i-th delivered message lives at `buf + i * per_msg_cap`
+     *      and has byte length `out_lens[i]`.
+     *    * `out_lens` is at least `max_msgs` entries long.
+     *
+     *  Returns:
+     *    * `>= 0` — count of messages taken (0..=max_msgs).
+     *    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST
+     *      use the count form, not error-out.
+     *
+     *  NULL function pointer = backend doesn't natively batch; the
+     *  runtime emits a `try_recv_raw` loop fallback in
+     *  `CffiSubscriber::try_recv_sequence`. The fallback gives
+     *  identical observable behaviour (each call still costs N
+     *  vtable hops) but lets user code commit to the batched API. */
+    int32_t (*try_recv_sequence)(nros_rmw_subscriber_t *subscriber,
+                                  uint8_t              *buf,
+                                  size_t                per_msg_cap,
+                                  size_t                max_msgs,
+                                  size_t               *out_lens);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

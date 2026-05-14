@@ -150,6 +150,34 @@ template <typename M> class Subscription {
         return Expected<View>::ok(View{storage_, buf, len, token});
     }
 
+    /// Phase 124.D.1 — burst-take.
+    ///
+    /// Drain up to `max_msgs` queued samples in a single call. The
+    /// i-th delivered sample lives at `buf + i * per_msg_cap` with
+    /// length `out_lens[i]`. Writes the count to `out_count`. Returns
+    /// `Result::success()` on success (count may be 0), the matching
+    /// FFI error otherwise.
+    ///
+    /// Backends without a native batch take fall back to a
+    /// `try_recv_raw` loop — same shape, same observable result;
+    /// the batched API just lets sensor loops commit to one call
+    /// shape regardless of backend support.
+    Result try_recv_sequence(
+        uint8_t* buf,
+        size_t per_msg_cap,
+        size_t max_msgs,
+        size_t* out_lens,
+        size_t& out_count) {
+        if (!initialized_) {
+            out_count = 0;
+            return Result(ErrorCode::NotInitialized);
+        }
+        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_sequence(
+            storage_, buf, per_msg_cap, max_msgs, out_lens, &out_count);
+        if (ret != 0) return Result(ret);
+        return Result::success();
+    }
+
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
 

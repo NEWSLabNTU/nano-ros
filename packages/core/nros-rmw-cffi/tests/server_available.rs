@@ -205,6 +205,7 @@ static VTABLE_WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
     sub_borrow: None,
     sub_release: None,
     service_server_available: Some(scripted_server_available),
+    try_recv_sequence: None,
 };
 
 static VTABLE_NULL_SLOT: NrosRmwVtable = NrosRmwVtable {
@@ -238,6 +239,7 @@ static VTABLE_NULL_SLOT: NrosRmwVtable = NrosRmwVtable {
     sub_borrow: None,
     sub_release: None,
     service_server_available: None,
+    try_recv_sequence: None,
 };
 
 fn open_client(svc_name: &str) -> nros_rmw_cffi::CffiServiceClient {

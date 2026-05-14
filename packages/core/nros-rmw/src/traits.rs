@@ -1214,6 +1214,43 @@ pub trait Subscriber {
     /// error (preferred).
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 
+    /// Phase 124.D.1 — burst-take.
+    ///
+    /// Drain up to `max_msgs` queued samples into the contiguous
+    /// `buf` block in one call, with the i-th sample at
+    /// `buf[i * per_msg_cap .. i * per_msg_cap + out_lens[i]]`.
+    /// Returns the number of messages actually delivered. Partial
+    /// drains MUST report the count, not error out.
+    ///
+    /// Default body loop-drives `try_recv_raw` so callers can
+    /// commit to the batched API regardless of backend support.
+    /// Concrete backends opt in by overriding with a native batch
+    /// take (zenoh queue drain, `dds_take(max_samples)`).
+    fn try_recv_sequence(
+        &mut self,
+        buf: &mut [u8],
+        per_msg_cap: usize,
+        max_msgs: usize,
+        out_lens: &mut [usize],
+    ) -> Result<usize, Self::Error> {
+        if per_msg_cap == 0 || max_msgs == 0 {
+            return Ok(0);
+        }
+        let limit = max_msgs.min(out_lens.len());
+        let mut count = 0;
+        for i in 0..limit {
+            let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
+            match self.try_recv_raw(slot)? {
+                Some(len) => {
+                    out_lens[i] = len;
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        Ok(count)
+    }
+
     /// Try to receive a typed message (non-blocking)
     fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error> {
         use nros_core::CdrReader;

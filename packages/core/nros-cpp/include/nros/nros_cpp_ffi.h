@@ -971,6 +971,32 @@ int32_t nros_cpp_subscription_borrow(void *storage,
 nros_cpp_ret_t nros_cpp_subscription_release(void *storage, void *token);
 
 /**
+ * Phase 124.D.1 — burst-take.
+ *
+ * Drain up to `max_msgs` queued samples into the contiguous `buf`
+ * block in a single call. The i-th delivered sample lives at
+ * `buf + i * per_msg_cap` with length `out_lens[i]`. Returns the
+ * number of samples delivered (`>= 0`) via `out_count` and an
+ * `nros_cpp_ret_t` status:
+ *   * `NROS_CPP_RET_OK` — `*out_count` was written.
+ *   * `NROS_CPP_RET_INVALID_ARGUMENT` — null pointer or zero
+ *     per-message cap.
+ *   * `NROS_CPP_RET_ERROR` — backend-level transport failure.
+ *
+ * # Safety
+ * `storage` must be a valid initialized subscription. `buf` must
+ * point to a writable block of `max_msgs * per_msg_cap` bytes.
+ * `out_lens` must point to a writable array of `max_msgs` `size_t`
+ * slots. `out_count` must be a writable `usize` pointer.
+ */
+nros_cpp_ret_t nros_cpp_subscription_try_recv_sequence(void *storage,
+                                                       uint8_t *buf,
+                                                       size_t per_msg_cap,
+                                                       size_t max_msgs,
+                                                       size_t *out_lens,
+                                                       size_t *out_count);
+
+/**
  * Destroy a subscription (drop in place, no free).
  *
  * # Safety

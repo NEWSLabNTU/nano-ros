@@ -230,6 +230,55 @@ pub unsafe extern "C" fn nros_cpp_subscription_release(
     NROS_CPP_RET_OK
 }
 
+/// Phase 124.D.1 — burst-take.
+///
+/// Drain up to `max_msgs` queued samples into the contiguous `buf`
+/// block in a single call. The i-th delivered sample lives at
+/// `buf + i * per_msg_cap` with length `out_lens[i]`. Returns the
+/// number of samples delivered (`>= 0`) via `out_count` and an
+/// `nros_cpp_ret_t` status:
+///   * `NROS_CPP_RET_OK` — `*out_count` was written.
+///   * `NROS_CPP_RET_INVALID_ARGUMENT` — null pointer or zero
+///     per-message cap.
+///   * `NROS_CPP_RET_ERROR` — backend-level transport failure.
+///
+/// # Safety
+/// `storage` must be a valid initialized subscription. `buf` must
+/// point to a writable block of `max_msgs * per_msg_cap` bytes.
+/// `out_lens` must point to a writable array of `max_msgs` `size_t`
+/// slots. `out_count` must be a writable `usize` pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_try_recv_sequence(
+    storage: *mut c_void,
+    buf: *mut u8,
+    per_msg_cap: usize,
+    max_msgs: usize,
+    out_lens: *mut usize,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    use nros_rmw::Subscriber;
+    if storage.is_null() || buf.is_null() || out_lens.is_null() || out_count.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if per_msg_cap == 0 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    let buf_slice = unsafe {
+        core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap))
+    };
+    let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
+    match sub.try_recv_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
+        Ok(count) => {
+            unsafe {
+                *out_count = count;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Destroy a subscription (drop in place, no free).
 ///
 /// # Safety

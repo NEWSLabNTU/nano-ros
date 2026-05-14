@@ -1225,6 +1225,30 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
     }
 
+    /// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued
+    /// samples into the caller-supplied contiguous block in one
+    /// call, with the i-th sample at
+    /// `buf[i * per_msg_cap .. i * per_msg_cap + out_lens[i]]`.
+    /// Returns the number of messages delivered.
+    ///
+    /// Backends without a native batch take inherit the
+    /// `Subscriber::try_recv_sequence` default body which loop-drives
+    /// `try_recv_raw` — same shape, same observable result; the
+    /// batched API just lets sensor loops commit to the call shape
+    /// regardless of backend support.
+    pub fn try_recv_sequence(
+        &mut self,
+        buf: &mut [u8],
+        per_msg_cap: usize,
+        max_msgs: usize,
+        out_lens: &mut [usize],
+    ) -> Result<usize, NodeError> {
+        use nros_rmw::Subscriber;
+        self.handle
+            .try_recv_sequence(buf, per_msg_cap, max_msgs, out_lens)
+            .map_err(NodeError::Transport)
+    }
+
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
     /// message arrives. Mirror of the existing service-server /
     /// service-client wake plumbing. No-op on backends that don't

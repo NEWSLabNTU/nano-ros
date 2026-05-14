@@ -226,6 +226,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         sub_borrow: None,
         sub_release: None,
         service_server_available: Some(service_server_available_trampoline::<R>),
+        try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -827,6 +828,36 @@ unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
     match ServiceClientTrait::server_available(c) {
         Ok(true) => 1,
         Ok(false) => 0,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+unsafe extern "C" fn try_recv_sequence_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscriber,
+    buf: *mut u8,
+    per_msg_cap: usize,
+    max_msgs: usize,
+    out_lens: *mut usize,
+) -> i32 {
+    // Phase 124.D.1 — delegate to the Rust backend's
+    // `Subscriber::try_recv_sequence` impl. Default trait body
+    // loop-drives `try_recv_raw`; concrete backends opt in by
+    // overriding for a native batch take.
+    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    if buf.is_null() || out_lens.is_null() || per_msg_cap == 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: caller pinky-promised a contiguous block of
+    // `max_msgs * per_msg_cap` bytes at `buf` and at least
+    // `max_msgs` `usize` slots at `out_lens`. The buffer is
+    // exclusively borrowed for the duration of this call.
+    let buf_slice =
+        unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
+    let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
+    match Subscriber::try_recv_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
+        Ok(count) => count as i32,
         Err(e) => ret_from_error(&e),
     }
 }
