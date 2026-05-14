@@ -518,19 +518,27 @@ independent additions.
       cover commit + drop-without-commit.
       **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
       `packages/core/nros-rmw-cffi/tests/loan_fallback.rs`.
-- [~] **124.A.4 — Zenoh-pico backend wire-up.** Map
+- [x] **124.A.4 — Zenoh-pico backend wire-up.** Map
       `pub_loan` → `zp_alloc_pub_payload`, `pub_commit` → put,
-      etc. Delete the legacy `nros-rmw-zenoh::shim::publisher::
-      SlotLending` impl (now redundant — vtable path covers it).
-      **Partial.** ZenohPublisher's existing Rust-side
-      SlotLending (Phase 99.F, single-slot arena with
-      `publish_with_attachment_aliased`) already provides
-      zero-copy publish for direct Rust callers. Wiring it
-      through the cffi vtable's `pub_loan/commit/discard`
-      trampolines so C/C++ callers get native zenoh zero-copy
-      is a follow-up (124.A.4.b) — the arena fallback in
-      124.A.3 covers them today with a single memcpy.
-      **Files:** `packages/zpico/nros-rmw-zenoh/src/shim/`.
+      etc. **Done (A.4.b).** When the `lending` feature is on,
+      `nros_rmw_zenoh_register` installs a customised vtable
+      built from `RustBackendAdapter::<ZenohRmw>::VTABLE` with
+      `pub_loan/_commit/_discard` overridden by zenoh-pico-
+      specific trampolines that route through
+      `ZenohPublisher`'s Phase 99.F single-slot arena +
+      `publish_with_attachment_aliased`. C/C++ callers
+      going through the cffi vtable now get the same
+      zero-copy publish path Rust users have via direct
+      `SlotLending`. Trampolines box a lifetime-erased
+      `ZenohSlot<'static>` as the opaque token; Drop / discard
+      reclaim the arena. New `ZenohSlot::truncate(actual_len)`
+      lets commit honour `actual_len < cap`. Without the
+      `lending` feature, registration falls back to the
+      adapter's NULL loan slots → runtime arena fallback
+      (124.A.3) — still one memcpy, still zero-copy at the
+      wire level.
+      **Files:** `packages/zpico/nros-rmw-zenoh/src/lib.rs`,
+      `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs`.
 - [x] **124.A.5 — XRCE / DDS / Cyclone backend stubs.** All
       three set the slots to NULL initially (arena fallback
       covers). Cyclone DDS native loan (`dds_loan_sample`) wired

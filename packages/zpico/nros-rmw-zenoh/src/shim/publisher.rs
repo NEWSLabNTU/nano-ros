@@ -468,6 +468,23 @@ mod lending {
         }
     }
 
+    impl<'a> ZenohSlot<'a> {
+        /// Phase 124.A.4.b — truncate the slot to `actual_len` bytes.
+        /// Called by the cffi `pub_commit` trampoline when the caller's
+        /// `actual_len` is shorter than the originally loaned capacity.
+        /// No-op when `actual_len >= self.bytes.len()`.
+        pub fn truncate(&mut self, actual_len: usize) {
+            if actual_len >= self.bytes.len() {
+                return;
+            }
+            // SAFETY: re-borrow the same buffer with a shorter prefix.
+            // The slot owns the busy-flag exclusivity so this is sound
+            // for the lifetime of `self`.
+            let ptr = self.bytes.as_mut_ptr();
+            self.bytes = unsafe { core::slice::from_raw_parts_mut(ptr, actual_len) };
+        }
+    }
+
     impl<'a> Drop for ZenohSlot<'a> {
         fn drop(&mut self) {
             // Always release the arena slot. commit_slot also calls

@@ -126,9 +126,27 @@ mod cffi_register {
     /// runtime under the canonical name `"zenoh"`. Returns
     /// `NROS_RMW_RET_OK` (0) on success. Idempotent — duplicate
     /// `("zenoh", vtable)` registrations are in-place overwrites.
+    ///
+    /// Phase 124.A.4.b — when the `lending` feature is on, install
+    /// a vtable that overrides `pub_loan/_commit/_discard` with
+    /// zenoh-pico-specific trampolines (zero-copy aliased publish).
+    /// Without `lending`, fall back to the generic adapter vtable
+    /// whose loan slots are NULL — runtime arena fallback applies.
+    #[cfg(not(feature = "lending"))]
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_rmw_zenoh_register() -> NrosRmwRet {
         unsafe { RustBackendAdapter::<ZenohRmw>::register_named(c"zenoh".as_ptr()) }
+    }
+
+    #[cfg(feature = "lending")]
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_rmw_zenoh_register() -> NrosRmwRet {
+        unsafe {
+            nros_rmw_cffi::nros_rmw_cffi_register_named(
+                c"zenoh".as_ptr(),
+                &super::loan_trampolines::ZENOH_VTABLE,
+            )
+        }
     }
 
     /// Failure mode for the safe Rust wrapper.
@@ -192,3 +210,139 @@ mod cffi_register {
     feature = "platform-orin-spe",
 ))]
 pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};
+
+// ============================================================================
+// Phase 124.A.4.b — zenoh-pico cffi loan trampolines
+// ============================================================================
+//
+// When the `lending` feature is on, the cffi register installs a
+// vtable whose `pub_loan/_commit/_discard` slots call into
+// `ZenohPublisher`'s native single-slot arena + aliased-publish path
+// (Phase 99.F). C/C++ callers get the same zero-copy semantics Rust
+// callers have through the `SlotLending` trait — no staging-buffer
+// memcpy in the cffi fallback.
+//
+// Storage discipline (mirrors `RustBackendAdapter`):
+//   - `NrosRmwPublisher::backend_data` was set by `create_publisher`
+//     to `Box::into_raw(Box<ZenohPublisher>)`. Trampolines cast back
+//     to `&ZenohPublisher`.
+//   - The loan trampoline boxes a lifetime-erased `ZenohSlot<'static>`
+//     and stows the raw pointer in `*out_token`. Commit / discard /
+//     drop reclaim the box.
+#[cfg(all(
+    feature = "lending",
+    any(
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-bare-metal",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+        feature = "platform-orin-spe",
+    ),
+))]
+mod loan_trampolines {
+    extern crate alloc;
+    use alloc::boxed::Box;
+    use core::ffi::c_void;
+
+    use nros_rmw::SlotLending;
+    use nros_rmw_cffi::{
+        NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_WOULD_BLOCK, NrosRmwPublisher,
+        NrosRmwRet, NrosRmwVtable, RustBackendAdapter,
+    };
+
+    use crate::{ZenohRmw, shim::publisher::ZenohSlot};
+
+    type ZenohPublisher = <<ZenohRmw as nros_rmw::Rmw>::Session as nros_rmw::Session>::PublisherHandle;
+
+    /// Static-lifetime alias backing the boxed token. The cffi
+    /// runtime guarantees the publisher outlives every outstanding
+    /// loan (commit / discard / Drop all run before publisher
+    /// destruction); `'static` is the cheapest way to erase the
+    /// borrow checker's perspective.
+    type StaticSlot = ZenohSlot<'static>;
+
+    unsafe extern "C" fn zenoh_pub_loan(
+        publisher: *mut NrosRmwPublisher,
+        requested_len: usize,
+        out_buf: *mut *mut u8,
+        out_cap: *mut usize,
+        out_token: *mut *mut c_void,
+    ) -> NrosRmwRet {
+        if publisher.is_null()
+            || out_buf.is_null()
+            || out_cap.is_null()
+            || out_token.is_null()
+            || requested_len == 0
+        {
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        let backend_data = unsafe { (*publisher).backend_data };
+        if backend_data.is_null() {
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        let pub_handle = unsafe { &*(backend_data as *const ZenohPublisher) };
+        match pub_handle.try_lend_slot(requested_len) {
+            Ok(Some(mut slot)) => {
+                let buf_ptr = slot.as_mut().as_mut_ptr();
+                let cap = slot.as_mut().len();
+                // SAFETY: erase lifetime — cffi-runtime contract
+                // guarantees the publisher outlives the loan.
+                let static_slot: StaticSlot =
+                    unsafe { core::mem::transmute::<ZenohSlot<'_>, StaticSlot>(slot) };
+                let boxed = Box::new(static_slot);
+                unsafe {
+                    *out_buf = buf_ptr;
+                    *out_cap = cap;
+                    *out_token = Box::into_raw(boxed) as *mut c_void;
+                }
+                NROS_RMW_RET_OK
+            }
+            Ok(None) => NROS_RMW_RET_WOULD_BLOCK,
+            Err(_) => NROS_RMW_RET_ERROR,
+        }
+    }
+
+    unsafe extern "C" fn zenoh_pub_commit(
+        publisher: *mut NrosRmwPublisher,
+        token: *mut c_void,
+        actual_len: usize,
+    ) -> NrosRmwRet {
+        if publisher.is_null() || token.is_null() {
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        let backend_data = unsafe { (*publisher).backend_data };
+        if backend_data.is_null() {
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        let pub_handle = unsafe { &*(backend_data as *const ZenohPublisher) };
+        let mut slot: Box<StaticSlot> =
+            unsafe { Box::from_raw(token as *mut StaticSlot) };
+        slot.truncate(actual_len);
+        match pub_handle.commit_slot(*slot) {
+            Ok(()) => NROS_RMW_RET_OK,
+            Err(_) => NROS_RMW_RET_ERROR,
+        }
+    }
+
+    unsafe extern "C" fn zenoh_pub_discard(_publisher: *mut NrosRmwPublisher, token: *mut c_void) {
+        if token.is_null() {
+            return;
+        }
+        // SAFETY: token came from `Box::into_raw(Box<StaticSlot>)` in
+        // `zenoh_pub_loan`. Reconstitute and drop — ZenohSlot::drop
+        // releases the arena.
+        let _slot: Box<StaticSlot> = unsafe { Box::from_raw(token as *mut StaticSlot) };
+    }
+
+    /// Customised zenoh vtable: base = generic `RustBackendAdapter`
+    /// trampolines for all standard slots; loan slots overridden to
+    /// route through zenoh-pico's aliased-publish path.
+    pub(super) static ZENOH_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        pub_loan: Some(zenoh_pub_loan),
+        pub_commit: Some(zenoh_pub_commit),
+        pub_discard: Some(zenoh_pub_discard),
+        ..RustBackendAdapter::<ZenohRmw>::VTABLE
+    };
+}
