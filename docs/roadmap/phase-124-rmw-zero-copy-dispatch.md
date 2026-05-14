@@ -34,9 +34,33 @@ Six coordinated additions to `nros-rmw-cffi`:
    "is the peer/agent up?" probe. Lesson from micro-ROS's
    `rmw_uros_ping_agent`.
 
-**Status.** Plan opened 2026-05-14 after the RMW coverage audit.
-None of the six items implemented yet. Spec'd here; sub-phase
-order in §"Work items" below.
+**Status.** In flight — all six threads have their P1 cross-
+language paths landed (vtable slot + Rust trait method + C/C++
+wrappers + routing tests). As of 2026-05-14:
+
+- **A — zero-copy:** vtable slots + `SlotLending`/`SlotBorrowing`
+  + arena fallback + zenoh-pico native loan + C/C++ wrappers +
+  malloc-trace zero-alloc test. Done.
+- **B — wake-callback + condvar:** `set_wake_callback` slot,
+  `wake_cv` + condvar-blocked spin, guard-condition C/C++ surface,
+  ISR-safe platform primitive + signalfd worker. Done.
+- **C — service availability probe:** full stack + routing test.
+  Done. Acceptance E2E (100 ms timing) pending.
+- **D — sequence take:** vtable slot + loop fallback + C/C++/Rust
+  wrappers + routing test. Native batch (D.3) deferred — upstream
+  `rmw_zenoh` loops too; zenoh-pico's single-slot buffer needs a
+  ring-buffer rewrite for a real batch.
+- **E — continuous serialization:** vtable slot + staging-buffer
+  fallback + C/C++/Rust wrappers + routing test + **zenoh-pico
+  native impl** via `z_bytes_writer`. XRCE deferred.
+- **F — ping:** vtable slot + C/C++/Rust wrappers + routing test
+  + **zenoh-pico native impl** via `zp_send_keep_alive`. XRCE /
+  DDS deferred.
+
+Remaining open: D.3 (zenoh ring buffer + Cyclone/dust-dds native
+take), E.3/F.2 XRCE (needs a Rust-side `XrceRmw` adapter), and
+the network-E2E acceptance tests gated on those impls. Sub-phase
+detail in §"Work items" below.
 
 **Priority.** P1 (zero-copy + dispatch) / P2 (probe + sequence +
 continuous + ping). P1 items unblock the Phase 110 PiCAS work
