@@ -34,6 +34,12 @@ scheduler-time-triggered = []
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
+# Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
+# runtime-owned worker thread that forwards eventfd writes to the
+# Executor's wake condvar. Linux-only (eventfd). Off by default;
+# enable when the binary installs POSIX signal handlers that need
+# to wake the executor.
+signal-fd-wake = ["dep:libc", "std"]
 # Phase 104.A — per-backend feature flags retained as inert aliases
 # for source compatibility. They no longer pull a concrete backend
 # crate into `nros-node`'s Cargo graph; the caller adds the backend
@@ -116,6 +122,12 @@ log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
+
+# Phase 124.B.7.c — POSIX signalfd / eventfd worker (only on
+# Linux + std). Other targets compile without this dep; the
+# signalfd worker is feature-gated.
+[target.'cfg(all(target_os = "linux"))'.dependencies]
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }

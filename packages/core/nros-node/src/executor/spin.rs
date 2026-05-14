@@ -256,6 +256,125 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     wake.cv.notify_all();
 }
 
+/// Phase 124.B.7.c — POSIX signalfd worker.
+///
+/// Owns a Linux `eventfd` plus a worker thread that `read()`s the
+/// fd and forwards via `wake_ctx.cv.notify_all()`. The eventfd
+/// write side is async-signal-safe per the kernel contract
+/// (`write(2)` to an eventfd is permitted from signal handlers),
+/// closing the gap that `pthread_cond_signal` leaves open on POSIX.
+///
+/// Lifecycle:
+///   * Constructed lazily in `Executor::signal_fd()` on first
+///     caller request.
+///   * `Drop` writes a shutdown sentinel + joins the worker.
+///
+/// Caller flow (signal handler):
+///   1. Get fd via `Executor::signal_fd()` before installing the
+///      handler.
+///   2. Handler does `eventfd_write(fd, 1)` (equivalently,
+///      `write(fd, &1u64, 8)`).
+///   3. Worker thread reads the fd, signals wake_cv. spin_once
+///      blocked in cv.wait_timeout_while sees flag=true and exits.
+#[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+pub struct WakeSignalFd {
+    fd: core::ffi::c_int,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+impl WakeSignalFd {
+    /// Spawn the worker. `wake_ctx_ptr` is the `*const WakeCtx`
+    /// produced by `Executor::wake_ctx_ptr` — same value the
+    /// runtime wake cb decodes.
+    fn new(wake_ctx_ptr: *const WakeCtx) -> Result<Self, std::io::Error> {
+        let fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_clone = std::sync::Arc::clone(&shutdown);
+
+        // Pass wake_ctx pointer as usize so the closure is Send.
+        // SAFETY: the pointer is valid for the Executor's lifetime
+        // (WakeCtx is owned by the Executor's `wake_ctx: Arc<WakeCtx>`
+        // field which outlives this worker thread — we join in Drop).
+        let ctx_addr = wake_ctx_ptr as usize;
+        let worker = std::thread::Builder::new()
+            .name("nros-wakefd".into())
+            .spawn(move || {
+                let ctx = ctx_addr as *const WakeCtx;
+                loop {
+                    let mut buf = [0u8; 8];
+                    let n = unsafe {
+                        libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8)
+                    };
+                    if n <= 0 {
+                        // EINTR / EOF — re-check shutdown then loop.
+                        if shutdown_clone.load(std::sync::atomic::Ordering::Acquire) {
+                            return;
+                        }
+                        continue;
+                    }
+                    if shutdown_clone.load(std::sync::atomic::Ordering::Acquire) {
+                        return;
+                    }
+                    // Same effect as nros_rmw_runtime_wake_cb. We
+                    // can't call it directly because it dereferences
+                    // ctx as &WakeCtx which would race with Executor
+                    // drop unless we hold a guarantee — the
+                    // shutdown_flag check above + Drop's join gives it.
+                    unsafe {
+                        let w = &*ctx;
+                        w.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        w.cv.notify_all();
+                    }
+                }
+            })
+            .map_err(|e| {
+                unsafe { libc::close(fd) };
+                std::io::Error::other(alloc::format!("spawn nros-wakefd worker: {e}"))
+            })?;
+
+        Ok(Self {
+            fd,
+            shutdown,
+            worker: Some(worker),
+        })
+    }
+
+    /// Returns the writable eventfd. The caller (typically a POSIX
+    /// signal handler) writes any non-zero 8-byte value to trigger
+    /// a wake. `write(2)` on an eventfd is async-signal-safe per
+    /// `eventfd(2)` man page.
+    pub fn fd(&self) -> core::ffi::c_int {
+        self.fd
+    }
+}
+
+#[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+impl Drop for WakeSignalFd {
+    fn drop(&mut self) {
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Wake the worker so it re-checks shutdown.
+        let one: u64 = 1;
+        unsafe {
+            libc::write(
+                self.fd,
+                &one as *const u64 as *const core::ffi::c_void,
+                8,
+            );
+        }
+        if let Some(j) = self.worker.take() {
+            let _ = j.join();
+        }
+        unsafe { libc::close(self.fd) };
+    }
+}
+
 /// Phase 124.B.7.b — ISR / interrupt-context wake callback.
 ///
 /// Same semantics as [`nros_rmw_runtime_wake_cb`] but constrained to
@@ -393,6 +512,11 @@ pub struct Executor {
     /// in backends remains valid.
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub(crate) wake_ctx: Option<std::sync::Arc<WakeCtx>>,
+    /// Phase 124.B.7.c — lazily-allocated POSIX signalfd worker.
+    /// Owned by the Executor; spawned on first `signal_fd()` call.
+    /// Drop joins the worker thread and closes the fd.
+    #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+    pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
     #[cfg(feature = "lifecycle-services")]
@@ -464,6 +588,8 @@ impl Executor {
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
+            #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+            signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -528,6 +654,8 @@ impl Executor {
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
+            #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+            signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -805,6 +933,34 @@ impl Executor {
     /// Lifetime: tied to the Executor instance. WakeCtx storage
     /// lives inside Executor (lazy-allocated on first install), so
     /// the pointer stays valid as long as the Executor is.
+    /// Phase 124.B.7.c — POSIX signal-handler-safe wake fd.
+    ///
+    /// Returns a Linux `eventfd` that callers (typically POSIX
+    /// signal handlers) can `write(fd, &1u64, 8)` to from any
+    /// context, including signal handlers. A runtime-owned worker
+    /// thread reads the fd and signals `wake_cv`, unblocking
+    /// `spin_once`.
+    ///
+    /// The worker thread is spawned lazily on first call and
+    /// joined on Executor drop. Linux-only and gated behind
+    /// `feature = "signal-fd-wake"`; binaries that don't install
+    /// signal handlers shouldn't enable it.
+    ///
+    /// Returns the raw fd. The Executor retains ownership; do not
+    /// `close()` it from the caller.
+    #[cfg(all(
+        feature = "signal-fd-wake",
+        feature = "rmw-cffi",
+        target_os = "linux"
+    ))]
+    pub fn signal_fd(&mut self) -> std::io::Result<core::ffi::c_int> {
+        let ctx_ptr = self.wake_ctx_ptr() as *const WakeCtx;
+        if self.signal_fd.is_none() {
+            self.signal_fd = Some(WakeSignalFd::new(ctx_ptr)?);
+        }
+        Ok(self.signal_fd.as_ref().expect("just set").fd())
+    }
+
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     fn wake_ctx_ptr(&mut self) -> *mut core::ffi::c_void {
         if self.wake_ctx.is_none() {

@@ -1275,6 +1275,7 @@ dependencies = [
  "atomic-waker",
  "futures-core",
  "heapless 0.8.0",
+ "libc",
  "log",
  "nros-core",
  "nros-ghost-types",

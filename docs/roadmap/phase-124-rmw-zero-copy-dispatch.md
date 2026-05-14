@@ -710,18 +710,20 @@ the same change as `set_wake_callback` lands.
       B.7.a). (Landed 2026-05-14.)
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **124.B.7.c — POSIX signalfd wake.** Open follow-up. On
-      POSIX, the thread-context `wake_cv` (a `std::sync::Condvar`)
-      cannot be signalled from a signal handler —
-      `pthread_cond_signal` is not async-signal-safe. Required
-      impl: `eventfd` (or `pipe2` on non-Linux) per Executor;
-      signal handler writes `1` to the fd; a runtime-owned
-      worker thread `read()`s the fd and forwards via the regular
-      thread-context signal path. Until this lands,
-      `nros_rmw_runtime_wake_cb_from_isr` aliases the
-      thread-context cb (caller discipline contract documented).
-      **Files:** `packages/core/nros-platform-posix/src/platform.c`
-      + worker-thread bootstrap in `nros-node/src/executor/spin.rs`.
+- [x] **124.B.7.c — POSIX signalfd wake.** Implemented for Linux
+      behind the `signal-fd-wake` feature. Adds `WakeSignalFd` to
+      `nros-node`: a Linux `eventfd` + a runtime-owned worker
+      thread that `read()`s the fd and forwards via
+      `wake_cv.notify_all()`. Public API
+      `Executor::signal_fd(&mut self) -> io::Result<RawFd>` returns
+      the writable fd; signal handlers do `write(fd, &1u64, 8)`
+      (async-signal-safe per `eventfd(2)`). Worker joins on
+      Executor drop via a shutdown sentinel.
+      Non-Linux POSIX (macOS/BSD) deferred — needs a `pipe2` swap
+      since `eventfd` is Linux-only. (Landed 2026-05-14.)
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`,
+      `packages/core/nros-node/Cargo.toml`,
+      `packages/core/nros-node/tests/signal_fd_wake.rs`.
 
 - [~] **124.B.7.d — ISR-safe wake contract test.**
       `test_guard_handle_send_across_thread` (nros-node lib
