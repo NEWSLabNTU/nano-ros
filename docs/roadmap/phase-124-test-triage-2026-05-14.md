@@ -32,6 +32,17 @@ Newly resolved in focused runs:
 - `safety_e2e::test_safety_e2e_talker_listener`
 - `safety_e2e::test_safety_talker_standard_listener`
 
+Focused verification after rebuilding Zenoh stress-test fixtures:
+
+- `cargo nextest run -p nros-tests --test large_msg --no-capture`
+
+Newly resolved in focused runs:
+
+- `large_msg::test_zenoh_e2e_integrity`
+- `large_msg::test_zenoh_e2e_large_receive`
+- `large_msg::test_zenoh_throughput_100hz`
+- `large_msg::test_zenoh_throughput_burst`
+
 Source run:
 
 - Command: `just ci`
@@ -87,16 +98,12 @@ Current native-priority failures:
 - `nano2nano::test_tls_talker_listener_communication`
 - `nano2nano::test_rtic_pattern_service`
 - `nano2nano::test_rtic_pattern_communication`
-- `large_msg::test_zenoh_e2e_integrity`
-- `large_msg::test_zenoh_e2e_large_receive`
-- `large_msg::test_zenoh_throughput_100hz`
-- `large_msg::test_zenoh_throughput_burst`
 - `native_api::test_cpp_action_communication`
 - `native_api::test_cpp_action_goal_rejection`
 
 Next priority:
 
-1. Investigate the native large-message and C++ action failures.
+1. Investigate the native C++ action failures.
 2. Check the remaining RTIC/TLS native failures.
 3. Defer platform E2E buckets until the remaining native behavior is stable.
 
