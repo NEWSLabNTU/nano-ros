@@ -1,4 +1,4 @@
-# Phase 124 — RMW zero-copy + dispatch primitive + ABI extensions
+# Phase 124 — RMW zero-copy + wake-callback dispatch + ABI extensions
 
 **Goal.** Close the cffi RMW coverage gaps identified by the
 2026-05-14 `docs/research/rmw-c-abi-coverage.md` analysis without
@@ -10,12 +10,18 @@ Six coordinated additions to `nros-rmw-cffi`:
    Replaces Phase 99's never-shipped slots + the per-publisher
    `TxArena` fallback in `nros-node` with a single canonical
    path. Closes the "Rust gets zero copy, C/C++ doesn't" gap.
-2. **Dispatch primitive** — `nros_rmw_dispatch_t` + `wake_dispatcher`
-   replaces both upstream `rmw_wait` and `rmw_guard_condition_t`.
-   Wait lives in the **platform layer** (condvar / event flags /
-   bare-metal WFI), not the RMW layer. Backends call
-   `wake_dispatcher(session)` from their poll loop or worker
-   thread. Honest: one-line backend obligation, no stubs.
+2. **Wake-callback + condvar layer** — builds incrementally on
+   phase 104.C.6.b's flag-based wake (commit `4c5cb87f`).
+   Vtable slot `set_wake_signal(*flag)` evolves into
+   `set_wake_callback(cb, ctx)`; backend calls `cb(ctx)` on
+   async wake; runtime-supplied `cb` writes the existing
+   `Executor.wake_flag` AND signals a new `Executor.wake_cv`
+   atomically. Spin loop blocks on the condvar (sub-poll wake
+   latency); falls back to C.6.b's flag-only behaviour on
+   backends that leave the callback slot NULL. Replaces
+   upstream `rmw_wait` + `rmw_guard_condition_t` with platform-
+   condvar dispatch (no waitset → no RTOS stubs). One-line
+   backend obligation; ISR-safe contract.
 3. **Service availability probe** — `service_server_available()`.
    Closes the "client startup ordering" gap.
 4. **Sequence take** — `try_recv_sequence(buf, per_msg_cap, max,
@@ -95,7 +101,12 @@ primitive in the RMW layer. Two problems for nano-ros:
 Phase 124 chooses to keep wait semantics in the **platform
 layer** (where condvar / event-flags / WFI ARE the
 abstractions) and let the RMW backend reduce to a one-line
-"call `wake_dispatcher` when you have data" obligation.
+"call `(wake_cb)(wake_ctx)` when you have data" obligation.
+Phase 104.C.6.b already shipped the corresponding vtable slot
+(under the name `set_wake_signal`) + per-backend hook plumbing
+in Zenoh + DDS; Phase 124.B evolves that slot and adds the
+condvar-blocked wait layer that turns the existing flag-based
+"poll less often" into condvar-based "wait until signaled."
 
 ## Design
 
@@ -187,87 +198,153 @@ nros_rmw_publisher_commit(pub, token, encoded_len);
 fallback loan path. Same fallback for ALL callers (Rust + C/C++),
 not Rust-only.
 
-### 2 — Dispatch primitive
+### 2 — Wake-callback + condvar layer
 
-**Co-design with Phase 104.C.6.b** (already landed, commit
-`4c5cb87f`). That commit added `set_wake_signal(session, *flag)`
-to the vtable: backends store an executor-supplied flag pointer
-and raise it when their `drive_io` observes work. Phase 124
-Thread B extends this from "raise a flag the executor polls"
-into "signal a condvar the executor blocks on" — sub-poll-period
-wake latency for the single-Executor case + bridge-node parity
-with multi-session timeout amplification mitigation that
-C.6.b already shipped.
+**Builds incrementally on Phase 104.C.6.b** (already landed,
+commit `4c5cb87f`). C.6.b shipped the wake-flag half:
 
-Per-Executor (or per-Session, configurable) dispatch state.
-Lives in `nros-rmw-cffi`, NOT in the vtable:
+- Vtable slot `set_wake_signal(session, *flag)`.
+- Backend stores the flag ptr; writes `1` on async wake.
+- `Executor.wake_flag: Arc<AtomicBool>` field.
+- `spin_once` swap-clears the flag on entry; primary's
+  `drive_io` collapses to 0-ms when flag was set.
+
+Result: multi-session worst-case wake reduced from
+N×timeout_ms to 1×timeout_ms. Single-session wake latency
+still bounded by `primary_timeout` because the flag write
+doesn't interrupt an in-progress `drive_io` block.
+
+Phase 124.B adds the condvar half ON TOP:
+
+- Vtable slot signature change: `set_wake_signal(*flag)` →
+  `set_wake_callback(cb, ctx)`.
+- Backend stores `(cb, ctx)`; calls `cb(ctx)` on async wake
+  instead of writing the flag directly.
+- Runtime-supplied `cb` does flag-write + condvar-signal
+  atomically.
+- `spin_once` blocks on the condvar (with deadline) instead of
+  calling `drive_io(primary_timeout)`. All sessions drain
+  with `drive_io(0)` after wake.
 
 ```c
-typedef struct nros_rmw_dispatch_t {
-    void *event;       /* opaque condvar storage (platform-cffi) */
-    void *mutex;       /* paired mutex */
-    /* registered entities for has_data scan */
-    nros_rmw_subscriber_t **subs;
-    size_t                  n_subs;
-    nros_rmw_service_server_t **srvs;
-    size_t                      n_srvs;
-    /* timer/guard wake state */
-    uint32_t wake_pending;   /* atomic */
-} nros_rmw_dispatch_t;
+/* Phase 124.B — replaces phase 104.C.6.b's flag-only slot. */
+typedef void (*nros_rmw_wake_cb)(void *ctx);
 
-/* Runtime API (not vtable). */
-nros_rmw_ret_t nros_rmw_dispatch_init(nros_rmw_dispatch_t *d);
-void          nros_rmw_dispatch_drop(nros_rmw_dispatch_t *d);
-int8_t        nros_rmw_dispatch_wait_until(
-    nros_rmw_dispatch_t *d,
-    int64_t              deadline_ns);
+typedef struct nros_rmw_vtable_t {
+    /* ... */
 
-/* Backend calls this when its poll yields data, when its worker
- * thread enqueues, or when its keep-alive fires. Idempotent +
- * non-blocking. */
-void nros_rmw_cffi_wake_dispatcher(nros_rmw_session_t *session);
+    /* Backend stores (cb, ctx); calls `cb(ctx)` on async wake.
+     * `cb == NULL` clears any previously installed callback —
+     * backend must drop the stored pair and never invoke after
+     * this returns. */
+    nros_rmw_ret_t (*set_wake_callback)(
+        nros_rmw_session_t *session,
+        nros_rmw_wake_cb    cb,
+        void               *ctx);
+} nros_rmw_vtable_t;
+```
+
+**Executor state evolution:**
+
+```rust
+pub struct Executor {
+    /* ... existing fields ... */
+
+    /* Already present from C.6.b: */
+    pub(crate) wake_flag: Arc<AtomicBool>,
+
+    /* Phase 124.B adds: */
+    pub(crate) wake_cv:    Arc<Condvar>,
+    pub(crate) wake_mu:    Arc<Mutex<()>>,
+}
+```
+
+**Combined wake callback (runtime-supplied):**
+
+```rust
+extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut c_void) {
+    // ctx is &Executor opaque. Idempotent + ISR-safe.
+    let exec = unsafe { &*(ctx as *const Executor) };
+    exec.wake_flag.store(true, SeqCst);
+    let _g = exec.wake_mu.lock();          // ISR-safe variants on RTOS
+    nros_platform_condvar_signal(exec.wake_cv.as_raw());
+}
+```
+
+**spin_once becomes:**
+
+```rust
+fn spin_once(&mut self, timeout: Duration) -> SpinOnceResult {
+    let deadline_ns = self.platform.clock_ns()
+        + timeout.as_nanos().min(i32::MAX as u128) as i64;
+
+    // Block on condvar until wake_flag set or deadline.
+    {
+        let mut g = self.wake_mu.lock();
+        while !self.wake_flag.swap(false, SeqCst)
+              && self.platform.clock_ns() < deadline_ns
+        {
+            g = self.wake_cv.wait_until(g, deadline_ns);
+        }
+    }
+
+    // All sessions non-blocking drain — backends just dequeue
+    // whatever their worker / poll path already enqueued.
+    let _ = self.session.drive_io(0);
+    for extra in self.extra_sessions.iter_mut() {
+        let _ = extra.drive_io(0);
+    }
+
+    self.run_ready()
+}
 ```
 
 **Platform mapping (already shipped via Phase 121):**
 
-| Platform | event | wait_until | signal |
+| Platform | wake_cv impl | wait_until | signal |
 |---|---|---|---|
 | POSIX | `pthread_cond_t` | `pthread_cond_timedwait` | `pthread_cond_signal` |
 | Zephyr | `k_condvar` | `k_condvar_wait_timeout` | `k_condvar_signal` |
-| FreeRTOS | binary semaphore + mutex | `xSemaphoreTake(timeout)` | `xSemaphoreGive` |
+| FreeRTOS | binary semaphore + mutex | `xSemaphoreTake(timeout)` | `xSemaphoreGiveFromISR` |
 | NuttX | `sem_t` (pthread condvar broken, see CLAUDE.md) | `sem_timedwait` | `sem_post` |
 | ThreadX | `tx_event_flags` group | `tx_event_flags_get(TX_OR, timeout)` | `tx_event_flags_set` |
 | Bare-metal | counter + WFI spin | `while (!flag && !deadline) { wfi(); }` | atomic store |
 
-All exposed via `nros_platform_condvar_*` from Phase 121 platform
-ABI. No new platform primitive needed.
+All exposed via `nros_platform_condvar_*` from the Phase 121
+platform ABI. No new platform primitive needed.
 
-**Guard condition becomes trivial.** A guard condition is just a
-named wake source:
+**Guard condition (C user-facing primitive):**
 
 ```c
 typedef struct nros_guard_condition_t {
-    nros_rmw_session_t *session;
+    /* Opaque — runtime stores an &Executor reference. */
+    void *_internal;
 } nros_guard_condition_t;
 
 void nros_guard_condition_trigger(nros_guard_condition_t *g) {
-    nros_rmw_cffi_wake_dispatcher(g->session);
+    /* Same wake path backends use. Idempotent. ISR-safe. */
+    nros_rmw_runtime_wake_cb(g->_internal);
 }
 ```
 
-ISR-safe variant: backend's `nros_rmw_cffi_wake_dispatcher` MUST
-be callable from interrupt context. Implementation lifts the
-signal call through the platform layer (RTOSes have ISR-safe
-variants like `xSemaphoreGiveFromISR`, `tx_event_flags_set` from
-ISR). Documented as a vtable-author contract.
+ISR-safe contract: `nros_rmw_runtime_wake_cb` MUST be callable
+from interrupt context. RTOS impls use ISR-safe variants
+(`xSemaphoreGiveFromISR`, `tx_event_flags_set` from ISR).
+Documented as a runtime contract; backends don't need to know.
 
-**Backend obligations.**
+**Poll-only backends without a worker thread** (single-thread
+XRCE, bare-metal): `set_wake_callback` slot can be NULL. Runtime
+falls back to the 1×timeout_ms behaviour from C.6.b (drive_io
+called with the user's timeout; flag-on-entry short-circuit
+still works). Lossless degradation.
 
-| Backend shape | Obligation |
-|---|---|
-| Has own I/O thread (zenoh-pico, dust-DDS POSIX) | Call `wake_dispatcher(session)` after enqueueing data in `recv_task`. One line. |
-| Poll-only (single-thread XRCE, bare-metal) | Call `wake_dispatcher` after a successful read in `drive_io`. One line. Same code path. |
-| External event (timer, hardware interrupt) | User code calls `wake_dispatcher` directly (or via `guard_condition_trigger`). |
+**Backend obligations** (single-line, per session):
+
+| Backend shape | Pre-104.C.6.b | Post-104.C.6.b | Post-124.B |
+|---|---|---|---|
+| Has own I/O thread (zenoh-pico, dust-DDS POSIX) | none | `*self.flag = 1` after enqueue | `(self.wake_cb)(self.wake_ctx)` after enqueue |
+| Poll-only (XRCE, bare-metal) | drive_io blocks user timeout | same + writes flag if data | option to keep flag-only (NULL callback) or implement same as above |
+| External event (ISR, signal handler) | user calls `executor.halt()` | same | calls `nros_guard_condition_trigger` |
 
 ### 3 — Service availability probe
 
@@ -379,11 +456,11 @@ Backend impl notes:
 
 ### Vtable surface after Phase 124
 
-| Slot count | Today | After 124 |
+| Slot count | Today (post-104.C.6.b) | After 124 |
 |---|---|---|
-| Total slots | 23 | 35 (+12) |
+| Total slots | 24 (23 original + `set_wake_signal`) | 33 (+9 net; `set_wake_signal` renamed to `set_wake_callback`, +1 compat alias optional) |
 | Required (non-NULL) | 23 | 23 (unchanged — all new slots optional) |
-| Optional | 0 | 12 |
+| Optional | 1 | 10 |
 
 Backwards-compatibility: every new slot is optional. Existing
 backends keep working unchanged. Backends opt in incrementally.
@@ -438,53 +515,82 @@ independent additions.
       non-lending backends.
       **Files:** `packages/testing/nros-tests/tests/loan_zero_copy.rs`.
 
-### Thread B — Dispatch primitive
+### Thread B — Wake-callback + condvar layer
 
-- [ ] **124.B.1 — `nros_rmw_dispatch_t` struct + lifecycle.**
-      Define struct in cffi runtime; init/drop wired into
-      `Executor::open` / `Executor::close`.
-      **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
-      `packages/core/nros-rmw-cffi/include/nros/rmw_dispatch.h` (new).
-- [ ] **124.B.2 — `wait_until` + `wake_dispatcher` runtime API.**
-      Implement via `nros_platform_condvar_*` calls. Atomic
-      `wake_pending` flag handles missed wakes between
-      `signal()` and the next `wait`.
-- [~] **124.B.3 — Backend wire-up.** **Already shipped by phase
-      104.C.6.b (commit `4c5cb87f`).** ZenohSession + DdsSession
-      capture the executor-supplied flag pointer and write `1`
-      on their async wake path. XRCE + Cyclone set the slot to
-      NULL (poll-only backends).
-      Phase 124.B doesn't add new per-backend code. The runtime
-      change (124.B.2) pairs a platform condvar with the same
-      flag — backends signal the condvar via the same path
-      they already use to write the flag, by routing through
-      `nros_rmw_cffi_wake_dispatcher` which internally combines
-      flag-write + condvar-signal atomically.
-      **Files (already touched in C.6.b):**
+Builds incrementally on phase 104.C.6.b's flag mechanism;
+~50 LOC total across runtime + 2 backends. No new standalone
+`nros_rmw_dispatch_t` struct — the dispatch state fields fold
+into `Executor` alongside the existing `wake_flag`.
+
+- [ ] **124.B.1 — Vtable slot signature change.** Rename
+      `set_wake_signal(session, *flag)` → `set_wake_callback(
+      session, cb, ctx)`. Backend stores `(cb, ctx)` instead of
+      `*flag`; calls `cb(ctx)` on async wake.
+      Compatibility: keep the old `set_wake_signal` slot for one
+      release cycle as a no-op alias that internally builds a cb
+      closure writing to the supplied `*flag`. Delete in a
+      follow-up once both impls (Zenoh + DDS) migrate.
+      **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
+      `packages/core/nros-rmw-cffi/src/lib.rs`,
+      `packages/core/nros-rmw-cffi/src/rust_adapter.rs`.
+
+- [ ] **124.B.2 — Executor wake_cv + wake_mu fields.** Add
+      `wake_cv: Arc<Condvar>` + `wake_mu: Arc<Mutex<()>>` next to
+      the existing `wake_flag: Arc<AtomicBool>` from C.6.b.
+      Define `nros_rmw_runtime_wake_cb(ctx)` runtime API that
+      writes `wake_flag = 1` + signals `wake_cv` atomically.
+      Implement via `nros_platform_condvar_*` from Phase 121.
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`
+      (struct), `packages/core/nros-rmw-cffi/src/lib.rs`
+      (runtime cb).
+
+- [ ] **124.B.3 — Backend migration to callback (2 backends).**
+      ZenohSession + DdsSession replace their flag-write line
+      with `(self.wake_cb)(self.wake_ctx)`. XRCE + Cyclone leave
+      slot NULL (poll-only, lossless degradation to C.6.b
+      flag-only path via the compatibility alias).
+      **Files:**
       `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`,
-      `packages/dds/nros-rmw-dds/src/session.rs`,
-      `packages/xrce/nros-rmw-xrce/src/vtable.c`,
-      `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp`.
+      `packages/dds/nros-rmw-dds/src/session.rs`.
+
 - [ ] **124.B.4 — Executor spin refactor.** Replace today's
-      `drive_io(timeout_ms)` blocking call with
-      `dispatch_wait_until(deadline_ns)` + `drive_io(0)` drain.
+      `self.session.drive_io(primary_timeout)` blocking call
+      with a `wake_cv.wait_until(deadline)` then
+      `drive_io(0)` non-blocking drain on every session.
+      Existing wake_flag swap-clear stays as the wake-pending
+      check inside the cv-wait loop.
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
+
 - [ ] **124.B.5 — Guard condition C API.** Expose
-      `nros_guard_condition_*` as C user-facing primitive
-      backed by `wake_dispatcher`.
+      `nros_guard_condition_create(executor)`,
+      `_trigger(g)`, `_destroy(g)`. Stores an opaque
+      &Executor ref; `_trigger` calls
+      `nros_rmw_runtime_wake_cb` on that ref.
       **Files:** `packages/core/nros-c/src/guard_condition.rs`
       (new), header export.
-- [ ] **124.B.6 — Guard condition C++ class.** Mirror Rust's
-      `nros::GuardCondition`. C++ class already exists per
-      Phase 122; verify the trigger path.
+
+- [ ] **124.B.6 — Guard condition C++ class.** Phase 122 already
+      shipped `nros::GuardCondition` Rust-side; expose the C
+      surface via the cbindgen header + add a thin C++ wrapper
+      class.
+      **Files:** `packages/core/nros-cpp/include/nros/guard_condition.hpp`.
+
 - [ ] **124.B.7 — ISR-safe wake contract.** Document that
-      `nros_rmw_cffi_wake_dispatcher` is ISR-safe; add test
-      that wakes from a signal handler (POSIX) / timer ISR
-      (Cortex-M smoke). Backend authors flagged via
-      header doc.
-- [ ] **124.B.8 — Wake-latency measurement.** Phase 110 PiCAS
-      handoff test runs against both pre- and post-124.B
-      builds to quantify the wake-latency improvement.
+      `nros_rmw_runtime_wake_cb` is ISR-safe; verify the
+      platform condvar impl chooses ISR-safe variants
+      (`xSemaphoreGiveFromISR`, `tx_event_flags_set` from
+      ISR). Test: signal handler (POSIX) + Cortex-M timer ISR
+      wake the executor within one tick.
+      **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
+      `packages/testing/nros-tests/tests/dispatch_isr_wake.rs`.
+
+- [ ] **124.B.8 — Wake-latency measurement.** Microbenchmark
+      sub-receive → callback-run latency: pre-124.B (drive_io
+      timeout-bound) vs post-124.B (condvar-bound). Target:
+      ≥ 10× improvement on POSIX, P99 ≤ 100 µs on Cortex-M3
+      QEMU + zenoh-pico. Feeds Phase 110 PiCAS test budget.
+      **Files:**
+      `packages/testing/nros-tests/tests/wake_latency_bench.rs`.
 
 ### Thread C — Service availability probe
 
@@ -549,17 +655,24 @@ independent additions.
       take the loan path with the same payload.
 - [ ] `cargo test -p nros-tests --test loan_zero_copy` green.
 
-### Thread B — Dispatch
+### Thread B — Wake-callback + condvar
 
 - [ ] Executor spin with 4 idle subscribers + 1-Hz timer wakes
       exactly N times per N seconds (no busy poll, no missed
       wakes).
 - [ ] ISR-safe wake test: signal handler calls
-      `wake_dispatcher`; executor unblocks within 1 ms of the
-      signal (POSIX) / 1 tick (FreeRTOS QEMU).
+      `nros_rmw_runtime_wake_cb` (or
+      `nros_guard_condition_trigger`); executor unblocks
+      within 1 ms of the signal (POSIX) / 1 tick (FreeRTOS QEMU).
 - [ ] Wake-latency P99 (subscriber-receive → callback-run) ≤ 100 µs
       on Cortex-M3 QEMU + zenoh-pico. Compare ≥ 10× improvement
-      over current `drive_io(timeout)` poll model.
+      over current C.6.b flag-only path.
+- [ ] Backwards-compat: backend with NULL `set_wake_callback`
+      slot continues to work via C.6.b flag-only path; no
+      regression in single-backend / single-Executor builds.
+- [ ] Multi-RMW bridge: pubs on backend A receive ≥ 99% of
+      messages within `condvar_wake_latency + drive_io_drain`
+      budget when backend B is idle.
 
 ### Thread C — Service available
 
@@ -592,15 +705,15 @@ independent additions.
 | Thread | Vtable slots | Runtime size | Per-entity overhead |
 |---|---|---|---|
 | A — zero-copy | +5 | ~0.5 KB (arena fallback) | +1 fn ptr per entity struct |
-| B — dispatch | 0 (runtime only) | ~256 B (condvar + mutex + lists) | 0 |
+| B — wake-callback + cv | 0 net (renamed C.6.b slot) | ~128 B (cv + mu in Executor; flag from C.6.b stays) | 0 |
 | C — service available | +1 | 0 | 0 |
 | D — sequence take | +1 | 0 (loop fallback) | 0 |
 | E — continuous ser | +1 | ≤256 B staging | 0 |
 | F — ping | +1 | 0 | 0 |
-| **Total** | **+9** | **~1 KB** | **+5 bytes** |
+| **Total** | **+9** | **~900 B** | **+5 bytes** |
 
-Vtable struct grows from 23 → 32 fn ptrs (≈ 64 → 88 bytes on
-64-bit). Negligible.
+Vtable struct grows from 24 → 33 fn ptrs (≈ 192 → 264 bytes on
+64-bit; one VTABLE singleton per backend). Negligible.
 
 ## Notes
 
