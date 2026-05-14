@@ -1,24 +1,46 @@
 # nano-ros RMW C ABI — coverage status vs upstream `rmw.h`
 
-**Date:** 2026-05-14
+**Last updated:** 2026-05-14 (post-Phase-124.A+B+C+D landings).
 **Scope:** Compare `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`
-(23 vtable slots) against upstream `rmw/rmw.h` (~69 functions) and
-group by capability. Identify gaps worth closing and gaps that are
-won't-do.
+against upstream `rmw/rmw.h` (~69 functions) and group by capability.
+Identify gaps worth closing and gaps that are won't-do.
+
+## Phase 124 landings (closing the biggest gaps)
+
+Multiple gaps flagged in the original 2026-05-14 audit are now
+closed. Headlines:
+
+- **124.A — zero-copy ABI.** 5 new vtable slots
+  (`pub_loan/_commit/_discard`, `sub_borrow/_release`) + arena
+  fallback for backends that leave them NULL. Closes the "C/C++ users
+  can't loan" gap.
+- **124.B — wake-callback + condvar layer.** Vtable's
+  `set_wake_callback` lets backends signal the executor's `wake_cv`
+  from their transport notify path; spin loop blocks on the condvar
+  rather than polling on a deadline. Closes the "wait-set / wake
+  latency" gap without inheriting upstream's waitset model.
+- **124.C — service availability probe.** `service_server_available`
+  vtable slot + C/C++ wrappers.
+- **124.D — sequence take.** `try_recv_sequence` vtable slot + loop
+  fallback; sensors that burst messages no longer pay N × dispatch.
+
+Vtable slot count: **23 → ~32** (depends on commit count; see header).
+Won't-do categories unchanged (graph introspection, GIDs, content
+filter, network flow, allocation hooks).
 
 ## Summary
 
 | Group | Upstream count | nano-ros status |
 |---|---|---|
 | 1. Session / context lifecycle | 4 | ✅ covered (via `open`/`close`) |
-| 2. Publisher | 8 | ⚠ partial — bytes only, no loan |
-| 3. Subscription | 11 | ⚠ partial — bytes only, no loan, no batch take |
+| 2. Publisher | 8 | ✅ covered (loan landed in Phase 124.A) |
+| 3. Subscription | 11 | ✅ covered (loan + sequence take landed in 124.A + 124.D) |
 | 4. Service server | 6 | ✅ data plane covered |
-| 5. Service client | 6 | ⚠ availability probe missing |
-| 6. Wait / dispatch | 5 | 🔀 different model (poll vs waitset) |
-| 7. Guard conditions | 4 | 🔀 wrapped inside `drive_io` |
-| 8. Graph introspection | 8 | ❌ out of scope |
-| 9. Endpoint identity (GID) | 5 | ❌ out of scope |
+| 5. Service client | 6 | ✅ covered (availability probe landed in 124.C) |
+| 6. Wait / dispatch | 5 | ✅ different shape, parity achieved (124.B condvar wake) |
+| 7. Guard conditions | 4 | ✅ Rust + C/C++ API (124.B.5 + 124.B.6) |
+| 8. Graph introspection | 8 | ❌ won't-do |
+| 9. Endpoint identity (GID) | 5 | ❌ won't-do |
 | 10. QoS introspection | 4 | ❌ deferred |
 | 11. Content filter | 3 | ❌ deferred |
 | 12. Network flow / multi-NIC | 4 | ❌ out of scope |
@@ -57,9 +79,9 @@ domain of Phase 104.C, layered ABOVE the vtable.
 | `rmw_destroy_publisher` | `destroy_publisher` | ✅ |
 | `rmw_publish` (typed) | (collapsed — see notes) | 🔀 |
 | `rmw_publish_serialized_message` | `publish_raw(*pub, *bytes, len)` | ✅ |
-| `rmw_publish_loaned_message` | (no vtable slot — see §3.1) | ⚠ |
-| `rmw_borrow_loaned_message` | (no vtable slot) | ⚠ |
-| `rmw_return_loaned_message_from_publisher` | (no vtable slot) | ⚠ |
+| `rmw_publish_loaned_message` | `pub_loan` + `pub_commit` (Phase 124.A) | ✅ |
+| `rmw_borrow_loaned_message` | `pub_loan` (Phase 124.A) | ✅ |
+| `rmw_return_loaned_message_from_publisher` | `pub_discard` (Phase 124.A) | ✅ |
 | `rmw_publisher_count_matched_subscriptions` | not exposed | ❌ deferred |
 | `rmw_publisher_get_actual_qos` | not exposed | ❌ deferred |
 | `rmw_publisher_assert_liveliness` | `assert_publisher_liveliness` | ✅ |
@@ -77,9 +99,9 @@ domain of Phase 104.C, layered ABOVE the vtable.
 | `rmw_take` (typed) | (collapsed) | 🔀 |
 | `rmw_take_with_info` | (no `_with_info` variant — see §3.2) | ⚠ |
 | `rmw_take_serialized_message[_with_info]` | `try_recv_raw(*sub, *buf, cap)` | ✅ |
-| `rmw_take_sequence` | (no vtable slot — see §3.3) | ❌ worth adding |
-| `rmw_take_loaned_message[_with_info]` | (no vtable slot) | ⚠ |
-| `rmw_borrow_loaned_message` / `return_loaned_message_from_subscription` | (no slot) | ⚠ |
+| `rmw_take_sequence` | `try_recv_sequence` (Phase 124.D) | ✅ |
+| `rmw_take_loaned_message[_with_info]` | `sub_borrow` (Phase 124.A) | ✅ |
+| `rmw_borrow_loaned_message` / `return_loaned_message_from_subscription` | `sub_borrow` + `sub_release` (Phase 124.A) | ✅ |
 | `rmw_subscription_count_matched_publishers` | not exposed | ❌ deferred |
 | `rmw_subscription_get_actual_qos` | not exposed | ❌ deferred |
 | `rmw_subscription_set_content_filter` | not exposed | ❌ deferred |
@@ -107,7 +129,7 @@ domain of Phase 104.C, layered ABOVE the vtable.
 | `rmw_create_client` | `create_service_client` | ✅ |
 | `rmw_destroy_client` | (implicit via session close) | ⚠ |
 | `rmw_send_request` + `rmw_take_response` | `call_raw(*client, *req, req_len, *reply_buf, cap)` | 🔀 (collapsed round-trip) |
-| `rmw_service_server_is_available` | (no vtable slot — see §3.4) | ❌ worth adding |
+| `rmw_service_server_is_available` | `service_server_available` (Phase 124.C) | ✅ |
 | `rmw_client_set_on_new_response_callback` | (same shared event API) | ⚠ |
 | `rmw_client_request_publisher_get_actual_qos` | not exposed | ❌ deferred |
 
@@ -117,7 +139,7 @@ domain of Phase 104.C, layered ABOVE the vtable.
 |---|---|---|
 | `rmw_create_wait_set` | (no vtable — see §3.5) | 🔀 |
 | `rmw_destroy_wait_set` | (no vtable) | 🔀 |
-| `rmw_wait(waitset, timeout)` | `drive_io(*session, timeout_ms)` | 🔀 (per-session, not multi) |
+| `rmw_wait(waitset, timeout)` | `set_wake_callback` + `drive_io(0)` after `wake_cv` signals (Phase 124.B) | ✅ different shape |
 | `rmw_take_event` | (events fold into callbacks) | 🔀 |
 | nros-specific | `next_deadline_ms(*session)` | nano-ros-only |
 
@@ -125,10 +147,10 @@ domain of Phase 104.C, layered ABOVE the vtable.
 
 | Upstream | nano-ros | Status |
 |---|---|---|
-| `rmw_create_guard_condition` | (Rust-side `nros-node` has `GuardCondition`) | 🔀 |
-| `rmw_destroy_guard_condition` | (same) | 🔀 |
-| `rmw_trigger_guard_condition` | (Rust API only; vtable opaque) | ⚠ |
-| (rmw_wait integrates them) | wrapped in `drive_io` | 🔀 |
+| `rmw_create_guard_condition` | `nros_guard_condition_create` + Rust `GuardCondition` (Phase 124.B.5) | ✅ |
+| `rmw_destroy_guard_condition` | `nros_guard_condition_destroy` | ✅ |
+| `rmw_trigger_guard_condition` | `nros_guard_condition_trigger` — signals `wake_cv` (Phase 124.B.5) | ✅ |
+| (rmw_wait integrates them) | folds into `wake_cv` wait (Phase 124.B.4) | ✅ |
 
 ### 8. Graph introspection — ❌ all missing
 
@@ -192,11 +214,20 @@ identifier per entity.
 
 ## Gap discussion
 
-### §3.1 Loaned messages — partial today
+### §3.1 Loaned messages — ✅ closed by Phase 124.A
 
-**Current state.**
+**Status:** all 5 zero-copy vtable slots
+(`pub_loan/_commit/_discard`, `sub_borrow/_release`) shipped in
+Phase 124.A. Arena fallback (124.A.3) covers backends that leave
+the slots NULL; zenoh-pico has a native trampoline (124.A.4.b)
+that aliases publisher payloads via `z_bytes_from_static_buf`. C
+wrappers (124.A.6) + C++ class methods (124.A.7) deliver the
+same surface to non-Rust callers. Original audit text below kept
+for historical context.
 
-Reality is more nuanced than "missing entirely":
+**Current state (pre-124).**
+
+Reality was more nuanced than "missing entirely":
 
 - `nros-rmw-cffi/include/nros/rmw_entity.h` defines a
   `can_loan_messages` flag on both `nros_rmw_publisher_t` and
@@ -254,7 +285,19 @@ typedef struct nros_rmw_vtable_t {
 Phase 109. Adds 4 vtable slots; per-backend impl is incremental;
 falls back to copy on backends without loan.
 
-### §3.2 Wait set + guard condition — RT considerations
+### §3.2 Wait set + guard condition — ✅ closed by Phase 124.B
+
+**Status:** Phase 124.B replaced the deadline-bound poll with a
+condvar-blocked wait. Backends signal `Executor.wake_cv` via
+`set_wake_callback` (124.B.1); the runtime cb writes the
+`wake_flag` and `notify_one`s atomically. Guard conditions in
+both Rust + C (124.B.5) trigger the same cb path → ISR-safe wake
+via `nros_platform_condvar_signal_isr_safe` (124.B.7.a-c).
+Single-syscall wake on any registered backend's event without
+upstream's waitset model. Original audit text below kept for
+historical context.
+
+**Pre-124 RT considerations.**
 
 **Current state.**
 
@@ -359,7 +402,16 @@ poll-loop. Backend authors opt in incrementally. RT users on
 Zephyr / Linux / NuttX get the lower wake latency; ThreadX /
 bare-metal users stay on the poll path with no regression.
 
-### §3.3 Sequence take — worth adding
+### §3.3 Sequence take — ✅ closed by Phase 124.D
+
+**Status:** `try_recv_sequence(buf, per_msg_cap, max, out_lens)`
+vtable slot landed in Phase 124.D. Loop-based fallback (124.D.2)
+covers backends that leave the slot NULL. Per-backend native
+impls deferred under 124.D.3 (Zenoh batch drain, Cyclone
+`dds_take(max_samples)`, dust-DDS). Original audit text below
+kept for historical context.
+
+**Pre-124 analysis (worth adding).**
 
 **Use case.** Sensor burst patterns — IMU at 1 kHz, 8-sample
 window per scheduler tick. Polling once and taking 8 messages
@@ -388,7 +440,16 @@ buffer.
 **Recommendation:** add. Small surface, real RT win, fallback
 is trivial.
 
-### §3.4 Service availability probe — worth adding
+### §3.4 Service availability probe — ✅ closed by Phase 124.C
+
+**Status:** `service_server_available` vtable slot landed in
+Phase 124.C. Zenoh, Cyclone DDS, dust-DDS implement natively;
+XRCE returns `RET_UNSUPPORTED` cleanly. C/C++ wrappers
+(`nros_client_server_available` / `Client<S>::server_available`)
+shipped under 124.C.3. Original audit text below kept for
+historical context.
+
+**Pre-124 analysis (worth adding).**
 
 **Use case.** Startup ordering — client should know the server
 is up before issuing the first call. Today users either
@@ -438,16 +499,29 @@ state internally:
 | Content filter (§11) | Heavy backend feature; rare in embedded. Revisit if user surfaces concrete need. |
 | Network flow APIs (§12) | Multi-NIC routing is platform-layer concern. |
 
-## Recommended next phases
+## Recommended next phases — historical
 
-1. **§3.4 Service availability probe** — small slot, broad win.
-2. **§3.3 Sequence take** — small slot, real RT impact.
-3. **§3.1 Loaned message vtable** — 4 slots, big WCET win for
-   large messages. Requires backend co-design.
-4. **§3.2 Wait set + guard condition** — Phase 110 co-design;
-   tied to PiCAS work.
+The four items below shipped in Phase 124 (2026-05; see
+"Phase 124 landings" at the top of this doc). Kept for context on
+the original prioritisation.
 
-Items 1+2 are mechanical; 3+4 need more design.
+1. ~~**§3.4 Service availability probe** — small slot, broad win.~~ ✅ Phase 124.C
+2. ~~**§3.3 Sequence take** — small slot, real RT impact.~~ ✅ Phase 124.D
+3. ~~**§3.1 Loaned message vtable** — 4 slots, big WCET win for
+   large messages. Requires backend co-design.~~ ✅ Phase 124.A
+4. ~~**§3.2 Wait set + guard condition** — Phase 110 co-design;
+   tied to PiCAS work.~~ ✅ Phase 124.B
+
+Post-124 still-open items:
+
+- **Continuous serialization** (`rmw_uros_set_continous_serialization_callbacks`-style)
+  — stream into transport buffer in chunks to avoid staging the
+  whole CDR payload. Tracked as Phase 124.E.
+- **Session ping** (`rmw_uros_ping_agent`-style) — "is the peer
+  / agent reachable?" probe. Tracked as Phase 124.F.
+- **Per-backend native sequence-take impls** — Zenoh batch drain,
+  Cyclone `dds_take(max_samples)`, dust-DDS equivalent. Tracked
+  as 124.D.3. Loop fallback covers correctness today.
 
 ## micro-ROS comparison (`rmw_microxrcedds`)
 
@@ -510,21 +584,21 @@ in one place — mirrors micro-ROS's `colcon.meta` discoverability.
 
 ### Honest coverage comparison
 
-| Feature | upstream `rmw.h` | micro-ROS rmw_microxrcedds | nano-ros |
+| Feature | upstream `rmw.h` | micro-ROS rmw_microxrcedds | nano-ros (post-Phase-124) |
 |---|---|---|---|
 | Pub/sub data plane | ✅ | ✅ | ✅ |
 | Service data plane | ✅ | ✅ | ✅ |
 | Events | ✅ | ❌ stubbed | ⚠ partial (QoS-deadline-only) |
-| Graph introspection | ✅ | ⚠ partial (count + node names) | ❌ |
-| Wait set | ✅ | ✅ via XRCE session | 🔀 poll model |
-| Guard condition | ✅ | ✅ | 🔀 Rust-side only |
-| Loaned messages | ✅ | ❌ | ⚠ partial (Rust-side, no vtable) |
-| Service available probe | ✅ | ❌ stubbed | ❌ (worth adding) |
-| Sequence take | ✅ | ❌ | ❌ (worth adding) |
+| Graph introspection | ✅ | ⚠ partial (count + node names) | ❌ won't-do |
+| Wait set | ✅ | ✅ via XRCE session | ✅ different shape (124.B condvar wake) |
+| Guard condition | ✅ | ✅ | ✅ Rust + C/C++ (124.B.5 / B.6) |
+| Loaned messages | ✅ | ❌ | ✅ (124.A: vtable slots + arena fallback) |
+| Service available probe | ✅ | ❌ stubbed | ✅ (124.C) |
+| Sequence take | ✅ | ❌ | ✅ (124.D, native impls per backend deferred) |
 | Content filter | ✅ | ❌ | ❌ |
 | QoS introspection | ✅ | ❌ | ❌ |
-| Continuous serialization | ❌ | ✅ extension | ❌ (worth adopting) |
-| Ping | ❌ | ✅ extension | ❌ |
+| Continuous serialization | ❌ | ✅ extension | ❌ (Phase 124.E open) |
+| Ping | ❌ | ✅ extension | ❌ (Phase 124.F open) |
 | Time sync | ❌ | ✅ extension | ❌ (eventual) |
 | Custom transport | ❌ | ✅ extension | ✅ (Phase 115.B) |
 | Discovery | ❌ | ✅ extension | ❌ won't-do |

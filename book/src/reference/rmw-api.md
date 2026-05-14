@@ -1,54 +1,51 @@
 # RMW API
 
-The RMW (ROS middleware) trait surface is the porting boundary between
-nano-ros's high-level API and a concrete pub/sub transport (zenoh-pico,
-XRCE-DDS, dust-DDS, uORB, …). RMW is **internal** — user applications use the
-[Rust](rust-api.md) / [C](c-api.md) / [C++](cpp-api.md) APIs, not the RMW traits
-directly.
+The RMW (ROS middleware) vtable is the porting boundary between
+nano-ros and a concrete pub/sub transport (zenoh-pico, XRCE-DDS,
+dust-DDS, Cyclone DDS, uORB, …). RMW is **internal** — user
+applications use the [Rust](rust-api.md) / [C](c-api.md) /
+[C++](cpp-api.md) APIs, not the vtable directly.
 
-## API reference
+## Canonical reference
 
-### For C / C++ porters
-
-| Surface | Link |
-|---------|------|
-| C vtable (`nros_rmw_vtable_t`) | [**rmw-cffi Doxygen**](../api/rmw-cffi/index.html) |
-| GitHub source tree | [`packages/core/nros-rmw-cffi`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw-cffi) |
-
-Each function-pointer field in the Doxygen documents thread safety,
-buffer ownership, blocking allowance, and (for lending operations) the
-slot lifecycle.
-
-### For Rust porters
+The C vtable `nros_rmw_vtable_t` is the source of truth. Every
+function pointer's brief, parameter docs, ownership rules
+(buffer-borrowed vs caller-owned), blocking / non-blocking
+classification, return-code conventions, and lifetime contract for
+loaned slots live in the Doxygen output.
 
 | Surface | Link |
-|---------|------|
-| Rust traits (`Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`, lending traits) | [**`nros_rmw` rustdoc**](../api/rust/nros_rmw/index.html) |
-| GitHub source tree | [`packages/core/nros-rmw`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw) |
+|---|---|
+| **rmw-cffi Doxygen** (canonical) | [HTML](../api/rmw-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h) |
 
-## Example backend implementations
+To regenerate locally:
 
-Concrete implementations of the RMW trait surface. Read the source — and
-each crate's `README.md` — for a worked example before writing your own.
-The rustdoc of a backend crate replicates the trait surface and adds
-little extra; the source tree is what's worth reading.
+```bash
+just doc-rmw-cffi   # produces target/doxygen/rmw-cffi/
+```
+
+This page does **not** duplicate the interface specification — read
+the Doxygen for that.
+
+## Reference implementations
+
+Concrete backends. Each crate's `README.md` walks the
+implementation; the source is the worked example to copy.
 
 | Backend | Source | Notes |
-|---------|--------|-------|
-| zenoh-pico (default) | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Reference shim. C transport via zenoh-pico; lending via `z_bytes_from_static_buf`. |
-| XRCE-DDS | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | Mutually exclusive with zenoh; lending via `uxr_prepare_output_stream`. |
-| dust-DDS (Rust DDS) | [`packages/dds/nros-rmw-dds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-dds) | `std` + `nostd-runtime` variants (POSIX threading + cooperative single-task). |
-| PX4 uORB | [`packages/px4/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/px4/nros-rmw-uorb) | Typed-trampoline registry, ROS-name → uORB-topic map. |
+|---|---|---|
+| zenoh-pico | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Default. C transport via zenoh-pico. Native zero-copy publish via `z_bytes_from_static_buf` (Phase 124.A.4.b). |
+| micro-XRCE-DDS-Client | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
+| dust-DDS | [`packages/dds/nros-rmw-dds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-dds) | Pure-Rust DDS; `std` + `nostd-runtime` variants. |
+| Cyclone DDS | [`packages/dds/nros-rmw-cyclonedds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-cyclonedds) | C++ shim; standalone CMake project. |
+| PX4 uORB | [`packages/px4/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/px4/nros-rmw-uorb) | Typed-trampoline registry over PX4 uORB. |
 
-The zenoh shim is the canonical reference port — every other backend
-follows the same trait-implementation pattern.
+The zenoh-pico shim is the canonical reference port.
 
 ## Writing a custom backend
 
-- Conceptual guide: [Custom RMW Backend](../porting/custom-rmw.md) — full
-  Rust + C walkthrough, covers the lending operations and arena lifecycle.
+- Conceptual walkthrough: [Custom RMW Backend](../porting/custom-rmw.md).
 - Coming from upstream `rmw.h`?
-  → [RMW API: Differences from upstream `rmw.h`](../design/rmw-vs-upstream.md)
-  walks through what's renamed, what's collapsed, what's dropped, and why.
-- C vtable porters: see the [rmw-cffi Doxygen reference](../api/rmw-cffi/index.html)
-  for per-field return-value, threading, and blocking conventions.
+  → [RMW API: Differences from upstream `rmw.h`](../design/rmw-vs-upstream.md).
+- Coverage status vs upstream `rmw.h`:
+  [`docs/research/rmw-c-abi-coverage.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/research/rmw-c-abi-coverage.md).
