@@ -449,19 +449,22 @@ independent additions.
       Implement via `nros_platform_condvar_*` calls. Atomic
       `wake_pending` flag handles missed wakes between
       `signal()` and the next `wait`.
-- [ ] **124.B.3 — Backend wire-up.** Each backend's poll loop
-      (or worker-thread enqueue) calls
-      `nros_rmw_cffi_wake_dispatcher(session)` once per drain.
-      One-line addition per backend.
-      Builds on phase 104.C.6.b's `set_wake_signal` plumbing —
-      the wake call replaces the flag-raise with a condvar
-      signal. Zenoh + DDS backends already have the
-      drive_io-observed-work hook from C.6.b; this sub-item
-      promotes it from flag-raise to condvar-signal.
-      **Files:** `packages/zpico/nros-rmw-zenoh/src/...`,
-      `packages/xrce/nros-rmw-xrce/src/...`,
-      `packages/dds/nros-rmw-dds/src/...`,
-      `packages/dds/nros-rmw-cyclonedds/...`.
+- [~] **124.B.3 — Backend wire-up.** **Already shipped by phase
+      104.C.6.b (commit `4c5cb87f`).** ZenohSession + DdsSession
+      capture the executor-supplied flag pointer and write `1`
+      on their async wake path. XRCE + Cyclone set the slot to
+      NULL (poll-only backends).
+      Phase 124.B doesn't add new per-backend code. The runtime
+      change (124.B.2) pairs a platform condvar with the same
+      flag — backends signal the condvar via the same path
+      they already use to write the flag, by routing through
+      `nros_rmw_cffi_wake_dispatcher` which internally combines
+      flag-write + condvar-signal atomically.
+      **Files (already touched in C.6.b):**
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`,
+      `packages/dds/nros-rmw-dds/src/session.rs`,
+      `packages/xrce/nros-rmw-xrce/src/vtable.c`,
+      `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp`.
 - [ ] **124.B.4 — Executor spin refactor.** Replace today's
       `drive_io(timeout_ms)` blocking call with
       `dispatch_wait_until(deadline_ns)` + `drive_io(0)` drain.
