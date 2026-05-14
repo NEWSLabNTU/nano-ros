@@ -374,7 +374,10 @@ crate-type = ["staticlib"]
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
-nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-zephyr"] }
+# Phase 104.A: `nros` carries the generic `rmw-cffi` registry; the
+# concrete backend crate is a direct dep.
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-zephyr"] }
 std_msgs = { version = "*", default-features = false }
 
 [profile.release]
@@ -382,9 +385,9 @@ opt-level = "s"
 lto = true
 ```
 
-For XRCE backend, change the feature to `"rmw-xrce"`:
+For the XRCE backend, swap the backend crate:
 ```toml
-nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+nros-rmw-xrce-cffi = { version = "*", features = ["platform-zephyr"] }
 ```
 
 #### `.cargo/config.toml`

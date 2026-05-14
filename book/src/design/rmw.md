@@ -212,4 +212,4 @@ The blocking `call_raw()` is convenient for simple embedded applications. The as
 
 The core difference is that ROS 2 rmw is a **C plugin interface** designed for desktop systems with dynamic linking, heap allocation, and OS threading. nros-rmw is a **Rust trait hierarchy** designed for MCUs with static dispatch, stack allocation, and cooperative scheduling. The trade-off is flexibility (ROS 2 can swap backends at runtime) vs efficiency (nros eliminates all abstraction overhead at compile time).
 
-Despite these differences, the two are **wire-compatible** when using the same transport. An nros node using `rmw-zenoh` communicates with a ROS 2 node using `rmw_zenoh_cpp` through the same `zenohd` router, with matching QoS profiles and CDR encoding.
+Despite these differences, the two are **wire-compatible** when using the same transport. An nros node using `nros-rmw-zenoh` communicates with a ROS 2 node using `rmw_zenoh_cpp` through the same `zenohd` router, with matching QoS profiles and CDR encoding.

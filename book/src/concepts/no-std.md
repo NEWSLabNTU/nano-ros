@@ -163,9 +163,18 @@ protocol layer requires it.
 
 ## Typical Configurations
 
+Phase 104.A decoupled the `nros` umbrella from concrete RMW crates.
+A consuming `Cargo.toml` lists **three** path deps: `nros` (with
+`rmw-cffi` + a `platform-*` feature), the chosen backend crate
+(`nros-rmw-zenoh` / `nros-rmw-dds` / `nros-rmw-xrce-cffi`), and —
+on POSIX — `nros-platform-cffi` with `posix-c-port` so the C
+`nros_platform_*` symbols link into a pure-cargo build. The backend
+crate's `#[ctor]` registers its vtable before `main`.
+
 **Bare-metal / RTOS (no allocator):**
 ```toml
-nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-bare-metal"] }
+nros = { path = "…/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal"] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal"] }
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
 Async: `spin_async()`, `Promise`, `try_recv()`, `.await` -- all available without std or alloc.
@@ -173,22 +182,23 @@ Use `spin_once()` or `spin_period_polling()` in your main loop, or `spin_async()
 
 **Embedded with allocator (e.g., Zephyr with heap):**
 ```toml
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-zenoh", "platform-zephyr"] }
+nros = { path = "…/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-zephyr"] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-zephyr"] }
 ```
 Adds boxed timer callbacks and `handle_request_boxed()` for large service replies.
 
 **Desktop / Linux:**
 ```toml
-nros = { version = "*", features = ["rmw-zenoh", "platform-posix"] }
+nros = { path = "…/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
+nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }
 ```
 Full API including `spin_blocking()`, `spin_period()`, `from_env()`, system clock.
 For async, use an external runtime (tokio `current_thread` + `spawn_local` for background spin).
 
-**Desktop with parameter services:**
-```toml
-nros = { version = "*", features = ["rmw-zenoh", "platform-posix", "param-services"] }
-```
-Adds `~/get_parameters`, `~/set_parameters`, etc. for `ros2 param` CLI interop.
+**Desktop with parameter services:** add `param-services` to the
+`nros` feature list above. Adds `~/get_parameters`,
+`~/set_parameters`, etc. for `ros2 param` CLI interop.
 
 ## C-Level Allocation
 
@@ -197,10 +207,10 @@ independently of Rust's `alloc` feature. Disabling the Rust `alloc` feature
 eliminates Rust-side heap usage (`Box`, `Vec`, `String`) but does **not**
 eliminate allocation in the C transport layer.
 
-| Backend   | C Library            | Allocator by Platform                                                                            |
-|-----------|----------------------|--------------------------------------------------------------------------------------------------|
-| rmw-zenoh | zenoh-pico 1.7.2     | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; bare-metal: custom bump allocator |
-| rmw-xrce  | Micro-XRCE-DDS 3.0.1 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; NuttX: `malloc`                   |
+| Backend crate | C Library | Allocator by Platform |
+|---|---|---|
+| `nros-rmw-zenoh` | zenoh-pico 1.7.2 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; bare-metal: custom bump allocator |
+| `nros-rmw-xrce-cffi` | Micro-XRCE-DDS 3.0.1 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; NuttX: `malloc` |
 
 This is by design: the C libraries manage their own session state, stream
 buffers, and protocol metadata using platform-provided allocators. The Rust

@@ -375,7 +375,10 @@ crate-type = ["staticlib"]
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
-nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-zephyr"] }
+# Phase 104.A: `nros` carries the generic `rmw-cffi` registry; the
+# concrete backend crate is a direct dep.
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-zephyr"] }
 std_msgs = { version = "*", default-features = false }
 
 [profile.release]
@@ -383,9 +386,9 @@ opt-level = "s"
 lto = true
 ```
 
-For XRCE backend, change the feature to `"rmw-xrce"`:
+For the XRCE backend, swap the backend crate:
 ```toml
-nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+nros-rmw-xrce-cffi = { version = "*", features = ["platform-zephyr"] }
 ```
 
 #### `.cargo/config.toml`
@@ -418,8 +421,7 @@ nros-node = { path = "../../../../../packages/core/nros-node" }
 nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
 nros-params = { path = "../../../../../packages/core/nros-params" }
 nros-macros = { path = "../../../../../packages/core/nros-macros" }
-nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce" }
-xrce-sys = { path = "../../../../../packages/xrce/xrce-sys" }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```

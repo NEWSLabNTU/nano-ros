@@ -1,20 +1,31 @@
 # Platform Model
 
-nano-ros uses three orthogonal compile-time feature axes to configure the library for a specific target. Each axis is mutually exclusive -- enabling two features from the same axis produces a `compile_error!()`. Zero features on an axis is valid (reduced functionality).
+nano-ros configures the library for a specific target through
+compile-time choices on three axes. Phase 104.A reshaped the RMW
+axis: `nros` no longer carries a per-backend feature — it carries one
+generic `rmw-cffi` runtime registry, and the consuming `Cargo.toml`
+adds the backend crate directly.
 
 ## The Three Axes
 
-### RMW Backend (pick one)
+### RMW Backend
 
-The RMW backend determines which middleware transport the library uses to send and receive messages.
+The RMW backend determines which middleware transport carries
+messages. `nros` exposes a single `rmw-cffi` feature — the generic
+C-vtable runtime registry. The consuming crate adds the concrete
+backend crate as a direct dependency; its `#[ctor]` registers a
+vtable with that registry before `main`.
 
-| Feature      | Backend                  | Description                                    |
-|--------------|--------------------------|------------------------------------------------|
-| `rmw-zenoh`  | zenoh-pico               | Peer-to-peer via Zenoh protocol                |
-| `rmw-xrce`   | Micro-XRCE-DDS-Client   | Agent-based via DDS-XRCE protocol              |
-| `rmw-cffi`   | C vtable adapter         | Third-party transport via C function pointers  |
+| Backend crate | Transport | Description |
+|---|---|---|
+| `nros-rmw-zenoh` | zenoh-pico | Peer-to-peer via Zenoh protocol; default, ROS-2-interop. |
+| `nros-rmw-xrce-cffi` | Micro-XRCE-DDS-Client | Agent-based via DDS-XRCE protocol. |
+| `nros-rmw-dds` | dust-DDS | Pure-Rust DDS; `std` + `nostd-runtime` variants. |
+| `nros-rmw-cyclonedds` | Cyclone DDS | C++ shim; standalone CMake project. |
 
-See [Choosing an RMW Backend](../user-guide/rmw-backends.md) for a detailed comparison of the supported backends.
+Unlike the platform axis, RMW is **not** mutually exclusive — Phase
+104 lets one binary register multiple backends (bridge nodes). See
+[Choosing an RMW Backend](../user-guide/rmw-backends.md).
 
 ### Platform (pick one)
 
@@ -55,100 +66,95 @@ These features are orthogonal to the three axes above and can be combined freely
 
 ## Mutual Exclusivity Enforcement
 
-The `nros` facade crate enforces mutual exclusivity at compile time using `compile_error!()`. For example:
+The platform and ROS-edition axes are mutually exclusive — `nros`
+enforces this at compile time with `compile_error!()`:
 
 ```rust,ignore
-#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-compile_error!("Only one RMW backend can be enabled: rmw-zenoh or rmw-xrce");
-
 #[cfg(all(feature = "platform-posix", feature = "platform-zephyr"))]
-compile_error!("Only one platform can be enabled");
+compile_error!("Platform features are mutually exclusive — select at most one.");
+
+#[cfg(all(feature = "ros-humble", feature = "ros-iron"))]
+compile_error!("`ros-humble` and `ros-iron` are mutually exclusive.");
 ```
 
-This catches misconfiguration immediately at build time rather than producing subtle runtime failures.
+The RMW axis is not enforced this way — it is the consuming crate's
+choice of which `nros-rmw-*` dependency to add (one, or several for
+bridge nodes).
 
 ## Example Configurations
+
+Each config lists `nros` (with `rmw-cffi` + one `platform-*`) plus
+the chosen backend crate. POSIX additionally needs
+`nros-platform-cffi` with `posix-c-port` for a pure-cargo build.
 
 **QEMU bare-metal Cortex-M3 with Zenoh:**
 ```toml
 [dependencies]
-nros = { default-features = false, features = [
-    "rmw-zenoh",
-    "platform-bare-metal",
-    "ros-humble",
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi", "platform-bare-metal", "ros-humble",
 ] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal"] }
 ```
 
 **Zephyr with XRCE-DDS and safety features:**
 ```toml
 [dependencies]
-nros = { default-features = false, features = [
-    "rmw-xrce",
-    "platform-zephyr",
-    "ros-humble",
-    "alloc",
-    "safety-e2e",
-    "ffi-sync",
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi", "platform-zephyr", "ros-humble", "alloc", "safety-e2e", "ffi-sync",
 ] }
+nros-rmw-xrce-cffi = { path = "…/nros-rmw-xrce-cffi", features = ["platform-zephyr"] }
 ```
 
 **Desktop Linux for development and testing:**
 ```toml
 [dependencies]
-nros = { features = [
-    "rmw-zenoh",
-    "platform-posix",
-    "ros-humble",
-    "std",
-    "param-services",
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi", "platform-posix", "ros-humble", "std", "param-services",
 ] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
+nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }
 ```
 
 **FreeRTOS with lwIP networking:**
 ```toml
 [dependencies]
-nros = { default-features = false, features = [
-    "rmw-zenoh",
-    "platform-freertos",
-    "ros-humble",
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi", "platform-freertos", "ros-humble",
 ] }
-```
-
-**ThreadX with NetX Duo (RISC-V):**
-```toml
-[dependencies]
-nros = { default-features = false, features = [
-    "rmw-zenoh",
-    "platform-threadx",
-    "ros-humble",
-] }
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-freertos"] }
 ```
 
 **NuttX with XRCE-DDS over serial:**
 ```toml
 [dependencies]
-nros = { default-features = false, features = [
-    "rmw-xrce",
-    "platform-nuttx",
-    "ros-humble",
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi", "platform-nuttx", "ros-humble",
 ] }
+nros-rmw-xrce-cffi = { path = "…/nros-rmw-xrce-cffi", features = ["platform-nuttx", "xrce-serial"] }
 ```
 
-## Feature Propagation
+## How the pieces link
 
-Features propagate through the crate dependency graph using Cargo's `?` syntax for optional dependencies. When you set `rmw-zenoh` on the `nros` facade, it activates:
+Phase 104.A decoupled `nros` from concrete backends — `nros` carries
+no RMW crate dependency. Instead:
 
-- `nros-node/rmw-zenoh` -- selects `ZenohSession` as the concrete session type
-- `nros-rmw-zenoh` -- the Zenoh RMW implementation crate
-- `zpico-sys` -- zenoh-pico C bindings
+- **RMW.** The consuming crate's `nros-rmw-*` dep ships a `#[ctor]`
+  that calls `nros_rmw_<name>_register()` at lib load (POSIX
+  `.init_array`) or the caller invokes it from `main` (bare-metal).
+  The backend installs a `nros_rmw_vtable_t` into `nros-rmw-cffi`'s
+  named registry. `Executor::open` resolves the registered backend;
+  the concrete session type is always `CffiSession` (vtable-backed).
+- **Platform.** `nros`'s `platform-*` feature resolves to
+  `nros-platform-cffi`. The canonical `nros_platform_*` C symbols
+  ship from `packages/core/nros-platform-<plat>/src/*.c`, linked at
+  the consumer's build site — `posix-c-port` for pure-cargo POSIX
+  builds, the standalone `lib<…>.a` for CMake builds, or the kernel
+  build system for NuttX / Zephyr.
+- **Shims.** `zpico-platform-shim` / `xrce-platform-shim` forward the
+  transport C library's `z_*` / `uxr_*` platform calls to the
+  `nros_platform_*` symbols.
 
-Platform features propagate through two paths depending on the platform type:
-
-- **RTOS platforms** (POSIX, FreeRTOS, NuttX, ThreadX): the facade activates `nros-platform/platform-*`, which pulls in the corresponding `nros-platform-*` implementation crate (e.g., `nros-platform-posix`, `nros-platform-freertos`). These live in `packages/core/`.
-- **Bare-metal platforms**: the facade only activates `nros-node/platform-bare-metal` and `nros-rmw-zenoh?/platform-bare-metal`. Since "bare-metal" isn't a single platform, the **board crate** activates the specific board platform -- e.g., `nros-board-mps2-an385` enables `nros-platform/platform-mps2-an385`, which pulls in `nros-platform-mps2-an385` from `packages/boards/`.
-
-The RMW transport libraries access platform primitives through thin shim crates -- `zpico-platform-shim` (consumed by `zpico-sys`) and `xrce-platform-shim` (consumed by `xrce-sys`) -- which forward `z_*` and `uxr_*` FFI symbols to the unified `ConcretePlatform` type alias from `nros-platform`. Board crates depend on the shim crate directly (with the `active` feature) to ensure the symbols are linked.
-
-The default feature set is `std` only. No RMW backend or platform is selected by default -- users must explicitly choose their configuration.
+The default feature set is `std` only. No RMW backend or platform is
+selected by default — the consuming crate chooses explicitly.
 
 For implementation details on how to add a new platform, see the [Porting Guide](../porting/overview.md) and [Platform API Reference](../reference/platform-api.md).

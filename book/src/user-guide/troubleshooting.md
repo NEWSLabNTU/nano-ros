@@ -201,10 +201,10 @@ A message must fit through every layer in the path to be delivered intact.
 
 ```bash
 # Zenoh: allow 128 KB reassembled messages
-ZPICO_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
+ZPICO_FRAG_MAX_SIZE=131072 cargo build
 
 # XRCE: increase MTU to 8 KB
-XRCE_TRANSPORT_MTU=8192 cargo build --features rmw-xrce,platform-posix
+XRCE_TRANSPORT_MTU=8192 cargo build
 ```
 
 **Increase per-entity buffer sizes** (in code):

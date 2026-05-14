@@ -167,11 +167,14 @@ capabilities. The complete matrix and mutual-exclusion rules live in
 [Platform Model](../concepts/platform-model.md); this page only shows
 the shape used by downstream projects.
 
+Phase 104.A decoupled the `nros` umbrella from concrete RMW crates.
+A consuming `Cargo.toml` lists `nros` (with `rmw-cffi` + a
+`platform-*` feature) plus the chosen backend crate directly:
+
 ```toml
 [dependencies]
-nros = { default-features = false, features = [
-    # RMW backend (pick one)
-    "rmw-zenoh",          # or "rmw-xrce"
+nros = { path = "…/nros", default-features = false, features = [
+    "rmw-cffi",            # generic C-vtable runtime registry
 
     # Platform (pick one)
     "platform-bare-metal", # or "platform-freertos", "platform-nuttx",
@@ -186,14 +189,21 @@ nros = { default-features = false, features = [
     "safety-e2e",          # CRC-32 integrity
     "param-services",      # ROS 2 parameter handlers (implies alloc)
     "ffi-sync",            # critical_section wrapping for RTOS
-    "sync-critical-section", # RTIC/Embassy mutex
 ] }
+
+# RMW backend crate — pick one. Its `#[ctor]` registers the vtable
+# with `nros-rmw-cffi`'s registry before `main`.
+nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
+# …or nros-rmw-dds / nros-rmw-xrce-cffi
+
+# POSIX only: ships the `nros_platform_*` C symbols for pure-cargo builds.
+# nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }
 ```
 
-Pick exactly one RMW backend, one platform, and one ROS edition for a
-complete application build. Cross-cutting features such as `std`,
-`alloc`, `safety-e2e`, and `param-services` are optional and depend on
-target capability.
+Pick exactly one RMW backend crate, one platform feature, and one ROS
+edition for a complete application build. Cross-cutting features such
+as `std`, `alloc`, `safety-e2e`, and `param-services` are optional and
+depend on target capability.
 
 ## Layer 4: Runtime Environment (POSIX only)
 
@@ -225,7 +235,8 @@ from `config.toml` (layer 1).
 
 ```
 Layer 4: NROS_LOCATOR=tcp/127.0.0.1:7447  (shell export or .env)
-Layer 3: features = ["rmw-zenoh", "platform-posix", "std"]
+Layer 3: nros features = ["rmw-cffi", "platform-posix", "std"]
+         + nros-rmw-zenoh dep
 ```
 
 No config.toml needed. Start zenohd locally and set environment variables.
@@ -235,7 +246,8 @@ No config.toml needed. Start zenohd locally and set environment variables.
 ```
 Layer 1: config.toml with ip/mac/gateway for TAP bridge
 Layer 2: (defaults are fine)
-Layer 3: features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"]
+Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
+         + nros-rmw-zenoh dep
 ```
 
 ### FreeRTOS on real hardware
@@ -243,7 +255,8 @@ Layer 3: features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"]
 ```
 Layer 1: config.toml with your board's IP, MAC, zenohd address
 Layer 2: FREERTOS_DIR, LWIP_DIR (if not using `just freertos setup`)
-Layer 3: features = ["rmw-zenoh", "platform-freertos", "ros-humble"]
+Layer 3: nros features = ["rmw-cffi", "platform-freertos", "ros-humble"]
+         + nros-rmw-zenoh dep
 ```
 
 ### ESP32 with WiFi
@@ -251,7 +264,8 @@ Layer 3: features = ["rmw-zenoh", "platform-freertos", "ros-humble"]
 ```
 Layer 1: config.toml with [wifi] ssid/password and [zenoh] locator
 Layer 2: SSID, PASSWORD (for build-time WiFi config)
-Layer 3: features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"]
+Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
+         + nros-rmw-zenoh dep
 ```
 
 ### Zephyr module
@@ -267,7 +281,8 @@ Layer 3: (managed by Kconfig → Cargo features)
 ```
 Layer 1: config.toml with [serial] baudrate
 Layer 2: XRCE_TRANSPORT_MTU=512, XRCE_BUFFER_SIZE=512
-Layer 3: features = ["rmw-xrce", "platform-bare-metal", "ros-humble"]
+Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
+         + nros-rmw-xrce-cffi dep
 ```
 
 ## Precedence

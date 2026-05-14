@@ -29,14 +29,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nros = { version = "0.1", default-features = false,
-         features = ["std", "rmw-zenoh", "platform-posix"] }
-std_msgs = { version = "*", default-features = false }
+# Phase 104.A: `nros` carries the generic `rmw-cffi` registry; the
+# concrete backend crate (`nros-rmw-zenoh`) is a direct dep whose
+# `#[ctor]` registers its vtable before `main`. POSIX additionally
+# needs `nros-platform-cffi[posix-c-port]` for the C platform symbols.
+nros = { path = "…/packages/core/nros", default-features = false,
+         features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "…/packages/zpico/nros-rmw-zenoh",
+                   features = ["platform-posix", "link-tcp", "ros-humble"] }
+nros-platform-cffi = { path = "…/packages/core/nros-platform-cffi",
+                       features = ["posix-c-port"] }
+std_msgs = { path = "…/generated/std_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"
-
-[patch.crates-io]
-nros = { git = "https://github.com/jerry73204/nano-ros" }
 nros-core = { git = "https://github.com/jerry73204/nano-ros" }
 nros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
 ```

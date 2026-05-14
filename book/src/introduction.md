@@ -36,12 +36,15 @@ as well as Linux and macOS. The entire core stack is `no_std` compatible.
 
 ## RMW Backends
 
-nano-ros supports two middleware backends, selectable at compile time:
+nano-ros supports several middleware backends, selected at compile
+time by adding the backend crate as a dependency:
 
-- **Zenoh** (`rmw-zenoh`) — peer-to-peer via zenoh-pico. No agent process.
-  Compatible with ROS 2 `rmw_zenoh_cpp`.
-- **XRCE-DDS** (`rmw-xrce`) — agent-based via Micro-XRCE-DDS. Compatible
-  with micro-ROS agent.
+- **Zenoh** (`nros-rmw-zenoh`) — peer-to-peer via zenoh-pico. No agent
+  process. Compatible with ROS 2 `rmw_zenoh_cpp`.
+- **XRCE-DDS** (`nros-rmw-xrce-cffi`) — agent-based via Micro-XRCE-DDS.
+  Compatible with micro-ROS agent.
+- **dust-DDS** (`nros-rmw-dds`) — pure-Rust DDS.
+- **Cyclone DDS** (`nros-rmw-cyclonedds`) — C++ shim.
 
 Application code is identical regardless of backend — switch with a single
 Cargo feature flag or Zephyr Kconfig option.

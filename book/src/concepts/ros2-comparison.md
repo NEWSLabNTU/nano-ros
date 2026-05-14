@@ -21,7 +21,7 @@ shape every place where the surface diverges.
   (`/talker_node/chatter`, `/add_two_ints`, `/fibonacci`).
 - Message types stay rosidl-shaped (`std_msgs/msg/Int32`,
   `geometry_msgs/msg/Twist`, …). CDR encoding on the wire.
-- Default backend (`rmw-zenoh`) is bit-compatible with the upstream
+- Default backend (`nros-rmw-zenoh`) is bit-compatible with the upstream
   [`rmw_zenoh`](https://github.com/ros2/rmw_zenoh) ROS 2 RMW. A
   nano-ros publisher and an `rclcpp` subscriber on the same zenohd
   router exchange messages without a bridge — see
@@ -105,9 +105,12 @@ Standard ROS 2 uses an `RMW_IMPLEMENTATION` env var read at process
 start. The plugin loader pulls a shared library, dispatches calls
 through C function pointers.
 
-nano-ros bakes the backend in at compile time. Cargo features
-(`rmw-zenoh` / `rmw-xrce` / `rmw-dds` / `rmw-uorb`) or CMake options
-(`-DNROS_RMW=zenoh`) decide it.
+nano-ros bakes the backend in at compile time. The consuming
+`Cargo.toml` adds the backend crate directly (`nros-rmw-zenoh` /
+`nros-rmw-dds` / `nros-rmw-xrce-cffi`) alongside `nros` with the
+`rmw-cffi` feature; CMake options (`-DNANO_ROS_RMW=zenoh`) decide it
+for C/C++ builds. The backend's `#[ctor]` registers its vtable with
+the `nros-rmw-cffi` runtime registry before `main`.
 
 **Why.**
 
@@ -314,8 +317,8 @@ If you are coming from `rclcpp`:
 - Decide poll vs. callback per subscription, not globally.
 - If the platform has `std`, `nros::init()` looks identical; if it is
   RTOS / bare-metal, plan the executor arena up front.
-- Pick `rmw-zenoh` for ROS 2 interop; everything else is a different
-  trade-off.
+- Pick `nros-rmw-zenoh` for ROS 2 interop; everything else is a
+  different trade-off.
 
 If you are coming from `rclrs`:
 
