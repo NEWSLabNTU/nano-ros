@@ -555,13 +555,18 @@ follow-up items that finish the rclcpp-aligned story:
       `Result::flatten`.
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **104.C.3.3.e — Backend-ctor ordering doc.** Multiple
+- [x] **104.C.3.3.e — Backend-ctor ordering doc.** Multiple
       `.init_array` ctors fire at lib load; first wins for
       `default_vtable`. Bridges should use `open_with_rmw` to
       avoid non-determinism. Document the trap + recommend
       `open_with_rmw` for any binary linking ≥ 2 backends.
-      **Files:** `book/src/user-guide/cross-backend-bridges.md`
-      (created in 104.D.6).
+      **Done:** "Ctor ordering" subsection added to
+      `book/src/internals/rmw-backends.md` — covers POSIX
+      link-order non-determinism (lld/mold/gold + LTO),
+      named entry points across Rust/C/C++ (forward refs
+      104.C.8 + 104.C.9), and the single-backend-still-easy
+      property. Cross-references bridge example.
+      **Files:** `book/src/internals/rmw-backends.md`.
 
 - [ ] **104.C.3.3.f — Bridge example `.gitignore` +
       workspace exclusion polish.** The

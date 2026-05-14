@@ -166,6 +166,41 @@ will codify a `nano_ros_link_rmw` CMake stub that emits a
 register call for bare-metal builds when (3) is bypassed (pure-
 Rust binaries on no_std targets).
 
+### Ctor ordering (Phase 104.C.3.3.e)
+
+POSIX `.init_array` runs ctors in **link order**, not in any
+user-controlled sequence. When multiple backends auto-register
+in one binary, the **first to fire owns the default slot** —
+the one selected by `Executor::open()` / `nros::init()` with no
+`.rmw(name)` argument. The order is reproducible per link
+graph but not portable across linkers (lld vs. mold vs. gold)
+or build configs (LTO can reorder via `--print-icf-sections`
+collapse) and must not be relied on for correctness.
+
+**Disambiguation is the user's job in multi-backend binaries.**
+Use the named entry points:
+
+- Rust: `Executor::open_with_rmw("zenoh", &cfg)` for the
+  primary session; `node_builder("name").rmw("dds").build()`
+  for additional Nodes.
+- C: `nros_node_init_ex` with `nros_node_options_t.rmw_name`
+  set (Phase 104.C.8).
+- C++: `nros::Executor::open_with_rmw(...)` and
+  `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
+  104.C.9).
+
+The `examples/native/rust/bridge/zenoh-to-dds/` demo shows the
+pattern end-to-end: both Zenoh and DDS backend ctors fire at
+lib-load (so the registry has both `"zenoh"` and `"dds"` slots
+populated), and `open_with_rmw("zenoh", ...)` plus
+`node_builder("egress").rmw("dds")` pin each session to its
+intended backend without depending on link-order luck.
+
+**Single-backend builds** keep the legacy ergonomics — only
+one ctor fires, the default-slot convention picks it up, and
+no user-visible name is ever required. The cost of naming is
+paid only when multiple backends coexist.
+
 ## See also
 
 - [Phase 115 roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)
