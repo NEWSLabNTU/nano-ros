@@ -770,6 +770,28 @@ the same change as `set_wake_callback` lands.
       backend with a real native multi-take landing path appears.
       Cyclone DDS native take wired in 117.X follow-up; dust-dds
       pending matched-pub plumbing (same blocker as 124.C.2).
+
+      **Upstream reference (`external/rmw_zenoh/rmw_zenoh_cpp/src/rmw_zenoh.cpp::rmw_take_sequence`,
+      `detail/rmw_subscription_data.cpp::take_one_message`):**
+      `rmw_zenoh` itself ships a per-message-loop implementation —
+      `rmw_take_sequence` is literally `while (taken < count) {
+      take_one_message(...); }`. It only achieves a real batch
+      because the C++ subscription owns an internal
+      `std::list<Message> message_queue_` filled from the zenoh
+      subscribe callback; the loop takes one mutex per message
+      from a queue that's already drained.
+
+      Reproducing that shape on zenoh-pico requires giving
+      `SubscriberBuffer` (currently a single-slot
+      `data: [u8; SUBSCRIBER_BUFFER_SIZE]`, `has_data: AtomicBool`,
+      `len: AtomicUsize`) a ring of N slots + queue-head/tail
+      indices + a per-slot atomic occupancy flag. The zenoh-pico
+      direct-write callback path also has to learn to land in the
+      next free slot. ~150-200 LOC plus tests; worth doing on its
+      own once a workload surfaces the cost — until then the loop
+      fallback matches upstream's observed behaviour exactly. The
+      vtable slot is in place so the native impl can drop in
+      without an ABI bump.
 - [x] **124.D.4 — C/C++ wrappers + test.** Test verifies 8
       messages drained in one call delivers all 8 + correct
       lengths.
