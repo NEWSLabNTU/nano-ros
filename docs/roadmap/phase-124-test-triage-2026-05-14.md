@@ -63,6 +63,50 @@ Notes:
   the native listener backend so env config is available, and mirroring TLS
   env properties into the TLS locator for zenoh-pico open.
 
+Refreshed full-gate result after the TLS config guard fix:
+
+- Command: `just ci`
+- Nextest run id: `e14540fe-d8cc-47be-9c28-a5f4540d95b9`
+- JUnit: `target/nextest/default/junit.xml`
+- Logs: `test-logs/latest/`
+
+Quality/build gates verified in this run:
+
+- `just format`
+- `just ci` static portions: formatting, clippy, example check matrix,
+  C/C++/Python checks, `zenohd`, doctests, Miri, C codegen, and C message
+  generation.
+
+Runtime summary:
+
+- Nextest: 816 tests run, 732 passed, 84 failed, 11 skipped.
+- Harness-reported environment skip: `ThreadX-Linux DDS prerequisites not
+  available`.
+- Real failures: 83 of 84 total failures, because the ThreadX-Linux DDS
+  prerequisite case is counted as an environment skip by the test harness.
+- Doctests: 1 passed, 4 ignored.
+- Miri: all selected tests passed; one clock test ignored under Miri.
+- C codegen and C message generation passed.
+
+Current failure buckets:
+
+| Category | Failures | Notes |
+|---|---:|---|
+| RTOS/QEMU platform E2E | 39 | FreeRTOS, NuttX, ThreadX Linux/RISC-V, baremetal DDS, and platform DDS runtime cases. |
+| Zephyr runtime/E2E | 29 | Zephyr native/host E2E and DDS/XRCE runtime cases. Build/smoke cases pass outside failing runtime handshakes. |
+| ESP32 emulator E2E | 6 | QEMU listener/talker build/boot plus ESP32/native bridge communication; the immediate build error is unresolved ESP32 links to `clock_gettime` and `__atomic_fetch_add_4` from `zpico_init_with_config`. |
+| XRCE runtime E2E | 5 | Native C XRCE starts/talker-listener plus Rust XRCE action/large-message cases. |
+| Bare-metal Zenoh QEMU E2E | 3 | RTIC action, RTIC service, and serial pub/sub. |
+| DDS native runtime E2E | 1 | Native DDS action server/client E2E. |
+| ROS 2 lifecycle interop | 1 | Lifecycle full-cycle interop. |
+
+Native behavior resolved in the full run:
+
+- Native API C/C++ pub/sub and service cases now pass.
+- Safety, zero-copy, large-message Zenoh, QoS, params, executor, multi-node,
+  services, RTIC pattern, sequence/GID metadata, and TLS talker/listener cases
+  now pass.
+
 Source run:
 
 - Command: `just ci`
