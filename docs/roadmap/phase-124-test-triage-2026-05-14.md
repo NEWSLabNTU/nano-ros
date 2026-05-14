@@ -43,6 +43,26 @@ Newly resolved in focused runs:
 - `large_msg::test_zenoh_throughput_100hz`
 - `large_msg::test_zenoh_throughput_burst`
 
+Focused verification after rebuilding native RTIC fixtures and fixing TLS
+feature/config propagation:
+
+- `cargo nextest run -p nros-tests --test nano2nano test_rtic_pattern_action test_rtic_pattern_service test_rtic_pattern_communication test_tls_talker_listener_communication --no-capture`
+
+Newly resolved in focused runs:
+
+- `nano2nano::test_rtic_pattern_action`
+- `nano2nano::test_rtic_pattern_communication`
+- `nano2nano::test_rtic_pattern_service`
+- `nano2nano::test_tls_talker_listener_communication`
+
+Notes:
+
+- RTIC failures were stale prebuilt native RTIC fixtures; rebuilding the
+  release fixtures resolved pub/sub, service, and action.
+- TLS required forwarding `link-tls` to `nros-rmw-zenoh`, enabling `std` on
+  the native listener backend so env config is available, and mirroring TLS
+  env properties into the TLS locator for zenoh-pico open.
+
 Source run:
 
 - Command: `just ci`
@@ -94,18 +114,15 @@ Current failure buckets:
 
 Current native-priority failures:
 
-- `nano2nano::test_rtic_pattern_action`
-- `nano2nano::test_tls_talker_listener_communication`
-- `nano2nano::test_rtic_pattern_service`
-- `nano2nano::test_rtic_pattern_communication`
-- `native_api::test_cpp_action_communication`
-- `native_api::test_cpp_action_goal_rejection`
+- None remaining from the focused native-priority set after the RTIC/TLS
+  follow-up and earlier C++ action focused pass. Re-run `just ci` to refresh
+  the full bucket counts.
 
 Next priority:
 
-1. Investigate the native C++ action failures.
-2. Check the remaining RTIC/TLS native failures.
-3. Defer platform E2E buckets until the remaining native behavior is stable.
+1. Re-run `just ci` when ready to refresh the full failure inventory.
+2. Defer platform E2E buckets until the focused native behavior stays stable
+   in a full run.
 
 Source run:
 

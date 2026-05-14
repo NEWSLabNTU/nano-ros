@@ -12,6 +12,66 @@ use super::{
     subscriber::ZenohSubscriber,
 };
 
+#[cfg(feature = "std")]
+fn append_locator_param(
+    buf: &mut [u8; LOCATOR_BUFFER_SIZE],
+    len: &mut usize,
+    first_param: &mut bool,
+    key: &str,
+    value: &str,
+) -> Result<(), TransportError> {
+    let separator = if *first_param { b'#' } else { b';' };
+    let needed = 1 + key.len() + 1 + value.len();
+    if *len + needed >= buf.len() {
+        return Err(TransportError::InvalidArgument);
+    }
+    buf[*len] = separator;
+    *len += 1;
+    buf[*len..*len + key.len()].copy_from_slice(key.as_bytes());
+    *len += key.len();
+    buf[*len] = b'=';
+    *len += 1;
+    buf[*len..*len + value.len()].copy_from_slice(value.as_bytes());
+    *len += value.len();
+    *first_param = false;
+    Ok(())
+}
+
+#[cfg(feature = "std")]
+fn append_tls_env_to_locator(
+    loc: &str,
+    buf: &mut [u8; LOCATOR_BUFFER_SIZE],
+    len: &mut usize,
+) -> Result<(), TransportError> {
+    if !loc.starts_with("tls/") {
+        return Ok(());
+    }
+
+    let mut first_param = !loc.contains('#');
+    if !loc.contains("root_ca_certificate=")
+        && let Ok(value) = std::env::var("ZENOH_TLS_ROOT_CA_CERTIFICATE")
+    {
+        append_locator_param(buf, len, &mut first_param, "root_ca_certificate", &value)?;
+    }
+    if !loc.contains("root_ca_certificate_base64=")
+        && let Ok(value) = std::env::var("ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64")
+    {
+        append_locator_param(
+            buf,
+            len,
+            &mut first_param,
+            "root_ca_certificate_base64",
+            &value,
+        )?;
+    }
+    if !loc.contains("verify_name_on_connect=")
+        && let Ok(value) = std::env::var("ZENOH_TLS_VERIFY_NAME_ON_CONNECT")
+    {
+        append_locator_param(buf, len, &mut first_param, "verify_name_on_connect", &value)?;
+    }
+    Ok(())
+}
+
 // ============================================================================
 // ZenohSession
 // ============================================================================
@@ -53,7 +113,15 @@ impl ZenohSession {
                     return Err(TransportError::InvalidArgument);
                 }
                 buf[..bytes.len()].copy_from_slice(bytes);
-                buf[bytes.len()] = 0; // Null terminator
+                #[cfg(feature = "std")]
+                let len = {
+                    let mut len = bytes.len();
+                    append_tls_env_to_locator(loc, &mut buf, &mut len)?;
+                    len
+                };
+                #[cfg(not(feature = "std"))]
+                let len = bytes.len();
+                buf[len] = 0; // Null terminator
                 buf
             }
             (SessionMode::Client, None) => {

@@ -638,12 +638,6 @@ int32_t zpico_init_with_config(const char *locator,
         return ZPICO_ERR_CONFIG;
     }
 
-    if (locator != NULL) {
-        if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
-            return ZPICO_ERR_CONFIG;
-        }
-    }
-
     bool has_session_zid = false;
     for (size_t i = 0; i < num_properties; i++) {
         if (properties[i].key != NULL && strcmp(properties[i].key, "session_zid") == 0) {
@@ -680,20 +674,26 @@ int32_t zpico_init_with_config(const char *locator,
             config_key = Z_CONFIG_ADD_TIMESTAMP_KEY;
         } else if (strcmp(properties[i].key, "session_zid") == 0) {
             config_key = Z_CONFIG_SESSION_ZID_KEY;
-#if Z_FEATURE_LINK_TLS == 1
         } else if (strcmp(properties[i].key, "root_ca_certificate") == 0) {
             config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_KEY;
         } else if (strcmp(properties[i].key, "root_ca_certificate_base64") == 0) {
             config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_BASE64_KEY;
         } else if (strcmp(properties[i].key, "verify_name_on_connect") == 0) {
             config_key = Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY;
-#endif
         } else {
             // Unknown key — silently ignore
             continue;
         }
 
         if (zp_config_insert(z_config_loan_mut(&g_config), config_key, properties[i].value) < 0) {
+            return ZPICO_ERR_CONFIG;
+        }
+    }
+
+    // Insert connect endpoint after link properties so TLS endpoint parsing can
+    // see root CA / verification settings supplied through session config.
+    if (locator != NULL) {
+        if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
             return ZPICO_ERR_CONFIG;
         }
     }
