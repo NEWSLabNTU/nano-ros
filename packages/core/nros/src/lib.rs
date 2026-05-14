@@ -131,6 +131,8 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod component;
+pub mod component_metadata;
 pub mod guide;
 
 /// Compile-time opaque storage sizes for FFI consumers.
@@ -155,6 +157,21 @@ pub use nros_core::{
 
 // Re-export heapless for generated message types and examples
 pub use nros_core::heapless;
+
+// Re-export component-mode API
+pub use component::{
+    COMPONENT_EXPORT_SYMBOL, CallbackEffects, Component, ComponentActionClient,
+    ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
+    ComponentPublisher, ComponentResult, ComponentRuntime, ComponentServiceClient,
+    ComponentServiceServer, ComponentSubscription, ComponentTimer, MISSING_COMPONENT_EXPORT_ERROR,
+    NodeOptions, record_component_metadata, register_component,
+};
+pub use component_metadata::{
+    CallbackEffectKind, CallbackEffectMetadata, CallbackId, ComponentMetadataError, EntityId,
+    EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
+    SourceNameKind,
+};
+pub use nros_macros::component;
 
 // Re-export node types
 pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
@@ -393,6 +410,16 @@ pub mod prelude {
         CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
         QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
         RosService, Serialize, StandaloneNode, SubscriberHandle, TopicInfo,
+    };
+
+    // Re-export component-mode API.
+    pub use crate::{
+        CallbackEffectKind, CallbackEffects, CallbackId, Component, ComponentActionClient,
+        ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
+        ComponentPublisher, ComponentResult, ComponentRuntime, ComponentServiceClient,
+        ComponentServiceServer, ComponentSubscription, ComponentTimer, EntityId, EntityKind,
+        MetadataRecorder, NodeId, NodeOptions, SourceNameKind, component,
+        record_component_metadata, register_component,
     };
 
     // Re-export lifecycle types
