@@ -258,6 +258,84 @@ fn main() -> ! {
 The entry point must be library-shaped. It must not call global
 `nros::init()`, own the executor spin loop, or define `main()`.
 
+### Generated Orchestration Package
+
+`nros build` should generate a Rust package even when the user workspace
+contains C and C++ nodes. Rust remains the system-entry language because it can
+own the `no_std` runtime, target features, linker script, generated constants,
+and RTOS entry shims in one place.
+
+Generated package shape:
+
+```text
+target/nros/robot_bringup/
+  Cargo.toml
+  build.rs
+  src/main.rs
+  nros-plan.json
+  config/
+    system.toml
+    freertos.toml
+```
+
+`Cargo.toml` depends on nano-ros runtime crates and Rust component crates by
+path. C and C++ components are linked as static archives produced by
+`build.rs`; the Rust main calls them through generated `extern "C"`
+registration thunks.
+
+`build.rs` owns mechanical build integration:
+
+- read `nros-plan.json` and deployment config;
+- generate `OUT_DIR/nros_generated.rs` with node table, callback IDs, static
+  limits, and registration calls;
+- generate shared C/C++ headers with plan IDs and config constants;
+- build each C/C++ component package through CMake using the target toolchain
+  file and generated include directory;
+- print `cargo:rustc-link-search` and `cargo:rustc-link-lib=static=...` for
+  C/C++ component archives in plan order;
+- print `cargo:rerun-if-changed` for `record.json`, `nros-plan.json`, config
+  files, package manifests, and component source manifests.
+
+`build.rs` should not infer policy. It materializes the already-checked plan.
+`nros plan` and `nros check` decide what must be built and whether config is
+valid; `build.rs` converts that decision into compiler inputs.
+
+`src/main.rs` should stay tiny:
+
+```rust
+#![no_std]
+#![no_main]
+
+include!(concat!(env!("OUT_DIR"), "/nros_generated.rs"));
+
+#[nros::entry]
+fn main() -> ! {
+    let mut system = nros_generated::open_system();
+    nros_generated::register_components(&mut system).unwrap();
+    nros_generated::spawn_tiers(system)
+}
+```
+
+Target-specific entry differences stay behind `#[nros::entry]` or generated
+platform modules:
+
+- native/POSIX: normal `fn main()` for tests and smoke runs;
+- FreeRTOS/ThreadX/Zephyr: RTOS startup hook creates tier tasks;
+- RTIC: codegen emits compile-time task macros and per-task priorities;
+- bare metal: one loop or interrupt-driven task table.
+
+Mixed-language boundary rules:
+
+| Language package | Build input                       | Runtime boundary                                      |
+|------------------|-----------------------------------|-------------------------------------------------------|
+| Rust             | Cargo path dependency             | `Component` impl called directly                      |
+| C                | CMake static library              | `extern "C" nros_ret_t register(...ctx)`              |
+| C++              | CMake static library              | generated `extern "C"` thunk around static node factory |
+
+C++ symbols should not cross the Rust boundary directly. The C++ component
+macro emits a C ABI registration thunk; inside that thunk it can construct the
+C++ node class/factory and register callbacks with the nano-ros executor.
+
 ## Build Pipeline
 
 ### 1. Setup
@@ -296,8 +374,9 @@ The entry point must be library-shaped. It must not call global
 - component entry symbol;
 - Rust crate or C/C++ library target;
 - callback groups;
-- tier mapping;
-- RTOS priority/stack/scheduler policy;
+- tier and `SchedContext` mapping;
+- selected deployment config/overlay;
+- resolved RTOS priority/stack/scheduler policy;
 - shared-state layout;
 - runtime-overridable parameter args;
 - generated-main sizing inputs.
@@ -309,7 +388,9 @@ The entry point must be library-shaped. It must not call global
 - every launch node maps to a component package or explicit external process;
 - every component has exactly one entry point;
 - every callback group maps to a tier;
+- every callback/entity binding maps to a valid `SchedContext`;
 - active RTOS priority/stack fields exist and are in bounds;
+- platform-specific deadline/budget/period values are internally consistent;
 - remaps and namespaces resolve before codegen;
 - parameter files can be represented by nano-ros parameter APIs;
 - tier spin period is compatible with timer periods;
@@ -319,9 +400,11 @@ The entry point must be library-shaped. It must not call global
 
 `nros build` generates an orchestration crate/package:
 
-- `main.rs` or platform-specific entry shim;
+- Rust `main.rs` plus platform-specific entry shim;
+- `build.rs` for mixed Cargo/CMake/static-archive integration;
 - one registration call per component;
 - one executor per tier;
+- one generated `SchedContext` creation/binding table per executor;
 - shared session setup;
 - parameter/default override setup;
 - generated shared-context C/Rust/C++ headers;
@@ -422,6 +505,87 @@ stack_bytes = 8192
 startup_order = ["control_node"]
 ```
 
+## Real-Time Configuration
+
+The source package should name real-time attachment points, but deployment
+config should own real-time numbers. Deadline, budget, stack, OS priority, and
+threading choices vary by board, RTOS, clock source, transport, and safety
+case. Keeping them in config lets the same component package deploy to native,
+FreeRTOS, Zephyr, ThreadX, NuttX, RTIC, or bare metal without source edits.
+
+Ownership split:
+
+| Owner              | Stable across platforms                                      | Platform-dependent                                      |
+|--------------------|--------------------------------------------------------------|---------------------------------------------------------|
+| Node source        | callback names, entity names, optional default callback group | none                                                    |
+| Per-node manifest  | component symbol, logical callback groups, optional hints     | avoid hard RTOS values                                  |
+| System config      | tier names, callback-to-`SchedContext` binding intent         | selected overlay                                        |
+| Platform overlay   | deadlines, budgets, periods, OS priorities, stack sizes       | concrete RTOS numbers and policy names                 |
+| Generated package  | checked constants and tables                                 | compiled result of selected config, not hand-authored   |
+
+Suggested system config:
+
+```toml
+schema = "nano-ros/orchestration/v1"
+kind = "system"
+target_rtos = "freertos"
+target_board = "mps2-an385"
+platform_overlay = "config/freertos.toml"
+
+[tiers.control]
+executor = "control_exec"
+spin_period_us = 1000
+
+[[sched_contexts]]
+id = "control_loop"
+tier = "control"
+class = "Edf"
+priority = "Critical"
+period_us = 10000
+budget_us = 800
+deadline_us = 10000
+deadline_policy = "SkipLate"
+
+[[bindings]]
+node = "control_node"
+callback_group = "control_loop"
+sched_context = "control_loop"
+```
+
+Suggested platform overlay:
+
+```toml
+[tiers.control.freertos]
+task_priority = 5
+stack_bytes = 8192
+core = 0
+
+[sched_contexts.control_loop.freertos]
+os_priority = 0
+
+[transport.zenoh.freertos]
+read_task_priority = 6
+lease_task_priority = 6
+read_stack_bytes = 5120
+lease_stack_bytes = 5120
+```
+
+Rules:
+
+- logical IDs (`tier`, `sched_context`, `callback_group`) are stable and can be
+  referenced by launch-derived plans;
+- numeric RTOS values live in the selected platform overlay;
+- current `[scheduling]` config keys can be treated as the single-tier legacy
+  form and normalized into `tiers.default` plus transport task settings;
+- `nros check` resolves the overlay before codegen and rejects missing or
+  impossible values;
+- generated code calls existing `Executor::create_sched_context(...)` and
+  bind APIs; source nodes do not manually choose board-specific deadlines.
+
+Open placement choice: keep this in system `nros.toml` with overlays, or split
+into `nros.system.toml` plus `nros.<target>.toml`. The design should preserve
+the ownership split either way.
+
 ## Gap Matrix
 
 ### `nros` CLI
@@ -432,6 +596,7 @@ startup_order = ["control_node"]
 | `cargo nano-ros` is codegen-oriented                  | Keep for low-level/codegen; make `nros` the standard UX                               |
 | No `plan` command                                     | Add command that calls play_launch parser and writes `record.json` + `nros-plan.json` |
 | No `doctor` for workspace state                       | Check sourced ROS env, nano-ros checkout, submodules, toolchains, board vars          |
+| No config selection story                             | Add `--config`/`--overlay` flags and record selected files in `nros-plan.json`        |
 
 ### nano-ros API/runtime
 
@@ -448,6 +613,7 @@ startup_order = ["control_node"]
 | Namespaces/remaps are not first-class component inputs                      | Add `ComponentContext` name resolver and remap-aware create helpers                              |
 | Runtime params exist but plan-time parameter injection is not unified       | Add boot-time parameter override loader from generated plan/runtime args                         |
 | Shared state is ad hoc in hand-written apps                                 | Generate shared-context structs/accessors with tier-aware locking                                |
+| Generated code cannot create/bind SC tables from config                     | Add plan-to-`create_sched_context` and handle binding codegen                                    |
 
 ### Build and colcon
 
@@ -455,9 +621,11 @@ startup_order = ["control_node"]
 |---------------------------------------------------|---------------------------------------------------------------------------------|
 | Phase 78 builds package binaries                  | Add component/library package mode and system/orchestration package mode        |
 | Generated orchestration package does not exist    | Add `cargo nano-ros generate-main` or equivalent library called by `nros build` |
+| Generated package lacks a mixed-language `build.rs` contract | Generate Rust package whose `build.rs` drives CMake archives and Cargo linking |
 | Workspace interface cache is incomplete for C/C++ | Finish shared C/C++ generated-interface cache or make system package own it     |
 | Whole-firmware sizing is manual                   | Derive executor/node/callback/param limits from `nros-plan.json`                |
 | Mixed Rust/C/C++ component linking path unclear   | Define generated Cargo+CMake bridge contract and static archive order           |
+| C++ component ABI cannot be linked from Rust safely | Require generated C ABI registration thunks for C++ static factories            |
 
 ### play_launch integration
 
@@ -473,6 +641,7 @@ startup_order = ["control_node"]
 | Gap                                                                     | Needed                                                                                                   |
 |-------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
 | Existing launch manifest describes graph contracts, not RTOS deployment | Add `nros.toml` schema or extend manifest types with tiers/callback groups/shared state                  |
+| Scheduling parameters have no stable owner                             | Put board/RTOS numbers in system config overlays; keep node manifests logical                          |
 | Callback groups are source-code concepts in rclcpp                      | Require sidecar declaration until static analysis can infer them                                         |
 | Entity binding can drift from source                                    | Validate manifest-declared timers/topics/services against generated registration metadata where possible |
 | Type and QoS reconciliation spans launch params, manifest, source       | Add checker rules for remap-resolved names and QoS compatibility                                         |
@@ -493,13 +662,16 @@ Start with the smallest workflow that proves the model:
 - Rust components only.
 - Single-tier executor only.
 - `record.json` from play_launch.
-- Simple node/system `nros.toml`.
-- Generated `main.rs` calls each component registration function.
+- Simple node/system `nros.toml` plus one selected platform config.
+- Generated Rust orchestration package with `main.rs` and `build.rs`.
+- Generated `main.rs` calls each Rust component registration function.
+- One default generated `SchedContext` from config, bound to all callbacks.
 - Existing board runner builds/runs the output.
 
 Explicitly defer:
 
 - C/C++ component ABI;
+- CMake archive orchestration for mixed-language packages;
 - multi-tier shared session;
 - runtime parameter override persistence;
 - generated shared state;
@@ -515,3 +687,5 @@ packages as libraries, compose with launch files, build one RTOS binary.
 - Should `play_launch` own RTOS generation as a subcommand, or should `nros` own it and use play_launch only as parser/recorder?
 - How much ROS 2 composable-node metadata should C++ packages reuse versus declaring a separate nano-ros entry symbol?
 - Should v0 require `nros.toml` for every node or allow implicit defaults for launch nodes that map cleanly to package names?
+- Should RT config overlays live beside the system package, board package, or generated package?
+- Should `deadline_us` be required for every non-default `SchedContext`, or can class-specific defaults be target-defined?
