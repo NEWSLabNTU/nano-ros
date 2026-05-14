@@ -12,3 +12,6 @@ name = "nros_board_nuttx_qemu_arm"
 # No platform crate needed — NuttX is POSIX-compatible, zenoh-pico reuses unix/ platform.
 # No smoltcp/lwIP needed — NuttX has built-in BSD sockets.
 # No custom Ethernet driver — NuttX has virtio-net built into the kernel.
+
+[build-dependencies]
+cc = "1"

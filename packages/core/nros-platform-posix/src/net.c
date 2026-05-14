@@ -475,6 +475,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         join_rc = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                              &mreq, sizeof(mreq));
     } else {
+#ifdef IPV6_ADD_MEMBERSHIP
         struct ipv6_mreq mreq;
         memset(&mreq, 0, sizeof(mreq));
         mreq.ipv6mr_multiaddr =
@@ -482,6 +483,9 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         mreq.ipv6mr_interface = if_nametoindex((const char *) iface);
         join_rc = setsockopt(fd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP,
                              &mreq, sizeof(mreq));
+#else
+        join_rc = -1;
+#endif
     }
 
     free(lsockaddr);
@@ -510,12 +514,14 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
             (void) setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                               &mreq, sizeof(mreq));
         } else if (ai->ai_family == AF_INET6) {
+#ifdef IPV6_DROP_MEMBERSHIP
             struct ipv6_mreq mreq;
             memset(&mreq, 0, sizeof(mreq));
             mreq.ipv6mr_multiaddr =
                 ((const struct sockaddr_in6 *) ai->ai_addr)->sin6_addr;
             (void) setsockopt(sockrecv->fd, IPPROTO_IPV6, IPV6_DROP_MEMBERSHIP,
                               &mreq, sizeof(mreq));
+#endif
         }
     }
 
