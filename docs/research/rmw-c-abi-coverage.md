@@ -448,3 +448,116 @@ state internally:
    tied to PiCAS work.
 
 Items 1+2 are mechanical; 3+4 need more design.
+
+## micro-ROS comparison (`rmw_microxrcedds`)
+
+Source: `external/rmw-microxrcedds/` checkout (2026-05-14).
+micro-ROS implements the full upstream `rmw.h` (~69 functions) so
+that `rcl` / `rclc` work unmodified. **14 of their `.c` files
+contain `RMW_RET_UNSUPPORTED` stubs** for features that don't
+make sense on the XRCE wire (events, dynamic-type support, net
+flow, content filter, …). The honest coverage gap is comparable
+to nano-ros's; they hide it behind the wide upstream ABI.
+
+### Stubbed-as-unsupported in micro-ROS
+
+- `rmw_service_server_is_available` — they couldn't implement it
+  either. **Validates our §3.4 difficulty assessment.**
+- `rmw_event_set_callback` + sibling event callback functions.
+- `rmw_set_log_severity`.
+- `rmw_dynamic_message_type_support_*`.
+- `rmw_get_publisher_endpoint_network_flow_endpoints`.
+- `rmw_qos_profile_check_compatible`.
+- Several `rmw_publish_*` and `rmw_publisher_*` variants
+  (loaned, ack-waiting, etc.).
+
+### micro-ROS extensions worth learning from
+
+micro-ROS adds `rmw_microros/*.h` extensions that aren't part
+of upstream rmw.h:
+
+| micro-ROS extension | nano-ros today | Worth adopting? |
+|---|---|---|
+| **Continuous serialization** (`continous_serialization.h`) — `rmw_uros_set_continous_serialization_callbacks(pub, size_cb, ser_cb)` lets the publisher stream a message into the transport buffer in chunks instead of staging the full encoded payload. | nano-ros's `publish_raw(bytes, len)` requires a pre-encoded buffer. | **YES** — practical for memory-constrained nodes publishing large messages (camera frames, point clouds). Spec'd below. |
+| **Ping agent** (`ping.h`) — `rmw_uros_ping_agent(timeout_ms, attempts)` + variant taking init_options. Lightweight "is the broker up" probe. | Approximated by `Executor::open` failure path. | **MAYBE** — useful as session-level capability separate from service-availability probe. |
+| **Time sync** (`time_sync.h`) — `rmw_uros_sync_session(timeout_ms)` + `rmw_uros_epoch_millis()` / `rmw_uros_epoch_nanos()`. Sync embedded clock to the agent's wall clock. | nano-ros has `nros_clock_*` API but no remote-sync primitive. | **YES, eventually** — distributed measurement / nav use cases benefit. Goes well with Phase 110 timing work. |
+| **Custom transport** (`custom_transport.h`) — `rmw_uros_set_custom_transport(framing, args, open, close, write, read)`. Pluggable UART/USB/CAN transport via 4 callbacks. | `nros-rmw` already has `set_custom_transport(NrosTransportOps)` (Phase 115.B); xrce-cffi exposes the same. | **DONE** — same pattern. |
+| **Discovery** (`discovery.h`) — `rmw_uros_discover_agent(timeout_ms, attempts, out_ip, out_port)`. UDP/TCP autodiscovery. | nano-ros doesn't broadcast-scan; locator is explicit. | **NO** — explicit locator is the embedded-friendly choice. |
+| **Per-context timeouts** (`timing.h`) — granular session/entity timeout knobs per client + per context. | Single global timeout in `RmwConfig`. | **PARTIAL** — could surface as Cargo features / env vars; not API-level. |
+| **Init options** (`init_options.h`) — extra params bundled with `rmw_init_options_t`. | nano-ros passes locator + domain_id; XRCE-specific options live in `Rmw::open` impl. | **NO** — upstream's init-options struct is a maintenance burden vs targeted explicit params. |
+| **Error handling** (`error_handling.h`) — error string registration. | nano-ros has `nros_rmw_ret_t` enum; no per-error string. | **MAYBE** — small library on top of rret codes for debug builds. |
+
+### Compile-time configuration knobs
+
+micro-ROS exposes ~20 `RMW_UXRCE_MAX_*` CMake options
+(`MAX_NODES`, `MAX_PUBLISHERS`, `MAX_HISTORY`, `MAX_TOPICS`,
+`STREAM_HISTORY`, etc.) that map onto fixed-size arrays inside
+the XRCE client. Default values are conservative (4 nodes, 4
+pubs, 4 subs, 4 services, 4 clients, 4 wait sets, 4 guard
+conditions). `RMW_UXRCE_ALLOW_DYNAMIC_ALLOCATIONS=ON` opt-in
+escapes the fixed-size arenas.
+
+**nano-ros parallel:**
+
+- `NROS_RMW_MAX_BACKENDS` (set by phase 104.B.1) — same pattern.
+- `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ARENA_SIZE` — runtime
+  arena knobs.
+- Per-handle: callers pass `Cap<TX_BUF>` const generics.
+
+We already have the right pattern; could systematize a single
+`config.toml` (or similar) that exposes ALL nano-ros arena knobs
+in one place — mirrors micro-ROS's `colcon.meta` discoverability.
+
+### Honest coverage comparison
+
+| Feature | upstream `rmw.h` | micro-ROS rmw_microxrcedds | nano-ros |
+|---|---|---|---|
+| Pub/sub data plane | ✅ | ✅ | ✅ |
+| Service data plane | ✅ | ✅ | ✅ |
+| Events | ✅ | ❌ stubbed | ⚠ partial (QoS-deadline-only) |
+| Graph introspection | ✅ | ⚠ partial (count + node names) | ❌ |
+| Wait set | ✅ | ✅ via XRCE session | 🔀 poll model |
+| Guard condition | ✅ | ✅ | 🔀 Rust-side only |
+| Loaned messages | ✅ | ❌ | ⚠ partial (Rust-side, no vtable) |
+| Service available probe | ✅ | ❌ stubbed | ❌ (worth adding) |
+| Sequence take | ✅ | ❌ | ❌ (worth adding) |
+| Content filter | ✅ | ❌ | ❌ |
+| QoS introspection | ✅ | ❌ | ❌ |
+| Continuous serialization | ❌ | ✅ extension | ❌ (worth adopting) |
+| Ping | ❌ | ✅ extension | ❌ |
+| Time sync | ❌ | ✅ extension | ❌ (eventual) |
+| Custom transport | ❌ | ✅ extension | ✅ (Phase 115.B) |
+| Discovery | ❌ | ✅ extension | ❌ won't-do |
+
+**Bottom line.** micro-ROS chose to inherit the upstream ABI
+and stub the unsupported half. nano-ros chose a slim ABI with
+explicit coverage. Surface-area-honest: nano-ros's 23 vtable
+slots cover roughly the same DATA-PLANE features that micro-ROS
+actually implements (most of micro-ROS's 69 functions are
+stubs). The difference is API ergonomics: nano-ros is honest
+about what backends MUST implement; micro-ROS hides
+"unsupported" returns behind the upstream calls.
+
+### Updated recommended additions
+
+Combining §3 analysis + micro-ROS lessons:
+
+1. **Service availability probe** (§3.4) — caveat: micro-ROS
+   stubs it because XRCE has no participant-list; nano-ros via
+   zenoh / DDS has discovery state. Implementable.
+2. **Sequence take** (§3.3) — small mechanical win.
+3. **Continuous serialization** — new addition learned from
+   micro-ROS. Spec'd:
+   ```c
+   nros_rmw_ret_t (*publish_streamed)(
+       nros_rmw_publisher_t *pub,
+       nros_rmw_stream_size_cb size_cb,
+       nros_rmw_stream_ser_cb ser_cb,
+       void *user_ctx);
+   ```
+4. **Loaned message vtable** (§3.1) — bigger zero-copy win
+   than continuous serialization.
+5. **Wait set + guard condition** (§3.2) — Phase 110 timing.
+6. **Ping primitive** — `nros_rmw_ret_t (*ping)(session, timeout_ms);`
+   optional vtable slot. Backend returns `RET_OK` if the
+   peer/agent responded within timeout.
