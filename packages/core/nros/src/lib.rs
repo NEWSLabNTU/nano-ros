@@ -171,7 +171,7 @@ pub use component_metadata::SourceMetadataExport;
 pub use component_metadata::{
     CallbackEffectKind, CallbackEffectMetadata, CallbackId, ComponentMetadataError, EntityId,
     EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
-    SourceNameKind,
+    ParameterDefault, SourceLocationMetadata, SourceNameKind,
 };
 pub use nros_macros::component;
 
@@ -422,8 +422,8 @@ pub mod prelude {
         ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
         ComponentPublisher, ComponentResult, ComponentRuntime, ComponentServiceClient,
         ComponentServiceServer, ComponentSubscription, ComponentTimer, EntityId, EntityKind,
-        MetadataRecorder, NodeId, NodeOptions, SourceNameKind, component,
-        record_component_metadata, register_component,
+        MetadataRecorder, NodeId, NodeOptions, ParameterDefault, SourceLocationMetadata,
+        SourceNameKind, component, record_component_metadata, register_component,
     };
 
     // Re-export lifecycle types

@@ -22,6 +22,80 @@ pub const METADATA_STRING_CAPACITY: usize = 128;
 /// Fixed-capacity string used by component metadata records.
 pub type MetadataString = String<METADATA_STRING_CAPACITY>;
 
+/// Source location attached to callbacks and parameters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLocationMetadata {
+    pub artifact: MetadataString,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+}
+
+impl SourceLocationMetadata {
+    /// Empty source location used when caller data is unavailable.
+    pub const fn empty() -> Self {
+        Self {
+            artifact: MetadataString::new(),
+            line: None,
+            column: None,
+        }
+    }
+
+    /// Capture the Rust caller location.
+    #[track_caller]
+    pub fn caller() -> Result<Self, ComponentMetadataError> {
+        let location = core::panic::Location::caller();
+        Ok(Self {
+            artifact: copy_str(location.file())?,
+            line: Some(location.line()),
+            column: Some(location.column()),
+        })
+    }
+}
+
+/// Parameter default value recorded for source metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParameterDefault {
+    Bool(bool),
+    Integer(i64),
+    Double(MetadataString),
+    String(MetadataString),
+    BoolArray,
+    IntegerArray,
+    DoubleArray,
+    StringArray,
+}
+
+impl ParameterDefault {
+    /// Parameter type implied by this default.
+    pub const fn parameter_type(&self) -> ParameterType {
+        match self {
+            Self::Bool(_) => ParameterType::Bool,
+            Self::Integer(_) => ParameterType::Integer,
+            Self::Double(_) => ParameterType::Double,
+            Self::String(_) => ParameterType::String,
+            Self::BoolArray => ParameterType::BoolArray,
+            Self::IntegerArray => ParameterType::IntegerArray,
+            Self::DoubleArray => ParameterType::DoubleArray,
+            Self::StringArray => ParameterType::StringArray,
+        }
+    }
+
+    /// Default JSON-compatible value for a parameter type.
+    pub fn for_type(param_type: ParameterType) -> Result<Self, ComponentMetadataError> {
+        Ok(match param_type {
+            ParameterType::Bool => Self::Bool(false),
+            ParameterType::Integer => Self::Integer(0),
+            ParameterType::Double => Self::Double(copy_str("0.0")?),
+            ParameterType::String => Self::String(copy_str("")?),
+            ParameterType::BoolArray => Self::BoolArray,
+            ParameterType::IntegerArray => Self::IntegerArray,
+            ParameterType::DoubleArray => Self::DoubleArray,
+            ParameterType::StringArray => Self::StringArray,
+            ParameterType::ByteArray | ParameterType::NotSet => Self::Integer(0),
+        })
+    }
+}
+
 /// Unresolved ROS name category as written by component source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceNameKind {
@@ -154,8 +228,13 @@ pub struct EntityMetadata {
     pub type_hash: &'static str,
     pub qos: QosSettings,
     pub callback_id: Option<MetadataString>,
+    pub callback_source: SourceLocationMetadata,
+    pub callback_group: Option<MetadataString>,
     pub period_ms: Option<u64>,
     pub parameter_type: Option<ParameterType>,
+    pub parameter_default: Option<ParameterDefault>,
+    pub parameter_read_only: bool,
+    pub source: SourceLocationMetadata,
 }
 
 /// Recorded optional callback effect.
@@ -464,7 +543,12 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             out.write_char(',')?;
             write_json_field(out, "kind", callback.kind)?;
             out.write_char(',')?;
-            write!(out, "\"group\":null,")?;
+            if let Some(group) = callback.group.as_ref() {
+                write_json_field(out, "group", group)?;
+                out.write_char(',')?;
+            } else {
+                write!(out, "\"group\":null,")?;
+            }
             write!(out, "\"effects\":[")?;
             for (effect_index, effect) in self
                 .callback_effects
@@ -482,7 +566,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 write!(out, "}}")?;
             }
             write!(out, "],")?;
-            write_empty_source(out)?;
+            write_source_location(out, &callback.source)?;
             write!(out, "}}")?;
         }
         write!(out, "]")
@@ -507,10 +591,10 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             write_json_field(out, "name", entity.source_name.as_str())?;
             out.write_char(',')?;
             write!(out, "\"default\":")?;
-            write_parameter_default(out, entity.parameter_type.unwrap_or_default())?;
+            write_parameter_default(out, entity.parameter_default.as_ref())?;
             out.write_char(',')?;
-            write!(out, "\"read_only\":false,")?;
-            write_empty_source(out)?;
+            write!(out, "\"read_only\":{},", entity.parameter_read_only)?;
+            write_source_location(out, &entity.source)?;
             write!(out, "}}")?;
         }
         write!(out, "]")
@@ -558,6 +642,11 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 callbacks.push(SourceCallbackRef {
                     id: callback_id.as_str().into(),
                     kind,
+                    source: entity.callback_source.clone(),
+                    group: entity
+                        .callback_group
+                        .as_ref()
+                        .map(|group| group.as_str().into()),
                 });
             }
         }
@@ -569,6 +658,8 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
 struct SourceCallbackRef {
     id: StdString,
     kind: &'static str,
+    source: SourceLocationMetadata,
+    group: Option<StdString>,
 }
 
 pub(crate) fn entity_metadata(
@@ -590,8 +681,13 @@ pub(crate) fn entity_metadata(
         type_hash,
         qos,
         callback_id: None,
+        callback_source: SourceLocationMetadata::empty(),
+        callback_group: None,
         period_ms: None,
         parameter_type: None,
+        parameter_default: None,
+        parameter_read_only: false,
+        source: SourceLocationMetadata::empty(),
     })
 }
 
@@ -758,28 +854,36 @@ fn write_qos(out: &mut impl core::fmt::Write, qos: QosSettings) -> core::fmt::Re
 }
 
 #[cfg(feature = "std")]
-fn write_empty_source(out: &mut impl core::fmt::Write) -> core::fmt::Result {
-    write!(
-        out,
-        "\"source\":{{\"artifact\":\"\",\"line\":null,\"column\":null}}"
-    )
+fn write_source_location(
+    out: &mut impl core::fmt::Write,
+    source: &SourceLocationMetadata,
+) -> core::fmt::Result {
+    write!(out, "\"source\":{{")?;
+    write_json_field(out, "artifact", source.artifact.as_str())?;
+    out.write_char(',')?;
+    write!(out, "\"line\":")?;
+    write_optional_u32(out, source.line)?;
+    out.write_char(',')?;
+    write!(out, "\"column\":")?;
+    write_optional_u32(out, source.column)?;
+    write!(out, "}}")
 }
 
 #[cfg(feature = "std")]
 fn write_parameter_default(
     out: &mut impl core::fmt::Write,
-    param_type: ParameterType,
+    default: Option<&ParameterDefault>,
 ) -> core::fmt::Result {
-    match param_type {
-        ParameterType::Bool => write!(out, "false"),
-        ParameterType::Integer => write!(out, "0"),
-        ParameterType::Double => write!(out, "0.0"),
-        ParameterType::String => write!(out, "\"\""),
-        ParameterType::BoolArray => write!(out, "[]"),
-        ParameterType::IntegerArray => write!(out, "[]"),
-        ParameterType::DoubleArray => write!(out, "[]"),
-        ParameterType::StringArray => write!(out, "[]"),
-        ParameterType::ByteArray | ParameterType::NotSet => write!(out, "0"),
+    match default {
+        Some(ParameterDefault::Bool(value)) => write!(out, "{}", value),
+        Some(ParameterDefault::Integer(value)) => write!(out, "{}", value),
+        Some(ParameterDefault::Double(value)) => write!(out, "{}", value.as_str()),
+        Some(ParameterDefault::String(value)) => write_json_string(out, value.as_str()),
+        Some(ParameterDefault::BoolArray)
+        | Some(ParameterDefault::IntegerArray)
+        | Some(ParameterDefault::DoubleArray)
+        | Some(ParameterDefault::StringArray)
+        | None => write!(out, "[]"),
     }
 }
 
@@ -830,6 +934,15 @@ fn write_optional_ms(out: &mut impl core::fmt::Write, name: &str, value: u32) ->
         write!(out, "null")
     } else {
         write!(out, "{}", value)
+    }
+}
+
+#[cfg(feature = "std")]
+fn write_optional_u32(out: &mut impl core::fmt::Write, value: Option<u32>) -> core::fmt::Result {
+    if let Some(value) = value {
+        write!(out, "{}", value)
+    } else {
+        write!(out, "null")
     }
 }
 
@@ -970,7 +1083,7 @@ mod tests {
     #[cfg(feature = "std")]
     #[test]
     fn source_metadata_json_uses_agent_a_schema_shape() {
-        let mut recorder = MetadataRecorder::<1, 3, 1>::new();
+        let mut recorder = MetadataRecorder::<1, 4, 1>::new();
         recorder
             .push_node(NodeId::new("node_talker"), "talker", "/", 0)
             .unwrap();
@@ -999,8 +1112,31 @@ mod tests {
         )
         .unwrap();
         timer.callback_id = Some(copy_str("cb_timer").unwrap());
+        timer.callback_source = SourceLocationMetadata {
+            artifact: copy_str("src/talker.rs").unwrap(),
+            line: Some(42),
+            column: Some(5),
+        };
         timer.period_ms = Some(100);
         recorder.push_entity(timer).unwrap();
+        let mut param = entity_metadata(
+            EntityId::new("param_rate"),
+            NodeId::new("node_talker"),
+            EntityKind::Parameter,
+            "rate_hz",
+            "",
+            "",
+            crate::qos::DEFAULT,
+        )
+        .unwrap();
+        param.parameter_type = Some(ParameterType::Integer);
+        param.parameter_default = Some(ParameterDefault::Integer(10));
+        param.source = SourceLocationMetadata {
+            artifact: copy_str("src/talker.rs").unwrap(),
+            line: Some(25),
+            column: Some(9),
+        };
+        recorder.push_entity(param).unwrap();
         recorder
             .push_callback_effect(
                 CallbackId::new("cb_timer"),
@@ -1025,6 +1161,10 @@ mod tests {
             "\"interface\":{\"package\":\"std_msgs\",\"name\":\"msg/String\",\"kind\":\"message\"}"
         ));
         assert!(json.contains("\"kind\":\"publishes\",\"entity\":\"pub_chatter\""));
+        assert!(
+            json.contains("\"source\":{\"artifact\":\"src/talker.rs\",\"line\":42,\"column\":5}")
+        );
+        assert!(json.contains("\"name\":\"rate_hz\",\"default\":10,\"read_only\":false"));
         assert!(json.contains("\"generator\":\"nros-metadata-rust\""));
     }
 }

@@ -7,7 +7,7 @@ use crate::{
     TimerDuration,
     component_metadata::{
         CallbackEffectKind, ComponentMetadataError, EntityKind, EntityMetadata, MetadataRecorder,
-        NodeId, copy_str, entity_metadata,
+        NodeId, ParameterDefault, SourceLocationMetadata, copy_str, entity_metadata,
     },
 };
 
@@ -201,6 +201,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
     }
 
     /// Declare a publisher with default QoS. Stable publisher ID is required.
+    #[track_caller]
     pub fn create_publisher<'entity, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -210,13 +211,14 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
     }
 
     /// Declare a publisher with explicit QoS.
+    #[track_caller]
     pub fn create_publisher_with_qos<'entity, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
         topic: &str,
         qos: QosSettings,
     ) -> ComponentResult<ComponentPublisher<'entity, M>> {
-        let metadata = entity_metadata(
+        let mut metadata = entity_metadata(
             id,
             self.id,
             EntityKind::Publisher,
@@ -225,11 +227,13 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             M::TYPE_HASH,
             qos,
         )?;
+        metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentPublisher::new(id))
     }
 
     /// Declare a subscription. Stable subscription and callback IDs are required.
+    #[track_caller]
     pub fn create_subscription<'entity, 'callback, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -240,6 +244,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
     }
 
     /// Declare a subscription with explicit QoS.
+    #[track_caller]
     pub fn create_subscription_with_qos<'entity, 'callback, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -257,11 +262,14 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             qos,
         )?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(ComponentSubscription::new(id))
     }
 
     /// Declare a timer. Stable timer and callback IDs are required.
+    #[track_caller]
     pub fn create_timer<'entity, 'callback>(
         &mut self,
         id: EntityId<'entity>,
@@ -278,12 +286,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             QosSettings::default(),
         )?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
         metadata.period_ms = Some(period.as_millis());
         self.runtime.create_entity(metadata)?;
         Ok(ComponentTimer::new(id))
     }
 
     /// Declare a service server. Stable service and callback IDs are required.
+    #[track_caller]
     pub fn create_service_server<'entity, 'callback, S: RosService>(
         &mut self,
         id: EntityId<'entity>,
@@ -300,17 +311,20 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             QosSettings::default(),
         )?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(ComponentServiceServer::new(id))
     }
 
     /// Declare a service client. Stable service client ID is required.
+    #[track_caller]
     pub fn create_service_client<'entity, S: RosService>(
         &mut self,
         id: EntityId<'entity>,
         service_name: &str,
     ) -> ComponentResult<ComponentServiceClient<'entity, S>> {
-        let metadata = entity_metadata(
+        let mut metadata = entity_metadata(
             id,
             self.id,
             EntityKind::ServiceClient,
@@ -319,11 +333,13 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             S::SERVICE_HASH,
             QosSettings::default(),
         )?;
+        metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentServiceClient::new(id))
     }
 
     /// Declare an action server. Stable action and callback IDs are required.
+    #[track_caller]
     pub fn create_action_server<'entity, 'callback, A: RosAction>(
         &mut self,
         id: EntityId<'entity>,
@@ -340,17 +356,20 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             QosSettings::default(),
         )?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(ComponentActionServer::new(id))
     }
 
     /// Declare an action client. Stable action client ID is required.
+    #[track_caller]
     pub fn create_action_client<'entity, A: RosAction>(
         &mut self,
         id: EntityId<'entity>,
         action_name: &str,
     ) -> ComponentResult<ComponentActionClient<'entity, A>> {
-        let metadata = entity_metadata(
+        let mut metadata = entity_metadata(
             id,
             self.id,
             EntityKind::ActionClient,
@@ -359,16 +378,29 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             A::ACTION_HASH,
             QosSettings::default(),
         )?;
+        metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentActionClient::new(id))
     }
 
     /// Declare a parameter. Stable parameter ID is required.
+    #[track_caller]
     pub fn declare_parameter<'entity>(
         &mut self,
         id: EntityId<'entity>,
         name: &str,
         parameter_type: ParameterType,
+    ) -> ComponentResult<ComponentParameter<'entity>> {
+        self.declare_parameter_with_default(id, name, ParameterDefault::for_type(parameter_type)?)
+    }
+
+    /// Declare a parameter with a concrete source default.
+    #[track_caller]
+    pub fn declare_parameter_with_default<'entity>(
+        &mut self,
+        id: EntityId<'entity>,
+        name: &str,
+        default: ParameterDefault,
     ) -> ComponentResult<ComponentParameter<'entity>> {
         let mut metadata = entity_metadata(
             id,
@@ -379,7 +411,9 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             "",
             QosSettings::default(),
         )?;
-        metadata.parameter_type = Some(parameter_type);
+        metadata.parameter_type = Some(default.parameter_type());
+        metadata.parameter_default = Some(default);
+        metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentParameter::new(id))
     }
