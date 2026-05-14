@@ -166,6 +166,8 @@ pub use component::{
     ComponentServiceServer, ComponentSubscription, ComponentTimer, MISSING_COMPONENT_EXPORT_ERROR,
     NodeOptions, record_component_metadata, register_component,
 };
+#[cfg(feature = "std")]
+pub use component_metadata::SourceMetadataExport;
 pub use component_metadata::{
     CallbackEffectKind, CallbackEffectMetadata, CallbackId, ComponentMetadataError, EntityId,
     EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
@@ -413,6 +415,8 @@ pub mod prelude {
     };
 
     // Re-export component-mode API.
+    #[cfg(feature = "std")]
+    pub use crate::SourceMetadataExport;
     pub use crate::{
         CallbackEffectKind, CallbackEffects, CallbackId, Component, ComponentActionClient,
         ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
