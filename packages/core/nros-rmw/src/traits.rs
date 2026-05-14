@@ -929,6 +929,34 @@ pub trait Session {
     fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
         let _ = flag;
     }
+
+    /// Phase 124.B.1 — wake-callback evolution of [`set_wake_signal`].
+    ///
+    /// The runtime supplies `(cb, ctx)`. Concrete backends opt in by
+    /// overriding this to plumb the pair into their notify path —
+    /// instead of writing a flag, the backend calls `cb(ctx)`. The
+    /// runtime's `cb` writes the executor's wake_flag AND signals
+    /// the wake condvar atomically, so a spin loop blocked on the
+    /// condvar wakes immediately instead of waiting for its next
+    /// poll iteration.
+    ///
+    /// Preferred over `set_wake_signal`: the cffi runtime will only
+    /// call this when the backend implements it. Backends that
+    /// implement BOTH should treat this as the canonical wake path
+    /// and leave the flag-write side as a no-op when the callback
+    /// is installed.
+    ///
+    /// `cb.is_none()` clears the previously installed callback.
+    ///
+    /// Default body: ignore the call (backward-compat for backends
+    /// that only implement the flag-based `set_wake_signal`).
+    fn set_wake_callback(
+        &mut self,
+        cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) {
+        let _ = (cb, ctx);
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See

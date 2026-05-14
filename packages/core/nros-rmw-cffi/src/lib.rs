@@ -512,6 +512,25 @@ pub struct NrosRmwVtable {
             flag: *mut core::ffi::c_void,
         ) -> NrosRmwRet,
     >,
+
+    /// Phase 124.B.1 — wake-callback evolution of `set_wake_signal`.
+    /// Backend stores `(cb, ctx)` and invokes `cb(ctx)` on async
+    /// wake instead of writing a flag directly. The runtime-supplied
+    /// `cb` does flag-write + condvar-signal atomically, giving
+    /// sub-poll-period wake latency for spin loops blocked on the
+    /// executor's wake condvar.
+    ///
+    /// Preferred over `set_wake_signal`: if both slots are non-NULL,
+    /// the runtime calls only this one. NULL = backend hasn't
+    /// migrated to Phase 124 (falls back to the `set_wake_signal`
+    /// path) or has no async wake path at all.
+    pub set_wake_callback: Option<
+        unsafe extern "C" fn(
+            session: *mut NrosRmwSession,
+            cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+            ctx: *mut core::ffi::c_void,
+        ) -> NrosRmwRet,
+    >,
 }
 
 // ============================================================================
@@ -1385,6 +1404,25 @@ impl Session for CffiSession {
         let _ = unsafe { f(&mut view as *mut _, flag) };
     }
 
+    fn set_wake_callback(
+        &mut self,
+        cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) {
+        let Some(f) = self.vtable.set_wake_callback else {
+            return;
+        };
+        let mut view = NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr(),
+            namespace_: self.namespace_buf.as_ptr(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        // SAFETY: vtable trampoline owns the install/clear; result is
+        // ignored — best-effort.
+        let _ = unsafe { f(&mut view as *mut _, cb, ctx) };
+    }
+
     /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
     /// here so backends behind the cffi vtable don't get rejected by
     /// the runtime's pre-validate step before they ever see the
@@ -2138,6 +2176,7 @@ mod tests {
         assert_publisher_liveliness: stub_assert_publisher_liveliness,
         next_deadline_ms: None,
         set_wake_signal: None,
+        set_wake_callback: None,
     };
 
     #[test]

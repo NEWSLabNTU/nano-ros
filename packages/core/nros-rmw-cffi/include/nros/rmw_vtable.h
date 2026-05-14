@@ -166,6 +166,32 @@ typedef struct nros_rmw_vtable_t {
      *  any backend that does implement the hook. */
     nros_rmw_ret_t (*set_wake_signal)(nros_rmw_session_t *session,
                                        void *flag);
+
+    /** Phase 124.B.1 — wake-callback (evolution of `set_wake_signal`).
+     *
+     *  The runtime calls this once per session right after `open`
+     *  with `cb` pointing at a runtime-supplied function and `ctx`
+     *  pointing at the executor. The backend stores both in its
+     *  per-session state and calls `cb(ctx)` whenever its transport-
+     *  notification path fires — same trigger sites as
+     *  `set_wake_signal`'s flag-write, but via a function call so
+     *  the runtime can do flag-write + condvar-signal atomically.
+     *
+     *  This is strictly an upgrade of `set_wake_signal`. If both
+     *  slots are non-NULL, the runtime prefers `set_wake_callback`
+     *  and never calls `set_wake_signal`. If only `set_wake_signal`
+     *  is non-NULL, the runtime continues to use the flag-only path
+     *  from Phase 104.C.6.b.
+     *
+     *  `cb == NULL` clears any previously installed callback; the
+     *  backend must drop the stored (cb, ctx) and never invoke
+     *  again after this returns.
+     *
+     *  NULL slot = backend has no asynchronous wake path (purely
+     *  poll-driven) OR backend authored before Phase 124. */
+    nros_rmw_ret_t (*set_wake_callback)(nros_rmw_session_t *session,
+                                         void (*cb)(void *ctx),
+                                         void *ctx);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

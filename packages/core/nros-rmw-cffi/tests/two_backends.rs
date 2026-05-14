@@ -239,6 +239,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     assert_publisher_liveliness: noop_assert_liveliness,
     next_deadline_ms: None,
     set_wake_signal: None,
+    set_wake_callback: None,
 };
 
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
@@ -265,6 +266,7 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     assert_publisher_liveliness: noop_assert_liveliness,
     next_deadline_ms: None,
     set_wake_signal: None,
+    set_wake_callback: None,
 };
 
 #[test]
