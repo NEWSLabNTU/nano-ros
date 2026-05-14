@@ -226,6 +226,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         sub_release: None,
         service_server_available: Some(service_server_available_trampoline::<R>),
         try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
+        publish_streamed: Some(publish_streamed_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -812,6 +813,31 @@ unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
     match ServiceClientTrait::server_available(c) {
         Ok(true) => 1,
         Ok(false) => 0,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
+    publisher: *mut NrosRmwPublisher,
+    size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void),
+    chunk_cb: unsafe extern "C" fn(
+        out_buf: *mut u8,
+        cap: usize,
+        out_written: *mut usize,
+        user_ctx: *mut c_void,
+    ),
+    user_ctx: *mut c_void,
+) -> NrosRmwRet {
+    // Phase 124.E.1 — delegate to the Rust backend's
+    // `Publisher::publish_streamed` impl. Default trait body fires
+    // the staging-buffer fallback (124.E.2); concrete backends opt
+    // in by overriding for true streamed publish into the network
+    // buffer.
+    let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match Publisher::publish_streamed(p, size_cb, chunk_cb, user_ctx) {
+        Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
 }

@@ -681,6 +681,28 @@ nros_cpp_ret_t nros_cpp_publisher_create(const struct nros_cpp_node_t *node,
 nros_cpp_ret_t nros_cpp_publish_raw(void *storage, const uint8_t *data, size_t len);
 
 /**
+ * Phase 124.E.1 — streamed publish.
+ *
+ * Two callbacks: `size_cb` reports total payload length once,
+ * `chunk_cb` fills the slot in chunks. Backends that support
+ * streaming land each chunk directly in their outbound buffer;
+ * backends that don't fall through to a stack staging buffer
+ * (capped at ~4 KiB) + a single `publish_raw`.
+ *
+ * # Safety
+ * `storage` must be a valid publisher. The callbacks MUST NOT
+ * outlive the call; `user_ctx` is valid only for the duration.
+ */
+nros_cpp_ret_t nros_cpp_publisher_publish_streamed(void *storage,
+                                                   void (*size_cb)(size_t *out_total_len,
+                                                                   void *user_ctx),
+                                                   void (*chunk_cb)(uint8_t *out_buf,
+                                                                    size_t cap,
+                                                                    size_t *out_written,
+                                                                    void *user_ctx),
+                                                   void *user_ctx);
+
+/**
  * Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
  * the publisher's outbound buffer.
  *

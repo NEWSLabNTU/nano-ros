@@ -57,6 +57,34 @@ template <typename M> class Publisher {
         return Result(nros_cpp_publish_raw(storage_, data, len));
     }
 
+    /// Phase 124.E.1 — streamed publish.
+    ///
+    /// `total_len` declares the full payload size; `writer` is
+    /// invoked one or more times with a writable chunk and must
+    /// return the bytes written. The runtime/backend allocates
+    /// `total_len` bytes (in the outbound buffer when the backend
+    /// natively streams, otherwise in a stack staging buffer
+    /// capped at ~4 KiB) and drains the closure until full.
+    ///
+    /// `writer` signature: `size_t(uint8_t* chunk, size_t cap)`.
+    template <typename W> Result publish_streamed(size_t total_len, W&& writer) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        struct Ctx {
+            W writer;
+            size_t total;
+        } ctx{static_cast<W&&>(writer), total_len};
+        auto size_cb = [](size_t* out_total, void* user) {
+            auto* c = static_cast<Ctx*>(user);
+            *out_total = c->total;
+        };
+        auto chunk_cb = [](uint8_t* out_buf, size_t cap, size_t* out_written, void* user) {
+            auto* c = static_cast<Ctx*>(user);
+            *out_written = c->writer(out_buf, cap);
+        };
+        return Result(nros_cpp_publisher_publish_streamed(
+            storage_, size_cb, chunk_cb, static_cast<void*>(&ctx)));
+    }
+
     // ====================================================================
     // Phase 124.A.7 — zero-copy publish (loan / commit / discard)
     // ====================================================================

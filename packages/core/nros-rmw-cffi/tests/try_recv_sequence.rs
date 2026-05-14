@@ -239,6 +239,7 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
         } else {
             None
         },
+        publish_streamed: None,
     }
 }
 
@@ -277,6 +278,7 @@ const fn make_vtable_native() -> NrosRmwVtable {
         sub_release: None,
         service_server_available: None,
         try_recv_sequence: Some(stub_try_recv_sequence),
+        publish_streamed: None,
     }
 }
 
@@ -312,6 +314,7 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         sub_release: None,
         service_server_available: None,
         try_recv_sequence: None,
+        publish_streamed: None,
     }
 }
 

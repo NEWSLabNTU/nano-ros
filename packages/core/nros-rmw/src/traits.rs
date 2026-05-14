@@ -1066,6 +1066,84 @@ pub trait Publisher {
     /// wait for delivery.
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error>;
 
+    /// Phase 124.E.1 — streamed publish.
+    ///
+    /// `size_cb` reports the total payload length once; `chunk_cb`
+    /// fills the slot in chunks. Saves the per-publisher staging
+    /// buffer when the message is large enough to dominate the
+    /// device's `.bss`.
+    ///
+    /// Default body — the **staging-buffer fallback** (124.E.2).
+    /// Asks `size_cb` for the total length, fills a stack-allocated
+    /// `[u8; NROS_MAX_STREAM_CHUNK]` via `chunk_cb`, then forwards
+    /// to `publish_raw`. Returns `Err(BufferTooSmall)` if the total
+    /// exceeds the stack cap so the caller can drop back to a
+    /// regular `publish_raw` with a heap-sized buffer.
+    ///
+    /// Concrete backends opt in by overriding to stream straight
+    /// into the network buffer (zenoh: write into the zenoh-pico
+    /// outbound buffer; XRCE: micro-CDR streaming APIs).
+    ///
+    /// # Safety
+    /// `size_cb` and `chunk_cb` may be called from the same thread
+    /// that called `publish_streamed`. Backends MUST NOT defer the
+    /// calls past the function return; the caller's `user_ctx`
+    /// pointer is only guaranteed valid for the duration of the
+    /// call.
+    fn publish_streamed(
+        &self,
+        size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
+        chunk_cb: unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut core::ffi::c_void,
+        ),
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        /// Default staging-buffer cap. Stack-allocated, so embedded
+        /// callers don't pay for it unless they actually invoke this
+        /// fallback. 4 KiB matches typical RTPS frag-size +
+        /// micro-XRCE message ceilings.
+        const STAGE_CAP: usize = 4096;
+
+        let mut total = 0usize;
+        // SAFETY: caller's contract on `size_cb` matches our trait
+        // doc — fire once with a writable `*mut usize` slot.
+        unsafe { size_cb(&mut total as *mut usize, user_ctx) };
+        if total > STAGE_CAP {
+            return Err(TransportError::BufferTooSmall.into());
+        }
+        let mut stage = [0u8; STAGE_CAP];
+        let mut written_so_far = 0usize;
+        while written_so_far < total {
+            let mut chunk_written = 0usize;
+            let remaining = total - written_so_far;
+            // SAFETY: `chunk_cb` writes ≤ `cap` bytes to
+            // `out_buf` and reports the count via `out_written`.
+            unsafe {
+                chunk_cb(
+                    stage.as_mut_ptr().add(written_so_far),
+                    remaining,
+                    &mut chunk_written as *mut usize,
+                    user_ctx,
+                );
+            }
+            if chunk_written == 0 {
+                // Caller signalled EOF early — treat the partial
+                // write as a malformed sequence; reporting it as
+                // BufferTooSmall keeps the surface tight without
+                // adding a new variant.
+                return Err(TransportError::BufferTooSmall.into());
+            }
+            written_so_far += chunk_written;
+        }
+        self.publish_raw(&stage[..total])
+    }
+
     /// Publish a typed message (serializes automatically)
     fn publish<M: RosMessage>(&self, msg: &M, buf: &mut [u8]) -> Result<(), Self::Error> {
         use nros_core::CdrWriter;

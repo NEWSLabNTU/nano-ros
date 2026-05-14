@@ -288,6 +288,43 @@ typedef struct nros_rmw_vtable_t {
                                   size_t                per_msg_cap,
                                   size_t                max_msgs,
                                   size_t               *out_lens);
+
+    /** Phase 124.E.1 — streamed publish.
+     *
+     *  Caller hands the backend two callbacks. The backend invokes
+     *  `size_cb` once to learn the total payload length, allocates
+     *  a single slot of that size in its outbound buffer, then
+     *  invokes `chunk_cb` repeatedly to fill the slot in chunks
+     *  until the buffer is full. Saves the per-publisher staging
+     *  buffer on RAM-constrained nodes — useful for large messages
+     *  on MCUs where the staging buffer dominates `.bss`.
+     *
+     *  Callback contract:
+     *    * `size_cb(*out_total_len, user_ctx)` — write the exact
+     *      total payload length, in bytes, to `*out_total_len`.
+     *      Called exactly once per `publish_streamed` invocation.
+     *    * `chunk_cb(out_buf, cap, *out_written, user_ctx)` —
+     *      write up to `cap` bytes starting at `out_buf`, then
+     *      report the count written via `*out_written`. The backend
+     *      may call `chunk_cb` repeatedly until the total promised
+     *      by `size_cb` has been delivered. `*out_written == 0`
+     *      means EOF; the backend tears down the slot.
+     *
+     *  Lesson from micro-ROS's
+     *  `rmw_uros_set_continous_serialization_callbacks`: pass the
+     *  callbacks per-call rather than binding them to publisher
+     *  state, so different messages on the same publisher can use
+     *  different serialisation strategies.
+     *
+     *  NULL function pointer = backend doesn't stream; the runtime
+     *  falls back to a one-shot staging buffer (capped at the
+     *  configured `NROS_MAX_STREAM_CHUNK`) + `publish_raw`. */
+    nros_rmw_ret_t (*publish_streamed)(
+        nros_rmw_publisher_t *publisher,
+        void (*size_cb)(size_t *out_total_len, void *user_ctx),
+        void (*chunk_cb)(uint8_t *out_buf, size_t cap,
+                         size_t *out_written, void *user_ctx),
+        void *user_ctx);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

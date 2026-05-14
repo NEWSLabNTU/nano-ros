@@ -132,6 +132,50 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
     }
 }
 
+/// Phase 124.E.1 — streamed publish.
+///
+/// Two callbacks: `size_cb` reports total payload length once,
+/// `chunk_cb` fills the slot in chunks. Backends that support
+/// streaming land each chunk directly in their outbound buffer;
+/// backends that don't fall through to a stack staging buffer
+/// (capped at ~4 KiB) + a single `publish_raw`.
+///
+/// # Safety
+/// `storage` must be a valid publisher. The callbacks MUST NOT
+/// outlive the call; `user_ctx` is valid only for the duration.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
+    storage: *mut c_void,
+    size_cb: Option<unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void)>,
+    chunk_cb: Option<
+        unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut c_void,
+        ),
+    >,
+    user_ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    use nros_rmw::Publisher;
+    if storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let size_cb = match size_cb {
+        Some(f) => f,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let chunk_cb = match chunk_cb {
+        Some(f) => f,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    match publisher.publish_streamed(size_cb, chunk_cb, user_ctx) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 // ============================================================================
 // Phase 124.A.7 — zero-copy publisher loan / commit / discard
 // ============================================================================

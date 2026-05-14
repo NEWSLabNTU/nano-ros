@@ -139,6 +139,67 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
+    /// Phase 124.E.1 — streamed publish. Use a closure-driven writer
+    /// to serialise straight into the backend's outbound buffer
+    /// without a per-publisher staging copy. Saves on RAM-constrained
+    /// nodes that publish multi-KB payloads.
+    ///
+    /// The `writer` closure receives a [`StreamWriter`] mutable
+    /// reference and uses [`StreamWriter::write`] / [`extend`] /
+    /// [`reserved_len`] to fill the slot in chunks. The total
+    /// payload length must be declared up-front via
+    /// [`StreamWriter::reserve_total`]; the backend allocates that
+    /// many bytes in its outbound buffer before any chunks land.
+    ///
+    /// Backends without a native stream slot fall through to a
+    /// stack-allocated staging buffer (capped at 4 KiB) + a single
+    /// `publish_raw` — same observable result, just no zero-staging
+    /// win for the big-message case.
+    pub fn publish_streamed<F>(&self, total_len: usize, writer: F) -> Result<(), NodeError>
+    where
+        F: FnMut(&mut [u8]) -> usize,
+    {
+        // Wrap the closure in a `*mut c_void` so it survives the
+        // crossing into the C callback contract the vtable expects.
+        // The closure is consumed by reference, so the lifetime is
+        // bounded by this function's frame — no escape.
+        use nros_rmw::Publisher;
+        struct Ctx<W> {
+            writer: W,
+            total: usize,
+        }
+        unsafe extern "C" fn size_cb<W>(
+            out_total_len: *mut usize,
+            user_ctx: *mut core::ffi::c_void,
+        ) {
+            unsafe {
+                let ctx = &*(user_ctx as *const Ctx<W>);
+                *out_total_len = ctx.total;
+            }
+        }
+        unsafe extern "C" fn chunk_cb<W: FnMut(&mut [u8]) -> usize>(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut core::ffi::c_void,
+        ) {
+            unsafe {
+                let ctx = &mut *(user_ctx as *mut Ctx<W>);
+                let slot = core::slice::from_raw_parts_mut(out_buf, cap);
+                let n = (ctx.writer)(slot);
+                *out_written = n;
+            }
+        }
+        let mut ctx = Ctx {
+            writer,
+            total: total_len,
+        };
+        let ctx_ptr = &mut ctx as *mut Ctx<F> as *mut core::ffi::c_void;
+        self.handle
+            .publish_streamed(size_cb::<F>, chunk_cb::<F>, ctx_ptr)
+            .map_err(NodeError::Transport)
+    }
+
     /// Phase 108.B — manually assert this publisher's liveliness.
     /// Required for publishers configured with
     /// [`QosLivelinessPolicy::ManualByTopic`] /

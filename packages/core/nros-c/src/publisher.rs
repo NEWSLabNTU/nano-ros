@@ -2,7 +2,10 @@
 //!
 //! Publishers send messages to topics that subscribers can receive.
 
-use core::{ffi::c_char, ptr};
+use core::{
+    ffi::{c_char, c_void},
+    ptr,
+};
 
 use crate::{
     constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, PUBLISHER_OPAQUE_U64S},
@@ -305,6 +308,82 @@ pub unsafe extern "C" fn nros_publish_raw(
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
+        NROS_RET_ERROR
+    }
+}
+
+/// Phase 124.E.1 — streamed publish.
+///
+/// Two callbacks: `size_cb` reports the total payload length once,
+/// `chunk_cb` fills the slot in chunks. Backends that support
+/// streaming land each chunk directly in their outbound buffer;
+/// backends that don't fall through to a stack-allocated staging
+/// buffer (capped at ~4 KiB) + a single `publish_raw`.
+///
+/// # Parameters
+/// * `publisher` — initialized publisher
+/// * `size_cb` — invoked once; writes the total byte count to
+///   `*out_total_len`
+/// * `chunk_cb` — invoked repeatedly; writes up to `cap` bytes
+///   starting at `out_buf`, reports the count via `*out_written`.
+///   `*out_written == 0` signals EOF
+/// * `user_ctx` — opaque pointer passed through to both callbacks
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if not initialised
+/// * `NROS_RET_PUBLISH_FAILED` on backend failure
+/// * `NROS_RET_BUFFER_TOO_SMALL` if the fallback's staging buffer
+///   is exceeded
+///
+/// # Safety
+/// * `publisher` must be a valid pointer to an initialised publisher.
+/// * The callbacks MUST NOT return references that outlive the
+///   call; `user_ctx` is valid only for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_publish_streamed(
+    publisher: *const nros_publisher_t,
+    size_cb: Option<unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void)>,
+    chunk_cb: Option<
+        unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut c_void,
+        ),
+    >,
+    user_ctx: *mut c_void,
+) -> nros_ret_t {
+    validate_not_null!(publisher);
+    let size_cb = match size_cb {
+        Some(f) => f,
+        None => return NROS_RET_INVALID_ARGUMENT,
+    };
+    let chunk_cb = match chunk_cb {
+        Some(f) => f,
+        None => return NROS_RET_INVALID_ARGUMENT,
+    };
+
+    let publisher = &*publisher;
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::Publisher;
+        let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+        match pub_handle.publish_streamed(size_cb, chunk_cb, user_ctx) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_PUBLISH_FAILED,
+        }
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (size_cb, chunk_cb, user_ctx);
         NROS_RET_ERROR
     }
 }

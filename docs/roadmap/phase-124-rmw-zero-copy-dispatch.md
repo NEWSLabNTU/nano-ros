@@ -845,16 +845,42 @@ the same change as `set_wake_callback` lands.
 
 ### Thread E — Continuous serialization
 
-- [ ] **124.E.1 — vtable slot + callback typedefs.**
-- [ ] **124.E.2 — Staging-buffer fallback.** Runtime calls
-      `size_cb` then `chunk_cb` into a stack staging buffer
-      (capped at NROS_MAX_STREAM_CHUNK), then `publish_raw`.
-- [ ] **124.E.3 — Zenoh + XRCE backend impls.** Zenoh: write
-      into network buffer directly. XRCE: use micro-CDR
-      streaming write APIs.
-- [ ] **124.E.4 — User-facing API.** `Publisher<M>::publish_streamed(|writer| {
-      ... })` taking a Rust `FnOnce(StreamWriter)`. C
-      equivalent: pair of callbacks.
+- [x] **124.E.1 — vtable slot + callback typedefs.** Added
+      `publish_streamed(publisher, size_cb, chunk_cb, user_ctx)`
+      to `nros_rmw_vtable_t` + matching `Option<unsafe extern "C"
+      fn(...)>` on `NrosRmwVtable`; trampoline forwards to
+      `Publisher::publish_streamed`.
+- [x] **124.E.2 — Staging-buffer fallback.**
+      `Publisher::publish_streamed` default body fills a 4 KiB
+      stack buffer via `chunk_cb` then forwards to `publish_raw`.
+      `CffiPublisher::publish_streamed` short-circuits to the
+      vtable slot when non-NULL, otherwise inlines the same loop
+      (so the override doesn't recurse through the default body).
+      `BufferTooSmall` when total exceeds the 4 KiB cap.
+- [ ] **124.E.3 — Zenoh + XRCE backend impls.** Deferred.
+      zenoh-pico's `zpico_publish(handle, data, len)` is a single
+      one-shot C entry; native streaming would need new shim
+      surface (`zp_pub_loan`-style API) and matching changes in
+      the zenoh-pico submodule. micro-XRCE has `uxr_*` streaming
+      write APIs but the K.2 backend is header-only — would need
+      a Rust-side `XrceRmw` adapter that owns the output cursor.
+      Vtable slot ships, so native impls drop in without an ABI
+      bump once a workload surfaces the cost.
+- [x] **124.E.4 — User-facing API.**
+      Rust: `EmbeddedPublisher<M>::publish_streamed(total_len, |chunk| ...)`
+      with a `FnMut(&mut [u8]) -> usize` writer closure.
+      C: `nros_publisher_publish_streamed(publisher, size_cb,
+      chunk_cb, user_ctx)`.
+      C++: `Publisher<M>::publish_streamed(total_len, writer)`
+      with a templated `size_t(uint8_t*, size_t)` writer; the
+      class hands the lambda back to `nros_cpp_publisher_publish_streamed`
+      via the standard callback shape.
+      Tests: `packages/core/nros-rmw-cffi/tests/publish_streamed.rs`
+      drives both the native-slot and staging-buffer paths
+      against a stub vtable that records the chunked input —
+      both paths produce byte-identical wire output. 2 tests,
+      green under `cargo test -p nros-rmw-cffi --test
+      publish_streamed --features alloc`.
 
 ### Thread F — Ping primitive
 

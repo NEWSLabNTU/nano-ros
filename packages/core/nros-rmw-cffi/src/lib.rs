@@ -603,6 +603,34 @@ pub struct NrosRmwVtable {
             out_lens: *mut usize,
         ) -> i32,
     >,
+
+    // ---- Phase 124.E.1 — streamed publish ----
+    /// Caller hands the backend two callbacks. The backend invokes
+    /// `size_cb` once to learn the total payload length, then
+    /// `chunk_cb` repeatedly to fill the slot in chunks. Lets big
+    /// messages skip a per-publisher staging buffer on RAM-
+    /// constrained nodes.
+    ///
+    /// NULL fn pointer = backend doesn't stream; the runtime falls
+    /// back to a stack staging buffer (capped at the configured
+    /// `NROS_MAX_STREAM_CHUNK`) + `publish_raw` so user code can
+    /// commit to the streamed API regardless of backend support.
+    pub publish_streamed: Option<
+        unsafe extern "C" fn(
+            publisher: *mut NrosRmwPublisher,
+            size_cb: unsafe extern "C" fn(
+                out_total_len: *mut usize,
+                user_ctx: *mut core::ffi::c_void,
+            ),
+            chunk_cb: unsafe extern "C" fn(
+                out_buf: *mut u8,
+                cap: usize,
+                out_written: *mut usize,
+                user_ctx: *mut core::ffi::c_void,
+            ),
+            user_ctx: *mut core::ffi::c_void,
+        ) -> NrosRmwRet,
+    >,
 }
 
 // ============================================================================
@@ -1809,6 +1837,69 @@ impl Publisher for CffiPublisher {
         Ok(())
     }
 
+    fn publish_streamed(
+        &self,
+        size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
+        chunk_cb: unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut core::ffi::c_void,
+        ),
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        // Phase 124.E.1+2 — vtable forwarder. If the backend exposes
+        // `publish_streamed` natively, dispatch in one hop so the
+        // callbacks land directly inside the backend's outbound
+        // buffer (no staging copy). Otherwise fall back to the
+        // `Publisher::publish_streamed` default body, which runs a
+        // stack staging buffer + `publish_raw`.
+        if let Some(f) = self.vtable.publish_streamed {
+            let mut view = NrosRmwPublisher {
+                topic_name: self.topic_name_buf.as_ptr(),
+                type_name: self.type_name_buf.as_ptr(),
+                qos: self.qos,
+                can_loan_messages: self.can_loan_messages,
+                _reserved: [0u8; 7],
+                backend_data: self.backend_data,
+            };
+            let ret = unsafe { f(&mut view, size_cb, chunk_cb, user_ctx) };
+            if ret != NROS_RMW_RET_OK {
+                return Err(error_from_ret(ret));
+            }
+            return Ok(());
+        }
+        // Inlined staging-buffer fallback. Mirrors the trait default
+        // body so the override doesn't recurse through dynamic
+        // dispatch — the default body would resolve back to this
+        // function and deadlock.
+        const STAGE_CAP: usize = 4096;
+        let mut total = 0usize;
+        unsafe { size_cb(&mut total as *mut usize, user_ctx) };
+        if total > STAGE_CAP {
+            return Err(TransportError::BufferTooSmall);
+        }
+        let mut stage = [0u8; STAGE_CAP];
+        let mut written_so_far = 0usize;
+        while written_so_far < total {
+            let mut chunk_written = 0usize;
+            let remaining = total - written_so_far;
+            unsafe {
+                chunk_cb(
+                    stage.as_mut_ptr().add(written_so_far),
+                    remaining,
+                    &mut chunk_written as *mut usize,
+                    user_ctx,
+                );
+            }
+            if chunk_written == 0 {
+                return Err(TransportError::BufferTooSmall);
+            }
+            written_so_far += chunk_written;
+        }
+        self.publish_raw(&stage[..total])
+    }
+
     fn buffer_error(&self) -> TransportError {
         TransportError::BufferTooSmall
     }
@@ -2636,6 +2727,7 @@ mod tests {
         sub_release: None,
         service_server_available: None,
         try_recv_sequence: None,
+        publish_streamed: None,
     };
 
     #[test]
