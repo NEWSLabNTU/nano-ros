@@ -189,6 +189,16 @@ not Rust-only.
 
 ### 2 — Dispatch primitive
 
+**Co-design with Phase 104.C.6.b** (already landed, commit
+`4c5cb87f`). That commit added `set_wake_signal(session, *flag)`
+to the vtable: backends store an executor-supplied flag pointer
+and raise it when their `drive_io` observes work. Phase 124
+Thread B extends this from "raise a flag the executor polls"
+into "signal a condvar the executor blocks on" — sub-poll-period
+wake latency for the single-Executor case + bridge-node parity
+with multi-session timeout amplification mitigation that
+C.6.b already shipped.
+
 Per-Executor (or per-Session, configurable) dispatch state.
 Lives in `nros-rmw-cffi`, NOT in the vtable:
 
@@ -443,6 +453,11 @@ independent additions.
       (or worker-thread enqueue) calls
       `nros_rmw_cffi_wake_dispatcher(session)` once per drain.
       One-line addition per backend.
+      Builds on phase 104.C.6.b's `set_wake_signal` plumbing —
+      the wake call replaces the flag-raise with a condvar
+      signal. Zenoh + DDS backends already have the
+      drive_io-observed-work hook from C.6.b; this sub-item
+      promotes it from flag-raise to condvar-signal.
       **Files:** `packages/zpico/nros-rmw-zenoh/src/...`,
       `packages/xrce/nros-rmw-xrce/src/...`,
       `packages/dds/nros-rmw-dds/src/...`,
