@@ -478,15 +478,20 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-node/src/executor/spin.rs`,
       `packages/core/nros-node/src/executor/action.rs`.
 
-- [~] **104.C.5 — `multi-backend` Cargo feature on `nros`.**
+- [x] **104.C.5 — `multi-backend` Cargo feature on `nros`.**
       Lifts the `compile_error!` mutual-exclusion check on
       the four `rmw-*` features (post-104.A those features
       are inert aliases). Default off. Audit
       `nros/build.rs` for any other assumptions of single-
       backend.
-      **Files:**
-      `packages/core/nros/Cargo.toml`,
-      `packages/core/nros/build.rs`.
+      **Done:** Post-104.A, the four `rmw-*-cffi` umbrella
+      features only forward `nros-node/rmw-*-cffi`
+      (`packages/core/nros/Cargo.toml`:51-53) — no concrete
+      `nros-rmw-<backend>` deps, no `compile_error!`
+      mutual-exclusion gate, no `build.rs`. The bridge demo
+      enables both `rmw-zenoh-cffi` + `rmw-dds-cffi` and
+      links cleanly. No further work needed.
+      **Files:** `packages/core/nros/Cargo.toml`.
 
 - [ ] **104.C.6 — Shared executor wake.**
       Replace per-session wakers with a shared
@@ -516,43 +521,53 @@ C++-side logic; C surface stays canonical.
 Building the `zenoh-to-dds` bridge (104.C.10) exposed concrete
 follow-up items that finish the rclcpp-aligned story:
 
-- [ ] **104.C.3.3.a — Typed `_on(node_id, ...)` register
+- [x] **104.C.3.3.a — Typed `_on(node_id, ...)` register
       variants.** Today only
       `register_subscription_buffered_raw_on` is Node-aware
       (Phase 104.C.3.2). Mirror the rest using the same
-      template:
-      - `register_subscription_buffered_on<M, F>` (typed)
-      - `register_subscription_on<M, F>` (typed convenience)
-      - `register_subscription_sized_on<M, F, RX_BUF>`
-      - `register_service_on<S, F>` / `register_service_raw_on`
-      - `register_service_client_on` / `_raw_on`
-      - `register_action_server_on` / `_raw_on`
-      - `register_action_client_on` / `_raw_on`
-      - `register_timer_on` (no session needed but Node-bound
-        for telemetry + per-Node SchedContext inheritance).
-      ~15 methods; each is a 6-line refactor over the existing
-      method via `session_at_mut(node.session_idx)`.
-      **Files:** `packages/core/nros-node/src/executor/spin.rs`.
+      template.
+      **Done in commits** `825e3015`, `9a9d5667`,
+      `313cfa59`, `a5aca94a`: 13 `_on` factories shipped —
+      register_subscription_on / _sized_on / _buffered_on,
+      register_subscription_buffered_raw_on,
+      register_subscription_raw_with_qos_sized_on,
+      register_subscription_with_info_on / _sized_on,
+      register_subscription_with_safety_on / _sized_on
+      (cfg-gated), register_service_on / _sized_on,
+      register_service_raw_sized_on,
+      register_service_client_raw_sized_on,
+      register_action_server_raw_sized_on,
+      register_action_client_raw_sized_on. Each uses an
+      `_inner(Option<NodeId>, ...)` template shared by legacy
+      + `_on` entry points. Timer `_on` is N/A (no session
+      dispatch). Per-Node SchedContext inheritance wired in
+      104.C.4.
+      **Files:** `packages/core/nros-node/src/executor/spin.rs`,
+      `packages/core/nros-node/src/executor/action.rs`.
 
-- [ ] **104.C.3.3.b — `ExecutorConfig::default()`.** Bridge
+- [x] **104.C.3.3.b — `ExecutorConfig::default()`.** Bridge
       example currently uses `from_env()` because no `Default`
       impl exists. rclcpp users expect
       `ExecutorConfig::default()`. Trivial.
+      **Done in commit `e6bf9852`:** `ExecutorConfig::default_const()`
+      + `impl Default for ExecutorConfig` added.
       **Files:** `packages/core/nros-node/src/executor/types.rs`.
 
-- [ ] **104.C.3.3.c — `Executor::spin()` no-arg sugar.**
+- [x] **104.C.3.3.c — `Executor::spin()` no-arg sugar.**
       Existing `spin(Duration)` is `-> !`. Add `spin()` that
       defaults to a sensible 10-100 ms tick. Match
       `rclcpp::spin(node)`.
+      **Done in commit `e6bf9852`:** `Executor::spin_default()`
+      at 50 ms tick.
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **104.C.3.3.d — Flatten `with_node` double-`?`.**
+- [x] **104.C.3.3.d — Flatten `with_node` double-`?`.**
       Today's `with_node(node_id, |n| n.create_...()?)??` is
       awkward. Add `with_node_try(node_id, |n| Result<R, E>)`
       that flattens both error layers when the closure already
-      returns `Result<_, NodeError>`. Or `with_node` could
-      always require the closure to return `Result` and use
-      `Result::flatten`.
+      returns `Result<_, NodeError>`.
+      **Done in commit `e6bf9852`:** `Executor::with_node_try`
+      flat-Result variant added alongside `with_node`.
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
 
 - [x] **104.C.3.3.e — Backend-ctor ordering doc.** Multiple
@@ -568,13 +583,16 @@ follow-up items that finish the rclcpp-aligned story:
       property. Cross-references bridge example.
       **Files:** `book/src/internals/rmw-backends.md`.
 
-- [ ] **104.C.3.3.f — Bridge example `.gitignore` +
+- [x] **104.C.3.3.f — Bridge example `.gitignore` +
       workspace exclusion polish.** The
       `examples/native/rust/bridge/zenoh-to-dds/` directory
       needs its own `.gitignore` so `target/` + `Cargo.lock`
       don't get committed. The repo-root `.gitignore` doesn't
       catch nested example targets; per-example file is the
       established pattern.
+      **Done:** `.gitignore` shipped with `/target/` +
+      `/Cargo.lock`. Workspace exclusion already in place
+      (example crate not a workspace member).
       **Files:**
       `examples/native/rust/bridge/zenoh-to-dds/.gitignore`.
 
