@@ -47,9 +47,10 @@ wrappers + routing tests). As of 2026-05-14:
 - **C — service availability probe:** full stack + routing test.
   Done. Acceptance E2E (100 ms timing) pending.
 - **D — sequence take:** vtable slot + loop fallback + C/C++/Rust
-  wrappers + routing test. Native batch (D.3) deferred — upstream
-  `rmw_zenoh` loops too; zenoh-pico's single-slot buffer needs a
-  ring-buffer rewrite for a real batch.
+  wrappers + routing test. Native batch (D.3) landed for all three
+  capable backends — Cyclone (`dds_take`), dust-dds
+  (`DataReader::take`), zenoh-pico (new SPSC ring). XRCE + FastDDS
+  keep the loop fallback (no native take_n; matches upstream).
 - **E — continuous serialization:** vtable slot + staging-buffer
   fallback + C/C++/Rust wrappers + routing test + **zenoh-pico
   native impl** via `z_bytes_writer`. XRCE deferred.
@@ -57,10 +58,9 @@ wrappers + routing tests). As of 2026-05-14:
   + **zenoh-pico native impl** via `zp_send_keep_alive`. XRCE /
   DDS deferred.
 
-Remaining open: D.3 (zenoh ring buffer + Cyclone/dust-dds native
-take), E.3/F.2 XRCE (needs a Rust-side `XrceRmw` adapter), and
-the network-E2E acceptance tests gated on those impls. Sub-phase
-detail in §"Work items" below.
+Remaining open: E.3/F.2 XRCE (needs a Rust-side `XrceRmw`
+adapter), and the network-E2E acceptance tests gated on those
+impls. Sub-phase detail in §"Work items" below.
 
 **Priority.** P1 (zero-copy + dispatch) / P2 (probe + sequence +
 continuous + ping). P1 items unblock the Phase 110 PiCAS work
