@@ -30,6 +30,11 @@ rmw-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
 # Phase 115.L.2 — zenoh-pico via the C vtable.
 rmw-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 
+# Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
+# through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /
+# `_discard`, `nros_cpp_subscription_borrow` / `_release`).
+lending = ["rmw-cffi", "nros/lending"]
+
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 link-tcp = ["nros/link-tcp"]
 link-udp-unicast = ["nros/link-udp-unicast"]

@@ -57,6 +57,88 @@ template <typename M> class Publisher {
         return Result(nros_cpp_publish_raw(storage_, data, len));
     }
 
+    // ====================================================================
+    // Phase 124.A.7 — zero-copy publish (loan / commit / discard)
+    // ====================================================================
+
+    /// Phase 124.A.7 — writable slot returned by `Publisher::loan`. RAII:
+    /// `commit(actual_len)` sends + consumes; `discard()` abandons + consumes;
+    /// `Drop` without either calls discard automatically.
+    class Loan {
+      public:
+        Loan() : pub_(nullptr), buf_(nullptr), cap_(0), token_(nullptr) {}
+        Loan(Loan&& o) : pub_(o.pub_), buf_(o.buf_), cap_(o.cap_), token_(o.token_) {
+            o.pub_ = nullptr;
+            o.token_ = nullptr;
+        }
+        Loan& operator=(Loan&& o) {
+            if (this != &o) {
+                release();
+                pub_ = o.pub_; buf_ = o.buf_; cap_ = o.cap_; token_ = o.token_;
+                o.pub_ = nullptr; o.token_ = nullptr;
+            }
+            return *this;
+        }
+        Loan(const Loan&) = delete;
+        Loan& operator=(const Loan&) = delete;
+        ~Loan() { release(); }
+
+        /// Writable view of the loaned bytes.
+        uint8_t* data() { return buf_; }
+        const uint8_t* data() const { return buf_; }
+        size_t capacity() const { return cap_; }
+
+        bool is_valid() const { return token_ != nullptr; }
+
+        /// Send `actual_len` bytes. Consumes the loan.
+        Result commit(size_t actual_len) {
+            if (!token_) return Result(ErrorCode::NotInitialized);
+            nros_cpp_ret_t ret = nros_cpp_publisher_commit(pub_, token_, actual_len);
+            pub_ = nullptr; token_ = nullptr; buf_ = nullptr; cap_ = 0;
+            return Result(ret);
+        }
+
+        /// Abandon without sending. Consumes the loan.
+        Result discard() {
+            if (!token_) return Result::success();
+            nros_cpp_ret_t ret = nros_cpp_publisher_discard(pub_, token_);
+            pub_ = nullptr; token_ = nullptr; buf_ = nullptr; cap_ = 0;
+            return Result(ret);
+        }
+
+        /// Internal constructor — callers use `Publisher::loan()` not
+        /// this directly.
+        Loan(void* pub, uint8_t* buf, size_t cap, void* token)
+            : pub_(pub), buf_(buf), cap_(cap), token_(token) {}
+
+      private:
+        void release() {
+            if (token_ && pub_) {
+                nros_cpp_publisher_discard(pub_, token_);
+                token_ = nullptr;
+            }
+        }
+
+        void* pub_;
+        uint8_t* buf_;
+        size_t cap_;
+        void* token_;
+    };
+
+    /// Loan a writable slot of at least `requested_len` bytes. The returned
+    /// `Loan` is RAII: call `commit(actual_len)` to send, `discard()` to
+    /// abandon, or let it drop (auto-discard).
+    Expected<Loan> loan(size_t requested_len) {
+        if (!initialized_) return Expected<Loan>::error(Result(ErrorCode::NotInitialized));
+        uint8_t* buf = nullptr;
+        size_t cap = 0;
+        void* token = nullptr;
+        nros_cpp_ret_t ret =
+            nros_cpp_publisher_loan(storage_, requested_len, &buf, &cap, &token);
+        if (ret != 0) return Expected<Loan>::error(Result(ret));
+        return Expected<Loan>::ok(Loan{storage_, buf, cap, token});
+    }
+
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
 

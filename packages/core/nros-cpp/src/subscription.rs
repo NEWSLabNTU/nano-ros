@@ -157,6 +157,79 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
     }
 }
 
+// ============================================================================
+// Phase 124.A.7 — zero-copy subscription borrow / release
+// ============================================================================
+
+/// Phase 124.A.7 — borrow the next message in place.
+///
+/// On success, `*out_buf` points at `*out_len` bytes (read-only) until
+/// the caller calls `nros_cpp_subscription_release(storage, token)`.
+///
+/// Returns `> 0` (length), `0` (no message), or negative error code.
+///
+/// # Safety
+/// All pointer parameters must be valid. Only one outstanding borrow
+/// per subscription is allowed.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_borrow(
+    storage: *mut c_void,
+    out_buf: *mut *const u8,
+    out_len: *mut usize,
+    out_token: *mut *mut c_void,
+) -> i32 {
+    if storage.is_null() || out_buf.is_null() || out_len.is_null() || out_token.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_rmw::SlotBorrowing;
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    match sub.try_borrow() {
+        Ok(Some(view)) => {
+            let buf_ptr = view.as_ref().as_ptr();
+            let len = view.as_ref().len();
+            // SAFETY: erase lifetime — caller's release contract ensures
+            // the view doesn't outlive the subscription.
+            let view_static: nros::internals::RmwView<'static> = unsafe {
+                core::mem::transmute::<
+                    nros::internals::RmwView<'_>,
+                    nros::internals::RmwView<'static>,
+                >(view)
+            };
+            let boxed = alloc::boxed::Box::new(view_static);
+            unsafe {
+                *out_buf = buf_ptr;
+                *out_len = len;
+                *out_token = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+            }
+            len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
+/// Phase 124.A.7 — release a previously borrowed view.
+///
+/// # Safety
+/// `storage` must be the subscription the token was borrowed from.
+/// `token` must come from a matching `nros_cpp_subscription_borrow`
+/// and must not be reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_release(
+    storage: *mut c_void,
+    token: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || token.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let _view: alloc::boxed::Box<nros::internals::RmwView<'static>> = unsafe {
+        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwView<'static>)
+    };
+    NROS_CPP_RET_OK
+}
+
 /// Destroy a subscription (drop in place, no free).
 ///
 /// # Safety

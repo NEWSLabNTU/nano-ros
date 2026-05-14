@@ -132,6 +132,116 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
     }
 }
 
+// ============================================================================
+// Phase 124.A.7 — zero-copy publisher loan / commit / discard
+// ============================================================================
+
+/// Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
+/// the publisher's outbound buffer.
+///
+/// On success, `*out_buf` points at `*out_cap` writable bytes the
+/// caller fills in place. Pass `*out_token` back to
+/// `nros_cpp_publisher_commit` (to send) or
+/// `nros_cpp_publisher_discard` (to abandon).
+///
+/// # Safety
+/// All pointer parameters must be valid. `storage` must be an initialized
+/// publisher handle. The token persists across FFI calls; caller MUST
+/// commit OR discard before the publisher is destroyed.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_loan(
+    storage: *mut c_void,
+    requested_len: usize,
+    out_buf: *mut *mut u8,
+    out_cap: *mut usize,
+    out_token: *mut *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null()
+        || out_buf.is_null()
+        || out_cap.is_null()
+        || out_token.is_null()
+        || requested_len == 0
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    use nros_rmw::SlotLending;
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    match publisher.try_lend_slot(requested_len) {
+        Ok(Some(slot)) => {
+            // SAFETY: erase lifetime — caller's contract ensures commit
+            // / discard happens before publisher destruction.
+            let mut slot: nros::internals::RmwSlot<'static> = unsafe {
+                core::mem::transmute::<
+                    nros::internals::RmwSlot<'_>,
+                    nros::internals::RmwSlot<'static>,
+                >(slot)
+            };
+            let buf_ptr = slot.as_mut().as_mut_ptr();
+            let cap = slot.as_mut().len();
+            let boxed = alloc::boxed::Box::new(slot);
+            unsafe {
+                *out_buf = buf_ptr;
+                *out_cap = cap;
+                *out_token = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => crate::NROS_CPP_RET_TRY_AGAIN,
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
+/// Phase 124.A.7 — commit a previously loaned slot.
+///
+/// # Safety
+/// `storage` must be the publisher the token was loaned from. `token`
+/// must come from a matching `nros_cpp_publisher_loan` and must not be
+/// reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_commit(
+    storage: *mut c_void,
+    token: *mut c_void,
+    actual_len: usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || token.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_rmw::SlotLending;
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> = unsafe {
+        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>)
+    };
+    slot.set_len(actual_len);
+    match publisher.commit_slot(*slot) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
+/// Phase 124.A.7 — abandon a previously loaned slot.
+///
+/// # Safety
+/// `storage` must be the publisher the token was loaned from. `token`
+/// must come from a matching `nros_cpp_publisher_loan` and must not be
+/// reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_discard(
+    storage: *mut c_void,
+    token: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || token.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> = unsafe {
+        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>)
+    };
+    NROS_CPP_RET_OK
+}
+
 /// Destroy a publisher (drop in place, no free).
 ///
 /// # Safety

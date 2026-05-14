@@ -471,6 +471,101 @@ pub unsafe extern "C" fn nros_subscription_try_recv_raw(
     }
 }
 
+// ============================================================================
+// Phase 124.A.6 — zero-copy subscription borrow / release
+// ============================================================================
+
+/// Phase 124.A.6 — borrow a read-only view of the next available message
+/// in place (zero-copy receive path).
+///
+/// Bypasses the subscription's staging buffer. On success, `*out_buf`
+/// points at `*out_len` bytes the caller can read directly. Caller MUST
+/// pass `*out_token` back to [`nros_subscription_release`] before
+/// requesting another borrow on the same subscription — only one
+/// outstanding view per subscription at a time.
+///
+/// Falls back to a `try_recv_raw` copy into the staging buffer when the
+/// active backend's vtable doesn't expose a native borrow slot.
+///
+/// # Returns
+/// * `> 0` — message length written into `*out_len`; view is ready.
+/// * `0` — no message ready right now.
+/// * negative — error (see `nros_ret_t`).
+///
+/// # Safety
+/// * `subscription` must be a valid polling subscription.
+/// * `out_buf` / `out_len` / `out_token` must be valid pointers.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_borrow(
+    subscription: *mut nros_subscription_t,
+    out_buf: *mut *const u8,
+    out_len: *mut usize,
+    out_token: *mut *mut core::ffi::c_void,
+) -> i32 {
+    if subscription.is_null() || out_buf.is_null() || out_len.is_null() || out_token.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let subscription_mut = &mut *subscription;
+    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING {
+        return NROS_RET_BAD_SEQUENCE;
+    }
+
+    let raw = &mut *(subscription_mut._opaque.as_mut_ptr()
+        as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
+    // RawSubscription::try_borrow returns a RecvView bound to &mut raw.
+    // For the C-side token plumbing, we erase the lifetime and Box it
+    // — the caller's release/destroy contract restores correctness.
+    match raw.try_borrow() {
+        Ok(Some(view)) => {
+            // RecvView impls Deref<Target=[u8]> on both paths.
+            let buf_ptr = (&*view).as_ptr();
+            let len = (&*view).len();
+            // SAFETY: erase the lifetime — caller must release before
+            // dropping the subscription or requesting another borrow.
+            let view_static: nros_node::RecvView<'static> = core::mem::transmute(view);
+            let boxed = alloc::boxed::Box::new(view_static);
+            *out_buf = buf_ptr;
+            *out_len = len;
+            *out_token = alloc::boxed::Box::into_raw(boxed) as *mut core::ffi::c_void;
+            len as i32
+        }
+        Ok(None) => 0,
+        Err(_) => NROS_RET_ERROR,
+    }
+}
+
+/// Phase 124.A.6 — release a previously borrowed view.
+///
+/// `token` MUST come from a prior `nros_subscription_borrow` on the
+/// SAME subscription; consuming it is mandatory before the
+/// subscription's next borrow / destroy.
+///
+/// # Safety
+/// * `subscription` must be the subscription the token was borrowed from.
+/// * `token` must not be NULL and must not be reused after this call.
+#[cfg(feature = "lending")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_release(
+    subscription: *mut nros_subscription_t,
+    token: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    if subscription.is_null() || token.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let subscription_mut = &mut *subscription;
+    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING {
+        return NROS_RET_BAD_SEQUENCE;
+    }
+    // SAFETY: token came from `Box::into_raw(Box<RecvView<'static>>)`
+    // inside `nros_subscription_borrow`. Reconstitute and drop —
+    // RecvView::drop fires the backend's sub_release (or no-op for
+    // the staging-buffer fallback path).
+    let _view: alloc::boxed::Box<nros_node::RecvView<'static>> =
+        alloc::boxed::Box::from_raw(token as *mut nros_node::RecvView<'static>);
+    NROS_RET_OK
+}
+
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]

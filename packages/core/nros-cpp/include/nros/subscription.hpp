@@ -89,6 +89,67 @@ template <typename M> class Subscription {
         return Result::success();
     }
 
+    // ====================================================================
+    // Phase 124.A.7 — zero-copy receive (borrow / release)
+    // ====================================================================
+
+    /// Phase 124.A.7 — read-only view returned by `Subscription::borrow`.
+    /// RAII: `Drop` releases the view back to the subscriber.
+    class View {
+      public:
+        View() : sub_(nullptr), buf_(nullptr), len_(0), token_(nullptr) {}
+        View(View&& o) : sub_(o.sub_), buf_(o.buf_), len_(o.len_), token_(o.token_) {
+            o.sub_ = nullptr;
+            o.token_ = nullptr;
+        }
+        View& operator=(View&& o) {
+            if (this != &o) {
+                release();
+                sub_ = o.sub_; buf_ = o.buf_; len_ = o.len_; token_ = o.token_;
+                o.sub_ = nullptr; o.token_ = nullptr;
+            }
+            return *this;
+        }
+        View(const View&) = delete;
+        View& operator=(const View&) = delete;
+        ~View() { release(); }
+
+        const uint8_t* data() const { return buf_; }
+        size_t size() const { return len_; }
+        bool empty() const { return token_ == nullptr; }
+
+        /// Internal constructor — callers use `Subscription::try_borrow()`.
+        View(void* sub, const uint8_t* buf, size_t len, void* token)
+            : sub_(sub), buf_(buf), len_(len), token_(token) {}
+
+      private:
+        void release() {
+            if (token_ && sub_) {
+                nros_cpp_subscription_release(sub_, token_);
+                token_ = nullptr;
+            }
+        }
+
+        void* sub_;
+        const uint8_t* buf_;
+        size_t len_;
+        void* token_;
+    };
+
+    /// Phase 124.A.7 — try to borrow the next message in place. Returns
+    /// `View` with data when a message is ready, empty `View` when not.
+    /// On error returns `Expected::error`.
+    Expected<View> try_borrow() {
+        if (!initialized_) return Expected<View>::error(Result(ErrorCode::NotInitialized));
+        const uint8_t* buf = nullptr;
+        size_t len = 0;
+        void* token = nullptr;
+        int32_t rc = nros_cpp_subscription_borrow(storage_, &buf, &len, &token);
+        if (rc < 0) return Expected<View>::error(Result(rc));
+        if (rc == 0) return Expected<View>::ok(View{});
+        return Expected<View>::ok(View{storage_, buf, len, token});
+    }
+
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
 

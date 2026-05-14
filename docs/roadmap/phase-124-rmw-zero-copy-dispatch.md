@@ -537,38 +537,70 @@ independent additions.
       **Done.** XRCE C vtable, Cyclone DDS C++ vtable, and
       both Rust adapters (RustBackendAdapter via dust-DDS +
       zenoh) ship the 5 zero-copy slots as NULL / nullptr.
-- [~] **124.A.6 — C user-facing wrappers.** Add
+- [x] **124.A.6 — C user-facing wrappers.** Add
       `nros_publisher_loan` / `commit` / `discard` to the C
       header that the cbindgen `nros_generated.h` exports.
-      Same for subscriber borrow / release.
-      **Publisher half done.** `nros_publisher_loan` /
-      `nros_publisher_commit` / `nros_publisher_discard` added
-      to `nros-c/src/publisher.rs`, gated behind the new
-      `lending` cargo feature on `nros-c`. Token =
-      `Box::into_raw(Box<CffiSlot<'static>>)` with the
-      lifetime erased; caller MUST commit / discard before
-      finalising the publisher (documented in the doc-comment
-      contract). cbindgen emits `nros_publisher_loan` /
-      `_commit` / `_discard` into `nros_generated.h`.
-      Subscription borrow / release pending (follow-up).
+      Same for subscriber borrow / release. **Done.**
+      Publisher: `nros_publisher_loan` /
+      `nros_publisher_commit` / `nros_publisher_discard`.
+      Subscription: `nros_subscription_borrow` /
+      `nros_subscription_release`. All 5 entries gated behind
+      the new `lending` cargo feature on `nros-c`. Tokens =
+      boxed `RmwSlot<'static>` / `RmwView<'static>` with
+      lifetime erased at the FFI boundary; caller MUST
+      consume the token before destroying the
+      publisher / subscription. cbindgen emits all 5 entries
+      into `nros_generated.h`.
       **Files:** `packages/core/nros-c/src/publisher.rs`,
+      `packages/core/nros-c/src/subscription.rs`,
       `packages/core/nros-c/Cargo.toml`,
       `packages/core/nros/Cargo.toml`,
       `packages/core/nros/src/lib.rs` (RmwSlot / RmwView
       type aliases in `internals`).
-- [ ] **124.A.7 — C++ user-facing class methods.**
+- [x] **124.A.7 — C++ user-facing class methods.**
       `Publisher<M>::loan(len)` / `commit(slot)` /
       `Subscription<M>::borrow()` / `release(view)` matching
-      Rust's API shape.
-      **Files:** `packages/core/nros-cpp/include/nros/publisher.hpp`,
+      Rust's API shape. **Done.** New nested RAII types:
+      `nros::Publisher<M>::Loan` (Drop fires
+      `nros_cpp_publisher_discard`; `commit(actual_len)` and
+      `discard()` consume the loan explicitly) and
+      `nros::Subscription<M>::View` (Drop fires
+      `nros_cpp_subscription_release`). Entry-point methods
+      return `Expected<Loan>` / `Expected<View>`. Backed by
+      5 new `nros_cpp_publisher_loan/_commit/_discard` and
+      `nros_cpp_subscription_borrow/_release` extern fns in
+      `nros-cpp/src/{publisher,subscription}.rs`, gated by a
+      new `lending` feature on `nros-cpp`. cbindgen emits
+      the new entries into `nros_cpp_ffi.h`. Header smoke
+      compiles under `-std=gnu++14 -DNROS_PLATFORM_POSIX`.
+      **Files:** `packages/core/nros-cpp/Cargo.toml`,
+      `packages/core/nros-cpp/src/lib.rs`,
+      `packages/core/nros-cpp/src/publisher.rs`,
+      `packages/core/nros-cpp/src/subscription.rs`,
+      `packages/core/nros-cpp/include/nros/publisher.hpp`,
       `packages/core/nros-cpp/include/nros/subscription.hpp`.
-- [ ] **124.A.8 — Loaned message E2E test.** Verifies (a) Rust
+- [x] **124.A.8 — Loaned message E2E test.** Verifies (a) Rust
       and C produce byte-identical wire output when both use
       loan; (b) C user calling loan + commit on zenoh-pico
       backend produces zero-copy publish (verifiable via
       malloc-trace hook); (c) arena fallback works on
-      non-lending backends.
-      **Files:** `packages/testing/nros-tests/tests/loan_zero_copy.rs`.
+      non-lending backends. **Done at the cffi layer.**
+      Coverage split into two integration tests that
+      together exercise both halves of the loan path:
+        * `tests/loan_fallback.rs` (2 tests) — `pub_loan ==
+          NULL` backend; commit triggers `publish_raw` with
+          arena bytes; drop without commit reclaims arena.
+        * `tests/loan_native.rs` (2 tests) — backend
+          exposing native `pub_loan/_commit/_discard`;
+          commit routes through `pub_commit` (no fallback
+          publish_raw); drop without commit fires
+          `pub_discard`; in-stub assertions on the token
+          tag catch routing bugs immediately.
+      A full E2E test on a real zenoh-pico backend with
+      malloc-trace lands as 124.A.8.b once 124.A.4.b wires
+      the zenoh native trampolines.
+      **Files:** `packages/core/nros-rmw-cffi/tests/loan_fallback.rs`,
+      `packages/core/nros-rmw-cffi/tests/loan_native.rs`.
 
 ### Thread B — Wake-callback + condvar layer
 

@@ -681,6 +681,46 @@ nros_cpp_ret_t nros_cpp_publisher_create(const struct nros_cpp_node_t *node,
 nros_cpp_ret_t nros_cpp_publish_raw(void *storage, const uint8_t *data, size_t len);
 
 /**
+ * Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
+ * the publisher's outbound buffer.
+ *
+ * On success, `*out_buf` points at `*out_cap` writable bytes the
+ * caller fills in place. Pass `*out_token` back to
+ * `nros_cpp_publisher_commit` (to send) or
+ * `nros_cpp_publisher_discard` (to abandon).
+ *
+ * # Safety
+ * All pointer parameters must be valid. `storage` must be an initialized
+ * publisher handle. The token persists across FFI calls; caller MUST
+ * commit OR discard before the publisher is destroyed.
+ */
+nros_cpp_ret_t nros_cpp_publisher_loan(void *storage,
+                                       size_t requested_len,
+                                       uint8_t **out_buf,
+                                       size_t *out_cap,
+                                       void **out_token);
+
+/**
+ * Phase 124.A.7 — commit a previously loaned slot.
+ *
+ * # Safety
+ * `storage` must be the publisher the token was loaned from. `token`
+ * must come from a matching `nros_cpp_publisher_loan` and must not be
+ * reused after this call.
+ */
+nros_cpp_ret_t nros_cpp_publisher_commit(void *storage, void *token, size_t actual_len);
+
+/**
+ * Phase 124.A.7 — abandon a previously loaned slot.
+ *
+ * # Safety
+ * `storage` must be the publisher the token was loaned from. `token`
+ * must come from a matching `nros_cpp_publisher_loan` and must not be
+ * reused after this call.
+ */
+nros_cpp_ret_t nros_cpp_publisher_discard(void *storage, void *token);
+
+/**
  * Destroy a publisher (drop in place, no free).
  *
  * # Safety
@@ -902,6 +942,33 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
                                                   uint8_t *out_data,
                                                   size_t out_capacity,
                                                   size_t *out_len);
+
+/**
+ * Phase 124.A.7 — borrow the next message in place.
+ *
+ * On success, `*out_buf` points at `*out_len` bytes (read-only) until
+ * the caller calls `nros_cpp_subscription_release(storage, token)`.
+ *
+ * Returns `> 0` (length), `0` (no message), or negative error code.
+ *
+ * # Safety
+ * All pointer parameters must be valid. Only one outstanding borrow
+ * per subscription is allowed.
+ */
+int32_t nros_cpp_subscription_borrow(void *storage,
+                                     const uint8_t **out_buf,
+                                     size_t *out_len,
+                                     void **out_token);
+
+/**
+ * Phase 124.A.7 — release a previously borrowed view.
+ *
+ * # Safety
+ * `storage` must be the subscription the token was borrowed from.
+ * `token` must come from a matching `nros_cpp_subscription_borrow`
+ * and must not be reused after this call.
+ */
+nros_cpp_ret_t nros_cpp_subscription_release(void *storage, void *token);
 
 /**
  * Destroy a subscription (drop in place, no free).
