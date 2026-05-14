@@ -375,6 +375,7 @@ dependencies = [
  "env_logger",
  "log",
  "nros",
+ "nros-platform-cffi",
  "nros-rmw-zenoh",
  "std_msgs",
 ]
@@ -451,7 +452,6 @@ version = "0.1.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
- "nros-platform-posix",
 ]
 
 [[package]]
@@ -462,16 +462,8 @@ version = "0.1.0"
 name = "nros-platform-cffi"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "nros-platform-api",
-]
-
-[[package]]
-name = "nros-platform-posix"
-version = "0.1.0"
-dependencies = [
- "libc",
- "nros-platform-api",
- "nros-platform-cffi",
 ]
 
 [[package]]
