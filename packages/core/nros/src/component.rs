@@ -346,6 +346,25 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         action_name: &str,
     ) -> ComponentResult<ComponentActionServer<'entity, A>> {
+        self.create_action_server_with_callbacks::<A>(
+            id,
+            callback_id,
+            callback_id,
+            callback_id,
+            action_name,
+        )
+    }
+
+    /// Declare an action server with distinct goal/cancel/accepted callbacks.
+    #[track_caller]
+    pub fn create_action_server_with_callbacks<'entity, 'goal, 'cancel, 'accepted, A: RosAction>(
+        &mut self,
+        id: EntityId<'entity>,
+        goal_callback_id: CallbackId<'goal>,
+        cancel_callback_id: CallbackId<'cancel>,
+        accepted_callback_id: CallbackId<'accepted>,
+        action_name: &str,
+    ) -> ComponentResult<ComponentActionServer<'entity, A>> {
         let mut metadata = entity_metadata(
             id,
             self.id,
@@ -355,8 +374,12 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
             A::ACTION_HASH,
             QosSettings::default(),
         )?;
-        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_id = Some(copy_str(goal_callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.action_cancel_callback_id = Some(copy_str(cancel_callback_id.as_str())?);
+        metadata.action_cancel_source = metadata.callback_source.clone();
+        metadata.action_accepted_callback_id = Some(copy_str(accepted_callback_id.as_str())?);
+        metadata.action_accepted_source = metadata.callback_source.clone();
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(ComponentActionServer::new(id))

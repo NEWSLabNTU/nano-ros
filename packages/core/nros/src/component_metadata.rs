@@ -230,6 +230,10 @@ pub struct EntityMetadata {
     pub callback_id: Option<MetadataString>,
     pub callback_source: SourceLocationMetadata,
     pub callback_group: Option<MetadataString>,
+    pub action_cancel_callback_id: Option<MetadataString>,
+    pub action_cancel_source: SourceLocationMetadata,
+    pub action_accepted_callback_id: Option<MetadataString>,
+    pub action_accepted_source: SourceLocationMetadata,
     pub period_ms: Option<u64>,
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
@@ -649,6 +653,40 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                         .map(|group| group.as_str().into()),
                 });
             }
+            if entity.kind == EntityKind::ActionServer {
+                if let Some(cancel_id) = entity.action_cancel_callback_id.as_ref() {
+                    if !callbacks
+                        .iter()
+                        .any(|callback: &SourceCallbackRef| callback.id == cancel_id.as_str())
+                    {
+                        callbacks.push(SourceCallbackRef {
+                            id: cancel_id.as_str().into(),
+                            kind: "action_cancel",
+                            source: entity.action_cancel_source.clone(),
+                            group: entity
+                                .callback_group
+                                .as_ref()
+                                .map(|group| group.as_str().into()),
+                        });
+                    }
+                }
+                if let Some(accepted_id) = entity.action_accepted_callback_id.as_ref() {
+                    if !callbacks
+                        .iter()
+                        .any(|callback: &SourceCallbackRef| callback.id == accepted_id.as_str())
+                    {
+                        callbacks.push(SourceCallbackRef {
+                            id: accepted_id.as_str().into(),
+                            kind: "action_accepted",
+                            source: entity.action_accepted_source.clone(),
+                            group: entity
+                                .callback_group
+                                .as_ref()
+                                .map(|group| group.as_str().into()),
+                        });
+                    }
+                }
+            }
         }
         callbacks
     }
@@ -683,6 +721,10 @@ pub(crate) fn entity_metadata(
         callback_id: None,
         callback_source: SourceLocationMetadata::empty(),
         callback_group: None,
+        action_cancel_callback_id: None,
+        action_cancel_source: SourceLocationMetadata::empty(),
+        action_accepted_callback_id: None,
+        action_accepted_source: SourceLocationMetadata::empty(),
         period_ms: None,
         parameter_type: None,
         parameter_default: None,
@@ -783,11 +825,21 @@ fn write_action_json(
     out: &mut impl core::fmt::Write,
     entity: &EntityMetadata,
 ) -> core::fmt::Result {
-    let callback = entity
+    let goal_callback = entity
         .callback_id
         .as_ref()
         .map(|id| id.as_str())
         .unwrap_or("");
+    let cancel_callback = entity
+        .action_cancel_callback_id
+        .as_ref()
+        .map(|id| id.as_str())
+        .unwrap_or(goal_callback);
+    let accepted_callback = entity
+        .action_accepted_callback_id
+        .as_ref()
+        .map(|id| id.as_str())
+        .unwrap_or(goal_callback);
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
@@ -796,11 +848,11 @@ fn write_action_json(
     out.write_char(',')?;
     write_interface(out, entity.type_name, "action")?;
     out.write_char(',')?;
-    write_json_field(out, "goal_callback", callback)?;
+    write_json_field(out, "goal_callback", goal_callback)?;
     out.write_char(',')?;
-    write_json_field(out, "cancel_callback", callback)?;
+    write_json_field(out, "cancel_callback", cancel_callback)?;
     out.write_char(',')?;
-    write_json_field(out, "accepted_callback", callback)?;
+    write_json_field(out, "accepted_callback", accepted_callback)?;
     write!(out, "}}")
 }
 
@@ -1083,7 +1135,7 @@ mod tests {
     #[cfg(feature = "std")]
     #[test]
     fn source_metadata_json_uses_agent_a_schema_shape() {
-        let mut recorder = MetadataRecorder::<1, 4, 1>::new();
+        let mut recorder = MetadataRecorder::<1, 5, 1>::new();
         recorder
             .push_node(NodeId::new("node_talker"), "talker", "/", 0)
             .unwrap();
@@ -1137,6 +1189,35 @@ mod tests {
             column: Some(9),
         };
         recorder.push_entity(param).unwrap();
+        let mut action = entity_metadata(
+            EntityId::new("act_count"),
+            NodeId::new("node_talker"),
+            EntityKind::ActionServer,
+            "~/count",
+            "example_interfaces::action::dds_::Fibonacci_",
+            "hash",
+            crate::qos::DEFAULT,
+        )
+        .unwrap();
+        action.callback_id = Some(copy_str("cb_count_goal").unwrap());
+        action.callback_source = SourceLocationMetadata {
+            artifact: copy_str("src/talker.rs").unwrap(),
+            line: Some(90),
+            column: Some(5),
+        };
+        action.action_cancel_callback_id = Some(copy_str("cb_count_cancel").unwrap());
+        action.action_cancel_source = SourceLocationMetadata {
+            artifact: copy_str("src/talker.rs").unwrap(),
+            line: Some(96),
+            column: Some(5),
+        };
+        action.action_accepted_callback_id = Some(copy_str("cb_count_accepted").unwrap());
+        action.action_accepted_source = SourceLocationMetadata {
+            artifact: copy_str("src/talker.rs").unwrap(),
+            line: Some(104),
+            column: Some(5),
+        };
+        recorder.push_entity(action).unwrap();
         recorder
             .push_callback_effect(
                 CallbackId::new("cb_timer"),
@@ -1165,6 +1246,11 @@ mod tests {
             json.contains("\"source\":{\"artifact\":\"src/talker.rs\",\"line\":42,\"column\":5}")
         );
         assert!(json.contains("\"name\":\"rate_hz\",\"default\":10,\"read_only\":false"));
+        assert!(json.contains("\"goal_callback\":\"cb_count_goal\""));
+        assert!(json.contains("\"cancel_callback\":\"cb_count_cancel\""));
+        assert!(json.contains("\"accepted_callback\":\"cb_count_accepted\""));
+        assert!(json.contains("\"kind\":\"action_cancel\""));
+        assert!(json.contains("\"kind\":\"action_accepted\""));
         assert!(json.contains("\"generator\":\"nros-metadata-rust\""));
     }
 }
