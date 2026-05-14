@@ -68,17 +68,20 @@ usize_is_size_t = true
 #
 # *_OPAQUE_U64S consts are excluded so that the real, feature-aware
 # values from `nros_config_generated.h` (emitted by build.rs) win
-# unambiguously. Letting cbindgen emit them would either #define them
-# to placeholder values (when running without features) or skip them
-# silently (when the value is a `u64s_for::<T>()` expression cbindgen
-# can't evaluate) — both cases produced a header that referenced
-# undefined or wrong-valued macros.
+# unambiguously. Letting cbindgen emit them can #define placeholder
+# values from the non-cffi cfg branch, which produces redefinition
+# warnings and wrong fallback storage sizes.
 exclude = [
     "SESSION_OPAQUE_U64S",
     "PUBLISHER_OPAQUE_U64S",
     "GUARD_HANDLE_OPAQUE_U64S",
     "EXECUTOR_OPAQUE_U64S",
     "NROS_LIFECYCLE_CTX_OPAQUE_U64S",
+    "SUBSCRIPTION_OPAQUE_U64S",
+    "SERVICE_SERVER_OPAQUE_U64S",
+    "SERVICE_CLIENT_OPAQUE_U64S",
+    "ACTION_SERVER_OPAQUE_U64S",
+    "ACTION_CLIENT_OPAQUE_U64S",
 ]
 
 [export.rename]
