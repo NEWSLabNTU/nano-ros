@@ -810,35 +810,49 @@ the same change as `set_wake_callback` lands.
 - [x] **124.D.1 — vtable slot.** Add `try_recv_sequence`.
 - [x] **124.D.2 — Loop fallback.** Runtime emits a
       `try_recv_raw` loop when `vt.try_recv_sequence == NULL`.
-- [ ] **124.D.3 — Backend impls.** Zenoh batch drain, Cyclone
-      `dds_take(max_samples)`, dust-dds equivalent. Zenoh-pico
-      shim holds at most one in-flight message per subscriber so
-      the loop fallback is already optimal; deferred until a
-      backend with a real native multi-take landing path appears.
-      Cyclone DDS native take wired in 117.X follow-up; dust-dds
-      pending matched-pub plumbing (same blocker as 124.C.2).
+- [ ] **124.D.3 — Backend impls.** Per-backend status after the
+      2026-05-14 upstream survey (refs cloned to `external/`):
 
-      **Upstream reference (`external/rmw_zenoh/rmw_zenoh_cpp/src/rmw_zenoh.cpp::rmw_take_sequence`,
-      `detail/rmw_subscription_data.cpp::take_one_message`):**
-      `rmw_zenoh` itself ships a per-message-loop implementation —
-      `rmw_take_sequence` is literally `while (taken < count) {
-      take_one_message(...); }`. It only achieves a real batch
-      because the C++ subscription owns an internal
-      `std::list<Message> message_queue_` filled from the zenoh
-      subscribe callback; the loop takes one mutex per message
-      from a queue that's already drained.
+      | Backend | Native batch? | API / location |
+      |---|---|---|
+      | Cyclone DDS | **YES** | `dds_take(reader, buf, info, count, maxs)` — single-call batch. `third-party/dds/cyclonedds/src/core/ddsc/include/dds/dds.h:3531`. Upstream `rmw_cyclonedds_cpp/src/rmw_node.cpp:3435` calls it directly. |
+      | dust-dds | **YES** | `DataReader::take(max_samples, ...)` returns `Vec<Sample<Foo>>` — real batch. `packages/dds/dust-dds/dds/src/dds/subscription/data_reader.rs:114`. |
+      | zenoh-pico | **INDIRECT** | No native take_n, but ships a built-in `z_ring_channel_sample_new` / `z_fifo_channel_sample_new` handler that buffers samples internally. Drain N times via `z_ring_handler_sample_try_recv`. `packages/zpico/zpico-sys/zenoh-pico/include/zenoh-pico/api/handlers.h:191,196`. |
+      | XRCE-DDS Client | **NO** | Single-msg poll. `external/rmw-microxrcedds/rmw_microxrcedds_c/src/rmw_take.c:95` is a per-msg loop. |
+      | FastDDS (via rmw_fastrtps) | **NO** | `_take_sequence` in `external/rmw_fastrtps/rmw_fastrtps_shared_cpp/src/rmw_take.cpp:135` is a per-msg loop — FastDDS has `take_next_sample` only. |
 
-      Reproducing that shape on zenoh-pico requires giving
-      `SubscriberBuffer` (currently a single-slot
-      `data: [u8; SUBSCRIBER_BUFFER_SIZE]`, `has_data: AtomicBool`,
-      `len: AtomicUsize`) a ring of N slots + queue-head/tail
-      indices + a per-slot atomic occupancy flag. The zenoh-pico
-      direct-write callback path also has to learn to land in the
-      next free slot. ~150-200 LOC plus tests; worth doing on its
-      own once a workload surfaces the cost — until then the loop
-      fallback matches upstream's observed behaviour exactly. The
-      vtable slot is in place so the native impl can drop in
-      without an ABI bump.
+      **Revised landing plan:**
+      - **`nros-rmw-cyclonedds`** (P1, easiest win): wire
+        `try_recv_sequence` → `dds_take(reader, buf, info, count, maxs)`
+        in one shot. Pure C++ adapter change in
+        `packages/dds/nros-rmw-cyclonedds/`. Estimate < 50 LOC.
+      - **`nros-rmw-dds` (dust-dds)** (P1): map
+        `try_recv_sequence` → `DataReader::take(max_samples,
+        ANY_SAMPLE_STATE, ANY_VIEW_STATE, ANY_INSTANCE_STATE)`,
+        copy returned Vec into the caller's `per_msg_cap`-strided
+        buffer.
+      - **`nros-rmw-zenoh`** (P2): correction to earlier D.3
+        notes — the "150-200 LOC custom ring" plan was wrong.
+        zenoh-pico already provides `z_ring_channel_sample_new` /
+        `z_fifo_channel_sample_new`. Switch
+        `SubscriberBuffer`'s single-slot to a small ring handler;
+        `try_recv_sequence` becomes `for i in 0..max { if
+        z_ring_handler_sample_try_recv(...) NODATA break; }`.
+        The refactor is bounded by replacing the current direct-
+        write callback with the handler's closure-based receive
+        path. ~80–120 LOC including tests.
+      - **`nros-rmw-xrce` / FastDDS**: keep loop fallback (matches
+        upstream behaviour exactly; no native API to invoke).
+
+      Reference snippet (rmw_zenoh's queue is the same idea as
+      zenoh-pico's built-in ring):
+      `external/rmw_zenoh/rmw_zenoh_cpp/src/rmw_zenoh.cpp::rmw_take_sequence`
+      loops `take_one_message` over `std::list<Message>
+      message_queue_` filled from the subscribe callback.
+
+      vtable slot already in place — native impls drop in without
+      ABI bump. Track per-backend wire-up in 117.X (Cyclone),
+      124.D.3.b (dust-dds), 124.D.3.c (zenoh-pico).
 - [x] **124.D.4 — C/C++ wrappers + test.** Test verifies 8
       messages drained in one call delivers all 8 + correct
       lengths.
