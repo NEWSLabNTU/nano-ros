@@ -9,6 +9,8 @@
 //!
 //! Environment variables (auto-set by justfile recipes):
 //!   THREADX_DIR  — ThreadX kernel source root (default: third-party/threadx/kernel)
+//!   NETX_DIR — NetX Duo source root for BSD compatibility headers
+//!              (default: third-party/threadx/netxduo)
 //!   NSOS_NETX_DIR — nsos-netx shim source (default: packages/drivers/nsos-netx)
 
 use std::env;
@@ -37,6 +39,12 @@ fn main() {
         threadx_port_dir.join("src").exists(),
         "ThreadX Linux port not found at {}",
         threadx_port_dir.display()
+    );
+    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
+    assert!(
+        netx_dir.join("common/inc").exists(),
+        "NetX Duo common/inc/ not found at {} — run `just threadx_linux setup`",
+        netx_dir.display()
     );
 
     // ---- Build ThreadX kernel ----
@@ -94,6 +102,9 @@ fn main() {
     let mut platform = cc::Build::new();
     configure_linux(&mut platform);
     add_threadx_includes(&mut platform, &threadx_dir, &threadx_port_dir, &config_dir);
+    platform.include(netx_dir.join("common/inc"));
+    platform.include(netx_dir.join("ports/linux/gnu/inc"));
+    platform.include(netx_dir.join("addons/BSD"));
     platform.include(&nros_platform_cffi_include);
     platform.file(nros_platform_threadx_dir.join("platform.c"));
     platform.file(nros_platform_threadx_dir.join("net.c"));
@@ -121,6 +132,7 @@ fn main() {
     println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
+    println!("cargo:rerun-if-env-changed=NETX_DIR");
     println!("cargo:rerun-if-env-changed=NSOS_NETX_DIR");
 }
 
@@ -135,7 +147,8 @@ fn configure_linux(build: &mut cc::Build) {
         .flag("-fdata-sections")
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
-        .define("TX_INCLUDE_USER_DEFINE_FILE", None);
+        .define("TX_INCLUDE_USER_DEFINE_FILE", None)
+        .define("NX_INCLUDE_USER_DEFINE_FILE", None);
     // Suppress common warnings in third-party code
     build.warnings(false);
 }

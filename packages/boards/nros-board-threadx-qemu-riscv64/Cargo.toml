@@ -11,7 +11,7 @@ name = "nros_board_threadx_qemu_riscv64"
 [dependencies]
 # Phase 121.3 — canonical symbols from ThreadX C port; see sibling
 # nros-board-threadx-linux for full rationale.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator"] }
 
 [build-dependencies]
 cc = "1"

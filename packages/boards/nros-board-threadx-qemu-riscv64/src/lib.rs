@@ -13,6 +13,11 @@
 
 #![no_std]
 
+// Keep `nros-platform` linked for Rust allocator registration. The
+// board's Cargo feature set enables `global-allocator`, which routes
+// `alloc` through the ThreadX C platform byte pool.
+extern crate nros_platform as _;
+
 mod config;
 mod node;
 

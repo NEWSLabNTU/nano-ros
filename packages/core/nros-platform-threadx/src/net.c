@@ -6,7 +6,7 @@
  *
  *   nx_bsd_socket / connect / bind / listen / accept /
  *   send / recv / sendto / recvfrom / setsockopt / fcntl /
- *   getaddrinfo / freeaddrinfo / shutdown / close
+ *   getaddrinfo / freeaddrinfo / close
  *
  * NetX Duo's BSD layer must be initialised once at application
  * startup via `bsd_initialize(...)`; the application provides the
@@ -135,7 +135,6 @@ void nros_platform_tcp_close(void *sock_raw) {
     if (sock_raw == NULL) return;
     nros_threadx_socket_t *sock = (nros_threadx_socket_t *) sock_raw;
     if (sock->fd >= 0) {
-        (void) nx_bsd_shutdown(sock->fd, SHUT_RDWR);
         (void) nx_bsd_soc_close(sock->fd);
         sock->fd = -1;
     }

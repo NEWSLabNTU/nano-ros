@@ -147,6 +147,9 @@ if(NOT TARGET NanoRos::NanoRos)
   elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
       INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_NUTTX)
+  elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_THREADX)
   endif()
 
   if(UNIX AND NOT APPLE)
@@ -172,6 +175,13 @@ if(NOT TARGET NanoRos::NanoRos)
     endif()
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
       INTERFACE_LINK_LIBRARIES NrosPlatformPosix::nros_platform_posix)
+  elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+    if(NOT TARGET NrosPlatformThreadx::nros_platform_threadx)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosPlatformThreadx CONFIG PATHS "${_NANO_ROS_PREFIX}")
+    endif()
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES NrosPlatformThreadx::nros_platform_threadx)
   endif()
 
   # Treat warnings as errors for consumers of NanoRos::NanoRos. Catches
