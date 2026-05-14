@@ -1734,6 +1734,31 @@ pub trait ServiceClientTrait {
         true
     }
 
+    /// Phase 124.C.1 — graph-aware server-availability probe.
+    ///
+    /// Returns `Ok(true)` if at least one matching server has been
+    /// discovered, `Ok(false)` if none yet, or `Err(_)` if the
+    /// backend cannot answer (e.g. XRCE — micro-XRCE-DDS-Client has
+    /// no participant enumeration). Distinct from
+    /// [`is_server_ready`](Self::is_server_ready), which collapses
+    /// "don't know" and "no server" into the same `false` answer.
+    ///
+    /// User-facing surface: `Client<S>::server_available()` in Rust,
+    /// `nros_client_server_available()` in C/C++. Clients use this
+    /// to gate the first `call_raw` so a startup-ordering race
+    /// (client opens before server's discovery announcement lands)
+    /// doesn't surface as a request-side timeout.
+    ///
+    /// Default impl: `Err(TransportError::Unsupported)` — backends
+    /// that support graph introspection (zenoh queryable interest,
+    /// DDS built-in topic readers) opt in by overriding.
+    fn server_available(&self) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        Err(TransportError::Unsupported.into())
+    }
+
     /// Call a service with typed messages (blocking).
     ///
     /// **Deprecated — do not call.** The default body returns `Timeout`

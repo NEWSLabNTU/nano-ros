@@ -1226,6 +1226,78 @@ pub unsafe extern "C" fn nros_client_set_timeout(
     NROS_RET_OK
 }
 
+/// Phase 124.C.3 — synchronous, graph-aware "is the matching server up?"
+/// probe. Unlike [`nros_client_wait_for_service`] this never spins the
+/// executor: it asks the active RMW backend whether at least one
+/// matching server has been observed on the RMW graph and returns
+/// immediately.
+///
+/// `out` receives `1` if a server is visible, `0` if none is yet,
+/// `-1` if the backend cannot answer (e.g. XRCE without participant
+/// enumeration). Callers that want the same answer rounded to a
+/// hard yes/no should treat `-1` as "unknown — assume yes" or use
+/// [`nros_client_wait_for_service`] instead.
+///
+/// # Returns
+/// * `NROS_RET_OK` — `*out` was written (`0`, `1`, or `-1`).
+/// * `NROS_RET_INVALID_ARGUMENT` — `client` or `out` is null.
+/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
+/// * `NROS_RET_ERROR` — transport-level failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_server_available(
+    client: *mut nros_client_t,
+    out: *mut i32,
+) -> nros_ret_t {
+    validate_not_null!(client);
+    if out.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::ServiceClientTrait;
+
+        let client_ref = &mut *client;
+        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+            return NROS_RET_NOT_INIT;
+        }
+        let internal = &mut client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return NROS_RET_NOT_INIT;
+        }
+        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
+            Some(e) => e,
+            None => return NROS_RET_NOT_INIT,
+        };
+        match entry.handle.server_available() {
+            Ok(true) => {
+                *out = 1;
+                NROS_RET_OK
+            }
+            Ok(false) => {
+                *out = 0;
+                NROS_RET_OK
+            }
+            Err(_) => {
+                // Backend can't answer (Unsupported). Surface a sentinel
+                // so callers can distinguish "no" (0) from "don't know"
+                // (-1) without losing the OK status.
+                *out = -1;
+                NROS_RET_OK
+            }
+        }
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = client;
+        *out = -1;
+        NROS_RET_OK
+    }
+}
+
 /// Block until a matching service server is discoverable, or `timeout_ms`
 /// elapses. Mirrors `rclcpp::ClientBase::wait_for_service` and the
 /// the underlying `Client::wait_for_service`.

@@ -263,6 +263,29 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL = paired NULL with `sub_borrow`. */
     void (*sub_release)(nros_rmw_subscriber_t *subscriber, void *token);
+
+    /** Phase 124.C.1 — service-server availability probe.
+     *
+     *  Returns `1` if ≥ 1 matching server has been discovered on the
+     *  RMW graph, `0` if none yet, or a negative `nros_rmw_ret_t`
+     *  constant on backend error. The runtime exposes this to user
+     *  code as `nros_client_server_available()` /
+     *  `Client<S>::server_available()` — clients use it to gate the
+     *  first `call_raw` so a startup-ordering race doesn't surface as
+     *  a request-side timeout.
+     *
+     *  Implementation notes per backend:
+     *  - **Zenoh**: `z_session` tracks matched queryables via
+     *    interest declarations.
+     *  - **Cyclone DDS / dust-DDS**: built-in topic readers expose
+     *    matched-pub counts.
+     *  - **XRCE**: agent has no participant enumeration; return
+     *    `NROS_RMW_RET_UNSUPPORTED`.
+     *
+     *  NULL function pointer = backend cannot answer; the runtime
+     *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller. */
+    int32_t (*service_server_available)(
+        nros_rmw_service_client_t *client);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

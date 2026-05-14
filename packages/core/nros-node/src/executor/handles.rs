@@ -1846,6 +1846,23 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     pub fn service_is_ready(&self) -> bool {
         self.handle.is_server_ready()
     }
+
+    /// Phase 124.C.3 — graph-aware server-availability probe.
+    ///
+    /// Returns `Ok(true)` / `Ok(false)` when the backend can answer
+    /// (zenoh queryable interest, DDS built-in topic reader), or
+    /// `Err(NodeError::Transport(Unsupported))` when it can't (XRCE
+    /// agent without participant enumeration). Distinct from
+    /// [`service_is_ready`](Self::service_is_ready) — that one
+    /// collapses "no" and "don't know" into the same `false`.
+    ///
+    /// Used to gate the first `call_raw` so a startup-ordering race
+    /// (client opens before server's discovery announcement lands)
+    /// doesn't surface as a request-side timeout.
+    pub fn server_available(&self) -> Result<bool, NodeError> {
+        use nros_rmw::ServiceClientTrait;
+        self.handle.server_available().map_err(NodeError::Transport)
+    }
 }
 
 // ============================================================================

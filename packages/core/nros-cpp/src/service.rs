@@ -389,6 +389,46 @@ pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
     }
 }
 
+/// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+///
+/// Writes `1` to `*out` if the backend has discovered ≥ 1 matching
+/// server, `0` if not yet, or `-1` if the backend cannot answer
+/// (e.g. XRCE). Never spins the executor — callers that want a
+/// blocking wait should use the higher-level Promise / Future API.
+///
+/// # Safety
+/// `storage` must be a valid initialized service client. `out` must
+/// be a writable `i32` pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_server_available(
+    storage: *mut c_void,
+    out: *mut i32,
+) -> nros_cpp_ret_t {
+    use nros_node::ServiceClientTrait;
+
+    if storage.is_null() || out.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
+    match client.server_available() {
+        Ok(true) => {
+            unsafe { *out = 1 };
+            NROS_CPP_RET_OK
+        }
+        Ok(false) => {
+            unsafe { *out = 0 };
+            NROS_CPP_RET_OK
+        }
+        Err(_) => {
+            // Backend can't answer (Unsupported). Surface the sentinel
+            // so C++ callers can distinguish "no" (0) from "don't
+            // know" (-1) without losing the OK status.
+            unsafe { *out = -1 };
+            NROS_CPP_RET_OK
+        }
+    }
+}
+
 /// Destroy a service client (drop in place, no free).
 ///
 /// # Safety

@@ -649,14 +649,14 @@ into `Executor` alongside the existing `wake_flag`.
 
 ### Thread C — Service availability probe
 
-- [ ] **124.C.1 — vtable slot.** Add
+- [x] **124.C.1 — vtable slot.** Add
       `service_server_available` to vtable + Rust trait.
-- [ ] **124.C.2 — Backend impls.** Zenoh (queryable interest),
+- [x] **124.C.2 — Backend impls.** Zenoh (queryable interest),
       Cyclone DDS (matched-pub), dust-dds (DataReader API).
       XRCE returns `RET_UNSUPPORTED`.
-- [ ] **124.C.3 — C/C++ wrappers.** `nros_client_server_available`
+- [x] **124.C.3 — C/C++ wrappers.** `nros_client_server_available`
       + `Client<S>::server_available()`.
-- [ ] **124.C.4 — Test.** Client spawned before server; probe
+- [x] **124.C.4 — Test.** Client spawned before server; probe
       returns 0; spawn server; probe returns 1.
 
 ### Thread D — Sequence take

@@ -83,6 +83,28 @@ template <typename S> class Client {
     /// Check if the client is initialized and valid.
     bool is_valid() const { return initialized_; }
 
+    /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+    ///
+    /// Returns the count from the RMW backend's matched-server view:
+    /// * `1`  — at least one matching server is currently visible.
+    /// * `0`  — no matching server discovered yet.
+    /// * `-1` — backend cannot answer (e.g. XRCE without participant
+    ///           enumeration); caller must fall back to a timed
+    ///           `wait_for_service` or assume reachability.
+    ///
+    /// Never spins the executor — synchronous, safe to call from
+    /// inside callbacks. Mirrors `rclcpp::ClientBase::service_is_ready`
+    /// but with a tri-state result instead of collapsing
+    /// "don't know" and "no" into the same `false`.
+    int server_available() const {
+        if (!initialized_) return -1;
+        int out = -1;
+        nros_cpp_ret_t ret = nros_cpp_service_client_server_available(
+            const_cast<uint8_t*>(storage_), &out);
+        if (ret != 0) return -1;
+        return out;
+    }
+
     /// Destructor -- releases service client resources.
     ~Client() {
         if (initialized_) {

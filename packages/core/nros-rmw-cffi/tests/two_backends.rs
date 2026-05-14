@@ -245,6 +245,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     pub_discard: None,
     sub_borrow: None,
     sub_release: None,
+    service_server_available: None,
 };
 
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
@@ -277,6 +278,7 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     pub_discard: None,
     sub_borrow: None,
     sub_release: None,
+    service_server_available: None,
 };
 
 #[test]

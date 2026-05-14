@@ -685,6 +685,14 @@ impl ServiceClientTrait for ZenohServiceClient {
     fn is_server_ready(&self) -> bool {
         self.server_seen
     }
+
+    fn server_available(&self) -> Result<bool, TransportError> {
+        // Phase 124.C.2 — zenoh-pico tracks matched queryables via the
+        // session's liveliness subscription. `server_seen` already
+        // reflects "at least one matching queryable advertised", which
+        // is the answer this probe wants.
+        Ok(self.server_seen)
+    }
 }
 
 // ============================================================================

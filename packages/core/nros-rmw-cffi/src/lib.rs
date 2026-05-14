@@ -586,6 +586,18 @@ pub struct NrosRmwVtable {
             token: *mut core::ffi::c_void,
         ),
     >,
+
+    // ---- Phase 124.C.1 — service-server availability probe ----
+    /// Returns `1` if ≥ 1 matching server has been discovered on the
+    /// RMW graph, `0` if none yet, or a negative `NrosRmwRet`
+    /// constant on backend error. Clients use this to gate the first
+    /// `call_raw` so a startup-ordering race doesn't surface as a
+    /// request-side timeout.
+    ///
+    /// NULL fn pointer = backend cannot answer; the runtime maps the
+    /// missing slot to `NROS_RMW_RET_UNSUPPORTED`.
+    pub service_server_available:
+        Option<unsafe extern "C" fn(client: *mut NrosRmwServiceClient) -> i32>,
 }
 
 // ============================================================================
@@ -2237,6 +2249,34 @@ impl ServiceClientTrait for CffiServiceClient {
         let len = self.call_raw(&req_copy[..req_len], reply_buf)?;
         Ok(Some(len))
     }
+
+    fn server_available(&self) -> Result<bool, TransportError> {
+        let Some(f) = self.vtable.service_server_available else {
+            return Err(TransportError::Unsupported);
+        };
+        // SAFETY: `f` accepts a `*mut NrosRmwServiceClient`. We
+        // construct a transient view from this client's fields the
+        // same way `make_view` does, but on `&self` (no mutation
+        // required for a graph probe). The borrowed pointers all
+        // alias into `&self`, so the lifetime is bounded by the
+        // call.
+        let mut view = NrosRmwServiceClient {
+            service_name: self.service_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        let rc = unsafe { f(&mut view) };
+        match rc {
+            0 => Ok(false),
+            1 => Ok(true),
+            n if n < 0 => Err(error_from_ret(n)),
+            // Any positive value other than 1 is non-spec; treat as
+            // "server available" — backends signalling availability
+            // counts ≥ 1 still mean "ready".
+            _ => Ok(true),
+        }
+    }
 }
 
 impl Drop for CffiServiceClient {
@@ -2542,6 +2582,7 @@ mod tests {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
+        service_server_available: None,
     };
 
     #[test]

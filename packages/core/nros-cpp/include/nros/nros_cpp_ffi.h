@@ -839,6 +839,20 @@ nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void *storage,
                                                       size_t *resp_len);
 
 /**
+ * Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+ *
+ * Writes `1` to `*out` if the backend has discovered ≥ 1 matching
+ * server, `0` if not yet, or `-1` if the backend cannot answer
+ * (e.g. XRCE). Never spins the executor — callers that want a
+ * blocking wait should use the higher-level Promise / Future API.
+ *
+ * # Safety
+ * `storage` must be a valid initialized service client. `out` must
+ * be a writable `i32` pointer.
+ */
+nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage, int32_t *out);
+
+/**
  * Destroy a service client (drop in place, no free).
  *
  * # Safety

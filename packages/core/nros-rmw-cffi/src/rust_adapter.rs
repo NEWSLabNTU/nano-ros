@@ -225,6 +225,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
+        service_server_available: Some(service_server_available_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -811,6 +812,23 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     // body ignores; concrete backends opt in.
     Session::set_wake_callback(s, cb, ctx);
     NROS_RMW_RET_OK
+}
+
+unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
+    client: *mut NrosRmwServiceClient,
+) -> i32 {
+    // Phase 124.C.1 — delegate to the Rust backend's
+    // `ServiceClientTrait::server_available` impl. Default trait
+    // body returns `Err(TransportError::Unsupported)`; concrete
+    // backends opt in by overriding.
+    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match ServiceClientTrait::server_available(c) {
+        Ok(true) => 1,
+        Ok(false) => 0,
+        Err(e) => ret_from_error(&e),
+    }
 }
 
 // ============================================================================
