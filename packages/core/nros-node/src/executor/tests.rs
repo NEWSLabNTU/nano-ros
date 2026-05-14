@@ -1124,6 +1124,71 @@ fn test_spin_period_halts() {
     assert!(result.is_ok());
 }
 
+#[test]
+fn test_wake_handle_clone() {
+    let session = MockSession::new();
+    let executor: Executor = Executor::from_session(session);
+
+    let wake = executor.wake_handle();
+    assert!(!wake.load(std::sync::atomic::Ordering::SeqCst));
+
+    executor.wake();
+    assert!(wake.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn test_wake_cleared_each_spin() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // Pre-arm the flag — spin_once must swap-clear it.
+    executor.wake();
+    let wake = executor.wake_handle();
+    assert!(wake.load(std::sync::atomic::Ordering::SeqCst));
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(1));
+    assert!(
+        !wake.load(std::sync::atomic::Ordering::SeqCst),
+        "spin_once must consume the wake flag"
+    );
+}
+
+#[test]
+fn test_halt_raises_wake_flag() {
+    let session = MockSession::new();
+    let executor: Executor = Executor::from_session(session);
+
+    let wake = executor.wake_handle();
+    assert!(!wake.load(std::sync::atomic::Ordering::SeqCst));
+
+    executor.halt();
+    assert!(executor.is_halted());
+    assert!(
+        wake.load(std::sync::atomic::Ordering::SeqCst),
+        "halt() must also set the wake flag so an in-flight spin_once \
+         falls through to the halt check on its next iteration"
+    );
+}
+
+#[test]
+fn test_wake_short_circuits_drive_timeout() {
+    // Pre-arming wake_flag should make spin_once skip its blocking
+    // wait on drive_io (timeout collapses to 0) and return promptly,
+    // even when the caller asked for a 200ms tick.
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    executor.wake();
+
+    let start = std::time::Instant::now();
+    let _ = executor.spin_once(core::time::Duration::from_millis(200));
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < core::time::Duration::from_millis(50),
+        "wake_flag set → spin_once must not wait 200ms; elapsed = {elapsed:?}",
+    );
+}
+
 // ====================================================================
 // Phase 49: HandleId / HandleSet / ReadinessSnapshot tests
 // ====================================================================

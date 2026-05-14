@@ -270,6 +270,15 @@ pub struct Executor {
         heapless::Vec<session::ConcreteSession, { crate::config::MAX_NODES }>,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Phase 104.C.6 — shared executor wake flag. Any source of work
+    /// (foreign thread handing off a callback, signal handler, future
+    /// per-session vtable wake hook) sets this; `spin_once` swaps it to
+    /// `false` on entry and, if it was `true`, polls every session with
+    /// a 0-ms timeout instead of blocking. Lets one notification wake
+    /// the executor regardless of which session the user is currently
+    /// blocked on (the multi-RMW bridge case).
+    #[cfg(feature = "std")]
+    pub(crate) wake_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
     #[cfg(feature = "lifecycle-services")]
@@ -333,6 +342,8 @@ impl Executor {
             },
             #[cfg(feature = "std")]
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "std")]
+            wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -389,6 +400,8 @@ impl Executor {
             },
             #[cfg(feature = "std")]
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "std")]
+            wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -2459,14 +2472,29 @@ impl Executor {
         #[cfg(feature = "std")]
         let spin_start = std::time::Instant::now();
 
-        let _ = self.session.drive_io(timeout_ms);
+        // Phase 104.C.6 — shared executor wake. Swap-and-clear the
+        // wake flag; if it was set before this `spin_once` entered,
+        // skip the blocking wait on the primary session and poll
+        // every session non-blockingly. Lets a wake signal from any
+        // thread (or, post-104.C.6.b, any backend's vtable hook)
+        // pre-empt whichever session the executor would otherwise
+        // sleep on. Cost on the no-wake path is one atomic swap.
+        #[cfg(feature = "std")]
+        let was_woken = self
+            .wake_flag
+            .swap(false, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(feature = "std"))]
+        let was_woken = false;
+        let primary_timeout = if was_woken { 0 } else { timeout_ms };
+
+        let _ = self.session.drive_io(primary_timeout);
         // Phase 104.C.3 — drive every extra session opened by
         // `node_builder.rmw()` calls. Polling order is registration
-        // order; deadline budget is shared via the single
-        // `timeout_ms` cap above so the spin loop's worst-case
-        // latency stays bounded by the user's `spin_once(timeout)`.
+        // order; extras always poll with 0-ms (the primary owns the
+        // wait budget) so latency stays bounded by the user's
+        // `spin_once(timeout)` instead of summing across N sessions.
         for extra in self.extra_sessions.iter_mut() {
-            let _ = extra.drive_io(timeout_ms);
+            let _ = extra.drive_io(0);
         }
 
         #[cfg(feature = "std")]
@@ -3513,8 +3541,15 @@ impl Executor {
     /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
     /// [`spin_period()`](Self::spin_period) to exit on the next iteration.
     /// Safe to call from another thread or signal handler.
+    ///
+    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already
+    /// blocked inside a backend's `drive_io` falls through to the halt
+    /// check on its next loop iteration instead of waiting out its full
+    /// `timeout_ms` first.
     pub fn halt(&self) {
         self.halt_flag
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.wake_flag
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -3592,6 +3627,38 @@ impl Executor {
     /// ```
     pub fn halt_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.halt_flag.clone()
+    }
+
+    /// Phase 104.C.6 — wake the executor from another thread / ISR /
+    /// signal handler.
+    ///
+    /// Sets the shared `wake_flag`. The next `spin_once` swap-clears the
+    /// flag, skips the blocking wait on the primary session, and polls
+    /// every session non-blockingly so whatever queued the wake is
+    /// observed in a single iteration. Idempotent — multiple `wake()`
+    /// calls collapse into one observed wake per `spin_once`.
+    pub fn wake(&self) {
+        self.wake_flag
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Phase 104.C.6 — clone of the shared wake flag for cross-thread
+    /// use (signal handlers, foreign threads, future per-backend vtable
+    /// wake hooks).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let wake = executor.wake_handle();
+    /// std::thread::spawn(move || {
+    ///     // ... compute something ...
+    ///     // hand off to executor by setting the flag.
+    ///     wake.store(true, Ordering::SeqCst);
+    /// });
+    /// loop { executor.spin_once(Duration::from_millis(100)); }
+    /// ```
+    pub fn wake_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.wake_flag.clone()
     }
 }
 

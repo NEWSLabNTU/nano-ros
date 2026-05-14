@@ -493,16 +493,39 @@ C++-side logic; C surface stays canonical.
       links cleanly. No further work needed.
       **Files:** `packages/core/nros/Cargo.toml`.
 
-- [ ] **104.C.6 — Shared executor wake.**
+- [~] **104.C.6 — Shared executor wake.**
       Replace per-session wakers with a shared
       `Executor::wake_flag: AtomicBool` (or platform
       equivalent — `eventfd` on POSIX, semaphore on
       FreeRTOS). Each Session's `notify_fn` sets the flag;
       `spin_once` waits on the flag (zero-cost when idle,
       wakes on any backend's event).
+      **Infrastructure landed:** `Executor::wake_flag:
+      Arc<AtomicBool>` (std-only, sized to match
+      `halt_flag` shape). New `Executor::wake()` setter
+      and `Executor::wake_handle()` cross-thread clone.
+      `spin_once` swap-clears the flag at entry; if it
+      was set, primary `drive_io` collapses to a 0-ms
+      poll. Extras now always poll with 0-ms timeout so
+      multi-session loops have N-independent latency
+      instead of summing waits. `halt()` raises the wake
+      flag so an in-flight spin exits on its next
+      iteration without burning the full timeout. Unit
+      tests: `test_wake_handle_clone`,
+      `test_wake_cleared_each_spin`,
+      `test_halt_raises_wake_flag`,
+      `test_wake_short_circuits_drive_timeout`.
+      **Follow-up 104.C.6.b — vtable wake hook.** Add
+      `set_wake_signal(session, AtomicBool*)` to
+      `nros_rmw_vtable_t` so each backend's notification
+      path raises the shared flag from inside its
+      transport-level wake (zenoh-pico condvar, dust-dds
+      reactor, XRCE select-fd, cyclonedds listener).
+      Touches 4 backends; staged separately from this
+      infra commit.
       **Files:**
       `packages/core/nros-node/src/executor/spin.rs`,
-      backend-side waker hooks.
+      `packages/core/nros-node/src/executor/tests.rs`.
 
 - [x] **104.C.7 — Drop static `VTABLE`.**
       Once 104.C.1 lands and all dispatch threads through
