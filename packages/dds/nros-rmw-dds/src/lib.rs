@@ -114,11 +114,7 @@ mod cffi_register {
     #[unsafe(link_section = "__DATA,__mod_init_func")]
     static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
 
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "freebsd",
-        target_os = "macos"
-    ))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     extern "C" fn auto_register_ctor() {
         let _ = nros_rmw_dds_register();
     }

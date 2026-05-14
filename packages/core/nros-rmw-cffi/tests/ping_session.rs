@@ -14,8 +14,10 @@
 //! what's under test.
 #![cfg(feature = "alloc")]
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+};
 
 use nros_rmw::{RmwConfig, Session, SessionMode, TransportError};
 use nros_rmw_cffi::{

@@ -134,7 +134,9 @@ impl Subscriber for DdsSubscriber {
             return Ok(0);
         }
         let limit = max_msgs.min(out_lens.len());
-        let need = limit.checked_mul(per_msg_cap).ok_or(TransportError::PollFailed)?;
+        let need = limit
+            .checked_mul(per_msg_cap)
+            .ok_or(TransportError::PollFailed)?;
         if buf.len() < need {
             return Err(TransportError::MessageTooLarge);
         }

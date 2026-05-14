@@ -438,8 +438,10 @@ pub unsafe extern "C" fn nros_executor_node_init(
     name: *const c_char,
     options: *const crate::node::nros_node_options_t,
 ) -> nros_ret_t {
-    use crate::constants::{MAX_LOCATOR_LEN, MAX_NAMESPACE_LEN, MAX_RMW_NAME_LEN};
-    use crate::node::{NROS_DOMAIN_ID_INHERIT, nros_node_options_t, nros_node_state_t};
+    use crate::{
+        constants::{MAX_LOCATOR_LEN, MAX_NAMESPACE_LEN, MAX_RMW_NAME_LEN},
+        node::{NROS_DOMAIN_ID_INHERIT, nros_node_options_t, nros_node_state_t},
+    };
 
     validate_not_null!(executor, node, name);
 
@@ -478,8 +480,7 @@ pub unsafe extern "C" fn nros_executor_node_init(
 
     // Mirror options into node struct so subsequent helpers can read
     // namespace / rmw / domain_id without consulting `options` again.
-    node_ref.namespace[..opts.namespace_len]
-        .copy_from_slice(&opts.namespace[..opts.namespace_len]);
+    node_ref.namespace[..opts.namespace_len].copy_from_slice(&opts.namespace[..opts.namespace_len]);
     node_ref.namespace_len = opts.namespace_len;
     node_ref.rmw_name[..opts.rmw_name_len].copy_from_slice(&opts.rmw_name[..opts.rmw_name_len]);
     node_ref.rmw_name_len = opts.rmw_name_len;
@@ -491,12 +492,14 @@ pub unsafe extern "C" fn nros_executor_node_init(
     let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
     let mut builder = rust_exec.node_builder(name_str);
     if opts.rmw_name_len > 0 {
-        builder = builder
-            .rmw(core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len]));
+        builder = builder.rmw(core::str::from_utf8_unchecked(
+            &opts.rmw_name[..opts.rmw_name_len],
+        ));
     }
     if opts.locator_len > 0 {
-        builder = builder
-            .locator(core::str::from_utf8_unchecked(&opts.locator[..opts.locator_len]));
+        builder = builder.locator(core::str::from_utf8_unchecked(
+            &opts.locator[..opts.locator_len],
+        ));
     }
     if opts.domain_id_override != NROS_DOMAIN_ID_INHERIT {
         builder = builder.domain_id(opts.domain_id_override);

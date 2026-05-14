@@ -20,8 +20,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use nros_node::ExecutorConfig;
-use nros_node::executor::{EmbeddedRawPublisher, Executor};
+use nros_node::{
+    ExecutorConfig,
+    executor::{EmbeddedRawPublisher, Executor},
+};
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
 
@@ -264,7 +266,5 @@ fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
          If this fires after a zenoh-pico bump, verify the upstream \
          `z_bytes_from_static_buf` path still aliases.",
     );
-    eprintln!(
-        "loan zero-alloc trace: {N} publishes ⇒ {delta} allocs (budget {budget})",
-    );
+    eprintln!("loan zero-alloc trace: {N} publishes ⇒ {delta} allocs (budget {budget})",);
 }

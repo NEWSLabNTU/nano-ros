@@ -15,17 +15,16 @@
 //! test.
 #![cfg(feature = "alloc")]
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicI32, Ordering};
-
-use nros_rmw::{
-    RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode, TransportError,
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicI32, Ordering},
 };
+
+use nros_rmw::{RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode, TransportError};
 use nros_rmw_cffi::{
-    CffiRmw, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
-    nros_rmw_cffi_register,
+    CffiRmw, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient,
+    NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable, nros_rmw_cffi_register,
 };
 
 // ---- Mutable script the stub reads on each `server_available` call ----
@@ -84,11 +83,7 @@ unsafe extern "C" fn stub_create_subscriber(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_destroy_subscriber(_: *mut NrosRmwSubscriber) {}
-unsafe extern "C" fn stub_try_recv_raw(
-    _: *mut NrosRmwSubscriber,
-    _: *mut u8,
-    _: usize,
-) -> i32 {
+unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
     0
 }
 unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {

@@ -81,8 +81,8 @@ template <typename M> class Publisher {
             auto* c = static_cast<Ctx*>(user);
             *out_written = c->writer(out_buf, cap);
         };
-        return Result(nros_cpp_publisher_publish_streamed(
-            storage_, size_cb, chunk_cb, static_cast<void*>(&ctx)));
+        return Result(nros_cpp_publisher_publish_streamed(storage_, size_cb, chunk_cb,
+                                                          static_cast<void*>(&ctx)));
     }
 
     // ====================================================================
@@ -102,8 +102,12 @@ template <typename M> class Publisher {
         Loan& operator=(Loan&& o) {
             if (this != &o) {
                 release();
-                pub_ = o.pub_; buf_ = o.buf_; cap_ = o.cap_; token_ = o.token_;
-                o.pub_ = nullptr; o.token_ = nullptr;
+                pub_ = o.pub_;
+                buf_ = o.buf_;
+                cap_ = o.cap_;
+                token_ = o.token_;
+                o.pub_ = nullptr;
+                o.token_ = nullptr;
             }
             return *this;
         }
@@ -122,7 +126,10 @@ template <typename M> class Publisher {
         Result commit(size_t actual_len) {
             if (!token_) return Result(ErrorCode::NotInitialized);
             nros_cpp_ret_t ret = nros_cpp_publisher_commit(pub_, token_, actual_len);
-            pub_ = nullptr; token_ = nullptr; buf_ = nullptr; cap_ = 0;
+            pub_ = nullptr;
+            token_ = nullptr;
+            buf_ = nullptr;
+            cap_ = 0;
             return Result(ret);
         }
 
@@ -130,7 +137,10 @@ template <typename M> class Publisher {
         Result discard() {
             if (!token_) return Result::success();
             nros_cpp_ret_t ret = nros_cpp_publisher_discard(pub_, token_);
-            pub_ = nullptr; token_ = nullptr; buf_ = nullptr; cap_ = 0;
+            pub_ = nullptr;
+            token_ = nullptr;
+            buf_ = nullptr;
+            cap_ = 0;
             return Result(ret);
         }
 
@@ -161,8 +171,7 @@ template <typename M> class Publisher {
         uint8_t* buf = nullptr;
         size_t cap = 0;
         void* token = nullptr;
-        nros_cpp_ret_t ret =
-            nros_cpp_publisher_loan(storage_, requested_len, &buf, &cap, &token);
+        nros_cpp_ret_t ret = nros_cpp_publisher_loan(storage_, requested_len, &buf, &cap, &token);
         if (ret != 0) return Expected<Loan>::error(Result(ret));
         return Expected<Loan>::ok(Loan{storage_, buf, cap, token});
     }

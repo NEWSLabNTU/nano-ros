@@ -8,8 +8,8 @@ use core::{ffi::c_char, mem::MaybeUninit, sync::atomic::Ordering};
 
 use nros_rmw_cffi::{
     NROS_RMW_RET_ERROR, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NrosRmwVtable,
-    backend_registered, nros_rmw_cffi_lookup, nros_rmw_cffi_register,
-    nros_rmw_cffi_register_named, nros_rmw_cffi_registered_names,
+    backend_registered, nros_rmw_cffi_lookup, nros_rmw_cffi_register, nros_rmw_cffi_register_named,
+    nros_rmw_cffi_registered_names,
 };
 
 // One addressable vtable shared across all tests. The registry never
@@ -67,8 +67,7 @@ fn register_two_named_backends() {
     assert!(unsafe { nros_rmw_cffi_lookup(c"not-a-backend".as_ptr()) }.is_null());
 
     let mut buf: [*const c_char; 8] = [core::ptr::null(); 8];
-    let count =
-        unsafe { nros_rmw_cffi_registered_names(buf.as_mut_ptr(), buf.len()) };
+    let count = unsafe { nros_rmw_cffi_registered_names(buf.as_mut_ptr(), buf.len()) };
     assert_eq!(count, 2);
 }
 
@@ -97,8 +96,7 @@ fn duplicate_register_overwrites_idempotently() {
     assert_eq!(unsafe { nros_rmw_cffi_register(v) }, NROS_RMW_RET_OK);
     assert!(!unsafe { nros_rmw_cffi_lookup(c"default".as_ptr()) }.is_null());
 
-    let count =
-        unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };
+    let count = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };
     assert_eq!(count, 2, "dds + default");
 }
 
@@ -134,9 +132,7 @@ fn capacity_full_returns_error() {
     let v = dummy_vtable();
     // Default MAX_BACKENDS = 8. Fill registry, then over-register
     // to hit the cap.
-    let names: [&core::ffi::CStr; 8] = [
-        c"a", c"b", c"c", c"d", c"e", c"f", c"g", c"h",
-    ];
+    let names: [&core::ffi::CStr; 8] = [c"a", c"b", c"c", c"d", c"e", c"f", c"g", c"h"];
     for n in &names {
         assert_eq!(
             unsafe { nros_rmw_cffi_register_named(n.as_ptr(), v) },

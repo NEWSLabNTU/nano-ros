@@ -29,10 +29,7 @@ fn main() {
     // CMake's `nano_ros_link_rmw` emits a strong stub get the
     // strong def at final link.
     let stub_path = manifest_dir.join("c-stubs/weak_register_backends.c");
-    println!(
-        "cargo:rerun-if-changed={}",
-        stub_path.display()
-    );
+    println!("cargo:rerun-if-changed={}", stub_path.display());
     cc::Build::new()
         .file(&stub_path)
         .warnings(true)

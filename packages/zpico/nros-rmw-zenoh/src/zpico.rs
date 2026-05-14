@@ -70,9 +70,8 @@ pub use zpico_sys::{
 ))]
 use zpico_sys::{
     zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
-    zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
-    zpico_declare_subscriber_ring, zpico_declare_subscriber_with_attachment, zpico_get_zid,
-    zpico_init, zpico_init_with_config,
+    zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
+    zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_spin_once,
     zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,

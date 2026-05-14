@@ -99,8 +99,8 @@ template <typename S> class Client {
     int server_available() const {
         if (!initialized_) return -1;
         int out = -1;
-        nros_cpp_ret_t ret = nros_cpp_service_client_server_available(
-            const_cast<uint8_t*>(storage_), &out);
+        nros_cpp_ret_t ret =
+            nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
         if (ret != 0) return -1;
         return out;
     }

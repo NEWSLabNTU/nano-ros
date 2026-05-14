@@ -49,13 +49,7 @@ fn signal_fd_wake_unblocks_spin_once() {
         let one: u64 = 1;
         // SAFETY: `write(2)` on an eventfd is async-signal-safe.
         // 8-byte buffer is required by eventfd semantics.
-        let n = unsafe {
-            libc::write(
-                fd,
-                &one as *const u64 as *const core::ffi::c_void,
-                8,
-            )
-        };
+        let n = unsafe { libc::write(fd, &one as *const u64 as *const core::ffi::c_void, 8) };
         assert!(n == 8, "eventfd write must be 8 bytes; got {n}");
     });
 
@@ -79,8 +73,7 @@ fn signal_fd_wake_unblocks_spin_once() {
 
 // Static fd for the SIGUSR1 handler — set before sigaction install,
 // read inside the (async-signal-safe) handler.
-static SIGNAL_FD_FOR_HANDLER: std::sync::atomic::AtomicI32 =
-    std::sync::atomic::AtomicI32::new(-1);
+static SIGNAL_FD_FOR_HANDLER: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
 
 extern "C" fn sigusr1_wake_handler(_sig: core::ffi::c_int) {
     // SAFETY: write(2) on an eventfd is on the POSIX
@@ -90,11 +83,7 @@ extern "C" fn sigusr1_wake_handler(_sig: core::ffi::c_int) {
     if fd >= 0 {
         let one: u64 = 1;
         unsafe {
-            libc::write(
-                fd,
-                &one as *const u64 as *const core::ffi::c_void,
-                8,
-            );
+            libc::write(fd, &one as *const u64 as *const core::ffi::c_void, 8);
         }
     }
 }

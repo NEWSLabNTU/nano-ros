@@ -105,8 +105,12 @@ template <typename M> class Subscription {
         View& operator=(View&& o) {
             if (this != &o) {
                 release();
-                sub_ = o.sub_; buf_ = o.buf_; len_ = o.len_; token_ = o.token_;
-                o.sub_ = nullptr; o.token_ = nullptr;
+                sub_ = o.sub_;
+                buf_ = o.buf_;
+                len_ = o.len_;
+                token_ = o.token_;
+                o.sub_ = nullptr;
+                o.token_ = nullptr;
             }
             return *this;
         }
@@ -162,12 +166,8 @@ template <typename M> class Subscription {
     /// `try_recv_raw` loop — same shape, same observable result;
     /// the batched API just lets sensor loops commit to one call
     /// shape regardless of backend support.
-    Result try_recv_sequence(
-        uint8_t* buf,
-        size_t per_msg_cap,
-        size_t max_msgs,
-        size_t* out_lens,
-        size_t& out_count) {
+    Result try_recv_sequence(uint8_t* buf, size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
+                             size_t& out_count) {
         if (!initialized_) {
             out_count = 0;
             return Result(ErrorCode::NotInitialized);

@@ -224,9 +224,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_release(
     if storage.is_null() || token.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let _view: alloc::boxed::Box<nros::internals::RmwView<'static>> = unsafe {
-        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwView<'static>)
-    };
+    let _view: alloc::boxed::Box<nros::internals::RmwView<'static>> =
+        unsafe { alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwView<'static>) };
     NROS_CPP_RET_OK
 }
 
@@ -264,9 +263,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_sequence(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
-    let buf_slice = unsafe {
-        core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap))
-    };
+    let buf_slice =
+        unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
     let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
     match sub.try_recv_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
         Ok(count) => {

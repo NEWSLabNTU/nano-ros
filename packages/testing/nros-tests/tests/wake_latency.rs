@@ -20,8 +20,10 @@
 
 #![cfg(feature = "trigger-test")]
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
+};
 
 use nros_node::executor::*;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};

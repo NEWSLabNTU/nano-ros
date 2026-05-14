@@ -215,7 +215,6 @@ impl Default for ExecutorConfig<'_> {
 }
 
 impl<'a> ExecutorConfig<'a> {
-
     /// Set the ROS 2 domain ID.
     pub const fn domain_id(mut self, id: u32) -> Self {
         self.domain_id = id;

@@ -14,8 +14,7 @@
 //! Bridge use cases (two RMW backends concurrent in one Executor)
 //! light up when 104.C.3 adds the per-Node session ref.
 
-use super::sched_context::SchedContextId;
-use super::types::NodeError;
+use super::{sched_context::SchedContextId, types::NodeError};
 
 /// Opaque handle returned by `Executor::node_builder(...).build()`.
 /// Used in 104.C.3+ to disambiguate handle ownership when multiple
@@ -83,10 +82,7 @@ impl NodeRecord {
     /// dispatch); kept here for the upcoming migration where every
     /// Executor will have an explicit entry at slot 0.
     #[allow(dead_code)]
-    pub(crate) fn new_primary(
-        name: heapless::String<64>,
-        namespace: heapless::String<64>,
-    ) -> Self {
+    pub(crate) fn new_primary(name: heapless::String<64>, namespace: heapless::String<64>) -> Self {
         Self {
             name,
             namespace,
@@ -256,9 +252,7 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
 
         let mut ns_buf = heapless::String::<64>::new();
         if let Some(ns) = self.namespace {
-            ns_buf
-                .push_str(ns)
-                .map_err(|_| NodeError::NameTooLong)?;
+            ns_buf.push_str(ns).map_err(|_| NodeError::NameTooLong)?;
         } else {
             ns_buf
                 .push_str(self.executor.namespace.as_str())

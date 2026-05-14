@@ -16,8 +16,10 @@
 //! they deliver identical content.
 #![cfg(feature = "alloc")]
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use nros_rmw::{Session, SessionMode, Subscriber, TopicInfo};
 use nros_rmw_cffi::{
@@ -108,7 +110,11 @@ unsafe extern "C" fn stub_try_recv_raw(
     copy as i32
 }
 unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
-    if RAW_CURSOR.load(Ordering::SeqCst) < QUEUE.len() { 1 } else { 0 }
+    if RAW_CURSOR.load(Ordering::SeqCst) < QUEUE.len() {
+        1
+    } else {
+        0
+    }
 }
 unsafe extern "C" fn stub_create_service_server(
     _: *mut NrosRmwSession,

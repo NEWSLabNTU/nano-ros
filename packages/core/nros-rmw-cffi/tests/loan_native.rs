@@ -308,8 +308,7 @@ fn native_loan_routes_through_vtable() {
 #[test]
 fn native_loan_drop_calls_discard() {
     let mut session = open_session();
-    let topic = TopicInfo::new("/ln2", "std_msgs/msg/Int32", "RIHS01_ln")
-        .with_domain(0);
+    let topic = TopicInfo::new("/ln2", "std_msgs/msg/Int32", "RIHS01_ln").with_domain(0);
     let publisher = session
         .create_publisher(&topic, QosSettings::default())
         .expect("create publisher");

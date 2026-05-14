@@ -118,9 +118,9 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 mod cffi_register {
     use core::ffi::c_int;
 
-    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet};
     #[cfg(not(feature = "lending"))]
     use nros_rmw_cffi::RustBackendAdapter;
+    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet};
 
     #[cfg(not(feature = "lending"))]
     use crate::ZenohRmw;
@@ -188,11 +188,7 @@ mod cffi_register {
     #[unsafe(link_section = "__DATA,__mod_init_func")]
     static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
 
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "freebsd",
-        target_os = "macos"
-    ))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     extern "C" fn auto_register_ctor() {
         // SAFETY: idempotent vtable install. The atomic slot accepts
         // re-registration; if the user has already called register()
@@ -257,7 +253,8 @@ mod loan_trampolines {
 
     use crate::{ZenohRmw, shim::publisher::ZenohSlot};
 
-    type ZenohPublisher = <<ZenohRmw as nros_rmw::Rmw>::Session as nros_rmw::Session>::PublisherHandle;
+    type ZenohPublisher =
+        <<ZenohRmw as nros_rmw::Rmw>::Session as nros_rmw::Session>::PublisherHandle;
 
     /// Static-lifetime alias backing the boxed token. The cffi
     /// runtime guarantees the publisher outlives every outstanding
@@ -320,8 +317,7 @@ mod loan_trampolines {
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
         }
         let pub_handle = unsafe { &*(backend_data as *const ZenohPublisher) };
-        let mut slot: Box<StaticSlot> =
-            unsafe { Box::from_raw(token as *mut StaticSlot) };
+        let mut slot: Box<StaticSlot> = unsafe { Box::from_raw(token as *mut StaticSlot) };
         slot.truncate(actual_len);
         match pub_handle.commit_slot(*slot) {
             Ok(()) => NROS_RMW_RET_OK,
