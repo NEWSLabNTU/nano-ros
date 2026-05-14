@@ -107,6 +107,48 @@ Native behavior resolved in the full run:
   services, RTIC pattern, sequence/GID metadata, and TLS talker/listener cases
   now pass.
 
+Focused verification after the ESP32 session-ID portability and CMake XRCE
+linkage fixes:
+
+- `cargo build --release` in
+  `examples/qemu-esp32-baremetal/rust/zenoh/listener`
+- `cargo build --release` in
+  `examples/qemu-esp32-baremetal/rust/zenoh/talker`
+- `cargo nextest run -p nros-tests --test esp32_emulator test_esp32_qemu_listener_builds test_esp32_qemu_talker_builds test_esp32_qemu_talker_boots test_esp32_talker_listener_e2e test_esp32_to_native test_native_to_esp32 --no-capture`
+- `just install-local`
+- `just xrce test-c --no-capture`
+- `just xrce test --no-capture`
+
+Newly resolved in focused runs:
+
+- `esp32_emulator::test_esp32_qemu_listener_builds`
+- `esp32_emulator::test_esp32_qemu_talker_boots`
+- `esp32_emulator::test_esp32_qemu_talker_builds`
+- `c_xrce_api::test_c_xrce_listener_starts`
+- `c_xrce_api::test_c_xrce_talker_listener_communication`
+- `c_xrce_api::test_c_xrce_talker_starts`
+- `xrce::test_xrce_action_fibonacci`
+- `xrce::test_xrce_large_message_publish`
+
+Still failing in focused ESP32 E2E:
+
+- `esp32_emulator::test_esp32_talker_listener_e2e`
+- `esp32_emulator::test_esp32_to_native`
+- `esp32_emulator::test_native_to_esp32`
+
+Notes:
+
+- ESP32 build/boot failures were caused by the C shim's session-zid helper
+  using C11 atomics and `clock_gettime` in RV32 bare-metal builds. The shim now
+  uses a plain counter for single-threaded smoltcp/serial builds and the
+  smoltcp clock for entropy.
+- C XRCE startup failures were caused by the installed `NanoRos::NanoRos`
+  target linking `NrosRmwXrce::NrosRmwXrce` without the common whole-archive
+  wrapper, so the backend registration ctor was dead-stripped. The C XRCE
+  binaries now contain `nros_rmw_xrce_register`.
+- The remaining focused ESP32 E2E failures happen before ESP32 traffic starts:
+  `ZenohRouter::start` times out while starting `zenohd`.
+
 Source run:
 
 - Command: `just ci`
