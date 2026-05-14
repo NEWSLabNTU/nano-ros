@@ -7,7 +7,10 @@
 
 #![cfg(feature = "alloc")]
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU32, Ordering},
+};
 
 use nros_rmw::{
     EventCallback, EventKind, Publisher, QosPolicyMask, QosSettings, Rmw, RmwConfig,
@@ -87,12 +90,101 @@ struct NoopSubscriber;
 struct NoopServer;
 struct NoopClient;
 
+#[derive(Default)]
+struct IdentityRmw;
+
+struct IdentitySession;
+
+#[derive(Debug, PartialEq, Eq)]
+struct IdentityRecord {
+    kind: &'static str,
+    node_name: Option<String>,
+    namespace: String,
+}
+
+static IDENTITY_RECORDS: Mutex<Vec<IdentityRecord>> = Mutex::new(Vec::new());
+
 impl Rmw for NoopRmw {
     type Session = NoopSession;
     type Error = TransportError;
     fn open(self, _config: &RmwConfig) -> Result<Self::Session, Self::Error> {
         OPEN_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopSession)
+    }
+}
+
+impl Rmw for IdentityRmw {
+    type Session = IdentitySession;
+    type Error = TransportError;
+
+    fn open(self, _config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        Ok(IdentitySession)
+    }
+}
+
+impl Session for IdentitySession {
+    type Error = TransportError;
+    type PublisherHandle = NoopPublisher;
+    type SubscriberHandle = NoopSubscriber;
+    type ServiceServerHandle = NoopServer;
+    type ServiceClientHandle = NoopClient;
+
+    fn create_publisher(
+        &mut self,
+        topic: &TopicInfo,
+        _qos: QosSettings,
+    ) -> Result<Self::PublisherHandle, Self::Error> {
+        IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
+            kind: "publisher",
+            node_name: topic.node_name.map(str::to_owned),
+            namespace: topic.namespace.to_owned(),
+        });
+        Ok(NoopPublisher)
+    }
+
+    fn create_subscriber(
+        &mut self,
+        topic: &TopicInfo,
+        _qos: QosSettings,
+    ) -> Result<Self::SubscriberHandle, Self::Error> {
+        IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
+            kind: "subscriber",
+            node_name: topic.node_name.map(str::to_owned),
+            namespace: topic.namespace.to_owned(),
+        });
+        Ok(NoopSubscriber)
+    }
+
+    fn create_service_server(
+        &mut self,
+        service: &ServiceInfo,
+    ) -> Result<Self::ServiceServerHandle, Self::Error> {
+        IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
+            kind: "service_server",
+            node_name: service.node_name.map(str::to_owned),
+            namespace: service.namespace.to_owned(),
+        });
+        Ok(NoopServer)
+    }
+
+    fn create_service_client(
+        &mut self,
+        service: &ServiceInfo,
+    ) -> Result<Self::ServiceClientHandle, Self::Error> {
+        IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
+            kind: "service_client",
+            node_name: service.node_name.map(str::to_owned),
+            namespace: service.namespace.to_owned(),
+        });
+        Ok(NoopClient)
+    }
+
+    fn close(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -399,6 +491,165 @@ fn rust_backend_adapter_routes_every_slot() {
     let rc = unsafe { (vt.close)(&mut sess) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(CLOSE_HITS.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn rust_backend_adapter_preserves_session_identity() {
+    IDENTITY_RECORDS.lock().unwrap().clear();
+
+    let vt = &RustBackendAdapter::<IdentityRmw>::VTABLE;
+    let mut sess = NrosRmwSession {
+        node_name: b"talker\0".as_ptr(),
+        namespace_: b"/demo\0".as_ptr(),
+        _reserved: [0u8; 8],
+        backend_data: core::ptr::null_mut(),
+    };
+    assert_eq!(
+        unsafe {
+            (vt.open)(
+                b"tcp/127.0.0.1:7447\0".as_ptr(),
+                0,
+                7,
+                b"talker\0".as_ptr(),
+                &mut sess,
+            )
+        },
+        NROS_RMW_RET_OK
+    );
+
+    let qos = NrosRmwQos {
+        reliability: 1,
+        durability: 0,
+        history: 0,
+        liveliness_kind: 1,
+        depth: 10,
+        _reserved0: 0,
+        deadline_ms: 0,
+        lifespan_ms: 0,
+        liveliness_lease_ms: 0,
+        avoid_ros_namespace_conventions: 0,
+        _reserved1: [0; 3],
+    };
+
+    let mut pubr = nros_rmw_cffi::NrosRmwPublisher {
+        topic_name: b"/chatter\0".as_ptr(),
+        type_name: b"std_msgs/String\0".as_ptr(),
+        qos,
+        can_loan_messages: false,
+        _reserved: [0; 7],
+        backend_data: core::ptr::null_mut(),
+    };
+    assert_eq!(
+        unsafe {
+            (vt.create_publisher)(
+                &mut sess,
+                b"/chatter\0".as_ptr(),
+                b"std_msgs/String\0".as_ptr(),
+                b"abc123\0".as_ptr(),
+                7,
+                &qos,
+                &mut pubr,
+            )
+        },
+        NROS_RMW_RET_OK
+    );
+
+    let mut subr = nros_rmw_cffi::NrosRmwSubscriber {
+        topic_name: b"/chatter\0".as_ptr(),
+        type_name: b"std_msgs/String\0".as_ptr(),
+        qos,
+        can_loan_messages: false,
+        _reserved: [0; 7],
+        backend_data: core::ptr::null_mut(),
+    };
+    assert_eq!(
+        unsafe {
+            (vt.create_subscriber)(
+                &mut sess,
+                b"/chatter\0".as_ptr(),
+                b"std_msgs/String\0".as_ptr(),
+                b"abc123\0".as_ptr(),
+                7,
+                &qos,
+                &mut subr,
+            )
+        },
+        NROS_RMW_RET_OK
+    );
+
+    let mut srv = NrosRmwServiceServer {
+        service_name: b"/add_two_ints\0".as_ptr(),
+        type_name: b"example/AddTwoInts\0".as_ptr(),
+        _reserved: [0; 8],
+        backend_data: core::ptr::null_mut(),
+    };
+    assert_eq!(
+        unsafe {
+            (vt.create_service_server)(
+                &mut sess,
+                b"/add_two_ints\0".as_ptr(),
+                b"example/AddTwoInts\0".as_ptr(),
+                b"def456\0".as_ptr(),
+                7,
+                &mut srv,
+            )
+        },
+        NROS_RMW_RET_OK
+    );
+
+    let mut cli = NrosRmwServiceClient {
+        service_name: b"/add_two_ints\0".as_ptr(),
+        type_name: b"example/AddTwoInts\0".as_ptr(),
+        _reserved: [0; 8],
+        backend_data: core::ptr::null_mut(),
+    };
+    assert_eq!(
+        unsafe {
+            (vt.create_service_client)(
+                &mut sess,
+                b"/add_two_ints\0".as_ptr(),
+                b"example/AddTwoInts\0".as_ptr(),
+                b"def456\0".as_ptr(),
+                7,
+                &mut cli,
+            )
+        },
+        NROS_RMW_RET_OK
+    );
+
+    assert_eq!(
+        *IDENTITY_RECORDS.lock().unwrap(),
+        [
+            IdentityRecord {
+                kind: "publisher",
+                node_name: Some("talker".to_owned()),
+                namespace: "/demo".to_owned(),
+            },
+            IdentityRecord {
+                kind: "subscriber",
+                node_name: Some("talker".to_owned()),
+                namespace: "/demo".to_owned(),
+            },
+            IdentityRecord {
+                kind: "service_server",
+                node_name: Some("talker".to_owned()),
+                namespace: "/demo".to_owned(),
+            },
+            IdentityRecord {
+                kind: "service_client",
+                node_name: Some("talker".to_owned()),
+                namespace: "/demo".to_owned(),
+            },
+        ]
+    );
+
+    unsafe {
+        (vt.destroy_publisher)(&mut pubr);
+        (vt.destroy_subscriber)(&mut subr);
+        (vt.destroy_service_server)(&mut srv);
+        (vt.destroy_service_client)(&mut cli);
+        let _ = (vt.close)(&mut sess);
+    }
 }
 
 // ----------------------------------------------------------------------------

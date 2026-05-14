@@ -431,7 +431,10 @@ impl ZenohSubscriber {
                     crate::zpico::Subscriber<'_>,
                     crate::zpico::Subscriber<'static>,
                 >(s),
-                Err(e) => return Err(TransportError::from(e)),
+                Err(e) => {
+                    NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+                    return Err(TransportError::from(e));
+                }
             }
         };
 
@@ -457,6 +460,10 @@ impl ZenohSubscriber {
             context: context as *const Context,
             _phantom: PhantomData,
         })
+    }
+
+    pub(super) fn set_liveliness(&mut self, liveliness: Option<super::LivelinessToken>) {
+        self._liveliness = liveliness;
     }
 
     /// Phase 108.C.zenoh.4 — liveliness poll loop. Polls `zpico`'s

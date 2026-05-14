@@ -1,5 +1,87 @@
 # Phase 124 Test Triage - 2026-05-14
 
+## Update - 2026-05-15
+
+Source run:
+
+- Command: `just ci`
+- Nextest run id: `bf522883-71fa-4168-8e97-09da545d1447`
+- JUnit: `target/nextest/default/junit.xml`
+- Logs: `test-logs/latest/`
+
+Quality/build gates verified in this run:
+
+- `just format`
+- `just ci` static portions: formatting, clippy, example check matrix,
+  C/C++/Python checks, `zenohd`, doctests, Miri, C codegen, and C message
+  generation.
+
+Runtime summary:
+
+- Nextest: 816 tests run, 716 passed, 100 failed, 11 skipped.
+- Harness-reported environment skip: `ThreadX-Linux DDS prerequisites not
+  available`.
+- Doctests: 1 passed, 4 ignored.
+- Miri: all selected tests passed; one clock test ignored under Miri.
+- C codegen and C message generation passed.
+
+Resolved since the first snapshot:
+
+- Native Zenoh service tests now pass:
+  `services::test_service_request_response`,
+  `services::test_service_multiple_sequential_calls`, and
+  `services::test_service_server_multiple_clients`.
+- Native talker/listener and QoS smoke tests now pass:
+  `nano2nano::test_talker_listener_communication`,
+  `qos::test_qos_keyexpr_encoding`, and the QoS compatibility/reliability
+  tests that were previously in the failure bucket.
+- Native multi-node/executor/error-handling cases from the initial native
+  Zenoh bucket now pass in this run.
+
+Current failure buckets:
+
+| Category | Failures | Notes |
+|---|---:|---|
+| RTOS/QEMU platform E2E | 39 | FreeRTOS, NuttX, ThreadX Linux/RISC-V, baremetal DDS, and platform DDS runtime cases. |
+| Zephyr runtime/E2E | 29 | Zephyr native/host E2E and DDS/XRCE runtime cases; build/smoke cases mostly pass. |
+| Native Zenoh/router behavior | 18 | Remaining native failures are action/RTIC, TLS, GID/sequence, large-message throughput/integrity, native C/C++ communication, safety, and zero-copy metadata. |
+| ESP32 emulator E2E | 6 | QEMU listener/talker build/boot plus ESP32/native bridge communication. |
+| Bare-metal Zenoh QEMU E2E | 3 | RTIC action, RTIC service, and serial pub/sub. |
+| XRCE C runtime E2E | 3 | C XRCE starts/talker-listener cases. |
+| DDS native runtime E2E | 1 | Native DDS action server/client E2E. |
+| ROS 2 lifecycle interop | 1 | Lifecycle full-cycle interop. |
+
+Current native-priority failures:
+
+- `nano2nano::test_rtic_pattern_action`
+- `nano2nano::test_tls_talker_listener_communication`
+- `nano2nano::test_gid_consistency`
+- `nano2nano::test_sequence_number_increment`
+- `nano2nano::test_rtic_pattern_service`
+- `nano2nano::test_rtic_pattern_communication`
+- `large_msg::test_zenoh_e2e_integrity`
+- `large_msg::test_zenoh_e2e_large_receive`
+- `large_msg::test_zenoh_throughput_100hz`
+- `large_msg::test_zenoh_throughput_burst`
+- `native_api::test_cpp_action_communication`
+- `native_api::test_cpp_action_goal_rejection`
+- `native_api::test_native_service_communication::lang_1_Language__C`
+- `native_api::test_native_service_communication::lang_2_Language__Cpp`
+- `native_api::test_native_talker_listener_communication::lang_1_Language__C`
+- `native_api::test_native_talker_listener_communication::lang_2_Language__Cpp`
+- `safety_e2e::test_safety_e2e_talker_listener`
+- `zero_copy::test_zero_copy_message_info`
+
+Next priority:
+
+1. Fix the remaining native Zenoh identity/metadata cluster first:
+   `gid_consistency`, `sequence_number_increment`, and
+   `zero_copy_message_info`.
+2. Then rerun the native C/C++ service and talker/listener tests. These are
+   likely downstream of the same attachment/message-info path.
+3. Defer platform E2E buckets until the remaining native metadata behavior is
+   stable.
+
 Source run:
 
 - Command: `just ci`

@@ -179,6 +179,16 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
     }
 }
 
+unsafe fn session_node_name<'a>(session: *const NrosRmwSession) -> Option<&'a str> {
+    let name = unsafe { cstr_to_str((*session).node_name) };
+    if name.is_empty() { None } else { Some(name) }
+}
+
+unsafe fn session_namespace<'a>(session: *const NrosRmwSession) -> &'a str {
+    let namespace = unsafe { cstr_to_str((*session).namespace_) };
+    if namespace.is_empty() { "/" } else { namespace }
+}
+
 // ============================================================================
 // Adapter
 // ============================================================================
@@ -341,13 +351,15 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let node_name = unsafe { session_node_name(session) };
+    let namespace = unsafe { session_namespace(session) };
     let topic = TopicInfo {
         name: unsafe { cstr_to_str(topic_name) },
         type_name: unsafe { cstr_to_str(type_name) },
         type_hash: unsafe { cstr_to_str(type_hash) },
         domain_id,
-        node_name: None,
-        namespace: "/",
+        node_name,
+        namespace,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
@@ -405,13 +417,15 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let node_name = unsafe { session_node_name(session) };
+    let namespace = unsafe { session_namespace(session) };
     let topic = TopicInfo {
         name: unsafe { cstr_to_str(topic_name) },
         type_name: unsafe { cstr_to_str(type_name) },
         type_hash: unsafe { cstr_to_str(type_hash) },
         domain_id,
-        node_name: None,
-        namespace: "/",
+        node_name,
+        namespace,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscriber(s, &topic, qos_settings) {
@@ -478,13 +492,15 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let node_name = unsafe { session_node_name(session) };
+    let namespace = unsafe { session_namespace(session) };
     let info = nros_rmw::ServiceInfo {
         name: unsafe { cstr_to_str(service_name) },
         type_name: unsafe { cstr_to_str(type_name) },
         type_hash: unsafe { cstr_to_str(type_hash) },
         domain_id,
-        node_name: None,
-        namespace: "/",
+        node_name,
+        namespace,
     };
     match Session::create_service_server(s, &info) {
         Ok(server) => {
@@ -595,13 +611,15 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let node_name = unsafe { session_node_name(session) };
+    let namespace = unsafe { session_namespace(session) };
     let info = nros_rmw::ServiceInfo {
         name: unsafe { cstr_to_str(service_name) },
         type_name: unsafe { cstr_to_str(type_name) },
         type_hash: unsafe { cstr_to_str(type_hash) },
         domain_id,
-        node_name: None,
-        namespace: "/",
+        node_name,
+        namespace,
     };
     match Session::create_service_client(s, &info) {
         Ok(client) => {

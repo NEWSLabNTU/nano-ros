@@ -262,6 +262,7 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
+        let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
         let liveliness_token = topic.node_name.and_then(|node_name| {
             self.declare_entity_liveliness(|zid| {
                 Ros2Liveliness::publisher_keyexpr::<256>(
@@ -274,7 +275,8 @@ impl Session for ZenohSession {
                 )
             })
         });
-        ZenohPublisher::new(&self.context, topic, liveliness_token, &qos)
+        publisher.set_liveliness(liveliness_token);
+        Ok(publisher)
     }
 
     fn create_subscriber(
@@ -282,6 +284,7 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
+        let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
         let liveliness_token = topic.node_name.and_then(|node_name| {
             self.declare_entity_liveliness(|zid| {
                 Ros2Liveliness::subscriber_keyexpr::<256>(
@@ -294,13 +297,15 @@ impl Session for ZenohSession {
                 )
             })
         });
-        ZenohSubscriber::new(&self.context, topic, liveliness_token, &qos)
+        subscriber.set_liveliness(liveliness_token);
+        Ok(subscriber)
     }
 
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
+        let mut server = ZenohServiceServer::new(&self.context, service, None)?;
         let liveliness_token = service.node_name.and_then(|node_name| {
             self.declare_entity_liveliness(|zid| {
                 Ros2Liveliness::service_server_keyexpr::<256>(
@@ -313,7 +318,8 @@ impl Session for ZenohSession {
                 )
             })
         });
-        ZenohServiceServer::new(&self.context, service, liveliness_token)
+        server.set_liveliness(liveliness_token);
+        Ok(server)
     }
 
     fn create_service_client(

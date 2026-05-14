@@ -48,6 +48,18 @@ fn main() {
         .expect("Failed to create client");
     info!("Service client created for: /add_two_ints");
 
+    match client.wait_for_service(&mut executor, core::time::Duration::from_secs(5)) {
+        Ok(true) => info!("Service server is available"),
+        Ok(false) => {
+            error!("Timed out waiting for /add_two_ints service");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            error!("Failed while waiting for service: {:?}", e);
+            std::process::exit(1);
+        }
+    }
+
     // Make several service calls using the Promise pattern
     let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];
 

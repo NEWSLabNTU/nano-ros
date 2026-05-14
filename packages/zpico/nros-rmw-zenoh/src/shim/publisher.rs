@@ -140,6 +140,10 @@ impl ZenohPublisher {
         })
     }
 
+    pub(super) fn set_liveliness(&mut self, liveliness: Option<LivelinessToken>) {
+        self._liveliness = liveliness;
+    }
+
     /// Phase 108.C.zenoh.{2,3} — current platform time as nanoseconds
     /// for the RMW attachment. Falls back to a per-publisher
     /// monotonic counter when the platform clock returns 0 (bare

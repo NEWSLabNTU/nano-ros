@@ -12,8 +12,14 @@
 #include <zenoh-pico.h>
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <time.h>
+#if defined(__linux__)
+#include <sys/random.h>
+#include <unistd.h>
+#endif
 #ifdef ZENOH_NUTTX
 #include <unistd.h>
 #endif
@@ -170,6 +176,7 @@ static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
 // Per-queryable storage for cloned queries (for later reply)
 static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES];
 static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES];  // zero-initialized = all false
+static atomic_uint g_session_zid_counter;
 
 // Context struct for blocking z_get reply (stack-allocated per call)
 // ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
@@ -281,6 +288,52 @@ static z_task_attr_t g_lease_task_attr;
 // ============================================================================
 // Internal Helper Functions
 // ============================================================================
+
+static uint64_t zpico_splitmix64(uint64_t *state) {
+    uint64_t z = (*state += UINT64_C(0x9e3779b97f4a7c15));
+    z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return z ^ (z >> 31);
+}
+
+static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
+#if defined(__linux__)
+    if (getrandom(bytes, ZPICO_ZID_SIZE, 0) == ZPICO_ZID_SIZE) {
+        return;
+    }
+#endif
+
+    uint64_t seed = (uint64_t)(uintptr_t)&g_session;
+    seed ^= (uint64_t)atomic_fetch_add(&g_session_zid_counter, 1);
+#if defined(__linux__)
+    seed ^= (uint64_t)getpid() << 32;
+#endif
+#if defined(CLOCK_REALTIME)
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+        seed ^= (uint64_t)ts.tv_sec;
+        seed ^= (uint64_t)ts.tv_nsec << 1;
+    }
+#endif
+
+    for (size_t i = 0; i < ZPICO_ZID_SIZE; i += sizeof(uint64_t)) {
+        uint64_t word = zpico_splitmix64(&seed);
+        memcpy(&bytes[i], &word, sizeof(word));
+    }
+}
+
+static void zpico_format_session_zid(char out[37], const uint8_t bytes[ZPICO_ZID_SIZE]) {
+    static const char hex[] = "0123456789abcdef";
+    size_t j = 0;
+    for (size_t i = 0; i < ZPICO_ZID_SIZE; i++) {
+        if (j == 8 || j == 13 || j == 18 || j == 21) {
+            out[j++] = '-';
+        }
+        out[j++] = hex[bytes[i] >> 4];
+        out[j++] = hex[bytes[i] & 0x0f];
+    }
+    out[j] = '\0';
+}
 
 /**
  * Internal callback for queryable that receives queries
@@ -595,6 +648,23 @@ int32_t zpico_init_with_config(const char *locator,
         }
     }
 
+    bool has_session_zid = false;
+    for (size_t i = 0; i < num_properties; i++) {
+        if (properties[i].key != NULL && strcmp(properties[i].key, "session_zid") == 0) {
+            has_session_zid = true;
+            break;
+        }
+    }
+    if (!has_session_zid) {
+        uint8_t zid_bytes[ZPICO_ZID_SIZE];
+        char zid[37];
+        zpico_fill_session_zid(zid_bytes);
+        zpico_format_session_zid(zid, zid_bytes);
+        if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_SESSION_ZID_KEY, zid) < 0) {
+            return ZPICO_ERR_CONFIG;
+        }
+    }
+
     // Apply additional properties
     for (size_t i = 0; i < num_properties; i++) {
         if (properties[i].key == NULL || properties[i].value == NULL) {
@@ -612,6 +682,8 @@ int32_t zpico_init_with_config(const char *locator,
             config_key = Z_CONFIG_LISTEN_KEY;
         } else if (strcmp(properties[i].key, "add_timestamp") == 0) {
             config_key = Z_CONFIG_ADD_TIMESTAMP_KEY;
+        } else if (strcmp(properties[i].key, "session_zid") == 0) {
+            config_key = Z_CONFIG_SESSION_ZID_KEY;
 #if Z_FEATURE_LINK_TLS == 1
         } else if (strcmp(properties[i].key, "root_ca_certificate") == 0) {
             config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_KEY;
@@ -1776,6 +1848,7 @@ int32_t zpico_get(const char *keyexpr,
     // Set up get options
     z_get_options_t opts;
     z_get_options_default(&opts);
+    opts.target = Z_QUERY_TARGET_ALL;
     opts.timeout_ms = timeout_ms;
     // Use NONE consolidation so the reply callback fires immediately on each
     // partial reply, rather than AUTO (which becomes LATEST and buffers replies
@@ -1934,6 +2007,7 @@ int32_t zpico_get_start(const char *keyexpr,
 
     z_get_options_t opts;
     z_get_options_default(&opts);
+    opts.target = Z_QUERY_TARGET_ALL;
     opts.timeout_ms = (uint64_t)timeout_ms;
     // Use NONE consolidation so the reply callback fires immediately on each
     // partial reply, rather than AUTO (which becomes LATEST and buffers replies

@@ -992,6 +992,13 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
             // Post-process: remove lines starting with "extern " and collapse blank lines
             let processed = post_process_header(&header_str);
 
+            if !is_plausible_generated_header(&processed) {
+                println!(
+                    "cargo:warning=cbindgen generated an incomplete zpico.h; keeping existing header"
+                );
+                return;
+            }
+
             std::fs::write(&output_file, processed).unwrap_or_else(|e| {
                 println!("cargo:warning=Failed to write header: {e}");
             });
@@ -1000,6 +1007,13 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
             println!("cargo:warning=cbindgen failed: {e}");
         }
     }
+}
+
+fn is_plausible_generated_header(header: &str) -> bool {
+    header.contains("#ifndef ZPICO_H")
+        && header.contains("#define ZPICO_OK")
+        && header.contains("typedef void (*ZpicoCallback)")
+        && header.contains("int32_t zpico_init(")
 }
 
 /// Post-process the generated header to remove duplicate declarations

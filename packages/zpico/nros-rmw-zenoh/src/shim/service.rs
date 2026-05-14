@@ -264,7 +264,10 @@ impl ZenohServiceServer {
                 buffer_index as *mut core::ffi::c_void,
             )
         }
-        .map_err(TransportError::from)?;
+        .map_err(|e| {
+            NEXT_SERVICE_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+            TransportError::from(e)
+        })?;
 
         Ok(Self {
             _queryable: queryable,
@@ -275,6 +278,10 @@ impl ZenohServiceServer {
             context: context as *const Context,
             _phantom: PhantomData,
         })
+    }
+
+    pub(super) fn set_liveliness(&mut self, liveliness: Option<super::LivelinessToken>) {
+        self._liveliness = liveliness;
     }
 }
 
@@ -447,7 +454,7 @@ impl ZenohServiceClient {
         service: &ServiceInfo,
         liveliness: Option<super::LivelinessToken>,
     ) -> Result<Self, TransportError> {
-        // Generate wildcard service key for queries (matches any type hash from ROS 2)
+        // Generate wildcard service key for queries (matches any type hash from ROS 2).
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key_wildcard();
 
         // Create null-terminated keyexpr
@@ -497,6 +504,43 @@ impl ZenohServiceClient {
 
 impl ServiceClientTrait for ZenohServiceClient {
     type Error = TransportError;
+
+    #[allow(deprecated)]
+    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.send_request_raw(request)?;
+
+        #[cfg(feature = "std")]
+        {
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_millis(self.timeout_ms as u64);
+            loop {
+                if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
+                    return Ok(len);
+                }
+                if std::time::Instant::now() >= deadline {
+                    self.pending_handle = None;
+                    return Err(TransportError::Timeout);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            unsafe extern "C" {
+                fn z_sleep_ms(time: usize) -> i8;
+            }
+            let attempts = (self.timeout_ms / 5).max(1);
+            for _ in 0..attempts {
+                if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
+                    return Ok(len);
+                }
+                unsafe { z_sleep_ms(5) };
+            }
+            self.pending_handle = None;
+            Err(TransportError::Timeout)
+        }
+    }
 
     fn register_waker(&self, waker: &core::task::Waker) {
         if let Some(handle) = self.pending_handle
