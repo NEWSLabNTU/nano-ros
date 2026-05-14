@@ -207,7 +207,7 @@ if(CONFIG_NROS_C_API)
 
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,cffi-zenoh-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
         # Phase 115.K.2.5.1.3-zephyr — XRCE now routes through the C
         # backend's cffi shim instead of the deleted Rust direct-impl.
@@ -230,6 +230,7 @@ if(CONFIG_NROS_C_API)
         PACKAGE nros-c
         FEATURES "${_nros_features}"
     )
+    add_dependencies(app nros_c_cargo_build)
 
     # Link the built library
     zephyr_library_link_libraries(nros_c_cargo)
@@ -246,6 +247,7 @@ if(CONFIG_NROS_CPP_API)
     # so both variants must resolve to the per-build versions.
     zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated)
     zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated)
+    zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
@@ -261,7 +263,7 @@ if(CONFIG_NROS_CPP_API)
 
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_cpp_features "rmw-zenoh,platform-zephyr,ros-humble")
+        set(_nros_cpp_features "rmw-zenoh-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
         # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
         # above: cffi runtime + C backend + Zephyr platform feature.
@@ -280,6 +282,7 @@ if(CONFIG_NROS_CPP_API)
         PACKAGE nros-cpp
         FEATURES "${_nros_cpp_features}"
     )
+    add_dependencies(app nros_cpp_cargo_build)
 
     # Link the built library
     zephyr_library_link_libraries(nros_cpp_cargo)

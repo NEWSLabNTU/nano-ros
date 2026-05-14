@@ -23,6 +23,8 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    println!("cargo:rerun-if-env-changed=CORROSION_BUILD_DIR");
 }
 
 /// Probe sizes exported by the `nros` crate via `export_size!`.

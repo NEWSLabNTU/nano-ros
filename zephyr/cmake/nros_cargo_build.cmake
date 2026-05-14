@@ -187,10 +187,29 @@ function(nros_cargo_build)
         list(APPEND CARGO_ARGS -Z "build-std=core,alloc,compiler_builtins")
     endif()
 
+    set(_cargo_byproducts ${LIB_PATH})
+    if(ARG_PACKAGE STREQUAL "nros-c")
+        list(APPEND _cargo_byproducts
+            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
+        )
+    elseif(ARG_PACKAGE STREQUAL "nros-cpp")
+        list(APPEND _cargo_byproducts
+            ${CARGO_TARGET_DIR}/nros-cpp-generated/nros/nros_cpp_config_generated.h
+            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
+        )
+    endif()
+
     # Pass both ZPICO_* and XRCE_* env vars — build.rs ignores vars it
     # doesn't consume, so it's safe to pass both sets unconditionally.
-    add_custom_command(
-        OUTPUT ${LIB_PATH}
+    # This is intentionally an always-evaluated target instead of an OUTPUT
+    # rule keyed only on the static archive: build.rs also refreshes the
+    # per-build generated headers, and stale headers can break C/C++ compiles
+    # even when Cargo considers the archive fresh.
+    # Derive target name from package: nros-c → nros_c_cargo
+    string(REPLACE "-" "_" _target_stem ${ARG_PACKAGE})
+    set(_target_name "${_target_stem}_cargo")
+
+    add_custom_target(${_target_name}_build
         COMMAND ${CMAKE_COMMAND} -E env
             ${_rustup_override}
             ZPICO_MAX_PUBLISHERS=$ENV{ZPICO_MAX_PUBLISHERS}
@@ -211,15 +230,10 @@ function(nros_cargo_build)
             XRCE_BUFFER_SIZE=$ENV{XRCE_BUFFER_SIZE}
             XRCE_STREAM_HISTORY=$ENV{XRCE_STREAM_HISTORY}
             cargo ${CARGO_ARGS}
+        BYPRODUCTS ${_cargo_byproducts}
         COMMENT "Building ${ARG_PACKAGE} via Cargo"
         VERBATIM
     )
-
-    # Derive target name from package: nros-c → nros_c_cargo
-    string(REPLACE "-" "_" _target_stem ${ARG_PACKAGE})
-    set(_target_name "${_target_stem}_cargo")
-
-    add_custom_target(${_target_name}_build DEPENDS ${LIB_PATH})
 
     add_library(${_target_name} STATIC IMPORTED GLOBAL)
     set_target_properties(${_target_name} PROPERTIES

@@ -1,0 +1,28 @@
+#ifndef NROS_ZEPHYR_CXX_COMPAT_UTILITY
+#define NROS_ZEPHYR_CXX_COMPAT_UTILITY
+
+namespace std {
+
+template <class T>
+struct remove_reference {
+    using type = T;
+};
+
+template <class T>
+struct remove_reference<T&> {
+    using type = T;
+};
+
+template <class T>
+struct remove_reference<T&&> {
+    using type = T;
+};
+
+template <class T>
+constexpr typename remove_reference<T>::type&& move(T&& value) noexcept {
+    return static_cast<typename remove_reference<T>::type&&>(value);
+}
+
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_UTILITY
