@@ -65,7 +65,9 @@ These are auto-resolved by justfile recipes (defaulting to `external/` paths fro
 
 ## Buffer Tuning
 
-All optional -- platform-appropriate defaults apply if unset. See [Embedded Tuning](embedded-tuning.md) for detailed sizing guidance, memory budget estimation, and recommended configurations by RAM class.
+All optional -- platform-appropriate defaults apply if unset. See
+[Configuration](../user-guide/configuration.md) for deployment-scenario
+guidance and platform guides for target-specific sizing.
 
 ### Zenoh-pico (`ZPICO_*`)
 

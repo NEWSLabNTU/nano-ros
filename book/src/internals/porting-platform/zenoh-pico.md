@@ -4,7 +4,7 @@ This page documents the ~55 FFI symbols that zenoh-pico requires at link time.
 These symbols are provided by `zpico-platform-shim` (inside `zpico-sys`), which
 forwards each `z_*` / `_z_*` call to the `ConcretePlatform` type alias from
 `nros-platform`. When porting to a new platform, you implement an
-`nros-platform-<name>` crate (see [Implementing a Platform](./implementing-a-platform.md))
+`nros-platform-<name>` crate (see [Custom Platform](../../porting/custom-platform.md))
 rather than providing these symbols directly.
 
 This page serves as a reference for understanding what the shim layer maps
@@ -275,7 +275,7 @@ pub unsafe fn clear_network_state();
 ## Step-by-step procedure
 
 1. **Create the platform crate** (`nros-platform-<name>`) -- see
-   [Implementing a Platform](./implementing-a-platform.md) for the full guide
+   [Custom Platform](../../porting/custom-platform.md) for the full guide
 2. **Implement and verify the clock** — this is the #1 cause of porting
    failures. Print `clock_ms()` in a loop and verify monotonic advance
 3. **Implement remaining primitives** — memory, random, sleep, time,

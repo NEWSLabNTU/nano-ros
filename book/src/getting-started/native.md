@@ -3,7 +3,9 @@
 This chapter walks through creating a pub/sub pair: a talker that publishes
 `std_msgs/Int32` messages and a listener that receives them.
 
-No git clone is needed — Cargo fetches nano-ros dependencies automatically.
+This page assumes nano-ros already lives in your workspace's `src/`
+directory. See [Package Preparation](../user-guide/package-preparation.md)
+for the workspace layout.
 
 ## Prerequisites
 
@@ -230,5 +232,5 @@ the same pattern.
 
 - [C API](../reference/c-api.md) — the same communication model through C
 - [ROS 2 Interop](ros2-interop.md) — verify messages with `ros2 topic echo`
-- [Message Generation](../guides/message-generation.md) — use custom message
+- [Message Generation](../user-guide/message-generation.md) — use custom message
   types

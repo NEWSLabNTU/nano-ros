@@ -145,5 +145,5 @@ and won't find the router.
 ## Next Steps
 
 - [Architecture](../concepts/architecture.md) — understand the layer model
-- [RMW Zenoh Protocol](../reference/rmw-zenoh-protocol.md) — full wire
+- [RMW Zenoh Protocol](../internals/rmw-zenoh-protocol.md) — full wire
   format reference

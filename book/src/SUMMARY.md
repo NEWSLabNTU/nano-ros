@@ -2,24 +2,26 @@
 
 [Introduction](./introduction.md)
 
-# Start Here for ROS 2 Users
-
-- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
-- [Installation](./getting-started/installation.md)
-- [Your First Project](./getting-started/your-first-project.md)
-- [First Native Rust Node](./getting-started/native.md)
-- [ROS 2 Interoperability](./getting-started/ros2-interop.md)
-- [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
-- [Migration Guide](./start-here/migration-guide.md)
-- [Choosing an RMW Backend](./user-guide/rmw-backends.md)
-
 # User Guide
 
-- [Configuration](./user-guide/configuration.md)
+- [Application Workflow](./user-guide/workflow.md)
+- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
+- [Installation](./getting-started/installation.md)
+- [Package Preparation](./user-guide/package-preparation.md)
+- [First Native Rust Node](./getting-started/native.md)
 - [Message Generation](./user-guide/message-generation.md)
+- [Configuration](./user-guide/configuration.md)
+- [Deployment Workflow](./user-guide/deployment.md)
+- [ROS 2 Interoperability](./getting-started/ros2-interop.md)
+- [Choosing an RMW Backend](./user-guide/rmw-backends.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [Serial Transport](./user-guide/serial-transport.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
+
+# ROS 2 Orientation
+
+- [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
+- [Migration Guide](./start-here/migration-guide.md)
 
 # Platform Guides
 

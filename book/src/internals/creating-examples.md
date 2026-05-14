@@ -624,5 +624,5 @@ CONFIG_NET_SOCKETS=y
 
 ## See Also
 
-- [Message Generation](message-generation.md) -- Message generation details
+- [Message Generation](../user-guide/message-generation.md) -- Message generation details
 - [Zephyr](../getting-started/zephyr.md) -- Zephyr workspace setup

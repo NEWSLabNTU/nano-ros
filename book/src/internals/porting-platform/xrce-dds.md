@@ -5,7 +5,7 @@ heap-less, and delegates networking to user-provided transport callbacks.
 The 2-3 required FFI symbols are provided by `xrce-platform-shim` (inside
 `xrce-sys`), which forwards `uxr_*` calls to the `ConcretePlatform` type
 alias from `nros-platform`. When porting to a new platform, you implement an
-`nros-platform-<name>` crate (see [Implementing a Platform](./implementing-a-platform.md))
+`nros-platform-<name>` crate (see [Custom Platform](../../porting/custom-platform.md))
 rather than providing these symbols directly.
 
 ## Platform crate structure
@@ -117,7 +117,7 @@ the clock symbols.
 ## Step-by-step procedure
 
 1. **Create the platform crate** — `nros-platform-<name>/` (see
-   [Implementing a Platform](./implementing-a-platform.md))
+   [Custom Platform](../../porting/custom-platform.md))
 2. **Implement the clock primitives** — `clock_ms()` and friends; the
    `xrce-platform-shim` maps these to `uxr_millis()` and `uxr_nanos()`
 3. **Implement `smoltcp_clock_now_ms()`** if using smoltcp transport

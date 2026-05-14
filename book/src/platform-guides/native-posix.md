@@ -30,12 +30,57 @@ just setup posix-zenoh
 just build
 ```
 
-## Run a First Node
+## Package Layout
 
-Follow [First Native Rust Node](../getting-started/native.md) for a
-publisher/listener walkthrough. For ROS 2 interop, run
-[ROS 2 Interoperability](../getting-started/ros2-interop.md) and set
-the ROS side to `rmw_zenoh_cpp`.
+For a POSIX application package:
+
+```text
+my_posix_node/
+├── package.xml
+├── Cargo.toml          # Rust path
+├── CMakeLists.txt      # C / C++ path
+└── src/
+    └── main.rs         # or main.c / main.cpp
+```
+
+Keep package beside `nano-ros` in workspace `src/`. Use path
+dependencies for Rust or `find_package(NanoRos CONFIG)` for C/C++.
+
+## Code Example
+
+Rust publisher skeleton:
+
+```rust,ignore
+use nros::prelude::*;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExecutorConfig::from_env().node_name("talker");
+    let mut executor = Executor::open(&config)?;
+    let mut node = executor.create_node("talker")?;
+    let publisher = node.create_publisher::<std_msgs::msg::Int32>("/chatter")?;
+
+    let mut msg = std_msgs::msg::Int32 { data: 0 };
+    loop {
+        publisher.publish(&msg)?;
+        msg.data += 1;
+        executor.spin_once(100);
+    }
+}
+```
+
+Use the full [First Native Rust Node](../getting-started/native.md)
+walkthrough for generated messages and runnable commands.
+
+## Build and Run
+
+Start router:
+
+```bash
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+```
+
+Run node through colcon install or directly with Cargo/CMake,
+depending on package type.
 
 ## Configuration
 
@@ -49,3 +94,10 @@ export NROS_LOCATOR=tcp/127.0.0.1:7447
 The same fields are compiled into embedded targets through their
 platform-specific configuration files. See
 [Configuration](../user-guide/configuration.md) for the full layering.
+
+## Deployment
+
+POSIX deployment is normal process deployment: install the workspace,
+source `install/setup.bash`, set environment, and run the binary. For
+ROS 2 interop, run [ROS 2 Interoperability](../getting-started/ros2-interop.md)
+and set the ROS side to `rmw_zenoh_cpp`.
