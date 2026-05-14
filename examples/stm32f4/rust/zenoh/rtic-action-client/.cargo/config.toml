@@ -9,8 +9,8 @@ rustflags = [
 
 # STM32F429ZI has 192K SRAM. The default arena (~74 KB at MAX_CBS=4)
 # overflows `.uninit`. The action client owns a single `ActionClient`
-# slot — cap `NROS_EXECUTOR_MAX_CBS` at 1 and size the arena to a
-# single action entry (`3 × 4480 + 3 × 512 + 1536 + 2048` ≈ 18 KB).
+# slot, so cap callback capacity at 1 and use the same single-action
+# arena budget as the STM32 action-server fixture.
 [env]
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "18432"

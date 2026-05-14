@@ -10,6 +10,10 @@ target = "riscv32imc-unknown-none-elf"
 
 [env]
 ESP_LOG = "info"
+NROS_EXECUTOR_MAX_CBS = "1"
+NROS_EXECUTOR_MAX_NODES = "1"
+NROS_EXECUTOR_ARENA_SIZE = "8192"
+NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
 
 [unstable]
 build-std = ["core", "alloc"]

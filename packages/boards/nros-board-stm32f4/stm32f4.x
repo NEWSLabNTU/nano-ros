@@ -10,7 +10,7 @@
  *
  * Allocations (within SRAM):
  *   Stack: 8KB at end of RAM
- *   Heap: 64KB for zenoh-pico allocator
+ *   Heap: 32KB for zenoh-pico allocator
  */
 
 MEMORY
@@ -20,14 +20,25 @@ MEMORY
 
     /* SRAM1: 192KB at 0x20000000 (DMA-accessible) */
     RAM : ORIGIN = 0x20000000, LENGTH = 192K
+
+    /* Core-coupled memory: 64KB, CPU-only, not Ethernet DMA-accessible */
+    CCMRAM : ORIGIN = 0x10000000, LENGTH = 64K
 }
 
 /* Stack configuration */
 _stack_size = 8K;
 
 /* Heap configuration for zenoh-pico allocator */
-_heap_size = 64K;
+_heap_size = 32K;
 
 /* Export symbols for runtime */
 _heap_start = ORIGIN(RAM) + LENGTH(RAM) - _stack_size - _heap_size;
 _heap_end = ORIGIN(RAM) + LENGTH(RAM) - _stack_size;
+
+SECTIONS
+{
+    .ccmram (NOLOAD) : ALIGN(4)
+    {
+        *(.ccmram .ccmram.*);
+    } > CCMRAM
+}

@@ -1,8 +1,8 @@
-//! Free-list heap allocator for bare-metal ESP32 (32 KB).
+//! Free-list heap allocator for bare-metal ESP32 (16 KB).
 
 use zpico_alloc::FreeListHeap;
 
-static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+static HEAP: FreeListHeap<{ 16 * 1024 }> = FreeListHeap::new();
 
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {
     HEAP.alloc(size)

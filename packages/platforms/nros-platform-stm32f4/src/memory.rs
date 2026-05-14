@@ -8,6 +8,7 @@
 
 use zpico_alloc::FreeListHeap;
 
+#[unsafe(link_section = ".ccmram")]
 static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
 
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {

@@ -20,6 +20,11 @@
 // compiled in-tree by build.rs. The Rust kernel crate that previously
 // emitted the same symbols via the `nros_platform_export!` macro was
 // deleted in Phase 121.3.deprecate-rust-remove.
+//
+// Keep `nros-platform` linked even for DDS-only examples that do not
+// reference it directly; its `global-allocator` feature installs the
+// Rust allocator adapter over the FreeRTOS C heap.
+extern crate nros_platform as _;
 
 // Force-link the zenoh-pico C transport + platform shim when
 // `rmw-zenoh` is active. DDS-only builds drop both deps via
