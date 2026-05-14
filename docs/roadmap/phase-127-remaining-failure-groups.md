@@ -13,12 +13,12 @@ such as `127.A.1`.
 
 Recent sync/fix context:
 
-- Parent `main` was merged from `origin/main` at merge commit `255046a2`.
-- `packages/codegen` was updated to submodule commit
+- [x] Parent `main` was merged from `origin/main` at merge commit `255046a2`.
+- [x] `packages/codegen` was updated to submodule commit
   `3069524eb1e4b8d33da0de77a9e83df7681aac36`.
-- ESP32 subscriber creation OOM was fixed in
+- [x] ESP32 subscriber creation OOM was fixed in
   `8094047c fix(esp32): avoid subscriber heap allocation`.
-- The latest focused ESP32 run now reaches `Subscriber declared` and
+- [x] The latest focused ESP32 run now reaches `Subscriber declared` and
   `Waiting for messages...`; remaining ESP32 failures are message delivery,
   not heap allocation.
 
@@ -49,21 +49,23 @@ Current signal:
 
 Subitems:
 
-- `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
+- [ ] `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
   clients establish sessions with the router.
-- `127.A.2`: ESP32 publish path. Trace ESP32 talker from timer callback through
+- [ ] `127.A.2`: ESP32 publish path. Trace ESP32 talker from timer callback through
   `publish_raw` and smoltcp TX.
-- `127.A.3`: ESP32 receive path. Trace native/ESP32 inbound data through
+- [ ] `127.A.3`: ESP32 receive path. Trace native/ESP32 inbound data through
   smoltcp RX, zenoh-pico poll, subscriber ring, and executor dispatch.
-- `127.A.4`: Harness timing. Confirm startup ordering and polling windows are
+- [ ] `127.A.4`: Harness timing. Confirm startup ordering and polling windows are
   long enough after the OOM fix removed the earlier early-exit failure.
 
-Suggested owner output:
+Done criteria:
 
-- Determine whether the break is router discovery, TCP session open, publish
+- [ ] Determine whether the break is router discovery, TCP session open, publish
   path, receive path, or smoltcp polling cadence.
-- Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
+- [ ] Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
   failure cause.
+- [ ] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
+  smaller, newly categorized failure with no allocation panic.
 
 Focused commands:
 
@@ -95,18 +97,19 @@ Current signal:
 
 Subitems:
 
-- `127.B.1`: FreeRTOS E2E triage.
-- `127.B.2`: NuttX E2E triage.
-- `127.B.3`: ThreadX Linux/RISC-V E2E triage.
-- `127.B.4`: Bare-metal DDS runtime triage.
-- `127.B.5`: Shared platform DDS runtime triage.
+- [ ] `127.B.1`: FreeRTOS E2E triage.
+- [ ] `127.B.2`: NuttX E2E triage.
+- [ ] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
+- [ ] `127.B.4`: Bare-metal DDS runtime triage.
+- [ ] `127.B.5`: Shared platform DDS runtime triage.
 
-Suggested owner output:
+Done criteria:
 
-- Split failures by platform first.
-- For each platform, label failures as fixture build, boot, network setup,
+- [ ] Split failures by platform first.
+- [ ] For each platform, label failures as fixture build, boot, network setup,
   router/discovery, or protocol handshake.
-- Preserve exact QEMU and test harness logs.
+- [ ] Preserve exact QEMU and test harness logs.
+- [ ] Produce a refreshed count for each RTOS/QEMU platform bucket.
 
 Focused commands:
 
@@ -132,17 +135,18 @@ Current signal:
 
 Subitems:
 
-- `127.C.1`: Zephyr boot and fixture health.
-- `127.C.2`: Zephyr native/host message-flow failures.
-- `127.C.3`: Zephyr DDS runtime failures.
-- `127.C.4`: Zephyr XRCE runtime failures.
-- `127.C.5`: Cross-language Zephyr interop failures.
+- [ ] `127.C.1`: Zephyr boot and fixture health.
+- [ ] `127.C.2`: Zephyr native/host message-flow failures.
+- [ ] `127.C.3`: Zephyr DDS runtime failures.
+- [ ] `127.C.4`: Zephyr XRCE runtime failures.
+- [ ] `127.C.5`: Cross-language Zephyr interop failures.
 
-Suggested owner output:
+Done criteria:
 
-- Separate host/board boot failures from DDS/XRCE message-flow failures.
-- Include `west`, QEMU, and nextest logs.
-- Identify whether the failure is common platform startup or backend-specific.
+- [ ] Separate host/board boot failures from DDS/XRCE message-flow failures.
+- [ ] Include `west`, QEMU, and nextest logs.
+- [ ] Identify whether the failure is common platform startup or backend-specific.
+- [ ] Produce focused commands that reproduce each remaining Zephyr subgroup.
 
 Focused commands:
 
@@ -167,15 +171,17 @@ Current signal:
 
 Subitems:
 
-- `127.D.1`: RTIC action E2E.
-- `127.D.2`: RTIC service E2E.
-- `127.D.3`: Serial pub/sub E2E.
+- [ ] `127.D.1`: RTIC action E2E.
+- [ ] `127.D.2`: RTIC service E2E.
+- [ ] `127.D.3`: Serial pub/sub E2E.
 
-Suggested owner output:
+Done criteria:
 
-- Determine whether failures share session readiness, router timing, serial
+- [ ] Determine whether failures share session readiness, router timing, serial
   framing, or executor wake behavior.
-- Compare against passing native RTIC action/service/pubsub cases.
+- [ ] Compare against passing native RTIC action/service/pubsub cases.
+- [ ] Each of RTIC action, RTIC service, and serial pub/sub is either fixed or
+  assigned a precise remaining blocker.
 
 Focused commands:
 
@@ -199,16 +205,17 @@ Current signal:
 
 Subitems:
 
-- `127.E.1`: DDS action goal acceptance and feedback.
-- `127.E.2`: DDS action result and cancellation path.
-- `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
+- [ ] `127.E.1`: DDS action goal acceptance and feedback.
+- [ ] `127.E.2`: DDS action result and cancellation path.
+- [ ] `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
   paths.
 
-Suggested owner output:
+Done criteria:
 
-- Capture server/client action logs.
-- Compare goal acceptance, feedback, result, and cancellation behavior against
+- [ ] Capture server/client action logs.
+- [ ] Compare goal acceptance, feedback, result, and cancellation behavior against
   the passing Zenoh/XRCE action paths.
+- [ ] Native DDS action E2E passes or has a narrowed single-stage failure.
 
 Focused commands:
 
@@ -229,15 +236,16 @@ Current signal:
 
 Subitems:
 
-- `127.F.1`: ROS 2 graph discovery and lifecycle node visibility.
-- `127.F.2`: Transition service availability and request/response path.
-- `127.F.3`: State observation timing after transition execution.
+- [ ] `127.F.1`: ROS 2 graph discovery and lifecycle node visibility.
+- [ ] `127.F.2`: Transition service availability and request/response path.
+- [ ] `127.F.3`: State observation timing after transition execution.
 
-Suggested owner output:
+Done criteria:
 
-- Identify whether failure is graph discovery, transition service availability,
+- [ ] Identify whether failure is graph discovery, transition service availability,
   transition execution, or state observation timing.
-- Include ROS 2 CLI/log output and nano-ros process logs.
+- [ ] Include ROS 2 CLI/log output and nano-ros process logs.
+- [ ] Lifecycle full-cycle interop passes or has one isolated failing transition.
 
 Focused commands:
 
@@ -259,17 +267,19 @@ Current signal:
 
 Subitems:
 
-- `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
+- [ ] `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
   environment skips.
-- `127.G.2`: Run `just build-all` and isolate build-only regressions.
-- `127.G.3`: Run `just test-all` after fixture builds and refresh the final
+- [ ] `127.G.2`: Run `just build-all` and isolate build-only regressions.
+- [ ] `127.G.3`: Run `just test-all` after fixture builds and refresh the final
   phase table.
 
-Suggested owner output:
+Done criteria:
 
-- Produce a fresh table by category.
-- Keep failed, skipped, and harness-reported environment skips separate.
-- Include nextest run id, JUnit path, and `test-logs/latest/` path.
+- [ ] Produce a fresh table by category.
+- [ ] Keep failed, skipped, and harness-reported environment skips separate.
+- [ ] Include nextest run id, JUnit path, and `test-logs/latest/` path.
+- [ ] Update this document and the historical triage doc with the refreshed
+  authoritative counts.
 
 Commands:
 
