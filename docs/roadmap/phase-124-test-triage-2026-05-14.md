@@ -2,28 +2,29 @@
 
 Source run:
 
-- Command: `just ci`
-- Nextest run id: `43f1f3d6-ca05-48bd-b305-065d005f9a8f`
+- Command: `just test-all`
+- Nextest run id: `db2b4bfd-0759-4627-a7ae-8331d15366ed`
 - JUnit: `target/nextest/default/junit.xml`
 - Logs: `test-logs/latest/`
 
-Static quality gates passed before the runtime failure set:
+Quality/build gates verified before this runtime failure set:
 
-- `cargo +nightly-2026-04-11 fmt --check`
-- workspace clippy, embedded clippy, and feature-combination clippy
-- example check matrix
-- C, C++, and Python checks
-- `zenohd` build
-- doctests, Miri, C codegen, and C message generation
+- `just format`
+- `just ci` static portions: formatting, clippy, example check matrix,
+  C/C++/Python checks, `zenohd`, doctests, Miri, C codegen, and C message
+  generation.
+- `just build-all`
+- Standalone `just zephyr build-fixtures` after the C++ generated-config fix.
 
 Runtime summary:
 
-- Nextest: 815 tests run, 687 passed, 128 failed, 11 skipped.
+- Nextest: 815 tests run, 685 passed, 130 failed, 11 skipped.
 - Reported environment skip: `ThreadX-Linux DDS prerequisites not available`.
-- Real failures: 127 of 128 total failures, because the ThreadX-Linux DDS
+- Real failures: 129 of 130 total failures, because the ThreadX-Linux DDS
   prerequisite case is counted as an environment skip by the test harness.
 - Doctests: 1 passed, 4 ignored.
 - Miri: all selected tests passed; one clock test ignored under Miri.
+- C codegen and C message generation passed.
 
 ## Category Summary
 
@@ -31,11 +32,11 @@ Runtime summary:
 |---|---:|---|
 | Native Zenoh/router behavior | 44 | Fastest high-value cluster: services, QoS, multi-node, native C/C++ interop, large-message, safety, and zero-copy tests. |
 | RTOS/QEMU platform E2E | 39 | FreeRTOS, NuttX, ThreadX Linux/RISC-V, baremetal DDS, and platform DDS runtime cases. |
-| Zephyr runtime/E2E | 29 | Zephyr boot/runtime and native/Zephyr cross-language/XRCE/DDS runtime cases. Fixture builds now pass. |
+| Zephyr runtime/E2E | 29 | Zephyr boot/runtime and native/Zephyr cross-language/XRCE/DDS runtime cases. Fixture builds now pass; DDS C/C++ boot tests are no longer in the failure set. |
 | ROS 2/RMW interop and discovery | 6 | Discovery visibility plus lifecycle interop. |
 | Bare-metal Zenoh QEMU E2E | 3 | RTIC action, RTIC service, and serial pub/sub. |
 | ESP32 emulator E2E | 3 | ESP32/native bridge communication. |
-| XRCE C runtime E2E | 3 | C XRCE starts and C talker/listener communication. |
+| XRCE runtime E2E | 5 | C XRCE starts/talker-listener plus Rust XRCE service and large-message runtime cases. |
 | DDS native runtime E2E | 1 | Native DDS action server/client E2E. |
 
 ## Native Zenoh/router Behavior
@@ -201,6 +202,8 @@ XRCE and DDS:
 - `c_xrce_api::test_c_xrce_talker_listener_communication`
 - `c_xrce_api::test_c_xrce_talker_starts`
 - `dds_api::test_dds_action_server_client_e2e`
+- `xrce::test_xrce_large_message_publish`
+- `xrce::test_xrce_service_request_response`
 
 ## Skipped/Ignored
 
