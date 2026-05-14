@@ -36,4 +36,4 @@ custom RMW backend or porting to a new platform — see
 
 - [`nros_rmw`](../api/rust/nros_rmw/index.html) — RMW trait surface (porters)
 - [`nros_platform_api`](../api/rust/nros_platform_api/index.html) — platform abstraction traits (porters)
-- [`nros_rmw_zenoh`](../api/rust/nros_rmw_zenoh/index.html) — zenoh-pico backend internals
+- [`nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) — zenoh-pico backend internals

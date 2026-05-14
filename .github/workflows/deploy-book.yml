@@ -28,8 +28,12 @@ jobs:
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+        # The book deploy only needs the repository sources used by mdBook,
+        # rustdoc, and Doxygen. Do not fetch every submodule here: several
+        # platform/runtime submodules are large, target-specific, and may
+        # temporarily point at fork-only commits while development branches are
+        # being synchronized. Recursive checkout makes an otherwise unrelated
+        # book deploy fail before docs build starts.
 
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v2
@@ -78,7 +82,6 @@ jobs:
             -p nros \
             -p nros-rmw \
             -p nros-rmw-cffi \
-            -p nros-rmw-zenoh \
             -p nros-platform-api \
             -p nros-platform-cffi \
             -p nros-platform
