@@ -91,6 +91,36 @@ pub struct zpico_property_t {
     pub value: *const core::ffi::c_char,
 }
 
+/// Phase 124.D.3.c — SPSC ring descriptor mirroring
+/// `zpico_ring_desc_t` in `c/include/zpico.h`. Field order, names,
+/// and types track the C struct byte-for-byte. The Rust shim owns
+/// the backing storage (a `SubscriberBuffer`) and fills this
+/// descriptor; the C shim reads it from `sample_handler`.
+///
+/// `head` / `tail` are monotonic counters accessed with atomics on
+/// both sides — the slot index is `counter % slot_count`.
+#[repr(C)]
+pub struct zpico_ring_desc_t {
+    /// `slot_count * payload_stride` bytes of payload storage.
+    pub payload_base: *mut u8,
+    /// Bytes between payload slot starts.
+    pub payload_stride: usize,
+    /// `slot_count * att_stride` bytes of attachment storage.
+    pub att_base: *mut u8,
+    /// Bytes between attachment slot starts.
+    pub att_stride: usize,
+    /// Number of ring slots N.
+    pub slot_count: usize,
+    /// `slot_count` entries — per-slot payload length.
+    pub payload_len: *mut usize,
+    /// `slot_count` entries — per-slot attachment length.
+    pub att_len: *mut usize,
+    /// Consumer counter — written only by the Rust shim.
+    pub head: *mut usize,
+    /// Producer counter — written only by the C shim.
+    pub tail: *mut usize,
+}
+
 // These extern declarations import the zpico C functions.
 // The actual implementations are in c/zpico/zpico.c
 //
@@ -193,6 +223,12 @@ unsafe extern "C" {
         buf_ptr: *mut u8,
         buf_capacity: usize,
         locked_ptr: *const bool,
+        callback: ZpicoNotifyCallback,
+        ctx: *mut c_void,
+    ) -> i32;
+    pub fn zpico_declare_subscriber_ring(
+        keyexpr: *const core::ffi::c_char,
+        desc: *mut zpico_ring_desc_t,
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;

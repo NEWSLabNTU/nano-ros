@@ -127,7 +127,7 @@ pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
 #[cfg(feature = "safety-e2e")]
 pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
-pub use crate::config::{SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE};
+pub use crate::config::{SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_RING_DEPTH};
 
 // ============================================================================
 // Executor Wake Signal (std only)
@@ -989,15 +989,19 @@ mod ghost_checks {
     use service::ServiceBuffer;
     use subscriber::SubscriberBuffer;
 
-    /// Structural check: construct SubscriberBufferGhost from SubscriberBuffer private fields.
-    /// If a field is renamed or retyped, this fails to compile.
+    /// Structural check: project the Phase 124.D.3.c SPSC-ring
+    /// `SubscriberBuffer` onto the ghost shape. `overflow` / `locked`
+    /// no longer exist as fields — the ring is lock-free and drops
+    /// oversized payloads at the producer — so they project to
+    /// `false`. `stored_len` reads the head slot's length.
     fn ghost_from_buffer(b: &SubscriberBuffer) -> SubscriberBufferGhost {
+        let head_slot = b.ring_head.load(Ordering::Relaxed) % SUBSCRIBER_RING_DEPTH;
         SubscriberBufferGhost {
-            has_data: b.has_data.load(Ordering::Relaxed),
-            overflow: b.overflow.load(Ordering::Relaxed),
-            locked: b.locked.load(Ordering::Relaxed),
-            stored_len: b.len.load(Ordering::Relaxed),
-            buf_capacity: b.data.len(),
+            has_data: b.has_data(),
+            overflow: false,
+            locked: false,
+            stored_len: b.ring_len[head_slot],
+            buf_capacity: SUBSCRIBER_BUFFER_SIZE,
         }
     }
 

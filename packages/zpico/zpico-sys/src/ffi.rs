@@ -143,6 +143,34 @@ mod cbindgen_stubs {
         pub value: *const c_char,
     }
 
+    /// Phase 124.D.3.c — SPSC ring descriptor for burst-tolerant
+    /// direct-write subscribers. C shim is the sole producer
+    /// (writes payloads, advances `tail`); Rust shim the sole
+    /// consumer (reads payloads, advances `head`). Slot index is
+    /// `counter % slot_count`. Backing storage owned by the Rust
+    /// `SubscriberBuffer`.
+    #[repr(C)]
+    pub struct zpico_ring_desc_t {
+        /// `slot_count * payload_stride` bytes of payload storage.
+        pub payload_base: *mut u8,
+        /// Bytes between payload slot starts.
+        pub payload_stride: usize,
+        /// `slot_count * att_stride` bytes of attachment storage.
+        pub att_base: *mut u8,
+        /// Bytes between attachment slot starts.
+        pub att_stride: usize,
+        /// Number of ring slots N.
+        pub slot_count: usize,
+        /// `slot_count` entries — per-slot payload length.
+        pub payload_len: *mut usize,
+        /// `slot_count` entries — per-slot attachment length.
+        pub att_len: *mut usize,
+        /// Consumer counter — written only by the Rust shim.
+        pub head: *mut usize,
+        /// Producer counter — written only by the C shim.
+        pub tail: *mut usize,
+    }
+
     /// Initialize zenoh configuration with client mode and connect locator.
     ///
     /// # Parameters
@@ -344,6 +372,31 @@ mod cbindgen_stubs {
         _buf_ptr: *mut u8,
         _buf_capacity: usize,
         _locked_ptr: *const bool,
+        _callback: ZpicoNotifyCallback,
+        _ctx: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    /// Phase 124.D.3.c — declare a burst-tolerant direct-write
+    /// subscriber backed by an SPSC ring. Each message lands in the
+    /// next free ring slot rather than a single shared slot, so a
+    /// burst arriving between two `try_recv` calls is buffered
+    /// instead of dropped. The `notify` callback fires once per
+    /// message for async-waker support.
+    ///
+    /// # Parameters
+    /// * `keyexpr` - Key expression string, null-terminated.
+    /// * `desc` - Ring descriptor; must outlive the subscriber.
+    /// * `callback` - Notify callback (per-message arrival signal).
+    /// * `ctx` - User context pointer passed to callback.
+    ///
+    /// # Returns
+    /// Subscriber handle (>= 0) on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_declare_subscriber_ring(
+        _keyexpr: *const c_char,
+        _desc: *mut zpico_ring_desc_t,
         _callback: ZpicoNotifyCallback,
         _ctx: *mut c_void,
     ) -> i32 {

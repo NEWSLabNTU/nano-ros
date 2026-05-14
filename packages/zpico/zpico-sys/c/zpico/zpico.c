@@ -13,6 +13,7 @@
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
 #include <string.h>
+#include <stdatomic.h>
 #ifdef ZENOH_NUTTX
 #include <unistd.h>
 #endif
@@ -98,6 +99,11 @@ typedef struct {
     uint8_t *buf_ptr;      // Pointer into Rust SUBSCRIBER_BUFFERS[i].data
     size_t buf_capacity;   // Size of the Rust buffer
     const bool *locked_ptr; // Pointer to Rust SUBSCRIBER_BUFFERS[i].locked (AtomicBool)
+    // Phase 124.D.3.c — SPSC ring descriptor (set when mode == ring).
+    // C is the sole producer, Rust the sole consumer. See
+    // `zpico_ring_desc_t` in the header. NULL = not in ring mode.
+    bool ring_mode;
+    zpico_ring_desc_t *ring;
 #if defined(Z_FEATURE_UNSTABLE_API)
     bool zero_copy;        // true = zero-copy mode (borrows from zenoh-pico buffer)
     ZpicoZeroCopyCallback zero_copy_cb;
@@ -385,6 +391,81 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         return;
     }
 #endif
+
+    if (entry->ring_mode) {
+        // Phase 124.D.3.c — SPSC ring producer path. C is the sole
+        // writer of `tail`; Rust the sole writer of `head`.
+        if (entry->notify == NULL || entry->ring == NULL) {
+            return;
+        }
+        // Drop empty-payload samples — zenoh-pico delivers background
+        // probes / liveliness syncs through the regular subscription
+        // path with a zero-length payload. Buffering them would let
+        // the typed `try_recv()` consume a slot whose CDR header check
+        // then fails. Mirrors the legacy single-slot behaviour.
+        if (payload_len == 0) {
+            return;
+        }
+        zpico_ring_desc_t *r = entry->ring;
+
+        // Acquire-load head (published by the Rust consumer) and a
+        // relaxed-load of our own tail. Ring full when the gap is
+        // slot_count — drop the newest message (matches DDS
+        // KEEP_LAST overwrite-from-the-front intent loosely; a
+        // dropped burst tail is reported via msg-lost accounting on
+        // the Rust side from the sequence gap).
+        uintptr_t head = atomic_load_explicit(
+            (const _Atomic uintptr_t *)r->head, memory_order_acquire);
+        uintptr_t tail = atomic_load_explicit(
+            (_Atomic uintptr_t *)r->tail, memory_order_relaxed);
+        if (tail - head >= r->slot_count) {
+            // Ring full — drop. Still fire notify(len) so the Rust
+            // side can observe the arrival for waker / lost-count.
+            entry->notify(payload_len, NULL, 0, entry->ctx);
+            _zpico_notify_spin();
+            return;
+        }
+
+        uintptr_t slot = tail % r->slot_count;
+        uint8_t *pay_dst = r->payload_base + slot * r->payload_stride;
+        if (payload_len > r->payload_stride) {
+            // Slot too small — report overflow via notify, don't
+            // advance tail.
+            entry->notify(payload_len, NULL, 0, entry->ctx);
+            return;
+        }
+        z_bytes_reader_t reader = z_bytes_get_reader(payload);
+        z_bytes_reader_read(&reader, pay_dst, payload_len);
+        r->payload_len[slot] = payload_len;
+
+        // Attachment into the parallel per-slot array.
+        size_t att_written = 0;
+        const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
+        if (attachment != NULL && r->att_stride > 0) {
+            z_owned_slice_t att_slice;
+            if (z_bytes_to_slice(attachment, &att_slice) == 0) {
+                size_t att_len = z_slice_len(z_slice_loan(&att_slice));
+                if (att_len <= r->att_stride) {
+                    memcpy(r->att_base + slot * r->att_stride,
+                           z_slice_data(z_slice_loan(&att_slice)), att_len);
+                    att_written = att_len;
+                }
+                z_slice_drop(z_slice_move(&att_slice));
+            }
+        }
+        r->att_len[slot] = att_written;
+
+        // Publish the slot: Release store advances tail so the Rust
+        // consumer sees the payload + len writes above.
+        atomic_store_explicit((_Atomic uintptr_t *)r->tail, tail + 1,
+                              memory_order_release);
+
+        // Fire notify for the async waker. Pass NULL attachment —
+        // the consumer reads the per-slot attachment array directly.
+        entry->notify(payload_len, NULL, 0, entry->ctx);
+        _zpico_notify_spin();
+        return;
+    }
 
     if (entry->direct_write) {
         // Direct-write mode: read payload directly into Rust static buffer
@@ -1079,6 +1160,62 @@ int32_t zpico_declare_subscriber_direct_write(const char *keyexpr,
         g_subscribers[idx].notify = NULL;
         g_subscribers[idx].ctx = NULL;
         g_subscribers[idx].direct_write = false;
+        return ZPICO_ERR_GENERIC;
+    }
+
+    g_subscribers[idx].active = true;
+    return idx;
+}
+
+int32_t zpico_declare_subscriber_ring(const char *keyexpr,
+                                      zpico_ring_desc_t *desc,
+                                      ZpicoNotifyCallback callback,
+                                      void *ctx) {
+    if (!g_session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+    if (desc == NULL || desc->slot_count == 0) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    int idx = -1;
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
+        if (!g_subscribers[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) {
+        return ZPICO_ERR_FULL;
+    }
+
+    g_subscribers[idx].notify = callback;
+    g_subscribers[idx].ctx = ctx;
+    g_subscribers[idx].with_attachment = false;
+    g_subscribers[idx].direct_write = false;
+    g_subscribers[idx].ring_mode = true;
+    g_subscribers[idx].ring = desc;
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        g_subscribers[idx].notify = NULL;
+        g_subscribers[idx].ctx = NULL;
+        g_subscribers[idx].ring_mode = false;
+        g_subscribers[idx].ring = NULL;
+        return ZPICO_ERR_KEYEXPR;
+    }
+
+    z_owned_closure_sample_t closure;
+    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+
+    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    if (sub_ret < 0) {
+        printk("zpico: z_declare_subscriber (ring) failed: %d for '%s'\n", sub_ret, keyexpr);
+        g_subscribers[idx].notify = NULL;
+        g_subscribers[idx].ctx = NULL;
+        g_subscribers[idx].ring_mode = false;
+        g_subscribers[idx].ring = NULL;
         return ZPICO_ERR_GENERIC;
     }
 

@@ -3,17 +3,17 @@
 use core::marker::PhantomData;
 
 use atomic_waker::AtomicWaker;
-use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
+use portable_atomic::{AtomicUsize, Ordering};
 
 use nros_rmw::{Subscriber, TransportError};
 
 use super::{
     KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MessageInfo, RMW_ATTACHMENT_SIZE,
-    SUBSCRIBER_ATTACHMENT_BUF_SIZE, SUBSCRIBER_BUFFER_SIZE,
+    SUBSCRIBER_ATTACHMENT_BUF_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_RING_DEPTH,
 };
 use crate::{
     keyexpr::TopicKeyExpr,
-    zpico::{Context, ZPICO_MAX_SUBSCRIBERS},
+    zpico::{Context, ZPICO_MAX_SUBSCRIBERS, zpico_ring_desc_t},
 };
 
 #[cfg(feature = "safety-e2e")]
@@ -26,48 +26,117 @@ use super::signal_executor_wake;
 // SubscriberBuffer
 // ============================================================================
 
-/// Shared buffer for subscriber callbacks
+/// Shared buffer for subscriber callbacks.
 ///
-/// This buffer stores the most recent message received by the subscriber,
-/// including the RMW attachment data for MessageInfo support.
-/// The callback writes to this buffer, and `try_recv_raw` reads from it.
+/// Phase 124.D.3.c — SPSC ring. The C shim is the sole producer
+/// (writes payload + attachment + lengths into the slot at
+/// `ring_tail % SUBSCRIBER_RING_DEPTH`, then Release-stores
+/// `ring_tail + 1`). The Rust shim is the sole consumer (reads the
+/// slot at `ring_head % SUBSCRIBER_RING_DEPTH`, then Release-stores
+/// `ring_head + 1`). Ring empty when `head == tail`, full when
+/// `tail - head == SUBSCRIBER_RING_DEPTH`.
+///
+/// Replaces the previous single-slot + `locked` flag design — a
+/// burst of up to `SUBSCRIBER_RING_DEPTH` messages arriving between
+/// two `try_recv` calls is now buffered instead of dropped, and
+/// `try_recv_sequence` can drain the whole ring in one call. No
+/// lock is needed: the SPSC discipline + the Release/Acquire fence
+/// on `ring_tail` / `ring_head` covers the cross-FFI handoff.
 pub(super) struct SubscriberBuffer {
-    /// Buffer for received payload data (statically allocated)
-    pub(super) data: [u8; SUBSCRIBER_BUFFER_SIZE],
-    /// Buffer for received attachment data (33 or 37 bytes depending on safety-e2e)
-    pub(super) attachment: [u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
-    /// Flag indicating new data is available
-    pub(super) has_data: AtomicBool,
-    /// Flag indicating the incoming message exceeded the buffer capacity.
-    /// Set by the callback when `len > data.len()`. Checked by `try_recv_raw`
-    /// which returns `Err(MessageTooLarge)` and clears this flag.
-    pub(super) overflow: AtomicBool,
-    /// Flag indicating a reader is currently accessing this buffer.
-    /// Set by `try_recv_raw` / `process_raw_in_place` before reading, cleared
-    /// after. The callback checks this flag and drops the message if locked,
-    /// preventing a data race where the callback overwrites the buffer mid-read.
-    pub(super) locked: AtomicBool,
-    /// Length of valid payload data
-    pub(super) len: AtomicUsize,
-    /// Length of valid attachment data
-    pub(super) attachment_len: AtomicUsize,
-    /// Async waker — registered by `Future::poll()`, woken from callback
-    /// when data arrives. Enables event-driven async without busy-polling.
+    /// Ring of payload slots.
+    pub(super) ring_payload: [[u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH],
+    /// Ring of attachment slots, parallel to `ring_payload`.
+    pub(super) ring_att: [[u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE]; SUBSCRIBER_RING_DEPTH],
+    /// Per-slot payload byte length. Written by the C shim before
+    /// its Release-store to `ring_tail`; read by the Rust shim
+    /// after its Acquire-load.
+    pub(super) ring_len: [usize; SUBSCRIBER_RING_DEPTH],
+    /// Per-slot attachment byte length.
+    pub(super) ring_att_len: [usize; SUBSCRIBER_RING_DEPTH],
+    /// Consumer counter — advanced only by the Rust shim.
+    pub(super) ring_head: AtomicUsize,
+    /// Producer counter — advanced only by the C shim.
+    pub(super) ring_tail: AtomicUsize,
+    /// Descriptor handed to the C shim at subscribe time. The raw
+    /// pointers reference this same `SubscriberBuffer` (a
+    /// `static mut` element — its address is stable for the
+    /// program's lifetime). Filled in `ZenohSubscriber::new`.
+    pub(super) ring_desc: zpico_ring_desc_t,
+    /// Async waker — registered by `Future::poll()`, woken from the
+    /// notify callback when data arrives. Enables event-driven
+    /// async without busy-polling.
     pub(super) waker: AtomicWaker,
 }
 
 impl SubscriberBuffer {
     pub(super) const fn new() -> Self {
         Self {
-            data: [0u8; SUBSCRIBER_BUFFER_SIZE],
-            attachment: [0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
-            has_data: AtomicBool::new(false),
-            overflow: AtomicBool::new(false),
-            locked: AtomicBool::new(false),
-            len: AtomicUsize::new(0),
-            attachment_len: AtomicUsize::new(0),
+            ring_payload: [[0u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH],
+            ring_att: [[0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE]; SUBSCRIBER_RING_DEPTH],
+            ring_len: [0usize; SUBSCRIBER_RING_DEPTH],
+            ring_att_len: [0usize; SUBSCRIBER_RING_DEPTH],
+            ring_head: AtomicUsize::new(0),
+            ring_tail: AtomicUsize::new(0),
+            ring_desc: zpico_ring_desc_t {
+                payload_base: core::ptr::null_mut(),
+                payload_stride: 0,
+                att_base: core::ptr::null_mut(),
+                att_stride: 0,
+                slot_count: 0,
+                payload_len: core::ptr::null_mut(),
+                att_len: core::ptr::null_mut(),
+                head: core::ptr::null_mut(),
+                tail: core::ptr::null_mut(),
+            },
             waker: AtomicWaker::new(),
         }
+    }
+
+    /// True when the ring holds at least one un-consumed message.
+    pub(super) fn has_data(&self) -> bool {
+        self.ring_head.load(Ordering::Acquire) != self.ring_tail.load(Ordering::Acquire)
+    }
+
+    /// Index of the head slot if the ring is non-empty. Does NOT
+    /// advance `ring_head` — the caller reads the slot, then calls
+    /// [`consume_head`](Self::consume_head). The Acquire-load of
+    /// `ring_tail` synchronises-with the C producer's Release-store,
+    /// so the per-slot payload / attachment / length writes that
+    /// happened-before that store are visible here.
+    pub(super) fn peek_head_slot(&self) -> Option<usize> {
+        let head = self.ring_head.load(Ordering::Acquire);
+        let tail = self.ring_tail.load(Ordering::Acquire);
+        if head == tail {
+            None
+        } else {
+            Some(head % SUBSCRIBER_RING_DEPTH)
+        }
+    }
+
+    /// Advance `ring_head` past the slot returned by the most recent
+    /// [`peek_head_slot`](Self::peek_head_slot). Release-store so the
+    /// C producer's Acquire-load of `ring_head` sees the slot freed.
+    pub(super) fn consume_head(&self) {
+        let head = self.ring_head.load(Ordering::Acquire);
+        self.ring_head
+            .store(head.wrapping_add(1), Ordering::Release);
+    }
+
+    /// Populate `ring_desc` so the C shim can produce into this
+    /// buffer. Must be called once, after the buffer's static
+    /// address is known (i.e. from `ZenohSubscriber::new`).
+    pub(super) fn init_ring_desc(&mut self) {
+        self.ring_desc = zpico_ring_desc_t {
+            payload_base: self.ring_payload.as_mut_ptr() as *mut u8,
+            payload_stride: SUBSCRIBER_BUFFER_SIZE,
+            att_base: self.ring_att.as_mut_ptr() as *mut u8,
+            att_stride: SUBSCRIBER_ATTACHMENT_BUF_SIZE,
+            slot_count: SUBSCRIBER_RING_DEPTH,
+            payload_len: self.ring_len.as_mut_ptr(),
+            att_len: self.ring_att_len.as_mut_ptr(),
+            head: self.ring_head.as_ptr(),
+            tail: self.ring_tail.as_ptr(),
+        };
     }
 }
 
@@ -118,9 +187,14 @@ impl SubscriberBufferRef {
 
     /// Get an immutable reference to the subscriber buffer.
     ///
+    /// Returns a `'static` reference — `SUBSCRIBER_BUFFERS` is a
+    /// module-level `static mut` whose elements live for the
+    /// program's lifetime, so the borrow is genuinely `'static` and
+    /// callers don't have to keep the `SubscriberBufferRef` alive.
+    ///
     /// Safety is guaranteed by the bounds check at construction time.
     /// All shared fields use atomic types, preventing data races.
-    pub(super) fn get(&self) -> &SubscriberBuffer {
+    pub(super) fn get(&self) -> &'static SubscriberBuffer {
         // Safety: index was validated at construction time.
         // SUBSCRIBER_BUFFERS is a module-level static with fixed address.
         unsafe { &SUBSCRIBER_BUFFERS[self.index] }
@@ -138,14 +212,20 @@ impl SubscriberBufferRef {
     }
 }
 
-/// Notify callback invoked by the C shim after direct-write to the static buffer.
+/// Notify callback invoked by the C shim once per message arrival.
 ///
-/// The payload is already in `SUBSCRIBER_BUFFERS[buffer_index].data`. This callback
-/// only stores the length, attachment, and signals data availability.
+/// Phase 124.D.3.c — in ring mode the C shim has already written the
+/// payload, attachment, and per-slot lengths into the next free ring
+/// slot and Release-stored `ring_tail` before calling this. So the
+/// callback only has to fire the async waker / executor wake — there
+/// is nothing left for it to copy. The `len` / `attachment` args are
+/// unused (the consumer reads them from the ring slot). On a
+/// full-ring or oversized-payload drop the C shim still calls us so
+/// the waker observes the arrival attempt.
 extern "C" fn subscriber_notify_callback(
-    len: usize,
-    attachment: *const u8,
-    attachment_len: usize,
+    _len: usize,
+    _attachment: *const u8,
+    _attachment_len: usize,
     ctx: *mut core::ffi::c_void,
 ) {
     let buffer_index = ctx as usize;
@@ -153,53 +233,15 @@ extern "C" fn subscriber_notify_callback(
         return;
     }
 
-    let mut buf_ref = SubscriberBufferRef {
+    let buf_ref = SubscriberBufferRef {
         index: buffer_index,
     };
-    let buffer = buf_ref.get_mut();
+    let buffer = buf_ref.get();
 
-    // Drop empty-payload samples — they reach the data callback when
-    // zenoh-pico delivers a background probe / liveliness sync through
-    // the regular subscription path. Flagging them as `has_data`
-    // consumes the slot before the real CDR-prefixed sample lands; the
-    // CDR header check then trips on the empty buffer and the typed
-    // `try_recv()` returns `DeserializationError`.
-    if len == 0 {
-        return;
-    }
-
-    if len > buffer.data.len() {
-        // Overflow: the C shim called us with the oversized length so we can flag it.
-        buffer.overflow.store(true, Ordering::Release);
-        buffer.has_data.store(true, Ordering::Release);
-    } else {
-        // Payload already written by C shim — just store metadata
-        buffer.overflow.store(false, Ordering::Release);
-        buffer.len.store(len, Ordering::Release);
-
-        // Copy attachment data if present
-        if !attachment.is_null() && attachment_len > 0 {
-            let att_copy_len = attachment_len.min(buffer.attachment.len());
-            // Safety: attachment pointer is valid for att_copy_len bytes (from C shim)
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    attachment,
-                    buffer.attachment.as_mut_ptr(),
-                    att_copy_len,
-                );
-            }
-            buffer.attachment_len.store(att_copy_len, Ordering::Release);
-        } else {
-            buffer.attachment_len.store(0, Ordering::Release);
-        }
-
-        buffer.has_data.store(true, Ordering::Release);
-    }
-
-    // Wake any async task waiting for data on this subscriber
+    // Wake any async task waiting for data on this subscriber.
     buffer.waker.wake();
 
-    // Wake the executor spin loop (if waiting)
+    // Wake the executor spin loop (if waiting).
     #[cfg(feature = "std")]
     signal_executor_wake();
 }
@@ -366,23 +408,21 @@ impl ZenohSubscriber {
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
 
-        // Create subscriber with direct-write: the C shim reads payload directly
-        // into SUBSCRIBER_BUFFERS[buffer_index].data via z_bytes_reader_read(),
-        // avoiding the z_bytes_to_slice() malloc.
+        // Phase 124.D.3.c — create subscriber with the SPSC ring.
+        // The C shim reads each payload directly into the next free
+        // ring slot of SUBSCRIBER_BUFFERS[buffer_index] via
+        // `z_bytes_reader_read()`, advances `ring_tail`, and fires
+        // the notify callback. A burst is buffered up to
+        // SUBSCRIBER_RING_DEPTH deep instead of overwriting a single
+        // slot. `init_ring_desc` populates the descriptor's raw
+        // pointers from the buffer's (stable) static address.
         let subscriber = unsafe {
             let buffer = buf.get_mut();
-            let buf_ptr = buffer.data.as_mut_ptr();
-            let buf_capacity = buffer.data.len();
-            // AtomicBool is guaranteed to have the same in-memory representation
-            // as bool on all Rust targets (size 1, align 1). The C shim reads
-            // this via __atomic_load_n(ptr, __ATOMIC_ACQUIRE), which requires a
-            // pointer to the underlying bool storage — hence the cast.
-            let locked_ptr = buffer.locked.as_ptr() as *const bool;
-            let sub_result = context.declare_subscriber_direct_write_raw(
+            buffer.init_ring_desc();
+            let desc_ptr: *mut zpico_ring_desc_t = &mut buffer.ring_desc;
+            let sub_result = context.declare_subscriber_ring_raw(
                 &keyexpr_buf,
-                buf_ptr,
-                buf_capacity,
-                locked_ptr,
+                desc_ptr,
                 subscriber_notify_callback,
                 buffer_index as *mut core::ffi::c_void,
             );
@@ -538,11 +578,16 @@ impl ZenohSubscriber {
     /// is present. Called from `try_recv_raw` to enforce LIFESPAN.
     fn attachment_timestamp_ms(&self) -> u64 {
         let buffer = self.buf.get();
-        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        // Inspect the head ring slot — the message `try_recv_raw` is
+        // about to deliver. Empty ring → no timestamp.
+        let Some(slot) = buffer.peek_head_slot() else {
+            return 0;
+        };
+        let attachment_len = buffer.ring_att_len[slot];
         if attachment_len < RMW_ATTACHMENT_SIZE {
             return 0;
         }
-        let att = &buffer.attachment;
+        let att = &buffer.ring_att[slot];
         // Bytes 8..16 are the i64 timestamp (LE) per
         // ZenohPublisher::serialize_attachment. Convert ns → ms.
         let ts_ns = i64::from_le_bytes([
@@ -601,11 +646,16 @@ impl ZenohSubscriber {
     /// effect of receive (matching dust-DDS sample-lost semantics).
     fn check_msg_lost_and_fire(&self) {
         let buffer = self.buf.get();
-        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        // Inspect the head ring slot — the message just copied out by
+        // `try_recv_raw`, not yet consumed.
+        let Some(slot) = buffer.peek_head_slot() else {
+            return;
+        };
+        let attachment_len = buffer.ring_att_len[slot];
         if attachment_len < RMW_ATTACHMENT_SIZE {
             return; // No attachment, no seq → can't detect gaps.
         }
-        let att = &buffer.attachment;
+        let att = &buffer.ring_att[slot];
         let seq = i64::from_le_bytes([
             att[0], att[1], att[2], att[3], att[4], att[5], att[6], att[7],
         ]);
@@ -662,42 +712,30 @@ impl ZenohSubscriber {
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, TransportError> {
         let buffer = self.buf.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(slot) = buffer.peek_head_slot() else {
             return Ok(None);
-        }
+        };
 
-        // Check for overflow
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
+        let len = buffer.ring_len[slot];
         if len > buf.len() {
-            buffer.has_data.store(false, Ordering::Release);
+            // Oversized for the caller's buffer — drop the slot so the
+            // subscription isn't permanently stuck.
+            buffer.consume_head();
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Lock buffer to prevent callback from overwriting during copy
-        buffer.locked.store(true, Ordering::Release);
+        // Copy payload out of the ring slot. SPSC: the C producer
+        // never touches this slot while head points at it.
+        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
 
-        // Copy payload data
-        // Safety: data is valid up to len bytes, buffer is locked
-        unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
-        }
-
-        // Parse attachment for sequence number and CRC
-        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        // Parse attachment for sequence number and CRC.
+        let attachment_len = buffer.ring_att_len[slot];
         let (message_seq, crc_valid) = if attachment_len >= RMW_ATTACHMENT_SIZE {
-            // Extract sequence number (bytes 0..8, LE)
-            let att = &buffer.attachment;
+            let att = &buffer.ring_att[slot];
             let seq = i64::from_le_bytes([
                 att[0], att[1], att[2], att[3], att[4], att[5], att[6], att[7],
             ]);
 
-            // Check for CRC (bytes 33..37)
             let crc_result = if attachment_len >= RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE {
                 let received_crc = u32::from_le_bytes([
                     att[RMW_ATTACHMENT_SIZE],
@@ -708,18 +746,15 @@ impl ZenohSubscriber {
                 let computed_crc = nros_rmw::crc32(&buf[..len]);
                 Some(received_crc == computed_crc)
             } else {
-                // No CRC in attachment (sender doesn't have safety-e2e)
                 None
             };
 
             (seq, crc_result)
         } else {
-            // No attachment at all — cannot validate
             (0, None)
         };
 
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
+        buffer.consume_head();
 
         let status = self.safety_validator.validate(message_seq, crc_valid);
         Ok(Some((len, status)))
@@ -738,45 +773,28 @@ impl ZenohSubscriber {
     ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
         let buffer = self.buf.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(slot) = buffer.peek_head_slot() else {
             return Ok(None);
-        }
+        };
 
-        // Check for overflow (message exceeded static buffer capacity)
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
+        let len = buffer.ring_len[slot];
         if len > buf.len() {
-            // Clear has_data to avoid permanently stuck subscription — the oversized
-            // message is dropped, but the subscription recovers on the next message.
-            buffer.has_data.store(false, Ordering::Release);
+            // Oversized for the caller's buffer — drop the slot; the
+            // subscription recovers on the next message.
+            buffer.consume_head();
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Lock buffer to prevent callback from overwriting during copy
-        buffer.locked.store(true, Ordering::Release);
+        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
 
-        // Copy payload data
-        // Safety: Data is valid up to len bytes, buffer is locked
-        unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
-        }
-
-        // Parse attachment if present
-        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        let attachment_len = buffer.ring_att_len[slot];
         let message_info = if attachment_len > 0 {
-            let attachment_slice = &buffer.attachment[..attachment_len];
-            MessageInfo::from_attachment(attachment_slice)
+            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len])
         } else {
             None
         };
 
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
+        buffer.consume_head();
 
         Ok(Some((len, message_info)))
     }
@@ -793,33 +811,23 @@ impl ZenohSubscriber {
     ) -> Result<bool, TransportError> {
         let buffer = self.buf.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(slot) = buffer.peek_head_slot() else {
             return Ok(false);
-        }
+        };
 
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
+        let len = buffer.ring_len[slot];
 
-        let len = buffer.len.load(Ordering::Acquire);
-
-        buffer.locked.store(true, Ordering::Release);
-
-        // Parse attachment while locked (attachment is small: 33-37 bytes)
-        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        // Parse attachment (small: 33-37 bytes).
+        let attachment_len = buffer.ring_att_len[slot];
         let message_info = if attachment_len > 0 {
-            let attachment_slice = &buffer.attachment[..attachment_len];
-            MessageInfo::from_attachment(attachment_slice)
+            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len])
         } else {
             None
         };
 
-        f(&buffer.data[..len], message_info);
+        f(&buffer.ring_payload[slot][..len], message_info);
 
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
+        buffer.consume_head();
 
         Ok(true)
     }
@@ -839,22 +847,15 @@ impl Subscriber for ZenohSubscriber {
         // (whether or not data is ready). Rate-limited internally.
         self.check_deadline_and_fire();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(slot) = buffer.peek_head_slot() else {
             return Ok(None);
-        }
+        };
 
-        // Check for overflow (message exceeded static buffer capacity)
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
+        let len = buffer.ring_len[slot];
         if len > buf.len() {
-            // Clear has_data to avoid permanently stuck subscription — the oversized
-            // message is dropped, but the subscription recovers on the next message.
-            buffer.has_data.store(false, Ordering::Release);
+            // Oversized for the caller's buffer — drop the slot; the
+            // subscription recovers on the next message.
+            buffer.consume_head();
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -869,29 +870,23 @@ impl Subscriber for ZenohSubscriber {
             if ts != 0 {
                 let now = now_ms();
                 if now > ts.saturating_add(self.lifespan_ms as u64) {
-                    buffer.has_data.store(false, Ordering::Release);
+                    buffer.consume_head();
                     return Ok(None);
                 }
             }
         }
 
-        // Lock buffer to prevent callback from overwriting during copy
-        buffer.locked.store(true, Ordering::Release);
-
-        // Copy data
-        // Safety: Data is valid up to len bytes, buffer is locked
-        unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
-        }
+        // Copy data out of the ring slot. SPSC: the C producer never
+        // touches this slot while head points at it.
+        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
 
         // Phase 108.C.zenoh.5 — detect publisher seq gap before
-        // releasing the buffer lock so the attachment is still valid.
+        // advancing head so the attachment is still valid.
         self.check_msg_lost_and_fire();
         // Phase 108.C.zenoh.2 — successful receive resets deadline.
         self.last_msg_at_ms.set(now_ms());
 
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
+        buffer.consume_head();
 
         Ok(Some(len))
     }
@@ -908,7 +903,7 @@ impl Subscriber for ZenohSubscriber {
         // start, so calling on every has_data is cheap (one clock
         // read + cell-load + cell-store when idle).
         self.check_liveliness_and_fire();
-        self.buf.get().has_data.load(Ordering::Acquire)
+        self.buf.get().has_data()
     }
 
     fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
@@ -969,25 +964,66 @@ impl Subscriber for ZenohSubscriber {
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
         let buffer = self.buf.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(slot) = buffer.peek_head_slot() else {
             return Ok(false);
-        }
+        };
 
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
-
-        // Lock buffer, process in-place, then unlock
-        buffer.locked.store(true, Ordering::Release);
-        f(&buffer.data[..len]);
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
+        let len = buffer.ring_len[slot];
+        // Process in-place out of the ring slot, then advance head.
+        f(&buffer.ring_payload[slot][..len]);
+        buffer.consume_head();
 
         Ok(true)
+    }
+
+    // Phase 124.D.3.c — native batch take. Drains up to `max_msgs`
+    // queued messages out of the SPSC ring in one call, each into a
+    // `per_msg_cap`-strided slot of `buf`. Oversized messages
+    // (payload > per_msg_cap) are dropped individually rather than
+    // erroring the whole batch — the burst-drain caller wants
+    // forward progress. Returns the count actually delivered.
+    fn try_recv_sequence(
+        &mut self,
+        buf: &mut [u8],
+        per_msg_cap: usize,
+        max_msgs: usize,
+        out_lens: &mut [usize],
+    ) -> Result<usize, Self::Error> {
+        if per_msg_cap == 0 || max_msgs == 0 {
+            return Ok(0);
+        }
+        let buffer = self.buf.get();
+        let limit = max_msgs.min(out_lens.len());
+        let need = limit
+            .checked_mul(per_msg_cap)
+            .ok_or(TransportError::BufferTooSmall)?;
+        if buf.len() < need {
+            return Err(TransportError::BufferTooSmall);
+        }
+
+        let mut count = 0;
+        while count < limit {
+            let Some(slot) = buffer.peek_head_slot() else {
+                break;
+            };
+            let len = buffer.ring_len[slot];
+            if len > per_msg_cap {
+                // Oversized for the caller's per-slot cap — drop this
+                // message, keep draining the rest of the burst.
+                buffer.consume_head();
+                continue;
+            }
+            let off = count * per_msg_cap;
+            buf[off..off + len].copy_from_slice(&buffer.ring_payload[slot][..len]);
+            out_lens[count] = len;
+            buffer.consume_head();
+            count += 1;
+        }
+        // A successful drain resets the deadline like a single recv.
+        if count > 0 {
+            self.last_msg_at_ms.set(now_ms());
+        }
+        Ok(count)
     }
 
     fn try_recv_raw_with_info(
@@ -1031,14 +1067,13 @@ impl Subscriber for ZenohSubscriber {
 #[cfg(feature = "lending")]
 mod borrowing {
     use super::*;
-    use core::sync::atomic::Ordering as CoreOrdering;
 
     /// Backend-lent read-only view into the subscriber's static receive
-    /// buffer. Holds the buffer's `locked` flag for the lifetime of the
-    /// view so the C-side notify callback can't overwrite the bytes
-    /// while the user is reading them. On drop the lock is released and
-    /// `has_data` cleared (consume-on-borrow semantics, matching
-    /// `try_recv_raw`).
+    /// buffer. Phase 124.D.3.c — borrows the head ring slot's payload
+    /// for the lifetime of the view. The SPSC discipline guarantees
+    /// the C producer never writes the slot `ring_head` points at, so
+    /// no explicit lock is needed; `Drop` advances `ring_head`
+    /// (consume-on-borrow semantics, matching `try_recv_raw`).
     pub struct ZenohView<'a> {
         bytes: &'a [u8],
         buffer: &'a SubscriberBuffer,
@@ -1052,10 +1087,9 @@ mod borrowing {
 
     impl<'a> Drop for ZenohView<'a> {
         fn drop(&mut self) {
-            // Release the buffer lock first so `locked` is consistent
-            // with `has_data`. The C callback gates writes on `locked`.
-            self.buffer.locked.store(false, CoreOrdering::Release);
-            self.buffer.has_data.store(false, CoreOrdering::Release);
+            // Advance the consumer counter so the borrowed slot is
+            // released back to the C producer.
+            self.buffer.consume_head();
         }
     }
 
@@ -1073,25 +1107,17 @@ mod borrowing {
             // `Self::View<'_>` and bound by `Self: 'a` in the trait def).
             let buffer = self.buf.get();
 
-            if !buffer.has_data.load(CoreOrdering::Acquire) {
+            let Some(slot) = buffer.peek_head_slot() else {
                 return Ok(None);
-            }
-            if buffer.overflow.load(CoreOrdering::Acquire) {
-                buffer.overflow.store(false, CoreOrdering::Release);
-                buffer.has_data.store(false, CoreOrdering::Release);
-                return Err(TransportError::MessageTooLarge);
-            }
+            };
+            let len = buffer.ring_len[slot];
 
-            let len = buffer.len.load(CoreOrdering::Acquire);
-
-            // Lock against the C callback before we hand out a borrow
-            // into `buffer.data` so the callback can't overwrite the
-            // bytes while the user is reading.
-            buffer.locked.store(true, CoreOrdering::Release);
-
-            // SAFETY: data is valid up to len; locked=true blocks the
-            // notify callback from overwriting until ZenohView::drop.
-            let bytes = unsafe { core::slice::from_raw_parts(buffer.data.as_ptr(), len) };
+            // SAFETY: SPSC — the C producer never writes the head slot
+            // while `ring_head` points at it (its full-check stops it
+            // from lapping the consumer). The borrow is valid until
+            // ZenohView::drop advances `ring_head`.
+            let bytes =
+                unsafe { core::slice::from_raw_parts(buffer.ring_payload[slot].as_ptr(), len) };
 
             Ok(Some(ZenohView { bytes, buffer }))
         }
@@ -1107,46 +1133,48 @@ pub use borrowing::ZenohView;
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
     use super::*;
     use nros_rmw::TransportError;
 
     // --- Subscription buffer helpers ---
 
-    /// Simulate a subscription callback by writing directly to the subscriber buffer.
-    /// Mirrors the logic in `subscriber_callback_with_attachment` (post-40.4: checks locked).
+    /// Phase 124.D.3.c — simulate the C-shim SPSC ring producer.
+    /// Pushes `payload` into the slot at `ring_tail % DEPTH` and
+    /// advances `ring_tail`. Drops the message (no advance) when the
+    /// ring is full, the payload is oversized, or the payload is
+    /// empty — exactly mirroring the C `sample_handler` ring branch.
     pub(in crate::shim) fn simulate_subscription_callback(slot: usize, payload: &[u8]) {
         let mut buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
 
-        // Post-40.4: check locked flag — drop message if reader is processing
-        if buffer.locked.load(Ordering::Acquire) {
-            return;
+        if payload.is_empty() {
+            return; // Empty probe — dropped by the C producer.
         }
-
-        if payload.len() > buffer.data.len() {
-            buffer.overflow.store(true, Ordering::Release);
-            buffer.has_data.store(true, Ordering::Release);
-        } else {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.data[..payload.len()].copy_from_slice(payload);
-            buffer.len.store(payload.len(), Ordering::Release);
-            buffer.attachment_len.store(0, Ordering::Release);
-            buffer.has_data.store(true, Ordering::Release);
+        let head = buffer.ring_head.load(Ordering::Acquire);
+        let tail = buffer.ring_tail.load(Ordering::Acquire);
+        if tail - head >= SUBSCRIBER_RING_DEPTH {
+            return; // Ring full — drop.
         }
+        if payload.len() > SUBSCRIBER_BUFFER_SIZE {
+            return; // Oversized for a slot — drop.
+        }
+        let s = tail % SUBSCRIBER_RING_DEPTH;
+        buffer.ring_payload[s][..payload.len()].copy_from_slice(payload);
+        buffer.ring_len[s] = payload.len();
+        buffer.ring_att_len[s] = 0;
+        buffer.ring_tail.store(tail + 1, Ordering::Release);
     }
 
-    /// Reset a subscriber buffer to idle state.
+    /// Reset a subscriber ring to the empty state.
     pub(in crate::shim) fn reset_subscriber_buffer(slot: usize) {
         let mut buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
-        buffer.has_data.store(false, Ordering::Release);
-        buffer.overflow.store(false, Ordering::Release);
-        buffer.locked.store(false, Ordering::Release);
-        buffer.len.store(0, Ordering::Release);
-        buffer.attachment_len.store(0, Ordering::Release);
+        buffer.ring_head.store(0, Ordering::Release);
+        buffer.ring_tail.store(0, Ordering::Release);
     }
 
-    /// Try to receive from a subscriber buffer slot.
+    /// Try to receive one message from a subscriber ring slot.
     /// Replicates `try_recv_raw` logic for testing without a zenoh session.
     pub(in crate::shim) fn try_recv_subscription(
         slot: usize,
@@ -1155,28 +1183,16 @@ mod tests {
         let buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(s) = buffer.peek_head_slot() else {
             return Ok(None);
-        }
-
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
+        };
+        let len = buffer.ring_len[s];
         if len > recv_buf.len() {
-            buffer.has_data.store(false, Ordering::Release);
+            buffer.consume_head();
             return Err(TransportError::BufferTooSmall);
         }
-
-        // Safety: Data is valid up to len bytes
-        unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), recv_buf.as_mut_ptr(), len);
-        }
-        buffer.has_data.store(false, Ordering::Release);
-
+        recv_buf[..len].copy_from_slice(&buffer.ring_payload[s][..len]);
+        buffer.consume_head();
         Ok(Some(len))
     }
 
@@ -1187,25 +1203,12 @@ mod tests {
         let buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get();
 
-        if !buffer.has_data.load(Ordering::Acquire) {
+        let Some(s) = buffer.peek_head_slot() else {
             return Ok(None);
-        }
-
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_data.store(false, Ordering::Release);
-            return Err(TransportError::MessageTooLarge);
-        }
-
-        let len = buffer.len.load(Ordering::Acquire);
-        buffer.locked.store(true, Ordering::Release);
-
-        // Read data in-place (equivalent to closure in process_raw_in_place)
-        let data = buffer.data[..len].to_vec();
-
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
-
+        };
+        let len = buffer.ring_len[s];
+        let data = buffer.ring_payload[s][..len].to_vec();
+        buffer.consume_head();
         Ok(Some(data))
     }
 
@@ -1222,10 +1225,9 @@ mod tests {
         let result = try_recv_subscription(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
-        // State unchanged
+        // Ring empty.
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(!buffer.has_data.load(Ordering::Acquire));
-        assert!(!buffer.overflow.load(Ordering::Acquire));
+        assert!(!buffer.has_data());
     }
 
     #[test]
@@ -1237,15 +1239,14 @@ mod tests {
         simulate_subscription_callback(slot, &payload);
 
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(buffer.has_data.load(Ordering::Acquire));
-        assert!(!buffer.overflow.load(Ordering::Acquire));
+        assert!(buffer.has_data());
 
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(100))));
         assert_eq!(&recv_buf[..100], &payload);
 
-        assert!(!buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.has_data());
     }
 
     #[test]
@@ -1253,42 +1254,37 @@ mod tests {
         let slot = 2;
         reset_subscriber_buffer(slot);
 
-        // Exactly 1024 bytes = max capacity
-        let payload = [0xFFu8; 1024];
+        // Exactly SUBSCRIBER_BUFFER_SIZE = max slot capacity.
+        let payload = [0xFFu8; SUBSCRIBER_BUFFER_SIZE];
         simulate_subscription_callback(slot, &payload);
 
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(buffer.has_data.load(Ordering::Acquire));
-        assert!(!buffer.overflow.load(Ordering::Acquire));
+        assert!(buffer.has_data());
 
-        let mut recv_buf = [0u8; 1024];
+        let mut recv_buf = [0u8; SUBSCRIBER_BUFFER_SIZE];
         let result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(result, Ok(Some(1024))));
+        assert!(matches!(result, Ok(Some(n)) if n == SUBSCRIBER_BUFFER_SIZE));
         assert_eq!(&recv_buf, &payload);
     }
 
     #[test]
-    fn sub_buf_overflow_recovery() {
+    fn sub_buf_oversized_dropped_by_producer() {
         let slot = 3;
         reset_subscriber_buffer(slot);
 
-        // 2000 bytes exceeds 1024 capacity → overflow
-        let payload = [0xAAu8; 2000];
+        // Payload larger than a ring slot — the C producer (here the
+        // simulate helper) drops it silently without advancing tail.
+        let payload = [0xAAu8; SUBSCRIBER_BUFFER_SIZE + 1];
         simulate_subscription_callback(slot, &payload);
 
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(buffer.has_data.load(Ordering::Acquire));
-        assert!(buffer.overflow.load(Ordering::Acquire));
+        assert!(!buffer.has_data(), "oversized message must be dropped");
 
-        let mut recv_buf = [0u8; 1024];
+        let mut recv_buf = [0u8; SUBSCRIBER_BUFFER_SIZE];
         let result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
+        assert!(matches!(result, Ok(None)));
 
-        // Both flags cleared
-        assert!(!buffer.has_data.load(Ordering::Acquire));
-        assert!(!buffer.overflow.load(Ordering::Acquire));
-
-        // Recovery: next normal callback is accepted
+        // Recovery: next normal callback is accepted.
         simulate_subscription_callback(slot, b"recovered");
         let result = try_recv_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
@@ -1300,7 +1296,7 @@ mod tests {
         let slot = 4;
         reset_subscriber_buffer(slot);
 
-        // Store 512 bytes, try to receive into 256-byte buffer
+        // Store 512 bytes, try to receive into a 256-byte buffer.
         let payload = [0xBBu8; 512];
         simulate_subscription_callback(slot, &payload);
 
@@ -1308,11 +1304,11 @@ mod tests {
         let result = try_recv_subscription(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
-        // has_data cleared (the oversized message is dropped)
+        // Slot consumed (the message that didn't fit is dropped).
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(!buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.has_data());
 
-        // Recovery: next callback accepted
+        // Recovery: next callback accepted.
         simulate_subscription_callback(slot, b"small");
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_subscription(slot, &mut recv_buf);
@@ -1321,19 +1317,56 @@ mod tests {
     }
 
     #[test]
-    fn sub_buf_overwrite_unread() {
+    fn sub_buf_ring_buffers_burst() {
+        // Phase 124.D.3.c — two callbacks without an intervening recv
+        // are BOTH buffered (ring), not last-message-wins.
         let slot = 5;
         reset_subscriber_buffer(slot);
 
-        // Two callbacks without intervening recv
         simulate_subscription_callback(slot, b"first_msg");
         simulate_subscription_callback(slot, b"second_msg");
 
-        // Only second message delivered (last-message-wins)
         let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(9))));
+        assert_eq!(&recv_buf[..9], b"first_msg");
+
         let result = try_recv_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"second_msg");
+
+        // Ring drained.
+        assert!(matches!(
+            try_recv_subscription(slot, &mut recv_buf),
+            Ok(None)
+        ));
+    }
+
+    #[test]
+    fn sub_buf_ring_full_drops_excess() {
+        // Filling the ring past SUBSCRIBER_RING_DEPTH drops the
+        // overflow message; the buffered ones still drain in order.
+        let slot = 6;
+        reset_subscriber_buffer(slot);
+
+        for i in 0..SUBSCRIBER_RING_DEPTH {
+            let msg = [i as u8; 4];
+            simulate_subscription_callback(slot, &msg);
+        }
+        // One more — ring is full, this is dropped.
+        simulate_subscription_callback(slot, &[0xFFu8; 4]);
+
+        let mut recv_buf = [0u8; 16];
+        for i in 0..SUBSCRIBER_RING_DEPTH {
+            let result = try_recv_subscription(slot, &mut recv_buf);
+            assert!(matches!(result, Ok(Some(4))));
+            assert_eq!(&recv_buf[..4], &[i as u8; 4]);
+        }
+        // The dropped message never appears.
+        assert!(matches!(
+            try_recv_subscription(slot, &mut recv_buf),
+            Ok(None)
+        ));
     }
 
     #[test]
@@ -1347,41 +1380,43 @@ mod tests {
         let result = try_recv_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(4))));
 
-        // Second recv returns None
+        // Second recv returns None — ring drained.
         let result = try_recv_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
     }
 
     #[test]
-    fn sub_buf_overflow_then_normal() {
+    fn sub_buf_oversized_then_normal() {
         let slot = 7;
         reset_subscriber_buffer(slot);
 
-        // Oversized → overflow error → normal → delivered
-        simulate_subscription_callback(slot, &[0u8; 2000]);
+        // Oversized → dropped by producer → normal → delivered.
+        simulate_subscription_callback(slot, &[0u8; SUBSCRIBER_BUFFER_SIZE + 1]);
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
+        assert!(matches!(result, Ok(None)));
 
-        simulate_subscription_callback(slot, b"after_overflow");
+        simulate_subscription_callback(slot, b"after_oversized");
         let result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(result, Ok(Some(14))));
-        assert_eq!(&recv_buf[..14], b"after_overflow");
+        assert!(matches!(result, Ok(Some(15))));
+        assert_eq!(&recv_buf[..15], b"after_oversized");
     }
 
     #[test]
-    fn sub_buf_zero_length_payload() {
+    fn sub_buf_zero_length_payload_dropped() {
+        // Empty probes are dropped by the producer — they never
+        // occupy a ring slot.
         let slot = 0;
         reset_subscriber_buffer(slot);
 
         simulate_subscription_callback(slot, b"");
 
         let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.has_data());
 
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(result, Ok(Some(0))));
+        assert!(matches!(result, Ok(None)));
     }
 
     #[test]
@@ -1394,15 +1429,15 @@ mod tests {
         simulate_subscription_callback(slot_a, b"slot_zero");
         simulate_subscription_callback(slot_b, b"slot_seven");
 
-        // Consume slot_b first
+        // Consume slot_b first.
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_subscription(slot_b, &mut recv_buf);
         assert!(matches!(result, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"slot_seven");
 
-        // slot_a still has data
+        // slot_a still has data.
         let buffer_a = SubscriberBufferRef::new(slot_a).get();
-        assert!(buffer_a.has_data.load(Ordering::Acquire));
+        assert!(buffer_a.has_data());
 
         let result = try_recv_subscription(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
@@ -1410,7 +1445,7 @@ mod tests {
     }
 
     // ========================================================================
-    // 40.4 Part E: In-place processing and lock correctness tests
+    // Phase 124.D.3.c — in-place processing over the ring
     // ========================================================================
 
     #[test]
@@ -1418,7 +1453,7 @@ mod tests {
         let slot = 0;
         reset_subscriber_buffer(slot);
 
-        // Write 100-byte payload, try_recv (copy path) → capture bytes
+        // Write 100-byte payload, try_recv (copy path) → capture bytes.
         let payload = [0x42u8; 100];
         simulate_subscription_callback(slot, &payload);
 
@@ -1427,7 +1462,7 @@ mod tests {
         assert!(matches!(copy_result, Ok(Some(100))));
         let copy_bytes = recv_buf[..100].to_vec();
 
-        // Reset, write same payload, process_in_place → capture bytes
+        // Reset, write same payload, process_in_place → capture bytes.
         reset_subscriber_buffer(slot);
         simulate_subscription_callback(slot, &payload);
 
@@ -1435,93 +1470,59 @@ mod tests {
         assert!(matches!(in_place_result, Ok(Some(_))));
         let in_place_bytes = in_place_result.unwrap().unwrap();
 
-        // Both paths must produce identical data
+        // Both paths must produce identical data.
         assert_eq!(copy_bytes, in_place_bytes);
     }
 
     #[test]
-    fn sub_buf_in_place_overflow() {
+    fn sub_buf_in_place_idle() {
         let slot = 1;
         reset_subscriber_buffer(slot);
 
-        // Write oversized payload (2000 bytes > 1024 capacity)
-        simulate_subscription_callback(slot, &[0xBBu8; 2000]);
-
+        // Empty ring → process_in_place returns Ok(None).
         let result = process_in_place_subscription(slot);
-        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
-
-        // Both flags cleared after overflow
-        let buffer = SubscriberBufferRef::new(slot).get();
-        assert!(!buffer.has_data.load(Ordering::Acquire));
-        assert!(!buffer.overflow.load(Ordering::Acquire));
+        assert!(matches!(result, Ok(None)));
     }
 
     #[test]
-    fn sub_buf_locked_drops_message() {
+    fn sub_buf_in_place_drains_ring_in_order() {
+        // Successive in-place reads drain the ring head-first.
         let slot = 2;
         reset_subscriber_buffer(slot);
 
-        // Write "original" payload
-        let original = [0x11u8; 100];
-        simulate_subscription_callback(slot, &original);
-        let buf_ref = SubscriberBufferRef::new(slot);
-        assert!(buf_ref.get().has_data.load(Ordering::Acquire));
+        simulate_subscription_callback(slot, b"aaa");
+        simulate_subscription_callback(slot, b"bbbb");
 
-        // Manually set locked=true (simulating in-place processing)
-        buf_ref.get().locked.store(true, Ordering::Release);
-
-        // Attempt callback with "replacement" — should be dropped
-        let replacement = [0x22u8; 100];
-        simulate_subscription_callback(slot, &replacement);
-
-        // Buffer still contains original data (100 bytes of 0x11)
-        let stored_len = buf_ref.get().len.load(Ordering::Acquire);
-        assert_eq!(stored_len, 100);
-        assert_eq!(&buf_ref.get().data[..100], &original);
-
-        // Unlock and verify next callback succeeds
-        buf_ref.get().locked.store(false, Ordering::Release);
-
-        simulate_subscription_callback(slot, &replacement);
-        let stored_len = buf_ref.get().len.load(Ordering::Acquire);
-        assert_eq!(stored_len, 100);
-        assert_eq!(&buf_ref.get().data[..100], &replacement);
-
-        reset_subscriber_buffer(slot);
+        let first = process_in_place_subscription(slot).unwrap().unwrap();
+        assert_eq!(&first, b"aaa");
+        let second = process_in_place_subscription(slot).unwrap().unwrap();
+        assert_eq!(&second, b"bbbb");
+        assert!(matches!(process_in_place_subscription(slot), Ok(None)));
     }
 
     #[test]
-    fn sub_buf_locked_state_during_in_place() {
+    fn sub_buf_consume_advances_head() {
+        // Consuming N messages advances ring_head by exactly N.
         let slot = 3;
         reset_subscriber_buffer(slot);
 
-        // Write payload to buffer
-        simulate_subscription_callback(slot, b"test_lock_state");
+        simulate_subscription_callback(slot, b"one");
+        simulate_subscription_callback(slot, b"two");
 
-        let buf_ref = SubscriberBufferRef::new(slot);
+        let buffer = SubscriberBufferRef::new(slot).get();
+        let head_before = buffer.ring_head.load(Ordering::Acquire);
+        assert_eq!(head_before, 0);
 
-        // Verify locked=false before processing
-        assert!(!buf_ref.get().locked.load(Ordering::Acquire));
+        let mut recv_buf = [0u8; 16];
+        let _ = try_recv_subscription(slot, &mut recv_buf);
+        let _ = try_recv_subscription(slot, &mut recv_buf);
 
-        // Process in-place — during the closure the buffer should be locked
-        let buffer = buf_ref.get();
-        assert!(buffer.has_data.load(Ordering::Acquire));
-
-        let len = buffer.len.load(Ordering::Acquire);
-        buffer.locked.store(true, Ordering::Release);
-
-        // While locked, verify the flag is set
-        assert!(buffer.locked.load(Ordering::Acquire));
-
-        // Read data (simulating closure)
-        let _data = buffer.data[..len].to_vec();
-
-        // Unlock and clear
-        buffer.locked.store(false, Ordering::Release);
-        buffer.has_data.store(false, Ordering::Release);
-
-        // After processing: locked=false, has_data=false
-        assert!(!buffer.locked.load(Ordering::Acquire));
-        assert!(!buffer.has_data.load(Ordering::Acquire));
+        let head_after = buffer.ring_head.load(Ordering::Acquire);
+        assert_eq!(head_after, 2);
+        assert_eq!(
+            buffer.ring_tail.load(Ordering::Acquire),
+            head_after,
+            "ring drained → head == tail"
+        );
     }
 }

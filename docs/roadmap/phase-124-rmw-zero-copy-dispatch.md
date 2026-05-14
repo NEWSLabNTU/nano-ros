@@ -834,12 +834,36 @@ the same change as `set_wake_callback` lands.
 - [x] **124.D.1 — vtable slot.** Add `try_recv_sequence`.
 - [x] **124.D.2 — Loop fallback.** Runtime emits a
       `try_recv_raw` loop when `vt.try_recv_sequence == NULL`.
-- [~] **124.D.3 — Backend impls.** Cyclone + dust-dds native
-      batch landed (commit `af7c19d3`). Zenoh-pico ring refactor
-      tracked as D.3.c follow-up — also doubles as a burst-tolerance
-      fix (current single-slot buffer drops messages on lock
-      contention). XRCE + FastDDS keep NULL slot → D.2 runtime
-      loop fallback (no backend stubs; matches upstream behaviour).
+- [x] **124.D.3 — Backend impls.** Cyclone + dust-dds native
+      batch landed (commit `af7c19d3`); zenoh-pico SPSC-ring
+      refactor landed (D.3.c, see below). XRCE + FastDDS keep NULL
+      slot → D.2 runtime loop fallback (no backend stubs; matches
+      upstream behaviour).
+
+      **124.D.3.c — zenoh-pico SPSC ring (landed 2026-05-14).**
+      Instead of adopting zenoh-pico's built-in
+      `z_ring_channel_sample_new` (which would force abandoning the
+      zero-malloc direct-write path), nano-ros builds its own SPSC
+      ring in `SubscriberBuffer`: N payload + attachment slots,
+      monotonic `ring_head` (Rust consumer) / `ring_tail` (C
+      producer) counters, slot index `counter % N`. The C
+      `sample_handler` gained a `ring_mode` branch + new
+      `zpico_declare_subscriber_ring(keyexpr, zpico_ring_desc_t*,
+      …)` entry point; the descriptor carries raw pointers into the
+      Rust-owned `SubscriberBuffer` storage. Lock-free: the
+      Release/Acquire fence on `ring_tail` / `ring_head` covers the
+      cross-FFI handoff, so the old `locked` flag is gone. Burst of
+      up to `ZPICO_SUBSCRIBER_RING_DEPTH` (default 4, env-tunable)
+      messages is buffered instead of dropped — this also fixes the
+      pre-existing single-slot lossiness under lock contention.
+      `try_recv_raw` / `process_raw_in_place*` consume one head
+      slot; `try_recv_sequence` drains the whole ring in one call.
+      Oversized / empty payloads are dropped at the producer (no
+      `overflow` flag). **Files:**
+      `packages/zpico/zpico-sys/c/zpico/zpico.c`,
+      `packages/zpico/zpico-sys/c/include/zpico.h` (cbindgen-gen),
+      `packages/zpico/zpico-sys/src/{lib,ffi}.rs`,
+      `packages/zpico/nros-rmw-zenoh/{build.rs,src/zpico.rs,src/shim/{mod,subscriber}.rs}`.
 
       Per-backend status after the
 
@@ -861,16 +885,12 @@ the same change as `set_wake_callback` lands.
         ANY_SAMPLE_STATE, ANY_VIEW_STATE, ANY_INSTANCE_STATE)`,
         copy returned Vec into the caller's `per_msg_cap`-strided
         buffer.
-      - **`nros-rmw-zenoh`** (P2): correction to earlier D.3
-        notes — the "150-200 LOC custom ring" plan was wrong.
-        zenoh-pico already provides `z_ring_channel_sample_new` /
-        `z_fifo_channel_sample_new`. Switch
-        `SubscriberBuffer`'s single-slot to a small ring handler;
-        `try_recv_sequence` becomes `for i in 0..max { if
-        z_ring_handler_sample_try_recv(...) NODATA break; }`.
-        The refactor is bounded by replacing the current direct-
-        write callback with the handler's closure-based receive
-        path. ~80–120 LOC including tests.
+      - **`nros-rmw-zenoh`** (done — D.3.c): the earlier "use
+        zenoh-pico's built-in `z_ring_channel_sample_new`" idea was
+        dropped — it conflicts with the zero-malloc direct-write
+        path. nano-ros instead grew its own SPSC ring in
+        `SubscriberBuffer` (see D.3.c note above). ~430 LOC across
+        the C shim, zpico-sys FFI, and the Rust shim incl. tests.
       - **`nros-rmw-xrce` / FastDDS**: keep loop fallback (matches
         upstream behaviour exactly; no native API to invoke).
 

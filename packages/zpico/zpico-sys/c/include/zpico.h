@@ -139,6 +139,55 @@ typedef void (*ZpicoNotifyCallback)(uintptr_t len,
                                     void *ctx);
 
 /**
+ * Phase 124.D.3.c — SPSC ring descriptor mirroring
+ * `zpico_ring_desc_t` in `c/include/zpico.h`. Field order, names,
+ * and types track the C struct byte-for-byte. The Rust shim owns
+ * the backing storage (a `SubscriberBuffer`) and fills this
+ * descriptor; the C shim reads it from `sample_handler`.
+ *
+ * `head` / `tail` are monotonic counters accessed with atomics on
+ * both sides — the slot index is `counter % slot_count`.
+ */
+typedef struct zpico_ring_desc_t {
+  /**
+   * `slot_count * payload_stride` bytes of payload storage.
+   */
+  uint8_t *payload_base;
+  /**
+   * Bytes between payload slot starts.
+   */
+  uintptr_t payload_stride;
+  /**
+   * `slot_count * att_stride` bytes of attachment storage.
+   */
+  uint8_t *att_base;
+  /**
+   * Bytes between attachment slot starts.
+   */
+  uintptr_t att_stride;
+  /**
+   * Number of ring slots N.
+   */
+  uintptr_t slot_count;
+  /**
+   * `slot_count` entries — per-slot payload length.
+   */
+  uintptr_t *payload_len;
+  /**
+   * `slot_count` entries — per-slot attachment length.
+   */
+  uintptr_t *att_len;
+  /**
+   * Consumer counter — written only by the Rust shim.
+   */
+  uintptr_t *head;
+  /**
+   * Producer counter — written only by the C shim.
+   */
+  uintptr_t *tail;
+} zpico_ring_desc_t;
+
+/**
  * Zero-copy callback: data pointer is borrowed from zenoh-pico's receive buffer.
  * Only valid during the callback invocation. Requires `unstable-zenoh-api` feature.
  *
@@ -368,6 +417,28 @@ int32_t zpico_declare_subscriber_direct_write(const char *_keyexpr,
                                               const bool *_locked_ptr,
                                               ZpicoNotifyCallback _callback,
                                               void *_ctx);
+
+/**
+ * Phase 124.D.3.c — declare a burst-tolerant direct-write
+ * subscriber backed by an SPSC ring. Each message lands in the
+ * next free ring slot rather than a single shared slot, so a
+ * burst arriving between two `try_recv` calls is buffered
+ * instead of dropped. The `notify` callback fires once per
+ * message for async-waker support.
+ *
+ * # Parameters
+ * * `keyexpr` - Key expression string, null-terminated.
+ * * `desc` - Ring descriptor; must outlive the subscriber.
+ * * `callback` - Notify callback (per-message arrival signal).
+ * * `ctx` - User context pointer passed to callback.
+ *
+ * # Returns
+ * Subscriber handle (>= 0) on success, negative error code on failure.
+ */
+int32_t zpico_declare_subscriber_ring(const char *_keyexpr,
+                                      struct zpico_ring_desc_t *_desc,
+                                      ZpicoNotifyCallback _callback,
+                                      void *_ctx);
 
 /**
  * Declare a zero-copy subscriber for the given key expression.
