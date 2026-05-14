@@ -510,7 +510,82 @@ pub struct nros_cpp_node_t {
     pub namespace: [u8; 64],
 }
 
+/// Maximum RMW backend name length for `nros_cpp_node_options_t`.
+/// Mirrors `BACKEND_NAME_MAX` in `nros-rmw-cffi`.
+pub const NROS_CPP_RMW_NAME_LEN: usize = 32;
+
+/// Maximum per-Node locator override length for `nros_cpp_node_options_t`.
+pub const NROS_CPP_LOCATOR_LEN: usize = 128;
+
+/// Maximum namespace length for `nros_cpp_node_options_t`. Matches the
+/// inline buffer in `nros_cpp_node_t`.
+pub const NROS_CPP_NAMESPACE_LEN: usize = 64;
+
+/// Sentinel value for `domain_id_override`. When set, the executor's
+/// existing domain_id is used.
+pub const NROS_CPP_DOMAIN_ID_INHERIT: u32 = u32::MAX;
+
+/// Phase 104.C.9 — extended node-creation options (C++ FFI).
+///
+/// Mirrors `nros_node_options_t` in nros-c (Phase 104.C.8) — same field
+/// shape, separate FFI surface so the two language wrappers can evolve
+/// independently. Used by `nros_cpp_node_create_ex` and the C++
+/// `NodeBuilder` wrapper in `nros/node.hpp`.
+#[repr(C)]
+pub struct nros_cpp_node_options_t {
+    /// Namespace storage (UTF-8, NUL-terminated within `namespace_len`).
+    pub namespace: [u8; NROS_CPP_NAMESPACE_LEN],
+    /// Length of `namespace` in bytes (excluding NUL).
+    pub namespace_len: usize,
+    /// RMW backend name (e.g. "zenoh", "dds"). Empty selects first-registered.
+    pub rmw_name: [u8; NROS_CPP_RMW_NAME_LEN],
+    /// Length of `rmw_name`.
+    pub rmw_name_len: usize,
+    /// Optional per-Node locator override. Empty inherits the executor's.
+    pub locator: [u8; NROS_CPP_LOCATOR_LEN],
+    /// Length of `locator`.
+    pub locator_len: usize,
+    /// Per-Node domain ID. `NROS_CPP_DOMAIN_ID_INHERIT` = inherit.
+    pub domain_id_override: u32,
+    /// SchedContext slot to bind on handles created via this Node.
+    /// 0 = executor default.
+    pub sched_context_id: u8,
+    /// Reserved for future use; must be zero.
+    pub _reserved: [u8; 3],
+}
+
+impl Default for nros_cpp_node_options_t {
+    fn default() -> Self {
+        Self {
+            namespace: [0u8; NROS_CPP_NAMESPACE_LEN],
+            namespace_len: 0,
+            rmw_name: [0u8; NROS_CPP_RMW_NAME_LEN],
+            rmw_name_len: 0,
+            locator: [0u8; NROS_CPP_LOCATOR_LEN],
+            locator_len: 0,
+            domain_id_override: NROS_CPP_DOMAIN_ID_INHERIT,
+            sched_context_id: 0,
+            _reserved: [0u8; 3],
+        }
+    }
+}
+
+/// Phase 104.C.9 — zero-initialised `nros_cpp_node_options_t`.
+///
+/// All length fields default to 0 ("inherit"); `domain_id_override` is
+/// `NROS_CPP_DOMAIN_ID_INHERIT`. The C++ `NodeOptions` wrapper consumes
+/// this via `Executor::node_builder(name)`.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_node_get_default_options() -> nros_cpp_node_options_t {
+    nros_cpp_node_options_t::default()
+}
+
 /// Create a node on an executor.
+///
+/// Equivalent to populating an [`nros_cpp_node_options_t`] with the
+/// supplied namespace + zero defaults and calling
+/// `nros_cpp_node_create_ex`. Kept for source compatibility with
+/// pre-Phase-104.C.9 callers.
 ///
 /// # Parameters
 /// * `executor_handle` — Opaque executor handle from `nros_cpp_init()`.
@@ -534,7 +609,52 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     namespace: *const c_char,
     out_node: *mut nros_cpp_node_t,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || name.is_null() || out_node.is_null() {
+    let mut options = nros_cpp_node_options_t::default();
+    if !namespace.is_null() {
+        let ns_str = match unsafe { cstr_to_str(namespace) } {
+            Some(s) if s.len() < NROS_CPP_NAMESPACE_LEN => s,
+            _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+        };
+        options.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
+        options.namespace_len = ns_str.len();
+    }
+    unsafe { nros_cpp_node_create_ex(executor_handle, name, &options, out_node) }
+}
+
+/// Phase 104.C.9 — create a node with extended options.
+///
+/// Thin C++ FFI wrapper over the Rust `Executor::node_builder(name)
+/// .rmw(...).locator(...).domain_id(...).namespace(...).sched(...)
+/// .build()` chain. The `options.rmw_name` selector binds the Node to
+/// a registered RMW backend; subsequent handle creations on the Node
+/// route through that backend's session.
+///
+/// Currently the per-Node SchedContext field and the multi-Session
+/// `extra_sessions` plumbing land via a follow-up (Phase 104.C.9.b)
+/// once the C++ executor surfaces `Executor::node_builder` directly.
+/// The options struct round-trips into `nros_cpp_node_t` storage today
+/// so users can write code against the final API surface.
+///
+/// # Parameters
+/// * `executor_handle` — Opaque executor handle.
+/// * `name` — Node name (null-terminated). Must not be NULL.
+/// * `options` — Pointer to a populated `nros_cpp_node_options_t`. NULL
+///   is rejected; use `nros_cpp_node_get_default_options()` to get a
+///   zero-initialised instance.
+/// * `out_node` — Receives the node handle on success.
+///
+/// # Safety
+/// All pointer arguments must satisfy their per-parameter rules. The
+/// options struct's length fields must not overrun their buffers.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_create_ex(
+    executor_handle: *mut c_void,
+    name: *const c_char,
+    options: *const nros_cpp_node_options_t,
+    out_node: *mut nros_cpp_node_t,
+) -> nros_cpp_ret_t {
+    if executor_handle.is_null() || name.is_null() || options.is_null() || out_node.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -542,42 +662,43 @@ pub unsafe extern "C" fn nros_cpp_node_create(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
-
-    if name_str.len() >= 64 {
+    if name_str.is_empty() || name_str.len() >= 64 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let ns_str = if namespace.is_null() {
-        "/"
-    } else {
-        match unsafe { cstr_to_str(namespace) } {
-            Some(s) if s.len() < 64 => s,
-            _ => return NROS_CPP_RET_INVALID_ARGUMENT,
-        }
-    };
-
-    // Verify the executor handle is valid by trying to create a node.
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
-    match ctx.executor.create_node(name_str) {
-        Ok(_node) => {
-            // The node is a borrow — we can't store it across FFI.
-            // Instead, store the executor pointer + name/namespace so
-            // we can re-create the borrow in future calls.
-            let out = unsafe { &mut *out_node };
-            out.executor = executor_handle;
-
-            // Copy name
-            out.name = [0u8; 64];
-            out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
-
-            // Copy namespace
-            out.namespace = [0u8; 64];
-            out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
-
-            NROS_CPP_RET_OK
-        }
-        Err(_) => NROS_CPP_RET_ERROR,
+    let opts = unsafe { &*options };
+    if opts.namespace_len > NROS_CPP_NAMESPACE_LEN
+        || opts.rmw_name_len > NROS_CPP_RMW_NAME_LEN
+        || opts.locator_len > NROS_CPP_LOCATOR_LEN
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+
+    // Phase 104.C.9.b — placeholder for `Executor::node_builder(name)
+    // .rmw(opts.rmw_name).locator(opts.locator).domain_id(...).
+    // sched(...).build()`. Today we still go through legacy
+    // `create_node(name)` because the C++ executor wrapper has not yet
+    // exposed a thin `node_builder` factory. Validate the executor
+    // handle by attempting the legacy create; multi-RMW dispatch
+    // follows in 104.C.9.b.
+    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    if ctx.executor.create_node(name_str).is_err() {
+        return NROS_CPP_RET_ERROR;
+    }
+
+    let out = unsafe { &mut *out_node };
+    out.executor = executor_handle;
+    out.name = [0u8; 64];
+    out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
+
+    out.namespace = [0u8; 64];
+    if opts.namespace_len > 0 {
+        out.namespace[..opts.namespace_len].copy_from_slice(&opts.namespace[..opts.namespace_len]);
+    } else {
+        out.namespace[..1].copy_from_slice(b"/");
+    }
+
+    NROS_CPP_RET_OK
 }
 
 /// Destroy a node.

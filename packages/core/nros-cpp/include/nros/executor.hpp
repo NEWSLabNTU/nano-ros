@@ -22,6 +22,7 @@ namespace nros {
 
 // Forward declarations
 class Node;
+class NodeBuilder;
 
 /// Explicit executor for managing ROS 2 entities and spinning.
 ///
@@ -90,6 +91,15 @@ class Executor {
     /// @param ns    Node namespace (null-terminated), or nullptr for "/".
     /// @return Result indicating success or failure.
     Result create_node(Node& out, const char* name, const char* ns = nullptr);
+
+    /// Phase 104.C.9 — chainable Node-creation builder.
+    ///
+    /// Mirrors Rust's `Executor::node_builder(name).rmw(...).locator(...)
+    /// .domain_id(...).namespace(...).sched(...).build()`. Use this when
+    /// binding a Node to a specific RMW backend, locator, domain, or
+    /// SchedContext. Definition follows the full `NodeBuilder` class in
+    /// `node.hpp`.
+    NodeBuilder node_builder(const char* name);
 
     /// Drive transport I/O and dispatch callbacks.
     ///

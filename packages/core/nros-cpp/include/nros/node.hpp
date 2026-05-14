@@ -311,6 +311,7 @@ class Node {
     void* executor_handle_; // Set by nros::init() via friendship
 
     friend class Executor;
+    friend class NodeBuilder;
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result init(const char* locator, uint8_t domain_id, const char* session_name);
     friend Result shutdown();
@@ -509,6 +510,107 @@ inline Result Executor::create_node(Node& out, const char* name, const char* ns)
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     out.executor_handle_ = storage_;
     return Node::create(out, name, ns);
+}
+
+// -- Phase 104.C.9 — NodeBuilder ----------------------------------------
+//
+// Mirrors Rust's `Executor::node_builder(name).rmw(...).locator(...).
+// domain_id(...).namespace(...).sched(...).build()` chain. The C++
+// wrapper is value-typed and stack-allocated; it accumulates options
+// into an inline `nros_cpp_node_options_t` and ships it to
+// `nros_cpp_node_create_ex` on `.build()`.
+//
+// Usage:
+// ```cpp
+// nros::Node node;
+// NROS_TRY(executor.node_builder("egress")
+//              .rmw("dds")
+//              .domain_id(0)
+//              .build(node));
+// ```
+
+class NodeBuilder {
+  public:
+    NodeBuilder(void* executor_handle, const char* name)
+        : executor_handle_(executor_handle), name_(name),
+          options_(nros_cpp_node_get_default_options()) {}
+
+    /// Bind this Node to the named RMW backend. The name must match a
+    /// backend registered with `nros_rmw_cffi_register_named` (or its
+    /// auto-ctor equivalent). Empty/nullptr selects the first-
+    /// registered backend — the single-backend convenience path.
+    NodeBuilder& rmw(const char* name) {
+        copy_bounded(name, options_.rmw_name, &options_.rmw_name_len,
+                     NROS_CPP_RMW_NAME_LEN);
+        return *this;
+    }
+
+    /// Override the Node's locator (`tcp/...`, `udp/...`, `serial:...`).
+    /// Empty/nullptr inherits the executor's locator.
+    NodeBuilder& locator(const char* loc) {
+        copy_bounded(loc, options_.locator, &options_.locator_len,
+                     NROS_CPP_LOCATOR_LEN);
+        return *this;
+    }
+
+    /// Override the Node's domain ID. Pass `NROS_CPP_DOMAIN_ID_INHERIT`
+    /// (the default) to inherit from the executor.
+    NodeBuilder& domain_id(uint32_t id) {
+        options_.domain_id_override = id;
+        return *this;
+    }
+
+    /// Set the Node's namespace (mirrors `rclcpp::Node`'s ctor). Empty
+    /// or nullptr defaults to `"/"` at build time.
+    NodeBuilder& namespace_(const char* ns) {
+        copy_bounded(ns, options_.namespace_, &options_.namespace_len,
+                     NROS_CPP_NAMESPACE_LEN);
+        return *this;
+    }
+
+    /// Bind every handle created via this Node to `sc_id` as its
+    /// default SchedContext. 0 = executor default Fifo.
+    NodeBuilder& sched(uint8_t sc_id) {
+        options_.sched_context_id = sc_id;
+        return *this;
+    }
+
+    /// Materialize the Node.
+    Result build(Node& out) const {
+        if (!executor_handle_) return Result(ErrorCode::NotInitialized);
+        out.executor_handle_ = executor_handle_;
+        nros_cpp_ret_t ret = nros_cpp_node_create_ex(
+            executor_handle_, name_, &options_, &out.handle_);
+        if (ret == 0) {
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+  private:
+    static void copy_bounded(const char* src, uint8_t* dst, size_t* dst_len,
+                             size_t cap) {
+        size_t n = 0;
+        if (src != nullptr) {
+            while (src[n] != '\0' && n < cap) {
+                dst[n] = static_cast<uint8_t>(src[n]);
+                ++n;
+            }
+        }
+        // Zero out the tail so stale bytes don't leak across reuses.
+        for (size_t i = n; i < cap; ++i) {
+            dst[i] = 0;
+        }
+        *dst_len = n;
+    }
+
+    void* executor_handle_;
+    const char* name_;
+    nros_cpp_node_options_t options_;
+};
+
+inline NodeBuilder Executor::node_builder(const char* name) {
+    return NodeBuilder(initialized_ ? handle() : nullptr, name);
 }
 
 } // namespace nros

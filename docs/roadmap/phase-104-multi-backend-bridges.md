@@ -646,16 +646,37 @@ follow-up items that finish the rclcpp-aligned story:
       `packages/core/nros-c/include/nros/nros_generated.h`
       (cbindgen output).
 
-- [ ] **104.C.9 — C++ `Executor::node_builder` mirror.**
+- [~] **104.C.9 — C++ `Executor::node_builder` mirror.**
       `nros::Executor::node_builder(name)` returns a C++
       `NodeBuilder` that delegates each chained method to a
       corresponding C entry point. `nros::Node` wraps
       `nros_node_t` storage opaquely (Phase 122 pattern).
+      **API surface landed:** `nros_cpp_node_options_t` +
+      `nros_cpp_node_get_default_options()` +
+      `nros_cpp_node_create_ex(...)` extern entry points
+      land in `nros-cpp/src/lib.rs`; cbindgen emits both
+      the struct and the entry-points into
+      `nros_cpp_ffi.h`. `nros::NodeBuilder` is a pure-header
+      value-typed builder in `nros/node.hpp` chaining
+      `.rmw / .locator / .domain_id / .namespace_ / .sched`
+      and calling `nros_cpp_node_create_ex` on `.build(out)`.
+      `Executor::node_builder(name)` returns one. Header
+      smoke (`tmp/cpp_nodebuilder_smoke.cpp`) compiles under
+      `-std=gnu++14 -DNROS_PLATFORM_POSIX`.
+      **Follow-up 104.C.9.b — multi-Session dispatch in
+      C++.** Wire `nros_cpp_node_create_ex` to call into
+      `Executor::node_builder(name).rmw(...).build()` and
+      store the returned `NodeId` in `nros_cpp_node_t`.
+      Today the path still goes through legacy
+      `create_node(name)`, mirroring nros-c's 104.C.8
+      forward-compat stance. Lands once the C++ executor
+      surfaces a stable factory entry.
       **Files:**
       `packages/core/nros-cpp/include/nros/executor.hpp`,
       `packages/core/nros-cpp/include/nros/node.hpp`,
-      `packages/core/nros-cpp/src/node.rs` (if any FFI
-      glue needed; otherwise pure header).
+      `packages/core/nros-cpp/src/lib.rs`,
+      `packages/core/nros-cpp/include/nros/nros_cpp_ffi.h`
+      (cbindgen output).
 
 - [x] **104.C.10 — Rust example refactor: bridge.**
       `examples/native/rust/bridge/uorb-to-zenoh/`.
