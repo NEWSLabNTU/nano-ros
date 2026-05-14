@@ -20,12 +20,12 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::{ffi::c_void, sync::atomic::Ordering};
+use core::{cell::UnsafeCell, ffi::c_void, sync::atomic::Ordering};
 
 use nros_rmw::{
-    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
-    ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session, TopicInfo,
-    TransportError,
+    MessageInfo, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy,
+    QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
+    TopicInfo, TransportError,
 };
 
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
@@ -851,6 +851,114 @@ impl Registry {
 unsafe impl Sync for Registry {}
 
 static REGISTRY: Registry = Registry::new();
+
+// ============================================================================
+// Rust-adapter MessageInfo side channel
+// ============================================================================
+//
+// The stable C subscriber ABI returns only a `(payload, len)` pair from
+// `try_recv_raw`. Rust backends can produce `MessageInfo`, so the generic
+// Rust->C adapter stores that metadata keyed by the backend handle pointer
+// immediately before returning the payload length. The Rust CFFI subscriber
+// consumes it after the vtable call. Pure C/C++ backends never write this table
+// and keep the documented `None` metadata behavior.
+
+const MESSAGE_INFO_SLOTS: usize = 64;
+
+struct MessageInfoSlot {
+    key: portable_atomic::AtomicUsize,
+    valid: portable_atomic::AtomicBool,
+    info: UnsafeCell<MessageInfo>,
+}
+
+impl MessageInfoSlot {
+    const fn empty() -> Self {
+        Self {
+            key: portable_atomic::AtomicUsize::new(0),
+            valid: portable_atomic::AtomicBool::new(false),
+            info: UnsafeCell::new(MessageInfo::new()),
+        }
+    }
+}
+
+// SAFETY: each slot is published by `key` and `valid` atomics. Writers store
+// `info` before setting `valid = true` with Release ordering; readers take
+// `valid` with AcqRel before copying the `MessageInfo`.
+unsafe impl Sync for MessageInfoSlot {}
+
+static MESSAGE_INFO_TABLE: [MessageInfoSlot; MESSAGE_INFO_SLOTS] = {
+    #[allow(clippy::declare_interior_mutable_const)]
+    const E: MessageInfoSlot = MessageInfoSlot::empty();
+    [E; MESSAGE_INFO_SLOTS]
+};
+
+fn lookup_message_info_slot(key: usize) -> Option<&'static MessageInfoSlot> {
+    if key == 0 {
+        return None;
+    }
+    MESSAGE_INFO_TABLE
+        .iter()
+        .find(|slot| slot.key.load(Ordering::Acquire) == key)
+}
+
+#[cfg(feature = "alloc")]
+fn get_or_insert_message_info_slot(key: usize) -> Option<&'static MessageInfoSlot> {
+    if key == 0 {
+        return None;
+    }
+    for slot in &MESSAGE_INFO_TABLE {
+        let current = slot.key.load(Ordering::Acquire);
+        if current == key {
+            return Some(slot);
+        }
+        if current == 0
+            && slot
+                .key
+                .compare_exchange(0, key, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            return Some(slot);
+        }
+    }
+    None
+}
+
+#[cfg(feature = "alloc")]
+pub(crate) fn store_cffi_message_info(key: usize, info: Option<MessageInfo>) {
+    let Some(slot) = get_or_insert_message_info_slot(key) else {
+        return;
+    };
+    match info {
+        Some(info) => {
+            // SAFETY: this slot is keyed to one subscriber backend handle. The
+            // executor owns each subscriber mutably while receiving, so writes
+            // for the same key are serialized.
+            unsafe {
+                *slot.info.get() = info;
+            }
+            slot.valid.store(true, Ordering::Release);
+        }
+        None => slot.valid.store(false, Ordering::Release),
+    }
+}
+
+fn take_cffi_message_info(key: usize) -> Option<MessageInfo> {
+    let slot = lookup_message_info_slot(key)?;
+    if !slot.valid.swap(false, Ordering::AcqRel) {
+        return None;
+    }
+    // SAFETY: `valid.swap(false)` gives this reader exclusive consumption of the
+    // last stored `MessageInfo` for this key.
+    Some(unsafe { *slot.info.get() })
+}
+
+fn clear_cffi_message_info(key: usize) {
+    let Some(slot) = lookup_message_info_slot(key) else {
+        return;
+    };
+    slot.valid.store(false, Ordering::Release);
+    slot.key.store(0, Ordering::Release);
+}
 
 /// Register a custom RMW backend vtable (legacy single-arg form).
 ///
@@ -2128,6 +2236,15 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         Ok(Some(rc as usize))
     }
 
+    fn try_recv_raw_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
+        let key = self.backend_data as usize;
+        self.try_recv_raw(buf)
+            .map(|opt| opt.map(|len| (len, take_cffi_message_info(key))))
+    }
+
     fn try_recv_sequence(
         &mut self,
         buf: &mut [u8],
@@ -2228,6 +2345,7 @@ impl nros_rmw::Subscriber for CffiSubscriber {
 impl Drop for CffiSubscriber {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
+            clear_cffi_message_info(self.backend_data as usize);
             let mut view = self.make_view();
             unsafe { (self.vtable.destroy_subscriber)(&mut view) };
         }

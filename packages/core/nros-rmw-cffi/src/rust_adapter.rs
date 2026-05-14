@@ -458,8 +458,12 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, buf_len) };
-    match Subscriber::try_recv_raw(s, slice) {
-        Ok(Some(n)) => n as i32,
+    let key = unsafe { (*subscriber).backend_data as usize };
+    match Subscriber::try_recv_raw_with_info(s, slice) {
+        Ok(Some((n, info))) => {
+            crate::store_cffi_message_info(key, info);
+            n as i32
+        }
         Ok(None) => NROS_RMW_RET_NO_DATA,
         Err(e) => ret_from_error(&e),
     }

@@ -2,6 +2,19 @@
 
 ## Update - 2026-05-15
 
+Focused verification after CFFI message-info propagation fix:
+
+- `cargo test -p nros-rmw-cffi --test rust_adapter --features alloc`
+- `cargo nextest run -p nros-tests --test nano2nano test_sequence_number_increment --no-capture`
+- `cargo nextest run -p nros-tests --test nano2nano test_gid_consistency --no-capture`
+- `cargo nextest run -p nros-tests --test zero_copy test_zero_copy_message_info --no-capture`
+
+Newly resolved in focused runs:
+
+- `nano2nano::test_sequence_number_increment`
+- `nano2nano::test_gid_consistency`
+- `zero_copy::test_zero_copy_message_info`
+
 Source run:
 
 - Command: `just ci`
@@ -74,12 +87,9 @@ Current native-priority failures:
 
 Next priority:
 
-1. Fix the remaining native Zenoh identity/metadata cluster first:
-   `gid_consistency`, `sequence_number_increment`, and
-   `zero_copy_message_info`.
-2. Then rerun the native C/C++ service and talker/listener tests. These are
+1. Rerun the native C/C++ service and talker/listener tests. These are
    likely downstream of the same attachment/message-info path.
-3. Defer platform E2E buckets until the remaining native metadata behavior is
+2. Defer platform E2E buckets until the remaining native metadata behavior is
    stable.
 
 Source run:

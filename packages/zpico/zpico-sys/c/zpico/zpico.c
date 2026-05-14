@@ -495,15 +495,11 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         size_t att_written = 0;
         const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
         if (attachment != NULL && r->att_stride > 0) {
-            z_owned_slice_t att_slice;
-            if (z_bytes_to_slice(attachment, &att_slice) == 0) {
-                size_t att_len = z_slice_len(z_slice_loan(&att_slice));
-                if (att_len <= r->att_stride) {
-                    memcpy(r->att_base + slot * r->att_stride,
-                           z_slice_data(z_slice_loan(&att_slice)), att_len);
-                    att_written = att_len;
-                }
-                z_slice_drop(z_slice_move(&att_slice));
+            size_t att_len = z_bytes_len(attachment);
+            if (att_len <= r->att_stride) {
+                z_bytes_reader_t att_reader = z_bytes_get_reader(attachment);
+                att_written = z_bytes_reader_read(
+                    &att_reader, r->att_base + slot * r->att_stride, att_len);
             }
         }
         r->att_len[slot] = att_written;
