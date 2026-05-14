@@ -783,7 +783,22 @@ pub struct GuardConditionHandle {
     // deallocated while handles exist. The 'static lifetime is asserted at
     // construction time (see `new()`).
     flag: &'static portable_atomic::AtomicBool,
+    /// Phase 124.B.5 — runtime wake callback. On std + rmw-cffi
+    /// builds the executor sets this to `nros_rmw_runtime_wake_cb`
+    /// with `ctx` pointing at the executor's WakeCtx. `trigger`
+    /// invokes it after writing the arena flag so a `spin_once`
+    /// blocked on `wake_cv` resumes immediately (sub-poll wake
+    /// latency). Bare/no-std builds leave it `None` — the arena
+    /// flag is observed on the next spin iteration as before.
+    wake_cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+    wake_ctx: *mut core::ffi::c_void,
 }
+
+// SAFETY: `wake_cb` is a plain function pointer; `wake_ctx` points
+// at a WakeCtx Arc allocated on Executor::new and never freed before
+// Executor::drop. Both are safe to share across threads.
+unsafe impl Send for GuardConditionHandle {}
+unsafe impl Sync for GuardConditionHandle {}
 
 impl GuardConditionHandle {
     /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
@@ -798,14 +813,38 @@ impl GuardConditionHandle {
         // SAFETY: Caller guarantees the AtomicBool outlives this handle.
         Self {
             flag: unsafe { &*flag },
+            wake_cb: None,
+            wake_ctx: core::ptr::null_mut(),
         }
+    }
+
+    /// Phase 124.B.5 — install the executor's wake callback. Called
+    /// once at handle creation; the executor passes its
+    /// `nros_rmw_runtime_wake_cb` + WakeCtx pointer here so
+    /// `trigger()` can signal the wake condvar from any thread / ISR.
+    #[cfg(any(all(feature = "std", feature = "rmw-cffi"), test))]
+    #[allow(dead_code)] // Wired by register_guard_condition under cfg.
+    pub(crate) fn set_wake_cb(
+        &mut self,
+        cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void),
+        ctx: *mut core::ffi::c_void,
+    ) {
+        self.wake_cb = Some(cb);
+        self.wake_ctx = ctx;
     }
 
     /// Trigger the guard condition.
     ///
     /// The executor will invoke the associated callback on the next spin iteration.
+    /// On std + rmw-cffi builds, `trigger` also signals the executor's
+    /// wake condvar so a blocked `spin_once` resumes immediately.
     pub fn trigger(&self) {
         self.flag.store(true, portable_atomic::Ordering::Release);
+        if let Some(cb) = self.wake_cb {
+            // SAFETY: cb + ctx installed by Executor::register_guard_condition;
+            // ctx points at WakeCtx valid for Executor's lifetime.
+            unsafe { cb(self.wake_ctx) };
+        }
     }
 }
 

@@ -2495,7 +2495,15 @@ impl Executor {
 
             // Create a handle pointing to the flag in the arena
             let flag_ptr = &(*entry_ptr).flag as *const portable_atomic::AtomicBool;
-            let guard_handle = GuardConditionHandle::new(flag_ptr);
+            #[allow(unused_mut)]
+            let mut guard_handle = GuardConditionHandle::new(flag_ptr);
+            // Phase 124.B.5 — wire the wake callback so trigger()
+            // also signals the executor's wake_cv.
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            {
+                let ctx = self.wake_ctx_ptr();
+                guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
+            }
 
             self.entries[slot] = Some(CallbackMeta {
                 offset,

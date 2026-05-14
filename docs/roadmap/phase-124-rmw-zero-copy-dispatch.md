@@ -638,42 +638,42 @@ the same change as `set_wake_callback` lands.
       (Landed 2026-05-14, commit `20f8fd95`.)
       **Files:** `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **124.B.3 — Backend migration to callback (2 backends).**
-      ZenohSession + DdsSession swap their flag-pointer storage
-      for `(wake_cb, wake_ctx)` pair and replace the flag-write
-      line in `drive_io` with `(self.wake_cb)(self.wake_ctx)`.
-      XRCE + Cyclone leave slot NULL — runtime cv-waits to user
-      deadline then drains, equivalent to their pre-124
-      poll-only behaviour.
+- [x] **124.B.3 — Backend migration to callback (2 backends).**
+      ZenohSession + DdsSession swapped their flag-pointer storage
+      for `(wake_cb, wake_ctx)` pair; `drive_io` fires the runtime
+      cb on observed work. XRCE + Cyclone left slot NULL (runtime
+      cv-waits to user deadline then drains). (Landed 2026-05-14,
+      commit `356aabf3`.)
       **Files:**
       `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`,
       `packages/dds/nros-rmw-dds/src/session.rs`.
 
-- [ ] **124.B.4.b — Delete `set_wake_signal` slot.** Once B.3
-      lands, remove `set_wake_signal` from vtable header, Rust
-      struct, trampoline, Session trait, and Executor install
-      path. Remove the `supports_wake_callback()` detection
-      branch in `spin_once` — always cv-wait.
+- [x] **124.B.4.b — Delete `set_wake_signal` slot.** Removed
+      `set_wake_signal` from vtable header, Rust struct,
+      trampoline, Session trait, and Executor install path. The
+      `supports_wake_callback()` detection branch in `spin_once`
+      was removed — spin always cv-waits to deadline then drains
+      `drive_io(0)`. (Landed 2026-05-14, commit `356aabf3`.)
       **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
       `packages/core/nros-rmw-cffi/src/lib.rs`,
       `packages/core/nros-rmw-cffi/src/rust_adapter.rs`,
       `packages/core/nros-rmw/src/traits.rs`,
-      `packages/core/nros-node/src/executor/spin.rs`,
-      Zenoh + DDS session impls (drop `wake_flag` field).
+      `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **124.B.5 — Guard condition C API.** Expose
-      `nros_guard_condition_create(executor)`,
-      `_trigger(g)`, `_destroy(g)`. Stores an opaque
-      &Executor ref; `_trigger` calls
-      `nros_rmw_runtime_wake_cb` on that ref.
-      **Files:** `packages/core/nros-c/src/guard_condition.rs`
-      (new), header export.
+- [x] **124.B.5 — Guard condition C API.** Wired
+      `GuardConditionHandle::trigger()` to invoke the runtime
+      wake callback after writing the arena flag. The pre-existing
+      `nros_guard_condition_trigger` C entry point traces through
+      the same handle, so the C surface is now condvar-aware
+      without API changes. (Landed 2026-05-14.)
+      **Files:** `packages/core/nros-node/src/executor/types.rs`,
+      `packages/core/nros-node/src/executor/spin.rs`.
 
-- [ ] **124.B.6 — Guard condition C++ class.** Phase 122 already
-      shipped `nros::GuardCondition` Rust-side; expose the C
-      surface via the cbindgen header + add a thin C++ wrapper
-      class.
-      **Files:** `packages/core/nros-cpp/include/nros/guard_condition.hpp`.
+- [x] **124.B.6 — Guard condition C++ class.** `nros::GuardCondition`
+      class was already shipped in Phase 122; B.5's
+      `GuardConditionHandle` wiring flows through the existing
+      `nros_cpp_guard_condition_trigger` shim unchanged. (Landed
+      2026-05-14.)
 
 - [ ] **124.B.7.a — Platform-layer ISR-safe signal primitive.**
       `nros-platform-cffi` already exposes
