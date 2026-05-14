@@ -69,6 +69,16 @@ const nros_rmw_vtable_t kVtable = {
      * vtable). nullptr today; runtime falls back to same-thread
      * setters. */
     /*set_wake_signal*/           nullptr,
+
+    /* Phase 124.A — zero-copy ABI. Cyclone DDS supports loan via
+     * dds_loan_sample / dds_return_loan; wire-up is a follow-up
+     * (track under 124.A.5). nullptr today → runtime falls back to
+     * the arena staging-buffer path on this backend. */
+    /*pub_loan*/                  nullptr,
+    /*pub_commit*/                nullptr,
+    /*pub_discard*/               nullptr,
+    /*sub_borrow*/                nullptr,
+    /*sub_release*/               nullptr,
 };
 
 } // namespace

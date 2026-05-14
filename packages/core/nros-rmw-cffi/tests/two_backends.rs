@@ -240,6 +240,11 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     next_deadline_ms: None,
     set_wake_signal: None,
     set_wake_callback: None,
+    pub_loan: None,
+    pub_commit: None,
+    pub_discard: None,
+    sub_borrow: None,
+    sub_release: None,
 };
 
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
@@ -267,6 +272,11 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     next_deadline_ms: None,
     set_wake_signal: None,
     set_wake_callback: None,
+    pub_loan: None,
+    pub_commit: None,
+    pub_discard: None,
+    sub_borrow: None,
+    sub_release: None,
 };
 
 #[test]

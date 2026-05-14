@@ -57,6 +57,16 @@ static const nros_rmw_vtable_t kVtable = {
      * relies on cooperative scheduling + the same-thread setters
      * (Executor::wake, halt, …). */
     .set_wake_signal            = NULL,
+
+    /* Phase 124.A — zero-copy ABI. XRCE-DDS-Client uses micro-CDR
+     * with caller-provided staging buffers; loan/borrow would
+     * require a per-publisher arena equivalent. Leave NULL; runtime
+     * falls back to the staging-buffer path. */
+    .pub_loan                   = NULL,
+    .pub_commit                 = NULL,
+    .pub_discard                = NULL,
+    .sub_borrow                 = NULL,
+    .sub_release                = NULL,
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {

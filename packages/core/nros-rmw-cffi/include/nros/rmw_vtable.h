@@ -192,6 +192,77 @@ typedef struct nros_rmw_vtable_t {
     nros_rmw_ret_t (*set_wake_callback)(nros_rmw_session_t *session,
                                          void (*cb)(void *ctx),
                                          void *ctx);
+
+    /** Phase 124.A — zero-copy publisher loan.
+     *
+     *  Reserve a writable slot of at least `requested_len` bytes inside
+     *  the backend's outbound buffer. Returns:
+     *    * `NROS_RMW_RET_OK` + writes `*out_buf` / `*out_cap` / `*out_token`.
+     *    * `NROS_RMW_RET_TRY_AGAIN` if the backend has no slot
+     *      available (caller may retry or fall back to a copy path).
+     *    * `NROS_RMW_RET_INVALID_ARGUMENT` on bad pointers / size.
+     *
+     *  `*out_cap` may exceed `requested_len`. The slot's bytes are
+     *  valid until the matching `pub_commit` or `pub_discard` runs.
+     *  `*out_token` is an opaque per-loan handle the backend uses to
+     *  match commit / discard back to the right slot.
+     *
+     *  NULL function pointer = backend doesn't natively lend; the
+     *  runtime falls back to a per-publisher staging arena and emits
+     *  a single memcpy on commit. */
+    nros_rmw_ret_t (*pub_loan)(nros_rmw_publisher_t *publisher,
+                                size_t                requested_len,
+                                uint8_t             **out_buf,
+                                size_t               *out_cap,
+                                void                **out_token);
+
+    /** Phase 124.A — commit a previously loaned slot.
+     *
+     *  `token` MUST be a value returned from a prior `pub_loan` on the
+     *  same publisher. `actual_len` is the byte count actually
+     *  written into the slot (≤ the loan's `out_cap`). Triggers the
+     *  wire send.
+     *
+     *  NULL = paired NULL with `pub_loan`. */
+    nros_rmw_ret_t (*pub_commit)(nros_rmw_publisher_t *publisher,
+                                  void                 *token,
+                                  size_t                actual_len);
+
+    /** Phase 124.A — abandon a previously loaned slot.
+     *
+     *  Releases the slot without sending. `token` MUST be a value
+     *  returned from a prior `pub_loan` on the same publisher.
+     *
+     *  NULL = paired NULL with `pub_loan`. */
+    void (*pub_discard)(nros_rmw_publisher_t *publisher, void *token);
+
+    /** Phase 124.A — zero-copy subscriber borrow.
+     *
+     *  Borrow a read-only view of the next available message in
+     *  place, without copying into a caller buffer. Returns:
+     *    * `>= 0` — message length; writes `*out_buf` / `*out_token`.
+     *    * `0` — no message ready (subscriber empty).
+     *    * `< 0` — error (see `nros_rmw_ret_t` codes negated).
+     *
+     *  The view is valid until the matching `sub_release` runs.
+     *  Only one borrow may be outstanding per subscriber at a time —
+     *  callers MUST release before requesting another borrow.
+     *
+     *  NULL function pointer = backend doesn't natively borrow; the
+     *  runtime falls back to `try_recv_raw` into a staging buffer. */
+    int32_t (*sub_borrow)(nros_rmw_subscriber_t *subscriber,
+                           const uint8_t        **out_buf,
+                           size_t                *out_len,
+                           void                 **out_token);
+
+    /** Phase 124.A — release a previously borrowed view.
+     *
+     *  `token` MUST be a value returned from a prior `sub_borrow`
+     *  on the same subscriber. Lets the next message advance into
+     *  the buffer.
+     *
+     *  NULL = paired NULL with `sub_borrow`. */
+    void (*sub_release)(nros_rmw_subscriber_t *subscriber, void *token);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

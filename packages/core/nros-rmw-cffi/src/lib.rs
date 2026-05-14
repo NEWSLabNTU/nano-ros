@@ -531,6 +531,58 @@ pub struct NrosRmwVtable {
             ctx: *mut core::ffi::c_void,
         ) -> NrosRmwRet,
     >,
+
+    // ---- Phase 124.A — zero-copy publisher loan ----
+    /// Reserve a writable slot of at least `requested_len` bytes in
+    /// the backend's outbound buffer. NULL = arena fallback. See the
+    /// C header for the full semantics + lifetime contract.
+    pub pub_loan: Option<
+        unsafe extern "C" fn(
+            publisher: *mut NrosRmwPublisher,
+            requested_len: usize,
+            out_buf: *mut *mut u8,
+            out_cap: *mut usize,
+            out_token: *mut *mut core::ffi::c_void,
+        ) -> NrosRmwRet,
+    >,
+    /// Commit a previously loaned slot. NULL = paired with NULL
+    /// `pub_loan`.
+    pub pub_commit: Option<
+        unsafe extern "C" fn(
+            publisher: *mut NrosRmwPublisher,
+            token: *mut core::ffi::c_void,
+            actual_len: usize,
+        ) -> NrosRmwRet,
+    >,
+    /// Abandon a previously loaned slot. NULL = paired with NULL
+    /// `pub_loan`.
+    pub pub_discard: Option<
+        unsafe extern "C" fn(
+            publisher: *mut NrosRmwPublisher,
+            token: *mut core::ffi::c_void,
+        ),
+    >,
+
+    // ---- Phase 124.A — zero-copy subscriber borrow ----
+    /// Borrow the next message in place. Returns length (≥ 0) or a
+    /// negative error code. NULL = staging-buffer fallback via
+    /// `try_recv_raw`.
+    pub sub_borrow: Option<
+        unsafe extern "C" fn(
+            subscriber: *mut NrosRmwSubscriber,
+            out_buf: *mut *const u8,
+            out_len: *mut usize,
+            out_token: *mut *mut core::ffi::c_void,
+        ) -> i32,
+    >,
+    /// Release a previously borrowed view. NULL = paired with NULL
+    /// `sub_borrow`.
+    pub sub_release: Option<
+        unsafe extern "C" fn(
+            subscriber: *mut NrosRmwSubscriber,
+            token: *mut core::ffi::c_void,
+        ),
+    >,
 }
 
 // ============================================================================
@@ -1509,6 +1561,158 @@ impl CffiPublisher {
     }
 }
 
+/// Phase 124.A — writable slot returned by
+/// [`CffiPublisher::try_lend_slot`]. Holds the backend's raw buffer
+/// + opaque token until `commit_slot` consumes it or `Drop` fires
+/// `pub_discard`.
+#[cfg(feature = "lending")]
+pub struct CffiSlot<'a> {
+    buf: *mut u8,
+    cap: usize,
+    cursor: usize,
+    token: *mut c_void,
+    /// `None` after `commit_slot` consumes the slot — Drop skips the
+    /// discard call in that case.
+    publisher: Option<&'a CffiPublisher>,
+}
+
+#[cfg(feature = "lending")]
+impl<'a> CffiSlot<'a> {
+    /// Mark the actual bytes written before commit. Defaults to the
+    /// full capacity; callers that write a shorter prefix MUST call
+    /// `set_len` first.
+    pub fn set_len(&mut self, len: usize) {
+        debug_assert!(len <= self.cap);
+        self.cursor = len.min(self.cap);
+    }
+}
+
+#[cfg(feature = "lending")]
+impl<'a> AsMut<[u8]> for CffiSlot<'a> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        // SAFETY: `buf` came from `pub_loan` with capacity `cap`. The
+        // loan contract guarantees the slot stays valid until commit
+        // or discard. The lifetime `'a` borrows the publisher so the
+        // returned slice can't outlive the loan.
+        unsafe { core::slice::from_raw_parts_mut(self.buf, self.cap) }
+    }
+}
+
+#[cfg(feature = "lending")]
+impl<'a> Drop for CffiSlot<'a> {
+    fn drop(&mut self) {
+        if let Some(p) = self.publisher
+            && let Some(discard) = p.vtable.pub_discard
+        {
+            // Re-materialise the publisher view so the backend sees
+            // the same `NrosRmwPublisher` shape it created the loan
+            // against.
+            let mut view = NrosRmwPublisher {
+                topic_name: p.topic_name_buf.as_ptr(),
+                type_name: p.type_name_buf.as_ptr(),
+                qos: p.qos,
+                can_loan_messages: p.can_loan_messages,
+                _reserved: [0u8; 7],
+                backend_data: p.backend_data,
+            };
+            // SAFETY: `token` came from a paired `pub_loan` on this
+            // publisher and the publisher is still alive (lifetime
+            // `'a` borrows it).
+            unsafe { discard(&mut view, self.token) };
+        }
+    }
+}
+
+#[cfg(feature = "lending")]
+impl nros_rmw::SlotLending for CffiPublisher {
+    type Slot<'a> = CffiSlot<'a>;
+
+    fn try_lend_slot(
+        &self,
+        len: usize,
+    ) -> Result<Option<CffiSlot<'_>>, TransportError> {
+        let Some(loan) = self.vtable.pub_loan else {
+            // Phase 124.A — backend doesn't natively lend; the
+            // runtime's arena fallback (124.A.3) covers this path.
+            // `None` lets the caller fall back without panicking.
+            return Ok(None);
+        };
+        let mut view = NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
+            backend_data: self.backend_data,
+        };
+        let mut out_buf: *mut u8 = core::ptr::null_mut();
+        let mut out_cap: usize = 0;
+        let mut out_token: *mut c_void = core::ptr::null_mut();
+        // SAFETY: vtable contract — slot pointers stay valid until
+        // commit / discard.
+        let ret = unsafe {
+            loan(
+                &mut view,
+                len,
+                &mut out_buf,
+                &mut out_cap,
+                &mut out_token,
+            )
+        };
+        if ret == NROS_RMW_RET_WOULD_BLOCK || ret == NROS_RMW_RET_NO_DATA {
+            return Ok(None);
+        }
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        if out_buf.is_null() || out_cap < len {
+            // Defensive: a buggy backend returned OK with a too-small
+            // slot. Treat as transient.
+            if let Some(discard) = self.vtable.pub_discard {
+                unsafe { discard(&mut view, out_token) };
+            }
+            return Ok(None);
+        }
+        Ok(Some(CffiSlot {
+            buf: out_buf,
+            cap: out_cap,
+            cursor: len,
+            token: out_token,
+            publisher: Some(self),
+        }))
+    }
+
+    fn commit_slot(&self, mut slot: CffiSlot<'_>) -> Result<(), TransportError> {
+        // Cancel Drop's discard — we're committing, not abandoning.
+        let publisher = slot
+            .publisher
+            .take()
+            .ok_or(TransportError::InvalidArgument)?;
+        debug_assert!(core::ptr::eq(publisher, self));
+        let commit = self
+            .vtable
+            .pub_commit
+            .ok_or(TransportError::Unsupported)?;
+        let mut view = NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr(),
+            type_name: self.type_name_buf.as_ptr(),
+            qos: self.qos,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
+            backend_data: self.backend_data,
+        };
+        let len = slot.cursor;
+        let token = slot.token;
+        // `slot` drops here without firing `pub_discard` because
+        // `publisher` is `None`.
+        let ret = unsafe { commit(&mut view, token, len) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(())
+    }
+}
+
 impl Publisher for CffiPublisher {
     type Error = TransportError;
 
@@ -1641,6 +1845,87 @@ impl CffiSubscriber {
     /// (Phase 99).
     pub fn can_loan_messages(&self) -> bool {
         self.can_loan_messages
+    }
+}
+
+/// Phase 124.A — read-only view returned by
+/// [`CffiSubscriber::try_borrow`]. Holds the backend's raw buffer +
+/// opaque token until `Drop` fires `sub_release`.
+#[cfg(feature = "lending")]
+pub struct CffiView<'a> {
+    buf: *const u8,
+    len: usize,
+    token: *mut c_void,
+    subscriber: Option<&'a mut CffiSubscriber>,
+}
+
+#[cfg(feature = "lending")]
+impl<'a> AsRef<[u8]> for CffiView<'a> {
+    fn as_ref(&self) -> &[u8] {
+        // SAFETY: `buf` came from `sub_borrow` with length `len`.
+        // The borrow contract guarantees the buffer stays valid until
+        // `sub_release` fires (in Drop). Lifetime `'a` borrows the
+        // subscriber so the slice can't outlive the borrow.
+        unsafe { core::slice::from_raw_parts(self.buf, self.len) }
+    }
+}
+
+#[cfg(feature = "lending")]
+impl<'a> Drop for CffiView<'a> {
+    fn drop(&mut self) {
+        if let Some(sub) = self.subscriber.take()
+            && let Some(release) = sub.vtable.sub_release
+        {
+            let mut view = sub.make_view();
+            // SAFETY: `token` paired with a prior `sub_borrow` on
+            // this subscriber and the subscriber is still alive.
+            unsafe { release(&mut view, self.token) };
+        }
+    }
+}
+
+#[cfg(feature = "lending")]
+impl nros_rmw::SlotBorrowing for CffiSubscriber {
+    type View<'a> = CffiView<'a>;
+
+    fn try_borrow(&mut self) -> Result<Option<CffiView<'_>>, TransportError> {
+        let Some(borrow) = self.vtable.sub_borrow else {
+            // Phase 124.A — backend doesn't natively borrow; runtime
+            // falls back to `try_recv_raw` into a staging buffer
+            // (124.A.3). `None` lets the caller use the slow path.
+            return Ok(None);
+        };
+        let mut view = self.make_view();
+        let mut out_buf: *const u8 = core::ptr::null();
+        let mut out_len: usize = 0;
+        let mut out_token: *mut c_void = core::ptr::null_mut();
+        // SAFETY: vtable contract — borrowed pointers stay valid
+        // until `sub_release` runs.
+        let rc = unsafe {
+            borrow(
+                &mut view,
+                &mut out_buf,
+                &mut out_len,
+                &mut out_token,
+            )
+        };
+        if rc == 0 {
+            // No message ready.
+            return Ok(None);
+        }
+        if rc < 0 {
+            return Err(error_from_ret(rc));
+        }
+        if out_buf.is_null() {
+            return Ok(None);
+        }
+        let len = (rc as usize).min(out_len.max(rc as usize));
+        Ok(Some(CffiView {
+            buf: out_buf,
+            len,
+            token: out_token,
+            subscriber: Some(self),
+        }))
     }
 }
 
@@ -2177,6 +2462,11 @@ mod tests {
         next_deadline_ms: None,
         set_wake_signal: None,
         set_wake_callback: None,
+        pub_loan: None,
+        pub_commit: None,
+        pub_discard: None,
+        sub_borrow: None,
+        sub_release: None,
     };
 
     #[test]

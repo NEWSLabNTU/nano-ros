@@ -472,14 +472,31 @@ independent additions.
 
 ### Thread A — Zero-copy ABI
 
-- [ ] **124.A.1 — vtable slot additions.** Add the 5 zero-copy
-      slots to `nros_rmw_vtable_t` + matching docs.
+- [x] **124.A.1 — vtable slot additions.** Add the 5 zero-copy
+      slots to `nros_rmw_vtable_t` + matching docs. **Done.**
+      Header: `pub_loan / pub_commit / pub_discard / sub_borrow /
+      sub_release`. Rust mirror in `NrosRmwVtable`. All existing
+      vtable instantiations (RustBackendAdapter, two_backends test
+      stubs, typed_struct test stub, XRCE C vtable, Cyclone DDS
+      C++ vtable) carry None/NULL slots.
       **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
-      `packages/core/nros-rmw-cffi/src/lib.rs`.
-- [ ] **124.A.2 — CffiPublisher SlotLending impl.** Wrap the
+      `packages/core/nros-rmw-cffi/src/lib.rs`,
+      `packages/core/nros-rmw-cffi/src/rust_adapter.rs`,
+      `packages/core/nros-rmw-cffi/tests/two_backends.rs`,
+      `packages/xrce/nros-rmw-xrce/src/vtable.c`,
+      `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp`.
+- [x] **124.A.2 — CffiPublisher SlotLending impl.** Wrap the
       vtable slots in Rust's `SlotLending` trait.
-      `CffiSubscriber: SlotBorrowing` mirror.
-      **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`.
+      `CffiSubscriber: SlotBorrowing` mirror. **Done.** New
+      `CffiSlot<'a>` + `CffiView<'a>` types. Drop fires
+      `pub_discard` / `sub_release`; commit/release cancel the
+      drop via `Option<&_>::take()`. Backends with NULL slots
+      return `Ok(None)` from `try_lend_slot` / `try_borrow` so
+      callers fall back to the arena path (124.A.3).
+      Gated behind a new `lending` feature on `nros-rmw-cffi`
+      that forwards to `nros-rmw/lending`.
+      **Files:** `packages/core/nros-rmw-cffi/Cargo.toml`,
+      `packages/core/nros-rmw-cffi/src/lib.rs`.
 - [ ] **124.A.3 — Arena fallback migration.** Move `TxArena<TX_BUF>`
       from `nros-node` into `nros-rmw-cffi` as the default loan
       path when `vt.pub_loan == NULL`. Single implementation

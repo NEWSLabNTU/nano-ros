@@ -216,6 +216,15 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
         set_wake_signal: Some(set_wake_signal_trampoline::<R>),
         set_wake_callback: Some(set_wake_callback_trampoline::<R>),
+        // Phase 124.A — zero-copy slots default to NULL on the
+        // generic adapter; per-backend opt-in via dedicated trampolines
+        // (see `nros-rmw-zenoh` for the first implementation in 124.A.4).
+        // Runtime falls back to the arena path when these are NULL.
+        pub_loan: None,
+        pub_commit: None,
+        pub_discard: None,
+        sub_borrow: None,
+        sub_release: None,
     };
 
     /// Install the per-`R` vtable into the cffi registry under the

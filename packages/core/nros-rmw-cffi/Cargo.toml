@@ -31,6 +31,13 @@ cc = "1"
 default = []
 std = ["nros-rmw/std"]
 alloc = ["nros-rmw/alloc"]
+# Phase 124.A — enables `CffiPublisher: SlotLending` +
+# `CffiSubscriber: SlotBorrowing`. The vtable carries the slots either
+# way; this feature gates the Rust trait impls so the trait surface
+# stays gated behind `nros-rmw/lending` for the umbrella too. Becomes
+# unconditional once Phase 124.A.4 lands and the umbrella drops the
+# feature on its own surface.
+lending = ["nros-rmw/lending"]
 # Phase 115.G.4 — opt-in compile of `tests/c_stubs/c_stub_transport.c`.
 # Off by default so consumers that vendor `nros-rmw-cffi` don't need a
 # C toolchain on the build host. `cargo test --features c-stub-test`
