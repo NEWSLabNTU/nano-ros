@@ -2031,18 +2031,71 @@ impl Executor {
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
+        self.register_service_client_raw_sized_inner::<REPLY_BUF>(
+            None,
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_service_client_raw_sized`]. Routes the client
+    /// creation through the named Node's session.
+    pub fn register_service_client_raw_sized_on<const REPLY_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: Option<RawResponseCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_client_raw_sized_inner::<REPLY_BUF>(
+            Some(node_id),
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    fn register_service_client_raw_sized_inner<const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: Option<RawResponseCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
         let mut info =
             ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
-        let handle = self
-            .session
-            .create_service_client(&info)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_service_client(&info)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+        };
 
         let offset = self.arena_alloc::<ServiceClientRawArenaEntry<REPLY_BUF>>()?;
         unsafe {
