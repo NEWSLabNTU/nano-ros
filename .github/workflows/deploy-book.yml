@@ -16,6 +16,7 @@ on:
       - "packages/core/nros-c/docs/**"
       - "packages/core/nros-cpp/include/**"
       - "packages/core/nros-cpp/Doxyfile"
+      - "book/rustdoc-driver/**"
       - "packages/zpico/nros-rmw-zenoh/src/**"
       - "packages/xrce/nros-rmw-xrce/src/**"
       - ".github/workflows/deploy-book.yml"
@@ -70,6 +71,11 @@ jobs:
         # Pass an rmw + platform feature combo so the rmw-gated re-exports
         # (`nros::Executor`, `nros::Promise`, etc.) actually appear in the
         # rendered output — the reference stubs deep-link into them.
+        env:
+          # The driver builds dependency docs, so allow existing internal
+          # intra-doc links that were not checked by the old `--no-deps`
+          # workflow path.
+          RUSTDOCFLAGS: "-A rustdoc::broken-intra-doc-links -A rustdoc::private-intra-doc-links"
         run: |
           rm -rf target/doc target/doxygen
           # Phase 104.A: `rmw-zenoh` feature on `nros` is now
@@ -77,14 +83,12 @@ jobs:
           # was deleted (123.A.1.x.2); POSIX C symbols ship from
           # `packages/core/nros-platform-posix/src/*.c`, compiled
           # by `nros-platform-cffi`'s `posix-c-port` feature.
-          cargo doc --no-deps \
-            --features rmw-zenoh-cffi,platform-posix,link-tcp,ros-humble \
-            -p nros \
-            -p nros-rmw \
-            -p nros-rmw-cffi \
-            -p nros-platform-api \
-            -p nros-platform-cffi \
-            -p nros-platform
+          # The book rustdoc driver is its own tiny workspace so Cargo
+          # does not resolve root workspace members backed by target/runtime
+          # submodules. The driver depends on the public crates and activates
+          # the same doc-facing feature set.
+          CARGO_TARGET_DIR=target cargo doc \
+            --manifest-path book/rustdoc-driver/Cargo.toml
 
       - name: Build Doxygen — C
         run: |

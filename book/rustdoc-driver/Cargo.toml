@@ -1,0 +1,18 @@
+[package]
+name = "nros-book-rustdoc-driver"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Keep this helper out of the repository root workspace. Book deployment only
+# needs docs for the public core crates, and the root workspace also contains
+# backend crates whose runtime submodules are not required for the book.
+[workspace]
+
+[dependencies]
+nros = { path = "../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix", "link-tcp", "ros-humble"] }
+nros-rmw = { path = "../../packages/core/nros-rmw", default-features = false }
+nros-rmw-cffi = { path = "../../packages/core/nros-rmw-cffi", default-features = false }
+nros-platform = { path = "../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform-api = { path = "../../packages/core/nros-platform-api" }
+nros-platform-cffi = { path = "../../packages/core/nros-platform-cffi", default-features = false }
