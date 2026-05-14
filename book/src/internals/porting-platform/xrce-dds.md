@@ -125,7 +125,7 @@ the clock symbols.
 5. **Choose or implement a transport crate** — reuse `xrce-smoltcp` for
    bare-metal, or implement a new transport if the platform has its own
    networking stack
-6. **Create the board crate** — see [Board Crate Implementation](../board-crate.md)
+6. **Create the board crate** — see [Custom Board Package](../../porting/custom-board.md)
 7. **Add the platform feature** to `nros` with mutual exclusivity checks
 8. **Write an example and tests**
 

@@ -68,13 +68,13 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 4. ROS 2 nodes using stock `rmw_cyclonedds_cpp` interoperate directly — same wire protocol, same discovery, no key rewriting (unlike `rmw_zenoh`'s `<domain>/<topic>/<type>/...` scheme).
 
 **Key characteristics:**
-- **Pure-C++ backend** (not a Cargo crate) — Autoware contributors can read and extend the wrapper using the same patterns as `actuation_module/include/common/dds/`. Phase 117 was driven by `autoware-safety-island` integration on Arm Cortex-A/R Zephyr targets.
+- **Pure-C++ backend** (not a Cargo crate) — Autoware contributors can read and extend the wrapper using the same patterns as `actuation_module/include/common/dds/`.
 - **ROS 2 Tier-1 wire compat** — pinned to Cyclone DDS tag `0.10.5` to match `ros-humble-cyclonedds` 0.10.5 + `ros-humble-rmw-cyclonedds-cpp` 1.3.4.
 - Static `ddsi_config` via `dds_create_domain_with_rawconfig` skips the XML parser; embedded-friendly.
 - Discovery via SPDP multicast or unicast peer list (mirrors Cyclone's standard config knobs).
 - Heap required (Cyclone uses `malloc`); `BUILD_SHARED_LIBS=ON` produces `libddsc.so` for POSIX, static link for embedded.
-- **No services / actions yet** — Phase 117.7 implementation pending; service create/recv/reply currently returns `NROS_RMW_RET_UNSUPPORTED`.
-- **No Phase 108 events yet** — `register_subscriber_event` / `register_publisher_event` / `assert_publisher_liveliness` slots left NULL until a follow-up phase wires Cyclone's `dds_set_listener` through to the runtime.
+- **No services / actions yet** — service create/recv/reply currently returns `NROS_RMW_RET_UNSUPPORTED`.
+- **No status events yet** — `register_subscriber_event` / `register_publisher_event` / `assert_publisher_liveliness` slots are not wired to Cyclone listeners yet.
 
 **Build:**
 ```bash
@@ -85,7 +85,7 @@ just cyclonedds test        # run the CTest harness
 
 `just install-local-posix` builds the four-RMW matrix automatically (`zenoh` / `xrce` / `dds` / `cyclonedds`); the resulting `build/install/` exposes a `cyclonedds`-flavoured `libnros_cpp_cyclonedds.a` plus `find_package(NrosRmwCyclonedds)`.
 
-**Known limitations.** Phase 117's v1 has explicit gaps: 2× CDR roundtrip per message (no zero-copy fast path until upstream Cyclone exposes the writer→sertype lookup), Phase 108 status events deferred (NULL register slots), service request-id correlation pending (concurrent calls interleave), Cortex-A/R Zephyr boards still unimplemented. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
+**Known limitations.** Cyclone DDS currently has a 2× CDR roundtrip per message, deferred status-event wiring, pending service request-id correlation, and incomplete Cortex-A/R Zephyr board support. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
 
 ## Comparison
 
@@ -148,7 +148,7 @@ CONFIG_NROS_RMW_XRCE=y
 # DDS backend (dust-dds)
 CONFIG_NROS_RMW_DDS=y
 
-# Cyclone DDS backend (Phase 117 — Cortex-A/R Zephyr targets)
+# Cyclone DDS backend (Cortex-A/R Zephyr targets)
 CONFIG_NROS_RMW_CYCLONEDDS=y
 ```
 

@@ -126,7 +126,7 @@ sudo just setup-network
 
 ### Board Crates
 
-Both board crates follow the standard `Config` / `run()` pattern documented in the [Board Crate Guide](../internals/board-crate.md).
+Both board crates follow the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide.
 
 - **`nros-board-threadx-linux`** -- runs the full ThreadX kernel as pthreads on a Linux host. NetX Duo uses a TAP network driver (`tap-netx` in `packages/drivers/`) for Ethernet I/O. This provides the fastest iteration cycle for ThreadX-specific code.
 - **`nros-board-threadx-qemu-riscv64`** -- runs ThreadX's RISC-V port on QEMU virt machine with real preemptive scheduling. NetX Duo uses a virtio-net driver (`virtio-net-netx` in `packages/drivers/`) for Ethernet I/O over QEMU's virtio MMIO interface.

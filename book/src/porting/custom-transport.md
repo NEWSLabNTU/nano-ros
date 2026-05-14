@@ -1,4 +1,4 @@
-# Custom Transport (Phase 115)
+# Custom Transport
 
 `nano-ros` lets you plug a custom transport (USB-CDC, BLE GATT, RS-485
 with framing, ring-buffer loopback, semihosting bridge, …) at runtime,

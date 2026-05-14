@@ -202,6 +202,6 @@ just docker test-qemu  # Run QEMU tests in container
 
 ## Next Steps
 
-- [First App in Rust](first-app-rust.md) — build + run a Rust publisher
-- [First App in C](first-app-c.md) — build + run a C publisher
+- [First Native Rust Node](native.md) — build + run a Rust publisher
+- [C API](../reference/c-api.md) — API entry points and CMake integration
 - [`examples/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/multi-package-workspace) — full mixed C / C++ / Rust example

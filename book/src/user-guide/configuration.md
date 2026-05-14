@@ -163,10 +163,9 @@ All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- plat
 ## Layer 3: Cargo Features
 
 Features select the RMW backend, platform, ROS edition, and optional
-capabilities. See [Platform Model](../concepts/platform-model.md) for the
-full feature matrix.
-
-### Quick reference
+capabilities. The complete matrix and mutual-exclusion rules live in
+[Platform Model](../concepts/platform-model.md); this page only shows
+the shape used by downstream projects.
 
 ```toml
 [dependencies]
@@ -190,6 +189,11 @@ nros = { default-features = false, features = [
     "sync-critical-section", # RTIC/Embassy mutex
 ] }
 ```
+
+Pick exactly one RMW backend, one platform, and one ROS edition for a
+complete application build. Cross-cutting features such as `std`,
+`alloc`, `safety-e2e`, and `param-services` are optional and depend on
+target capability.
 
 ## Layer 4: Runtime Environment (POSIX only)
 

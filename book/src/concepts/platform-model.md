@@ -14,7 +14,7 @@ The RMW backend determines which middleware transport the library uses to send a
 | `rmw-xrce`   | Micro-XRCE-DDS-Client   | Agent-based via DDS-XRCE protocol              |
 | `rmw-cffi`   | C vtable adapter         | Third-party transport via C function pointers  |
 
-See [RMW Backends](./rmw-backends.md) for a detailed comparison of Zenoh vs XRCE-DDS.
+See [Choosing an RMW Backend](../user-guide/rmw-backends.md) for a detailed comparison of the supported backends.
 
 ### Platform (pick one)
 
@@ -151,4 +151,4 @@ The RMW transport libraries access platform primitives through thin shim crates 
 
 The default feature set is `std` only. No RMW backend or platform is selected by default -- users must explicitly choose their configuration.
 
-For implementation details on how to add a new platform, see the [Porting Guide](../internals/porting-platform/README.md) and [Platform API Reference](../reference/platform-api.md).
+For implementation details on how to add a new platform, see the [Porting Guide](../porting/overview.md) and [Platform API Reference](../reference/platform-api.md).

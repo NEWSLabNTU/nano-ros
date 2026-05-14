@@ -275,4 +275,4 @@ The bare-metal `nros-board-mps2-an385` is the simplest starting point. The FreeR
 
 - [Custom Platform](custom-platform.md) -- writing the platform crate that sits underneath a board crate
 - [Porting Overview](overview.md) -- the three customization axes (RMW, platform, board)
-- [Board Crate Implementation](../internals/board-crate.md) -- detailed internal reference with driver implementation, lwIP/NetX Duo setup, and a full checklist
+- [Creating Examples](../internals/creating-examples.md) -- detailed example layout patterns across native, BSP, and Zephyr targets

@@ -1,4 +1,9 @@
-# Status Events
+# QoS, Status Events, and Discovery
+
+This page covers runtime event behavior that application authors need
+after choosing an RMW backend: liveliness, deadline misses, lost
+messages, and the places where nano-ros deliberately differs from
+standard ROS 2 waitset-style event handling.
 
 Transport-level status events let an application observe conditions
 the underlying middleware detects: a remote node going silent, a
