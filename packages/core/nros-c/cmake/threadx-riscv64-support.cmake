@@ -62,7 +62,68 @@ nros_threadx_build_netstack_netxduo(
 
 nros_threadx_setup_rust_lld()
 
+if(NOT DEFINED NROS_PLATFORM_THREADX_SOURCE_DIR)
+    get_filename_component(_NROS_REPO_ROOT "${_NROS_INSTALL_PREFIX}/../.." ABSOLUTE)
+    set(NROS_PLATFORM_THREADX_SOURCE_DIR
+        "${_NROS_REPO_ROOT}/packages/core/nros-platform-threadx")
+endif()
+if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
+    get_filename_component(_NROS_REPO_ROOT "${_NROS_INSTALL_PREFIX}/../.." ABSOLUTE)
+    set(NROS_PLATFORM_CFFI_INCLUDE
+        "${_NROS_REPO_ROOT}/packages/core/nros-platform-cffi/include")
+endif()
+if(NOT EXISTS "${NROS_PLATFORM_THREADX_SOURCE_DIR}/src/platform.c")
+    message(FATAL_ERROR
+        "threadx-riscv64-support: nros-platform-threadx sources not found at "
+        "${NROS_PLATFORM_THREADX_SOURCE_DIR}. Pass "
+        "-DNROS_PLATFORM_THREADX_SOURCE_DIR=<repo>/packages/core/nros-platform-threadx.")
+endif()
+
+add_library(nros_platform_threadx_riscv64 STATIC
+    "${NROS_PLATFORM_THREADX_SOURCE_DIR}/src/platform.c"
+    "${NROS_PLATFORM_THREADX_SOURCE_DIR}/src/net.c"
+    "${NROS_PLATFORM_THREADX_SOURCE_DIR}/src/timer.c")
+target_include_directories(nros_platform_threadx_riscv64 PUBLIC
+    "${NROS_PLATFORM_CFFI_INCLUDE}"
+    ${NROS_THREADX_INCLUDES}
+    "${NETX_DIR}/common/inc"
+    "${NETX_DIR}/addons/BSD")
+target_compile_definitions(nros_platform_threadx_riscv64 PUBLIC
+    ${NROS_THREADX_DEFINES}
+    NX_INCLUDE_USER_DEFINE_FILE
+    NROS_PLATFORM_BAREMETAL)
+target_link_libraries(nros_platform_threadx_riscv64 PUBLIC netxduo threadx_kernel)
+
+set(_nros_rmw_zenoh_threadx_riscv64
+    "${_NROS_INSTALL_PREFIX}/lib/libnros_rmw_zenoh_threadx_riscv64.a")
+if(NOT EXISTS "${_nros_rmw_zenoh_threadx_riscv64}")
+    message(FATAL_ERROR
+        "threadx-riscv64-support: ${_nros_rmw_zenoh_threadx_riscv64} not found. "
+        "Run `just threadx-riscv64 install` before building C/C++ fixtures.")
+endif()
+add_library(nros_rmw_zenoh_threadx_riscv64 STATIC IMPORTED)
+set_target_properties(nros_rmw_zenoh_threadx_riscv64 PROPERTIES
+    IMPORTED_LOCATION "${_nros_rmw_zenoh_threadx_riscv64}")
+
+set(_nros_threadx_riscv64_support_c
+    "${CMAKE_CURRENT_BINARY_DIR}/nros_threadx_riscv64_support.c")
+file(WRITE "${_nros_threadx_riscv64_support_c}" [=[
+extern int nros_rmw_zenoh_register(void);
+
+void nros_app_register_backends(void) {
+    (void)nros_rmw_zenoh_register();
+}
+]=])
+add_library(nros_threadx_riscv64_support STATIC
+    "${_nros_threadx_riscv64_support_c}")
+
 nros_threadx_compose_platform(
+    COMPONENTS    nros_threadx_riscv64_support
+                  nros_rmw_zenoh_threadx_riscv64
+                  threadx_kernel
+                  nros_platform_threadx_riscv64
+                  virtio_net_netx
+                  netxduo
     LINK_LIBS    c "${NROS_THREADX_LIBGCC_PATH}"
     LINK_OPTIONS --allow-multiple-definition
                  -L${NROS_THREADX_PICOLIBC_LIB_DIR}

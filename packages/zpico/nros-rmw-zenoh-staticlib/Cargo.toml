@@ -29,7 +29,13 @@ platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 platform-freertos = ["nros-rmw-zenoh/platform-freertos"]
 platform-nuttx = ["nros-rmw-zenoh/platform-nuttx"]
-platform-threadx = ["nros-rmw-zenoh/platform-threadx"]
+platform-threadx = [
+    "nros-rmw-zenoh/platform-threadx",
+    "dep:nros-platform",
+    "nros-platform/platform-threadx",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
 platform-bare-metal = ["nros-rmw-zenoh/platform-bare-metal"]
 link-tcp = ["nros-rmw-zenoh/link-tcp"]
 link-udp-unicast = ["nros-rmw-zenoh/link-udp-unicast"]
@@ -40,6 +46,8 @@ ros-iron = ["nros-rmw-zenoh/ros-iron"]
 
 [dependencies]
 nros-rmw-zenoh = { workspace = true, default-features = false }
+nros-platform = { workspace = true, default-features = false, optional = true }
+panic-halt = { workspace = true, optional = true }
 
 [lints]
 workspace = true

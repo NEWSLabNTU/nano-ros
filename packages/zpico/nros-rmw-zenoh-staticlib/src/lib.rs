@@ -17,6 +17,12 @@
 
 #![no_std]
 
+#[cfg(feature = "platform-threadx")]
+extern crate nros_platform as _;
+
+#[cfg(feature = "platform-threadx")]
+extern crate panic_halt as _;
+
 // Force the linker to retain the cffi register entry. Without an
 // explicit reference, `cargo:rustc-cdylib-link-arg=-Wl,-u` would be
 // needed at the consumer's build; pulling the symbol into a `pub

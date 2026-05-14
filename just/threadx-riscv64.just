@@ -63,6 +63,15 @@ install:
     THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
     cmake --build "build/cmake-threadx-riscv64-zenoh"
     cmake --install "build/cmake-threadx-riscv64-zenoh" --prefix "$PREFIX"
+    echo "=== Building threadx_riscv64 nros_rmw_zenoh staticlib ==="
+    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
+    cargo build -p nros-rmw-zenoh-staticlib \
+        --target riscv64gc-unknown-none-elf \
+        --release \
+        --no-default-features \
+        --features platform-threadx,link-tcp,ros-humble
+    cp target/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a \
+        "$PREFIX/lib/libnros_rmw_zenoh_threadx_riscv64.a"
 
 # Build ThreadX QEMU RISC-V 64 examples
 build:

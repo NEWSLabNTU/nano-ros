@@ -1460,7 +1460,9 @@ dependencies = [
 name = "nros-rmw-zenoh-staticlib"
 version = "0.1.0"
 dependencies = [
+ "nros-platform",
  "nros-rmw-zenoh",
+ "panic-halt",
 ]
 
 [[package]]
