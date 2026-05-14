@@ -203,18 +203,15 @@ if(NOT TARGET NanoRos::NanoRos)
   endif()
 
   # Phase 115.K.2.5.2: when the consumer asked for the XRCE C
-  # backend (`-DNANO_ROS_RMW=xrce`), pull in the standalone
-  # `nros-rmw-xrce` library so its `nros_rmw_xrce_register`
-  # symbol resolves. The Rust support layer (compiled with the
-  # `cffi-xrce-c` Cargo feature) calls that symbol from
-  # `nros_support_init`.
+  # backend (`-DNANO_ROS_RMW=xrce`), expose its compile definition.
+  # The archive itself is linked through the common RMW block below
+  # so it gets the same whole-archive treatment as Zenoh/DDS; otherwise
+  # static linkers can dead-strip the backend registration ctor.
   if(NANO_ROS_RMW STREQUAL "xrce")
     if(NOT TARGET NrosRmwXrce::NrosRmwXrce)
       include(CMakeFindDependencyMacro)
       find_dependency(NrosRmwXrce CONFIG PATHS "${_NANO_ROS_PREFIX}")
     endif()
-    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
-      INTERFACE_LINK_LIBRARIES NrosRmwXrce::NrosRmwXrce)
     set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
       INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE=1)
   endif()
@@ -243,6 +240,12 @@ if(NOT TARGET NanoRos::NanoRos)
       find_dependency(NrosRmwZenoh CONFIG PATHS "${_NANO_ROS_PREFIX}")
     endif()
     set(_nros_rmw_target NrosRmwZenoh::NrosRmwZenoh)
+  elseif(NANO_ROS_RMW STREQUAL "xrce")
+    if(NOT TARGET NrosRmwXrce::NrosRmwXrce)
+      include(CMakeFindDependencyMacro)
+      find_dependency(NrosRmwXrce CONFIG PATHS "${_NANO_ROS_PREFIX}")
+    endif()
+    set(_nros_rmw_target NrosRmwXrce::NrosRmwXrce)
   elseif(NANO_ROS_RMW STREQUAL "dds")
     if(NOT TARGET NrosRmwDds::NrosRmwDds)
       include(CMakeFindDependencyMacro)
