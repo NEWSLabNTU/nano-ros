@@ -591,16 +591,23 @@ test-report:
 # =============================================================================
 
 # Build workspace (no_std, native)
-# nros-c/nros-cpp excluded from no_std build: staticlib/cdylib requires panic handler (needs std)
+# nros-c/nros-cpp and standalone RMW staticlib wrappers excluded from
+# no_std native build: staticlib/cdylib requires panic handler unless a
+# concrete platform feature supplies the right runtime.
 [private]
 build-workspace:
-    cargo build --workspace --no-default-features --exclude nros-c --exclude nros-cpp
+    cargo build --workspace --no-default-features \
+        --exclude nros-c \
+        --exclude nros-cpp \
+        --exclude nros-rmw-dds-staticlib \
+        --exclude nros-rmw-zenoh-staticlib
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
-# Excludes nros-c/nros-cpp: staticlib/cdylib requires panic handler (needs std)
+# Excludes nros-c/nros-cpp/standalone RMW staticlib wrappers:
+# staticlib/cdylib requires a platform-specific panic/runtime setup.
 [private]
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
@@ -608,6 +615,8 @@ build-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
+        --exclude nros-rmw-dds-staticlib \
+        --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
@@ -621,7 +630,8 @@ format-workspace:
     cargo +{{NIGHTLY}} fmt
 
 # Check workspace: formatting and clippy (no_std, native)
-# nros-c/nros-cpp excluded from no_std check: staticlib/cdylib requires panic handler (needs std).
+# nros-c/nros-cpp/standalone RMW staticlib wrappers excluded from no_std
+# check: staticlib/cdylib requires a platform-specific panic/runtime setup.
 # nros-rmw-{zenoh,dds,xrce}-cffi excluded because their `*Rmw` type
 # imports are platform-feature-gated by the underlying impl crate
 # (e.g. `ZenohRmw` only exists when one of `platform-{posix,zephyr,…}`
@@ -635,12 +645,15 @@ check-workspace:
     cargo +{{NIGHTLY}} fmt --check
     cargo clippy --workspace --no-default-features \
         --exclude nros-c --exclude nros-cpp \
+        --exclude nros-rmw-dds-staticlib \
+        --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
-# Excludes nros-c/nros-cpp: staticlib/cdylib requires panic handler (needs std)
+# Excludes nros-c/nros-cpp/standalone RMW staticlib wrappers:
+# staticlib/cdylib requires a platform-specific panic/runtime setup.
 [private]
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
@@ -649,10 +662,11 @@ check-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
+        --exclude nros-rmw-dds-staticlib \
+        --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude zpico-platform-shim \
         --exclude xrce-platform-shim \
-        --exclude nros-rmw-xrce \
         --exclude nros-rmw-xrce-cffi \
 
 # Check workspace with various feature combinations

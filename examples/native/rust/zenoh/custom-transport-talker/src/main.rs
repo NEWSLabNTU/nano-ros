@@ -76,10 +76,10 @@ unsafe extern "C" fn cb_open(_ud: *mut c_void, _params: *const c_void) -> i32 {
 
 unsafe extern "C" fn cb_close(ud: *mut c_void) {
     let bridge = unsafe { &*(ud as *const TcpBridge) };
-    if let Ok(mut guard) = bridge.stream.lock() {
-        if let Some(s) = guard.take() {
-            let _ = s.shutdown(Shutdown::Both);
-        }
+    if let Ok(mut guard) = bridge.stream.lock()
+        && let Some(s) = guard.take()
+    {
+        let _ = s.shutdown(Shutdown::Both);
     }
 }
 

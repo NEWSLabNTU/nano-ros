@@ -30,7 +30,7 @@
 //! cargo run -p native-rs-bridge-zenoh-to-dds
 //! ```
 
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 use log::{info, warn};
 use nros::ExecutorConfig;
@@ -39,8 +39,7 @@ const TYPE_NAME: &str = "std_msgs/msg/dds_/String_";
 const TYPE_HASH: &str = "RIHS01_df668c740482bbd48fb39d76a70dfd4bd59db1288021743503259e948f6b1a18";
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     info!("=== Phase 104 bridge: Zenoh → DDS ===");
 
@@ -79,10 +78,9 @@ fn main() {
     let pub_out = exec
         .with_node_try(node_out, |n| {
             n.create_publisher_raw("/chatter", TYPE_NAME, TYPE_HASH)
-                .map_err(|e| e.into())
         })
         .expect("create egress raw publisher");
-    let pub_out = Arc::new(Mutex::new(pub_out));
+    let pub_out = Rc::new(RefCell::new(pub_out));
     info!("Egress raw publisher created on DDS /chatter");
 
     // Ingress raw subscription on the zenoh session — Phase
@@ -90,7 +88,7 @@ fn main() {
     // routes through the named Node's session. Callback fires
     // inside `spin_once` whenever a new message arrives on Zenoh
     // /chatter and republishes verbatim on the DDS publisher.
-    let pub_out_cb = Arc::clone(&pub_out);
+    let pub_out_cb = Rc::clone(&pub_out);
     exec.register_subscription_buffered_raw_on::<_, 1024>(
         node_in,
         "/chatter",
@@ -98,11 +96,10 @@ fn main() {
         TYPE_HASH,
         Default::default(),
         move |bytes: &[u8]| {
-            if let Ok(p) = pub_out_cb.lock() {
-                match p.publish_raw(bytes) {
-                    Ok(()) => info!("forwarded {} bytes", bytes.len()),
-                    Err(e) => warn!("publish failed: {:?}", e),
-                }
+            let p = pub_out_cb.borrow();
+            match p.publish_raw(bytes) {
+                Ok(()) => info!("forwarded {} bytes", bytes.len()),
+                Err(e) => warn!("publish failed: {:?}", e),
             }
         },
     )
