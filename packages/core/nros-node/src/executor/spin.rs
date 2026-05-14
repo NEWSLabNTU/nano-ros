@@ -377,11 +377,10 @@ pub struct Executor {
     /// the cv with a deadline instead of calling `drive_io` with the
     /// user's timeout — sub-poll-period wake latency.
     ///
-    /// Backends that only implement Phase 104.C.6.b's
-    /// `set_wake_signal(*flag)` continue to set the flag directly;
-    /// `spin_once`'s wait loop polls the flag on each cv wake/
-    /// timeout cycle, so the flag-only path still works without
-    /// the condvar signal. Lossless degradation.
+    /// Poll-only backends (NULL `set_wake_callback` slot) leave the
+    /// cb uninstalled; the cv wait still fires on its deadline,
+    /// then drive_io(0) drains whatever the backend's internal
+    /// poll has buffered.
     #[cfg(feature = "std")]
     #[allow(dead_code)] // Wired by spin_once after 124.B.4.
     pub(crate) wake_cv: std::sync::Arc<std::sync::Condvar>,

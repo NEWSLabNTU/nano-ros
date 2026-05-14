@@ -186,7 +186,6 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     register_publisher_event: noop_regpubev,
     assert_publisher_liveliness: noop_alv,
     next_deadline_ms: None,
-    set_wake_signal: None,
     set_wake_callback: None,
     // Phase 124.A.3 — NULL pub_loan: runtime falls back to arena.
     pub_loan: None,
