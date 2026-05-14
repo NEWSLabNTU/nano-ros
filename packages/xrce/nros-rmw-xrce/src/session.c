@@ -24,6 +24,7 @@
 #endif
 #include <uxr/client/profile/transport/custom/custom_transport.h>
 #include <uxr/client/core/session/object_id.h>
+#include <uxr/client/util/ping.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -447,4 +448,24 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
     int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
     (void)uxr_run_session_time(&st->session, t);
     return NROS_RMW_RET_OK;
+}
+
+/* Phase 124.F.2 — session-level connectivity probe.
+ *
+ * micro-XRCE-DDS-Client ships `uxr_ping_agent_session`: a single
+ * GET_INFO round-trip over the already-open session that doesn't
+ * disturb the rest of the application's streams. One attempt per
+ * call — the runtime's `timeout_ms` is the per-attempt budget. */
+nros_rmw_ret_t xrce_session_ping(nros_rmw_session_t *session,
+                                 int32_t timeout_ms) {
+    if (session == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
+    if (st == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+    int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
+    bool ok = uxr_ping_agent_session(&st->session, t, 1);
+    return ok ? NROS_RMW_RET_OK : NROS_RMW_RET_TIMEOUT;
 }

@@ -52,15 +52,17 @@ wrappers + routing tests). As of 2026-05-14:
   (`DataReader::take`), zenoh-pico (new SPSC ring). XRCE + FastDDS
   keep the loop fallback (no native take_n; matches upstream).
 - **E — continuous serialization:** vtable slot + staging-buffer
-  fallback + C/C++/Rust wrappers + routing test + **zenoh-pico
-  native impl** via `z_bytes_writer`. XRCE deferred.
+  fallback + C/C++/Rust wrappers + routing test + native impls
+  for **zenoh-pico** (`z_bytes_writer`) and **XRCE**
+  (`uxr_prepare_output_stream`).
 - **F — ping:** vtable slot + C/C++/Rust wrappers + routing test
-  + **zenoh-pico native impl** via `zp_send_keep_alive`. XRCE /
-  DDS deferred.
+  + native impls for **zenoh-pico** (`zp_send_keep_alive`,
+  send-side liveness) and **XRCE** (`uxr_ping_agent_session`,
+  true round-trip). DDS inherits the default `Unsupported`.
 
-Remaining open: E.3/F.2 XRCE (needs a Rust-side `XrceRmw`
-adapter), and the network-E2E acceptance tests gated on those
-impls. Sub-phase detail in §"Work items" below.
+Remaining open: 124.B.8 wake-latency microbench (deferred —
+needs a bench harness) and the network-E2E acceptance tests.
+Sub-phase detail in §"Work items" below.
 
 **Priority.** P1 (zero-copy + dispatch) / P2 (probe + sequence +
 continuous + ping). P1 items unblock the Phase 110 PiCAS work
@@ -941,13 +943,22 @@ the same change as `set_wake_callback` lands.
       contiguously. Incremental CRC across writer chunks is out of
       scope for v1.
 
-      XRCE deferred — `uxr_*` streaming write APIs exist, but the
-      K.2 backend is header-only and would need a Rust-side
-      `XrceRmw` adapter that owns the output cursor.
+      XRCE native impl landed (2026-05-14):
+      `xrce_publisher_publish_streamed` in the C K.2 backend uses
+      `uxr_prepare_output_stream` to reserve a `total`-byte
+      WRITE_DATA submessage in the reliable output stream and hands
+      back a `ucdrBuffer` whose `iterator` points straight at the
+      payload region — the user's `chunk_cb` writes directly into
+      the stream buffer, no per-publisher staging buffer. Wired into
+      `vtable.c`. Mismatched `size_cb` / `chunk_cb` totals return
+      `RET_ERROR` (the submessage is already framed for `total`).
+      Messages larger than one stream slot still return
+      `MESSAGE_TOO_LARGE` — same fragmented-path gap as `publish_raw`.
       **Files:** `packages/zpico/zpico-sys/c/zpico/zpico.c`,
       `packages/zpico/zpico-sys/src/ffi.rs`,
       `packages/zpico/zpico-sys/src/lib.rs`,
-      `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs`.
+      `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs`,
+      `packages/xrce/nros-rmw-xrce/src/{publisher.c,internal.h,vtable.c}`.
 - [x] **124.E.4 — User-facing API.**
       Rust: `EmbeddedPublisher<M>::publish_streamed(total_len, |chunk| ...)`
       with a `FnMut(&mut [u8]) -> usize` writer closure.
@@ -988,11 +999,15 @@ the same change as `set_wake_callback` lands.
       round-trip ping waits on a `z_send_ping` API zenoh-pico
       hasn't exposed.
 
-      XRCE deferred — `uxr_ping_agent_session_until_timeout` exists,
-      but the K.2 backend is header-only; needs a Rust-side
-      `XrceRmw` adapter that owns the session handle. DDS inherits
-      the default `Unsupported` (Cyclone's PARTICIPANT_DISCOVERY
-      ping could light it up later).
+      XRCE native impl landed (2026-05-14): `xrce_session_ping` in
+      the C K.2 backend calls `uxr_ping_agent_session(&session,
+      timeout_ms, 1)` — a single GET_INFO round-trip over the
+      already-open session that doesn't disturb the application's
+      streams. `RET_OK` on reply, `RET_TIMEOUT` otherwise. Wired
+      into `vtable.c`. This is a *true* round-trip probe — stronger
+      than the zenoh-pico keep-alive heuristic. DDS inherits the
+      default `Unsupported` (Cyclone's PARTICIPANT_DISCOVERY ping
+      could light it up later).
       **Files:** `packages/zpico/zpico-sys/c/zpico/zpico.c`,
       `packages/zpico/zpico-sys/src/ffi.rs`,
       `packages/zpico/zpico-sys/src/lib.rs`,

@@ -209,6 +209,9 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
 nros_rmw_ret_t xrce_session_close(nros_rmw_session_t *session);
 nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
                                      int32_t timeout_ms);
+/* Phase 124.F.2 — connectivity probe via `uxr_ping_agent_session`. */
+nros_rmw_ret_t xrce_session_ping(nros_rmw_session_t *session,
+                                 int32_t timeout_ms);
 
 /* ---- publisher.c ---- */
 nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
@@ -221,6 +224,13 @@ nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
 void           xrce_publisher_destroy(nros_rmw_publisher_t *publisher);
 nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
                                           const uint8_t *data, size_t len);
+/* Phase 124.E.3 — streamed publish via `uxr_prepare_output_stream`. */
+nros_rmw_ret_t xrce_publisher_publish_streamed(
+        nros_rmw_publisher_t *publisher,
+        void (*size_cb)(size_t *out_total_len, void *user_ctx),
+        void (*chunk_cb)(uint8_t *out_buf, size_t cap,
+                         size_t *out_written, void *user_ctx),
+        void *user_ctx);
 
 /* ---- subscriber.c ---- */
 nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,

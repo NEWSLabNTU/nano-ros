@@ -15,6 +15,8 @@
 
 #include <uxr/client/client.h>
 #include <uxr/client/core/session/object_id.h>
+#include <uxr/client/core/session/write_access.h>
+#include <ucdr/microcdr.h>
 
 nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
                                      const char *topic_name,
@@ -132,4 +134,80 @@ nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
      * a single stream slot. The Rust impl has it; skipped here until
      * a smoke test demonstrates the need. */
     return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+}
+
+/* Phase 124.E.3 — streamed publish.
+ *
+ * `uxr_prepare_output_stream` reserves a `len`-byte WRITE_DATA
+ * submessage in the reliable output stream and hands back a
+ * `ucdrBuffer` whose `iterator` points straight at the payload
+ * region. The user's `chunk_cb` writes directly into that region —
+ * no per-publisher staging buffer — and we advance the cursor by
+ * the reported byte count. Once the full `total` is delivered the
+ * session is flushed so the bytes reach the agent immediately
+ * (mirrors `publish_raw`). */
+nros_rmw_ret_t xrce_publisher_publish_streamed(
+        nros_rmw_publisher_t *publisher,
+        void (*size_cb)(size_t *out_total_len, void *user_ctx),
+        void (*chunk_cb)(uint8_t *out_buf, size_t cap,
+                         size_t *out_written, void *user_ctx),
+        void *user_ctx) {
+    if (publisher == NULL || publisher->backend_data == NULL ||
+        size_cb == NULL || chunk_cb == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
+    xrce_session_state_t *st = ps->session_state;
+
+    size_t total = 0;
+    size_cb(&total, user_ctx);
+    if (total == 0) {
+        return NROS_RMW_RET_OK; /* nothing to publish */
+    }
+    if (total > UINT32_MAX) {
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
+
+    ucdrBuffer ub;
+    uint16_t req = uxr_prepare_output_stream(
+        &st->session, st->output_reliable, ps->datawriter_oid,
+        &ub, (uint32_t)total);
+    if (req == UXR_INVALID_REQUEST_ID) {
+        /* `total` exceeds a single stream slot. No fragmented path
+         * in the K.2 backend yet — same gap as `publish_raw`. */
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
+
+    /* Stream chunks directly into the reserved region. `ub.iterator`
+     * is the write cursor, `ub.final` the end of the slot. */
+    size_t produced = 0;
+    while (produced < total) {
+        size_t cap = (size_t)(ub.final - ub.iterator);
+        if (cap == 0) {
+            break;
+        }
+        size_t written = 0;
+        chunk_cb(ub.iterator, cap, &written, user_ctx);
+        if (written == 0) {
+            break; /* EOF from the user before `total` was met */
+        }
+        if (written > cap) {
+            written = cap; /* defensive clamp against a misbehaving cb */
+        }
+        ub.iterator += written;
+        produced += written;
+    }
+
+    if (produced != total) {
+        /* The callbacks disagreed: `size_cb` promised `total` but
+         * `chunk_cb` delivered fewer bytes. The WRITE_DATA submessage
+         * is already framed for `total`, so flushing now would put a
+         * short payload on the wire. Treat as a caller-contract
+         * violation; the stream slot is reclaimed on the next
+         * session run. */
+        return NROS_RMW_RET_ERROR;
+    }
+
+    (void)uxr_run_session_time(&st->session, 0);
+    return NROS_RMW_RET_OK;
 }

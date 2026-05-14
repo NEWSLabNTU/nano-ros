@@ -66,6 +66,24 @@ static const nros_rmw_vtable_t kVtable = {
     .pub_discard                = NULL,
     .sub_borrow                 = NULL,
     .sub_release                = NULL,
+
+    /* Phase 124.C — service availability probe. micro-XRCE-DDS-Client
+     * has no participant enumeration; leave NULL → runtime surfaces
+     * NROS_RMW_RET_UNSUPPORTED. */
+    .service_server_available   = NULL,
+
+    /* Phase 124.D — native batch take. XRCE delivers one sample per
+     * topic callback into a single-slot inbox; no native take_n.
+     * Leave NULL → runtime emits the try_recv_raw loop fallback. */
+    .try_recv_sequence          = NULL,
+
+    /* Phase 124.E.3 — streamed publish via uxr_prepare_output_stream
+     * (writes the payload straight into the reliable output stream,
+     * no per-publisher staging buffer). */
+    .publish_streamed           = xrce_publisher_publish_streamed,
+
+    /* Phase 124.F.2 — connectivity probe via uxr_ping_agent_session. */
+    .ping_session               = xrce_session_ping,
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {
