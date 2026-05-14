@@ -1304,19 +1304,82 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
+        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
+            None, topic_name, callback,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription_with_info_sized`].
+    pub fn register_subscription_with_info_sized_on<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
+    {
+        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
+            Some(node_id),
+            topic_name,
+            callback,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware convenience over
+    /// `register_subscription_with_info_sized_on`.
+    pub fn register_subscription_with_info_on<M, F>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
+    {
+        self.register_subscription_with_info_sized_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            node_id, topic_name, callback,
+        )
+    }
+
+    fn register_subscription_with_info_sized_inner<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
+    {
         type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
 
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
         let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        let handle = self
-            .session
-            .create_subscriber(&topic, QosSettings::default())
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, QosSettings::default())
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
@@ -1390,19 +1453,85 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
+        self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
+            None, topic_name, callback,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription_with_safety_sized`].
+    #[cfg(feature = "safety-e2e")]
+    pub fn register_subscription_with_safety_sized_on<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
+    {
+        self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
+            Some(node_id),
+            topic_name,
+            callback,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware default-buffer-size
+    /// convenience.
+    #[cfg(feature = "safety-e2e")]
+    pub fn register_subscription_with_safety_on<M, F>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
+    {
+        self.register_subscription_with_safety_sized_on::<M, F, {
+            crate::config::DEFAULT_RX_BUF_SIZE
+        }>(node_id, topic_name, callback)
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    fn register_subscription_with_safety_sized_inner<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
+    {
         type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
 
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
         let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        let handle = self
-            .session
-            .create_subscriber(&topic, QosSettings::default())
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, QosSettings::default())
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
