@@ -653,6 +653,7 @@ impl Executor {
             >,
             drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>,
         });
+        self.apply_node_default_sched(slot, node_id);
 
         Ok(ActionServerRawHandle {
             entry_index: slot,
@@ -1136,6 +1137,7 @@ impl Executor {
             try_process: action_client_raw_try_process::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
             drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
         });
+        self.apply_node_default_sched(slot, node_id);
 
         Ok(ActionClientRawHandle { entry_index: slot })
     }

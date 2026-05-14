@@ -458,15 +458,25 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-node/src/executor/spin.rs`,
       `packages/core/nros-node/src/node.rs`.
 
-- [ ] **104.C.4 — Per-Node default `SchedContext`.**
+- [x] **104.C.4 — Per-Node default `SchedContext`.**
       `NodeBuilder::sched(sc)` stores a default
       `SchedContext` in the Node. Handle factories
       (`create_publisher` / `create_subscription` / etc.)
       inherit the Node's default unless an override is
       passed at handle creation.
+      **Done:** `Executor::apply_node_default_sched(slot,
+      node_id)` writes the Node's `default_sched` into
+      `sched_context_bindings[slot]` after each `_inner`
+      register variant commits its entry. Covers 10 register
+      sites (8 in `spin.rs` + action server/client in
+      `action.rs`). No-op when `node_id` is `None` (legacy
+      paths), Node out of range, sched_context slot 0
+      (default Fifo matches executor binding), or
+      sched_contexts slot empty. Per-handle override remains
+      via `bind_handle_to_sched_context(handle, sc_id)`.
       **Files:**
-      `packages/core/nros-node/src/node.rs`,
-      `packages/core/nros-node/src/executor/handles.rs`.
+      `packages/core/nros-node/src/executor/spin.rs`,
+      `packages/core/nros-node/src/executor/action.rs`.
 
 - [~] **104.C.5 — `multi-backend` Cargo feature on `nros`.**
       Lifts the `compile_error!` mutual-exclusion check on

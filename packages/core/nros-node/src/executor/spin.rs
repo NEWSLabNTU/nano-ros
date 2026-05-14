@@ -620,6 +620,37 @@ impl Executor {
         }
     }
 
+    /// Phase 104.C.4 — apply a Node's default SchedContext to a
+    /// freshly-registered handle. Called from every `_inner`
+    /// register variant after the entry slot is committed. No-op
+    /// when `node_id` is None (legacy path), when the Node is
+    /// out of range, or when the Node's `default_sched` is the
+    /// auto-created Fifo slot (0) which matches the executor's
+    /// default binding already.
+    ///
+    /// Handles can still override per-call via
+    /// `bind_handle_to_sched_context(handle, sc_id)` post-register.
+    pub(crate) fn apply_node_default_sched(
+        &mut self,
+        slot: usize,
+        node_id: Option<super::node_record::NodeId>,
+    ) {
+        let Some(id) = node_id else { return };
+        let Some(rec) = self.nodes.get(id.index()) else { return };
+        let sc = rec.default_sched;
+        if sc.0 == 0 {
+            return;
+        }
+        if slot >= crate::config::MAX_CBS {
+            return;
+        }
+        let sc_idx = sc.0 as usize;
+        if sc_idx >= crate::config::MAX_SC || self.sched_contexts[sc_idx].is_none() {
+            return;
+        }
+        self.sched_context_bindings[slot] = sc;
+    }
+
     /// Phase 104.C.3.2 — scoped Node-handle access. The closure
     /// receives a [`Node`] bound to the requested [`NodeId`]'s
     /// session + identity. Use the standard `Node::create_publisher`,
@@ -1053,6 +1084,8 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F>>,
         });
+        // Phase 104.C.4 — apply Node's default SchedContext.
+        self.apply_node_default_sched(slot, Some(node_id));
         Ok(HandleId(slot))
     }
 
@@ -1191,7 +1224,11 @@ impl Executor {
                 .create_subscriber(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
-        self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)
+        let handle_id =
+            self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
+        // Phase 104.C.4 — apply Node's default SchedContext.
+        self.apply_node_default_sched(handle_id.0, Some(node_id));
+        Ok(handle_id)
     }
 
     /// Register a raw byte-shaped callback against a pre-built
@@ -1407,6 +1444,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
+        self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
     }
 
@@ -1559,6 +1597,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
+        self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
     }
 
@@ -1698,6 +1737,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         });
+        self.apply_node_default_sched(slot, Some(node_id));
         Ok(HandleId(slot))
     }
 
@@ -1990,6 +2030,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SubBufferedRawCEntry>,
         });
+        self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
     }
 
@@ -2120,6 +2161,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
         });
+        self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
     }
 
@@ -2252,6 +2294,7 @@ impl Executor {
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<ServiceClientRawArenaEntry<REPLY_BUF>>,
         });
+        self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
     }
 
