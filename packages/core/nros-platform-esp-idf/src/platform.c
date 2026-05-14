@@ -339,6 +339,18 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
     return 0;
 }
 
+/* Phase 124.B.7.a — ISR-safe signal. ESP-IDF FreeRTOS port:
+ * xSemaphoreGiveFromISR is the ISR-safe variant. We can't take the
+ * mutex from ISR; waiters re-arm on the next wait. */
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    if (cv == NULL) return -1;
+    nros_esp_condvar_t *c = (nros_esp_condvar_t *) cv;
+    BaseType_t higher_pri = pdFALSE;
+    xSemaphoreGiveFromISR((SemaphoreHandle_t) c->sem, &higher_pri);
+    portYIELD_FROM_ISR(higher_pri);
+    return 0;
+}
+
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) return -1;
     nros_esp_condvar_t *c = (nros_esp_condvar_t *) cv;

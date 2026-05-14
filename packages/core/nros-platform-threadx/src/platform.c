@@ -333,6 +333,15 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
     return nros_platform_condvar_signal(cv);
 }
 
+/* Phase 124.B.7.a — ISR-safe signal.
+ *
+ * tx_semaphore_put is ISR-safe under ThreadX (callable from any
+ * context, including ISRs). Same impl as the thread-context path. */
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    if (cv == NULL) return -1;
+    return tx_semaphore_put((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
+}
+
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) return -1;
     nros_platform_mutex_unlock(m);

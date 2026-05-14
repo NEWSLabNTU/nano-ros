@@ -465,6 +465,20 @@ pub trait PlatformThreading {
     fn condvar_signal(cv: *mut c_void) -> i8;
     /// Wake all waiters on the condition variable.
     fn condvar_signal_all(cv: *mut c_void) -> i8;
+    /// Phase 124.B.7.a — ISR-safe variant of [`condvar_signal`].
+    /// Callable from interrupt / signal-handler context. Backends
+    /// implement via async-signal-safe primitives (POSIX:
+    /// `eventfd` write forwarded by a worker thread; RTOS:
+    /// `xSemaphoreGiveFromISR`, `tx_event_flags_set` from ISR,
+    /// `k_sem_give` from ISR). Returns non-zero when the backend
+    /// has no ISR-safe path — caller can fall back to
+    /// `condvar_signal` (with the obvious latency cost).
+    ///
+    /// Default body: forward to `condvar_signal`. POSIX and other
+    /// backends override to use their async-signal-safe primitive.
+    fn condvar_signal_from_isr(cv: *mut c_void) -> i8 {
+        Self::condvar_signal(cv)
+    }
     /// Atomically release `m` and block on `cv`. The mutex is
     /// re-acquired before this function returns.
     fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;

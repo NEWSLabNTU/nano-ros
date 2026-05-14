@@ -105,6 +105,7 @@ int8_t nros_platform_condvar_init(void *cv)                     { (void) cv; bum
 int8_t nros_platform_condvar_drop(void *cv)                     { (void) cv; bump(NROS_STUB_CONDVAR); return 0; }
 int8_t nros_platform_condvar_signal(void *cv)                   { (void) cv; bump(NROS_STUB_CONDVAR); return 0; }
 int8_t nros_platform_condvar_signal_all(void *cv)               { (void) cv; bump(NROS_STUB_CONDVAR); return 0; }
+int8_t nros_platform_condvar_signal_from_isr(void *cv)          { (void) cv; bump(NROS_STUB_CONDVAR); return 0; }
 int8_t nros_platform_condvar_wait(void *cv, void *m)            { (void) cv; (void) m; bump(NROS_STUB_CONDVAR); return 0; }
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime) {
     (void) cv; (void) m; (void) abstime;

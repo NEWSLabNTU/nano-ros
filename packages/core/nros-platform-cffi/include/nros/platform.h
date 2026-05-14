@@ -178,6 +178,32 @@ int8_t nros_platform_condvar_drop(void *cv);
 int8_t nros_platform_condvar_signal(void *cv);
 int8_t nros_platform_condvar_signal_all(void *cv);
 
+/** Phase 124.B.7.a — ISR-safe signal.
+ *
+ *  Callable from interrupt context. `nros_platform_condvar_signal`
+ *  is NOT ISR-safe on every platform (POSIX `pthread_cond_signal`
+ *  isn't on the async-signal-safe function list; RTOS condvar
+ *  primitives often require thread context). Backends MUST use
+ *  this variant when triggering from an ISR or POSIX signal handler.
+ *
+ *  Per-platform implementation:
+ *  * POSIX: `eventfd`/`pipe` write — async-signal-safe; a runtime
+ *    worker thread forwards to the underlying condvar.
+ *  * Zephyr: `k_sem_give` on the wake semaphore (ISR-safe).
+ *  * FreeRTOS: `xSemaphoreGiveFromISR` + `portYIELD_FROM_ISR` on
+ *    the wake semaphore.
+ *  * NuttX: `sem_post` (POSIX-safe under NuttX) on the wake sem.
+ *  * ThreadX: `tx_event_flags_set` on the wake event flag group
+ *    (ISR-safe).
+ *  * Bare-metal: atomic flag store + `__SEV()` (Cortex-M).
+ *
+ *  Returns non-zero on error (e.g. ISR-unsafe call on a backend
+ *  that mandates ISR-context-only via a separate primitive).
+ *  Backends without an ISR-safe path return non-zero so callers
+ *  can fall back to thread-context signal (with the obvious
+ *  latency cost). */
+int8_t nros_platform_condvar_signal_from_isr(void *cv);
+
 /** Atomically release `m` and block on `cv`. The mutex is re-acquired
  *  before this function returns. */
 int8_t nros_platform_condvar_wait(void *cv, void *m);

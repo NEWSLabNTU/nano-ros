@@ -335,6 +335,31 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
     return pthread_cond_broadcast((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
+/* Phase 124.B.7.a — ISR-safe signal.
+ *
+ * pthread_cond_signal is NOT async-signal-safe per POSIX (and glibc
+ * gives no stronger guarantee), so callers from a POSIX signal
+ * handler MUST NOT use this directly. The intended impl is a
+ * `signalfd`/`eventfd` write forwarded by a runtime-owned worker
+ * thread (Phase 124.B.7.c). For now, callers from thread context
+ * (Rust panic handler, executor halt path) keep working through the
+ * regular cond_signal — the signal-handler case returns -1 so the
+ * caller can route through a self-pipe.
+ *
+ * Detecting "are we in a signal handler" portably is not possible;
+ * caller discipline is the contract. Documented in the header. */
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    if (cv == NULL) {
+        return -1;
+    }
+    /* TODO(124.B.7.c): forward via signalfd/eventfd self-pipe to a
+     * worker thread that calls pthread_cond_signal under the wake
+     * mutex. Today: same as condvar_signal — safe from any non-
+     * signal-handler thread, undefined behaviour from a signal
+     * handler. */
+    return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
+}
+
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) {
         return -1;

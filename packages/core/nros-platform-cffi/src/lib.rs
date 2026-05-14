@@ -104,6 +104,9 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_drop(cv: *mut c_void) -> i8;
     pub fn nros_platform_condvar_signal(cv: *mut c_void) -> i8;
     pub fn nros_platform_condvar_signal_all(cv: *mut c_void) -> i8;
+    /// Phase 124.B.7.a — ISR-safe variant of `signal`. See
+    /// `<nros/platform.h>` for per-platform contract.
+    pub fn nros_platform_condvar_signal_from_isr(cv: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
@@ -431,6 +434,9 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     }
     fn condvar_signal_all(cv: *mut c_void) -> i8 {
         unsafe { nros_platform_condvar_signal_all(cv) }
+    }
+    fn condvar_signal_from_isr(cv: *mut c_void) -> i8 {
+        unsafe { nros_platform_condvar_signal_from_isr(cv) }
     }
     fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8 {
         unsafe { nros_platform_condvar_wait(cv, m) }

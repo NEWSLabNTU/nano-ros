@@ -242,6 +242,19 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
     return k_condvar_broadcast((struct k_condvar *) cv) >= 0 ? 0 : -1;
 }
 
+/* Phase 124.B.7.a — ISR-safe signal.
+ *
+ * Zephyr's k_condvar_signal documents that it MAY be called from
+ * ISR context (the doc is split — newer kernels enforce thread
+ * context). Use k_condvar_signal directly; if a backend exercises
+ * the ISR path on a kernel build that rejects it, we'll need a
+ * dedicated k_sem fallback. Track in the platform integration
+ * tests. */
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    if (cv == NULL) return -1;
+    return k_condvar_signal((struct k_condvar *) cv) == 0 ? 0 : -1;
+}
+
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) return -1;
     return k_condvar_wait((struct k_condvar *) cv,

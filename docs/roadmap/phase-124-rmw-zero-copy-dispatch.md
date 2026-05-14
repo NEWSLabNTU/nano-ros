@@ -675,24 +675,29 @@ the same change as `set_wake_callback` lands.
       `nros_cpp_guard_condition_trigger` shim unchanged. (Landed
       2026-05-14.)
 
-- [ ] **124.B.7.a — Platform-layer ISR-safe signal primitive.**
-      `nros-platform-cffi` already exposes
-      `nros_platform_condvar_signal(*cv)` for thread context.
-      Add a sibling `nros_platform_condvar_signal_from_isr(*cv)`
-      vtable slot:
-      - POSIX: same impl as thread-context (pthread_cond_signal
-        is NOT async-signal-safe; the POSIX backend
-        implements the slot via the self-pipe / `eventfd`
-        signalfd pattern instead and the runtime composes it).
-      - Zephyr: `k_sem_give` from ISR (allowed without locks).
-      - FreeRTOS: `xSemaphoreGiveFromISR` + `portYIELD_FROM_ISR`.
-      - NuttX: `sem_post` from ISR (POSIX-safe under NuttX).
-      - ThreadX: `tx_event_flags_set` (ISR-safe).
-      - Bare-metal: atomic store + `__SEV()` (Cortex-M).
-      **Files:** `packages/core/nros-platform-cffi/include/nros/platform_vtable.h`,
+- [x] **124.B.7.a — Platform-layer ISR-safe signal primitive.**
+      Added `nros_platform_condvar_signal_from_isr(*cv)` to the
+      platform header + `PlatformSync` trait (default-forwards to
+      `condvar_signal`). Backend impls:
+      - POSIX: forwards to `pthread_cond_signal` with TODO for
+        signalfd self-pipe (B.7.c) — safe from any thread, UB
+        from a signal handler (caller discipline contract).
+      - Zephyr: `k_condvar_signal` (kernel docs allow ISR ctx
+        on older builds; track per-build).
+      - FreeRTOS / ESP-IDF: `xSemaphoreGiveFromISR` +
+        `portYIELD_FROM_ISR`; skips waiter-count mutex (waiters
+        re-arm on next wait).
+      - ThreadX: `tx_semaphore_put` (ISR-safe).
+      - C stub: bump CONDVAR counter (test parity).
+      NuttX uses the POSIX C port. Bare-metal Rust backends inherit
+      the default-forward (`condvar_signal`) for now; their
+      `Executor::spin_once` runs in single-thread context so ISR
+      delivery routes through a critical-section flag instead.
+      (Landed 2026-05-14.)
+      **Files:** `packages/core/nros-platform-cffi/include/nros/platform.h`,
       `packages/core/nros-platform-cffi/src/lib.rs`,
-      each `nros-platform-{posix,zephyr,freertos,nuttx,threadx,baremetal}`
-      backend.
+      `packages/core/nros-platform-api/src/lib.rs`,
+      `packages/core/nros-platform-{posix,zephyr,freertos,threadx,esp-idf}/src/platform.c`.
 
 - [ ] **124.B.7.b — Wire ISR-safe primitive into runtime cb.**
       `nros_rmw_runtime_wake_cb` today calls

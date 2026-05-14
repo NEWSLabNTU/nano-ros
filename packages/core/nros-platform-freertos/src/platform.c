@@ -488,6 +488,25 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
     return 0;
 }
 
+/* Phase 124.B.7.a — ISR-safe signal.
+ *
+ * Uses xSemaphoreGiveFromISR which is the FreeRTOS ISR-safe
+ * primitive. We can't take the mutex from ISR context, so we skip
+ * the waiter-count decrement (it's an optimisation — waiters will
+ * either consume the semaphore or re-arm on the next wait).
+ *
+ * After yielding any pending higher-priority task, portYIELD_FROM_ISR
+ * triggers a context switch on return from the ISR if a higher-pri
+ * task became runnable. */
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    if (cv == NULL) return -1;
+    nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;
+    BaseType_t higher_pri = pdFALSE;
+    xSemaphoreGiveFromISR((SemaphoreHandle_t) c->sem, &higher_pri);
+    portYIELD_FROM_ISR(higher_pri);
+    return 0;
+}
+
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) return -1;
     nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;
