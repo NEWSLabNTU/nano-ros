@@ -256,6 +256,39 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     wake.cv.notify_all();
 }
 
+/// Phase 124.B.7.b — ISR / interrupt-context wake callback.
+///
+/// Same semantics as [`nros_rmw_runtime_wake_cb`] but constrained to
+/// async-signal-safe / ISR-safe primitives.
+///
+/// Per-platform routing:
+///
+/// * **POSIX (std)**: `pthread_cond_signal` is NOT on the POSIX
+///   async-signal-safe function list. Calling from a SIGUSR1
+///   handler is technically UB. Real fix (Phase 124.B.7.c) routes
+///   via `signalfd`/`eventfd` + a runtime worker thread; until that
+///   lands, signal-handler callers MUST use
+///   `nros_guard_condition_trigger` from a **separate thread** (not
+///   from the handler itself), OR set the wake_flag and rely on
+///   the next poll deadline. This cb currently aliases the regular
+///   `wake_cb` and is safe only from non-signal-handler ISR-like
+///   contexts (e.g. timer thread, kernel callback).
+///
+/// * **RTOS no_std (Zephyr/FreeRTOS/ThreadX)**: routes through the
+///   platform-cffi `condvar_signal_from_isr` slot. Each backend
+///   uses its ISR-safe variant — `xSemaphoreGiveFromISR`,
+///   `tx_semaphore_put`, `k_condvar_signal`.
+///
+/// `ctx` semantics identical to [`nros_rmw_runtime_wake_cb`].
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+#[allow(dead_code)] // Public exposure pending B.7.c signalfd worker.
+pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core::ffi::c_void) {
+    // Today: alias regular wake_cb. POSIX signal-handler safety
+    // pending B.7.c (signalfd worker-thread forward). Documented in
+    // the contract above so callers know the boundary.
+    unsafe { nros_rmw_runtime_wake_cb(ctx) };
+}
+
 pub struct Executor {
     pub(crate) session: SessionStore,
     pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],

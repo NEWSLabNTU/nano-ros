@@ -110,6 +110,11 @@ path = "tests/trigger_conditions.rs"
 required-features = ["trigger-test"]
 
 [[test]]
+name = "wake_latency"
+path = "tests/wake_latency.rs"
+required-features = ["trigger-test"]
+
+[[test]]
 name = "rtos_e2e"
 path = "tests/rtos_e2e.rs"
 

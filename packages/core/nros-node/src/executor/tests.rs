@@ -1171,6 +1171,30 @@ fn test_halt_raises_wake_flag() {
 }
 
 #[test]
+fn test_guard_handle_send_across_thread() {
+    // Phase 124.B.7.d — GuardConditionHandle must be Send (so a
+    // worker thread / signal handler can own it and call trigger()).
+    // Sync impl assertion via thread move and rejoin.
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let (_id, handle) = executor
+        .register_guard_condition(|| {})
+        .expect("register_guard_condition");
+
+    let t = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        handle.trigger();
+        // Returning ownership-of-nothing here proves the handle
+        // moved into the thread; if it weren't Send the compiler
+        // would have rejected this.
+    });
+    t.join().unwrap();
+    // No assert on wake_flag here — gated on rmw-cffi feature; this
+    // test runs with the default feature set.
+}
+
+#[test]
 fn test_wake_short_circuits_drive_timeout() {
     // Pre-arming wake_flag should make spin_once skip its blocking
     // wait on drive_io (timeout collapses to 0) and return promptly,
