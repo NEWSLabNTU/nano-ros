@@ -459,6 +459,19 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
     }
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, buf_len) };
     let key = unsafe { (*subscriber).backend_data as usize };
+
+    #[cfg(feature = "safety-e2e")]
+    if crate::take_cffi_integrity_request(key) {
+        return match Subscriber::try_recv_validated(s, slice) {
+            Ok(Some((n, status))) => {
+                crate::store_cffi_integrity_status(key, status);
+                n as i32
+            }
+            Ok(None) => NROS_RMW_RET_NO_DATA,
+            Err(e) => ret_from_error(&e),
+        };
+    }
+
     match Subscriber::try_recv_raw_with_info(s, slice) {
         Ok(Some((n, info))) => {
             crate::store_cffi_message_info(key, info);

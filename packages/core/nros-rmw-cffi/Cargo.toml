@@ -31,6 +31,7 @@ cc = "1"
 default = []
 std = ["nros-rmw/std"]
 alloc = ["nros-rmw/alloc"]
+safety-e2e = ["nros-rmw/safety-e2e"]
 # Phase 124.A — enables `CffiPublisher: SlotLending` +
 # `CffiSubscriber: SlotBorrowing`. The vtable carries the slots either
 # way; this feature gates the Rust trait impls so the trait surface

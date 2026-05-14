@@ -15,6 +15,23 @@ Newly resolved in focused runs:
 - `nano2nano::test_gid_consistency`
 - `zero_copy::test_zero_copy_message_info`
 
+Focused verification after CFFI safety-status propagation fix:
+
+- `cargo check -p nros-rmw-cffi --no-default-features`
+- `cargo test -p nros-rmw-cffi --test rust_adapter --features alloc,safety-e2e`
+- `cargo nextest run -p nros-tests --test native_api test_native_talker_listener_communication --no-capture`
+- `cargo nextest run -p nros-tests --test native_api test_native_service_communication --no-capture`
+- `cargo nextest run -p nros-tests --test safety_e2e --no-capture`
+
+Newly resolved in focused runs:
+
+- `native_api::test_native_talker_listener_communication::lang_1_Language__C`
+- `native_api::test_native_talker_listener_communication::lang_2_Language__Cpp`
+- `native_api::test_native_service_communication::lang_1_Language__C`
+- `native_api::test_native_service_communication::lang_2_Language__Cpp`
+- `safety_e2e::test_safety_e2e_talker_listener`
+- `safety_e2e::test_safety_talker_standard_listener`
+
 Source run:
 
 - Command: `just ci`
@@ -68,8 +85,6 @@ Current native-priority failures:
 
 - `nano2nano::test_rtic_pattern_action`
 - `nano2nano::test_tls_talker_listener_communication`
-- `nano2nano::test_gid_consistency`
-- `nano2nano::test_sequence_number_increment`
 - `nano2nano::test_rtic_pattern_service`
 - `nano2nano::test_rtic_pattern_communication`
 - `large_msg::test_zenoh_e2e_integrity`
@@ -78,19 +93,12 @@ Current native-priority failures:
 - `large_msg::test_zenoh_throughput_burst`
 - `native_api::test_cpp_action_communication`
 - `native_api::test_cpp_action_goal_rejection`
-- `native_api::test_native_service_communication::lang_1_Language__C`
-- `native_api::test_native_service_communication::lang_2_Language__Cpp`
-- `native_api::test_native_talker_listener_communication::lang_1_Language__C`
-- `native_api::test_native_talker_listener_communication::lang_2_Language__Cpp`
-- `safety_e2e::test_safety_e2e_talker_listener`
-- `zero_copy::test_zero_copy_message_info`
 
 Next priority:
 
-1. Rerun the native C/C++ service and talker/listener tests. These are
-   likely downstream of the same attachment/message-info path.
-2. Defer platform E2E buckets until the remaining native metadata behavior is
-   stable.
+1. Investigate the native large-message and C++ action failures.
+2. Check the remaining RTIC/TLS native failures.
+3. Defer platform E2E buckets until the remaining native behavior is stable.
 
 Source run:
 

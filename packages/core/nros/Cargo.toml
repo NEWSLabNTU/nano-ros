@@ -125,6 +125,7 @@ xrce-serial = ["nros-platform/platform-posix", "nros-node/posix-serial"]
 safety-e2e = [
     "nros-node/safety-e2e",
     "nros-rmw/safety-e2e",
+    "nros-rmw-cffi?/safety-e2e",
 ]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).

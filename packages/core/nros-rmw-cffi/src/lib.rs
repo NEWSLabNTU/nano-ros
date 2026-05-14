@@ -869,6 +869,12 @@ struct MessageInfoSlot {
     key: portable_atomic::AtomicUsize,
     valid: portable_atomic::AtomicBool,
     info: UnsafeCell<MessageInfo>,
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    validate_requested: portable_atomic::AtomicBool,
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    integrity_valid: portable_atomic::AtomicBool,
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    integrity: UnsafeCell<nros_rmw::IntegrityStatus>,
 }
 
 impl MessageInfoSlot {
@@ -877,6 +883,16 @@ impl MessageInfoSlot {
             key: portable_atomic::AtomicUsize::new(0),
             valid: portable_atomic::AtomicBool::new(false),
             info: UnsafeCell::new(MessageInfo::new()),
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+            validate_requested: portable_atomic::AtomicBool::new(false),
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+            integrity_valid: portable_atomic::AtomicBool::new(false),
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+            integrity: UnsafeCell::new(nros_rmw::IntegrityStatus {
+                gap: 0,
+                duplicate: false,
+                crc_valid: None,
+            }),
         }
     }
 }
@@ -952,11 +968,54 @@ fn take_cffi_message_info(key: usize) -> Option<MessageInfo> {
     Some(unsafe { *slot.info.get() })
 }
 
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+fn request_cffi_integrity_status(key: usize) {
+    let Some(slot) = get_or_insert_message_info_slot(key) else {
+        return;
+    };
+    slot.integrity_valid.store(false, Ordering::Release);
+    slot.validate_requested.store(true, Ordering::Release);
+}
+
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+pub(crate) fn take_cffi_integrity_request(key: usize) -> bool {
+    lookup_message_info_slot(key)
+        .map(|slot| slot.validate_requested.swap(false, Ordering::AcqRel))
+        .unwrap_or(false)
+}
+
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+pub(crate) fn store_cffi_integrity_status(key: usize, status: nros_rmw::IntegrityStatus) {
+    let Some(slot) = get_or_insert_message_info_slot(key) else {
+        return;
+    };
+    // SAFETY: integrity status follows the same per-subscriber handoff as
+    // `info`; the CFFI subscriber owns receive calls mutably for this key.
+    unsafe {
+        *slot.integrity.get() = status;
+    }
+    slot.integrity_valid.store(true, Ordering::Release);
+}
+
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+fn take_cffi_integrity_status(key: usize) -> Option<nros_rmw::IntegrityStatus> {
+    let slot = lookup_message_info_slot(key)?;
+    if !slot.integrity_valid.swap(false, Ordering::AcqRel) {
+        return None;
+    }
+    Some(unsafe { *slot.integrity.get() })
+}
+
 fn clear_cffi_message_info(key: usize) {
     let Some(slot) = lookup_message_info_slot(key) else {
         return;
     };
     slot.valid.store(false, Ordering::Release);
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    {
+        slot.validate_requested.store(false, Ordering::Release);
+        slot.integrity_valid.store(false, Ordering::Release);
+    }
     slot.key.store(0, Ordering::Release);
 }
 
@@ -2243,6 +2302,27 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         let key = self.backend_data as usize;
         self.try_recv_raw(buf)
             .map(|opt| opt.map(|len| (len, take_cffi_message_info(key))))
+    }
+
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    fn try_recv_validated(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, Self::Error> {
+        let key = self.backend_data as usize;
+        request_cffi_integrity_status(key);
+        self.try_recv_raw(buf).map(|opt| {
+            opt.map(|len| {
+                (
+                    len,
+                    take_cffi_integrity_status(key).unwrap_or(nros_rmw::IntegrityStatus {
+                        gap: 0,
+                        duplicate: false,
+                        crc_valid: None,
+                    }),
+                )
+            })
+        })
     }
 
     fn try_recv_sequence(

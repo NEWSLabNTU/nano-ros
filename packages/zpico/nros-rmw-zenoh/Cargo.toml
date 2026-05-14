@@ -40,7 +40,7 @@ ffi-sync = ["dep:critical-section"]
 log = ["dep:log"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
-safety-e2e = ["nros-rmw/safety-e2e"]
+safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-cffi/safety-e2e"]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["zpico-sys/unstable-zenoh-api"]
