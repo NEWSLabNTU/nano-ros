@@ -23,9 +23,10 @@ use core::{
 
 use nros_rmw::{Session, SessionMode, Subscriber, TopicInfo};
 use nros_rmw_cffi::{
-    NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback, NrosRmwEventKind,
-    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient, NrosRmwServiceServer,
-    NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable, nros_rmw_cffi_register_named,
+    NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient,
+    NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
+    nros_rmw_cffi_register_named,
 };
 
 const PER_MSG_CAP: usize = 32;
@@ -108,6 +109,13 @@ unsafe extern "C" fn stub_try_recv_raw(
     let copy = msg.len().min(buf_len);
     unsafe { core::ptr::copy_nonoverlapping(msg.as_ptr(), buf, copy) };
     copy as i32
+}
+unsafe extern "C" fn stub_try_recv_raw_no_data(
+    _: *mut NrosRmwSubscriber,
+    _: *mut u8,
+    _: usize,
+) -> i32 {
+    NROS_RMW_RET_NO_DATA
 }
 unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
     if RAW_CURSOR.load(Ordering::SeqCst) < QUEUE.len() {
@@ -252,6 +260,7 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
 
 static VTABLE_NATIVE: NrosRmwVtable = make_vtable_native();
 static VTABLE_FALLBACK: NrosRmwVtable = make_vtable_fallback();
+static VTABLE_NO_DATA: NrosRmwVtable = make_vtable_no_data();
 
 const fn make_vtable_native() -> NrosRmwVtable {
     NrosRmwVtable {
@@ -301,6 +310,43 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         create_subscriber: stub_create_subscriber,
         destroy_subscriber: stub_destroy_subscriber,
         try_recv_raw: stub_try_recv_raw,
+        has_data: stub_has_data,
+        create_service_server: stub_create_service_server,
+        destroy_service_server: stub_destroy_service_server,
+        try_recv_request: stub_try_recv_request,
+        has_request: stub_has_request,
+        send_reply: stub_send_reply,
+        create_service_client: stub_create_service_client,
+        destroy_service_client: stub_destroy_service_client,
+        call_raw: stub_call_raw,
+        register_subscriber_event: stub_reg_sub_event,
+        register_publisher_event: stub_reg_pub_event,
+        assert_publisher_liveliness: stub_assert_liveliness,
+        next_deadline_ms: None,
+        set_wake_callback: None,
+        pub_loan: None,
+        pub_commit: None,
+        pub_discard: None,
+        sub_borrow: None,
+        sub_release: None,
+        service_server_available: None,
+        try_recv_sequence: None,
+        publish_streamed: None,
+        ping_session: None,
+    }
+}
+
+const fn make_vtable_no_data() -> NrosRmwVtable {
+    NrosRmwVtable {
+        open: stub_open,
+        close: stub_close,
+        drive_io: stub_drive_io,
+        create_publisher: stub_create_publisher,
+        destroy_publisher: stub_destroy_publisher,
+        publish_raw: stub_publish_raw,
+        create_subscriber: stub_create_subscriber,
+        destroy_subscriber: stub_destroy_subscriber,
+        try_recv_raw: stub_try_recv_raw_no_data,
         has_data: stub_has_data,
         create_service_server: stub_create_service_server,
         destroy_service_server: stub_destroy_service_server,
@@ -402,6 +448,16 @@ fn try_recv_sequence_loop_fallback() {
             "payload[{i}] mismatch"
         );
     }
+}
+
+#[test]
+fn try_recv_raw_no_data_maps_to_none() {
+    let mut sub = open_subscriber("tb_seq_no_data", &VTABLE_NO_DATA);
+
+    let mut buf = [0u8; PER_MSG_CAP];
+    let received = sub.try_recv_raw(&mut buf).expect("NO_DATA is not an error");
+
+    assert_eq!(received, None);
 }
 
 #[test]

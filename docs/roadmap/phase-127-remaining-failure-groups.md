@@ -238,25 +238,46 @@ Current signal:
   failure.
 - Zenoh and XRCE action paths have focused passing coverage after earlier
   fixes.
+- Focused DDS action rerun reproduced the failure after goal acceptance:
+  the client received `Feedback #1: [0]`, then aborted feedback polling with
+  `Transport(DeserializationError)`.
+- Root cause was the CFFI subscriber adapter mapping the normal
+  `NROS_RMW_RET_NO_DATA` empty-poll return into `Err(TransportError::NoData)`.
+  The action feedback loop treated that subscriber error as a deserialization
+  failure. Zenoh/XRCE already expose empty polls as `Ok(None)`.
+- Fixed by mapping CFFI `NO_DATA` to `Ok(None)` and adding CFFI regression
+  coverage for subscriber empty polls. The DDS raw payload sequence bound was
+  aligned with the Dust DDS unbounded sequence convention.
+- Focused DDS action rerun now passes: the server accepts the goal, publishes
+  all 11 feedback frames, completes with
+  `[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`, and the client observes all
+  feedback frames and finishes.
 
 Subitems:
 
-- [ ] `127.E.1`: DDS action goal acceptance and feedback.
+- [x] `127.E.1`: DDS action goal acceptance and feedback.
 - [ ] `127.E.2`: DDS action result and cancellation path.
-- [ ] `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
+- [x] `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
   paths.
 
 Done criteria:
 
-- [ ] Capture server/client action logs.
-- [ ] Compare goal acceptance, feedback, result, and cancellation behavior against
+- [x] Capture server/client action logs.
+- [x] Compare goal acceptance, feedback, result, and cancellation behavior against
   the passing Zenoh/XRCE action paths.
-- [ ] Native DDS action E2E passes or has a narrowed single-stage failure.
+- [x] Native DDS action E2E passes or has a narrowed single-stage failure.
+
+Remaining note:
+
+- [ ] The native Rust DDS action fixture completes via feedback observation; it
+  does not currently issue explicit `get_result` or cancel requests. Add or
+  extend coverage before checking `127.E.2`.
 
 Focused commands:
 
 ```bash
-cargo nextest run -p nros-tests --no-capture action
+cargo nextest run -p nros-tests --test dds_api --no-capture test_dds_action_server_client_e2e
+cargo test -p nros-rmw-cffi --features alloc --test try_recv_sequence
 ```
 
 ## 127.F: ROS 2 Lifecycle Interop

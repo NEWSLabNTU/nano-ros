@@ -37,7 +37,7 @@ impl TypeSupport for RawCdrPayload {
     fn get_type() -> DynamicType {
         let uint8_type = DynamicTypeBuilderFactory::get_primitive_type(TypeKind::UINT8);
         let seq_type =
-            DynamicTypeBuilderFactory::create_sequence_type(uint8_type, 0 /* unbounded */).build();
+            DynamicTypeBuilderFactory::create_sequence_type(uint8_type, u32::MAX).build();
 
         let struct_descriptor = TypeDescriptor {
             kind: TypeKind::STRUCTURE,

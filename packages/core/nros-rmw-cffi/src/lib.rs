@@ -2286,6 +2286,9 @@ impl nros_rmw::Subscriber for CffiSubscriber {
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         let mut view = self.make_view();
         let rc = unsafe { (self.vtable.try_recv_raw)(&mut view, buf.as_mut_ptr(), buf.len()) };
+        if rc == NROS_RMW_RET_NO_DATA {
+            return Ok(None);
+        }
         if rc < 0 {
             return Err(error_from_ret(rc));
         }
