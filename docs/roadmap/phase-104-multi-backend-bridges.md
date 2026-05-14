@@ -613,15 +613,38 @@ follow-up items that finish the rclcpp-aligned story:
 
 ##### C / C++ wrapper items (Phase 122 discipline)
 
-- [ ] **104.C.8 — C-side `nros_node_options_t` + thin-
+- [~] **104.C.8 — C-side `nros_node_options_t` + thin-
       wrapper `nros_node_init_ex`.** Replaces today's
       separate `nros_node_t` storage with an opaque
       `state + _opaque` shape that calls into Rust's
       `node_builder`. Existing `nros_node_init` becomes a
       thin shim that constructs default options.
+      **API surface landed:** `nros_node_options_t`
+      `#[repr(C)]` struct ships in `nros-c/src/node.rs`
+      with `rmw_name + namespace + locator + domain_id_
+      override + sched_context_id`; cbindgen emits both
+      the struct and the new
+      `nros_node_get_default_options() / nros_node_init_ex`
+      entry points into `nros_generated.h`.
+      `nros_node_init(node, support, name, ns)` now shims
+      through `nros_node_init_ex` with default options +
+      the supplied namespace. The `nros_node_t` carries
+      the multi-RMW metadata (`rmw_name`, `node_id`, …)
+      so handle-creation paths can consume it after
+      104.C.8.b lands.
+      **Follow-up 104.C.8.b — multi-Session dispatch in
+      C.** Wire `nros_node_init_ex` to call into
+      `Executor::node_builder(name).rmw(...).locator(...).
+      build()` and store the returned `NodeId` in
+      `nros_node_t.node_id`. Currently the field stays 0
+      and publisher/subscriber/service factories still
+      register on the support's primary session. Lands
+      once the C executor exposes a stable factory entry.
       **Files:**
       `packages/core/nros-c/src/node.rs`,
-      `packages/core/nros-c/include/nros/node.h`.
+      `packages/core/nros-c/src/constants.rs`,
+      `packages/core/nros-c/include/nros/nros_generated.h`
+      (cbindgen output).
 
 - [ ] **104.C.9 — C++ `Executor::node_builder` mirror.**
       `nros::Executor::node_builder(name)` returns a C++

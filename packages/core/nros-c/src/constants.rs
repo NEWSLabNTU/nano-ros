@@ -14,6 +14,13 @@ pub const MAX_NAME_LEN: usize = 64;
 /// Maximum length of a node namespace
 pub const MAX_NAMESPACE_LEN: usize = 128;
 
+/// Maximum length of an RMW backend name (e.g., "zenoh", "dds", "xrce").
+///
+/// Matches `BACKEND_NAME_MAX` in `nros-rmw-cffi/src/lib.rs`. Lifted to a
+/// public constant here so `nros_node_options_t` can declare a fixed-size
+/// buffer that round-trips through the registry without truncation.
+pub const MAX_RMW_NAME_LEN: usize = 32;
+
 /// Maximum length of a topic name
 pub const MAX_TOPIC_LEN: usize = 256;
 
