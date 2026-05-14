@@ -810,8 +810,14 @@ the same change as `set_wake_callback` lands.
 - [x] **124.D.1 — vtable slot.** Add `try_recv_sequence`.
 - [x] **124.D.2 — Loop fallback.** Runtime emits a
       `try_recv_raw` loop when `vt.try_recv_sequence == NULL`.
-- [ ] **124.D.3 — Backend impls.** Per-backend status after the
-      2026-05-14 upstream survey (refs cloned to `external/`):
+- [~] **124.D.3 — Backend impls.** Cyclone + dust-dds native
+      batch landed (commit `af7c19d3`). Zenoh-pico ring refactor
+      tracked as D.3.c follow-up — also doubles as a burst-tolerance
+      fix (current single-slot buffer drops messages on lock
+      contention). XRCE + FastDDS keep NULL slot → D.2 runtime
+      loop fallback (no backend stubs; matches upstream behaviour).
+
+      Per-backend status after the
 
       | Backend | Native batch? | API / location |
       |---|---|---|
