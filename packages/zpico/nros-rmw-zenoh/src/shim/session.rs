@@ -22,12 +22,14 @@ use super::{
 /// There are no background threads.
 pub struct ZenohSession {
     context: Context,
-    /// Phase 104.C.6.b — shared executor wake flag. Installed by
-    /// `set_wake_signal`; non-null after the runtime has wired the
-    /// executor's `Arc<AtomicBool>` through the cffi vtable. Set to
-    /// `1` after `drive_io` observes work so multi-session executors
-    /// short-circuit the next iteration's blocking wait.
-    wake_flag: core::sync::atomic::AtomicPtr<core::sync::atomic::AtomicBool>,
+    /// Phase 124.B.3 — executor wake callback. Installed by
+    /// `set_wake_callback`; non-null after the runtime has wired
+    /// the executor through the cffi vtable. Invoked by
+    /// `drive_io` after work was observed; the runtime cb does
+    /// flag-write + condvar-signal atomically so the executor
+    /// wakes from `wake_cv` instead of polling on a deadline.
+    wake_cb: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
+    wake_ctx: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
 }
 
 impl ZenohSession {
@@ -150,7 +152,8 @@ impl ZenohSession {
 
         Ok(Self {
             context,
-            wake_flag: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         })
     }
 
@@ -339,28 +342,40 @@ impl Session for ZenohSession {
 
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
         let res = self.spin_once(timeout_ms as u32);
-        // Phase 104.C.6.b — when zenoh's spin_once observed any work
-        // (true return), raise the shared wake flag so the executor's
-        // next `spin_once` polls every session in 0-ms instead of
-        // blocking on the primary. Best-effort: if the flag pointer
-        // is null the runtime hasn't wired it yet.
+        // Phase 124.B.3 — when zenoh's spin_once observed any work
+        // (true return), call the runtime-supplied wake callback so
+        // the executor's `wake_cv` is signalled (flag-write +
+        // condvar-signal happen atomically inside the cb).
+        // Best-effort: if the cb hasn't been installed yet the
+        // executor still drains via its deadline-bound cv-wait.
         if let Ok(true) = res {
-            let p = self.wake_flag.load(core::sync::atomic::Ordering::Acquire);
-            if !p.is_null() {
-                // SAFETY: pointer was installed via `set_wake_signal`
-                // and points at an `Arc<AtomicBool>::as_ptr()` value
-                // that outlives the session (Arc held by Executor).
-                unsafe { (*p).store(true, core::sync::atomic::Ordering::Release) };
+            let cb = self.wake_cb.load(core::sync::atomic::Ordering::Acquire);
+            if !cb.is_null() {
+                let ctx = self.wake_ctx.load(core::sync::atomic::Ordering::Acquire);
+                // SAFETY: cb was installed via `set_wake_callback`
+                // and points at a runtime-owned function; ctx
+                // points at WakeCtx allocated for the executor's
+                // lifetime.
+                let f: unsafe extern "C" fn(*mut core::ffi::c_void) =
+                    unsafe { core::mem::transmute(cb) };
+                unsafe { f(ctx) };
             }
         }
         res.map(|_| ())
     }
 
-    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
-        self.wake_flag.store(
-            flag as *mut core::sync::atomic::AtomicBool,
-            core::sync::atomic::Ordering::Release,
-        );
+    fn set_wake_callback(
+        &mut self,
+        cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) {
+        let cb_ptr = cb
+            .map(|f| f as *mut core::ffi::c_void)
+            .unwrap_or(core::ptr::null_mut());
+        self.wake_cb
+            .store(cb_ptr, core::sync::atomic::Ordering::Release);
+        self.wake_ctx
+            .store(ctx, core::sync::atomic::Ordering::Release);
     }
 
     /// Phase 110.0 — bound the executor's `drive_io` wait against

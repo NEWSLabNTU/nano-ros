@@ -501,32 +501,15 @@ pub struct NrosRmwVtable {
     /// "no deadline". NULL function pointer = treat as no deadline.
     pub next_deadline_ms: Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
 
-    // ---- Phase 104.C.6.b — shared executor wake signal ----
-    /// Install (or clear, when `flag` is NULL) the shared
-    /// `AtomicBool` the executor uses to short-circuit `drive_io`
-    /// when any session sees work. The backend stores the pointer in
-    /// its per-session state and writes `1` whenever its transport
-    /// notification path fires. NULL fn pointer = no asynchronous
-    /// wake support (the runtime still observes same-thread setters
-    /// like `Executor::wake` / `halt`).
-    pub set_wake_signal: Option<
-        unsafe extern "C" fn(
-            session: *mut NrosRmwSession,
-            flag: *mut core::ffi::c_void,
-        ) -> NrosRmwRet,
-    >,
-
-    /// Phase 124.B.1 — wake-callback evolution of `set_wake_signal`.
-    /// Backend stores `(cb, ctx)` and invokes `cb(ctx)` on async
-    /// wake instead of writing a flag directly. The runtime-supplied
-    /// `cb` does flag-write + condvar-signal atomically, giving
-    /// sub-poll-period wake latency for spin loops blocked on the
-    /// executor's wake condvar.
+    /// Phase 124.B.1 — executor wake callback. Backend stores
+    /// `(cb, ctx)` and invokes `cb(ctx)` on async wake. The
+    /// runtime-supplied `cb` does flag-write + condvar-signal
+    /// atomically, giving sub-poll-period wake latency for spin
+    /// loops blocked on the executor's wake condvar.
     ///
-    /// Preferred over `set_wake_signal`: if both slots are non-NULL,
-    /// the runtime calls only this one. NULL = backend hasn't
-    /// migrated to Phase 124 (falls back to the `set_wake_signal`
-    /// path) or has no async wake path at all.
+    /// NULL fn pointer = backend has no async wake path (poll-only:
+    /// XRCE, bare-metal). The runtime still drains the session on
+    /// its deadline-bound cv-wait boundary.
     pub set_wake_callback: Option<
         unsafe extern "C" fn(
             session: *mut NrosRmwSession,
@@ -1476,21 +1459,6 @@ impl Session for CffiSession {
         };
         let ret = unsafe { f(&view as *const _) };
         if ret < 0 { None } else { Some(ret as u32) }
-    }
-
-    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
-        let Some(f) = self.vtable.set_wake_signal else {
-            return;
-        };
-        let mut view = NrosRmwSession {
-            node_name: self.node_name_buf.as_ptr(),
-            namespace_: self.namespace_buf.as_ptr(),
-            _reserved: [0u8; 8],
-            backend_data: self.backend_data,
-        };
-        // SAFETY: vtable trampoline owns the install/clear; result is
-        // ignored — best-effort.
-        let _ = unsafe { f(&mut view as *mut _, flag) };
     }
 
     fn set_wake_callback(
@@ -2660,7 +2628,6 @@ mod tests {
         register_publisher_event: stub_register_publisher_event,
         assert_publisher_liveliness: stub_assert_publisher_liveliness,
         next_deadline_ms: None,
-        set_wake_signal: None,
         set_wake_callback: None,
         pub_loan: None,
         pub_commit: None,

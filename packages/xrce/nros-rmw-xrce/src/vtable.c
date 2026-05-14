@@ -50,13 +50,12 @@ static const nros_rmw_vtable_t kVtable = {
     .register_publisher_event   = NULL,
     .assert_publisher_liveliness = NULL,
     .next_deadline_ms           = NULL,
-    /* Phase 104.C.6.b — the XRCE backend has no asynchronous notify
-     * path that could write into the executor's shared wake flag
+    /* Phase 124.B.1 — XRCE has no asynchronous notify path
      * (XRCE-DDS-Client is poll-driven via xrce_session_drive_io).
-     * NULL = runtime treats this backend as "purely poll-based" and
-     * relies on cooperative scheduling + the same-thread setters
-     * (Executor::wake, halt, …). */
-    .set_wake_signal            = NULL,
+     * NULL = runtime drains this backend on its deadline-bound
+     * cv-wait boundary; same-thread setters (Executor::wake, halt)
+     * still drive the wake_cv. */
+    .set_wake_callback          = NULL,
 
     /* Phase 124.A — zero-copy ABI. XRCE-DDS-Client uses micro-CDR
      * with caller-provided staging buffers; loan/borrow would

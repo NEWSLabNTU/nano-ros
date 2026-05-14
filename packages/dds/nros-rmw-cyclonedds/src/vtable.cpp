@@ -62,13 +62,12 @@ const nros_rmw_vtable_t kVtable = {
     /*assert_publisher_liveliness*/ kAssertPublisherLiveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */
     /*next_deadline_ms*/          nullptr,
-    /* Phase 104.C.6.b — Cyclone DDS has its own background threads
-     * for sample arrival + matched-entity events; raising the
-     * executor's wake flag from those callbacks is a follow-up that
-     * lives in the listener-installation path (not this static
-     * vtable). nullptr today; runtime falls back to same-thread
-     * setters. */
-    /*set_wake_signal*/           nullptr,
+    /* Phase 124.B.1 — Cyclone DDS has its own background threads
+     * for sample arrival + matched-entity events; wiring the wake
+     * callback into those listeners is a follow-up (lives in the
+     * listener-installation path, not this static vtable). nullptr
+     * today; runtime drains on deadline-bound cv-wait boundary. */
+    /*set_wake_callback*/         nullptr,
 
     /* Phase 124.A — zero-copy ABI. Cyclone DDS supports loan via
      * dds_loan_sample / dds_return_loan; wire-up is a follow-up

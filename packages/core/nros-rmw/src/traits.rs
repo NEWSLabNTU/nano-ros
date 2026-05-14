@@ -912,64 +912,26 @@ pub trait Session {
         None
     }
 
-    /// Phase 104.C.6.b — install (or clear, when `flag` is null) the
-    /// shared executor wake flag. The runtime calls this once per
-    /// session after `open` with `flag` pointing at the executor's
-    /// `Arc<AtomicBool>::as_ptr()`. The backend stores the pointer in
-    /// its per-session state and writes `1` whenever its transport
-    /// notification path fires (datagram arrival, condvar wake, etc.)
-    /// — causing `spin_once` to short-circuit `drive_io` to a 0-ms
-    /// poll on its next iteration.
+    /// Phase 124.B.1 — install (or clear, when `cb.is_none()`) the
+    /// executor wake callback. The runtime calls this once per
+    /// session after `open` with `cb` pointing at a runtime-owned
+    /// function and `ctx` pointing at the executor's wake state.
+    /// The backend stores `(cb, ctx)` in its per-session state and
+    /// calls `cb(ctx)` whenever its transport notification path
+    /// fires (datagram arrival, condvar wake, etc.) — the runtime
+    /// cb does flag-write + condvar-signal atomically, so a
+    /// `spin_once` blocked on the wake condvar resumes immediately
+    /// instead of waiting for the next poll iteration.
     ///
-    /// `flag.is_null()` clears any previously installed flag.
-    ///
-    /// Default body: ignore the call. Concrete backends opt in by
-    /// overriding this to plumb the pointer into their notify path
-    /// (zenoh-pico condvar callback, dust-DDS reactor, etc.).
-    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
-        let _ = flag;
-    }
-
-    /// Phase 124.B.1 — wake-callback evolution of [`set_wake_signal`].
-    ///
-    /// The runtime supplies `(cb, ctx)`. Concrete backends opt in by
-    /// overriding this to plumb the pair into their notify path —
-    /// instead of writing a flag, the backend calls `cb(ctx)`. The
-    /// runtime's `cb` writes the executor's wake_flag AND signals
-    /// the wake condvar atomically, so a spin loop blocked on the
-    /// condvar wakes immediately instead of waiting for its next
-    /// poll iteration.
-    ///
-    /// Preferred over `set_wake_signal`: the cffi runtime will only
-    /// call this when the backend implements it. Backends that
-    /// implement BOTH should treat this as the canonical wake path
-    /// and leave the flag-write side as a no-op when the callback
-    /// is installed.
-    ///
-    /// `cb.is_none()` clears the previously installed callback.
-    ///
-    /// Default body: ignore the call (backward-compat for backends
-    /// that only implement the flag-based `set_wake_signal`).
+    /// Default body: ignore the call. Poll-only backends (XRCE,
+    /// bare-metal) leave the default in place; the executor still
+    /// drains them on its deadline-bound cv-wait boundary.
     fn set_wake_callback(
         &mut self,
         cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
         ctx: *mut core::ffi::c_void,
     ) {
         let _ = (cb, ctx);
-    }
-
-    /// Phase 124.B.4 — does this backend invoke
-    /// [`set_wake_callback`]'s `cb` from its async wake path? The
-    /// executor's `spin_once` uses this to choose between
-    /// condvar-blocked wait (sub-poll wake latency) and the
-    /// legacy `drive_io(timeout)` blocking wait (flag-only
-    /// backends that need their drive_io to own the wait budget).
-    ///
-    /// Default: `false`. Concrete backends that override
-    /// `set_wake_callback` to actually call the cb on async wake
-    /// must also override this to return `true`.
-    fn supports_wake_callback(&self) -> bool {
-        false
     }
 }
 

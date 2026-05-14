@@ -740,35 +740,27 @@ impl Executor {
         self.session_at_mut(session_idx)
     }
 
-    /// Phase 104.C.6.b — install the executor's shared wake flag onto
-    /// the primary session. Best-effort: backends that don't override
-    /// `Session::set_wake_signal` ignore the call.
-    ///
-    /// Phase 124.B.2 — also installs the wake callback. Backends that
-    /// implement `set_wake_callback` (preferred over
-    /// `set_wake_signal`) get a fn pointer that does flag-write +
-    /// condvar-signal atomically.
+    /// Phase 124.B.1 — install the executor's wake callback onto the
+    /// primary session. Best-effort: backends that don't override
+    /// `Session::set_wake_callback` (poll-only XRCE, bare-metal)
+    /// ignore the call and continue to be drained on the executor's
+    /// deadline-bound cv-wait boundary.
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
-        let flag_ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
-        self.session.set_wake_signal(flag_ptr);
         let ctx = self.wake_ctx_ptr();
         self.session
             .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
     }
 
-    /// Phase 104.C.6.b — install the wake flag onto an extra session
-    /// opened by `node_builder.rmw(...)`. Called from
+    /// Phase 124.B.1 — install the wake callback onto an extra
+    /// session opened by `node_builder.rmw(...)`. Called from
     /// `NodeBuilder::build()` right after `extra_sessions.push(...)`.
-    /// Phase 124.B.2 — also installs the wake callback.
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub(crate) fn install_wake_signal_on_extra(&mut self, idx: usize) {
         use nros_rmw::Session as _;
-        let flag_ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
         let ctx = self.wake_ctx_ptr();
         if let Some(s) = self.extra_sessions.get_mut(idx) {
-            s.set_wake_signal(flag_ptr);
             s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
         }
     }
@@ -2612,6 +2604,7 @@ impl Executor {
         // deadline (lease keepalive, heartbeat, ACK-NACK timeout, ...).
         // Default backend impl returns `None`, so this is a no-op
         // unless the active backend opts in.
+        #[allow(unused_variables)]
         let timeout_ms = match self.session.next_deadline_ms() {
             Some(next) => timeout_ms.min(next.min(i32::MAX as u32) as i32),
             None => timeout_ms,
@@ -2641,19 +2634,12 @@ impl Executor {
         // pre-empt whichever session the executor would otherwise
         // sleep on. Cost on the no-wake path is one atomic swap.
         #[cfg(feature = "std")]
+        #[allow(unused_variables)]
         let was_woken = self
             .wake_flag
             .swap(false, std::sync::atomic::Ordering::SeqCst);
-        #[cfg(not(feature = "std"))]
-        let was_woken = false;
 
-        // Phase 124.B.4 — wait strategy selection.
-        //
-        // Choose between condvar-blocked wait (callback-enabled
-        // backends; sub-poll wake latency) and the legacy
-        // `drive_io(primary_timeout)` blocking wait (flag-only
-        // backends that need their drive_io to own the wait
-        // budget).
+        // Phase 124.B.4 — condvar-blocked wait.
         //
         // RT contract:
         //  * cv.wait_timeout_while: bounded by `timeout_ms`.
@@ -2662,46 +2648,37 @@ impl Executor {
         //    only during predicate check (microseconds);
         //    contended worst-case = notify_all execution time
         //    (~10s of µs).
-        //  * drive_io fallback path: same as today.
+        //  * Backend's `set_wake_callback`-installed cb is called
+        //    on async data arrival from its transport-notify path
+        //    (worker thread, ISR-safe variant via 124.B.7). The
+        //    runtime cb writes wake_flag + signals wake_cv,
+        //    unblocking this loop sub-poll-period.
+        //  * Poll-only backends (XRCE, bare-metal) leave the slot
+        //    NULL; the cv wait still fires on its deadline, then
+        //    drive_io(0) drains whatever the backend's internal
+        //    poll has buffered. Equivalent to their pre-124
+        //    behaviour minus the blocking wait inside drive_io.
         //
-        // Decision logic:
-        //  - was_woken (pre-set flag): skip wait entirely; drain.
-        //  - primary supports callback: cv.wait_timeout. Backend
-        //    will call nros_rmw_runtime_wake_cb on async data
-        //    arrival, signaling cv. Lost-wakeup-safe via flag
-        //    write happens-before notify.
-        //  - else (flag-only): legacy drive_io(timeout) path.
-        //    Backend's blocking wait owns the budget.
+        // Lost-wakeup safe: SeqCst flag write happens-before
+        // notify, and the waiter checks the flag under wake_mu in
+        // the predicate. If wake fires between drain and cv.wait
+        // entry, the predicate sees flag=true on first eval and
+        // exits immediately.
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-        let use_cv_wait = !was_woken && self.session.supports_wake_callback();
-        #[cfg(not(all(feature = "std", feature = "rmw-cffi")))]
-        let use_cv_wait = false;
-
-        let primary_timeout = if was_woken { 0 } else { timeout_ms };
-
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-        if use_cv_wait {
+        if !was_woken {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
             let g = self.wake_mu.lock().expect("wake_mu poisoned");
             let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
-                // Predicate returns TRUE to keep waiting (no
-                // wake yet); FALSE to exit.
                 !self
                     .wake_flag
                     .swap(false, std::sync::atomic::Ordering::SeqCst)
             });
         }
 
-        // Drain all sessions non-blocking when we used the cv
-        // path (or the flag was pre-set); otherwise let the
-        // primary's drive_io own the timeout (legacy C.6.b).
-        let drive_timeout = if use_cv_wait || was_woken { 0 } else { primary_timeout };
-        let _ = self.session.drive_io(drive_timeout);
-        // Phase 104.C.3 — drive every extra session opened by
-        // `node_builder.rmw()` calls. Polling order is registration
-        // order; extras always poll with 0-ms (the primary owns the
-        // wait budget) so latency stays bounded by the user's
-        // `spin_once(timeout)` instead of summing across N sessions.
+        // All sessions non-blocking drain. The wait budget is
+        // owned by the cv wait above; drive_io is now a pure
+        // dequeue path.
+        let _ = self.session.drive_io(0);
         for extra in self.extra_sessions.iter_mut() {
             let _ = extra.drive_io(0);
         }

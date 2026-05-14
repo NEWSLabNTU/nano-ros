@@ -144,51 +144,24 @@ typedef struct nros_rmw_vtable_t {
      *  same as a negative return. */
     int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
 
-    /** Phase 104.C.6.b — shared executor wake signal.
-     *
-     *  The runtime calls this once per session right after `open`
-     *  with `flag` pointing at the executor's `wake_flag`
-     *  (`portable_atomic::AtomicBool`-equivalent). The backend stores
-     *  the pointer in its own per-session state and stores a non-zero
-     *  byte (`1`) into `*flag` whenever its transport notification
-     *  path fires — datagram arrival, condvar wake-up, select-fd
-     *  ready, etc. The executor's `spin_once` swap-clears the flag
-     *  and short-circuits `drive_io` to a 0-ms poll when set.
-     *
-     *  `flag == NULL` clears any previously installed flag; the
-     *  backend must drop the stored pointer and never write to it
-     *  again after this call returns.
-     *
-     *  NULL function pointer = backend has no asynchronous wake path
-     *  (purely poll-driven). The runtime treats this as best-effort;
-     *  `spin_once` still observes the executor's wake_flag from
-     *  same-thread setters (`Executor::wake`, `halt`, etc.) and from
-     *  any backend that does implement the hook. */
-    nros_rmw_ret_t (*set_wake_signal)(nros_rmw_session_t *session,
-                                       void *flag);
-
-    /** Phase 124.B.1 — wake-callback (evolution of `set_wake_signal`).
+    /** Phase 124.B.1 — executor wake callback.
      *
      *  The runtime calls this once per session right after `open`
      *  with `cb` pointing at a runtime-supplied function and `ctx`
-     *  pointing at the executor. The backend stores both in its
-     *  per-session state and calls `cb(ctx)` whenever its transport-
-     *  notification path fires — same trigger sites as
-     *  `set_wake_signal`'s flag-write, but via a function call so
-     *  the runtime can do flag-write + condvar-signal atomically.
-     *
-     *  This is strictly an upgrade of `set_wake_signal`. If both
-     *  slots are non-NULL, the runtime prefers `set_wake_callback`
-     *  and never calls `set_wake_signal`. If only `set_wake_signal`
-     *  is non-NULL, the runtime continues to use the flag-only path
-     *  from Phase 104.C.6.b.
+     *  pointing at the executor's wake state. The backend stores
+     *  both in its per-session state and calls `cb(ctx)` whenever
+     *  its transport-notification path fires — datagram arrival,
+     *  condvar wake-up, select-fd ready, etc. The runtime cb does
+     *  flag-write + condvar-signal atomically so a `spin_once`
+     *  blocked on the wake condvar resumes immediately.
      *
      *  `cb == NULL` clears any previously installed callback; the
      *  backend must drop the stored (cb, ctx) and never invoke
      *  again after this returns.
      *
      *  NULL slot = backend has no asynchronous wake path (purely
-     *  poll-driven) OR backend authored before Phase 124. */
+     *  poll-driven: XRCE, bare-metal). The runtime still drains the
+     *  session on its deadline-bound cv-wait boundary. */
     nros_rmw_ret_t (*set_wake_callback)(nros_rmw_session_t *session,
                                          void (*cb)(void *ctx),
                                          void *ctx);
