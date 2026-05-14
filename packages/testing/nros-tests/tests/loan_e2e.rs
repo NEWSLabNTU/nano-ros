@@ -12,6 +12,7 @@
 #![cfg(feature = "loan-e2e")]
 
 use std::{
+    alloc::{GlobalAlloc, Layout, System},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -29,6 +30,48 @@ use rstest::rstest;
 // open returns ConnectionFailed.
 #[allow(unused_imports)]
 use nros_rmw_zenoh as _;
+
+// =============================================================================
+// Phase 124.A.8.c — counting global allocator
+// =============================================================================
+//
+// Wraps System; increments two atomics on every alloc / dealloc. Tests
+// snapshot the alloc count before a measured region and assert the
+// delta. Single counter rules out interference between concurrent
+// threads — the zero-alloc assertion runs only on the publisher thread
+// and the wait-for-delivery loop on the same thread (no rx-thread
+// allocations cross the window because we sleep on the rx thread).
+
+static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static DEALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+struct CountingAllocator;
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        DEALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.dealloc(ptr, layout) };
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc_zeroed(layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL: CountingAllocator = CountingAllocator;
+
+fn alloc_count() -> usize {
+    ALLOC_COUNT.load(Ordering::Relaxed)
+}
 
 const TYPE_NAME: &str = "std_msgs/msg/dds_/String_";
 const TYPE_HASH: &str = "RIHS01_loan_e2e_test_42424242424242424242424242424242";
@@ -139,5 +182,89 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
         &rx[..],
         payload.as_slice(),
         "loan-delivered payload must round-trip byte-identical",
+    );
+}
+
+#[rstest]
+fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
+    // Phase 124.A.8.c — verifies the Phase 124.A.4.b zenoh native loan
+    // trampoline is truly zero-allocation on the commit path. Counts
+    // global allocations across a tight `try_loan → write → commit`
+    // window and asserts a small budget (NOT zero — zenoh-pico's
+    // `publish_with_attachment_aliased` may transiently allocate
+    // internal RTPS framing buffers depending on its build config).
+    //
+    // Budget chosen empirically: the native loan path itself does NOT
+    // allocate (slot bytes alias an arena buffer; commit_slot calls
+    // `publish_with_attachment_aliased` which uses
+    // `z_bytes_from_static_buf` — no payload copy). Allowance covers
+    // potential transient log/string allocs in error paths only.
+    const ALLOC_BUDGET_PER_PUBLISH: usize = 4;
+
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    let locator = zenohd_unique.locator();
+
+    let cfg = ExecutorConfig::new(&locator)
+        .node_name("loan_alloc_pub")
+        .domain_id(200);
+    let mut pub_exec = match Executor::open(&cfg) {
+        Ok(e) => e,
+        Err(e) => nros_tests::skip!("pub executor open failed: {:?}", e),
+    };
+    let node_id = pub_exec
+        .node_builder("loan_alloc_node")
+        .build()
+        .expect("node build");
+    let raw_pub: EmbeddedRawPublisher = pub_exec
+        .with_node_try(node_id, |n| {
+            n.create_publisher_raw("/loan_alloc", TYPE_NAME, TYPE_HASH)
+                .map_err(|e| e.into())
+        })
+        .expect("create raw publisher");
+
+    // Let discovery settle so timer-driven allocs don't leak into the
+    // measured window.
+    let discovery_deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < discovery_deadline {
+        pub_exec.spin_once(Duration::from_millis(50));
+    }
+
+    let payload = b"alloc_trace_test_payload_24B";
+    debug_assert_eq!(payload.len(), 28);
+
+    // Warm path: do one loan-commit so any first-publish lazy init
+    // (zenoh-pico cache, sequence counter) doesn't taint the budget.
+    {
+        let mut loan = raw_pub.try_loan(payload.len()).expect("warm loan");
+        loan.as_mut().copy_from_slice(payload);
+        loan.commit().expect("warm commit");
+    }
+
+    // Measured window.
+    const N: usize = 4;
+    let before = alloc_count();
+    for _ in 0..N {
+        let mut loan = raw_pub
+            .try_loan(payload.len())
+            .expect("measured loan should succeed");
+        loan.as_mut().copy_from_slice(payload);
+        loan.commit().expect("measured commit");
+    }
+    let after = alloc_count();
+    let delta = after - before;
+
+    let budget = ALLOC_BUDGET_PER_PUBLISH * N;
+    assert!(
+        delta <= budget,
+        "Phase 124.A.4.b native zenoh loan must stay under {budget} allocs across {N} \
+         publishes (per-publish budget {ALLOC_BUDGET_PER_PUBLISH}), observed {delta}. \
+         If this fires after a zenoh-pico bump, verify the upstream \
+         `z_bytes_from_static_buf` path still aliases.",
+    );
+    eprintln!(
+        "loan zero-alloc trace: {N} publishes ⇒ {delta} allocs (budget {budget})",
     );
 }

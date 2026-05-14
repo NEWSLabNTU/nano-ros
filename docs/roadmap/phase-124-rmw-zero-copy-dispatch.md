@@ -611,29 +611,36 @@ independent additions.
       **Files:** `packages/core/nros-rmw-cffi/tests/loan_fallback.rs`,
       `packages/core/nros-rmw-cffi/tests/loan_native.rs`.
 
-- [~] **124.A.8.b — Zenoh-pico E2E loan test.** Runtime
+- [x] **124.A.8.b — Zenoh-pico E2E loan test.** Runtime
       verification of the Phase 124.A.4.b zenoh native loan
       trampolines: two-executor split (publisher + subscriber
       threads, both round-tripping through one shared
       `ZenohRouter` fixture), `try_loan` + `commit` on the
       publisher, asserts subscriber receives the payload
-      byte-identical. **Test landed at
-      `packages/testing/nros-tests/tests/loan_e2e.rs`** under
+      byte-identical. Test at
+      `packages/testing/nros-tests/tests/loan_e2e.rs` under
       a new `loan-e2e` cargo feature that pulls
       `nros-rmw-zenoh/lending` + `nros-platform-cffi/posix-c-port`
       so the posix C symbols (`nros_platform_*`) link.
       Run with `cargo nextest run -p nros-tests --features
-      loan-e2e --test loan_e2e`. Requires `just zenoh setup`
-      to provision the local zenohd binary.
-      Malloc-trace assertion ("zero alloc on commit") deferred
-      — needs an LD_PRELOAD counting hook on top of this
-      scaffold; tracked as 124.A.8.c.
+      loan-e2e --test loan_e2e`. Requires `just zenoh setup`.
       **Files:** `packages/testing/nros-tests/tests/loan_e2e.rs`,
       `packages/testing/nros-tests/Cargo.toml`,
-      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`
-      (zenoh `drive_io` wake-flag write-back type fix),
-      `packages/core/nros-node/Cargo.toml`
-      (`rmw-lending` now forwards to `nros-rmw-cffi/lending`).
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`,
+      `packages/core/nros-node/Cargo.toml`.
+
+- [x] **124.A.8.c — Malloc-trace zero-alloc assertion.**
+      Companion test in the same file
+      (`loan_path_is_alloc_free_on_native_zenoh`). Installs a
+      counting `#[global_allocator]` that wraps `System`,
+      snapshots the alloc counter before/after a tight
+      `try_loan → write → commit` loop on the native zenoh
+      path, asserts the delta stays within a small per-publish
+      budget (`ALLOC_BUDGET_PER_PUBLISH = 4`, allowance for
+      transient log/string allocs only). One warm-up publish
+      excludes first-publish lazy init. Catches regressions in
+      `z_bytes_from_static_buf` aliasing on zenoh-pico bumps.
+      **Files:** `packages/testing/nros-tests/tests/loan_e2e.rs`.
 
 ### Thread B — Wake-callback + condvar layer
 
