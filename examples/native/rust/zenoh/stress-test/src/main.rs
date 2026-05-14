@@ -93,6 +93,10 @@ fn run_talker() {
     let config = ExecutorConfig::from_env().node_name("stress_talker");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
 
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
@@ -158,6 +162,10 @@ fn run_listener() {
     );
 
     let config = ExecutorConfig::from_env().node_name("stress_listener");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor

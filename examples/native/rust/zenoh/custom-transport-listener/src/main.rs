@@ -112,6 +112,10 @@ fn main() {
     // drains the slot during session_open).
 
     let config = ExecutorConfig::new("custom/loopback").node_name("listener");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     executor

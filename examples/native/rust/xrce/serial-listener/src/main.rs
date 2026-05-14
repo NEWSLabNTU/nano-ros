@@ -52,6 +52,10 @@ fn main() {
     let config = ExecutorConfig::new(&locator)
         .domain_id(domain_id)
         .node_name("xrce_serial_listener");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 

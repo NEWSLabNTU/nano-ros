@@ -61,8 +61,10 @@ fn main() {
     info!("nros Native Talker (Zenoh Transport)");
     info!("=========================================");
 
-    // Phase 115.L.5 — install the zenoh-pico C-vtable backend into
-    // the cffi runtime before opening any session. Idempotent.
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
     // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
     let config = ExecutorConfig::from_env().node_name("talker");

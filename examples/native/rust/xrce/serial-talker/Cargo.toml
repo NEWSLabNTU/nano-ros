@@ -16,4 +16,9 @@ path = "src/main.rs"
 # `session.c`; no separate `xrce-serial` Cargo feature needed.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }
+# Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
+# standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
+# cargo builds (no CMake glue) enable the feature so the library's
+# `build.rs` compiles the C port into the binary.
+nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 std_msgs = { version = "*", default-features = false }

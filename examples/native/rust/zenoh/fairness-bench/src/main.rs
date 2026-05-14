@@ -103,6 +103,10 @@ fn publish_scenario_1() {
     let config = ExecutorConfig::from_env().node_name("pub1");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
 
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub1").expect("Node");
 
@@ -142,6 +146,10 @@ fn publish_scenario_1() {
 /// Send 100 service requests to /bench2/add using Promise pattern.
 fn client_scenario_2() {
     let config = ExecutorConfig::from_env().node_name("client2");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("client2").expect("Node");
 
@@ -176,6 +184,10 @@ fn client_scenario_2() {
 /// Publish 2 topics at 50Hz + service requests at 10Hz for 20s.
 fn publish_scenario_3() {
     let config = ExecutorConfig::from_env().node_name("pub3");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub3").expect("Node");
 
@@ -265,6 +277,10 @@ fn scenario_1_asymmetric_subscriptions() {
     let sl_cb = slow_last.clone();
 
     let config = ExecutorConfig::from_env().node_name("sub1");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
@@ -350,6 +366,10 @@ fn scenario_2_service_burst() {
     let handled_cb = handled.clone();
 
     let config = ExecutorConfig::from_env().node_name("server2");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
@@ -410,6 +430,10 @@ fn scenario_3_mixed_load() {
     let svc_cb = svc_handled.clone();
 
     let config = ExecutorConfig::from_env().node_name("bench3");
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor

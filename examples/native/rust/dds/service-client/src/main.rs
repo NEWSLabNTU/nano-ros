@@ -25,6 +25,10 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("add_two_ints_client");
     // Phase 115.L.5 — install dust-dds C-vtable backend.
 
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    nros_rmw_dds::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open DDS session");
 
     let mut node = executor

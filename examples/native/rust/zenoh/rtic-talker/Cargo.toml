@@ -16,6 +16,11 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 # via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
 # `Executor::open`.
 nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
+# Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
+# standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
+# cargo builds (no CMake glue) enable the feature so the library's
+# `build.rs` compiles the C port into the binary.
+nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
