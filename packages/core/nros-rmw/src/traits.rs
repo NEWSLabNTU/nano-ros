@@ -933,6 +933,25 @@ pub trait Session {
     ) {
         let _ = (cb, ctx);
     }
+
+    /// Phase 124.F.1 — session-level connectivity probe.
+    ///
+    /// Sends a wire-level round-trip probe and waits up to
+    /// `timeout_ms`. `Ok(())` on reply, `Err(TransportError::Timeout)`
+    /// on no reply, `Err(TransportError::Unsupported)` when the
+    /// backend can't probe (DDS without participant introspection).
+    /// Lesson from micro-ROS's `rmw_uros_ping_agent`.
+    ///
+    /// Default body: `Err(Unsupported)`. Backends with a native
+    /// ping API (zenoh: `z_send_ping`; XRCE:
+    /// `uxr_ping_agent_session_until_timeout`) opt in by overriding.
+    fn ping_session(&mut self, timeout_ms: i32) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = timeout_ms;
+        Err(TransportError::Unsupported.into())
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See

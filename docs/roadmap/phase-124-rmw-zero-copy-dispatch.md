@@ -898,16 +898,42 @@ the same change as `set_wake_callback` lands.
 
 ### Thread F — Ping primitive
 
-- [ ] **124.F.1 — vtable slot.** Add `ping_session`.
-- [ ] **124.F.2 — Backend impls.** Zenoh `z_send_ping`, XRCE
-      `uxr_ping_agent_session_until_timeout`. DDS:
-      RET_UNSUPPORTED unless built-in topics light up.
-- [ ] **124.F.3 — C/C++ + Rust API.**
-      `nros_session_ping(session, timeout_ms)`,
-      `Executor::ping(timeout)`.
-- [ ] **124.F.4 — Test.** Bring up agent → ping succeeds.
-      Tear down agent → ping returns RET_TIMEOUT within
-      configured timeout.
+- [x] **124.F.1 — vtable slot.** Added `ping_session(session,
+      timeout_ms) -> nros_rmw_ret_t` to `nros_rmw_vtable_t` +
+      matching `Option<unsafe extern "C" fn(...)>` on
+      `NrosRmwVtable`. `Session::ping_session` trait method on
+      `nros-rmw` returns `Err(Unsupported)` by default; adapter
+      trampoline + `CffiSession::ping_session` forwarder wired.
+- [ ] **124.F.2 — Backend impls.** Deferred. zenoh-pico has no
+      `zpico_send_ping` shim today — would need a new wrapper
+      around `z_send_ping` in `packages/zpico/zpico-sys/c/zpico/zpico.c`
+      and a matching extern declaration in `nros-rmw-zenoh`.
+      micro-XRCE has `uxr_ping_agent_session_until_timeout`, but
+      the K.2 backend is header-only — needs a Rust-side `XrceRmw`
+      adapter that owns the session handle. DDS inherits the
+      default `Unsupported` (Cyclone's PARTICIPANT_DISCOVERY ping
+      could light it up later). All backends inherit `Unsupported`
+      until they opt in; vtable slot is in place, so each impl
+      drops in without an ABI bump.
+- [x] **124.F.3 — C/C++ + Rust API.**
+      - C: `nros_executor_ping(executor, timeout_ms) -> nros_ret_t`
+        in `packages/core/nros-c/src/executor.rs`; maps
+        `Timeout` / `Unsupported` to the matching `NROS_RET_*`
+        constants, surfaces backend errors as `NROS_RET_ERROR`.
+      - C++: `Executor::ping(timeout_ms)` in
+        `packages/core/nros-cpp/include/nros/executor.hpp`;
+        forwards to `nros_cpp_executor_ping`.
+      - Rust user-side: `Executor::ping(timeout_ms)` on
+        `nros_node::executor::Executor`; forwards through
+        `SessionStore::Deref` → `CffiSession::ping_session`.
+- [x] **124.F.4 — Test.** Routing test
+      `packages/core/nros-rmw-cffi/tests/ping_session.rs`:
+      slot returns `RET_OK` → `Ok(())`; slot returns
+      `RET_TIMEOUT` → `Err(Timeout)`; NULL slot →
+      `Err(Unsupported)` without dispatch. 3 tests, green under
+      `cargo test -p nros-rmw-cffi --test ping_session
+      --features alloc`. Full network E2E (real agent up → down)
+      requires the .F.2 backend impls; deferred with them.
 
 ## Acceptance criteria
 

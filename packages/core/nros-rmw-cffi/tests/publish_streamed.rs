@@ -243,6 +243,7 @@ const fn make_base() -> NrosRmwVtable {
         service_server_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
+        ping_session: None,
     }
 }
 

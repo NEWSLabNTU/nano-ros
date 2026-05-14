@@ -547,6 +547,20 @@ const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
 /**
+ * Phase 124.F.3 — session-level connectivity probe.
+ *
+ * Wire-level round-trip ("is the peer / agent / router reachable?")
+ * with `timeout_ms` budget. Returns `NROS_CPP_RET_OK` on reply,
+ * `NROS_CPP_RET_TIMEOUT` on no reply, `NROS_CPP_RET_UNSUPPORTED`
+ * when the active backend can't probe. Mirrors micro-ROS's
+ * `rmw_uros_ping_agent`.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_ping(void *handle, int32_t timeout_ms);
+
+/**
  * Identifier of the auto-created default `Fifo` SC. Phase 110.B.
  */
 uint8_t nros_cpp_default_sched_context_id(void);

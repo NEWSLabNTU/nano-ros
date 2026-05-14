@@ -817,6 +817,38 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     NROS_CPP_RET_OK
 }
 
+/// Phase 124.F.3 — session-level connectivity probe.
+///
+/// Wire-level round-trip ("is the peer / agent / router reachable?")
+/// with `timeout_ms` budget. Returns `NROS_CPP_RET_OK` on reply,
+/// `NROS_CPP_RET_TIMEOUT` on no reply, `NROS_CPP_RET_UNSUPPORTED`
+/// when the active backend can't probe. Mirrors micro-ROS's
+/// `rmw_uros_ping_agent`.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_ping(
+    handle: *mut c_void,
+    timeout_ms: i32,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    match ctx.executor.ping(timeout_ms) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
+            NROS_CPP_RET_TIMEOUT
+        }
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_CPP_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 // =============================================================================
 // Phase 110.B / 110.C — SchedContext FFI for the C++ wrapper
 // =============================================================================

@@ -631,6 +631,19 @@ pub struct NrosRmwVtable {
             user_ctx: *mut core::ffi::c_void,
         ) -> NrosRmwRet,
     >,
+
+    // ---- Phase 124.F.1 — session-level connectivity probe ----
+    /// Wire-level round-trip "is the peer / agent / router still
+    /// reachable?" probe. Cheaper than the service-availability
+    /// probe — no discovery state required.
+    ///
+    /// Returns `NROS_RMW_RET_OK` on reply within `timeout_ms`,
+    /// `NROS_RMW_RET_TIMEOUT` on no reply, or
+    /// `NROS_RMW_RET_UNSUPPORTED` when the backend can't probe.
+    /// NULL slot = runtime surfaces `Unsupported` to the caller.
+    pub ping_session: Option<
+        unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet,
+    >,
 }
 
 // ============================================================================
@@ -1506,6 +1519,23 @@ impl Session for CffiSession {
         // SAFETY: vtable trampoline owns the install/clear; result is
         // ignored — best-effort.
         let _ = unsafe { f(&mut view as *mut _, cb, ctx) };
+    }
+
+    fn ping_session(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
+        // Phase 124.F.1 — forward to the backend's vtable slot when
+        // available; NULL surfaces `Unsupported` to the caller (no
+        // implicit emulation — backends without a wire-level
+        // round-trip can't probe honestly).
+        let Some(f) = self.vtable.ping_session else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut view = self.make_view();
+        let rc = unsafe { f(&mut view, timeout_ms) };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
     }
 
     /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
@@ -2728,6 +2758,7 @@ mod tests {
         service_server_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
+        ping_session: None,
     };
 
     #[test]

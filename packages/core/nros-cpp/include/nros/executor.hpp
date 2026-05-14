@@ -113,6 +113,22 @@ class Executor {
         return Result(nros_cpp_spin_once(storage_, timeout_ms));
     }
 
+    /// Phase 124.F.3 — session-level connectivity probe.
+    ///
+    /// Wire-level round-trip ("is the peer / agent / router
+    /// reachable?") with `timeout_ms` budget. Returns
+    /// `Result::success()` on reply, `ErrorCode::Timeout` on no
+    /// reply, `ErrorCode::Unsupported` when the active backend
+    /// can't probe. Mirrors micro-ROS's `rmw_uros_ping_agent`.
+    ///
+    /// Useful for reconnect-on-link-loss patterns — call
+    /// periodically and tear down / re-open the executor on
+    /// timeout.
+    Result ping(int32_t timeout_ms) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_ping(storage_, timeout_ms));
+    }
+
     /// Spin for a duration (blocking).
     ///
     /// Repeatedly calls `spin_once()` until `duration_ms` has elapsed.

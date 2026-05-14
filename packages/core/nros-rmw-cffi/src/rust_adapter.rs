@@ -227,6 +227,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         service_server_available: Some(service_server_available_trampoline::<R>),
         try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
+        ping_session: Some(ping_session_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -813,6 +814,23 @@ unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
     match ServiceClientTrait::server_available(c) {
         Ok(true) => 1,
         Ok(false) => 0,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+unsafe extern "C" fn ping_session_trampoline<R: RustBackend>(
+    session: *mut NrosRmwSession,
+    timeout_ms: i32,
+) -> NrosRmwRet {
+    // Phase 124.F.1 — delegate to the Rust backend's
+    // `Session::ping_session` impl. Default trait body returns
+    // `Err(TransportError::Unsupported)`; concrete backends opt in
+    // by overriding.
+    let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match Session::ping_session(s, timeout_ms) {
+        Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
 }

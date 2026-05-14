@@ -305,6 +305,56 @@ pub unsafe extern "C" fn nros_executor_set_timeout(
     NROS_RET_OK
 }
 
+/// Phase 124.F.3 — session-level connectivity probe.
+///
+/// Sends a wire-level round-trip ("is the peer / agent / router
+/// reachable?") and waits up to `timeout_ms`. Mirrors micro-ROS's
+/// `rmw_uros_ping_agent`. Useful for reconnect-on-link-loss
+/// patterns: bare-metal code calls `ping(100)` periodically and
+/// tears down / re-opens the session on timeout.
+///
+/// # Returns
+/// * `NROS_RET_OK` — peer responded within budget.
+/// * `NROS_RET_TIMEOUT` — no reply before `timeout_ms`.
+/// * `NROS_RET_UNSUPPORTED` — active backend can't probe.
+/// * `NROS_RET_NOT_INIT` — executor not initialised.
+/// * `NROS_RET_INVALID_ARGUMENT` — `executor` is NULL.
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_ping(
+    executor: *mut nros_executor_t,
+    timeout_ms: i32,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let exec = get_executor(&mut exec_t._opaque);
+        match exec.ping(timeout_ms) {
+            Ok(()) => NROS_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
+                NROS_RET_TIMEOUT
+            }
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = timeout_ms;
+        NROS_RET_UNSUPPORTED
+    }
+}
+
 /// Set data communication semantics.
 ///
 /// # Safety

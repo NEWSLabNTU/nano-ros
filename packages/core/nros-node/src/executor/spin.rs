@@ -1115,6 +1115,25 @@ impl Executor {
         &mut self.session
     }
 
+    /// Phase 124.F.3 — session-level connectivity probe. Wire-level
+    /// round-trip "is the peer / agent / router still reachable?"
+    /// — cheaper than the service-availability probe (no discovery
+    /// state required).
+    ///
+    /// Returns `Ok(())` on reply within `timeout_ms`,
+    /// `Err(NodeError::Transport(Timeout))` on no reply,
+    /// `Err(NodeError::Transport(Unsupported))` when the active
+    /// backend can't probe.
+    ///
+    /// Mirrors micro-ROS's `rmw_uros_ping_agent`. Useful for
+    /// reconnect-on-link-loss patterns: bare-metal code can call
+    /// `ping(100)` periodically and tear down / re-open the session
+    /// on timeout.
+    pub fn ping(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session.ping_session(timeout_ms).map_err(NodeError::Transport)
+    }
+
     /// Get a mutable reference to an action client core in the arena by entry index.
     ///
     /// # Safety

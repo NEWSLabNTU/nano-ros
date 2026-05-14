@@ -325,6 +325,34 @@ typedef struct nros_rmw_vtable_t {
         void (*chunk_cb)(uint8_t *out_buf, size_t cap,
                          size_t *out_written, void *user_ctx),
         void *user_ctx);
+
+    /** Phase 124.F.1 — session-level connectivity probe.
+     *
+     *  Sends a wire-level round-trip probe ("is the peer / agent /
+     *  router still reachable?") and waits up to `timeout_ms` for
+     *  a reply. No discovery state required — cheaper than the
+     *  service-availability probe (which needs matched-publication
+     *  bookkeeping). Lesson from micro-ROS's
+     *  `rmw_uros_ping_agent`.
+     *
+     *  Returns:
+     *    * `NROS_RMW_RET_OK` — peer responded within budget.
+     *    * `NROS_RMW_RET_TIMEOUT` — no reply before `timeout_ms`.
+     *    * `NROS_RMW_RET_UNSUPPORTED` — backend can't probe (DDS
+     *      with no participant introspection).
+     *    * other negative — backend error.
+     *
+     *  Implementation notes per backend:
+     *  - **Zenoh**: `z_send_ping` (or session keep-alive piggyback).
+     *  - **XRCE**: `uxr_ping_agent_session_until_timeout`.
+     *  - **DDS**: built-in participant ping if available, else
+     *    `RET_UNSUPPORTED`.
+     *
+     *  NULL function pointer = runtime surfaces
+     *  `NROS_RMW_RET_UNSUPPORTED` to the caller. */
+    nros_rmw_ret_t (*ping_session)(
+        nros_rmw_session_t *session,
+        int32_t             timeout_ms);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".
