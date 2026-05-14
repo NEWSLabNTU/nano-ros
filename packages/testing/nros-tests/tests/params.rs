@@ -380,9 +380,9 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
-    // Wait for talker to start publishing
+    // Wait for the first timer publish, not just the startup log.
     let early_output = proc
-        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .wait_for_output_pattern("Published:", Duration::from_secs(5))
         .unwrap_or_default();
 
     // Kill the process before collecting output
