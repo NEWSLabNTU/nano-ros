@@ -217,7 +217,7 @@ if(CONFIG_NROS_C_API)
         # and emits `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
         set(_nros_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_features "rmw-dds-cffi,platform-zephyr,ros-humble")
+        set(_nros_features "rmw-cffi,cffi-dds-cffi,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)

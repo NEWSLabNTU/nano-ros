@@ -1,0 +1,5 @@
+// C++ compat for Zephyr picolibc targets without full libc++ headers.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTRING
+#define NROS_ZEPHYR_CXX_COMPAT_CSTRING
+#include <string.h>
+#endif

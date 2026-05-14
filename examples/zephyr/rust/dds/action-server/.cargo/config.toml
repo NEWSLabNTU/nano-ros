@@ -8,7 +8,6 @@ nros-params = { path = "../../../../../packages/core/nros-params" }
 nros-macros = { path = "../../../../../packages/core/nros-macros" }
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds" }
 nros-rmw-cffi = { path = "../../../../../packages/core/nros-rmw-cffi" }
-nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds" }
 nros-platform = { path = "../../../../../packages/core/nros-platform" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 action_msgs = { path = "generated/action_msgs" }

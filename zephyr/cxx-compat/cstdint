@@ -1,0 +1,16 @@
+// C++ compat for Zephyr picolibc targets without full libc++ headers.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDINT
+#define NROS_ZEPHYR_CXX_COMPAT_CSTDINT
+#include <stdint.h>
+
+namespace std {
+using ::int16_t;
+using ::int32_t;
+using ::int64_t;
+using ::int8_t;
+using ::uint16_t;
+using ::uint32_t;
+using ::uint64_t;
+using ::uint8_t;
+}
+#endif

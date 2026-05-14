@@ -1,0 +1,9 @@
+// C++ compat for Zephyr picolibc targets without full libc++ headers.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
+#define NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
+#include <stdlib.h>
+
+namespace std {
+using ::getenv;
+}
+#endif

@@ -1,0 +1,10 @@
+// C++ compat for Zephyr picolibc targets without full libc++ headers.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDIO
+#define NROS_ZEPHYR_CXX_COMPAT_CSTDIO
+#include <stdio.h>
+
+namespace std {
+using ::fprintf;
+using ::fputc;
+}
+#endif
