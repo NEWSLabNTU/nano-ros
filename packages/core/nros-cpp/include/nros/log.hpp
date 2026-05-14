@@ -26,31 +26,30 @@
 #define NROS_CPP_LOG_HPP
 
 #ifndef NROS_LOG_SINK
-#  if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
-#    include <cstdio>
-#    define NROS_LOG_SINK(level, file, line, ...)                                                    \
-        do {                                                                                         \
-            std::fprintf(stderr, "[" level "] %s:%d ", (file), (line));                              \
-            std::fprintf(stderr, __VA_ARGS__);                                                       \
-            std::fputc('\n', stderr);                                                                \
-        } while (0)
-#  else
-#    define NROS_LOG_SINK(level, file, line, ...)                                                    \
-        ((void)(level), (void)(file), (void)(line))
-#  endif
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <cstdio>
+#define NROS_LOG_SINK(level, file, line, ...)                                                      \
+    do {                                                                                           \
+        ::std::fprintf(stderr, "[" level "] %s:%d ", (file), (line));                              \
+        ::std::fprintf(stderr, __VA_ARGS__);                                                       \
+        ::std::fputc('\n', stderr);                                                                \
+    } while (0)
+#else
+#define NROS_LOG_SINK(level, file, line, ...) ((void)(level), (void)(file), (void)(line))
+#endif
 #endif
 
 /// Print an INFO-level log line.
-#define NROS_INFO(...)  NROS_LOG_SINK("INFO",  __FILE__, __LINE__, __VA_ARGS__)
+#define NROS_INFO(...) NROS_LOG_SINK("INFO", __FILE__, __LINE__, __VA_ARGS__)
 /// Print a WARN-level log line.
-#define NROS_WARN(...)  NROS_LOG_SINK("WARN",  __FILE__, __LINE__, __VA_ARGS__)
+#define NROS_WARN(...) NROS_LOG_SINK("WARN", __FILE__, __LINE__, __VA_ARGS__)
 /// Print an ERROR-level log line.
 #define NROS_ERROR(...) NROS_LOG_SINK("ERROR", __FILE__, __LINE__, __VA_ARGS__)
 /// Print a DEBUG-level log line. Compiled out when `NDEBUG` is set.
 #ifdef NDEBUG
-#  define NROS_DEBUG(...) ((void)0)
+#define NROS_DEBUG(...) ((void)0)
 #else
-#  define NROS_DEBUG(...) NROS_LOG_SINK("DEBUG", __FILE__, __LINE__, __VA_ARGS__)
+#define NROS_DEBUG(...) NROS_LOG_SINK("DEBUG", __FILE__, __LINE__, __VA_ARGS__)
 #endif
 
 #endif // NROS_CPP_LOG_HPP

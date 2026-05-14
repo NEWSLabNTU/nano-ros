@@ -12,7 +12,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
 #endif
 
@@ -349,13 +349,13 @@ template <int N> bool Node::GlobalStorageHolder<N>::initialized = false;
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
-#if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     // Phase 123.B.3 — on hosted builds, fall through to env vars
     // ($NROS_LOCATOR / $ROS_DOMAIN_ID) so the no-arg `nros::init()`
     // call works without `getenv()` boilerplate in user code.
     // Explicit non-null `locator` / non-zero `domain_id` still win.
     if (locator == nullptr) {
-        const char* env_loc = std::getenv("NROS_LOCATOR");
+        const char* env_loc = ::std::getenv("NROS_LOCATOR");
         if (env_loc != nullptr && env_loc[0] != '\0') {
             locator = env_loc;
         } else {
@@ -363,7 +363,7 @@ inline Result init(const char* locator, uint8_t domain_id) {
         }
     }
     if (domain_id == 0) {
-        const char* env_dom = std::getenv("ROS_DOMAIN_ID");
+        const char* env_dom = ::std::getenv("ROS_DOMAIN_ID");
         if (env_dom != nullptr && env_dom[0] != '\0') {
             // Parse decimal digits inline — no <cstdlib> dep.
             unsigned acc = 0;
@@ -501,7 +501,7 @@ inline Expected<Node> make_node(const char* name, const char* ns = nullptr) {
     Node n;
     Result r = create_node(n, name, ns);
     if (!r.ok()) return Expected<Node>::error(r);
-    return Expected<Node>::ok(std::move(n));
+    return Expected<Node>::ok(::std::move(n));
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --
@@ -540,16 +540,14 @@ class NodeBuilder {
     /// auto-ctor equivalent). Empty/nullptr selects the first-
     /// registered backend — the single-backend convenience path.
     NodeBuilder& rmw(const char* name) {
-        copy_bounded(name, options_.rmw_name, &options_.rmw_name_len,
-                     NROS_CPP_RMW_NAME_LEN);
+        copy_bounded(name, options_.rmw_name, &options_.rmw_name_len, NROS_CPP_RMW_NAME_LEN);
         return *this;
     }
 
     /// Override the Node's locator (`tcp/...`, `udp/...`, `serial:...`).
     /// Empty/nullptr inherits the executor's locator.
     NodeBuilder& locator(const char* loc) {
-        copy_bounded(loc, options_.locator, &options_.locator_len,
-                     NROS_CPP_LOCATOR_LEN);
+        copy_bounded(loc, options_.locator, &options_.locator_len, NROS_CPP_LOCATOR_LEN);
         return *this;
     }
 
@@ -563,8 +561,7 @@ class NodeBuilder {
     /// Set the Node's namespace (mirrors `rclcpp::Node`'s ctor). Empty
     /// or nullptr defaults to `"/"` at build time.
     NodeBuilder& namespace_(const char* ns) {
-        copy_bounded(ns, options_.namespace_, &options_.namespace_len,
-                     NROS_CPP_NAMESPACE_LEN);
+        copy_bounded(ns, options_.namespace_, &options_.namespace_len, NROS_CPP_NAMESPACE_LEN);
         return *this;
     }
 
@@ -579,8 +576,8 @@ class NodeBuilder {
     Result build(Node& out) const {
         if (!executor_handle_) return Result(ErrorCode::NotInitialized);
         out.executor_handle_ = executor_handle_;
-        nros_cpp_ret_t ret = nros_cpp_node_create_ex(
-            executor_handle_, name_, &options_, &out.handle_);
+        nros_cpp_ret_t ret =
+            nros_cpp_node_create_ex(executor_handle_, name_, &options_, &out.handle_);
         if (ret == 0) {
             out.initialized_ = true;
         }
@@ -588,8 +585,7 @@ class NodeBuilder {
     }
 
   private:
-    static void copy_bounded(const char* src, uint8_t* dst, size_t* dst_len,
-                             size_t cap) {
+    static void copy_bounded(const char* src, uint8_t* dst, size_t* dst_len, size_t cap) {
         size_t n = 0;
         if (src != nullptr) {
             while (src[n] != '\0' && n < cap) {

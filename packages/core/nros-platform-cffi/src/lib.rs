@@ -826,6 +826,12 @@ macro_rules! nros_platform_export_threading {
             <$ty as ::nros_platform_api::PlatformThreading>::condvar_signal_all(cv)
         }
         #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_signal_from_isr(
+            cv: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_signal_from_isr(cv)
+        }
+        #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_condvar_wait(
             cv: *mut ::core::ffi::c_void,
             m: *mut ::core::ffi::c_void,

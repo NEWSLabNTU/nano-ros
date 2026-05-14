@@ -71,3 +71,12 @@ static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
 extern "C" fn auto_register_ctor() {
     let _ = unsafe { nros_rmw_xrce_register() };
 }
+
+#[cfg(test)]
+#[unsafe(no_mangle)]
+extern "C" fn nros_rmw_cffi_register_named(
+    _name: *const core::ffi::c_char,
+    _vtable: *const core::ffi::c_void,
+) -> c_int {
+    0
+}

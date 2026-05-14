@@ -14,6 +14,9 @@
 
 #include <cstdint>
 #include <utility>
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <cstdio>
+#endif
 
 namespace nros {
 
@@ -104,14 +107,12 @@ class Result {
 /// semihosting, defmt, etc.). Opt out entirely with
 /// `#define NROS_TRY_LOG(file, line, expr, ret) ((void)0)`.
 #ifndef NROS_TRY_LOG
-#  if defined(NROS_CPP_STD) || defined(__STDC_HOSTED__)
-#    include <cstdio>
-#    define NROS_TRY_LOG(file, line, expr, ret)                                                      \
-        std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
-#  else
-#    define NROS_TRY_LOG(file, line, expr, ret)                                                      \
-        ((void)(file), (void)(line), (void)(expr), (void)(ret))
-#  endif
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+    ::std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+#else
+#define NROS_TRY_LOG(file, line, expr, ret) ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#endif
 #endif
 
 #define NROS_TRY_RET(expr, retval)                                                                 \
@@ -161,7 +162,7 @@ template <typename T> class Expected {
     static Expected ok(T value) {
         Expected e;
         e.ok_ = true;
-        e.value_ = std::move(value);
+        e.value_ = ::std::move(value);
         return e;
     }
     static Expected error(ErrorCode code) {
@@ -176,8 +177,8 @@ template <typename T> class Expected {
     explicit operator bool() const { return ok_; }
 
     T& value() & { return value_; }
-    const T& value() const & { return value_; }
-    T&& value() && { return std::move(value_); }
+    const T& value() const& { return value_; }
+    T&& value() && { return ::std::move(value_); }
 
     ErrorCode error() const { return error_; }
     Result error_as_result() const { return Result(error_); }

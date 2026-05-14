@@ -696,24 +696,18 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
     let mut builder = ctx.executor.node_builder(name_str);
     if opts.rmw_name_len > 0 {
-        let rmw = unsafe {
-            core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len])
-        };
+        let rmw = unsafe { core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len]) };
         builder = builder.rmw(rmw);
     }
     if opts.locator_len > 0 {
-        let loc = unsafe {
-            core::str::from_utf8_unchecked(&opts.locator[..opts.locator_len])
-        };
+        let loc = unsafe { core::str::from_utf8_unchecked(&opts.locator[..opts.locator_len]) };
         builder = builder.locator(loc);
     }
     if opts.domain_id_override != NROS_CPP_DOMAIN_ID_INHERIT {
         builder = builder.domain_id(opts.domain_id_override);
     }
     if opts.namespace_len > 0 {
-        let ns = unsafe {
-            core::str::from_utf8_unchecked(&opts.namespace[..opts.namespace_len])
-        };
+        let ns = unsafe { core::str::from_utf8_unchecked(&opts.namespace[..opts.namespace_len]) };
         builder = builder.namespace(ns);
     }
     if opts.sched_context_id != 0 {
