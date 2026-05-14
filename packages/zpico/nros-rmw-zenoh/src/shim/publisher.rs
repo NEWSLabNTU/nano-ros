@@ -352,7 +352,7 @@ impl Publisher for ZenohPublisher {
     /// contiguously. Incremental CRC across the writer chunks is
     /// possible but out of scope for the v1 surface.
     #[cfg(not(feature = "safety-e2e"))]
-    fn publish_streamed(
+    unsafe fn publish_streamed(
         &self,
         size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
         chunk_cb: unsafe extern "C" fn(

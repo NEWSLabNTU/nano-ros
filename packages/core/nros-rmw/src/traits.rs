@@ -923,10 +923,16 @@ pub trait Session {
     /// `spin_once` blocked on the wake condvar resumes immediately
     /// instead of waiting for the next poll iteration.
     ///
+    /// # Safety
+    ///
+    /// When `cb` is `Some`, `ctx` must remain valid until the callback is
+    /// cleared or the session is closed. The backend may invoke `cb(ctx)` from
+    /// its transport notification path.
+    ///
     /// Default body: ignore the call. Poll-only backends (XRCE,
     /// bare-metal) leave the default in place; the executor still
     /// drains them on its deadline-bound cv-wait boundary.
-    fn set_wake_callback(
+    unsafe fn set_wake_callback(
         &mut self,
         cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
         ctx: *mut core::ffi::c_void,
@@ -1104,12 +1110,17 @@ pub trait Publisher {
     /// outbound buffer; XRCE: micro-CDR streaming APIs).
     ///
     /// # Safety
+    ///
+    /// The caller must ensure `user_ctx` is valid for every invocation of
+    /// `size_cb` and `chunk_cb` during this call, and that both callbacks obey
+    /// their out-pointer contracts.
+    ///
     /// `size_cb` and `chunk_cb` may be called from the same thread
     /// that called `publish_streamed`. Backends MUST NOT defer the
     /// calls past the function return; the caller's `user_ctx`
     /// pointer is only guaranteed valid for the duration of the
     /// call.
-    fn publish_streamed(
+    unsafe fn publish_streamed(
         &self,
         size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
         chunk_cb: unsafe extern "C" fn(

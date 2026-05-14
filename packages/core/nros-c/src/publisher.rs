@@ -375,7 +375,9 @@ pub unsafe extern "C" fn nros_publisher_publish_streamed(
     {
         use nros_node::Publisher;
         let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
-        match pub_handle.publish_streamed(size_cb, chunk_cb, user_ctx) {
+        // SAFETY: this C entry point is unsafe; callers must keep
+        // `user_ctx` valid for the synchronous callback sequence.
+        match unsafe { pub_handle.publish_streamed(size_cb, chunk_cb, user_ctx) } {
             Ok(()) => NROS_RET_OK,
             Err(_) => NROS_RET_PUBLISH_FAILED,
         }

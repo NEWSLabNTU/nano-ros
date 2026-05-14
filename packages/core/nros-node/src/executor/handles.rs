@@ -195,9 +195,13 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             total: total_len,
         };
         let ctx_ptr = &mut ctx as *mut Ctx<F> as *mut core::ffi::c_void;
-        self.handle
-            .publish_streamed(size_cb::<F>, chunk_cb::<F>, ctx_ptr)
-            .map_err(NodeError::Transport)
+        // SAFETY: `ctx` lives until this call returns, and both callbacks
+        // only cast `user_ctx` back to that stack-local `Ctx<F>`.
+        unsafe {
+            self.handle
+                .publish_streamed(size_cb::<F>, chunk_cb::<F>, ctx_ptr)
+        }
+        .map_err(NodeError::Transport)
     }
 
     /// Phase 108.B — manually assert this publisher's liveliness.

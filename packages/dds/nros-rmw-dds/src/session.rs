@@ -910,7 +910,7 @@ impl Session for DdsSession {
         Ok(())
     }
 
-    fn set_wake_callback(
+    unsafe fn set_wake_callback(
         &mut self,
         cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
         ctx: *mut core::ffi::c_void,

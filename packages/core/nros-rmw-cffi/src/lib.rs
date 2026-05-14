@@ -543,10 +543,7 @@ pub struct NrosRmwVtable {
     /// Abandon a previously loaned slot. NULL = paired with NULL
     /// `pub_loan`.
     pub pub_discard: Option<
-        unsafe extern "C" fn(
-            publisher: *mut NrosRmwPublisher,
-            token: *mut core::ffi::c_void,
-        ),
+        unsafe extern "C" fn(publisher: *mut NrosRmwPublisher, token: *mut core::ffi::c_void),
     >,
 
     // ---- Phase 124.A — zero-copy subscriber borrow ----
@@ -564,10 +561,7 @@ pub struct NrosRmwVtable {
     /// Release a previously borrowed view. NULL = paired with NULL
     /// `sub_borrow`.
     pub sub_release: Option<
-        unsafe extern "C" fn(
-            subscriber: *mut NrosRmwSubscriber,
-            token: *mut core::ffi::c_void,
-        ),
+        unsafe extern "C" fn(subscriber: *mut NrosRmwSubscriber, token: *mut core::ffi::c_void),
     >,
 
     // ---- Phase 124.C.1 — service-server availability probe ----
@@ -641,9 +635,8 @@ pub struct NrosRmwVtable {
     /// `NROS_RMW_RET_TIMEOUT` on no reply, or
     /// `NROS_RMW_RET_UNSUPPORTED` when the backend can't probe.
     /// NULL slot = runtime surfaces `Unsupported` to the caller.
-    pub ping_session: Option<
-        unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet,
-    >,
+    pub ping_session:
+        Option<unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet>,
 }
 
 // ============================================================================
@@ -910,12 +903,13 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     if name.is_null() || vtable.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    let name_u8 = name.cast::<u8>();
 
     // Length-check the input. We scan up to BACKEND_NAME_MAX + 1
     // bytes; anything longer is rejected.
     let mut len = 0usize;
     while len < BACKEND_NAME_MAX {
-        let b = unsafe { *name.add(len) } as u8;
+        let b = unsafe { *name_u8.add(len) };
         if b == 0 {
             break;
         }
@@ -925,11 +919,11 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     // Must have found a NUL within BACKEND_NAME_MAX.
-    if unsafe { *name.add(len) } != 0 {
+    if unsafe { *name_u8.add(len) } != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    let name_bytes = unsafe { core::slice::from_raw_parts(name as *const u8, len) };
+    let name_bytes = unsafe { core::slice::from_raw_parts(name_u8, len) };
 
     // First pass: look for existing entry with same name → overwrite.
     let current_len = REGISTRY.len.load(Ordering::Acquire);
@@ -985,9 +979,10 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     if name.is_null() {
         return core::ptr::null();
     }
+    let name_u8 = name.cast::<u8>();
     let mut len = 0usize;
     while len < BACKEND_NAME_MAX {
-        if unsafe { *name.add(len) } == 0 {
+        if unsafe { *name_u8.add(len) } == 0 {
             break;
         }
         len += 1;
@@ -995,7 +990,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     if len == 0 || len == BACKEND_NAME_MAX {
         return core::ptr::null();
     }
-    let name_bytes = unsafe { core::slice::from_raw_parts(name as *const u8, len) };
+    let name_bytes = unsafe { core::slice::from_raw_parts(name_u8, len) };
 
     let current_len = REGISTRY.len.load(Ordering::Acquire);
     for i in 0..current_len {
@@ -1028,7 +1023,10 @@ pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
         for i in 0..limit {
             // SAFETY: i < limit <= cap, buf capacity guaranteed by caller.
             let slot = unsafe { REGISTRY.slot(i) };
-            unsafe { buf.add(i).write(slot.name.as_ptr() as *const core::ffi::c_char) };
+            unsafe {
+                buf.add(i)
+                    .write(slot.name.as_ptr() as *const core::ffi::c_char)
+            };
         }
     }
     n
@@ -1502,7 +1500,7 @@ impl Session for CffiSession {
         if ret < 0 { None } else { Some(ret as u32) }
     }
 
-    fn set_wake_callback(
+    unsafe fn set_wake_callback(
         &mut self,
         cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
         ctx: *mut core::ffi::c_void,
@@ -1719,10 +1717,7 @@ impl<'a> Drop for CffiSlot<'a> {
 impl nros_rmw::SlotLending for CffiPublisher {
     type Slot<'a> = CffiSlot<'a>;
 
-    fn try_lend_slot(
-        &self,
-        len: usize,
-    ) -> Result<Option<CffiSlot<'_>>, TransportError> {
+    fn try_lend_slot(&self, len: usize) -> Result<Option<CffiSlot<'_>>, TransportError> {
         let Some(loan) = self.vtable.pub_loan else {
             // Phase 124.A.3 — backend doesn't natively lend; allocate
             // a staging buffer and stash it in `token` so commit can
@@ -1765,15 +1760,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         let mut out_token: *mut c_void = core::ptr::null_mut();
         // SAFETY: vtable contract — slot pointers stay valid until
         // commit / discard.
-        let ret = unsafe {
-            loan(
-                &mut view,
-                len,
-                &mut out_buf,
-                &mut out_cap,
-                &mut out_token,
-            )
-        };
+        let ret = unsafe { loan(&mut view, len, &mut out_buf, &mut out_cap, &mut out_token) };
         if ret == NROS_RMW_RET_WOULD_BLOCK || ret == NROS_RMW_RET_NO_DATA {
             return Ok(None);
         }
@@ -1813,9 +1800,8 @@ impl nros_rmw::SlotLending for CffiPublisher {
             {
                 // SAFETY: `slot.token` came from
                 // `Box::into_raw(Box<ArenaStaging>)` in try_lend_slot.
-                let staging = unsafe {
-                    alloc::boxed::Box::from_raw(slot.token as *mut ArenaStaging)
-                };
+                let staging =
+                    unsafe { alloc::boxed::Box::from_raw(slot.token as *mut ArenaStaging) };
                 let bytes = &staging.buf[..slot.cursor.min(staging.buf.len())];
                 return Publisher::publish_raw(self, bytes);
             }
@@ -1824,10 +1810,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
                 return Err(TransportError::Unsupported);
             }
         }
-        let commit = self
-            .vtable
-            .pub_commit
-            .ok_or(TransportError::Unsupported)?;
+        let commit = self.vtable.pub_commit.ok_or(TransportError::Unsupported)?;
         let mut view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr(),
             type_name: self.type_name_buf.as_ptr(),
@@ -1867,7 +1850,7 @@ impl Publisher for CffiPublisher {
         Ok(())
     }
 
-    fn publish_streamed(
+    unsafe fn publish_streamed(
         &self,
         size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
         chunk_cb: unsafe extern "C" fn(
@@ -2099,14 +2082,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscriber {
         let mut out_token: *mut c_void = core::ptr::null_mut();
         // SAFETY: vtable contract — borrowed pointers stay valid
         // until `sub_release` runs.
-        let rc = unsafe {
-            borrow(
-                &mut view,
-                &mut out_buf,
-                &mut out_len,
-                &mut out_token,
-            )
-        };
+        let rc = unsafe { borrow(&mut view, &mut out_buf, &mut out_len, &mut out_token) };
         if rc == 0 {
             // No message ready.
             return Ok(None);

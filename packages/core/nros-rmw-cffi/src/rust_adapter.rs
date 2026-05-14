@@ -797,7 +797,9 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     };
     // Phase 124.B.1 — delegate to the Rust backend. Default trait
     // body ignores; concrete backends opt in.
-    Session::set_wake_callback(s, cb, ctx);
+    // SAFETY: this trampoline forwards the C ABI's callback/context
+    // lifetime contract to the Rust backend.
+    unsafe { Session::set_wake_callback(s, cb, ctx) };
     NROS_RMW_RET_OK
 }
 
@@ -854,7 +856,9 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    match Publisher::publish_streamed(p, size_cb, chunk_cb, user_ctx) {
+    // SAFETY: this trampoline is entered from the C ABI with the same
+    // callback/user_ctx lifetime contract required by `Publisher::publish_streamed`.
+    match unsafe { Publisher::publish_streamed(p, size_cb, chunk_cb, user_ctx) } {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }

@@ -16,8 +16,10 @@
 //! Both paths deliver byte-identical wire output.
 #![cfg(feature = "alloc")]
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 use std::sync::Mutex;
 
 use nros_rmw::{Publisher as _, QosSettings, Session, SessionMode, TopicInfo};
@@ -206,7 +208,10 @@ unsafe extern "C" fn stub_publish_streamed(
         }
         filled += written;
     }
-    NATIVE_RECORD.lock().unwrap().extend_from_slice(&buf[..filled]);
+    NATIVE_RECORD
+        .lock()
+        .unwrap()
+        .extend_from_slice(&buf[..filled]);
     NROS_RMW_RET_OK
 }
 
@@ -314,8 +319,10 @@ fn publish_streamed_native_path() {
         bytes: PAYLOAD,
         cursor: 0,
     };
-    pub_.publish_streamed(sz, ch, &mut ctx as *mut Ctx as *mut c_void)
-        .expect("publish_streamed");
+    unsafe {
+        pub_.publish_streamed(sz, ch, &mut ctx as *mut Ctx as *mut c_void)
+            .expect("publish_streamed");
+    }
 
     let rec = NATIVE_RECORD.lock().unwrap();
     assert_eq!(&rec[..], PAYLOAD);
@@ -366,8 +373,10 @@ fn publish_streamed_fallback_path() {
         bytes: PAYLOAD,
         cursor: 0,
     };
-    pub_.publish_streamed(sz, ch, &mut ctx as *mut Ctx as *mut c_void)
-        .expect("publish_streamed fallback");
+    unsafe {
+        pub_.publish_streamed(sz, ch, &mut ctx as *mut Ctx as *mut c_void)
+            .expect("publish_streamed fallback");
+    }
 
     let rec = FALLBACK_RECORD.lock().unwrap();
     assert_eq!(&rec[..], PAYLOAD, "fallback wire bytes match input");

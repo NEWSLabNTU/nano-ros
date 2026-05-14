@@ -86,6 +86,7 @@ impl Executor {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
         executor.set_node_identity(config.node_name, config.namespace);
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         Ok(executor)
     }
@@ -104,10 +105,7 @@ impl Executor {
     /// from `docs/roadmap/phase-104-multi-backend-bridges.md`) is
     /// follow-up work — Phase 104.C.2 + C.3.
     #[cfg(feature = "rmw-cffi")]
-    pub fn open_with_rmw(
-        rmw_name: &str,
-        config: &ExecutorConfig<'_>,
-    ) -> Result<Self, NodeError> {
+    pub fn open_with_rmw(rmw_name: &str, config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         if !nros_rmw_cffi::backend_registered() {
             return Err(NodeError::Transport(TransportError::ConnectionFailed));
         }
@@ -124,6 +122,7 @@ impl Executor {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
         executor.set_node_identity(config.node_name, config.namespace);
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         Ok(executor)
     }
@@ -200,7 +199,7 @@ impl core::ops::DerefMut for SessionStore {
 ///
 /// The sizes are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
 /// `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables at build time.
-
+///
 /// Phase 124.B.2 — opaque context handed to the runtime wake
 /// callback. Backends store the raw pointer + invoke the callback;
 /// the callback decodes back to `&WakeCtx`.
@@ -246,8 +245,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // before dropping wake_ctx; this happens in `install_wake_*`
     // teardown path.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
-    wake.flag
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+    wake.flag.store(true, std::sync::atomic::Ordering::SeqCst);
     // Lock-free notify. The waiter observes wake_flag under wake_mu
     // in its wait_timeout_while predicate — flag.store with SeqCst
     // happens-before any subsequent acquire in the waiter, so the
@@ -308,9 +306,8 @@ impl WakeSignalFd {
                 let ctx = ctx_addr as *const WakeCtx;
                 loop {
                     let mut buf = [0u8; 8];
-                    let n = unsafe {
-                        libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8)
-                    };
+                    let n =
+                        unsafe { libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8) };
                     if n <= 0 {
                         // EINTR / EOF — re-check shutdown then loop.
                         if shutdown_clone.load(std::sync::atomic::Ordering::Acquire) {
@@ -362,11 +359,7 @@ impl Drop for WakeSignalFd {
         // Wake the worker so it re-checks shutdown.
         let one: u64 = 1;
         unsafe {
-            libc::write(
-                self.fd,
-                &one as *const u64 as *const core::ffi::c_void,
-                8,
-            );
+            libc::write(self.fd, &one as *const u64 as *const core::ffi::c_void, 8);
         }
         if let Some(j) = self.worker.take() {
             let _ = j.join();
@@ -468,8 +461,7 @@ pub struct Executor {
     /// SchedContext) for every Node attached to this Executor. The
     /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
     /// `namespace` above and is auto-populated on first use.
-    pub(crate) nodes:
-        heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
+    pub(crate) nodes: heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
     /// calls that named a backend different from the Executor's
     /// primary session. Indexed by `NodeRecord.session_idx`
@@ -909,8 +901,12 @@ impl Executor {
     fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
-        self.session
-            .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+        // SAFETY: `ctx` points at executor-owned wake state that outlives
+        // the session callback installation and is cleared on executor drop.
+        unsafe {
+            self.session
+                .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+        }
     }
 
     /// Phase 124.B.1 — install the wake callback onto an extra
@@ -921,7 +917,11 @@ impl Executor {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
         if let Some(s) = self.extra_sessions.get_mut(idx) {
-            s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+            // SAFETY: same executor-owned wake state as the primary session;
+            // the extra session is owned by this executor.
+            unsafe {
+                s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+            }
         }
     }
 
@@ -948,11 +948,7 @@ impl Executor {
     ///
     /// Returns the raw fd. The Executor retains ownership; do not
     /// `close()` it from the caller.
-    #[cfg(all(
-        feature = "signal-fd-wake",
-        feature = "rmw-cffi",
-        target_os = "linux"
-    ))]
+    #[cfg(all(feature = "signal-fd-wake", feature = "rmw-cffi", target_os = "linux"))]
     pub fn signal_fd(&mut self) -> std::io::Result<core::ffi::c_int> {
         let ctx_ptr = self.wake_ctx_ptr() as *const WakeCtx;
         if self.signal_fd.is_none() {
@@ -990,7 +986,9 @@ impl Executor {
         node_id: Option<super::node_record::NodeId>,
     ) {
         let Some(id) = node_id else { return };
-        let Some(rec) = self.nodes.get(id.index()) else { return };
+        let Some(rec) = self.nodes.get(id.index()) else {
+            return;
+        };
         let sc = rec.default_sched;
         if sc.0 == 0 {
             return;
@@ -1131,7 +1129,9 @@ impl Executor {
     /// on timeout.
     pub fn ping(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
         use nros_rmw::Session;
-        self.session.ping_session(timeout_ms).map_err(NodeError::Transport)
+        self.session
+            .ping_session(timeout_ms)
+            .map_err(NodeError::Transport)
     }
 
     /// Get a mutable reference to an action client core in the arena by entry index.
@@ -1597,8 +1597,7 @@ impl Executor {
                 .create_subscriber(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
-        let handle_id =
-            self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
+        let handle_id = self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(handle_id.0, Some(node_id));
         Ok(handle_id)
@@ -1714,9 +1713,7 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
-        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
-            None, topic_name, callback,
-        )
+        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(None, topic_name, callback)
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
@@ -2046,12 +2043,7 @@ impl Executor {
 
     /// Phase 104.C.3.3.a — Node-aware variant of
     /// [`register_service_sized`](Self::register_service_sized).
-    pub fn register_service_sized_on<
-        Svc,
-        F,
-        const REQ_BUF: usize,
-        const REPLY_BUF: usize,
-    >(
+    pub fn register_service_sized_on<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
@@ -2298,13 +2290,7 @@ impl Executor {
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
         self.register_subscription_raw_with_qos_sized_inner::<RX_BUF>(
-            None,
-            topic_name,
-            type_name,
-            type_hash,
-            qos,
-            callback,
-            context,
+            None, topic_name, type_name, type_hash, qos, callback, context,
         )
     }
 
@@ -2312,6 +2298,7 @@ impl Executor {
     /// [`register_subscription_raw_with_qos_sized`]. Used by the
     /// C API thin-wrapper path so consumers can route raw-byte
     /// subscriptions through a specific `NodeId`'s session.
+    #[allow(clippy::too_many_arguments)]
     pub fn register_subscription_raw_with_qos_sized_on<const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -2333,6 +2320,7 @@ impl Executor {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn register_subscription_raw_with_qos_sized_inner<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,

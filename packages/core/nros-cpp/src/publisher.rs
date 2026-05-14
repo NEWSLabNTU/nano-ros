@@ -170,7 +170,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
-    match publisher.publish_streamed(size_cb, chunk_cb, user_ctx) {
+    // SAFETY: this C++ FFI entry point is unsafe; callers must keep
+    // `user_ctx` valid for the synchronous callback sequence.
+    match unsafe { publisher.publish_streamed(size_cb, chunk_cb, user_ctx) } {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -255,9 +257,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
     }
     use nros_rmw::SlotLending;
     let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
-    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> = unsafe {
-        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>)
-    };
+    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
+        unsafe { alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>) };
     slot.set_len(actual_len);
     match publisher.commit_slot(*slot) {
         Ok(()) => NROS_CPP_RET_OK,
@@ -280,9 +281,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_discard(
     if storage.is_null() || token.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> = unsafe {
-        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>)
-    };
+    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
+        unsafe { alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>) };
     NROS_CPP_RET_OK
 }
 
