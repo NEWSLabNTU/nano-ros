@@ -339,6 +339,22 @@ fn generate_config(
 #define GUARD_HANDLE_OPAQUE_U64S {guard_u64s_c}
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S {lifecycle_u64s_c}
 
+/* Phase 122.3.d — C++-only Zephyr builds still include the C API's
+ * nros_generated.h, whose public handle structs need the C-side raw
+ * opaque storage macros. nros-c's build.rs emits these in C builds; mirror
+ * them here because nros-c is not compiled in CPP-only build contexts.
+ */
+#undef SUBSCRIPTION_OPAQUE_U64S
+#define SUBSCRIPTION_OPAQUE_U64S {exact_raw_subscription_u64s}
+#undef SERVICE_SERVER_OPAQUE_U64S
+#define SERVICE_SERVER_OPAQUE_U64S {exact_raw_service_server_u64s}
+#undef SERVICE_CLIENT_OPAQUE_U64S
+#define SERVICE_CLIENT_OPAQUE_U64S {exact_raw_service_client_u64s}
+#undef ACTION_SERVER_OPAQUE_U64S
+#define ACTION_SERVER_OPAQUE_U64S {exact_raw_action_server_u64s}
+#undef ACTION_CLIENT_OPAQUE_U64S
+#define ACTION_CLIENT_OPAQUE_U64S {exact_raw_action_client_u64s}
+
 #ifdef __cplusplus
 extern \"C\" {{
 #endif
