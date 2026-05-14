@@ -118,6 +118,100 @@ impl Subscriber for DdsSubscriber {
         }
     }
 
+    // Phase 124.D.3 — native batch take. dust-dds's DataReader::take
+    // accepts max_samples and returns Vec<Sample<Foo>> in one call.
+    // Iterate the returned vec into the caller's contiguous slot
+    // buffer. Saves N × await/block_on round-trips compared to the
+    // trait default's per-slot try_recv_raw loop.
+    fn try_recv_sequence(
+        &mut self,
+        buf: &mut [u8],
+        per_msg_cap: usize,
+        max_msgs: usize,
+        out_lens: &mut [usize],
+    ) -> Result<usize, Self::Error> {
+        if per_msg_cap == 0 || max_msgs == 0 {
+            return Ok(0);
+        }
+        let limit = max_msgs.min(out_lens.len());
+        let need = limit.checked_mul(per_msg_cap).ok_or(TransportError::PollFailed)?;
+        if buf.len() < need {
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        #[cfg(feature = "std")]
+        {
+            use dust_dds::infrastructure::sample_info::{
+                ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
+            };
+            let samples = match self.reader.take(
+                limit as i32,
+                ANY_SAMPLE_STATE,
+                ANY_VIEW_STATE,
+                ANY_INSTANCE_STATE,
+            ) {
+                Ok(s) => s,
+                Err(dust_dds::infrastructure::error::DdsError::NoData) => return Ok(0),
+                Err(_) => return Err(TransportError::PollFailed),
+            };
+            let mut produced = 0usize;
+            for sample in samples.into_iter() {
+                if produced >= limit {
+                    break;
+                }
+                let Some(payload) = sample.data else { continue };
+                let len = payload.data.len();
+                if len > per_msg_cap {
+                    return Err(TransportError::MessageTooLarge);
+                }
+                let off = produced * per_msg_cap;
+                buf[off..off + len].copy_from_slice(&payload.data);
+                out_lens[produced] = len;
+                produced += 1;
+            }
+            return Ok(produced);
+        }
+
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+        {
+            use dust_dds::infrastructure::sample_info::{
+                ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
+            };
+            let samples = match self.runtime.block_on(self.reader_async.take(
+                limit as i32,
+                ANY_SAMPLE_STATE,
+                ANY_VIEW_STATE,
+                ANY_INSTANCE_STATE,
+            )) {
+                Ok(s) => s,
+                Err(dust_dds::infrastructure::error::DdsError::NoData) => return Ok(0),
+                Err(_) => return Err(TransportError::PollFailed),
+            };
+            let mut produced = 0usize;
+            for sample in samples.into_iter() {
+                if produced >= limit {
+                    break;
+                }
+                let Some(payload) = sample.data else { continue };
+                let len = payload.data.len();
+                if len > per_msg_cap {
+                    return Err(TransportError::MessageTooLarge);
+                }
+                let off = produced * per_msg_cap;
+                buf[off..off + len].copy_from_slice(&payload.data);
+                out_lens[produced] = len;
+                produced += 1;
+            }
+            return Ok(produced);
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
+        {
+            let _ = (buf, out_lens);
+            Err(TransportError::PollFailed)
+        }
+    }
+
     fn has_data(&self) -> bool {
         true
     }

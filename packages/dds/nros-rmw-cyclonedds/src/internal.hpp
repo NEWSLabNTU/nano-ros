@@ -55,6 +55,11 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
 void           subscriber_destroy(nros_rmw_subscriber_t *subscriber);
 int32_t        subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
                                        uint8_t *buf, size_t buf_len);
+int32_t        subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
+                                            uint8_t *buf,
+                                            size_t   per_msg_cap,
+                                            size_t   max_msgs,
+                                            size_t  *out_lens);
 int32_t        subscriber_has_data(nros_rmw_subscriber_t *subscriber);
 
 /* ---- service.cpp ---- */

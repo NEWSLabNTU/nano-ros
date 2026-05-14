@@ -177,6 +177,91 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     return static_cast<int32_t>(total);
 }
 
+// Phase 124.D.3 — native batch take. Cyclone DDS `dds_take` accepts
+// (reader, buf, info, count, maxs) and returns N samples in one
+// call. Serialise each typed sample back to CDR with the same
+// encoding-header convention as `subscriber_try_recv_raw`.
+int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
+                                     uint8_t *buf,
+                                     size_t   per_msg_cap,
+                                     size_t   max_msgs,
+                                     size_t  *out_lens) {
+    if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    if (per_msg_cap == 0 || max_msgs == 0) {
+        return 0;
+    }
+    SubState *state = as_state(subscriber);
+    if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
+        return NROS_RMW_RET_ERROR;
+    }
+
+    // Stack-cap the per-call slot budget; Cyclone happily takes
+    // any N but we want to bound the stack alloc. Larger callers
+    // can issue multiple sequence-take rounds.
+    constexpr size_t kMaxBatch = 32;
+    const size_t take_n = max_msgs > kMaxBatch ? kMaxBatch : max_msgs;
+
+    void *samples[kMaxBatch] = {nullptr};
+    dds_sample_info_t si[kMaxBatch];
+
+    dds_return_t taken = dds_take(state->reader, samples, si, take_n, take_n);
+    if (taken < 0) {
+        return NROS_RMW_RET_ERROR;
+    }
+    if (taken == 0) {
+        return 0;
+    }
+
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    constexpr uint8_t kEncId[2] = {0x00, 0x01};
+#else
+    constexpr uint8_t kEncId[2] = {0x00, 0x00};
+#endif
+    constexpr uint8_t kEncOpts[2] = {0x00, 0x00};
+
+    size_t produced = 0;
+    int32_t err = 0;
+    for (dds_return_t i = 0; i < taken; ++i) {
+        if (!si[i].valid_data) {
+            continue;
+        }
+        dds_ostream_t os;
+        dds_ostream_init(&os, 0, 1 /*xcdr1*/);
+        bool ok = dds_stream_write_sample(&os, samples[i], state->st->as_sertype());
+        if (!ok) {
+            dds_ostream_fini(&os);
+            err = NROS_RMW_RET_ERROR;
+            break;
+        }
+        uint32_t paylen = os.m_index;
+        uint32_t total  = paylen + 4;
+        if (per_msg_cap < total) {
+            dds_ostream_fini(&os);
+            err = NROS_RMW_RET_BUFFER_TOO_SMALL;
+            break;
+        }
+        uint8_t *slot = buf + produced * per_msg_cap;
+        slot[0] = kEncId[0];
+        slot[1] = kEncId[1];
+        slot[2] = kEncOpts[0];
+        slot[3] = kEncOpts[1];
+        std::memcpy(slot + 4, os.m_buffer, paylen);
+        out_lens[produced] = total;
+        produced++;
+        dds_ostream_fini(&os);
+    }
+
+    // Return all loans (valid + invalid) in one call.
+    (void) dds_return_loan(state->reader, samples, taken);
+
+    if (err < 0) {
+        return err;
+    }
+    return static_cast<int32_t>(produced);
+}
+
 int32_t subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
     SubState *state = as_state(subscriber);

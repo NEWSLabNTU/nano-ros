@@ -78,6 +78,22 @@ const nros_rmw_vtable_t kVtable = {
     /*pub_discard*/               nullptr,
     /*sub_borrow*/                nullptr,
     /*sub_release*/               nullptr,
+
+    /* Phase 124.C — service availability probe. Deferred until the
+     * Cyclone DDS built-in topic readers are wired through (matches
+     * the 124.C.2 dust-dds blocker). nullptr → runtime surfaces
+     * NROS_RMW_RET_UNSUPPORTED, no stub. */
+    /*service_server_available*/  nullptr,
+
+    /* Phase 124.D.3 — native batch take. Cyclone provides
+     * `dds_take(reader, buf, info, count, maxs)` as a single-call
+     * batch API; we wrap it in subscriber_try_recv_sequence with
+     * CDR re-serialisation per slot. */
+    /*try_recv_sequence*/         subscriber_try_recv_sequence,
+
+    /* Phase 124.E — continuous serialization. nullptr → runtime
+     * staging-buffer fallback. */
+    /*publish_streamed*/          nullptr,
 };
 
 } // namespace
