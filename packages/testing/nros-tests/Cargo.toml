@@ -48,12 +48,33 @@ nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = 
 # Node + executor API (optional, for trigger condition integration tests)
 nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "platform-posix", "ros-humble"], optional = true }
 
+# Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
+# loan E2E test. Optional so the default test build doesn't pull
+# zenoh-pico unnecessarily.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["lending", "platform-posix", "link-tcp"], optional = true }
+# Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E
+# binary. Without `posix-c-port`, nros-platform-cffi declares the
+# canonical symbols extern without providing them, and link fails.
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", features = ["posix-c-port"], optional = true }
+
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
 rmw = ["nros-rmw", "nros-core", "nros-serdes"]
 safety-e2e = ["rmw", "nros-rmw/safety-e2e"]
 trigger-test = ["dep:nros-node", "nros-core", "nros-serdes"]
+# Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
+# Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the
+# customised ZENOH_VTABLE (124.A.4.b) is installed at backend
+# auto-register time.
+loan-e2e = [
+    "dep:nros-node",
+    "nros-core",
+    "nros-serdes",
+    "nros-node/rmw-lending",
+    "dep:nros-rmw-zenoh",
+    "dep:nros-platform-cffi",
+]
 # PX4 SITL E2E test (requires PX4_AUTOPILOT_DIR + working PX4 build env).
 # Test FAILS (does not silently skip) if PX4_AUTOPILOT_DIR is unset; this
 # matches the project-wide "no silent skip" rule from CLAUDE.md.
@@ -131,6 +152,11 @@ path = "tests/orin_spe_mock_ivc.rs"
 name = "custom_transport_loopback"
 path = "tests/custom_transport_loopback.rs"
 required-features = ["rmw"]
+
+[[test]]
+name = "loan_e2e"
+path = "tests/loan_e2e.rs"
+required-features = ["loan-e2e"]
 
 [lints]
 workspace = true

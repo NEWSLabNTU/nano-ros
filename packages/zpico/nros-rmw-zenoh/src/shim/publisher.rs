@@ -416,7 +416,8 @@ mod lending {
 
     /// Backend-owned arena for a `ZenohPublisher`. Single-slot;
     /// concurrent loans return Err(WouldBlock).
-    pub(super) struct LendArena {
+    #[allow(dead_code)]
+    pub(crate) struct LendArena {
         busy: AtomicBool,
         buf: UnsafeCell<[u8; ZENOH_TX_BUF]>,
     }
@@ -496,7 +497,8 @@ mod lending {
     impl ZenohPublisher {
         // Wire the arena into the constructor — see Phase 99.F note in
         // `new()` for why this lives outside the main impl block.
-        pub(super) const fn lend_arena_init() -> LendArena {
+        #[allow(dead_code)]
+        pub(crate) const fn lend_arena_init() -> LendArena {
             LendArena::new()
         }
     }

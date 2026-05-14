@@ -51,7 +51,7 @@ rmw-zenoh-cffi = ["rmw-cffi"]
 
 # Phase 99: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
-rmw-lending = ["nros-rmw/lending"]
+rmw-lending = ["nros-rmw/lending", "nros-rmw-cffi?/lending"]
 
 # XRCE transport refinements (forwarded to nros-rmw-xrce-cffi).
 platform-udp = []

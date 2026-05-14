@@ -605,11 +605,35 @@ independent additions.
           publish_raw); drop without commit fires
           `pub_discard`; in-stub assertions on the token
           tag catch routing bugs immediately.
-      A full E2E test on a real zenoh-pico backend with
-      malloc-trace lands as 124.A.8.b once 124.A.4.b wires
-      the zenoh native trampolines.
+      A full E2E test on a real zenoh-pico backend lands as
+      124.A.8.b (below); the cffi-layer coverage proves the
+      dispatch path is right.
       **Files:** `packages/core/nros-rmw-cffi/tests/loan_fallback.rs`,
       `packages/core/nros-rmw-cffi/tests/loan_native.rs`.
+
+- [~] **124.A.8.b — Zenoh-pico E2E loan test.** Runtime
+      verification of the Phase 124.A.4.b zenoh native loan
+      trampolines: two-executor split (publisher + subscriber
+      threads, both round-tripping through one shared
+      `ZenohRouter` fixture), `try_loan` + `commit` on the
+      publisher, asserts subscriber receives the payload
+      byte-identical. **Test landed at
+      `packages/testing/nros-tests/tests/loan_e2e.rs`** under
+      a new `loan-e2e` cargo feature that pulls
+      `nros-rmw-zenoh/lending` + `nros-platform-cffi/posix-c-port`
+      so the posix C symbols (`nros_platform_*`) link.
+      Run with `cargo nextest run -p nros-tests --features
+      loan-e2e --test loan_e2e`. Requires `just zenoh setup`
+      to provision the local zenohd binary.
+      Malloc-trace assertion ("zero alloc on commit") deferred
+      — needs an LD_PRELOAD counting hook on top of this
+      scaffold; tracked as 124.A.8.c.
+      **Files:** `packages/testing/nros-tests/tests/loan_e2e.rs`,
+      `packages/testing/nros-tests/Cargo.toml`,
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`
+      (zenoh `drive_io` wake-flag write-back type fix),
+      `packages/core/nros-node/Cargo.toml`
+      (`rmw-lending` now forwards to `nros-rmw-cffi/lending`).
 
 ### Thread B — Wake-callback + condvar layer
 

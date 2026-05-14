@@ -343,12 +343,12 @@ impl Session for ZenohSession {
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
         let res = self.spin_once(timeout_ms as u32);
         // Phase 124.B.3 — when zenoh's spin_once observed any work
-        // (true return), call the runtime-supplied wake callback so
-        // the executor's `wake_cv` is signalled (flag-write +
+        // (n > 0), call the runtime-supplied wake callback so the
+        // executor's `wake_cv` is signalled (flag-write +
         // condvar-signal happen atomically inside the cb).
         // Best-effort: if the cb hasn't been installed yet the
         // executor still drains via its deadline-bound cv-wait.
-        if let Ok(true) = res {
+        if matches!(res, Ok(n) if n > 0) {
             let cb = self.wake_cb.load(core::sync::atomic::Ordering::Acquire);
             if !cb.is_null() {
                 let ctx = self.wake_ctx.load(core::sync::atomic::Ordering::Acquire);

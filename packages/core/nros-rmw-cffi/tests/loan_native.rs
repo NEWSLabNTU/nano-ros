@@ -248,6 +248,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     sub_borrow: None,
     sub_release: None,
     service_server_available: None,
+    try_recv_sequence: None,
 };
 
 fn open_session() -> nros_rmw_cffi::CffiSession {

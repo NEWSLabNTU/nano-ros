@@ -118,8 +118,11 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 mod cffi_register {
     use core::ffi::c_int;
 
-    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet, RustBackendAdapter};
+    use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet};
+    #[cfg(not(feature = "lending"))]
+    use nros_rmw_cffi::RustBackendAdapter;
 
+    #[cfg(not(feature = "lending"))]
     use crate::ZenohRmw;
 
     /// C entry — installs the zenoh-pico vtable into the cffi
