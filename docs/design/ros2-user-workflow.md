@@ -75,26 +75,183 @@ nano-ros should mirror the composable model statically:
 - Generated orchestration crate provides the only `main()`.
 - The RTOS "container" is a priority tier: one executor/task per tier.
 
-Rust component entry point:
+### Node API Examples
 
-```rust
-pub fn register_control_node(ctx: &mut nros::ComponentContext) -> Result<(), nros::NodeError> {
-    let publisher = ctx.node().create_publisher::<ControlCmd>("~/cmd")?;
-    ctx.register_timer("control_tick", 10.ms(), move || {
-        // control loop
-    })?;
-    Ok(())
+These examples describe the target user-facing shape. The API names are
+proposed; the important contract is that node packages are libraries and the
+generated system owns process init, executor construction, and spin.
+
+#### C, rclc-shaped
+
+rclc users are used to explicit handles, caller-owned allocation, and executor
+handle counts known before spin. nano-ros should keep that property but move
+the support/executor ownership into generated code.
+
+```c
+#include <nano_ros/nros.h>
+#include <std_msgs/msg/int32.h>
+
+typedef struct {
+    nros_node_t node;
+    nros_publisher_t cmd_pub;
+    nros_timer_t tick;
+    std_msgs__msg__Int32 cmd;
+} control_node_t;
+
+static void control_tick(void *user_data)
+{
+    control_node_t *self = (control_node_t *)user_data;
+    self->cmd.data += 1;
+    nros_publish(&self->cmd_pub, &self->cmd);
+}
+
+nros_ret_t control_node_register(nros_component_context_t *ctx)
+{
+    control_node_t *self =
+        nros_component_alloc(ctx, sizeof(control_node_t), NROS_ALIGNOF(control_node_t));
+
+    NROS_CHECK(nros_component_init_node(ctx, &self->node, "control_node"));
+    NROS_CHECK(nros_node_create_publisher(
+        &self->node,
+        &self->cmd_pub,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        "~/cmd",
+        nros_qos_default()));
+    NROS_CHECK(nros_component_create_timer(
+        ctx,
+        &self->tick,
+        "control_tick",
+        nros_duration_ms(10),
+        control_tick,
+        self));
+
+    return NROS_RET_OK;
 }
 ```
 
-C++ component entry point:
+This mirrors rclc's deterministic model:
+
+- generated code sizes the executor from `nros-plan.json`;
+- callback registration order is stable and visible in the plan;
+- the component never calls `rclc_support_init`, `rclc_executor_init`, spin, or
+  `main()`.
+
+#### C++, rclcpp-composable-shaped
+
+rclcpp components normally expose a node class with a `NodeOptions`
+constructor and register it with `RCLCPP_COMPONENTS_REGISTER_NODE`. nano-ros
+should offer the same shape, but resolve it to static factories instead of
+runtime class loading.
 
 ```cpp
-extern "C" nros_ret_t register_perception_node(nros_component_context_t *ctx) {
-    nros::ComponentContext c(ctx);
-    auto node = c.node();
-    // create pubs/subs/timers
-    return NROS_RET_OK;
+#include <chrono>
+#include <nano_ros/node.hpp>
+#include <nano_ros/register_node.hpp>
+#include <std_msgs/msg/int32.hpp>
+
+using namespace std::chrono_literals;
+
+class ControlNode final : public nros::Node {
+public:
+    explicit ControlNode(const nros::NodeOptions & options)
+        : nros::Node("control_node", options)
+    {
+        cmd_pub_ = create_publisher<std_msgs::msg::Int32>("~/cmd", nros::QoS::Default());
+        tick_ = create_wall_timer("control_tick", 10ms, [this] {
+            std_msgs::msg::Int32 msg;
+            msg.data = count_++;
+            cmd_pub_.publish(msg);
+        });
+    }
+
+private:
+    nros::Publisher<std_msgs::msg::Int32> cmd_pub_;
+    nros::Timer tick_;
+    int32_t count_{0};
+};
+
+NROS_COMPONENTS_REGISTER_NODE(ControlNode)
+```
+
+The macro should generate static metadata:
+
+- package/library symbol used by `nros build`;
+- node factory accepting `nros::NodeOptions`;
+- declared entity metadata for checker/codegen, where available.
+
+Unlike rclcpp, the generated RTOS binary should not load a plugin at runtime.
+It should link the component archive and instantiate the factory directly.
+
+#### Rust, rclrs-shaped
+
+rclrs uses Rust structs and builder options instead of inheritance. nano-ros
+should follow that style while avoiding `Arc` as the default embedded story.
+
+```rust
+use core::time::Duration;
+use nros::{Component, ComponentContext, NodeOptions, Publisher};
+use std_msgs::msg::Int32;
+
+pub struct ControlNode {
+    cmd_pub: Publisher<Int32>,
+    count: i32,
+}
+
+impl Component for ControlNode {
+    fn create(ctx: &mut ComponentContext, options: NodeOptions) -> nros::Result<Self> {
+        let node = ctx.create_node(options.name("control_node"))?;
+        let cmd_pub = node.create_publisher::<Int32>("~/cmd")?;
+
+        Ok(Self { cmd_pub, count: 0 })
+    }
+
+    fn register(&mut self, ctx: &mut ComponentContext) -> nros::Result<()> {
+        ctx.create_wall_timer::<Self>(
+            "control_tick",
+            Duration::from_millis(10),
+            |state: &mut Self| {
+                let msg = Int32 { data: state.count };
+                state.count += 1;
+                state.cmd_pub.publish(&msg)
+            },
+        )?;
+
+        Ok(())
+    }
+}
+
+nros::component!(ControlNode);
+```
+
+The Rust API can also support a lower-level registration function for
+`no_std` packages that do not want a stateful component trait, but the scaffold
+should prefer the trait because it is closest to rclrs' node-as-struct model.
+
+#### Generated main
+
+For all three languages, the system package produces the only executable
+entrypoint:
+
+```rust
+fn main() -> ! {
+    let config = nros_generated::config();
+    let mut system = nros::System::open(config).unwrap();
+
+    system.add_component::<control_node::ControlNode>(
+        nros::NodeOptions::new("control_node")
+            .namespace("/car01")
+            .remap("~/cmd", "/car01/control/cmd"),
+    ).unwrap();
+
+    unsafe {
+        system.add_c_component(
+            "perception_node",
+            perception_node_register,
+            nros::NodeOptions::new("perception_node"),
+        ).unwrap();
+    }
+
+    system.spin()
 }
 ```
 
@@ -210,17 +367,17 @@ The user-facing binary should be `nros`.
 
 Initial subcommands:
 
-| Command | Purpose |
-| --- | --- |
-| `nros setup` | workspace/toolchain/submodule setup |
-| `nros new component` | scaffold library-shaped node package |
-| `nros new system` | scaffold bringup/deployment package |
-| `nros plan` | run launch freeze and emit `record.json` + `nros-plan.json` |
-| `nros check` | validate manifests, plan, and target constraints |
-| `nros build` | generate orchestration package and build firmware |
-| `nros run` | run native/QEMU or flash board |
-| `nros monitor` | observe process/device state and logs |
-| `nros doctor` | diagnose workspace/toolchain/ROS env |
+| Command              | Purpose                                                     |
+|----------------------|-------------------------------------------------------------|
+| `nros setup`         | workspace/toolchain/submodule setup                         |
+| `nros new component` | scaffold library-shaped node package                        |
+| `nros new system`    | scaffold bringup/deployment package                         |
+| `nros plan`          | run launch freeze and emit `record.json` + `nros-plan.json` |
+| `nros check`         | validate manifests, plan, and target constraints            |
+| `nros build`         | generate orchestration package and build firmware           |
+| `nros run`           | run native/QEMU or flash board                              |
+| `nros monitor`       | observe process/device state and logs                       |
+| `nros doctor`        | diagnose workspace/toolchain/ROS env                        |
 
 `cargo nano-ros` can remain the developer/internal entry for codegen, but
 standard users should see `nros`.
@@ -269,61 +426,65 @@ startup_order = ["control_node"]
 
 ### `nros` CLI
 
-| Gap | Needed |
-| --- | --- |
-| No single user-facing `nros` binary for the full flow | Add `nros-cli` commands that orchestrate setup, plan, check, build, run, monitor |
-| `cargo nano-ros` is codegen-oriented | Keep for low-level/codegen; make `nros` the standard UX |
-| No `plan` command | Add command that calls play_launch parser and writes `record.json` + `nros-plan.json` |
-| No `doctor` for workspace state | Check sourced ROS env, nano-ros checkout, submodules, toolchains, board vars |
+| Gap                                                   | Needed                                                                                |
+|-------------------------------------------------------|---------------------------------------------------------------------------------------|
+| No single user-facing `nros` binary for the full flow | Add `nros-cli` commands that orchestrate setup, plan, check, build, run, monitor      |
+| `cargo nano-ros` is codegen-oriented                  | Keep for low-level/codegen; make `nros` the standard UX                               |
+| No `plan` command                                     | Add command that calls play_launch parser and writes `record.json` + `nros-plan.json` |
+| No `doctor` for workspace state                       | Check sourced ROS env, nano-ros checkout, submodules, toolchains, board vars          |
 
 ### nano-ros API/runtime
 
-| Gap | Needed |
-| --- | --- |
-| User examples are `main()` shaped | Add library-shaped `ComponentContext` registration API |
+| Gap                                                                         | Needed                                                                                           |
+|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| User examples are `main()` shaped                                           | Add library-shaped `ComponentContext` registration API                                           |
+| C API lacks a rclc-like component context                                   | Add `nros_component_context_t`, plan-sized allocation, and C registration metadata               |
+| C++ API lacks a rclcpp-like component class shape                           | Add `nros::NodeOptions`, `nros::Node` constructor, and `NROS_COMPONENTS_REGISTER_NODE`           |
+| Rust API lacks a rclrs-like component trait                                 | Add `nros::Component`, `NodeOptions`, and `nros::component!` metadata macro                      |
 | C++ global `nros::init()`/`spin_once()` model conflicts with generated main | Provide explicit component API taking executor/context; document globals as simple-app path only |
-| `Executor::open_with_session(shared)` not available as safe API | Add safe shared-session constructor for per-tier executors |
-| Timer registration has no sched-context/tier binding variant | Add `register_timer_on(sc_id, ...)` and C/C++ wrappers |
-| Namespaces/remaps are not first-class component inputs | Add `ComponentContext` name resolver and remap-aware create helpers |
-| Runtime params exist but plan-time parameter injection is not unified | Add boot-time parameter override loader from generated plan/runtime args |
-| Shared state is ad hoc in hand-written apps | Generate shared-context structs/accessors with tier-aware locking |
+| Component entity metadata is not emitted                                    | Generate topic/timer/sub/service metadata from macros/build scripts for `nros check`             |
+| `Executor::open_with_session(shared)` not available as safe API             | Add safe shared-session constructor for per-tier executors                                       |
+| Timer registration has no sched-context/tier binding variant                | Add `register_timer_on(sc_id, ...)` and C/C++ wrappers                                           |
+| Namespaces/remaps are not first-class component inputs                      | Add `ComponentContext` name resolver and remap-aware create helpers                              |
+| Runtime params exist but plan-time parameter injection is not unified       | Add boot-time parameter override loader from generated plan/runtime args                         |
+| Shared state is ad hoc in hand-written apps                                 | Generate shared-context structs/accessors with tier-aware locking                                |
 
 ### Build and colcon
 
-| Gap | Needed |
-| --- | --- |
-| Phase 78 builds package binaries | Add component/library package mode and system/orchestration package mode |
-| Generated orchestration package does not exist | Add `cargo nano-ros generate-main` or equivalent library called by `nros build` |
-| Workspace interface cache is incomplete for C/C++ | Finish shared C/C++ generated-interface cache or make system package own it |
-| Whole-firmware sizing is manual | Derive executor/node/callback/param limits from `nros-plan.json` |
-| Mixed Rust/C/C++ component linking path unclear | Define generated Cargo+CMake bridge contract and static archive order |
+| Gap                                               | Needed                                                                          |
+|---------------------------------------------------|---------------------------------------------------------------------------------|
+| Phase 78 builds package binaries                  | Add component/library package mode and system/orchestration package mode        |
+| Generated orchestration package does not exist    | Add `cargo nano-ros generate-main` or equivalent library called by `nros build` |
+| Workspace interface cache is incomplete for C/C++ | Finish shared C/C++ generated-interface cache or make system package own it     |
+| Whole-firmware sizing is manual                   | Derive executor/node/callback/param limits from `nros-plan.json`                |
+| Mixed Rust/C/C++ component linking path unclear   | Define generated Cargo+CMake bridge contract and static archive order           |
 
 ### play_launch integration
 
-| Gap | Needed |
-| --- | --- |
-| `record.json` is process-oriented | Add nano-ros normalization layer to produce `nros-plan.json` |
-| Launch composable containers are Linux runtime concepts | Map containers/load nodes to static components/tier groups |
+| Gap                                                           | Needed                                                                                   |
+|---------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `record.json` is process-oriented                             | Add nano-ros normalization layer to produce `nros-plan.json`                             |
+| Launch composable containers are Linux runtime concepts       | Map containers/load nodes to static components/tier groups                               |
 | Python launch freeze can include unsupported runtime behavior | Classify graph-shaping args as build-time only; reject unsupported dynamic cases clearly |
-| No stable embedded codegen subcommand | Either add `play_launch generate-rtos` or have `nros plan` call parser crates directly |
+| No stable embedded codegen subcommand                         | Either add `play_launch generate-rtos` or have `nros plan` call parser crates directly   |
 
 ### Manifest/schema
 
-| Gap | Needed |
-| --- | --- |
-| Existing launch manifest describes graph contracts, not RTOS deployment | Add `nros.toml` schema or extend manifest types with tiers/callback groups/shared state |
-| Callback groups are source-code concepts in rclcpp | Require sidecar declaration until static analysis can infer them |
-| Entity binding can drift from source | Validate manifest-declared timers/topics/services against generated registration metadata where possible |
-| Type and QoS reconciliation spans launch params, manifest, source | Add checker rules for remap-resolved names and QoS compatibility |
+| Gap                                                                     | Needed                                                                                                   |
+|-------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| Existing launch manifest describes graph contracts, not RTOS deployment | Add `nros.toml` schema or extend manifest types with tiers/callback groups/shared state                  |
+| Callback groups are source-code concepts in rclcpp                      | Require sidecar declaration until static analysis can infer them                                         |
+| Entity binding can drift from source                                    | Validate manifest-declared timers/topics/services against generated registration metadata where possible |
+| Type and QoS reconciliation spans launch params, manifest, source       | Add checker rules for remap-resolved names and QoS compatibility                                         |
 
 ### Monitoring and execution
 
-| Gap | Needed |
-| --- | --- |
-| play_launch monitoring assumes Linux processes | Add nano-ros telemetry events from generated binary |
-| RTOS logs are board-specific | Normalize QEMU/serial/RTT/native logs behind `nros monitor` |
-| No device lifecycle control | Add minimal start/stop/restart only where platform supports it; otherwise expose reset/flash/run |
-| No plan/runtime correlation | Emit node/tier/callback IDs into firmware and monitor output |
+| Gap                                            | Needed                                                                                           |
+|------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| play_launch monitoring assumes Linux processes | Add nano-ros telemetry events from generated binary                                              |
+| RTOS logs are board-specific                   | Normalize QEMU/serial/RTT/native logs behind `nros monitor`                                      |
+| No device lifecycle control                    | Add minimal start/stop/restart only where platform supports it; otherwise expose reset/flash/run |
+| No plan/runtime correlation                    | Emit node/tier/callback IDs into firmware and monitor output                                     |
 
 ## v0 Scope
 
