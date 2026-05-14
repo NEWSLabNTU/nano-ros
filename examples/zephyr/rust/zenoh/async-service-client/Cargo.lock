@@ -1337,15 +1337,3 @@ dependencies = [
  "cmake",
  "zpico-platform-shim",
 ]
-
-[[patch.unused]]
-name = "action_msgs"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "builtin_interfaces"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "unique_identifier_msgs"
-version = "2.2.1"
