@@ -1015,11 +1015,8 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
     }
     #[cfg(not(feature = "std"))]
     {
-        // Phase 71.6: nros_platform_zephyr_shims.c now exposes
-        // `nros_platform_time_ns` as a real linker-visible symbol on
-        // platform-zephyr (not a `static inline`). On platforms with
-        // zenoh-pico linked in, `z_clock_now()` is also available and
-        // gives the same monotonic ms count. Prefer the real symbol.
+        // Use the canonical platform clock instead of depending on a
+        // backend-specific shim symbol such as zenoh-pico's z_clock_now.
         #[cfg(feature = "platform-zephyr")]
         {
             unsafe extern "C" {
@@ -1029,11 +1026,8 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
         }
         #[cfg(not(feature = "platform-zephyr"))]
         {
-            // Other RTOS backends still go through zpico-platform-shim.
-            unsafe extern "C" {
-                fn z_clock_now() -> usize;
-            }
-            (unsafe { z_clock_now() } as u64).saturating_mul(1_000_000)
+            <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_us()
+                .saturating_mul(1_000)
         }
     }
 }

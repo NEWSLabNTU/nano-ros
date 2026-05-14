@@ -594,10 +594,18 @@ _Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
 #include <nros/app_config.h>
 
 extern void app_main(void);
-extern void zpico_set_task_config(uint32_t read_priority,
-                                  uint32_t read_stack_bytes,
-                                  uint32_t lease_priority,
-                                  uint32_t lease_stack_bytes);
+
+__attribute__((weak))
+void zpico_set_task_config(uint32_t read_priority,
+                           uint32_t read_stack_bytes,
+                           uint32_t lease_priority,
+                           uint32_t lease_stack_bytes)
+{
+    (void)read_priority;
+    (void)read_stack_bytes;
+    (void)lease_priority;
+    (void)lease_stack_bytes;
+}
 
 /* Clamp NROS_APP_CONFIG's normalized 0–31 scheduling priority to the
  * FreeRTOS port's `configMAX_PRIORITIES` range. Without this, the

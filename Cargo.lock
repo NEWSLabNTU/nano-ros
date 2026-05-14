@@ -1241,6 +1241,7 @@ dependencies = [
  "critical-section",
  "nros",
  "nros-node",
+ "nros-platform",
  "nros-rmw",
  "nros-sizes-build",
  "panic-halt",

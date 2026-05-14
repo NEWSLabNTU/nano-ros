@@ -64,6 +64,7 @@ panic-halt = ["dep:panic-halt"]
 [dependencies]
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
+nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on

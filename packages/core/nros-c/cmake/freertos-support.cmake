@@ -25,6 +25,7 @@
 # This file is then on the cmake module path:
 #   include(freertos-support)
 
+include(CMakeFindDependencyMacro)
 include(nros-freertos)
 
 # ---- Resolve shipped asset paths ----
@@ -52,6 +53,7 @@ if(NOT DEFINED FREERTOS_PORT AND NOT DEFINED ENV{FREERTOS_PORT})
 endif()
 
 nros_freertos_validate(REQUIRE LWIP_DIR FREERTOS_PORT)
+find_dependency(NrosPlatformFreertos CONFIG PATHS "${_NROS_INSTALL_PREFIX}")
 
 nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
 nros_freertos_build_lwip()
@@ -65,6 +67,8 @@ nros_freertos_build_netif(
 set(FREERTOS_LINKER_SCRIPT "${FREERTOS_CONFIG_DIR}/mps2_an385.ld"
     CACHE INTERNAL "")
 nros_freertos_compose_platform(
+    LINK_LIBS
+        NrosPlatformFreertos::nros_platform_freertos
     LINK_OPTIONS
         "-T${FREERTOS_LINKER_SCRIPT}"
         "-Wl,--gc-sections"
