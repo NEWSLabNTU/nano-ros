@@ -396,6 +396,28 @@ impl Session for ZenohSession {
         Some(ZENOH_KEEPALIVE_INTERVAL_MS)
     }
 
+    fn ping_session(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        // Phase 124.F.2 — zenoh-pico's closest match to a true ping
+        // is `zp_send_keep_alive`. Fire one frame; success means the
+        // transport accepted it (TCP / serial / shm send returned OK,
+        // i.e. the link is still alive from the local side). Failure
+        // surfaces as `Timeout` per the 124.F.1 semantics so callers
+        // can tear down + re-open the session on a dead link.
+        //
+        // The `timeout_ms` argument is ignored — the underlying call
+        // is synchronous and non-blocking. We don't honour the budget
+        // because the call returns within microseconds either way.
+        // True round-trip ping would need a `z_send_ping` API that
+        // zenoh-pico hasn't yet exposed; deferred to a follow-up
+        // when upstream lands one.
+        let rc = unsafe { zpico_sys::zpico_send_keep_alive() };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(TransportError::Timeout)
+        }
+    }
+
     fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
         // Phase 108.B/C — zenoh-pico's wire protocol has no native
         // DDS QoS, so the shim emulates everything:

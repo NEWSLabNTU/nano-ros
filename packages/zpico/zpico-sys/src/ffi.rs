@@ -195,6 +195,39 @@ mod cbindgen_stubs {
         0
     }
 
+    /// Phase 124.F.2 — wire-level connectivity probe.
+    ///
+    /// Returns 0 on success (transport accepted a keep-alive frame),
+    /// `ZPICO_ERR_SESSION` if no session is open, `ZPICO_ERR_TIMEOUT`
+    /// if the send failed (treated as a probe timeout — caller maps
+    /// to `NROS_RMW_RET_TIMEOUT`).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_send_keep_alive() -> i32 {
+        ZPICO_ERR_SESSION
+    }
+
+    /// Phase 124.E.3 — streamed publish driven by `z_bytes_writer`.
+    ///
+    /// Returns 0 on success, `ZPICO_ERR_*` on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_publish_streamed(
+        _handle: i32,
+        _total_len: usize,
+        _chunk_cb: Option<
+            unsafe extern "C" fn(
+                out_buf: *mut u8,
+                cap: usize,
+                out_written: *mut usize,
+                user_ctx: *mut c_void,
+            ),
+        >,
+        _user_ctx: *mut c_void,
+        _attachment: *const u8,
+        _attachment_len: usize,
+    ) -> i32 {
+        ZPICO_ERR_INVALID
+    }
+
     /// Close the session and clean up all resources.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_close() {}

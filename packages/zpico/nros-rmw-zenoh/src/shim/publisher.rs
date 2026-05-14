@@ -337,6 +337,66 @@ impl Publisher for ZenohPublisher {
         result
     }
 
+    /// Phase 124.E.3 — native streamed publish.
+    ///
+    /// Drives zenoh-pico's `z_bytes_writer` so the payload assembles
+    /// directly inside zenoh's allocator-managed `z_owned_bytes_t`
+    /// rather than first into a caller-side staging buffer. The
+    /// ROS-interop attachment (sequence number + source timestamp +
+    /// GID) is built here exactly like `publish_raw` and handed to
+    /// the C shim alongside the chunk callback.
+    ///
+    /// `safety-e2e` builds fall through to the default staging-buffer
+    /// path: the safety attachment's trailing CRC-32 is computed over
+    /// the *whole* payload, which the streamed path never holds
+    /// contiguously. Incremental CRC across the writer chunks is
+    /// possible but out of scope for the v1 surface.
+    #[cfg(not(feature = "safety-e2e"))]
+    fn publish_streamed(
+        &self,
+        size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut core::ffi::c_void),
+        chunk_cb: unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut core::ffi::c_void,
+        ),
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), Self::Error> {
+        self.check_offered_deadline();
+        self.check_liveliness_lost();
+
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
+        let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
+        let ts = self.current_timestamp();
+        let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
+        self.serialize_attachment(seq, ts, &mut att_buf);
+
+        // Resolve the total length up-front so the C shim can size
+        // the writer in one shot.
+        let mut total: usize = 0;
+        // SAFETY: `size_cb` writes a single `usize` via the
+        // out-pointer per the 124.E.1 contract.
+        unsafe { size_cb(&mut total as *mut usize, user_ctx) };
+
+        let rc = unsafe {
+            zpico_sys::zpico_publish_streamed(
+                self.publisher.handle(),
+                total,
+                Some(chunk_cb),
+                user_ctx,
+                att_buf.as_ptr(),
+                att_buf.len(),
+            )
+        };
+        if rc == 0 {
+            self.last_publish_at_ms.set(now_ms());
+            Ok(())
+        } else {
+            Err(TransportError::PublishFailed)
+        }
+    }
+
     /// Phase 108.C.zenoh.4-followup — manual liveliness assertion.
     /// Refreshes the lease for `ManualByTopic` / `ManualByNode`. No-op
     /// for `Automatic` (zenoh keepalive covers it) and `None`.

@@ -877,15 +877,33 @@ the same change as `set_wake_callback` lands.
       vtable slot when non-NULL, otherwise inlines the same loop
       (so the override doesn't recurse through the default body).
       `BufferTooSmall` when total exceeds the 4 KiB cap.
-- [ ] **124.E.3 — Zenoh + XRCE backend impls.** Deferred.
-      zenoh-pico's `zpico_publish(handle, data, len)` is a single
-      one-shot C entry; native streaming would need new shim
-      surface (`zp_pub_loan`-style API) and matching changes in
-      the zenoh-pico submodule. micro-XRCE has `uxr_*` streaming
-      write APIs but the K.2 backend is header-only — would need
-      a Rust-side `XrceRmw` adapter that owns the output cursor.
-      Vtable slot ships, so native impls drop in without an ABI
-      bump once a workload surfaces the cost.
+- [x] **124.E.3 — Zenoh backend impl.** Native streamed publish
+      lands via zenoh-pico's `z_bytes_writer` API. New C shim
+      `zpico_publish_streamed(handle, total_len, chunk_cb,
+      user_ctx, attachment, attachment_len)`:
+      `z_bytes_writer_empty` → loop `z_bytes_writer_write_all` with
+      1 KiB chunks pulled from `chunk_cb` → `z_bytes_writer_finish`
+      → `z_publisher_put`. The payload assembles directly inside
+      zenoh's allocator-managed `z_owned_bytes_t` — for a 32 KiB
+      message that's 32 KiB less stack pressure on the publishing
+      task vs the staging-buffer fallback. The ROS-interop
+      attachment (seq + source timestamp + GID) is built in
+      `ZenohPublisher::publish_streamed` exactly like `publish_raw`
+      and threaded through.
+
+      `safety-e2e` builds fall through to the staging-buffer
+      fallback: the safety attachment's trailing CRC-32 is over the
+      whole payload, which the streamed path never holds
+      contiguously. Incremental CRC across writer chunks is out of
+      scope for v1.
+
+      XRCE deferred — `uxr_*` streaming write APIs exist, but the
+      K.2 backend is header-only and would need a Rust-side
+      `XrceRmw` adapter that owns the output cursor.
+      **Files:** `packages/zpico/zpico-sys/c/zpico/zpico.c`,
+      `packages/zpico/zpico-sys/src/ffi.rs`,
+      `packages/zpico/zpico-sys/src/lib.rs`,
+      `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs`.
 - [x] **124.E.4 — User-facing API.**
       Rust: `EmbeddedPublisher<M>::publish_streamed(total_len, |chunk| ...)`
       with a `FnMut(&mut [u8]) -> usize` writer closure.
@@ -910,17 +928,31 @@ the same change as `set_wake_callback` lands.
       `NrosRmwVtable`. `Session::ping_session` trait method on
       `nros-rmw` returns `Err(Unsupported)` by default; adapter
       trampoline + `CffiSession::ping_session` forwarder wired.
-- [ ] **124.F.2 — Backend impls.** Deferred. zenoh-pico has no
-      `zpico_send_ping` shim today — would need a new wrapper
-      around `z_send_ping` in `packages/zpico/zpico-sys/c/zpico/zpico.c`
-      and a matching extern declaration in `nros-rmw-zenoh`.
-      micro-XRCE has `uxr_ping_agent_session_until_timeout`, but
-      the K.2 backend is header-only — needs a Rust-side `XrceRmw`
-      adapter that owns the session handle. DDS inherits the
-      default `Unsupported` (Cyclone's PARTICIPANT_DISCOVERY ping
-      could light it up later). All backends inherit `Unsupported`
-      until they opt in; vtable slot is in place, so each impl
-      drops in without an ABI bump.
+- [x] **124.F.2 — Zenoh backend impl.** zenoh-pico has no
+      round-trip `z_send_ping` API, so the closest honest probe is
+      `zp_send_keep_alive`: new C shim `zpico_send_keep_alive()`
+      fires one keep-alive frame down the transport. Success means
+      the link accepted it (TCP / serial / shm send returned OK —
+      the link is alive from the local side); failure surfaces as
+      `Timeout`, letting callers tear down + re-open the session on
+      a dead link. `ZenohSession::ping_session` overrides the trait
+      default to call it.
+
+      Caveat documented inline: a fresh-link silent failure (peer
+      vanished but the OS hasn't flagged the socket half-closed)
+      still reports OK until the next send-side timeout. True
+      round-trip ping waits on a `z_send_ping` API zenoh-pico
+      hasn't exposed.
+
+      XRCE deferred — `uxr_ping_agent_session_until_timeout` exists,
+      but the K.2 backend is header-only; needs a Rust-side
+      `XrceRmw` adapter that owns the session handle. DDS inherits
+      the default `Unsupported` (Cyclone's PARTICIPANT_DISCOVERY
+      ping could light it up later).
+      **Files:** `packages/zpico/zpico-sys/c/zpico/zpico.c`,
+      `packages/zpico/zpico-sys/src/ffi.rs`,
+      `packages/zpico/zpico-sys/src/lib.rs`,
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`.
 - [x] **124.F.3 — C/C++ + Rust API.**
       - C: `nros_executor_ping(executor, timeout_ms) -> nros_ret_t`
         in `packages/core/nros-c/src/executor.rs`; maps

@@ -666,6 +666,130 @@ int32_t zpico_is_open(void) {
     return g_session_open ? 1 : 0;
 }
 
+/**
+ * Phase 124.E.3 — streamed publish.
+ *
+ * Drives zenoh-pico's `z_bytes_writer` API to assemble the payload
+ * chunk-by-chunk inside zenoh's `z_owned_bytes_t` (a refcounted
+ * bytes object backed by zenoh-pico's allocator). The caller's
+ * `size_cb` reports the total length once, then `chunk_cb` is
+ * invoked repeatedly with cursor-into-staging buffers of up to
+ * 1 KiB each. Each chunk is appended to the bytes object via
+ * `z_bytes_writer_write_all`, then `z_publisher_put` ships the
+ * assembled payload.
+ *
+ * The win over user-side `publish_raw(staging_buffer)`: the chunks
+ * land directly in zenoh's allocator-managed `z_owned_bytes_t`
+ * rather than first into a caller-owned `[u8; N]` stack array.
+ * For a 32 KiB message, that's 32 KiB less stack pressure on the
+ * publishing task.
+ */
+int32_t zpico_publish_streamed(int32_t handle,
+                                size_t total_len,
+                                void (*chunk_cb)(uint8_t *out_buf,
+                                                 size_t cap,
+                                                 size_t *out_written,
+                                                 void *user_ctx),
+                                void *user_ctx,
+                                const uint8_t *attachment,
+                                size_t attachment_len) {
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (chunk_cb == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    z_owned_bytes_writer_t writer;
+    if (z_bytes_writer_empty(&writer) < 0) {
+        return ZPICO_ERR_GENERIC;
+    }
+
+    /* Chunk buffer is fixed at 1 KiB. Trades publish_streamed
+     * memory cost for chunk_cb invocation count. 1 KiB is the
+     * smallest aligned size that still gives the caller meaningful
+     * batching latitude — at 128 B you'd hit the callback ~250
+     * times for a 32 KiB message. */
+    uint8_t chunk[1024];
+    size_t written_so_far = 0;
+    while (written_so_far < total_len) {
+        size_t want = total_len - written_so_far;
+        if (want > sizeof(chunk)) {
+            want = sizeof(chunk);
+        }
+        size_t actually_written = 0;
+        chunk_cb(chunk, want, &actually_written, user_ctx);
+        if (actually_written == 0) {
+            /* EOF before total_len — abort the writer so we don't
+             * publish a truncated payload. */
+            z_bytes_writer_drop(z_bytes_writer_move(&writer));
+            return ZPICO_ERR_PUBLISH;
+        }
+        if (actually_written > want) {
+            actually_written = want;
+        }
+        if (z_bytes_writer_write_all(z_bytes_writer_loan_mut(&writer), chunk,
+                                     actually_written) < 0) {
+            z_bytes_writer_drop(z_bytes_writer_move(&writer));
+            return ZPICO_ERR_PUBLISH;
+        }
+        written_so_far += actually_written;
+    }
+
+    z_owned_bytes_t payload;
+    z_bytes_writer_finish(z_bytes_writer_move(&writer), &payload);
+
+    z_publisher_put_options_t opts;
+    z_publisher_put_options_default(&opts);
+
+    /* ROS interop attachment (sequence number + source timestamp +
+     * GID) — same shape `zpico_publish_with_attachment` builds. */
+    z_owned_bytes_t attachment_bytes;
+    if (attachment != NULL && attachment_len > 0) {
+        if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
+            z_bytes_drop(z_bytes_move(&payload));
+            return ZPICO_ERR_PUBLISH;
+        }
+        opts.attachment = z_bytes_move(&attachment_bytes);
+    }
+
+    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
+                        z_bytes_move(&payload), &opts) < 0) {
+        return ZPICO_ERR_PUBLISH;
+    }
+
+    return ZPICO_OK;
+}
+
+/**
+ * Phase 124.F.2 — wire-level "is the agent still reachable?" probe.
+ *
+ * Issues one `zp_send_keep_alive` against the open session. On
+ * zenoh-pico that's the closest match to a true ping primitive:
+ * the function returns success when the keep-alive frame fired
+ * down the transport layer, and a negative `z_result_t` when the
+ * TCP send (or serial / shared-memory equivalent) reports a dead
+ * link. Best-effort: a fresh-link silent failure (peer disappeared
+ * but the OS hasn't reported the socket as half-closed) will still
+ * report OK until the next send-side timeout.
+ *
+ * Returns ZPICO_OK on success, ZPICO_ERR_SESSION when no session
+ * is open, ZPICO_ERR_TIMEOUT when the keep-alive failed (treated
+ * as a probe timeout per the 124.F.1 semantics).
+ */
+int32_t zpico_send_keep_alive(void) {
+    if (!g_session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+    zp_send_keep_alive_options_t options;
+    zp_send_keep_alive_options_default(&options);
+    z_result_t ret = zp_send_keep_alive(z_session_loan(&g_session), &options);
+    if (ret < 0) {
+        return ZPICO_ERR_TIMEOUT;
+    }
+    return ZPICO_OK;
+}
+
 void zpico_close(void) {
     // Clean up publishers
     for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {

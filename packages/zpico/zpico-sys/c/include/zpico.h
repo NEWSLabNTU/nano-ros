@@ -172,6 +172,17 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
                                    void *ctx);
 
 /**
+ * Phase 124.F.2 — wire-level connectivity probe. Returns 0
+ * on success, `ZPICO_ERR_*` on failure.
+ */
+/**
+ * Phase 124.E.3 — streamed publish via zenoh-pico's
+ * `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with
+ * up to 1 KiB buffers until `total_len` bytes have landed.
+ * `attachment` carries the ROS-interop metadata (seq + source
+ * timestamp + GID); pass NULL / 0 for a bare publish.
+ */
+/**
  * Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
  * Caller guarantees `data` outlives the call.
  */
@@ -225,6 +236,31 @@ int32_t zpico_open(void);
  * Non-zero if open, 0 if closed.
  */
 int32_t zpico_is_open(void);
+
+/**
+ * Phase 124.F.2 — wire-level connectivity probe.
+ *
+ * Returns 0 on success (transport accepted a keep-alive frame),
+ * `ZPICO_ERR_SESSION` if no session is open, `ZPICO_ERR_TIMEOUT`
+ * if the send failed (treated as a probe timeout — caller maps
+ * to `NROS_RMW_RET_TIMEOUT`).
+ */
+int32_t zpico_send_keep_alive(void);
+
+/**
+ * Phase 124.E.3 — streamed publish driven by `z_bytes_writer`.
+ *
+ * Returns 0 on success, `ZPICO_ERR_*` on failure.
+ */
+int32_t zpico_publish_streamed(int32_t _handle,
+                               uintptr_t _total_len,
+                               void (*_chunk_cb)(uint8_t *out_buf,
+                                                 uintptr_t cap,
+                                                 uintptr_t *out_written,
+                                                 void *user_ctx),
+                               void *_user_ctx,
+                               const uint8_t *_attachment,
+                               uintptr_t _attachment_len);
 
 /**
  * Close the session and clean up all resources.

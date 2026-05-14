@@ -120,6 +120,9 @@ unsafe extern "C" {
     ) -> i32;
     pub fn zpico_open() -> i32;
     pub fn zpico_is_open() -> i32;
+    /// Phase 124.F.2 — wire-level connectivity probe. Returns 0
+    /// on success, `ZPICO_ERR_*` on failure.
+    pub fn zpico_send_keep_alive() -> i32;
     pub fn zpico_close();
 
     // Task scheduling configuration (call between zpico_init and zpico_open)
@@ -136,6 +139,26 @@ unsafe extern "C" {
     // Publishers
     pub fn zpico_declare_publisher(keyexpr: *const core::ffi::c_char) -> i32;
     pub fn zpico_publish(handle: i32, data: *const u8, len: usize) -> i32;
+    /// Phase 124.E.3 — streamed publish via zenoh-pico's
+    /// `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with
+    /// up to 1 KiB buffers until `total_len` bytes have landed.
+    /// `attachment` carries the ROS-interop metadata (seq + source
+    /// timestamp + GID); pass NULL / 0 for a bare publish.
+    pub fn zpico_publish_streamed(
+        handle: i32,
+        total_len: usize,
+        chunk_cb: Option<
+            unsafe extern "C" fn(
+                out_buf: *mut u8,
+                cap: usize,
+                out_written: *mut usize,
+                user_ctx: *mut core::ffi::c_void,
+            ),
+        >,
+        user_ctx: *mut core::ffi::c_void,
+        attachment: *const u8,
+        attachment_len: usize,
+    ) -> i32;
     pub fn zpico_publish_with_attachment(
         handle: i32,
         data: *const u8,
