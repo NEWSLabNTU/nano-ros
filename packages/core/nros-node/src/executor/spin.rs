@@ -208,32 +208,51 @@ impl core::ops::DerefMut for SessionStore {
 pub(crate) struct WakeCtx {
     pub(crate) flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
+    #[allow(dead_code)] // Held by spin_once's wait predicate (124.B.4).
     pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
 }
 
-/// Phase 124.B.2 — runtime wake callback. ISR-safe contract:
-/// must be callable from interrupt context on platforms where
-/// `Condvar::notify_all` is ISR-safe (POSIX yes; RTOSes via
-/// ISR-safe primitive variants in their platform layer).
+/// Phase 124.B.2 — runtime wake callback.
+///
+/// RT-context contract:
+///
+/// * **Thread-safe**: callable from any thread. The cb is lock-free
+///   on the cv path — no mutex held during `notify_all`. Lost-wakeup
+///   is prevented by the waiter checking `wake_flag` under
+///   `wake_mu` via the `wait_timeout_while` predicate.
+/// * **NOT async-signal-safe on POSIX**: `pthread_cond_signal`
+///   isn't on the POSIX async-signal-safe function list. For POSIX
+///   signal handler wake, use a `signalfd` + select pattern in a
+///   thread that owns the wake duty.
+/// * **RTOS ISR**: per-RTOS platform layer wraps the cv with an
+///   ISR-safe primitive (`xSemaphoreGiveFromISR`,
+///   `tx_event_flags_set` from ISR, `k_sem_give` from ISR on
+///   Zephyr). Backend's ISR caller routes through the platform's
+///   `signal_from_isr` API instead of this cb directly.
+/// * **Bounded execution time**: O(1) — atomic store + cv notify.
+///   No allocation, no contended lock.
 ///
 /// The cb is the symbol backends invoke from their async wake path
-/// (datagram arrival, condvar wake, signal handler, ISR). It does
-/// flag-write + condvar-signal atomically.
+/// (datagram arrival, worker-thread enqueue, etc.). It does
+/// flag-write + condvar-signal in that order, lock-free.
 #[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_void) {
     if ctx.is_null() {
         return;
     }
     // SAFETY: ctx points at a `WakeCtx` owned by an Executor still
-    // alive at the time of the call. Executor::drop clears the
-    // callback before dropping wake_ctx.
+    // alive at the time of the call. Executor::drop must clear the
+    // callback via `set_wake_callback(None, _)` on all sessions
+    // before dropping wake_ctx; this happens in `install_wake_*`
+    // teardown path.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
     wake.flag
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    // Notify under the mutex so a waiter that just observed
-    // flag = false doesn't miss the signal. notify_all so any number
-    // of waiters wake (typically 1 = the executor thread).
-    let _g = wake.mu.lock();
+    // Lock-free notify. The waiter observes wake_flag under wake_mu
+    // in its wait_timeout_while predicate — flag.store with SeqCst
+    // happens-before any subsequent acquire in the waiter, so the
+    // waiter cannot miss the signal even though we don't hold mu
+    // here. Standard pthread cond-var idiom.
     wake.cv.notify_all();
 }
 
@@ -2627,9 +2646,57 @@ impl Executor {
             .swap(false, std::sync::atomic::Ordering::SeqCst);
         #[cfg(not(feature = "std"))]
         let was_woken = false;
+
+        // Phase 124.B.4 — wait strategy selection.
+        //
+        // Choose between condvar-blocked wait (callback-enabled
+        // backends; sub-poll wake latency) and the legacy
+        // `drive_io(primary_timeout)` blocking wait (flag-only
+        // backends that need their drive_io to own the wait
+        // budget).
+        //
+        // RT contract:
+        //  * cv.wait_timeout_while: bounded by `timeout_ms`.
+        //    Predicate is O(1) — one atomic swap + Instant::now.
+        //    No allocation. PI-mutex consideration: wake_mu held
+        //    only during predicate check (microseconds);
+        //    contended worst-case = notify_all execution time
+        //    (~10s of µs).
+        //  * drive_io fallback path: same as today.
+        //
+        // Decision logic:
+        //  - was_woken (pre-set flag): skip wait entirely; drain.
+        //  - primary supports callback: cv.wait_timeout. Backend
+        //    will call nros_rmw_runtime_wake_cb on async data
+        //    arrival, signaling cv. Lost-wakeup-safe via flag
+        //    write happens-before notify.
+        //  - else (flag-only): legacy drive_io(timeout) path.
+        //    Backend's blocking wait owns the budget.
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        let use_cv_wait = !was_woken && self.session.supports_wake_callback();
+        #[cfg(not(all(feature = "std", feature = "rmw-cffi")))]
+        let use_cv_wait = false;
+
         let primary_timeout = if was_woken { 0 } else { timeout_ms };
 
-        let _ = self.session.drive_io(primary_timeout);
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        if use_cv_wait {
+            let dur = core::time::Duration::from_millis(timeout_ms as u64);
+            let g = self.wake_mu.lock().expect("wake_mu poisoned");
+            let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
+                // Predicate returns TRUE to keep waiting (no
+                // wake yet); FALSE to exit.
+                !self
+                    .wake_flag
+                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+            });
+        }
+
+        // Drain all sessions non-blocking when we used the cv
+        // path (or the flag was pre-set); otherwise let the
+        // primary's drive_io own the timeout (legacy C.6.b).
+        let drive_timeout = if use_cv_wait || was_woken { 0 } else { primary_timeout };
+        let _ = self.session.drive_io(drive_timeout);
         // Phase 104.C.3 — drive every extra session opened by
         // `node_builder.rmw()` calls. Polling order is registration
         // order; extras always poll with 0-ms (the primary owns the

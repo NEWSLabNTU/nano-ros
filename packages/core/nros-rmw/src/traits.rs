@@ -957,6 +957,20 @@ pub trait Session {
     ) {
         let _ = (cb, ctx);
     }
+
+    /// Phase 124.B.4 — does this backend invoke
+    /// [`set_wake_callback`]'s `cb` from its async wake path? The
+    /// executor's `spin_once` uses this to choose between
+    /// condvar-blocked wait (sub-poll wake latency) and the
+    /// legacy `drive_io(timeout)` blocking wait (flag-only
+    /// backends that need their drive_io to own the wait budget).
+    ///
+    /// Default: `false`. Concrete backends that override
+    /// `set_wake_callback` to actually call the cb on async wake
+    /// must also override this to return `true`.
+    fn supports_wake_callback(&self) -> bool {
+        false
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See
