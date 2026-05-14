@@ -911,6 +911,24 @@ pub trait Session {
     fn next_deadline_ms(&self) -> Option<u32> {
         None
     }
+
+    /// Phase 104.C.6.b — install (or clear, when `flag` is null) the
+    /// shared executor wake flag. The runtime calls this once per
+    /// session after `open` with `flag` pointing at the executor's
+    /// `Arc<AtomicBool>::as_ptr()`. The backend stores the pointer in
+    /// its per-session state and writes `1` whenever its transport
+    /// notification path fires (datagram arrival, condvar wake, etc.)
+    /// — causing `spin_once` to short-circuit `drive_io` to a 0-ms
+    /// poll on its next iteration.
+    ///
+    /// `flag.is_null()` clears any previously installed flag.
+    ///
+    /// Default body: ignore the call. Concrete backends opt in by
+    /// overriding this to plumb the pointer into their notify path
+    /// (zenoh-pico condvar callback, dust-DDS reactor, etc.).
+    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
+        let _ = flag;
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See

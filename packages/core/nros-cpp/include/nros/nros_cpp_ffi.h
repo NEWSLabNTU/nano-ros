@@ -202,6 +202,19 @@ typedef struct nros_cpp_node_t {
    * Node namespace (null-terminated, max 64 bytes including null).
    */
   uint8_t namespace_[64];
+  /**
+   * Phase 104.C.9.b — opaque NodeId returned by
+   * `Executor::node_builder(...).build()`. `0` = primary Node
+   * (legacy single-Session creation path); non-zero values route
+   * publisher / subscription / service creation through the
+   * per-Node session resolved via
+   * `Executor::node_session_mut(NodeId)`.
+   */
+  uint8_t node_id;
+  /**
+   * Reserved for future use; pad to next u64 boundary.
+   */
+  uint8_t _reserved[7];
 } nros_cpp_node_t;
 
 /**

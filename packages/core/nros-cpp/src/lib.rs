@@ -508,6 +508,15 @@ pub struct nros_cpp_node_t {
     pub name: [u8; 64],
     /// Node namespace (null-terminated, max 64 bytes including null).
     pub namespace: [u8; 64],
+    /// Phase 104.C.9.b — opaque NodeId returned by
+    /// `Executor::node_builder(...).build()`. `0` = primary Node
+    /// (legacy single-Session creation path); non-zero values route
+    /// publisher / subscription / service creation through the
+    /// per-Node session resolved via
+    /// `Executor::node_session_mut(NodeId)`.
+    pub node_id: u8,
+    /// Reserved for future use; pad to next u64 boundary.
+    pub _reserved: [u8; 7],
 }
 
 /// Maximum RMW backend name length for `nros_cpp_node_options_t`.
@@ -674,17 +683,45 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // Phase 104.C.9.b — placeholder for `Executor::node_builder(name)
-    // .rmw(opts.rmw_name).locator(opts.locator).domain_id(...).
-    // sched(...).build()`. Today we still go through legacy
-    // `create_node(name)` because the C++ executor wrapper has not yet
-    // exposed a thin `node_builder` factory. Validate the executor
-    // handle by attempting the legacy create; multi-RMW dispatch
-    // follows in 104.C.9.b.
+    // Phase 104.C.9.b — drive Rust's `Executor::node_builder(name)
+    // .rmw(...).locator(...).domain_id(...).namespace(...).sched(...).
+    // build()` and store the returned NodeId on the C++ node handle.
+    // Subsequent `nros_cpp_publisher_create` / `_subscription_create`
+    // / `_service_*_create` calls observe `node_id != 0` and route
+    // through `Executor::node_session_mut(NodeId)` instead of the
+    // primary session.
     let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
-    if ctx.executor.create_node(name_str).is_err() {
-        return NROS_CPP_RET_ERROR;
+    let mut builder = ctx.executor.node_builder(name_str);
+    if opts.rmw_name_len > 0 {
+        let rmw = unsafe {
+            core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len])
+        };
+        builder = builder.rmw(rmw);
     }
+    if opts.locator_len > 0 {
+        let loc = unsafe {
+            core::str::from_utf8_unchecked(&opts.locator[..opts.locator_len])
+        };
+        builder = builder.locator(loc);
+    }
+    if opts.domain_id_override != NROS_CPP_DOMAIN_ID_INHERIT {
+        builder = builder.domain_id(opts.domain_id_override);
+    }
+    if opts.namespace_len > 0 {
+        let ns = unsafe {
+            core::str::from_utf8_unchecked(&opts.namespace[..opts.namespace_len])
+        };
+        builder = builder.namespace(ns);
+    }
+    if opts.sched_context_id != 0 {
+        builder = builder.sched(nros_node::executor::sched_context::SchedContextId(
+            opts.sched_context_id,
+        ));
+    }
+    let node_id = match builder.build() {
+        Ok(id) => id,
+        Err(_) => return NROS_CPP_RET_ERROR,
+    };
 
     let out = unsafe { &mut *out_node };
     out.executor = executor_handle;
@@ -697,6 +734,8 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     } else {
         out.namespace[..1].copy_from_slice(b"/");
     }
+    out.node_id = node_id.raw();
+    out._reserved = [0u8; 7];
 
     NROS_CPP_RET_OK
 }

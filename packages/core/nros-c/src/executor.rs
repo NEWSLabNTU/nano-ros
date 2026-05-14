@@ -4,7 +4,10 @@
 //! evaluation, LET semantics, and I/O driving are delegated to the Rust
 //! executor — this module only handles C FFI translation.
 
-use core::{ffi::c_int, ptr};
+use core::{
+    ffi::{c_char, c_int},
+    ptr,
+};
 
 use crate::{
     action::{
@@ -341,6 +344,139 @@ pub unsafe extern "C" fn nros_executor_set_semantics(
     NROS_RET_OK
 }
 
+/// Phase 104.C.8.b — initialize a Node via the executor's
+/// [`node_builder`](nros_node::Executor::node_builder) chain.
+///
+/// Thin wrapper over Rust's
+/// `executor.node_builder(name).rmw(...).locator(...).domain_id(...).
+/// namespace(...).sched(...).build()`. Materialises a Node inside the
+/// executor's node table and stores the returned NodeId in
+/// `node.node_id` so subsequent
+/// [`nros_executor_register_subscription`] / `_service` / `_client` /
+/// `_action_*` calls route through `register_*_on(NodeId, ...)`
+/// instead of the legacy single-Node path.
+///
+/// Replaces the pre-104.C ordering of `support_init → node_init →
+/// executor_init` with the rclcpp-aligned `support_init → executor_init →
+/// executor_node_init`. The old `nros_node_init` / `nros_node_init_ex`
+/// entry points are preserved for source compatibility — they still
+/// drive the single-Node legacy path and leave `node.node_id = 0`.
+///
+/// # Parameters
+/// * `executor` — Pointer to an initialised executor.
+/// * `node` — Pointer to a zero-initialised node. Populated on success.
+/// * `name` — Node name (null-terminated). Must not be NULL.
+/// * `options` — Pointer to populated `nros_node_options_t`. NULL =
+///   default options (no rmw override, inherits executor's locator
+///   + domain, executor-default SchedContext).
+///
+/// # Returns
+/// * `NROS_RET_OK` on success.
+/// * `NROS_RET_INVALID_ARGUMENT` on NULL pointers / bad strings.
+/// * `NROS_RET_BAD_SEQUENCE` if node is already initialised.
+/// * `NROS_RET_NOT_INIT` if executor isn't initialised.
+/// * `NROS_RET_ERROR` if the executor's node table is full
+///   (`NROS_EXECUTOR_MAX_NODES`) or the backend session open failed.
+///
+/// # Safety
+/// All pointer arguments must satisfy their per-parameter rules. `options`
+/// length fields must not overrun their buffers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_node_init(
+    executor: *mut nros_executor_t,
+    node: *mut nros_node_t,
+    name: *const c_char,
+    options: *const crate::node::nros_node_options_t,
+) -> nros_ret_t {
+    use crate::constants::{MAX_LOCATOR_LEN, MAX_NAMESPACE_LEN, MAX_RMW_NAME_LEN};
+    use crate::node::{NROS_DOMAIN_ID_INHERIT, nros_node_options_t, nros_node_state_t};
+
+    validate_not_null!(executor, node, name);
+
+    let executor = &mut *executor;
+    let node_ref = &mut *node;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED {
+        return NROS_RET_BAD_SEQUENCE;
+    }
+
+    // Length-bound + copy node name into struct.
+    node_ref.name_len = crate::util::copy_cstr_into(name, &mut node_ref.name);
+    if node_ref.name_len == 0 {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    // Stack-copy a defaulted options struct when caller passed NULL,
+    // so the rest of the function reads a uniform shape.
+    let default_opts = nros_node_options_t::default();
+    let opts = if options.is_null() {
+        &default_opts
+    } else {
+        let opts_ref = &*options;
+        if opts_ref.namespace_len > MAX_NAMESPACE_LEN
+            || opts_ref.rmw_name_len > MAX_RMW_NAME_LEN
+            || opts_ref.locator_len > MAX_LOCATOR_LEN
+        {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        opts_ref
+    };
+
+    // Mirror options into node struct so subsequent helpers can read
+    // namespace / rmw / domain_id without consulting `options` again.
+    node_ref.namespace[..opts.namespace_len]
+        .copy_from_slice(&opts.namespace[..opts.namespace_len]);
+    node_ref.namespace_len = opts.namespace_len;
+    node_ref.rmw_name[..opts.rmw_name_len].copy_from_slice(&opts.rmw_name[..opts.rmw_name_len]);
+    node_ref.rmw_name_len = opts.rmw_name_len;
+    node_ref.domain_id_override = opts.domain_id_override;
+    node_ref.sched_context_id = opts.sched_context_id;
+
+    // Drive the Rust executor's NodeBuilder.
+    let rust_exec = get_executor(&mut executor._opaque);
+    let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
+    let mut builder = rust_exec.node_builder(name_str);
+    if opts.rmw_name_len > 0 {
+        builder = builder
+            .rmw(core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len]));
+    }
+    if opts.locator_len > 0 {
+        builder = builder
+            .locator(core::str::from_utf8_unchecked(&opts.locator[..opts.locator_len]));
+    }
+    if opts.domain_id_override != NROS_DOMAIN_ID_INHERIT {
+        builder = builder.domain_id(opts.domain_id_override);
+    }
+    if opts.namespace_len > 0 {
+        builder = builder.namespace(core::str::from_utf8_unchecked(
+            &opts.namespace[..opts.namespace_len],
+        ));
+    }
+    if opts.sched_context_id != 0 {
+        builder = builder.sched(nros_node::executor::sched_context::SchedContextId(
+            opts.sched_context_id,
+        ));
+    }
+    let node_id = match builder.build() {
+        Ok(id) => id,
+        Err(_) => return NROS_RET_ERROR,
+    };
+
+    // Persist NodeId so handle-creation paths can hit the `_on()`
+    // multi-Session variants. Support pointer stays NULL on this path —
+    // legacy single-Node paths key off support, multi-Node paths key
+    // off node_id.
+    node_ref.node_id = node_id.raw();
+    node_ref.support = core::ptr::null();
+    node_ref.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+    NROS_RET_OK
+}
+
 /// Set the trigger condition for the executor.
 ///
 /// # Safety
@@ -538,15 +674,36 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
         // create_subscriber call gets liveliness keyexpr metadata.
         set_executor_node_identity(rust_exec, subscription_ref.node);
 
-        // Register with the nros-node executor using MESSAGE_BUFFER_SIZE
-        let result = rust_exec.register_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
-            topic_str,
-            type_str,
-            type_hash_str,
-            qos,
-            callback,
-            context,
-        );
+        // Phase 104.C.8.b — when the Node was created via
+        // `nros_executor_node_init`, route through `_on(NodeId, ...)`
+        // so multi-RMW bridges land on the right session. Legacy
+        // `nros_node_init`-style Nodes carry `node_id == 0` and fall
+        // through to the single-Node entry point.
+        let node_raw_id = if subscription_ref.node.is_null() {
+            0
+        } else {
+            (*subscription_ref.node).node_id
+        };
+        let result = if node_raw_id != 0 {
+            rust_exec.register_subscription_raw_with_qos_sized_on::<MESSAGE_BUFFER_SIZE>(
+                nros_node::executor::NodeId::from_raw(node_raw_id),
+                topic_str,
+                type_str,
+                type_hash_str,
+                qos,
+                callback,
+                context,
+            )
+        } else {
+            rust_exec.register_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
+                topic_str,
+                type_str,
+                type_hash_str,
+                qos,
+                callback,
+                context,
+            )
+        };
 
         match result {
             Ok(handle_id) => {
@@ -691,15 +848,32 @@ pub unsafe extern "C" fn nros_executor_register_service(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, service_ref.node);
 
-        // Register with the nros-node executor
-        let result = rust_exec
-            .register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+        // Phase 104.C.8.b — route multi-Node services through the
+        // `_on(NodeId, ...)` variant when the Node was created via
+        // `nros_executor_node_init`.
+        let node_raw_id = if service_ref.node.is_null() {
+            0
+        } else {
+            (*service_ref.node).node_id
+        };
+        let result = if node_raw_id != 0 {
+            rust_exec.register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+                nros_node::executor::NodeId::from_raw(node_raw_id),
                 service_name,
                 type_str,
                 type_hash_str,
                 callback,
                 context,
-            );
+            )
+        } else {
+            rust_exec.register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+                service_name,
+                type_str,
+                type_hash_str,
+                callback,
+                context,
+            )
+        };
 
         match result {
             Ok(handle_id) => {
@@ -774,13 +948,30 @@ pub unsafe extern "C" fn nros_executor_add_client(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
 
-        let result = rust_exec.register_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
-            service_name,
-            type_str,
-            type_hash_str,
-            cb,
-            client_ctx,
-        );
+        // Phase 104.C.8.b — service-client multi-Node dispatch.
+        let node_raw_id = if client_ref.node.is_null() {
+            0
+        } else {
+            (*client_ref.node).node_id
+        };
+        let result = if node_raw_id != 0 {
+            rust_exec.register_service_client_raw_sized_on::<MESSAGE_BUFFER_SIZE>(
+                nros_node::executor::NodeId::from_raw(node_raw_id),
+                service_name,
+                type_str,
+                type_hash_str,
+                cb,
+                client_ctx,
+            )
+        } else {
+            rust_exec.register_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
+                service_name,
+                type_str,
+                type_hash_str,
+                cb,
+                client_ctx,
+            )
+        };
 
         match result {
             Ok(handle_id) => {
@@ -924,20 +1115,41 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, server_ref.node);
 
+        // Phase 104.C.8.b — action-server multi-Node dispatch.
+        let node_raw_id = if server_ref.node.is_null() {
+            0
+        } else {
+            (*server_ref.node).node_id
+        };
+
         // Register with the nros-node executor using trampolines. The
         // accepted_callback_trampoline is invoked by the arena *after* the
         // accept reply is sent, so the user's long-running execution does
         // not delay the reply the client is blocking on.
-        let result = rust_exec
-            .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
-                action_name,
-                type_str,
-                type_hash_str,
-                goal_callback_trampoline,
-                cancel_callback_trampoline,
-                Some(crate::action::accepted_callback_trampoline),
-                context,
-            );
+        let result = if node_raw_id != 0 {
+            rust_exec
+                .register_action_server_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+                    nros_node::executor::NodeId::from_raw(node_raw_id),
+                    action_name,
+                    type_str,
+                    type_hash_str,
+                    goal_callback_trampoline,
+                    cancel_callback_trampoline,
+                    Some(crate::action::accepted_callback_trampoline),
+                    context,
+                )
+        } else {
+            rust_exec
+                .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+                    action_name,
+                    type_str,
+                    type_hash_str,
+                    goal_callback_trampoline,
+                    cancel_callback_trampoline,
+                    Some(crate::action::accepted_callback_trampoline),
+                    context,
+                )
+        };
 
         match result {
             Ok(handle) => {
@@ -1023,19 +1235,47 @@ pub unsafe extern "C" fn nros_executor_register_action_client(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
 
+        // Phase 104.C.8.b — action-client multi-Node dispatch. The
+        // `_sized_on` variant accepts a NodeId; the legacy
+        // `register_action_client_raw` (size-defaulted) has no `_on`
+        // form, so we re-spell the size constants here when routing
+        // through a Node.
+        let node_raw_id = if client_ref.node.is_null() {
+            0
+        } else {
+            (*client_ref.node).node_id
+        };
+
         // Create a NEW ActionClientCore in the arena via register_action_client_raw.
         // The async send functions will use this core (not the client's original).
         // Both share the same global zenoh session, so the arena core's service
         // clients can communicate with the server independently.
-        let result = rust_exec.register_action_client_raw(
-            action_name,
-            type_str,
-            type_hash_str,
-            goal_response_cb,
-            feedback_cb,
-            result_cb,
-            client_ctx,
-        );
+        let result = if node_raw_id != 0 {
+            rust_exec.register_action_client_raw_sized_on::<
+                MESSAGE_BUFFER_SIZE,
+                MESSAGE_BUFFER_SIZE,
+                MESSAGE_BUFFER_SIZE,
+            >(
+                nros_node::executor::NodeId::from_raw(node_raw_id),
+                action_name,
+                type_str,
+                type_hash_str,
+                goal_response_cb,
+                feedback_cb,
+                result_cb,
+                client_ctx,
+            )
+        } else {
+            rust_exec.register_action_client_raw(
+                action_name,
+                type_str,
+                type_hash_str,
+                goal_response_cb,
+                feedback_cb,
+                result_cb,
+                client_ctx,
+            )
+        };
 
         match result {
             Ok(handle) => {

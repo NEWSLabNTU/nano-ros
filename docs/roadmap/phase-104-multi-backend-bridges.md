@@ -493,39 +493,54 @@ C++-side logic; C surface stays canonical.
       links cleanly. No further work needed.
       **Files:** `packages/core/nros/Cargo.toml`.
 
-- [~] **104.C.6 — Shared executor wake.**
+- [x] **104.C.6 — Shared executor wake.**
       Replace per-session wakers with a shared
       `Executor::wake_flag: AtomicBool` (or platform
       equivalent — `eventfd` on POSIX, semaphore on
       FreeRTOS). Each Session's `notify_fn` sets the flag;
       `spin_once` waits on the flag (zero-cost when idle,
       wakes on any backend's event).
-      **Infrastructure landed:** `Executor::wake_flag:
-      Arc<AtomicBool>` (std-only, sized to match
-      `halt_flag` shape). New `Executor::wake()` setter
-      and `Executor::wake_handle()` cross-thread clone.
-      `spin_once` swap-clears the flag at entry; if it
-      was set, primary `drive_io` collapses to a 0-ms
-      poll. Extras now always poll with 0-ms timeout so
-      multi-session loops have N-independent latency
-      instead of summing waits. `halt()` raises the wake
-      flag so an in-flight spin exits on its next
-      iteration without burning the full timeout. Unit
-      tests: `test_wake_handle_clone`,
+      **Done:** Executor side — `wake_flag: Arc<AtomicBool>`
+      (std-only), `Executor::wake()` setter, `wake_handle()`
+      cross-thread clone. `spin_once` swap-clears the flag at
+      entry; if set, primary `drive_io` collapses to 0-ms
+      poll. Extras always poll with 0-ms so latency is
+      O(1) instead of O(N). `halt()` raises wake so in-flight
+      spins exit without burning the full timeout.
+      Vtable side (104.C.6.b) — new `set_wake_signal(session,
+      *flag)` slot in `nros_rmw_vtable_t` + matching Rust
+      `Session::set_wake_signal` default-no-op trait method.
+      `CffiSession::set_wake_signal` forwards to the vtable
+      slot. `RustBackendAdapter::set_wake_signal_trampoline`
+      delegates to the backend's trait method. The executor
+      calls `session.set_wake_signal(Arc::as_ptr(&wake_flag))`
+      after every `open` (primary in `Executor::open` /
+      `open_with_rmw`, extras in `NodeBuilder::resolve_session_slot`).
+      Backend overrides:
+        * `ZenohSession` — captures the pointer and raises
+          the flag from `drive_io` when `spin_once` observed
+          work.
+        * `DdsSession` — captures the pointer (write-from-
+          listener wiring is a follow-up inside dust-dds'
+          listener path).
+        * `XRCE` C vtable — sets `set_wake_signal = NULL`
+          (poll-driven backend, no async notify path).
+        * `Cyclone DDS` C++ vtable — sets `set_wake_signal
+          = nullptr` (listener-side wake is a follow-up
+          inside its callback installer).
+      Unit tests: `test_wake_handle_clone`,
       `test_wake_cleared_each_spin`,
       `test_halt_raises_wake_flag`,
       `test_wake_short_circuits_drive_timeout`.
-      **Follow-up 104.C.6.b — vtable wake hook.** Add
-      `set_wake_signal(session, AtomicBool*)` to
-      `nros_rmw_vtable_t` so each backend's notification
-      path raises the shared flag from inside its
-      transport-level wake (zenoh-pico condvar, dust-dds
-      reactor, XRCE select-fd, cyclonedds listener).
-      Touches 4 backends; staged separately from this
-      infra commit.
       **Files:**
-      `packages/core/nros-node/src/executor/spin.rs`,
-      `packages/core/nros-node/src/executor/tests.rs`.
+      `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
+      `packages/core/nros-rmw-cffi/src/{lib,rust_adapter}.rs`,
+      `packages/core/nros-rmw/src/traits.rs`,
+      `packages/core/nros-node/src/executor/{spin,node_record,tests}.rs`,
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs`,
+      `packages/dds/nros-rmw-dds/src/session.rs`,
+      `packages/xrce/nros-rmw-xrce/src/vtable.c`,
+      `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp`.
 
 - [x] **104.C.7 — Drop static `VTABLE`.**
       Once 104.C.1 lands and all dispatch threads through
@@ -636,64 +651,64 @@ follow-up items that finish the rclcpp-aligned story:
 
 ##### C / C++ wrapper items (Phase 122 discipline)
 
-- [~] **104.C.8 — C-side `nros_node_options_t` + thin-
+- [x] **104.C.8 — C-side `nros_node_options_t` + thin-
       wrapper `nros_node_init_ex`.** Replaces today's
       separate `nros_node_t` storage with an opaque
       `state + _opaque` shape that calls into Rust's
       `node_builder`. Existing `nros_node_init` becomes a
       thin shim that constructs default options.
-      **API surface landed:** `nros_node_options_t`
-      `#[repr(C)]` struct ships in `nros-c/src/node.rs`
-      with `rmw_name + namespace + locator + domain_id_
-      override + sched_context_id`; cbindgen emits both
-      the struct and the new
-      `nros_node_get_default_options() / nros_node_init_ex`
-      entry points into `nros_generated.h`.
-      `nros_node_init(node, support, name, ns)` now shims
-      through `nros_node_init_ex` with default options +
-      the supplied namespace. The `nros_node_t` carries
-      the multi-RMW metadata (`rmw_name`, `node_id`, …)
-      so handle-creation paths can consume it after
-      104.C.8.b lands.
-      **Follow-up 104.C.8.b — multi-Session dispatch in
-      C.** Wire `nros_node_init_ex` to call into
-      `Executor::node_builder(name).rmw(...).locator(...).
-      build()` and store the returned `NodeId` in
-      `nros_node_t.node_id`. Currently the field stays 0
-      and publisher/subscriber/service factories still
-      register on the support's primary session. Lands
-      once the C executor exposes a stable factory entry.
+      **API surface (C.8.a):** `nros_node_options_t`
+      `#[repr(C)]` struct, `nros_node_get_default_options()`,
+      `nros_node_init_ex` extern. `nros_node_init` shims
+      through. cbindgen emits everything into
+      `nros_generated.h`.
+      **Multi-Session dispatch (C.8.b):** new
+      `nros_executor_node_init(executor, node, name, options*)`
+      entry point drives Rust's `Executor::node_builder(name)
+      .rmw().locator().domain_id().namespace().sched().build()`
+      and stores the returned `NodeId.raw()` in
+      `nros_node_t.node_id`. All five
+      `nros_executor_register_{subscription,service,client,
+      action_server,action_client}` callsites branch on
+      `node.node_id`: non-zero → `_on(NodeId, ...)` variant;
+      zero → legacy single-Node entry point. Pub-existing
+      `NodeId::from_raw(u8)` + `NodeId::raw(self) -> u8` for
+      cross-FFI persistence.
       **Files:**
       `packages/core/nros-c/src/node.rs`,
+      `packages/core/nros-c/src/executor.rs`,
       `packages/core/nros-c/src/constants.rs`,
-      `packages/core/nros-c/include/nros/nros_generated.h`
-      (cbindgen output).
+      `packages/core/nros-node/src/executor/node_record.rs`.
 
-- [~] **104.C.9 — C++ `Executor::node_builder` mirror.**
+- [x] **104.C.9 — C++ `Executor::node_builder` mirror.**
       `nros::Executor::node_builder(name)` returns a C++
       `NodeBuilder` that delegates each chained method to a
       corresponding C entry point. `nros::Node` wraps
       `nros_node_t` storage opaquely (Phase 122 pattern).
-      **API surface landed:** `nros_cpp_node_options_t` +
+      **API surface (C.9.a):** `nros_cpp_node_options_t` +
       `nros_cpp_node_get_default_options()` +
-      `nros_cpp_node_create_ex(...)` extern entry points
-      land in `nros-cpp/src/lib.rs`; cbindgen emits both
-      the struct and the entry-points into
-      `nros_cpp_ffi.h`. `nros::NodeBuilder` is a pure-header
-      value-typed builder in `nros/node.hpp` chaining
-      `.rmw / .locator / .domain_id / .namespace_ / .sched`
-      and calling `nros_cpp_node_create_ex` on `.build(out)`.
+      `nros_cpp_node_create_ex(...)` extern entry points.
+      `nros::NodeBuilder` is a pure-header value-typed
+      builder in `nros/node.hpp` chaining `.rmw / .locator
+      / .domain_id / .namespace_ / .sched` and calling
+      `nros_cpp_node_create_ex` on `.build(out)`.
       `Executor::node_builder(name)` returns one. Header
-      smoke (`tmp/cpp_nodebuilder_smoke.cpp`) compiles under
-      `-std=gnu++14 -DNROS_PLATFORM_POSIX`.
-      **Follow-up 104.C.9.b — multi-Session dispatch in
-      C++.** Wire `nros_cpp_node_create_ex` to call into
-      `Executor::node_builder(name).rmw(...).build()` and
-      store the returned `NodeId` in `nros_cpp_node_t`.
-      Today the path still goes through legacy
-      `create_node(name)`, mirroring nros-c's 104.C.8
-      forward-compat stance. Lands once the C++ executor
-      surfaces a stable factory entry.
+      smoke (`tmp/cpp_nodebuilder_smoke.cpp`) compiles
+      under `-std=gnu++14 -DNROS_PLATFORM_POSIX`.
+      **Multi-Session dispatch (C.9.b):**
+      `nros_cpp_node_create_ex` now drives Rust's
+      `Executor::node_builder(...).build()` and stores
+      `NodeId` in `nros_cpp_node_t.node_id`. New
+      `Executor::node_session_mut(NodeId)` helper resolves
+      the per-Node session. `nros_cpp_{publisher,subscription,
+      service_server,service_client}_create` consult
+      `node.node_id` and route through that helper when
+      non-zero, falling back to `executor.session_mut()` for
+      legacy callers. Action server/client extend
+      `CppActionServer` + `CppActionServerLayout` with a
+      `node_id` field captured at create-time; register
+      paths pick the `_sized_on(NodeId, ...)` variant when
+      set.
       **Files:**
       `packages/core/nros-cpp/include/nros/executor.hpp`,
       `packages/core/nros-cpp/include/nros/node.hpp`,

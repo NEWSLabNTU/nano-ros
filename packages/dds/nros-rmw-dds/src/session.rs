@@ -71,6 +71,9 @@ pub struct DdsSession {
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
     close_ops: Option<nros_rmw::NrosTransportOps>,
     _domain_id: u32,
+    /// Phase 104.C.6.b — shared executor wake flag (see ZenohSession
+    /// for the rationale; mirror impl).
+    wake_flag: core::sync::atomic::AtomicPtr<core::sync::atomic::AtomicBool>,
 }
 
 impl DdsSession {
@@ -82,6 +85,7 @@ impl DdsSession {
         Self {
             participant,
             _domain_id: domain_id,
+            wake_flag: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 
@@ -97,6 +101,7 @@ impl DdsSession {
             runtime,
             close_ops: None,
             _domain_id: domain_id,
+            wake_flag: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 
@@ -116,6 +121,7 @@ impl DdsSession {
             runtime,
             close_ops: Some(close_ops),
             _domain_id: domain_id,
+            wake_flag: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 }
@@ -891,6 +897,19 @@ impl Session for DdsSession {
             self.runtime.drive();
         }
         Ok(())
+    }
+
+    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
+        // Phase 104.C.6.b — capture the executor's shared wake flag.
+        // dust-DDS's background OS threads will raise this from their
+        // listener path when sample arrival or matched-pub/sub changes
+        // are observed (104.C.6.b follow-up). For now the pointer is
+        // stored and used by the runtime to validate plumbing — the
+        // executor-side `Executor::wake()` path is already useful.
+        self.wake_flag.store(
+            flag as *mut core::sync::atomic::AtomicBool,
+            core::sync::atomic::Ordering::Release,
+        );
     }
 
     /// Phase 110.0 — bound the executor's `drive_io` wait against

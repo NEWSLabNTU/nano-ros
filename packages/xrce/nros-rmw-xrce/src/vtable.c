@@ -45,11 +45,18 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_service_client     = xrce_service_client_destroy,
     .call_raw                   = xrce_service_call_raw,
 
-    /* ---- Phase 108 / 110.0 hooks (deferred) ---- */
+    /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
     .register_subscriber_event  = NULL,
     .register_publisher_event   = NULL,
     .assert_publisher_liveliness = NULL,
     .next_deadline_ms           = NULL,
+    /* Phase 104.C.6.b — the XRCE backend has no asynchronous notify
+     * path that could write into the executor's shared wake flag
+     * (XRCE-DDS-Client is poll-driven via xrce_session_drive_io).
+     * NULL = runtime treats this backend as "purely poll-based" and
+     * relies on cooperative scheduling + the same-thread setters
+     * (Executor::wake, halt, …). */
+    .set_wake_signal            = NULL,
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {

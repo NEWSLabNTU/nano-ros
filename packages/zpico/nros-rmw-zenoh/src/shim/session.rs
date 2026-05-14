@@ -22,6 +22,12 @@ use super::{
 /// There are no background threads.
 pub struct ZenohSession {
     context: Context,
+    /// Phase 104.C.6.b — shared executor wake flag. Installed by
+    /// `set_wake_signal`; non-null after the runtime has wired the
+    /// executor's `Arc<AtomicBool>` through the cffi vtable. Set to
+    /// `1` after `drive_io` observes work so multi-session executors
+    /// short-circuit the next iteration's blocking wait.
+    wake_flag: core::sync::atomic::AtomicPtr<core::sync::atomic::AtomicBool>,
 }
 
 impl ZenohSession {
@@ -142,7 +148,10 @@ impl ZenohSession {
         // Register the reply waker callback for async service client support
         super::service::register_reply_waker();
 
-        Ok(Self { context })
+        Ok(Self {
+            context,
+            wake_flag: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+        })
     }
 
     /// Check if the session is open
@@ -329,7 +338,29 @@ impl Session for ZenohSession {
     }
 
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
-        self.spin_once(timeout_ms as u32).map(|_| ())
+        let res = self.spin_once(timeout_ms as u32);
+        // Phase 104.C.6.b — when zenoh's spin_once observed any work
+        // (true return), raise the shared wake flag so the executor's
+        // next `spin_once` polls every session in 0-ms instead of
+        // blocking on the primary. Best-effort: if the flag pointer
+        // is null the runtime hasn't wired it yet.
+        if let Ok(true) = res {
+            let p = self.wake_flag.load(core::sync::atomic::Ordering::Acquire);
+            if !p.is_null() {
+                // SAFETY: pointer was installed via `set_wake_signal`
+                // and points at an `Arc<AtomicBool>::as_ptr()` value
+                // that outlives the session (Arc held by Executor).
+                unsafe { (*p).store(true, core::sync::atomic::Ordering::Release) };
+            }
+        }
+        res.map(|_| ())
+    }
+
+    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
+        self.wake_flag.store(
+            flag as *mut core::sync::atomic::AtomicBool,
+            core::sync::atomic::Ordering::Release,
+        );
     }
 
     /// Phase 110.0 — bound the executor's `drive_io` wait against

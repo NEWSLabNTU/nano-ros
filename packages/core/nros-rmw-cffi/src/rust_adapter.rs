@@ -214,6 +214,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         register_publisher_event: register_publisher_event_trampoline::<R>,
         assert_publisher_liveliness: assert_publisher_liveliness_trampoline::<R>,
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
+        set_wake_signal: Some(set_wake_signal_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -771,6 +772,21 @@ unsafe extern "C" fn next_deadline_ms_trampoline<R: RustBackend>(
         return -1;
     };
     Session::next_deadline_ms(s).map(|v| v as i32).unwrap_or(-1)
+}
+
+unsafe extern "C" fn set_wake_signal_trampoline<R: RustBackend>(
+    session: *mut NrosRmwSession,
+    flag: *mut core::ffi::c_void,
+) -> NrosRmwRet {
+    let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // Phase 104.C.6.b — delegate to the Rust backend's Session impl
+    // if it overrides `set_wake_signal`. The default trait
+    // implementation accepts the install/clear but never writes to
+    // the flag — concrete backends opt in by overriding.
+    Session::set_wake_signal(s, flag);
+    NROS_RMW_RET_OK
 }
 
 // ============================================================================

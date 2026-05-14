@@ -86,6 +86,7 @@ impl Executor {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
         executor.set_node_identity(config.node_name, config.namespace);
+        executor.install_wake_signal_on_primary();
         Ok(executor)
     }
 
@@ -123,6 +124,7 @@ impl Executor {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
         executor.set_node_identity(config.node_name, config.namespace);
+        executor.install_wake_signal_on_primary();
         Ok(executor)
     }
 }
@@ -630,6 +632,41 @@ impl Executor {
             Some(&mut *self.session)
         } else {
             self.extra_sessions.get_mut((idx - 1) as usize)
+        }
+    }
+
+    /// Phase 104.C.9.b — resolve the per-Node session for direct
+    /// entity creation paths (C++ FFI publisher / subscription /
+    /// service that bypass the `register_*_on` arena dispatch).
+    /// Returns `None` when `node_id` is out of range or the Node's
+    /// `session_idx` lands outside the executor's session table.
+    pub fn node_session_mut(
+        &mut self,
+        node_id: super::node_record::NodeId,
+    ) -> Option<&mut session::ConcreteSession> {
+        let session_idx = self.nodes.get(node_id.index())?.session_idx;
+        self.session_at_mut(session_idx)
+    }
+
+    /// Phase 104.C.6.b — install the executor's shared wake flag onto
+    /// the primary session. Best-effort: backends that don't override
+    /// `Session::set_wake_signal` ignore the call.
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    fn install_wake_signal_on_primary(&mut self) {
+        use nros_rmw::Session as _;
+        let ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
+        self.session.set_wake_signal(ptr);
+    }
+
+    /// Phase 104.C.6.b — install the wake flag onto an extra session
+    /// opened by `node_builder.rmw(...)`. Called from
+    /// `NodeBuilder::build()` right after `extra_sessions.push(...)`.
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    pub(crate) fn install_wake_signal_on_extra(&mut self, idx: usize) {
+        use nros_rmw::Session as _;
+        let ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
+        if let Some(s) = self.extra_sessions.get_mut(idx) {
+            s.set_wake_signal(ptr);
         }
     }
 

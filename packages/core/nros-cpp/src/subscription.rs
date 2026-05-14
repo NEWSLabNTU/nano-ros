@@ -79,11 +79,24 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 
     let qos_settings = qos.to_qos_settings();
 
-    match ctx
-        .executor
-        .session_mut()
-        .create_subscriber(&topic_info, qos_settings)
-    {
+    // Phase 104.C.9.b — when the Node was created via
+    // `nros_cpp_node_create_ex` (multi-RMW path), `node.node_id != 0`
+    // and the subscriber must land on the Node's bound session, not
+    // the executor's primary. `node_session_mut` resolves both cases
+    // transparently.
+    let session = if node_ref.node_id != 0 {
+        match ctx
+            .executor
+            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+        {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    } else {
+        ctx.executor.session_mut()
+    };
+
+    match session.create_subscriber(&topic_info, qos_settings) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwSubscriber, handle);

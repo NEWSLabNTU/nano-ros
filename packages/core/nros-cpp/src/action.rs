@@ -57,6 +57,11 @@ pub(crate) struct CppActionServer {
     goal_cb: Option<CppGoalCallback>,
     cancel_cb: Option<CppCancelCallback>,
     cb_ctx: *mut c_void,
+    /// Phase 104.C.9.b — NodeId captured at create time, consumed by
+    /// `nros_cpp_action_server_register` to pick the `_on(NodeId, ...)`
+    /// multi-Node dispatch variant. `0` = legacy primary-Node path.
+    node_id: u8,
+    _reserved: [u8; 7],
 }
 
 // Layout-mirror equivalence (Phase 87.11): the real `CppActionServer`
@@ -170,6 +175,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
         goal_cb: None,
         cancel_cb: None,
         cb_ctx: core::ptr::null_mut(),
+        // Phase 104.C.9.b — capture the Node's id so register can
+        // pick the multi-Node `_on(NodeId, ...)` dispatch variant.
+        node_id: node_ref.node_id,
+        _reserved: [0u8; 7],
     };
     unsafe {
         core::ptr::write(storage as *mut CppActionServer, server);
@@ -220,15 +229,40 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    match ctx.executor.register_action_server_raw(
-        act_str,
-        type_str,
-        hash_str,
-        goal_callback_trampoline,
-        cancel_callback_trampoline,
-        None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
-        storage,
-    ) {
+    // Phase 104.C.9.b — when the action server was created on a
+    // multi-RMW Node, route registration through the `_on(NodeId, ...)`
+    // variant so the underlying queryables/publishers land on the
+    // Node's bound session. Default-Node servers stay on the legacy
+    // path.
+    let result = if server.node_id != 0 {
+        ctx.executor
+            .register_action_server_raw_sized_on::<
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                4,
+            >(
+                nros_node::executor::NodeId::from_raw(server.node_id),
+                act_str,
+                type_str,
+                hash_str,
+                goal_callback_trampoline,
+                cancel_callback_trampoline,
+                None,
+                storage,
+            )
+    } else {
+        ctx.executor.register_action_server_raw(
+            act_str,
+            type_str,
+            hash_str,
+            goal_callback_trampoline,
+            cancel_callback_trampoline,
+            None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
+            storage,
+        )
+    };
+    match result {
         Ok(handle) => {
             server.handle = Some(handle);
             NROS_CPP_RET_OK
@@ -662,17 +696,39 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 
     // Register with executor — creates the ONLY ActionClientCore in the arena.
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).
-    let handle = match ctx.executor.register_action_client_raw(
-        act_str,
-        type_str,
-        hash_str,
-        Some(cpp_goal_response_trampoline),
-        Some(cpp_feedback_trampoline),
-        Some(cpp_result_trampoline),
-        storage, // context = CppActionClient pointer
-    ) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+    // Phase 104.C.9.b — route multi-Node action clients through the
+    // `_sized_on(NodeId, ...)` variant.
+    let handle = if node_ref.node_id != 0 {
+        match ctx.executor.register_action_client_raw_sized_on::<
+            { nros_node::config::DEFAULT_RX_BUF_SIZE },
+            { nros_node::config::DEFAULT_RX_BUF_SIZE },
+            { nros_node::config::DEFAULT_RX_BUF_SIZE },
+        >(
+            nros_node::executor::NodeId::from_raw(node_ref.node_id),
+            act_str,
+            type_str,
+            hash_str,
+            Some(cpp_goal_response_trampoline),
+            Some(cpp_feedback_trampoline),
+            Some(cpp_result_trampoline),
+            storage,
+        ) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        }
+    } else {
+        match ctx.executor.register_action_client_raw(
+            act_str,
+            type_str,
+            hash_str,
+            Some(cpp_goal_response_trampoline),
+            Some(cpp_feedback_trampoline),
+            Some(cpp_result_trampoline),
+            storage, // context = CppActionClient pointer
+        ) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        }
     };
 
     let client = CppActionClient {

@@ -82,7 +82,21 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         svc_info = svc_info.with_node_name(name);
     }
 
-    match ctx.executor.session_mut().create_service_server(&svc_info) {
+    // Phase 104.C.9.b — route through the Node's session when bound
+    // to a non-primary RMW backend.
+    let session = if node_ref.node_id != 0 {
+        match ctx
+            .executor
+            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+        {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    } else {
+        ctx.executor.session_mut()
+    };
+
+    match session.create_service_server(&svc_info) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceServer, handle);
@@ -257,7 +271,20 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
         svc_info = svc_info.with_node_name(name);
     }
 
-    match ctx.executor.session_mut().create_service_client(&svc_info) {
+    // Phase 104.C.9.b — route through the Node's session.
+    let session = if node_ref.node_id != 0 {
+        match ctx
+            .executor
+            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+        {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    } else {
+        ctx.executor.session_mut()
+    };
+
+    match session.create_service_client(&svc_info) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceClient, handle);

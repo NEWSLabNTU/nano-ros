@@ -497,6 +497,21 @@ pub struct NrosRmwVtable {
     /// Returns next deadline in ms (≥ 0) or a negative value for
     /// "no deadline". NULL function pointer = treat as no deadline.
     pub next_deadline_ms: Option<unsafe extern "C" fn(session: *const NrosRmwSession) -> i32>,
+
+    // ---- Phase 104.C.6.b — shared executor wake signal ----
+    /// Install (or clear, when `flag` is NULL) the shared
+    /// `AtomicBool` the executor uses to short-circuit `drive_io`
+    /// when any session sees work. The backend stores the pointer in
+    /// its per-session state and writes `1` whenever its transport
+    /// notification path fires. NULL fn pointer = no asynchronous
+    /// wake support (the runtime still observes same-thread setters
+    /// like `Executor::wake` / `halt`).
+    pub set_wake_signal: Option<
+        unsafe extern "C" fn(
+            session: *mut NrosRmwSession,
+            flag: *mut core::ffi::c_void,
+        ) -> NrosRmwRet,
+    >,
 }
 
 // ============================================================================
@@ -1355,6 +1370,21 @@ impl Session for CffiSession {
         if ret < 0 { None } else { Some(ret as u32) }
     }
 
+    fn set_wake_signal(&mut self, flag: *mut core::ffi::c_void) {
+        let Some(f) = self.vtable.set_wake_signal else {
+            return;
+        };
+        let mut view = NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr(),
+            namespace_: self.namespace_buf.as_ptr(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        // SAFETY: vtable trampoline owns the install/clear; result is
+        // ignored — best-effort.
+        let _ = unsafe { f(&mut view as *mut _, flag) };
+    }
+
     /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
     /// here so backends behind the cffi vtable don't get rejected by
     /// the runtime's pre-validate step before they ever see the
@@ -2107,6 +2137,7 @@ mod tests {
         register_publisher_event: stub_register_publisher_event,
         assert_publisher_liveliness: stub_assert_publisher_liveliness,
         next_deadline_ms: None,
+        set_wake_signal: None,
     };
 
     #[test]

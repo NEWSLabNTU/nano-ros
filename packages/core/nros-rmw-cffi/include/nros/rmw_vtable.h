@@ -143,6 +143,29 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer is permitted — the runtime treats it the
      *  same as a negative return. */
     int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
+
+    /** Phase 104.C.6.b — shared executor wake signal.
+     *
+     *  The runtime calls this once per session right after `open`
+     *  with `flag` pointing at the executor's `wake_flag`
+     *  (`portable_atomic::AtomicBool`-equivalent). The backend stores
+     *  the pointer in its own per-session state and stores a non-zero
+     *  byte (`1`) into `*flag` whenever its transport notification
+     *  path fires — datagram arrival, condvar wake-up, select-fd
+     *  ready, etc. The executor's `spin_once` swap-clears the flag
+     *  and short-circuits `drive_io` to a 0-ms poll when set.
+     *
+     *  `flag == NULL` clears any previously installed flag; the
+     *  backend must drop the stored pointer and never write to it
+     *  again after this call returns.
+     *
+     *  NULL function pointer = backend has no asynchronous wake path
+     *  (purely poll-driven). The runtime treats this as best-effort;
+     *  `spin_once` still observes the executor's wake_flag from
+     *  same-thread setters (`Executor::wake`, `halt`, etc.) and from
+     *  any backend that does implement the hook. */
+    nros_rmw_ret_t (*set_wake_signal)(nros_rmw_session_t *session,
+                                       void *flag);
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

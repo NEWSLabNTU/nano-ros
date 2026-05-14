@@ -32,6 +32,22 @@ impl NodeId {
     pub fn index(self) -> usize {
         self.0 as usize
     }
+
+    /// Phase 104.C.8.b / C.9.b — build a `NodeId` from a raw `u8` for
+    /// FFI consumers that store the index in their own struct
+    /// (`nros_node_t.node_id`, `nros_cpp_node_t.node_id`). The value
+    /// is not validated against the executor's `nodes` table — the
+    /// caller is responsible for only constructing ids that
+    /// `node_builder(...).build()` previously returned. Out-of-range
+    /// ids fail loudly at the next `with_node` / `_on(...)` call.
+    pub const fn from_raw(raw: u8) -> NodeId {
+        NodeId(raw)
+    }
+
+    /// Raw u8 form for FFI persistence.
+    pub const fn raw(self) -> u8 {
+        self.0
+    }
 }
 
 /// Per-Node metadata stored inside the Executor.
@@ -198,6 +214,11 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
         if idx > u8::MAX as usize {
             return Err(NodeError::NodeTableFull);
         }
+        // Phase 104.C.6.b — install the shared wake flag on the
+        // freshly opened extra session so its backend notifications
+        // can short-circuit `spin_once`.
+        #[cfg(feature = "std")]
+        self.executor.install_wake_signal_on_extra(idx - 1);
         Ok(idx as u8)
     }
 

@@ -81,11 +81,22 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
 
     let qos_settings = qos.to_qos_settings();
 
-    match ctx
-        .executor
-        .session_mut()
-        .create_publisher(&topic_info, qos_settings)
-    {
+    // Phase 104.C.9.b — route through the Node's session when the
+    // Node was bound to a non-primary RMW backend via
+    // `nros_cpp_node_create_ex`.
+    let session = if node_ref.node_id != 0 {
+        match ctx
+            .executor
+            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+        {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    } else {
+        ctx.executor.session_mut()
+    };
+
+    match session.create_publisher(&topic_info, qos_settings) {
         Ok(handle) => {
             // Write the bare RmwPublisher handle into caller-provided storage.
             unsafe {

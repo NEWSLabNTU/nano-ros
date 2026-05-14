@@ -148,6 +148,8 @@ mod rmw_sizes {
 
     // Phase 87.6 thin-wrapper: `action_name` / `type_name` / `type_hash`
     // buffers moved to the C++ `nros::ActionServer<A>` class.
+    // Phase 104.C.9.b: `node_id` field added so action create→register
+    // can route through the per-Node session.
     #[repr(C)]
     #[doc(hidden)]
     pub struct CppActionServerLayout {
@@ -155,6 +157,8 @@ mod rmw_sizes {
         pub goal_cb: Option<CppGoalCallbackLayout>,
         pub cancel_cb: Option<CppCancelCallbackLayout>,
         pub cb_ctx: *mut c_void,
+        pub node_id: u8,
+        pub _reserved: [u8; 7],
     }
     export_size!(pub CPP_ACTION_SERVER_SIZE = CppActionServerLayout);
 
