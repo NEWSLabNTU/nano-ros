@@ -979,6 +979,123 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription_buffered`](Self::register_subscription_buffered).
+    /// Routes the typed subscription through the [`NodeId`]'s
+    /// session + identity (rclcpp `add_node` pattern).
+    pub fn register_subscription_buffered_on<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        type Entry<M, F> = SubBufferedEntry<M, F>;
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<Entry<M, F>>(trailing_bytes)?;
+
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        let buffer = if qos.depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+        } else {
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+        };
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<M, F>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer,
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset: entry_offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_try_process::<M, F>,
+            has_data: sub_buffered_has_data::<M, F>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<M, F>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription_sized`](Self::register_subscription_sized).
+    /// Convenience over [`register_subscription_buffered_on`] with
+    /// `KEEP_LAST(1)` QoS.
+    pub fn register_subscription_sized_on<M, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        self.register_subscription_buffered_on::<M, F, RX_BUF>(
+            node_id,
+            topic_name,
+            QosSettings::default().keep_last(1),
+            callback,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription`](Self::register_subscription).
+    /// Default RX buffer size + `KEEP_LAST(1)` QoS.
+    pub fn register_subscription_on<M, F>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        self.register_subscription_sized_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            node_id, topic_name, callback,
+        )
+    }
+
     /// Register a zero-copy raw subscription with QoS-driven buffering.
     ///
     /// The callback receives `&[u8]` — the raw CDR data borrowing directly
@@ -1386,6 +1503,95 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_service_sized`](Self::register_service_sized).
+    pub fn register_service_sized_on<
+        Svc,
+        F,
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+    >(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+    {
+        type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+            .with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_service_server(&info)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
+        };
+
+        let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<Svc, F, REQ_BUF, REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    req_buffer: [0u8; REQ_BUF],
+                    reply_buffer: [0u8; REPLY_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Service,
+            try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
+            has_data: srv_has_data::<Svc, F, REQ_BUF, REPLY_BUF>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_service`](Self::register_service).
+    pub fn register_service_on<Svc, F>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+    {
+        self.register_service_sized_on::<
+            Svc,
+            F,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(node_id, service_name, callback)
+    }
+
     // ========================================================================
     // Timer registration
     // ========================================================================
@@ -1549,17 +1755,75 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
+        self.register_subscription_raw_with_qos_sized_inner::<RX_BUF>(
+            None,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            context,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_subscription_raw_with_qos_sized`]. Used by the
+    /// C API thin-wrapper path so consumers can route raw-byte
+    /// subscriptions through a specific `NodeId`'s session.
+    pub fn register_subscription_raw_with_qos_sized_on<const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        self.register_subscription_raw_with_qos_sized_inner::<RX_BUF>(
+            Some(node_id),
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            context,
+        )
+    }
+
+    fn register_subscription_raw_with_qos_sized_inner<const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
-        let handle = self
-            .session
-            .create_subscriber(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
 
@@ -1636,18 +1900,70 @@ impl Executor {
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+            None,
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// [`register_service_raw_sized`]. C-FFI path.
+    pub fn register_service_raw_sized_on<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: RawServiceCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+            Some(node_id),
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    fn register_service_raw_sized_inner<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: RawServiceCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
         let mut info =
             ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
-        let handle = self
-            .session
-            .create_service_server(&info)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_service_server(&info)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
+        };
 
         let offset = self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?;
 
