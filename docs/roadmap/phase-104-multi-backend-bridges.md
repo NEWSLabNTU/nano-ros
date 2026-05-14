@@ -253,18 +253,30 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `cmake/NanoRosLink.cmake`,
       `cmake/NanoRosCTargets.cmake.in`.
 
-- [ ] **104.B.6 — Bare-metal explicit-call stub.** For
-      platforms where libc startup doesn't walk
-      `.init_array` (FreeRTOS, NuttX, ThreadX, RTIC
-      Cortex-M, Zephyr without device-tree init):
-      `nano_ros_link_rmw(target name)` emits a tiny
-      `rmw_register_<name>.c` stub that `nros_init` invokes
-      via a weak-symbol fan-out (`extern "C" void
-      __attribute__((weak)) nros_rmw_register_zenoh(void)`).
-      Backends provide the strong def.
+- [x] **104.B.6 — Bare-metal explicit-call stub.** Done
+      (co-implemented with 123.A.11). nros-c calls
+      `nros_app_register_backends()` from `nros_support_init`
+      via `unsafe extern "C"`. The weak no-op default lives
+      in `packages/core/nros-c/c-stubs/weak_register_backends.c`
+      (cc-built by nros-c's `build.rs`, emits a `W`
+      `nros_app_register_backends` symbol).
+      `nano_ros_link_rmw(<target> [RMW <r>])` writes a
+      strong-def stub to
+      `<build>/_nano_ros_link/<target>/nros_app_register_backends.c`
+      that `extern int nros_rmw_<r>_register(void);` +
+      calls each. Multiple `nano_ros_link_rmw` calls on the
+      same target accumulate the backend list (deduped via
+      `_NANO_ROS_LINKED_RMWS` target property).
+      Verified: `pkg_c_talker` in
+      `examples/multi-package-workspace/` shows the
+      generated stub + `nm` on the final binary reports
+      `nros_app_register_backends` as `T` (strong), not `W`
+      (weak) — linker picked the per-target strong def.
       **Files:**
       `cmake/NanoRosLink.cmake`,
-      `packages/core/nros-c/src/init.rs`.
+      `packages/core/nros-c/c-stubs/weak_register_backends.c`,
+      `packages/core/nros-c/build.rs`,
+      `packages/core/nros-c/src/support.rs`.
 
 - [ ] **104.B.7 — Backend-name catalogue.** Document the
       reserved names (`"zenoh"`, `"dds"`, `"xrce"`,

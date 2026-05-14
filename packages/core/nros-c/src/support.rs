@@ -155,13 +155,28 @@ pub unsafe extern "C" fn nros_support_init_named(
     // Phase 123.A.11.2 — explicit `nros_rmw_<rmw>_register()` call
     // sites removed. Each backend's wrapper staticlib emits a
     // `.init_array` ctor (phase 104.A) that runs the register fn
-    // before `main()` on POSIX / macOS / Windows. Bare-metal
-    // targets without init-array discovery use the explicit-call
-    // stub that CMake's `nano_ros_link_rmw` emits (phase 104.B.6
-    // co-design).
+    // before `main()` on POSIX / macOS / Windows.
     //
-    // `nros-c` is now RMW-agnostic at the Cargo / Rust level —
-    // one `libnros_c.a` per target triple covers all backends.
+    // Phase 104.B.6 — bare-metal explicit-call stub. On targets
+    // whose startup doesn't walk `.init_array` (some FreeRTOS /
+    // NuttX / ThreadX / Zephyr configurations), CMake's
+    // `nano_ros_link_rmw(target NAME <rmw>)` writes a stub C file
+    // into the user's target that provides a STRONG def of
+    // `nros_app_register_backends()`. nros-c declares the same
+    // symbol as WEAK and calls it from `nros_support_init`. If
+    // the stub is linked in, the strong def wins and the named
+    // backend(s) register. If not (POSIX with .init_array), the
+    // weak no-op default fires and the backend self-registers
+    // via its ctor instead. Either way, idempotent.
+    //
+    // `nros-c` itself stays RMW-agnostic — one `libnros_c.a` per
+    // target triple covers all backends.
+    unsafe extern "C" {
+        fn nros_app_register_backends();
+    }
+    unsafe {
+        nros_app_register_backends();
+    }
 
     // Initialize the middleware session
     #[cfg(feature = "rmw-cffi")]

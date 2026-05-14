@@ -105,6 +105,7 @@ critical-section = { version = "1.1", optional = true, features = ["restore-stat
 
 [build-dependencies]
 cbindgen = "0.29"
+cc = "1"
 nros-sizes-build = { workspace = true }
 # Phase 77.25: same reason as nros-cpp — force nros to compile before
 # this build.rs runs so the size probe has a rlib to read.

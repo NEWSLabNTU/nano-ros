@@ -23,6 +23,23 @@ fn main() {
     generate_config(&out_dir, &manifest_dir, &probed);
     generate_header(&manifest_dir);
 
+    // Phase 104.B.6 — weak default of `nros_app_register_backends`.
+    // POSIX hosts let the backend's .init_array ctor run first; this
+    // weak default fires as a no-op. Bare-metal targets where
+    // CMake's `nano_ros_link_rmw` emits a strong stub get the
+    // strong def at final link.
+    let stub_path = manifest_dir.join("c-stubs/weak_register_backends.c");
+    println!(
+        "cargo:rerun-if-changed={}",
+        stub_path.display()
+    );
+    cc::Build::new()
+        .file(&stub_path)
+        .warnings(true)
+        .extra_warnings(true)
+        .flag_if_supported("-Wpedantic")
+        .compile("nros_c_weak_stubs");
+
     // Re-run if source files change (for library rebuild + header regen)
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");

@@ -1213,6 +1213,7 @@ name = "nros-c"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
+ "cc",
  "critical-section",
  "nros",
  "nros-core",
