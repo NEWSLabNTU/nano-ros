@@ -1,5 +1,46 @@
 # Phase 124 Test Triage - 2026-05-14
 
+## Update - 2026-05-15 after parent/submodule pull
+
+Repository sync:
+
+- Parent branch `main` was fetched from `origin/main` and merged locally.
+- Merge commit: `255046a2 Merge remote-tracking branch 'origin/main'`.
+- `packages/codegen` submodule was updated to the merged parent pointer:
+  `3069524eb1e4b8d33da0de77a9e83df7681aac36`.
+- New upstream material from the pull is Phase 126 orchestration planning and
+  codegen schema work; re-run the full gate before treating the older Phase 124
+  full-matrix counts as current.
+
+Focused ESP32 allocation fix:
+
+- Commit: `8094047c fix(esp32): avoid subscriber heap allocation`.
+- Verification:
+  - `just format`
+  - `cargo check -p nros-rmw-cffi`
+  - `cargo build --release` in
+    `examples/qemu-esp32-baremetal/rust/zenoh/listener`
+  - `cargo build --release` in
+    `examples/qemu-esp32-baremetal/rust/zenoh/talker`
+  - `just esp32 test --no-capture`
+- Result: ESP32 listener no longer panics on subscriber creation. It reaches
+  `Subscriber declared` / `Waiting for messages...` with the original 64 KiB
+  ESP32 runtime heap.
+- Remaining focused ESP32 status: 9 tests run, 6 passed, 3 failed, 0 skipped.
+  The 3 failures are now message-delivery failures, not allocation failures.
+
+Remaining parallel work groups:
+
+| Group | Scope | Current signal | Suggested owner output |
+|---|---|---|---|
+| ESP32 Zenoh delivery | `esp32_emulator::{test_esp32_talker_listener_e2e,test_esp32_to_native,test_native_to_esp32}` | QEMU boots, listener subscribes, but ESP32/native paths deliver 0 messages. | Identify whether the break is router discovery, TCP connect/session open, publish path, or smoltcp polling. Include QEMU/router logs and one minimal focused fix. |
+| RTOS/QEMU platform E2E | FreeRTOS, NuttX, ThreadX Linux/RISC-V, baremetal DDS, platform DDS runtime tests | Largest bucket in the last full `just ci`: 39 failures. | Split by platform first; report whether each is build fixture, boot, network, or protocol handshake. |
+| Zephyr runtime/E2E | Zephyr native/host, DDS, XRCE runtime cases | Last full `just ci`: 29 failures; build/smoke was mostly passing. | Separate host/board boot failures from DDS/XRCE message-flow failures; preserve exact west/QEMU logs. |
+| Bare-metal Zenoh QEMU | RTIC action, RTIC service, serial pub/sub | Last full `just ci`: 3 failures. | Check whether failures share router/session readiness or serial transport framing. |
+| DDS native action | Native DDS action server/client E2E | Last full `just ci`: 1 failure. | Produce focused action logs and compare with passing Zenoh/XRCE action paths. |
+| ROS 2 lifecycle interop | Lifecycle full-cycle interop | Last full `just ci`: 1 failure. | Confirm whether this is graph discovery, transition service, or state-observation timing. |
+| Full-matrix refresh | `just ci`, then `just build-all`, then `just test-all` as needed | Older counts are pre-Phase-126 pull and pre-ESP32 allocation fix. | Produce a fresh categorized JUnit/log summary before broad platform work branches too far. |
+
 ## Update - 2026-05-15
 
 Focused verification after CFFI message-info propagation fix:
