@@ -725,17 +725,23 @@ the same change as `set_wake_callback` lands.
       `packages/core/nros-node/Cargo.toml`,
       `packages/core/nros-node/tests/signal_fd_wake.rs`.
 
-- [~] **124.B.7.d — ISR-safe wake contract test.**
+- [x] **124.B.7.d — ISR-safe wake contract test.**
       `test_guard_handle_send_across_thread` (nros-node lib
-      tests) verifies `GuardConditionHandle: Send` and a worker-
-      thread `trigger()` path. End-to-end cv-wake latency test
-      lives in `packages/testing/nros-tests/tests/wake_latency.rs`
-      but is `#[ignore]`-d pending the in-process `Executor::open`
-      + `zenohd_unique` fixture connectivity fix (pre-existing
-      issue not specific to Phase 124 — same symptom in
-      `trigger_conditions.rs`). POSIX SIGUSR1 handler test
-      deferred until B.7.c signalfd lands. (Partial.)
+      tests) verifies `GuardConditionHandle: Send` and the
+      worker-thread `trigger()` path.
+      `tests/signal_fd_wake.rs` (gated on `signal-fd-wake +
+      rmw-cffi`) covers both the eventfd-write path and an
+      end-to-end SIGUSR1 signal handler test that calls
+      `write(signal_fd, &1u64, 8)` from inside the handler. Both
+      runtime tests gracefully skip when `Executor::open` cannot
+      connect to a session — the API surface still compiles in
+      every supported build. End-to-end cv-wake latency test in
+      `nros-tests/tests/wake_latency.rs` remains `#[ignore]`
+      pending the in-process `Executor::open` + zenohd fixture
+      connectivity fix (pre-existing; affects every in-process
+      Executor test). (Landed 2026-05-14.)
       **Files:** `packages/core/nros-node/src/executor/tests.rs`,
+      `packages/core/nros-node/tests/signal_fd_wake.rs`,
       `packages/testing/nros-tests/tests/wake_latency.rs`.
 
 - [ ] **124.B.8 — Wake-latency measurement.** Deferred to
