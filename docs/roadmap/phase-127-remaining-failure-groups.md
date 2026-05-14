@@ -1,10 +1,13 @@
-# Phase 124 Remaining Failure Groups
+# Phase 127 Remaining Failure Groups
 
 Date: 2026-05-15
 
-This document extracts the remaining Phase 124 failure work into parallelizable
-groups. Historical run details remain in
+Phase 127 tracks the remaining post-Phase-124 failure work as parallelizable
+groups. Historical Phase 124 run details remain in
 `docs/roadmap/phase-124-test-triage-2026-05-14.md`.
+
+Group identifiers are `127.A` through `127.G`. Subtasks use dotted suffixes
+such as `127.A.1`.
 
 ## Current Baseline
 
@@ -29,7 +32,7 @@ just build-all
 just test-all
 ```
 
-## Group A: ESP32 Zenoh Delivery
+## 127.A: ESP32 Zenoh Delivery
 
 Scope:
 
@@ -43,6 +46,17 @@ Current signal:
 - Listener reaches `Subscriber declared` and waits.
 - No messages are delivered across ESP32-to-ESP32, ESP32-to-native, or
   native-to-ESP32 paths.
+
+Subitems:
+
+- `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
+  clients establish sessions with the router.
+- `127.A.2`: ESP32 publish path. Trace ESP32 talker from timer callback through
+  `publish_raw` and smoltcp TX.
+- `127.A.3`: ESP32 receive path. Trace native/ESP32 inbound data through
+  smoltcp RX, zenoh-pico poll, subscriber ring, and executor dispatch.
+- `127.A.4`: Harness timing. Confirm startup ordering and polling windows are
+  long enough after the OOM fix removed the earlier early-exit failure.
 
 Suggested owner output:
 
@@ -63,7 +77,7 @@ Run the `cargo build --release` command from both:
 - `examples/qemu-esp32-baremetal/rust/zenoh/listener`
 - `examples/qemu-esp32-baremetal/rust/zenoh/talker`
 
-## Group B: RTOS/QEMU Platform E2E
+## 127.B: RTOS/QEMU Platform E2E
 
 Scope:
 
@@ -79,6 +93,14 @@ Current signal:
 - The harness-reported ThreadX-Linux DDS prerequisite miss is an environment
   skip, not a product failure.
 
+Subitems:
+
+- `127.B.1`: FreeRTOS E2E triage.
+- `127.B.2`: NuttX E2E triage.
+- `127.B.3`: ThreadX Linux/RISC-V E2E triage.
+- `127.B.4`: Bare-metal DDS runtime triage.
+- `127.B.5`: Shared platform DDS runtime triage.
+
 Suggested owner output:
 
 - Split failures by platform first.
@@ -93,7 +115,7 @@ just build-test-fixtures
 just test-all
 ```
 
-## Group C: Zephyr Runtime/E2E
+## 127.C: Zephyr Runtime/E2E
 
 Scope:
 
@@ -108,6 +130,14 @@ Current signal:
 - Build/smoke coverage was mostly passing; failures are concentrated in boot,
   runtime handshakes, and message flow.
 
+Subitems:
+
+- `127.C.1`: Zephyr boot and fixture health.
+- `127.C.2`: Zephyr native/host message-flow failures.
+- `127.C.3`: Zephyr DDS runtime failures.
+- `127.C.4`: Zephyr XRCE runtime failures.
+- `127.C.5`: Cross-language Zephyr interop failures.
+
 Suggested owner output:
 
 - Separate host/board boot failures from DDS/XRCE message-flow failures.
@@ -121,7 +151,7 @@ just zephyr build-fixtures
 just zephyr test --no-capture
 ```
 
-## Group D: Bare-Metal Zenoh QEMU
+## 127.D: Bare-Metal Zenoh QEMU
 
 Scope:
 
@@ -134,6 +164,12 @@ Current signal:
 - Last full `just ci` bucket before the Phase 126 pull had 3 failures.
 - Native RTIC pattern fixtures were repaired earlier, so these should be
   treated as bare-metal/QEMU-specific until proven otherwise.
+
+Subitems:
+
+- `127.D.1`: RTIC action E2E.
+- `127.D.2`: RTIC service E2E.
+- `127.D.3`: Serial pub/sub E2E.
 
 Suggested owner output:
 
@@ -148,7 +184,7 @@ just build-test-fixtures
 cargo nextest run -p nros-tests --no-capture rtic
 ```
 
-## Group E: Native DDS Action
+## 127.E: Native DDS Action
 
 Scope:
 
@@ -160,6 +196,13 @@ Current signal:
   failure.
 - Zenoh and XRCE action paths have focused passing coverage after earlier
   fixes.
+
+Subitems:
+
+- `127.E.1`: DDS action goal acceptance and feedback.
+- `127.E.2`: DDS action result and cancellation path.
+- `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
+  paths.
 
 Suggested owner output:
 
@@ -173,7 +216,7 @@ Focused commands:
 cargo nextest run -p nros-tests --no-capture action
 ```
 
-## Group F: ROS 2 Lifecycle Interop
+## 127.F: ROS 2 Lifecycle Interop
 
 Scope:
 
@@ -183,6 +226,12 @@ Current signal:
 
 - Last full `just ci` bucket before the Phase 126 pull had 1 lifecycle interop
   failure.
+
+Subitems:
+
+- `127.F.1`: ROS 2 graph discovery and lifecycle node visibility.
+- `127.F.2`: Transition service availability and request/response path.
+- `127.F.3`: State observation timing after transition execution.
 
 Suggested owner output:
 
@@ -196,7 +245,7 @@ Focused commands:
 cargo nextest run -p nros-tests --no-capture lifecycle
 ```
 
-## Group G: Full-Matrix Refresh
+## 127.G: Full-Matrix Refresh
 
 Scope:
 
@@ -207,6 +256,14 @@ Current signal:
 
 - Historical counts in the triage doc are useful for direction but stale after
   the Phase 126 pull and the ESP32 allocation fix.
+
+Subitems:
+
+- `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
+  environment skips.
+- `127.G.2`: Run `just build-all` and isolate build-only regressions.
+- `127.G.3`: Run `just test-all` after fixture builds and refresh the final
+  phase table.
 
 Suggested owner output:
 
