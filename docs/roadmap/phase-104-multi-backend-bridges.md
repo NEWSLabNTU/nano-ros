@@ -504,7 +504,7 @@ C++-side logic; C surface stays canonical.
       `packages/core/nros-node/src/executor/spin.rs`,
       backend-side waker hooks.
 
-- [ ] **104.C.7 — Drop static `VTABLE`.**
+- [x] **104.C.7 — Drop static `VTABLE`.**
       Once 104.C.1 lands and all dispatch threads through
       `session->vtable`, delete the singleton in
       `packages/core/nros-rmw-cffi/src/lib.rs`. The
@@ -512,9 +512,24 @@ C++-side logic; C surface stays canonical.
       around `_register_named`. Extend the typed-struct
       roundtrip test (Phase 102.5) to drive two
       simultaneous sessions with two stub vtables.
+      **Done:** the legacy `static VTABLE: AtomicPtr` was
+      removed back in Phase 104.B.2 — the registry is the
+      sole source of vtables and `nros_rmw_cffi_register`
+      already forwards to `_register_named("default", v)`
+      (`packages/core/nros-rmw-cffi/src/lib.rs:730-732`).
+      `CffiSession` holds its own `vtable: &'static
+      NrosRmwVtable` set at open time, so every subsequent
+      dispatch (`drive_io`, `create_publisher`, `publish_raw`,
+      …) goes through `self.vtable` — no second lookup.
+      The two-session test landed as
+      `packages/core/nros-rmw-cffi/tests/two_backends.rs`
+      with per-backend atomic counters and tagged
+      `backend_data` so a routing bug trips an in-stub
+      `assert_eq!`. Run via
+      `cargo test -p nros-rmw-cffi --test two_backends`.
       **Files:**
-      `packages/core/nros-rmw-cffi/src/lib.rs`,
-      `packages/core/nros-rmw-cffi/tests/typed_struct.rs`.
+      `packages/core/nros-rmw-cffi/src/lib.rs` (no change —
+      already correct), `packages/core/nros-rmw-cffi/tests/two_backends.rs`.
 
 ##### C.3.3 — Gaps surfaced by the bridge example (2026-05-14)
 
