@@ -200,6 +200,43 @@ impl core::ops::DerefMut for SessionStore {
 ///
 /// The sizes are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
 /// `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables at build time.
+
+/// Phase 124.B.2 — opaque context handed to the runtime wake
+/// callback. Backends store the raw pointer + invoke the callback;
+/// the callback decodes back to `&WakeCtx`.
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+pub(crate) struct WakeCtx {
+    pub(crate) flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
+    pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
+}
+
+/// Phase 124.B.2 — runtime wake callback. ISR-safe contract:
+/// must be callable from interrupt context on platforms where
+/// `Condvar::notify_all` is ISR-safe (POSIX yes; RTOSes via
+/// ISR-safe primitive variants in their platform layer).
+///
+/// The cb is the symbol backends invoke from their async wake path
+/// (datagram arrival, condvar wake, signal handler, ISR). It does
+/// flag-write + condvar-signal atomically.
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    // SAFETY: ctx points at a `WakeCtx` owned by an Executor still
+    // alive at the time of the call. Executor::drop clears the
+    // callback before dropping wake_ctx.
+    let wake = unsafe { &*(ctx as *const WakeCtx) };
+    wake.flag
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    // Notify under the mutex so a waiter that just observed
+    // flag = false doesn't miss the signal. notify_all so any number
+    // of waiters wake (typically 1 = the executor thread).
+    let _g = wake.mu.lock();
+    wake.cv.notify_all();
+}
+
 pub struct Executor {
     pub(crate) session: SessionStore,
     pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],
@@ -281,6 +318,30 @@ pub struct Executor {
     /// blocked on (the multi-RMW bridge case).
     #[cfg(feature = "std")]
     pub(crate) wake_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Phase 124.B.2 — wake condvar paired with `wake_flag`. The
+    /// runtime-supplied wake callback (`nros_rmw_runtime_wake_cb` in
+    /// nros-rmw-cffi) writes `wake_flag = true` AND signals
+    /// `wake_cv` atomically under `wake_mu`. `spin_once` blocks on
+    /// the cv with a deadline instead of calling `drive_io` with the
+    /// user's timeout — sub-poll-period wake latency.
+    ///
+    /// Backends that only implement Phase 104.C.6.b's
+    /// `set_wake_signal(*flag)` continue to set the flag directly;
+    /// `spin_once`'s wait loop polls the flag on each cv wake/
+    /// timeout cycle, so the flag-only path still works without
+    /// the condvar signal. Lossless degradation.
+    #[cfg(feature = "std")]
+    #[allow(dead_code)] // Wired by spin_once after 124.B.4.
+    pub(crate) wake_cv: std::sync::Arc<std::sync::Condvar>,
+    #[cfg(feature = "std")]
+    #[allow(dead_code)]
+    pub(crate) wake_mu: std::sync::Arc<std::sync::Mutex<()>>,
+    /// Phase 124.B.2 — opaque context Arc handed to backends via
+    /// `set_wake_callback`. Lazy-allocated on first install; stays
+    /// alive for the Executor's lifetime so the raw pointer stored
+    /// in backends remains valid.
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    pub(crate) wake_ctx: Option<std::sync::Arc<WakeCtx>>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
     #[cfg(feature = "lifecycle-services")]
@@ -346,6 +407,12 @@ impl Executor {
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "std")]
             wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "std")]
+            wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
+            #[cfg(feature = "std")]
+            wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            wake_ctx: None,
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -404,6 +471,12 @@ impl Executor {
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "std")]
             wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "std")]
+            wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
+            #[cfg(feature = "std")]
+            wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            wake_ctx: None,
             #[cfg(feature = "param-services")]
             params: None,
             #[cfg(feature = "lifecycle-services")]
@@ -651,23 +724,55 @@ impl Executor {
     /// Phase 104.C.6.b — install the executor's shared wake flag onto
     /// the primary session. Best-effort: backends that don't override
     /// `Session::set_wake_signal` ignore the call.
+    ///
+    /// Phase 124.B.2 — also installs the wake callback. Backends that
+    /// implement `set_wake_callback` (preferred over
+    /// `set_wake_signal`) get a fn pointer that does flag-write +
+    /// condvar-signal atomically.
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
-        let ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
-        self.session.set_wake_signal(ptr);
+        let flag_ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
+        self.session.set_wake_signal(flag_ptr);
+        let ctx = self.wake_ctx_ptr();
+        self.session
+            .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
     }
 
     /// Phase 104.C.6.b — install the wake flag onto an extra session
     /// opened by `node_builder.rmw(...)`. Called from
     /// `NodeBuilder::build()` right after `extra_sessions.push(...)`.
+    /// Phase 124.B.2 — also installs the wake callback.
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub(crate) fn install_wake_signal_on_extra(&mut self, idx: usize) {
         use nros_rmw::Session as _;
-        let ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
+        let flag_ptr = std::sync::Arc::as_ptr(&self.wake_flag) as *mut core::ffi::c_void;
+        let ctx = self.wake_ctx_ptr();
         if let Some(s) = self.extra_sessions.get_mut(idx) {
-            s.set_wake_signal(ptr);
+            s.set_wake_signal(flag_ptr);
+            s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
         }
+    }
+
+    /// Phase 124.B.2 — opaque context pointer the runtime wake
+    /// callback receives. Encodes `(flag, mu, cv)` as a borrowed
+    /// `&WakeCtx` reference; the callback decodes via
+    /// `*const WakeCtx`.
+    ///
+    /// Lifetime: tied to the Executor instance. WakeCtx storage
+    /// lives inside Executor (lazy-allocated on first install), so
+    /// the pointer stays valid as long as the Executor is.
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    fn wake_ctx_ptr(&mut self) -> *mut core::ffi::c_void {
+        if self.wake_ctx.is_none() {
+            self.wake_ctx = Some(std::sync::Arc::new(WakeCtx {
+                flag: std::sync::Arc::clone(&self.wake_flag),
+                cv: std::sync::Arc::clone(&self.wake_cv),
+                mu: std::sync::Arc::clone(&self.wake_mu),
+            }));
+        }
+        let arc = self.wake_ctx.as_ref().expect("just set");
+        std::sync::Arc::as_ptr(arc) as *mut core::ffi::c_void
     }
 
     /// Phase 104.C.4 — apply a Node's default SchedContext to a
