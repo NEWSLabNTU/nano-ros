@@ -7,7 +7,9 @@ workspace of component packages, launch files as the system description, ROS
 launch manifests as graph requirements, and one generated nano-ros binary for
 the target.
 
-**Status.** Draft, not started.
+**Status.** MVP implementation integrated through schema, Rust metadata,
+planner/checker, and generated-package build scaffolding. Coverage phase is
+starting.
 
 **Priority.** P1. This is the user workflow layer above Phase 123 build/API
 work and Phase 110 scheduling.
@@ -34,24 +36,53 @@ executor, service/action paths, callback handles, and `SchedContext`. C and
 C++ bindings expose most executor features. Codegen packages already provide
 message/service/action generation and colcon integration.
 
-The missing layer is orchestration:
+The first orchestration layer is now in place:
 
-- no source metadata mode for component packages;
-- no `nros plan` / `nros check` that joins launch, manifests, source metadata,
-  and deployment config;
-- no `nros-plan.json` implementation;
-- no `nros-orchestration` runtime crate;
-- no generated Rust entry package that owns the only `main()`;
-- no component-mode C/C++/Rust API;
-- no mixed-language component link contract.
+- source metadata schemas and Rust component-mode metadata APIs exist;
+- `nros metadata` / `nros plan` / `nros check` scaffolding exists in
+  `nros-cli-core`;
+- `nros-plan.json` has typed schema, fixtures, and checker coverage;
+- `nros-orchestration` runtime crate exists;
+- generated Rust entry package scaffolding exists, with deterministic package
+  output tests;
+- planner and generator tests cover multi-instance, private-name/remap,
+  parameter, manifest, callback-effect, and generated-package cases.
+
+Remaining orchestration gaps are coverage and vertical integration:
+
+- no committed end-to-end fixture workspace that drives metadata -> plan ->
+  generated package -> binary;
+- generated main still emits static tables/scaffolding rather than full runtime
+  component instantiation for all paths;
+- C/C++ component metadata/linking remains deferred;
+- RTOS/QEMU generated-binary build is not yet covered;
+- broad `just` matrix has not been run for the integrated Phase 126 path.
+
+## Progress update - 2026-05-15
+
+Integrated on `main` through:
+
+- top-level `400ca008 phase-126D: update generated target dir submodule`;
+- nested `packages/codegen` `59c9f95 phase-126D: place generated target beside package`.
+
+Recent focused validation:
+
+- `cargo test --manifest-path packages/Cargo.toml -p nros-cli-core orchestration`
+  passed with 19 tests;
+- `cargo test -p nros-cli-core generated_package` passed with 3 tests;
+- `cargo test -p nros component` passed with 7 tests after metadata ergonomics
+  landed.
+
+Coverage work now becomes the priority. The team should move from feature
+construction to fixture coverage, integration coverage, and regression gates.
 
 ## Parallel work groups
 
 ### Group A - schemas and shared IR
 
 Owns serializable Rust types for source metadata, `nros.toml`, and
-`nros-plan.json`. This group should land first because every other group
-depends on the type contracts.
+`nros-plan.json`. During coverage work, this group owns schema regression
+fixtures and compatibility tests.
 
 Primary files:
 
@@ -65,8 +96,9 @@ Output: checked schema structs plus golden fixture tests.
 ### Group B - component metadata API
 
 Adds the natural API shape that makes metadata generation unavoidable in
-component mode. Rust is the MVP language; C/C++ follow after the first generated
-binary works.
+component mode. During coverage work, this group owns Rust metadata fixture
+packages and metadata JSON regression cases. Rust is the MVP language; C/C++
+follow after the first generated binary works.
 
 Primary files:
 
@@ -81,7 +113,8 @@ Output: Rust component packages emit source metadata in host metadata mode.
 ### Group C - launch and manifest planner
 
 Consumes `record.json` from `play_launch_parser`, ROS launch manifests, source
-metadata, and `nros.toml`. Emits normalized `nros-plan.json`.
+metadata, and `nros.toml`. Emits normalized `nros-plan.json`. During coverage
+work, this group owns end-to-end planner fixtures and `nros check` diagnostics.
 
 Primary files:
 
@@ -100,7 +133,9 @@ Output: `build/<system_pkg>/nros/record.json`,
 
 Creates the runtime and generated package that turns the plan into one target
 binary. `build.rs` reads JSON on the host and emits typed Rust tables; RTOS
-code does not parse JSON.
+code does not parse JSON. During coverage work, this group owns generated
+package snapshot tests, build-arg/feature/target-dir coverage, and the first
+native generated package build fixture.
 
 Primary files:
 
@@ -116,6 +151,7 @@ Output: generated Rust package under
 ### Group E - fixtures, integration, and docs
 
 Keeps one vertical workflow building while Groups A-D develop in parallel.
+This is now the main coordination track for coverage.
 
 Primary files:
 
@@ -135,9 +171,9 @@ paths should be stable enough for branch work.
 
 Acceptance:
 
-- `source-metadata.json`, `nros.toml`, and `nros-plan.json` have Rust structs.
-- Golden fixtures round-trip through JSON/TOML.
-- Unknown fields are either rejected or intentionally preserved; the rule is
+- [x] `source-metadata.json`, `nros.toml`, and `nros-plan.json` have Rust structs.
+- [x] Golden fixtures round-trip through JSON/TOML.
+- [x] Unknown fields are either rejected or intentionally preserved; the rule is
   documented.
 
 ### M2 - Rust source metadata
@@ -146,10 +182,10 @@ Merge Group B's Rust MVP and the `nros metadata` shell from Group C.
 
 Acceptance:
 
-- A Rust component can be compiled/run in metadata mode.
-- Metadata includes package, component, node, unresolved topic/service/action
+- [x] A Rust component can be compiled/run in metadata mode.
+- [x] Metadata includes package, component, node, unresolved topic/service/action
   names, type names, callback IDs, timer IDs, parameters, and optional effects.
-- Missing component export fails clearly.
+- [x] Missing component export fails clearly.
 
 ### M3 - plan generation
 
@@ -157,12 +193,12 @@ Merge Group C's planner.
 
 Acceptance:
 
-- `nros plan <system_pkg> <launch_file>` calls the play_launch parser library.
-- Launch node instances map to source components by package/executable.
-- Multiple instances of the same component produce distinct plan instances.
-- Private names and remaps resolve to final graph names.
-- ROS manifest endpoints validate against resolved source metadata.
-- Parameter precedence follows ROS convention and is recorded in the plan.
+- [x] `nros plan <system_pkg> <launch_file>` calls the play_launch parser library.
+- [x] Launch node instances map to source components by package/executable.
+- [x] Multiple instances of the same component produce distinct plan instances.
+- [x] Private names and remaps resolve to final graph names.
+- [x] ROS manifest endpoints validate against resolved source metadata.
+- [x] Parameter precedence follows ROS convention and is recorded in the plan.
 
 ### M4 - native generated binary
 
@@ -170,12 +206,12 @@ Merge Group D's single-tier native generated package.
 
 Acceptance:
 
-- Generated package builds with Cargo.
-- Generated `main.rs` opens one executor, creates one default `SchedContext`,
+- [x] Generated package builds with Cargo.
+- [ ] Generated `main.rs` opens one executor, creates one default `SchedContext`,
   instantiates all planned Rust components, binds callbacks, and spins.
-- Generated code is readable and checked into `build/`, not hidden in opaque
+- [x] Generated code is readable and checked into `build/`, not hidden in opaque
   binary blobs.
-- `nros build` runs metadata, plan, generation, and Cargo build in one command.
+- [ ] `nros build` runs metadata, plan, generation, and Cargo build in one command.
 
 ### M5 - RTOS generated binary
 

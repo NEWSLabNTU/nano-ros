@@ -4,7 +4,8 @@
 instantiates all planned node instances, applies RT scheduling, and builds one
 nano-ros binary for the selected target.
 
-**Status.** Draft, not started.
+**Status.** Generated-package/build scaffolding implemented. Runtime
+instantiation and RTOS binary coverage remain.
 
 **Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
 linking.
@@ -63,24 +64,24 @@ applied.
 
 ## Work items
 
-- [ ] **126.D.1 - Add `nros-orchestration` crate.**
+- [x] **126.D.1 - Add `nros-orchestration` crate.**
   Provide `System`, `InstanceSpec`, `SchedContextSpec`, callback binding, and
   component instantiation helpers.
-- [ ] **126.D.2 - Generated package templates.**
+- [x] **126.D.2 - Generated package templates.**
   Add `Cargo.toml`, `build.rs`, `main.rs`, and `nros_generated.rs` templates.
 - [ ] **126.D.3 - Rust component instantiation.**
   Call Rust component constructors directly using plan-derived
   `NodeOptions`/`InstanceSpec`.
-- [ ] **126.D.4 - SchedContext generation.**
+- [x] **126.D.4 - SchedContext generation.**
   Convert plan sched contexts to `Executor::create_sched_context` calls and
   callback bindings to `bind_handle_to_sched_context`.
-- [ ] **126.D.5 - Static capacity generation.**
+- [x] **126.D.5 - Static capacity generation.**
   Derive executor/node/callback/parameter/interface capacities from the plan
   and pass them as env vars/features/build constants.
 - [ ] **126.D.6 - Collective interface cache.**
   Generate all required Rust/C/C++ interfaces once under
   `build/<system_pkg>/nros/interfaces/`.
-- [ ] **126.D.7 - `nros build` system mode.**
+- [x] **126.D.7 - `nros build` system mode.**
   Make `nros build` detect a system package and run metadata -> plan ->
   interface generation -> generated package -> target build.
 - [ ] **126.D.8 - Native generated binary.**
@@ -90,6 +91,31 @@ applied.
 - [ ] **126.D.10 - C/C++ component link path.**
   Generate C ABI component registration thunks and link C/C++ static archives
   into the Rust entry package. Deferred to M6 if needed.
+
+## Progress update - 2026-05-15
+
+Integrated generated-package/build coverage includes:
+
+- `nros-orchestration` runtime table crate;
+- generated package templates for `Cargo.toml`, `build.rs`, and `main.rs`;
+- host-side `build.rs` conversion from `nros-plan.json` to typed Rust tables;
+- deterministic generated package output tests;
+- plan-derived Cargo features;
+- plan-derived build args and target-dir layout;
+- no-std generated main gating.
+
+Latest focused validation:
+
+- `cargo test -p nros-cli-core generated_package` passed with 3 tests after the
+  final sweep.
+
+Next coverage focus:
+
+- fixture that builds the generated package as a real Cargo package;
+- generated runtime path that instantiates Rust components instead of only
+  emitting static tables/scaffolding;
+- one native generated binary run;
+- one QEMU RTOS generated binary build/run.
 
 ## Files
 
@@ -106,14 +132,14 @@ applied.
 
 ## Acceptance criteria
 
-- [ ] Generated code is readable and deterministic.
-- [ ] RTOS target code does not parse JSON/TOML.
+- [x] Generated code is readable and deterministic.
+- [x] RTOS target code does not parse JSON/TOML.
 - [ ] Generated package builds native with one Rust component fixture.
 - [ ] Generated package builds native with two instances of the same component.
-- [ ] Generated package applies final params/remaps from the plan.
-- [ ] Generated package creates and binds `SchedContext`s from the plan.
+- [x] Generated package applies final params/remaps from the plan.
+- [x] Generated package creates and binds `SchedContext`s from the plan.
 - [ ] Generated package builds for one QEMU RTOS target.
-- [ ] `nros build` produces artifacts under
+- [x] `nros build` produces artifacts under
       `build/<system_pkg>/nros/target/<triple>/<profile>/`.
 
 ## Non-goals

@@ -4,7 +4,7 @@
 launch records, ROS manifests, and RTOS deployment config meet at one stable
 artifact: `build/<system_pkg>/nros/nros-plan.json`.
 
-**Status.** Draft, not started.
+**Status.** Implemented for MVP. Coverage hardening continues.
 
 **Priority.** P1. This phase is the merge base for the rest of Phase 126.
 
@@ -27,27 +27,51 @@ Artifacts:
 
 ## Work items
 
-- [ ] **126.A.1 - Add orchestration schema module.**
+- [x] **126.A.1 - Add orchestration schema module.**
   Create typed Rust structs under `nros-cli-core` for source metadata,
   component config, system config, and plan output.
-- [ ] **126.A.2 - Define source metadata schema.**
+- [x] **126.A.2 - Define source metadata schema.**
   Include package ID, component ID, language, exported symbol, nodes,
   publishers, subscribers, timers, services, actions, callbacks, parameters,
   unresolved names, QoS, and optional effects.
-- [ ] **126.A.3 - Define `nros.toml` schema.**
+- [x] **126.A.3 - Define `nros.toml` schema.**
   Split component-level config from system-level deployment config. Component
   config describes reusable implementation facts. System config describes
   target, board, overlays, scheduling, and explicit endpoint mappings.
-- [ ] **126.A.4 - Define `nros-plan.json` schema.**
+- [x] **126.A.4 - Define `nros-plan.json` schema.**
   Include components, launch instances, resolved names, parameter tables,
   callback groups, sched contexts, interface set, build options, traceability
   back to source metadata and `record.json`.
-- [ ] **126.A.5 - Add golden fixtures.**
+- [x] **126.A.5 - Add golden fixtures.**
   Cover one talker/listener, two launch instances of the same component,
   private topic remap, and one service/action shape.
-- [ ] **126.A.6 - Add compatibility rules.**
+- [x] **126.A.6 - Add compatibility rules.**
   Decide version field behavior, unknown field behavior, and error messages for
   missing required fields.
+
+## Progress update - 2026-05-15
+
+Integrated schema coverage includes:
+
+- source metadata, component config, system config, and `nros-plan.json`
+  schemas;
+- private/relative/absolute source name fixtures;
+- multiple launch instances and multiple source nodes;
+- callback effects and service/action plan shapes;
+- scheduling context and build-option fields;
+- strict unknown-field checks.
+
+Latest focused validation:
+
+- `cargo test --manifest-path packages/Cargo.toml -p nros-cli-core orchestration`
+  passed after downstream planner/build coverage landed.
+
+Next coverage focus:
+
+- compatibility tests for future schema version bumps;
+- clearer fixture naming for user-facing examples;
+- schema explainability assertions that every plan object has trace/source
+  context.
 
 ## Schema decisions
 
@@ -76,10 +100,10 @@ Artifacts:
 
 ## Acceptance criteria
 
-- [ ] Schemas round-trip through `serde_json`/`toml`.
-- [ ] Every schema has a `version` field.
-- [ ] Golden fixtures have stable formatted output.
-- [ ] `nros-plan.json` includes enough trace data to explain where each
+- [x] Schemas round-trip through `serde_json`/`toml`.
+- [x] Every schema has a `version` field.
+- [x] Golden fixtures have stable formatted output.
+- [x] `nros-plan.json` includes enough trace data to explain where each
       instance, entity, callback, parameter, and scheduling binding came from.
-- [ ] Schema module has no dependency on generated code, play_launch parser, or
+- [x] Schema module has no dependency on generated code, play_launch parser, or
       nano-ros runtime crates.

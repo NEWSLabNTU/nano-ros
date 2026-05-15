@@ -4,7 +4,7 @@
 launch manifests, source metadata, and `nros.toml` into a checked
 `nros-plan.json`.
 
-**Status.** Draft, not started.
+**Status.** MVP planner/checker implemented. Coverage hardening continues.
 
 **Priority.** P1.
 
@@ -32,36 +32,61 @@ The planner emits:
 
 ## Work items
 
-- [ ] **126.C.1 - CLI verbs.**
+- [x] **126.C.1 - CLI verbs.**
   Add `nros metadata`, `nros plan`, and `nros check` to `nros-cli-core`.
-- [ ] **126.C.2 - play_launch parser adapter.**
+- [x] **126.C.2 - play_launch parser adapter.**
   Call `play_launch_parser::parse_launch_file` directly, not the
   `play_launch` CLI. Preserve `record.json` for user inspection.
-- [ ] **126.C.3 - Workspace/package discovery.**
+- [x] **126.C.3 - Workspace/package discovery.**
   Discover colcon-like `src/*` packages, package manifests, component
   metadata, launch files, and `nros.toml`.
-- [ ] **126.C.4 - Instance normalization.**
+- [x] **126.C.4 - Instance normalization.**
   Convert `record.json` nodes and composable load nodes into nano-ros launch
   instances keyed by ROS `package` + `executable`.
-- [ ] **126.C.5 - ROS name resolution.**
+- [x] **126.C.5 - ROS name resolution.**
   Resolve namespaces, private names, relative names, and remaps using ROS 2
   conventions. Preserve trace data to source placeholder names.
-- [ ] **126.C.6 - Parameter resolution.**
+- [x] **126.C.6 - Parameter resolution.**
   Apply ROS precedence: source defaults, package defaults, parameter files,
   launch inline params, launch CLI args, then nano-ros deployment overlays.
-- [ ] **126.C.7 - Manifest matching.**
+- [x] **126.C.7 - Manifest matching.**
   Match manifest endpoints to source entities by instance, role, resolved name,
   and interface type. Support explicit `endpoint_mappings` for ambiguity.
-- [ ] **126.C.8 - Scheduling normalization.**
+- [x] **126.C.8 - Scheduling normalization.**
   Convert system config callback groups and sched contexts into plan entries.
   Validate that every local callback has a sched binding, defaulting only when
   the config says to default.
-- [ ] **126.C.9 - Services/actions.**
+- [x] **126.C.9 - Services/actions.**
   Treat services/actions like role-specific endpoint groups: service
   request/response, action goal/cancel/result/feedback/status.
-- [ ] **126.C.10 - Checker diagnostics.**
+- [x] **126.C.10 - Checker diagnostics.**
   Fail for missing components, missing entities, unresolved types, QoS
   mismatch, ambiguous mappings, and invalid sched bindings.
+
+## Progress update - 2026-05-15
+
+Integrated planner/checker coverage includes:
+
+- play_launch parser integration and preserved `record.json`;
+- multi-instance and multi-source-node planning;
+- private-name/remap resolution;
+- parameter precedence;
+- callback scheduling and interface reference checks;
+- metadata callback link validation;
+- missing callback/effect diagnostics;
+- manifest extra-entity diagnostics.
+
+Latest focused validation:
+
+- `cargo test --manifest-path packages/Cargo.toml -p nros-cli-core orchestration`
+  passed with 19 tests after the final sweep.
+
+Next coverage focus:
+
+- committed vertical workspace fixture under `examples/orchestration-workspace/`;
+- full `nros metadata -> nros plan -> nros check` command-level tests;
+- richer manifest mismatch diagnostics that quote package/instance/entity
+  source paths.
 
 ## Files
 
@@ -77,13 +102,13 @@ The planner emits:
 
 ## Acceptance criteria
 
-- [ ] `nros plan <system_pkg> <launch_file> -- <launch_args...>` writes
+- [x] `nros plan <system_pkg> <launch_file> -- <launch_args...>` writes
       `record.json` and `nros-plan.json`.
-- [ ] Multiple instances of the same package/executable map to separate plan
+- [x] Multiple instances of the same package/executable map to separate plan
       instances with distinct names, parameters, callbacks, and telemetry IDs.
-- [ ] Private source topic names resolve correctly through launch remaps.
-- [ ] ROS manifest pub/sub endpoints validate against source metadata.
-- [ ] Services/actions are represented in the plan even if full runtime support
+- [x] Private source topic names resolve correctly through launch remaps.
+- [x] ROS manifest pub/sub endpoints validate against source metadata.
+- [x] Services/actions are represented in the plan even if full runtime support
       lands later in Phase 126.D/M7.
-- [ ] `nros check` can run after `nros plan` and explain every plan error with
+- [x] `nros check` can run after `nros plan` and explain every plan error with
       package, instance, entity, and source artifact references.

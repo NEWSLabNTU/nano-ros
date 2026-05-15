@@ -3,7 +3,8 @@
 **Goal.** Add component-mode APIs that are natural for ROS 2 users and make
 metadata discovery a byproduct of normal node declaration.
 
-**Status.** Draft, not started.
+**Status.** Rust MVP implemented. Coverage hardening continues. C/C++ remain
+deferred.
 
 **Priority.** P1 for Rust MVP, P2 for C/C++ after native generated binary.
 
@@ -40,25 +41,25 @@ earlier for a specific integration.
 
 ## Work items
 
-- [ ] **126.B.1 - Rust component trait.**
+- [x] **126.B.1 - Rust component trait.**
   Add `Component`, `ComponentContext`, `NodeOptions`, and export macro to the
   public `nros` crate.
-- [ ] **126.B.2 - Metadata recorder context.**
+- [x] **126.B.2 - Metadata recorder context.**
   Implement a fake host-side context that records declarations instead of
   opening middleware.
 - [ ] **126.B.3 - Runtime context adapter.**
   Implement the runtime path that maps the same declarations to executor/node
   handles under generated main ownership.
-- [ ] **126.B.4 - Stable entity IDs.**
+- [x] **126.B.4 - Stable entity IDs.**
   Require IDs on publishers, subscriptions, timers, services, actions,
   callbacks, and parameters in component mode.
-- [ ] **126.B.5 - Name resolution placeholders.**
+- [x] **126.B.5 - Name resolution placeholders.**
   Record source names and name kind: absolute, relative, private. Do not resolve
   remaps in source metadata.
-- [ ] **126.B.6 - Optional effect metadata.**
+- [x] **126.B.6 - Optional effect metadata.**
   Add builder-style `.reads()`, `.publishes()`, `.writes()` metadata that does
   not alter runtime behavior.
-- [ ] **126.B.7 - Metadata command hook.**
+- [x] **126.B.7 - Metadata command hook.**
   Provide a library entry for `nros metadata` / `nros plan` to compile and run
   metadata mode for a package.
 - [ ] **126.B.8 - C component API.**
@@ -67,6 +68,30 @@ earlier for a specific integration.
 - [ ] **126.B.9 - C++ component API.**
   Add `nros::ComponentNode`, `nros::NodeOptions`, and
   `NROS_COMPONENTS_REGISTER_NODE(...)`. Deferred unless M6 is pulled earlier.
+
+## Progress update - 2026-05-15
+
+Integrated Rust metadata coverage includes:
+
+- multi-node component declaration tests;
+- private-name placeholder metadata;
+- parameter defaults;
+- service/action declarations;
+- distinct action callbacks;
+- callback effect links in emitted JSON;
+- source locations and planner-facing metadata shape.
+
+Latest focused validation:
+
+- `cargo test -p nros component` passed with 7 component/metadata tests.
+
+Next coverage focus:
+
+- generated-runtime adapter from the same component declarations;
+- metadata-mode package fixture that produces JSON as part of a full workspace
+  flow;
+- negative tests for missing component export once host package discovery is
+  wired end to end.
 
 ## Files
 
@@ -82,11 +107,11 @@ earlier for a specific integration.
 
 ## Acceptance criteria
 
-- [ ] A Rust component package emits source metadata without opening transport.
+- [x] A Rust component package emits source metadata without opening transport.
 - [ ] The same component can be instantiated by generated runtime code.
-- [ ] Metadata contains unresolved source names, interface types, QoS,
+- [x] Metadata contains unresolved source names, interface types, QoS,
       callbacks, params, and optional effects.
-- [ ] Component-mode entity APIs require stable IDs.
+- [x] Component-mode entity APIs require stable IDs.
 - [ ] Missing export macro fails clearly during metadata discovery/check.
-- [ ] Existing hand-written `main()` examples remain supported as simple-app
+- [x] Existing hand-written `main()` examples remain supported as simple-app
       path and are not pulled into orchestration.
