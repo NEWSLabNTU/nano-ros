@@ -234,10 +234,10 @@ Current signal:
 - 2026-05-15 full Zephyr follow-up: serial `cargo nextest run -p nros-tests
   --test zephyr` produced 34 passed / 27 failed before the bidirectional
   harness counter fix; rerunning that one test passed, so the expected refreshed
-  count is 35 passed / 26 failed. Remaining buckets are C++ Zenoh native_sim
-  listener delivery, Rust DDS Zephyr `Transport(ConnectionFailed)`, XRCE E2E
-  tests hard-skipping because the XRCE Agent is absent, and native Zenoh service
-  interop tests whose native service fixtures were not prebuilt.
+  count is 35 passed / 26 failed. Remaining buckets are Rust DDS Zephyr
+  `Transport(ConnectionFailed)`, XRCE E2E tests hard-skipping because the XRCE
+  Agent is absent, and native Zenoh service interop tests whose native service
+  fixtures were not prebuilt.
 - 2026-05-15 C++ Zephyr follow-up: the C++ Zephyr module now exports the same
   RMW backend compile definitions as the normal CMake `nros-cpp-headers`
   target, and `nros-cpp` links/re-exports the Rust Zenoh/DDS backend register
@@ -247,11 +247,19 @@ Current signal:
 - 2026-05-15 C++ focused evidence: `test_zephyr_cpp_talker_to_native_listener`
   now passes, proving the Zephyr C++ Zenoh talker opens the session and
   publishes data through the CFFI backend. `test_native_talker_to_zephyr_cpp_listener`
-  and `test_zephyr_cpp_talker_to_listener_e2e` still fail because the Zephyr
-  C++ listener declares the ring subscriber but receives no samples. A temporary
-  diagnostic showed `zpico_declare_subscriber_ring` succeeds with key
-  `0/chatter/std_msgs::msg::dds_::Int32_/*`; the zenoh-pico sample callback is
+  and `test_zephyr_cpp_talker_to_listener_e2e` initially failed because the
+  Zephyr C++ listener declared the ring subscriber but received no samples. A
+  temporary diagnostic showed `zpico_declare_subscriber_ring` succeeded with key
+  `0/chatter/std_msgs::msg::dds_::Int32_/*`; the zenoh-pico sample callback was
   not invoked during the failing run.
+- 2026-05-15 C++ listener fix: Zephyr native_sim links the hosted Rust runtime,
+  but the generic std executor wait path can hang inside the Zephyr libc
+  condition-variable layer. `nros_cpp_spin_once` now uses a Zephyr-specific
+  hosted path that performs a non-blocking backend drain and then yields through
+  the exported `nros_zephyr_msleep` shim. Focused reruns now pass:
+  `test_native_talker_to_zephyr_cpp_listener`,
+  `test_zephyr_cpp_talker_to_listener_e2e`, and
+  `test_zephyr_cpp_talker_to_native_listener`.
 
 Subitems:
 
@@ -259,8 +267,8 @@ Subitems:
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
 - [ ] `127.C.3`: Zephyr DDS runtime failures.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures.
-- [ ] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup is
-  fixed; C++ listener delivery remains open.
+- [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
+  C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 
 Done criteria:
 
