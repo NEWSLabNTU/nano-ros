@@ -1069,6 +1069,19 @@ impl Executor {
         Ok(f(&mut node))
     }
 
+    /// Find a registered executor node by final name and namespace.
+    pub fn node_id_by_name(
+        &self,
+        name: &str,
+        namespace: &str,
+    ) -> Option<super::node_record::NodeId> {
+        self.nodes
+            .iter()
+            .enumerate()
+            .find(|(_, node)| node.name.as_str() == name && node.namespace.as_str() == namespace)
+            .map(|(index, _)| super::node_record::NodeId::from_raw(index as u8))
+    }
+
     /// Create a node on this executor.
     pub fn create_node(&mut self, name: &str) -> Result<Node<'_>, NodeError> {
         if name.len() > 64 {

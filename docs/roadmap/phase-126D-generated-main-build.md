@@ -4,9 +4,10 @@
 instantiates all planned node instances, applies RT scheduling, and builds one
 nano-ros binary for the selected target.
 
-**Status.** Generated-package/build scaffolding and Rust component
-instantiation are implemented. Callback binding thunks and RTOS binary coverage
-remain.
+**Status.** Generated-package/build scaffolding, Rust component instantiation,
+native callback handle generation, and backend registration are implemented.
+Native run still needs a live/configured transport; RTOS binary coverage
+remains.
 
 **Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
 linking.
@@ -107,6 +108,10 @@ Integrated generated-package/build coverage includes:
 - plan-derived node tables plus generated Rust component dispatch using the
   `crate::module::Component` convention;
 - E2E fixture Rust component crate linked into the generated package.
+- generated backend registration for selected RMW backends;
+- generated POSIX C platform-port dependency for native generated binaries;
+- generated timer/subscription callback handles that populate
+  `CallbackHandleTable`.
 
 Latest focused validation:
 
@@ -116,13 +121,16 @@ Latest focused validation:
   --test orchestration_generate` passed with 5 tests.
 - `cargo test --manifest-path packages/codegen/packages/nros-cli-core/Cargo.toml
   --test orchestration_e2e` passed, including generated package compile with
-  the fixture Rust component dependency.
+  the fixture Rust component dependency, selected backend, POSIX platform C
+  symbols, and generated callback handles.
+- `cargo check -p nros-node --features rmw-cffi` passed.
+- `/tmp/orchestration_e2e-301-1778849578197518498/build/e2e_system/nros/target/x86_64-unknown-linux-gnu/debug/nros-e2e-generated`
+  starts but exits with `Transport(ConnectionFailed)` without a configured/live
+  zenoh transport.
 
 Next coverage focus:
 
-- callback handle thunk generation so component callbacks populate
-  `CallbackHandleTable`;
-- one native generated binary run;
+- native generated binary run with a live/configured transport;
 - one QEMU RTOS generated binary build/run.
 
 ## Files
@@ -142,7 +150,7 @@ Next coverage focus:
 
 - [x] Generated code is readable and deterministic.
 - [x] RTOS target code does not parse JSON/TOML.
-- [ ] Generated package builds native with one Rust component fixture.
+- [x] Generated package builds native with one Rust component fixture.
 - [ ] Generated package builds native with two instances of the same component.
 - [x] Generated package applies final params/remaps from the plan.
 - [x] Generated package creates and binds `SchedContext`s from the plan.
