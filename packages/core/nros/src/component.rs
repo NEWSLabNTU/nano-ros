@@ -638,6 +638,18 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn component_missing_export_error_message_is_clear() {
+        assert_eq!(
+            ComponentError::MissingExport.message(),
+            MISSING_COMPONENT_EXPORT_ERROR
+        );
+        assert_eq!(
+            ComponentError::MissingExport.message(),
+            "package has no exported nros component"
+        );
+    }
+
     struct RobotComponent;
 
     impl Component for RobotComponent {
