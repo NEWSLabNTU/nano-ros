@@ -23,7 +23,11 @@ use std::{path::PathBuf, process::Command, time::Duration};
 ///
 /// Sources the pinned rmw_zenoh overlay via [`ros2_env_setup_with_locator`]
 /// and wraps the subcommand in a 10s timeout so a hung query can't stall the
-/// whole test.
+/// whole test. Lifecycle commands pass `--no-daemon` below so they use this
+/// process' Zenoh session config instead of a daemon bound to a different
+/// locator. Keep `--spin-time` short: ROS 2 Humble's lifecycle CLI can report
+/// an invalid wait set after a long no-daemon spin even when the service
+/// already replied.
 fn run_ros2(locator: &str, subcommand: &str) -> String {
     let (env, _config_guard) = ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, locator);
     let script = format!("{env} && timeout 10 ros2 {subcommand} 2>&1");
@@ -75,7 +79,7 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     std::thread::sleep(Duration::from_secs(2));
 
     // ── Assertion A: `ros2 lifecycle nodes` discovers /lifecycle_demo
-    let nodes = run_ros2(&locator, "lifecycle nodes");
+    let nodes = run_ros2(&locator, "lifecycle nodes --no-daemon --spin-time 0.1");
     eprintln!("--- ros2 lifecycle nodes ---\n{nodes}");
     assert!(
         nodes.contains("/lifecycle_demo"),
@@ -83,7 +87,10 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     );
 
     // ── Assertion B: initial get returns unconfigured
-    let state_before = run_ros2(&locator, "lifecycle get /lifecycle_demo");
+    let state_before = run_ros2(
+        &locator,
+        "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+    );
     eprintln!("--- ros2 lifecycle get (before) ---\n{state_before}");
     assert!(
         state_before.to_lowercase().contains("unconfigured"),
@@ -91,7 +98,10 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     );
 
     // ── Assertion C: set configure transitions to inactive + fires on_configure
-    let configure_out = run_ros2(&locator, "lifecycle set /lifecycle_demo configure");
+    let configure_out = run_ros2(
+        &locator,
+        "lifecycle set --no-daemon --spin-time 0.1 /lifecycle_demo configure",
+    );
     eprintln!("--- ros2 lifecycle set configure ---\n{configure_out}");
     assert!(
         configure_out.contains("Transitioning successful"),
@@ -100,7 +110,10 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
 
     // Allow the executor one more spin cycle before querying again.
     std::thread::sleep(Duration::from_millis(500));
-    let state_after = run_ros2(&locator, "lifecycle get /lifecycle_demo");
+    let state_after = run_ros2(
+        &locator,
+        "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+    );
     eprintln!("--- ros2 lifecycle get (after configure) ---\n{state_after}");
     assert!(
         state_after.to_lowercase().contains("inactive"),
@@ -117,7 +130,10 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     );
 
     // ── Assertion D: list shows reachable transitions from Inactive
-    let list_out = run_ros2(&locator, "lifecycle list /lifecycle_demo");
+    let list_out = run_ros2(
+        &locator,
+        "lifecycle list --no-daemon --spin-time 0.1 /lifecycle_demo",
+    );
     eprintln!("--- ros2 lifecycle list ---\n{list_out}");
     for marker in ["activate", "cleanup", "shutdown"] {
         assert!(

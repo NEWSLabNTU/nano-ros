@@ -287,26 +287,49 @@ Scope:
 
 Current signal:
 
-- Last full `just ci` bucket before the Phase 126 pull had 1 lifecycle interop
-  failure.
+- Fixed on 2026-05-15. The focused lifecycle interop test now passes.
+- Root cause was the CFFI service-server adapter treating
+  `NROS_RMW_RET_NO_DATA` as an error. Lifecycle processing checks
+  `change_state` before `get_state`, so "no request on change_state" aborted
+  the whole service pass before the ready `get_state` request could be drained.
+- The ROS 2 Humble lifecycle CLI also needs `--no-daemon` and a short
+  no-daemon `--spin-time 0.1`; longer no-daemon spin windows can report an
+  invalid wait set after the service has already replied.
 
 Subitems:
 
-- [ ] `127.F.1`: ROS 2 graph discovery and lifecycle node visibility.
-- [ ] `127.F.2`: Transition service availability and request/response path.
-- [ ] `127.F.3`: State observation timing after transition execution.
+- [x] `127.F.1`: ROS 2 graph discovery and lifecycle node visibility.
+- [x] `127.F.2`: Transition service availability and request/response path.
+- [x] `127.F.3`: State observation timing after transition execution.
 
 Done criteria:
 
-- [ ] Identify whether failure is graph discovery, transition service availability,
+- [x] Identify whether failure is graph discovery, transition service availability,
   transition execution, or state observation timing.
-- [ ] Include ROS 2 CLI/log output and nano-ros process logs.
-- [ ] Lifecycle full-cycle interop passes or has one isolated failing transition.
+- [x] Include ROS 2 CLI/log output and nano-ros process logs.
+- [x] Lifecycle full-cycle interop passes or has one isolated failing transition.
+
+2026-05-15 focused evidence:
+
+- [x] Before the fix, `ros2 lifecycle nodes --no-daemon` listed
+  `/lifecycle_demo`, but `ros2 lifecycle get` timed out on
+  `/lifecycle_demo/get_state`.
+- [x] Manual diagnostics showed the nros query callback received the
+  `get_state` request, while lifecycle processing repeatedly stopped before
+  draining it because the earlier `change_state` server had no request.
+- [x] Manual CLI sequence passed with `--no-daemon --spin-time 0.1`:
+  `nodes` -> `/lifecycle_demo`, `get` -> `unconfigured [1]`, `set configure`
+  -> `Transitioning successful`, second `get` -> `inactive [2]`, and `list`
+  showed `cleanup`, `activate`, and `shutdown`.
+- [x] `cargo nextest run -p nros-tests --test ros2_lifecycle_interop
+  --no-capture ros2_lifecycle_full_cycle`: 1 passed, 0 failed.
+- [x] `cargo test -p nros-rmw-cffi service_server_no_data_maps_to_none`: passed.
 
 Focused commands:
 
 ```bash
-cargo nextest run -p nros-tests --no-capture lifecycle
+cargo nextest run -p nros-tests --test ros2_lifecycle_interop --no-capture ros2_lifecycle_full_cycle
+cargo test -p nros-rmw-cffi service_server_no_data_maps_to_none
 ```
 
 ## 127.G: Full-Matrix Refresh

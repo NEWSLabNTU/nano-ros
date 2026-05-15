@@ -136,7 +136,7 @@ pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, temp
     };
     let cmd = format!(
         "source /opt/ros/{distro}/setup.bash{overlay_snippet} && \
-         ros2 daemon stop 2>/dev/null; \
+         ros2 daemon stop >/dev/null 2>&1; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
          export ZENOH_SESSION_CONFIG_URI={config_path}",
         config_path = config_path.display()

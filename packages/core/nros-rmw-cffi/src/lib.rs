@@ -2485,6 +2485,9 @@ impl ServiceServerTrait for CffiServiceServer {
         let rc = unsafe {
             (self.vtable.try_recv_request)(&mut view, buf.as_mut_ptr(), buf.len(), &mut seq)
         };
+        if rc == NROS_RMW_RET_NO_DATA {
+            return Ok(None);
+        }
         if rc < 0 {
             return Err(error_from_ret(rc));
         }
@@ -2843,7 +2846,7 @@ mod tests {
         _: usize,
         _: *mut i64,
     ) -> i32 {
-        0
+        NROS_RMW_RET_NO_DATA
     }
     unsafe extern "C" fn stub_has_request(_: *mut NrosRmwServiceServer) -> i32 {
         0
@@ -2937,6 +2940,21 @@ mod tests {
         publish_streamed: None,
         ping_session: None,
     };
+
+    #[test]
+    fn service_server_no_data_maps_to_none() {
+        use nros_rmw::ServiceServerTrait as _;
+
+        let mut server = CffiServiceServer {
+            vtable: &STUB_VTABLE,
+            service_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            backend_data: 0x1usize as *mut c_void,
+        };
+        let mut buf = [0u8; 16];
+
+        assert!(server.try_recv_request(&mut buf).unwrap().is_none());
+    }
 
     #[test]
     fn typed_struct_roundtrip() {
