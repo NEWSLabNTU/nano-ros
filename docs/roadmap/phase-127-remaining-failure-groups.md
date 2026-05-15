@@ -596,8 +596,8 @@ Current signal:
 - Historical counts in the triage doc are useful for direction but stale after
   the Phase 126 pull and the ESP32 allocation fix.
 - 2026-05-15 refresh moved the project toward a self-contained build:
-  `third-party/play_launch` is now an in-repo submodule, and `packages/codegen`
-  path dependencies point there instead of sibling `~/repos/play_launch`.
+  `packages/codegen` now owns the `play_launch_parser` dependency subtree
+  instead of depending on sibling `~/repos/play_launch`.
 - `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target just build-all` now gets
   past the old codegen blocker and the FreeRTOS QEMU `clock_gettime` linker
   blocker. Workspace, example matrix, FreeRTOS QEMU examples, ThreadX Linux
@@ -614,7 +614,7 @@ Current signal:
 |---|---|---|
 | `just format` | Pass | Required sandbox escalation because `just` writes temp files under `/run`. |
 | `just ci` | Fail | Static checks/examples pass after fixing clippy findings and regenerating missing example bindings; nextest and C codegen fail. |
-| `just build-all` | Interrupted in fixture tail after progress | With `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target`, workspace/examples compile after adding `third-party/play_launch`, honoring `CARGO_TARGET_DIR` in install recipes, and replacing RTOS ZID `clock_gettime` usage. After disk cleanup, `build-test-fixtures` completed through ThreadX RISC-V and was stopped during Zephyr so the repo could rebase. |
+| `just build-all` | Interrupted in fixture tail after progress | With `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target`, workspace/examples compile after codegen gained its own `play_launch_parser` dependency subtree, honoring `CARGO_TARGET_DIR` in install recipes, and replacing RTOS ZID `clock_gettime` usage. After disk cleanup, `build-test-fixtures` completed through ThreadX RISC-V and was stopped during Zephyr so the repo could rebase. |
 | `just test-all` | Not rerun standalone | `just ci` already invoked `test-all`, but the result is fixture-prereq heavy because the refreshed fixture build was interrupted before Zephyr completed. |
 
 `just ci` nextest evidence:
@@ -645,8 +645,9 @@ Other `just ci` tail results:
 
 - Doctests pass: 1 passed, 4 ignored.
 - Miri pass for selected crates; one clock test ignored under Miri.
-- C codegen failed before the in-repo `third-party/play_launch` submodule was
-  added. That source dependency is no longer the active blocker.
+- C codegen failed before `packages/codegen` gained its own
+  `play_launch_parser` dependency subtree. That source dependency is no longer
+  the active blocker.
 - C codegen log: `test-logs/latest/c-codegen.log`.
 
 Subitems:

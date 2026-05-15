@@ -1,6 +1,6 @@
 # Phase 124 Test Triage - 2026-05-14
 
-## Update - 2026-05-15 Phase 127.G refresh attempt, self-contained codegen
+## Update - 2026-05-15 Phase 127.G refresh attempt
 
 Full-matrix refresh was started after reinstalling `just`.
 
@@ -9,9 +9,8 @@ Verified gates and blockers:
 - `just format`: passed.
 - `just ci`: failed after static checks/examples passed and `test-all`
   produced nextest run id `b0ca0525-85ae-4931-ae76-529b41214b2c`.
-- `just build-all`: advanced past the earlier codegen blocker after adding
-  `third-party/play_launch` as an in-repo submodule and repointing
-  `packages/codegen` path dependencies at it.
+- `just build-all`: advanced past the earlier codegen blocker after
+  `packages/codegen` gained its own `play_launch_parser` dependency subtree.
 - Build-only fixes landed during the attempt:
   - `justfile` and `just/threadx-riscv64.just` now honor
     `CARGO_TARGET_DIR` when copying/installing RMW static libraries.
@@ -55,7 +54,7 @@ Failure separation from the partial run:
 Build-only blocker:
 
 - Earlier missing `~/repos/play_launch` path dependency is resolved by the
-  in-repo `third-party/play_launch` submodule.
+  codegen submodule's own `play_launch_parser` dependency subtree.
 - Earlier FreeRTOS QEMU `clock_gettime` link failure is resolved; talker,
   listener, service, and action examples compile.
 - No current source/link blocker is known before the Zephyr fixture tail. The
