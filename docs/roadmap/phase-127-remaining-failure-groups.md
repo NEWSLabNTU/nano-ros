@@ -374,12 +374,23 @@ Current signal:
   `test_native_talker_to_zephyr_cpp_listener`,
   `test_zephyr_cpp_talker_to_listener_e2e`, and
   `test_zephyr_cpp_talker_to_native_listener`.
+- 2026-05-15 DDS A9 follow-up: the Rust DDS qemu_cortex_a9 pub/sub E2E failure
+  was a Zephyr UDP multicast receive deadlock plus an incorrect multicast join
+  group. `timeout_ms = 0` on multicast sockets now sets `O_NONBLOCK`, matching
+  the DDS cooperative recv-loop contract, and `udp_mcast_listen` joins the
+  supplied group address instead of `0.0.0.0`. The focused
+  `test_zephyr_dds_rust_talker_to_listener_a9_e2e` now passes and delivers
+  samples.
+- 2026-05-15 DDS fixture follow-up: Dust DDS setup has large async state on the
+  Cortex-A Zephyr path, so Zephyr DDS fixtures now use the same 512 KiB stack
+  and heap budget across Rust, C, and C++ frontends. Focused rebuilds passed for
+  Rust DDS A9 talker/listener plus C and C++ DDS A9 talker/listener fixtures.
 
 Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
-- [ ] `127.C.3`: Zephyr DDS runtime failures.
+- [x] `127.C.3`: Zephyr DDS runtime failures.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.

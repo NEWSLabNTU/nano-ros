@@ -333,11 +333,20 @@ where
     /// through to `dust_dds::std_runtime::executor::block_on` for
     /// compatibility with the stock transport's OS-thread model.
     pub fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
-        use core::pin::pin;
+        self.block_on_boxed(Box::pin(future))
+    }
 
+    /// Drive a heap-pinned future to completion.
+    ///
+    /// Some dust-dds async operations have large state machines. Zephyr
+    /// Cortex-A fixtures have enough heap for DDS setup, but their
+    /// interrupt-sensitive stacks are easier to corrupt with large
+    /// caller frames. Call sites that construct large futures can
+    /// `Box::pin(...)` before entering this method so the polled state
+    /// lives on the heap.
+    pub fn block_on_boxed<T>(&self, mut f: Pin<Box<dyn Future<Output = T> + '_>>) -> T {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
-        let mut f = pin!(future);
         loop {
             // Poll the caller's future first; if it's already ready we
             // don't need to drive any background work.

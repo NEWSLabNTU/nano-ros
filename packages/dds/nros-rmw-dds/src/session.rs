@@ -17,6 +17,8 @@ use crate::{
 use crate::runtime::NrosPlatformRuntime;
 #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
 use crate::sync::Arc;
+#[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+use alloc::boxed::Box;
 
 // ---------------------------------------------------------------------------
 // No-listener ZSTs — dust-dds's async create_* methods take
@@ -488,29 +490,31 @@ impl Session for DdsSession {
 
             let dds_topic = self
                 .runtime
-                .block_on(self.participant_async.create_topic::<RawCdrPayload>(
-                    topic.name,
-                    RawCdrPayload::get_type_name(),
-                    QosKind::Default,
-                    None::<NoTopicListener>,
-                    NO_STATUS,
+                .block_on_boxed(Box::pin(
+                    self.participant_async.create_topic::<RawCdrPayload>(
+                        topic.name,
+                        RawCdrPayload::get_type_name(),
+                        QosKind::Default,
+                        None::<NoTopicListener>,
+                        NO_STATUS,
+                    ),
                 ))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
             let subscriber = self
                 .runtime
-                .block_on(self.participant_async.create_subscriber(
+                .block_on_boxed(Box::pin(self.participant_async.create_subscriber(
                     QosKind::Default,
                     None::<NoSubscriberListener>,
                     NO_STATUS,
-                ))
+                )))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
             let shared = Arc::new(SubscriberShared::default());
             let listener = DataAvailableListener::new(shared.clone());
             let reader = self
                 .runtime
-                .block_on(subscriber.create_datareader::<RawCdrPayload>(
+                .block_on_boxed(Box::pin(subscriber.create_datareader::<RawCdrPayload>(
                     &dds_topic,
                     QosKind::Specific(map_reader_qos(&qos)),
                     Some(listener),
@@ -520,7 +524,7 @@ impl Session for DdsSession {
                         StatusKind::RequestedDeadlineMissed,
                         StatusKind::SampleLost,
                     ],
-                ))
+                )))
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
             return Ok(DdsSubscriber::new_async(

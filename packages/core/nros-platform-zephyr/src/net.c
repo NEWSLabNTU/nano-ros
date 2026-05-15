@@ -45,6 +45,17 @@ static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
     (void) zsock_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
+static void set_udp_recv_timeout(int fd, uint32_t timeout_ms) {
+    if (timeout_ms == 0) {
+        int flags = zsock_fcntl(fd, F_GETFL, 0);
+        if (flags >= 0) {
+            (void) zsock_fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+        return;
+    }
+    set_rcv_timeout(fd, timeout_ms);
+}
+
 static void set_int_opt(int fd, int level, int optname, int value) {
     (void) zsock_setsockopt(fd, level, optname, &value, sizeof(int));
 }
@@ -191,7 +202,7 @@ int8_t nros_platform_udp_open(void *sock_raw, const void *endpoint, uint32_t tim
     int fd = zsock_socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) return -1;
     sock->fd = fd;
-    set_rcv_timeout(fd, timeout_ms);
+    set_udp_recv_timeout(fd, timeout_ms);
     return 0;
 }
 
@@ -206,7 +217,7 @@ int8_t nros_platform_udp_listen(void *sock_raw, const void *endpoint, uint32_t t
     if (fd < 0) return -1;
     sock->fd = fd;
     set_int_opt(fd, SOL_SOCKET, SO_REUSEADDR, 1);
-    set_rcv_timeout(fd, timeout_ms);
+    set_udp_recv_timeout(fd, timeout_ms);
 
     for (struct zsock_addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
         if (zsock_bind(fd, it->ai_addr, it->ai_addrlen) == 0) {
@@ -263,14 +274,7 @@ size_t nros_platform_udp_send(const void *sock_raw,
 void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_ms) {
     if (sock_raw == NULL) return;
     const nros_zephyr_socket_t *sock = (const nros_zephyr_socket_t *) sock_raw;
-    if (timeout_ms == 0) {
-        int flags = zsock_fcntl(sock->fd, F_GETFL, 0);
-        if (flags >= 0) {
-            (void) zsock_fcntl(sock->fd, F_SETFL, flags | O_NONBLOCK);
-        }
-        return;
-    }
-    set_rcv_timeout(sock->fd, timeout_ms);
+    set_udp_recv_timeout(sock->fd, timeout_ms);
 }
 
 /* ---- UDP multicast ----
@@ -304,7 +308,7 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     int fd = zsock_socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) return -1;
     sock->fd = fd;
-    set_rcv_timeout(fd, timeout_ms);
+    set_udp_recv_timeout(fd, timeout_ms);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -343,7 +347,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                                       uint32_t timeout_ms,
                                       const uint8_t *iface,
                                       const uint8_t *join) {
-    (void) iface; (void) join;
+    (void) iface;
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_zephyr_socket_t *sock = (nros_zephyr_socket_t *) sock_raw;
     const nros_zephyr_endpoint_t *ep = (const nros_zephyr_endpoint_t *) endpoint;
@@ -353,7 +357,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     int fd = zsock_socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) return -1;
     sock->fd = fd;
-    set_rcv_timeout(fd, timeout_ms);
+    set_udp_recv_timeout(fd, timeout_ms);
     set_int_opt(fd, SOL_SOCKET, SO_REUSEADDR, 1);
 
     struct sockaddr_in addr;
@@ -367,7 +371,13 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
 
     struct ip_mreqn mreq;
     memset(&mreq, 0, sizeof(mreq));
-    mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+    if (join != NULL
+        && zsock_inet_pton(AF_INET, (const char *) join, &mreq.imr_multiaddr) != 1) {
+        zsock_close(fd); sock->fd = -1; return -1;
+    }
+    if (join == NULL) {
+        mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+    }
     mreq.imr_address.s_addr = htonl(INADDR_ANY);
     if (zsock_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                          &mreq, sizeof(mreq)) < 0) {
