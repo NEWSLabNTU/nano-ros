@@ -664,12 +664,14 @@ macro_rules! __define_smoltcp_platform_impl {
                 }
             }
 
-            // Phase 121.8 — empty impl uses trait default (no-op).
-            // SmoltcpBridge already pumps internally from send / recv
-            // bodies + the timer ISR; the canonical
-            // `nros_platform_network_poll` symbol just has to resolve at
-            // link time for binaries that route through CffiPlatform.
-            impl $crate::PlatformNetworkPoll for crate::$plat {}
+            // Keep the canonical platform poll hook active for callers that
+            // route through `nros_platform_network_poll` instead of directly
+            // touching the smoltcp bridge.
+            impl $crate::PlatformNetworkPoll for crate::$plat {
+                fn network_poll() {
+                    SmoltcpBridge::poll_network();
+                }
+            }
         }
     };
 }

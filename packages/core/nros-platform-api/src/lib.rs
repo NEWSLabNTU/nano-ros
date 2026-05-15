@@ -493,11 +493,9 @@ pub trait PlatformThreading {
 ///
 /// Not required for platforms with OS-level networking (POSIX, Zephyr, NuttX).
 ///
-/// **Dispatch model**: currently documentary only — bare-metal platforms
-/// drive their `SmoltcpBridge::poll_network()` from timer ISRs and from
-/// the `PlatformTcp` / `PlatformUdp` send/receive bodies directly.
-/// Kept in the API surface for consistency with the other capability
-/// traits; may become dispatch-active in a follow-up phase.
+/// **Dispatch model**: bare-metal smoltcp platforms route this hook to
+/// `SmoltcpBridge::poll_network()` so CFFI callers, RMW shims, and direct
+/// platform users all share one network pump.
 pub trait PlatformNetworkPoll {
     /// Poll the network stack to process pending I/O.
     ///

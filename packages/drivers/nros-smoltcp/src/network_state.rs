@@ -130,3 +130,126 @@ impl<D: 'static> Default for NetworkState<D> {
 // share across threads because the callers must still respect the unsafe
 // contract on `set` / `clear`.
 unsafe impl<D: 'static> Sync for NetworkState<D> {}
+
+/// Define the board-local smoltcp network-state holder plus the standard
+/// `set_network_state`, `clear_network_state`, and exported poll callback.
+///
+/// The macro keeps the board-owned device type and any board-specific poll
+/// prelude in the board crate, while centralizing the repeated unsafe pointer
+/// wiring in `nros-smoltcp`.
+#[macro_export]
+macro_rules! define_network_state {
+    ($state:ident : $device:ty, poll = $poll_fn:ident) => {
+        $crate::define_network_state!(
+            $state: $device,
+            poll = $poll_fn,
+            before_poll = {}
+        );
+    };
+    ($state:ident : $device:ty, poll = $poll_fn:ident, before_poll = $before_poll:block) => {
+        static $state: $crate::NetworkState<$device> = $crate::NetworkState::new();
+
+        /// Set the network state pointers for the board poll callback.
+        ///
+        /// # Safety
+        /// The pointers must remain valid until `clear_network_state` is called
+        /// or the program exits.
+        pub unsafe fn set_network_state(
+            iface: *mut $crate::Interface,
+            sockets: *mut $crate::SocketSet<'static>,
+            device: *mut (),
+        ) {
+            unsafe { $state.set(iface, sockets, device as *mut $device) }
+        }
+
+        /// Clear network state pointers. Subsequent polls become no-ops.
+        ///
+        /// # Safety
+        /// Must only be called after the node is done using the network stack.
+        pub unsafe fn clear_network_state() {
+            unsafe { $state.clear() }
+        }
+
+        /// Board network poll callback.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $poll_fn() {
+            unsafe {
+                $before_poll
+                $state.poll();
+            }
+        }
+    };
+    ($state:ident : $device:ty, poll_via_ref = $poll_fn:ident, before_poll = $before_poll:block) => {
+        static $state: $crate::NetworkState<$device> = $crate::NetworkState::new();
+
+        /// Set the network state pointers for the board poll callback.
+        ///
+        /// # Safety
+        /// The pointers must remain valid until `clear_network_state` is called
+        /// or the program exits.
+        pub unsafe fn set_network_state(
+            iface: *mut $crate::Interface,
+            sockets: *mut $crate::SocketSet<'static>,
+            device: *mut (),
+        ) {
+            unsafe { $state.set(iface, sockets, device as *mut $device) }
+        }
+
+        /// Clear network state pointers. Subsequent polls become no-ops.
+        ///
+        /// # Safety
+        /// Must only be called after the node is done using the network stack.
+        pub unsafe fn clear_network_state() {
+            unsafe { $state.clear() }
+        }
+
+        /// Board network poll callback.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $poll_fn() {
+            unsafe {
+                $before_poll
+                $state.poll_via_ref();
+            }
+        }
+    };
+    (
+        $state:ident : $device:ty,
+        poll_via_ref = $poll_fn:ident,
+        device_arg = $device_arg:ty,
+        before_poll = $before_poll:block,
+        after_poll = $after_poll:block
+    ) => {
+        static $state: $crate::NetworkState<$device> = $crate::NetworkState::new();
+
+        /// Set the network state pointers for the board poll callback.
+        ///
+        /// # Safety
+        /// The pointers must remain valid until `clear_network_state` is called
+        /// or the program exits.
+        pub unsafe fn set_network_state(
+            iface: *mut $crate::Interface,
+            sockets: *mut $crate::SocketSet<'static>,
+            device: *mut $device_arg,
+        ) {
+            unsafe { $state.set(iface, sockets, device as *mut $device) }
+        }
+
+        /// Clear network state pointers. Subsequent polls become no-ops.
+        ///
+        /// # Safety
+        /// Must only be called after the node is done using the network stack.
+        pub unsafe fn clear_network_state() {
+            unsafe { $state.clear() }
+        }
+
+        /// Board network poll callback.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $poll_fn() {
+            unsafe {
+                $before_poll
+                $state.poll_via_ref();
+                $after_poll
+            }
+        }
+    };
+}

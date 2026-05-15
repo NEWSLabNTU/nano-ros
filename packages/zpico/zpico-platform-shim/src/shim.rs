@@ -1,12 +1,15 @@
-#[cfg(any(not(feature = "skip-clock-symbols"), not(feature = "skip-time-symbols")))]
-use core::ffi::{c_char, c_ulong};
 use core::ffi::c_void;
+#[cfg(any(
+    not(feature = "skip-clock-symbols"),
+    not(feature = "skip-time-symbols")
+))]
+use core::ffi::{c_char, c_ulong};
 
+#[cfg(not(feature = "skip-threading-symbols"))]
+use nros_platform::PlatformThreading;
 use nros_platform::{
     ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
 };
-#[cfg(not(feature = "skip-threading-symbols"))]
-use nros_platform::PlatformThreading;
 // The four network traits live at the parent scope so the inner
 // `mod net_*` submodules can reach them via `use super::{…}`. They
 // are only USED inside those submodules, all of which are
@@ -14,7 +17,9 @@ use nros_platform::PlatformThreading;
 // gated too — otherwise the compiler warns on unused imports when
 // `network` is disabled.
 #[cfg(feature = "network")]
-use nros_platform::{PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast};
+use nros_platform::{
+    PlatformNetworkPoll, PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
+};
 
 // Phase 100.4 + 11.3.A — IVC link-transport forwarders moved to a
 // sibling module (`ivc_helpers.rs`) so they can compile independently
@@ -771,10 +776,11 @@ mod net_mcast {
 
 #[cfg(feature = "network-smoltcp-bridge")]
 mod net_smoltcp_bridge {
+    use super::{P, PlatformNetworkPoll};
+
     unsafe extern "C" {
         fn nros_smoltcp_is_initialized() -> bool;
         fn nros_smoltcp_init();
-        fn nros_smoltcp_do_poll() -> i32;
     }
 
     #[unsafe(no_mangle)]
@@ -795,7 +801,8 @@ mod net_smoltcp_bridge {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_poll() -> i32 {
-        unsafe { nros_smoltcp_do_poll() }
+        <P as PlatformNetworkPoll>::network_poll();
+        0
     }
 }
 
