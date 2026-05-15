@@ -20,6 +20,7 @@
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,16 +49,67 @@ static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
     (void) lwip_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
+static void set_snd_timeout(int fd, uint32_t timeout_ms) {
+    struct timeval tv = {
+        .tv_sec  = (long) (timeout_ms / 1000u),
+        .tv_usec = (long) ((timeout_ms % 1000u) * 1000u),
+    };
+    (void) lwip_setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
 static void set_int_opt(int fd, int level, int optname, int value) {
     (void) lwip_setsockopt(fd, level, optname, &value, sizeof(int));
 }
 
 static void apply_tcp_common_options(int fd, uint32_t recv_timeout_ms) {
     set_rcv_timeout(fd, recv_timeout_ms);
+    set_snd_timeout(fd, recv_timeout_ms);
     set_int_opt(fd, SOL_SOCKET, SO_KEEPALIVE, 1);
     set_int_opt(fd, IPPROTO_TCP, TCP_NODELAY, 1);
     struct linger ling = { .l_onoff = 1, .l_linger = (int) (TRANSPORT_LEASE_MS / 1000u) };
     (void) lwip_setsockopt(fd, SOL_SOCKET, SO_LINGER, &ling, sizeof(ling));
+}
+
+static int connect_with_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
+                                uint32_t timeout_ms) {
+    int original_flags = lwip_fcntl(fd, F_GETFL, 0);
+    if (original_flags < 0) return -1;
+    if (lwip_fcntl(fd, F_SETFL, original_flags | O_NONBLOCK) < 0) return -1;
+
+    int ret = lwip_connect(fd, addr, addrlen);
+    if (ret == 0) {
+        (void) lwip_fcntl(fd, F_SETFL, original_flags);
+        return 0;
+    }
+
+    int err = errno;
+    if (err != EINPROGRESS && err != EALREADY && err != EWOULDBLOCK) {
+        (void) lwip_fcntl(fd, F_SETFL, original_flags);
+        return -1;
+    }
+
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(fd, &write_fds);
+    struct timeval tv = {
+        .tv_sec  = (long) (timeout_ms / 1000u),
+        .tv_usec = (long) ((timeout_ms % 1000u) * 1000u),
+    };
+    ret = lwip_select(fd + 1, NULL, &write_fds, NULL, &tv);
+    if (ret <= 0) {
+        (void) lwip_fcntl(fd, F_SETFL, original_flags);
+        return -1;
+    }
+
+    socklen_t optlen = (socklen_t) sizeof(err);
+    err = 0;
+    if (lwip_getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &optlen) < 0 || err != 0) {
+        (void) lwip_fcntl(fd, F_SETFL, original_flags);
+        return -1;
+    }
+
+    if (lwip_fcntl(fd, F_SETFL, original_flags) < 0) return -1;
+    return 0;
 }
 
 /* ---- TCP ---- */
@@ -103,7 +155,7 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
     apply_tcp_common_options(fd, timeout_ms);
 
     for (struct addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
-        if (lwip_connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+        if (connect_with_timeout(fd, it->ai_addr, it->ai_addrlen, timeout_ms) == 0) {
             return 0;
         }
     }

@@ -265,10 +265,24 @@ Current signal:
   reaches the line before `Executor::open`; the remaining FreeRTOS Zenoh block
   is session-open-side, before any ARP for `10.0.2.2` or TCP SYN appears in the
   pcap.
+- 2026-05-15 FreeRTOS Rust pub/sub fix:
+  - Active FreeRTOS Zenoh builds use `zpico-platform-shim` plus
+    `nros-platform-freertos/src/net.c`, not zenoh-pico's own FreeRTOS lwIP
+    `network.c`, so the TCP timeout hardening was moved into the active
+    platform net path.
+  - `zpico_fill_session_zid()` also generated identical session IDs across
+    separate FreeRTOS QEMU guests because its bare-metal fallback used only a
+    static `g_session` address and a per-process counter. It now mixes
+    platform random bytes on `ZENOH_FREERTOS_LWIP` and `ZENOH_THREADX`.
+  - Focused verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e 'test_rtos_pubsub_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust' --no-capture --retries 0`
+    passed in 65.3s. Talker published messages 0 through 10; listener received
+    messages 0 through 10.
 
 Subitems:
 
-- [~] `127.B.1`: FreeRTOS E2E triage.
+- [~] `127.B.1`: FreeRTOS E2E triage. Rust pub/sub now passes; remaining
+  FreeRTOS service/action and C/C++ cases still need a refreshed focused run.
 - [~] `127.B.2`: NuttX E2E triage.
 - [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.

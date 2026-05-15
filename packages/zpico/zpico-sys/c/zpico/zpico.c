@@ -357,6 +357,8 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #elif defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
     z_clock_t now = z_clock_now();
     zpico_mix_clock_bytes(&seed, &now, sizeof(now));
+    seed ^= z_random_u64();
+    seed ^= z_random_u64() << 1;
 #elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL)
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
