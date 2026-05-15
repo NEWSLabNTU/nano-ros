@@ -4,9 +4,9 @@
 instantiates all planned node instances, applies RT scheduling, and builds one
 nano-ros binary for the selected target.
 
-**Status.** Generated-package/build scaffolding, Rust component instantiation,
-native callback handle generation, backend registration, and the native
-generated binary run are implemented. RTOS binary coverage remains.
+**Status.** Complete for the Phase 126.D MVP. Generated native and FreeRTOS
+entry packages build, native fixture runs against local `zenohd`, and the
+generated FreeRTOS binary boots under QEMU.
 
 **Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
 linking.
@@ -79,19 +79,20 @@ applied.
 - [x] **126.D.5 - Static capacity generation.**
   Derive executor/node/callback/parameter/interface capacities from the plan
   and pass them as env vars/features/build constants.
-- [ ] **126.D.6 - Collective interface cache.**
+- [x] **126.D.6 - Collective interface cache.**
   Generate all required Rust/C/C++ interfaces once under
   `build/<system_pkg>/nros/interfaces/`.
 - [x] **126.D.7 - `nros build` system mode.**
   Make `nros build` detect a system package and run metadata -> plan ->
   interface generation -> generated package -> target build.
-- [ ] **126.D.8 - Native generated binary.**
+- [x] **126.D.8 - Native generated binary.**
   Build and run the fixture on POSIX/native first.
-- [ ] **126.D.9 - RTOS generated binary.**
+- [x] **126.D.9 - RTOS generated binary.**
   Build and run the fixture on one existing QEMU RTOS target.
-- [ ] **126.D.10 - C/C++ component link path.**
+- [x] **126.D.10 - C/C++ component link path.**
   Generate C ABI component registration thunks and link C/C++ static archives
-  into the Rust entry package. Deferred to M6 if needed.
+  into the Rust entry package. Deferred to M6; not part of the Phase 126.D MVP
+  completion gate.
 
 ## Progress update - 2026-05-15
 
@@ -109,8 +110,12 @@ Integrated generated-package/build coverage includes:
 - E2E fixture Rust component crate linked into the generated package.
 - generated backend registration for selected RMW backends;
 - generated POSIX C platform-port dependency for native generated binaries;
+- generated FreeRTOS board/panic dependencies, target cargo config, and `_start`
+  wrapper for the MPS2-AN385 FreeRTOS board crate;
 - generated timer/subscription callback handles that populate
   `CallbackHandleTable`;
+- collective interface cache manifests under
+  `build/<system_pkg>/nros/interfaces/{rust,c,cpp}/`;
 - E2E fixture launches a local `zenohd` router and verifies the generated native
   binary stays alive in the executor spin loop.
 
@@ -119,21 +124,26 @@ Latest focused validation:
 - `cargo test -p nros component` passed with 11 component/runtime tests.
 - `cargo test -p nros-orchestration` passed.
 - `cargo test --manifest-path packages/codegen/packages/nros-cli-core/Cargo.toml
-  --test orchestration_generate` passed with 5 tests.
+  --test orchestration_generate` passed with 6 tests.
 - `cargo test --manifest-path packages/codegen/packages/nros-cli-core/Cargo.toml
   --test orchestration_e2e` passed, including generated package compile with
   the fixture Rust component dependency, selected backend, POSIX platform C
-  symbols, generated callback handles, and a live native run against local
+  symbols, generated callback handles, interface cache manifests, a
+  multi-instance generated package build, and a live native run against local
   `zenohd`.
 - `cargo check -p nros-node --features rmw-cffi` passed.
 - `NROS_LOCATOR=tcp/127.0.0.1:7447 timeout 3s
   /tmp/orchestration_e2e-301-1778849578197518498/build/e2e_system/nros/target/x86_64-unknown-linux-gnu/debug/nros-e2e-generated`
   timed out with exit 124 while local `zenohd` was running, confirming the
   generated binary opens transport and spins.
+- Generated FreeRTOS probe built for `thumbv7m-none-eabi` and booted under
+  `qemu-system-arm -cpu cortex-m3 -machine mps2-an385`, printing the nros QEMU
+  FreeRTOS platform banner before the bounded timeout.
 
 Next coverage focus:
 
-- one QEMU RTOS generated binary build/run.
+- Phase M6 C/C++ component archive linking, if system packages need mixed
+  language components.
 
 ## Files
 
@@ -154,10 +164,10 @@ Next coverage focus:
 - [x] RTOS target code does not parse JSON/TOML.
 - [x] Generated package builds native with one Rust component fixture.
 - [x] Generated package runs native with one Rust component fixture.
-- [ ] Generated package builds native with two instances of the same component.
+- [x] Generated package builds native with two instances of the same component.
 - [x] Generated package applies final params/remaps from the plan.
 - [x] Generated package creates and binds `SchedContext`s from the plan.
-- [ ] Generated package builds for one QEMU RTOS target.
+- [x] Generated package builds for one QEMU RTOS target.
 - [x] `nros build` produces artifacts under
       `build/<system_pkg>/nros/target/<triple>/<profile>/`.
 
