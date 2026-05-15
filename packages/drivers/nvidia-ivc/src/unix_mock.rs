@@ -1,6 +1,6 @@
-//! `unix-mock` backend — Unix `SOCK_DGRAM` socketpair simulating one IVC
-//! channel, with **zero-copy semantics** layered over the kernel
-//! syscalls.
+//! `unix-mock` backend — same-process in-memory pairs or Unix
+//! `SOCK_DGRAM` sockets simulating IVC channels, with **zero-copy
+//! semantics** at the public API boundary.
 //!
 //! NVIDIA's FSP IVC API is fundamentally a "borrow ring slot, fill,
 //! commit" pattern (see Phase 11.3.A). The mock keeps that pattern at
@@ -23,12 +23,16 @@
 //! Two consumer patterns:
 //!
 //! 1. **In-process loopback tests** ([`register_pair`]) — wires two
-//!    channel IDs to the two ends of a single `UnixDatagram::pair()`.
+//!    channel IDs to each other's in-memory datagram queues.
 //! 2. **Cross-process bring-up** ([`register_fd`]) — each side
 //!    registers its own end of an AF_UNIX *connected* pair.
 
-use core::{cell::Cell, ffi::c_void};
+use core::{
+    cell::{Cell, UnsafeCell},
+    ffi::c_void,
+};
 use std::{
+    collections::VecDeque,
     os::{
         fd::{AsRawFd, IntoRawFd, RawFd},
         unix::net::UnixDatagram,
@@ -42,25 +46,26 @@ const MAX_CHANNELS: usize = 16;
 
 struct MockChannel {
     id: u32,
-    fd: RawFd,
+    fd: Option<RawFd>,
+    peer_id: Option<u32>,
+    rx_queue: Mutex<VecDeque<([u8; FRAME_SIZE_USIZE], usize)>>,
     /// Last-recv'd RX frame buffer + length. Populated by `rx_get`,
     /// drained by `rx_release`. The single-slot model mirrors the way
     /// callers (zenoh-pico's link layer) consume one frame at a time.
-    rx_slot: Cell<[u8; FRAME_SIZE_USIZE]>,
+    rx_slot: UnsafeCell<[u8; FRAME_SIZE_USIZE]>,
     rx_len: Cell<usize>,
     rx_in_flight: Cell<bool>,
     /// Pending TX frame buffer. Populated by `tx_get` (handed out as a
     /// pointer), the caller writes into it, then `tx_commit(len)`
-    /// flushes via `send(fd, ...)`. `tx_abandon` clears the flag.
-    tx_slot: Cell<[u8; FRAME_SIZE_USIZE]>,
+    /// flushes to the peer queue or via `send(fd, ...)`.
+    /// `tx_abandon` clears the flag.
+    tx_slot: UnsafeCell<[u8; FRAME_SIZE_USIZE]>,
     tx_in_flight: Cell<bool>,
 }
 
-// SAFETY: Cell isn't Sync, but we serialise all access through
-// REGISTRY (Mutex). Cell here is for interior mutability *within* a
-// single thread's access to a borrowed MockChannel; aliasing across
-// threads is prevented by the registry lock. The mock is dev-only;
-// production paths use the FSP backend.
+// SAFETY: mutable slot access is guarded by the in-flight flags and
+// channel registration is serialised through REGISTRY. The mock is
+// dev-only; production paths use the FSP backend.
 unsafe impl Sync for MockChannel {}
 
 struct Registry {
@@ -85,7 +90,7 @@ impl Registry {
             .map(|b| b.as_ref())
     }
 
-    fn insert(&mut self, id: u32, fd: RawFd) -> *mut c_void {
+    fn insert(&mut self, id: u32, fd: Option<RawFd>, peer_id: Option<u32>) -> *mut c_void {
         if self.channels.iter().any(|c| c.id == id) {
             panic!("nvidia-ivc unix-mock: channel id {id} already registered");
         }
@@ -95,10 +100,12 @@ impl Registry {
         let boxed = Box::new(MockChannel {
             id,
             fd,
-            rx_slot: Cell::new([0u8; FRAME_SIZE_USIZE]),
+            peer_id,
+            rx_queue: Mutex::new(VecDeque::new()),
+            rx_slot: UnsafeCell::new([0u8; FRAME_SIZE_USIZE]),
             rx_len: Cell::new(0),
             rx_in_flight: Cell::new(false),
-            tx_slot: Cell::new([0u8; FRAME_SIZE_USIZE]),
+            tx_slot: UnsafeCell::new([0u8; FRAME_SIZE_USIZE]),
             tx_in_flight: Cell::new(false),
         });
         let ptr = boxed.as_ref() as *const MockChannel as *mut c_void;
@@ -122,26 +129,21 @@ pub fn register_fd(id: u32, sock: UnixDatagram) {
     let mut reg = REGISTRY
         .lock()
         .expect("nvidia-ivc unix-mock registry poisoned");
-    reg.insert(id, fd);
+    reg.insert(id, Some(fd), None);
 }
 
-/// Wire two channel IDs to the two ends of one `UnixDatagram::pair()`.
+/// Wire two channel IDs to each other's in-memory datagram queues.
 /// Both IDs must be unused. Returns nothing; subsequent `Channel::open`
 /// calls on either ID will succeed.
 ///
 /// Panics if either ID is already registered.
 pub fn register_pair(id_a: u32, id_b: u32) {
     assert!(id_a != id_b, "register_pair: IDs must differ");
-    let (a, b) = UnixDatagram::pair().expect("nvidia-ivc unix-mock: UnixDatagram::pair failed");
-    a.set_nonblocking(true).expect("set_nonblocking a");
-    b.set_nonblocking(true).expect("set_nonblocking b");
-    let fd_a = a.into_raw_fd();
-    let fd_b = b.into_raw_fd();
     let mut reg = REGISTRY
         .lock()
         .expect("nvidia-ivc unix-mock registry poisoned");
-    reg.insert(id_a, fd_a);
-    reg.insert(id_b, fd_b);
+    reg.insert(id_a, None, Some(id_b));
+    reg.insert(id_b, None, Some(id_a));
 }
 
 /// Reset the registry — for tests that want a clean slate. Closes every
@@ -153,7 +155,9 @@ pub fn reset_for_tests() {
         .expect("nvidia-ivc unix-mock registry poisoned");
     for c in reg.channels.drain(..) {
         // Reclaim the dup'd fd so we don't leak it across tests.
-        unsafe { libc_close(c.fd) };
+        if let Some(fd) = c.fd {
+            unsafe { libc_close(fd) };
+        }
     }
 }
 
@@ -192,18 +196,32 @@ pub(crate) unsafe fn rx_get(ch: *mut c_void, len_out: *mut usize) -> *const u8 {
         unsafe { *len_out = 0 };
         return core::ptr::null();
     }
-    let mut buf = mc.rx_slot.get();
-    match unsafe { recv_nonblocking(mc.fd, buf.as_mut_ptr(), buf.len()) } {
+    if let Some((frame, n)) = mc
+        .rx_queue
+        .lock()
+        .expect("nvidia-ivc unix-mock rx queue poisoned")
+        .pop_front()
+    {
+        let buf = unsafe { &mut *mc.rx_slot.get() };
+        buf.copy_from_slice(&frame);
+        mc.rx_len.set(n);
+        mc.rx_in_flight.set(true);
+        unsafe { *len_out = n };
+        return buf.as_ptr();
+    }
+
+    let Some(fd) = mc.fd else {
+        unsafe { *len_out = 0 };
+        return core::ptr::null();
+    };
+
+    let buf = unsafe { &mut *mc.rx_slot.get() };
+    match unsafe { recv_nonblocking(fd, buf.as_mut_ptr(), buf.len()) } {
         Ok(Some(n)) => {
-            mc.rx_slot.set(buf);
             mc.rx_len.set(n);
             mc.rx_in_flight.set(true);
             unsafe { *len_out = n };
-            // Hand the caller a stable pointer into the channel's
-            // own slot. Cell isn't Sync but the registry lock
-            // serialises access; the slot pointer is valid until
-            // `rx_release`.
-            mc.rx_slot.as_ptr() as *const u8
+            buf.as_ptr()
         }
         Ok(None) => {
             unsafe { *len_out = 0 };
@@ -230,7 +248,7 @@ pub(crate) unsafe fn tx_get(ch: *mut c_void, cap_out: *mut usize) -> *mut u8 {
     }
     mc.tx_in_flight.set(true);
     unsafe { *cap_out = FRAME_SIZE_USIZE };
-    mc.tx_slot.as_ptr() as *mut u8
+    mc.tx_slot.get().cast::<u8>()
 }
 
 pub(crate) unsafe fn tx_commit(ch: *mut c_void, len: usize) {
@@ -238,9 +256,24 @@ pub(crate) unsafe fn tx_commit(ch: *mut c_void, len: usize) {
     if !mc.tx_in_flight.get() {
         return;
     }
-    let buf = mc.tx_slot.get();
+    let buf = unsafe { &*mc.tx_slot.get() };
     let send_len = len.min(FRAME_SIZE_USIZE);
-    let _ = unsafe { send_dgram(mc.fd, buf.as_ptr(), send_len) };
+    if let Some(peer_id) = mc.peer_id {
+        let mut frame = [0u8; FRAME_SIZE_USIZE];
+        frame[..send_len].copy_from_slice(&buf[..send_len]);
+        if let Some(peer) = REGISTRY
+            .lock()
+            .expect("nvidia-ivc unix-mock registry poisoned")
+            .lookup(peer_id)
+        {
+            peer.rx_queue
+                .lock()
+                .expect("nvidia-ivc unix-mock rx queue poisoned")
+                .push_back((frame, send_len));
+        }
+    } else if let Some(fd) = mc.fd {
+        let _ = unsafe { send_dgram(fd, buf.as_ptr(), send_len) };
+    }
     mc.tx_in_flight.set(false);
 }
 
