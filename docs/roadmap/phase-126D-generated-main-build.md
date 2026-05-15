@@ -4,8 +4,9 @@
 instantiates all planned node instances, applies RT scheduling, and builds one
 nano-ros binary for the selected target.
 
-**Status.** Generated-package/build scaffolding implemented. Runtime
-instantiation and RTOS binary coverage remain.
+**Status.** Generated-package/build scaffolding and Rust component
+instantiation are implemented. Callback binding thunks and RTOS binary coverage
+remain.
 
 **Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
 linking.
@@ -69,7 +70,7 @@ applied.
   component instantiation helpers.
 - [x] **126.D.2 - Generated package templates.**
   Add `Cargo.toml`, `build.rs`, `main.rs`, and `nros_generated.rs` templates.
-- [ ] **126.D.3 - Rust component instantiation.**
+- [x] **126.D.3 - Rust component instantiation.**
   Call Rust component constructors directly using plan-derived
   `NodeOptions`/`InstanceSpec`.
 - [x] **126.D.4 - SchedContext generation.**
@@ -103,16 +104,24 @@ Integrated generated-package/build coverage includes:
 - plan-derived Cargo features;
 - plan-derived build args and target-dir layout;
 - no-std generated main gating.
+- plan-derived node tables plus generated Rust component dispatch using the
+  `crate::module::Component` convention;
+- E2E fixture Rust component crate linked into the generated package.
 
 Latest focused validation:
 
-- `cargo test -p nros-cli-core generated_package` passed with 3 tests after the
-  final sweep.
+- `cargo test -p nros component` passed with 11 component/runtime tests.
+- `cargo test -p nros-orchestration` passed.
+- `cargo test --manifest-path packages/codegen/packages/nros-cli-core/Cargo.toml
+  --test orchestration_generate` passed with 5 tests.
+- `cargo test --manifest-path packages/codegen/packages/nros-cli-core/Cargo.toml
+  --test orchestration_e2e` passed, including generated package compile with
+  the fixture Rust component dependency.
 
 Next coverage focus:
 
-- generated runtime path that instantiates Rust components instead of only
-  emitting static tables/scaffolding;
+- callback handle thunk generation so component callbacks populate
+  `CallbackHandleTable`;
 - one native generated binary run;
 - one QEMU RTOS generated binary build/run.
 

@@ -54,6 +54,17 @@ pub struct InstanceSpec {
     pub parameter_len: usize,
 }
 
+/// One launch-resolved node inside a component instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeSpec {
+    pub instance_id: &'static str,
+    pub node_id: &'static str,
+    pub source_node: &'static str,
+    pub node_name: &'static str,
+    pub namespace: &'static str,
+    pub domain_id: Option<u32>,
+}
+
 /// Final parameter value emitted by the planner.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParameterSpec {
@@ -223,6 +234,7 @@ pub struct SystemSpec {
     pub capacities: CapacitySpec,
     pub components: &'static [ComponentSpec],
     pub instances: &'static [InstanceSpec],
+    pub nodes: &'static [NodeSpec],
     pub parameters: &'static [ParameterSpec],
     pub sched_contexts: &'static [SchedContextSpec],
     pub callback_bindings: &'static [CallbackBindingSpec],

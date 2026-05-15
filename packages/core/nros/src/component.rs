@@ -161,6 +161,7 @@ pub trait ComponentNodeRuntime {
     /// Create a runtime node from source-level component options.
     fn build_component_node(
         &mut self,
+        id: NodeId<'_>,
         options: NodeOptions<'_>,
     ) -> ComponentResult<Self::NodeHandle>;
 }
@@ -261,7 +262,7 @@ impl<
         if self.contains_node(id.as_str()) {
             return Err(ComponentMetadataError::DuplicateId.into());
         }
-        let handle = self.node_runtime.build_component_node(options)?;
+        let handle = self.node_runtime.build_component_node(id, options)?;
         self.nodes
             .push(ComponentRuntimeNode {
                 stable_id: copy_str(id.as_str())?,
@@ -310,6 +311,7 @@ impl ComponentNodeRuntime for crate::Executor {
 
     fn build_component_node(
         &mut self,
+        _id: NodeId<'_>,
         options: NodeOptions<'_>,
     ) -> ComponentResult<Self::NodeHandle> {
         self.node_builder(options.name)
@@ -728,6 +730,7 @@ mod tests {
 
         fn build_component_node(
             &mut self,
+            _id: NodeId<'_>,
             options: NodeOptions<'_>,
         ) -> ComponentResult<Self::NodeHandle> {
             self.created
