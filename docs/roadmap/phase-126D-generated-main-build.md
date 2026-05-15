@@ -122,6 +122,8 @@ Integrated generated-package/build coverage includes:
   boots it under QEMU long enough to assert the nros FreeRTOS platform banner.
 - E2E fixture links generated native packages against C and C++ static archives
   through generated C ABI registration thunks.
+- E2E fixture builds a generated native package with service and action server
+  callbacks registered through raw executor handles and sched bindings.
 
 Latest focused validation:
 
@@ -134,8 +136,8 @@ Latest focused validation:
   the fixture Rust component dependency, selected backend, POSIX platform C
   symbols, generated callback handles, interface cache manifests, a
   multi-instance generated package build, a live native run against local
-  `zenohd`, generated FreeRTOS build/boot coverage, and mixed C/C++ static
-  archive linking.
+  `zenohd`, generated FreeRTOS build/boot coverage, mixed C/C++ static archive
+  linking, and service/action generated callback registration.
 - `cargo check -p nros-node --features rmw-cffi` passed.
 - `NROS_LOCATOR=tcp/127.0.0.1:7447 timeout 3s
   /tmp/orchestration_e2e-301-1778849578197518498/build/e2e_system/nros/target/x86_64-unknown-linux-gnu/debug/nros-e2e-generated`
@@ -147,8 +149,7 @@ Latest focused validation:
 
 Next coverage focus:
 
-- Phase M7 services/actions metadata, plan, checker, and generated-runtime
-  coverage.
+- Broad Phase 126 validation: `just ci`, `just build-all`, and `just test-all`.
 
 ## Files
 

@@ -48,10 +48,9 @@ The first orchestration layer is now in place:
 - planner and generator tests cover multi-instance, private-name/remap,
   parameter, manifest, callback-effect, and generated-package cases.
 
-Remaining orchestration gaps are broad validation and follow-on workflow polish:
+Remaining orchestration gap is broad validation:
 
 - broad `just` matrix has not been run for the integrated Phase 126 path.
-- services/actions still need end-to-end generated-runtime coverage.
 
 ## Progress update - 2026-05-15
 
@@ -256,10 +255,10 @@ Finish services/actions in metadata, plan, checker, and generated runtime.
 
 Acceptance:
 
-- Services and actions are represented like pub/sub with role-specific
+- [x] Services and actions are represented like pub/sub with role-specific
   endpoints and callbacks.
-- `nros check` validates pub/sub/service/action graph consistency.
-- Docs show the standard workflow end to end.
+- [x] `nros check` validates pub/sub/service/action graph consistency.
+- [x] Docs show the standard workflow end to end.
 
 ## Branching guidance
 
