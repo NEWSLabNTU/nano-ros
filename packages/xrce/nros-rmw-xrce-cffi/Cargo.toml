@@ -43,13 +43,9 @@ platform-freertos = []
 platform-nuttx = []
 platform-threadx = []
 
-# `platform-zephyr` is the same shape as `platform-bare-metal` at
-# the cc::Build layer (no POSIX TUs) but emits the
-# `UCLIENT_PLATFORM_ZEPHYR` define so any upstream platform branch
-# that auto-detects via `#ifdef UCLIENT_PLATFORM_ZEPHYR` picks the
-# Zephyr code path. The Zephyr CMake glue (`zephyr/CMakeLists.txt`)
-# wires up the actual UDP + serial transport callbacks via Zephyr
-# native socket / UART APIs.
+# `platform-zephyr` skips POSIX TUs, emits `UCLIENT_PLATFORM_ZEPHYR`,
+# and compiles the Zephyr UDP custom-transport bridge over the
+# canonical nros platform-net ABI.
 platform-zephyr = []
 
 [build-dependencies]

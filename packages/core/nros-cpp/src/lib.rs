@@ -30,6 +30,9 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
+#[cfg(feature = "rmw-xrce-cffi")]
+extern crate nros_rmw_xrce_cffi as _;
+
 // FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
 // FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-freertos"))]

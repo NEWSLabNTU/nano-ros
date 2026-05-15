@@ -29,8 +29,10 @@
 #include <nros/platform.h>
 
 #include <zephyr/kernel.h>
-#include <zephyr/posix/pthread.h>
 #include <zephyr/random/random.h>
+#ifdef CONFIG_POSIX_API
+#include <zephyr/posix/pthread.h>
+#endif
 
 #include <errno.h>
 #include <stddef.h>
@@ -121,6 +123,8 @@ uint32_t nros_platform_time_since_epoch_secs(void)    { return 0; }
 uint32_t nros_platform_time_since_epoch_nanos(void)   { return 0; }
 
 /* ---- Tasks ---- */
+
+#ifdef CONFIG_POSIX_API
 
 int nros_zephyr_task_create(pthread_t *thread,
                             void *(*entry)(void *),
@@ -262,6 +266,113 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (rc == ETIMEDOUT) return 1;
     return -1;
 }
+
+#else
+
+int8_t nros_platform_task_init(void *task, void *attr,
+                               void *(*entry)(void *), void *arg) {
+    (void) task;
+    (void) attr;
+    (void) entry;
+    (void) arg;
+    return -1;
+}
+
+int8_t nros_platform_task_join(void *task) {
+    (void) task;
+    return -1;
+}
+
+int8_t nros_platform_task_detach(void *task) {
+    (void) task;
+    return -1;
+}
+
+int8_t nros_platform_task_cancel(void *task) {
+    (void) task;
+    return -1;
+}
+
+void nros_platform_task_exit(void) {}
+
+void nros_platform_task_free(void **task) {
+    (void) task;
+}
+
+/* ---- Mutex ---- */
+
+int8_t nros_platform_mutex_init(void *m) {
+    (void) m;
+    return -1;
+}
+
+int8_t nros_platform_mutex_drop(void *m) {
+    (void) m;
+    return 0;
+}
+
+int8_t nros_platform_mutex_lock(void *m) {
+    (void) m;
+    return -1;
+}
+
+int8_t nros_platform_mutex_try_lock(void *m) {
+    (void) m;
+    return -1;
+}
+
+int8_t nros_platform_mutex_unlock(void *m) {
+    (void) m;
+    return -1;
+}
+
+int8_t nros_platform_mutex_rec_init(void *m)       { return nros_platform_mutex_init(m); }
+int8_t nros_platform_mutex_rec_drop(void *m)       { return nros_platform_mutex_drop(m); }
+int8_t nros_platform_mutex_rec_lock(void *m)       { return nros_platform_mutex_lock(m); }
+int8_t nros_platform_mutex_rec_try_lock(void *m)   { return nros_platform_mutex_try_lock(m); }
+int8_t nros_platform_mutex_rec_unlock(void *m)     { return nros_platform_mutex_unlock(m); }
+
+/* ---- Condvars ---- */
+
+int8_t nros_platform_condvar_init(void *cv) {
+    (void) cv;
+    return -1;
+}
+
+int8_t nros_platform_condvar_drop(void *cv) {
+    (void) cv;
+    return 0;
+}
+
+int8_t nros_platform_condvar_signal(void *cv) {
+    (void) cv;
+    return -1;
+}
+
+int8_t nros_platform_condvar_signal_all(void *cv) {
+    (void) cv;
+    return -1;
+}
+
+int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    (void) cv;
+    return -1;
+}
+
+int8_t nros_platform_condvar_wait(void *cv, void *m) {
+    (void) cv;
+    (void) m;
+    return -1;
+}
+
+int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
+    (void) cv;
+    (void) m;
+    (void) abstime_ms;
+    return -1;
+}
+
+#endif
 
 /* ============================================================
  *   Critical section (Phase 121.9)

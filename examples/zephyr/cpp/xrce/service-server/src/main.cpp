@@ -10,6 +10,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <xrce_zephyr.h>
 
 LOG_MODULE_REGISTER(nros_cpp_xrce_service_server, LOG_LEVEL_INF);
 
@@ -33,6 +34,9 @@ int nros_app_main(int argc, char **argv) {
     LOG_INF("nros Zephyr C++ Service Server");
     LOG_INF("================================");
 
+    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        return 1;
+    }
     NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
                             CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_server"), 1);
 

@@ -34,6 +34,9 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
+#[cfg(feature = "cffi-xrce-c")]
+extern crate nros_rmw_xrce_cffi as _;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

@@ -357,6 +357,32 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
+#elif defined(UCLIENT_PLATFORM_ZEPHYR)
+    } else {
+        const char *addr_locator = locator != NULL ? locator : "127.0.0.1";
+        (void)locator_strip_udp_prefix(&addr_locator);
+
+        char host[64];
+        uint16_t port = XRCE_DEFAULT_AGENT_PORT;
+        if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
+            size_t hlen = strlen(addr_locator);
+            if (hlen == 0 || hlen + 1 > sizeof(host)) {
+                free(st);
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            }
+            memcpy(host, addr_locator, hlen + 1);
+        }
+        char port_str[8];
+        snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
+
+        st->use_custom_transport = true;
+        nros_rmw_ret_t udp_ret = xrce_zephyr_udp_init(st, host, port_str);
+        if (udp_ret != NROS_RMW_RET_OK) {
+            free(st);
+            return udp_ret;
+        }
+        uxr_init_session(&st->session, &st->custom.comm,
+                         hash_session_key(node_name));
 #else
     } else {
         /* Embedded build — caller must pass `custom://` and have

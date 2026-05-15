@@ -63,7 +63,8 @@ fn main() {
         .include(microxrce.join("src/c"))
         .include(xrce_c.join("src"))
         .include(xrce_c.join("include"))
-        .include(workspace.join("packages/core/nros-rmw-cffi/include"));
+        .include(workspace.join("packages/core/nros-rmw-cffi/include"))
+        .include(workspace.join("packages/core/nros-platform-cffi/include"));
     if is_posix {
         // `_POSIX_C_SOURCE` is what unlocks `clock_gettime`,
         // `getaddrinfo`, etc in `<sys/socket.h>` + `<time.h>` on
@@ -90,6 +91,8 @@ fn main() {
     if is_posix {
         backend_tus.push("transport_posix_udp");
         backend_tus.push("transport_posix_serial");
+    } else if feat_zephyr {
+        backend_tus.push("transport_zephyr_udp");
     }
     for name in &backend_tus {
         build.file(xrce_c.join(format!("src/{name}.c")));

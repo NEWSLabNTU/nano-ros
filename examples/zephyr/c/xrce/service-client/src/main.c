@@ -5,6 +5,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <xrce_zephyr.h>
 
 LOG_MODULE_REGISTER(nros_xrce_service_client, LOG_LEVEL_INF);
 
@@ -27,6 +28,9 @@ int nros_app_main(int argc, char **argv) {
     LOG_INF("nros Zephyr Service Client (XRCE)");
 
     /* Initialize support context (handles network wait + transport setup) */
+    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        return 1;
+    }
     nros_support_t support = nros_support_get_zero_initialized();
     NROS_CHECK_RET(nros_support_init_named(
         &support,

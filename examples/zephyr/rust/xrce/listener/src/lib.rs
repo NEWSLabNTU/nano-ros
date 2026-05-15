@@ -17,6 +17,7 @@ extern "C" fn rust_main() {
 
     info!("nros Zephyr XRCE Listener");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
+    let _ = nros::platform::zephyr::wait_for_network(2000);
 
     if let Err(e) = run() {
         error!("Error: {:?}", e);

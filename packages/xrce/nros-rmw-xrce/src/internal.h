@@ -120,6 +120,8 @@ struct xrce_session_state {
      * `uxrCustomTransport.args`. */
     struct {
         int fd;
+        void *sock;
+        void *endpoint;
     }                    udp_bridge;
     /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via
      * custom transport. Same shape as `udp_bridge`: an `int fd`
@@ -319,6 +321,12 @@ nros_rmw_ret_t xrce_custom_transport_install(xrce_session_state_t *st,
  * the agent has interop'd with for years. */
 nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
                                    const char *host, const char *port);
+
+/* Zephyr UDP via the canonical nros platform networking ABI. Uses the same
+ * Micro-XRCE custom transport shape as POSIX UDP, but delegates socket and
+ * endpoint storage to nros_platform_udp_* instead of POSIX sockets. */
+nros_rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
+                                    const char *host, const char *port);
 
 /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via custom
  * transport. Opens a tty/pty `path`, configures termios (raw mode,

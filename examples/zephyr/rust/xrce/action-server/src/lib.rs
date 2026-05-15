@@ -20,6 +20,7 @@ extern "C" fn rust_main() {
 
     info!("nros Zephyr XRCE Action Server");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
+    let _ = nros::platform::zephyr::wait_for_network(2000);
     info!("Action: Fibonacci");
 
     if let Err(e) = run() {

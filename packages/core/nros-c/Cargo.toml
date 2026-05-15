@@ -41,11 +41,11 @@ lending = ["rmw-cffi", "nros/lending"]
 # wrapper staticlib makes nros-c truly RMW-agnostic — one
 # `libnros_c.a` per target triple covers every backend.
 #
-# Compatibility shims: keep the feature names as no-op aliases of
-# `rmw-cffi` so downstream CMake glue that still passes them doesn't
-# error. To be deleted along with the CMake glue once external
-# consumers migrate.
-cffi-xrce-c = ["rmw-cffi"]
+# Compatibility shims: keep the feature names accepted so downstream
+# CMake glue that still passes them doesn't error. `cffi-xrce-c` also
+# links the C XRCE backend for Zephyr's in-tree staticlib path, where
+# downstream `nano_ros_link_rmw()` is not involved.
+cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 cffi-dds-cffi = ["rmw-cffi"]
 cffi-zenoh-cffi = ["rmw-cffi"]
 
@@ -62,11 +62,24 @@ xrce-serial = ["nros/xrce-serial"]
 # `#[global_allocator]` modules in lib.rs compile without the build
 # script having to remember to pass `,alloc` alongside
 # `platform-<rtos>`.
-platform-posix = ["nros/platform-posix"]
-platform-zephyr = ["alloc", "nros/platform-zephyr", "dep:critical-section"]
-platform-freertos = ["alloc", "nros/platform-freertos"]
-platform-nuttx = ["alloc", "nros/platform-nuttx"]
-platform-threadx = ["alloc", "nros/platform-threadx"]
+platform-posix = ["nros/platform-posix", "nros-rmw-xrce-cffi?/platform-posix"]
+platform-zephyr = [
+    "alloc",
+    "nros/platform-zephyr",
+    "dep:critical-section",
+    "nros-rmw-xrce-cffi?/platform-zephyr",
+]
+platform-freertos = [
+    "alloc",
+    "nros/platform-freertos",
+    "nros-rmw-xrce-cffi?/platform-freertos",
+]
+platform-nuttx = ["alloc", "nros/platform-nuttx", "nros-rmw-xrce-cffi?/platform-nuttx"]
+platform-threadx = [
+    "alloc",
+    "nros/platform-threadx",
+    "nros-rmw-xrce-cffi?/platform-threadx",
+]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]
@@ -90,6 +103,7 @@ nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
+nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 paste = "1"
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on

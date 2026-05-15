@@ -152,6 +152,20 @@ pub unsafe extern "C" fn nros_support_init_named(
         support.locator_len = len;
     }
 
+    // Zephyr C API fixtures do not use CMake's nano_ros_link_rmw()
+    // generated stub, so keep the legacy XRCE compatibility feature
+    // as an explicit registration hook for this backend.
+    #[cfg(feature = "cffi-xrce-c")]
+    {
+        unsafe extern "C" {
+            fn nros_rmw_xrce_register() -> i32;
+        }
+        let rc = unsafe { nros_rmw_xrce_register() };
+        if rc != 0 {
+            return rc;
+        }
+    }
+
     // Phase 123.A.11.2 — explicit `nros_rmw_<rmw>_register()` call
     // sites removed. Each backend's wrapper staticlib emits a
     // `.init_array` ctor (phase 104.A) that runs the register fn

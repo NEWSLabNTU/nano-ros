@@ -385,13 +385,26 @@ Current signal:
   Cortex-A Zephyr path, so Zephyr DDS fixtures now use the same 512 KiB stack
   and heap budget across Rust, C, and C++ frontends. Focused rebuilds passed for
   Rust DDS A9 talker/listener plus C and C++ DDS A9 talker/listener fixtures.
+- 2026-05-15 XRCE setup/runtime follow-up: `just qemu setup` now passes again
+  after guarding the zenoh-pico single-thread `z_open_options_t` assignments.
+  Zephyr XRCE no longer relies on POSIX-only Micro XRCE UDP transport: the
+  Zephyr build now links a UDP custom-transport bridge through the canonical
+  `nros_platform_udp_*` ABI, and XRCE C/C++ staticlibs pull in the concrete
+  `nros-rmw-xrce-cffi` backend when their existing XRCE compatibility features
+  are selected. Native-sim XRCE examples now wait for network readiness, and the
+  C++ XRCE configs no longer enable the copied Zenoh POSIX pthread block that
+  broke host-kernel socket open. Focused pub/sub reruns now pass for
+  `test_zephyr_xrce_rust_talker_listener`,
+  `test_zephyr_xrce_c_talker_listener`, and
+  `test_zephyr_xrce_cpp_talker_listener`.
 
 Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
 - [x] `127.C.3`: Zephyr DDS runtime failures.
-- [ ] `127.C.4`: Zephyr XRCE runtime failures.
+- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
+  and C++; XRCE service/action focused reruns remain.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 

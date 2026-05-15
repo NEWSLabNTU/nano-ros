@@ -798,8 +798,10 @@ int32_t zpico_open(void) {
 
     z_open_options_t open_opts;
     z_open_options_default(&open_opts);
+#if Z_FEATURE_MULTI_THREAD == 1
     open_opts.auto_start_read_task = false;
     open_opts.auto_start_lease_task = false;
+#endif
     int open_ret = z_open(&g_session, z_config_move(&g_config), &open_opts);
     if (open_ret < 0) {
         return ZPICO_ERR_SESSION;
