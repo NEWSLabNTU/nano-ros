@@ -48,14 +48,10 @@ The first orchestration layer is now in place:
 - planner and generator tests cover multi-instance, private-name/remap,
   parameter, manifest, callback-effect, and generated-package cases.
 
-Remaining orchestration gaps are runtime vertical integration and broad
-validation:
+Remaining orchestration gaps are broad validation and follow-on workflow polish:
 
-- generated main still emits static tables/scaffolding rather than full runtime
-  component instantiation for all paths;
-- C/C++ component metadata/linking remains deferred;
-- RTOS/QEMU generated-binary build is not yet covered;
 - broad `just` matrix has not been run for the integrated Phase 126 path.
+- services/actions still need end-to-end generated-runtime coverage.
 
 ## Progress update - 2026-05-15
 
@@ -249,9 +245,9 @@ Merge C/C++ component ABI and generated archive linking.
 
 Acceptance:
 
-- C and C++ packages can expose component registration thunks.
-- Generated Rust package links C/C++ static archives in plan order.
-- C++ symbols do not cross the Rust boundary directly; generated C ABI thunks
+- [x] C and C++ packages can expose component registration thunks.
+- [x] Generated Rust package links C/C++ static archives in plan order.
+- [x] C++ symbols do not cross the Rust boundary directly; generated C ABI thunks
   are the stable boundary.
 
 ### M7 - services/actions and workflow polish

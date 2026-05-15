@@ -8,8 +8,8 @@ nano-ros binary for the selected target.
 entry packages build, native fixture runs against local `zenohd`, and the
 generated FreeRTOS binary boots under QEMU in the E2E fixture.
 
-**Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
-linking.
+**Priority.** P1 for Rust/native/one RTOS target. Mixed C/C++ component archive
+linking first pass is complete for native generated packages.
 
 **Depends on.** Phase 126.A plan schema, Phase 126.B component runtime path,
 Phase 126.C planner. Builds on existing executor and `SchedContext` APIs.
@@ -91,8 +91,8 @@ applied.
   Build and run the fixture on one existing QEMU RTOS target.
 - [x] **126.D.10 - C/C++ component link path.**
   Generate C ABI component registration thunks and link C/C++ static archives
-  into the Rust entry package. Deferred to M6; not part of the Phase 126.D MVP
-  completion gate.
+  into the Rust entry package. Covered by the mixed-language native E2E
+  fixture.
 
 ## Progress update - 2026-05-15
 
@@ -120,6 +120,8 @@ Integrated generated-package/build coverage includes:
   binary stays alive in the executor spin loop;
 - E2E fixture builds a generated FreeRTOS package for `thumbv7m-none-eabi` and
   boots it under QEMU long enough to assert the nros FreeRTOS platform banner.
+- E2E fixture links generated native packages against C and C++ static archives
+  through generated C ABI registration thunks.
 
 Latest focused validation:
 
@@ -132,7 +134,8 @@ Latest focused validation:
   the fixture Rust component dependency, selected backend, POSIX platform C
   symbols, generated callback handles, interface cache manifests, a
   multi-instance generated package build, a live native run against local
-  `zenohd`, and generated FreeRTOS build/boot coverage.
+  `zenohd`, generated FreeRTOS build/boot coverage, and mixed C/C++ static
+  archive linking.
 - `cargo check -p nros-node --features rmw-cffi` passed.
 - `NROS_LOCATOR=tcp/127.0.0.1:7447 timeout 3s
   /tmp/orchestration_e2e-301-1778849578197518498/build/e2e_system/nros/target/x86_64-unknown-linux-gnu/debug/nros-e2e-generated`
@@ -144,8 +147,8 @@ Latest focused validation:
 
 Next coverage focus:
 
-- Phase M6 C/C++ component archive linking, if system packages need mixed
-  language components.
+- Phase M7 services/actions metadata, plan, checker, and generated-runtime
+  coverage.
 
 ## Files
 
