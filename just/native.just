@@ -12,14 +12,18 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # Rust examples (auto-discovered from examples/{platform}/{lang}/{rmw}/{use-case}/)
 # =============================================================================
 
+# Build native core artifacts.
+build:
+    @echo "Native example module has no separate core build; use 'just native build-examples' for examples."
+
 # Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS).
 #
 # Parallelised via GNU parallel — examples are independent standalone
 # crates (per the copy-out invariant in CLAUDE.md), so each cargo
 # invocation can run concurrently. JOBS defaults to 75 % of CPU cores
 # to leave headroom for rustc's per-process RAM (~1-3 GB). Override
-# with `just native build JOBS=4` for tighter machines.
-build JOBS="75%":
+# with `just native build-examples JOBS=4` for tighter machines.
+build-examples JOBS="75%":
     #!/usr/bin/env bash
     set -e
     echo "Building examples (parallel, JOBS={{JOBS}})..."
@@ -133,6 +137,10 @@ build-fixtures:
     ( cd examples/native/rust/zenoh/stress-test && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )
 
+# Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
+build-all: build build-examples build-c build-c-xrce build-cpp build-fixtures
+    @echo "Native build-all completed."
+
 # Format all Rust examples (auto-discovered, parallel)
 format:
     #!/usr/bin/env bash
@@ -196,7 +204,7 @@ check JOBS="75%":
     echo "All examples check passed!"
 
 # Show embedded example binary sizes
-size: build
+size: build-examples
     @echo ""
     @echo "Binary sizes (release):"
     @echo "======================="

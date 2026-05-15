@@ -18,7 +18,7 @@ default:
 # for a nightly that includes it.
 install:
     @echo "NuttX C/C++ libraries: skipped (upstream libc missing _SC_HOST_NAME_MAX)"
-    @echo "Rust NuttX examples are unaffected — use 'just nuttx build' and 'just nuttx test'"
+    @echo "Rust NuttX examples are unaffected — use 'just nuttx build-examples' and 'just nuttx test'"
 
 # Build NuttX kernel (requires arm-none-eabi-gcc + kconfig tools)
 build-kernel:
@@ -39,8 +39,12 @@ build-kernel:
     NUTTX_DIR=$NUTTX_DIR NUTTX_APPS_DIR=$NUTTX_APPS_DIR \
         packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
 
+# Build NuttX core artifacts.
+build: install build-kernel
+    @echo "NuttX core artifacts built."
+
 # Build NuttX QEMU ARM virt examples
-build:
+build-examples:
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$NUTTX_DIR/include" ]; then
@@ -104,8 +108,12 @@ build-fixtures:
         done
     fi
 
+# Build every NuttX tier: core artifacts, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "NuttX build-all completed."
+
 # Run NuttX QEMU integration tests
-test verbose="":
+test verbose="": build-examples
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$NUTTX_DIR/include" ]; then

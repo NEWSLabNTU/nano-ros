@@ -303,17 +303,28 @@ build:
     cd packages/boards/nros-board-orin-spe
     cargo +{{NIGHTLY}} build --release
 
+# Build Orin SPE examples.
+build-examples:
+    #!/usr/bin/env bash
+    set -e
+    if [ -d examples/orin-spe/rust/zenoh/talker ]; then
+        echo "  → orin-spe/rust/zenoh/talker"
+        ( cd examples/orin-spe/rust/zenoh/talker && cargo build --release )
+    else
+        echo "No Orin SPE examples present."
+    fi
+
 # Build POSIX-side fixtures used by the mock-IVC test (Phase 100.8).
 # These exercise the unix-mock backend and don't need NV_SPE_FSP_DIR.
-build-fixtures:
+build-fixtures: build-examples
     #!/usr/bin/env bash
     set -e
     echo "Building Orin SPE POSIX fixtures..."
     cargo build -p nvidia-ivc --features unix-mock --quiet
-    if [ -d examples/orin-spe/rust/zenoh/talker ]; then
-        echo "  → orin-spe/rust/zenoh/talker"
-        ( cd examples/orin-spe/rust/zenoh/talker && cargo build --release --quiet )
-    fi
+
+# Build every Orin SPE tier: core artifacts, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "Orin SPE build-all completed."
 
 # Run Orin SPE tests — POSIX mock-IVC E2E in nros-tests, plus the
 # nvidia-ivc unix-mock loopback. Real-hardware tests live in

@@ -105,8 +105,8 @@ build: \
 # freertos, threadx_linux, threadx_riscv64). Use to verify the
 # example matrix still compiles after a core change.
 build-examples: build \
-    native::build \
-    freertos::build threadx_linux::build threadx_riscv64::build
+    native::build-examples \
+    freertos::build-examples threadx_linux::build-examples threadx_riscv64::build-examples
     @echo "Workspace + examples built."
 
 # True superset: workspace + every example + per-test fixture variants.

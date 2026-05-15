@@ -47,7 +47,7 @@ build-qemu: build
         -v nros-cargo-registry:/cargo/registry \
         -v nros-cargo-git:/cargo/git \
         nano-ros-qemu \
-        bash -c "cd /work && just qemu build"
+        bash -c "cd /work && just qemu build-examples"
 
 # Start Docker Compose services (QEMU + zenohd)
 up:

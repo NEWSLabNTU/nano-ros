@@ -4,7 +4,7 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install ThreadX RISC-V 64 prerequisites: initialize submodules.
-# Does NOT build example binaries — use `just threadx_riscv64 build` for that.
+# Does NOT build example binaries — use `just threadx_riscv64 build-examples` for that.
 # Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
 setup:
     @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
@@ -74,8 +74,12 @@ install:
     cp "$TARGET_DIR/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a" \
         "$PREFIX/lib/libnros_rmw_zenoh_threadx_riscv64.a"
 
+# Build ThreadX RISC-V 64 platform/RMW libraries.
+build: install
+    @echo "ThreadX RISC-V 64 core libraries built."
+
 # Build ThreadX QEMU RISC-V 64 examples
-build:
+build-examples:
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
@@ -149,8 +153,12 @@ build-fixtures:
         done
     done
 
+# Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "ThreadX RISC-V 64 build-all completed."
+
 # Run ThreadX QEMU RISC-V 64 integration tests
-test verbose="":
+test verbose="": build-examples
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then

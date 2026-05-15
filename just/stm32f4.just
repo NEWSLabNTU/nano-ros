@@ -3,6 +3,14 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
+# Build STM32F4 core artifacts.
+build:
+    @echo "STM32F4 has no separate core build; example coverage lives in fixtures today."
+
+# Build STM32F4 examples.
+build-examples:
+    @echo "STM32F4 examples are currently covered by 'just stm32f4 build-fixtures'."
+
 # Build all example binaries used as test fixtures (STM32F4 bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
 build-fixtures:
@@ -33,3 +41,7 @@ build-fixtures:
         echo "  → stm32f4/rust/$ex"
         ( cd "$dir" && cargo build --release --target thumbv7em-none-eabihf --quiet )
     done
+
+# Build every STM32F4 tier: core artifacts, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "STM32F4 build-all completed."

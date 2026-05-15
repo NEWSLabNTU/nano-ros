@@ -48,8 +48,12 @@ doctor:
     # native_sim uses NSOS (host loopback) — no TAP bridge required.
     exit $fail
 
-# Build Zephyr Rust examples (all Rust examples for native_sim)
+# Build Zephyr core artifacts.
 build:
+    @echo "Zephyr has no separate core build; use 'just zephyr build-examples' for examples."
+
+# Build Zephyr Rust examples (all Rust examples for native_sim)
+build-rust-examples:
     #!/usr/bin/env bash
     set -e
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
@@ -517,8 +521,12 @@ build-xrce:
     echo "Zephyr XRCE examples built successfully!"
 
 # Build all Zephyr examples (Rust + C + C++ + XRCE)
-build-all: build build-c build-cpp build-xrce
+build-examples: build-rust-examples build-c build-cpp build-xrce
     @echo "All Zephyr examples built!"
+
+# Build every Zephyr tier: core artifacts, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "Zephyr build-all completed."
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples; native_sim uses NSOS on host loopback)
 test verbose="":
@@ -570,7 +578,7 @@ test-c-port: build-c-port
 ci: doctor test
 
 # Run Zephyr tests with full rebuild
-test-full verbose="": build
+test-full verbose="": build-examples
     just zephyr test {{verbose}}
 
 # Run Zephyr XRCE E2E tests
@@ -598,7 +606,7 @@ clean:
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
-rebuild: clean build
+rebuild: clean build-examples
 
 # Show Zephyr help
 help:
@@ -610,11 +618,13 @@ help:
     @echo "  (native_sim uses NSOS; no TAP bridge/sudo required.)"
     @echo ""
     @echo "Build examples:"
-    @echo "  just zephyr build          # Build Rust zenoh Zephyr examples"
+    @echo "  just zephyr build          # Build Zephyr core artifacts"
+    @echo "  just zephyr build-examples # Build all Zephyr examples"
+    @echo "  just zephyr build-rust-examples # Build Rust zenoh Zephyr examples"
     @echo "  just zephyr build-c        # Build C zenoh Zephyr examples"
     @echo "  just zephyr build-cpp      # Build C++ zenoh Zephyr examples"
     @echo "  just zephyr build-xrce     # Build XRCE Zephyr examples (Rust + C)"
-    @echo "  just zephyr build-all      # Build all Zephyr examples"
+    @echo "  just zephyr build-all      # Build Zephyr core, examples, and fixtures"
     @echo "  just zephyr rebuild        # Clean and rebuild"
     @echo "  just zephyr clean          # Remove all build directories"
     @echo ""

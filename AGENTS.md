@@ -10,7 +10,10 @@ This is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integratio
 - `just setup`: install toolchains and local tools.
 - `just build`: build the workspace plus generated bindings and transport artifacts for normal development.
 - `just build-examples`: compile the workspace and example matrix.
-- `just <platform> build-all`: run a platform-scoped full build when that module exposes one, for example `just zephyr build-all`; prefer this over root `just build-all` when iterating on a platform-specific failure. If a module only has narrower recipes, use the closest platform build such as `just esp32 build` or `just qemu build`.
+- `just <platform> build`: build platform-scoped core artifacts when that platform has them.
+- `just <platform> build-examples`: compile runnable examples for one platform.
+- `just <platform> build-fixtures`: prebuild test fixtures for one platform.
+- `just <platform> build-all`: run the platform-scoped full tier (`build`, `build-examples`, and `build-fixtures`) before using root `just build-all` for broad matrix coverage.
 - `just build-test-fixtures`: prebuild binaries required by the full test matrix.
 - `just test-unit`: run fast workspace unit tests with no external services.
 - `just test`: run the standard dev tier; skips heavy platform/ROS 2 groups.
@@ -35,7 +38,7 @@ When integrating remote changes, prefer a linear history: use `git pull --rebase
 
 Do not modify vendored or generated content under `third-party/`, `packages/interfaces/*/generated/`, or build output directories unless the task explicitly requires regeneration. Preserve existing user changes in the worktree.
 
-For platform-specific build failures, rerun the narrow platform recipe first, for example `just <platform> build-all` where available, before spending time on root `just build-all`.
+For platform-specific build failures, rerun the narrow platform recipe first, for example `just <platform> build-examples`, `just <platform> build-fixtures`, or `just <platform> build-all`, before spending time on root `just build-all`.
 
 For Zephyr XRCE C++ service/action work, the C++ CFFI backend link/init issue was fixed in `ffdde60f`; do not assume POSIX-style Rust constructors run on Zephyr/native_sim, and prefer explicit backend registration. Force rebuild the XRCE C++ service/action fixtures or verify stale-fixture detection before focused E2E reruns. The runtime spin/cv-wait hang that starved reliable XRCE retransmission (service) and blocked `send_goal` (action) is patched: `Executor::spin_once` now skips the std `wake_cv.wait_timeout_while` on Zephyr+std and routes the full timeout into `drive_io`, so `nros_cpp_spin_once` calls `executor.spin_once` directly without a bypass. Do not reintroduce a `drive_io(0) + msleep` shortcut in `nros_cpp_spin_once` — that path starves reliable XRCE streams and skips arena dispatch.
 

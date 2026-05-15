@@ -132,6 +132,18 @@ build-sitl:
     make -C "$PX4_DIR" px4_sitl_default \
         EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
+# Build PX4 examples.
+build-examples: build-sitl build-sitl-cpp
+    @echo "PX4 examples built."
+
+# Build PX4 test fixtures.
+build-fixtures:
+    @echo "PX4 has no separate test fixture build today."
+
+# Build every PX4 tier: core crates, example integrations, and fixtures.
+build-all: build build-targets build-examples build-fixtures
+    @echo "PX4 build-all completed."
+
 # Check formatting + clippy on px4 crates.
 #
 # fmt uses `-p` per crate (not `--all`) because `cargo fmt --all`

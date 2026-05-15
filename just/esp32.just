@@ -51,8 +51,12 @@ doctor:
     fi
     exit $fail
 
-# Build ESP32 examples (requires nightly)
+# Build ESP32 core artifacts.
 build:
+    @echo "ESP32 has no separate core build; use 'just esp32 build-examples' for examples."
+
+# Build ESP32 examples (requires nightly)
+build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building ESP32 examples..."
@@ -88,6 +92,14 @@ build-qemu:
         fi
     done
     echo "ESP32 QEMU examples built!"
+
+# Build ESP32 test fixtures.
+build-fixtures: build-qemu
+    @echo "ESP32 fixtures built."
+
+# Build every ESP32 tier: core artifacts, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "ESP32 build-all completed."
 
 # Run basic QEMU ESP32-C3 boot test
 test-basic: build-qemu

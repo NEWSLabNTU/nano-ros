@@ -4,7 +4,7 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install ThreadX Linux prerequisites: initialize submodules.
-# Does NOT build example binaries — use `just threadx_linux build` for that.
+# Does NOT build example binaries — use `just threadx_linux build-examples` for that.
 # Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
 setup:
     @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
@@ -69,8 +69,12 @@ install:
     cmake --build "build/cmake-threadx-linux-zenoh"
     cmake --install "build/cmake-threadx-linux-zenoh" --prefix "$PREFIX"
 
+# Build ThreadX Linux platform/RMW libraries.
+build: install-platform install
+    @echo "ThreadX Linux core libraries built."
+
 # Build ThreadX Linux examples
-build:
+build-examples:
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
@@ -129,8 +133,12 @@ build-fixtures:
         done
     done
 
+# Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "ThreadX Linux build-all completed."
+
 # Run ThreadX Linux integration tests
-test verbose="":
+test verbose="": build-examples
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then

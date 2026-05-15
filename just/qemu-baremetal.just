@@ -75,8 +75,12 @@ test-patched verbose="":
     @just qemu setup-qemu
     QEMU_SYSTEM_ARM={{QEMU_BIN}} just qemu test {{verbose}}
 
-# Build QEMU ARM bare-metal examples
+# Build QEMU bare-metal core support tools.
 build:
+    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
+
+# Build QEMU ARM bare-metal examples
+build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building QEMU ARM examples..."
@@ -86,8 +90,6 @@ build:
         echo "  build $dir"
         (cd "$dir" && cargo build --release)
     done
-    # Also build qemu-smoltcp-bridge (library in packages/reference/)
-    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
@@ -108,6 +110,10 @@ build-fixtures:
     # smoltcp socket, used by some serial-mode bare-metal tests.
     ( cd packages/reference/qemu-smoltcp-bridge && cargo build --release --quiet )
 
+# Build every QEMU bare-metal tier: core tools, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "QEMU bare-metal build-all completed."
+
 # Run all QEMU tests (non-networked)
 test verbose="":
     #!/usr/bin/env bash
@@ -125,7 +131,7 @@ test verbose="":
     fi
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
-test-basic verbose="": build
+test-basic verbose="": build-examples
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -133,7 +139,7 @@ test-basic verbose="": build
             -kernel examples/qemu-arm-baremetal/rust/core/cdr-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
-test-wcet verbose="": build
+test-wcet verbose="": build-examples
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -141,7 +147,7 @@ test-wcet verbose="": build
             -kernel examples/qemu-arm-baremetal/rust/core/wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
-test-lan9118 verbose="": build
+test-lan9118 verbose="": build-examples
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
@@ -181,7 +187,7 @@ status-network:
     ./scripts/qemu/setup-network.sh --status
 
 # Test QEMU zenoh-pico communication (requires zenohd + TAP network)
-test-zenoh: build
+test-zenoh: build-examples
     #!/usr/bin/env bash
     set -e
     echo "============================================"
@@ -297,7 +303,9 @@ help:
     @echo "  2. Set up network: sudo ./scripts/qemu/setup-network.sh"
     @echo ""
     @echo "Build & Test (non-networked):"
-    @echo "  just qemu build              # Build all QEMU examples"
+    @echo "  just qemu build              # Build QEMU core support tools"
+    @echo "  just qemu build-examples     # Build all QEMU examples"
+    @echo "  just qemu build-all          # Build QEMU core, examples, and fixtures"
     @echo "  just qemu test               # Run all QEMU tests (no network)"
     @echo "  just qemu test-basic         # Run basic serialization test"
     @echo "  just qemu test-wcet          # Run WCET benchmark"
@@ -335,7 +343,7 @@ clean: clean-zenoh-pico
 
 # QEMU ignores SIGINT — run in background with trap for Ctrl-C
 [no-exit-message]
-_run-qemu-mps2 binary: build
+_run-qemu-mps2 binary: build-examples
     #!/usr/bin/env bash
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \

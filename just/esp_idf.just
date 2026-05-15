@@ -57,6 +57,22 @@ build-c-port target='esp32c3':
     idf.py set-target "{{target}}"
     idf.py build
 
+# Build ESP-IDF core artifacts.
+build target='esp32c3': (build-c-port target)
+    @echo "ESP-IDF core artifacts built."
+
+# Build ESP-IDF examples.
+build-examples:
+    @echo "ESP-IDF has no standalone examples beyond the C-port smoke project."
+
+# Build ESP-IDF test fixtures.
+build-fixtures target='esp32c3': (build-c-port target)
+    @echo "ESP-IDF fixtures built."
+
+# Build every ESP-IDF tier: core artifacts, examples, and test fixtures.
+build-all target='esp32c3': (build target) build-examples (build-fixtures target)
+    @echo "ESP-IDF build-all completed."
+
 # Run the smoke project on qemu-system-{riscv32,xtensa}. Requires the
 # Espressif QEMU fork (installed via `just esp32 setup`).
 test-c-port target='esp32c3':

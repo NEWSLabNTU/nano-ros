@@ -85,8 +85,12 @@ install:
     cmake --build "build/cmake-freertos-armcm3-zenoh"
     cmake --install "build/cmake-freertos-armcm3-zenoh" --prefix "$PREFIX"
 
+# Build FreeRTOS platform/RMW libraries.
+build: install-platform install
+    @echo "FreeRTOS core libraries built."
+
 # Build FreeRTOS QEMU MPS2-AN385 Rust examples
-build:
+build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
@@ -140,8 +144,12 @@ build-fixtures:
         done
     done
 
+# Build every FreeRTOS tier: core libraries, examples, and test fixtures.
+build-all: build build-examples build-fixtures
+    @echo "FreeRTOS build-all completed."
+
 # Run FreeRTOS QEMU integration tests
-test verbose="":
+test verbose="": build-examples
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$FREERTOS_DIR/include" ]; then
