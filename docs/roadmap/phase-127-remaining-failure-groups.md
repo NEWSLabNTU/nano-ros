@@ -21,6 +21,11 @@ Recent sync/fix context:
 - [x] The latest focused ESP32 run now reaches `Subscriber declared` and
   `Waiting for messages...`; remaining ESP32 failures are message delivery,
   not heap allocation.
+- [x] Direct standard-tier nextest exposed four `orin_spe_mock_ivc` timeouts and
+  the `nvidia-ivc` Unix mock loopback failure under this sandbox. The root cause
+  was the same-process mock using host `AF_UNIX` sends, which are denied here,
+  plus an invalid zero-copy slot model over `Cell<[u8; 64]>`. `register_pair`
+  now uses in-memory datagram queues and the slot buffers use `UnsafeCell`.
 
 Because Phase 126 codegen/orchestration changes landed after the older full
 Phase 124 snapshots, refresh the full matrix before treating historical counts
@@ -131,13 +136,113 @@ Current signal:
 - The harness-reported ThreadX-Linux DDS prerequisite miss is an environment
   skip, not a product failure.
 
+2026-05-15 refresh:
+
+- `just build-all` completed successfully after setup. It built the workspace,
+  examples, and test fixtures. NuttX C/C++ fixtures still report the existing
+  skip because the NuttX C variant library is not installed.
+- Fixture-build blockers fixed:
+  - FreeRTOS / ThreadX bare-metal `zpico.c` no longer links against
+    `clock_gettime` just because the target libc exposes `CLOCK_REALTIME`;
+    the session ZID seed path now skips that POSIX-only clock on
+    `ZENOH_FREERTOS_LWIP` and `ZENOH_THREADX`.
+  - FreeRTOS C/C++ startup keeps the weak `zpico_set_task_config` fallback
+    symbol with `__attribute__((used))`, so non-zpico C++ examples link.
+- Fixture build status:
+  - FreeRTOS: Rust, DDS Rust, C, and C++ fixtures build.
+  - NuttX: Rust and DDS Rust fixtures build; C/C++ fixtures are skipped until
+    the NuttX C/C++ variant libraries are installed.
+  - ThreadX Linux: Rust, DDS Rust, C, and C++ fixtures build. C++ links emit
+    existing `/usr/bin/ld: missing --end-group; added as last command line
+    option` warnings but exit 0.
+  - ThreadX RISC-V: Rust, DDS Rust, C, and C++ fixtures build after
+    `just threadx_riscv64 install`.
+- Focused non-`rtos_e2e` 127.B run:
+  - Command:
+    `cargo nextest run -p nros-tests -E '(group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=threadx-linux))' --no-fail-fast --success-output never --failure-output final`
+  - Result: 59 tests, 50 passed, 9 failed.
+  - Failures by bucket:
+    - bare-metal Zenoh/serial: 5 message-flow or client `Transport(ConnectionFailed)`
+      failures (`test_qemu_rtic_{pubsub,service,action}_e2e`,
+      `test_qemu_rtic_mixed_priority_pubsub_e2e`,
+      `test_qemu_serial_pubsub_e2e`).
+    - bare-metal DDS: 1 transport-open failure
+      (`test_baremetal_dds_rust_talker_to_listener_e2e`).
+    - NuttX DDS: 1 transport-open failure
+      (`test_nuttx_dds_rust_talker_to_listener_e2e`).
+    - ThreadX Linux DDS: 1 DDS message-flow failure
+      (`test_threadx_linux_dds_rust_talker_to_listener_e2e`).
+    - ThreadX RISC-V DDS: 1 transport-open failure
+      (`test_threadx_rv64_dds_rust_talker_to_listener_e2e`).
+- Explicit `rtos_e2e` run:
+  - Command:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E '(test(Freertos) or test(Nuttx) or test(ThreadxLinux) or test(ThreadxRiscv64))' --no-fail-fast --success-output never --failure-output final`
+  - Result: 36 tests, 8 passed, 28 failed.
+  - FreeRTOS: 0/9 passed. Rust boot reaches network init/readiness in some
+    cases but misses readiness; C/C++ fail `nros_support_init` / `nros::init`
+    with transport errors (`-1` / `-100`).
+  - NuttX: 8/9 passed. Only Rust action fails at transport open
+    (`Transport(ConnectionFailed)` before `Waiting for goals`).
+  - ThreadX Linux: 0/9 passed. Rust pubsub reaches subscriber readiness but
+    receives 0 messages; Rust service/action and C/C++ fail transport open or
+    init readiness.
+  - ThreadX RISC-V: 0/9 passed. Rust cases hit illegal instruction traps after
+    ThreadX/NetX boot; C/C++ mostly fail transport init or entity registration,
+    with C service/action reaching clients but receiving 0 responses.
+- Follow-up focused probe:
+  - `test_rtos_pubsub_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust`
+    failed with the listener booting through `Network ready.` but never
+    reaching `Waiting for messages`.
+  - Added `ZenohRouter::start_slirp(port)` and switched QEMU slirp-backed
+    RTOS/MPS2 tests to bind `zenohd` on `0.0.0.0` instead of loopback-only.
+    This targets the guest `10.0.2.2` gateway path, where loopback-only host
+    binds can leave embedded TCP connects unreachable.
+  - Applied the same slirp router binding to ESP32 QEMU and the bare-metal
+    large-message QEMU test, which use the same `10.0.2.2` guest gateway.
+  - Compile check passed:
+    `cargo test -p nros-tests --test rtos_e2e --no-run` and
+    `cargo test -p nros-tests --test emulator --no-run`. Follow-up checks also
+    passed for `esp32_emulator` and `large_msg`.
+  - QEMU slirp itself was confirmed to start without special permissions. The
+    local blocker is the execution sandbox denying host `AF_INET` socket
+    creation: a minimal Python `socket.socket()` and `zenohd --listen
+    tcp/127.0.0.1:<port>` both fail with `EPERM`, while QEMU `-netdev user`
+    starts normally.
+  - Added a local TCP listener capability probe. `require_zenohd()` now skips
+    cleanly when the environment cannot create host TCP sockets, and
+    `ZenohRouter::start_on` fails fast with that cause instead of timing out
+    after `zenohd` cannot bind.
+  - After enabling Codex workspace network access, the focused FreeRTOS Rust
+    pub/sub runtime retest still fails after the listener prints
+    `Network ready.` and enters `Executor::open`. Host-side `ss` polling shows
+    `zenohd` listening on `0.0.0.0:7451` for the whole run with no established
+    connection from QEMU, so the remaining FreeRTOS issue is before or inside
+    the lwIP/zenoh-pico TCP open path rather than a host bind permission issue.
+- Added FreeRTOS lwIP hardening while narrowing that path: numeric IPv4
+  locators bypass `getaddrinfo`, TCP connect uses nonblocking `select`, and
+  TCP read/write use explicit `select` guards. These compile. Current sandbox
+  limits prevent a fresh QEMU runtime pass/fail signal because host TCP socket
+  creation is denied.
+  - `cargo build --release --offline` from
+    `examples/qemu-arm-freertos/rust/zenoh/listener` passes.
+  - `cargo test -p nros-tests --test rtos_e2e --no-run` passes.
+  - `just build-all` is currently blocked before repo code runs because this
+    environment executes `just` through snap-confine without
+    `cap_dac_override`.
+- ThreadX RISC-V can still reproduce an illegal-instruction trap locally when
+  the Rust talker reaches `Executor::open` without a reachable router:
+    `mcause=2`, `mepc=0x80031806`, `ra=0x8002e964`. `addr2line` maps the return
+    path to `CffiSession::open_with_vtable`, immediately after the RMW vtable
+    `open` call. This labels the current rv64 symptom as post-open/error-path
+    corruption or trap-state corruption, not fixture build failure.
+
 Subitems:
 
-- [ ] `127.B.1`: FreeRTOS E2E triage.
-- [ ] `127.B.2`: NuttX E2E triage.
-- [ ] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
-- [ ] `127.B.4`: Bare-metal DDS runtime triage.
-- [ ] `127.B.5`: Shared platform DDS runtime triage.
+- [~] `127.B.1`: FreeRTOS E2E triage.
+- [~] `127.B.2`: NuttX E2E triage.
+- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
+- [~] `127.B.4`: Bare-metal DDS runtime triage.
+- [~] `127.B.5`: Shared platform DDS runtime triage.
 
 Done criteria:
 

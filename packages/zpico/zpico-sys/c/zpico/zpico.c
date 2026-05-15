@@ -344,7 +344,7 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #endif
 #if defined(ZPICO_SMOLTCP)
     seed ^= smoltcp_clock_now_ms() << 1;
-#elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL)
+#elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && !defined(ZENOH_THREADX)
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
         seed ^= (uint64_t)ts.tv_sec;
@@ -796,7 +796,11 @@ int32_t zpico_open(void) {
         return ZPICO_ERR_GENERIC;
     }
 
-    int open_ret = z_open(&g_session, z_config_move(&g_config), NULL);
+    z_open_options_t open_opts;
+    z_open_options_default(&open_opts);
+    open_opts.auto_start_read_task = false;
+    open_opts.auto_start_lease_task = false;
+    int open_ret = z_open(&g_session, z_config_move(&g_config), &open_opts);
     if (open_ret < 0) {
         return ZPICO_ERR_SESSION;
     }

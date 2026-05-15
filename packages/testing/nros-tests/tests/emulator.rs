@@ -776,7 +776,7 @@ fn test_qemu_rtic_pubsub_e2e() {
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start(
+    let _zenohd = ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
     )
@@ -902,7 +902,7 @@ fn test_qemu_rtic_service_e2e() {
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start(
+    let _zenohd = ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
     )
@@ -978,7 +978,7 @@ fn test_qemu_rtic_action_e2e() {
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start(
+    let _zenohd = ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
     )
@@ -1088,7 +1088,7 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+        ZenohRouter::start_slirp(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(

@@ -595,7 +595,7 @@ _Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
 
 extern void app_main(void);
 
-__attribute__((weak))
+__attribute__((weak, used))
 void zpico_set_task_config(uint32_t read_priority,
                            uint32_t read_stack_bytes,
                            uint32_t lease_priority,

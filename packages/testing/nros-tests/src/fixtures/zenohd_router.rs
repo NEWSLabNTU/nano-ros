@@ -116,13 +116,20 @@ impl ZenohRouter {
     /// test run (e.g. if nextest SIGKILL'd the test process, preventing Drop).
     ///
     /// Binding to loopback prevents cross-platform interference and is
-    /// sufficient for QEMU slirp tests (slirp NAT connects via `127.0.0.1`)
-    /// and native/POSIX tests.
+    /// sufficient for native/POSIX tests.
     ///
     /// For bridge-networked tests (ThreadX Linux sim) that connect via
     /// a non-loopback IP, use [`start_on`](Self::start_on) with `"0.0.0.0"`.
     pub fn start(port: u16) -> TestResult<Self> {
         Self::start_on("127.0.0.1", port)
+    }
+
+    /// Start a router for QEMU user-mode networking guests.
+    ///
+    /// Slirp guests connect to the host through gateway `10.0.2.2`; binding
+    /// only to loopback can leave those guest SYNs unreachable on some hosts.
+    pub fn start_slirp(port: u16) -> TestResult<Self> {
+        Self::start_on("0.0.0.0", port)
     }
 
     /// Start a new zenohd router on the specified bind address and port.
@@ -134,6 +141,12 @@ impl ZenohRouter {
     /// # Returns
     /// A managed router instance that will be stopped on drop
     pub fn start_on(bind_addr: &str, port: u16) -> TestResult<Self> {
+        if !crate::process::is_local_tcp_listener_available() {
+            return Err(TestError::ProcessFailed(
+                "local TCP listeners unavailable in this environment".to_string(),
+            ));
+        }
+
         // Kill any orphaned zenohd from a previous test run
         kill_listeners_on_port(port);
 
@@ -298,7 +311,7 @@ impl Drop for ZenohRouter {
 
 /// rstest fixture for zenohd on port 7447 (native/POSIX integration tests only).
 ///
-/// QEMU platform tests use `ZenohRouter::start(platform::*.zenohd_port)` directly
+/// QEMU slirp platform tests use `ZenohRouter::start_slirp(platform::*.zenohd_port)`
 /// with per-platform ports (7450–7456) for parallel execution.
 ///
 /// # Example

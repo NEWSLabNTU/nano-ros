@@ -149,7 +149,7 @@ impl Platform {
         let port = self.zenohd_port_for(variant, lang);
         match self {
             Platform::ThreadxLinux => ZenohRouter::start_on("0.0.0.0", port),
-            _ => ZenohRouter::start(port),
+            _ => ZenohRouter::start_slirp(port),
         }
     }
 

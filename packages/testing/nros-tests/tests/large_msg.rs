@@ -608,7 +608,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     }
 
     let _zenohd =
-        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+        ZenohRouter::start_slirp(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     let mut cmd = Command::new("qemu-system-arm");
     cmd.args([

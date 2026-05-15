@@ -6,6 +6,7 @@
 
 use crate::TestError;
 use std::{
+    net::TcpListener,
     process::{Child, Command, Stdio},
     time::Duration,
 };
@@ -541,6 +542,14 @@ pub fn is_zenohd_available() -> bool {
             .unwrap_or(false)
 }
 
+/// Check if the current environment allows local TCP listeners.
+///
+/// QEMU slirp itself is unprivileged, but test routers still need host TCP
+/// sockets for zenohd. Some sandboxes deny `socket(AF_INET, ...)` outright.
+pub fn is_local_tcp_listener_available() -> bool {
+    TcpListener::bind("127.0.0.1:0").is_ok()
+}
+
 /// Skip test if zenohd is not available.
 ///
 /// Returns `false` if zenohd is not available, printing a skip message.
@@ -558,6 +567,11 @@ pub fn is_zenohd_available() -> bool {
 /// }
 /// ```
 pub fn require_zenohd() -> bool {
+    if !is_local_tcp_listener_available() {
+        eprintln!("Skipping test: local TCP listeners unavailable in this environment");
+        return false;
+    }
+
     if !is_zenohd_available() {
         eprintln!("Skipping test: zenohd not found (run `just build-zenohd`)");
         return false;

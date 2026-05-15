@@ -219,7 +219,8 @@ fn test_esp32_talker_listener_e2e() {
     let (talker_bin, listener_bin) = build_esp32_flash_images();
 
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
-    let _router = ZenohRouter::start(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
+    let _router =
+        ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost
     assert!(
@@ -322,7 +323,8 @@ fn test_esp32_to_native() {
     let native_listener = build_native_listener().expect("Failed to build native listener");
 
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
-    let _router = ZenohRouter::start(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
+    let _router =
+        ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost
     assert!(
@@ -394,7 +396,8 @@ fn test_native_to_esp32() {
     let native_talker = build_native_talker().expect("Failed to build native talker");
 
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
-    let _router = ZenohRouter::start(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
+    let _router =
+        ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost
     assert!(
