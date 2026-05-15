@@ -73,8 +73,11 @@ nros_freertos_build_netif(
 set(FREERTOS_LINKER_SCRIPT "${FREERTOS_CONFIG_DIR}/mps2_an385.ld"
     CACHE INTERNAL "")
 nros_freertos_compose_platform(
-    LINK_LIBS
+    COMPONENTS
         NrosPlatformFreertos::nros_platform_freertos
+        lan9118_lwip
+        lwip
+        freertos_kernel
     LINK_OPTIONS
         "-T${FREERTOS_LINKER_SCRIPT}"
         "-Wl,--gc-sections"

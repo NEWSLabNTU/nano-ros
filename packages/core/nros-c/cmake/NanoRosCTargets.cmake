@@ -302,8 +302,20 @@ if(NOT TARGET NanoRos::NanoRos)
       endif()
       set_property(TARGET NanoRos::NanoRos PROPERTY
         INTERFACE_LINK_LIBRARIES "${_existing_libs}")
+    else()
+      set(_existing_libs "")
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD")
+        list(APPEND _existing_libs
+          "-Wl,--whole-archive"
+          ${_nros_rmw_target}
+          "-Wl,--no-whole-archive")
+      else()
+        list(APPEND _existing_libs ${_nros_rmw_target})
+      endif()
+      set_property(TARGET NanoRos::NanoRos PROPERTY
+        INTERFACE_LINK_LIBRARIES "${_existing_libs}")
     endif()
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_SYSTEM_NAME STREQUAL "Generic" OR APPLE)
       set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
         INTERFACE_LINK_OPTIONS "-Wl,--allow-multiple-definition")
     endif()

@@ -136,7 +136,7 @@ void vApplicationMallocFailedHook(void) {
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     (void)xTask;
     semihosting_write0("*** STACK OVERFLOW: ");
-    semihosting_write0(pcTaskName);
+    semihosting_write0(pcTaskName ? pcTaskName : "<unknown>");
     semihosting_write0(" ***\n");
     for (;;) {}
 }

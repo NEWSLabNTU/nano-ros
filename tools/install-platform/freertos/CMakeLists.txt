@@ -17,6 +17,13 @@ if(NOT DEFINED FREERTOS_CONFIG_DIR)
     message(FATAL_ERROR
         "Pass -DFREERTOS_CONFIG_DIR=<dir-containing-FreeRTOSConfig.h>")
 endif()
+if(NOT DEFINED LWIP_DIR AND DEFINED ENV{LWIP_DIR})
+    set(LWIP_DIR "$ENV{LWIP_DIR}")
+endif()
+if(NOT DEFINED LWIP_DIR)
+    message(FATAL_ERROR
+        "Pass -DLWIP_DIR=<path-to-lwip-checkout> or set LWIP_DIR")
+endif()
 
 # Build the FreeRTOS-Kernel as a subdirectory using ARM_CM3 port +
 # heap_3 (libc malloc). The resulting kernel target supplies headers
@@ -33,11 +40,13 @@ set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../..")
 set(NROS_PLATFORM_CFFI_INCLUDE
     "${REPO_ROOT}/packages/core/nros-platform-cffi/include"
     CACHE PATH "")
-# net.c needs lwIP — skip it in the standalone install build for now;
-# applications that want networking compile net.c into their own
-# binary via the board crate's build.rs (today's path).
-set(NROS_PLATFORM_FREERTOS_WITH_NET OFF CACHE BOOL "" FORCE)
+add_library(lwip_headers INTERFACE)
+target_include_directories(lwip_headers INTERFACE
+    "${LWIP_DIR}/src/include"
+    "${LWIP_DIR}/contrib/ports/freertos/include")
+set(NROS_PLATFORM_FREERTOS_WITH_NET ON CACHE BOOL "" FORCE)
 set(FREERTOS_KERNEL_TARGET freertos_kernel CACHE STRING "" FORCE)
+set(FREERTOS_LWIP_TARGET lwip_headers CACHE STRING "" FORCE)
 # Disable the C-port's own install rules — `freertos_kernel` is in
 # the platform target's PUBLIC link list and isn't in any export
 # set, which CMake refuses to install. Do our own install below

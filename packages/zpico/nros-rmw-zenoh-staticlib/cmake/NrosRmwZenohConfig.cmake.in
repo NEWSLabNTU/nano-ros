@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+if(NOT TARGET NrosRmwZenoh::NrosRmwZenoh)
+    add_library(NrosRmwZenoh::NrosRmwZenoh STATIC IMPORTED)
+    set_target_properties(NrosRmwZenoh::NrosRmwZenoh PROPERTIES
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@NROS_RMW_ZENOH_LIB_NAME@")
+endif()
+
+check_required_components(NrosRmwZenoh)

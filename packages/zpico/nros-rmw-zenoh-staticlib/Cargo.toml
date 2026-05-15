@@ -27,9 +27,18 @@ crate-type = ["staticlib"]
 default = []
 platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
-platform-freertos = ["nros-rmw-zenoh/platform-freertos"]
+alloc = ["nros-rmw-zenoh/alloc"]
+platform-freertos = [
+    "alloc",
+    "nros-rmw-zenoh/platform-freertos",
+    "dep:nros-platform",
+    "nros-platform/platform-freertos",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
 platform-nuttx = ["nros-rmw-zenoh/platform-nuttx"]
 platform-threadx = [
+    "alloc",
     "nros-rmw-zenoh/platform-threadx",
     "dep:nros-platform",
     "nros-platform/platform-threadx",

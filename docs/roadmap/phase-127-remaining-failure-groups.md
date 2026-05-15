@@ -278,11 +278,33 @@ Current signal:
     `cargo nextest run -p nros-tests --test rtos_e2e 'test_rtos_pubsub_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust' --no-capture --retries 0`
     passed in 65.3s. Talker published messages 0 through 10; listener received
     messages 0 through 10.
+- 2026-05-15 FreeRTOS Rust service/action follow-up:
+  - `test_rtos_service_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust`
+    passed with 4 responses and `All service calls completed`.
+  - `test_rtos_action_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust`
+    initially failed because the action server missed the explicit
+    `nros_rmw_zenoh::register()` call before `Executor::open`.
+  - After adding the same registration used by the other FreeRTOS Zenoh Rust
+    examples, the focused action test passed in 42.2s with goal acceptance and
+    a succeeded Fibonacci result.
+- 2026-05-15 FreeRTOS C/C++ close-out:
+  - Installed `NrosRmwZenoh` and `NrosPlatformFreertos` packages now make the
+    C/C++ FreeRTOS examples self-contained through `find_package(NanoRos)`.
+  - C examples use `nano_ros_link_rmw(... RMW zenoh)` so FreeRTOS targets that
+    do not walk `.init_array` still register the Zenoh backend explicitly.
+  - C++ examples rely on `NanoRos::NanoRosCpp`'s own Zenoh CFFI registration;
+    linking the standalone RMW stub into C++ first registered the wrong Rust
+    staticlib copy and made `nros::init()` fail with `-100`.
+  - `configSTACK_DEPTH_TYPE` is now 32-bit for MPS2-AN385 FreeRTOS so
+    256 KiB C app stacks do not wrap at 65536 words.
+  - Full focused verification passed:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E '(test(test_rtos_pubsub_e2e::platform_1_Platform__Freertos) or test(test_rtos_service_e2e::platform_1_Platform__Freertos) or test(test_rtos_action_e2e::platform_1_Platform__Freertos))' --no-capture --retries 0 --no-fail-fast`
+    completed in 443.1s with 9 passed, 27 skipped.
 
 Subitems:
 
-- [~] `127.B.1`: FreeRTOS E2E triage. Rust pub/sub now passes; remaining
-  FreeRTOS service/action and C/C++ cases still need a refreshed focused run.
+- [x] `127.B.1`: FreeRTOS E2E triage. Rust/C/C++ pub/sub, service, and action
+  all pass in the focused FreeRTOS slice.
 - [~] `127.B.2`: NuttX E2E triage.
 - [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.

@@ -59,6 +59,7 @@ install-platform:
         -DCMAKE_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake" \
         -DFREERTOS_KERNEL_PATH="${FREERTOS_DIR}" \
         -DFREERTOS_CONFIG_DIR="${FREERTOS_CONFIG_DIR}" \
+        -DLWIP_DIR="${LWIP_DIR}" \
         -DCMAKE_BUILD_TYPE=Release >/dev/null
     cmake --build build/cmake-platform-freertos
     cmake --install build/cmake-platform-freertos --prefix "$PREFIX"

@@ -143,6 +143,19 @@ if(NOT TARGET NanoRos::NanoRosCpp)
       INTERFACE_COMPILE_DEFINITIONS NROS_RMW_XRCE=1)
   endif()
 
+  # Phase 115.L — C-vtable RMW backends register directly from
+  # nros::init(). Their symbols are carried by the selected runtime
+  # archives, so installed consumers only need the compile definition.
+  if(NANO_ROS_RMW STREQUAL "dds")
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_DDS_CFFI=1)
+  endif()
+
+  if(NANO_ROS_RMW STREQUAL "zenoh")
+    set_property(TARGET NanoRos::NanoRosCpp APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_RMW_ZENOH_CFFI=1)
+  endif()
+
   # --- Rust multi-staticlib link fix ---------------------------------------
   #
   # nros-cpp apps typically link two Rust-produced static archives:

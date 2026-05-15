@@ -1,0 +1,55 @@
+cmake_minimum_required(VERSION 3.22)
+project(NrosRmwZenoh VERSION 0.1.0 LANGUAGES C)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set(_platform_features std platform-posix link-tcp link-udp-unicast)
+    set(_lib_name "libnros_rmw_zenoh.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+    set(_platform_features platform-freertos link-tcp link-udp-unicast)
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    set(_platform_features platform-nuttx link-tcp link-udp-unicast)
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+    set(_platform_features std platform-threadx link-tcp link-udp-unicast)
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    set(_platform_features platform-threadx link-tcp link-udp-unicast)
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+else()
+    message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM}")
+endif()
+
+corrosion_import_crate(
+    MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
+    CRATES        nros-rmw-zenoh-staticlib
+    CRATE_TYPES   staticlib
+    NO_DEFAULT_FEATURES
+    FEATURES      ros-humble ${_platform_features}
+    LOCKED
+)
+
+install(FILES "$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RENAME "${_lib_name}"
+)
+
+set(NROS_RMW_ZENOH_LIB_NAME "${_lib_name}")
+configure_package_config_file(
+    cmake/NrosRmwZenohConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwZenoh
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwZenoh
+)

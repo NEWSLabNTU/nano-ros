@@ -17,10 +17,10 @@
 
 #![no_std]
 
-#[cfg(feature = "platform-threadx")]
+#[cfg(any(feature = "platform-freertos", feature = "platform-threadx"))]
 extern crate nros_platform as _;
 
-#[cfg(feature = "platform-threadx")]
+#[cfg(any(feature = "platform-freertos", feature = "platform-threadx"))]
 extern crate panic_halt as _;
 
 // Force the linker to retain the cffi register entry. Without an

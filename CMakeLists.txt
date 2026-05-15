@@ -60,6 +60,9 @@ FetchContent_MakeAvailable(Corrosion)
 # Sub-projects
 # ---------------------------------------------------------------------------
 add_subdirectory(packages/core/nros-rmw-cffi)
+if(NANO_ROS_RMW STREQUAL "zenoh")
+    add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)
+endif()
 add_subdirectory(packages/core/nros-c)
 add_subdirectory(packages/core/nros-cpp)
 
