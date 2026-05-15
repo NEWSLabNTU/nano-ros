@@ -271,16 +271,20 @@ if(CONFIG_NROS_CPP_API)
 
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)
+        zephyr_compile_definitions(NROS_RMW_ZENOH_CFFI=1)
         set(_nros_cpp_features "rmw-zenoh-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
+        zephyr_compile_definitions(NROS_RMW_XRCE=1)
         # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
         # above: cffi runtime + C backend + Zephyr platform feature.
         set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
+        zephyr_compile_definitions(NROS_RMW_DDS_CFFI=1)
         set(_nros_cpp_features "rmw-dds-cffi,platform-zephyr,ros-humble")
     endif()
 
-    # native_sim targets run on Linux and support std (needed for panic handler)
+    # native_sim targets use the host Rust target; keep std enabled so
+    # the final native_sim executable links Rust's panic personality.
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
         string(APPEND _nros_cpp_features ",std")
     endif()

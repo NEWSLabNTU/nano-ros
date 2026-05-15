@@ -37,6 +37,22 @@
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
 
+#ifdef NROS_RMW_CYCLONEDDS
+extern "C" int32_t nros_rmw_cyclonedds_register(void);
+#endif
+#ifdef NROS_RMW_XRCE
+extern "C" int32_t nros_rmw_xrce_register(void);
+#endif
+#ifdef NROS_RMW_DDS_CFFI
+extern "C" int32_t nros_rmw_dds_register(void);
+#endif
+#ifdef NROS_RMW_ZENOH_CFFI
+extern "C" int32_t nros_rmw_zenoh_register(void);
+#endif
+#ifdef NROS_RMW_UORB
+extern "C" int32_t nros_rmw_uorb_register(void);
+#endif
+
 namespace nros {
 
 // Phase 84.G8: forward declarations of the heavy entity class
@@ -398,7 +414,6 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // option), register the backend's vtable with the runtime before
     // the first session is created. Idempotent — re-registering
     // the same vtable is a no-op.
-    extern "C" int32_t nros_rmw_cyclonedds_register(void);
     {
         int32_t reg_ret = nros_rmw_cyclonedds_register();
         if (reg_ret != 0) {
@@ -412,7 +427,6 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // Selected via `NANO_ROS_RMW=xrce` at CMake configure time (the
     // `xrce-c` selector was retired in K.2.5.2; the C backend is now
     // the canonical XRCE path).
-    extern "C" int32_t nros_rmw_xrce_register(void);
     {
         int32_t reg_ret = nros_rmw_xrce_register();
         if (reg_ret != 0) {
@@ -425,7 +439,6 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // `NANO_ROS_RMW=dds`. The `nros-rmw-dds-cffi` crate provides
     // `nros_rmw_dds_register()` which installs a
     // `RustBackendAdapter::<DdsRmw>::VTABLE` into the cffi runtime.
-    extern "C" int32_t nros_rmw_dds_register(void);
     {
         int32_t reg_ret = nros_rmw_dds_register();
         if (reg_ret != 0) {
@@ -436,7 +449,6 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
 #ifdef NROS_RMW_ZENOH_CFFI
     // Phase 115.L.2: zenoh-pico via the C vtable. Selected via
     // `NANO_ROS_RMW=zenoh`.
-    extern "C" int32_t nros_rmw_zenoh_register(void);
     {
         int32_t reg_ret = nros_rmw_zenoh_register();
         if (reg_ret != 0) {
@@ -449,7 +461,6 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // `NANO_ROS_RMW=uorb`. The PX4 module must call
     // `nros_rmw_uorb_register_topic(...)` for each topic before
     // `nros::init` runs; the vtable register itself happens here.
-    extern "C" int32_t nros_rmw_uorb_register(void);
     {
         int32_t reg_ret = nros_rmw_uorb_register();
         if (reg_ret != 0) {

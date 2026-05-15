@@ -17,7 +17,12 @@ crate-type = ["staticlib", "lib"]
 
 [features]
 default = ["std"]
-std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
+std = [
+    "alloc",
+    "nros/std",
+    "nros-node/std",
+    "nros-rmw/std",
+]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (select one) — every backend ships as a cffi shim that
@@ -26,9 +31,9 @@ rmw-cffi = ["nros/rmw-cffi"]
 # Phase 115.K.2.5.1.1 — XRCE via the C backend (nros-rmw-xrce).
 rmw-xrce-cffi = ["rmw-cffi", "nros/rmw-xrce-cffi"]
 # Phase 115.L.1 — dust-DDS via the C vtable.
-rmw-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi"]
+rmw-dds-cffi = ["rmw-cffi", "nros/rmw-dds-cffi", "dep:nros-rmw-dds"]
 # Phase 115.L.2 — zenoh-pico via the C vtable.
-rmw-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
+rmw-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi", "dep:nros-rmw-zenoh"]
 
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /
@@ -36,8 +41,8 @@ rmw-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi"]
 lending = ["rmw-cffi", "nros/lending"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
-link-tcp = ["nros/link-tcp"]
-link-udp-unicast = ["nros/link-udp-unicast"]
+link-tcp = ["nros/link-tcp", "nros-rmw-zenoh?/link-tcp"]
+link-udp-unicast = ["nros/link-udp-unicast", "nros-rmw-zenoh?/link-udp-unicast"]
 
 # XRCE transport refinements (require rmw-xrce-cffi)
 xrce-udp = ["nros/xrce-udp"]
@@ -48,15 +53,48 @@ xrce-serial = ["nros/xrce-serial"]
 # alloc` and the per-platform `#[global_allocator]` modules in lib.rs
 # compile cleanly without the build script having to remember to pass
 # `,alloc` alongside `platform-<rtos>`.
-platform-posix = ["nros/platform-posix"]
-platform-zephyr = ["alloc", "nros/platform-zephyr", "dep:critical-section"]
-platform-freertos = ["alloc", "nros/platform-freertos"]
-platform-nuttx = ["alloc", "nros/platform-nuttx"]
-platform-threadx = ["alloc", "nros/platform-threadx"]
+platform-posix = [
+    "nros/platform-posix",
+    "nros-rmw-zenoh?/platform-posix",
+    "nros-rmw-dds?/platform-posix",
+]
+platform-zephyr = [
+    "alloc",
+    "nros/platform-zephyr",
+    "dep:critical-section",
+    "nros-rmw-zenoh?/platform-zephyr",
+    "nros-rmw-dds?/platform-zephyr",
+]
+platform-freertos = [
+    "alloc",
+    "nros/platform-freertos",
+    "nros-rmw-zenoh?/platform-freertos",
+    "nros-rmw-dds?/platform-freertos",
+]
+platform-nuttx = [
+    "alloc",
+    "nros/platform-nuttx",
+    "nros-rmw-zenoh?/platform-nuttx",
+    "nros-rmw-dds?/platform-nuttx",
+]
+platform-threadx = [
+    "alloc",
+    "nros/platform-threadx",
+    "nros-rmw-zenoh?/platform-threadx",
+    "nros-rmw-dds?/platform-threadx",
+]
 
 # ROS edition (orthogonal to RMW and platform)
-ros-humble = ["nros/ros-humble"]
-ros-iron = ["nros/ros-iron"]
+ros-humble = [
+    "nros/ros-humble",
+    "nros-rmw-zenoh?/ros-humble",
+    "nros-rmw-dds?/ros-humble",
+]
+ros-iron = [
+    "nros/ros-iron",
+    "nros-rmw-zenoh?/ros-iron",
+    "nros-rmw-dds?/ros-iron",
+]
 
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
@@ -66,6 +104,8 @@ nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
+nros-rmw-dds = { workspace = true, optional = true, default-features = false }
+nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. dust-dds + portable-atomic depend on it being set.

@@ -102,16 +102,36 @@ mod zephyr_alloc {
         fn nros_zephyr_irq_unlock(key: u32);
     }
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe fn acquire_irq_key() -> critical_section::RawRestoreState {
+        unsafe { nros_zephyr_irq_lock() }
+    }
+
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    unsafe fn acquire_irq_key() -> critical_section::RawRestoreState {
+        let _ = unsafe { nros_zephyr_irq_lock() };
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe fn release_irq_key(token: critical_section::RawRestoreState) {
+        unsafe { nros_zephyr_irq_unlock(token) }
+    }
+
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    unsafe fn release_irq_key(_token: critical_section::RawRestoreState) {
+        unsafe { nros_zephyr_irq_unlock(0) }
+    }
+
     struct ZephyrCs;
     critical_section::set_impl!(ZephyrCs);
 
     unsafe impl critical_section::Impl for ZephyrCs {
         unsafe fn acquire() -> critical_section::RawRestoreState {
-            unsafe { nros_zephyr_irq_lock() }
+            unsafe { acquire_irq_key() }
         }
 
         unsafe fn release(token: critical_section::RawRestoreState) {
-            unsafe { nros_zephyr_irq_unlock(token) }
+            unsafe { release_irq_key(token) }
         }
     }
 }
@@ -144,6 +164,11 @@ mod threadx_alloc {
 }
 
 use core::ffi::{c_char, c_int, c_void};
+
+#[cfg(feature = "rmw-dds-cffi")]
+pub use nros_rmw_dds::nros_rmw_dds_register;
+#[cfg(feature = "rmw-zenoh-cffi")]
+pub use nros_rmw_zenoh::nros_rmw_zenoh_register;
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
