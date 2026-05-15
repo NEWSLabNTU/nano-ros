@@ -33,3 +33,5 @@ When integrating remote changes, prefer a linear history: use `git pull --rebase
 ## Agent-Specific Instructions
 
 Do not modify vendored or generated content under `third-party/`, `packages/interfaces/*/generated/`, or build output directories unless the task explicitly requires regeneration. Preserve existing user changes in the worktree.
+
+When pulling or rebasing the superproject, always inspect submodule changes. If a pull changes a submodule pointer and we also have local work in that submodule, enter the submodule, fetch its remote, rebase the local work onto the updated upstream commit, and then check out the rebased/up-to-date commit expected by the superproject. Record the resulting submodule commit in the parent commit. Do not leave a submodule at an older local commit after observing that the remote pointer advanced.
