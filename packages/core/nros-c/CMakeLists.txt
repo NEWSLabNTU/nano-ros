@@ -34,7 +34,11 @@ if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
         "(expected: zenoh, xrce, dds, cyclonedds, or uorb)")
 endif()
-set(_rmw_features rmw-cffi)
+if(NANO_ROS_RMW STREQUAL "zenoh")
+    set(_rmw_features cffi-zenoh-cffi)
+else()
+    set(_rmw_features rmw-cffi)
+endif()
 
 # ---- Map platform to Cargo features ----
 if(NANO_ROS_PLATFORM STREQUAL "posix")
@@ -100,6 +104,8 @@ if(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     endif()
 endif()
 
+set(_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
 # ---- Headers ----
 # Per-example `nros/app_config.h` lives in the build dir (emitted by
 # `nano_ros_generate_config_header()`); the Zephyr Kconfig synthesis
@@ -110,6 +116,10 @@ endif()
 # where the install include path appears before the build dir
 # (NuttX cc-rs).
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY "${_PROJECT_ROOT}/packages/core/nros-platform-cffi/include/nros"
     DESTINATION include
     FILES_MATCHING PATTERN "*.h"
 )
@@ -156,7 +166,6 @@ install(FILES
 # Phase 112.E: platform assets for layer-3 support cmake. Installed
 # under share/nano_ros/ — paths match those resolved by the *-support
 # files above.
-set(_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
 # FreeRTOS — board config + lan9118 driver + per-example startup.c
 install(DIRECTORY
@@ -168,6 +177,7 @@ install(DIRECTORY
     DESTINATION share/nano_ros/drivers/lan9118-lwip)
 install(FILES
     "${_PROJECT_ROOT}/examples/qemu-arm-freertos/cmake/startup.c"
+    "${_PROJECT_ROOT}/packages/core/nros-platform-freertos/src/net.c"
     DESTINATION share/nano_ros/platform/freertos)
 
 # ThreadX-Linux — startup.c

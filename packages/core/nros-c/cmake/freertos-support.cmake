@@ -36,10 +36,16 @@ set(_NROS_SHARE "${_NROS_INSTALL_PREFIX}/share/nano_ros")
 set(_FREERTOS_BOARD_CONFIG "${_NROS_SHARE}/boards/mps2-an385-freertos/config")
 set(_LAN9118_DIR           "${_NROS_SHARE}/drivers/lan9118-lwip")
 set(_FREERTOS_STARTUP_SRC  "${_NROS_SHARE}/platform/freertos/startup.c")
+set(_FREERTOS_NET_SRC      "${_NROS_SHARE}/platform/freertos/net.c")
 
 if(NOT EXISTS "${_FREERTOS_STARTUP_SRC}")
     message(FATAL_ERROR
         "freertos-support: startup.c not found at ${_FREERTOS_STARTUP_SRC}. "
+        "Reinstall NanoRos (`just freertos install`).")
+endif()
+if(NOT EXISTS "${_FREERTOS_NET_SRC}")
+    message(FATAL_ERROR
+        "freertos-support: net.c not found at ${_FREERTOS_NET_SRC}. "
         "Reinstall NanoRos (`just freertos install`).")
 endif()
 
@@ -76,7 +82,10 @@ nros_freertos_compose_platform(
         "--specs=nosys.specs")
 
 # Per-example startup.c (compiled in-example so APP_IP / APP_MAC reach it)
-set(FREERTOS_STARTUP_SOURCE "${_FREERTOS_STARTUP_SRC}" CACHE INTERNAL "")
+set(FREERTOS_STARTUP_SOURCE
+    "${_FREERTOS_STARTUP_SRC}"
+    "${_FREERTOS_NET_SRC}"
+    CACHE INTERNAL "")
 set(FREERTOS_STARTUP_INCLUDES
     ${NROS_FREERTOS_INCLUDES}
     ${NROS_FREERTOS_LWIP_INCLUDES}

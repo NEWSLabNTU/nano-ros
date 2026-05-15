@@ -1220,6 +1220,7 @@ dependencies = [
  "nros-node",
  "nros-rmw",
  "nros-rmw-xrce-cffi",
+ "nros-rmw-zenoh",
  "nros-sizes-build",
  "panic-halt",
  "paste",

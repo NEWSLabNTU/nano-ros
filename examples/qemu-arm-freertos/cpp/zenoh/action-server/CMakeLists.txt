@@ -15,3 +15,4 @@ nano_ros_generate_config_header(
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 target_link_libraries(freertos_cpp_action_server PRIVATE
     example_interfaces__nano_ros_cpp NanoRos::NanoRosCpp freertos_platform)
+nano_ros_link_rmw(freertos_cpp_action_server RMW zenoh)

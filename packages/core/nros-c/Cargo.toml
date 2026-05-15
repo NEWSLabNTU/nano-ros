@@ -47,11 +47,11 @@ lending = ["rmw-cffi", "nros/lending"]
 # downstream `nano_ros_link_rmw()` is not involved.
 cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 cffi-dds-cffi = ["rmw-cffi"]
-cffi-zenoh-cffi = ["rmw-cffi"]
+cffi-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi", "dep:nros-rmw-zenoh"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
-link-tcp = ["nros/link-tcp"]
-link-udp-unicast = ["nros/link-udp-unicast"]
+link-tcp = ["nros/link-tcp", "nros-rmw-zenoh?/link-tcp"]
+link-udp-unicast = ["nros/link-udp-unicast", "nros-rmw-zenoh?/link-udp-unicast"]
 
 # XRCE transport refinements (require rmw-xrce-cffi)
 xrce-udp = ["nros/xrce-udp"]
@@ -68,17 +68,25 @@ platform-zephyr = [
     "nros/platform-zephyr",
     "dep:critical-section",
     "nros-rmw-xrce-cffi?/platform-zephyr",
+    "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
     "nros/platform-freertos",
     "nros-rmw-xrce-cffi?/platform-freertos",
+    "nros-rmw-zenoh?/platform-freertos",
 ]
-platform-nuttx = ["alloc", "nros/platform-nuttx", "nros-rmw-xrce-cffi?/platform-nuttx"]
+platform-nuttx = [
+    "alloc",
+    "nros/platform-nuttx",
+    "nros-rmw-xrce-cffi?/platform-nuttx",
+    "nros-rmw-zenoh?/platform-nuttx",
+]
 platform-threadx = [
     "alloc",
     "nros/platform-threadx",
     "nros-rmw-xrce-cffi?/platform-threadx",
+    "nros-rmw-zenoh?/platform-threadx",
 ]
 
 # ROS edition (orthogonal to RMW and platform)
@@ -103,6 +111,7 @@ nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
+nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 paste = "1"
 panic-halt = { version = "1", optional = true }

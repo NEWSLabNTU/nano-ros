@@ -458,6 +458,13 @@ pub unsafe extern "C" fn nros_cpp_init(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
+    unsafe extern "C" {
+        fn nros_app_register_backends();
+    }
+    unsafe {
+        nros_app_register_backends();
+    }
+
     let node_name_str = match unsafe { cstr_to_str(node_name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -649,16 +656,35 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     namespace: *const c_char,
     out_node: *mut nros_cpp_node_t,
 ) -> nros_cpp_ret_t {
-    let mut options = nros_cpp_node_options_t::default();
-    if !namespace.is_null() {
-        let ns_str = match unsafe { cstr_to_str(namespace) } {
+    if executor_handle.is_null() || name.is_null() || out_node.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) if !s.is_empty() && s.len() < 64 => s,
+        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let ns_str = if namespace.is_null() {
+        "/"
+    } else {
+        match unsafe { cstr_to_str(namespace) } {
             Some(s) if s.len() < NROS_CPP_NAMESPACE_LEN => s,
             _ => return NROS_CPP_RET_INVALID_ARGUMENT,
-        };
-        options.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
-        options.namespace_len = ns_str.len();
+        }
+    };
+
+    let out = unsafe { &mut *out_node };
+    out.executor = executor_handle;
+    out.name = [0u8; 64];
+    out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
+    out.namespace = [0u8; 64];
+    if !ns_str.is_empty() {
+        out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
     }
-    unsafe { nros_cpp_node_create_ex(executor_handle, name, &options, out_node) }
+    out.node_id = 0;
+    out._reserved = [0u8; 7];
+
+    NROS_CPP_RET_OK
 }
 
 /// Phase 104.C.9 — create a node with extended options.

@@ -37,6 +37,9 @@ use panic_halt as _;
 #[cfg(feature = "cffi-xrce-c")]
 extern crate nros_rmw_xrce_cffi as _;
 
+#[cfg(feature = "cffi-zenoh-cffi")]
+pub use nros_rmw_zenoh::nros_rmw_zenoh_register;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
