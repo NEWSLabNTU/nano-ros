@@ -3,8 +3,8 @@
 **Goal.** Add component-mode APIs that are natural for ROS 2 users and make
 metadata discovery a byproduct of normal node declaration.
 
-**Status.** Rust MVP implemented. Coverage hardening continues. C/C++ remain
-deferred.
+**Status.** Rust MVP implemented through runtime node mapping. Coverage
+hardening continues. C/C++ remain deferred.
 
 **Priority.** P1 for Rust MVP, P2 for C/C++ after native generated binary.
 
@@ -47,7 +47,7 @@ earlier for a specific integration.
 - [x] **126.B.2 - Metadata recorder context.**
   Implement a fake host-side context that records declarations instead of
   opening middleware.
-- [ ] **126.B.3 - Runtime context adapter.**
+- [x] **126.B.3 - Runtime context adapter.**
   Implement the runtime path that maps the same declarations to executor/node
   handles under generated main ownership.
 - [x] **126.B.4 - Stable entity IDs.**
@@ -80,14 +80,20 @@ Integrated Rust metadata coverage includes:
 - distinct action callbacks;
 - callback effect links in emitted JSON;
 - source locations and planner-facing metadata shape.
+- runtime adapter coverage for stable node IDs, executor node-handle mapping,
+  duplicate node rejection, and unknown callback-effect entity rejection.
 
 Latest focused validation:
 
-- `cargo test -p nros component` passed with 7 component/metadata tests.
+- `cargo test -p nros component` passed with 11 component/metadata/runtime
+  adapter tests.
+- `cargo check -p nros --features rmw-cffi` passed, including the
+  `ComponentExecutorRuntime` adapter backed by `Executor`.
 
 Next coverage focus:
 
-- generated-runtime adapter from the same component declarations;
+- generated-main wiring that calls `ComponentExecutorRuntime` during
+  `126.D.3`;
 - metadata-mode package fixture that produces JSON as part of a full workspace
   flow;
 - negative tests for missing component export once host package discovery is
@@ -108,7 +114,9 @@ Next coverage focus:
 ## Acceptance criteria
 
 - [x] A Rust component package emits source metadata without opening transport.
-- [ ] The same component can be instantiated by generated runtime code.
+- [ ] The same component can be instantiated by generated runtime code. The
+      runtime adapter now exists; generated-main wiring is tracked by
+      `126.D.3`.
 - [x] Metadata contains unresolved source names, interface types, QoS,
       callbacks, params, and optional effects.
 - [x] Component-mode entity APIs require stable IDs.

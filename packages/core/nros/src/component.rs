@@ -6,9 +6,11 @@ use crate::{
     CallbackId, EntityId, ParameterType, QosSettings, RosAction, RosMessage, RosService,
     TimerDuration,
     component_metadata::{
-        CallbackEffectKind, ComponentMetadataError, EntityKind, EntityMetadata, MetadataRecorder,
-        NodeId, ParameterDefault, SourceLocationMetadata, copy_str, entity_metadata,
+        CallbackEffectKind, CallbackEffectMetadata, ComponentMetadataError, EntityKind,
+        EntityMetadata, MetadataRecorder, MetadataString, NodeId, ParameterDefault,
+        SourceLocationMetadata, copy_str, entity_metadata,
     },
+    heapless::Vec,
 };
 
 /// Stable symbol exported by [`nros::component!`](crate::component!).
@@ -145,6 +147,187 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         Ok(())
     }
 }
+
+/// Runtime node sink used by generated component executors.
+///
+/// Metadata mode records declarations only. Runtime mode maps each stable
+/// component node ID to a concrete executor-side node handle; entity callback
+/// registration is completed by generated code that owns the actual callback
+/// functions.
+pub trait ComponentNodeRuntime {
+    /// Concrete node handle owned by the runtime executor.
+    type NodeHandle: Copy + Eq;
+
+    /// Create a runtime node from source-level component options.
+    fn build_component_node(
+        &mut self,
+        options: NodeOptions<'_>,
+    ) -> ComponentResult<Self::NodeHandle>;
+}
+
+/// Recorded runtime node mapping.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComponentRuntimeNode<H: Copy + Eq> {
+    stable_id: MetadataString,
+    handle: H,
+}
+
+impl<H: Copy + Eq> ComponentRuntimeNode<H> {
+    /// Stable component node ID.
+    pub fn stable_id(&self) -> &str {
+        &self.stable_id
+    }
+
+    /// Runtime executor node handle.
+    pub const fn handle(&self) -> H {
+        self.handle
+    }
+}
+
+/// Runtime adapter used by generated main ownership code.
+pub struct ComponentRuntimeAdapter<
+    'a,
+    R: ComponentNodeRuntime + ?Sized,
+    const MAX_NODES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_NODES },
+    const MAX_ENTITIES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_ENTITIES },
+    const MAX_CALLBACKS: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
+> {
+    node_runtime: &'a mut R,
+    nodes: Vec<ComponentRuntimeNode<R::NodeHandle>, MAX_NODES>,
+    entities: Vec<EntityMetadata, MAX_ENTITIES>,
+    callback_effects: Vec<CallbackEffectMetadata, MAX_CALLBACKS>,
+}
+
+impl<
+    'a,
+    R: ComponentNodeRuntime + ?Sized,
+    const MAX_NODES: usize,
+    const MAX_ENTITIES: usize,
+    const MAX_CALLBACKS: usize,
+> ComponentRuntimeAdapter<'a, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
+{
+    /// Build a runtime adapter around a generated executor owner.
+    pub fn new(node_runtime: &'a mut R) -> Self {
+        Self {
+            node_runtime,
+            nodes: Vec::new(),
+            entities: Vec::new(),
+            callback_effects: Vec::new(),
+        }
+    }
+
+    /// Runtime node mappings in declaration order.
+    pub fn nodes(&self) -> &[ComponentRuntimeNode<R::NodeHandle>] {
+        &self.nodes
+    }
+
+    /// Entity declarations accepted for generated runtime binding.
+    pub fn entities(&self) -> &[EntityMetadata] {
+        &self.entities
+    }
+
+    /// Optional callback effects accepted for generated runtime binding.
+    pub fn callback_effects(&self) -> &[CallbackEffectMetadata] {
+        &self.callback_effects
+    }
+
+    /// Lookup an executor node handle by stable component node ID.
+    pub fn node_handle(&self, stable_id: NodeId<'_>) -> Option<R::NodeHandle> {
+        self.nodes
+            .iter()
+            .find(|node| node.stable_id() == stable_id.as_str())
+            .map(ComponentRuntimeNode::handle)
+    }
+
+    fn contains_node(&self, stable_id: &str) -> bool {
+        self.nodes.iter().any(|node| node.stable_id() == stable_id)
+    }
+
+    fn contains_entity(&self, stable_id: &str) -> bool {
+        self.entities
+            .iter()
+            .any(|entity| entity.id.as_str() == stable_id)
+    }
+}
+
+impl<
+    R: ComponentNodeRuntime + ?Sized,
+    const MAX_NODES: usize,
+    const MAX_ENTITIES: usize,
+    const MAX_CALLBACKS: usize,
+> ComponentRuntime for ComponentRuntimeAdapter<'_, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
+{
+    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> ComponentResult<()> {
+        if self.contains_node(id.as_str()) {
+            return Err(ComponentMetadataError::DuplicateId.into());
+        }
+        let handle = self.node_runtime.build_component_node(options)?;
+        self.nodes
+            .push(ComponentRuntimeNode {
+                stable_id: copy_str(id.as_str())?,
+                handle,
+            })
+            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+        Ok(())
+    }
+
+    fn create_entity(&mut self, metadata: EntityMetadata) -> ComponentResult<()> {
+        if !self.contains_node(metadata.node_id.as_str()) {
+            return Err(ComponentMetadataError::UnknownNode.into());
+        }
+        if self.contains_entity(metadata.id.as_str()) {
+            return Err(ComponentMetadataError::DuplicateId.into());
+        }
+        self.entities
+            .push(metadata)
+            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+        Ok(())
+    }
+
+    fn record_callback_effect(
+        &mut self,
+        callback_id: CallbackId<'_>,
+        kind: CallbackEffectKind,
+        entity_id: EntityId<'_>,
+    ) -> ComponentResult<()> {
+        if !self.contains_entity(entity_id.as_str()) {
+            return Err(ComponentMetadataError::UnknownEntity.into());
+        }
+        self.callback_effects
+            .push(CallbackEffectMetadata {
+                callback_id: copy_str(callback_id.as_str())?,
+                kind,
+                entity_id: copy_str(entity_id.as_str())?,
+            })
+            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl ComponentNodeRuntime for crate::Executor {
+    type NodeHandle = nros_node::executor::NodeId;
+
+    fn build_component_node(
+        &mut self,
+        options: NodeOptions<'_>,
+    ) -> ComponentResult<Self::NodeHandle> {
+        self.node_builder(options.name)
+            .namespace(options.namespace)
+            .domain_id(options.domain_id)
+            .build()
+            .map_err(|_| ComponentError::Runtime)
+    }
+}
+
+/// Runtime adapter backed by [`Executor`](crate::Executor).
+#[cfg(feature = "rmw-cffi")]
+pub type ComponentExecutorRuntime<
+    'a,
+    const MAX_NODES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_NODES },
+    const MAX_ENTITIES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_ENTITIES },
+    const MAX_CALLBACKS: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
+> = ComponentRuntimeAdapter<'a, crate::Executor, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
 
 /// Component declaration context. Does not own middleware transport.
 pub struct ComponentContext<'a, R: ComponentRuntime + ?Sized = dyn ComponentRuntime + 'a> {
@@ -534,6 +717,28 @@ mod tests {
     use super::*;
     use crate::{CdrReader, CdrWriter, DeserError, SerError, SourceNameKind};
 
+    #[derive(Default)]
+    struct FakeNodeRuntime {
+        next: u8,
+        created: Vec<MetadataString, 4>,
+    }
+
+    impl ComponentNodeRuntime for FakeNodeRuntime {
+        type NodeHandle = u8;
+
+        fn build_component_node(
+            &mut self,
+            options: NodeOptions<'_>,
+        ) -> ComponentResult<Self::NodeHandle> {
+            self.created
+                .push(copy_str(options.name)?)
+                .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+            let handle = self.next;
+            self.next += 1;
+            Ok(handle)
+        }
+    }
+
     #[derive(Debug, Clone, Copy, Default)]
     struct TestMsg;
 
@@ -621,6 +826,46 @@ mod tests {
             Some("on_cmd")
         );
         assert_eq!(recorder.callback_effects().len(), 2);
+    }
+
+    #[test]
+    fn runtime_adapter_maps_stable_nodes_to_runtime_handles() {
+        let mut node_runtime = FakeNodeRuntime::default();
+        let mut runtime = ComponentRuntimeAdapter::<_, 2, 8, 4>::new(&mut node_runtime);
+
+        register_component::<TalkerComponent>(&mut runtime).unwrap();
+
+        assert_eq!(runtime.nodes().len(), 1);
+        assert_eq!(runtime.nodes()[0].stable_id(), "node");
+        assert_eq!(runtime.node_handle(NodeId::new("node")), Some(0));
+        assert_eq!(runtime.entities().len(), 4);
+        assert_eq!(runtime.callback_effects().len(), 2);
+    }
+
+    #[test]
+    fn runtime_adapter_rejects_duplicate_nodes_and_unknown_effect_entities() {
+        let mut node_runtime = FakeNodeRuntime::default();
+        let mut runtime = ComponentRuntimeAdapter::<_, 1, 1, 1>::new(&mut node_runtime);
+        runtime
+            .create_node(NodeId::new("node"), NodeOptions::new("talker"))
+            .unwrap();
+
+        assert_eq!(
+            runtime.create_node(NodeId::new("node"), NodeOptions::new("other")),
+            Err(ComponentError::Metadata(
+                ComponentMetadataError::DuplicateId
+            ))
+        );
+        assert_eq!(
+            runtime.record_callback_effect(
+                CallbackId::new("cb"),
+                CallbackEffectKind::Reads,
+                EntityId::new("missing")
+            ),
+            Err(ComponentError::Metadata(
+                ComponentMetadataError::UnknownEntity
+            ))
+        );
     }
 
     #[test]

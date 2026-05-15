@@ -159,12 +159,15 @@ pub use nros_core::{
 pub use nros_core::heapless;
 
 // Re-export component-mode API
+#[cfg(feature = "rmw-cffi")]
+pub use component::ComponentExecutorRuntime;
 pub use component::{
     COMPONENT_EXPORT_SYMBOL, CallbackEffects, Component, ComponentActionClient,
-    ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
-    ComponentPublisher, ComponentResult, ComponentRuntime, ComponentServiceClient,
-    ComponentServiceServer, ComponentSubscription, ComponentTimer, MISSING_COMPONENT_EXPORT_ERROR,
-    NodeOptions, record_component_metadata, register_component,
+    ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,
+    ComponentParameter, ComponentPublisher, ComponentResult, ComponentRuntime,
+    ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient, ComponentServiceServer,
+    ComponentSubscription, ComponentTimer, MISSING_COMPONENT_EXPORT_ERROR, NodeOptions,
+    record_component_metadata, register_component,
 };
 #[cfg(feature = "std")]
 pub use component_metadata::SourceMetadataExport;
@@ -415,12 +418,15 @@ pub mod prelude {
     };
 
     // Re-export component-mode API.
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::ComponentExecutorRuntime;
     #[cfg(feature = "std")]
     pub use crate::SourceMetadataExport;
     pub use crate::{
         CallbackEffectKind, CallbackEffects, CallbackId, Component, ComponentActionClient,
-        ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentParameter,
-        ComponentPublisher, ComponentResult, ComponentRuntime, ComponentServiceClient,
+        ComponentActionServer, ComponentContext, ComponentError, ComponentNode,
+        ComponentNodeRuntime, ComponentParameter, ComponentPublisher, ComponentResult,
+        ComponentRuntime, ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient,
         ComponentServiceServer, ComponentSubscription, ComponentTimer, EntityId, EntityKind,
         MetadataRecorder, NodeId, NodeOptions, ParameterDefault, SourceLocationMetadata,
         SourceNameKind, component, record_component_metadata, register_component,
