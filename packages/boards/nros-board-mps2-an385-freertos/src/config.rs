@@ -27,10 +27,9 @@ pub struct Config {
     // ── Scheduling ─────────────────────────────────────────────────────
     // Normalized 0–31 scale (higher = more important). Board crate maps
     // to FreeRTOS 0–(configMAX_PRIORITIES-1) via `to_freertos_priority()`.
-
     /// Application task priority (normalized 0–31, default 12).
     pub app_priority: u8,
-    /// Application task stack size in bytes (default 65536).
+    /// Application task stack size in bytes (default 262144).
     pub app_stack_bytes: u32,
     /// Zenoh-pico read task priority (normalized 0–31, default 16).
     pub zenoh_read_priority: u8,
@@ -60,7 +59,10 @@ impl Default for Config {
             // POLL_TASK_PRIORITY=4 → normalized 16 (16*7/31 ≈ 3.6 → 4)
             // zenoh read/lease default to 4 in zenoh-pico (configMAX_PRIORITIES/2)
             app_priority: 12,
-            app_stack_bytes: 65536,
+            // The Rust zenoh executor can exceed 160 KiB while opening a
+            // FreeRTOS session with lwIP enabled. Keep headroom so stack
+            // overflow checks fail cleanly instead of corrupting the TCB.
+            app_stack_bytes: 262144,
             zenoh_read_priority: 16,
             zenoh_read_stack_bytes: 5120,
             zenoh_lease_priority: 16,

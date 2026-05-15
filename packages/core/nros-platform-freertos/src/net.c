@@ -34,6 +34,12 @@ typedef struct {
 
 #define TRANSPORT_LEASE_MS 10000u
 
+static void ensure_lwip_thread(void) {
+#if LWIP_NETCONN_SEM_PER_THREAD
+    lwip_socket_thread_init();
+#endif
+}
+
 static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
     struct timeval tv = {
         .tv_sec  = (long) (timeout_ms / 1000u),
@@ -59,6 +65,8 @@ static void apply_tcp_common_options(int fd, uint32_t recv_timeout_ms) {
 int8_t nros_platform_tcp_create_endpoint(void *ep_raw,
                                          const uint8_t *address,
                                          const uint8_t *port) {
+    ensure_lwip_thread();
+
     if (ep_raw == NULL) return -1;
     nros_freertos_endpoint_t *ep = (nros_freertos_endpoint_t *) ep_raw;
     struct addrinfo hints = {0};
@@ -70,6 +78,8 @@ int8_t nros_platform_tcp_create_endpoint(void *ep_raw,
 }
 
 void nros_platform_tcp_free_endpoint(void *ep_raw) {
+    ensure_lwip_thread();
+
     if (ep_raw == NULL) return;
     nros_freertos_endpoint_t *ep = (nros_freertos_endpoint_t *) ep_raw;
     if (ep->iptcp != NULL) {
@@ -79,6 +89,8 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
 }
 
 int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -101,6 +113,8 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
 }
 
 int8_t nros_platform_tcp_listen(void *sock_raw, const void *endpoint) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -125,6 +139,8 @@ int8_t nros_platform_tcp_listen(void *sock_raw, const void *endpoint) {
 }
 
 void nros_platform_tcp_close(void *sock_raw) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     if (sock->fd >= 0) {
@@ -135,6 +151,8 @@ void nros_platform_tcp_close(void *sock_raw) {
 }
 
 size_t nros_platform_tcp_read(const void *sock_raw, uint8_t *buf, size_t len) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     int r = lwip_recv(sock->fd, buf, len, 0);
@@ -153,6 +171,8 @@ size_t nros_platform_tcp_read_exact(const void *sock_raw, uint8_t *buf, size_t l
 }
 
 size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t len) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     int r = lwip_send(sock->fd, buf, len, 0);
@@ -164,6 +184,8 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
 int8_t nros_platform_udp_create_endpoint(void *ep_raw,
                                          const uint8_t *address,
                                          const uint8_t *port) {
+    ensure_lwip_thread();
+
     if (ep_raw == NULL) return -1;
     nros_freertos_endpoint_t *ep = (nros_freertos_endpoint_t *) ep_raw;
     struct addrinfo hints = {0};
@@ -179,6 +201,8 @@ void nros_platform_udp_free_endpoint(void *ep_raw) {
 }
 
 int8_t nros_platform_udp_open(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -192,6 +216,8 @@ int8_t nros_platform_udp_open(void *sock_raw, const void *endpoint, uint32_t tim
 }
 
 int8_t nros_platform_udp_listen(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -215,6 +241,8 @@ int8_t nros_platform_udp_listen(void *sock_raw, const void *endpoint, uint32_t t
 }
 
 void nros_platform_udp_close(void *sock_raw) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     if (sock->fd >= 0) {
@@ -224,6 +252,8 @@ void nros_platform_udp_close(void *sock_raw) {
 }
 
 size_t nros_platform_udp_read(const void *sock_raw, uint8_t *buf, size_t len) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     struct sockaddr_storage raddr;
@@ -247,6 +277,8 @@ size_t nros_platform_udp_read_exact(const void *sock_raw, uint8_t *buf, size_t l
 size_t nros_platform_udp_send(const void *sock_raw,
                               const uint8_t *buf, size_t len,
                               const void *endpoint) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || endpoint == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -257,6 +289,8 @@ size_t nros_platform_udp_send(const void *sock_raw,
 }
 
 void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_ms) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     if (timeout_ms == 0) {
@@ -292,6 +326,8 @@ typedef struct {
 int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
                                     void *lep_raw, uint32_t timeout_ms,
                                     const uint8_t *iface) {
+    ensure_lwip_thread();
+
     (void) iface;
     if (sock_raw == NULL || endpoint == NULL || lep_raw == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
@@ -345,6 +381,8 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                                       uint32_t timeout_ms,
                                       const uint8_t *iface,
                                       const uint8_t *join) {
+    ensure_lwip_thread();
+
     (void) iface; (void) join;
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
@@ -382,6 +420,8 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
 
 void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
                                    const void *rep_raw, const void *lep_raw) {
+    ensure_lwip_thread();
+
     nros_freertos_socket_t *sockrecv = (nros_freertos_socket_t *) sockrecv_raw;
     nros_freertos_socket_t *socksend = (nros_freertos_socket_t *) socksend_raw;
     const nros_freertos_endpoint_t *rep = (const nros_freertos_endpoint_t *) rep_raw;
@@ -412,6 +452,8 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
 size_t nros_platform_udp_mcast_read(const void *sock_raw, uint8_t *buf,
                                     size_t len, const void *lep_raw,
                                     void *addr) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL || lep_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *lep = (const nros_freertos_endpoint_t *) lep_raw;
@@ -475,6 +517,8 @@ size_t nros_platform_udp_mcast_send(const void *sock, const uint8_t *buf,
 /* ---- Socket helpers ---- */
 
 int8_t nros_platform_socket_set_non_blocking(const void *sock_raw) {
+    ensure_lwip_thread();
+
     if (sock_raw == NULL) return -1;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     int flags = lwip_fcntl(sock->fd, F_GETFL, 0);
@@ -484,6 +528,8 @@ int8_t nros_platform_socket_set_non_blocking(const void *sock_raw) {
 }
 
 int8_t nros_platform_socket_accept(const void *in_raw, void *out_raw) {
+    ensure_lwip_thread();
+
     if (in_raw == NULL || out_raw == NULL) return -1;
     const nros_freertos_socket_t *in = (const nros_freertos_socket_t *) in_raw;
     nros_freertos_socket_t *out = (nros_freertos_socket_t *) out_raw;

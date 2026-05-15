@@ -258,7 +258,7 @@ int nros_freertos_create_task(
     void *arg,
     uint32_t priority)
 {
-    BaseType_t ret = xTaskCreate(entry, name, (uint16_t)stack_words, arg,
+    BaseType_t ret = xTaskCreate(entry, name, stack_words, arg,
                                  (UBaseType_t)priority, NULL);
     return (ret == pdPASS) ? 0 : -1;
 }
