@@ -3,8 +3,9 @@
 **Goal.** Add component-mode APIs that are natural for ROS 2 users and make
 metadata discovery a byproduct of normal node declaration.
 
-**Status.** Rust MVP implemented through runtime node mapping. Coverage
-hardening continues. C/C++ remain deferred.
+**Status.** Rust MVP implemented through runtime node mapping. C/C++ component
+declaration headers are in place; generated thunk/link integration remains in
+Phase 126.D.10.
 
 **Priority.** P1 for Rust MVP, P2 for C/C++ after native generated binary.
 
@@ -62,12 +63,12 @@ earlier for a specific integration.
 - [x] **126.B.7 - Metadata command hook.**
   Provide a library entry for `nros metadata` / `nros plan` to compile and run
   metadata mode for a package.
-- [ ] **126.B.8 - C component API.**
-  Add `nros_component_context_t`, `NROS_COMPONENT(...)`, and metadata/runtime
-  dual-mode calls. Deferred unless M6 is pulled earlier.
-- [ ] **126.B.9 - C++ component API.**
+- [x] **126.B.8 - C component API.**
+  Add `nros_component_context_t`, `NROS_COMPONENT(...)`, and context ops for
+  metadata/runtime declaration sinks.
+- [x] **126.B.9 - C++ component API.**
   Add `nros::ComponentNode`, `nros::NodeOptions`, and
-  `NROS_COMPONENTS_REGISTER_NODE(...)`. Deferred unless M6 is pulled earlier.
+  `NROS_COMPONENTS_REGISTER_NODE(...)`.
 
 ## Progress update - 2026-05-15
 
@@ -82,6 +83,8 @@ Integrated Rust metadata coverage includes:
 - source locations and planner-facing metadata shape.
 - runtime adapter coverage for stable node IDs, executor node-handle mapping,
   duplicate node rejection, and unknown callback-effect entity rejection.
+- C and C++ component declaration headers:
+  `nros/component.h`, `nros/component.hpp`, and `nros/component_node.hpp`.
 
 Latest focused validation:
 
@@ -89,11 +92,16 @@ Latest focused validation:
   adapter tests.
 - `cargo check -p nros --features rmw-cffi` passed, including the
   `ComponentExecutorRuntime` adapter backed by `Executor`.
+- `cc -std=c11 -I packages/core/nros-c/include -fsyntax-only
+  /tmp/nros_component_header_check.c` passed.
+- `c++ -std=c++14 -I packages/core/nros-cpp/include -fsyntax-only
+  /tmp/nros_component_header_check.cpp` passed.
 
 Next coverage focus:
 
 - generated-main wiring that calls `ComponentExecutorRuntime` during
   `126.D.3`;
+- C/C++ generated thunks and static archive linking during `126.D.10`;
 - metadata-mode package fixture that produces JSON as part of a full workspace
   flow;
 - negative tests for missing component export once host package discovery is
@@ -106,10 +114,10 @@ Next coverage focus:
 - `packages/core/nros/src/lib.rs`
 - `packages/core/nros-macros/src/lib.rs`
 - `packages/core/nros-node/src/executor/node_record.rs`
-- later: `packages/core/nros-c/include/nros/component.h`
-- later: `packages/core/nros-c/src/component.rs`
-- later: `packages/core/nros-cpp/include/nros/component.hpp`
-- later: `packages/core/nros-cpp/include/nros/component_node.hpp`
+- `packages/core/nros-c/include/nros/component.h`
+- `packages/core/nros-cpp/include/nros/component.hpp`
+- `packages/core/nros-cpp/include/nros/component_node.hpp`
+- later: `packages/core/nros-c/src/component.rs` generated thunk/runtime bridge
 
 ## Acceptance criteria
 

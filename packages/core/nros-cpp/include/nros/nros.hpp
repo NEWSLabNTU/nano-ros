@@ -36,6 +36,7 @@
 #include "nros/polling_action_server.hpp"
 #include "nros/polling_action_client.hpp"
 #include "nros/parameter.hpp"
+#include "nros/component.hpp"
 
 namespace nros {
 
