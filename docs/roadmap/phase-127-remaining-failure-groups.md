@@ -595,22 +595,75 @@ Current signal:
 
 - Historical counts in the triage doc are useful for direction but stale after
   the Phase 126 pull and the ESP32 allocation fix.
+- 2026-05-15 refresh moved the project toward a self-contained build:
+  `third-party/play_launch` is now an in-repo submodule, and `packages/codegen`
+  path dependencies point there instead of sibling `~/repos/play_launch`.
+- `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target just build-all` now gets
+  past the old codegen blocker and the FreeRTOS QEMU `clock_gettime` linker
+  blocker. Workspace, example matrix, FreeRTOS QEMU examples, ThreadX Linux
+  examples, and ThreadX QEMU RISC-V examples compile.
+- After host disk was freed, `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target
+  just build-test-fixtures` completed native, QEMU bare-metal, FreeRTOS, NuttX
+  Rust, ThreadX Linux, and ThreadX RISC-V fixtures. The run was intentionally
+  stopped during the Zephyr fixture tail to pull/rebase onto current upstream
+  commits; no new fixture build failure was observed before the stop.
+
+2026-05-15 partial refresh evidence:
+
+| Gate | Result | Evidence |
+|---|---|---|
+| `just format` | Pass | Required sandbox escalation because `just` writes temp files under `/run`. |
+| `just ci` | Fail | Static checks/examples pass after fixing clippy findings and regenerating missing example bindings; nextest and C codegen fail. |
+| `just build-all` | Interrupted in fixture tail after progress | With `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target`, workspace/examples compile after adding `third-party/play_launch`, honoring `CARGO_TARGET_DIR` in install recipes, and replacing RTOS ZID `clock_gettime` usage. After disk cleanup, `build-test-fixtures` completed through ThreadX RISC-V and was stopped during Zephyr so the repo could rebase. |
+| `just test-all` | Not rerun standalone | `just ci` already invoked `test-all`, but the result is fixture-prereq heavy because the refreshed fixture build was interrupted before Zephyr completed. |
+
+`just ci` nextest evidence:
+
+- Run id: `b0ca0525-85ae-4931-ae76-529b41214b2c`.
+- JUnit: `target/nextest/default/junit.xml`.
+- Logs: `test-logs/latest/`.
+- Nextest: 824 tests run, 519 passed, 305 failed, 11 skipped.
+- Harness-reported environment skips inside failures: 27.
+- Real failures after subtracting harness env skips: 278, but many are fixture
+  prerequisite failures because the fixture build was not complete.
+
+`just ci` failure separation:
+
+| Class | Count | Notes |
+|---|---:|---|
+| Explicit skipped | 11 | nextest skipped tests. |
+| Harness env skip: zenoh-pico ARM build unavailable | 10 | Reported as failed test bodies with `[SKIPPED] zenoh-pico arm build not available`. |
+| Harness env skip: XRCE agent unavailable | 9 | `[SKIPPED] XRCE agent not available`. |
+| Harness env skip: ROS 2 unavailable | 4 | `[SKIPPED] ROS 2 not found`. |
+| Harness env skip: DDS talker binary missing | 3 | `[SKIPPED] DDS talker binary missing`. |
+| Harness env skip: ThreadX-Linux DDS prerequisites | 1 | `[SKIPPED] ThreadX-Linux DDS prerequisites not available`. |
+| Fixture not prebuilt | 231 | Tests fail with `Test fixture binary not prebuilt`; not authoritative runtime signal until `just build-all` completes. |
+| Native C/C++ configure missing installed NanoRos package | 44 | Examples cannot `find_package(NanoRos)` because `install-local-posix` did not complete. |
+| Other QEMU/runtime/build failures | 3 | Remaining non-env, non-fixture failures from the partial run. |
+
+Other `just ci` tail results:
+
+- Doctests pass: 1 passed, 4 ignored.
+- Miri pass for selected crates; one clock test ignored under Miri.
+- C codegen failed before the in-repo `third-party/play_launch` submodule was
+  added. That source dependency is no longer the active blocker.
+- C codegen log: `test-logs/latest/c-codegen.log`.
 
 Subitems:
 
-- [ ] `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
+- [x] `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
   environment skips.
-- [ ] `127.G.2`: Run `just build-all` and isolate build-only regressions.
+- [x] `127.G.2`: Run `just build-all` and isolate build-only regressions.
 - [ ] `127.G.3`: Run `just test-all` after fixture builds and refresh the final
   phase table.
 
 Done criteria:
 
 - [ ] Produce a fresh table by category.
-- [ ] Keep failed, skipped, and harness-reported environment skips separate.
-- [ ] Include nextest run id, JUnit path, and `test-logs/latest/` path.
-- [ ] Update this document and the historical triage doc with the refreshed
-  authoritative counts.
+- [x] Keep failed, skipped, and harness-reported environment skips separate.
+- [x] Include nextest run id, JUnit path, and `test-logs/latest/` path.
+- [x] Update this document and the historical triage doc with the partial
+  refresh counts and blocker.
 
 Commands:
 

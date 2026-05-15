@@ -1,5 +1,67 @@
 # Phase 124 Test Triage - 2026-05-14
 
+## Update - 2026-05-15 Phase 127.G refresh attempt, self-contained codegen
+
+Full-matrix refresh was started after reinstalling `just`.
+
+Verified gates and blockers:
+
+- `just format`: passed.
+- `just ci`: failed after static checks/examples passed and `test-all`
+  produced nextest run id `b0ca0525-85ae-4931-ae76-529b41214b2c`.
+- `just build-all`: advanced past the earlier codegen blocker after adding
+  `third-party/play_launch` as an in-repo submodule and repointing
+  `packages/codegen` path dependencies at it.
+- Build-only fixes landed during the attempt:
+  - `justfile` and `just/threadx-riscv64.just` now honor
+    `CARGO_TARGET_DIR` when copying/installing RMW static libraries.
+  - `zpico_fill_session_zid` no longer links FreeRTOS/ThreadX builds against
+    POSIX `clock_gettime`; it mixes `z_clock_now()` bytes instead. Zephyr now
+    uses the upstream `sys_rand_get` ZID path.
+- `CARGO_TARGET_DIR=/tmp/nano-ros-build-all-target just build-all` completed
+  the workspace and example matrix, including FreeRTOS QEMU and ThreadX QEMU
+  examples. It reached `build-test-fixtures`.
+- Fixture build initially stopped on host disk pressure while linking
+  `threadx_cpp_action_client`: `/usr/bin/ld: final link failed: No space left on device`.
+  After disk was freed, `build-test-fixtures` was rerun and completed native,
+  QEMU bare-metal, FreeRTOS, NuttX Rust, ThreadX Linux, and ThreadX RISC-V
+  fixtures. The rerun was intentionally stopped during the Zephyr fixture tail
+  so the repository could pull/rebase onto the latest upstream commits.
+- `just test-all`: not rerun standalone because the refreshed
+  `build-test-fixtures` run was interrupted before Zephyr completed;
+  the `test-all` run inside `just ci` is fixture-prereq heavy and not an
+  authoritative runtime failure inventory.
+
+Fresh `just ci` evidence:
+
+- JUnit: `target/nextest/default/junit.xml`
+- Logs: `test-logs/latest/`
+- C codegen log: `test-logs/latest/c-codegen.log`
+- Nextest: 824 tests run, 519 passed, 305 failed, 11 skipped.
+- Harness environment skips counted inside failures: 27.
+- Real failures after subtracting harness env skips: 278, but the majority are
+  blocked fixture/configure prerequisites, not runtime behavior.
+
+Failure separation from the partial run:
+
+| Class | Count | Signal |
+|---|---:|---|
+| nextest skipped | 11 | Explicit skipped tests. |
+| Harness env skip | 27 | 10 zenoh-pico ARM build unavailable, 9 XRCE agent unavailable, 4 ROS 2 unavailable, 3 DDS talker binary missing, 1 ThreadX-Linux DDS prerequisite missing. |
+| Fixture not prebuilt | 231 | Requires completed `just build-all` before retesting. |
+| Native C/C++ configure missing `NanoRosConfig.cmake` | 44 | Caused by incomplete `install-local-posix`. |
+| Other QEMU/runtime/build failures | 3 | Residual partial-run signal. |
+
+Build-only blocker:
+
+- Earlier missing `~/repos/play_launch` path dependency is resolved by the
+  in-repo `third-party/play_launch` submodule.
+- Earlier FreeRTOS QEMU `clock_gettime` link failure is resolved; talker,
+  listener, service, and action examples compile.
+- No current source/link blocker is known before the Zephyr fixture tail. The
+  latest fixture run was stopped for repository synchronization, not because of
+  a new build failure.
+
 ## Update - 2026-05-15 after parent/submodule pull
 
 Repository sync:

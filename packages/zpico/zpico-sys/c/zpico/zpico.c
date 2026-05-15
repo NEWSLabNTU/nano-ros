@@ -304,6 +304,16 @@ static uint64_t zpico_splitmix64(uint64_t *state) {
     return z ^ (z >> 31);
 }
 
+#if defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
+static void zpico_mix_clock_bytes(uint64_t *seed, const void *data, size_t len) {
+    const uint8_t *bytes = (const uint8_t *)data;
+    for (size_t i = 0; i < len; i++) {
+        *seed ^= (uint64_t)bytes[i] << ((i % sizeof(uint64_t)) * 8);
+        *seed = zpico_splitmix64(seed);
+    }
+}
+#endif
+
 static uint32_t zpico_next_session_zid_counter(void) {
 #if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
     return g_session_zid_counter++;
@@ -344,7 +354,10 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #endif
 #if defined(ZPICO_SMOLTCP)
     seed ^= smoltcp_clock_now_ms() << 1;
-#elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && !defined(ZENOH_THREADX)
+#elif defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
+    z_clock_t now = z_clock_now();
+    zpico_mix_clock_bytes(&seed, &now, sizeof(now));
+#elif defined(CLOCK_REALTIME) && !defined(ZPICO_SERIAL)
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
         seed ^= (uint64_t)ts.tv_sec;

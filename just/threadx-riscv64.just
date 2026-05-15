@@ -70,7 +70,8 @@ install:
         --release \
         --no-default-features \
         --features platform-threadx,link-tcp,ros-humble
-    cp target/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a \
+    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
+    cp "$TARGET_DIR/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a" \
         "$PREFIX/lib/libnros_rmw_zenoh_threadx_riscv64.a"
 
 # Build ThreadX QEMU RISC-V 64 examples

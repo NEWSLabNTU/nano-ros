@@ -61,3 +61,6 @@
 [submodule "third-party/dds/cyclonedds"]
 	path = third-party/dds/cyclonedds
 	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
+[submodule "third-party/play_launch"]
+	path = third-party/play_launch
+	url = https://github.com/NEWSLabNTU/play_launch.git

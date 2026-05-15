@@ -512,16 +512,15 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         kind: EntityKind,
     ) -> core::fmt::Result {
         write!(out, "\"{}\":[", field)?;
-        let mut emitted = 0usize;
-        for entity in self
+        for (emitted, entity) in self
             .entities
             .iter()
             .filter(|entity| entity.node_id.as_str() == node_id && entity.kind == kind)
+            .enumerate()
         {
             if emitted > 0 {
                 out.write_char(',')?;
             }
-            emitted += 1;
             match kind {
                 EntityKind::Publisher => write_publisher_json(out, entity)?,
                 EntityKind::Subscription => write_subscriber_json(out, entity)?,
@@ -579,16 +578,15 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     #[cfg(feature = "std")]
     fn write_parameters_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         write!(out, "\"parameters\":[")?;
-        let mut emitted = 0usize;
-        for entity in self
+        for (emitted, entity) in self
             .entities
             .iter()
             .filter(|entity| entity.kind == EntityKind::Parameter)
+            .enumerate()
         {
             if emitted > 0 {
                 out.write_char(',')?;
             }
-            emitted += 1;
             write!(out, "{{")?;
             write_json_field(out, "node", entity.node_id.as_str())?;
             out.write_char(',')?;
@@ -654,37 +652,35 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 });
             }
             if entity.kind == EntityKind::ActionServer {
-                if let Some(cancel_id) = entity.action_cancel_callback_id.as_ref() {
-                    if !callbacks
+                if let Some(cancel_id) = entity.action_cancel_callback_id.as_ref()
+                    && !callbacks
                         .iter()
                         .any(|callback: &SourceCallbackRef| callback.id == cancel_id.as_str())
-                    {
-                        callbacks.push(SourceCallbackRef {
-                            id: cancel_id.as_str().into(),
-                            kind: "action_cancel",
-                            source: entity.action_cancel_source.clone(),
-                            group: entity
-                                .callback_group
-                                .as_ref()
-                                .map(|group| group.as_str().into()),
-                        });
-                    }
+                {
+                    callbacks.push(SourceCallbackRef {
+                        id: cancel_id.as_str().into(),
+                        kind: "action_cancel",
+                        source: entity.action_cancel_source.clone(),
+                        group: entity
+                            .callback_group
+                            .as_ref()
+                            .map(|group| group.as_str().into()),
+                    });
                 }
-                if let Some(accepted_id) = entity.action_accepted_callback_id.as_ref() {
-                    if !callbacks
+                if let Some(accepted_id) = entity.action_accepted_callback_id.as_ref()
+                    && !callbacks
                         .iter()
                         .any(|callback: &SourceCallbackRef| callback.id == accepted_id.as_str())
-                    {
-                        callbacks.push(SourceCallbackRef {
-                            id: accepted_id.as_str().into(),
-                            kind: "action_accepted",
-                            source: entity.action_accepted_source.clone(),
-                            group: entity
-                                .callback_group
-                                .as_ref()
-                                .map(|group| group.as_str().into()),
-                        });
-                    }
+                {
+                    callbacks.push(SourceCallbackRef {
+                        id: accepted_id.as_str().into(),
+                        kind: "action_accepted",
+                        source: entity.action_accepted_source.clone(),
+                        group: entity
+                            .callback_group
+                            .as_ref()
+                            .map(|group| group.as_str().into()),
+                    });
                 }
             }
         }

@@ -149,8 +149,9 @@ install-rmw-dds:
     cargo build -p nros-rmw-dds-staticlib \
         --features platform-posix,ros-humble \
         --release
+    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
     cmake -S tools/install-rmw/dds -B build/cmake-install-rmw-dds \
-        -DSTATICLIB_SOURCE="$(pwd)/target/release/libnros_rmw_dds_staticlib.a" >/dev/null
+        -DSTATICLIB_SOURCE="$TARGET_DIR/release/libnros_rmw_dds_staticlib.a" >/dev/null
     cmake --install build/cmake-install-rmw-dds --prefix "$PREFIX"
 
 # Phase 123.A.1.x.4.a — build the standalone Zenoh RMW staticlib via
@@ -165,8 +166,9 @@ install-rmw-zenoh:
     cargo build -p nros-rmw-zenoh-staticlib \
         --features platform-posix,link-tcp,ros-humble \
         --release
+    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
     cmake -S tools/install-rmw/zenoh -B build/cmake-install-rmw-zenoh \
-        -DSTATICLIB_SOURCE="$(pwd)/target/release/libnros_rmw_zenoh_staticlib.a" >/dev/null
+        -DSTATICLIB_SOURCE="$TARGET_DIR/release/libnros_rmw_zenoh_staticlib.a" >/dev/null
     cmake --install build/cmake-install-rmw-zenoh --prefix "$PREFIX"
 
 [private]
