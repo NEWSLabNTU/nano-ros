@@ -532,7 +532,7 @@ pub fn record_component_metadata<C: Component>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CdrReader, CdrWriter, DeserError, SerError};
+    use crate::{CdrReader, CdrWriter, DeserError, SerError, SourceNameKind};
 
     #[derive(Debug, Clone, Copy, Default)]
     struct TestMsg;
@@ -552,6 +552,27 @@ mod tests {
     impl RosMessage for TestMsg {
         const TYPE_NAME: &'static str = "test_msgs::msg::dds_::Test_";
         const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    struct TestService;
+
+    impl RosService for TestService {
+        type Request = TestMsg;
+        type Reply = TestMsg;
+
+        const SERVICE_NAME: &'static str = "test_msgs::srv::dds_::Test_";
+        const SERVICE_HASH: &'static str = "test_service_hash";
+    }
+
+    struct TestAction;
+
+    impl RosAction for TestAction {
+        type Goal = TestMsg;
+        type Result = TestMsg;
+        type Feedback = TestMsg;
+
+        const ACTION_NAME: &'static str = "test_msgs::action::dds_::Test_";
+        const ACTION_HASH: &'static str = "test_action_hash";
     }
 
     struct TalkerComponent;
@@ -615,5 +636,160 @@ mod tests {
                 ComponentMetadataError::UnknownEntity
             ))
         ));
+    }
+
+    struct RobotComponent;
+
+    impl Component for RobotComponent {
+        const NAME: &'static str = "robot_component";
+
+        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
+            {
+                let mut sensors = context
+                    .create_node(NodeId::new("node_sensors"), NodeOptions::new("sensors"))?;
+                let _status =
+                    sensors.create_publisher::<TestMsg>(EntityId::new("pub_status"), "~/status")?;
+            }
+
+            let mut control =
+                context.create_node(NodeId::new("node_control"), NodeOptions::new("control"))?;
+            let _cmd = control.create_subscription::<TestMsg>(
+                EntityId::new("sub_cmd"),
+                CallbackId::new("cb_cmd"),
+                "~/cmd",
+            )?;
+            let _reset = control.create_service_server::<TestService>(
+                EntityId::new("srv_reset"),
+                CallbackId::new("cb_reset"),
+                "reset",
+            )?;
+            let _navigate = control.create_action_server_with_callbacks::<TestAction>(
+                EntityId::new("act_navigate"),
+                CallbackId::new("cb_nav_goal"),
+                CallbackId::new("cb_nav_cancel"),
+                CallbackId::new("cb_nav_accepted"),
+                "~/navigate",
+            )?;
+            let _gain = control.declare_parameter_with_default(
+                EntityId::new("param_gain"),
+                "gain",
+                ParameterDefault::Double(copy_str("1.5")?),
+            )?;
+
+            control
+                .callback(CallbackId::new("cb_cmd"))
+                .publishes(EntityId::new("pub_status"))?
+                .reads(EntityId::new("param_gain"))?;
+            control
+                .callback(CallbackId::new("cb_nav_accepted"))
+                .writes(EntityId::new("param_gain"))?;
+
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn component_api_records_multi_node_services_actions_and_defaults() {
+        let mut recorder = MetadataRecorder::<4, 12, 4>::new();
+        record_component_metadata::<RobotComponent>(&mut recorder).unwrap();
+
+        assert_eq!(recorder.nodes().len(), 2);
+        assert_eq!(recorder.nodes()[0].id.as_str(), "node_sensors");
+        assert_eq!(recorder.nodes()[1].id.as_str(), "node_control");
+
+        let status = recorder
+            .entities()
+            .iter()
+            .find(|entity| entity.id.as_str() == "pub_status")
+            .unwrap();
+        assert_eq!(status.kind, EntityKind::Publisher);
+        assert_eq!(status.source_name.as_str(), "~/status");
+        assert_eq!(status.source_name_kind, SourceNameKind::Private);
+
+        let reset = recorder
+            .entities()
+            .iter()
+            .find(|entity| entity.id.as_str() == "srv_reset")
+            .unwrap();
+        assert_eq!(reset.kind, EntityKind::ServiceServer);
+        assert_eq!(
+            reset.callback_id.as_ref().map(|id| id.as_str()),
+            Some("cb_reset")
+        );
+
+        let navigate = recorder
+            .entities()
+            .iter()
+            .find(|entity| entity.id.as_str() == "act_navigate")
+            .unwrap();
+        assert_eq!(navigate.kind, EntityKind::ActionServer);
+        assert_eq!(
+            navigate.callback_id.as_ref().map(|id| id.as_str()),
+            Some("cb_nav_goal")
+        );
+        assert_eq!(
+            navigate
+                .action_cancel_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("cb_nav_cancel")
+        );
+        assert_eq!(
+            navigate
+                .action_accepted_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("cb_nav_accepted")
+        );
+
+        let gain = recorder
+            .entities()
+            .iter()
+            .find(|entity| entity.id.as_str() == "param_gain")
+            .unwrap();
+        assert_eq!(gain.kind, EntityKind::Parameter);
+        assert!(matches!(
+            gain.parameter_default.as_ref(),
+            Some(ParameterDefault::Double(value)) if value.as_str() == "1.5"
+        ));
+
+        assert_eq!(recorder.callback_effects().len(), 3);
+        assert!(recorder.callback_effects().iter().any(|effect| {
+            effect.callback_id.as_str() == "cb_cmd"
+                && effect.kind == CallbackEffectKind::Publishes
+                && effect.entity_id.as_str() == "pub_status"
+        }));
+        assert!(recorder.callback_effects().iter().any(|effect| {
+            effect.callback_id.as_str() == "cb_nav_accepted"
+                && effect.kind == CallbackEffectKind::Writes
+                && effect.entity_id.as_str() == "param_gain"
+        }));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn component_api_json_contains_planner_callback_links() {
+        let mut recorder = MetadataRecorder::<4, 12, 4>::new();
+        record_component_metadata::<RobotComponent>(&mut recorder).unwrap();
+
+        let json = recorder
+            .to_source_metadata_json(&crate::SourceMetadataExport::new(
+                "demo_robot",
+                RobotComponent::NAME,
+            ))
+            .unwrap();
+
+        assert!(json.contains("\"callbacks\":["));
+        assert!(json.contains("\"id\":\"cb_cmd\",\"kind\":\"subscription\""));
+        assert!(json.contains("\"id\":\"cb_reset\",\"kind\":\"service\""));
+        assert!(json.contains("\"id\":\"cb_nav_goal\",\"kind\":\"action_goal\""));
+        assert!(json.contains("\"id\":\"cb_nav_cancel\",\"kind\":\"action_cancel\""));
+        assert!(json.contains("\"id\":\"cb_nav_accepted\",\"kind\":\"action_accepted\""));
+        assert!(json.contains("\"kind\":\"publishes\",\"entity\":\"pub_status\""));
+        assert!(json.contains("\"kind\":\"reads_parameter\",\"entity\":\"param_gain\""));
+        assert!(json.contains("\"kind\":\"writes_parameter\",\"entity\":\"param_gain\""));
+        assert!(json.contains("\"goal_callback\":\"cb_nav_goal\""));
+        assert!(json.contains("\"cancel_callback\":\"cb_nav_cancel\""));
+        assert!(json.contains("\"accepted_callback\":\"cb_nav_accepted\""));
     }
 }
