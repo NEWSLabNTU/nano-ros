@@ -235,6 +235,15 @@ Current signal:
     path to `CffiSession::open_with_vtable`, immediately after the RMW vtable
     `open` call. This labels the current rv64 symptom as post-open/error-path
     corruption or trap-state corruption, not fixture build failure.
+- Additional FreeRTOS narrowing after rebasing onto `origin/main`: a manual
+  QEMU listener run with `filter-dump` initially captured only the guest's
+  gratuitous ARP for `10.0.2.21` and never reached the Rust application
+  closure. The FreeRTOS LAN9118 poll task runs above the app task, so
+  `lan9118_lwip_poll()` now drains a bounded RX batch per tick instead of an
+  unbounded FIFO loop. With that linked after a clean fixture rebuild, startup
+  reaches the line before `Executor::open`; the remaining FreeRTOS Zenoh block
+  is session-open-side, before any ARP for `10.0.2.2` or TCP SYN appears in the
+  pcap.
 
 Subitems:
 

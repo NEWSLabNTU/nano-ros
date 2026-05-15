@@ -482,9 +482,12 @@ err_t lan9118_lwip_init(struct netif *netif) {
 void lan9118_lwip_poll(struct netif *netif) {
     struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
     uint32_t base = cfg->base_addr;
+    uint32_t budget = 16;
 
-    /* Drain all pending packets */
-    while (rx_packets_pending(base) > 0) {
+    /* Drain a bounded batch. This poller commonly runs above the app task on
+     * FreeRTOS; an unbounded drain can starve application startup if RX status
+     * remains asserted or traffic arrives continuously. */
+    while (budget-- > 0 && rx_packets_pending(base) > 0) {
         struct pbuf *p = rx_receive(base);
         if (p == NULL)
             break;
