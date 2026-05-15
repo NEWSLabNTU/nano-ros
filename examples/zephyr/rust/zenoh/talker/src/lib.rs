@@ -33,6 +33,7 @@ fn run() -> Result<(), NodeError> {
 
     let config = ExecutorConfig::new("tcp/127.0.0.1:7456");
     // Phase 115.L.5-zephyr — install zenoh C-vtable backend.
+    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
     let mut executor: Executor = Executor::open(&config)?;
 

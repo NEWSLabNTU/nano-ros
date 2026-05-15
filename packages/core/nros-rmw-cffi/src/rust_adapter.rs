@@ -60,7 +60,7 @@ mod static_subscriber_storage {
     use portable_atomic::{AtomicBool, Ordering};
 
     const SLOT_COUNT: usize = 4;
-    const SLOT_SIZE: usize = 128;
+    const SLOT_SIZE: usize = 1024;
     const SLOT_ALIGN: usize = 16;
 
     #[repr(align(16))]

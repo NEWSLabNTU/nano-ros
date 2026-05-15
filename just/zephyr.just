@@ -72,14 +72,17 @@ build:
 # Build all example binaries used as test fixtures (Rust + C + C++).
 #
 # `west build` is ~3 s of pure overhead per example even on a no-op
-# rebuild (python startup + cmake reconfigure walk), so we run all the
-# per-example invocations in parallel. Each example has its own build-
-# directory (`-d build-<id>`), and the test harness already proves
-# concurrent west builds against the same workspace are safe — see the
-# per-build XDG_CACHE_HOME setup in `nros_tests::zephyr::build_zephyr_example`.
+# rebuild (python startup + cmake reconfigure walk), but broad parallel
+# fan-out against one Zephyr workspace has proven racy in practice
+# (hung ninja children and follow-up rebuild cascades). Default to one
+# build at a time with one ninja job and sccache disabled; set
+# `NROS_ZEPHYR_BUILD_JOBS=<n>`, `NROS_ZEPHYR_NINJA_JOBS=<n>`, or
+# `NROS_ZEPHYR_SCCACHE_DISABLE=0` only when the local workspace is
+# known to tolerate more concurrency.
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr skip: west not found"; exit 0
     fi
@@ -106,6 +109,39 @@ build-fixtures:
     echo "Building Zephyr test fixtures..."
     cmake_pfx="$(pwd)/build/install"
     nros_root="$(pwd)"
+    if [ ! -x "$cmake_pfx/bin/nros-codegen" ]; then
+        echo "  nros-codegen missing from $cmake_pfx; running just install-local first"
+        just install-local
+    fi
+    log_dir="$nros_root/build/zephyr-fixtures"
+    mkdir -p "$log_dir"
+    jobs="${NROS_ZEPHYR_BUILD_JOBS:-1}"
+    if ! [[ "$jobs" =~ ^[0-9]+$ ]] || [ "$jobs" -lt 1 ]; then
+        echo "Invalid NROS_ZEPHYR_BUILD_JOBS=$jobs; expected positive integer" >&2
+        exit 2
+    fi
+    pristine="${NROS_ZEPHYR_PRISTINE:-always}"
+    case "$pristine" in
+        auto|always|never) ;;
+        *)
+            echo "Invalid NROS_ZEPHYR_PRISTINE=$pristine; expected auto, always, or never" >&2
+            exit 2
+            ;;
+    esac
+    ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-1}"
+    if ! [[ "$ninja_jobs" =~ ^[0-9]+$ ]] || [ "$ninja_jobs" -lt 1 ]; then
+        echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
+        exit 2
+    fi
+    sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-1}"
+    case "$sccache_disable" in
+        0|1) ;;
+        *)
+            echo "Invalid NROS_ZEPHYR_SCCACHE_DISABLE=$sccache_disable; expected 0 or 1" >&2
+            exit 2
+            ;;
+    esac
+    echo "  concurrency: $jobs; ninja-jobs: $ninja_jobs; pristine: $pristine; sccache-disable: $sccache_disable (logs: $log_dir)"
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
     entries=(
@@ -195,8 +231,30 @@ build-fixtures:
       "qemu_cortex_a9|build-dds-c-a9-action-client|zephyr/c/dds/action-client|0"
     )
 
-    pids=()
     failures=()
+    running=()
+
+    wait_one() {
+        local entry pid src log best_effort
+        entry="${running[0]}"
+        running=("${running[@]:1}")
+        pid="${entry%%|*}"
+        entry="${entry#*|}"
+        src="${entry%%|*}"
+        entry="${entry#*|}"
+        log="${entry%%|*}"
+        best_effort="${entry#*|}"
+        if wait "$pid"; then
+            :
+        elif [ "$best_effort" = "1" ]; then
+            echo "  ! best-effort failed: $src (log: $log)"
+        else
+            echo "  ✗ failed: $src (log: $log)"
+            tail -80 "$log" || true
+            failures+=("$src")
+        fi
+    }
+
     for entry in "${entries[@]}"; do
         # Optional 5th column: `xrce_agent_port`. Defaults to empty for
         # non-XRCE entries (no override). When present, it's forwarded as
@@ -208,29 +266,48 @@ build-fixtures:
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
         fi
-        (
-          cd "$workspace"
-          if west build -b "$board" -d "$build_dir" -p auto \
-                "$nros_root/examples/$src" \
-                -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}" > /dev/null 2>&1; then
-              exit 0
-          else
-              [ "$best_effort" = "1" ] && exit 0 || exit 1
-          fi
-        ) &
-        pids+=("$!:$src")
-    done
-    for entry in "${pids[@]}"; do
-        pid="${entry%%:*}"
-        src="${entry#*:}"
-        if ! wait "$pid"; then
-            failures+=("$src")
+        log="$log_dir/${build_dir}.log"
+        if [ "$jobs" -eq 1 ]; then
+            set +e
+            (
+              cd "$workspace"
+              SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
+                west build -b "$board" -d "$build_dir" -p "$pristine" \
+                    "$nros_root/examples/$src" \
+                    -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}"
+            ) 2>&1 | tee "$log"
+            rc="${PIPESTATUS[0]}"
+            set -e
+            if [ "$rc" -eq 0 ]; then
+                :
+            elif [ "$best_effort" = "1" ]; then
+                echo "  ! best-effort failed: $src (log: $log)"
+            else
+                echo "  ✗ failed: $src (log: $log)"
+                failures+=("$src")
+            fi
+        else
+            (
+              cd "$workspace"
+              SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
+                west build -b "$board" -d "$build_dir" -p "$pristine" \
+                    "$nros_root/examples/$src" \
+                    -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}"
+            ) > "$log" 2>&1 &
+            running+=("$!|$src|$log|$best_effort")
+            while [ "${#running[@]}" -ge "$jobs" ]; do
+                wait_one
+            done
         fi
+    done
+    while [ "${#running[@]}" -gt 0 ]; do
+        wait_one
     done
     if [ ${#failures[@]} -gt 0 ]; then
         printf '  ✗ failed: %s\n' "${failures[@]}"
         exit 1
     fi
+    echo "Zephyr test fixtures built successfully."
 
 # Phase 117.13 — Zephyr build smoke for the FVP Base_RevC AEMv8-R
 # Cortex-A SMP target (Phase 117.10's reference platform). Reuses

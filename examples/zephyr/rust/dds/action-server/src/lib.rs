@@ -34,6 +34,7 @@ fn run() -> Result<(), NodeError> {
         .domain_id(0)
         .node_name("dds_action_server");
     // Phase 115.L.5-zephyr — install dds C-vtable backend.
+    nros_rmw_dds::register().expect("Failed to register RMW backend");
 
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;

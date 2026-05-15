@@ -22,10 +22,15 @@ active = []
 
 # Skip _z_task_* symbols (ThreadX provides them in C due to struct layout dependency)
 skip-task-symbols = []
+# Skip all _z_task_*, _z_mutex_*, and _z_condvar_* symbols when the platform C
+# ABI uses concrete RTOS/POSIX layouts that the Rust shim must not model.
+skip-threading-symbols = []
 # Skip z_clock_* symbols (NuttX: zenoh-pico uses struct timespec clock type,
 # which doesn't match the shim's usize-based signature; provide clock fns from
 # a C file that operates on struct timespec directly).
 skip-clock-symbols = []
+# Skip z_time_* symbols for platforms whose wall-clock type is not a u64.
+skip-time-symbols = []
 # Provide network forwarders (_z_open_tcp etc. → PlatformTcp/PlatformUdp traits)
 network = []
 # Phase 100.4 / 121.10 — provide IVC forwarders (`_z_open_ivc` etc.)

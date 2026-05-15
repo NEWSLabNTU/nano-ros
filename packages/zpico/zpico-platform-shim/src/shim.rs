@@ -1,9 +1,12 @@
-use core::ffi::{c_char, c_ulong, c_void};
+#[cfg(any(not(feature = "skip-clock-symbols"), not(feature = "skip-time-symbols")))]
+use core::ffi::{c_char, c_ulong};
+use core::ffi::c_void;
 
 use nros_platform::{
-    ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep,
-    PlatformThreading, PlatformTime,
+    ConcretePlatform, PlatformAlloc, PlatformClock, PlatformRandom, PlatformSleep, PlatformTime,
 };
+#[cfg(not(feature = "skip-threading-symbols"))]
+use nros_platform::PlatformThreading;
 // The four network traits live at the parent scope so the inner
 // `mod net_*` submodules can reach them via `use super::{…}`. They
 // are only USED inside those submodules, all of which are
@@ -199,11 +202,13 @@ pub struct ZTimeSinceEpoch {
     pub nanos: u32,
 }
 
+#[cfg(not(feature = "skip-time-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_now() -> u64 {
     <P as PlatformTime>::time_now_ms()
 }
 
+#[cfg(not(feature = "skip-time-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_now_as_str(buf: *mut c_char, _buflen: c_ulong) -> *const c_char {
     // Minimal stub — write "0" into the buffer
@@ -216,6 +221,7 @@ pub extern "C" fn z_time_now_as_str(buf: *mut c_char, _buflen: c_ulong) -> *cons
     buf as *const c_char
 }
 
+#[cfg(not(feature = "skip-time-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_us(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
@@ -223,6 +229,7 @@ pub extern "C" fn z_time_elapsed_us(time: *const u64) -> c_ulong {
     (now.wrapping_sub(prev) * 1000) as c_ulong
 }
 
+#[cfg(not(feature = "skip-time-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_ms(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
@@ -230,6 +237,7 @@ pub extern "C" fn z_time_elapsed_ms(time: *const u64) -> c_ulong {
     now.wrapping_sub(prev) as c_ulong
 }
 
+#[cfg(not(feature = "skip-time-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_time_elapsed_s(time: *const u64) -> c_ulong {
     let prev = unsafe { *time };
@@ -254,16 +262,15 @@ pub extern "C" fn _z_get_time_since_epoch(t: *mut ZTimeSinceEpoch) -> i8 {
 // The actual layout is defined by the platform backend.
 //
 // `ZTask`/`ZTaskAttr` are only referenced by the `_z_task_*` shim functions
-// below, which are compiled out under `skip-task-symbols` (ThreadX provides
-// its own task.c). Gate the structs with the same cfg so they don't trip
-// dead_code when tasks are supplied by C.
-#[cfg(not(feature = "skip-task-symbols"))]
+// below. Gate the structs with the same cfg so they don't trip dead_code when
+// tasks/threading are supplied by C.
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[repr(C)]
 pub struct ZTask {
     _opaque: [u8; 64],
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[repr(C)]
 pub struct ZTaskAttr {
     _opaque: [u8; 64],
@@ -274,11 +281,13 @@ pub struct ZMutex {
     _opaque: [u8; 64],
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[repr(C)]
 pub struct ZMutexRec {
     _opaque: [u8; 64],
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[repr(C)]
 pub struct ZCondvar {
     _opaque: [u8; 64],
@@ -287,7 +296,7 @@ pub struct ZCondvar {
 // Task symbols are skipped for ThreadX — provided by C task.c instead,
 // because _z_task_t struct layout (TX_THREAD + embedded stack) is needed
 // for tx_thread_create() and the trampoline.
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_init(
     task: *mut ZTask,
@@ -298,31 +307,31 @@ pub extern "C" fn _z_task_init(
     <P as PlatformThreading>::task_init(task as *mut c_void, attr as *mut c_void, fun, arg)
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_join(task: *mut ZTask) -> i8 {
     <P as PlatformThreading>::task_join(task as *mut c_void)
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_detach(task: *mut ZTask) -> i8 {
     <P as PlatformThreading>::task_detach(task as *mut c_void)
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_cancel(task: *mut ZTask) -> i8 {
     <P as PlatformThreading>::task_cancel(task as *mut c_void)
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_exit() {
     <P as PlatformThreading>::task_exit()
 }
 
-#[cfg(not(feature = "skip-task-symbols"))]
+#[cfg(not(any(feature = "skip-task-symbols", feature = "skip-threading-symbols")))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_free(task: *mut *mut ZTask) {
     <P as PlatformThreading>::task_free(task as *mut *mut c_void)
@@ -332,26 +341,31 @@ pub extern "C" fn _z_task_free(task: *mut *mut ZTask) {
 // Threading — mutex
 // ============================================================================
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_init(m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::mutex_init(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_drop(m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::mutex_drop(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_lock(m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::mutex_lock(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_try_lock(m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::mutex_try_lock(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_unlock(m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::mutex_unlock(m as *mut c_void)
@@ -361,26 +375,31 @@ pub extern "C" fn _z_mutex_unlock(m: *mut ZMutex) -> i8 {
 // Threading — recursive mutex
 // ============================================================================
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_init(m: *mut ZMutexRec) -> i8 {
     <P as PlatformThreading>::mutex_rec_init(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_drop(m: *mut ZMutexRec) -> i8 {
     <P as PlatformThreading>::mutex_rec_drop(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_lock(m: *mut ZMutexRec) -> i8 {
     <P as PlatformThreading>::mutex_rec_lock(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_try_lock(m: *mut ZMutexRec) -> i8 {
     <P as PlatformThreading>::mutex_rec_try_lock(m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_mutex_rec_unlock(m: *mut ZMutexRec) -> i8 {
     <P as PlatformThreading>::mutex_rec_unlock(m as *mut c_void)
@@ -390,31 +409,37 @@ pub extern "C" fn _z_mutex_rec_unlock(m: *mut ZMutexRec) -> i8 {
 // Threading — condition variables
 // ============================================================================
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_init(cv: *mut ZCondvar) -> i8 {
     <P as PlatformThreading>::condvar_init(cv as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_drop(cv: *mut ZCondvar) -> i8 {
     <P as PlatformThreading>::condvar_drop(cv as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_signal(cv: *mut ZCondvar) -> i8 {
     <P as PlatformThreading>::condvar_signal(cv as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_signal_all(cv: *mut ZCondvar) -> i8 {
     <P as PlatformThreading>::condvar_signal_all(cv as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_wait(cv: *mut ZCondvar, m: *mut ZMutex) -> i8 {
     <P as PlatformThreading>::condvar_wait(cv as *mut c_void, m as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-threading-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_condvar_wait_until(
     cv: *mut ZCondvar,

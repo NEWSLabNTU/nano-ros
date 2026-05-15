@@ -33,6 +33,13 @@ use nros_tests::{
 };
 use std::{path::PathBuf, time::Duration};
 
+fn count_zephyr_received(output: &str) -> usize {
+    output
+        .lines()
+        .filter(|line| line.contains("Received:") || line.contains("Received["))
+        .count()
+}
+
 /// Get or build Zephyr talker for native_sim (uses existing binary if available)
 fn get_zephyr_talker_native_sim() -> PathBuf {
     get_or_build_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim, false)
@@ -136,7 +143,7 @@ fn test_zephyr_talker_to_listener_e2e() {
     // old fixed-8 s `wait_for_output` regularly missed the first
     // couple of publishes. 30 s cap is comfortable headroom.
     let _ = talker.wait_for_pattern("Published: 3", Duration::from_secs(30));
-    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
+    let _ = listener.wait_for_pattern("Received", Duration::from_secs(30));
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
@@ -161,7 +168,7 @@ fn test_zephyr_talker_to_listener_e2e() {
 
     // Check listener status
     let listener_received =
-        listener_output.contains("Received:") || listener_output.contains("data=");
+        count_zephyr_received(&listener_output) > 0 || listener_output.contains("data=");
     let listener_connected = !listener_output.contains("session error");
     let listener_created_sub = listener_output.contains("Declared subscriber")
         || listener_output.contains("Subscriber created")
@@ -202,7 +209,7 @@ fn test_zephyr_talker_to_listener_e2e() {
     let talker_tx_failed = talker_output.contains("Failed to publish");
 
     if talker_published && listener_received {
-        let count = count_pattern(&listener_output, "Received");
+        let count = count_zephyr_received(&listener_output);
         eprintln!(
             "\nSUCCESS: Zephyr listener received {} messages from Zephyr talker",
             count
@@ -395,8 +402,9 @@ fn test_native_to_zephyr_e2e() {
     eprintln!("\n=== Zephyr listener output ===\n{}", zephyr_output);
 
     // Strict delivery check: the Zephyr listener must log at least one
-    // real "Received: <N>" line (not setup text like "Waiting for messages ...").
-    let received_count = count_pattern(&zephyr_output, "Received:");
+    // real Received sample line. Rust Zephyr logs `Received[N]: V`
+    // while native/C++ fixtures historically log `Received: N`.
+    let received_count = count_zephyr_received(&zephyr_output);
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_declare_subscriber failed")
         || zephyr_output.contains("Failed to create subscriber");
@@ -543,10 +551,11 @@ fn test_bidirectional_native_zephyr_e2e() {
         zephyr_listener_output
     );
 
-    // Strict delivery counts: match only real "Received: <N>" lines,
-    // not setup text like "Waiting for Int32 messages ...".
+    // Strict delivery counts: match only real sample lines, not setup
+    // text like "Waiting for Int32 messages ...". Native logs
+    // `Received: N`; Zephyr Rust logs `Received[N]: V`.
     let native_received_count = count_pattern(&native_listener_output, "Received:");
-    let zephyr_received_count = count_pattern(&zephyr_listener_output, "Received:");
+    let zephyr_received_count = count_zephyr_received(&zephyr_listener_output);
 
     eprintln!("\n=== Results ===");
     eprintln!(

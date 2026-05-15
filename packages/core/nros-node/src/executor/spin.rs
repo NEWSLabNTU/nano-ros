@@ -2878,10 +2878,16 @@ impl Executor {
             });
         }
 
-        // All sessions non-blocking drain. The wait budget is
-        // owned by the cv wait above; drive_io is now a pure
-        // dequeue path.
-        let _ = self.session.drive_io(0);
+        // All std sessions use a wake-cv wait above, so the transport
+        // drain here must be non-blocking. no_std has no wake-cv layer;
+        // give the primary session the caller's timeout so embedded
+        // executors do not busy-spin and over-credit timer deltas.
+        #[cfg(feature = "std")]
+        let primary_drive_timeout_ms = 0;
+        #[cfg(not(feature = "std"))]
+        let primary_drive_timeout_ms = timeout_ms;
+
+        let _ = self.session.drive_io(primary_drive_timeout_ms);
         for extra in self.extra_sessions.iter_mut() {
             let _ = extra.drive_io(0);
         }

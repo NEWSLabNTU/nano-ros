@@ -28,6 +28,12 @@ zephyr_library_named(nros)
 # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
 # sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
 zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
+zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-platform-cffi/include)
+zephyr_library_sources(
+    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/platform.c
+    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net.c
+    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/timer.c
+)
 
 # =============================================================================
 # Backend-specific C sources
@@ -73,10 +79,11 @@ if(CONFIG_NROS_RMW_ZENOH)
     # Zephyr platform backend
     zephyr_compile_definitions(ZENOH_ZEPHYR)
 
-    # Disable INTEREST and MATCHING features to avoid write filter issues
-    # when multiple zenoh clients connect to the same router simultaneously.
-    # This replaces the patch_zenoh_pico() function from setup.sh.
-    zephyr_compile_definitions(Z_FEATURE_INTEREST=0 Z_FEATURE_MATCHING=0)
+    # Router-backed client-to-client routing requires interest declarations
+    # so zenohd knows which peers should receive each keyexpr. Keep matching
+    # callbacks disabled on Zephyr; they are not needed for routing and can
+    # create high-rate executor wakeups.
+    zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=0)
 
     # Map NROS_ZENOH_* Kconfig options to Z_FEATURE_* compile definitions.
     # The function strips the CONFIG_NROS_ZENOH_ prefix and replaces it with
@@ -111,6 +118,7 @@ if(CONFIG_NROS_RMW_ZENOH)
     zephyr_library_sources(
         ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/zpico/zpico.c
     )
+    zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_zenoh_zephyr_system.c)
 
     # zpico_zephyr.c — Zephyr platform support (network wait, session init)
     zephyr_library_sources(

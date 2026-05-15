@@ -59,7 +59,7 @@ impl ZephyrPlatform {
 pub struct ZephyrProcess {
     handle: Child,
     platform: ZephyrPlatform,
-    // Accumulated stdout, grown by the background reader spawned in
+    // Accumulated stdout+stderr, grown by the background readers spawned in
     // `start()`. `wait_for_pattern()` polls this buffer for a readiness
     // marker (e.g. "Waiting for messages"), replacing the old fixed
     // sleeps that couldn't keep up with parallel-load cold-boot
@@ -68,13 +68,68 @@ pub struct ZephyrProcess {
     output: std::sync::Arc<std::sync::Mutex<String>>,
     reader_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
     // Joined via Drop when the process is killed; held here so the
-    // thread outlives any `wait_for_pattern` / `wait_for_output` call.
+    // threads outlive any `wait_for_pattern` / `wait_for_output` call.
     #[allow(dead_code)]
-    reader_thread: Option<std::thread::JoinHandle<()>>,
+    reader_threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 /// Atomic counter to ensure each Zephyr process gets a unique seed
 static SEED_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+fn spawn_output_readers(
+    handle: &mut Child,
+    output: std::sync::Arc<std::sync::Mutex<String>>,
+    reader_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> TestResult<Vec<std::thread::JoinHandle<()>>> {
+    let stdout = handle
+        .stdout
+        .take()
+        .ok_or_else(|| TestError::ProcessFailed("No stdout on spawned process".to_string()))?;
+    let stderr = handle
+        .stderr
+        .take()
+        .ok_or_else(|| TestError::ProcessFailed("No stderr on spawned process".to_string()))?;
+
+    let remaining = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(2));
+    Ok(vec![
+        spawn_stream_reader(
+            stdout,
+            output.clone(),
+            reader_done.clone(),
+            remaining.clone(),
+        ),
+        spawn_stream_reader(stderr, output, reader_done, remaining),
+    ])
+}
+
+fn spawn_stream_reader<R>(
+    mut stream: R,
+    output: std::sync::Arc<std::sync::Mutex<String>>,
+    reader_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    remaining: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) -> std::thread::JoinHandle<()>
+where
+    R: std::io::Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buf[..n]);
+                    if let Ok(mut guard) = output.lock() {
+                        guard.push_str(&chunk);
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        if remaining.fetch_sub(1, std::sync::atomic::Ordering::AcqRel) == 1 {
+            reader_done.store(true, std::sync::atomic::Ordering::Release);
+        }
+    })
+}
 
 impl ZephyrProcess {
     /// Start a Zephyr application
@@ -143,42 +198,20 @@ impl ZephyrProcess {
             }
         };
 
-        // Spawn a background reader that accumulates stdout into a
-        // shared buffer. Subsequent `wait_for_pattern()` calls poll
+        // Spawn background readers that accumulate stdout and stderr into
+        // a shared buffer. Subsequent `wait_for_pattern()` calls poll
         // this buffer; `wait_for_output()` returns its final snapshot.
         let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let reader_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let reader_thread = {
-            let output = output.clone();
-            let reader_done = reader_done.clone();
-            let mut stdout = handle.stdout.take().ok_or_else(|| {
-                TestError::ProcessFailed("No stdout on spawned process".to_string())
-            })?;
-            std::thread::spawn(move || {
-                use std::io::Read;
-                let mut buf = [0u8; 4096];
-                loop {
-                    match stdout.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let chunk = String::from_utf8_lossy(&buf[..n]);
-                            if let Ok(mut guard) = output.lock() {
-                                guard.push_str(&chunk);
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-                reader_done.store(true, std::sync::atomic::Ordering::Release);
-            })
-        };
+        let reader_threads =
+            spawn_output_readers(&mut handle, output.clone(), reader_done.clone())?;
 
         Ok(Self {
             handle,
             platform,
             output,
             reader_done,
-            reader_thread: Some(reader_thread),
+            reader_threads,
         })
     }
 
@@ -248,37 +281,15 @@ impl ZephyrProcess {
 
         let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let reader_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let reader_thread = {
-            let output = output.clone();
-            let reader_done = reader_done.clone();
-            let mut stdout = handle.stdout.take().ok_or_else(|| {
-                TestError::ProcessFailed("No stdout on spawned process".to_string())
-            })?;
-            std::thread::spawn(move || {
-                use std::io::Read;
-                let mut buf = [0u8; 4096];
-                loop {
-                    match stdout.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let chunk = String::from_utf8_lossy(&buf[..n]);
-                            if let Ok(mut guard) = output.lock() {
-                                guard.push_str(&chunk);
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-                reader_done.store(true, std::sync::atomic::Ordering::Release);
-            })
-        };
+        let reader_threads =
+            spawn_output_readers(&mut handle, output.clone(), reader_done.clone())?;
 
         Ok(Self {
             handle,
             platform: ZephyrPlatform::QemuCortexA9,
             output,
             reader_done,
-            reader_thread: Some(reader_thread),
+            reader_threads,
         })
     }
 
@@ -390,6 +401,9 @@ impl ZephyrProcess {
 impl Drop for ZephyrProcess {
     fn drop(&mut self) {
         kill_process_group(&mut self.handle);
+        for thread in std::mem::take(&mut self.reader_threads) {
+            let _ = thread.join();
+        }
     }
 }
 

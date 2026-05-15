@@ -2,8 +2,13 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::{TestError, TestResult, process::graceful_kill_process_group, wait_for_port};
-use std::{net::TcpStream, process::Child, time::Duration};
+use crate::{TestError, TestResult, process::graceful_kill_process_group};
+use std::{
+    io::Read,
+    net::TcpStream,
+    process::{Child, Stdio},
+    time::{Duration, Instant},
+};
 
 /// Allocate an ephemeral port from the OS.
 ///
@@ -46,6 +51,39 @@ fn kill_listeners_on_port(port: u16) {
         std::thread::sleep(Duration::from_millis(100));
     }
     eprintln!("WARNING: port {} still in use after kill attempt", port);
+}
+
+fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
+    let start = Instant::now();
+    let timeout = Duration::from_secs(10);
+    let addr = format!("127.0.0.1:{port}");
+
+    while start.elapsed() < timeout {
+        if TcpStream::connect(&addr).is_ok() {
+            return Ok(());
+        }
+
+        if let Some(status) = handle.try_wait()? {
+            let mut stderr = String::new();
+            if let Some(mut pipe) = handle.stderr.take() {
+                let _ = pipe.read_to_string(&mut stderr);
+            }
+            let stderr = stderr.trim();
+            let detail = if stderr.is_empty() {
+                String::new()
+            } else {
+                format!(": {stderr}")
+            };
+            return Err(TestError::ProcessFailed(format!(
+                "zenohd exited before listening on {locator} with {status}{detail}"
+            )));
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    graceful_kill_process_group(handle);
+    Err(TestError::Timeout)
 }
 
 /// Managed zenohd router process
@@ -109,21 +147,18 @@ impl ZenohRouter {
             let log_path = format!("/tmp/zenohd-{port}.log");
             let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
             cmd.env("RUST_LOG", level)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::from(log));
+                .stdout(Stdio::null())
+                .stderr(Stdio::from(log));
         } else {
-            cmd.stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null());
+            cmd.stdout(Stdio::null()).stderr(Stdio::piped());
         }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
+        let mut handle = cmd.spawn()?;
 
         // Wait for zenohd to be ready (TCP port accepting connections)
         // 10s allows for slow startup under concurrent test load
-        if !wait_for_port(port, Duration::from_secs(10)) {
-            return Err(TestError::Timeout);
-        }
+        wait_for_router_ready(&mut handle, &locator, port)?;
 
         Ok(Self {
             handle,
@@ -198,16 +233,14 @@ impl ZenohRouter {
             "--cfg",
             &key_cfg,
         ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
+        let mut handle = cmd.spawn()?;
 
         // Wait for zenohd to be ready (TLS port accepting connections)
-        if !wait_for_port(port, Duration::from_secs(10)) {
-            return Err(TestError::Timeout);
-        }
+        wait_for_router_ready(&mut handle, &locator, port)?;
 
         Ok(Self {
             handle,

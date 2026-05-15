@@ -168,11 +168,81 @@ Current signal:
 - Last full `just ci` bucket before the Phase 126 pull had 29 failures.
 - Build/smoke coverage was mostly passing; failures are concentrated in boot,
   runtime handshakes, and message flow.
+- 2026-05-15 focused follow-up: `ZephyrProcess` now drains stderr alongside
+  stdout for native_sim and qemu_cortex_a9 runs, so failed Zephyr tests preserve
+  QEMU/native_sim diagnostics in the same captured log used by
+  `wait_for_pattern`/`wait_for_output`. With
+  `XDG_RUNTIME_DIR=/tmp/nano-ros-just-runtime`, `just zephyr doctor` passes and
+  `test_zephyr_talker_smoke` / `test_zephyr_listener_smoke` pass, including the
+  expected no-router `Transport(ConnectionFailed)` stderr in captured output.
+- 2026-05-15 rebuild follow-up: `just zephyr build-fixtures` now defaults to
+  serialized, pristine `west build`s with per-fixture logs and completed the
+  full fixture matrix successfully after installing the local C/C++ codegen
+  prefix. This removes the previous hang/retry cascade as a fixture-build
+  blocker.
+- 2026-05-15 runtime follow-up: `just zephyr test --no-capture` ran 61 tests:
+  33 passed, 28 failed. Failures split into four buckets: 7 XRCE E2E tests skip
+  hard because the XRCE Agent binary is not present; 5 native/Zephyr interop
+  tests fail because native Rust fixtures were not prebuilt by
+  `just build-test-fixtures`; Zenoh native_sim Rust/C++ E2E cases fail at
+  session open with `Transport(ConnectionFailed)` / `nros::init -> -100` even
+  with `zenohd` started; Zephyr DDS Rust native_sim and qemu_cortex_a9 cases
+  fail at DDS transport open with `Transport(ConnectionFailed)`.
+- 2026-05-15 rebuild-race fix: a single-fixture diagnostic reproduced that
+  `SCCACHE_DISABLE=1 CMAKE_BUILD_PARALLEL_LEVEL=1 west build ...` completes
+  past the zombie-shell hang point. `just zephyr build-fixtures` now applies
+  those defaults (`NROS_ZEPHYR_NINJA_JOBS=1`,
+  `NROS_ZEPHYR_SCCACHE_DISABLE=1`) and the full Zephyr fixture matrix completed
+  successfully with no failed entries.
+- 2026-05-15 runtime follow-up 2: Zephyr's checked-in zenoh-pico config now
+  gives `ZENOH_ZEPHYR` the same 5 s socket timeout as NuttX, and Zephyr TCP
+  endpoint resolution is constrained to IPv4 when `CONFIG_POSIX_IPV6` is off.
+  That moved Zenoh native_sim past the earlier pre-router
+  `Transport(ConnectionFailed)` startup failure.
+- 2026-05-15 runtime follow-up 3: Rust Zephyr Zenoh and DDS examples now
+  register their RMW backends explicitly because Zephyr does not run the
+  POSIX-style Rust constructor path used by native fixtures. The Zephyr
+  zenoh-pico system ABI now uses Zephyr POSIX pthread handles for tasks,
+  mutexes, recursive mutexes, and condition variables, with matching C symbols
+  supplied by the Zephyr module build. This fixed the native_sim crash in
+  `_z_session_mutex_unlock`.
+- 2026-05-15 runtime follow-up 4: Zephyr Zenoh subscriber creation then failed
+  after `z_declare_subscriber` succeeded because the C/Rust static subscriber
+  slot was too small for `ZenohSubscriber`; the CFFI slot size was increased.
+  Focused talker/listener E2E now reaches listener readiness and publishes, but
+  the listener still does not receive samples.
+- 2026-05-15 runtime follow-up 5: Debugging ruled out seeded Zephyr Zenoh
+  session-ID collisions and an exact-key subscriber mismatch. Enabling
+  zenoh-pico interests while leaving matching callbacks disabled
+  (`Z_FEATURE_INTEREST=1`, `Z_FEATURE_MATCHING=0`) rebuilt both focused
+  native_sim Zenoh fixtures successfully, but runtime verification of this
+  latest routing change is still pending because sandbox escalation for the
+  router-backed focused run hit the approval usage limit.
+- 2026-05-15 harness follow-up: `ZenohRouter::start_on` now detects early
+  `zenohd` exits and reports stderr instead of masking them as a generic
+  timeout. In the current sandbox, the focused E2E run fails before fixture
+  startup because `zenohd` cannot bind `tcp/127.0.0.1:7456`
+  (`Operation not permitted`); the router-backed runtime path still needs an
+  unrestricted rerun.
+- 2026-05-15 runtime follow-up 6: unrestricted focused reruns now pass the Rust
+  Zephyr Zenoh native_sim pub/sub set. `test_zephyr_talker_to_listener_e2e`,
+  `test_zephyr_to_native_e2e`, `test_native_to_zephyr_e2e`, and
+  `test_bidirectional_native_zephyr_e2e` all deliver samples. The final fix was
+  in the no-std executor spin path: without the std wake-cv layer it must let
+  the primary session block for the requested spin timeout; `drive_io(0)` made
+  Zephyr spin flat out and over-credit timer deltas.
+- 2026-05-15 full Zephyr follow-up: serial `cargo nextest run -p nros-tests
+  --test zephyr` produced 34 passed / 27 failed before the bidirectional
+  harness counter fix; rerunning that one test passed, so the expected refreshed
+  count is 35 passed / 26 failed. Remaining buckets are C++ Zenoh native_sim
+  `nros::init -> -100`, Rust DDS Zephyr `Transport(ConnectionFailed)`, XRCE
+  E2E tests hard-skipping because the XRCE Agent is absent, and native Zenoh
+  service interop tests whose native service fixtures were not prebuilt.
 
 Subitems:
 
-- [ ] `127.C.1`: Zephyr boot and fixture health.
-- [ ] `127.C.2`: Zephyr native/host message-flow failures.
+- [x] `127.C.1`: Zephyr boot and fixture health.
+- [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
 - [ ] `127.C.3`: Zephyr DDS runtime failures.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures.
 - [ ] `127.C.5`: Cross-language Zephyr interop failures.

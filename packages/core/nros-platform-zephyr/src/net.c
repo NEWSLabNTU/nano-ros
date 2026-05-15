@@ -21,6 +21,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/net_ip.h>
+#include <zephyr/posix/fcntl.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -274,7 +275,7 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
 
 /* ---- UDP multicast ----
  *
- * Zephyr's zsock layer exposes IP_ADD_MEMBERSHIP + struct ip_mreq.
+ * Zephyr's zsock layer exposes IP_ADD_MEMBERSHIP + struct ip_mreqn.
  * Requires CONFIG_NET_IPV4_IGMP=y. iface resolution skipped —
  * Zephyr applications that need iface-pinned multicast can
  * `net_if_ipv4_select_src_iface` and post-set IP_MULTICAST_IF.
@@ -364,10 +365,10 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         zsock_close(fd); sock->fd = -1; return -1;
     }
 
-    struct ip_mreq mreq;
+    struct ip_mreqn mreq;
     memset(&mreq, 0, sizeof(mreq));
     mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
-    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    mreq.imr_address.s_addr = htonl(INADDR_ANY);
     if (zsock_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                          &mreq, sizeof(mreq)) < 0) {
         zsock_close(fd); sock->fd = -1; return -1;
@@ -384,10 +385,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
 
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
         struct zsock_addrinfo *ai = rep->iptcp;
-        struct ip_mreq mreq;
+        struct ip_mreqn mreq;
         memset(&mreq, 0, sizeof(mreq));
         mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
-        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+        mreq.imr_address.s_addr = htonl(INADDR_ANY);
         (void) zsock_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                 &mreq, sizeof(mreq));
     }

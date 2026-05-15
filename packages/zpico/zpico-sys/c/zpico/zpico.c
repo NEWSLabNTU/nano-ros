@@ -26,6 +26,10 @@
 
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h>  // For printk
+#include <zephyr/random/random.h>
+#if defined(CONFIG_POSIX_MULTI_PROCESS)
+#include <zephyr/posix/unistd.h>
+#endif
 #elif defined(ZENOH_FREERTOS_LWIP)
 // On FreeRTOS, route printk to semihosting for debug output.
 // Uses SYS_WRITE0 semihosting call (null-terminated string to stdout).
@@ -313,6 +317,24 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
     if (getrandom(bytes, ZPICO_ZID_SIZE, 0) == ZPICO_ZID_SIZE) {
         return;
     }
+#endif
+
+#if defined(ZENOH_ZEPHYR)
+    sys_rand_get(bytes, ZPICO_ZID_SIZE);
+
+    uint64_t zephyr_seed = k_cycle_get_64();
+    zephyr_seed ^= (uint64_t)(uintptr_t)&g_session;
+    zephyr_seed ^= (uint64_t)zpico_next_session_zid_counter();
+#if defined(CONFIG_POSIX_MULTI_PROCESS)
+    zephyr_seed ^= (uint64_t)getpid() << 32;
+#endif
+    for (size_t i = 0; i < ZPICO_ZID_SIZE; i += sizeof(uint64_t)) {
+        uint64_t word = zpico_splitmix64(&zephyr_seed);
+        for (size_t j = 0; j < sizeof(uint64_t) && i + j < ZPICO_ZID_SIZE; j++) {
+            bytes[i + j] ^= (uint8_t)(word >> (j * 8));
+        }
+    }
+    return;
 #endif
 
     uint64_t seed = (uint64_t)(uintptr_t)&g_session;

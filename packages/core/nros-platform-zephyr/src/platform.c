@@ -17,12 +17,9 @@
  *                upgrades to hardware entropy.
  *   - Time     — wall clock unsupported unless the user enables
  *                CONFIG_RTC; defaults return 0.
- *   - Tasks    — k_thread_create + k_thread_join + k_thread_abort.
- *                attr carries the stack pointer, stack size, priority.
- *   - Mutexes  — k_mutex is recursive by design; mutex_* and
- *                mutex_rec_* share the same primitive.
- *   - Condvars — k_condvar_init / signal / broadcast / wait /
- *                wait-with-timeout (Zephyr 2.5+).
+ *   - Tasks    — pthread_create via the module's stack-provisioning shim.
+ *   - Mutexes  — pthread_mutex_t handles, matching zenoh-pico's Zephyr ABI.
+ *   - Condvars — pthread_cond_t handles, matching zenoh-pico's Zephyr ABI.
  *
  * Build verification requires a Zephyr workspace; CMakeLists.txt
  * is designed to be consumed as a Zephyr module or as an external
@@ -32,8 +29,10 @@
 #include <nros/platform.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/posix/pthread.h>
 #include <zephyr/random/random.h>
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -121,125 +120,114 @@ uint64_t nros_platform_time_now_ms(void)              { return 0; }
 uint32_t nros_platform_time_since_epoch_secs(void)    { return 0; }
 uint32_t nros_platform_time_since_epoch_nanos(void)   { return 0; }
 
-/* ---- Tasks ----
- *
- * Storage is `struct k_thread`. attr carries name, priority, and
- * the caller-allocated stack region. Zephyr requires
- * `K_THREAD_STACK_DEFINE(stack_name, size)` at file scope; we
- * receive a pointer to that storage.
- */
+/* ---- Tasks ---- */
 
-typedef struct {
-    const char *name;
-    int priority;
-    size_t stack_depth;
-    void  *stack_base;
-} nros_zephyr_task_attr_t;
+int nros_zephyr_task_create(pthread_t *thread,
+                            void *(*entry)(void *),
+                            void *arg);
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    if (task == NULL || attr == NULL || entry == NULL) return -1;
-    const nros_zephyr_task_attr_t *a = (const nros_zephyr_task_attr_t *) attr;
-    if (a->stack_base == NULL || a->stack_depth == 0) return -1;
-
-    k_tid_t tid = k_thread_create(
-        (struct k_thread *) task,
-        (k_thread_stack_t *) a->stack_base,
-        a->stack_depth,
-        (k_thread_entry_t) entry,
-        arg, NULL, NULL,
-        a->priority,
-        0,
-        K_NO_WAIT);
-    if (a->name != NULL) {
-        (void) k_thread_name_set(tid, a->name);
-    }
-    return tid == NULL ? -1 : 0;
+    (void) attr;
+    if (task == NULL || entry == NULL) return -1;
+    return nros_zephyr_task_create((pthread_t *) task, entry, arg) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_task_join(void *task) {
     if (task == NULL) return -1;
-    return k_thread_join((struct k_thread *) task, K_FOREVER) == 0 ? 0 : -1;
+    return pthread_join(*(pthread_t *) task, NULL) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_task_detach(void *task) {
-    (void) task;
-    return 0;  /* Zephyr threads run independently once created */
+    if (task == NULL) return -1;
+    return pthread_detach(*(pthread_t *) task) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_task_cancel(void *task) {
     if (task == NULL) return -1;
-    k_thread_abort((struct k_thread *) task);
-    return 0;
+    return pthread_cancel(*(pthread_t *) task) == 0 ? 0 : -1;
 }
 
 void nros_platform_task_exit(void) {
-    /* k_thread_abort(k_current_get()) is the documented self-exit
-     * primitive; some Zephyr versions accept a fall-through return
-     * from the entry point instead. */
-    k_thread_abort(k_current_get());
+    pthread_exit(NULL);
 }
 
 void nros_platform_task_free(void **task) {
-    (void) task;  /* caller-owned struct k_thread storage */
+    (void) task;  /* caller-owned pthread_t storage */
 }
 
-/* ---- Mutex (recursive; non-recursive uses same primitive) ---- */
+/* ---- Mutex ---- */
 
 int8_t nros_platform_mutex_init(void *m) {
     if (m == NULL) return -1;
-    return k_mutex_init((struct k_mutex *) m) == 0 ? 0 : -1;
+    return pthread_mutex_init((pthread_mutex_t *) m, NULL) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_drop(void *m) {
-    (void) m;  /* Zephyr k_mutex has no destroy */
-    return 0;
+    if (m == NULL) return 0;
+    return pthread_mutex_destroy((pthread_mutex_t *) m) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_lock(void *m) {
     if (m == NULL) return -1;
-    return k_mutex_lock((struct k_mutex *) m, K_FOREVER) == 0 ? 0 : -1;
+    return pthread_mutex_lock((pthread_mutex_t *) m) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_try_lock(void *m) {
     if (m == NULL) return -1;
-    int rc = k_mutex_lock((struct k_mutex *) m, K_NO_WAIT);
+    int rc = pthread_mutex_trylock((pthread_mutex_t *) m);
     if (rc == 0)       return 0;
-    if (rc == -EBUSY)  return 1;
+    if (rc == EBUSY)   return 1;
     return -1;
 }
 
 int8_t nros_platform_mutex_unlock(void *m) {
     if (m == NULL) return -1;
-    return k_mutex_unlock((struct k_mutex *) m) == 0 ? 0 : -1;
+    return pthread_mutex_unlock((pthread_mutex_t *) m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_rec_init(void *m)     { return nros_platform_mutex_init(m); }
+int8_t nros_platform_mutex_rec_init(void *m) {
+    if (m == NULL) return -1;
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0) return -1;
+    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) != 0) {
+        (void) pthread_mutexattr_destroy(&attr);
+        return -1;
+    }
+    int rc = pthread_mutex_init((pthread_mutex_t *) m, &attr);
+    (void) pthread_mutexattr_destroy(&attr);
+    return rc == 0 ? 0 : -1;
+}
 int8_t nros_platform_mutex_rec_drop(void *m)     { return nros_platform_mutex_drop(m); }
 int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lock(m); }
 int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
 int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
 
-/* ---- Condvars (Zephyr 2.5+: k_condvar_*) ---- */
+/* ---- Condvars ---- */
 
 int8_t nros_platform_condvar_init(void *cv) {
     if (cv == NULL) return -1;
-    return k_condvar_init((struct k_condvar *) cv) == 0 ? 0 : -1;
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0) return -1;
+    (void) pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    int rc = pthread_cond_init((pthread_cond_t *) cv, &attr);
+    (void) pthread_condattr_destroy(&attr);
+    return rc == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_drop(void *cv) {
-    (void) cv;  /* no destroy */
-    return 0;
+    if (cv == NULL) return 0;
+    return pthread_cond_destroy((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_signal(void *cv) {
     if (cv == NULL) return -1;
-    return k_condvar_signal((struct k_condvar *) cv) == 0 ? 0 : -1;
+    return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_signal_all(void *cv) {
     if (cv == NULL) return -1;
-    return k_condvar_broadcast((struct k_condvar *) cv) >= 0 ? 0 : -1;
+    return pthread_cond_broadcast((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
 /* Phase 124.B.7.a — ISR-safe signal.
@@ -252,27 +240,26 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
  * tests. */
 int8_t nros_platform_condvar_signal_from_isr(void *cv) {
     if (cv == NULL) return -1;
-    return k_condvar_signal((struct k_condvar *) cv) == 0 ? 0 : -1;
+    return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) return -1;
-    return k_condvar_wait((struct k_condvar *) cv,
-                          (struct k_mutex *) m,
-                          K_FOREVER) == 0 ? 0 : -1;
+    return pthread_cond_wait((pthread_cond_t *) cv,
+                             (pthread_mutex_t *) m) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
-    uint64_t now = nros_platform_clock_ms();
-    k_timeout_t to = abstime_ms > now
-        ? K_MSEC((int64_t) (abstime_ms - now))
-        : K_NO_WAIT;
-    int rc = k_condvar_wait((struct k_condvar *) cv,
-                            (struct k_mutex *) m,
-                            to);
+    struct timespec ts = {
+        .tv_sec = (time_t) (abstime_ms / 1000U),
+        .tv_nsec = (long) ((abstime_ms % 1000U) * 1000000U),
+    };
+    int rc = pthread_cond_timedwait((pthread_cond_t *) cv,
+                                    (pthread_mutex_t *) m,
+                                    &ts);
     if (rc == 0)         return 0;
-    if (rc == -EAGAIN)   return 1;  /* Zephyr returns -EAGAIN on timeout */
+    if (rc == ETIMEDOUT) return 1;
     return -1;
 }
 
