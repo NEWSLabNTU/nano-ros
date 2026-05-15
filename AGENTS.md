@@ -28,6 +28,8 @@ Prefer the narrowest tier that covers your change. Put Rust integration tests in
 
 Recent commits use short, imperative subjects with optional scopes, for example `ci: fix Deploy Book workflow` or `phase-124.F: session-level connectivity probe across the full stack`. Keep PRs focused, list tested commands, link issues or roadmap phases, and include logs or screenshots only when they clarify platform, ROS 2, or generated-artifact behavior.
 
+When integrating remote changes, prefer a linear history: use `git pull --rebase` or `git fetch` followed by `git rebase`, not merge commits. Only create a merge commit when the user explicitly asks for one.
+
 ## Agent-Specific Instructions
 
 Do not modify vendored or generated content under `third-party/`, `packages/interfaces/*/generated/`, or build output directories unless the task explicitly requires regeneration. Preserve existing user changes in the worktree.
