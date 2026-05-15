@@ -159,8 +159,9 @@ impl ZenohRouter {
         if let Ok(level) = std::env::var("ZENOHD_LOG") {
             let log_path = format!("/tmp/zenohd-{port}.log");
             let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
+            let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
             cmd.env("RUST_LOG", level)
-                .stdout(Stdio::null())
+                .stdout(Stdio::from(log_stdout))
                 .stderr(Stdio::from(log));
         } else {
             cmd.stdout(Stdio::null()).stderr(Stdio::piped());

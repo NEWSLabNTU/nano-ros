@@ -107,6 +107,27 @@ Done criteria:
 - [ ] Remaining blocker: identify why ESP32 post-open Zenoh control frames
   (`Declare subscriber`, `KeepAlive`) do not reach `zenohd` even though the
   same TCP connection successfully carries the Zenoh open handshake.
+- [x] 2026-05-15 follow-up: ESP32 fixture builds were briefly blocked before
+  runtime by `zpico_open()` writing `z_open_options_t.auto_start_read_task` and
+  `auto_start_lease_task` while the smoltcp ESP32 build sets
+  `Z_FEATURE_MULTI_THREAD=0`, where the vendored `zenoh-pico` header omits
+  those fields. Guarding those assignments restored both qemu-ESP32 Zenoh
+  release fixture builds.
+- [x] 2026-05-15 follow-up: an extra same-callback smoltcp flush after staging
+  TX into TCP/UDP sockets was tested and rejected; `test_native_to_esp32`
+  still reached `Subscriber declared` / `Waiting for messages...` and received
+  0 messages in all nextest retries. The remaining 127.A issue is therefore
+  not just "application bytes copied into smoltcp but waiting for a later
+  interface poll."
+- [x] 2026-05-15 follow-up: temporary bridge counters showed the ESP32
+  listener does call the Zenoh TCP send path after open: staged TCP bytes grew
+  from 549 to 1761 over five one-second ticks while explicit
+  `executor.ping(0)` calls returned `Ok(())`. No bytes moved from the bridge
+  staging buffer into the smoltcp TCP socket, and the poll callback path visible
+  to that bridge instance reported no ready `NetworkState::poll()` calls. The
+  next focused fix should inspect callback registration/linkage between
+  `nros-board-esp32-qemu`, `nros-smoltcp::set_poll_callback`, and the
+  `zpico-platform-shim` TCP forwarders.
 
 Focused commands:
 
