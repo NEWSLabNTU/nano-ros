@@ -14,7 +14,7 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use log::{error, info};
-use nros::prelude::*;
+use nros::{CancelResponse, prelude::*};
 
 fn main() {
     env_logger::init();
@@ -48,6 +48,23 @@ fn main() {
 
     // Main loop - handle incoming goals
     loop {
+        executor.spin_once(core::time::Duration::from_millis(20));
+
+        if let Err(e) = server.try_handle_get_result() {
+            error!("Error handling result request: {:?}", e);
+        }
+
+        if let Err(e) = server.try_handle_cancel(|goal_id, status| {
+            info!("Cancel request: {} status={:?}", goal_id, status);
+            if status.is_active() {
+                CancelResponse::Ok
+            } else {
+                CancelResponse::GoalTerminated
+            }
+        }) {
+            error!("Error handling cancel request: {:?}", e);
+        }
+
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
             info!("Received goal request: order={}", goal.order);
@@ -63,6 +80,7 @@ fn main() {
 
                     // Compute Fibonacci sequence with feedback
                     let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
+                    let mut canceled = false;
 
                     for i in 0..=order {
                         let next_val = if i == 0 {
@@ -86,13 +104,47 @@ fn main() {
                             info!("Feedback: {:?}", feedback.sequence);
                         }
 
+                        executor.spin_once(core::time::Duration::from_millis(20));
+
+                        match server.try_handle_cancel(|cancel_id, status| {
+                            info!("Cancel request: {} status={:?}", cancel_id, status);
+                            if cancel_id.uuid == goal_id.uuid && status.is_active() {
+                                CancelResponse::Ok
+                            } else if status.is_terminal() {
+                                CancelResponse::GoalTerminated
+                            } else {
+                                CancelResponse::UnknownGoal
+                            }
+                        }) {
+                            Ok(Some((cancel_id, CancelResponse::Ok)))
+                                if cancel_id.uuid == goal_id.uuid =>
+                            {
+                                info!("Goal cancellation accepted: {}", goal_id);
+                                canceled = true;
+                            }
+                            Ok(_) => {}
+                            Err(e) => error!("Error handling cancel request: {:?}", e),
+                        }
+
+                        if let Err(e) = server.try_handle_get_result() {
+                            error!("Error handling result request: {:?}", e);
+                        }
+
+                        if canceled {
+                            break;
+                        }
+
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
 
                     let result = FibonacciResult { sequence };
-                    info!("Goal completed: {:?}", result.sequence);
-
-                    server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+                    if canceled {
+                        info!("Goal canceled: {:?}", result.sequence);
+                        server.complete_goal(&goal_id, GoalStatus::Canceled, result);
+                    } else {
+                        info!("Goal completed: {:?}", result.sequence);
+                        server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+                    }
                 }
             }
             Ok(None) => {

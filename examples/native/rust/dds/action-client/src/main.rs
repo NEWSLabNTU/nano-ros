@@ -50,8 +50,16 @@ fn main() {
     // dropped at the writer.
     std::thread::sleep(std::time::Duration::from_secs(3));
 
+    let order = std::env::var("NROS_FIBONACCI_ORDER")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    let cancel_after_feedback = std::env::var("NROS_ACTION_CANCEL_AFTER_FEEDBACK")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok());
+
     // Create goal
-    let goal = FibonacciGoal { order: 10 };
+    let goal = FibonacciGoal { order };
     info!("Sending goal: order={}", goal.order);
 
     // Send goal using the Promise pattern
@@ -81,27 +89,97 @@ fn main() {
     info!("Waiting for feedback...");
 
     // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
-    let mut stream = client.feedback_stream_for(goal_id);
     let mut feedback_count = 0;
-    for _ in 0..30 {
-        // 30 x 1000ms = 30 second max
-        match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
-            Ok(Some(feedback)) => {
-                feedback_count += 1;
-                info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+    let mut should_cancel = false;
+    {
+        let mut stream = client.feedback_stream_for(goal_id);
+        for _ in 0..30 {
+            // 30 x 1000ms = 30 second max
+            match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
+                Ok(Some(feedback)) => {
+                    feedback_count += 1;
+                    info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
-                if feedback.sequence.len() as i32 > goal.order {
-                    info!("Received all feedback, action completed!");
-                    info!("Final sequence: {:?}", feedback.sequence);
+                    if let Some(cancel_after) = cancel_after_feedback
+                        && feedback_count >= cancel_after
+                    {
+                        should_cancel = true;
+                        break;
+                    }
+
+                    if feedback.sequence.len() as i32 > goal.order {
+                        info!("Received all feedback, action completed!");
+                        info!("Final sequence: {:?}", feedback.sequence);
+                        break;
+                    }
+                }
+                Ok(None) => {} // no feedback in this window, retry
+                Err(e) => {
+                    error!("Error receiving feedback: {:?}", e);
                     break;
                 }
             }
-            Ok(None) => {} // no feedback in this window, retry
+        }
+    }
+
+    if should_cancel {
+        info!(
+            "Requesting cancellation after {} feedback frames",
+            feedback_count
+        );
+        let mut cancel_promise = match client.cancel_goal(&goal_id) {
+            Ok(promise) => promise,
             Err(e) => {
-                error!("Error receiving feedback: {:?}", e);
-                break;
+                error!("Failed to request cancellation: {:?}", e);
+                std::process::exit(1);
+            }
+        };
+
+        match cancel_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+            Ok(response) => info!("Cancel response: {:?}", response),
+            Err(e) => {
+                error!("Cancel response failed: {:?}", e);
+                std::process::exit(1);
             }
         }
+    }
+
+    // Give the server a few spins to store the terminal result before the
+    // explicit get_result request.
+    for _ in 0..5 {
+        executor.spin_once(core::time::Duration::from_millis(100));
+    }
+
+    let mut result_promise = match client.get_result(&goal_id) {
+        Ok(promise) => promise,
+        Err(e) => {
+            error!("Failed to request result: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let (status, result) =
+        match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Result response failed: {:?}", e);
+                std::process::exit(1);
+            }
+        };
+
+    info!(
+        "Result: status={:?}, sequence={:?}",
+        status, result.sequence
+    );
+
+    if should_cancel {
+        if status != GoalStatus::Canceled {
+            error!("Expected canceled result, got {:?}", status);
+            std::process::exit(1);
+        }
+    } else if status != GoalStatus::Succeeded {
+        error!("Expected succeeded result, got {:?}", status);
+        std::process::exit(1);
     }
 
     info!("Action client finished");

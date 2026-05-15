@@ -251,12 +251,17 @@ Current signal:
 - Focused DDS action rerun now passes: the server accepts the goal, publishes
   all 11 feedback frames, completes with
   `[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`, and the client observes all
-  feedback frames and finishes.
+  feedback frames, retrieves the explicit result, and finishes.
+- Native DDS action cancel coverage was added with
+  `NROS_ACTION_CANCEL_AFTER_FEEDBACK=2`: the client receives two feedback
+  frames, sends a cancel request, receives `Cancel response: Ok`, then retrieves
+  `Result: status=Canceled`; the server logs the cancel request and completes
+  the goal as canceled with partial sequence `[0, 1]`.
 
 Subitems:
 
 - [x] `127.E.1`: DDS action goal acceptance and feedback.
-- [ ] `127.E.2`: DDS action result and cancellation path.
+- [x] `127.E.2`: DDS action result and cancellation path.
 - [x] `127.E.3`: Compare DDS action behavior against passing Zenoh/XRCE action
   paths.
 
@@ -267,16 +272,10 @@ Done criteria:
   the passing Zenoh/XRCE action paths.
 - [x] Native DDS action E2E passes or has a narrowed single-stage failure.
 
-Remaining note:
-
-- [ ] The native Rust DDS action fixture completes via feedback observation; it
-  does not currently issue explicit `get_result` or cancel requests. Add or
-  extend coverage before checking `127.E.2`.
-
 Focused commands:
 
 ```bash
-cargo nextest run -p nros-tests --test dds_api --no-capture test_dds_action_server_client_e2e
+cargo nextest run -p nros-tests --test dds_api --no-capture test_dds_action
 cargo test -p nros-rmw-cffi --features alloc --test try_recv_sequence
 ```
 

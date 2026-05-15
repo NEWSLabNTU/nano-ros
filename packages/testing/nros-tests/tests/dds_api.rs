@@ -14,7 +14,9 @@ use nros_tests::{
     },
 };
 use rstest::rstest;
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Mutex, time::Duration};
+
+static DDS_ACTION_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 // =============================================================================
 // Build Tests
@@ -217,6 +219,8 @@ fn test_dds_action_server_client_e2e(
     dds_action_server_binary: PathBuf,
     dds_action_client_binary: PathBuf,
 ) {
+    let _guard = DDS_ACTION_TEST_LOCK.lock().unwrap();
+
     let mut server_cmd = std::process::Command::new(&dds_action_server_binary);
     server_cmd.env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "dds-action-server")
@@ -242,11 +246,51 @@ fn test_dds_action_server_client_e2e(
     eprintln!("=== DDS action server output ===\n{server_output}");
     eprintln!("=== DDS action client output ===\n{client_output}");
 
-    let feedback_count = count_pattern(&client_output, "Feedback");
-    let completed = client_output.contains("completed") || client_output.contains("Result:");
+    let feedback_count = count_pattern(&client_output, "Feedback #");
+    let completed = client_output.contains("Result: status=Succeeded");
     assert!(
-        feedback_count >= 1 && completed,
+        feedback_count >= 11 && completed,
         "DDS action E2E failed: feedback={feedback_count}, completed={completed}\nClient:\n{client_output}\nServer:\n{server_output}"
+    );
+}
+
+#[rstest]
+fn test_dds_action_cancel_get_result_e2e(
+    dds_action_server_binary: PathBuf,
+    dds_action_client_binary: PathBuf,
+) {
+    let _guard = DDS_ACTION_TEST_LOCK.lock().unwrap();
+
+    let mut server_cmd = std::process::Command::new(&dds_action_server_binary);
+    server_cmd.env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "dds-action-cancel-server")
+        .expect("Failed to start dds-action-server");
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    let mut client_cmd = std::process::Command::new(&dds_action_client_binary);
+    client_cmd.env("RUST_LOG", "info");
+    client_cmd.env("NROS_ACTION_CANCEL_AFTER_FEEDBACK", "2");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "dds-action-cancel-client")
+        .expect("Failed to start dds-action-client");
+
+    let client_output = client
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    eprintln!("=== DDS action cancel server output ===\n{server_output}");
+    eprintln!("=== DDS action cancel client output ===\n{client_output}");
+
+    let feedback_count = count_pattern(&client_output, "Feedback #");
+    let cancel_ok = client_output.contains("Cancel response: Ok");
+    let canceled_result = client_output.contains("Result: status=Canceled");
+    let server_canceled = server_output.contains("Goal canceled");
+    assert!(
+        feedback_count >= 2 && cancel_ok && canceled_result && server_canceled,
+        "DDS action cancel/get_result E2E failed: feedback={feedback_count}, cancel_ok={cancel_ok}, canceled_result={canceled_result}, server_canceled={server_canceled}\nClient:\n{client_output}\nServer:\n{server_output}"
     );
 }
 
