@@ -111,7 +111,6 @@ Latest focused validation:
 
 Next coverage focus:
 
-- fixture that builds the generated package as a real Cargo package;
 - generated runtime path that instantiates Rust components instead of only
   emitting static tables/scaffolding;
 - one native generated binary run;

@@ -48,10 +48,9 @@ The first orchestration layer is now in place:
 - planner and generator tests cover multi-instance, private-name/remap,
   parameter, manifest, callback-effect, and generated-package cases.
 
-Remaining orchestration gaps are coverage and vertical integration:
+Remaining orchestration gaps are runtime vertical integration and broad
+validation:
 
-- no committed end-to-end fixture workspace that drives metadata -> plan ->
-  generated package -> binary;
 - generated main still emits static tables/scaffolding rather than full runtime
   component instantiation for all paths;
 - C/C++ component metadata/linking remains deferred;
@@ -62,8 +61,8 @@ Remaining orchestration gaps are coverage and vertical integration:
 
 Integrated on `main` through:
 
-- top-level `400ca008 phase-126D: update generated target dir submodule`;
-- nested `packages/codegen` `59c9f95 phase-126D: place generated target beside package`.
+- top-level `0ab89120 phase-126: update codegen launch deps`;
+- nested `packages/codegen` `9b98daf phase-126: vendor launch parser deps`.
 
 Recent focused validation:
 
@@ -75,6 +74,26 @@ Recent focused validation:
 
 Coverage work now becomes the priority. The team should move from feature
 construction to fixture coverage, integration coverage, and regression gates.
+
+## Progress update - 2026-05-15 E2E fixture
+
+Integrated nested `packages/codegen` `0cc6a3d phase-126: add orchestration e2e
+fixture`.
+
+The committed fixture under
+`packages/codegen/testing_workspaces/orchestration_e2e/` now drives:
+
+- source metadata preservation;
+- `play_launch_parser` launch parsing into `record.json`;
+- manifest-backed `nros plan`;
+- `nros check`;
+- generated package creation and native Cargo build.
+
+Focused validation:
+
+- `cargo test --manifest-path packages/nros-cli-core/Cargo.toml
+  fixture_workspace_plans_checks_and_builds_generated_package -- --nocapture`;
+- `cargo test --manifest-path packages/nros-cli-core/Cargo.toml`.
 
 ## Parallel work groups
 
