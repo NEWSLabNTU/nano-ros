@@ -99,7 +99,7 @@ pub fn init_hardware(config: &NodeConfig) {
     // Step 2: Set up heap allocator
     // WiFi requires heap allocation (esp-radio uses alloc internally).
     // Serial also needs heap for zenoh-pico internal allocations.
-    esp_alloc::heap_allocator!(size: 100 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
