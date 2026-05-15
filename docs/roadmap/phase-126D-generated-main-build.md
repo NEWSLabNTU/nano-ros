@@ -6,7 +6,7 @@ nano-ros binary for the selected target.
 
 **Status.** Complete for the Phase 126.D MVP. Generated native and FreeRTOS
 entry packages build, native fixture runs against local `zenohd`, and the
-generated FreeRTOS binary boots under QEMU.
+generated FreeRTOS binary boots under QEMU in the E2E fixture.
 
 **Priority.** P1 for Rust/native/one RTOS target. P2 for mixed C/C++ component
 linking.
@@ -117,7 +117,9 @@ Integrated generated-package/build coverage includes:
 - collective interface cache manifests under
   `build/<system_pkg>/nros/interfaces/{rust,c,cpp}/`;
 - E2E fixture launches a local `zenohd` router and verifies the generated native
-  binary stays alive in the executor spin loop.
+  binary stays alive in the executor spin loop;
+- E2E fixture builds a generated FreeRTOS package for `thumbv7m-none-eabi` and
+  boots it under QEMU long enough to assert the nros FreeRTOS platform banner.
 
 Latest focused validation:
 
@@ -129,14 +131,14 @@ Latest focused validation:
   --test orchestration_e2e` passed, including generated package compile with
   the fixture Rust component dependency, selected backend, POSIX platform C
   symbols, generated callback handles, interface cache manifests, a
-  multi-instance generated package build, and a live native run against local
-  `zenohd`.
+  multi-instance generated package build, a live native run against local
+  `zenohd`, and generated FreeRTOS build/boot coverage.
 - `cargo check -p nros-node --features rmw-cffi` passed.
 - `NROS_LOCATOR=tcp/127.0.0.1:7447 timeout 3s
   /tmp/orchestration_e2e-301-1778849578197518498/build/e2e_system/nros/target/x86_64-unknown-linux-gnu/debug/nros-e2e-generated`
   timed out with exit 124 while local `zenohd` was running, confirming the
   generated binary opens transport and spins.
-- Generated FreeRTOS probe built for `thumbv7m-none-eabi` and booted under
+- Generated FreeRTOS E2E built for `thumbv7m-none-eabi` and booted under
   `qemu-system-arm -cpu cortex-m3 -machine mps2-an385`, printing the nros QEMU
   FreeRTOS platform banner before the bounded timeout.
 
