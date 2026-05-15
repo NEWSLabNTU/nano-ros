@@ -1132,6 +1132,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn recorder_rejects_duplicate_nodes_and_unknown_node_entities() {
+        let mut recorder = MetadataRecorder::<1, 1, 1>::new();
+        recorder
+            .push_node(NodeId::new("node"), "talker", "/", 0)
+            .unwrap();
+
+        assert_eq!(
+            recorder.push_node(NodeId::new("node"), "other", "/", 0),
+            Err(ComponentMetadataError::DuplicateId)
+        );
+
+        let entity = entity_metadata(
+            EntityId::new("pub"),
+            NodeId::new("missing_node"),
+            EntityKind::Publisher,
+            "chatter",
+            "std_msgs::msg::dds_::String_",
+            "hash",
+            qos::DEFAULT,
+        )
+        .unwrap();
+
+        assert_eq!(
+            recorder.push_entity(entity),
+            Err(ComponentMetadataError::UnknownNode)
+        );
+    }
+
     #[cfg(feature = "std")]
     #[test]
     fn source_metadata_json_uses_agent_a_schema_shape() {
