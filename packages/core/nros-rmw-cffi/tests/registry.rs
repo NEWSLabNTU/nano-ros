@@ -42,7 +42,6 @@ fn dummy_vtable() -> &'static NrosRmwVtable {
     unsafe { &*(&raw const VTABLE_BUF.0).cast::<NrosRmwVtable>() }
 }
 
-#[test]
 fn fresh_registry_is_empty() {
     assert!(!backend_registered());
     assert!(unsafe { nros_rmw_cffi_lookup(c"zenoh".as_ptr()) }.is_null());
@@ -52,9 +51,9 @@ fn fresh_registry_is_empty() {
     );
 }
 
-#[test]
 fn register_two_named_backends() {
     let v = dummy_vtable();
+    let count_before = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };
 
     let r1 = unsafe { nros_rmw_cffi_register_named(c"zenoh".as_ptr(), v) };
     let r2 = unsafe { nros_rmw_cffi_register_named(c"xrce".as_ptr(), v) };
@@ -68,12 +67,12 @@ fn register_two_named_backends() {
 
     let mut buf: [*const c_char; 8] = [core::ptr::null(); 8];
     let count = unsafe { nros_rmw_cffi_registered_names(buf.as_mut_ptr(), buf.len()) };
-    assert_eq!(count, 2);
+    assert_eq!(count, count_before + 2);
 }
 
-#[test]
 fn duplicate_register_overwrites_idempotently() {
     let v = dummy_vtable();
+    let count_before = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };
 
     // First register.
     assert_eq!(
@@ -97,10 +96,9 @@ fn duplicate_register_overwrites_idempotently() {
     assert!(!unsafe { nros_rmw_cffi_lookup(c"default".as_ptr()) }.is_null());
 
     let count = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };
-    assert_eq!(count, 2, "dds + default");
+    assert_eq!(count, count_before + 2, "dds + default");
 }
 
-#[test]
 fn null_name_rejected() {
     let v = dummy_vtable();
     assert_eq!(
@@ -110,7 +108,6 @@ fn null_name_rejected() {
     assert!(unsafe { nros_rmw_cffi_lookup(core::ptr::null()) }.is_null());
 }
 
-#[test]
 fn null_vtable_rejected() {
     assert_eq!(
         unsafe { nros_rmw_cffi_register_named(c"x".as_ptr(), core::ptr::null()) },
@@ -118,7 +115,6 @@ fn null_vtable_rejected() {
     );
 }
 
-#[test]
 fn empty_name_rejected() {
     let v = dummy_vtable();
     assert_eq!(
@@ -127,13 +123,13 @@ fn empty_name_rejected() {
     );
 }
 
-#[test]
 fn capacity_full_returns_error() {
     let v = dummy_vtable();
-    // Default MAX_BACKENDS = 8. Fill registry, then over-register
-    // to hit the cap.
+    // Default MAX_BACKENDS = 8. Fill remaining registry slots, then
+    // over-register to hit the cap.
+    let count_before = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) } as usize;
     let names: [&core::ffi::CStr; 8] = [c"a", c"b", c"c", c"d", c"e", c"f", c"g", c"h"];
-    for n in &names {
+    for n in names.iter().take(8 - count_before) {
         assert_eq!(
             unsafe { nros_rmw_cffi_register_named(n.as_ptr(), v) },
             NROS_RMW_RET_OK,
@@ -146,4 +142,15 @@ fn capacity_full_returns_error() {
     let r = unsafe { nros_rmw_cffi_register_named(c"overflow".as_ptr(), v) };
     assert_eq!(r, NROS_RMW_RET_ERROR);
     assert!(unsafe { nros_rmw_cffi_lookup(c"overflow".as_ptr()) }.is_null());
+}
+
+#[test]
+fn registry_behaviour_is_consistent() {
+    fresh_registry_is_empty();
+    null_name_rejected();
+    null_vtable_rejected();
+    empty_name_rejected();
+    register_two_named_backends();
+    duplicate_register_overwrites_idempotently();
+    capacity_full_returns_error();
 }
