@@ -300,12 +300,30 @@ Current signal:
   - Full focused verification passed:
     `cargo nextest run -p nros-tests --test rtos_e2e -E '(test(test_rtos_pubsub_e2e::platform_1_Platform__Freertos) or test(test_rtos_service_e2e::platform_1_Platform__Freertos) or test(test_rtos_action_e2e::platform_1_Platform__Freertos))' --no-capture --retries 0 --no-fail-fast`
     completed in 443.1s with 9 passed, 27 skipped.
+- 2026-05-16 NuttX Rust close-out:
+  - Rust action-server had the same explicit-registration hole as the earlier
+    FreeRTOS action-server: it called `Executor::open` before
+    `nros_rmw_zenoh::register()`. Adding the registration fixed the
+    `Transport(ConnectionFailed)` boot failure.
+  - `zpico-platform-shim` no longer imports `PlatformNetworkPoll` unless the
+    smoltcp bridge feature is active; otherwise NuttX Rust fixture rebuilds
+    fail under `-D warnings`.
+  - NuttX C/C++ E2E cases now skip when `libnros_c_zenoh_nuttx_armv7a.a` or
+    `libnros_cpp_zenoh_nuttx_armv7a.a` are not installed, matching
+    `just nuttx build-fixtures` behaviour. Direct CMake NuttX variant-lib
+    build still fails without Cargo `-Zbuild-std` wiring for
+    `armv7a-nuttx-eabihf`.
+  - Focused verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(Nuttx)' --no-capture --retries 0 --no-fail-fast`
+    completed in 109.1s with 9 passed, 27 skipped; the 6 C/C++ cases print
+    explicit skip reasons for missing NuttX variant libraries.
 
 Subitems:
 
 - [x] `127.B.1`: FreeRTOS E2E triage. Rust/C/C++ pub/sub, service, and action
   all pass in the focused FreeRTOS slice.
-- [~] `127.B.2`: NuttX E2E triage.
+- [x] `127.B.2`: NuttX E2E triage. Rust pub/sub, service, and action pass;
+  C/C++ combinations are gated on installed NuttX variant libraries.
 - [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.
 - [~] `127.B.5`: Shared platform DDS runtime triage.

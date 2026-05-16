@@ -278,7 +278,14 @@ impl Platform {
 
     /// Per-(lang, variant) skip reason, or `None` if the combination is
     /// expected to run on this platform.
-    fn skip_reason(self, _lang: Lang, _variant: Variant) -> Option<&'static str> {
+    fn skip_reason(self, lang: Lang, _variant: Variant) -> Option<&'static str> {
+        if matches!(self, Platform::Nuttx) && !matches!(lang, Lang::Rust) {
+            let c_lib = Path::new("build/install/lib/libnros_c_zenoh_nuttx_armv7a.a");
+            let cpp_lib = Path::new("build/install/lib/libnros_cpp_zenoh_nuttx_armv7a.a");
+            if !c_lib.exists() || !cpp_lib.exists() {
+                return Some("NuttX C/C++ variant libraries are not installed");
+            }
+        }
         None
     }
 }
