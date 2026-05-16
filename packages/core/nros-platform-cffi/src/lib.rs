@@ -456,6 +456,27 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8 {
         unsafe { nros_platform_condvar_wait_until(cv, m, abstime) }
     }
+    fn wake_init(w: *mut c_void) -> i8 {
+        unsafe { nros_platform_wake_init(w) }
+    }
+    fn wake_drop(w: *mut c_void) -> i8 {
+        unsafe { nros_platform_wake_drop(w) }
+    }
+    fn wake_wait_ms(w: *mut c_void, timeout_ms: u32) -> i8 {
+        unsafe { nros_platform_wake_wait_ms(w, timeout_ms) }
+    }
+    fn wake_signal(w: *mut c_void) -> i8 {
+        unsafe { nros_platform_wake_signal(w) }
+    }
+    fn wake_signal_from_isr(w: *mut c_void) -> i8 {
+        unsafe { nros_platform_wake_signal_from_isr(w) }
+    }
+    fn wake_storage_size() -> usize {
+        unsafe { nros_platform_wake_storage_size() }
+    }
+    fn wake_storage_align() -> usize {
+        unsafe { nros_platform_wake_storage_align() }
+    }
 }
 
 // ============================================================================

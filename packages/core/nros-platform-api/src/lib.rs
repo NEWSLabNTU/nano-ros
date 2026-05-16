@@ -55,7 +55,10 @@
 
 use core::ffi::{c_int, c_void};
 
+pub mod wake;
 pub mod xorshift32;
+
+pub use wake::{Wake, WakeInitError, WakeReason, WAKE_STORAGE_ALIGN, WAKE_STORAGE_BYTES};
 
 // ============================================================================
 // Clock (required by all RMW backends)
@@ -487,6 +490,57 @@ pub trait PlatformThreading {
     /// the [`PlatformClock::clock_ms`] epoch). Returns non-zero on
     /// timeout.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
+
+    // -- Wake primitive (Phase 129) --
+    //
+    // Binary-semaphore-shaped primitive for the executor's wake_flag
+    // / spin_once cv-wait pair. Default bodies return "unsupported"
+    // (`-1`, size 0) so existing single-thread bare-metal platforms
+    // don't need to override; platforms that want event-driven wake
+    // (POSIX, Zephyr, FreeRTOS, NuttX, ThreadX) override with their
+    // native binary semaphore.
+
+    /// Initialise a binary-semaphore-shaped wake primitive in
+    /// caller-provided storage. See `<nros/platform.h>` for the
+    /// per-platform backing primitive (POSIX `sem_t`, Zephyr
+    /// `k_sem`, FreeRTOS `xSemaphoreBinary`, …). Default returns
+    /// `-1` (unsupported).
+    fn wake_init(_w: *mut c_void) -> i8 {
+        -1
+    }
+    /// Tear down a wake primitive. Default returns `-1`
+    /// (unsupported).
+    fn wake_drop(_w: *mut c_void) -> i8 {
+        -1
+    }
+    /// Block until signaled or `timeout_ms` elapses. Returns `0` on
+    /// signal, `1` on timeout, `-1` on error. Default returns `-1`
+    /// (unsupported).
+    fn wake_wait_ms(_w: *mut c_void, _timeout_ms: u32) -> i8 {
+        -1
+    }
+    /// Wake one waiter. Idempotent — a signal pending when another
+    /// arrives is coalesced (the primitive stays at value 1).
+    /// Default returns `-1` (unsupported).
+    fn wake_signal(_w: *mut c_void) -> i8 {
+        -1
+    }
+    /// ISR-safe signal. Returns `-1` when the backend has no ISR
+    /// path; callers may fall back to `wake_signal` (with the
+    /// obvious latency cost). Default forwards to `wake_signal`.
+    fn wake_signal_from_isr(w: *mut c_void) -> i8 {
+        Self::wake_signal(w)
+    }
+    /// Caller-storage size requirement (bytes). Default `0` —
+    /// signals "no wake primitive available". May be called before
+    /// `wake_init`.
+    fn wake_storage_size() -> usize {
+        0
+    }
+    /// Caller-storage alignment requirement (bytes). Default `1`.
+    fn wake_storage_align() -> usize {
+        1
+    }
 }
 
 /// Network poll callback for bare-metal platforms using smoltcp.
