@@ -50,8 +50,6 @@ tools/*
 # Third-party reference repos (cloned ad-hoc for cross-checking
 # upstream source — Phase 100 SPE port pulls FreeRTOS-Kernel here for
 # its Cortex-R5 GCC port + POSIX simulator port).
-/external/
-
 # Per-session scratch — CLAUDE.md "Temp files in $project/tmp/ (gitignored)".
 /tmp/
 # Test runner log dir created by tests/run-test.sh.
@@ -62,3 +60,4 @@ tools/*
 /xrce-agent-*.log
 # Claude Code session/agent state.
 /.claude/
+/external/

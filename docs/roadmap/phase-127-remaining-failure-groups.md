@@ -845,6 +845,18 @@ Subitems:
     PROM-mode rebuild all verified not to change the symptom.
   - Diagnostic infrastructure landed under Phase 127.D so future
     bring-up can re-confirm in one rebuild + run.
+  - 2026-05-17 upstream-source review of `qemu/hw/net/lan9118.c`
+    pinpointed the exact bug: the LAN9118 model registers no
+    `.can_receive` callback and never calls
+    `qemu_flush_queued_packets()` after `rx_status_fifo_pop`. Per
+    `net/queue.c:29-41`, slirp's `qemu_send_packet(..., NULL)`
+    drops on `-1` instead of queueing — every major QEMU NIC except
+    LAN9118 (cadence_gem, imx_fec, sunhme, igb, mcf_fec, msf2-emac,
+    npcm7xx_emc, npcm_gmac) calls `qemu_flush_queued_packets`. Full
+    finding + minimal upstream patch:
+    [`docs/research/qemu-lan9118-slirp-rx-stall.md`](../research/qemu-lan9118-slirp-rx-stall.md)
+    and `external/qemu/lan9118-flow-control.patch` (against
+    `qemu/master`).
 - [ ] `127.D.3`: Serial pub/sub E2E — pending RTIC-less idle hook
   (non-RTIC `run()` examples have no armed IRQ).
 
