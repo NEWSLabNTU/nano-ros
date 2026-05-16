@@ -98,4 +98,22 @@ typedef int32_t nros_rmw_ret_t;
  *  any) is left untouched. */
 #define NROS_RMW_RET_INCOMPATIBLE_ABI       -14
 
+/** Phase 128.A.3 — `Executor::open` / `nros::init` could not pick a
+ *  unique backend because no `nros-rmw-*` crate (or static lib) is
+ *  linked into this binary. The walker found zero entries in the
+ *  `.nros_rmw_init` section. */
+#define NROS_RMW_RET_NO_BACKEND             -15
+
+/** Phase 128.A.3 — more than one backend is linked into this
+ *  binary and the caller did not select one. Set `NROS_RMW=<name>`
+ *  (env var) to disambiguate, or use the bridge `Executor::open_multi`
+ *  API to bind nodes to backends explicitly. */
+#define NROS_RMW_RET_AMBIGUOUS_BACKEND      -16
+
+/** Phase 128.A.3 — caller selected a backend by name (env var or
+ *  `Executor::open_multi`) but no registered slot matches. The error
+ *  is recoverable by linking the requested backend or correcting the
+ *  spelling. */
+#define NROS_RMW_RET_UNKNOWN_BACKEND        -17
+
 #endif /* NROS_RMW_RET_H */

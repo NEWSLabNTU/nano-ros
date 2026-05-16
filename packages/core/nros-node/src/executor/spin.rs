@@ -63,14 +63,27 @@ impl Executor {
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
-        // Phase 104.A — backend registration is now the caller's
-        // responsibility. On POSIX hosts the backend crate's
-        // `#[ctor]` runs at lib load; on bare-metal the caller
-        // invokes `nros_rmw_<name>::register()` from main before
-        // `Executor::open`. The registry check below detects either
-        // path having populated the singleton vtable.
-        if !nros_rmw_cffi::backend_registered() {
-            return Err(NodeError::Transport(TransportError::ConnectionFailed));
+        // Phase 128.A.3 — manifest-driven backend selection.
+        //
+        // 1. Walk `.nros_rmw_init` so every linked backend's ctor has
+        //    fired. Idempotent — subsequent `open` calls are no-ops.
+        // 2. Consult `$NROS_RMW` (when std/env is available) for
+        //    explicit override, mirroring ROS 2's `RMW_IMPLEMENTATION`.
+        // 3. With no selector, pick the unique registered backend.
+        //    Zero registered → `NoBackend`; more than one →
+        //    `Ambiguous` (user must set `$NROS_RMW` or use
+        //    `Executor::open_multi`).
+        unsafe {
+            nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
+        }
+        let selector = read_rmw_selector_env();
+        match nros_rmw_cffi::resolve_backend(selector.as_deref()) {
+            nros_rmw_cffi::BackendResolution::Single(_) => {}
+            // Map every non-`Single` outcome to a transport
+            // ConnectionFailed for now; the more granular ret codes
+            // (NO_BACKEND / AMBIGUOUS / UNKNOWN) are exposed to C
+            // callers via `nros_init`'s return value (Phase 128.C.2).
+            _ => return Err(NodeError::Transport(TransportError::ConnectionFailed)),
         }
 
         let rmw_config = nros_rmw::RmwConfig {
@@ -81,9 +94,18 @@ impl Executor {
             namespace: config.namespace,
             properties: &[],
         };
-        let session = nros_rmw_cffi::CffiRmw
-            .open(&rmw_config)
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        let session = if let Some(name) = selector.as_deref() {
+            // Selector path: route to the specific named backend so
+            // the env-var-disambiguated outcome matches what the
+            // resolver above identified.
+            nros_rmw_cffi::CffiRmw::open_with_rmw(
+                core::str::from_utf8(name).unwrap_or(""),
+                &rmw_config,
+            )
+        } else {
+            nros_rmw_cffi::CffiRmw.open(&rmw_config)
+        }
+        .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
         #[cfg(not(feature = "std"))]
         {
@@ -138,26 +160,31 @@ impl Executor {
     }
 }
 
-// Phase 104.A — `register_active_backend` deleted. The compile-time
-// cfg cascade pulled `nros-rmw-{zenoh,dds,xrce-cffi}` into the
-// `nros-node` dep graph; the API-decoupling thread eliminates that
-// coupling. Registration is now the caller's job, either:
+// Phase 128.A.3 — selector for the single-backend resolution path.
 //
-//   * automatically via the backend crate's `#[ctor]` constructor
-//     (POSIX / ESP-IDF / Zephyr — anywhere libc walks
-//     `.init_array`), or
+// On hosted (`std`) builds, read `$NROS_RMW`; mirrors ROS 2's
+// `RMW_IMPLEMENTATION`. Returns the name as a byte vector so the
+// caller can pass it to `nros_rmw_cffi::resolve_backend` and (when
+// `Some`) to `CffiRmw::open_with_rmw`.
 //
-//   * explicitly via `nros_rmw_<name>::register()` from `main`
-//     before `Executor::open` (bare-metal RTOS targets).
-//
-// `Executor::open` consults `nros_rmw_cffi::backend_registered()`;
-// failure to register before `open` returns
-// `NodeError::Transport(ConnectionFailed)` with a hint pointing at
-// the registration step.
-//
-// Cyclone DDS and uORB (C/C++ backends with no Rust caller) are
-// registered via the C++ side's `nros::init` hook —
-// see `nros-cpp/include/nros/node.hpp`.
+// On `no_std` / bare-metal builds, environment variables are not
+// available; resolution always falls through to the single-backend
+// or ambiguous path. Embedded users with multiple backends use the
+// bridge surface `Executor::open_multi` instead.
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+fn read_rmw_selector_env() -> Option<alloc::vec::Vec<u8>> {
+    let raw = std::env::var_os("NROS_RMW")?;
+    let bytes = raw.as_encoded_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+    Some(bytes.to_vec())
+}
+
+#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+fn read_rmw_selector_env() -> Option<&'static [u8]> {
+    None
+}
 
 // ============================================================================
 // SessionStore — owned or borrowed session

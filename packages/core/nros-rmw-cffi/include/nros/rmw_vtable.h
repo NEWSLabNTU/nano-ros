@@ -419,6 +419,41 @@ const nros_rmw_vtable_t *nros_rmw_cffi_lookup(const char *name);
  *  `buf=NULL, cap=0` to query the count only. */
 size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
 
+/** Phase 128.A.2 — walk the `.nros_rmw_init` linker section, invoking
+ *  every backend init entry exactly once. Idempotent; subsequent calls
+ *  are no-ops. Returns the number of entries invoked on this call (0
+ *  on the second and later calls, or when no `nros-rmw-*` library is
+ *  linked).
+ *
+ *  Called automatically from `Executor::open` / `nros::init`; backends
+ *  should not call this themselves. */
+size_t nros_rmw_cffi_walk_init_section(void);
+
+/** Phase 128.A — convenience macro for static-library backends. Place
+ *  in exactly one TU per backend to emit the function-pointer entry
+ *  the walker discovers. `REGISTER_FN` is a no-arg `void` function
+ *  that calls `nros_rmw_cffi_register_named` for the backend.
+ *
+ *  Example:
+ *      static void zenoh_register(void) {
+ *          nros_rmw_cffi_register_named("zenoh", &VTABLE);
+ *      }
+ *      NROS_RMW_REGISTER_BACKEND(zenoh_register)
+ *
+ *  On Mach-O the section name is split (`__DATA,__nros_rmw_init`); on
+ *  ELF a flat `.nros_rmw_init` is used. The variable name is
+ *  decorated with `__attribute__((used))` so dead-strip / gc-sections
+ *  keeps it. */
+#if defined(__APPLE__)
+#define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
+    __attribute__((used, section("__DATA,__nros_rmw_init")))                   \
+    static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
+#else
+#define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
+    __attribute__((used, section(".nros_rmw_init")))                           \
+    static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

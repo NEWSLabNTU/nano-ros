@@ -17,6 +17,36 @@
 fn main() {
     emit_max_backends();
     maybe_build_c_stub();
+    emit_section_link_flags();
+}
+
+/// Phase 128.A.1 — anchor the `.nros_rmw_init` linker section so the
+/// runtime walker (`nros_rmw_cffi_walk_init_section`) can iterate
+/// every backend init entry. Each backend crate emits one entry into
+/// the section via `#[link_section = ".nros_rmw_init"]`; the
+/// `__start_/__stop_` encapsulation symbols come from the
+/// `cmake/nros-rmw-section.ld` fragment INSERT'd before `.rodata` on
+/// hosted ELF targets. Mach-O has its own native `__section_start_/
+/// __section_stop_` aliases — skipped here. Bare-metal / RTOS users
+/// INCLUDE the same fragment from their own linker script (see
+/// `book/src/reference/rmw-backends.md`).
+fn emit_section_link_flags() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    let hosted_elf = matches!(
+        target_os.as_str(),
+        "linux" | "freebsd" | "netbsd" | "openbsd" | "android"
+    ) && target_env != "msvc";
+    if !hosted_elf {
+        // Bare-metal (`target_os = "none"`) and embedded RTOS targets
+        // come with their own linker script; the fragment is INCLUDE'd
+        // from there, not injected by this build script.
+        return;
+    }
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let script = format!("{manifest_dir}/cmake/nros-rmw-section.ld");
+    println!("cargo:rerun-if-changed=cmake/nros-rmw-section.ld");
+    println!("cargo:rustc-link-arg=-Wl,-T,{script}");
 }
 
 fn emit_max_backends() {

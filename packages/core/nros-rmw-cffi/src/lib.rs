@@ -40,6 +40,10 @@ pub mod rust_adapter;
 #[cfg(feature = "alloc")]
 pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
+// Phase 128.A — linker-section registry discovery.
+pub mod section;
+pub use section::{nros_rmw_cffi_walk_init_section, RmwInitEntry};
+
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes
 // ============================================================================
@@ -113,6 +117,20 @@ pub fn _phase_115_g4_anchor() -> [*const core::ffi::c_void; 6] {
 /// `nros_cpp_set_custom_transport`, …) when
 /// `vtable.abi_version != NROS_RMW_*_ABI_VERSION_VN`.
 pub const NROS_RMW_RET_INCOMPATIBLE_ABI: NrosRmwRet = -14;
+
+/// Phase 128.A.3 — `Executor::open` / `nros::init` could not pick a
+/// unique backend because no `nros-rmw-*` crate (or static lib) is
+/// linked into this binary.
+pub const NROS_RMW_RET_NO_BACKEND: NrosRmwRet = -15;
+
+/// Phase 128.A.3 — more than one backend is linked and no
+/// `NROS_RMW=<name>` selector was supplied. Caller must either set
+/// the env var or use `Executor::open_multi`.
+pub const NROS_RMW_RET_AMBIGUOUS_BACKEND: NrosRmwRet = -16;
+
+/// Phase 128.A.3 — selector pointed at a backend name that is not
+/// in the registry (mis-spelling or missing `nros-rmw-<name>` dep).
+pub const NROS_RMW_RET_UNKNOWN_BACKEND: NrosRmwRet = -17;
 
 /// Map a `TransportError` to the corresponding `nros_rmw_ret_t` code.
 ///
@@ -1243,6 +1261,77 @@ fn default_vtable() -> Option<&'static NrosRmwVtable> {
         return None;
     }
     Some(unsafe { &*slot.vtable })
+}
+
+/// Phase 128.A.3 — outcome of `resolve_backend`.
+pub enum BackendResolution {
+    /// Exactly one matching backend; use its vtable.
+    Single(&'static NrosRmwVtable),
+    /// No backend linked into the binary. Maps to
+    /// [`NROS_RMW_RET_NO_BACKEND`].
+    NoBackend,
+    /// More than one backend linked and no selector given. Maps to
+    /// [`NROS_RMW_RET_AMBIGUOUS_BACKEND`].
+    Ambiguous,
+    /// Selector did not match any registered backend. Maps to
+    /// [`NROS_RMW_RET_UNKNOWN_BACKEND`].
+    Unknown,
+}
+
+/// Phase 128.A.3 — selection policy for the single-backend
+/// `Executor::open` / `nros::init` path.
+///
+/// Algorithm:
+///
+/// 1. If `selector` is `Some(name)` (typically from `$NROS_RMW`),
+///    look it up in the registry. Hit → [`BackendResolution::Single`];
+///    miss → [`BackendResolution::Unknown`].
+/// 2. Otherwise, if exactly one backend is registered, return it.
+/// 3. Otherwise, if zero, [`BackendResolution::NoBackend`]; if more
+///    than one, [`BackendResolution::Ambiguous`].
+///
+/// Callers convert the resolution to a [`NrosRmwRet`] via
+/// [`backend_resolution_to_ret`].
+///
+/// Bridge consumers (`Executor::open_multi`) bypass this function and
+/// call `nros_rmw_cffi_lookup` per spec instead.
+pub fn resolve_backend(selector: Option<&[u8]>) -> BackendResolution {
+    let n = REGISTRY.len.load(Ordering::Acquire);
+    if let Some(name) = selector {
+        let mut i = 0usize;
+        while i < n {
+            // SAFETY: i < n, registry len-Acquire fence orders the read.
+            let slot = unsafe { REGISTRY.slot(i) };
+            if slot.name_matches(name) {
+                if slot.vtable.is_null() {
+                    return BackendResolution::Unknown;
+                }
+                return BackendResolution::Single(unsafe { &*slot.vtable });
+            }
+            i += 1;
+        }
+        return BackendResolution::Unknown;
+    }
+    match n {
+        0 => BackendResolution::NoBackend,
+        1 => default_vtable()
+            .map(BackendResolution::Single)
+            .unwrap_or(BackendResolution::NoBackend),
+        _ => BackendResolution::Ambiguous,
+    }
+}
+
+/// Phase 128.A.3 — map a [`BackendResolution`] to its canonical
+/// [`NrosRmwRet`]. [`BackendResolution::Single`] is *not* an error and
+/// returns [`NROS_RMW_RET_OK`]; callers needing the vtable should
+/// pattern-match on the resolution itself.
+pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
+    match res {
+        BackendResolution::Single(_) => NROS_RMW_RET_OK,
+        BackendResolution::NoBackend => NROS_RMW_RET_NO_BACKEND,
+        BackendResolution::Ambiguous => NROS_RMW_RET_AMBIGUOUS_BACKEND,
+        BackendResolution::Unknown => NROS_RMW_RET_UNKNOWN_BACKEND,
+    }
 }
 
 /// Phase 115.A.2 — C entry point for installing a custom transport.
