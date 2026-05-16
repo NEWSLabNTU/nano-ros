@@ -122,102 +122,131 @@ nros::bridge::pubsub_raw(field, "/x", control, "/x", type_hash, qos);
 
 ## Work Items
 
-### 128.A — Linker-section registry runtime
+### Status Snapshot (2026-05-16)
 
-Add the section walker to `nros-rmw-cffi`. Backends emit entries; the
-runtime walks them on first `Executor::open` call. No dynamic loading;
-section symbols are resolved at static link time.
+| Group | Landed | Notes |
+|---|---|---|
+| **128.A** Linker-section walker | ✅ all (A.1–A.4) | `linkme` crate replaces hand-rolled anchor; sentinel + idempotent flag in `nros-rmw-cffi/src/section.rs`. |
+| **128.B** Backend section entries | ✅ all (B.1–B.5) | zenoh / dds / xrce / cyclonedds self-register via `RMW_INIT_ENTRIES`. Legacy `nros_rmw_cffi_register` `#[deprecated]`. |
+| **128.C** Core RMW-blindness | ✅ C.1–C.3, C.5 | `nros::init` clean; weak-symbol dance gone in `nros-c`; `rmw-*-cffi` features deleted from `nros`/`nros-node`. C.4 (full CMake matrix collapse) deferred. C.5 partial — `register()` calls retained as rlib-pull anchor on stable Rust. |
+| **128.D** Manifest-only platform | ✅ D.0 only | Auto-derive `posix` on hosted `target_os`. D.1–D.4 deferred (need shim fold). |
+| **128.E** Runtime transport | ✅ E.0 only | Auto-enable tcp + udp-unicast on hosted POSIX. E.1–E.3 deferred. |
+| **128.F** Bridge surface | ✅ F.1–F.3, F.4 partial | `open_multi` + `create_node_on` + `nros-bridge::PubSubBridge`. Origin field stored; attachment wire-up + F.5 C/C++ shim deferred. |
+| **128.G** Config loader | ✅ G.1, G.2 | `nros-bridge` feature `config` + `run_from_config(path)`; `nros` umbrella re-export. Reference docs deferred. |
 
-- [ ] `128.A.1`: define section `.nros_rmw_init` (POSIX/ELF) +
-  `__DATA,__nros_rmw_init` (Mach-O) in `nros-rmw-cffi`. Provide
-  `__start_nros_rmw_init` / `__stop_nros_rmw_init` access via a small
-  linker-script-aware helper (works without custom linker script on
-  ELF; needs explicit symbol pair on Mach-O via `__attribute__((used,
-  section("__DATA,__nros_rmw_init")))` and `getsectbynamefromheader`
-  lookup, or a `__llvm.linker.section.start_*` symbol).
-  **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
-  `packages/core/nros-rmw-cffi/src/section.rs` (new),
-  `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`.
-- [ ] `128.A.2`: implement `nros_rmw_cffi_walk_init_section()` that
-  iterates entries and calls each as `extern "C" fn()`. Each fn calls
-  `nros_rmw_cffi_register_named(<canonical-name>, &VTABLE)`. Walker is
-  idempotent (atomic init-once flag).
-  **Files:** `packages/core/nros-rmw-cffi/src/section.rs`,
-  `packages/core/nros-rmw-cffi/src/lib.rs` (init-once flag).
-- [ ] `128.A.3`: `Executor::open` resolution policy:
-  - `NROS_RMW` env (POSIX) / `NROS_RMW` getenv-equivalent (RTOS) →
-    look up registry.
-  - exactly one registered → that one (no env needed).
-  - more than one + no env → return error
-    `NROS_RMW_RET_AMBIGUOUS_BACKEND` with the registered names listed
-    in the error payload (caller can `eprintln` them).
-  - zero registered → `NROS_RMW_RET_NO_BACKEND` with a hint.
-  **Files:** `packages/core/nros-node/src/executor/open.rs`,
-  `packages/core/nros-rmw-cffi/src/lib.rs` (resolution helper).
-- [ ] `128.A.4`: bare-metal targets that strip unreferenced section
-  symbols (Cortex-M with `gc-sections`) need `KEEP(.nros_rmw_init)` in
-  their linker script. Ship a snippet in
-  `packages/core/nros-rmw-cffi/cmake/nros-rmw-section.ld` and document
-  in `nros-baremetal-common`'s README.
+Detail of every completed sub-item lives in the per-phase commits on
+`phase-128-rmw-selection-cleanup`; the rest of this section catalogues
+what still needs work, organised by category.
 
-### 128.B — Backend section entries
+### Open — Incomplete carry-over from landed phases
 
-Each backend ships a single linker-section entry that registers it
-under its canonical name. Names are documented as public contract:
-`"zenoh"`, `"dds"`, `"xrce"`, `"cyclonedds"`, `"uorb"`.
-
-- [ ] `128.B.1`: `nros-rmw-zenoh` — replace the POSIX-only
-  `.init_array` ctor with a section entry that fires on all targets.
-  **Files:** `packages/zpico/nros-rmw-zenoh/src/lib.rs`,
-  `packages/zpico/nros-rmw-zenoh-staticlib/src/lib.rs`.
-- [ ] `128.B.2`: `nros-rmw-dds` (Rust crate) — same pattern.
-  **Files:** `packages/dds/nros-rmw-dds/src/lib.rs`,
-  `packages/dds/nros-rmw-dds-staticlib/src/lib.rs`.
-- [ ] `128.B.3`: `nros-rmw-xrce-cffi` — same pattern; works on
-  bare-metal too (registration must not depend on POSIX features).
-  **Files:** `packages/xrce/nros-rmw-xrce-cffi/src/lib.rs`.
-- [ ] `128.B.4`: `nros-rmw-cyclonedds` (C++) — emit the section entry
-  from C++ (`__attribute__((used, section(".nros_rmw_init")))`).
-  **Files:** `packages/dds/nros-rmw-cyclonedds/src/register.cpp`
-  (new).
-- [ ] `128.B.5`: drop legacy unnamed `nros_rmw_cffi_register` shim
-  (Phase 128.D depends on this). Keep `nros_rmw_cffi_register_named`
-  as the only registration entry.
-  **Files:** `packages/core/nros-rmw-cffi/src/lib.rs`,
-  `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`.
-
-### 128.C — Core RMW-blindness
-
-Delete all RMW-specific glue from core init paths.
-
-- [ ] `128.C.1`: remove `#ifdef NROS_RMW_<NAME>` chain from
-  `nros::init` (C++ inline header).
-  **Files:** `packages/core/nros-cpp/include/nros/node.hpp`.
-- [ ] `128.C.2`: remove the matching chain from `nros-c`'s
-  `nros_init` if present.
-  **Files:** `packages/core/nros-c/src/*.c` (audit and trim).
-- [ ] `128.C.3`: remove `rmw-{zenoh,xrce,dds,cyclonedds}-cffi` cargo
-  features from `nros` and `nros-node`. They become inert because the
-  backend dep itself emits the section entry.
-  **Files:** `packages/core/nros/Cargo.toml`,
-  `packages/core/nros-node/Cargo.toml`.
-- [ ] `128.C.4`: collapse the CMake staticlib matrix. One canonical
+- [ ] `128.C.4` — collapse the CMake staticlib matrix. One canonical
   `libnros_c.a` + `libnros_cpp.a`; backends ship as separate static
   libs (`libnros_rmw_zenoh.a`, etc.) with `--whole-archive` link so
-  the section entry survives stripping. Drop `NANO_ROS_RMW` CMake
-  var (or make it the source of `target_link_libraries(... NanoRos::Rmw::<name>)`
-  injection for back-compat one cycle, then delete).
+  the section entry survives stripping. `NANO_ROS_RMW` CMake var
+  becomes a `target_link_libraries(... NanoRos::Rmw::<name>)`
+  shorthand, then deletes in a follow-up.
   **Files:** `packages/core/nros-c/CMakeLists.txt`,
   `packages/core/nros-cpp/CMakeLists.txt`,
   `packages/core/nros-c/cmake/NanoRosLink.cmake`,
   `packages/core/nros-c/cmake/NanoRosConfig.cmake`.
-- [ ] `128.C.5`: remove the explicit `nros_rmw_<x>::register()` call
-  from every example `main.rs` and integration test that has one.
-  **Files:** `examples/native/rust/{zenoh,dds,xrce}/*/src/main.rs`,
-  `examples/qemu-arm-baremetal/rust/zenoh/*/src/main.rs`,
-  `examples/qemu-arm-freertos/rust/zenoh/*/src/main.rs`,
-  `examples/zephyr/rust/zenoh/*/src/main.rs`,
-  `packages/testing/nros-tests/tests/*.rs` (audit).
+- [ ] `128.F.4` — wire the actual attachment stamp.
+  `PubSubBridge::pump` records `origin` but does not yet write the
+  `bridge_origin` attachment field on forwarded frames. Needs
+  `EmbeddedRawPublisher::publish_raw_with_attachment` exposed on
+  the public surface plus a matching receive-side filter on
+  `RawSubscription` (read attachment → drop if origin matches).
+  **Files:** `packages/core/nros-node/src/executor/handles.rs`,
+  `packages/bridge/nros-bridge/src/lib.rs`,
+  `packages/bridge/nros-bridge/src/config.rs`.
+- [ ] `128.F.5` — C/C++ bridge shim. `nros::init_multi`,
+  `nros::create_node_on`, `nros::bridge::pubsub_raw` mirror the Rust
+  surface 1:1. Rust API is the source of truth; mirror lands after
+  the bridge crate stabilises.
+  **Files:** `packages/core/nros-cpp/include/nros/bridge.hpp` (new),
+  `packages/core/nros-c/include/nros/bridge.h` (new).
+- [ ] `128.G.3` — schema reference doc.
+  `book/src/reference/nros-toml.md` describing `[[node]]` +
+  `[[bridge]]` fields, locator scheme grammar, and a worked example.
+  Crate-level rustdoc on `nros_bridge::config` covers it for now.
+
+### Open — Deferred from 128.D / 128.E (queued for phase 129)
+
+- [ ] `128.D.1` — delete `platform-{posix,zephyr,bare-metal,freertos,
+  nuttx,threadx,orin-spe}` features from `nros-rmw-zenoh/Cargo.toml`.
+  Blocked on 128.D.3 (build script per-RTOS C source picking rides on
+  these features).
+- [ ] `128.D.2` — same delete pass for `nros-rmw-xrce-cffi`.
+- [ ] `128.D.3` — fold `zpico-platform-shim` symbols into
+  `nros-platform-cffi` via a C aliasing TU. Shim also carries
+  smoltcp-clock bridges, per-board serial openers, and orin-spe IVC
+  helpers — those need homes before the crate can be deleted.
+  **Files:** `packages/zpico/zpico-platform-shim/` (eventual delete),
+  `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` (new),
+  per-board `extern crate zpico_platform_shim;` edits across
+  `packages/boards/nros-board-*/`.
+- [ ] `128.D.4` — same fold for `xrce-platform-shim`.
+- [ ] `128.E.1` — delete `link-*` features from `nros-rmw-zenoh` +
+  `zpico-sys`. Bare-metal / RTOS link selection needs a graceful
+  inference path the build script can use; TLS keeps its
+  `OPENSSL_DIR` / `MBEDTLS_DIR` opt-in.
+- [ ] `128.E.2` — same audit pass for XRCE (`UCLIENT_PROFILE_*`).
+- [ ] `128.E.3` — examples drop `link-*` from their `Cargo.toml`.
+  Done piecemeal after 128.E.1 lands.
+
+### Open — Examples + fixtures migration sweep (NEW)
+
+Phase 128.A–G changed surface area that downstream `Cargo.toml`s and
+CMake configurations may still reference. Nothing has been verified
+beyond the single `examples/native/rust/zenoh/talker` build. This
+sweep is its own scope:
+
+- [ ] `128.H.1` — grep audit. List every `Cargo.toml` under
+  `examples/`, `packages/testing/`, `packages/boards/`, and
+  `packages/codegen/.../tests/` that names a deleted / renamed item:
+  `nros/rmw-zenoh-cffi`, `nros/rmw-xrce-cffi`, `nros/rmw-dds-cffi`,
+  `nros-node/rmw-*-cffi`, the `nros_app_register_backends` weak
+  symbol, or `cffi-xrce-c`. Output the failure list before touching
+  any file.
+- [ ] `128.H.2` — fix Cargo manifests. For each entry the grep flags:
+  - Drop the dead feature from the dep's feature list.
+  - If the consumer relied on it as the only puller for a backend
+    dep, replace with a direct `nros-rmw-<name> = { ... }` entry.
+  - Verify `cargo build` of that specific package.
+- [ ] `128.H.3` — board-crate audit. Bare-metal boards still carry
+  `extern crate zpico_platform_shim;` + per-board `rmw-zenoh`
+  features. Confirm they still compile against the post-128 backend
+  + walker. Document any breakage; defer any non-trivial fix to
+  phase 129 alongside D.3 fold.
+- [ ] `128.H.4` — fixtures audit.
+  `packages/testing/nros-tests/src/fixtures/binaries/*` builds the
+  per-platform example matrix. Verify each builder still produces a
+  binary (`cargo build` per fixture target).
+- [ ] `128.H.5` — full-workspace `cargo build`. Iterate fixes from
+  H.1–H.4 until `cargo build --workspace --all-features` succeeds
+  on the development host (POSIX). Document any remaining failure
+  with target + error.
+- [ ] `128.H.6` — per-platform build sweep. Run, in order:
+    - `just build-all`
+    - `just qemu build-all`
+    - `just freertos build-all`
+    - `just nuttx build-all`
+    - `just threadx_linux build-all`
+    - `just threadx_riscv64 build-all`
+    - `just zephyr build-all`
+    - `just esp32 build-all`
+    - `just cyclonedds build-rmw`
+  Each is a separate work item — surface failures with the matching
+  log under `test-logs/`.
+- [ ] `128.H.7` — `just check`. Format + clippy across Rust / C /
+  C++ / Python. Any new lint hit from the cleanup gets fixed here.
+- [ ] `128.H.8` — `just ci`. Full CI tier (`check` + `test-all`).
+  Must net-zero failures vs `main`; document any regression with
+  reproducer.
+- [ ] `128.H.9` — bare-metal end-to-end smoke. Pick one example per
+  RTOS (talker preferred) and verify it boots under QEMU /
+  native_sim. Catches breakage from the rlib-pull discipline that
+  the host build won't expose.
 
 ### 128.D — Manifest-only platform selection
 
