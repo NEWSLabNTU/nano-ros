@@ -547,6 +547,41 @@ Subitems:
     socket,mcast=` configuration with a known-working DDS stack
     (e.g. CycloneDDS on Linux QEMU guests) to isolate whether
     QEMU's mcast tunnel implementation itself is the limit.
+  - 2026-05-17 (online research): QEMU 6.2's `net/socket.c::
+    net_socket_mcast_create` binds to the multicast group address
+    itself, does not call `IP_MULTICAST_IF` without `localaddr=`, and
+    leaves egress interface selection to the host's routing table.
+    Default route points at a real LAN NIC (`enp7s0`), so two local
+    QEMUs each send the frame out the LAN, and the kernel never
+    loops the LAN-egress mcast back to the OTHER local socket
+    joined on the same group. References:
+    https://bugs.launchpad.net/qemu/+bug/1861884,
+    https://bugs.launchpad.net/qemu/+bug/533610,
+    https://bugzilla.redhat.com/show_bug.cgi?id=557188,
+    https://gist.github.com/mcastelino/88195a7d99811a177f5e643d1465e19e,
+    https://docs.zephyrproject.org/latest/connectivity/networking/networking_with_multiple_instances.html.
+    Documented one-liner mitigation in the QEMU docs gist: add
+    `,localaddr=127.0.0.1` to BOTH QEMU `-netdev socket,mcast=…`
+    invocations AND add a host route `ip route add 230.10.0.0/16
+    dev lo`. The second piece requires `sudo` and was NOT attempted
+    under nano-ros's "never sudo" policy. Verified empirically that
+    `localaddr=127.0.0.1` ALONE on QEMU 6.2 + NuttX virtio-net is
+    not sufficient — listener still receives 0. `224.0.0.250`
+    (link-local mcast that normally routes via lo without an
+    explicit `ip route add`) also fails on QEMU 6.2.
+  - Bare-metal MPS2-AN385 DDS DOES pass with the same `-netdev
+    socket,mcast=…` mechanism on the same host, proving the QEMU
+    mcast tunnel CAN cross-deliver. Difference: the in-Rust smoltcp
+    + LAN9118 stack accepts every incoming frame (no RX MAC filter),
+    while NuttX's virtio-net goes through QEMU's
+    `hw/net/virtio-net.c::receive_filter`, which only delivers
+    unicast-to-MAC + broadcast unless the guest sets
+    `CTRL_RX_PROMISC`/`ALLMULTI`. Submodule patch `d230b7d383`
+    sets both. Open question whether QEMU 6.2's
+    `receive_filter` honours the guest's PROMISC bit over the
+    `-netdev socket,mcast=` peer path (vs the loopback path it
+    definitely honours), or whether there is a deeper QEMU
+    peer-side dispatch bug.
 
 Done criteria:
 
