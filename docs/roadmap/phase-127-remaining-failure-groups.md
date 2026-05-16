@@ -520,11 +520,33 @@ Subitems:
     `multicast_recv_loop` still doesn't see `got n=…` from
     `nros_platform_udp_mcast_read` — i.e. the frames stop somewhere
     between NuttX virtio-net upperhalf and the BSD `recvfrom` call.
-    Probable remaining suspects (next session): NuttX `ipv4_input`
-    `igmp_grpfind` failing for the joined group (the IGMP join goes
-    through but the group lookup may use a different netdev), or the
-    BSD socket's UDP conn binding to a different `lport` than the
-    SPDP `7400` so `udp_active` doesn't match.
+  - 2026-05-17 instrumentation: added per-frame `up_putc` tracers in
+    `virtio_net_recv` (`!`), `netdev_upperhalf` eth-demux (`I`/`A`/`6`/`D`),
+    `ipv4_input` (`Q` mcast IP, `Z` igmp grpfind hit, `^` igmp miss,
+    `K` csum drop, `P<proto>` pre-switch), and `udp_input` (`&`/`+`/`-`/`=`).
+    Result over 83 s of the focused test: listener `!I` count grows
+    steadily but `Z` only ever fires ONCE during boot, and that single
+    Z reports `destipaddr = 0x00000000` (raw `ipv4->destipaddr` bytes
+    all zero) with `proto = 0x02` (IGMP). No `Z` ever fires for the
+    talker's `239.255.0.1:7400` SPDP frames. Host-side Python
+    multicast receiver confirms both QEMU processes successfully send
+    SPDP onto the host mcast group AND the host kernel delivers to
+    multiple subscribers (Python sees frames from both source IPs).
+    Conclusion: QEMU's `-netdev socket,mcast=…` (and the `udp=…`
+    tunnel variant) only loops the local QEMU's own frames back to
+    its guest virtio-net; frames from the *other* local QEMU process
+    on the same host group never reach this QEMU's vring even though
+    they reach the host socket. Both fixes above are necessary and
+    upstream-correct but not sufficient on their own. Next session
+    needs to either (a) switch the QEMU test harness from
+    `-netdev socket,mcast=` to a bridged tap setup (`scripts/qemu/
+    setup-network.sh`-style, needs root) so the host kernel
+    forwards mcast between the two guests, or (b) instrument
+    QEMU itself / a hub-based `-netdev hubport,…` to confirm
+    cross-delivery, or (c) reproduce the same `-netdev
+    socket,mcast=` configuration with a known-working DDS stack
+    (e.g. CycloneDDS on Linux QEMU guests) to isolate whether
+    QEMU's mcast tunnel implementation itself is the limit.
 
 Done criteria:
 
