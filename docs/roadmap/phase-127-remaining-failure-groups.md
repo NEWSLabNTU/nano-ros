@@ -525,12 +525,31 @@ Current signal:
   fixes. A full `just ci` rerun still has non-Zephyr buckets outstanding; the
   latest run before these final fixes reported 760 passed, 59 failed, 6 timed
   out, and 11 skipped.
+- 2026-05-16 lockfile/test follow-up: Zephyr Rust fixture lockfile churn from
+  `just zephyr build-fixtures` was committed in
+  `1e2d6e4f chore(zephyr): update Rust fixture locks`. The selected related
+  E2E run covered Zenoh service/pubsub/action, XRCE pubsub/service/action, and
+  DDS pubsub/service/action/async-service. It finished 8 passed / 2 failed.
+  Passing cases were Zenoh service/pubsub, XRCE pubsub/service/action, and DDS
+  pubsub/service/async-service. `test_zephyr_action_e2e` failed before action
+  server readiness, but its action fixture lockfiles were not part of the dirty
+  set.
+- 2026-05-16 DDS action blocker: `test_zephyr_dds_rust_action_a9_e2e`
+  reproducibly fails by timing out on the client send-goal acceptance reply.
+  The server side is alive: it receives the goal, executes Fibonacci feedback,
+  and logs `Goal succeeded`. The client logs `Goal acceptance failed:
+  ServiceRequestFailed` after sending the goal. The next focused work item is
+  the DDS action send-goal service reply/correlation path, likely between
+  `DdsServiceServer::send_reply`, `DdsServiceClient::try_recv_reply_raw`, and
+  action `Promise::wait`.
 
 Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
-- [x] `127.C.3`: Zephyr DDS runtime failures.
+- [ ] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
+  service now pass on qemu_cortex_a9; DDS action A9 still fails on the
+  send-goal acceptance reply path.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
   and C++; XRCE service/action focused reruns remain.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
