@@ -35,15 +35,15 @@ struct SessionSpec {
     SessionSpec(std::string rmw_, std::string locator_)
         : rmw(std::move(rmw_)), locator(std::move(locator_)) {}
 
-    SessionSpec &with_domain_id(std::uint32_t id) {
+    SessionSpec& with_domain_id(std::uint32_t id) {
         domain_id = id;
         return *this;
     }
-    SessionSpec &with_node_name(std::string name) {
+    SessionSpec& with_node_name(std::string name) {
         node_name = std::move(name);
         return *this;
     }
-    SessionSpec &with_namespace(std::string ns) {
+    SessionSpec& with_namespace(std::string ns) {
         namespace_ = std::move(ns);
         return *this;
     }
@@ -52,13 +52,13 @@ struct SessionSpec {
 /// RAII handle around `nros_init_multi` / `nros_fini_multi`. Opens
 /// the executor on construction; closes on destruction.
 class MultiExecutor {
-public:
+  public:
     /// Open the executor against `specs`. Throws nothing; check
     /// `valid()` and `last_ret()` after construction.
-    explicit MultiExecutor(const std::vector<SessionSpec> &specs) {
+    explicit MultiExecutor(const std::vector<SessionSpec>& specs) {
         std::vector<nros_session_spec_t> c_specs;
         c_specs.reserve(specs.size());
-        for (auto &s : specs) {
+        for (auto& s : specs) {
             c_specs.push_back(nros_session_spec_t{
                 s.rmw.c_str(),
                 s.locator.c_str(),
@@ -76,13 +76,13 @@ public:
         }
     }
 
-    MultiExecutor(const MultiExecutor &) = delete;
-    MultiExecutor &operator=(const MultiExecutor &) = delete;
-    MultiExecutor(MultiExecutor &&other) noexcept
+    MultiExecutor(const MultiExecutor&) = delete;
+    MultiExecutor& operator=(const MultiExecutor&) = delete;
+    MultiExecutor(MultiExecutor&& other) noexcept
         : handle_(other.handle_), last_ret_(other.last_ret_) {
         other.handle_ = nullptr;
     }
-    MultiExecutor &operator=(MultiExecutor &&other) noexcept {
+    MultiExecutor& operator=(MultiExecutor&& other) noexcept {
         if (this != &other) {
             if (handle_ != nullptr) {
                 nros_fini_multi(handle_);
@@ -94,13 +94,13 @@ public:
         return *this;
     }
 
-    bool valid() const { return handle_ != nullptr && last_ret_ == NROS_RMW_RET_OK; }
-    nros_rmw_ret_t last_ret() const { return last_ret_; }
+    bool valid() const { return handle_ != nullptr && last_ret_ == 0; }
+    int32_t last_ret() const { return last_ret_; }
     nros_executor_handle_t handle() const { return handle_; }
 
-private:
+  private:
     nros_executor_handle_t handle_ = nullptr;
-    nros_rmw_ret_t last_ret_ = NROS_RMW_RET_OK;
+    int32_t last_ret_ = 0;
 };
 
 namespace bridge {
@@ -118,7 +118,12 @@ struct PumpStats {
 /// Construct via the named factory `pubsub_raw(...)` below; this
 /// constructor takes ownership of an already-created C handle.
 class PubSubBridge {
-public:
+  public:
+    /// Default-construct an empty (invalid) bridge. Required so
+    /// `Expected<PubSubBridge>::Expected()` can compile; users
+    /// should not construct one directly — use the factory below.
+    PubSubBridge() = default;
+
     explicit PubSubBridge(nros_pubsub_bridge_t handle) : handle_(handle) {}
 
     ~PubSubBridge() {
@@ -127,12 +132,12 @@ public:
         }
     }
 
-    PubSubBridge(const PubSubBridge &) = delete;
-    PubSubBridge &operator=(const PubSubBridge &) = delete;
-    PubSubBridge(PubSubBridge &&other) noexcept : handle_(other.handle_) {
+    PubSubBridge(const PubSubBridge&) = delete;
+    PubSubBridge& operator=(const PubSubBridge&) = delete;
+    PubSubBridge(PubSubBridge&& other) noexcept : handle_(other.handle_) {
         other.handle_ = nullptr;
     }
-    PubSubBridge &operator=(PubSubBridge &&other) noexcept {
+    PubSubBridge& operator=(PubSubBridge&& other) noexcept {
         if (this != &other) {
             if (handle_ != nullptr) {
                 nros_pubsub_bridge_destroy(handle_);
@@ -161,35 +166,27 @@ public:
 
     nros_pubsub_bridge_t handle() const { return handle_; }
 
-private:
+  private:
     nros_pubsub_bridge_t handle_ = nullptr;
 };
 
 /// Construct a raw pubsub bridge. `origin` enables the dedup window
 /// (pass the source backend's RMW name); empty string skips dedup
 /// for single-direction bridges.
-inline Result<PubSubBridge> pubsub_raw(MultiExecutor &exec,
-                                       const std::string &src_node,
-                                       const std::string &src_rmw,
-                                       const std::string &src_topic,
-                                       const std::string &dst_node,
-                                       const std::string &dst_rmw,
-                                       const std::string &dst_topic,
-                                       const std::string &type_name,
-                                       const std::string &type_hash,
-                                       const std::string &origin) {
+inline Expected<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string& src_node,
+                                         const std::string& src_rmw, const std::string& src_topic,
+                                         const std::string& dst_node, const std::string& dst_rmw,
+                                         const std::string& dst_topic, const std::string& type_name,
+                                         const std::string& type_hash, const std::string& origin) {
     nros_pubsub_bridge_t handle = nullptr;
-    nros_rmw_ret_t rc = nros_pubsub_bridge_create(
-        exec.handle(),
-        src_node.c_str(), src_rmw.c_str(), src_topic.c_str(),
-        dst_node.c_str(), dst_rmw.c_str(), dst_topic.c_str(),
-        type_name.c_str(), type_hash.c_str(),
-        origin.empty() ? nullptr : origin.c_str(),
-        &handle);
-    if (rc != NROS_RMW_RET_OK) {
-        return Result<PubSubBridge>(rc);
+    int32_t rc = nros_pubsub_bridge_create(exec.handle(), src_node.c_str(), src_rmw.c_str(),
+                                           src_topic.c_str(), dst_node.c_str(), dst_rmw.c_str(),
+                                           dst_topic.c_str(), type_name.c_str(), type_hash.c_str(),
+                                           origin.empty() ? nullptr : origin.c_str(), &handle);
+    if (rc != 0) {
+        return Expected<PubSubBridge>::error(static_cast<ErrorCode>(rc));
     }
-    return Result<PubSubBridge>(PubSubBridge(handle));
+    return Expected<PubSubBridge>::ok(PubSubBridge(handle));
 }
 
 } // namespace bridge

@@ -77,7 +77,13 @@ impl Executor {
             nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
         }
         let selector = read_rmw_selector_env();
-        match nros_rmw_cffi::resolve_backend(selector.as_deref()) {
+        // `as_deref()` on `Option<Vec<u8>>` yields `Option<&[u8]>`;
+        // on the no_std `Option<&'static [u8]>` variant it's a
+        // no-op the lint catches but the std signature still
+        // requires the call. Allowed locally.
+        #[allow(clippy::needless_option_as_deref)]
+        let sel_ref = selector.as_deref();
+        match nros_rmw_cffi::resolve_backend(sel_ref) {
             nros_rmw_cffi::BackendResolution::Single(_) => {}
             // Map every non-`Single` outcome to a transport
             // ConnectionFailed for now; the more granular ret codes
@@ -94,7 +100,7 @@ impl Executor {
             namespace: config.namespace,
             properties: &[],
         };
-        let session = if let Some(name) = selector.as_deref() {
+        let session = if let Some(name) = sel_ref {
             // Selector path: route to the specific named backend so
             // the env-var-disambiguated outcome matches what the
             // resolver above identified.
@@ -141,22 +147,17 @@ impl Executor {
         let primary = specs
             .first()
             .ok_or(NodeError::Transport(TransportError::ConnectionFailed))?;
-        let primary_session = nros_rmw_cffi::CffiRmw::open_with_rmw(
-            primary.rmw,
-            &primary.to_rmw_config(),
-        )
-        .map_err(NodeError::Transport)?;
+        let primary_session =
+            nros_rmw_cffi::CffiRmw::open_with_rmw(primary.rmw, &primary.to_rmw_config())
+                .map_err(NodeError::Transport)?;
         let mut executor = Self::from_session(primary_session);
         executor.set_node_identity("", "/");
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
 
         for spec in specs.iter().skip(1) {
-            let session = nros_rmw_cffi::CffiRmw::open_with_rmw(
-                spec.rmw,
-                &spec.to_rmw_config(),
-            )
-            .map_err(NodeError::Transport)?;
+            let session = nros_rmw_cffi::CffiRmw::open_with_rmw(spec.rmw, &spec.to_rmw_config())
+                .map_err(NodeError::Transport)?;
             executor
                 .extra_sessions
                 .push(session)
@@ -257,7 +258,7 @@ impl<'cfg> SessionSpec<'cfg> {
         self
     }
 
-    fn to_rmw_config(&self) -> nros_rmw::RmwConfig<'cfg> {
+    fn to_rmw_config(self) -> nros_rmw::RmwConfig<'cfg> {
         nros_rmw::RmwConfig {
             locator: self.locator,
             mode: nros_rmw::SessionMode::Client,
@@ -1373,25 +1374,14 @@ impl Executor {
     /// extra session lookup and serves no purpose when only one
     /// backend is registered.
     #[cfg(feature = "rmw-cffi")]
-    pub fn create_node_on(
-        &mut self,
-        name: &str,
-        rmw: &str,
-    ) -> Result<Node<'_>, NodeError> {
+    pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<Node<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
         // Register the Node (opens an extra session under `rmw` if
         // none exists yet for that backend).
-        let id = self
-            .node_builder(name)
-            .rmw(rmw)
-            .build()
-            .map_err(|e| e)?;
-        let session_idx = self
-            .node(id)
-            .ok_or(NodeError::NodeTableFull)?
-            .session_idx;
+        let id = self.node_builder(name).rmw(rmw).build()?;
+        let session_idx = self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx;
 
         let mut node_name = heapless::String::<64>::new();
         node_name

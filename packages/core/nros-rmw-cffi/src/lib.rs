@@ -42,7 +42,7 @@ pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
 // Phase 128.A — linker-section registry discovery.
 pub mod section;
-pub use section::{nros_rmw_cffi_walk_init_section, RMW_INIT_ENTRIES, RmwInitEntry};
+pub use section::{RMW_INIT_ENTRIES, RmwInitEntry, nros_rmw_cffi_walk_init_section};
 
 // Re-exported for the `nros_rmw_register_backend!` macro so backend
 // crates don't need a direct `linkme` dep.
@@ -3112,9 +3112,7 @@ mod tests {
     #[test]
     fn typed_struct_roundtrip() {
         // Register the stub vtable under its canonical name.
-        let ret = unsafe {
-            nros_rmw_cffi_register_named(c"default".as_ptr(), &STUB_VTABLE)
-        };
+        let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &STUB_VTABLE) };
         assert_eq!(ret, NROS_RMW_RET_OK);
 
         // Open a session.

@@ -329,9 +329,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     pub fn register() -> NrosRmwRet {
         // SAFETY: `&Self::VTABLE` is a reference to a const-promoted
         // static; address stable for the program's lifetime.
-        unsafe {
-            crate::nros_rmw_cffi_register_named(c"default".as_ptr(), &Self::VTABLE)
-        }
+        unsafe { crate::nros_rmw_cffi_register_named(c"default".as_ptr(), &Self::VTABLE) }
     }
 
     /// Phase 104.B.2 — install the per-`R` vtable under a stable

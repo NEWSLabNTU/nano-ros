@@ -166,6 +166,16 @@ static WALKED: AtomicBool = AtomicBool::new(false);
 /// was linked into this binary; the caller (typically
 /// `Executor::open`'s resolution policy) should surface
 /// [`crate::NROS_RMW_RET_NO_BACKEND`].
+///
+/// # Safety
+///
+/// Every entry in `RMW_INIT_ENTRIES` is contributed by an in-tree
+/// `nros-rmw-<name>` crate (or static lib) via the
+/// `nros_rmw_register_backend!` macro / `NROS_RMW_REGISTER_BACKEND`
+/// C macro; both expand to a no-arg `extern "C" fn` whose only side
+/// effect is calling [`crate::nros_rmw_cffi_register_named`]. Calling
+/// the walker is therefore safe provided no third-party code has
+/// injected a non-conforming entry into the same linker section.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_walk_init_section() -> usize {
     if WALKED.swap(true, Ordering::AcqRel) {

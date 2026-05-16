@@ -123,8 +123,7 @@ struct BridgeEndpointCfg {
 pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
     let raw = fs::read_to_string(path.as_ref())
         .map_err(|e| ConfigError::Io(format!("{}: {e}", path.as_ref().display())))?;
-    let cfg: ConfigFile = toml::from_str(&raw)
-        .map_err(|e| ConfigError::Parse(format!("{e}")))?;
+    let cfg: ConfigFile = toml::from_str(&raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
 
     // Build one SessionSpec per [[node]]. The first node's session is
     // the primary; the rest open as extras.
@@ -146,8 +145,8 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
         specs.push(spec);
     }
 
-    let mut exec = Executor::open_multi(&specs)
-        .map_err(|e| ConfigError::OpenSession(format!("{e:?}")))?;
+    let mut exec =
+        Executor::open_multi(&specs).map_err(|e| ConfigError::OpenSession(format!("{e:?}")))?;
 
     // Register every Node so create_node_on can resolve them. We
     // intentionally drop each `Node` immediately after creation —

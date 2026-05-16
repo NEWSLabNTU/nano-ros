@@ -543,6 +543,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "linkme"
+version = "0.3.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e83272d46373fb8decca684579ac3e7c8f3d71d4cc3aa693df8759e260ae41cf"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32d59e20403c7d08fe62b4376edfe5c7fb2ef1e6b1465379686d0f21c8df444b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -719,6 +739,7 @@ name = "nros-rmw-cffi"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "linkme",
  "nros-rmw",
  "portable-atomic",
 ]
@@ -729,6 +750,7 @@ version = "0.1.0"
 dependencies = [
  "atomic-waker",
  "heapless",
+ "linkme",
  "nros-core",
  "nros-platform",
  "nros-rmw",
@@ -983,7 +1005,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "std_msgs"
-version = "4.9.1"
+version = "4.9.0"
 dependencies = [
  "builtin_interfaces",
  "heapless",

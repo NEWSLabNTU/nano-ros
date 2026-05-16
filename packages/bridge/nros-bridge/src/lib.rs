@@ -56,14 +56,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use nros_node::{
-    executor::{EmbeddedRawPublisher, RawSubscription},
     NodeError,
+    executor::{EmbeddedRawPublisher, RawSubscription},
 };
 
 #[cfg(feature = "config")]
 mod config;
 #[cfg(feature = "config")]
-pub use config::{run_from_config, ConfigError};
+pub use config::{ConfigError, run_from_config};
 
 #[cfg(feature = "cffi")]
 mod cffi;
@@ -132,7 +132,7 @@ impl LoopGuard {
     /// window. O(DEDUP_WINDOW) — 16 cmp instructions in the default
     /// configuration.
     pub fn contains(&self, hash: u64) -> bool {
-        self.ring.iter().any(|&h| h == hash)
+        self.ring.contains(&hash)
     }
 }
 

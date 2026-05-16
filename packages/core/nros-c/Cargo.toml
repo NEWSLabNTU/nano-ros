@@ -47,7 +47,10 @@ lending = ["rmw-cffi", "nros/lending"]
 # downstream `nano_ros_link_rmw()` is not involved.
 cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 cffi-dds-cffi = ["rmw-cffi"]
-cffi-zenoh-cffi = ["rmw-cffi", "nros/rmw-zenoh-cffi", "dep:nros-rmw-zenoh"]
+# Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature was deleted. Pulling
+# `nros-rmw-zenoh` as a direct optional dep is the only thing this
+# alias still needs to do.
+cffi-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 link-tcp = ["nros/link-tcp", "nros-rmw-zenoh?/link-tcp"]

@@ -25,8 +25,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/rmw_ret.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,11 +42,11 @@ extern "C" {
  * `NROS_RMW_RET_UNKNOWN_BACKEND` at the matching `init_multi` call.
  */
 typedef struct {
-    const char *rmw;       /**< Canonical backend name, e.g. "zenoh". */
-    const char *locator;   /**< Backend-specific locator string. NULL = empty. */
-    uint32_t    domain_id; /**< ROS domain id. 0 unless otherwise. */
-    const char *node_name; /**< Session-default node name. NULL = empty. */
-    const char *namespace_; /**< Session-default namespace. NULL = "/". */
+    const char* rmw;        /**< Canonical backend name, e.g. "zenoh". */
+    const char* locator;    /**< Backend-specific locator string. NULL = empty. */
+    uint32_t domain_id;     /**< ROS domain id. 0 unless otherwise. */
+    const char* node_name;  /**< Session-default node name. NULL = empty. */
+    const char* namespace_; /**< Session-default namespace. NULL = "/". */
 } nros_session_spec_t;
 
 /**
@@ -57,7 +55,7 @@ typedef struct {
  * Owned by the runtime; pass to `nros_create_node_on`,
  * `nros_pubsub_bridge_create`, and `nros_fini_multi`.
  */
-typedef void *nros_executor_handle_t;
+typedef void* nros_executor_handle_t;
 
 /**
  * @brief Open an executor against multiple RMW backends.
@@ -72,9 +70,8 @@ typedef void *nros_executor_handle_t;
  *   was not linked in.
  * - `NROS_RMW_RET_ERROR` — backend rejected the open.
  */
-nros_rmw_ret_t nros_init_multi(const nros_session_spec_t *specs,
-                               size_t specs_len,
-                               nros_executor_handle_t *out);
+int32_t nros_init_multi(const nros_session_spec_t* specs, size_t specs_len,
+                        nros_executor_handle_t* out);
 
 /** @brief Tear down a `nros_init_multi`-opened executor. */
 void nros_fini_multi(nros_executor_handle_t exec);
@@ -87,7 +84,7 @@ void nros_fini_multi(nros_executor_handle_t exec);
  * @brief Opaque pubsub-bridge handle returned by
  * `nros_pubsub_bridge_create`.
  */
-typedef void *nros_pubsub_bridge_t;
+typedef void* nros_pubsub_bridge_t;
 
 /**
  * @brief Create a raw pubsub bridge between two backends.
@@ -103,17 +100,11 @@ typedef void *nros_pubsub_bridge_t;
  * Returns `NROS_RMW_RET_OK` on success and writes the bridge handle
  * to `*out`.
  */
-nros_rmw_ret_t nros_pubsub_bridge_create(nros_executor_handle_t exec,
-                                          const char *src_node,
-                                          const char *src_rmw,
-                                          const char *src_topic,
-                                          const char *dst_node,
-                                          const char *dst_rmw,
-                                          const char *dst_topic,
-                                          const char *type_name,
-                                          const char *type_hash,
-                                          const char *origin,
-                                          nros_pubsub_bridge_t *out);
+int32_t nros_pubsub_bridge_create(nros_executor_handle_t exec, const char* src_node,
+                                  const char* src_rmw, const char* src_topic, const char* dst_node,
+                                  const char* dst_rmw, const char* dst_topic, const char* type_name,
+                                  const char* type_hash, const char* origin,
+                                  nros_pubsub_bridge_t* out);
 
 /**
  * @brief Drain the source subscription, forwarding each sample to
@@ -130,8 +121,7 @@ typedef struct {
 } nros_pump_stats_t;
 
 /** @brief Per-pump statistics variant of `pump`. */
-nros_pump_stats_t nros_pubsub_bridge_pump_with_stats(
-    nros_pubsub_bridge_t bridge);
+nros_pump_stats_t nros_pubsub_bridge_pump_with_stats(nros_pubsub_bridge_t bridge);
 
 /** @brief Tear down a bridge. */
 void nros_pubsub_bridge_destroy(nros_pubsub_bridge_t bridge);

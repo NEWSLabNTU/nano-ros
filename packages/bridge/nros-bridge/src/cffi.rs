@@ -11,12 +11,12 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::ffi::{c_char, CStr};
+use core::ffi::{CStr, c_char};
 
 use nros_node::executor::{Executor, SessionSpec};
 use nros_rmw_cffi::{
-    NROS_RMW_RET_ERROR, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_BACKEND,
-    NROS_RMW_RET_OK, NrosRmwRet,
+    NROS_RMW_RET_ERROR, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_BACKEND, NROS_RMW_RET_OK,
+    NrosRmwRet,
 };
 
 use crate::PubSubBridge;
@@ -105,18 +105,14 @@ pub unsafe extern "C" fn nros_init_multi(
         // ExecutorBox right after `open_multi` returns. Pointers
         // captured here are valid for the whole ExecutorBox lifetime.
         let len = owned.len();
-        let r_ref: &'static str = unsafe {
-            core::mem::transmute::<&str, &'static str>(owned[len - 4].as_str())
-        };
-        let l_ref: &'static str = unsafe {
-            core::mem::transmute::<&str, &'static str>(owned[len - 3].as_str())
-        };
-        let n_ref: &'static str = unsafe {
-            core::mem::transmute::<&str, &'static str>(owned[len - 2].as_str())
-        };
-        let ns_ref: &'static str = unsafe {
-            core::mem::transmute::<&str, &'static str>(owned[len - 1].as_str())
-        };
+        let r_ref: &'static str =
+            unsafe { core::mem::transmute::<&str, &'static str>(owned[len - 4].as_str()) };
+        let l_ref: &'static str =
+            unsafe { core::mem::transmute::<&str, &'static str>(owned[len - 3].as_str()) };
+        let n_ref: &'static str =
+            unsafe { core::mem::transmute::<&str, &'static str>(owned[len - 2].as_str()) };
+        let ns_ref: &'static str =
+            unsafe { core::mem::transmute::<&str, &'static str>(owned[len - 1].as_str()) };
 
         rust_specs.push(
             SessionSpec::new(r_ref, l_ref)
@@ -246,9 +242,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_pubsub_bridge_pump(
-    bridge: *mut core::ffi::c_void,
-) -> usize {
+pub unsafe extern "C" fn nros_pubsub_bridge_pump(bridge: *mut core::ffi::c_void) -> usize {
     if bridge.is_null() {
         return 0;
     }

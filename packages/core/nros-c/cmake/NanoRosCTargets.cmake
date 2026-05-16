@@ -311,10 +311,14 @@ if(NOT TARGET NanoRos::NanoRos)
       set_property(TARGET NanoRos::NanoRos PROPERTY
         INTERFACE_LINK_LIBRARIES "${_existing_libs}")
     endif()
-    if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
-      set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
-        INTERFACE_LINK_OPTIONS "--allow-multiple-definition")
-    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR APPLE)
+    # Phase 128.H.6 — embedded toolchains (CMAKE_SYSTEM_NAME = Generic)
+    # also drive the link through the compiler frontend, so `-Wl,` is
+    # required to reach the linker. The raw flag form would land on
+    # the cc1 driver and be rejected as "unrecognized command-line
+    # option" (caught while building the FreeRTOS C talker fixture).
+    if(CMAKE_SYSTEM_NAME STREQUAL "Generic"
+       OR CMAKE_C_COMPILER_ID MATCHES "GNU|Clang"
+       OR APPLE)
       set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
         INTERFACE_LINK_OPTIONS "-Wl,--allow-multiple-definition")
     endif()

@@ -58,12 +58,11 @@ fn main() -> ! {
             // queues. Silent staging accumulation = callback path
             // broken; nonzero `bridge_tx_drained` + 0 wire delivery =
             // OpenETH / smoltcp issue.
-            let mut next_dump_ms = nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms()
-                + 1000;
+            let mut next_dump_ms =
+                nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms() + 1000;
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));
-                let now_ms =
-                    nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms();
+                let now_ms = nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms();
                 if now_ms >= next_dump_ms {
                     let (do_poll_calls, cb_hits, bridge_polls, tx_drained) =
                         nros_board_esp32_qemu::nros_smoltcp::poll_diagnostics();

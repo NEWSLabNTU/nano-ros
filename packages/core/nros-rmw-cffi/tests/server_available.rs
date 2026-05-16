@@ -269,8 +269,7 @@ fn open_client(svc_name: &str) -> nros_rmw_cffi::CffiServiceClient {
 
 #[test]
 fn server_available_unsupported_when_slot_null() {
-    let ret =
-        unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &VTABLE_NULL_SLOT) };
+    let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &VTABLE_NULL_SLOT) };
     assert_eq!(ret, NROS_RMW_RET_OK);
 
     let client = open_client("/svc_null_slot");
@@ -282,8 +281,7 @@ fn server_available_unsupported_when_slot_null() {
 
 #[test]
 fn server_available_tracks_slot_return_value() {
-    let ret =
-        unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &VTABLE_WITH_SLOT) };
+    let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &VTABLE_WITH_SLOT) };
     assert_eq!(ret, NROS_RMW_RET_OK);
 
     let client = open_client("/svc_scripted");

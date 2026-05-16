@@ -20,11 +20,10 @@ use core::{
 
 use linkme::distributed_slice;
 use nros_rmw_cffi::{
-    BackendResolution, NROS_RMW_RET_AMBIGUOUS_BACKEND, NROS_RMW_RET_NO_BACKEND,
-    NROS_RMW_RET_OK, NROS_RMW_RET_UNKNOWN_BACKEND, NrosRmwVtable, RMW_INIT_ENTRIES,
-    RmwInitEntry, backend_registered, backend_resolution_to_ret,
-    nros_rmw_cffi_register_named, nros_rmw_cffi_registered_names,
-    nros_rmw_cffi_walk_init_section, resolve_backend,
+    BackendResolution, NROS_RMW_RET_AMBIGUOUS_BACKEND, NROS_RMW_RET_NO_BACKEND, NROS_RMW_RET_OK,
+    NROS_RMW_RET_UNKNOWN_BACKEND, NrosRmwVtable, RMW_INIT_ENTRIES, RmwInitEntry,
+    backend_registered, backend_resolution_to_ret, nros_rmw_cffi_register_named,
+    nros_rmw_cffi_registered_names, nros_rmw_cffi_walk_init_section, resolve_backend,
 };
 
 // One addressable vtable shared by every entry. The registry never
@@ -58,15 +57,13 @@ static ENTRY_B_HITS: AtomicU32 = AtomicU32::new(0);
 
 unsafe extern "C" fn entry_a() {
     ENTRY_A_HITS.fetch_add(1, Ordering::Relaxed);
-    let rc =
-        unsafe { nros_rmw_cffi_register_named(c"section_test_a".as_ptr(), dummy_vtable()) };
+    let rc = unsafe { nros_rmw_cffi_register_named(c"section_test_a".as_ptr(), dummy_vtable()) };
     assert_eq!(rc, NROS_RMW_RET_OK);
 }
 
 unsafe extern "C" fn entry_b() {
     ENTRY_B_HITS.fetch_add(1, Ordering::Relaxed);
-    let rc =
-        unsafe { nros_rmw_cffi_register_named(c"section_test_b".as_ptr(), dummy_vtable()) };
+    let rc = unsafe { nros_rmw_cffi_register_named(c"section_test_b".as_ptr(), dummy_vtable()) };
     assert_eq!(rc, NROS_RMW_RET_OK);
 }
 
@@ -80,7 +77,10 @@ static SECTION_ENTRY_B: RmwInitEntry = entry_b;
 fn assert_no_backend_initially() {
     // Walker has NOT been called yet — registry should be empty.
     assert!(!backend_registered());
-    assert!(matches!(resolve_backend(None), BackendResolution::NoBackend));
+    assert!(matches!(
+        resolve_backend(None),
+        BackendResolution::NoBackend
+    ));
     assert_eq!(
         backend_resolution_to_ret(&resolve_backend(None)),
         NROS_RMW_RET_NO_BACKEND
@@ -112,7 +112,10 @@ fn second_walk_is_idempotent() {
 
 fn resolve_with_two_backends() {
     // No selector → ambiguous.
-    assert!(matches!(resolve_backend(None), BackendResolution::Ambiguous));
+    assert!(matches!(
+        resolve_backend(None),
+        BackendResolution::Ambiguous
+    ));
     assert_eq!(
         backend_resolution_to_ret(&resolve_backend(None)),
         NROS_RMW_RET_AMBIGUOUS_BACKEND

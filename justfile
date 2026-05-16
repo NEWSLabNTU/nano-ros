@@ -675,10 +675,13 @@ check-workspace-embedded:
 [private]
 check-workspace-features:
     @echo "Checking feature combinations..."
-    @echo "  - nros: zenoh-cffi + posix + humble"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
-    @echo "  - nros: zenoh-cffi + posix + iron"
-    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-iron"
+    # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the
+    # umbrella now only carries `rmw-cffi`. Backend selection is
+    # done by adding the matching `nros-rmw-<name>` dep.
+    @echo "  - nros: cffi + posix + humble"
+    cargo clippy -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
+    @echo "  - nros: cffi + posix + iron"
+    cargo clippy -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
     cargo clippy -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
