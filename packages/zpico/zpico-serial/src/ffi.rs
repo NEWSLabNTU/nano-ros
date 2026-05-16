@@ -444,6 +444,13 @@ pub extern "C" fn _z_read_serial_internal(
     };
     let mut rb: usize = 0;
     let mut first_byte_polls: u32 = 0;
+    let mut mid_frame_polls: u32 = 0;
+    // Once the first byte of a COBS frame has been drained from the UART ring
+    // buffer, we must finish reading the whole frame (the bytes already
+    // consumed cannot be returned to the ring). Cap the mid-frame wait so a
+    // peer that stalls partway through a frame cannot deadlock spin_once.
+    const MID_FRAME_POLL_INTERVAL_MS: u32 = 1;
+    const MID_FRAME_TIMEOUT_POLLS: u32 = 500; // 500 * 1ms = 500ms
     loop {
         if rb >= Z_SERIAL_MAX_COBS_BUF_SIZE {
             break;
@@ -465,8 +472,14 @@ pub extern "C" fn _z_read_serial_internal(
                 unsafe { z_sleep_ms(SERIAL_READ_POLL_INTERVAL_MS) };
                 continue;
             }
-            // Mid-frame: we've started receiving a COBS frame, keep waiting
-            // for the 0x00 delimiter to complete it
+            // Mid-frame: wait briefly for the 0x00 delimiter, bounded so a
+            // stalled peer does not park spin_once here forever.
+            mid_frame_polls += 1;
+            if mid_frame_polls >= MID_FRAME_TIMEOUT_POLLS {
+                unsafe { z_free(raw_buf) };
+                return usize::MAX;
+            }
+            unsafe { z_sleep_ms(MID_FRAME_POLL_INTERVAL_MS) };
             continue;
         }
 

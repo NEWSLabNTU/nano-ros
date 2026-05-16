@@ -197,8 +197,17 @@ impl ZenohRouter {
             cmd.args(["--listen", &locator]);
         }
 
-        cmd.stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped());
+        if let Ok(level) = std::env::var("ZENOHD_LOG") {
+            let log_path = "/tmp/zenohd-serial.log";
+            let log = std::fs::File::create(log_path).map_err(TestError::ProcessStart)?;
+            let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
+            cmd.env("RUST_LOG", level)
+                .stdout(Stdio::from(log_stdout))
+                .stderr(Stdio::from(log));
+        } else {
+            cmd.stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped());
+        }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn()?;

@@ -122,14 +122,23 @@ impl CmsdkUart {
 
 impl SerialPort for CmsdkUart {
     fn write(&mut self, data: &[u8]) -> usize {
+        let mut sent: usize = 0;
         for &byte in data {
-            // Busy-wait until TX FIFO has space
+            // Busy-wait until TX FIFO has space, but cap the poll count so a
+            // stalled host-side consumer (full host PTY buffer, blocked
+            // socat) cannot park the executor here forever.
+            let mut waits: u32 = 0;
             while self.tx_full() {
+                waits = waits.wrapping_add(1);
+                if waits >= 1_000_000 {
+                    return sent;
+                }
                 core::hint::spin_loop();
             }
             self.write_reg(DATA, byte as u32);
+            sent += 1;
         }
-        data.len()
+        sent
     }
 
     fn read(&mut self, buf: &mut [u8]) -> usize {

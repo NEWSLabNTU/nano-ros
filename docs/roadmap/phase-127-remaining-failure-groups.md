@@ -1,6 +1,6 @@
 # Phase 127 Remaining Failure Groups
 
-Date: 2026-05-15 (last update 2026-05-17)
+Date: 2026-05-15
 
 Phase 127 tracks the remaining post-Phase-124 failure work as parallelizable
 groups. Historical Phase 124 run details remain in
@@ -8,32 +8,6 @@ groups. Historical Phase 124 run details remain in
 
 Group identifiers are `127.A` through `127.G`. Subtasks use dotted suffixes
 such as `127.A.1`.
-
-## Scoreboard (2026-05-17)
-
-| Group | Status | Notes |
-|---|---|---|
-| 127.A — ESP32 Zenoh Delivery | ✓ closed | 9/9 `esp32_emulator` |
-| 127.B — RTOS/QEMU Platform E2E | mostly closed | refreshed-count entry only |
-| 127.C — Zephyr Runtime/E2E | open | C.3 DDS-action A9 + C.4 XRCE service/action |
-| 127.D — Bare-Metal Zenoh QEMU | closed | D.3 forwarded to phase 132 |
-| 127.E — Native DDS Action | ✓ closed | |
-| 127.F — ROS 2 Lifecycle Interop | ✓ closed | |
-| 127.G — Full-Matrix Refresh | open | G.3 `just test-all` + refreshed table |
-
-Spun-out follow-ups (own phase docs):
-- [`phase-132-cmsdk-uart-irq-driven.md`](phase-132-cmsdk-uart-irq-driven.md)
-  — IRQ-driven CMSDK UART (replaces 127.D.3).
-
-Key infrastructure landed under 127:
-- `094cb65a` — `SmoltcpBridge::poll` TX-drain-before-iface.poll reorder.
-- `e776a01d` — opt-in WFI idle hook for MPS2 bare-metal (`enable_wfi_idle`).
-- `f06ded78` — `third-party/qemu/qemu` (v11.0.0) submodule +
-  `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`,
-  built via `just qemu setup-qemu` and wired into top-level `just setup`.
-- `ec08d948` — zenoh-pico bare-metal reply-dispatch LTO alias-defeat in
-  `zpico.c::pending_get_reply_handler` / `zpico_get_check` /
-  `zpico_liveliness_get_check`. Closed D.1 + D.2.
 
 ## Current Baseline
 
@@ -71,17 +45,21 @@ Scope:
 - `esp32_emulator::test_esp32_to_native`
 - `esp32_emulator::test_native_to_esp32`
 
-Current signal (2026-05-17, closed):
+Current signal:
 
-- All three 127.A delivery cases pass; the full `esp32_emulator` binary
-  reports 9/9 passed in 20.6 s with no allocation panics.
-- Root cause was a poll-order bug in `SmoltcpBridge::poll` (TX staging
-  drained one poll-tick after `iface.poll`). Fix landed in
-  `094cb65a phase-127.A: fix SmoltcpBridge poll order, unblock ESP32 zenoh delivery`
-  and closeout in
-  `1ecea3cf phase-127.A: close A.4 — esp32_emulator 9/9 passes clean`.
-- Historical bring-up signal preserved in the 2026-05-15 / 2026-05-16
-  follow-up bullets below for future cross-platform smoltcp work.
+- ESP32 listener/talker build and boot checks pass.
+- Listener reaches `Subscriber declared` and waits.
+- No messages are delivered across ESP32-to-ESP32, ESP32-to-native, or
+  native-to-ESP32 paths.
+- Router tracing on 2026-05-15 confirms the ESP32 client completes the TCP
+  Zenoh session handshake (`InitSyn`, `OpenSyn`, `OpenAck`) and is registered
+  as a client face by `zenohd`.
+- After `OpenAck`, `zenohd` receives no subscriber declaration, publisher data,
+  or keepalive from the ESP32 client; the router closes the transport after the
+  10 second lease expires.
+- The active ESP32 Zenoh-pico build has `Z_FEATURE_BATCHING=0` and negotiates a
+  1024 byte unicast batch, so the current silence is not explained by an
+  unflushed Zenoh-pico network-message batch.
 
 Subitems:
 
@@ -142,10 +120,9 @@ Done criteria:
 - [x] Rejected experiments, not committed: an extra smoltcp post-staging poll,
   an OpenETH TX descriptor wait, and a post-`zpico_open` spin did not restore
   delivery; the post-open spin regressed to `Transport(ConnectionFailed)`.
-- [x] Remaining blocker (resolved 2026-05-17 via the SmoltcpBridge poll
-  reorder below): post-open Zenoh control frames now reach `zenohd`; both
-  ESP32↔native and the two-QEMU pair deliver messages, with the full
-  `esp32_emulator` suite at 9/9 passed.
+- [ ] Remaining blocker: identify why ESP32 post-open Zenoh control frames
+  (`Declare subscriber`, `KeepAlive`) do not reach `zenohd` even though the
+  same TCP connection successfully carries the Zenoh open handshake.
 - [x] 2026-05-15 follow-up: ESP32 fixture builds were briefly blocked before
   runtime by `zpico_open()` writing `z_open_options_t.auto_start_read_task` and
   `auto_start_lease_task` while the smoltcp ESP32 build sets
@@ -473,18 +450,8 @@ Subitems:
   DDS Rust talker → listener passes (65 messages received in 83 s)
   after `cd713d43` added the explicit `nros_rmw_dds::register()` call
   to both fixtures.
-- [x] `127.B.5`: Shared platform DDS runtime triage. NuttX DDS Rust
-  talker → listener passes (11 messages received in 83 s). The
-  root-cause fix on 2026-05-17 was a `nros_platform_udp_mcast_listen`
-  bug: `mreq.imr_multiaddr` was set from the LOCAL endpoint's IP
-  (always `0.0.0.0` on the dust-dds SPDP bind path) instead of the
-  `join` parameter's dotted-quad string (`"239.255.0.1"`). Linux
-  silently ignored the malformed join with `EINVAL` (so the host DDS
-  tests "worked" only via stack quirks); NuttX added a sentinel
-  group entry that never matched real incoming mcast frames, so SPDP
-  discovery silently failed. Fix uses `inet_pton(join)` to populate
-  `imr_multiaddr`. ThreadX RV64 DDS still on the chronic illegal-
-  instruction trap and is tracked separately under 127.B.3.
+- [~] `127.B.5`: Shared platform DDS runtime triage. NuttX and ThreadX
+  RISC-V DDS now open and publish but do not deliver RTPS messages.
   Phase 127.B.5 follow-up (2026-05-16):
   - Fixed a posix-net regression where
     `nros_platform_udp_mcast_listen(iface=NULL, timeout_ms=0)` quietly
@@ -503,182 +470,10 @@ Subitems:
   - After both fixes the NuttX DDS Rust talker publishes 0–9 and the
     listener reaches "Waiting for messages..."; SPDP frames still do
     not reach the peer over QEMU's `-netdev socket,mcast=` tunnel.
-    Confirmed root cause (upstream NuttX driver gap, verified against
-    `apache/nuttx` master + cross-referenced with the NuttX `netdriver`
-    docs and the relevant QEMU / Linux virtio_net commits): NuttX's
-    `drivers/virtio/virtio-net.c` stubs both `d_addmac` and `d_rmmac`
-    as `return -ENOSYS;`, never negotiates `VIRTIO_NET_F_CTRL_VQ` or
-    `VIRTIO_NET_F_CTRL_RX`, and exposes no control queue at all. QEMU's
-    virtio-net backend defaults its RX filter to "unicast-to-MAC +
-    broadcast" — without a `VIRTIO_NET_CTRL_RX_PROMISC` /
-    `..._ALLMULTI` command from the guest, every RTPS SPDP multicast
-    frame (`01:00:5e:7f:00:01` for `239.255.0.1`) is silently dropped
-    before reaching the vring. Same gap is documented for every NuttX
-    driver other than STMicro STM32, TI Tiva TM4C, and Atmel SAM3/4 /
-    SAMA5D3/4.
-  - Patch carried in the NuttX fork submodule itself (the
-    `third-party/nuttx/nuttx` submodule points at
-    `github.com/jerry73204/nuttx` `nano-ros` branch). Commit
-    `d230b7d383 drivers/virtio/virtio-net: negotiate CTRL_VQ+CTRL_RX,
-    enable ALLMULTI/PROMISC` (a) bumps the negotiation mask to include
-    `VIRTIO_NET_F_CTRL_VQ` and `VIRTIO_NET_F_CTRL_RX`, (b) creates a
-    third control virtqueue when the device advertises CTRL_VQ,
-    (c) sends `CTRL_RX_PROMISC=1` + `CTRL_RX_ALLMULTI=1` at probe
-    using the standard 3-sg layout (hdr / data / ack), and (d) turns
-    `d_addmac` / `d_rmmac` into successful no-ops when CTRL_VQ is
-    active so the IGMP layer's MAC programming path returns OK.
-    Empirically this patch alone did NOT unblock SPDP delivery, so
-    the next debug step (2026-05-17) instrumented `virtio_net_recv`
-    with `up_putc('!')` per real frame + enabled `debug-stderr` on
-    `nros-rmw-dds`. The instrumented run showed virtio-net now
-    receives both its own loopback frames AND the peer's frames, but
-    `multicast_recv_loop` in `nros-rmw-dds` never sees `got n=…`.
-    Bisection then revealed the *second* downstream issue: NuttX's
-    `netutils/netinit` runs with default `CONFIG_NETINIT_NOMAC=y`,
-    which overwrites every virtio-net NIC's MAC with the static
-    `CONFIG_NETINIT_MACADDR_1=0xdeadbeef` /
-    `CONFIG_NETINIT_MACADDR_2=0x00e0` defaults — i.e. every NuttX
-    QEMU instance came up with the *same* MAC (`00:e0:de:ad:be:ef`).
-    QEMU's `-netdev socket,mcast=` tunnel then silently filtered out
-    frames whose source MAC equalled the receiver's own MAC, so
-    cross-instance multicast delivery was a no-op. Disabling
-    `CONFIG_NETINIT_NOMAC` in the board defconfig lets the
-    virtio-net `VIRTIO_NET_F_MAC` handshake propagate QEMU's
-    `-device virtio-net-device,mac=…` argument (e.g.
-    `52:54:00:12:34:70` / `:71`) into NuttX, restoring per-instance
-    unique MACs. Verified via raw-frame tcpdump-equivalent host
-    Python receiver: source MAC now matches QEMU CLI argument
-    instead of the deadbeef default.
-  - With BOTH fixes in place (virtio-net CTRL_RX PROMISC/ALLMULTI in
-    the submodule + `# CONFIG_NETINIT_NOMAC is not set` in the board
-    defconfig), virtio-net receive counters confirm the listener now
-    sees peer frames (`!` per peer SPDP). dust-dds's
-    `multicast_recv_loop` still doesn't see `got n=…` from
-    `nros_platform_udp_mcast_read` — i.e. the frames stop somewhere
-    between NuttX virtio-net upperhalf and the BSD `recvfrom` call.
-  - 2026-05-17 instrumentation: added per-frame `up_putc` tracers in
-    `virtio_net_recv` (`!`), `netdev_upperhalf` eth-demux (`I`/`A`/`6`/`D`),
-    `ipv4_input` (`Q` mcast IP, `Z` igmp grpfind hit, `^` igmp miss,
-    `K` csum drop, `P<proto>` pre-switch), and `udp_input` (`&`/`+`/`-`/`=`).
-    Result over 83 s of the focused test: listener `!I` count grows
-    steadily but `Z` only ever fires ONCE during boot, and that single
-    Z reports `destipaddr = 0x00000000` (raw `ipv4->destipaddr` bytes
-    all zero) with `proto = 0x02` (IGMP). No `Z` ever fires for the
-    talker's `239.255.0.1:7400` SPDP frames. Host-side Python
-    multicast receiver confirms both QEMU processes successfully send
-    SPDP onto the host mcast group AND the host kernel delivers to
-    multiple subscribers (Python sees frames from both source IPs).
-    Conclusion: QEMU's `-netdev socket,mcast=…` (and the `udp=…`
-    tunnel variant) only loops the local QEMU's own frames back to
-    its guest virtio-net; frames from the *other* local QEMU process
-    on the same host group never reach this QEMU's vring even though
-    they reach the host socket. Both fixes above are necessary and
-    upstream-correct but not sufficient on their own. Next session
-    needs to either (a) switch the QEMU test harness from
-    `-netdev socket,mcast=` to a bridged tap setup (`scripts/qemu/
-    setup-network.sh`-style, needs root) so the host kernel
-    forwards mcast between the two guests, or (b) instrument
-    QEMU itself / a hub-based `-netdev hubport,…` to confirm
-    cross-delivery, or (c) reproduce the same `-netdev
-    socket,mcast=` configuration with a known-working DDS stack
-    (e.g. CycloneDDS on Linux QEMU guests) to isolate whether
-    QEMU's mcast tunnel implementation itself is the limit.
-  - 2026-05-17 (online research): QEMU 6.2's `net/socket.c::
-    net_socket_mcast_create` binds to the multicast group address
-    itself, does not call `IP_MULTICAST_IF` without `localaddr=`, and
-    leaves egress interface selection to the host's routing table.
-    Default route points at a real LAN NIC (`enp7s0`), so two local
-    QEMUs each send the frame out the LAN, and the kernel never
-    loops the LAN-egress mcast back to the OTHER local socket
-    joined on the same group. References:
-    https://bugs.launchpad.net/qemu/+bug/1861884,
-    https://bugs.launchpad.net/qemu/+bug/533610,
-    https://bugzilla.redhat.com/show_bug.cgi?id=557188,
-    https://gist.github.com/mcastelino/88195a7d99811a177f5e643d1465e19e,
-    https://docs.zephyrproject.org/latest/connectivity/networking/networking_with_multiple_instances.html.
-    Documented one-liner mitigation in the QEMU docs gist: add
-    `,localaddr=127.0.0.1` to BOTH QEMU `-netdev socket,mcast=…`
-    invocations AND add a host route `ip route add 230.10.0.0/16
-    dev lo`. The second piece requires `sudo` and was NOT attempted
-    under nano-ros's "never sudo" policy. Verified empirically that
-    `localaddr=127.0.0.1` ALONE on QEMU 6.2 + NuttX virtio-net is
-    not sufficient — listener still receives 0. `224.0.0.250`
-    (link-local mcast that normally routes via lo without an
-    explicit `ip route add`) also fails on QEMU 6.2.
-  - Bare-metal MPS2-AN385 DDS DOES pass with the same `-netdev
-    socket,mcast=…` mechanism on the same host, proving the QEMU
-    mcast tunnel CAN cross-deliver. Difference: the in-Rust smoltcp
-    + LAN9118 stack accepts every incoming frame (no RX MAC filter),
-    while NuttX's virtio-net goes through QEMU's
-    `hw/net/virtio-net.c::receive_filter`, which only delivers
-    unicast-to-MAC + broadcast unless the guest sets
-    `CTRL_RX_PROMISC`/`ALLMULTI`. Submodule patch `d230b7d383`
-    sets both. Open question whether QEMU 6.2's
-    `receive_filter` honours the guest's PROMISC bit over the
-    `-netdev socket,mcast=` peer path (vs the loopback path it
-    definitely honours), or whether there is a deeper QEMU
-    peer-side dispatch bug.
-  - 2026-05-17 (mitigation attempted, partial): the test harness
-    now passes `,localaddr=127.0.0.1` to both NuttX QEMU `-netdev
-    socket,mcast=…` invocations and pre-flight-checks for the
-    matching `dev lo` route via
-    `nros_tests::fixtures::require_mcast_loopback_route`
-    (the check uses `ip route get <addr>` so a prefix route like
-    `230.10.0.0/16 dev lo` is correctly matched for an address
-    inside the prefix). Route missing → test skips with a clear
-    `sudo ip route add 230.10.0.0/16 dev lo` hint instead of
-    silently timing out at 83 s. A `just nuttx setup-mcast-route`
-    recipe runs the same `sudo ip route add` commands
-    idempotently. The route configuration is intentionally NOT
-    auto-run by `just nuttx setup` because nano-ros policy is
-    "never sudo without explicit user request".
-  - 2026-05-17 (does not fully unblock): after the user installed
-    the two routes (`230.10.0.0/16 dev lo` + `239.0.0.0/8 dev lo`),
-    the focused NuttX DDS test still receives 0 messages. Empirical
-    breakdown via Python mcast receivers proves that:
-    1. **Two Python procs** joined on lo (`mreq.imr_interface =
-       127.0.0.1`) DO cross-deliver via the lo path → kernel
-       routing on lo with the new routes is healthy.
-    2. **QEMU sender with `localaddr=127.0.0.1`** + **Python
-       receiver joined on lo** → Python receives ZERO frames.
-       Same QEMU sender without `localaddr=` → Python receiver
-       on `INADDR_ANY` sees the frames going out the LAN NIC.
-    Conclusion: QEMU 6.2's `net_socket_mcast_create` *does*
-    issue `setsockopt(IP_MULTICAST_IF, localaddr)` per the
-    docs, but something about the QEMU send path (presumably
-    the interaction between the mcast-bind-to-group socket and
-    `IP_MULTICAST_IF=lo`) prevents the frame from actually
-    landing on the lo iface — neither sibling QEMU nor a
-    third-party lo-joined Python socket sees it. The same
-    QEMU built-in mcast tunnel does work end-to-end for the
-    bare-metal MPS2-AN385 DDS test which uses smoltcp +
-    LAN9118 (no virtio RX filter), so the loss appears to be
-    specific to the `localaddr=127.0.0.1` egress path on
-    QEMU 6.2 rather than the virtio frontend. Documented
-    candidates for the next session:
-    - Upgrade host QEMU to 8.2+/9.x (Ubuntu 24.04, jammy
-      backports, or qemu-utils from sources). Cheptsov 2022
-      mcast patch is `#ifdef __APPLE__` only, so this is
-      speculative — but at least removes 6.2 as the
-      uncertainty.
-    - Switch the NuttX QEMU test to `-netdev dgram,
-      local.type=unix,...` peer pairs (QEMU ≥7.2) and
-      configure dust-dds with explicit unicast peers
-      instead of relying on SPDP multicast.
-    - Bridged TAP via `scripts/qemu/setup-network.sh` (needs
-      `sudo` + `CAP_NET_ADMIN`), which lets the host kernel
-      forward mcast between guests on a real virtual bridge
-      instead of relying on QEMU's socket netdev.
-  - QEMU upstream status (queried 2026-05-17): the cross-process
-    `socket,mcast=` limit persists in QEMU master. `net/socket.c`
-    has had only refactoring + cosmetic changes since 6.2 (latest
-    `09759245`, `8cb17f9c` Sep 2025; `751b0e79` Jun 2025;
-    `b6aeee02` Jul 2023); the only mcast-adjacent patch (Cheptsov,
-    Jun 2022) is `#ifdef __APPLE__` only. Newer QEMU (≥7.2) does
-    ship `-netdev dgram,local.type=unix,…` + `-netdev stream,…`
-    which give AF_UNIX peer pairs without root, but they are
-    unicast point-to-point with no N-way fanout, so not a
-    drop-in replacement for the mcast tunnel.
+    Likely remaining cause: NuttX's virtio-net driver doesn't program
+    a multicast MAC filter for the 01:00:5e:7f:00:01 group (or its
+    promiscuous-rx defaults differ from MPS2-AN385's LAN9118 path).
+    Tracking as a separate item.
 
 Done criteria:
 
@@ -687,37 +482,6 @@ Done criteria:
   router/discovery, or protocol handshake — see 127.B.5 follow-up
   notes above (the only remaining bucket is NuttX/RV64 RTPS SPDP
   multicast Ethernet filter on virtio-net).
-
-  Phase 127.B.5 follow-up (2026-05-17 evening): RV64 ThreadX DDS still
-  red after porting the same `nros_platform_udp_mcast_listen` (`join`
-  param fix) + non-blocking `set_recv_timeout(0)` (fcntl `O_NONBLOCK`
-  instead of `SO_RCVTIMEO {0,0}` which means "block forever" on NetX
-  BSD too) fixes to `packages/core/nros-platform-threadx/src/net.c`,
-  switching `tests/threadx_riscv64_qemu_dds.rs` from
-  `QemuProcess::start_riscv64_virt_mcast` to a new
-  `QemuProcess::start_riscv64_virt_dgram` (mirrors the NuttX dgram
-  AF_UNIX peer pair that closed NuttX DDS), and enabling
-  `nx_igmp_enable(&ip)` in
-  `packages/boards/nros-board-threadx-qemu-riscv64/c/app_define.c`
-  (the prior comment that disabled IGMP was stale: we now use the
-  dgram tunnel, where in-VM IGMP behaviour is required for NetX
-  setsockopt + class-D send-side MAC mapping). Talker's
-  `publisher.publish()` now succeeds 10× then fills the writer
-  history (no ACKs because listener never discovers) and returns
-  `Transport(PublishFailed)` forever. Instrumented
-  `virtio_net_isr` + `nros_platform_udp_send` show ZERO RX ISRs and
-  ZERO `sendto` failures on both peers across a 25 s run — i.e. the
-  virtio-net frames are never traversing the AF_UNIX dgram peer
-  pair even though NuttX uses the identical pattern and passes.
-  Suspected RV64-specific NetX BSD ↔ virtio-mmio interaction
-  (possibly virtio_net_hdr_size mismatch between `force-legacy=false`
-  + V1 vs V2 negotiation, or QEMU `qemu-system-riscv64` dgram
-  forwarding semantics differ from `qemu-system-arm`). Test marked
-  `#[ignore = "RV64 ThreadX DDS — dgram tunnel doesn't deliver
-  virtio frames cross-peer"]` with a long reason string capturing
-  the above. The mcast_listen + recv-timeout + IGMP fixes are kept
-  because they are correctness fixes regardless of the discovery
-  bug. Tracked as follow-up under 127.B.5.
 - [x] Preserve exact QEMU and test harness logs (`/tmp/n*.{out,err}`,
   `/tmp/b4*.{out,err}` from this session; older `test-logs/latest/`
   for `just ci` snapshots).
@@ -894,80 +658,16 @@ Current signal:
   the DDS action send-goal service reply/correlation path, likely between
   `DdsServiceServer::send_reply`, `DdsServiceClient::try_recv_reply_raw`, and
   action `Promise::wait`.
-- 2026-05-17 stale-fixture follow-up: the later DDS A9
-  `Transport(ConnectionFailed)` regressions were stale prebuilt Zephyr images.
-  `get_or_build_zephyr_example` now invokes `west build` when a fixture is
-  missing or older than its example/shared nros sources, while preserving the
-  per-XRCE agent-port build overrides. After rebuilding the current DDS A9
-  service and action server/client fixtures, focused reruns passed for
-  `test_zephyr_dds_rust_service_a9_e2e` and
-  `test_zephyr_dds_rust_action_a9_e2e`.
-- 2026-05-17 XRCE C++ service/action follow-up: the C++ XRCE native_sim link
-  failure is fixed in `ffdde60f fix(xrce): wire C++ CFFI backend init`.
-  `nros-cpp` now ships a weak `nros_app_register_backends` default for
-  C++-only links and `nros_cpp_init` explicitly registers the selected linked
-  CFFI backend, so Zephyr/native_sim no longer depends on POSIX-style
-  constructor sections. `xrce_service_send_reply` also flushes the reliable
-  XRCE stream with the normal session flush timeout. Verification:
-  `cargo check -p nros-cpp --no-default-features --features
-  rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble,std` passes, and the four
-  C++ XRCE service/action fixtures rebuild cleanly.
-- 2026-05-17 XRCE C++ service/action runtime fix: the remaining `-2`
-  reply timeout on `test_zephyr_xrce_cpp_service_e2e` and the
-  send-goal hang on `test_zephyr_xrce_cpp_action_e2e` had a common
-  root cause in the C++ Zephyr+std spin path.
-  - The earlier `a451b626 fix(zephyr): unblock C++ listener spin` had
-    routed `nros_cpp_spin_once` on Zephyr+std around the std
-    `Executor::spin_once` because the executor's
-    `wake_cv.wait_timeout_while` blocked past its deadline on
-    Zephyr's libc condvar. The bypass replaced the spin with
-    `session.drive_io(0) + nros_zephyr_msleep(timeout_ms)`.
-  - That bypass starved reliable XRCE retransmission on the server
-    side: `xrce_service_send_reply` already flushes the output
-    stream for `XRCE_SESSION_FLUSH_TIMEOUT_MS` (100 ms), but if the
-    agent's ACK lands after that flush, the next `drive_io(0)` does
-    nothing and `nros_zephyr_msleep(timeout_ms)` runs no XRCE
-    session activity, so the reliable reply sits unACK'd in the
-    server's output stream and the client's `xrce_service_call_raw`
-    times out at 5 s.
-  - C++ `nros_cpp_action_client_send_goal` calls
-    `ctx.executor.spin_once(10ms)` directly (not `nros_cpp_spin_once`),
-    so it still hit the hung `wake_cv` and never sent the goal
-    request — matching the "times out before the server logs a goal"
-    symptom.
-  - Fix: gate the `wake_cv.wait_timeout_while` off on Zephyr+std in
-    `Executor::spin_once` and route `primary_drive_timeout_ms = timeout_ms`
-    there. Zephyr UDP `recv` already honors `SO_RCVTIMEO`, so
-    `drive_io(timeout_ms)` yields the thread for the requested
-    duration without depending on the broken condvar path and keeps
-    the XRCE reliable streams ticking. With the underlying
-    condvar hang gone, `nros_cpp_spin_once` reverts to a plain
-    `ctx.executor.spin_once(timeout)` so both the service
-    `Future::wait` and action `send_goal` paths get real polling +
-    arena dispatch.
-  - Verification: `cargo check -p nros-node --features
-    rmw-cffi,platform-zephyr` and `cargo check -p nros-cpp
-    --no-default-features --features
-    rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble,std` both
-    pass. `cargo test -p nros-node --lib` 131/131 passes — the
-    non-Zephyr std cv-wait path is unchanged. End-to-end reruns of
-    `test_zephyr_xrce_cpp_service_e2e` and
-    `test_zephyr_xrce_cpp_action_e2e` still need a Zephyr SDK +
-    XRCE Agent host with `just zephyr build-fixtures && just zephyr
-    test --no-capture` before 127.C.4 can be closed.
 
 Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
-- [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, async service,
-  and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
-- [x] `127.C.4`: Zephyr XRCE runtime failures closed. Pub/sub
-  passes for Rust, C, and C++; Rust XRCE service/action passes;
-  C++ XRCE service + action pass after Phase 130 (see
-  `docs/roadmap/phase-130-platform-wake-primitive.md`). All 13
-  Zephyr XRCE E2E tests pass under
-  `cargo nextest run -p nros-tests -E 'test(test_zephyr_xrce_)'`.
+- [ ] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
+  service now pass on qemu_cortex_a9; DDS action A9 still fails on the
+  send-goal acceptance reply path.
+- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
+  and C++; XRCE service/action focused reruns remain.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 
@@ -992,123 +692,97 @@ Scope:
 - RTIC action E2E
 - RTIC service E2E
 - serial pub/sub E2E
-- RTIC pub/sub E2E and mixed-priority pub/sub (originally lumped under
-  127.B.4 in the older count; they share the MPS2 SLIRP/WFI root cause
-  with the rest of 127.D)
 
-Current signal (2026-05-17):
+Current signal:
 
-- Root cause for the original "Transport(ConnectionFailed) at the
-  second QEMU's `Executor::open`" symptom was the MPS2 LAN9118 connect
-  loop spinning without releasing the CPU. Under `-icount shift=auto`
-  with two guests sharing the host, QEMU's main loop never got the
-  cycles it needed to drain SLIRP, so the second guest's SYN-ACK never
-  landed before zenoh-pico's open timeout.
-- Fix landed in `phase-127.D: WFI idle hook unblocks MPS2 two-QEMU
-  connect`: add an opt-in idle callback to `nros_baremetal_common::sleep`
-  and `nros_smoltcp::do_poll`. MPS2-AN385 board exposes
-  `enable_wfi_idle()` which installs `cortex_m::asm::wfi` on both. RTIC
-  examples call it immediately after `Mono::start`.
-- After the fix, focused isolated reruns:
-  - `test_qemu_rtic_pubsub_e2e`: PASS (was failing) — 3/3 in a 3x loop.
-  - `test_qemu_rtic_service_e2e`: client now opens the session, server
-    `Handled: 5 + 3 = 8`, but client never sees `Reply:` (reply
-    correlation gap, not connect). Distinct follow-up.
-  - `test_qemu_rtic_action_e2e`: client now opens, sends goal, server
-    `Goal accepted` / `Goal complete`, but client times out waiting
-    for `goal acceptance` reply. Same reply gap as service.
-  - `test_qemu_rtic_mixed_priority_pubsub_e2e`: not re-verified yet.
-  - `test_qemu_serial_pubsub_e2e`: still fails; serial example uses
-    non-RTIC `run()` so no IRQ source is armed and `enable_wfi_idle()`
-    isn't safe to call. Needs a separate fix (e.g. arming a periodic
-    timer interrupt in `init_hardware` so `wfi` can wake without RTIC).
+- 2026-05-16 focused rerun first showed all three tests blocked by stale
+  QEMU fixture binaries. After `just qemu build-fixtures`, RTIC action/service
+  and RTIC pub/sub all reproduced a shared second-peer open failure:
+  the first QEMU client opened a Zenoh transport, while the second TCP
+  connection was accepted by `zenohd` but never completed Zenoh open.
+- Root cause was duplicate bare-metal Zenoh session IDs. `zpico_fill_session_zid`
+  for `ZPICO_SMOLTCP`/`ZPICO_SERIAL` used only static address, per-process
+  counter, and deterministic QEMU clock data, ignoring the board RNG seeded
+  from the QEMU node config. Both QEMU guests therefore presented the same ZID
+  and the router refused the second logical peer. Fixed by using the platform
+  RNG for bare-metal smoltcp/serial session ZID bytes.
+- RTIC service/action then advanced to reply handling: requests reached the
+  server and `zenohd` propagated replies back to the client face, but direct
+  service/action promises did not necessarily drain the no-std Zenoh session
+  before checking their pending reply slot. Fixed by self-draining
+  `try_recv_reply_raw()` on no-std before `get_check()`.
+- Focused RTIC action and service rerun now passes:
+  `cargo nextest run -p nros-tests --test emulator --no-capture --retries 0 \
+  test_qemu_rtic_action_e2e test_qemu_rtic_service_e2e`.
+- Serial pub/sub remains separate. Both serial QEMU peers open with distinct
+  ZIDs and declare subscriber/publisher entities; `zenohd` logs both serial
+  transports and declarations. No publish or keepalive traffic reaches the
+  router afterward, the listener link expires after 10s, and the talker never
+  prints `Published:`.
+
+2026-05-16 narrowing run (in-tree counters; reverted after capture):
+
+- Per-tick semihosting trace through the talker's idle spin loop showed the
+  send/receive pair handshakes a keepalive (header `0x00`, 1-byte payload)
+  every `spin_once(10ms)` for 35 iterations, then `spin_once` #36 (~360 ms
+  after entering the main loop) never returns. Last `_z_read_serial_internal`
+  call returned header `0x00` / payload `1`; last `_z_send_serial_internal`
+  call wrote header `0x00` / payload `1`. Tick 28 had previously returned a
+  10-byte payload (likely a Declare / OpenAck-class frame) and did not
+  themselves hang.
+- During the hang both QEMU guests sit at ~100 % host CPU; `zenohd` is idle.
+  CMSDK UART write-counter snapshots stop incrementing at the hang, and
+  `WRITE_TX_FULL_WAITS` never advanced for the preceding ticks, so the busy
+  spin is NOT in `CmsdkUart::write`'s TX-FULL poll. `READ_TIMEOUTS` never
+  advanced either, so the busy spin is NOT inside `_z_read_serial_internal`'s
+  first-byte or mid-frame wait either.
+- Defensive bounds added while narrowing — kept after revert because they
+  are correctness fixes regardless of this failure:
+  - `_z_read_serial_internal` now caps the mid-frame poll at 500 ms instead
+    of looping forever on `rx_drain == 0`.
+  - `CmsdkUart::write` caps the per-byte TX-FULL busy spin at ~1e6 cycles
+    and returns a short write rather than parking the executor.
+- Net effect: the hang is downstream of the bare-metal serial link layer.
+  Spin is in zenoh-pico's transport processing for whatever frame arrives at
+  ~360 ms, or in `_z_pending_query_process_timeout`, or the
+  `nros-platform-mps2-an385` 64 KiB `FreeListHeap` is exhausted by keepalive
+  alloc/free churn around that mark.
+
+Suggested next probes (not yet attempted):
+
+- Add per-line semihosting print to the `ZPICO_SERIAL` branch of
+  `zpico_spin_once` (around `zp_read`, `_z_pending_query_process_timeout`,
+  and `zp_send_keep_alive`) to pinpoint which call never returns.
+- Instrument the bare-metal heap (`packages/platforms/nros-platform-mps2-an385/src/memory.rs`)
+  with a free-bytes counter and surface it; check whether the heap is
+  exhausted near tick 36.
+- Run `RUST_LOG=zenoh=trace,zenoh_link=trace just zenohd` against the same
+  PTYs and correlate what `zenohd` ships to the talker between the last
+  good keepalive and the hang.
 
 Subitems:
 
-- [x] `127.D.1`: RTIC action E2E — **PASS** under
-  `QEMU_SYSTEM_ARM=build/qemu/bin/qemu-system-arm` after the
-  LTO alias-defeat fix in `pending_get_reply_handler` /
-  `zpico_get_check` / `zpico_liveliness_get_check` (commit pending).
-  Verified 3/3 with `cargo nextest run -p nros-tests --test emulator
-  --no-fail-fast --no-capture --retries 0 test_qemu_rtic_action_e2e`
-  — client receives goal acceptance + 5 feedback frames in 17 s.
-- [x] `127.D.2`: RTIC service E2E — **PASS** under patched QEMU + the
-  same fix. Verified 3/3 (~19 s each): server `Handled: 5+3=8`,
-  client `Reply: 5+3=8`, all 4 calls complete.
-
-  Root cause: under `lto = "fat"` + `opt-level = "s"` on cortex-m3,
-  the compiler proved `&g_pending_gets[handle].ctx` and the closure's
-  type-erased `void *ctx` were disjoint (the slot table is private
-  to the TU and `pending_get_reply_handler` receives `void *`), so
-  the `received = true` write inside the handler was elided wrt the
-  read in `zpico_get_check`. `volatile`, `_Atomic`, and
-  `__atomic_load_n` / `store_n` with `SEQ_CST` were all insufficient
-  — fat-LTO kept proving the no-alias.
-
-  Fix: record the closure ctx + the `&ps->ctx` address into
-  externally-visible `volatile uint32_t` counters in both
-  `pending_get_reply_handler` and `zpico_get_check`
-  (+ `zpico_liveliness_get_check`). The address store has a real
-  side effect the compiler can't optimise away, which prevents the
-  whole-program aliasing proof and forces the cross-callback memory
-  access to go through actual memory.
-
-  Pre-patch capture of the failing service path is below:
-  Pre-patch capture (2026-05-17 via tshark + zenoh-dissector on
-  host loopback `tcp port 7460`) for reference:
-  - Client TX path: query frame (98 B) leaves QEMU, host kernel ACKs.
-  - zenohd forwards 99 B to server; server replies 104 B; zenohd
-    forwards `Reply` (107 B, payload `[00, 01, 00, 00, 08, ..]` =
-    CDR `i64=8`) and `ResponseFinal` (11 B) toward client TCP socket;
-    client TCP layer ACKs both (Seq 97/204, Ack 1861).
-  - Client smoltcp side (new `nros_smoltcp::rx_diagnostics()` +
-    `lan9118_smoltcp::rx_diag_counters()` counters): `lan_pend` and
-    `deliv` freeze at 519 packets; `rx` / `recv` freeze at 223 bytes
-    after the initial handshake-and-declare burst. The LAN9118 model's
-    RX FIFO never surfaces the reply frames to the guest even though
-    host loopback shows them delivered to slirp's host socket.
-  - Conclusion: blocker is in QEMU slirp ↔ LAN9118 model frame
-    delivery (post-burst stall), not in nros-smoltcp / zenoh-pico
-    layers. Cadence-gated WFI, trailing `iface.poll` removal,
-    PROM-mode rebuild all verified not to change the symptom.
-  - Diagnostic infrastructure landed under Phase 127.D so future
-    bring-up can re-confirm in one rebuild + run.
-  - 2026-05-17 upstream-source review of `qemu/hw/net/lan9118.c`
-    pinpointed the exact bug: the LAN9118 model registers no
-    `.can_receive` callback and never calls
-    `qemu_flush_queued_packets()` after `rx_status_fifo_pop`. Per
-    `net/queue.c:29-41`, slirp's `qemu_send_packet(..., NULL)`
-    drops on `-1` instead of queueing — every major QEMU NIC except
-    LAN9118 (cadence_gem, imx_fec, sunhme, igb, mcf_fec, msf2-emac,
-    npcm7xx_emc, npcm_gmac) calls `qemu_flush_queued_packets`. Full
-    finding + minimal upstream patch:
-    [`docs/research/qemu-lan9118-slirp-rx-stall.md`](../research/qemu-lan9118-slirp-rx-stall.md)
-    and `external/qemu/lan9118-flow-control.patch` (against
-    `qemu/master`).
-- [>] `127.D.3`: Serial pub/sub E2E — root-caused (CMSDK UART
-  busy-spin starves QEMU main loop, TX FIFO never drains, write
-  hangs after session-open). Spun out as a dedicated phase:
-  [`phase-132-cmsdk-uart-irq-driven.md`](phase-132-cmsdk-uart-irq-driven.md).
-  Includes the 2026-05-17 experiment log + fix-space analysis.
+- [x] `127.D.1`: RTIC action E2E.
+- [x] `127.D.2`: RTIC service E2E.
+- [ ] `127.D.3`: Serial pub/sub E2E.
 
 Done criteria:
 
-- [x] Determine whether failures share session readiness, router timing,
-  serial framing, or executor wake behavior. (Cause: executor wake /
-  CPU-yield on bare-metal busy-wait loops.)
+- [x] Determine whether failures share session readiness, router timing, serial
+  framing, or executor wake behavior.
 - [x] Compare against passing native RTIC action/service/pubsub cases.
-  (Native examples have OS-yield; bare-metal needs the explicit WFI
-  hook.)
-- [~] Each of RTIC action, RTIC service, and serial pub/sub is either
-  fixed or assigned a precise remaining blocker. Pubsub fixed; service
-  / action narrowed to reply-correlation; serial blocked on
-  non-RTIC-safe idle.
+- [x] Each of RTIC action, RTIC service, and serial pub/sub is either fixed or
+  assigned a precise remaining blocker. 127.D.3 remaining blocker is a busy
+  spin inside zenoh-pico transport processing (or the bare-metal heap) at
+  ~360 ms after talker idle-spin enters its keepalive ping-pong, downstream
+  of the CMSDK UART driver and `_z_read_serial_internal`.
 
 Focused commands:
 
 ```bash
-just build-test-fixtures
-cargo nextest run -p nros-tests --no-capture rtic
+just qemu build-fixtures
+cargo nextest run -p nros-tests --test emulator --no-capture --retries 0 \
+  test_qemu_rtic_action_e2e test_qemu_rtic_service_e2e test_qemu_serial_pubsub_e2e
 ```
 
 ## 127.E: Native DDS Action

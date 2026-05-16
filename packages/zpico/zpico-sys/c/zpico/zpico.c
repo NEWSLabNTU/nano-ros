@@ -369,6 +369,15 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
     }
 #endif
 
+#if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
+    // Bare-metal/QEMU targets seed the platform RNG from board-specific
+    // entropy before zpico_open(). Use that RNG directly; clock/address-only
+    // fallback data is deterministic across separate QEMU processes and can
+    // produce duplicate session ZIDs.
+    z_random_fill(bytes, ZPICO_ZID_SIZE);
+    return;
+#endif
+
 #if defined(ZENOH_ZEPHYR)
     sys_rand_get(bytes, ZPICO_ZID_SIZE);
 

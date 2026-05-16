@@ -675,6 +675,11 @@ impl ServiceClientTrait for ZenohServiceClient {
 
         let context = unsafe { &*self.context };
 
+        #[cfg(not(feature = "std"))]
+        {
+            let _ = context.spin_once(0);
+        }
+
         match context.get_check(handle, reply_buf) {
             Ok(Some(len)) => {
                 self.pending_handle = None;
