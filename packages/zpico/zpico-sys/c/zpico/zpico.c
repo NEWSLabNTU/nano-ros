@@ -356,6 +356,11 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
 #endif
 #if defined(ZPICO_SMOLTCP)
     seed ^= smoltcp_clock_now_ms() << 1;
+    seed ^= z_random_u64();
+    seed ^= z_random_u64() << 1;
+#elif defined(ZPICO_SERIAL)
+    seed ^= z_random_u64();
+    seed ^= z_random_u64() << 1;
 #elif defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
     z_clock_t now = z_clock_now();
     zpico_mix_clock_bytes(&seed, &now, sizeof(now));
