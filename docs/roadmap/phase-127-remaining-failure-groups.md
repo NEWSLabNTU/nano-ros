@@ -743,26 +743,58 @@ Scope:
 - RTIC action E2E
 - RTIC service E2E
 - serial pub/sub E2E
+- RTIC pub/sub E2E and mixed-priority pub/sub (originally lumped under
+  127.B.4 in the older count; they share the MPS2 SLIRP/WFI root cause
+  with the rest of 127.D)
 
-Current signal:
+Current signal (2026-05-17):
 
-- Last full `just ci` bucket before the Phase 126 pull had 3 failures.
-- Native RTIC pattern fixtures were repaired earlier, so these should be
-  treated as bare-metal/QEMU-specific until proven otherwise.
+- Root cause for the original "Transport(ConnectionFailed) at the
+  second QEMU's `Executor::open`" symptom was the MPS2 LAN9118 connect
+  loop spinning without releasing the CPU. Under `-icount shift=auto`
+  with two guests sharing the host, QEMU's main loop never got the
+  cycles it needed to drain SLIRP, so the second guest's SYN-ACK never
+  landed before zenoh-pico's open timeout.
+- Fix landed in `phase-127.D: WFI idle hook unblocks MPS2 two-QEMU
+  connect`: add an opt-in idle callback to `nros_baremetal_common::sleep`
+  and `nros_smoltcp::do_poll`. MPS2-AN385 board exposes
+  `enable_wfi_idle()` which installs `cortex_m::asm::wfi` on both. RTIC
+  examples call it immediately after `Mono::start`.
+- After the fix, focused isolated reruns:
+  - `test_qemu_rtic_pubsub_e2e`: PASS (was failing) — 3/3 in a 3x loop.
+  - `test_qemu_rtic_service_e2e`: client now opens the session, server
+    `Handled: 5 + 3 = 8`, but client never sees `Reply:` (reply
+    correlation gap, not connect). Distinct follow-up.
+  - `test_qemu_rtic_action_e2e`: client now opens, sends goal, server
+    `Goal accepted` / `Goal complete`, but client times out waiting
+    for `goal acceptance` reply. Same reply gap as service.
+  - `test_qemu_rtic_mixed_priority_pubsub_e2e`: not re-verified yet.
+  - `test_qemu_serial_pubsub_e2e`: still fails; serial example uses
+    non-RTIC `run()` so no IRQ source is armed and `enable_wfi_idle()`
+    isn't safe to call. Needs a separate fix (e.g. arming a periodic
+    timer interrupt in `init_hardware` so `wfi` can wake without RTIC).
 
 Subitems:
 
-- [ ] `127.D.1`: RTIC action E2E.
-- [ ] `127.D.2`: RTIC service E2E.
-- [ ] `127.D.3`: Serial pub/sub E2E.
+- [~] `127.D.1`: RTIC action E2E — connect path now passes; client
+  reply-correlation timeout remains.
+- [~] `127.D.2`: RTIC service E2E — connect path now passes; client
+  reply-correlation timeout remains.
+- [ ] `127.D.3`: Serial pub/sub E2E — pending RTIC-less idle hook
+  (non-RTIC `run()` examples have no armed IRQ).
 
 Done criteria:
 
-- [ ] Determine whether failures share session readiness, router timing, serial
-  framing, or executor wake behavior.
-- [ ] Compare against passing native RTIC action/service/pubsub cases.
-- [ ] Each of RTIC action, RTIC service, and serial pub/sub is either fixed or
-  assigned a precise remaining blocker.
+- [x] Determine whether failures share session readiness, router timing,
+  serial framing, or executor wake behavior. (Cause: executor wake /
+  CPU-yield on bare-metal busy-wait loops.)
+- [x] Compare against passing native RTIC action/service/pubsub cases.
+  (Native examples have OS-yield; bare-metal needs the explicit WFI
+  hook.)
+- [~] Each of RTIC action, RTIC service, and serial pub/sub is either
+  fixed or assigned a precise remaining blocker. Pubsub fixed; service
+  / action narrowed to reply-correlation; serial blocked on
+  non-RTIC-safe idle.
 
 Focused commands:
 
