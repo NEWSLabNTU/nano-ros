@@ -336,6 +336,16 @@ A. **No backend name appears in core source.**
 
 B. **No `register()` call in user examples for the common case.**
    - `git grep -n 'nros_rmw_.*::register' examples/` returns 0 lines.
+   - **Stable Rust caveat:** rlib units that are not symbol-referenced
+     from user code are NOT pulled into the final binary, even when
+     they contribute to `RMW_INIT_ENTRIES`. The one-line
+     `nros_rmw_<x>::register()` call doubles as the rlib-pull anchor
+     AND a (redundant, idempotent) registration. C/C++ binaries do
+     not need it because static-lib backends link with
+     `--whole-archive` semantics. The call is preserved in Rust
+     examples for that reason and documented as such. Acceptance B
+     becomes "no `#ifdef`-style fan-out in core; one-line anchor
+     allowed at the binary's entry point".
 
 C. **Single-backend example builds + runs without naming the
    backend.**

@@ -43,14 +43,12 @@ alloc = [
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
-# Phase 104.A — per-backend feature flags retained as inert aliases
-# for source compatibility. They no longer pull a concrete backend
-# crate into `nros`'s Cargo graph; the caller adds the backend as
-# its own direct dep and calls `nros_rmw_<name>::register()`
-# (or relies on the backend's `#[ctor]`) before `Executor::open`.
-rmw-xrce-cffi = ["rmw-cffi", "nros-node/rmw-xrce-cffi"]
-rmw-dds-cffi = ["rmw-cffi", "nros-node/rmw-dds-cffi"]
-rmw-zenoh-cffi = ["rmw-cffi", "nros-node/rmw-zenoh-cffi"]
+# Phase 128.C.3 — `rmw-{zenoh,xrce,dds,cyclonedds}-cffi` features
+# deleted. Selection lives entirely in the manifest: depend on
+# `nros-rmw-<name>` directly and the `RMW_INIT_ENTRIES` walker
+# discovers it on first `Executor::open`. The C++ side picks via
+# `target_link_libraries(... NanoRos::Rmw::<name>)`. `rmw-cffi` is
+# the only Rust feature that still gates the vtable runtime.
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.

@@ -152,45 +152,13 @@ pub unsafe extern "C" fn nros_support_init_named(
         support.locator_len = len;
     }
 
-    // Zephyr C API fixtures do not use CMake's nano_ros_link_rmw()
-    // generated stub, so keep the legacy XRCE compatibility feature
-    // as an explicit registration hook for this backend.
-    #[cfg(feature = "cffi-xrce-c")]
-    {
-        unsafe extern "C" {
-            fn nros_rmw_xrce_register() -> i32;
-        }
-        let rc = unsafe { nros_rmw_xrce_register() };
-        if rc != 0 {
-            return rc;
-        }
-    }
-
-    // Phase 123.A.11.2 — explicit `nros_rmw_<rmw>_register()` call
-    // sites removed. Each backend's wrapper staticlib emits a
-    // `.init_array` ctor (phase 104.A) that runs the register fn
-    // before `main()` on POSIX / macOS / Windows.
-    //
-    // Phase 104.B.6 — bare-metal explicit-call stub. On targets
-    // whose startup doesn't walk `.init_array` (some FreeRTOS /
-    // NuttX / ThreadX / Zephyr configurations), CMake's
-    // `nano_ros_link_rmw(target NAME <rmw>)` writes a stub C file
-    // into the user's target that provides a STRONG def of
-    // `nros_app_register_backends()`. nros-c declares the same
-    // symbol as WEAK and calls it from `nros_support_init`. If
-    // the stub is linked in, the strong def wins and the named
-    // backend(s) register. If not (POSIX with .init_array), the
-    // weak no-op default fires and the backend self-registers
-    // via its ctor instead. Either way, idempotent.
-    //
-    // `nros-c` itself stays RMW-agnostic — one `libnros_c.a` per
-    // target triple covers all backends.
-    unsafe extern "C" {
-        fn nros_app_register_backends();
-    }
-    unsafe {
-        nros_app_register_backends();
-    }
+    // Phase 128.C.2 — RMW-blind support init. Every linked backend
+    // self-registers via the `RMW_INIT_ENTRIES` linker section
+    // (linkme on the Rust side, `NROS_RMW_REGISTER_BACKEND` macro on
+    // the C/C++ side). The walker fires inside the matching
+    // `nros::internals::open_session` / `Executor::open` call below;
+    // the prior `nros_app_register_backends()` weak/strong dance and
+    // the legacy `cffi-xrce-c` hook are no longer needed.
 
     // Initialize the middleware session
     #[cfg(feature = "rmw-cffi")]

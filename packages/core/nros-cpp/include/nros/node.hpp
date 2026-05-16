@@ -408,66 +408,16 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     if (session_name == nullptr) {
         return Result(-3);
     }
-#ifdef NROS_RMW_CYCLONEDDS
-    // Phase 117.8: when the consumer linked against the Cyclone DDS
-    // RMW backend (via nros-cpp's `NROS_CPP_RMW=cyclonedds` CMake
-    // option), register the backend's vtable with the runtime before
-    // the first session is created. Idempotent — re-registering
-    // the same vtable is a no-op.
-    {
-        int32_t reg_ret = nros_rmw_cyclonedds_register();
-        if (reg_ret != 0) {
-            return Result(reg_ret);
-        }
-    }
-#endif
-#ifdef NROS_RMW_XRCE
-    // Phase 115.K.2.5.2: same shape as the cyclonedds hook above —
-    // auto-register the micro-XRCE-DDS-Client C backend's vtable.
-    // Selected via `NANO_ROS_RMW=xrce` at CMake configure time (the
-    // `xrce-c` selector was retired in K.2.5.2; the C backend is now
-    // the canonical XRCE path).
-    {
-        int32_t reg_ret = nros_rmw_xrce_register();
-        if (reg_ret != 0) {
-            return Result(reg_ret);
-        }
-    }
-#endif
-#ifdef NROS_RMW_DDS_CFFI
-    // Phase 115.L.1: dust-DDS via the C vtable. Selected via
-    // `NANO_ROS_RMW=dds`. The `nros-rmw-dds-cffi` crate provides
-    // `nros_rmw_dds_register()` which installs a
-    // `RustBackendAdapter::<DdsRmw>::VTABLE` into the cffi runtime.
-    {
-        int32_t reg_ret = nros_rmw_dds_register();
-        if (reg_ret != 0) {
-            return Result(reg_ret);
-        }
-    }
-#endif
-#ifdef NROS_RMW_ZENOH_CFFI
-    // Phase 115.L.2: zenoh-pico via the C vtable. Selected via
-    // `NANO_ROS_RMW=zenoh`.
-    {
-        int32_t reg_ret = nros_rmw_zenoh_register();
-        if (reg_ret != 0) {
-            return Result(reg_ret);
-        }
-    }
-#endif
-#ifdef NROS_RMW_UORB
-    // Phase 115.K.4: PX4 uORB backend (C++ port). Selected via
-    // `NANO_ROS_RMW=uorb`. The PX4 module must call
-    // `nros_rmw_uorb_register_topic(...)` for each topic before
-    // `nros::init` runs; the vtable register itself happens here.
-    {
-        int32_t reg_ret = nros_rmw_uorb_register();
-        if (reg_ret != 0) {
-            return Result(reg_ret);
-        }
-    }
-#endif
+    // Phase 128.C.1 — RMW-blind init. Every backend (cyclonedds,
+    // xrce, dds, zenoh, uorb, …) contributes its registration entry
+    // to the `RMW_INIT_ENTRIES` linker section via the
+    // `NROS_RMW_REGISTER_BACKEND` macro (C/C++) or
+    // `#[linkme::distributed_slice]` (Rust). The cffi runtime's
+    // section walker fires inside `nros_cpp_init` and dispatches to
+    // whichever backends were linked into this binary. No
+    // `#ifdef NROS_RMW_*` chain here, no CMake-driven fan-out — the
+    // user's `target_link_libraries(... NanoRos::Rmw::<name>)` is
+    // the only selector.
     nros_cpp_ret_t ret =
         nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {

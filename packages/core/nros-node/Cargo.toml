@@ -40,14 +40,10 @@ rmw-cffi = ["dep:nros-rmw-cffi"]
 # enable when the binary installs POSIX signal handlers that need
 # to wake the executor.
 signal-fd-wake = ["dep:libc", "std"]
-# Phase 104.A — per-backend feature flags retained as inert aliases
-# for source compatibility. They no longer pull a concrete backend
-# crate into `nros-node`'s Cargo graph; the caller adds the backend
-# as its own direct dep and calls `nros_rmw_<name>::register()`
-# (or relies on the backend's `#[ctor]`) before `Executor::open`.
-rmw-xrce-cffi = ["rmw-cffi"]
-rmw-dds-cffi = ["rmw-cffi"]
-rmw-zenoh-cffi = ["rmw-cffi"]
+# Phase 128.C.3 — per-backend `rmw-*-cffi` features deleted. The
+# walker (`nros_rmw_cffi_walk_init_section`) discovers whichever
+# backend the manifest pulled in; `rmw-cffi` alone gates the vtable
+# runtime.
 
 # Phase 99: backend native slot lending (zero-copy publish via
 # SlotLending trait). Forwards to whichever active backend supports it.
