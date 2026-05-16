@@ -94,26 +94,66 @@ instead of picking `transport_posix_*.c` per platform.
 
 ### 129.A — Generic platform adapter (zenoh)
 
-- [ ] `129.A.1` — extend `platform_aliases.c` (added in phase
+- [x] `129.A.1` — extend `platform_aliases.c` (added in phase
   128.D.3) to cover the full `<system/common/platform.h>` symbol
   set. Today it covers memory / sleep / random / time. Add:
   threading (`_z_task_init/join/detach/cancel/exit`,
   `_z_task_free`), mutexes (`_z_mutex_init/drop/lock/try_lock/unlock`),
   recursive mutexes (`_z_mutex_rec_*`), condvars
-  (`_z_condvar_init/drop/signal/signal_all/wait/wait_until`), and
-  yields (`_z_yield`).
+  (`_z_condvar_init/drop/signal/signal_all/wait`), and
+  yields (`z_yield`). `_z_condvar_wait_until` deferred — depends
+  on a generic `z_clock_t` typedef (see A.3).
   **Files:** `packages/zpico/zpico-sys/c/zpico/platform_aliases.c`.
-- [ ] `129.A.2` — extend `nros_platform_*` ABI where missing
-  symbols are needed. Phase 121 already shipped task / mutex /
-  condvar primitives; verify zenoh-pico's expectations match
-  one-to-one. Patch gaps in
-  `packages/core/nros-platform-cffi/include/nros/platform.h`.
-- [ ] `129.A.3` — exclude zenoh-pico's per-RTOS `system/<rtos>/
-  system.c` from the cc build when `platform-aliases` is on.
-  Today `zpico-sys/build.rs` picks the file based on
-  `CARGO_FEATURE_<RTOS>`. New mode: opt out of vendor `system.c`
-  entirely, link only the alias TU.
-  **Files:** `packages/zpico/zpico-sys/build.rs`.
+- [x] `129.A.2` — verify `nros_platform_*` ABI covers all symbols
+  the vendor `<system/common/platform.h>` declares. Result: **no
+  ABI gap** for the non-clock fold. Phase 121 already shipped
+  task / mutex / mutex_rec / condvar / yield / sleep / random /
+  alloc / time primitives that map 1:1 to the wrappers in A.1.
+  The remaining open items are NOT missing platform symbols
+  but rather two layout issues that block A.3:
+    1. `z_clock_t` / `z_time_t` are per-platform typedefs
+       (`struct timespec` on POSIX, `TickType_t` on FreeRTOS
+       orin-spe, etc). A generic platform header has to type
+       them as `uint64_t` (ms) to fit `nros_platform_time_now_ms`
+       and `nros_platform_condvar_wait_until`.
+    2. `_z_task_t` / `_z_mutex_t` / `_z_condvar_t` are
+       `void *` only when `Z_FEATURE_MULTI_THREAD=0`. With
+       multi-thread the per-platform header overrides them
+       with native types (`pthread_t`, `pthread_mutex_t`,
+       `pthread_cond_t`). Zenoh-pico stack-allocates these by
+       value, so the generic header has to type them as
+       `uint8_t[N]` opaque storage sized to the worst case
+       across supported platforms. Phase 121's ABI takes
+       `void *` to caller storage, so an `N`-sized array
+       satisfies the contract.
+  Both issues belong to A.3 — A.2 is closed.
+- [ ] `129.A.3` — three sub-tasks, all needed before A.4 can
+  flip the default. Track separately:
+  - `129.A.3.a` — author
+    `packages/zpico/zpico-sys/c/zpico/zenoh_generic_platform.h`.
+    Vendor `system/common/platform.h` already accommodates a
+    `ZENOH_GENERIC` mode (line 55) that includes this header by
+    that exact name. Header types `z_clock_t = uint64_t`,
+    `z_time_t = uint64_t` (ms), `_z_task_t / _z_mutex_t /
+    _z_mutex_rec_t / _z_condvar_t = uint8_t[N]` worst-case
+    storage, `z_task_attr_t = void *`. `N` per type from a
+    cross-platform survey (POSIX pthread_t ≤ 8 on Linux but
+    pthread_mutex_t = 40, pthread_cond_t = 48; FreeRTOS TCB
+    pointer = 8 + attr struct; ThreadX TX_THREAD = ~232).
+    Pick `N = 256` for tasks, `N = 64` for mutex / condvar to
+    cover all supported platforms with a 2× safety margin.
+  - `129.A.3.b` — add `_z_condvar_wait_until` + `z_clock_now`
+    + `z_clock_elapsed_us/ms/s` + `z_clock_advance_us/ms/s` to
+    `platform_aliases.c`. They become trivial wrappers once
+    A.3.a installs the generic `z_clock_t = uint64_t` typedef.
+  - `129.A.3.c` — `zpico-sys/build.rs`: when
+    `platform-aliases` is on, define `ZENOH_GENERIC` for the
+    vendor C build, add `c/zpico/` to the cc include path
+    (so `zenoh_generic_platform.h` resolves), and exclude the
+    per-RTOS `system/<rtos>/system.c` from the cc build. The
+    alias TU then satisfies every symbol that vendor `system.c`
+    would have. `network.c` selection stays unchanged — it's
+    a separate axis (smoltcp vs lwIP vs POSIX sockets).
 - [ ] `129.A.4` — make `platform-aliases` the default. Once A.1–A.3
   prove out on POSIX + a sample RTOS, flip the default. Existing
   `platform-<rtos>` features become inert markers (deleted in
@@ -121,14 +161,34 @@ instead of picking `transport_posix_*.c` per platform.
 
 ### 129.B — Generic platform adapter (XRCE)
 
-- [ ] `129.B.1` — same fold for `nros-rmw-xrce-cffi`. Today
-  `build.rs` compiles `transport_posix_udp.c` / `transport_posix_serial.c`
-  / `transport_zephyr_udp.c` conditionally. The new mode wires the
-  micro-XRCE custom-transport callbacks through `nros_platform_*`
-  net symbols and drops the per-platform transport TUs entirely.
-- [ ] `129.B.2` — gap-fill on the `nros_platform_*` net surface.
-  Phase 121 covered TCP/UDP socket primitives; verify XRCE's
-  callback signatures map 1:1.
+Status: **blocked on B.2** — `nros_platform_*` net surface does
+not exist yet. Phase 121 shipped threading / mem / time / random
+only; net was deferred. The B fold cannot proceed until B.2 lands
+a `nros_platform_net_*` ABI.
+
+- [ ] `129.B.2` (do first) — design + ship the
+  `nros_platform_net_*` ABI in
+  `packages/core/nros-platform-api/src/lib.rs` +
+  `packages/core/nros-platform-cffi/include/nros/platform.h`.
+  Surface needs:
+    - UDP unicast: `socket / bind / connect / sendto / recvfrom /
+      close / set_nonblocking / set_recv_timeout_ms`.
+    - UDP multicast: `join_group / leave_group / set_loopback`.
+    - TCP (XRCE optionally uses it): `socket / bind / connect /
+      listen / accept / send / recv / close`.
+    - Serial: deferred — micro-XRCE serial transport is rarely
+      used and zenoh-pico already has a working serial path.
+  Implementation on POSIX is a thin pass-through to BSD sockets.
+  Zephyr / FreeRTOS+lwIP / smoltcp impls reuse what
+  `zpico-platform-shim` + per-board crates already wire today.
+  Tracked separately from this phase if the ABI exercise is big
+  enough to warrant its own roadmap doc.
+- [ ] `129.B.1` — fold for `nros-rmw-xrce-cffi`. Today
+  `build.rs` compiles `udp_transport_posix.c` directly, opening
+  AF_INET sockets via libc. The new mode authors
+  `udp_transport_nros.c` that implements the same
+  `uxrUDPTransport` ABI on top of `nros_platform_net_*` (from
+  B.2), and `build.rs` substitutes it for the per-platform TU.
 
 ### 129.C — Delete `platform-<rtos>` features from RMW crates
 

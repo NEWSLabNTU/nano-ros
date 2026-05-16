@@ -130,3 +130,125 @@ int8_t _z_get_time_since_epoch(struct nros_z_time_since_epoch *t) {
     t->nanos = nros_platform_time_since_epoch_nanos();
     return 0;
 }
+
+/* -------------------------------------------------------------------------
+ *  Yield — direct alias.
+ * ----------------------------------------------------------------------- */
+
+void z_yield(void) {
+    nros_platform_yield_now();
+}
+
+/* -------------------------------------------------------------------------
+ *  Threading: tasks. zenoh-pico passes a `_z_task_t *` whose layout is
+ *  opaque caller storage. nros_platform_task_init takes a `void *` for
+ *  the same purpose — direct pass-through.
+ * ----------------------------------------------------------------------- */
+
+int8_t _z_task_init(void *task, void *attr, void *(*entry)(void *), void *arg) {
+    return nros_platform_task_init(task, attr, entry, arg);
+}
+
+int8_t _z_task_join(void *task) {
+    return nros_platform_task_join(task);
+}
+
+int8_t _z_task_detach(void *task) {
+    return nros_platform_task_detach(task);
+}
+
+int8_t _z_task_cancel(void *task) {
+    return nros_platform_task_cancel(task);
+}
+
+void _z_task_exit(void) {
+    nros_platform_task_exit();
+}
+
+void _z_task_free(void **task) {
+    nros_platform_task_free(task);
+}
+
+/* -------------------------------------------------------------------------
+ *  Threading: non-recursive mutex.
+ * ----------------------------------------------------------------------- */
+
+int8_t _z_mutex_init(void *m) {
+    return nros_platform_mutex_init(m);
+}
+
+int8_t _z_mutex_drop(void *m) {
+    return nros_platform_mutex_drop(m);
+}
+
+int8_t _z_mutex_lock(void *m) {
+    return nros_platform_mutex_lock(m);
+}
+
+int8_t _z_mutex_try_lock(void *m) {
+    return nros_platform_mutex_try_lock(m);
+}
+
+int8_t _z_mutex_unlock(void *m) {
+    return nros_platform_mutex_unlock(m);
+}
+
+/* -------------------------------------------------------------------------
+ *  Threading: recursive mutex.
+ * ----------------------------------------------------------------------- */
+
+int8_t _z_mutex_rec_init(void *m) {
+    return nros_platform_mutex_rec_init(m);
+}
+
+int8_t _z_mutex_rec_drop(void *m) {
+    return nros_platform_mutex_rec_drop(m);
+}
+
+int8_t _z_mutex_rec_lock(void *m) {
+    return nros_platform_mutex_rec_lock(m);
+}
+
+int8_t _z_mutex_rec_try_lock(void *m) {
+    return nros_platform_mutex_rec_try_lock(m);
+}
+
+int8_t _z_mutex_rec_unlock(void *m) {
+    return nros_platform_mutex_rec_unlock(m);
+}
+
+/* -------------------------------------------------------------------------
+ *  Threading: condition variables. `wait_until` takes an
+ *  `(secs, nanos)` deadline in zenoh-pico's API — collapse to the
+ *  monotonic-millisecond deadline the platform ABI uses.
+ * ----------------------------------------------------------------------- */
+
+int8_t _z_condvar_init(void *cv) {
+    return nros_platform_condvar_init(cv);
+}
+
+int8_t _z_condvar_drop(void *cv) {
+    return nros_platform_condvar_drop(cv);
+}
+
+int8_t _z_condvar_signal(void *cv) {
+    return nros_platform_condvar_signal(cv);
+}
+
+int8_t _z_condvar_signal_all(void *cv) {
+    return nros_platform_condvar_signal_all(cv);
+}
+
+int8_t _z_condvar_wait(void *cv, void *m) {
+    return nros_platform_condvar_wait(cv, m);
+}
+
+/* `_z_condvar_wait_until(cv, m, const z_clock_t *abstime)` — `z_clock_t`
+ * is per-platform (`struct timespec` on POSIX, `TickType_t` on FreeRTOS
+ * orin-spe, `void *` in the generic void header). A generic alias TU
+ * cannot decode it without first installing a generic platform header
+ * (`zenoh-pico/system/platform/nros_generic.h`) — tracked in
+ * 129.A.1.b. Until then, leave `_z_condvar_wait_until` to the
+ * vendor `system/<rtos>/system.c`. The alias TU only emits symbols
+ * the platform ABI can fulfil unambiguously.
+ */

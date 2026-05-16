@@ -644,6 +644,7 @@ fn main() {
             .warnings(true)
             .compile("zpico_platform_aliases");
         println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
+        println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
     }
 
     // Rerun triggers

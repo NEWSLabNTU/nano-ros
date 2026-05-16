@@ -9,7 +9,12 @@
 #ifndef ZENOH_GENERIC_PLATFORM_H
 #define ZENOH_GENERIC_PLATFORM_H
 
-#if defined(ZENOH_THREADX)
+#if defined(NROS_PLATFORM_ALIASES)
+/* Phase 129.A.3 — types backed entirely by the canonical
+ * `nros_platform_*` ABI. Selected when `zpico-sys`'s
+ * `platform-aliases` feature is on. */
+#include "nros_zenoh_generic_platform.h"
+#elif defined(ZENOH_THREADX)
 #include "threadx/platform.h"
 #else
 #include "bare-metal/platform.h"
