@@ -257,6 +257,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-platform-critical-section"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+]
+
+[[package]]
 name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
@@ -350,6 +357,7 @@ dependencies = [
  "nros",
  "nros-board-threadx-qemu-riscv64",
  "nros-platform",
+ "nros-platform-critical-section",
  "nros-rmw-dds",
  "std_msgs",
 ]

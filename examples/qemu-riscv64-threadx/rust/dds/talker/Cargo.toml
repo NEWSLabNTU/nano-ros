@@ -20,6 +20,9 @@ nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-
 # nros-rmw-dds nostd-runtime path is the only option.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-threadx", "ros-humble"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
+# Phase 121.9 — register the global `critical_section::Impl` against
+# ThreadX's canonical nros_platform_critical_section_* C symbols.
+nros-platform-critical-section = { path = "../../../../../packages/core/nros-platform-critical-section" }
 std_msgs = { version = "*", default-features = false }
 # Phase 115.L.5 — cffi shim exposes dust-dds via `nros_rmw_vtable_t`.
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-threadx"] }

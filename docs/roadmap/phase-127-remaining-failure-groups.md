@@ -412,6 +412,29 @@ Current signal:
   - Full focused verification:
     `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(ThreadxRiscv64)' --no-capture --retries 0 --no-fail-fast`
     completed in 443.4s with 9 passed / 27 skipped.
+- 2026-05-16 DDS RTOS follow-up:
+  - Bare-metal, FreeRTOS, NuttX, and ThreadX RISC-V DDS Rust examples now
+    explicitly call `nros_rmw_dds::register()` before `Executor::open`,
+    matching ThreadX Linux and native DDS examples. This removes the stale
+    comment/code mismatch where examples claimed to install the dust-dds
+    C-vtable backend but relied on `.init_array` or link side effects.
+  - ThreadX RISC-V DDS examples now also link
+    `nros-platform-critical-section` explicitly so dust-dds's global
+    `critical_section::Impl` resolves against the ThreadX
+    `nros_platform_critical_section_*` C symbols.
+  - FreeRTOS multicast membership now honors the ABI's `join` group instead
+    of trying to join the bind endpoint (`0.0.0.0`).
+  - Focused verification:
+    `cargo nextest run -p nros-tests --test nuttx_qemu_dds test_nuttx_dds_rust_talker_to_listener_e2e --no-capture --retries 0 --no-fail-fast`
+    and
+    `cargo nextest run -p nros-tests --test threadx_riscv64_qemu_dds test_threadx_rv64_dds_rust_talker_to_listener_e2e --no-capture --retries 0 --no-fail-fast`
+    now reach publisher/subscriber creation and publish loops, then fail with
+    zero received messages. The remaining NuttX/ThreadX RISC-V DDS blocker is
+    RTPS discovery or datagram delivery, not backend registration or session
+    open.
+  - The ignored FreeRTOS DDS test was run with `--run-ignored all`; it still
+    times out before the listener reaches application readiness, so FreeRTOS
+    DDS remains a lower-level boot/network scheduling case.
 
 Subitems:
 
@@ -424,7 +447,8 @@ Subitems:
   ThreadX RISC-V Rust/C/C++ pub/sub, service, and action pass after the
   ThreadX select, stack, and linker-wrapper fixes.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.
-- [~] `127.B.5`: Shared platform DDS runtime triage.
+- [~] `127.B.5`: Shared platform DDS runtime triage. NuttX and ThreadX
+  RISC-V DDS now open and publish but do not deliver RTPS messages.
 
 Done criteria:
 

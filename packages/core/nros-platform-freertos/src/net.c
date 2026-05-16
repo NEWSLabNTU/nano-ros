@@ -435,7 +435,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                                       const uint8_t *join) {
     ensure_lwip_thread();
 
-    (void) iface; (void) join;
+    (void) iface;
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_freertos_socket_t *sock = (nros_freertos_socket_t *) sock_raw;
     const nros_freertos_endpoint_t *ep = (const nros_freertos_endpoint_t *) endpoint;
@@ -461,7 +461,11 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     /* IP_ADD_MEMBERSHIP on default interface. */
     struct ip_mreq mreq;
     memset(&mreq, 0, sizeof(mreq));
-    mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+    if (join != NULL) {
+        mreq.imr_multiaddr.s_addr = inet_addr((const char *) join);
+    } else {
+        mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+    }
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if (lwip_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                         &mreq, sizeof(mreq)) < 0) {

@@ -45,6 +45,7 @@ extern "C" fn _start() -> ! {
             .domain_id(config.domain_id)
             .node_name("dds_talker");
         // Phase 115.L.5 — install dust-dds C-vtable backend.
+        nros_rmw_dds::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("dds_talker")?;
