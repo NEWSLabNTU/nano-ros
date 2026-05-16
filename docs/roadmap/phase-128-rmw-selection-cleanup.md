@@ -210,7 +210,7 @@ what still needs work, organised by category.
   an explicit selector. Outright deletion would require either a
   new env-var-driven selection mechanism or per-RTOS target triples
   — both are larger reshapes than phase 128's manifest-driven
-  selection goal can absorb. Effort is queued behind phase 130 if
+  selection goal can absorb. Effort is queued for phase 129 (architectural) if
   the feature-axis duplication ever becomes load-bearing for
   another phase.
 - [~] `128.D.2` — same call as D.1 for `nros-rmw-xrce-cffi`
@@ -234,11 +234,11 @@ what still needs work, organised by category.
   `nros_platform_task_t` shapes 1:1 and stay in the shim. smoltcp
   / serial / IVC bridge symbols are per-board / per-RTOS and stay
   in the shim. Full crate deletion blocked behind those — queued
-  for phase 130.
+  for phase 129. See `docs/roadmap/phase-129-platform-agnostic-rmw.md`.
 - [ ] `128.D.4` — `xrce-platform-shim` fold: deferred. The shim has
   a narrower surface than `zpico-platform-shim`; expect a similar
   alias-TU pattern plus a transport-hook layer that can't fold
-  cleanly. Queued alongside D.3 in phase 130.
+  cleanly. Queued alongside D.3 in phase 129.
 - [x] `128.E.1` — deleted `link-tcp`, `link-udp-unicast`,
   `link-udp-multicast`, `link-serial` features from `zpico-sys`.
   Vendor C sources for those four transports compile in always
