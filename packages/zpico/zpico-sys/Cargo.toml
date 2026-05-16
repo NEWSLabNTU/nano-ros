@@ -40,13 +40,16 @@ threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-plat
 # V10.4.3 FreeRTOS API. Activating `active` would double-define those
 # symbols.
 orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/link-ivc"]
-# Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
-# Each feature enables the corresponding protocol code in zenoh-pico at compile time.
-# Transport crates activate the features they implement; Cargo unifies them.
-link-tcp = []
-link-udp-unicast = []
-link-udp-multicast = []
-link-serial = []
+# Phase 128.E.1 — `link-tcp`, `link-udp-unicast`, `link-udp-multicast`,
+# `link-serial` features deleted. Vendor C sources for those four
+# always compile in (`Z_FEATURE_LINK_TCP=1` etc.). The locator string
+# at session-open picks at runtime which one runs. No external build
+# dep involved, so always-on is safe on every target.
+#
+# `link-raweth`, `link-tls`, `link-ivc`, `link-custom` remain
+# explicit because they pull in real build-host requirements
+# (raw-socket cap, mbedTLS/OpenSSL, NVIDIA IVC headers, the custom
+# transport crate).
 link-raweth = []
 link-tls = []
 # Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Selecting

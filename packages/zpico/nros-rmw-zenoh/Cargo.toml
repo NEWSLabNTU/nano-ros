@@ -22,8 +22,12 @@ platform-nuttx = ["nros-platform/platform-nuttx", "zpico-sys/nuttx"]
 platform-threadx = ["nros-platform/platform-threadx", "zpico-sys/threadx"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
 platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
-link-tcp = ["zpico-sys/link-tcp"]
-link-udp-unicast = ["zpico-sys/link-udp-unicast"]
+# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` are now always-on
+# in zpico-sys; keep these feature names as no-op aliases so
+# downstream `Cargo.toml`s that still flip them resolve cleanly.
+# `link-tls` keeps its build-host TLS-provider gate.
+link-tcp = []
+link-udp-unicast = []
 link-tls = ["zpico-sys/link-tls"]
 # Phase 115.B — runtime-pluggable user transport. Enables the
 # `custom://` locator scheme; users register a `NrosTransportOps`

@@ -198,13 +198,33 @@ what still needs work, organised by category.
   per-board `extern crate zpico_platform_shim;` edits across
   `packages/boards/nros-board-*/`.
 - [ ] `128.D.4` — same fold for `xrce-platform-shim`.
-- [ ] `128.E.1` — delete `link-*` features from `nros-rmw-zenoh` +
-  `zpico-sys`. Bare-metal / RTOS link selection needs a graceful
-  inference path the build script can use; TLS keeps its
-  `OPENSSL_DIR` / `MBEDTLS_DIR` opt-in.
-- [ ] `128.E.2` — same audit pass for XRCE (`UCLIENT_PROFILE_*`).
-- [ ] `128.E.3` — examples drop `link-*` from their `Cargo.toml`.
-  Done piecemeal after 128.E.1 lands.
+- [x] `128.E.1` — deleted `link-tcp`, `link-udp-unicast`,
+  `link-udp-multicast`, `link-serial` features from `zpico-sys`.
+  Vendor C sources for those four transports compile in always
+  (`Z_FEATURE_LINK_TCP=1` etc. in `LinkFeatures::from_env`); the
+  locator string at session-open picks at runtime. `link-raweth`,
+  `link-tls`, `link-ivc`, `link-custom` stay explicit because each
+  carries a real build-host requirement.
+  `nros-rmw-zenoh` keeps `link-tcp` / `link-udp-unicast` as
+  inert no-op aliases so downstream `Cargo.toml`s that still flip
+  them resolve cleanly. `link-tls` keeps its real forward.
+  `packages/zpico/zpico-serial/Cargo.toml` lost `link-serial` (the
+  bare-metal platform feature alone now pulls the serial vendor
+  source).
+- [x] `128.E.2` — XRCE no-op. `xrce-sys` has no `link-*` Cargo
+  features and `nros-rmw-xrce-cffi/build.rs` already auto-detects
+  POSIX (`UCLIENT_PROFILE_{UDP,TCP,SERIAL}` always-on on hosted
+  targets, dropped on bare-metal where the consumer must inject a
+  custom transport — phase 115.K.2 design).
+- [~] `128.E.3` — example `Cargo.toml`s retain the
+  `nros-rmw-zenoh/link-tcp` and `link-udp-unicast` feature names as
+  the inert aliases left behind by E.1. Builds work; the explicit
+  cleanup to drop these no-op feature names from every example
+  manifest is queued for a follow-up sweep once the rest of phase
+  129 lands (D.1–D.4 will trigger another mass example-manifest
+  pass anyway). Verified: native zenoh talker + QEMU bare-metal
+  serial talker both build clean against the alias-only
+  configuration.
 
 ### Open — Examples + fixtures migration sweep (NEW)
 

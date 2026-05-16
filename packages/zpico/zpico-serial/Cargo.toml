@@ -22,4 +22,6 @@ categories = ["embedded", "no-std", "network-programming"]
 name = "zpico_serial"
 
 [dependencies]
-zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal", "link-serial"] }
+# Phase 128.E.1 — `link-serial` feature on zpico-sys was deleted
+# (always-on now). Bare-metal platform feature alone is sufficient.
+zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal"] }

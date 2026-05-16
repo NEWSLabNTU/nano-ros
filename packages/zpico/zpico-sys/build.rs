@@ -32,25 +32,25 @@ struct LinkFeatures {
 impl LinkFeatures {
     /// Read link features from Cargo environment variables.
     ///
-    /// Phase 128.E — auto-enable TCP + UDP-unicast on hosted POSIX
-    /// targets so the common-case consumer (Linux / macOS / *BSD)
-    /// does not need to opt in via Cargo features. TLS / serial /
-    /// raw-eth / IVC / custom stay explicit because they require
-    /// either a real build-host dependency (mbedTLS, OpenSSL) or
-    /// hardware-class assumptions the build script cannot infer.
+    /// Phase 128.E.1 — `tcp`, `udp_unicast`, `udp_multicast`, and
+    /// `serial` are always on. Their vendor C sources have no
+    /// external build-host dependency and the wire format isn't
+    /// selected until session-open consults the locator string
+    /// (`tcp/...`, `udp4/...`, `serial/...`). Keeping them gated on
+    /// `link-*` Cargo features only forced every consumer to
+    /// duplicate the same selection that already lives in the
+    /// locator string.
+    ///
+    /// `raweth`, `tls`, `ivc`, `custom` stay explicit because each
+    /// carries a real build-host requirement (raw-socket capability,
+    /// mbedTLS / OpenSSL provider, NVIDIA IVC headers, the
+    /// `zpico-platform-custom` crate).
     fn from_env() -> Self {
-        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-        let hosted_posix = matches!(
-            target_os.as_str(),
-            "linux" | "macos" | "freebsd" | "netbsd" | "openbsd" | "android"
-        );
-        let explicit_tcp = env::var("CARGO_FEATURE_LINK_TCP").is_ok();
-        let explicit_udp = env::var("CARGO_FEATURE_LINK_UDP_UNICAST").is_ok();
         Self {
-            tcp: explicit_tcp || hosted_posix,
-            udp_unicast: explicit_udp || hosted_posix,
-            udp_multicast: env::var("CARGO_FEATURE_LINK_UDP_MULTICAST").is_ok(),
-            serial: env::var("CARGO_FEATURE_LINK_SERIAL").is_ok(),
+            tcp: true,
+            udp_unicast: true,
+            udp_multicast: true,
+            serial: true,
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
