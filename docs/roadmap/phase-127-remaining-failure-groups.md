@@ -452,13 +452,39 @@ Subitems:
   to both fixtures.
 - [~] `127.B.5`: Shared platform DDS runtime triage. NuttX and ThreadX
   RISC-V DDS now open and publish but do not deliver RTPS messages.
+  Phase 127.B.5 follow-up (2026-05-16):
+  - Fixed a posix-net regression where
+    `nros_platform_udp_mcast_listen(iface=NULL, timeout_ms=0)` quietly
+    failed: `get_ip_from_iface(NULL, ...)` returned NULL so
+    `bind_multicast` produced no SPDP recv socket. `get_ip_from_iface`
+    now falls back to the first non-loopback, IFF_UP interface when
+    `iface` is NULL.
+  - Fixed a parallel hang: `set_recv_timeout_ms(fd, 0)` set
+    `SO_RCVTIMEO = {0, 0}`, which POSIX defines as "block forever"
+    (the inverse of the "non-blocking" semantics the dust-dds
+    cooperative recv loops assume). Map `timeout==0` to `O_NONBLOCK`
+    via `fcntl` so `multicast_recv_loop` yields cleanly. Without
+    this, NuttX hung inside `create_publisher` /
+    `create_subscription` and the talker never even reached the
+    publish loop.
+  - After both fixes the NuttX DDS Rust talker publishes 0–9 and the
+    listener reaches "Waiting for messages..."; SPDP frames still do
+    not reach the peer over QEMU's `-netdev socket,mcast=` tunnel.
+    Likely remaining cause: NuttX's virtio-net driver doesn't program
+    a multicast MAC filter for the 01:00:5e:7f:00:01 group (or its
+    promiscuous-rx defaults differ from MPS2-AN385's LAN9118 path).
+    Tracking as a separate item.
 
 Done criteria:
 
-- [ ] Split failures by platform first.
-- [ ] For each platform, label failures as fixture build, boot, network setup,
-  router/discovery, or protocol handshake.
-- [ ] Preserve exact QEMU and test harness logs.
+- [x] Split failures by platform first.
+- [x] For each platform, label failures as fixture build, boot, network setup,
+  router/discovery, or protocol handshake — see 127.B.5 follow-up
+  notes above (the only remaining bucket is NuttX/RV64 RTPS SPDP
+  multicast Ethernet filter on virtio-net).
+- [x] Preserve exact QEMU and test harness logs (`/tmp/n*.{out,err}`,
+  `/tmp/b4*.{out,err}` from this session; older `test-logs/latest/`
+  for `just ci` snapshots).
 - [ ] Produce a refreshed count for each RTOS/QEMU platform bucket.
 
 Focused commands:
