@@ -52,6 +52,14 @@ orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/link-ivc"]
 # transport crate).
 link-raweth = []
 link-tls = []
+# Phase 128.D.3 — opt-in C aliasing TU that maps z_*/_z_get_time_*
+# symbols to the canonical nros_platform_* ABI. Off by default;
+# consumers that have linked nros-platform-cffi can drop the
+# `zpico-platform-shim` rlib for these basic symbols by enabling
+# `platform-aliases` here (then turning off
+# `zpico-platform-shim`'s `active` feature for the alias subset).
+# Threading + smoltcp + serial bridge symbols stay in the shim.
+platform-aliases = []
 # Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Selecting
 # this feature also propagates `cargo:rustc-cfg=feature="link_ivc"` so
 # zpico-platform-shim's `mod ivc_helpers` block compiles in.

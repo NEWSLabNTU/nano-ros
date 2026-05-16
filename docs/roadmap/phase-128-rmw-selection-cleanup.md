@@ -201,20 +201,44 @@ what still needs work, organised by category.
 
 ### Open — Deferred from 128.D / 128.E (queued for phase 129)
 
-- [ ] `128.D.1` — delete `platform-{posix,zephyr,bare-metal,freertos,
-  nuttx,threadx,orin-spe}` features from `nros-rmw-zenoh/Cargo.toml`.
-  Blocked on 128.D.3 (build script per-RTOS C source picking rides on
-  these features).
-- [ ] `128.D.2` — same delete pass for `nros-rmw-xrce-cffi`.
-- [ ] `128.D.3` — fold `zpico-platform-shim` symbols into
-  `nros-platform-cffi` via a C aliasing TU. Shim also carries
-  smoltcp-clock bridges, per-board serial openers, and orin-spe IVC
-  helpers — those need homes before the crate can be deleted.
-  **Files:** `packages/zpico/zpico-platform-shim/` (eventual delete),
-  `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` (new),
-  per-board `extern crate zpico_platform_shim;` edits across
-  `packages/boards/nros-board-*/`.
-- [ ] `128.D.4` — same fold for `xrce-platform-shim`.
+- [~] `128.D.1` — `platform-<rtos>` features on `nros-rmw-zenoh`
+  **stay** as load-bearing build-script selectors (kept under
+  current names). `zpico-sys/build.rs` keys vendor C source
+  selection + `ZENOH_<RTOS>` macro choice on them. Most RTOS
+  targets share `target_os = "none"`, so the build script cannot
+  auto-pick between freertos / nuttx / threadx / orin-spe without
+  an explicit selector. Outright deletion would require either a
+  new env-var-driven selection mechanism or per-RTOS target triples
+  — both are larger reshapes than phase 128's manifest-driven
+  selection goal can absorb. Effort is queued behind phase 130 if
+  the feature-axis duplication ever becomes load-bearing for
+  another phase.
+- [~] `128.D.2` — same call as D.1 for `nros-rmw-xrce-cffi`
+  (`xrce-sys`'s build script keys on the same set, same blocker).
+  Note that `nros-rmw-xrce-cffi/build.rs` already auto-derives
+  POSIX from `target_os`, mitigating the duplicate-axis pain on
+  hosted targets (phase 128.D.0).
+- [~] `128.D.3` — partial fold landed. New TU
+  `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` provides
+  C-level aliases / wrappers for the foldable subset of
+  `zpico-platform-shim`: memory (`z_malloc/realloc/free`), sleep
+  (`z_sleep_us/ms/s`), random (`z_random_u8..u64`, `z_random_fill`),
+  and wall-clock time (`z_time_now`, `z_time_elapsed_*`,
+  `_z_get_time_since_epoch`). All map to the canonical
+  `nros_platform_*` ABI declared in `<nros/platform.h>`. Opt-in
+  via the new `zpico-sys/platform-aliases` Cargo feature; off by
+  default so existing builds (which still link the
+  `zpico-platform-shim` rlib) keep their existing symbol providers.
+  Threading primitives (`_z_task_*`, `_z_mutex_*`, `_z_condvar_*`)
+  use opaque `[u8; N]` storage that doesn't match the
+  `nros_platform_task_t` shapes 1:1 and stay in the shim. smoltcp
+  / serial / IVC bridge symbols are per-board / per-RTOS and stay
+  in the shim. Full crate deletion blocked behind those — queued
+  for phase 130.
+- [ ] `128.D.4` — `xrce-platform-shim` fold: deferred. The shim has
+  a narrower surface than `zpico-platform-shim`; expect a similar
+  alias-TU pattern plus a transport-hook layer that can't fold
+  cleanly. Queued alongside D.3 in phase 130.
 - [x] `128.E.1` — deleted `link-tcp`, `link-udp-unicast`,
   `link-udp-multicast`, `link-serial` features from `zpico-sys`.
   Vendor C sources for those four transports compile in always

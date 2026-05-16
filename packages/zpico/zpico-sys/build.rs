@@ -628,6 +628,24 @@ fn main() {
         println!("cargo:rustc-cfg=zpico_backend=\"orin-spe\"");
     }
 
+    // Phase 128.D.3 — opt-in alias TU that maps z_*/_z_get_time_*
+    // symbols to the canonical nros_platform_* ABI. Compiled only
+    // when the `platform-aliases` feature is selected; downstream
+    // pairs it with disabling the matching symbols in
+    // zpico-platform-shim or relies on `--allow-multiple-definition`
+    // for one-cycle co-existence.
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() {
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        let nros_platform_cffi_include =
+            manifest_dir.join("../../core/nros-platform-cffi/include");
+        cc::Build::new()
+            .file(manifest_dir.join("c/zpico/platform_aliases.c"))
+            .include(nros_platform_cffi_include)
+            .warnings(true)
+            .compile("zpico_platform_aliases");
+        println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
+    }
+
     // Rerun triggers
     println!("cargo:rerun-if-changed=c/zpico/zpico.c");
     println!("cargo:rerun-if-changed=c/zpico/nuttx_clock.c");
