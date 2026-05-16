@@ -45,21 +45,17 @@ Scope:
 - `esp32_emulator::test_esp32_to_native`
 - `esp32_emulator::test_native_to_esp32`
 
-Current signal:
+Current signal (2026-05-17, closed):
 
-- ESP32 listener/talker build and boot checks pass.
-- Listener reaches `Subscriber declared` and waits.
-- No messages are delivered across ESP32-to-ESP32, ESP32-to-native, or
-  native-to-ESP32 paths.
-- Router tracing on 2026-05-15 confirms the ESP32 client completes the TCP
-  Zenoh session handshake (`InitSyn`, `OpenSyn`, `OpenAck`) and is registered
-  as a client face by `zenohd`.
-- After `OpenAck`, `zenohd` receives no subscriber declaration, publisher data,
-  or keepalive from the ESP32 client; the router closes the transport after the
-  10 second lease expires.
-- The active ESP32 Zenoh-pico build has `Z_FEATURE_BATCHING=0` and negotiates a
-  1024 byte unicast batch, so the current silence is not explained by an
-  unflushed Zenoh-pico network-message batch.
+- All three 127.A delivery cases pass; the full `esp32_emulator` binary
+  reports 9/9 passed in 20.6 s with no allocation panics.
+- Root cause was a poll-order bug in `SmoltcpBridge::poll` (TX staging
+  drained one poll-tick after `iface.poll`). Fix landed in
+  `094cb65a phase-127.A: fix SmoltcpBridge poll order, unblock ESP32 zenoh delivery`
+  and closeout in
+  `1ecea3cf phase-127.A: close A.4 — esp32_emulator 9/9 passes clean`.
+- Historical bring-up signal preserved in the 2026-05-15 / 2026-05-16
+  follow-up bullets below for future cross-platform smoltcp work.
 
 Subitems:
 
@@ -120,9 +116,10 @@ Done criteria:
 - [x] Rejected experiments, not committed: an extra smoltcp post-staging poll,
   an OpenETH TX descriptor wait, and a post-`zpico_open` spin did not restore
   delivery; the post-open spin regressed to `Transport(ConnectionFailed)`.
-- [ ] Remaining blocker: identify why ESP32 post-open Zenoh control frames
-  (`Declare subscriber`, `KeepAlive`) do not reach `zenohd` even though the
-  same TCP connection successfully carries the Zenoh open handshake.
+- [x] Remaining blocker (resolved 2026-05-17 via the SmoltcpBridge poll
+  reorder below): post-open Zenoh control frames now reach `zenohd`; both
+  ESP32↔native and the two-QEMU pair deliver messages, with the full
+  `esp32_emulator` suite at 9/9 passed.
 - [x] 2026-05-15 follow-up: ESP32 fixture builds were briefly blocked before
   runtime by `zpico_open()` writing `z_open_options_t.auto_start_read_task` and
   `auto_start_lease_task` while the smoltcp ESP32 build sets
