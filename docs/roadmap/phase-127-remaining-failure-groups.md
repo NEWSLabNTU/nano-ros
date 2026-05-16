@@ -334,6 +334,22 @@ Current signal:
     completed in 298.4s with 3 passed / 6 failed / 27 skipped. Rust pub/sub,
     service, and action pass. C/C++ pub/sub still receive 0 messages; C/C++
     service/action start but fail request/goal flow.
+- 2026-05-16 ThreadX Linux C/C++ close-out:
+  - Reinstalling the ThreadX Linux Zenoh SDK variant and reconfiguring the
+    C/C++ fixtures refreshed the generated
+    `_nano_ros_link/.../nros_app_register_backends.c` stubs. The previous
+    C/C++ pub/sub and service failures were stale fixture artifacts after the
+    staticlib registration changes.
+  - Async C++ action clients now call `client.poll()` after each
+    `nros::spin_once()` while warming up and waiting for results, matching the
+    async action API contract.
+  - The ThreadX Linux C++ action client also requests the result on the first
+    valid feedback if the explicit goal-response callback was missed. Feedback
+    is only emitted for an accepted goal, so this keeps the client from
+    timing out after the server has already completed the goal.
+  - Focused verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-capture --retries 0 --no-fail-fast`
+    completed in 403.6s with 9 passed / 27 skipped.
 
 Subitems:
 
@@ -341,9 +357,9 @@ Subitems:
   all pass in the focused FreeRTOS slice.
 - [x] `127.B.2`: NuttX E2E triage. Rust pub/sub, service, and action pass;
   C/C++ combinations are gated on installed NuttX variant libraries.
-- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage. ThreadX Linux Rust Zenoh
-  pub/sub, service, and action pass; ThreadX Linux C/C++ and all RISC-V
-  runtime failures remain.
+- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage. ThreadX Linux Rust/C/C++
+  pub/sub, service, and action pass in the focused ThreadX Linux slice;
+  ThreadX RISC-V runtime failures remain.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.
 - [~] `127.B.5`: Shared platform DDS runtime triage.
 

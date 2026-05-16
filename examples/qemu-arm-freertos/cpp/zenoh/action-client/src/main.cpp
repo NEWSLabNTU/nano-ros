@@ -103,6 +103,7 @@ int nros_app_main(int argc, char **argv) {
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 500; i++) {
         nros::spin_once(10);
+        client.poll();
     }
 
     example_interfaces::action::Fibonacci::Goal goal;
@@ -122,6 +123,7 @@ int nros_app_main(int argc, char **argv) {
     // Callbacks fire during spin_once via the executor's arena polling.
     for (int i = 0; i < 1000 && !g_result_received; i++) {
         nros::spin_once(10);
+        client.poll();
     }
 
     if (!g_result_received) {

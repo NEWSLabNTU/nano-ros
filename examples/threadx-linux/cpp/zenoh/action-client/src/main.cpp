@@ -16,13 +16,21 @@
 using Fibonacci = example_interfaces::action::Fibonacci;
 
 static volatile bool g_result_received = false;
+static volatile bool g_result_requested = false;
 static nros::ActionClient<Fibonacci>* g_client_ptr;
+
+static void request_result_once(const uint8_t goal_id[16]) {
+    if (!g_result_requested) {
+        g_result_requested = true;
+        g_client_ptr->get_result_async(goal_id);
+    }
+}
 
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     if (accepted) {
         printf("Goal accepted!\n");
-        g_client_ptr->get_result_async(goal_id);
+        request_result_once(goal_id);
     } else {
         printf("Goal rejected!\n");
     }
@@ -35,6 +43,10 @@ static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data,
 
     Fibonacci::Feedback fb;
     if (Fibonacci::Feedback::ffi_deserialize(data, len, &fb) == 0) {
+        if (!g_result_requested) {
+            printf("Goal accepted!\n");
+            request_result_once(goal_id);
+        }
         printf("Feedback: [");
         for (uint32_t i = 0; i < fb.sequence.size; i++) {
             if (i > 0) printf(", ");
@@ -91,6 +103,7 @@ int nros_app_main(int argc, char **argv) {
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 500; i++) {
         nros::spin_once(10);
+        client.poll();
     }
 
     Fibonacci::Goal goal;
@@ -108,6 +121,7 @@ int nros_app_main(int argc, char **argv) {
 
     for (int i = 0; i < 1000 && !g_result_received; i++) {
         nros::spin_once(10);
+        client.poll();
     }
 
     if (!g_result_received) {
