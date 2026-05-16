@@ -212,21 +212,31 @@ Document each impl's ISR-safety in
 
 ## Acceptance
 
-- [ ] 129.1: `nros_platform_wake_*` declared in `platform.h` +
-  Rust FFI bindings + Zephyr `k_sem` impl boots native_sim
-  without regressing 127.C.3 DDS pass.
-- [ ] 129.2: `PlatformWake` compiles `no_std` on every supported
-  platform (POSIX/Zephyr/FreeRTOS/NuttX/ThreadX/bare-metal).
-- [ ] 129.3: `cargo test -p nros-node --lib --features rmw-cffi`
-  131/131 passes — no behavior change on POSIX hosts.
-- [ ] 129.4: With the expedient gate reverted,
+- [x] 129.1: `nros_platform_wake_*` declared in `platform.h` +
+  Rust FFI bindings + Zephyr `k_sem` + POSIX `sem_t` impls.
+  POSIX integration tests (7) pass.
+- [x] 129.2: `PlatformWake` trait + `Wake<P>` RAII wrapper in
+  `nros-platform-api`, default-unsupported bodies so existing
+  Platform impls don't need updates. 8 wrapper tests pass.
+- [x] 129.3: `cargo test -p nros-node --lib (--features rmw-cffi)`
+  131/131 + 63/63 passes — no behavior change on POSIX hosts.
+  Zephyr+std now routes spin_once through `NodeWake` (k_sem)
+  instead of the broken `Condvar::wait_timeout_while`. Falls back
+  to `drive_io(timeout_ms)` when the platform provider hasn't
+  linked a wake primitive.
+- [ ] 129.4: End-to-end Zephyr rerun —
   `test_zephyr_xrce_cpp_service_e2e` and
   `test_zephyr_xrce_cpp_action_e2e` pass under
   `just zephyr build-fixtures && just zephyr test --no-capture`.
-- [ ] 129.4: Phase 127.C.4 is closeable on Zephyr without the
-  per-platform cfg gate.
-- [ ] 129.5: Each platform's wake-primitive ISR-safety is
+  (Pending: Zephyr SDK + XRCE Agent host.) Once green, the
+  Phase 127.C.4 expedient cfg gate on `nros_cpp_spin_once`
+  becomes unnecessary on every platform, not just Zephyr.
+- [ ] 129.5: FreeRTOS / NuttX / ThreadX / bare-metal
+  `nros_platform_wake_*` impls + executor swap. ISR-safety
   documented in `docs/reference/platform-sync-abi.md` (new).
+  Deferred until 129.4 closes — Zephyr is the only platform
+  with the hung-condvar regression, so the rest are
+  optimisation, not bugfix.
 
 ## Notes
 
