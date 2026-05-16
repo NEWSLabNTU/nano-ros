@@ -140,19 +140,36 @@ what still needs work, organised by category.
 
 ### Open — Incomplete carry-over from landed phases
 
-- [x] `128.C.4` — install lib names dropped the RMW infix.
-  `libnros_c.a` (posix) / `libnros_c_<platform>.a` (everything else)
-  + matching `_variant_subdir` rename in
-  `NanoRos{C,Cpp}Targets.cmake`. The Rust build was already
-  RMW-agnostic (cargo only sees `rmw-cffi`), so the lib name finally
-  matches the build. The fuller "backends as separate static libs
-  with `--whole-archive`" reshape stays deferred — it requires
-  shipping per-backend cmake interface libraries and migrating every
-  example's `target_link_libraries(...)`; queued behind phase 129.
+- [x] `128.C.4` — full collapse:
+  - **Install lib names** dropped the RMW infix.
+    `libnros_c.a` (posix) / `libnros_c_<platform>.a` (everything
+    else) + matching `_variant_subdir` rename in
+    `NanoRos{C,Cpp}Targets.cmake`. The Rust build was already
+    RMW-agnostic (cargo only sees `rmw-cffi`); the lib name now
+    matches.
+  - **Per-backend `NanoRos::Rmw::<name>` interface libraries**
+    landed in `packages/core/nros-c/cmake/NanoRosRmwInterfaces.cmake`
+    and are exposed by `NanoRosConfig.cmake`. Each interface lib
+    wraps its underlying `Nros::RmwX::NrosRmwX` imported staticlib
+    with `--whole-archive` (Linux/BSD/Generic) / `-force_load`
+    (Apple) / `/WHOLEARCHIVE` (MSVC) so the `RMW_INIT_ENTRIES`
+    section entry survives dead-strip on consumers that never
+    reference a backend symbol directly. Targets:
+    `NanoRos::Rmw::zenoh`, `NanoRos::Rmw::xrce`,
+    `NanoRos::Rmw::dds`, `NanoRos::Rmw::cyclonedds` — only defined
+    when the matching `find_dependency(NrosRmwX)` succeeded.
+  - Legacy `NANO_ROS_RMW` auto-link path in
+    `NanoRosCTargets.cmake` stays for one cycle of back-compat;
+    new consumers should use
+    `target_link_libraries(app PRIVATE NanoRos::NanoRos
+    NanoRos::Rmw::<name>)` explicitly. Migrating every in-tree
+    example to the explicit form is queued for a follow-up sweep.
   **Files:** `packages/core/nros-c/CMakeLists.txt`,
   `packages/core/nros-cpp/CMakeLists.txt`,
   `packages/core/nros-c/cmake/NanoRosCTargets.cmake`,
-  `packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake`.
+  `packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake`,
+  `packages/core/nros-c/cmake/NanoRosRmwInterfaces.cmake` (new),
+  `packages/core/nros-c/cmake/NanoRosConfig.cmake`.
 - [x] `128.F.4` — best-effort loop protection via payload-hash dedup.
   `LoopGuard` + FNV-1a ring inside `PubSubBridge`; receive-side
   matches an outstanding window of forwarded hashes drop the
