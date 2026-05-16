@@ -31,10 +31,24 @@ struct LinkFeatures {
 
 impl LinkFeatures {
     /// Read link features from Cargo environment variables.
+    ///
+    /// Phase 128.E — auto-enable TCP + UDP-unicast on hosted POSIX
+    /// targets so the common-case consumer (Linux / macOS / *BSD)
+    /// does not need to opt in via Cargo features. TLS / serial /
+    /// raw-eth / IVC / custom stay explicit because they require
+    /// either a real build-host dependency (mbedTLS, OpenSSL) or
+    /// hardware-class assumptions the build script cannot infer.
     fn from_env() -> Self {
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        let hosted_posix = matches!(
+            target_os.as_str(),
+            "linux" | "macos" | "freebsd" | "netbsd" | "openbsd" | "android"
+        );
+        let explicit_tcp = env::var("CARGO_FEATURE_LINK_TCP").is_ok();
+        let explicit_udp = env::var("CARGO_FEATURE_LINK_UDP_UNICAST").is_ok();
         Self {
-            tcp: env::var("CARGO_FEATURE_LINK_TCP").is_ok(),
-            udp_unicast: env::var("CARGO_FEATURE_LINK_UDP_UNICAST").is_ok(),
+            tcp: explicit_tcp || hosted_posix,
+            udp_unicast: explicit_udp || hosted_posix,
             udp_multicast: env::var("CARGO_FEATURE_LINK_UDP_MULTICAST").is_ok(),
             serial: env::var("CARGO_FEATURE_LINK_SERIAL").is_ok(),
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),

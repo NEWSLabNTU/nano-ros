@@ -277,20 +277,41 @@ parallel zenoh-pico `Z_FEATURE_LINK_*` macros stop being build-time
 gates. Vendor C sources for every transport are always compiled; the
 locator string at session-open picks which one runs.
 
-- [ ] `128.E.1`: delete `link-*` cargo features from
-  `nros-rmw-zenoh` and `zpico-sys`. Always-on
-  `Z_FEATURE_LINK_TCP=1`, `LINK_UDP=1`, `LINK_SERIAL=1`,
-  `LINK_TLS` only when the build has a TLS provider available
-  (`OPENSSL_DIR` or `MBEDTLS_DIR` — preserve that build-host gate).
-  **Files:** `packages/zpico/nros-rmw-zenoh/Cargo.toml`,
-  `packages/zpico/zpico-sys/Cargo.toml`,
-  `packages/zpico/zpico-sys/build.rs`.
-- [ ] `128.E.2`: same audit for XRCE transports
-  (`UCLIENT_PROFILE_UDP`, `TCP`, `SERIAL`).
-  **Files:** `packages/xrce/xrce-sys/build.rs`.
-- [ ] `128.E.3`: examples drop `link-*` from their `Cargo.toml`
-  dependency feature list.
-  **Files:** every example `Cargo.toml` under `examples/`.
+**Phase-128 scope reduction (2026-05-16).** Full elimination of
+build-time link gates is out of scope for the same reason as 128.D:
+TLS pulls in mbedTLS / OpenSSL, serial pulls in UART driver wiring,
+raw-Ethernet and IVC need board-class assumptions the build script
+cannot infer. What landed:
+
+- **Auto-enable TCP + UDP-unicast on hosted POSIX targets** in
+  `zpico-sys/build.rs`. Linux / macOS / *BSD consumers no longer
+  need `link-tcp` or `link-udp-unicast` in their Cargo.toml — the
+  build script flips `Z_FEATURE_LINK_TCP=1` + `_UDP_UNICAST=1`
+  whenever `target_os` is hosted and no explicit selector overrides.
+- **xrce-cffi already auto-detects POSIX** (phase 115.K.2); UDP /
+  TCP / SERIAL profiles compile in automatically on hosted targets.
+  No change required.
+- TLS / serial / raw-eth / IVC / custom remain explicit. Locator
+  scheme already picks at runtime among whichever transports are
+  linked, so a no-explicit-feature POSIX consumer can switch
+  between `tcp/...` and `udp/...` locators without rebuilding.
+
+Deferred:
+
+- [x] `128.E.0` (this phase): auto-enable TCP + UDP-unicast in
+  `zpico-sys/build.rs` for hosted POSIX targets when no explicit
+  link feature is set. Hosted consumers can drop `link-tcp` from
+  their Cargo.toml.
+  **Files:** `packages/zpico/zpico-sys/build.rs`.
+- [x] `128.E.0.xrce` (this phase): no change — xrce-cffi already
+  auto-detects POSIX and compiles UDP / TCP / SERIAL profiles in.
+- [ ] `128.E.1` (deferred → phase 129): outright delete `link-*`
+  features from `nros-rmw-zenoh` and `zpico-sys`. Blocked on
+  graceful handling of bare-metal / RTOS link selection where the
+  build script cannot infer which transport the board supports.
+- [ ] `128.E.2` (deferred → phase 129): same audit pass for XRCE.
+- [ ] `128.E.3` (deferred → phase 129): examples drop `link-*` from
+  their `Cargo.toml`. Done piecemeal after 128.E.1 lands.
 
 ### 128.F — Bridge crate (multi-RMW, names explicit)
 
