@@ -315,7 +315,10 @@ if(NOT TARGET NanoRos::NanoRos)
       set_property(TARGET NanoRos::NanoRos PROPERTY
         INTERFACE_LINK_LIBRARIES "${_existing_libs}")
     endif()
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_SYSTEM_NAME STREQUAL "Generic" OR APPLE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+      set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+        INTERFACE_LINK_OPTIONS "--allow-multiple-definition")
+    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR APPLE)
       set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
         INTERFACE_LINK_OPTIONS "-Wl,--allow-multiple-definition")
     endif()

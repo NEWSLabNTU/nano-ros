@@ -253,7 +253,10 @@ function(nano_ros_link_rmw TARGET)
         if(TARGET ${_pkg}::${_name})
             target_link_libraries(${TARGET} PRIVATE ${_pkg}::${_name})
         endif()
-        if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_SYSTEM_NAME STREQUAL "Generic" OR APPLE)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+            target_link_options(${TARGET} PRIVATE
+                "--allow-multiple-definition")
+        elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR APPLE)
             target_link_options(${TARGET} PRIVATE
                 "-Wl,--allow-multiple-definition")
         endif()

@@ -74,14 +74,16 @@ static void _threadx_printk(const char *fmt, ...) {
 // Internal zenoh-pico headers for socket FD access (select()-based timeout).
 // Needed for single-threaded builds and for ThreadX/NSOS, where we deliberately
 // drive read + keepalive from zpico_spin_once instead of background tasks.
+#if defined(ZENOH_THREADX)
+#include "nxd_bsd.h"
+#endif
 #if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
     !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
 #include <sys/select.h>
-#endif
-#if defined(ZENOH_THREADX)
+#elif defined(ZENOH_THREADX)
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
