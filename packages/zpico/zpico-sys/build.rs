@@ -371,7 +371,7 @@ fn main() {
     let target = env::var("TARGET").unwrap_or_default();
 
     // Check which platform backend to use
-    let use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();
+    let mut use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let use_zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let use_bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
@@ -381,6 +381,30 @@ fn main() {
     // Builds zenoh-pico from the same C source as `freertos` but
     // skips lwIP / TCP-UDP wiring; the only link transport is IVC.
     let use_orin_spe = env::var("CARGO_FEATURE_ORIN_SPE").is_ok();
+
+    // Phase 128.D — auto-derive `platform-posix` from `target_os` when
+    // no explicit platform feature was selected. The POSIX path is
+    // the only one a `cargo build` on a hosted target can infer
+    // unambiguously; embedded RTOSes (FreeRTOS / NuttX / ThreadX /
+    // Zephyr) all share `target_os = "none"` so the user still
+    // disambiguates by enabling the matching feature. POSIX hosts
+    // (Linux / macOS / *BSD) no longer need an explicit `platform-posix`
+    // feature in their `Cargo.toml`.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let auto_posix = matches!(
+        target_os.as_str(),
+        "linux" | "macos" | "freebsd" | "netbsd" | "openbsd" | "android"
+    );
+    let any_explicit = use_posix
+        || use_zephyr
+        || use_bare_metal
+        || use_freertos
+        || use_nuttx
+        || use_threadx
+        || use_orin_spe;
+    if !any_explicit && auto_posix {
+        use_posix = true;
+    }
 
     // Count enabled backends
     let backend_count = [

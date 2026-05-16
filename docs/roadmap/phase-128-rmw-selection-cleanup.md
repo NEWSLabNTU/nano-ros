@@ -225,32 +225,50 @@ RMW backends stop carrying `platform-<rtos>` features; they consume
 only the canonical `nros-platform-cffi` ABI. Platform selection lives
 in the user's manifest via a direct `nros-platform-<name>` dep.
 
-- [ ] `128.D.1`: delete `platform-{posix,zephyr,bare-metal,freertos,
-  nuttx,threadx,orin-spe}` features from
-  `packages/zpico/nros-rmw-zenoh/Cargo.toml`. Replace
-  `zpico-sys/<rtos>` build-script gates with a single
-  `zpico-sys/platform-cffi` once `zpico-platform-shim` is folded
-  into `nros-platform-cffi`.
-  **Files:** `packages/zpico/nros-rmw-zenoh/Cargo.toml`,
-  `packages/zpico/zpico-sys/Cargo.toml`,
-  `packages/zpico/zpico-sys/build.rs`.
-- [ ] `128.D.2`: same for `nros-rmw-xrce-cffi`.
-  **Files:** `packages/xrce/nros-rmw-xrce-cffi/Cargo.toml`,
-  `packages/xrce/xrce-sys/Cargo.toml`,
+**Phase-128 scope reduction (2026-05-16).** The full elimination of
+`platform-<rtos>` features from RMW backends turned out to be wider
+than this phase can absorb: `zpico-sys/build.rs` and
+`xrce-sys/build.rs` use those features to pick the vendor C source
+files, the `ZENOH_<RTOS>` macro, and the per-platform CFG paths.
+Removing them would require folding `zpico-platform-shim` and
+`xrce-platform-shim` into `nros-platform-cffi` first — and those
+shims do more than rename symbols (smoltcp clock bridge, custom
+`_z_open_serial_*` per-board, orin-spe IVC helpers, etc.). Wholesale
+fold-in is queued behind a dedicated phase-129.
+
+What landed in phase 128.D:
+
+- **Auto-derive `posix` from `target_os` in both build scripts.**
+  `zpico-sys` and `xrce-sys` no longer require a hosted POSIX
+  consumer to enable `platform-posix` / `posix` explicitly when
+  `target_os ∈ {linux, macos, *bsd, android}` and no other platform
+  feature is selected. RTOS targets (`target_os = "none"`) still need
+  the explicit selector because multiple RTOSes share the same
+  target triple.
+- The duplicate-axis problem on POSIX hosts (Cargo dep on the
+  backend + explicit `platform-posix` feature) collapses for the
+  common case; embedded consumers stay the same.
+
+Deferred to follow-up:
+
+- [x] `128.D.0` (this phase): auto-derive `posix` on hosted
+  `target_os` in `zpico-sys/build.rs` + `xrce-sys/build.rs`. Removes
+  the duplicate-axis requirement for POSIX consumers.
+  **Files:** `packages/zpico/zpico-sys/build.rs`,
   `packages/xrce/xrce-sys/build.rs`.
-- [ ] `128.D.3`: fold `zpico-platform-shim` symbols into
-  `nros-platform-cffi`. The shim today re-emits `z_malloc`,
-  `z_sleep_ms`, `z_random_fill`, `z_time_now`, etc. as wrappers around
-  `<P as PlatformXxx>` calls. Replace with a small C aliasing TU in
-  `zpico-sys` that aliases `z_malloc → nros_platform_alloc`, etc.
-  (`--defsym` or a thin forwarding `.c` file). Delete the
-  `zpico-platform-shim` crate.
-  **Files:** `packages/zpico/zpico-platform-shim/` (delete),
-  `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` (new).
-- [ ] `128.D.4`: same fold for `xrce-platform-shim` → delete crate;
-  aliases shipped from `xrce-sys`.
-  **Files:** `packages/xrce/xrce-platform-shim/` (delete),
-  `packages/xrce/xrce-sys/c/platform_aliases.c` (new).
+- [ ] `128.D.1` (deferred → phase 129): delete `platform-{posix,zephyr,
+  bare-metal,freertos,nuttx,threadx,orin-spe}` features from
+  `packages/zpico/nros-rmw-zenoh/Cargo.toml`. Blocked on 128.D.3
+  (the build script's per-RTOS C source picking still rides on
+  these features).
+- [ ] `128.D.2` (deferred → phase 129): same for `nros-rmw-xrce-cffi`.
+- [ ] `128.D.3` (deferred → phase 129): fold `zpico-platform-shim`
+  symbols into `nros-platform-cffi` via a C aliasing TU. The shim
+  also carries smoltcp-clock bridges, per-board serial openers, and
+  orin-spe IVC helpers that need a home before the crate can be
+  deleted.
+- [ ] `128.D.4` (deferred → phase 129): same fold for
+  `xrce-platform-shim`.
 
 ### 128.E — Transport selection becomes runtime
 

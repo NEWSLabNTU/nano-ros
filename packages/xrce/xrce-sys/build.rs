@@ -16,7 +16,7 @@ fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    let posix = env::var("CARGO_FEATURE_POSIX").is_ok();
+    let mut posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
@@ -31,6 +31,19 @@ fn main() {
         panic!(
             "Features `posix`, `bare-metal`, `zephyr`, `freertos`, `nuttx`, and `threadx` are mutually exclusive"
         );
+    }
+
+    // Phase 128.D — auto-derive `posix` on hosted targets when no
+    // platform feature was selected. RTOS targets all share
+    // `target_os = "none"` and so still need an explicit selector.
+    if platform_count == 0 {
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        if matches!(
+            target_os.as_str(),
+            "linux" | "macos" | "freebsd" | "netbsd" | "openbsd" | "android"
+        ) {
+            posix = true;
+        }
     }
 
     // NuttX is POSIX-compatible (has clock_gettime, BSD sockets, pthreads)
