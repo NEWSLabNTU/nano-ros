@@ -1686,6 +1686,14 @@ impl Session for CffiSession {
         let _ = unsafe { f(&mut view as *mut _, cb, ctx) };
     }
 
+    fn supports_wake_callback(&self) -> bool {
+        // Phase 129.4 — the vtable slot's presence is the truthful
+        // signal. Poll-only backends (XRCE-DDS-Client, current
+        // Cyclone wrapper, current dust-DDS shim) leave the slot
+        // NULL; only backends with an async wake source fill it.
+        self.vtable.set_wake_callback.is_some()
+    }
+
     fn ping_session(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
         // Phase 124.F.1 — forward to the backend's vtable slot when
         // available; NULL surfaces `Unsupported` to the caller (no

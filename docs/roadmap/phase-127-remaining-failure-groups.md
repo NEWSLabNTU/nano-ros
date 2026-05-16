@@ -895,11 +895,18 @@ Subitems:
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
 - [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, async service,
   and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
-- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub passes for Rust, C,
-  and C++; Rust XRCE service/action passes; C++ XRCE service/action
-  spin/cv-wait root cause is patched in `Executor::spin_once` +
-  reverted `nros_cpp_spin_once` bypass — pending end-to-end Zephyr
-  rerun to close.
+- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub passes for Rust,
+  C, and C++; Rust XRCE service/action passes; C++ XRCE service now
+  passes after Phase 129 (`NodeWake` on RTOS std + the
+  `supports_wake_callback` probe route poll-only backends through
+  `drive_io(timeout_ms)` so reliable XRCE retransmission keeps
+  ticking — see
+  `docs/roadmap/phase-129-platform-wake-primitive.md`). C++ XRCE
+  action E2E is intermittent — server logs goal received + completed
+  quickly but client's blocking `call_raw` inside the action arena
+  trampoline doesn't catch the goal-accept reply on focused reruns.
+  Distinct from the cv-wait root cause; tracked as a Phase 129
+  follow-up.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 

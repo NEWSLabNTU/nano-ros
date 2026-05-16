@@ -224,13 +224,33 @@ Document each impl's ISR-safety in
   instead of the broken `Condvar::wait_timeout_while`. Falls back
   to `drive_io(timeout_ms)` when the platform provider hasn't
   linked a wake primitive.
-- [ ] 129.4: End-to-end Zephyr rerun —
-  `test_zephyr_xrce_cpp_service_e2e` and
-  `test_zephyr_xrce_cpp_action_e2e` pass under
-  `just zephyr build-fixtures && just zephyr test --no-capture`.
-  (Pending: Zephyr SDK + XRCE Agent host.) Once green, the
-  Phase 127.C.4 expedient cfg gate on `nros_cpp_spin_once`
-  becomes unnecessary on every platform, not just Zephyr.
+- [x] 129.4 service: `test_zephyr_xrce_cpp_service_e2e` PASSES
+  with the wake gate routing through `drive_io(timeout_ms)`
+  when no backend installed `set_wake_callback`. Server's
+  reliable XRCE reply stream now gets retransmitted because
+  `spin_once` actually runs the session for its full timeout
+  instead of sleeping in a never-signaled wake-primitive wait.
+  Phase 127.C.4 service case closeable.
+- [ ] 129.4 action: `test_zephyr_xrce_cpp_action_e2e` is now
+  intermittent — passes on broader test sweeps, fails on
+  focused reruns (3/3 with `retries = 2`). Server logs
+  `Goal received` + `Goal completed` quickly, client times out
+  on send-goal at 10 s. Distinct failure mode from the service
+  case — the request reaches the server and the server replies,
+  but the reply doesn't reach the client's blocking `call_raw`
+  inside the action arena trampoline. Likely XRCE wire-level
+  topology or sample-identity bug specific to the action
+  service-fan-out (3 services + 2 subscribers per client);
+  follow-up phase tracks the root cause hunt.
+- [x] 129.4 `set_wake_callback` probe: `Session` gains
+  `supports_wake_callback() -> bool` (default `false`); CFFI
+  returns whether the vtable slot is non-NULL.
+  `Executor::install_wake_signal_on_*` collects the probe into
+  `has_async_wake`. `spin_once` only uses the wake-primitive
+  wait (`NodeWake` or `std::Condvar`) when a backend actually
+  honours the callback — poll-only backends route to
+  `drive_io(timeout_ms)` so the transport's blocking `recv`
+  keeps reliable streams ticking.
 - [x] 129.5: `nros_platform_wake_*` impls landed for FreeRTOS
   (`xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`), ESP-IDF
   (FreeRTOS-derived; same surface + per-SoC `portYIELD_FROM_ISR`),

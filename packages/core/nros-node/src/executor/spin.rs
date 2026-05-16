@@ -549,6 +549,19 @@ pub struct Executor {
     )
 ))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
+    /// Phase 129.4 — true when at least one session's backend
+    /// installed the wake callback. Drives whether `spin_once`
+    /// uses the wake-primitive wait (`NodeWake` / `Condvar`) or
+    /// just `drive_io(timeout_ms)`. Poll-only backends
+    /// (XRCE-DDS-Client, current Cyclone/dust-DDS shims) leave
+    /// this `false`; the wait then becomes a no-op sleep that
+    /// starves reliable retransmission (Phase 127.C.4 root
+    /// cause: server's `send_reply` flushes 100 ms once, then a
+    /// blind `wait_ms(100)` sleeps with zero session activity, so
+    /// the agent's ACK arrives into a stalled session and reliable
+    /// redelivery never fires).
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    pub(crate) has_async_wake: bool,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
@@ -651,6 +664,8 @@ impl Executor {
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            has_async_wake: false,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
             #[cfg(feature = "param-services")]
@@ -734,6 +749,8 @@ impl Executor {
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            has_async_wake: false,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
             #[cfg(feature = "param-services")]
@@ -1001,6 +1018,9 @@ impl Executor {
             self.session
                 .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
         }
+        if self.session.supports_wake_callback() {
+            self.has_async_wake = true;
+        }
     }
 
     /// Phase 124.B.1 — install the wake callback onto an extra
@@ -1015,6 +1035,9 @@ impl Executor {
             // the extra session is owned by this executor.
             unsafe {
                 s.set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+            }
+            if s.supports_wake_callback() {
+                self.has_async_wake = true;
             }
         }
     }
@@ -2983,26 +3006,33 @@ impl Executor {
         // the predicate. If wake fires between drain and cv.wait
         // entry, the predicate sees flag=true on first eval and
         // exits immediately.
-        // Phase 129.3 — Zephyr+std prefers the platform's k_sem-backed
-        // wake primitive (`nros_platform_wake_*`) because Zephyr's
-        // libc `pthread_cond_timedwait` hangs past its deadline,
-        // breaking the std `Condvar::wait_timeout_while` path. If
-        // the platform provider didn't link a wake primitive
-        // (`NodeWake::new` returned `None`), fall back to driving
-        // the transport for the full timeout — UDP `recv` honors
-        // `SO_RCVTIMEO` and keeps reliable XRCE streams ticking
-        // (Phase 127.C.4).
+        // Phase 129.4 — only sleep in the wake-primitive wait when a
+        // backend actually installed `set_wake_callback`. Poll-only
+        // backends (XRCE, current Cyclone / dust-DDS) leave the
+        // vtable slot NULL → `has_async_wake == false` → drive_io
+        // for the caller's full timeout instead of sleeping in a
+        // never-signaled wait that starves reliable retransmission
+        // (Phase 127.C.4 root cause: server's send_reply flushes
+        // 100 ms once, then NodeWake.wait_ms(100) sleeps 100 ms
+        // with zero session activity, so the agent's ACK arrives
+        // into a stalled session and reliable redelivery never
+        // fires). RTOS std builds with an event-driven backend
+        // installed still use `NodeWake` (kernel-native binary
+        // semaphore — honors its deadline, dodges Zephyr's libc
+        // `pthread_cond_timedwait` hang); POSIX/macOS std keep
+        // the existing `std::Condvar` path.
         #[cfg(all(
-    feature = "std",
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+            feature = "std",
+            feature = "rmw-cffi",
+            any(
+                feature = "platform-zephyr",
+                feature = "platform-freertos",
+                feature = "platform-nuttx",
+                feature = "platform-threadx",
+            )
+        ))]
         let primary_drive_timeout_ms = if !was_woken
+            && self.has_async_wake
             && let Some(wake) = self.node_wake.as_ref()
         {
             let _ = wake.wait_ms(timeout_ms as u32);
@@ -3016,12 +3046,6 @@ impl Executor {
             timeout_ms
         };
 
-        // Non-Zephyr std still uses the std::Condvar wake-cv. Poll-
-        // only backends (NULL wake-callback) sleep the full timeout
-        // in the cv-wait; backends with `set_wake_callback`
-        // installed get sub-poll-period wake latency. drive_io
-        // afterward is non-blocking because the cv already burned
-        // the timeout budget.
         #[cfg(all(
             feature = "std",
             feature = "rmw-cffi",
@@ -3032,7 +3056,7 @@ impl Executor {
                 feature = "platform-threadx",
             ))
         ))]
-        if !was_woken {
+        if !was_woken && self.has_async_wake {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
             let g = self.wake_mu.lock().expect("wake_mu poisoned");
             let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
@@ -3042,8 +3066,13 @@ impl Executor {
             });
         }
 
+        // Non-RTOS std (POSIX/macOS) drive_io is non-blocking when
+        // the cv-wait above ran; full-timeout otherwise so the
+        // transport's blocking recv yields the thread instead of
+        // busy-spinning.
         #[cfg(all(
             feature = "std",
+            feature = "rmw-cffi",
             not(any(
                 feature = "platform-zephyr",
                 feature = "platform-freertos",
@@ -3051,6 +3080,12 @@ impl Executor {
                 feature = "platform-threadx",
             ))
         ))]
+        let primary_drive_timeout_ms = if self.has_async_wake { 0 } else { timeout_ms };
+
+        // std builds without rmw-cffi (mock-session tests, future
+        // alternative backends) keep the original "drive_io is
+        // non-blocking" assumption.
+        #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
         let primary_drive_timeout_ms = 0;
         #[cfg(not(feature = "std"))]
         let primary_drive_timeout_ms = timeout_ms;

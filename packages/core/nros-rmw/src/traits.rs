@@ -940,6 +940,28 @@ pub trait Session {
         let _ = (cb, ctx);
     }
 
+    /// Phase 129.4 — does this backend actually honour
+    /// [`set_wake_callback`]?
+    ///
+    /// `true` means the backend installs the callback and will
+    /// fire it from its async notify path (worker thread, ISR,
+    /// signalfd, …). `false` (the default) means
+    /// `set_wake_callback` was a no-op — the executor must drive
+    /// I/O for the caller's full timeout because no async wake
+    /// will pre-empt it.
+    ///
+    /// The executor uses this to choose between the wake-primitive
+    /// wait (`NodeWake::wait_ms` / `std::Condvar::wait_timeout_while`)
+    /// and a direct `drive_io(timeout_ms)`. Poll-only backends
+    /// (XRCE-DDS-Client, bare-metal smoltcp) return `false`;
+    /// event-driven backends (zenoh-pico with an RX task that
+    /// invokes the callback on packet arrival) return `true`.
+    ///
+    /// [`set_wake_callback`]: Self::set_wake_callback
+    fn supports_wake_callback(&self) -> bool {
+        false
+    }
+
     /// Phase 124.F.1 — session-level connectivity probe.
     ///
     /// Sends a wire-level round-trip probe and waits up to
