@@ -422,6 +422,7 @@ fn drain_multicast_joins<D: Device>(
 
 type PollCallbackFn = Option<unsafe extern "C" fn()>;
 static mut POLL_CALLBACK: PollCallbackFn = None;
+static mut IDLE_CALLBACK: PollCallbackFn = None;
 static mut SMOLTCP_POLL_COUNT: u32 = 0;
 
 // Phase 127.A — wire-level diagnostic counters. `do_poll` increments
@@ -458,13 +459,35 @@ pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
     }
 }
 
+/// Phase 127.D — install an idle callback invoked once at the end of
+/// each [`do_poll`] iteration. Boards with an armed IRQ source may
+/// register `cortex_m::asm::wfi` (or equivalent) here so the tight
+/// connect/send/recv loops inside `<PlatformTcp>::open`/`send`/`read`
+/// release the CPU to QEMU's main loop between polls.
+///
+/// Default = unset; callers without an armed IRQ should leave it
+/// unset because `wfi` with no pending interrupt deadlocks.
+pub fn set_idle_callback(callback: unsafe extern "C" fn()) {
+    unsafe {
+        IDLE_CALLBACK = Some(callback);
+    }
+}
+
+/// Clear the idle callback. Subsequent [`do_poll`] invocations skip
+/// the idle step.
+pub fn clear_idle_callback() {
+    unsafe {
+        IDLE_CALLBACK = None;
+    }
+}
+
 /// Invoke the registered poll callback.
 ///
 /// Returns 0 if callback was invoked, -1 if no callback registered.
 pub fn do_poll() -> i32 {
     use portable_atomic::Ordering;
     DO_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
-    unsafe {
+    let rc = unsafe {
         SMOLTCP_POLL_COUNT += 1;
         if let Some(callback) = POLL_CALLBACK {
             DO_POLL_CB_HITS.fetch_add(1, Ordering::Relaxed);
@@ -473,7 +496,16 @@ pub fn do_poll() -> i32 {
         } else {
             -1
         }
+    };
+    // Phase 127.D — yield CPU between polls when the board armed an
+    // IRQ source. Runs even when no poll callback is registered so a
+    // misconfigured board with idle-only hooks still ticks.
+    unsafe {
+        if let Some(idle) = IDLE_CALLBACK {
+            idle();
+        }
     }
+    rc
 }
 
 /// Check if a poll callback is registered.

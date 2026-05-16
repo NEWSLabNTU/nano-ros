@@ -61,6 +61,32 @@ pub use node::{init_hardware, run};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 
+/// Phase 127.D — install `wfi` as the busy-wait idle hook so
+/// `Executor::open`'s connect/handshake polls release the CPU to
+/// QEMU's main loop between iterations. Must be called AFTER an IRQ
+/// source is armed; for RTIC examples that means immediately after
+/// `Mono::start(cx.core.SYST, ..)`. See
+/// `nros_platform_mps2_an385::sleep::enable_wfi_idle` for the safety
+/// contract and rationale.
+///
+/// Installs the hook on BOTH busy-wait sites:
+/// - `nros_baremetal_common::sleep::sleep_ms` — used by `z_sleep_ms`.
+/// - `nros_smoltcp::do_poll` — used by every `<PlatformTcp>::open`/
+///   `send`/`read` loop iteration. Without this second hook, the
+///   `Executor::open` connect loop would spin without yielding.
+#[cfg(feature = "ethernet")]
+pub fn enable_wfi_idle() {
+    nros_platform_mps2_an385::sleep::enable_wfi_idle();
+    nros_smoltcp::set_idle_callback(nros_platform_mps2_an385::sleep::nros_mps2_an385_wfi_idle);
+}
+
+/// Serial-only build variant of [`enable_wfi_idle`] — only the
+/// busy-wait sleep loop needs the hook; there is no smoltcp bridge.
+#[cfg(all(feature = "serial", not(feature = "ethernet")))]
+pub fn enable_wfi_idle() {
+    nros_platform_mps2_an385::sleep::enable_wfi_idle();
+}
+
 /// Print to QEMU semihosting console
 #[macro_export]
 macro_rules! println {

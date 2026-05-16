@@ -52,6 +52,12 @@ mod app {
 
         Mono::start(cx.core.SYST, 25_000_000);
 
+        // Phase 127.D — release CPU between busy-wait poll iterations
+        // (Executor::open + sleep_ms) now that SysTick IRQ is armed.
+        // Lets QEMU's main loop service slirp / LAN9118 I/O when two
+        // MPS2 guests share the host.
+        nros_board_mps2_an385::enable_wfi_idle();
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_server");

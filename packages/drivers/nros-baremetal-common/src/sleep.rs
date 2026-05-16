@@ -20,10 +20,18 @@ pub type ClockMsFn = fn() -> u64;
 /// Uses `extern "C"` to match `smoltcp_network_poll` and similar callbacks.
 pub type PollFn = unsafe extern "C" fn();
 
+/// Idle callback type — invoked after the poll callback each sleep
+/// iteration. Boards that have armed an IRQ source (e.g. SysTick) may
+/// register `cortex_m::asm::wfi` here so the busy-wait yields the CPU
+/// to QEMU's main loop / host scheduler. Without an armed IRQ, leave
+/// this unset — `wfi` with no pending interrupt deadlocks.
+pub type IdleFn = unsafe extern "C" fn();
+
 // We can't store `fn() -> u64` directly in an atomic because Rust's atomic
 // types only accept pointer-sized values; we coerce to `usize` and back.
 static CLOCK_FN: AtomicUsize = AtomicUsize::new(0);
 static POLL_CALLBACK: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
+static IDLE_CALLBACK: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Register the platform's `clock_ms` function. Must be called once at
 /// platform init before [`sleep_ms`] is invoked.
@@ -42,6 +50,23 @@ pub fn set_poll_callback(callback: PollFn) {
 /// Clear the poll callback.
 pub fn clear_poll_callback() {
     POLL_CALLBACK.store(core::ptr::null_mut(), Ordering::Release);
+}
+
+/// Register an idle callback to be invoked once per sleep iteration
+/// after the poll callback. Use this to install `cortex_m::asm::wfi`
+/// (or an equivalent platform-specific idle primitive) once an IRQ
+/// source — typically the RTIC monotonic SysTick — has been armed.
+///
+/// Without an IRQ source, do not install `wfi` here: it will deadlock.
+/// Default = unset (plain busy-loop after the poll callback).
+pub fn set_idle_callback(callback: IdleFn) {
+    IDLE_CALLBACK.store(callback as *mut (), Ordering::Release);
+}
+
+/// Clear the idle callback. Subsequent sleeps fall back to a plain
+/// busy-loop after the poll callback.
+pub fn clear_idle_callback() {
+    IDLE_CALLBACK.store(core::ptr::null_mut(), Ordering::Release);
 }
 
 /// Busy-wait sleep with optional poll callback.
@@ -66,6 +91,14 @@ pub fn sleep_ms(time_ms: usize) {
             }
         } else {
             core::hint::spin_loop();
+        }
+        let idle = IDLE_CALLBACK.load(Ordering::Acquire);
+        if !idle.is_null() {
+            // SAFETY: registered via `set_idle_callback`; matches `IdleFn`.
+            unsafe {
+                let f: IdleFn = core::mem::transmute(idle);
+                f();
+            }
         }
     }
 }
