@@ -110,6 +110,18 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
+    // -- Wake primitive (Phase 129) --
+    // Binary-semaphore-shaped primitive for the executor's wake_flag /
+    // spin_once cv-wait pair. See `<nros/platform.h>` for per-platform
+    // contract and ISR-safety rules.
+    pub fn nros_platform_wake_init(w: *mut c_void) -> i8;
+    pub fn nros_platform_wake_drop(w: *mut c_void) -> i8;
+    pub fn nros_platform_wake_wait_ms(w: *mut c_void, timeout_ms: u32) -> i8;
+    pub fn nros_platform_wake_signal(w: *mut c_void) -> i8;
+    pub fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
+    pub fn nros_platform_wake_storage_size() -> usize;
+    pub fn nros_platform_wake_storage_align() -> usize;
+
     // -- Critical section (Phase 121.9) --
     pub fn nros_platform_critical_section_acquire() -> u32;
     pub fn nros_platform_critical_section_release(token: u32);

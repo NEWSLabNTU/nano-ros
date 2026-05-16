@@ -375,6 +375,62 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 #endif
 
 /* ============================================================
+ *   Wake primitive (Phase 129)
+ *
+ *   Binary semaphore backed by `k_sem`. Bypasses libc pthread
+ *   so the executor's spin_once wake is not subject to the
+ *   Zephyr libc `pthread_cond_timedwait` deadline-hang
+ *   (Phase 127.C.4). `k_sem_give` is ISR-safe per Zephyr spec.
+ *   Available unconditionally — `k_sem` ships in every Zephyr
+ *   kernel build, no Kconfig gate.
+ * ============================================================ */
+
+int8_t nros_platform_wake_init(void *w) {
+    if (w == NULL) return -1;
+    k_sem_init((struct k_sem *) w, 0u, 1u);
+    return 0;
+}
+
+int8_t nros_platform_wake_drop(void *w) {
+    /* k_sem has no destructor; reset to a known-empty state so any
+     * stale waiter (impossible if the caller respects ownership)
+     * sees -EAGAIN on the next take. */
+    if (w == NULL) return 0;
+    k_sem_reset((struct k_sem *) w);
+    return 0;
+}
+
+int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+    if (w == NULL) return -1;
+    k_timeout_t to = (timeout_ms == 0u) ? K_NO_WAIT : K_MSEC(timeout_ms);
+    int rc = k_sem_take((struct k_sem *) w, to);
+    if (rc == 0)        return 0;
+    if (rc == -EAGAIN)  return 1;
+    return -1;
+}
+
+int8_t nros_platform_wake_signal(void *w) {
+    if (w == NULL) return -1;
+    k_sem_give((struct k_sem *) w);
+    return 0;
+}
+
+int8_t nros_platform_wake_signal_from_isr(void *w) {
+    if (w == NULL) return -1;
+    /* k_sem_give is documented ISR-safe on Zephyr. */
+    k_sem_give((struct k_sem *) w);
+    return 0;
+}
+
+size_t nros_platform_wake_storage_size(void) {
+    return sizeof(struct k_sem);
+}
+
+size_t nros_platform_wake_storage_align(void) {
+    return __alignof__(struct k_sem);
+}
+
+/* ============================================================
  *   Critical section (Phase 121.9)
  * ============================================================ */
 /* Zephyr's `irq_lock` returns the prior IRQ posture; `irq_unlock`

@@ -212,6 +212,37 @@ int8_t nros_platform_condvar_wait(void *cv, void *m);
  *  `clock_ms` units). Returns non-zero on timeout. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
+/* ---- Threading: wake primitive (Phase 129) ----
+ *
+ * Binary-semaphore-shaped primitive used by the executor's wake_flag /
+ * spin_once cv-wait pair. Separate from `nros_platform_condvar_*` so
+ * the executor doesn't inherit zenoh-pico's pthread-shaped Zephyr
+ * ABI (which on libc hangs past `pthread_cond_timedwait` deadlines).
+ *
+ * Per-platform impl:
+ *  * POSIX:    `sem_t` with `sem_timedwait` (`CLOCK_MONOTONIC`).
+ *  * Zephyr:   `k_sem` (kernel-native, libc-pthread-free).
+ *  * FreeRTOS: `xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`.
+ *  * NuttX:    POSIX `sem_t` via NuttX libc (`sem_timedwait`).
+ *  * ThreadX:  `tx_semaphore` (ISR-safe `tx_semaphore_put`).
+ *  * bare:     atomic flag + busy-spin against the platform clock.
+ *
+ * `wait_ms` returns 0 on signal, 1 on timeout, -1 on error.
+ * `signal_from_isr` returns -1 if the backend has no ISR-safe path;
+ * callers may fall back to `signal()` accepting the latency cost.
+ * Storage is opaque to the caller; size/alignment via the probe
+ * helpers below. */
+int8_t  nros_platform_wake_init(void *w);
+int8_t  nros_platform_wake_drop(void *w);
+int8_t  nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms);
+int8_t  nros_platform_wake_signal(void *w);
+int8_t  nros_platform_wake_signal_from_isr(void *w);
+
+/** Opaque-storage sizing. Both helpers are pure functions (no global
+ *  state) and may be called before `nros_platform_wake_init`. */
+size_t  nros_platform_wake_storage_size(void);
+size_t  nros_platform_wake_storage_align(void);
+
 /* ---- Critical section ---- */
 /* Phase 121.9 — global mutual exclusion against preemption + ISR
  * delivery. Backs the Rust `critical_section::Impl` registration used

@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
+#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -395,6 +396,144 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (r == 0)         return 0;
     if (r == ETIMEDOUT) return 1;
     return -1;
+}
+
+/* ============================================================
+ *   Wake primitive (Phase 129)
+ *
+ *   Binary semaphore backed by `sem_t`. macOS deprecates unnamed
+ *   POSIX semaphores, so darwin falls back to a `pthread_cond_t`
+ *   + flag pair; the surface is the same. ISR-safety is not
+ *   meaningful on a hosted POSIX target — `signal_from_isr`
+ *   aliases to `signal`.
+ * ============================================================ */
+
+#if defined(__APPLE__)
+typedef struct {
+    pthread_mutex_t mu;
+    pthread_cond_t  cv;
+    int             flag;  /* 0 = no signal pending, 1 = signaled */
+} nros_wake_t;
+#else
+typedef struct {
+    sem_t sem;
+} nros_wake_t;
+#endif
+
+int8_t nros_platform_wake_init(void *w) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+#if defined(__APPLE__)
+    if (pthread_mutex_init(&wp->mu, NULL) != 0) return -1;
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0) {
+        pthread_mutex_destroy(&wp->mu);
+        return -1;
+    }
+    int rc = pthread_cond_init(&wp->cv, &attr);
+    pthread_condattr_destroy(&attr);
+    if (rc != 0) {
+        pthread_mutex_destroy(&wp->mu);
+        return -1;
+    }
+    wp->flag = 0;
+    return 0;
+#else
+    return sem_init(&wp->sem, 0, 0) == 0 ? 0 : -1;
+#endif
+}
+
+int8_t nros_platform_wake_drop(void *w) {
+    if (w == NULL) return 0;
+    nros_wake_t *wp = (nros_wake_t *) w;
+#if defined(__APPLE__)
+    pthread_cond_destroy(&wp->cv);
+    pthread_mutex_destroy(&wp->mu);
+    return 0;
+#else
+    return sem_destroy(&wp->sem) == 0 ? 0 : -1;
+#endif
+}
+
+int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+#if defined(__APPLE__)
+    pthread_mutex_lock(&wp->mu);
+    if (wp->flag == 0) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        uint64_t add_ns = (uint64_t) timeout_ms * 1000000ULL;
+        ts.tv_sec  += (time_t) (add_ns / 1000000000ULL);
+        ts.tv_nsec += (long)   (add_ns % 1000000000ULL);
+        if (ts.tv_nsec >= 1000000000L) {
+            ts.tv_sec  += 1;
+            ts.tv_nsec -= 1000000000L;
+        }
+        int rc = pthread_cond_timedwait(&wp->cv, &wp->mu, &ts);
+        if (rc == ETIMEDOUT && wp->flag == 0) {
+            pthread_mutex_unlock(&wp->mu);
+            return 1;
+        }
+        if (rc != 0 && rc != ETIMEDOUT) {
+            pthread_mutex_unlock(&wp->mu);
+            return -1;
+        }
+    }
+    wp->flag = 0;
+    pthread_mutex_unlock(&wp->mu);
+    return 0;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return -1;
+    uint64_t add_ns = (uint64_t) timeout_ms * 1000000ULL;
+    ts.tv_sec  += (time_t) (add_ns / 1000000000ULL);
+    ts.tv_nsec += (long)   (add_ns % 1000000000ULL);
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec  += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    while (sem_timedwait(&wp->sem, &ts) != 0) {
+        if (errno == ETIMEDOUT) return 1;
+        if (errno == EINTR)     continue;
+        return -1;
+    }
+    return 0;
+#endif
+}
+
+int8_t nros_platform_wake_signal(void *w) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+#if defined(__APPLE__)
+    pthread_mutex_lock(&wp->mu);
+    wp->flag = 1;
+    pthread_cond_signal(&wp->cv);
+    pthread_mutex_unlock(&wp->mu);
+    return 0;
+#else
+    /* Coalesce signals: only post if not already pending so the
+     * binary semaphore stays at value <= 1. EAGAIN means already
+     * signaled (POSIX SEM_VALUE_MAX overflow not relevant here
+     * because we never exceed 1 with the getvalue guard). */
+    int val = 0;
+    if (sem_getvalue(&wp->sem, &val) != 0) return -1;
+    if (val > 0) return 0;
+    return sem_post(&wp->sem) == 0 ? 0 : -1;
+#endif
+}
+
+int8_t nros_platform_wake_signal_from_isr(void *w) {
+    /* POSIX hosted: ISR semantics not meaningful. Alias to signal. */
+    return nros_platform_wake_signal(w);
+}
+
+size_t nros_platform_wake_storage_size(void) {
+    return sizeof(nros_wake_t);
+}
+
+size_t nros_platform_wake_storage_align(void) {
+    return _Alignof(nros_wake_t);
 }
 
 /* ============================================================
