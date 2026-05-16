@@ -552,6 +552,72 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 }
 
 /* ============================================================
+ *   Wake primitive (Phase 129)
+ *
+ *   Binary semaphore backed by `xSemaphoreCreateBinary`. ISR
+ *   signal uses `xSemaphoreGiveFromISR` (FreeRTOS ISR-safe by
+ *   spec). Storage holds a `SemaphoreHandle_t` (pointer); the
+ *   actual semaphore object is allocated by FreeRTOS on init.
+ * ============================================================ */
+
+typedef struct {
+    void *handle;  /* SemaphoreHandle_t */
+} nros_wake_t;
+
+int8_t nros_platform_wake_init(void *w) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    wp->handle = (void *) xSemaphoreCreateBinary();
+    return wp->handle != NULL ? 0 : -1;
+}
+
+int8_t nros_platform_wake_drop(void *w) {
+    if (w == NULL) return 0;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->handle != NULL) {
+        vSemaphoreDelete((SemaphoreHandle_t) wp->handle);
+        wp->handle = NULL;
+    }
+    return 0;
+}
+
+int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->handle == NULL) return -1;
+    TickType_t ticks = (timeout_ms == 0u) ? 0 : pdMS_TO_TICKS(timeout_ms);
+    BaseType_t rc = xSemaphoreTake((SemaphoreHandle_t) wp->handle, ticks);
+    return rc == pdTRUE ? 0 : 1;
+}
+
+int8_t nros_platform_wake_signal(void *w) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->handle == NULL) return -1;
+    /* Binary semaphore: give is a no-op when already signaled. */
+    (void) xSemaphoreGive((SemaphoreHandle_t) wp->handle);
+    return 0;
+}
+
+int8_t nros_platform_wake_signal_from_isr(void *w) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->handle == NULL) return -1;
+    BaseType_t higher_pri = pdFALSE;
+    (void) xSemaphoreGiveFromISR((SemaphoreHandle_t) wp->handle, &higher_pri);
+    portYIELD_FROM_ISR(higher_pri);
+    return 0;
+}
+
+size_t nros_platform_wake_storage_size(void) {
+    return sizeof(nros_wake_t);
+}
+
+size_t nros_platform_wake_storage_align(void) {
+    return __alignof__(nros_wake_t);
+}
+
+/* ============================================================
  *   Critical section (Phase 121.9)
  * ============================================================ */
 /* Cortex-M PRIMASK + nested-call counter (taskENTER_CRITICAL /

@@ -1,21 +1,32 @@
-//! Phase 129.3 — `NodeWake`: heap-backed wake primitive used by
-//! `Executor::spin_once` on Zephyr+std where the std libc condvar
-//! hangs past its deadline (Phase 127.C.4). Wraps the
-//! `nros_platform_wake_*` ABI declared in
-//! `<nros/platform.h>` / `nros-platform-cffi` (Phase 129.1).
+//! Phase 129.3 / 129.5 — `NodeWake`: heap-backed wake primitive
+//! used by `Executor::spin_once` on RTOS std builds where the
+//! `nros_platform_wake_*` ABI is wired (Phase 129.1 + 129.5).
 //!
-//! Only compiled on `feature = "std" + feature = "rmw-cffi" +
-//! feature = "platform-zephyr"`. Other std consumers keep the
-//! existing `std::sync::Condvar` path until a follow-up phase
-//! migrates them too.
+//! Originally added for Zephyr+std because Zephyr's libc
+//! `pthread_cond_timedwait` hangs past its deadline (Phase
+//! 127.C.4). Now also active on FreeRTOS, NuttX, and ThreadX
+//! when those platforms are linked — each owns a kernel-native
+//! binary semaphore (`k_sem` / `xSemaphoreBinary` / `sem_t` /
+//! `tx_semaphore`) that honors its timeout. POSIX-only hosts
+//! still use the existing `std::sync::Condvar` path.
 //!
-//! Construction is fallible — if the platform impl returns
-//! `wake_storage_size() == 0` or `wake_init` returns non-zero,
-//! the caller falls back to driving the transport for the full
-//! timeout (matches the Phase 127.C.4 expedient gate behaviour
-//! but without the cv-wait skip).
+//! Construction is fallible — if the platform provider hasn't
+//! linked a wake primitive (`wake_storage_size() == 0`) or
+//! `wake_init` returns non-zero, the caller falls back to
+//! driving the transport for the full timeout (matches the
+//! Phase 127.C.4 expedient gate behaviour but without skipping
+//! reliable RTOS stream retransmission).
 
-#![cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+#![cfg(all(
+    feature = "std",
+    feature = "rmw-cffi",
+    any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    )
+))]
 
 use core::ffi::c_void;
 

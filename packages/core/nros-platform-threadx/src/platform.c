@@ -365,6 +365,71 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 }
 
 /* ============================================================
+ *   Wake primitive (Phase 129)
+ *
+ *   Binary semaphore backed by `tx_semaphore`. `tx_semaphore_put`
+ *   is documented ISR-safe by ThreadX (callable from ISRs without
+ *   a separate `_from_isr` variant).
+ * ============================================================ */
+
+/* TX_SEMAPHORE control block lives inline in caller storage. */
+typedef TX_SEMAPHORE nros_wake_t;
+
+int8_t nros_platform_wake_init(void *w) {
+    if (w == NULL) return -1;
+    /* Initial count 0 (waiter blocks until first put). */
+    UINT rc = tx_semaphore_create((TX_SEMAPHORE *) w, (CHAR *) "nros_wake", 0u);
+    return rc == TX_SUCCESS ? 0 : -1;
+}
+
+int8_t nros_platform_wake_drop(void *w) {
+    if (w == NULL) return 0;
+    (void) tx_semaphore_delete((TX_SEMAPHORE *) w);
+    return 0;
+}
+
+int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+    if (w == NULL) return -1;
+    /* ThreadX ticks come from `TX_TIMER_TICKS_PER_SECOND`; convert
+     * ms via the same formula nros_platform_clock_ms uses. */
+    ULONG ticks;
+    if (timeout_ms == 0u) {
+        ticks = TX_NO_WAIT;
+    } else {
+        ULONG tps = TX_TIMER_TICKS_PER_SECOND;
+        if (tps == 0u) tps = 100u;  /* defensive fallback */
+        ticks = (ULONG) (((uint64_t) timeout_ms * tps + 999u) / 1000u);
+        if (ticks == 0u) ticks = 1u;
+    }
+    UINT rc = tx_semaphore_get((TX_SEMAPHORE *) w, ticks);
+    if (rc == TX_SUCCESS)            return 0;
+    if (rc == TX_NO_INSTANCE
+        || rc == TX_WAIT_ABORTED)    return 1;
+    return -1;
+}
+
+int8_t nros_platform_wake_signal(void *w) {
+    if (w == NULL) return -1;
+    UINT rc = tx_semaphore_ceiling_put((TX_SEMAPHORE *) w, 1u);
+    /* Ceiling-put with limit 1 = binary semaphore semantics:
+     * subsequent puts coalesce instead of stacking. */
+    return rc == TX_SUCCESS ? 0 : -1;
+}
+
+int8_t nros_platform_wake_signal_from_isr(void *w) {
+    /* tx_semaphore_put / _ceiling_put are ISR-safe per ThreadX spec. */
+    return nros_platform_wake_signal(w);
+}
+
+size_t nros_platform_wake_storage_size(void) {
+    return sizeof(nros_wake_t);
+}
+
+size_t nros_platform_wake_storage_align(void) {
+    return __alignof__(nros_wake_t);
+}
+
+/* ============================================================
  *   Critical section (Phase 121.9)
  * ============================================================ */
 /* `tx_interrupt_control(TX_INT_DISABLE)` returns the prior posture

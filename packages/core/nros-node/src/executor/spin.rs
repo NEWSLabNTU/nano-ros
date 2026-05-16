@@ -223,7 +223,12 @@ pub(crate) struct WakeCtx {
     /// runtime cb signals both this and the std cv so a future
     /// migration to a single primitive flips one branch instead
     /// of two.
-    #[cfg(feature = "platform-zephyr")]
+    #[cfg(any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    ))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
 }
 
@@ -271,7 +276,12 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // Phase 129.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
     // of the std cv. Signal both so the cb keeps working whichever
     // wait primitive spin_once is using.
-    #[cfg(feature = "platform-zephyr")]
+    #[cfg(any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    ))]
     if let Some(nw) = wake.node_wake.as_ref() {
         nw.signal();
     }
@@ -528,7 +538,16 @@ pub struct Executor {
     /// (e.g. test builds with `rmw-cffi` but no `platform-*`
     /// feature); spin_once falls back to driving the transport
     /// for the full timeout in that case.
-    #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+    #[cfg(all(
+    feature = "std",
+    feature = "rmw-cffi",
+    any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    )
+))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
@@ -619,7 +638,16 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
-            #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+            #[cfg(all(
+    feature = "std",
+    feature = "rmw-cffi",
+    any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    )
+))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
@@ -693,7 +721,16 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
-            #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+            #[cfg(all(
+    feature = "std",
+    feature = "rmw-cffi",
+    any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    )
+))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
@@ -1021,7 +1058,12 @@ impl Executor {
                 flag: std::sync::Arc::clone(&self.wake_flag),
                 cv: std::sync::Arc::clone(&self.wake_cv),
                 mu: std::sync::Arc::clone(&self.wake_mu),
-                #[cfg(feature = "platform-zephyr")]
+                #[cfg(any(
+                    feature = "platform-zephyr",
+                    feature = "platform-freertos",
+                    feature = "platform-nuttx",
+                    feature = "platform-threadx",
+                ))]
                 node_wake: self.node_wake.as_ref().map(std::sync::Arc::clone),
             }));
         }
@@ -2950,7 +2992,16 @@ impl Executor {
         // the transport for the full timeout — UDP `recv` honors
         // `SO_RCVTIMEO` and keeps reliable XRCE streams ticking
         // (Phase 127.C.4).
-        #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+        #[cfg(all(
+    feature = "std",
+    feature = "rmw-cffi",
+    any(
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+    )
+))]
         let primary_drive_timeout_ms = if !was_woken
             && let Some(wake) = self.node_wake.as_ref()
         {
@@ -2971,7 +3022,16 @@ impl Executor {
         // installed get sub-poll-period wake latency. drive_io
         // afterward is non-blocking because the cv already burned
         // the timeout budget.
-        #[cfg(all(feature = "std", feature = "rmw-cffi", not(feature = "platform-zephyr")))]
+        #[cfg(all(
+            feature = "std",
+            feature = "rmw-cffi",
+            not(any(
+                feature = "platform-zephyr",
+                feature = "platform-freertos",
+                feature = "platform-nuttx",
+                feature = "platform-threadx",
+            ))
+        ))]
         if !was_woken {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
             let g = self.wake_mu.lock().expect("wake_mu poisoned");
@@ -2982,7 +3042,15 @@ impl Executor {
             });
         }
 
-        #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
+        #[cfg(all(
+            feature = "std",
+            not(any(
+                feature = "platform-zephyr",
+                feature = "platform-freertos",
+                feature = "platform-nuttx",
+                feature = "platform-threadx",
+            ))
+        ))]
         let primary_drive_timeout_ms = 0;
         #[cfg(not(feature = "std"))]
         let primary_drive_timeout_ms = timeout_ms;

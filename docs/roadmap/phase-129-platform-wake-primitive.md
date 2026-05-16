@@ -231,12 +231,19 @@ Document each impl's ISR-safety in
   (Pending: Zephyr SDK + XRCE Agent host.) Once green, the
   Phase 127.C.4 expedient cfg gate on `nros_cpp_spin_once`
   becomes unnecessary on every platform, not just Zephyr.
-- [ ] 129.5: FreeRTOS / NuttX / ThreadX / bare-metal
-  `nros_platform_wake_*` impls + executor swap. ISR-safety
-  documented in `docs/reference/platform-sync-abi.md` (new).
-  Deferred until 129.4 closes — Zephyr is the only platform
-  with the hung-condvar regression, so the rest are
-  optimisation, not bugfix.
+- [x] 129.5: `nros_platform_wake_*` impls landed for FreeRTOS
+  (`xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`), ESP-IDF
+  (FreeRTOS-derived; same surface + per-SoC `portYIELD_FROM_ISR`),
+  ThreadX (`tx_semaphore_ceiling_put`), and NuttX (POSIX `sem_t`
+  via the shared POSIX C source). Bare-metal platforms inherit
+  the trait's default-unsupported bodies — single-threaded, no
+  ISR-driven wake needed. Executor's `NodeWake` gate widened
+  from `platform-zephyr` to
+  `any(platform-zephyr, platform-freertos, platform-nuttx,
+   platform-threadx)` so every RTOS std build picks up the
+  kernel-native primitive automatically. ISR-safety contract
+  per-platform documented in
+  `docs/reference/platform-sync-abi.md` (new).
 
 ## Notes
 
