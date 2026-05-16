@@ -6,9 +6,14 @@
 
 use core::{ffi::c_char, mem::MaybeUninit, sync::atomic::Ordering};
 
+// The deprecated `nros_rmw_cffi_register` is exercised here on purpose:
+// this integration test pins the back-compat behaviour of the legacy
+// unnamed shim alongside the canonical `_register_named` entry.
+#[allow(deprecated)]
+use nros_rmw_cffi::nros_rmw_cffi_register;
 use nros_rmw_cffi::{
     NROS_RMW_RET_ERROR, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NrosRmwVtable,
-    backend_registered, nros_rmw_cffi_lookup, nros_rmw_cffi_register, nros_rmw_cffi_register_named,
+    backend_registered, nros_rmw_cffi_lookup, nros_rmw_cffi_register_named,
     nros_rmw_cffi_registered_names,
 };
 
@@ -91,8 +96,11 @@ fn duplicate_register_overwrites_idempotently() {
     assert_eq!(p1, p2);
 
     // The "default" name from legacy `nros_rmw_cffi_register` adds
-    // another slot. Both coexist.
-    assert_eq!(unsafe { nros_rmw_cffi_register(v) }, NROS_RMW_RET_OK);
+    // another slot. Both coexist. The deprecation attribute is
+    // intentional — this test exercises the back-compat shim.
+    #[allow(deprecated)]
+    let rc = unsafe { nros_rmw_cffi_register(v) };
+    assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(!unsafe { nros_rmw_cffi_lookup(c"default".as_ptr()) }.is_null());
 
     let count = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) };

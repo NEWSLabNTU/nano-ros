@@ -50,7 +50,7 @@ use crate::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
     NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
-    nros_rmw_cffi_register, ret_from_error,
+    ret_from_error,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -318,18 +318,20 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
-    /// implicit name `"default"`. Equivalent to calling
-    /// `nros_rmw_cffi_register(&Self::VTABLE)`. Idempotent — re-
-    /// registering the same vtable is a no-op from the runtime's
-    /// perspective.
+    /// implicit name `"default"`. Idempotent — re-registering the
+    /// same vtable is a no-op from the runtime's perspective.
     ///
     /// Most backends should use [`register_named`](Self::register_named)
     /// instead so they show up in the registry under their canonical
-    /// name (`"zenoh"`, `"dds"`, `"xrce"`, …).
+    /// name (`"zenoh"`, `"dds"`, `"xrce"`, …). Phase 128.B.5 routes
+    /// the implicit-name path through `_register_named` too, so the
+    /// legacy unnamed C shim no longer participates in registration.
     pub fn register() -> NrosRmwRet {
         // SAFETY: `&Self::VTABLE` is a reference to a const-promoted
-        // static; the address is stable for the life of the program.
-        unsafe { nros_rmw_cffi_register(&Self::VTABLE) }
+        // static; address stable for the program's lifetime.
+        unsafe {
+            crate::nros_rmw_cffi_register_named(c"default".as_ptr(), &Self::VTABLE)
+        }
     }
 
     /// Phase 104.B.2 — install the per-`R` vtable under a stable

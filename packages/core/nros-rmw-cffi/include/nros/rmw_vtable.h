@@ -382,7 +382,10 @@ typedef struct nros_rmw_vtable_t {
 /** Register a custom RMW backend under the implicit name "default".
  *  Legacy single-arg form retained for source compatibility with
  *  backend ctors authored before the named registry (Phase 104.B.2).
- *  New backends should call `nros_rmw_cffi_register_named` instead.
+ *
+ *  Deprecated (Phase 128.B.5): every in-tree backend now calls
+ *  `nros_rmw_cffi_register_named` with its canonical name. The
+ *  unnamed shim will be removed in a follow-up phase.
  *  Returns NROS_RMW_RET_OK. */
 nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
 
@@ -440,17 +443,28 @@ size_t nros_rmw_cffi_walk_init_section(void);
  *      }
  *      NROS_RMW_REGISTER_BACKEND(zenoh_register)
  *
- *  On Mach-O the section name is split (`__DATA,__nros_rmw_init`); on
- *  ELF a flat `.nros_rmw_init` is used. The variable name is
- *  decorated with `__attribute__((used))` so dead-strip / gc-sections
- *  keeps it. */
+ *  The section name (`linkm2_RMW_INIT_ENTRIES` on ELF,
+ *  `__DATA,__linkme_RMW_INIT_ENTRIES` on Mach-O) matches the layout
+ *  the [`linkme`] crate uses for the Rust-side
+ *  `nros_rmw_cffi::RMW_INIT_ENTRIES` distributed slice. Static-lib
+ *  backends linked with `--whole-archive` end up in the same section
+ *  the runtime walker iterates.
+ *
+ *  Anchor + content sections are split by linkme:
+ *    `linkme_*`   — start/stop encapsulation (length == 0)
+ *    `linkm2_*`   — actual array of function pointers
+ *
+ *  The variable is decorated with `__attribute__((used))` so
+ *  dead-strip / `--gc-sections` keeps it; the section name is
+ *  reserved for linkme's array, so the linker accumulates every entry
+ *  into a single contiguous region the walker can iterate. */
 #if defined(__APPLE__)
 #define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
-    __attribute__((used, section("__DATA,__nros_rmw_init")))                   \
+    __attribute__((used, section("__DATA,__linkme_RMW_INIT_ENTRIES")))         \
     static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
 #else
 #define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
-    __attribute__((used, section(".nros_rmw_init")))                           \
+    __attribute__((used, section("linkm2_RMW_INIT_ENTRIES")))                  \
     static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
 #endif
 

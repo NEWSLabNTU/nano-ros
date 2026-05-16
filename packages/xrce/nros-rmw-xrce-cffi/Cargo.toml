@@ -48,6 +48,11 @@ platform-threadx = []
 # canonical nros platform-net ABI.
 platform-zephyr = []
 
+[dependencies]
+# Phase 128.B.3 — distributed-slice contribution for the RMW init section.
+nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false }
+linkme = { version = "0.3", default-features = false }
+
 [build-dependencies]
 cc = "1"
 

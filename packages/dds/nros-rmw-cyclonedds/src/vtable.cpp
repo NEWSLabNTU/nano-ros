@@ -105,5 +105,19 @@ const nros_rmw_vtable_t kVtable = {
 } // namespace
 
 extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
-    return nros_rmw_cffi_register(&kVtable);
+    return nros_rmw_cffi_register_named("cyclonedds", &kVtable);
 }
+
+// Phase 128.B.4 — `.nros_rmw_init` self-registration via the canonical
+// macro from <nros/rmw_vtable.h>. The runtime walker
+// (`nros_rmw_cffi_walk_init_section`) discovers this entry on first
+// `nros::init` and calls `nros_rmw_cyclonedds_register` — the C/C++
+// side gets full nameless dispatch (no `#ifdef NROS_RMW_CYCLONEDDS`
+// chain anywhere). Static-lib link with `--whole-archive` ensures the
+// section entry survives stripping.
+extern "C" {
+static void nros_rmw_cyclonedds_section_register(void) {
+    (void) nros_rmw_cyclonedds_register();
+}
+}
+NROS_RMW_REGISTER_BACKEND(nros_rmw_cyclonedds_section_register)

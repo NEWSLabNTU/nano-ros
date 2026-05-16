@@ -22,7 +22,8 @@ const nros_rmw_vtable_t *g_captured = nullptr;
 
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
+extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+                                                        const nros_rmw_vtable_t *vtable) {
     g_captured = vtable;
     return NROS_RMW_RET_OK;
 }

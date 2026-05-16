@@ -1063,13 +1063,21 @@ fn clear_cffi_message_info(key: usize) {
 /// Preserved as a one-release source-compat shim so backend ctors
 /// authored before the named-registry switchover keep working.
 ///
-/// New backends should call [`nros_rmw_cffi_register_named`]
-/// directly.
+/// **Deprecated (Phase 128.B.5).** All in-tree callers now use
+/// [`nros_rmw_cffi_register_named`] directly so the registry slot is
+/// keyed by the backend's canonical name (`"zenoh"`, `"dds"`,
+/// `"xrce"`, `"cyclonedds"`, …). New backends MUST follow the same
+/// pattern; the unnamed shim will be removed in a follow-up phase
+/// once external callers have migrated.
 ///
 /// # Safety
 ///
 /// The vtable pointer must remain valid for the lifetime of the program.
 /// All function pointers in the vtable must be valid.
+#[deprecated(
+    since = "0.2.0",
+    note = "use nros_rmw_cffi_register_named with the backend's canonical name; the unnamed shim will be removed"
+)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
@@ -3098,8 +3106,10 @@ mod tests {
 
     #[test]
     fn typed_struct_roundtrip() {
-        // Register the stub vtable.
-        let ret = unsafe { nros_rmw_cffi_register(&STUB_VTABLE) };
+        // Register the stub vtable under its canonical name.
+        let ret = unsafe {
+            nros_rmw_cffi_register_named(c"default".as_ptr(), &STUB_VTABLE)
+        };
         assert_eq!(ret, NROS_RMW_RET_OK);
 
         // Open a session.

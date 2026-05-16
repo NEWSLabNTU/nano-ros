@@ -80,6 +80,8 @@ nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features =
 # Phase 115.M.3 — vtable register entry (previously shipped from
 # the retired `nros-rmw-dds-cffi` shim) now lives in this crate.
 nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
+# Phase 128.B.2 — distributed-slice contribution for the RMW init section.
+linkme = { version = "0.3", default-features = false }
 nros-core = { workspace = true, default-features = false }
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
 dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dcps", "rtps"] }

@@ -1451,6 +1451,7 @@ dependencies = [
  "cortex-m-semihosting",
  "dust_dds",
  "heapless 0.8.0",
+ "linkme",
  "nros-core",
  "nros-platform",
  "nros-platform-cffi",
@@ -1471,6 +1472,8 @@ name = "nros-rmw-xrce-cffi"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "linkme",
+ "nros-rmw-cffi",
 ]
 
 [[package]]

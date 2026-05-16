@@ -102,22 +102,14 @@ mod cffi_register {
         }
     }
 
-    // Phase 104.A — POSIX auto-registration. See
+    // Phase 128.B.2 — `RMW_INIT_ENTRIES` self-registration. See
     // `nros-rmw-zenoh/src/lib.rs::cffi_register` for the rationale.
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    #[used]
-    #[unsafe(link_section = ".init_array")]
-    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
-
-    #[cfg(target_os = "macos")]
-    #[used]
-    #[unsafe(link_section = "__DATA,__mod_init_func")]
-    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
-
-    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
-    extern "C" fn auto_register_ctor() {
+    unsafe extern "C" fn section_register_entry() {
         let _ = nros_rmw_dds_register();
     }
+
+    #[linkme::distributed_slice(nros_rmw_cffi::RMW_INIT_ENTRIES)]
+    static SECTION_REGISTER: nros_rmw_cffi::RmwInitEntry = section_register_entry;
 }
 
 pub use cffi_register::{RegisterError, nros_rmw_dds_register, register};
