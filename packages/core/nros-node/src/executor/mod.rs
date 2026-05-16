@@ -40,6 +40,8 @@ pub(crate) mod ready_set;
 #[cfg(any(has_rmw, test))]
 pub mod sched_context;
 #[cfg(any(has_rmw, test))]
+mod node_wake;
+#[cfg(any(has_rmw, test))]
 mod spin;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spsc_ring;

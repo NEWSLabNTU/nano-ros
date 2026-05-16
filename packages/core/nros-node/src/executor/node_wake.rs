@@ -1,0 +1,122 @@
+//! Phase 129.3 — `NodeWake`: heap-backed wake primitive used by
+//! `Executor::spin_once` on Zephyr+std where the std libc condvar
+//! hangs past its deadline (Phase 127.C.4). Wraps the
+//! `nros_platform_wake_*` ABI declared in
+//! `<nros/platform.h>` / `nros-platform-cffi` (Phase 129.1).
+//!
+//! Only compiled on `feature = "std" + feature = "rmw-cffi" +
+//! feature = "platform-zephyr"`. Other std consumers keep the
+//! existing `std::sync::Condvar` path until a follow-up phase
+//! migrates them too.
+//!
+//! Construction is fallible — if the platform impl returns
+//! `wake_storage_size() == 0` or `wake_init` returns non-zero,
+//! the caller falls back to driving the transport for the full
+//! timeout (matches the Phase 127.C.4 expedient gate behaviour
+//! but without the cv-wait skip).
+
+#![cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+
+use core::ffi::c_void;
+
+unsafe extern "C" {
+    fn nros_platform_wake_init(w: *mut c_void) -> i8;
+    fn nros_platform_wake_drop(w: *mut c_void) -> i8;
+    fn nros_platform_wake_wait_ms(w: *mut c_void, timeout_ms: u32) -> i8;
+    fn nros_platform_wake_signal(w: *mut c_void) -> i8;
+    #[allow(dead_code)] // Wired by 124.B.7 ISR callers in a follow-up.
+    fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
+    fn nros_platform_wake_storage_size() -> usize;
+    fn nros_platform_wake_storage_align() -> usize;
+}
+
+/// Heap-backed wake primitive. Sized at runtime from the platform
+/// probe (`nros_platform_wake_storage_size`).
+pub(crate) struct NodeWake {
+    storage: std::boxed::Box<[u8]>,
+}
+
+// SAFETY: per `<nros/platform.h>`'s wake contract, signal/wait are
+// callable from any thread (k_sem on Zephyr is kernel-managed).
+unsafe impl Send for NodeWake {}
+unsafe impl Sync for NodeWake {}
+
+impl NodeWake {
+    /// Allocate + init. Returns `None` if the platform provider
+    /// reports the primitive unavailable (`storage_size() == 0`)
+    /// or if `wake_init` returns non-zero.
+    pub(crate) fn new() -> Option<Self> {
+        // SAFETY: probe functions are documented pure (no global
+        // state, may be called before init).
+        let size = unsafe { nros_platform_wake_storage_size() };
+        let align = unsafe { nros_platform_wake_storage_align() };
+        if size == 0 {
+            return None;
+        }
+        // Round capacity up so the boxed slice's data ptr is
+        // aligned to the requested boundary. `Box::<[u8]>` only
+        // guarantees byte alignment; layout-allocate via Vec
+        // capacity + a manual alignment check, or fall back to
+        // `vec![0; size + align]` and offset. Simplest: use a
+        // `Vec<u64>` for >=8B alignment (covers every platform we
+        // ship today; `k_sem` and `sem_t` are <= 8B-aligned).
+        if align > core::mem::align_of::<u64>() {
+            return None;
+        }
+        let u64s = size.div_ceil(8);
+        let boxed: std::boxed::Box<[u64]> = std::vec![0u64; u64s].into_boxed_slice();
+        // Reinterpret the boxed [u64] as a boxed [u8]. The
+        // capacity in bytes is `u64s * 8 >= size`; the data
+        // pointer inherits 8-byte alignment from `Vec<u64>`'s
+        // allocator request.
+        let raw = std::boxed::Box::into_raw(boxed) as *mut [u8];
+        // SAFETY: `raw` came from `Box::<[u64]>::into_raw`; we
+        // re-box as `Box<[u8]>` with the same total byte length.
+        // The allocator only cares about the total size + the
+        // pointer originally returned, both preserved.
+        let storage: std::boxed::Box<[u8]> = unsafe {
+            std::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+                raw as *mut u8,
+                u64s * 8,
+            ))
+        };
+        let ptr = storage.as_ptr() as *mut c_void;
+        // SAFETY: `ptr` references at least `size` bytes aligned
+        // to 8 (verified above). `wake_init` initialises in place
+        // or returns non-zero — in which case we drop `storage`
+        // without calling `wake_drop`, matching the "init failed,
+        // no teardown" contract.
+        let rc = unsafe { nros_platform_wake_init(ptr) };
+        if rc != 0 {
+            return None;
+        }
+        Some(Self { storage })
+    }
+
+    /// Block until signaled or `timeout_ms` elapses. Returns
+    /// `true` on signal, `false` on timeout or error.
+    pub(crate) fn wait_ms(&self, timeout_ms: u32) -> bool {
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: ptr was init'd in `new`; the underlying
+        // primitive supports concurrent calls per platform spec.
+        unsafe { nros_platform_wake_wait_ms(ptr, timeout_ms) == 0 }
+    }
+
+    /// Wake one waiter. Safe from any thread.
+    pub(crate) fn signal(&self) {
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: see wait_ms.
+        let _ = unsafe { nros_platform_wake_signal(ptr) };
+    }
+}
+
+impl Drop for NodeWake {
+    fn drop(&mut self) {
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: ptr was init'd in `new`; this is the matching
+        // teardown call. NodeWake is owned exclusively by the
+        // Executor (held inside Arc), so no in-flight wait can
+        // overlap Drop.
+        let _ = unsafe { nros_platform_wake_drop(ptr) };
+    }
+}

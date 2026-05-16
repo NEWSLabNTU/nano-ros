@@ -219,6 +219,12 @@ pub(crate) struct WakeCtx {
     pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
     #[allow(dead_code)] // Held by spin_once's wait predicate (124.B.4).
     pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
+    /// Phase 129.3 — Zephyr+std uses the k_sem wake primitive; the
+    /// runtime cb signals both this and the std cv so a future
+    /// migration to a single primitive flips one branch instead
+    /// of two.
+    #[cfg(feature = "platform-zephyr")]
+    pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
 }
 
 /// Phase 124.B.2 — runtime wake callback.
@@ -262,6 +268,13 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // waiter cannot miss the signal even though we don't hold mu
     // here. Standard pthread cond-var idiom.
     wake.cv.notify_all();
+    // Phase 129.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
+    // of the std cv. Signal both so the cb keeps working whichever
+    // wait primitive spin_once is using.
+    #[cfg(feature = "platform-zephyr")]
+    if let Some(nw) = wake.node_wake.as_ref() {
+        nw.signal();
+    }
 }
 
 /// Phase 124.B.7.c — POSIX signalfd worker.
@@ -508,6 +521,15 @@ pub struct Executor {
     #[cfg(feature = "std")]
     #[allow(dead_code)]
     pub(crate) wake_mu: std::sync::Arc<std::sync::Mutex<()>>,
+    /// Phase 129.3 — Zephyr+std uses `nros_platform_wake_*` (k_sem)
+    /// instead of `std::sync::Condvar` because Zephyr's libc
+    /// `pthread_cond_timedwait` hangs past its deadline. `None`
+    /// when the platform provider didn't link a wake primitive
+    /// (e.g. test builds with `rmw-cffi` but no `platform-*`
+    /// feature); spin_once falls back to driving the transport
+    /// for the full timeout in that case.
+    #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+    pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
@@ -597,6 +619,8 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
+            #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+            node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
@@ -669,6 +693,8 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
+            #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+            node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
@@ -995,6 +1021,8 @@ impl Executor {
                 flag: std::sync::Arc::clone(&self.wake_flag),
                 cv: std::sync::Arc::clone(&self.wake_cv),
                 mu: std::sync::Arc::clone(&self.wake_mu),
+                #[cfg(feature = "platform-zephyr")]
+                node_wake: self.node_wake.as_ref().map(std::sync::Arc::clone),
             }));
         }
         let arc = self.wake_ctx.as_ref().expect("just set");
@@ -2913,18 +2941,36 @@ impl Executor {
         // the predicate. If wake fires between drain and cv.wait
         // entry, the predicate sees flag=true on first eval and
         // exits immediately.
-        // Zephyr native_sim links a hosted std runtime but Zephyr's libc
-        // condvar can block past the supplied timeout (Phase 127.C.4 —
-        // cv-wait on the std executor never returned, hanging C++ action
-        // `send_goal`). Skip the cv-wait there and let the transport
-        // drain block instead; on Zephyr UDP `recv` honors the socket
-        // timeout, so drive_io(timeout_ms) yields the thread for the
-        // requested duration without depending on the broken condvar
-        // path. Reliable XRCE retransmission also needs ongoing session
-        // activity — drive_io(0) + a separate sleep starves it (Phase
-        // 127.C.4 — C++ XRCE service replies stuck unACK'd in the
-        // reliable output stream because spin_once never re-ran the
-        // session after the initial 100 ms flush).
+        // Phase 129.3 — Zephyr+std prefers the platform's k_sem-backed
+        // wake primitive (`nros_platform_wake_*`) because Zephyr's
+        // libc `pthread_cond_timedwait` hangs past its deadline,
+        // breaking the std `Condvar::wait_timeout_while` path. If
+        // the platform provider didn't link a wake primitive
+        // (`NodeWake::new` returned `None`), fall back to driving
+        // the transport for the full timeout — UDP `recv` honors
+        // `SO_RCVTIMEO` and keeps reliable XRCE streams ticking
+        // (Phase 127.C.4).
+        #[cfg(all(feature = "std", feature = "rmw-cffi", feature = "platform-zephyr"))]
+        let primary_drive_timeout_ms = if !was_woken
+            && let Some(wake) = self.node_wake.as_ref()
+        {
+            let _ = wake.wait_ms(timeout_ms as u32);
+            // Clear any pending flag the cb set while we were
+            // waiting; mirrors the std cv predicate's flag drain.
+            let _ = self
+                .wake_flag
+                .swap(false, std::sync::atomic::Ordering::SeqCst);
+            0
+        } else {
+            timeout_ms
+        };
+
+        // Non-Zephyr std still uses the std::Condvar wake-cv. Poll-
+        // only backends (NULL wake-callback) sleep the full timeout
+        // in the cv-wait; backends with `set_wake_callback`
+        // installed get sub-poll-period wake latency. drive_io
+        // afterward is non-blocking because the cv already burned
+        // the timeout budget.
         #[cfg(all(feature = "std", feature = "rmw-cffi", not(feature = "platform-zephyr")))]
         if !was_woken {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
@@ -2936,15 +2982,9 @@ impl Executor {
             });
         }
 
-        // Non-Zephyr std uses the wake-cv wait above, so the transport
-        // drain here must be non-blocking. no_std and std+Zephyr have
-        // no usable wake-cv layer; give the primary session the
-        // caller's timeout so the transport's blocking recv yields
-        // the thread instead of busy-spinning while still keeping
-        // reliable XRCE streams ticking.
         #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
         let primary_drive_timeout_ms = 0;
-        #[cfg(any(not(feature = "std"), feature = "platform-zephyr"))]
+        #[cfg(not(feature = "std"))]
         let primary_drive_timeout_ms = timeout_ms;
 
         let _ = self.session.drive_io(primary_drive_timeout_ms);
