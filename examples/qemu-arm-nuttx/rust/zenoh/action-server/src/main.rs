@@ -15,6 +15,10 @@ fn main() {
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
                 .node_name("fibonacci_action_server");
+            // Phase 104.A — bare-metal callers explicitly register the RMW
+            // backend before `Executor::open`. POSIX hosts auto-register via
+            // `.init_array`; this target doesn't walk that section.
+            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
             let mut executor = Executor::open(&exec_config)?;
             let _node = executor.create_node("fibonacci_action_server")?;
 
