@@ -318,34 +318,32 @@ Deferred:
 Bridge support lives in a separate crate so the common-case umbrella
 surface stays unchanged.
 
-- [ ] `128.F.1`: `Executor::open_multi(&[SessionSpec])` keyed by name;
+- [x] `128.F.1`: `Executor::open_multi(&[SessionSpec])` keyed by name;
   resolves each name against the named registry. Reuses existing
   `extra_sessions` plumbing (already drives `drive_io(0)` per spin).
-  **Files:** `packages/core/nros-node/src/executor/open.rs`,
-  `packages/core/nros-node/src/executor/spin.rs`.
-- [ ] `128.F.2`: `Executor::create_node_on(name, rmw)` binds a node
-  to a specific session. `create_node(name)` keeps single-session
-  semantics for the common case.
-  **Files:** `packages/core/nros-node/src/executor/types.rs`,
-  `packages/core/nros-node/src/node.rs`.
-- [ ] `128.F.3`: new crate `packages/bridge/nros-bridge/` with
-  `Bridge::pubsub_raw(src_node, src_topic, dst_node, dst_topic,
-  type_hash, qos)`. Implementation: `RawSubscription` on the source
-  side, `EmbeddedRawPublisher::publish_raw_with_attachment` on the
-  destination side. Bytes pass through untouched (ROS-CDR on both
-  sides assumed; type translation is out of scope).
-  **Files:** `packages/bridge/nros-bridge/Cargo.toml` (new),
-  `packages/bridge/nros-bridge/src/lib.rs` (new),
-  `packages/bridge/nros-bridge/src/pubsub_raw.rs` (new).
-- [ ] `128.F.4`: bidirectional bridge loop protection — tag forwarded
-  messages via an attachment field (`bridge_origin = "<rmw>"`); drop
-  on receive when origin matches local backend.
-  **Files:** `packages/bridge/nros-bridge/src/pubsub_raw.rs`.
-- [ ] `128.F.5`: C/C++ shim — `nros::init_multi`,
-  `nros::create_node_on`, `nros::bridge::pubsub_raw` mirror the Rust
-  surface 1:1.
-  **Files:** `packages/core/nros-cpp/include/nros/bridge.hpp` (new),
-  `packages/core/nros-c/include/nros/bridge.h` (new).
+  Lives in `packages/core/nros-node/src/executor/spin.rs` next to
+  `Executor::open`. Bridge mode ignores `$NROS_RMW` — names are
+  explicit.
+- [x] `128.F.2`: `Executor::create_node_on(name, rmw)` builds a Node
+  bound to whichever session the named backend opened against. Reuses
+  existing `node_builder().rmw(name).build()` plumbing.
+  `create_node(name)` keeps single-session semantics for the common
+  case.
+- [x] `128.F.3`: new crate `packages/bridge/nros-bridge/` with
+  `PubSubBridge::new(sub, pubr, origin) + pump()`. Implementation
+  drains a `RawSubscription` and forwards bytes to an
+  `EmbeddedRawPublisher`. ROS-CDR pass-through; type translation is
+  out of scope.
+- [~] `128.F.4`: bidirectional bridge loop protection — `PubSubBridge`
+  stores the `origin` backend name in its struct so a paired return
+  bridge can later drop matching frames. Wire-level attachment
+  stamping is documented as a no-op until `EmbeddedRawPublisher`
+  gains a `publish_raw_with_attachment` API; the contract is in
+  place so a follow-up patch can light it up without touching the
+  caller surface.
+- [ ] `128.F.5` (deferred → phase 129): C/C++ shim. Rust surface is
+  the source of truth for phase 128; the C/C++ mirror lands once
+  the bridge crate stabilizes.
 
 ### 128.G — Optional config-driven entrypoint
 

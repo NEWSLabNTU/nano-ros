@@ -1,0 +1,24 @@
+[package]
+name = "nros-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cross-RMW bridge primitives for nano-ros (Phase 128.F)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "rmw", "bridge", "embedded", "no-std"]
+categories = ["embedded", "no-std", "network-programming"]
+
+[features]
+default = []
+std = ["nros-node/std"]
+alloc = ["nros-node/alloc"]
+
+[dependencies]
+nros-node = { workspace = true, default-features = false, features = ["rmw-cffi"] }
+
+[lints]
+workspace = true

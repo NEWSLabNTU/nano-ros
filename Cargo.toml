@@ -77,6 +77,8 @@ members = [
     # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
     # (nros-rmw-xrce) and exposes its register entry point.
     "packages/xrce/nros-rmw-xrce-cffi",
+    # Phase 128.F — cross-RMW bridge primitives.
+    "packages/bridge/nros-bridge",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks

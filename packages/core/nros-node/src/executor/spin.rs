@@ -118,6 +118,59 @@ impl Executor {
         Ok(executor)
     }
 
+    /// Phase 128.F.1 — explicit per-backend session declaration for
+    /// bridge mode. `specs[0]` becomes the primary session; `specs[1..]`
+    /// open as extras keyed by RMW name. After construction, every
+    /// `create_node_on(name, rmw)` call dispatches to whichever
+    /// session was opened under that RMW name (or, when the rmw name
+    /// matches the primary, the primary session itself).
+    ///
+    /// Single-backend callers should keep using
+    /// [`open`](Self::open) — this entry costs an extra
+    /// `open_with_rmw` per spec and adds no value when only one
+    /// backend is linked.
+    ///
+    /// `$NROS_RMW` env is ignored: bridge mode wants explicit names.
+    #[cfg(feature = "rmw-cffi")]
+    pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
+        // Walk the section once so backend ctors fire (idempotent).
+        unsafe {
+            nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
+        }
+
+        let primary = specs
+            .first()
+            .ok_or(NodeError::Transport(TransportError::ConnectionFailed))?;
+        let primary_session = nros_rmw_cffi::CffiRmw::open_with_rmw(
+            primary.rmw,
+            &primary.to_rmw_config(),
+        )
+        .map_err(NodeError::Transport)?;
+        let mut executor = Self::from_session(primary_session);
+        executor.set_node_identity("", "/");
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        executor.install_wake_signal_on_primary();
+
+        for spec in specs.iter().skip(1) {
+            let session = nros_rmw_cffi::CffiRmw::open_with_rmw(
+                spec.rmw,
+                &spec.to_rmw_config(),
+            )
+            .map_err(NodeError::Transport)?;
+            executor
+                .extra_sessions
+                .push(session)
+                .map_err(|_| NodeError::NodeTableFull)?;
+            #[cfg(feature = "std")]
+            {
+                let idx = executor.extra_sessions.len() - 1;
+                executor.install_wake_signal_on_extra(idx);
+            }
+        }
+
+        Ok(executor)
+    }
+
     /// Phase 104.C.1 — open the Executor against a specific RMW
     /// backend by name. Selects from the named registry (Phase
     /// 104.B.2). `rmw_name` must match one of the names a backend
@@ -157,6 +210,62 @@ impl Executor {
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         Ok(executor)
+    }
+}
+
+/// Phase 128.F.1 — per-backend session declaration for
+/// [`Executor::open_multi`]. Each spec names an RMW backend (must
+/// match one a backend registered under via
+/// `nros_rmw_cffi_register_named` / the `RMW_INIT_ENTRIES` linker
+/// section) and the locator + domain id to open against it.
+#[cfg(feature = "rmw-cffi")]
+#[derive(Clone, Copy)]
+pub struct SessionSpec<'cfg> {
+    pub rmw: &'cfg str,
+    pub locator: &'cfg str,
+    pub domain_id: u32,
+    pub node_name: &'cfg str,
+    pub namespace: &'cfg str,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<'cfg> SessionSpec<'cfg> {
+    /// Minimal spec — just RMW name + locator. Domain id defaults to
+    /// 0; node name and namespace are empty.
+    pub const fn new(rmw: &'cfg str, locator: &'cfg str) -> Self {
+        Self {
+            rmw,
+            locator,
+            domain_id: 0,
+            node_name: "",
+            namespace: "",
+        }
+    }
+
+    pub const fn domain_id(mut self, domain_id: u32) -> Self {
+        self.domain_id = domain_id;
+        self
+    }
+
+    pub const fn node_name(mut self, name: &'cfg str) -> Self {
+        self.node_name = name;
+        self
+    }
+
+    pub const fn namespace(mut self, ns: &'cfg str) -> Self {
+        self.namespace = ns;
+        self
+    }
+
+    fn to_rmw_config(&self) -> nros_rmw::RmwConfig<'cfg> {
+        nros_rmw::RmwConfig {
+            locator: self.locator,
+            mode: nros_rmw::SessionMode::Client,
+            domain_id: self.domain_id,
+            node_name: self.node_name,
+            namespace: self.namespace,
+            properties: &[],
+        }
     }
 }
 
@@ -1250,6 +1359,49 @@ impl Executor {
             &mut self.session,
             0,
         ))
+    }
+
+    /// Phase 128.F.2 — bridge-mode node factory. Registers a Node
+    /// bound to the named RMW backend by opening (or reusing) an
+    /// extra session via `node_builder().rmw(rmw).build()`, then
+    /// returns a [`Node`] borrowing that session. Use when the
+    /// binary intentionally links more than one backend and a Node
+    /// must speak a specific one.
+    ///
+    /// The single-backend common case should keep using
+    /// [`create_node`](Self::create_node) — this entry costs an
+    /// extra session lookup and serves no purpose when only one
+    /// backend is registered.
+    #[cfg(feature = "rmw-cffi")]
+    pub fn create_node_on(
+        &mut self,
+        name: &str,
+        rmw: &str,
+    ) -> Result<Node<'_>, NodeError> {
+        if name.len() > 64 {
+            return Err(NodeError::NameTooLong);
+        }
+        // Register the Node (opens an extra session under `rmw` if
+        // none exists yet for that backend).
+        let id = self
+            .node_builder(name)
+            .rmw(rmw)
+            .build()
+            .map_err(|e| e)?;
+        let session_idx = self
+            .node(id)
+            .ok_or(NodeError::NodeTableFull)?
+            .session_idx;
+
+        let mut node_name = heapless::String::<64>::new();
+        node_name
+            .push_str(name)
+            .map_err(|_| NodeError::NameTooLong)?;
+        let namespace = self.namespace.clone();
+        let session = self
+            .session_at_mut(session_idx)
+            .ok_or(NodeError::NodeTableFull)?;
+        Ok(Node::new(node_name, namespace, session, 0))
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
