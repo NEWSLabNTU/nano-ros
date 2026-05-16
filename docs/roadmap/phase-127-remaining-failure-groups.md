@@ -393,6 +393,25 @@ Current signal:
   - Focused verification:
     `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-capture --retries 0 --no-fail-fast`
     completed in 403.6s with 9 passed / 27 skipped.
+- 2026-05-16 ThreadX RISC-V close-out:
+  - Bare-metal ThreadX `zpico_spin_once()` now uses NetX Duo BSD
+    `nx_bsd_select()` instead of POSIX `select()`; ThreadX Linux keeps the
+    POSIX path. This fixes the Rust fixture link failure from an undefined
+    `select` symbol.
+  - The RISC-V app thread stack is now 512 KiB. The 64 KiB stack corrupted the
+    Rust `CffiSession::open_with_vtable` return path, and 256 KiB fixed
+    pub/sub and service but still left the typed Rust action client crashing
+    after readiness. The typed action client carries multiple transport
+    handles and fixed CDR buffers on the app thread stack.
+  - The direct `rust-lld` wrapper now unwraps `-Wl,` arguments emitted by
+    CMake metadata, so C/C++ ThreadX RISC-V fixtures link through flags such
+    as `-Wl,--allow-multiple-definition`.
+  - Focused Rust action verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(test_rtos_action_e2e::platform_4_Platform__ThreadxRiscv64::lang_1_Lang__Rust)' --no-capture --retries 0 --no-fail-fast`
+    passed in 42.2s with goal acceptance and a succeeded Fibonacci result.
+  - Full focused verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(ThreadxRiscv64)' --no-capture --retries 0 --no-fail-fast`
+    completed in 443.4s with 9 passed / 27 skipped.
 
 Subitems:
 
@@ -400,9 +419,10 @@ Subitems:
   all pass in the focused FreeRTOS slice.
 - [x] `127.B.2`: NuttX E2E triage. Rust pub/sub, service, and action pass;
   C/C++ combinations are gated on installed NuttX variant libraries.
-- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage. ThreadX Linux Rust/C/C++
+- [x] `127.B.3`: ThreadX Linux/RISC-V E2E triage. ThreadX Linux Rust/C/C++
   pub/sub, service, and action pass in the focused ThreadX Linux slice;
-  ThreadX RISC-V runtime failures remain.
+  ThreadX RISC-V Rust/C/C++ pub/sub, service, and action pass after the
+  ThreadX select, stack, and linker-wrapper fixes.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.
 - [~] `127.B.5`: Shared platform DDS runtime triage.
 

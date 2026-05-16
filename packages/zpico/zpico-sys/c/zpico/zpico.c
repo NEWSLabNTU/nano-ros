@@ -50,8 +50,10 @@ static void _freertos_printk(const char *fmt, ...) {
 // On ThreadX route printk through printf (Linux sim) or uart_puts (bare-metal)
 #include <stdio.h>
 #if defined(__linux__)
+#include <sys/select.h>
 #define printk(...) printf(__VA_ARGS__)
 #else
+#include "nxd_bsd.h"
 extern void uart_puts(const char *s);
 static void _threadx_printk(const char *fmt, ...) {
     char buf[128];
@@ -73,11 +75,16 @@ static void _threadx_printk(const char *fmt, ...) {
 // Needed for single-threaded builds and for ThreadX/NSOS, where we deliberately
 // drive read + keepalive from zpico_spin_once instead of background tasks.
 #if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
-    (Z_FEATURE_MULTI_THREAD != 1 || defined(ZENOH_THREADX))
+    !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
 #include <sys/select.h>
+#endif
+#if defined(ZENOH_THREADX)
+#include "zenoh-pico/net/session.h"
+#include "zenoh-pico/transport/transport.h"
+#include "zenoh-pico/api/olv_macros.h"
 #endif
 
 // ============================================================================
@@ -1542,6 +1549,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     int fd = get_session_fd();
     int ret = ZPICO_ERR_TIMEOUT;
     if (fd >= 0 && timeout_ms > 0) {
+#if defined(__linux__)
         fd_set read_fds;
         FD_ZERO(&read_fds);
         FD_SET(fd, &read_fds);
@@ -1549,6 +1557,15 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
         tv.tv_sec = timeout_ms / 1000;
         tv.tv_usec = (timeout_ms % 1000) * 1000;
         int ready = select(fd + 1, &read_fds, NULL, NULL, &tv);
+#else
+        nx_bsd_fd_set read_fds;
+        NX_BSD_FD_ZERO(&read_fds);
+        NX_BSD_FD_SET(fd, &read_fds);
+        struct nx_bsd_timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        int ready = nx_bsd_select(fd + 1, &read_fds, NULL, NULL, &tv);
+#endif
         if (ready > 0) {
             ret = zp_read(z_session_loan_mut(&g_session), NULL);
         } else if (ready < 0) {

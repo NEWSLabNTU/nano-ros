@@ -45,7 +45,7 @@ TX_BYTE_POOL *zpico_threadx_byte_pool;
  * each frame is ~120 B and recursion in NetX BSD's poll loops
  * overflows 2 KB silently, corrupting adjacent .bss state. */
 #define BSD_STACK_SIZE          8192
-#define APP_THREAD_STACK_SIZE   (64 * 1024)     /* 64 KB for Executor + zenoh-pico */
+#define APP_THREAD_STACK_SIZE   (512 * 1024)    /* Executor + typed action client */
 /* zenoh-pico's read/lease tasks default to ThreadX priority 14
  * (`Z_TASK_PRIORITY` in `zenoh-pico/src/system/threadx/.../platform.h`).
  * The app thread must run at a strictly lower priority (= higher

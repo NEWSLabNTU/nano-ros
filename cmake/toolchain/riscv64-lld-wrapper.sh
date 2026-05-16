@@ -52,4 +52,16 @@ for arg in "$@"; do
     fi
 done
 
-exec "$RUST_LLD" "$@"
+lld_args=()
+for arg in "$@"; do
+    if [[ "$arg" == -Wl,* ]]; then
+        IFS=',' read -ra parts <<< "${arg#-Wl,}"
+        for part in "${parts[@]}"; do
+            lld_args+=("$part")
+        done
+    else
+        lld_args+=("$arg")
+    fi
+done
+
+exec "$RUST_LLD" "${lld_args[@]}"
