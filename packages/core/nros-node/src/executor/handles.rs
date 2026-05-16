@@ -686,6 +686,28 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
+    /// Phase 128.F.4 — raw publish with a wire-level attachment block.
+    ///
+    /// `attachment` rides alongside the payload on backends that
+    /// natively support it (zenoh-pico, Cyclone DDS). Backends without
+    /// native support silently discard `attachment` and fall back to
+    /// the regular [`publish_raw`](Self::publish_raw) path — the
+    /// default `Publisher::publish_raw_with_attachment` body in
+    /// `nros-rmw` does this delegation.
+    ///
+    /// Primary use case: cross-RMW bridges stamp the source backend's
+    /// RMW name as `bridge_origin` so a paired return bridge can drop
+    /// echoed frames deterministically.
+    pub fn publish_raw_with_attachment(
+        &self,
+        data: &[u8],
+        attachment: &[u8],
+    ) -> Result<(), NodeError> {
+        self.handle
+            .publish_raw_with_attachment(data, attachment)
+            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
     /// Phase 108.B — manually assert this publisher's liveliness.
     /// Required for `QosLivelinessPolicy::ManualByTopic` /
     /// `ManualByNode`. No-op for AUTOMATIC / NONE.
@@ -1287,6 +1309,27 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
             .try_recv_raw(&mut self.buffer)
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
+    /// Phase 128.F.4 — raw receive that also surfaces the incoming
+    /// sample's wire-level attachment block.
+    ///
+    /// Returns `Ok(Some((payload_len, attachment_len)))`. The payload
+    /// lives in [`buffer`](Self::buffer); the attachment is written
+    /// into caller-supplied `att_buf`. `attachment_len == 0` means
+    /// the incoming sample carried no attachment.
+    ///
+    /// Backends without native attachment support delegate to
+    /// [`try_recv_raw`](Self::try_recv_raw) and always report
+    /// `attachment_len == 0` (default `Subscriber` trait body in
+    /// `nros-rmw`).
+    pub fn try_recv_raw_with_attachment(
+        &mut self,
+        att_buf: &mut [u8],
+    ) -> Result<Option<(usize, usize)>, NodeError> {
+        self.handle
+            .try_recv_raw_with_attachment(&mut self.buffer, att_buf)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
     }
 

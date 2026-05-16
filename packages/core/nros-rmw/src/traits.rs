@@ -1113,6 +1113,31 @@ pub trait Publisher {
     /// wait for delivery.
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error>;
 
+    /// Phase 128.F.4 — publish with an opaque attachment block.
+    ///
+    /// `attachment` rides alongside the payload at the wire layer.
+    /// Receivers can read it back via
+    /// [`Subscriber::try_recv_raw_with_attachment`].
+    ///
+    /// Primary use case: cross-RMW bridges stamp a `bridge_origin`
+    /// tag (the source backend's RMW name) so a paired return
+    /// bridge can deterministically drop echoed frames.
+    ///
+    /// Default body delegates to [`publish_raw`](Self::publish_raw)
+    /// and discards the attachment — backends that do not natively
+    /// carry attachments (XRCE today, DDS without a user-data hook)
+    /// see no change. Backends with native attachment support
+    /// (zenoh-pico's `z_publisher_put_options::attachment`,
+    /// Cyclone DDS user-data) override to write the bytes onto the
+    /// wire.
+    fn publish_raw_with_attachment(
+        &self,
+        data: &[u8],
+        _attachment: &[u8],
+    ) -> Result<(), Self::Error> {
+        self.publish_raw(data)
+    }
+
     /// Phase 124.E.1 — streamed publish.
     ///
     /// `size_cb` reports the total payload length once; `chunk_cb`
@@ -1305,6 +1330,31 @@ pub trait Subscriber {
     /// backend may either truncate (and document it) or return an
     /// error (preferred).
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+
+    /// Phase 128.F.4 — receive with attachment bytes alongside the
+    /// payload.
+    ///
+    /// On success returns `Ok(Some((payload_len, attachment_len)))`
+    /// with the payload written into `buf[..payload_len]` and the
+    /// attachment (if any) written into
+    /// `att_buf[..attachment_len]`. `attachment_len == 0` means the
+    /// incoming sample carried no attachment.
+    ///
+    /// Default body falls back to [`try_recv_raw`](Self::try_recv_raw)
+    /// and reports a 0-length attachment. Backends with native
+    /// attachment support override to populate `att_buf`. Cross-RMW
+    /// bridges use the attachment to read the `bridge_origin` tag
+    /// stamped by the sending side.
+    fn try_recv_raw_with_attachment(
+        &mut self,
+        buf: &mut [u8],
+        _att_buf: &mut [u8],
+    ) -> Result<Option<(usize, usize)>, Self::Error> {
+        match self.try_recv_raw(buf)? {
+            Some(len) => Ok(Some((len, 0))),
+            None => Ok(None),
+        }
+    }
 
     /// Phase 124.D.1 — burst-take.
     ///

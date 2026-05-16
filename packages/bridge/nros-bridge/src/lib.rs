@@ -136,6 +136,70 @@ impl LoopGuard {
     }
 }
 
+/// Phase 128.F.4 — wire-level `bridge_origin` attachment tag.
+///
+/// Layout written by [`encode_bridge_origin`]:
+///
+/// ```text
+///   offset 0 ..  8  : ASCII magic b"NROSBRDG"
+///   offset 8        : version byte (current = 1)
+///   offset 9        : origin length (u8, 1..=54)
+///   offset 10 .. n  : origin bytes (utf-8)
+/// ```
+///
+/// Total header = 10 bytes; max tag size = 64 bytes (10 + 54 origin
+/// bytes). Backends that don't carry attachments see no impact;
+/// backends that do carry attachments propagate the tag to the
+/// receive side, where [`parse_bridge_origin`] recovers the origin
+/// string for the dedup compare. Unknown / malformed bytes return
+/// `None` and let the fallback FNV hash dedup handle the case.
+pub const BRIDGE_ORIGIN_MAGIC: &[u8; 8] = b"NROSBRDG";
+const BRIDGE_ORIGIN_VERSION: u8 = 1;
+const BRIDGE_ORIGIN_HEADER_LEN: usize = 10;
+
+/// Encode `origin` into `out` and return the number of bytes
+/// written. Caller must provide a buffer of at least
+/// `BRIDGE_ORIGIN_HEADER_LEN + origin.len()` bytes. Origin longer
+/// than 54 bytes is silently truncated (the receiver still recovers
+/// a valid prefix; collision risk is the caller's problem).
+pub fn encode_bridge_origin(origin: &[u8], out: &mut [u8]) -> usize {
+    if origin.is_empty() {
+        return 0;
+    }
+    let max = (out.len().saturating_sub(BRIDGE_ORIGIN_HEADER_LEN)).min(0xFF);
+    let copy = origin.len().min(max);
+    if out.len() < BRIDGE_ORIGIN_HEADER_LEN + copy {
+        return 0;
+    }
+    out[..8].copy_from_slice(BRIDGE_ORIGIN_MAGIC);
+    out[8] = BRIDGE_ORIGIN_VERSION;
+    out[9] = copy as u8;
+    out[BRIDGE_ORIGIN_HEADER_LEN..BRIDGE_ORIGIN_HEADER_LEN + copy]
+        .copy_from_slice(&origin[..copy]);
+    BRIDGE_ORIGIN_HEADER_LEN + copy
+}
+
+/// Parse a `bridge_origin` attachment block. Returns the origin
+/// bytes when the input matches our magic + version; otherwise
+/// `None` (caller treats as "no bridge origin present" — the
+/// attachment may belong to ROS safety / seq-num / other consumers).
+pub fn parse_bridge_origin(att: &[u8]) -> Option<&[u8]> {
+    if att.len() < BRIDGE_ORIGIN_HEADER_LEN {
+        return None;
+    }
+    if &att[..8] != BRIDGE_ORIGIN_MAGIC {
+        return None;
+    }
+    if att[8] != BRIDGE_ORIGIN_VERSION {
+        return None;
+    }
+    let n = att[9] as usize;
+    if att.len() < BRIDGE_ORIGIN_HEADER_LEN + n {
+        return None;
+    }
+    Some(&att[BRIDGE_ORIGIN_HEADER_LEN..BRIDGE_ORIGIN_HEADER_LEN + n])
+}
+
 /// FNV-1a 64-bit. Public so `[LoopGuard]` users that need to share
 /// hash values between bridges agree on the function.
 pub fn payload_hash(bytes: &[u8]) -> u64 {
@@ -178,18 +242,48 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
     /// that need to assert dedup actually fired.
     pub fn pump_with_stats(&mut self) -> Result<PumpStats, NodeError> {
         let mut stats = PumpStats::default();
-        while let Some(len) = self.sub.try_recv_raw()? {
-            let bytes = &self.sub.buffer()[..len];
-            let hash = payload_hash(bytes);
-            // Echo of something we forwarded earlier → drop.
-            if !self.origin.is_empty() && self.dedup.contains(hash) {
+        let origin = self.origin;
+        let origin_bytes = origin.as_bytes();
+        // Phase 128.F.4 — wire-level attachment scratch buffers for
+        // `bridge_origin` reads / writes. 64 bytes covers any
+        // backend name we ship (`zenoh`/`dds`/`xrce`/`cyclonedds`)
+        // with room for the tag header.
+        let mut att_in = [0u8; 64];
+        loop {
+            let recv = self.sub.try_recv_raw_with_attachment(&mut att_in)?;
+            let (payload_len, att_len) = match recv {
+                Some(t) => t,
+                None => break,
+            };
+            // Wire-level filter — when the backend natively carries
+            // attachments AND a paired bridge stamped
+            // `bridge_origin=<our origin>`, drop here. Empty origin
+            // disables (single-direction bridges).
+            if !origin.is_empty()
+                && att_len > 0
+                && parse_bridge_origin(&att_in[..att_len]) == Some(origin_bytes)
+            {
                 stats.dropped_echo += 1;
                 continue;
             }
-            self.pubr.publish_raw(bytes)?;
-            // Record AFTER successful publish so a failed publish
-            // doesn't accidentally suppress a later legitimate retry.
-            if !self.origin.is_empty() {
+            // FNV hash fallback — catches echoes on backends that
+            // don't yet carry attachments (xrce, dds default). Same
+            // window-record discipline as before; harmless on
+            // backends with native attachment because the wire-level
+            // check above already fires first.
+            let bytes = &self.sub.buffer()[..payload_len];
+            let hash = payload_hash(bytes);
+            if !origin.is_empty() && self.dedup.contains(hash) {
+                stats.dropped_echo += 1;
+                continue;
+            }
+            // Stamp our origin on the way out so the receiving
+            // bridge can wire-level-filter it.
+            let mut att_out = [0u8; 64];
+            let att_out_len = encode_bridge_origin(origin_bytes, &mut att_out);
+            self.pubr
+                .publish_raw_with_attachment(bytes, &att_out[..att_out_len])?;
+            if !origin.is_empty() {
                 self.dedup.record(hash);
             }
             stats.forwarded += 1;
@@ -236,6 +330,34 @@ mod tests {
         // The empty payload's FNV-1a is the offset basis; non-zero so
         // the all-zeros initial ring doesn't accidentally suppress it.
         assert_ne!(payload_hash(&[]), 0);
+    }
+
+    #[test]
+    fn bridge_origin_roundtrip() {
+        let mut buf = [0u8; 64];
+        let n = encode_bridge_origin(b"zenoh", &mut buf);
+        assert_eq!(n, BRIDGE_ORIGIN_HEADER_LEN + 5);
+        let parsed = parse_bridge_origin(&buf[..n]).expect("parse");
+        assert_eq!(parsed, b"zenoh");
+    }
+
+    #[test]
+    fn bridge_origin_rejects_garbage() {
+        assert!(parse_bridge_origin(&[]).is_none());
+        assert!(parse_bridge_origin(b"not a tag").is_none());
+        // Right magic, wrong version.
+        let mut buf = [0u8; 32];
+        buf[..8].copy_from_slice(BRIDGE_ORIGIN_MAGIC);
+        buf[8] = 99;
+        buf[9] = 4;
+        buf[10..14].copy_from_slice(b"junk");
+        assert!(parse_bridge_origin(&buf[..14]).is_none());
+    }
+
+    #[test]
+    fn bridge_origin_empty_skips_encode() {
+        let mut buf = [0u8; 32];
+        assert_eq!(encode_bridge_origin(b"", &mut buf), 0);
     }
 
     #[test]
