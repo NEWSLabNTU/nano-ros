@@ -739,6 +739,23 @@ Current signal:
   service and action server/client fixtures, focused reruns passed for
   `test_zephyr_dds_rust_service_a9_e2e` and
   `test_zephyr_dds_rust_action_a9_e2e`.
+- 2026-05-17 XRCE C++ service/action follow-up: the C++ XRCE native_sim link
+  failure is fixed in `ffdde60f fix(xrce): wire C++ CFFI backend init`.
+  `nros-cpp` now ships a weak `nros_app_register_backends` default for
+  C++-only links and `nros_cpp_init` explicitly registers the selected linked
+  CFFI backend, so Zephyr/native_sim no longer depends on POSIX-style
+  constructor sections. `xrce_service_send_reply` also flushes the reliable
+  XRCE stream with the normal session flush timeout. Verification:
+  `cargo check -p nros-cpp --no-default-features --features
+  rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble,std` passes, and the four
+  C++ XRCE service/action fixtures rebuild cleanly. Runtime remains open:
+  `test_zephyr_xrce_cpp_service_e2e` still has the server receive all four
+  requests while the client times out on every reply (`-2`), and
+  `test_zephyr_xrce_cpp_action_e2e` still times out during send-goal before
+  the server logs a goal. Rust XRCE service/action E2E still passes, so the
+  remaining 127.C.4 issue is C++ action/service metadata, request/reply
+  matching, or the C++ wrapper/CFFI polling path rather than basic XRCE
+  transport availability.
 
 Subitems:
 
@@ -747,7 +764,8 @@ Subitems:
 - [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, async service,
   and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
-  and C++; XRCE service/action focused reruns remain.
+  and C++; Rust XRCE service/action passes; C++ XRCE service/action still
+  times out at runtime after the C++ link/init fixes in `ffdde60f`.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 

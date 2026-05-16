@@ -37,4 +37,6 @@ Do not modify vendored or generated content under `third-party/`, `packages/inte
 
 For platform-specific build failures, rerun the narrow platform recipe first, for example `just <platform> build-all` where available, before spending time on root `just build-all`.
 
+For Zephyr XRCE C++ service/action work, the C++ CFFI backend link/init issue was fixed in `ffdde60f`; do not assume POSIX-style Rust constructors run on Zephyr/native_sim, and prefer explicit backend registration. Force rebuild the XRCE C++ service/action fixtures or verify stale-fixture detection before focused E2E reruns. The remaining known failure is runtime C++ service/action timeout behavior; Rust XRCE service/action already passes.
+
 When pulling or rebasing the superproject, always inspect submodule changes. If a pull changes a submodule pointer and we also have local work in that submodule, enter the submodule, fetch its remote, rebase the local work onto the updated upstream commit, and then check out the rebased/up-to-date commit expected by the superproject. Record the resulting submodule commit in the parent commit. Do not leave a submodule at an older local commit after observing that the remote pointer advanced.
