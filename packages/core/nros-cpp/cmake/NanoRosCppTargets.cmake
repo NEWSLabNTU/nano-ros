@@ -36,26 +36,22 @@ if(NOT DEFINED NANO_ROS_PLATFORM)
 endif()
 
 # ---- Library filename ----
+# Phase 128.C.4 — install lib is RMW-agnostic (selection at link).
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-  set(_nros_cpp_lib "${_NANO_ROS_PREFIX}/lib/libnros_cpp_${NANO_ROS_RMW}.a")
+  set(_nros_cpp_lib "${_NANO_ROS_PREFIX}/lib/libnros_cpp.a")
 else()
-  set(_nros_cpp_lib "${_NANO_ROS_PREFIX}/lib/libnros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}.a")
+  set(_nros_cpp_lib "${_NANO_ROS_PREFIX}/lib/libnros_cpp_${NANO_ROS_PLATFORM}.a")
 endif()
 set(_nros_cpp_include "${_NANO_ROS_PREFIX}/include")
 
-# Phase 119.2: variant-specific generated header dir. Each cmake build of
-# nros-cpp installs `nros_cpp_config_generated.h` into a variant-named
-# subdir under `include/` (e.g. `include/nros_cpp_zenoh_posix/nros/...`).
-# Listed BEFORE the shared `include` dir on `INTERFACE_INCLUDE_DIRECTORIES`
-# so user code's `#include "nros/nros_cpp_config_generated.h"` resolves to
-# the variant's storage sizes that match the linked library. Shared dir
-# still wins for every other header (api .hpp files, codegen .h, etc.).
+# Variant-specific generated header dir. Post-128.C.4 variant key is
+# the platform only.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
   set(_nros_cpp_variant_include
-      "${_NANO_ROS_PREFIX}/include/nros_cpp_${NANO_ROS_RMW}")
+      "${_NANO_ROS_PREFIX}/include/nros_cpp")
 else()
   set(_nros_cpp_variant_include
-      "${_NANO_ROS_PREFIX}/include/nros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+      "${_NANO_ROS_PREFIX}/include/nros_cpp_${NANO_ROS_PLATFORM}")
 endif()
 
 if(NOT EXISTS "${_nros_cpp_lib}")
@@ -70,10 +66,9 @@ if(NOT EXISTS "${_nros_cpp_lib}")
   if(NanoRos_FIND_REQUIRED)
     message(WARNING
       "libnros_cpp library not found at:\n  ${_nros_cpp_lib}\n"
-      "  NANO_ROS_RMW      = ${NANO_ROS_RMW}\n"
       "  NANO_ROS_PLATFORM = ${NANO_ROS_PLATFORM}\n"
       "NanoRos::NanoRosCpp will not be available.\n"
-      "Installed C++ variants (rmw[_platform]): ${_cpp_available}")
+      "Installed C++ variants ([platform]): ${_cpp_available}")
   endif()
   return()
 endif()

@@ -68,27 +68,25 @@ if(NOT DEFINED NANO_ROS_PLATFORM)
 endif()
 
 # ---- Library filename ----
-# posix keeps the legacy unsuffixed name for backwards compatibility.
+# Phase 128.C.4 — the install lib is RMW-agnostic; selection happens
+# at the consumer's link step. POSIX keeps the unsuffixed name.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-  set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c_${NANO_ROS_RMW}.a")
+  set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c.a")
 else()
-  set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}.a")
+  set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c_${NANO_ROS_PLATFORM}.a")
 endif()
 set(_nros_c_include "${_NANO_ROS_PREFIX}/include")
 
-# Phase 119.2: variant-specific generated header dir. Each cmake build
-# of nros-c installs `nros_config_generated.h` into a variant-named
-# subdir under `include/` (e.g. `include/nros_c_zenoh_posix/nros/...`).
-# Listed BEFORE the shared `include` dir on
-# `INTERFACE_INCLUDE_DIRECTORIES` so user code's
-# `#include <nros/nros_config_generated.h>` resolves to the variant's
-# storage sizes that match the linked library.
+# Variant-specific generated header dir. Each cmake build of nros-c
+# installs `nros_config_generated.h` into a variant-named subdir
+# under `include/`. Post-128.C.4 the variant key is just the
+# platform (RMW dropped because the Rust build is RMW-agnostic).
 if(NANO_ROS_PLATFORM STREQUAL "posix")
   set(_nros_c_variant_include
-      "${_NANO_ROS_PREFIX}/include/nros_c_${NANO_ROS_RMW}")
+      "${_NANO_ROS_PREFIX}/include/nros_c")
 else()
   set(_nros_c_variant_include
-      "${_NANO_ROS_PREFIX}/include/nros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+      "${_NANO_ROS_PREFIX}/include/nros_c_${NANO_ROS_PLATFORM}")
 endif()
 
 if(NOT EXISTS "${_nros_c_lib}")
@@ -105,12 +103,10 @@ if(NOT EXISTS "${_nros_c_lib}")
   if(NanoRos_FIND_REQUIRED)
     message(FATAL_ERROR
       "libnros_c library not found at:\n  ${_nros_c_lib}\n"
-      "  NANO_ROS_RMW      = ${NANO_ROS_RMW}\n"
       "  NANO_ROS_PLATFORM = ${NANO_ROS_PLATFORM}\n"
-      "Installed variants (rmw[_platform]): ${_available}\n"
+      "Installed variants ([platform]): ${_available}\n"
       "Build and install the required variant with:\n"
       "  cmake -S <nros-src> -B build \\\n"
-      "        -DNANO_ROS_RMW=${NANO_ROS_RMW} \\\n"
       "        -DNANO_ROS_PLATFORM=${NANO_ROS_PLATFORM}\n"
       "  cmake --build build && cmake --install build --prefix <path>\n"
       "Or run: just install-local"

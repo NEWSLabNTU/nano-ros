@@ -16,7 +16,7 @@
 //!
 //! ```ignore
 //! use nros::prelude::*;
-//! use nros_node::executor::spin::SessionSpec;
+//! use nros_node::executor::SessionSpec;
 //! use nros_bridge::PubSubBridge;
 //!
 //! fn main() -> Result<(), NodeError> {
@@ -35,11 +35,23 @@
 //!
 //! # Loop protection (phase 128.F.4)
 //!
-//! [`PubSubBridge::new`] takes the source backend name and bakes it
-//! into every forwarded message's attachment block as `bridge_origin`.
-//! Wire receivers that see their own `bridge_origin` value skip the
-//! frame to avoid bidirectional echo. The attachment field is opaque
-//! to backends that don't speak the ROS 2 attachment convention.
+//! Wire-level loop protection would prefer the ROS 2 attachment
+//! mechanism (`bridge_origin` field), but the per-backend
+//! `publish_raw_with_attachment` ABI is not yet on the public Rust
+//! surface — that lands in phase 129 alongside the platform / link
+//! feature cleanup. Until then, [`PubSubBridge`] uses a
+//! best-effort payload-hash dedup window: each forwarded sample's
+//! FNV-1a-64 hash goes into a small ring; samples whose hash matches
+//! one already in the ring within the last [`DEDUP_WINDOW`] entries
+//! are skipped on the way out. Handles the common bidirectional
+//! echo pattern (forward → backend B → forward back → drop) without
+//! requiring backend changes. Distinct messages that happen to
+//! collide on hash within the window are silently dropped — collision
+//! probability is ~`N/2^64`, negligible in practice for the small
+//! windows in use.
+//!
+//! Set the origin string to `""` to disable dedup (single-direction
+//! bridges don't need it).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -52,6 +64,16 @@ use nros_node::{
 mod config;
 #[cfg(feature = "config")]
 pub use config::{run_from_config, ConfigError};
+
+#[cfg(feature = "cffi")]
+mod cffi;
+
+/// Size of the per-bridge payload-hash dedup ring. Forwarded sample
+/// hashes are written here in a circular buffer; receive-side
+/// matches against any slot within the window cause the sample to be
+/// dropped. 16 entries cover a one-direction-of-flight burst comfortably
+/// while keeping the bridge's per-instance footprint at 128 bytes.
+pub const DEDUP_WINDOW: usize = 16;
 
 /// Bridge a raw subscription on one Node to a raw publisher on
 /// another. Each [`pump`](Self::pump) call drains every queued sample
@@ -67,11 +89,62 @@ pub struct PubSubBridge<
     sub: RawSubscription<RX_BUF>,
     pubr: EmbeddedRawPublisher<TX_BUF>,
     /// Phase 128.F.4 — name of the backend the source Node is bound
-    /// to. Stamped into the attachment block on every forwarded frame
-    /// so a paired return bridge can drop messages that look like
-    /// echoes. Empty string ("") disables the tag (single-direction
-    /// bridges don't need it).
+    /// to. Empty string disables dedup (single-direction bridges).
     origin: &'static str,
+    /// Phase 128.F.4 — payload-hash dedup ring. Each forwarded
+    /// sample's FNV-1a-64 hash is written here in a circular buffer.
+    /// On receive, the bridge checks whether the incoming sample's
+    /// hash is in the ring and skips when matched. Pair this bridge
+    /// with the return-direction bridge using a paired
+    /// [`LoopGuard`] (or hand the same allocation in by sharing a
+    /// mutable reference if the bridges live in the same scope).
+    dedup: LoopGuard,
+}
+
+/// Standalone payload-hash dedup ring. Used internally by
+/// [`PubSubBridge`] and exposed so two bridges in a bidirectional
+/// pair can optionally share state.
+#[derive(Default)]
+pub struct LoopGuard {
+    ring: [u64; DEDUP_WINDOW],
+    head: usize,
+}
+
+impl LoopGuard {
+    /// Construct an empty guard. Both rings start as zeros; the
+    /// "all-zero hash" collision is harmless because every realistic
+    /// payload's FNV-1a hash is non-zero (FNV-1a starts at offset
+    /// basis `0xcbf29ce484222325`).
+    pub const fn new() -> Self {
+        Self {
+            ring: [0u64; DEDUP_WINDOW],
+            head: 0,
+        }
+    }
+
+    /// Insert `hash` into the ring at the current head, advancing.
+    pub fn record(&mut self, hash: u64) {
+        self.ring[self.head] = hash;
+        self.head = (self.head + 1) % DEDUP_WINDOW;
+    }
+
+    /// Return true when `hash` appears anywhere in the current
+    /// window. O(DEDUP_WINDOW) — 16 cmp instructions in the default
+    /// configuration.
+    pub fn contains(&self, hash: u64) -> bool {
+        self.ring.iter().any(|&h| h == hash)
+    }
+}
+
+/// FNV-1a 64-bit. Public so `[LoopGuard]` users that need to share
+/// hash values between bridges agree on the function.
+pub fn payload_hash(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
 }
 
 impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
@@ -84,43 +157,100 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
         pubr: EmbeddedRawPublisher<TX_BUF>,
         origin: &'static str,
     ) -> Self {
-        Self { sub, pubr, origin }
+        Self {
+            sub,
+            pubr,
+            origin,
+            dedup: LoopGuard::new(),
+        }
     }
 
     /// Drain every queued sample and forward to the destination
-    /// publisher. Returns the number of samples forwarded on this
-    /// call (0 when the subscription queue was empty).
-    ///
-    /// Errors short-circuit the loop — the caller decides whether to
-    /// retry on the next spin tick or surface the error up.
+    /// publisher. Returns the number of samples *actually* forwarded
+    /// on this call. Samples that hashed into the dedup window are
+    /// counted as dropped — see [`pump_with_stats`](Self::pump_with_stats)
+    /// for the breakdown.
     pub fn pump(&mut self) -> Result<usize, NodeError> {
-        let mut forwarded = 0usize;
-        while let Some(len) = self.sub.try_recv_raw()? {
-            // Phase 128.F.4 — origin tagging is a no-op in the
-            // current build because the raw publish path does not
-            // yet expose the attachment shape; the field is stored
-            // so the contract is clear and a later patch can wire
-            // the actual attachment write via
-            // `EmbeddedRawPublisher::publish_raw_with_attachment`.
-            let _ = self.origin;
-            let bytes = &self.sub.buffer()[..len];
-            self.pubr.publish_raw(bytes)?;
-            forwarded += 1;
-        }
-        Ok(forwarded)
+        Ok(self.pump_with_stats()?.forwarded)
     }
 
-    /// RMW backend name the source session is bound to. Useful for
-    /// pairing two bridges into a bidirectional link where each side
-    /// must drop its own origin tag.
+    /// Per-pump statistics — useful for diagnostics and for tests
+    /// that need to assert dedup actually fired.
+    pub fn pump_with_stats(&mut self) -> Result<PumpStats, NodeError> {
+        let mut stats = PumpStats::default();
+        while let Some(len) = self.sub.try_recv_raw()? {
+            let bytes = &self.sub.buffer()[..len];
+            let hash = payload_hash(bytes);
+            // Echo of something we forwarded earlier → drop.
+            if !self.origin.is_empty() && self.dedup.contains(hash) {
+                stats.dropped_echo += 1;
+                continue;
+            }
+            self.pubr.publish_raw(bytes)?;
+            // Record AFTER successful publish so a failed publish
+            // doesn't accidentally suppress a later legitimate retry.
+            if !self.origin.is_empty() {
+                self.dedup.record(hash);
+            }
+            stats.forwarded += 1;
+        }
+        Ok(stats)
+    }
+
+    /// RMW backend name the source session is bound to.
     pub fn origin(&self) -> &'static str {
         self.origin
     }
 
+    /// Borrow the dedup ring — bidirectional setups can call
+    /// [`LoopGuard::record`] on the *other* bridge's guard when this
+    /// one publishes, so the return-direction bridge sees its own
+    /// echoes too.
+    pub fn guard_mut(&mut self) -> &mut LoopGuard {
+        &mut self.dedup
+    }
+
     /// Decompose the bridge back into its source subscription and
-    /// destination publisher. Lets a caller rewire one side without
-    /// tearing down the other.
+    /// destination publisher.
     pub fn into_parts(self) -> (RawSubscription<RX_BUF>, EmbeddedRawPublisher<TX_BUF>) {
         (self.sub, self.pubr)
+    }
+}
+
+/// Per-pump counters returned by [`PubSubBridge::pump_with_stats`].
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PumpStats {
+    /// Samples that crossed to the destination publisher.
+    pub forwarded: usize,
+    /// Samples that matched a recently-forwarded hash and were
+    /// dropped to break a bidirectional echo loop.
+    pub dropped_echo: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fnv1a_basis_non_zero() {
+        // The empty payload's FNV-1a is the offset basis; non-zero so
+        // the all-zeros initial ring doesn't accidentally suppress it.
+        assert_ne!(payload_hash(&[]), 0);
+    }
+
+    #[test]
+    fn loop_guard_window() {
+        let mut g = LoopGuard::new();
+        for i in 0..(DEDUP_WINDOW as u64) {
+            g.record(i + 1);
+        }
+        // All inserted values are still in the ring.
+        for i in 0..(DEDUP_WINDOW as u64) {
+            assert!(g.contains(i + 1));
+        }
+        // One more insert evicts the oldest.
+        g.record(999);
+        assert!(g.contains(999));
+        assert!(!g.contains(1));
     }
 }

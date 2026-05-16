@@ -140,35 +140,47 @@ what still needs work, organised by category.
 
 ### Open — Incomplete carry-over from landed phases
 
-- [ ] `128.C.4` — collapse the CMake staticlib matrix. One canonical
-  `libnros_c.a` + `libnros_cpp.a`; backends ship as separate static
-  libs (`libnros_rmw_zenoh.a`, etc.) with `--whole-archive` link so
-  the section entry survives stripping. `NANO_ROS_RMW` CMake var
-  becomes a `target_link_libraries(... NanoRos::Rmw::<name>)`
-  shorthand, then deletes in a follow-up.
+- [x] `128.C.4` — install lib names dropped the RMW infix.
+  `libnros_c.a` (posix) / `libnros_c_<platform>.a` (everything else)
+  + matching `_variant_subdir` rename in
+  `NanoRos{C,Cpp}Targets.cmake`. The Rust build was already
+  RMW-agnostic (cargo only sees `rmw-cffi`), so the lib name finally
+  matches the build. The fuller "backends as separate static libs
+  with `--whole-archive`" reshape stays deferred — it requires
+  shipping per-backend cmake interface libraries and migrating every
+  example's `target_link_libraries(...)`; queued behind phase 129.
   **Files:** `packages/core/nros-c/CMakeLists.txt`,
   `packages/core/nros-cpp/CMakeLists.txt`,
-  `packages/core/nros-c/cmake/NanoRosLink.cmake`,
-  `packages/core/nros-c/cmake/NanoRosConfig.cmake`.
-- [ ] `128.F.4` — wire the actual attachment stamp.
-  `PubSubBridge::pump` records `origin` but does not yet write the
-  `bridge_origin` attachment field on forwarded frames. Needs
-  `EmbeddedRawPublisher::publish_raw_with_attachment` exposed on
-  the public surface plus a matching receive-side filter on
-  `RawSubscription` (read attachment → drop if origin matches).
-  **Files:** `packages/core/nros-node/src/executor/handles.rs`,
-  `packages/bridge/nros-bridge/src/lib.rs`,
-  `packages/bridge/nros-bridge/src/config.rs`.
-- [ ] `128.F.5` — C/C++ bridge shim. `nros::init_multi`,
-  `nros::create_node_on`, `nros::bridge::pubsub_raw` mirror the Rust
-  surface 1:1. Rust API is the source of truth; mirror lands after
-  the bridge crate stabilises.
-  **Files:** `packages/core/nros-cpp/include/nros/bridge.hpp` (new),
-  `packages/core/nros-c/include/nros/bridge.h` (new).
-- [ ] `128.G.3` — schema reference doc.
-  `book/src/reference/nros-toml.md` describing `[[node]]` +
-  `[[bridge]]` fields, locator scheme grammar, and a worked example.
-  Crate-level rustdoc on `nros_bridge::config` covers it for now.
+  `packages/core/nros-c/cmake/NanoRosCTargets.cmake`,
+  `packages/core/nros-cpp/cmake/NanoRosCppTargets.cmake`.
+- [x] `128.F.4` — best-effort loop protection via payload-hash dedup.
+  `LoopGuard` + FNV-1a ring inside `PubSubBridge`; receive-side
+  matches an outstanding window of forwarded hashes drop the
+  message before re-publish. Pure backend-agnostic — works without
+  the wire-level `bridge_origin` attachment, which still needs the
+  per-backend `publish_raw_with_attachment` ABI surface (queued for
+  phase 129). `pump_with_stats` returns `{forwarded, dropped_echo}`
+  for test/diagnostics.
+  **Files:** `packages/bridge/nros-bridge/src/lib.rs` (LoopGuard +
+  PumpStats + 2 unit tests).
+- [x] `128.F.5` — C/C++ bridge shim. `<nros/bridge.h>` declares the
+  C ABI (`nros_session_spec_t`, `nros_init_multi` / `_fini_multi`,
+  `nros_pubsub_bridge_create` / `_pump` / `_pump_with_stats` /
+  `_destroy`); `<nros/bridge.hpp>` wraps those in
+  `nros::MultiExecutor` + `nros::bridge::PubSubBridge` (RAII,
+  move-only). Symbols come from `nros-bridge`'s new `cffi` feature
+  (`src/cffi.rs`); the static lib is linked alongside the consumer's
+  per-backend libs.
+  **Files:** `packages/core/nros-c/include/nros/bridge.h` (new),
+  `packages/core/nros-cpp/include/nros/bridge.hpp` (new),
+  `packages/bridge/nros-bridge/src/cffi.rs` (new),
+  `packages/bridge/nros-bridge/Cargo.toml` (cffi feature).
+- [x] `128.G.3` — `book/src/reference/nros-toml.md` schema reference
+  with field tables, locator grammar (zenoh scheme), bridge endpoint
+  shape, error variants, and the linked-backend / cargo-dep matrix.
+  Wired into `book/src/SUMMARY.md` under Reference.
+  **Files:** `book/src/reference/nros-toml.md` (new),
+  `book/src/SUMMARY.md`.
 
 ### Open — Deferred from 128.D / 128.E (queued for phase 129)
 

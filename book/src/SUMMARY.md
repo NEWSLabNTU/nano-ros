@@ -86,3 +86,4 @@
 - [Platform Differences](./reference/platform-differences.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
+- [`nros.toml` Schema](./reference/nros-toml.md)

@@ -129,21 +129,24 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
 # `${CORROSION_BUILD_DIR}/nros_cpp_config_generated.h` (== this
 # CMakeLists.txt's CMAKE_CURRENT_BINARY_DIR — corrosion sets that env
 # var to point here).
+# Phase 128.C.4 — the Cargo build is RMW-agnostic now (only
+# `rmw-cffi` is fed through), so the install paths drop the RMW
+# suffix. Backend selection happens at the consumer's link step via
+# `target_link_libraries(... NanoRos::Rmw::<name>)`.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_RMW}")
+    set(_cpp_variant_subdir "nros_cpp")
 else()
-    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_PLATFORM}")
 endif()
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
     DESTINATION "include/${_cpp_variant_subdir}/nros"
     OPTIONAL
 )
 
-# posix uses the legacy unsuffixed name; all other platforms use a suffixed name.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_RMW}.a")
+    set(_cpp_lib_name "libnros_cpp.a")
 else()
-    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}.a")
+    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_PLATFORM}.a")
 endif()
 
 install(FILES "$<TARGET_FILE:nros_cpp-static>"

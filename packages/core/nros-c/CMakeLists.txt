@@ -77,13 +77,16 @@ corrosion_import_crate(
 )
 
 # ---- Install library ----
-# posix uses the legacy unsuffixed name (libnros_c_<rmw>.a) for backwards
-# compatibility.  All other platforms use a suffixed name so multiple
-# variants coexist in the same prefix.
+# Phase 128.C.4 — the Cargo build is RMW-agnostic (only `rmw-cffi`
+# is enabled), so the install lib name no longer carries the RMW
+# suffix. Single canonical `libnros_c.a` per (platform, ROS edition).
+# Backend selection happens at the consumer's link step via
+# `target_link_libraries(... NanoRos::Rmw::<name>)` (see
+# `NanoRosLink.cmake`).
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_lib_name "libnros_c_${NANO_ROS_RMW}.a")
+    set(_lib_name "libnros_c.a")
 else()
-    set(_lib_name "libnros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}.a")
+    set(_lib_name "libnros_c_${NANO_ROS_PLATFORM}.a")
 endif()
 
 install(FILES "$<TARGET_FILE:nros_c-static>"
@@ -130,9 +133,9 @@ install(DIRECTORY "${_PROJECT_ROOT}/packages/core/nros-platform-cffi/include/nro
 # (== this CMakeLists.txt's CMAKE_CURRENT_BINARY_DIR — corrosion sets
 # that env var to point here).
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_c_variant_subdir "nros_c_${NANO_ROS_RMW}")
+    set(_c_variant_subdir "nros_c")
 else()
-    set(_c_variant_subdir "nros_c_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}")
+    set(_c_variant_subdir "nros_c_${NANO_ROS_PLATFORM}")
 endif()
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
     DESTINATION "include/${_c_variant_subdir}/nros"
