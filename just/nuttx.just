@@ -232,6 +232,27 @@ action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 zenohd:
     build/zenohd/zenohd --listen tcp/0.0.0.0:7452 --no-multicast-scouting
 
+# Phase 127.B.5 — one-time host setup for NuttX DDS cross-QEMU mcast.
+#
+# QEMU's `-netdev socket,mcast=…,localaddr=127.0.0.1` puts the mcast
+# egress on `lo`, but the kernel only loops frames back to a sibling
+# QEMU when a route for the group is present on `lo`. Without these
+# routes, two local NuttX QEMU instances silently fail to exchange
+# RTPS SPDP frames and the DDS listener receives 0 messages.
+#
+# Idempotent — re-running drops + re-adds the routes. Requires sudo.
+setup-mcast-route:
+    #!/usr/bin/env bash
+    set -e
+    echo "Adding mcast loopback routes (requires sudo)..."
+    sudo ip route del 230.10.0.0/16 dev lo 2>/dev/null || true
+    sudo ip route del 239.0.0.0/8   dev lo 2>/dev/null || true
+    sudo ip route add 230.10.0.0/16 dev lo
+    sudo ip route add 239.0.0.0/8   dev lo
+    echo "Routes added:"
+    ip route show 230.10.0.0/16
+    ip route show 239.0.0.0/8
+
 # Clean NuttX build artifacts
 clean:
     #!/usr/bin/env bash

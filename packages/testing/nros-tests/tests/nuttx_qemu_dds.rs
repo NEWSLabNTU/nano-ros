@@ -15,7 +15,7 @@ use std::{
 };
 
 use nros_tests::fixtures::{
-    QemuProcess, is_qemu_available,
+    QemuProcess, is_qemu_available, require_mcast_loopback_route,
     nuttx::{
         build_nuttx_dds_listener, build_nuttx_dds_talker, is_nuttx_available, is_nuttx_configured,
         is_nuttx_toolchain_available,
@@ -58,6 +58,10 @@ fn test_nuttx_dds_rust_talker_to_listener_e2e() {
     if !require_nuttx_dds() {
         nros_tests::skip!("NuttX DDS prerequisites not available");
     }
+    let mcast = pick_mcast_addr_port();
+    if !require_mcast_loopback_route(&mcast) {
+        nros_tests::skip!("host mcast loopback route missing");
+    }
 
     let talker_bin = match build_nuttx_dds_talker() {
         Ok(p) => p.to_path_buf(),
@@ -76,7 +80,6 @@ fn test_nuttx_dds_rust_talker_to_listener_e2e() {
         }
     };
 
-    let mcast = pick_mcast_addr_port();
     eprintln!("[nuttx-dds] mcast group/port = {mcast}");
 
     // Listener first (subscribes before talker publishes), then a

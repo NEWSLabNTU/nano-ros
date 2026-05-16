@@ -472,7 +472,16 @@ impl QemuProcess {
         .arg(binary)
         .args([
             "-netdev",
-            &format!("socket,id=net0,mcast={mcast_addr_port}"),
+            // Phase 127.B.5 — QEMU 6.2's `net/socket.c` picks the
+            // mcast egress interface from the host routing table when
+            // `localaddr=` is omitted, which routes to a real LAN NIC
+            // and prevents cross-process delivery on the same host.
+            // Pin egress to lo so the host kernel loops mcast back
+            // to the sibling QEMU. Requires
+            // `sudo ip route add 230.10.0.0/16 dev lo` on the host;
+            // `require_mcast_route` below prints a clear hint when
+            // missing.
+            &format!("socket,id=net0,mcast={mcast_addr_port},localaddr=127.0.0.1"),
             "-device",
             &format!("virtio-net-device,netdev=net0,mac={mac}"),
         ])
@@ -677,6 +686,57 @@ pub fn require_veth_bridge() -> bool {
         return false;
     }
     true
+}
+
+/// Phase 127.B.5 — check whether the host has a route for the given
+/// IPv4 multicast group via the loopback interface.
+///
+/// QEMU's `-netdev socket,mcast=…,localaddr=127.0.0.1` puts the mcast
+/// egress on `lo`, but the kernel only loops the frame back to a
+/// sibling QEMU's joined socket if a route for the group is present
+/// on `lo`. Without that route the kernel still picks the default
+/// route (a real LAN NIC), and cross-process delivery silently fails.
+///
+/// Returns `true` if `ip route show <group>` reports `dev lo`.
+pub fn is_mcast_loopback_route_present(group: &str) -> bool {
+    let group_only = group.split(':').next().unwrap_or(group);
+    let out = Command::new("ip")
+        .args(["route", "show", group_only])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            s.contains(" dev lo ") || s.contains(" dev lo\n") || s.trim_end().ends_with(" dev lo")
+        }
+        _ => false,
+    }
+}
+
+/// Phase 127.B.5 — print a clear hint when the host lacks a loopback
+/// route for the test's multicast group. Returns `true` if the route
+/// is present (test may proceed), `false` otherwise. Tests should
+/// `nros_tests::skip!` (or equivalent panic-skip) on `false`.
+pub fn require_mcast_loopback_route(group: &str) -> bool {
+    let group_only = group.split(':').next().unwrap_or(group);
+    if is_mcast_loopback_route_present(group_only) {
+        return true;
+    }
+    eprintln!(
+        "Skipping test: host route for multicast group {group_only} not on lo.\n\
+         QEMU `-netdev socket,mcast=…,localaddr=127.0.0.1` needs the kernel\n\
+         to loop the egress back to the sibling QEMU; without a `dev lo`\n\
+         route the default route picks a real LAN NIC and cross-process\n\
+         delivery silently drops every peer's frame (Phase 127.B.5).\n\
+         One-time host setup (root):\n\
+         \n\
+         sudo ip route add 230.10.0.0/16 dev lo\n\
+         sudo ip route add 239.0.0.0/8   dev lo\n\
+         \n\
+         To make it survive a reboot, drop the same commands into a\n\
+         `systemd-networkd` unit, NetworkManager dispatcher script, or\n\
+         `/etc/network/if-up.d/`."
+    );
+    false
 }
 
 /// Check if QEMU RISC-V 64-bit is available

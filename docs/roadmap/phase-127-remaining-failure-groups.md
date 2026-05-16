@@ -582,6 +582,27 @@ Subitems:
     `-netdev socket,mcast=` peer path (vs the loopback path it
     definitely honours), or whether there is a deeper QEMU
     peer-side dispatch bug.
+  - 2026-05-17 (mitigation landed): the test harness now passes
+    `,localaddr=127.0.0.1` to both NuttX QEMU `-netdev socket,mcast=…`
+    invocations and pre-flight-checks for the matching `dev lo`
+    route via `nros_tests::fixtures::require_mcast_loopback_route`.
+    Route missing → test skips with a clear `sudo ip route add
+    230.10.0.0/16 dev lo` hint instead of silently timing out at
+    83 s. A `just nuttx setup-mcast-route` recipe runs the same
+    `sudo ip route add` commands idempotently. The route
+    configuration is intentionally NOT auto-run by `just nuttx
+    setup` because nano-ros policy is "never sudo without
+    explicit user request".
+  - QEMU upstream status (queried 2026-05-17): the cross-process
+    `socket,mcast=` limit persists in QEMU master. `net/socket.c`
+    has had only refactoring + cosmetic changes since 6.2 (latest
+    `09759245`, `8cb17f9c` Sep 2025; `751b0e79` Jun 2025;
+    `b6aeee02` Jul 2023); the only mcast-adjacent patch (Cheptsov,
+    Jun 2022) is `#ifdef __APPLE__` only. Newer QEMU (≥7.2) does
+    ship `-netdev dgram,local.type=unix,…` + `-netdev stream,…`
+    which give AF_UNIX peer pairs without root, but they are
+    unicast point-to-point with no N-way fanout, so not a
+    drop-in replacement for the mcast tunnel.
 
 Done criteria:
 
