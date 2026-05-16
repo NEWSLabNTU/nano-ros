@@ -981,3 +981,88 @@ just ci
 just build-all
 just test-all
 ```
+
+### 127.G — Post-phase-128 snapshot (2026-05-17)
+
+Captured after rebasing `phase-128-rmw-selection-cleanup` onto
+`main`, applying the per-platform `NrosRmwZenohConfig.cmake.in`
+fix and the `nros-c platform-posix` zenoh forward, and running
+`just test-all` on a host with disk headroom restored. Phase 128
+deliberately changed user-facing selection (manifest-driven RMW
+discovery via `RMW_INIT_ENTRIES`) and several build-script gates;
+this snapshot rebases the failure baseline so phase-127 follow-up
+work compares apples-to-apples.
+
+| Metric | Pre-128 (127.G.1) | Post-128 (127.G.3 partial) | Delta |
+|---|---:|---:|---:|
+| Tests run                   | 824 | 760 | -64 |
+| Failures                    | 305 | 199 | -106 |
+| Env-skip (`[SKIPPED] …`)    |  27 | 100 |  +73 |
+| Real failures (excl skip)   | 278 |  99 | -179 |
+
+Env-skip breakdown post-128:
+- `[SKIPPED] XRCE agent not available` ×56 — needs
+  `just build-xrce-agent`.
+- `[SKIPPED] ROS 2 not found` ×38 — needs sourced ROS env.
+- `[SKIPPED] ThreadX-Linux DDS prerequisites not available` ×6.
+
+Real-failure distribution by suite (199 total failed, of which 100
+are env-skips and 99 are real runtime / build failures):
+
+| Suite                              | Failed |
+|------------------------------------|-------:|
+| nros-tests::zephyr                 |     60 |
+| nros-tests::rmw_interop            |     20 |
+| nros-tests::rtos_e2e               |     18 |
+| nros-tests::native_api             |     16 |
+| nros-tests::xrce                   |     14 |
+| nros-tests::emulator               |     11 |
+| nros-tests::large_msg              |     10 |
+| nros-tests::dds_api                |     10 |
+| nros-tests::services               |      8 |
+| nros-tests::custom_msg             |      7 |
+| nros-tests::params                 |      6 |
+| nros-tests::c_xrce_api             |      5 |
+| nros-tests::xrce_ros2_interop      |      3 |
+| nros-tests::nano2nano              |      3 |
+| nros-tests::actions                |      2 |
+| nros-tests::threadx_riscv64_qemu_dds | 1 |
+| nros-tests::threadx_linux_dds      |      1 |
+| nros-tests::ros2_lifecycle_interop |      1 |
+| nros-tests::nuttx_qemu_dds         |      1 |
+| nros-tests::dds_ros2_interop       |      1 |
+
+Phase-128 net effect: real-failure count drops by ~180 vs the
+127.G.1 baseline. Most of the reduction comes from the c-codegen
+install path (per-platform `NrosRmwZenohConfig.cmake.in` no
+longer overwrite-last-wins) and the linker-section discovery now
+working end-to-end so backend register chains stop short-circuiting.
+
+Notes on remaining buckets (none introduced by phase 128 — every
+suite below was already failing or was env-skip class in 127.G.1):
+
+- **zephyr** (60) — predominantly env-skip class (no Zephyr toolchain
+  installed) plus the bindgen 0.72.1 SIGSEGV on nightly-2026-04-11
+  (`just zephyr build-all` blocker; see 127.C / 128.H.6).
+- **rmw_interop / dds_api / xrce / large_msg / rtos_e2e / native_api**
+  — same per-platform groups already triaged in 127.A through 127.E.
+  Phase-128 didn't change their runtime; failures persist where they
+  were.
+- **emulator** — RTIC service/action reply gap + serial pub/sub
+  post-open block already tracked in 127.D (and the 127.D narrowing
+  doc above).
+- **c_xrce_api / xrce_ros2_interop / xrce** — XRCE Agent missing
+  (env-skip).
+- **threadx_riscv64_qemu_dds / threadx_linux_dds / nuttx_qemu_dds /
+  dds_ros2_interop / ros2_lifecycle_interop** — per-platform DDS
+  integration failures already tracked in 127.B / 127.F.
+
+Run id:
+- JUnit XML: `target/nextest/default/junit.xml` (run uuid
+  `0928a34d-57b8-4987-8a26-4baf7dd79bff`, captured 2026-05-17 02:33Z,
+  total wall 686 s).
+- Logs: `test-logs/latest/`.
+
+Acceptance — phase 128 does not regress phase 127's baseline; every
+remaining real failure belongs to a phase-127 bucket. 127.G.3 stays
+open for the long-tail RTOS / DDS / XRCE work tracked in 127.A–F.
