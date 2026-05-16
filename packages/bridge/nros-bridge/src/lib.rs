@@ -41,12 +41,17 @@
 //! frame to avoid bidirectional echo. The attachment field is opaque
 //! to backends that don't speak the ROS 2 attachment convention.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use nros_node::{
     executor::{EmbeddedRawPublisher, RawSubscription},
     NodeError,
 };
+
+#[cfg(feature = "config")]
+mod config;
+#[cfg(feature = "config")]
+pub use config::{run_from_config, ConfigError};
 
 /// Bridge a raw subscription on one Node to a raw publisher on
 /// another. Each [`pump`](Self::pump) call drains every queued sample

@@ -16,9 +16,15 @@ categories = ["embedded", "no-std", "network-programming"]
 default = []
 std = ["nros-node/std"]
 alloc = ["nros-node/alloc"]
+# Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
+# an Executor + Nodes + bridges from the manifest. Pulls `toml` +
+# `serde`; requires `std` because both crates do.
+config = ["std", "dep:toml", "dep:serde"]
 
 [dependencies]
 nros-node = { workspace = true, default-features = false, features = ["rmw-cffi"] }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [lints]
 workspace = true

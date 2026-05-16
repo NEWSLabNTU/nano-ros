@@ -404,6 +404,15 @@ pub mod lifecycle {
     pub use nros_node::lifecycle::*;
 }
 
+// Phase 128.G — bridge surface re-exports. Gated behind the
+// `bridge` / `config` umbrella features so single-backend builds
+// don't pull in `nros-bridge` (or, for `config`, the TOML stack).
+#[cfg(feature = "bridge")]
+pub use nros_bridge as bridge;
+
+#[cfg(feature = "config")]
+pub use nros_bridge::run_from_config;
+
 // Re-export parameter types
 pub use nros_params::{
     MandatoryParameter, OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor,

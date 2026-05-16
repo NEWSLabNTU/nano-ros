@@ -54,6 +54,12 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
 
+# Phase 128.G — bridge surface. `bridge` re-exports `nros_bridge`'s
+# Rust API (PubSubBridge etc.); `config` additionally pulls the TOML
+# loader (`run_from_config`).
+bridge = ["dep:nros-bridge"]
+config = ["bridge", "nros-bridge/config"]
+
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the cffi vtable. Forwards `lending` to the cffi crate so
 # `CffiPublisher: SlotLending` / `CffiSubscriber: SlotBorrowing`
@@ -157,6 +163,10 @@ nros-macros = { version = "0.1.0", path = "../nros-macros" }
 nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+# Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
+# only pulled in when the umbrella's `bridge` or `config` feature is
+# enabled.
+nros-bridge = { version = "0.1.0", path = "../../bridge/nros-bridge", default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
 # `nros-rmw-dds`, `nros-rmw-zenoh`) removed. The umbrella consumes
 # only the generic vtable shim (`nros-rmw-cffi`); callers depend on

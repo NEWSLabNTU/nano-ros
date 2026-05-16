@@ -351,15 +351,25 @@ For users who want to swap RMW without recompiling (still subject to
 which backends were linked), add a TOML/JSON loader behind a feature
 flag.
 
-- [ ] `128.G.1`: `nros-bridge` gains `config = ["dep:toml"]` feature
-  exposing `pub fn run_from_config(path: impl AsRef<Path>)`. Schema
-  documented in `book/src/reference/nros-toml.md`.
+- [x] `128.G.1`: `nros-bridge` gains `config` feature exposing
+  `pub fn run_from_config(path)`. Pulls `toml` (with the `parse` +
+  `serde` features) and `serde` derive. Parses `[[node]]` +
+  `[[bridge]]` blocks, opens an Executor via `open_multi`, builds
+  every Node via `create_node_on`, instantiates a `PubSubBridge` per
+  bridge entry, and drives the spin loop forever. `ConfigError`
+  covers io / parse / unknown-node / open-session / build-node /
+  build-entity failure modes.
   **Files:** `packages/bridge/nros-bridge/src/config.rs` (new),
-  `book/src/reference/nros-toml.md` (new).
-- [ ] `128.G.2`: end-user crate `nros` re-exports `run_from_config`
-  behind `feature = "config"` that pulls `nros-bridge/config`.
+  `packages/bridge/nros-bridge/Cargo.toml`,
+  `packages/bridge/nros-bridge/src/lib.rs`.
+- [x] `128.G.2`: end-user crate `nros` re-exports `run_from_config`
+  behind `feature = "config"` (which implies `bridge`). Single-
+  backend builds opt out by default; bridge / config consumers pull
+  the surface in via one cargo feature.
   **Files:** `packages/core/nros/Cargo.toml`,
   `packages/core/nros/src/lib.rs`.
+- [ ] (Follow-up) Reference docs (`book/src/reference/nros-toml.md`)
+  for the file schema. Crate-level rustdoc covers it for now.
 
 ## Acceptance Criteria
 

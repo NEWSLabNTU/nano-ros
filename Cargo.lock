@@ -1204,6 +1204,7 @@ checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 name = "nros"
 version = "0.1.0"
 dependencies = [
+ "nros-bridge",
  "nros-core",
  "nros-macros",
  "nros-node",
@@ -1218,6 +1219,15 @@ dependencies = [
 [[package]]
 name = "nros-baremetal-common"
 version = "0.1.0"
+
+[[package]]
+name = "nros-bridge"
+version = "0.1.0"
+dependencies = [
+ "nros-node",
+ "serde",
+ "toml",
+]
 
 [[package]]
 name = "nros-builtin-interfaces"
