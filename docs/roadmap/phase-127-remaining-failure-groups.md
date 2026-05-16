@@ -69,11 +69,13 @@ Subitems:
   talker → native listener delivery confirmed via SmoltcpBridge poll reorder.
 - [x] `127.A.3`: ESP32 receive path. `test_native_to_esp32` now passes; native
   talker → ESP32 listener delivery confirmed via SmoltcpBridge poll reorder.
-- [ ] `127.A.4`: Harness timing. Two-QEMU `test_esp32_talker_listener_e2e` still
-  fails after the SmoltcpBridge reorder; both peers send and the router accepts
-  data, but the listener receives 0 messages. Single-QEMU pairs pass, so the
-  blocker is contention or routing when both QEMU guests run simultaneously
-  rather than the per-guest TX/RX path.
+- [x] `127.A.4`: Harness timing. After the SmoltcpBridge reorder, the
+  two-QEMU `test_esp32_talker_listener_e2e` passes reliably in isolation
+  (`cargo nextest run -p nros-tests --test esp32_emulator --no-fail-fast
+  --no-capture --retries 0 test_esp32_talker_listener_e2e`: 1 passed in 17.2 s).
+  Earlier failure was a same-suite stale-state flake (orphan zenohd on the
+  ESP32 port or a TIME_WAIT 4-tuple on the SLIRP gateway); a clean run of the
+  full nine-test `esp32_emulator` binary is 9/9 passed in 20.6 s.
 - [x] `127.A.5`: Post-open ESP32 outbound control path. Root cause: bridge
   drained TX staging AFTER `iface.poll`, so newly-staged bytes had to wait for
   the next `poll_network` invocation before reaching the wire. Reordering
@@ -96,12 +98,11 @@ Done criteria:
   cadence — TX staging drained one poll-tick late.)
 - [x] Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
   failure cause.
-- [~] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
+- [x] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
   smaller, newly categorized failure with no allocation panic. After the
-  bridge poll reorder + diagnostic instrumentation: 8 of 9 esp32_emulator tests
-  pass; only `test_esp32_talker_listener_e2e` (the two-QEMU pair) still fails
-  with the listener receiving 0 of the talker's messages even though both
-  guests independently work against a native peer.
+  bridge poll reorder + diagnostic instrumentation, a clean `cargo nextest
+  run -p nros-tests --test esp32_emulator --no-fail-fast` reports 9/9 passed
+  in 20.6 s with no allocation panics.
 
 2026-05-15 focused evidence:
 
