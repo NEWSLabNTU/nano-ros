@@ -709,14 +709,21 @@ Current signal:
   the DDS action send-goal service reply/correlation path, likely between
   `DdsServiceServer::send_reply`, `DdsServiceClient::try_recv_reply_raw`, and
   action `Promise::wait`.
+- 2026-05-17 stale-fixture follow-up: the later DDS A9
+  `Transport(ConnectionFailed)` regressions were stale prebuilt Zephyr images.
+  `get_or_build_zephyr_example` now invokes `west build` when a fixture is
+  missing or older than its example/shared nros sources, while preserving the
+  per-XRCE agent-port build overrides. After rebuilding the current DDS A9
+  service and action server/client fixtures, focused reruns passed for
+  `test_zephyr_dds_rust_service_a9_e2e` and
+  `test_zephyr_dds_rust_action_a9_e2e`.
 
 Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
-- [ ] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
-  service now pass on qemu_cortex_a9; DDS action A9 still fails on the
-  send-goal acceptance reply path.
+- [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, async service,
+  and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
 - [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
   and C++; XRCE service/action focused reruns remain.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and

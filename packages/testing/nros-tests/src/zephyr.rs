@@ -745,7 +745,8 @@ fn example_path_for_name(example_name: &str) -> String {
 /// Get path to Zephyr binary, using existing build if available
 ///
 /// This function checks if a Zephyr binary already exists in the build directory
-/// and returns it without rebuilding. Only builds if forced or binary doesn't exist.
+/// and returns it without rebuilding when it is fresh. If the binary is missing,
+/// stale, or `force_build` is true, it invokes `west build` for the fixture.
 ///
 /// # Arguments
 /// * `example_name` - Name of the example directory (e.g., "zephyr-rs-talker")
@@ -796,8 +797,8 @@ pub fn get_or_build_zephyr_example(
     build_zephyr_example(example_name, platform)
 }
 
-/// Return true if the built binary is older than any of the example's
-/// source inputs (`prj.conf`, `CMakeLists.txt`, every file under `src/`).
+/// Return true if the built binary is older than the example or shared nros
+/// sources that are linked into Zephyr fixtures.
 fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
         // Can't stat the binary — assume stale so we rebuild and get a
@@ -805,35 +806,60 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         return true;
     };
 
-    let example_dir = project_root()
+    let root = project_root();
+    let example_dir = root
         .join("examples")
         .join(example_path_for_name(example_name));
 
-    // `prj.conf` and `CMakeLists.txt` are the common edit points; src/
-    // covers main.c / main.cpp / Cargo.toml drift.
-    let candidates = [
+    // The example-local set catches app source, Kconfig overlays, and Rust
+    // dependency changes. The package set catches shared nros backend/platform
+    // edits; otherwise tests can report stale Zephyr runtime failures after a
+    // library fix has already landed.
+    let candidates = vec![
         example_dir.join("prj.conf"),
         example_dir.join("CMakeLists.txt"),
+        example_dir.join("Cargo.toml"),
+        example_dir.join("Cargo.lock"),
+        example_dir.join("boards"),
+        example_dir.join("src"),
+        root.join("zephyr"),
+        root.join("packages/core"),
+        root.join("packages/dds"),
+        root.join("packages/xrce"),
+        root.join("packages/zpico"),
     ];
     for p in &candidates {
-        if let Ok(src_mtime) = p.metadata().and_then(|m| m.modified())
-            && src_mtime > binary_mtime
-        {
+        if path_newer_than(p, binary_mtime) {
             return true;
         }
     }
+    false
+}
 
-    // Walk src/ one level deep — sufficient for every example we ship.
-    if let Ok(iter) = std::fs::read_dir(example_dir.join("src")) {
-        for entry in iter.flatten() {
-            if let Ok(src_mtime) = entry.metadata().and_then(|m| m.modified())
-                && src_mtime > binary_mtime
-            {
-                return true;
-            }
+fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if meta.modified().is_ok_and(|mtime| mtime > cutoff) {
+        return true;
+    }
+    if !meta.is_dir() {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if matches!(name.as_ref(), "target" | "build" | ".git") {
+            continue;
+        }
+        if path_newer_than(&p, cutoff) {
+            return true;
         }
     }
-
     false
 }
 
@@ -892,7 +918,78 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         }
     };
 
+    let cmake_prefix = root.join("build/install");
+    let mut cmd = Command::new("west");
+    cmd.current_dir(&workspace)
+        .env(
+            "SCCACHE_DISABLE",
+            std::env::var("NROS_ZEPHYR_SCCACHE_DISABLE").unwrap_or_else(|_| "1".to_string()),
+        )
+        .env(
+            "CMAKE_BUILD_PARALLEL_LEVEL",
+            std::env::var("NROS_ZEPHYR_NINJA_JOBS").unwrap_or_else(|_| "1".to_string()),
+        )
+        .arg("build")
+        .arg("-b")
+        .arg(platform.board_spec())
+        .arg("-d")
+        .arg(build_dir)
+        .arg("-p")
+        .arg(std::env::var("NROS_ZEPHYR_PRISTINE").unwrap_or_else(|_| "auto".to_string()))
+        .arg(&example_path)
+        .arg("--")
+        .arg(format!("-DCMAKE_PREFIX_PATH={}", cmake_prefix.display()));
+
+    if let Some(port) = xrce_agent_port_for_example(example_name) {
+        cmd.arg(format!("-DCONFIG_NROS_XRCE_AGENT_PORT={port}"));
+    }
+
+    let output = cmd.output().map_err(|e| {
+        TestError::BuildFailed(format!("Failed to start west for {example_name}: {e}"))
+    })?;
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "west build failed for {example_name} ({})\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
     crate::fixtures::require_prebuilt_binary(&binary_path)
+}
+
+fn xrce_agent_port_for_example(example_name: &str) -> Option<u16> {
+    match example_name {
+        "zephyr-xrce-rs-talker"
+        | "xrce-rs-talker"
+        | "zephyr-xrce-rs-listener"
+        | "xrce-rs-listener" => Some(2018),
+        "zephyr-xrce-rs-service-server"
+        | "xrce-rs-service-server"
+        | "zephyr-xrce-rs-service-client"
+        | "xrce-rs-service-client" => Some(2028),
+        "zephyr-xrce-rs-action-server"
+        | "xrce-rs-action-server"
+        | "zephyr-xrce-rs-action-client"
+        | "xrce-rs-action-client" => Some(2038),
+        "zephyr-xrce-c-talker" | "xrce-c-talker" | "zephyr-xrce-c-listener" | "xrce-c-listener" => {
+            Some(2118)
+        }
+        "zephyr-xrce-cpp-talker"
+        | "xrce-cpp-talker"
+        | "zephyr-xrce-cpp-listener"
+        | "xrce-cpp-listener" => Some(2218),
+        "zephyr-xrce-cpp-service-server"
+        | "xrce-cpp-service-server"
+        | "zephyr-xrce-cpp-service-client"
+        | "xrce-cpp-service-client" => Some(2228),
+        "zephyr-xrce-cpp-action-server"
+        | "xrce-cpp-action-server"
+        | "zephyr-xrce-cpp-action-client"
+        | "xrce-cpp-action-client" => Some(2238),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
