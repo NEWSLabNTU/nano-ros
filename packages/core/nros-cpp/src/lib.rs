@@ -31,7 +31,7 @@ extern crate std;
 use panic_halt as _;
 
 #[cfg(feature = "rmw-xrce-cffi")]
-extern crate nros_rmw_xrce_cffi as _;
+extern crate nros_rmw_xrce_cffi;
 
 // FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
 // FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
@@ -466,6 +466,18 @@ pub unsafe extern "C" fn nros_cpp_init(
     }
     unsafe {
         nros_app_register_backends();
+    }
+    #[cfg(feature = "rmw-xrce-cffi")]
+    {
+        let _ = nros_rmw_xrce_cffi::register();
+    }
+    #[cfg(feature = "rmw-zenoh-cffi")]
+    {
+        let _ = nros_rmw_zenoh::register();
+    }
+    #[cfg(feature = "rmw-dds-cffi")]
+    {
+        let _ = nros_rmw_dds::register();
     }
 
     let node_name_str = match unsafe { cstr_to_str(node_name) } {

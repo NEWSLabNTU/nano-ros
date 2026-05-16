@@ -137,6 +137,7 @@ critical-section = { version = "1.1", optional = true, features = ["restore-stat
 
 [build-dependencies]
 cbindgen = "0.29"
+cc = "1.0"
 nros-sizes-build = { workspace = true }
 # Phase 77.25: nros is listed as a build-dep (not only as a regular
 # dep) so the host rlib is compiled *before* this build script runs.

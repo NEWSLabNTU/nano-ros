@@ -278,7 +278,7 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t *server,
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }
-    (void)uxr_run_session_time(&st->session, 0);
+    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
     return NROS_RMW_RET_OK;
 }
 

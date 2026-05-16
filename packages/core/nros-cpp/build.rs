@@ -21,6 +21,15 @@ fn main() {
     generate_config(&out_dir, &manifest_dir, &probed);
     generate_header(&manifest_dir);
 
+    let stub_path = manifest_dir.join("c-stubs/weak_register_backends.c");
+    println!("cargo:rerun-if-changed={}", stub_path.display());
+    cc::Build::new()
+        .file(&stub_path)
+        .warnings(true)
+        .extra_warnings(true)
+        .flag_if_supported("-Wpedantic")
+        .compile("nros_cpp_weak_stubs");
+
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");

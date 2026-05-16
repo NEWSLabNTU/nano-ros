@@ -1240,6 +1240,7 @@ name = "nros-cpp"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
+ "cc",
  "critical-section",
  "nros",
  "nros-node",
