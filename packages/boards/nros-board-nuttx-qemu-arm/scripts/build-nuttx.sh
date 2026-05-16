@@ -136,29 +136,6 @@ if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     echo "$CURRENT_HEAD" > "$MARKER"
 fi
 
-# Phase 127.B.5 — apply local NuttX driver patches the board depends
-# on. Currently: virtio-net ALLMULTI/PROMISC enablement so RTPS SPDP
-# frames make it past the device's MAC filter. The loop is idempotent
-# (already-applied patches are detected via `git apply --reverse
-# --check` and skipped silently) so it's safe to run every build.
-PATCHES_DIR="$BOARD_DIR/patches"
-if [ -d "$PATCHES_DIR" ]; then
-    for p in "$PATCHES_DIR"/*.patch; do
-        [ -f "$p" ] || continue
-        case "$(basename "$p")" in
-            libc-nuttx-sc-host-name-max.patch) continue ;;  # not for kernel tree
-        esac
-        if git -C "$NUTTX_DIR" apply --reverse --check "$p" >/dev/null 2>&1; then
-            :  # already applied
-        elif git -C "$NUTTX_DIR" apply --check "$p" >/dev/null 2>&1; then
-            echo "  Applying $(basename "$p")"
-            git -C "$NUTTX_DIR" apply "$p"
-        else
-            echo "  WARNING: cannot apply $(basename "$p") (conflict)"
-        fi
-    done
-fi
-
 # --- Build NuttX ---
 
 echo "Building NuttX..."

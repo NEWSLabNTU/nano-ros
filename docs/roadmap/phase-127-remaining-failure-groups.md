@@ -483,18 +483,17 @@ Subitems:
     before reaching the vring. Same gap is documented for every NuttX
     driver other than STMicro STM32, TI Tiva TM4C, and Atmel SAM3/4 /
     SAMA5D3/4.
-  - Carry a local NuttX driver patch:
-    `packages/boards/nros-board-nuttx-qemu-arm/patches/0001-virtio-net-allmulti-promisc.patch`.
-    The patch (a) bumps the negotiation mask to include
+  - Patch carried in the NuttX fork submodule itself (the
+    `third-party/nuttx/nuttx` submodule points at
+    `github.com/jerry73204/nuttx` `nano-ros` branch). Commit
+    `d230b7d383 drivers/virtio/virtio-net: negotiate CTRL_VQ+CTRL_RX,
+    enable ALLMULTI/PROMISC` (a) bumps the negotiation mask to include
     `VIRTIO_NET_F_CTRL_VQ` and `VIRTIO_NET_F_CTRL_RX`, (b) creates a
     third control virtqueue when the device advertises CTRL_VQ,
     (c) sends `CTRL_RX_PROMISC=1` + `CTRL_RX_ALLMULTI=1` at probe
     using the standard 3-sg layout (hdr / data / ack), and (d) turns
-    `d_addmac` / `d_rmmac` into successful no-ops when ALLMULTI is
+    `d_addmac` / `d_rmmac` into successful no-ops when CTRL_VQ is
     active so the IGMP layer's MAC programming path returns OK.
-    `build-nuttx.sh` now auto-applies all `*.patch` files under the
-    board's `patches/` directory (idempotent — re-applied patches are
-    detected via `git apply --reverse --check` and skipped silently).
     Empirically this patch alone does NOT yet unblock SPDP delivery
     in the focused test (talker still publishes 0–9, listener still
     receives 0); the patch is upstream-correct per VIRTIO 1.x §5.1.6.5
