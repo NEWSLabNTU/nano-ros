@@ -699,7 +699,18 @@ impl Device for Lan9118 {
         let mut caps = DeviceCapabilities::default();
         caps.medium = Medium::Ethernet;
         caps.max_transmission_unit = MTU;
-        caps.max_burst_size = Some(1);
+        // Phase 127.D — drain the full LAN9118 RX FIFO per `iface.poll`.
+        // QEMU's `hw/net/lan9118.c` has no `can_receive` callback and
+        // never flushes `qemu_net_queue` after a guest pop, so once the
+        // 176-entry RX status FIFO fills `lan9118_receive` returns -1
+        // and slirp silently drops the frame
+        // (see `net/queue.c:29-41`: drop on -1 when no sent_cb). With
+        // `max_burst_size = Some(1)` smoltcp only consumed one frame
+        // per poll and lost ground against the slirp drip-feed. Setting
+        // it to `None` lets smoltcp loop receive() until the device
+        // returns nothing, keeping the FIFO well below the 176-entry
+        // ceiling. See `docs/research/qemu-lan9118-slirp-rx-stall.md`.
+        caps.max_burst_size = None;
         caps
     }
 }
