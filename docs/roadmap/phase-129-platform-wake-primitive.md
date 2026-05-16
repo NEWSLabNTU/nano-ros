@@ -49,18 +49,32 @@ platform primitive.
 
 ## Architecture
 
+The existing `nros_platform_condvar_*` ABI was deliberately shaped to
+match zenoh-pico's `pthread_cond_t` Zephyr ABI ("matching
+zenoh-pico's Zephyr ABI", `nros-platform-zephyr/src/platform.c:22`),
+so it's pinned to libc pthread on Zephyr. Rather than break that
+interop contract, this phase adds a **separate** wake primitive
+sized after a binary semaphore — exactly the shape `Executor`'s
+wake_flag/wake_cv pair needs, and a clean fit for `k_sem` /
+`tx_semaphore` / `xSemaphoreBinary` / POSIX `sem_t`.
+
 ```
 Executor::spin_once
-  ├── PlatformCondvar.wait_until(deadline_ms)   ← no std dependency
+  ├── PlatformWake.wait_ms(timeout_ms)          ← no std, no libc pthread
   ├── session.drive_io(...)
   └── arena dispatch
 
-nros-platform-* (per-platform)
-  ├── nros_platform_condvar_init
-  ├── nros_platform_condvar_wait_until
-  ├── nros_platform_condvar_signal
-  └── nros_platform_condvar_signal_from_isr     ← Phase 124.B.7 hook
+nros-platform-* (per-platform)              backing primitive
+  ├── nros_platform_wake_init                <─ POSIX:    sem_t / eventfd
+  ├── nros_platform_wake_drop                <─ Zephyr:   k_sem (kernel-native)
+  ├── nros_platform_wake_wait_ms             <─ FreeRTOS: xSemaphoreBinary
+  ├── nros_platform_wake_signal              <─ NuttX:    POSIX sem_t
+  └── nros_platform_wake_signal_from_isr     <─ ThreadX:  tx_semaphore
+                                             <─ bare:     atomic flag + spin
 ```
+
+`nros_platform_condvar_*` stays as-is for zenoh-pico's Zephyr
+ABI compat. New `nros_platform_wake_*` is the executor's primitive.
 
 Backend obligation unchanged. `set_wake_callback` installs a runtime
 closure that writes `wake_flag = true` then calls
@@ -73,49 +87,67 @@ and wakes on either:
 
 ## Work Items
 
-### 129.1 — Zephyr `k_condvar` platform impl
+### 129.1 — `nros_platform_wake_*` ABI
+
+**Files**
+- `packages/core/nros-platform-cffi/include/nros/platform.h`
+- `packages/core/nros-platform-cffi/src/lib.rs`
+
+Add the new ABI surface (extern `"C"` decls + Rust FFI bindings):
+
+```c
+int8_t  nros_platform_wake_init(void *w);
+int8_t  nros_platform_wake_drop(void *w);
+int8_t  nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms);
+int8_t  nros_platform_wake_signal(void *w);
+int8_t  nros_platform_wake_signal_from_isr(void *w);
+size_t  nros_platform_wake_storage_size(void);  /* probe for sizing */
+size_t  nros_platform_wake_storage_align(void);
+```
+
+`wait_ms` returns `0` on signal, `1` on timeout, `-1` on error.
+Storage sizing follows the Phase 118.B probe pattern so the Rust
+wrapper can sit on `MaybeUninit<[u64; N]>`.
+
+### 129.1.zephyr — Zephyr `k_sem` impl
 
 **Files**
 - `packages/core/nros-platform-zephyr/src/platform.c`
 
-Replace the `CONFIG_POSIX_API` branch of `nros_platform_condvar_*`
-with a `k_condvar_*` + `k_mutex_*` implementation that does not
-depend on Zephyr's libc pthread shim. Honors `wait_until(abstime_ms)`
-via `K_MSEC(remaining)` and returns `1` on timeout, `0` on signal,
-`-1` on error (existing ABI). Provide an ISR-safe
-`nros_platform_condvar_signal_from_isr` via the documented
-`k_condvar_signal` ISR contract (or a `k_sem_give` fallback if the
-running kernel build rejects ISR-context `k_condvar_signal`).
+Implement `nros_platform_wake_*` against `k_sem_*`. Binary
+semaphore (max_count=1). `k_sem_take(K_MSEC(timeout_ms))` honors
+the deadline; `k_sem_give` is documented ISR-safe. No libc
+pthread dependency. Lives alongside the existing pthread-backed
+`nros_platform_condvar_*` (kept for zenoh-pico's Zephyr ABI).
 
-The non-`CONFIG_POSIX_API` stub branch (currently returns `-1`)
-becomes the same `k_condvar_*` path — Zephyr ships `k_condvar`
-unconditionally.
-
-### 129.2 — Rust `PlatformCondvar` wrapper
+### 129.2 — Rust `PlatformWake` wrapper
 
 **Files**
-- `packages/core/nros-platform/src/sync.rs` (new)
+- `packages/core/nros-platform/src/wake.rs` (new)
 - `packages/core/nros-platform/src/lib.rs` (re-export)
-- `packages/core/nros-platform-cffi/src/lib.rs` (FFI surface)
 
-`no_std`-safe Rust wrapper around `nros_platform_condvar_*` +
-`nros_platform_mutex_*`. Surface mirrors `std::sync::Condvar` /
-`Mutex` enough for `Executor` to drop in:
+`no_std`-safe Rust wrapper around `nros_platform_wake_*`:
 
 ```rust
-pub struct PlatformCondvar { /* opaque storage + init flag */ }
-pub struct PlatformMutex   { /* opaque storage + init flag */ }
+pub struct PlatformWake { storage: MaybeUninit<[u64; WAKE_OPAQUE_U64S]> }
 
-impl PlatformCondvar {
-    pub fn new() -> Self;
-    pub fn wait_until(&self, mu: &PlatformMutex, deadline_ms: u64) -> WakeReason;
-    pub fn signal(&self);
-    pub fn signal_from_isr(&self);
+pub enum WakeReason { Signaled, Timeout }
+
+impl PlatformWake {
+    pub fn new() -> Self;                                  // calls _init
+    pub fn wait_ms(&self, timeout_ms: u32) -> WakeReason;  // calls _wait_ms
+    pub fn signal(&self);                                  // calls _signal
+    pub fn signal_from_isr(&self);                         // calls _signal_from_isr
 }
+
+impl Drop for PlatformWake { ... }                         // calls _drop
 ```
 
-Storage sized via the existing platform-cffi build-time probe
-(same pattern as `EXECUTOR_OPAQUE_U64S`).
+`WAKE_OPAQUE_U64S` derived via a `nros_sizes_build`-style probe
+(same pattern as `EXECUTOR_OPAQUE_U64S`, Phase 118.B). On
+`--no-default-features` check builds the probe returns 0 and
+emits a one-word placeholder; the resulting rlib must not be
+linked.
 
 ### 129.3 — Executor swap
 
@@ -124,22 +156,23 @@ Storage sized via the existing platform-cffi build-time probe
 - `packages/core/nros-node/src/executor/types.rs`
 - `packages/core/nros-node/src/executor/mod.rs`
 
-Replace `wake_cv: std::sync::Arc<std::sync::Condvar>` +
-`wake_mu: std::sync::Arc<std::sync::Mutex<()>>` with
-`wake_cv: PlatformCondvar` + `wake_mu: PlatformMutex`.
-Cv-wait branch becomes:
+Replace the std `wake_cv: Arc<Condvar>` + `wake_mu: Arc<Mutex<()>>`
+pair with a single `wake: Arc<PlatformWake>`. `wake_flag` stays —
+it's the lost-wakeup guard the wake-callback writes before
+`wake.signal()`.
+
+Spin loop becomes:
 
 ```rust
 #[cfg(feature = "rmw-cffi")]
 if !was_woken {
-    let deadline = now_ms() + timeout_ms as u64;
-    let _ = self.wake_cv.wait_until(&self.wake_mu, deadline);
+    let _ = self.wake.wait_ms(timeout_ms as u32);
 }
 ```
 
 Gate is `feature = "rmw-cffi"` only — no platform-specific cfg.
-`primary_drive_timeout_ms = 0` for any `rmw-cffi` build (drive_io
-is non-blocking because cv-wait above already burned the timeout).
+`primary_drive_timeout_ms = 0` for any `rmw-cffi` build (wait
+above already burned the timeout).
 
 ### 129.4 — Revert Phase 127.C.4 expedient gate
 
@@ -154,27 +187,36 @@ Verify `nros_cpp_spin_once` still compiles after the revert —
 it already routes through `executor.spin_once` and needs no further
 change.
 
-### 129.5 — Other-platform parity check
+### 129.5 — Other-platform `nros_platform_wake_*` impls
 
 **Files**
+- `packages/core/nros-platform-posix/src/platform.c`
 - `packages/core/nros-platform-freertos/src/platform.c`
 - `packages/core/nros-platform-nuttx/src/platform.c`
 - `packages/core/nros-platform-threadx/src/platform.c`
-- `packages/core/nros-platform-posix/src/platform.c`
+- `packages/core/nros-platform-baremetal/src/platform.c`
 
-Confirm each platform's `nros_platform_condvar_*` impl honors
-`wait_until` deadline and that `signal_from_isr` is ISR-safe per
-the platform spec. POSIX (`pthread_cond_timedwait` against
-`CLOCK_MONOTONIC`) already works. RTOS impls should already exist
-from Phase 121 — audit and document the ISR-safety claim per
-platform.
+Implement `nros_platform_wake_*` per platform using the
+platform-native binary semaphore:
+- POSIX: `sem_t` + `sem_timedwait` (`CLOCK_MONOTONIC`) or `eventfd`.
+  ISR signal not meaningful on POSIX; alias to `signal`.
+- FreeRTOS: `xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`.
+- NuttX: POSIX `sem_t` (NuttX libc honors `sem_timedwait`).
+- ThreadX: `tx_semaphore` + `tx_semaphore_put_from_isr` (via
+  `tx_semaphore_put` — ThreadX semaphores are ISR-safe by spec).
+- bare-metal: atomic flag + `wait_ms` busy-spin with the platform
+  clock (no MT to signal cross-context anyway).
+
+Document each impl's ISR-safety in
+`docs/reference/platform-sync-abi.md` (new).
 
 ## Acceptance
 
-- [ ] 129.1: Zephyr native_sim and `qemu_cortex_a9` boot through
-  the new `k_condvar` impl without regressing 127.C.3 DDS pass.
-- [ ] 129.2: `PlatformCondvar` compiles `no_std` on every
-  supported platform (POSIX/Zephyr/FreeRTOS/NuttX/ThreadX/bare-metal).
+- [ ] 129.1: `nros_platform_wake_*` declared in `platform.h` +
+  Rust FFI bindings + Zephyr `k_sem` impl boots native_sim
+  without regressing 127.C.3 DDS pass.
+- [ ] 129.2: `PlatformWake` compiles `no_std` on every supported
+  platform (POSIX/Zephyr/FreeRTOS/NuttX/ThreadX/bare-metal).
 - [ ] 129.3: `cargo test -p nros-node --lib --features rmw-cffi`
   131/131 passes — no behavior change on POSIX hosts.
 - [ ] 129.4: With the expedient gate reverted,
@@ -183,22 +225,21 @@ platform.
   `just zephyr build-fixtures && just zephyr test --no-capture`.
 - [ ] 129.4: Phase 127.C.4 is closeable on Zephyr without the
   per-platform cfg gate.
-- [ ] 129.5: Each platform's condvar ISR-safety is documented in
-  `docs/reference/platform-sync-abi.md` (new).
+- [ ] 129.5: Each platform's wake-primitive ISR-safety is
+  documented in `docs/reference/platform-sync-abi.md` (new).
 
 ## Notes
 
 - The `set_wake_callback` ABI doesn't change. Backends keep
   filling NULL when they have no async notify path; this phase
   only changes the executor side's wake primitive.
-- POSIX path keeps `pthread_cond_timedwait` against
-  `CLOCK_MONOTONIC` — already correct on Linux/macOS.
-- ISR-safe signal on Zephyr is the one open spec question.
-  `k_condvar_signal` is documented as thread-context on newer
-  kernels; if the integration tests trip that, the impl falls
-  back to `k_sem_give` for the ISR variant (also documented
-  ISR-safe).
-- Phase 124.B.7 already specced the ISR contract for
-  `nros_platform_condvar_signal_from_isr` — this phase honors it
-  per-platform rather than papering over with `signal()` on
-  Zephyr.
+- `nros_platform_condvar_*` (the existing pthread-shaped ABI)
+  stays for zenoh-pico's Zephyr interop. No callers migrate;
+  only `Executor` does, and it moves to `nros_platform_wake_*`.
+- Binary semaphore was chosen over condvar+mutex because the
+  executor's wake_flag+wake_cv pair already collapses to
+  "wake-with-flag" semantics. A semaphore is a smaller, more
+  ISR-friendly primitive on every supported RTOS.
+- Phase 124.B.7 specced ISR-safe condvar signaling; the wake
+  primitive inherits that contract directly via its
+  `signal_from_isr` slot.
