@@ -700,9 +700,11 @@ pub fn require_veth_bridge() -> bool {
 /// Returns `true` if `ip route show <group>` reports `dev lo`.
 pub fn is_mcast_loopback_route_present(group: &str) -> bool {
     let group_only = group.split(':').next().unwrap_or(group);
-    let out = Command::new("ip")
-        .args(["route", "show", group_only])
-        .output();
+    /* `ip route show <addr>` only matches an exact-destination route
+     * entry; use `ip route get <addr>` so a prefix route like
+     * `230.10.0.0/16 dev lo` is recognised when the test picks
+     * `230.10.0.137` from inside it. */
+    let out = Command::new("ip").args(["route", "get", group_only]).output();
     match out {
         Ok(o) if o.status.success() => {
             let s = String::from_utf8_lossy(&o.stdout);

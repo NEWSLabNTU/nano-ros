@@ -582,17 +582,57 @@ Subitems:
     `-netdev socket,mcast=` peer path (vs the loopback path it
     definitely honours), or whether there is a deeper QEMU
     peer-side dispatch bug.
-  - 2026-05-17 (mitigation landed): the test harness now passes
-    `,localaddr=127.0.0.1` to both NuttX QEMU `-netdev socket,mcast=…`
-    invocations and pre-flight-checks for the matching `dev lo`
-    route via `nros_tests::fixtures::require_mcast_loopback_route`.
-    Route missing → test skips with a clear `sudo ip route add
-    230.10.0.0/16 dev lo` hint instead of silently timing out at
-    83 s. A `just nuttx setup-mcast-route` recipe runs the same
-    `sudo ip route add` commands idempotently. The route
-    configuration is intentionally NOT auto-run by `just nuttx
-    setup` because nano-ros policy is "never sudo without
-    explicit user request".
+  - 2026-05-17 (mitigation attempted, partial): the test harness
+    now passes `,localaddr=127.0.0.1` to both NuttX QEMU `-netdev
+    socket,mcast=…` invocations and pre-flight-checks for the
+    matching `dev lo` route via
+    `nros_tests::fixtures::require_mcast_loopback_route`
+    (the check uses `ip route get <addr>` so a prefix route like
+    `230.10.0.0/16 dev lo` is correctly matched for an address
+    inside the prefix). Route missing → test skips with a clear
+    `sudo ip route add 230.10.0.0/16 dev lo` hint instead of
+    silently timing out at 83 s. A `just nuttx setup-mcast-route`
+    recipe runs the same `sudo ip route add` commands
+    idempotently. The route configuration is intentionally NOT
+    auto-run by `just nuttx setup` because nano-ros policy is
+    "never sudo without explicit user request".
+  - 2026-05-17 (does not fully unblock): after the user installed
+    the two routes (`230.10.0.0/16 dev lo` + `239.0.0.0/8 dev lo`),
+    the focused NuttX DDS test still receives 0 messages. Empirical
+    breakdown via Python mcast receivers proves that:
+    1. **Two Python procs** joined on lo (`mreq.imr_interface =
+       127.0.0.1`) DO cross-deliver via the lo path → kernel
+       routing on lo with the new routes is healthy.
+    2. **QEMU sender with `localaddr=127.0.0.1`** + **Python
+       receiver joined on lo** → Python receives ZERO frames.
+       Same QEMU sender without `localaddr=` → Python receiver
+       on `INADDR_ANY` sees the frames going out the LAN NIC.
+    Conclusion: QEMU 6.2's `net_socket_mcast_create` *does*
+    issue `setsockopt(IP_MULTICAST_IF, localaddr)` per the
+    docs, but something about the QEMU send path (presumably
+    the interaction between the mcast-bind-to-group socket and
+    `IP_MULTICAST_IF=lo`) prevents the frame from actually
+    landing on the lo iface — neither sibling QEMU nor a
+    third-party lo-joined Python socket sees it. The same
+    QEMU built-in mcast tunnel does work end-to-end for the
+    bare-metal MPS2-AN385 DDS test which uses smoltcp +
+    LAN9118 (no virtio RX filter), so the loss appears to be
+    specific to the `localaddr=127.0.0.1` egress path on
+    QEMU 6.2 rather than the virtio frontend. Documented
+    candidates for the next session:
+    - Upgrade host QEMU to 8.2+/9.x (Ubuntu 24.04, jammy
+      backports, or qemu-utils from sources). Cheptsov 2022
+      mcast patch is `#ifdef __APPLE__` only, so this is
+      speculative — but at least removes 6.2 as the
+      uncertainty.
+    - Switch the NuttX QEMU test to `-netdev dgram,
+      local.type=unix,...` peer pairs (QEMU ≥7.2) and
+      configure dust-dds with explicit unicast peers
+      instead of relying on SPDP multicast.
+    - Bridged TAP via `scripts/qemu/setup-network.sh` (needs
+      `sudo` + `CAP_NET_ADMIN`), which lets the host kernel
+      forward mcast between guests on a real virtual bridge
+      instead of relying on QEMU's socket netdev.
   - QEMU upstream status (queried 2026-05-17): the cross-process
     `socket,mcast=` limit persists in QEMU master. `net/socket.c`
     has had only refactoring + cosmetic changes since 6.2 (latest
