@@ -139,7 +139,23 @@ impl ServiceClientTrait for DdsServiceClient {
             }
         }
 
-        #[cfg(not(feature = "std"))]
+        #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+        {
+            use nros_platform::{ConcretePlatform, PlatformClock, PlatformSleep};
+
+            let deadline_ms = <ConcretePlatform as PlatformClock>::clock_ms().saturating_add(5000);
+            loop {
+                if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
+                    return Ok(len);
+                }
+                if <ConcretePlatform as PlatformClock>::clock_ms() >= deadline_ms {
+                    return Err(TransportError::Timeout);
+                }
+                <ConcretePlatform as PlatformSleep>::sleep_ms(1);
+            }
+        }
+
+        #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
         {
             let _ = reply_buf;
             Err(TransportError::Timeout)

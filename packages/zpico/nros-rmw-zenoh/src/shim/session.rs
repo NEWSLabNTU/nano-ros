@@ -343,20 +343,23 @@ impl Session for ZenohSession {
         qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
-        let liveliness_token = self.should_declare_liveliness().then(|| ()).and_then(|_| {
-            topic.node_name.and_then(|node_name| {
-                self.declare_entity_liveliness(|zid| {
-                    Ros2Liveliness::publisher_keyexpr::<256>(
-                        topic.domain_id,
-                        zid,
-                        topic.namespace,
-                        node_name,
-                        topic,
-                        &qos,
-                    )
+        let liveliness_token = self
+            .should_declare_liveliness()
+            .then_some(())
+            .and_then(|_| {
+                topic.node_name.and_then(|node_name| {
+                    self.declare_entity_liveliness(|zid| {
+                        Ros2Liveliness::publisher_keyexpr::<256>(
+                            topic.domain_id,
+                            zid,
+                            topic.namespace,
+                            node_name,
+                            topic,
+                            &qos,
+                        )
+                    })
                 })
-            })
-        });
+            });
         publisher.set_liveliness(liveliness_token);
         Ok(publisher)
     }
@@ -367,20 +370,23 @@ impl Session for ZenohSession {
         qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
-        let liveliness_token = self.should_declare_liveliness().then(|| ()).and_then(|_| {
-            topic.node_name.and_then(|node_name| {
-                self.declare_entity_liveliness(|zid| {
-                    Ros2Liveliness::subscriber_keyexpr::<256>(
-                        topic.domain_id,
-                        zid,
-                        topic.namespace,
-                        node_name,
-                        topic,
-                        &qos,
-                    )
+        let liveliness_token = self
+            .should_declare_liveliness()
+            .then_some(())
+            .and_then(|_| {
+                topic.node_name.and_then(|node_name| {
+                    self.declare_entity_liveliness(|zid| {
+                        Ros2Liveliness::subscriber_keyexpr::<256>(
+                            topic.domain_id,
+                            zid,
+                            topic.namespace,
+                            node_name,
+                            topic,
+                            &qos,
+                        )
+                    })
                 })
-            })
-        });
+            });
         subscriber.set_liveliness(liveliness_token);
         Ok(subscriber)
     }
@@ -390,20 +396,23 @@ impl Session for ZenohSession {
         service: &ServiceInfo,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
         let mut server = ZenohServiceServer::new(&self.context, service, None)?;
-        let liveliness_token = self.should_declare_liveliness().then(|| ()).and_then(|_| {
-            service.node_name.and_then(|node_name| {
-                self.declare_entity_liveliness(|zid| {
-                    Ros2Liveliness::service_server_keyexpr::<256>(
-                        service.domain_id,
-                        zid,
-                        service.namespace,
-                        node_name,
-                        service,
-                        &QosSettings::services_default(),
-                    )
+        let liveliness_token = self
+            .should_declare_liveliness()
+            .then_some(())
+            .and_then(|_| {
+                service.node_name.and_then(|node_name| {
+                    self.declare_entity_liveliness(|zid| {
+                        Ros2Liveliness::service_server_keyexpr::<256>(
+                            service.domain_id,
+                            zid,
+                            service.namespace,
+                            node_name,
+                            service,
+                            &QosSettings::services_default(),
+                        )
+                    })
                 })
-            })
-        });
+            });
         server.set_liveliness(liveliness_token);
         Ok(server)
     }
@@ -412,20 +421,23 @@ impl Session for ZenohSession {
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
-        let liveliness_token = self.should_declare_liveliness().then(|| ()).and_then(|_| {
-            service.node_name.and_then(|node_name| {
-                self.declare_entity_liveliness(|zid| {
-                    Ros2Liveliness::service_client_keyexpr::<256>(
-                        service.domain_id,
-                        zid,
-                        service.namespace,
-                        node_name,
-                        service,
-                        &QosSettings::services_default(),
-                    )
+        let liveliness_token = self
+            .should_declare_liveliness()
+            .then_some(())
+            .and_then(|_| {
+                service.node_name.and_then(|node_name| {
+                    self.declare_entity_liveliness(|zid| {
+                        Ros2Liveliness::service_client_keyexpr::<256>(
+                            service.domain_id,
+                            zid,
+                            service.namespace,
+                            node_name,
+                            service,
+                            &QosSettings::services_default(),
+                        )
+                    })
                 })
-            })
-        });
+            });
         ZenohServiceClient::new(&self.context, service, liveliness_token)
     }
 

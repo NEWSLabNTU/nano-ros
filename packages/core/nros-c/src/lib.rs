@@ -109,13 +109,36 @@ mod zephyr_alloc {
             core::hint::spin_loop();
         }
     }
+}
 
-    // critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
-    // nros_zephyr_irq_unlock. dust-dds + portable-atomic require this on
-    // no_std targets when zephyr-lang-rust isn't linked in.
+// critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
+// nros_zephyr_irq_unlock. Keep this outside the allocator module so native_sim
+// std builds also provide the backend symbols for Rust dependencies.
+#[cfg(feature = "platform-zephyr")]
+mod zephyr_critical_section {
     unsafe extern "C" {
         fn nros_zephyr_irq_lock() -> u32;
         fn nros_zephyr_irq_unlock(key: u32);
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe fn acquire_irq_key() -> critical_section::RawRestoreState {
+        unsafe { nros_zephyr_irq_lock() }
+    }
+
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    unsafe fn acquire_irq_key() -> critical_section::RawRestoreState {
+        let _ = unsafe { nros_zephyr_irq_lock() };
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe fn release_irq_key(token: critical_section::RawRestoreState) {
+        unsafe { nros_zephyr_irq_unlock(token) }
+    }
+
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    unsafe fn release_irq_key(_token: critical_section::RawRestoreState) {
+        unsafe { nros_zephyr_irq_unlock(0) }
     }
 
     struct ZephyrCs;
@@ -123,11 +146,11 @@ mod zephyr_alloc {
 
     unsafe impl critical_section::Impl for ZephyrCs {
         unsafe fn acquire() -> critical_section::RawRestoreState {
-            unsafe { nros_zephyr_irq_lock() }
+            unsafe { acquire_irq_key() }
         }
 
         unsafe fn release(token: critical_section::RawRestoreState) {
-            unsafe { nros_zephyr_irq_unlock(token) }
+            unsafe { release_irq_key(token) }
         }
     }
 }

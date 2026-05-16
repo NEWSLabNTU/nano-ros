@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(zpico_zephyr, LOG_LEVEL_INF);
 
 /* ── L4 connectivity semaphore ───────────────────────────────────────────── */
 
+#ifndef CONFIG_NET_NATIVE_OFFLOADED_SOCKETS
 static K_SEM_DEFINE(net_l4_connected, 0, 1);
 
 static struct net_mgmt_event_callback l4_cb;
@@ -44,6 +45,7 @@ static int register_l4_callback(void) {
 }
 
 SYS_INIT(register_l4_callback, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+#endif
 
 /* ── Public API ���─────────────────────────────────────────────────────────── */
 

@@ -512,13 +512,13 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         kind: EntityKind,
     ) -> core::fmt::Result {
         write!(out, "\"{}\":[", field)?;
-        for (emitted, entity) in self
+        for (index, entity) in self
             .entities
             .iter()
             .filter(|entity| entity.node_id.as_str() == node_id && entity.kind == kind)
             .enumerate()
         {
-            if emitted > 0 {
+            if index > 0 {
                 out.write_char(',')?;
             }
             match kind {
@@ -578,13 +578,13 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     #[cfg(feature = "std")]
     fn write_parameters_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         write!(out, "\"parameters\":[")?;
-        for (emitted, entity) in self
+        for (index, entity) in self
             .entities
             .iter()
             .filter(|entity| entity.kind == EntityKind::Parameter)
             .enumerate()
         {
-            if emitted > 0 {
+            if index > 0 {
                 out.write_char(',')?;
             }
             write!(out, "{{")?;

@@ -41,9 +41,9 @@ nros-rmw-dds = { version = "*", default-features = false, features = ["platform-
 example_interfaces = { version = "*", default-features = false }
 
 # Embassy task macro + Spawner type (no arch-* features — executor-zephyr provides __pender).
-# `task-arena-size-32768` bumps the per-executor arena from 4 KiB default
-# to 32 KiB — dust-dds futures are heavier than zenoh-pico's.
-embassy-executor = { version = "0.7", default-features = false, features = ["task-arena-size-131072"] }
+# Dust DDS futures are substantially larger than zenoh-pico's; keep enough
+# executor arena for the main task plus the background DDS spin task.
+embassy-executor = { version = "0.7", default-features = false, features = ["task-arena-size-262144"] }
 
 # StaticCell for Embassy executor storage
 static_cell = "2"

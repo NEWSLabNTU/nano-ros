@@ -16,12 +16,10 @@ use nros_platform::{
 // `#[cfg(feature = "network")]`, so the imports themselves must be
 // gated too — otherwise the compiler warns on unused imports when
 // `network` is disabled.
-#[cfg(feature = "network")]
-use nros_platform::{
-    PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast,
-};
 #[cfg(feature = "network-smoltcp-bridge")]
 use nros_platform::PlatformNetworkPoll;
+#[cfg(feature = "network")]
+use nros_platform::{PlatformSocketHelpers, PlatformTcp, PlatformUdp, PlatformUdpMulticast};
 
 // Phase 100.4 + 11.3.A — IVC link-transport forwarders moved to a
 // sibling module (`ivc_helpers.rs`) so they can compile independently

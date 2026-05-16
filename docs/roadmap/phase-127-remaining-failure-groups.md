@@ -507,6 +507,24 @@ Current signal:
   `test_zephyr_xrce_rust_talker_listener`,
   `test_zephyr_xrce_c_talker_listener`, and
   `test_zephyr_xrce_cpp_talker_listener`.
+- 2026-05-16 DDS/C++ fixture follow-up: Zephyr C/C++ DDS codegen now gets the
+  platform CFFI include path during CMake builds, hosted Zephyr C/C++ staticlibs
+  provide the critical-section symbols on `std + platform-zephyr`, and the
+  Zephyr native-sim offloaded-socket build no longer trips unused L4 callback
+  warnings. Focused C++ DDS native_sim boot reruns pass for talker, listener,
+  service server/client, and action server/client.
+- 2026-05-16 DDS service follow-up: the CFFI service-client adapter only
+  exposes `call_raw`, so the Zephyr Rust DDS service client was hitting the
+  DDS no-std `call_raw` timeout stub when polling a Promise. The no-std DDS
+  client now performs a cooperative request/reply wait, and DDS subscriber
+  empty polls treat dust-dds `Timeout` like `NoData`. Focused reruns now pass
+  for `test_zephyr_dds_rust_service_a9_e2e`,
+  `test_zephyr_dds_rust_async_service_a9_e2e`, and
+  `test_zephyr_dds_rust_async_service_client_boots`.
+- 2026-05-16 check/CI follow-up: `just check` passes after the DDS service
+  fixes. A full `just ci` rerun still has non-Zephyr buckets outstanding; the
+  latest run before these final fixes reported 760 passed, 59 failed, 6 timed
+  out, and 11 skipped.
 
 Subitems:
 
@@ -520,9 +538,9 @@ Subitems:
 
 Done criteria:
 
-- [ ] Separate host/board boot failures from DDS/XRCE message-flow failures.
-- [ ] Include `west`, QEMU, and nextest logs.
-- [ ] Identify whether the failure is common platform startup or backend-specific.
+- [x] Separate host/board boot failures from DDS/XRCE message-flow failures.
+- [x] Include `west`, QEMU, and nextest logs.
+- [x] Identify whether the failure is common platform startup or backend-specific.
 - [ ] Produce focused commands that reproduce each remaining Zephyr subgroup.
 
 Focused commands:

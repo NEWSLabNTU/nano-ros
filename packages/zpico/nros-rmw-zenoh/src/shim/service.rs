@@ -541,7 +541,9 @@ impl ServiceClientTrait for ZenohServiceClient {
                     let _ = zpico_sys::zpico_spin_once(5);
                 }
                 #[cfg(not(feature = "platform-threadx"))]
-                unsafe { z_sleep_ms(5) };
+                unsafe {
+                    z_sleep_ms(5)
+                };
             }
             self.pending_handle = None;
             Err(TransportError::Timeout)
@@ -656,7 +658,9 @@ impl ServiceClientTrait for ZenohServiceClient {
                         let _ = zpico_sys::zpico_spin_once(SLEEP_MS as u32);
                     }
                     #[cfg(not(feature = "platform-threadx"))]
-                    unsafe { z_sleep_ms(SLEEP_MS) };
+                    unsafe {
+                        z_sleep_ms(SLEEP_MS)
+                    };
                 }
             }
         }

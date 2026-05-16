@@ -453,6 +453,14 @@ filter = "binary(nano2nano)"
 slow-timeout = { period = "60s", terminate-after = 5 }
 
 [[profile.default.overrides]]
+filter = "binary(dds_api)"
+test-group = "native_api"
+# Native C/C++ DDS API tests build examples inside the test body. The C
+# variants run close to the default 60 s limit under full-matrix load, and
+# the C++ variants can exceed it when multiple builds contend for target/.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[[profile.default.overrides]]
 filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }

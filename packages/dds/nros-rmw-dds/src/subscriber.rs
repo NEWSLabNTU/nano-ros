@@ -77,7 +77,10 @@ impl Subscriber for DdsSubscriber {
                     }
                     Ok(None)
                 }
-                Err(dust_dds::infrastructure::error::DdsError::NoData) => Ok(None),
+                Err(
+                    dust_dds::infrastructure::error::DdsError::NoData
+                    | dust_dds::infrastructure::error::DdsError::Timeout,
+                ) => Ok(None),
                 Err(_) => Err(TransportError::PollFailed),
             };
         }
@@ -106,7 +109,10 @@ impl Subscriber for DdsSubscriber {
                     }
                     Ok(None)
                 }
-                Err(dust_dds::infrastructure::error::DdsError::NoData) => Ok(None),
+                Err(
+                    dust_dds::infrastructure::error::DdsError::NoData
+                    | dust_dds::infrastructure::error::DdsError::Timeout,
+                ) => Ok(None),
                 Err(_) => Err(TransportError::PollFailed),
             };
         }
@@ -153,7 +159,10 @@ impl Subscriber for DdsSubscriber {
                 ANY_INSTANCE_STATE,
             ) {
                 Ok(s) => s,
-                Err(dust_dds::infrastructure::error::DdsError::NoData) => return Ok(0),
+                Err(
+                    dust_dds::infrastructure::error::DdsError::NoData
+                    | dust_dds::infrastructure::error::DdsError::Timeout,
+                ) => return Ok(0),
                 Err(_) => return Err(TransportError::PollFailed),
             };
             let mut produced = 0usize;
@@ -186,7 +195,10 @@ impl Subscriber for DdsSubscriber {
                 ANY_INSTANCE_STATE,
             )) {
                 Ok(s) => s,
-                Err(dust_dds::infrastructure::error::DdsError::NoData) => return Ok(0),
+                Err(
+                    dust_dds::infrastructure::error::DdsError::NoData
+                    | dust_dds::infrastructure::error::DdsError::Timeout,
+                ) => return Ok(0),
                 Err(_) => return Err(TransportError::PollFailed),
             };
             let mut produced = 0usize;

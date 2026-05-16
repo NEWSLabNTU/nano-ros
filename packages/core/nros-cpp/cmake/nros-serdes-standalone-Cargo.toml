@@ -10,3 +10,6 @@ alloc = []
 
 [dependencies]
 heapless = "0.8"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

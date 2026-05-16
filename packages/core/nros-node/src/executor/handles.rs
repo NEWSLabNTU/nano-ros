@@ -1985,7 +1985,7 @@ impl<T> Promise<'_, T> {
         match match self.handle.try_recv_reply_raw(self.reply_buffer) {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
-            Err(_) => return Err(NodeError::ServiceRequestFailed),
+            Err(e) => return Err(NodeError::Transport(e)),
         } {
             Some(len) => {
                 let reply = (self.parse)(&self.reply_buffer[..len])?;
@@ -2055,9 +2055,8 @@ impl<T> core::future::Future for Promise<'_, T> {
 
 /// Deserialize a CDR-encoded service reply.
 fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, NodeError> {
-    let mut reader =
-        CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
-    Svc::Reply::deserialize(&mut reader).map_err(|_| NodeError::ServiceRequestFailed)
+    let mut reader = CdrReader::new_with_header(data).map_err(|_| NodeError::Deserialization)?;
+    Svc::Reply::deserialize(&mut reader).map_err(|_| NodeError::Deserialization)
 }
 
 // ============================================================================

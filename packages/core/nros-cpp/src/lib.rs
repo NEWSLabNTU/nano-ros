@@ -95,11 +95,14 @@ mod zephyr_alloc {
             core::hint::spin_loop();
         }
     }
+}
 
-    // critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
-    // nros_zephyr_irq_unlock. dust-dds + portable-atomic require this on
-    // no_std targets when the zephyr-lang-rust crate (which provides
-    // its own impl) isn't linked in. Phase 71.6.
+// critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
+// nros_zephyr_irq_unlock. dust-dds + portable-atomic require this whenever the
+// Zephyr C++ staticlib is linked without the zephyr-lang-rust crate, including
+// native_sim std builds.
+#[cfg(feature = "platform-zephyr")]
+mod zephyr_critical_section {
     unsafe extern "C" {
         fn nros_zephyr_irq_lock() -> u32;
         fn nros_zephyr_irq_unlock(key: u32);
