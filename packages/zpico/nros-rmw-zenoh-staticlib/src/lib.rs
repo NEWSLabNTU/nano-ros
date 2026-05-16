@@ -15,12 +15,15 @@
 //! of `compiler_builtins`, downstream links require
 //! `--allow-multiple-definition` (GNU ld / lld).
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(any(feature = "platform-freertos", feature = "platform-threadx"))]
 extern crate nros_platform as _;
 
-#[cfg(any(feature = "platform-freertos", feature = "platform-threadx"))]
+#[cfg(all(
+    not(feature = "std"),
+    any(feature = "platform-freertos", feature = "platform-threadx")
+))]
 extern crate panic_halt as _;
 
 // Force the linker to retain the cffi register entry. Without an

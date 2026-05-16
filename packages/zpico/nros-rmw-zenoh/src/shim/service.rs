@@ -527,6 +527,7 @@ impl ServiceClientTrait for ZenohServiceClient {
 
         #[cfg(not(feature = "std"))]
         {
+            #[cfg(not(feature = "platform-threadx"))]
             unsafe extern "C" {
                 fn z_sleep_ms(time: usize) -> i8;
             }
@@ -535,6 +536,11 @@ impl ServiceClientTrait for ZenohServiceClient {
                 if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
                     return Ok(len);
                 }
+                #[cfg(feature = "platform-threadx")]
+                unsafe {
+                    let _ = zpico_sys::zpico_spin_once(5);
+                }
+                #[cfg(not(feature = "platform-threadx"))]
                 unsafe { z_sleep_ms(5) };
             }
             self.pending_handle = None;
@@ -626,6 +632,7 @@ impl ServiceClientTrait for ZenohServiceClient {
             // gossip. `z_sleep_ms` yields cooperatively on those
             // backends; on bare-metal single-threaded zpico it's a
             // busy-loop fallback but the count keeps it bounded.
+            #[cfg(not(feature = "platform-threadx"))]
             unsafe extern "C" {
                 fn z_sleep_ms(time: usize) -> i8;
             }
@@ -644,6 +651,11 @@ impl ServiceClientTrait for ZenohServiceClient {
                     Err(e) => last_err = Some(e),
                 }
                 if attempt + 1 < MAX_ATTEMPTS {
+                    #[cfg(feature = "platform-threadx")]
+                    unsafe {
+                        let _ = zpico_sys::zpico_spin_once(SLEEP_MS as u32);
+                    }
+                    #[cfg(not(feature = "platform-threadx"))]
                     unsafe { z_sleep_ms(SLEEP_MS) };
                 }
             }

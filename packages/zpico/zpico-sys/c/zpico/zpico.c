@@ -70,8 +70,10 @@ static void _threadx_printk(const char *fmt, ...) {
 #endif
 
 // Internal zenoh-pico headers for socket FD access (select()-based timeout).
-// Only needed for single-threaded builds; multi-threaded uses z_sleep_ms().
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
+// Needed for single-threaded builds and for ThreadX/NSOS, where we deliberately
+// drive read + keepalive from zpico_spin_once instead of background tasks.
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
+    (Z_FEATURE_MULTI_THREAD != 1 || defined(ZENOH_THREADX))
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
@@ -833,10 +835,11 @@ int32_t zpico_open(void) {
         (void)zid;
     }
 
-    // Start background tasks only in multi-threaded mode
-    // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
-    // explicitly via zpico_spin_once()
-#if Z_FEATURE_MULTI_THREAD == 1
+    // Start background tasks only in multi-threaded mode. ThreadX/NSOS is an
+    // exception: its blocking BSD recv path can keep the read task runnable
+    // long enough to starve the lease task, so zpico_spin_once() drives reads
+    // and keepalives explicitly for that platform.
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZENOH_THREADX)
 #if defined(ZENOH_FREERTOS_LWIP)
     g_spin_sem = xSemaphoreCreateBinary();
 #elif defined(ZENOH_NUTTX)
@@ -1430,10 +1433,11 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
 // Socket FD Helper (for select()-based timeout)
 // ============================================================================
 
-// get_session_fd() is only needed for single-threaded select()-based paths.
-// Multi-threaded builds use z_sleep_ms(); FreeRTOS uses vTaskDelay(); smoltcp
-// uses its own clock loop.
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
+// get_session_fd() is only needed for select()-based paths. Most
+// multi-threaded builds use background tasks, but ThreadX/NSOS uses the same
+// select + read + keepalive path as single-threaded hosts.
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
+    (Z_FEATURE_MULTI_THREAD != 1 || defined(ZENOH_THREADX))
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
@@ -1521,6 +1525,33 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
         if (ret == 0) break;  // Data processed
         if (timeout_ms == 0) break;
     } while (z_clock_elapsed_ms(&start) < timeout_ms);
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
+    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    return ret;
+
+#elif defined(ZENOH_THREADX)
+    // ThreadX/NSOS: avoid zenoh-pico background read/lease tasks. The read
+    // task can block in the host-backed BSD recv path and prevent the lease
+    // task from running before the 10s router lease expires. Poll here instead
+    // so every executor spin also refreshes the transport keepalive.
+    int fd = get_session_fd();
+    int ret = ZPICO_ERR_TIMEOUT;
+    if (fd >= 0 && timeout_ms > 0) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        int ready = select(fd + 1, &read_fds, NULL, NULL, &tv);
+        if (ready > 0) {
+            ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        } else if (ready < 0) {
+            ret = ready;
+        }
+    } else {
+        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+    }
     _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
     return ret;

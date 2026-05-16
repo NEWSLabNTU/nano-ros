@@ -228,11 +228,14 @@ function(nano_ros_link_rmw TARGET)
     file(WRITE "${_stub_path}" "${_stub_content}")
     target_sources(${TARGET} PRIVATE "${_stub_path}")
 
-    # FreeRTOS installs the ARM RMW registration symbols inside the
-    # platform-specific NanoRos archive (`libnros_{c,cpp}_*_freertos_armcm3.a`).
-    # The standalone `NrosRmwZenoh::NrosRmwZenoh` target is the host archive,
-    # so cross-linking it into Cortex-M fixtures produces a file-format error.
-    if(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3" AND _chosen STREQUAL "zenoh")
+    # Some RTOS installs keep the RMW registration symbols inside the
+    # platform-specific NanoRos archive (`libnros_{c,cpp}_zenoh_<platform>.a`).
+    # The standalone `NrosRmwZenoh::NrosRmwZenoh` target is the host POSIX
+    # archive, so linking it into these fixtures either produces a file-format
+    # error (cross targets) or opens the wrong transport stack (ThreadX Linux).
+    if((NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
+            OR NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+            AND _chosen STREQUAL "zenoh")
         return()
     endif()
 

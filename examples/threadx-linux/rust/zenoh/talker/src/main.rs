@@ -17,6 +17,10 @@ fn main() {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
+        // Phase 104.A — RTOS callers explicitly register the RMW backend
+        // before `Executor::open`. POSIX hosts auto-register via `.init_array`;
+        // this target does not rely on that path.
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("talker")?;

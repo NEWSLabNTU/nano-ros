@@ -15,5 +15,6 @@ nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 target_compile_definitions(threadx_c_talker PRIVATE ${THREADX_GLUE_DEFINES})
+nano_ros_link_rmw(threadx_c_talker RMW zenoh)
 target_link_libraries(threadx_c_talker PRIVATE
     std_msgs__nano_ros_c NanoRos::NanoRos threadx_platform)
