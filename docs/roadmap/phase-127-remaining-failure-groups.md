@@ -804,14 +804,50 @@ Current signal:
   XRCE stream with the normal session flush timeout. Verification:
   `cargo check -p nros-cpp --no-default-features --features
   rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble,std` passes, and the four
-  C++ XRCE service/action fixtures rebuild cleanly. Runtime remains open:
-  `test_zephyr_xrce_cpp_service_e2e` still has the server receive all four
-  requests while the client times out on every reply (`-2`), and
-  `test_zephyr_xrce_cpp_action_e2e` still times out during send-goal before
-  the server logs a goal. Rust XRCE service/action E2E still passes, so the
-  remaining 127.C.4 issue is C++ action/service metadata, request/reply
-  matching, or the C++ wrapper/CFFI polling path rather than basic XRCE
-  transport availability.
+  C++ XRCE service/action fixtures rebuild cleanly.
+- 2026-05-17 XRCE C++ service/action runtime fix: the remaining `-2`
+  reply timeout on `test_zephyr_xrce_cpp_service_e2e` and the
+  send-goal hang on `test_zephyr_xrce_cpp_action_e2e` had a common
+  root cause in the C++ Zephyr+std spin path.
+  - The earlier `a451b626 fix(zephyr): unblock C++ listener spin` had
+    routed `nros_cpp_spin_once` on Zephyr+std around the std
+    `Executor::spin_once` because the executor's
+    `wake_cv.wait_timeout_while` blocked past its deadline on
+    Zephyr's libc condvar. The bypass replaced the spin with
+    `session.drive_io(0) + nros_zephyr_msleep(timeout_ms)`.
+  - That bypass starved reliable XRCE retransmission on the server
+    side: `xrce_service_send_reply` already flushes the output
+    stream for `XRCE_SESSION_FLUSH_TIMEOUT_MS` (100 ms), but if the
+    agent's ACK lands after that flush, the next `drive_io(0)` does
+    nothing and `nros_zephyr_msleep(timeout_ms)` runs no XRCE
+    session activity, so the reliable reply sits unACK'd in the
+    server's output stream and the client's `xrce_service_call_raw`
+    times out at 5 s.
+  - C++ `nros_cpp_action_client_send_goal` calls
+    `ctx.executor.spin_once(10ms)` directly (not `nros_cpp_spin_once`),
+    so it still hit the hung `wake_cv` and never sent the goal
+    request — matching the "times out before the server logs a goal"
+    symptom.
+  - Fix: gate the `wake_cv.wait_timeout_while` off on Zephyr+std in
+    `Executor::spin_once` and route `primary_drive_timeout_ms = timeout_ms`
+    there. Zephyr UDP `recv` already honors `SO_RCVTIMEO`, so
+    `drive_io(timeout_ms)` yields the thread for the requested
+    duration without depending on the broken condvar path and keeps
+    the XRCE reliable streams ticking. With the underlying
+    condvar hang gone, `nros_cpp_spin_once` reverts to a plain
+    `ctx.executor.spin_once(timeout)` so both the service
+    `Future::wait` and action `send_goal` paths get real polling +
+    arena dispatch.
+  - Verification: `cargo check -p nros-node --features
+    rmw-cffi,platform-zephyr` and `cargo check -p nros-cpp
+    --no-default-features --features
+    rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble,std` both
+    pass. `cargo test -p nros-node --lib` 131/131 passes — the
+    non-Zephyr std cv-wait path is unchanged. End-to-end reruns of
+    `test_zephyr_xrce_cpp_service_e2e` and
+    `test_zephyr_xrce_cpp_action_e2e` still need a Zephyr SDK +
+    XRCE Agent host with `just zephyr build-fixtures && just zephyr
+    test --no-capture` before 127.C.4 can be closed.
 
 Subitems:
 
@@ -819,9 +855,11 @@ Subitems:
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
 - [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, async service,
   and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
-- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
-  and C++; Rust XRCE service/action passes; C++ XRCE service/action still
-  times out at runtime after the C++ link/init fixes in `ffdde60f`.
+- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub passes for Rust, C,
+  and C++; Rust XRCE service/action passes; C++ XRCE service/action
+  spin/cv-wait root cause is patched in `Executor::spin_once` +
+  reverted `nros_cpp_spin_once` bypass — pending end-to-end Zephyr
+  rerun to close.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 

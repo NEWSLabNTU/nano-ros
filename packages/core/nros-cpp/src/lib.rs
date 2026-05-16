@@ -873,35 +873,18 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     }
 
     let ctx = unsafe { &mut *(handle as *mut CppContext) };
-    #[cfg(all(feature = "std", feature = "platform-zephyr"))]
-    {
-        use nros_rmw::Session as _;
-
-        unsafe extern "C" {
-            fn nros_zephyr_msleep(ms: i32) -> i32;
-        }
-
-        // native_sim links a hosted Rust runtime, but Zephyr's libc
-        // condvar path can block forever in the generic std executor
-        // wait. C++ Zephyr examples are polling-mode users, so drive the
-        // backend directly, then yield with Zephyr's scheduler.
-        let _ = ctx.executor.session_mut().drive_io(0);
-        if timeout_ms > 0 {
-            unsafe {
-                let _ = nros_zephyr_msleep(timeout_ms);
-            }
-        }
-        return NROS_CPP_RET_OK;
-    }
-
-    #[cfg(not(all(feature = "std", feature = "platform-zephyr")))]
-    {
-        let ms = timeout_ms.max(0) as u64;
-        let _ = ctx
-            .executor
-            .spin_once(core::time::Duration::from_millis(ms));
-        NROS_CPP_RET_OK
-    }
+    let ms = timeout_ms.max(0) as u64;
+    // Phase 127.C.4 — the prior Zephyr+std bypass (drive_io(0) + msleep)
+    // starved reliable XRCE retransmission on the server side and
+    // skipped arena dispatch on the client side; the underlying
+    // condvar hang it worked around is gated off in
+    // `Executor::spin_once` for Zephyr+std, so a normal spin runs the
+    // transport for the full timeout via UDP recv and fires the arena
+    // trampolines.
+    let _ = ctx
+        .executor
+        .spin_once(core::time::Duration::from_millis(ms));
+    NROS_CPP_RET_OK
 }
 
 /// Phase 124.F.3 — session-level connectivity probe.

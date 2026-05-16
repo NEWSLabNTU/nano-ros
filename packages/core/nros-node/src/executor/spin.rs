@@ -2913,7 +2913,19 @@ impl Executor {
         // the predicate. If wake fires between drain and cv.wait
         // entry, the predicate sees flag=true on first eval and
         // exits immediately.
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        // Zephyr native_sim links a hosted std runtime but Zephyr's libc
+        // condvar can block past the supplied timeout (Phase 127.C.4 —
+        // cv-wait on the std executor never returned, hanging C++ action
+        // `send_goal`). Skip the cv-wait there and let the transport
+        // drain block instead; on Zephyr UDP `recv` honors the socket
+        // timeout, so drive_io(timeout_ms) yields the thread for the
+        // requested duration without depending on the broken condvar
+        // path. Reliable XRCE retransmission also needs ongoing session
+        // activity — drive_io(0) + a separate sleep starves it (Phase
+        // 127.C.4 — C++ XRCE service replies stuck unACK'd in the
+        // reliable output stream because spin_once never re-ran the
+        // session after the initial 100 ms flush).
+        #[cfg(all(feature = "std", feature = "rmw-cffi", not(feature = "platform-zephyr")))]
         if !was_woken {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
             let g = self.wake_mu.lock().expect("wake_mu poisoned");
@@ -2924,13 +2936,15 @@ impl Executor {
             });
         }
 
-        // All std sessions use a wake-cv wait above, so the transport
-        // drain here must be non-blocking. no_std has no wake-cv layer;
-        // give the primary session the caller's timeout so embedded
-        // executors do not busy-spin and over-credit timer deltas.
-        #[cfg(feature = "std")]
+        // Non-Zephyr std uses the wake-cv wait above, so the transport
+        // drain here must be non-blocking. no_std and std+Zephyr have
+        // no usable wake-cv layer; give the primary session the
+        // caller's timeout so the transport's blocking recv yields
+        // the thread instead of busy-spinning while still keeping
+        // reliable XRCE streams ticking.
+        #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
         let primary_drive_timeout_ms = 0;
-        #[cfg(not(feature = "std"))]
+        #[cfg(any(not(feature = "std"), feature = "platform-zephyr"))]
         let primary_drive_timeout_ms = timeout_ms;
 
         let _ = self.session.drive_io(primary_drive_timeout_ms);

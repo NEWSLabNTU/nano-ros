@@ -37,6 +37,9 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - Temp files in `$project/tmp/` (gitignored), not `/tmp`. Use Write/Edit, not heredoc. Repeated multi-step → `tmp/*.sh` script.
 - `.gitignore`: every workspace-excluded crate has per-dir `.gitignore` with `/target/` (and `/generated/` if codegen). Native C++ examples need `/build/`. Always leading `/`. Add `--target-dir` paths.
 - **Parallel build isolation:** nextest tests with different features building same example MUST use `--target-dir` (e.g. `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs`.
+- **Narrow platform build first.** Platform-specific failure → run `just <platform> build-all` (e.g. `just zephyr build-all`) before root `just build-all`. Closest variant (`just esp32 build`, `just qemu build`) if no `-all`.
+- **Submodule rebase on pull.** Inspect submodules after pull/rebase. Remote pointer advanced + local submodule work → enter submodule, fetch, rebase local onto upstream, check out superproject's expected commit, record in parent commit. Never leave submodule at older local commit when remote moved.
+- **No POSIX-style Rust constructor sections on Zephyr/native_sim.** `nros-cpp` ships weak `nros_app_register_backends` default; `nros_cpp_init` explicitly registers linked CFFI backend (Phase 127.C.4, `ffdde60f`). Don't assume `ctor`/linker-set registration runs on Zephyr — wire backend init explicitly.
 
 ### QEMU Networked Tests
 - Slirp networking (no TAP/sudo/bridges).
