@@ -111,7 +111,15 @@ CONFIG_NSH_NETINIT=y
 CONFIG_NETINIT_IPADDR=0x0a00021e
 CONFIG_NETINIT_DRIPADDR=0x0a000202
 CONFIG_NETINIT_NETMASK=0xffffff00
-CONFIG_NETINIT_NOMAC=y
+# CONFIG_NETINIT_NOMAC is not set
+# Phase 127.B.5 — virtio-net derives its MAC from the QEMU
+# `-device virtio-net-device,mac=…` argument via VIRTIO_NET_F_MAC, so
+# the per-instance MAC chosen by the test harness propagates correctly.
+# With NETINIT_NOMAC=y the netinit stage overwrites that with
+# CONFIG_NETINIT_MACADDR_{1,2} defaults (`00:e0:de:ad:be:ef`), giving
+# every NuttX QEMU instance the same MAC — QEMU's `-netdev socket,mcast=`
+# tunnel then filters out frames whose source MAC matches our own,
+# silently dropping every peer's RTPS SPDP/data.
 
 # --- Virtio drivers (virtio-net for QEMU networking) ---
 CONFIG_DRIVERS_VIRTIO=y

@@ -491,14 +491,40 @@ Subitems:
     using the standard 3-sg layout (hdr / data / ack), and (d) turns
     `d_addmac` / `d_rmmac` into successful no-ops when CTRL_VQ is
     active so the IGMP layer's MAC programming path returns OK.
-    Empirically this patch alone does NOT yet unblock SPDP delivery
-    in the focused test (talker still publishes 0–9, listener still
-    receives 0); the patch is upstream-correct per VIRTIO 1.x §5.1.6.5
-    and should land upstream regardless, but at least one more
-    downstream issue remains (probable next suspects: NuttX
-    `netdev_upperhalf` not draining the virtqueue under cooperative-
-    runtime load, or `nros-rmw-dds` not driving `drive_io` enough
-    times during participant bring-up).
+    Empirically this patch alone did NOT unblock SPDP delivery, so
+    the next debug step (2026-05-17) instrumented `virtio_net_recv`
+    with `up_putc('!')` per real frame + enabled `debug-stderr` on
+    `nros-rmw-dds`. The instrumented run showed virtio-net now
+    receives both its own loopback frames AND the peer's frames, but
+    `multicast_recv_loop` in `nros-rmw-dds` never sees `got n=…`.
+    Bisection then revealed the *second* downstream issue: NuttX's
+    `netutils/netinit` runs with default `CONFIG_NETINIT_NOMAC=y`,
+    which overwrites every virtio-net NIC's MAC with the static
+    `CONFIG_NETINIT_MACADDR_1=0xdeadbeef` /
+    `CONFIG_NETINIT_MACADDR_2=0x00e0` defaults — i.e. every NuttX
+    QEMU instance came up with the *same* MAC (`00:e0:de:ad:be:ef`).
+    QEMU's `-netdev socket,mcast=` tunnel then silently filtered out
+    frames whose source MAC equalled the receiver's own MAC, so
+    cross-instance multicast delivery was a no-op. Disabling
+    `CONFIG_NETINIT_NOMAC` in the board defconfig lets the
+    virtio-net `VIRTIO_NET_F_MAC` handshake propagate QEMU's
+    `-device virtio-net-device,mac=…` argument (e.g.
+    `52:54:00:12:34:70` / `:71`) into NuttX, restoring per-instance
+    unique MACs. Verified via raw-frame tcpdump-equivalent host
+    Python receiver: source MAC now matches QEMU CLI argument
+    instead of the deadbeef default.
+  - With BOTH fixes in place (virtio-net CTRL_RX PROMISC/ALLMULTI in
+    the submodule + `# CONFIG_NETINIT_NOMAC is not set` in the board
+    defconfig), virtio-net receive counters confirm the listener now
+    sees peer frames (`!` per peer SPDP). dust-dds's
+    `multicast_recv_loop` still doesn't see `got n=…` from
+    `nros_platform_udp_mcast_read` — i.e. the frames stop somewhere
+    between NuttX virtio-net upperhalf and the BSD `recvfrom` call.
+    Probable remaining suspects (next session): NuttX `ipv4_input`
+    `igmp_grpfind` failing for the joined group (the IGMP join goes
+    through but the group lookup may use a different netdev), or the
+    BSD socket's UDP conn binding to a different `lport` than the
+    SPDP `7400` so `udp_active` doesn't match.
 
 Done criteria:
 
