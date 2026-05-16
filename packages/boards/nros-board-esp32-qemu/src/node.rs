@@ -18,6 +18,15 @@ use crate::config::Config;
 // `Result<(), core::fmt::Error>`. A `type Result<T>` alias here would shadow
 // `core::result::Result` and cause "expected 1 generic argument but 2 supplied" errors.
 
+fn network_identity_seed(config: &Config) -> u32 {
+    let mut seed = 0x9e37_79b9u32;
+    for byte in config.mac_addr.iter().chain(config.ip.iter()) {
+        seed ^= u32::from(*byte);
+        seed = seed.rotate_left(5).wrapping_mul(0x85eb_ca6b);
+    }
+    seed
+}
+
 // ---- Ethernet imports and static storage ----
 
 #[cfg(feature = "ethernet")]
@@ -188,16 +197,17 @@ pub fn init_hardware(config: &Config) {
     esp_println::println!("Initializing ESP32-C3...");
     let _peripherals = esp_hal::init(esp_hal::Config::default());
 
-    // Step 2: Set up heap allocator (smaller than WiFi BSP — no WiFi
-    // overhead). For zenoh / non-DDS builds, esp-alloc carves 64 KB
-    // out of DRAM at runtime. For DDS builds the example crate
+    // Step 2: Set up heap allocator. For zenoh / non-DDS builds,
+    // esp-alloc carves 96 KB out of DRAM at runtime; zenoh-pico +
+    // nros publisher/subscriber setup can exceed the previous 64 KB
+    // carve-out after session open. For DDS builds the example crate
     // enables `nros-platform/global-allocator`, which registers a
     // 256 KB static `FreeListHeap` instead — calling
     // `esp_alloc::heap_allocator!` on top of that produces the
     // "the `#[global_allocator]` in nros_platform conflicts with
     // global allocator in: esp_alloc" link error (Phase 101.7).
     #[cfg(not(feature = "dds-heap"))]
-    esp_alloc::heap_allocator!(size: 64 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
@@ -207,8 +217,10 @@ pub fn init_hardware(config: &Config) {
 
     // Step 4: Initialize hardware RNG (for zenoh-pico session ID)
     let rng = Rng::new();
-    let rng_seed = rng.random();
+    let rng_seed = rng.random() ^ network_identity_seed(config);
     random::seed(rng_seed);
+    #[cfg(feature = "ethernet")]
+    nros_smoltcp::seed_ephemeral_port((rng_seed as u16) ^ u16::from(config.mac_addr[5]));
 
     // Step 4: Initialize selected transport(s)
     #[cfg(feature = "ethernet")]

@@ -85,6 +85,11 @@ impl Executor {
             .open(&rmw_config)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
+        #[cfg(not(feature = "std"))]
+        {
+            executor.clock_us_fn = config.clock_us;
+            executor.last_spin_end_us = config.clock_us.map(|clock| clock());
+        }
         executor.set_node_identity(config.node_name, config.namespace);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
@@ -121,6 +126,11 @@ impl Executor {
         let session = nros_rmw_cffi::CffiRmw::open_with_rmw(rmw_name, &rmw_config)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         let mut executor = Self::from_session(session);
+        #[cfg(not(feature = "std"))]
+        {
+            executor.clock_us_fn = config.clock_us;
+            executor.last_spin_end_us = config.clock_us.map(|clock| clock());
+        }
         executor.set_node_identity(config.node_name, config.namespace);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
@@ -519,6 +529,9 @@ pub struct Executor {
     /// in well under 1 ms (e.g. zenoh-pico condvar wakeups under load).
     #[cfg(feature = "std")]
     pub(crate) spin_residual_us: u64,
+    /// Sub-millisecond residual for no_std wall-clock timer accounting.
+    #[cfg(not(feature = "std"))]
+    pub(crate) spin_residual_us: u64,
     /// Wall-clock instant at which the previous `spin_once` exited. The
     /// timer delta on the next call is measured from this point so any
     /// time the caller spent between `spin_once` invocations (e.g. an
@@ -526,6 +539,12 @@ pub struct Executor {
     /// like time spent inside `drive_io`.
     #[cfg(feature = "std")]
     pub(crate) last_spin_end: Option<std::time::Instant>,
+    /// Monotonic clock endpoint for no_std timer accounting.
+    #[cfg(not(feature = "std"))]
+    pub(crate) last_spin_end_us: Option<u64>,
+    /// Optional platform clock hook supplied by `ExecutorConfig`.
+    #[cfg(not(feature = "std"))]
+    pub(crate) clock_us_fn: Option<fn() -> u64>,
 }
 
 impl Executor {
@@ -588,12 +607,18 @@ impl Executor {
             lifecycle: None,
             #[cfg(feature = "std")]
             spin_residual_us: 0,
+            #[cfg(not(feature = "std"))]
+            spin_residual_us: 0,
             // Initialise the spin endpoint to construction time so the
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
             // like time spent between later calls.
             #[cfg(feature = "std")]
             last_spin_end: Some(std::time::Instant::now()),
+            #[cfg(not(feature = "std"))]
+            last_spin_end_us: None,
+            #[cfg(not(feature = "std"))]
+            clock_us_fn: None,
         }
     }
 
@@ -654,12 +679,18 @@ impl Executor {
             lifecycle: None,
             #[cfg(feature = "std")]
             spin_residual_us: 0,
+            #[cfg(not(feature = "std"))]
+            spin_residual_us: 0,
             // Initialise the spin endpoint to construction time so the
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
             // like time spent between later calls.
             #[cfg(feature = "std")]
             last_spin_end: Some(std::time::Instant::now()),
+            #[cfg(not(feature = "std"))]
+            last_spin_end_us: None,
+            #[cfg(not(feature = "std"))]
+            clock_us_fn: None,
         }
     }
 
@@ -2841,6 +2872,8 @@ impl Executor {
         // sub-ms remainder across calls so precision is preserved.
         #[cfg(feature = "std")]
         let spin_start = std::time::Instant::now();
+        #[cfg(not(feature = "std"))]
+        let spin_start_us = self.clock_us_fn.map(|clock| clock());
 
         // Phase 104.C.6 — shared executor wake. Swap-and-clear the
         // wake flag; if it was set before this `spin_once` entered,
@@ -2921,16 +2954,20 @@ impl Executor {
             ms
         };
         #[cfg(not(feature = "std"))]
-        // TODO(no_std): same overshoot bug as the std path used to have —
-        // `timeout_ms` is the requested upper bound, not the elapsed wall
-        // clock. If a bare-metal `drive_io` returns early (e.g. zpico_spin_once
-        // on a serial transport with non-blocking read), timers tick faster
-        // than wall-clock. Fix is to thread `<P as nros_platform::PlatformClock>
-        // ::clock_us()` through Executor (e.g. as a `clock_us_fn: fn() -> u64`
-        // field set at construction). Deferred until a no_std workload
-        // surfaces the bug — std workloads (autoware_sentinel) hit it first
-        // and that path is now correct.
-        let delta_ms = timeout_ms as u64;
+        let delta_ms = if let Some(clock) = self.clock_us_fn {
+            let now = clock();
+            let prev = self
+                .last_spin_end_us
+                .unwrap_or_else(|| spin_start_us.unwrap_or(now));
+            self.last_spin_end_us = Some(now);
+            let elapsed_us = now.saturating_sub(prev);
+            let total_us = self.spin_residual_us.saturating_add(elapsed_us);
+            let ms = total_us / 1000;
+            self.spin_residual_us = total_us % 1000;
+            ms
+        } else {
+            timeout_ms as u64
+        };
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
         // Phase 1: Readiness scan (Phase 110.A.b — backed by FifoReadySet).

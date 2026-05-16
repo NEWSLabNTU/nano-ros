@@ -182,6 +182,9 @@ pub struct ExecutorConfig<'a> {
     pub node_name: &'a str,
     /// Node namespace.
     pub namespace: &'a str,
+    /// Monotonic microsecond clock for no_std timer accounting.
+    #[cfg(not(feature = "std"))]
+    pub clock_us: Option<fn() -> u64>,
 }
 
 impl<'a> ExecutorConfig<'a> {
@@ -195,6 +198,8 @@ impl<'a> ExecutorConfig<'a> {
             domain_id: 0,
             node_name: "node",
             namespace: "",
+            #[cfg(not(feature = "std"))]
+            clock_us: None,
         }
     }
 
@@ -236,6 +241,13 @@ impl<'a> ExecutorConfig<'a> {
     /// Set the session mode.
     pub const fn mode(mut self, mode: SessionMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Set a monotonic microsecond clock for no_std executor timers.
+    #[cfg(not(feature = "std"))]
+    pub const fn clock_us(mut self, clock: fn() -> u64) -> Self {
+        self.clock_us = Some(clock);
         self
     }
 }

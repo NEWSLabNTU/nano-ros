@@ -33,7 +33,8 @@ fn main() -> ! {
         |config| {
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
-                .node_name("talker");
+                .node_name("talker")
+                .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us);
             // Phase 104.A — bare-metal callers explicitly register the RMW
             // backend before `Executor::open`. POSIX hosts auto-register via
             // `.init_array`; this target doesn't walk that section.
