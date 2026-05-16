@@ -424,6 +424,33 @@ type PollCallbackFn = Option<unsafe extern "C" fn()>;
 static mut POLL_CALLBACK: PollCallbackFn = None;
 static mut SMOLTCP_POLL_COUNT: u32 = 0;
 
+// Phase 127.A — wire-level diagnostic counters. `do_poll` increments
+// `DO_POLL_CALLS`; `BRIDGE_POLL_CALLS` counts how many times the
+// registered callback dispatched into `SmoltcpBridge::poll`. If the
+// two are widely different, either the callback was never registered or
+// the callback ran but `NetworkState::poll` short-circuited on null
+// pointers. `BRIDGE_TX_DRAINED_BYTES` tracks how many staged bytes the
+// bridge actually pushed into smoltcp socket TX queues.
+static DO_POLL_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static DO_POLL_CB_HITS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static BRIDGE_POLL_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static BRIDGE_TX_DRAINED_BYTES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+
+/// Snapshot of `do_poll`/bridge-poll diagnostic counters.
+///
+/// Returns `(do_poll_calls, do_poll_callback_hits, bridge_poll_calls,
+/// bridge_tx_drained_bytes)`. Useful for instrumenting bring-up where
+/// staged bytes accumulate but never reach the wire.
+pub fn poll_diagnostics() -> (u32, u32, u32, u32) {
+    use portable_atomic::Ordering;
+    (
+        DO_POLL_CALLS.load(Ordering::Relaxed),
+        DO_POLL_CB_HITS.load(Ordering::Relaxed),
+        BRIDGE_POLL_CALLS.load(Ordering::Relaxed),
+        BRIDGE_TX_DRAINED_BYTES.load(Ordering::Relaxed),
+    )
+}
+
 /// Set the poll callback function.
 pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
     unsafe {
@@ -435,9 +462,12 @@ pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
 ///
 /// Returns 0 if callback was invoked, -1 if no callback registered.
 pub fn do_poll() -> i32 {
+    use portable_atomic::Ordering;
+    DO_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
     unsafe {
         SMOLTCP_POLL_COUNT += 1;
         if let Some(callback) = POLL_CALLBACK {
+            DO_POLL_CB_HITS.fetch_add(1, Ordering::Relaxed);
             callback();
             0
         } else {
@@ -546,7 +576,25 @@ impl SmoltcpBridge {
     ///
     /// Must be called periodically. Returns `true` if any network activity
     /// occurred.
+    ///
+    /// Sequence (Phase 127.A):
+    ///   1. Drain TX staging → smoltcp socket TX queues.
+    ///   2. `iface.poll()` — pulls socket TX out to the device, drains device
+    ///      RX into socket RX queues.
+    ///   3. Drain socket RX queues → RX staging buffers.
+    ///   4. Second `iface.poll()` — flushes any device-side state changes
+    ///      triggered by the RX drain (e.g. window updates / ACKs).
+    ///
+    /// Pre-127.A the function did `iface.poll` first and the TX drain second,
+    /// so newly-staged bytes had to wait for the NEXT `poll_network()`
+    /// invocation before they reached the wire. Combined with how
+    /// `<P as PlatformTcp>::send` calls `poll_network` once per loop
+    /// iteration, that gap let staging accumulate even though `socket.can_send()`
+    /// was true on the Established socket.
     pub fn poll<D: Device>(iface: &mut Interface, device: &mut D, sockets: &mut SocketSet) -> bool {
+        use portable_atomic::Ordering;
+        BRIDGE_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
+
         let timestamp =
             smoltcp::time::Instant::from_millis(unsafe { smoltcp_clock_now_ms() } as i64);
 
@@ -556,9 +604,7 @@ impl SmoltcpBridge {
         // arrives.
         drain_multicast_joins(iface, device, timestamp);
 
-        let activity = iface.poll(timestamp, device, sockets);
-
-        // Process each active TCP socket
+        // 1. Stage-to-socket TX drain + connect kickoff.
         unsafe {
             let table = &raw mut SOCKET_TABLE;
             for idx in 0..MAX_SOCKETS {
@@ -593,61 +639,32 @@ impl SmoltcpBridge {
                     }
                 }
 
-                // Update connection state and transfer data
-                match socket.state() {
-                    TcpState::Established => {
-                        entry.connected = true;
-
-                        // Transfer TX data to socket (incremental)
-                        if entry.staging.has_tx_pending() && socket.can_send() {
-                            let tx_buf = &SOCKET_TX_BUFFERS[idx];
-                            let data = entry.staging.tx_pending(tx_buf);
-                            if let Ok(sent) = socket.send_slice(data) {
-                                entry.staging.advance_tx(sent);
-                            }
-                        }
-
-                        // Transfer RX data from socket
-                        if socket.can_recv() {
-                            entry.staging.compact_rx(&mut SOCKET_RX_BUFFERS[idx]);
-
-                            let space = entry.staging.rx_space();
-                            if space > 0 {
-                                let rx_buf = &mut SOCKET_RX_BUFFERS[idx];
-                                if let Ok(received) =
-                                    socket.recv_slice(&mut rx_buf[entry.staging.rx_len..])
-                                {
-                                    entry.staging.advance_rx(received);
-                                }
+                if socket.state() == TcpState::Established {
+                    entry.connected = true;
+                    if entry.staging.has_tx_pending() && socket.can_send() {
+                        let tx_buf = &SOCKET_TX_BUFFERS[idx];
+                        let data = entry.staging.tx_pending(tx_buf);
+                        if let Ok(sent) = socket.send_slice(data) {
+                            entry.staging.advance_tx(sent);
+                            if sent > 0 {
+                                BRIDGE_TX_DRAINED_BYTES.fetch_add(sent as u32, Ordering::Relaxed);
                             }
                         }
                     }
-                    TcpState::Closed | TcpState::TimeWait => {
-                        entry.connected = false;
-                    }
-                    _ => {}
                 }
             }
-        }
 
-        // Process each active UDP socket
-        unsafe {
             let table = &raw mut UDP_SOCKET_TABLE;
             for idx in 0..MAX_UDP_SOCKETS {
                 let entry = &mut (*table)[idx];
                 if !entry.allocated || !entry.has_handle() {
                     continue;
                 }
-
                 let handle = entry.handle();
                 let socket = sockets.get_mut::<UdpSocket>(handle);
-
-                // Auto-bind to ephemeral port if not yet bound
                 if !socket.is_open() {
                     let _ = socket.bind(entry.local_port);
                 }
-
-                // Transfer TX data to socket (atomic — entire datagram)
                 if entry.staging.has_tx_pending() && socket.can_send() {
                     let tx_buf = &UDP_SOCKET_TX_BUFFERS[idx];
                     let data = entry.staging.tx_pending(tx_buf);
@@ -668,11 +685,55 @@ impl SmoltcpBridge {
                         entry.staging.reset_tx();
                     }
                 }
+            }
+        }
 
-                // Transfer RX data from socket
+        // 2. Push newly-queued socket TX out to the wire AND pull device RX.
+        let activity = iface.poll(timestamp, device, sockets);
+
+        // 3. Drain socket RX → staging + reconcile post-poll TCP state.
+        unsafe {
+            let table = &raw mut SOCKET_TABLE;
+            for idx in 0..MAX_SOCKETS {
+                let entry = &mut (*table)[idx];
+                if !entry.allocated || !entry.has_handle() {
+                    continue;
+                }
+                let handle = entry.handle();
+                let socket = sockets.get_mut::<TcpSocket>(handle);
+                match socket.state() {
+                    TcpState::Established => {
+                        entry.connected = true;
+                        if socket.can_recv() {
+                            entry.staging.compact_rx(&mut SOCKET_RX_BUFFERS[idx]);
+                            let space = entry.staging.rx_space();
+                            if space > 0 {
+                                let rx_buf = &mut SOCKET_RX_BUFFERS[idx];
+                                if let Ok(received) =
+                                    socket.recv_slice(&mut rx_buf[entry.staging.rx_len..])
+                                {
+                                    entry.staging.advance_rx(received);
+                                }
+                            }
+                        }
+                    }
+                    TcpState::Closed | TcpState::TimeWait => {
+                        entry.connected = false;
+                    }
+                    _ => {}
+                }
+            }
+
+            let table = &raw mut UDP_SOCKET_TABLE;
+            for idx in 0..MAX_UDP_SOCKETS {
+                let entry = &mut (*table)[idx];
+                if !entry.allocated || !entry.has_handle() {
+                    continue;
+                }
+                let handle = entry.handle();
+                let socket = sockets.get_mut::<UdpSocket>(handle);
                 if socket.can_recv() {
                     entry.staging.compact_rx(&mut UDP_SOCKET_RX_BUFFERS[idx]);
-
                     let space = entry.staging.rx_space();
                     if space > 0 {
                         let rx_buf = &mut UDP_SOCKET_RX_BUFFERS[idx];
@@ -685,6 +746,12 @@ impl SmoltcpBridge {
                 }
             }
         }
+
+        // 4. Flush ACKs / window updates triggered by the RX drain so
+        //    peers see the new advertised window in the same poll. Without
+        //    this, a saturated peer can be left holding bytes for an extra
+        //    poll cycle.
+        let _ = iface.poll(timestamp, device, sockets);
 
         matches!(activity, PollResult::SocketStateChanged)
     }

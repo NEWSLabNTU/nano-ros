@@ -58,8 +58,28 @@ fn main() -> ! {
                 count = count.wrapping_add(1);
             })?;
 
+            // Phase 127.A diagnostic — see listener `main.rs` for the
+            // rationale. Lets the test log prove whether the staged TX
+            // bytes the talker writes are actually pushed into smoltcp
+            // socket TX queues.
+            let mut next_dump_ms = nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms()
+                + 1000;
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));
+                let now_ms =
+                    nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms();
+                if now_ms >= next_dump_ms {
+                    let (do_poll_calls, cb_hits, bridge_polls, tx_drained) =
+                        nros_board_esp32_qemu::nros_smoltcp::poll_diagnostics();
+                    esp_println::println!(
+                        "[poll] do_poll={} cb_hits={} bridge_polls={} tx_drained={}",
+                        do_poll_calls,
+                        cb_hits,
+                        bridge_polls,
+                        tx_drained,
+                    );
+                    next_dump_ms = now_ms + 5000;
+                }
             }
 
             #[allow(unreachable_code)]

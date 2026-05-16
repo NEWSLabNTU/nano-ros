@@ -63,6 +63,11 @@ pub use nros_platform_esp32_qemu::timing::MonotonicClock;
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
 pub use portable_atomic;
 
+// Re-export nros-smoltcp so Ethernet examples can read the Phase 127.A
+// poll-diagnostic counters without adding a second direct dependency.
+#[cfg(feature = "ethernet")]
+pub use nros_smoltcp;
+
 /// Prelude for convenient imports
 ///
 /// Use with: `use nros_board_esp32_qemu::prelude::*;`

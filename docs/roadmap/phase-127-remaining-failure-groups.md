@@ -65,28 +65,43 @@ Subitems:
 
 - [x] `127.A.1`: Router/session discovery. Capture `zenohd` logs and confirm ESP32
   clients establish sessions with the router.
-- [ ] `127.A.2`: ESP32 publish path. Trace ESP32 talker from timer callback through
-  `publish_raw` and smoltcp TX.
-- [ ] `127.A.3`: ESP32 receive path. Trace native/ESP32 inbound data through
-  smoltcp RX, zenoh-pico poll, subscriber ring, and executor dispatch.
-- [ ] `127.A.4`: Harness timing. Confirm startup ordering and polling windows are
-  long enough after the OOM fix removed the earlier early-exit failure.
-- [ ] `127.A.5`: Post-open ESP32 outbound control path. Trace
-  `z_declare_subscriber` and `zp_send_keep_alive` through
-  `_z_transport_tx_flush_buffer`, `_z_link_send_wbuf`, `PlatformTcp::send`, and
-  `SmoltcpBridge::poll_network` after a successful `z_open`.
-- [ ] `127.A.6`: QEMU OpenETH TX evidence. Add an instrumented run or packet
-  capture equivalent that proves whether post-open bytes are queued in smoltcp,
-  handed to OpenETH, or lost before `zenohd` can read them.
+- [x] `127.A.2`: ESP32 publish path. `test_esp32_to_native` now passes; ESP32
+  talker → native listener delivery confirmed via SmoltcpBridge poll reorder.
+- [x] `127.A.3`: ESP32 receive path. `test_native_to_esp32` now passes; native
+  talker → ESP32 listener delivery confirmed via SmoltcpBridge poll reorder.
+- [ ] `127.A.4`: Harness timing. Two-QEMU `test_esp32_talker_listener_e2e` still
+  fails after the SmoltcpBridge reorder; both peers send and the router accepts
+  data, but the listener receives 0 messages. Single-QEMU pairs pass, so the
+  blocker is contention or routing when both QEMU guests run simultaneously
+  rather than the per-guest TX/RX path.
+- [x] `127.A.5`: Post-open ESP32 outbound control path. Root cause: bridge
+  drained TX staging AFTER `iface.poll`, so newly-staged bytes had to wait for
+  the next `poll_network` invocation before reaching the wire. Reordering
+  `SmoltcpBridge::poll` to drain TX staging first, then run `iface.poll`, then
+  drain RX, plus a second trailing `iface.poll` for ACK/window updates, unblocks
+  ESP32↔native delivery. Fix in
+  `packages/drivers/nros-smoltcp/src/bridge.rs::SmoltcpBridge::poll`.
+- [x] `127.A.6`: QEMU OpenETH TX evidence. New `nros_smoltcp::poll_diagnostics()`
+  counter snapshot (`do_poll`, `cb_hits`, `bridge_polls`, `tx_drained`) wired
+  into the ESP32 listener and talker examples. After the reorder the listener
+  logs show `do_poll == cb_hits == bridge_polls` (callback chain intact, no
+  null-pointer short-circuit on `NetworkState`) and `tx_drained` advancing in
+  step with bytes the application hands to `_z_send_tcp`, confirming staged
+  bytes now leave the bridge instead of accumulating.
 
 Done criteria:
 
 - [x] Determine whether the break is router discovery, TCP session open, publish
-  path, receive path, or smoltcp polling cadence.
+  path, receive path, or smoltcp polling cadence. (Cause: smoltcp polling
+  cadence — TX staging drained one poll-tick late.)
 - [x] Include QEMU logs, `zenohd` logs, and one minimal focused fix or a narrowed
   failure cause.
-- [ ] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
-  smaller, newly categorized failure with no allocation panic.
+- [~] `just esp32 test --no-capture` either passes all ESP32 tests or reports a
+  smaller, newly categorized failure with no allocation panic. After the
+  bridge poll reorder + diagnostic instrumentation: 8 of 9 esp32_emulator tests
+  pass; only `test_esp32_talker_listener_e2e` (the two-QEMU pair) still fails
+  with the listener receiving 0 of the talker's messages even though both
+  guests independently work against a native peer.
 
 2026-05-15 focused evidence:
 
@@ -128,6 +143,33 @@ Done criteria:
   next focused fix should inspect callback registration/linkage between
   `nros-board-esp32-qemu`, `nros-smoltcp::set_poll_callback`, and the
   `zpico-platform-shim` TCP forwarders.
+- [x] 2026-05-16 follow-up: callback registration was healthy; the failure
+  was a poll-order bug inside `SmoltcpBridge::poll`. Pre-fix order was
+  `iface.poll(...)` then drain TX staging → smoltcp socket, then drain
+  socket RX → staging. That left newly-staged TX bytes parked in the
+  smoltcp socket until the NEXT `poll_network` invocation, while
+  `<PlatformTcp>::send`'s loop only calls `poll_network` once per
+  iteration. Subscriber declarations and keepalives were therefore
+  always one poll-tick stale, which is why `zenohd` saw the open
+  handshake but no follow-up declare/keepalive frames before lease
+  expiry. New order: drain TX staging → socket, `iface.poll`, drain
+  socket RX → staging, second `iface.poll` for ACK/window updates.
+  Added `nros_smoltcp::poll_diagnostics()` snapshot so future bring-up
+  can prove the callback chain is intact (`do_poll == cb_hits ==
+  bridge_polls`) and `tx_drained` is advancing.
+- Focused verification after the reorder:
+  - `cargo nextest run -p nros-tests --test esp32_emulator --no-fail-fast
+    --no-capture`: 8 passed, 1 failed (the remaining failure is the
+    two-QEMU pair `test_esp32_talker_listener_e2e`).
+  - `cargo nextest run -p nros-tests --test esp32_emulator --no-fail-fast
+    --no-capture test_native_to_esp32`: passes (was the canonical failure
+    used to chase the 127.A blocker).
+  - `cargo nextest run -p nros-tests --test esp32_emulator --no-fail-fast
+    --no-capture test_esp32_to_native`: passes.
+  - Listener log snippet:
+    `[poll] do_poll=N cb_hits=N bridge_polls=N tx_drained=M` with `N`
+    growing steadily and `M` advancing in step with declare /
+    keep-alive traffic.
 
 Focused commands:
 
