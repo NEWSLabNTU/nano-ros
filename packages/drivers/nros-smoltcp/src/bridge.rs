@@ -436,6 +436,8 @@ static DO_POLL_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::n
 static DO_POLL_CB_HITS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 static BRIDGE_POLL_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 static BRIDGE_TX_DRAINED_BYTES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static BRIDGE_RX_DRAINED_BYTES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static TCP_RECV_BYTES_OUT: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
 /// Snapshot of `do_poll`/bridge-poll diagnostic counters.
 ///
@@ -449,6 +451,18 @@ pub fn poll_diagnostics() -> (u32, u32, u32, u32) {
         DO_POLL_CB_HITS.load(Ordering::Relaxed),
         BRIDGE_POLL_CALLS.load(Ordering::Relaxed),
         BRIDGE_TX_DRAINED_BYTES.load(Ordering::Relaxed),
+    )
+}
+
+/// Phase 127.D — extended counters: (rx_drained, tcp_recv_out).
+/// `rx_drained` = bytes transferred socket.recv_slice → RX staging.
+/// `tcp_recv_out` = bytes returned to caller by `tcp_recv` (= bytes
+/// zenoh-pico actually read off the staging buffer).
+pub fn rx_diagnostics() -> (u32, u32) {
+    use portable_atomic::Ordering;
+    (
+        BRIDGE_RX_DRAINED_BYTES.load(Ordering::Relaxed),
+        TCP_RECV_BYTES_OUT.load(Ordering::Relaxed),
     )
 }
 
@@ -745,6 +759,10 @@ impl SmoltcpBridge {
                                     socket.recv_slice(&mut rx_buf[entry.staging.rx_len..])
                                 {
                                     entry.staging.advance_rx(received);
+                                    if received > 0 {
+                                        BRIDGE_RX_DRAINED_BYTES
+                                            .fetch_add(received as u32, Ordering::Relaxed);
+                                    }
                                 }
                             }
                         }
@@ -894,7 +912,11 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            entry.staging.recv(&SOCKET_RX_BUFFERS[handle as usize], buf)
+            let got = entry.staging.recv(&SOCKET_RX_BUFFERS[handle as usize], buf);
+            if got > 0 {
+                TCP_RECV_BYTES_OUT.fetch_add(got as u32, portable_atomic::Ordering::Relaxed);
+            }
+            got
         }
     }
 

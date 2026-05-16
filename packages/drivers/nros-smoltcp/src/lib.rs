@@ -36,7 +36,7 @@ pub use network_state::NetworkState;
 pub use bridge::{
     CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
     SmoltcpBridge, clear_idle_callback, do_poll, has_poll_callback, poll_count, poll_diagnostics,
-    seed_ephemeral_port, set_idle_callback, set_poll_callback,
+    rx_diagnostics, seed_ephemeral_port, set_idle_callback, set_poll_callback,
 };
 
 // Re-export smoltcp types needed by board crates

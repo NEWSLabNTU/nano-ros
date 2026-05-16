@@ -805,23 +805,28 @@ Current signal (2026-05-17):
 
 Subitems:
 
-- [~] `127.D.1`: RTIC action E2E — connect path now passes; client
-  reply-correlation timeout remains. 2026-05-17 trace via
-  `ZENOHD_LOG=zenoh=trace`: server sends "Goal accepted/complete";
-  zenohd schedules `Response` + `ResponseFinal` for transmission to
-  client TCP socket; client never matches the reply to its pending
-  query promise and the zenohd link to the client expires after the
-  10 s lease. Suspect zenoh-pico bare-metal pending-query slot
-  callback dispatch or WFI-induced keep-alive starvation; needs
-  deeper zenoh-pico internals trace.
-- [~] `127.D.2`: RTIC service E2E — connect path now passes; client
-  reply-correlation timeout remains. Same trace shape as 127.D.1:
-  server logs `Handled: 5 + 3 = 8`; zenohd schedules `Response`
-  with payload `[00, 01, 00, 00, 08, ..]` (= CDR-wrapped `8`)
-  for the client TCP socket; client never advances past
-  `Calling: 5 + 3 = ?`. Cadence-gated WFI variants and a one-shot
-  trailing `iface.poll` removal both verified not to change the
-  symptom — the gap is not in the smoltcp bridge cadence.
+- [~] `127.D.1`: RTIC action E2E — connect path now passes; reply
+  never reaches LAN9118 model RX FIFO. Same root cause as 127.D.2.
+- [~] `127.D.2`: RTIC service E2E — connect path now passes;
+  2026-05-17 tshark + zenoh-dissector pcap on host loopback
+  (`tcp port 7460`) confirmed:
+  - Client TX path: query frame (98 B) leaves QEMU, host kernel ACKs.
+  - zenohd forwards 99 B to server; server replies 104 B; zenohd
+    forwards `Reply` (107 B, payload `[00, 01, 00, 00, 08, ..]` =
+    CDR `i64=8`) and `ResponseFinal` (11 B) toward client TCP socket;
+    client TCP layer ACKs both (Seq 97/204, Ack 1861).
+  - Client smoltcp side (new `nros_smoltcp::rx_diagnostics()` +
+    `lan9118_smoltcp::rx_diag_counters()` counters): `lan_pend` and
+    `deliv` freeze at 519 packets; `rx` / `recv` freeze at 223 bytes
+    after the initial handshake-and-declare burst. The LAN9118 model's
+    RX FIFO never surfaces the reply frames to the guest even though
+    host loopback shows them delivered to slirp's host socket.
+  - Conclusion: blocker is in QEMU slirp ↔ LAN9118 model frame
+    delivery (post-burst stall), not in nros-smoltcp / zenoh-pico
+    layers. Cadence-gated WFI, trailing `iface.poll` removal,
+    PROM-mode rebuild all verified not to change the symptom.
+  - Diagnostic infrastructure landed under Phase 127.D so future
+    bring-up can re-confirm in one rebuild + run.
 - [ ] `127.D.3`: Serial pub/sub E2E — pending RTIC-less idle hook
   (non-RTIC `run()` examples have no armed IRQ).
 
