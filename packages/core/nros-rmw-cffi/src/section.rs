@@ -16,15 +16,25 @@
 //! synthesis, `KEEP` semantics under `--gc-sections`, Mach-O
 //! `__DATA,__nros_rmw_init` placement, COFF chunked sections) is
 //! delegated to the [`linkme`] crate so the discipline works
-//! identically on POSIX ELF, macOS, Windows, and bare-metal /
-//! `target_os = "none"` targets without per-target linker-script
-//! fragments.
+//! identically on every target the crate supports: Linux / macOS /
+//! Windows / FreeBSD / illumos / `target_os = "none"` (bare-metal
+//! ELF).
+//!
+//! # Unsupported targets (RTOS / ESP-IDF)
+//!
+//! Targets `linkme` does NOT recognise (`target_os = "nuttx"`,
+//! `"zephyr"`, `"espidf"`, `"vxworks"`, …) fall back to a no-op
+//! [`RMW_INIT_ENTRIES`] stub and a walker that always returns 0.
+//! Backends on those targets still register via the explicit
+//! `nros_rmw_<x>::register()` call from main (the rlib-pull anchor
+//! pattern documented in phase 128.B.1's commit) — the section
+//! walker just doesn't add anything on top.
 //!
 //! # C / C++ backends
 //!
 //! Static-lib backends emit their entry via the
 //! [`NROS_RMW_REGISTER_BACKEND`] macro in `<nros/rmw_vtable.h>`. The
-//! macro lands the function pointer in `linkme_NROS_RMW_REGISTER`
+//! macro lands the function pointer in `linkm2_RMW_INIT_ENTRIES`
 //! (the section name `linkme` uses for [`RMW_INIT_ENTRIES`]),
 //! interoperating with the Rust-side entries through pure linker
 //! discipline.
@@ -33,7 +43,6 @@
 
 use core::sync::atomic::Ordering;
 
-use linkme::distributed_slice;
 use portable_atomic::AtomicBool;
 
 /// Public type of every entry in [`RMW_INIT_ENTRIES`]. The function
@@ -45,13 +54,104 @@ use portable_atomic::AtomicBool;
 /// `Executor::open` when the registry lookup misses.
 pub type RmwInitEntry = unsafe extern "C" fn();
 
-/// Distributed slice that every `nros-rmw-<name>` crate (or C/C++
-/// static lib via the `NROS_RMW_REGISTER_BACKEND` macro) contributes
-/// one entry to. The runtime walks the slice on first
-/// `Executor::open`. Empty slice = no backend linked → resolution
-/// returns [`crate::NROS_RMW_RET_NO_BACKEND`].
-#[distributed_slice]
-pub static RMW_INIT_ENTRIES: [RmwInitEntry] = [..];
+// ---------------------------------------------------------------------------
+// Target-os gating for `linkme` support. The crate hard-codes the
+// allow-list; mirror it here so unsupported targets get a no-op stub
+// instead of a build break.
+// ---------------------------------------------------------------------------
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "fuchsia",
+    target_os = "psp",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "watchos",
+    target_os = "windows",
+    target_os = "illumos",
+    target_os = "none",
+))]
+mod linkme_backed {
+    use super::RmwInitEntry;
+    use linkme::distributed_slice;
+
+    /// Distributed slice that every `nros-rmw-<name>` crate (or
+    /// C/C++ static lib via the `NROS_RMW_REGISTER_BACKEND` macro)
+    /// contributes one entry to.
+    #[distributed_slice]
+    pub static RMW_INIT_ENTRIES: [RmwInitEntry] = [..];
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "fuchsia",
+    target_os = "psp",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "watchos",
+    target_os = "windows",
+    target_os = "illumos",
+    target_os = "none",
+)))]
+mod linkme_backed {
+    use super::RmwInitEntry;
+
+    /// Stub for targets `linkme` does not support (NuttX, Zephyr,
+    /// ESP-IDF, …). Always empty; the walker returns 0; backends
+    /// must register via the explicit `register()` call pattern.
+    pub static RMW_INIT_ENTRIES: [RmwInitEntry; 0] = [];
+}
+
+pub use linkme_backed::RMW_INIT_ENTRIES;
+
+/// Macro emitted by backend crates to contribute one entry to
+/// [`RMW_INIT_ENTRIES`]. Expands to a `linkme::distributed_slice`
+/// item on targets `linkme` supports; expands to nothing on
+/// unsupported targets (NuttX, Zephyr, ESP-IDF, …) where the
+/// section walker is a no-op and backends must rely on the
+/// explicit `register()` call pattern.
+///
+/// Usage (inside the backend crate):
+///
+/// ```ignore
+/// nros_rmw_cffi::nros_rmw_register_backend! {
+///     fn() { let _ = nros_rmw_zenoh_register(); }
+/// }
+/// ```
+#[macro_export]
+macro_rules! nros_rmw_register_backend {
+    (fn() $body:block) => {
+        #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "fuchsia",
+            target_os = "psp",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "watchos",
+            target_os = "windows",
+            target_os = "illumos",
+            target_os = "none",
+        ))]
+        const _: () = {
+            unsafe extern "C" fn __nros_rmw_backend_section_entry() $body
+            #[$crate::linkme::distributed_slice($crate::RMW_INIT_ENTRIES)]
+            static __NROS_RMW_BACKEND_SECTION_ENTRY: $crate::RmwInitEntry =
+                __nros_rmw_backend_section_entry;
+        };
+    };
+}
 
 /// Idempotency guard. Set after the first successful walk. Subsequent
 /// `Executor::open` calls skip re-walking.

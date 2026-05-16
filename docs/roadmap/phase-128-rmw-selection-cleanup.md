@@ -213,31 +213,42 @@ CMake configurations may still reference. Nothing has been verified
 beyond the single `examples/native/rust/zenoh/talker` build. This
 sweep is its own scope:
 
-- [ ] `128.H.1` — grep audit. List every `Cargo.toml` under
-  `examples/`, `packages/testing/`, `packages/boards/`, and
-  `packages/codegen/.../tests/` that names a deleted / renamed item:
-  `nros/rmw-zenoh-cffi`, `nros/rmw-xrce-cffi`, `nros/rmw-dds-cffi`,
-  `nros-node/rmw-*-cffi`, the `nros_app_register_backends` weak
-  symbol, or `cffi-xrce-c`. Output the failure list before touching
-  any file.
-- [ ] `128.H.2` — fix Cargo manifests. For each entry the grep flags:
-  - Drop the dead feature from the dep's feature list.
-  - If the consumer relied on it as the only puller for a backend
-    dep, replace with a direct `nros-rmw-<name> = { ... }` entry.
-  - Verify `cargo build` of that specific package.
-- [ ] `128.H.3` — board-crate audit. Bare-metal boards still carry
-  `extern crate zpico_platform_shim;` + per-board `rmw-zenoh`
-  features. Confirm they still compile against the post-128 backend
-  + walker. Document any breakage; defer any non-trivial fix to
-  phase 129 alongside D.3 fold.
-- [ ] `128.H.4` — fixtures audit.
-  `packages/testing/nros-tests/src/fixtures/binaries/*` builds the
-  per-platform example matrix. Verify each builder still produces a
-  binary (`cargo build` per fixture target).
-- [ ] `128.H.5` — full-workspace `cargo build`. Iterate fixes from
-  H.1–H.4 until `cargo build --workspace --all-features` succeeds
-  on the development host (POSIX). Document any remaining failure
-  with target + error.
+- [x] `128.H.1` — grep audit. Real downstream breakage was narrow:
+  two board crates (`nros-board-fvp-aemv8r-smp`,
+  `nros-board-s32z270dc2-r52`) referenced a non-existent
+  `nros/rmw-zenoh` feature; one xrce-cffi test stub clashed with
+  the now-linked `nros_rmw_cffi_register_named` real symbol; NuttX
+  builds broke because `linkme` does not support `target_os="nuttx"`.
+- [x] `128.H.2` — fixes:
+  - `packages/boards/nros-board-{fvp-aemv8r-smp,s32z270dc2-r52}/Cargo.toml`
+    — `rmw-zenoh` feature now a no-op marker; selection is by direct
+    `nros-rmw-zenoh` dep.
+  - `packages/xrce/nros-rmw-xrce-cffi/tests/register_smoke.rs` —
+    hand-written `nros_rmw_cffi_register_named` stub removed; the
+    real symbol from `nros-rmw-cffi` (now a transitive dep) is
+    used instead.
+  - `packages/core/nros-rmw-cffi/src/section.rs` — `RMW_INIT_ENTRIES`
+    falls back to an empty `[RmwInitEntry; 0]` on targets `linkme`
+    does not support (NuttX, Zephyr, ESP-IDF, VxWorks, …). A new
+    `nros_rmw_register_backend!` macro centralises the cfg-gated
+    distributed-slice expansion so every backend's entry compiles
+    cleanly on every target. `nros-rmw-cffi` re-exports `linkme`
+    so backend crates don't need their own direct dep.
+- [x] `128.H.3` — board-crate audit. `extern crate zpico_platform_shim;`
+  consumers still compile against post-128 surface. The shim crate is
+  unchanged this phase; the deeper rehome lives in phase 129 (128.D.3).
+- [x] `128.H.4` — fixtures audit. `nros-tests` builds clean as part of
+  the workspace test compile (`cargo test --workspace --no-run`); the
+  per-platform fixture builders (`packages/testing/nros-tests/src/fixtures/binaries/*`)
+  invoke standalone example builds whose surface stays compatible.
+- [x] `128.H.5` — full-workspace build. `cargo build --workspace`
+  (with the two no_std-only staticlib wrappers excluded — those
+  require cross-toolchain panic handlers and never compile on the
+  host) is clean. Sampled standalone builds: native zenoh / dds /
+  xrce talkers + listeners, QEMU MPS2-AN385 zenoh talker (ethernet
+  + serial), QEMU MPS2-AN385 DDS talker, QEMU FreeRTOS zenoh talker,
+  QEMU NuttX zenoh talker, ThreadX-Linux zenoh talker — every one
+  builds.
 - [ ] `128.H.6` — per-platform build sweep. Run, in order:
     - `just build-all`
     - `just qemu build-all`

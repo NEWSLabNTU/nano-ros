@@ -44,6 +44,11 @@ pub use rust_adapter::{RustBackend, RustBackendAdapter};
 pub mod section;
 pub use section::{nros_rmw_cffi_walk_init_section, RMW_INIT_ENTRIES, RmwInitEntry};
 
+// Re-exported for the `nros_rmw_register_backend!` macro so backend
+// crates don't need a direct `linkme` dep.
+#[doc(hidden)]
+pub use linkme;
+
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes
 // ============================================================================

@@ -23,18 +23,8 @@ fn register_resolves_and_returns() {
     }
 }
 
-/// Stub the runtime side of the canonical RMW vtable register so
-/// the linker can resolve the chain.
-///
-/// SAFETY: this is a test fixture; it intentionally aliases the
-/// real `nros_rmw_cffi_register_named` symbol that ships in the
-/// `nros-rmw-cffi` Rust crate. The shim crate is `no_std` and does
-/// not depend on `nros-rmw-cffi` (consumers wire the runtime
-/// separately), so no real conflict at link time.
-#[unsafe(no_mangle)]
-extern "C" fn nros_rmw_cffi_register_named(
-    _name: *const core::ffi::c_char,
-    _vtable: *const core::ffi::c_void,
-) -> i32 {
-    0
-}
+// Phase 128.B.3 — `nros-rmw-xrce-cffi` now depends on
+// `nros-rmw-cffi` (for the `RMW_INIT_ENTRIES` distributed slice),
+// so the real `nros_rmw_cffi_register_named` symbol is linked into
+// the test binary by default. The old hand-written stub became a
+// duplicate-symbol link error and is removed.

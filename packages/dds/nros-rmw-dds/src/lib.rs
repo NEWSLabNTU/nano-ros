@@ -102,14 +102,13 @@ mod cffi_register {
         }
     }
 
-    // Phase 128.B.2 — `RMW_INIT_ENTRIES` self-registration. See
-    // `nros-rmw-zenoh/src/lib.rs::cffi_register` for the rationale.
-    unsafe extern "C" fn section_register_entry() {
-        let _ = nros_rmw_dds_register();
+    // Phase 128.B.2 / 128.H.2 — `RMW_INIT_ENTRIES` self-registration
+    // via `nros_rmw_register_backend!` (RTOS-target-safe).
+    nros_rmw_cffi::nros_rmw_register_backend! {
+        fn() {
+            let _ = nros_rmw_dds_register();
+        }
     }
-
-    #[linkme::distributed_slice(nros_rmw_cffi::RMW_INIT_ENTRIES)]
-    static SECTION_REGISTER: nros_rmw_cffi::RmwInitEntry = section_register_entry;
 }
 
 pub use cffi_register::{RegisterError, nros_rmw_dds_register, register};

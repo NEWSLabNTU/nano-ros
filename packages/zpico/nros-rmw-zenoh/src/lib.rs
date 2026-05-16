@@ -167,18 +167,17 @@ mod cffi_register {
         }
     }
 
-    // Phase 128.B.1 — `RMW_INIT_ENTRIES` self-registration. Every
-    // target (POSIX, Mach-O, bare-metal, RTOS) contributes the same
-    // entry via `linkme`'s distributed slice; the `nros-rmw-cffi`
-    // walker invokes it on first `Executor::open`. Replaces the prior
-    // POSIX-only `.init_array` ctor — no more explicit `register()`
-    // call needed in bare-metal `main()`.
-    unsafe extern "C" fn section_register_entry() {
-        let _ = nros_rmw_zenoh_register();
+    // Phase 128.B.1 / 128.H.2 — `RMW_INIT_ENTRIES` self-registration
+    // via the `nros_rmw_register_backend!` macro. Macro expands to a
+    // linkme distributed-slice entry on supported targets and to
+    // nothing on RTOS targets `linkme` doesn't recognise (NuttX,
+    // Zephyr, ESP-IDF, …). On those targets the explicit
+    // `register()` call in main is the only registration path.
+    nros_rmw_cffi::nros_rmw_register_backend! {
+        fn() {
+            let _ = nros_rmw_zenoh_register();
+        }
     }
-
-    #[linkme::distributed_slice(nros_rmw_cffi::RMW_INIT_ENTRIES)]
-    static SECTION_REGISTER: nros_rmw_cffi::RmwInitEntry = section_register_entry;
 }
 
 #[cfg(any(

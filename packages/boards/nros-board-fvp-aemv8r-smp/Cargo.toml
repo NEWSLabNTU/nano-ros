@@ -21,7 +21,12 @@ ethernet = []
 # wiring is done at the CMake level (`-DNANO_ROS_RMW=cyclonedds`),
 # this feature only flips the matching `nros::*` cargo cfg.
 rmw-cyclonedds = []
-rmw-zenoh      = ["nros/rmw-zenoh"]
+# Phase 128.C.3 — `nros/rmw-zenoh` was never a real feature on the
+# umbrella; selection lives entirely in the manifest via a direct
+# `nros-rmw-zenoh` dep (which contributes the `RMW_INIT_ENTRIES`
+# entry). This feature stays as a no-op marker for consumers that
+# still flip it.
+rmw-zenoh      = []
 
 [dependencies]
 nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
