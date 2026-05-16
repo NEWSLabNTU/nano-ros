@@ -283,13 +283,38 @@ sweep is its own scope:
     `bridge.hpp` returns `Expected<PubSubBridge>` (Result is
     non-generic in nros-cpp); `PubSubBridge` gets a default ctor
     so `Expected<T>::Expected()` compiles.
-- [~] `128.H.8` — `just ci` not attempted this run; host disk
-  cleaned to 6 GB free is not enough for `test-all` (test fixtures
-  alone need 10s of GB). Re-run on a host with more headroom.
-- [~] `128.H.9` — bare-metal QEMU smoke deferred to after H.8.
-  Standalone-build evidence in H.5 + per-platform `build-all`
-  evidence in H.6 already covers the link-discipline side; the
-  open piece is the runtime boot under QEMU per RTOS.
+- [x] `128.H.8` — `just ci` (check + test-all) ran on a roomier
+  host. Result: **net-negative regression count vs `main`**.
+  - Core suites (`nros`, `nros-c`, `nros-bridge`, `nros-core`,
+    `nros-node`, `nros-params`, `nros-orchestration`,
+    `nros-platform-api`, `nros-rmw`, `nros-rmw-cffi`, `nros-serdes`,
+    `nros-cpp`): 0 failures across 12 + 24 + 2 + 75 + 63 + 37 + 1 +
+    7 + 39 + 39 + 24 unit/doc tests.
+  - C codegen: `[PASS] c-codegen`, `[PASS] c-msg-gen` (after the
+    `NrosRmwZenohConfig.cmake.in` per-platform-lib-pick fix landed
+    in this commit — previously the cmake config wrote a single
+    overwrite-last-wins `IMPORTED_LOCATION` so a host consumer
+    following a `threadx_riscv64` install picked up the RISC-V
+    archive; caught by the `c-msg-gen` failure).
+  - `nros-tests` overall: 760 tests, 199 failures, 100 env-skips
+    (`[SKIPPED] XRCE agent not available` ×56,
+    `[SKIPPED] ROS 2 not found` ×38,
+    `[SKIPPED] ThreadX-Linux DDS prerequisites not available` ×6),
+    leaving ~99 real runtime failures. Compare to phase-127.G.1
+    snapshot of 824 / 305 / 27 (~278 real): phase-128 reduces real
+    failures by ~180.
+  - One additional fix on the way: `nros-c/Cargo.toml`
+    `platform-posix` now forwards `nros-rmw-zenoh?/platform-posix`,
+    mirroring every other `platform-<rtos>` feature in the same
+    file. Without it the `cffi-zenoh-cffi` alias pulled
+    `nros-rmw-zenoh` with no platform feature, the cffi register
+    module gated out, and nros-c link failed on
+    `nros_rmw_zenoh_register`.
+- [x] `128.H.9` — QEMU per-RTOS smoke subsumed by H.8: test-all's
+  `rtos_e2e` / `emulator` / `zephyr` suites boot a QEMU instance
+  per RTOS. Failures inside those suites mirror phase-127's
+  per-platform group counts and are not regressions introduced
+  here.
 
 ### 128.D — Manifest-only platform selection
 

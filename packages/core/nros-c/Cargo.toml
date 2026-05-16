@@ -65,7 +65,11 @@ xrce-serial = ["nros/xrce-serial"]
 # `#[global_allocator]` modules in lib.rs compile without the build
 # script having to remember to pass `,alloc` alongside
 # `platform-<rtos>`.
-platform-posix = ["nros/platform-posix", "nros-rmw-xrce-cffi?/platform-posix"]
+platform-posix = [
+    "nros/platform-posix",
+    "nros-rmw-xrce-cffi?/platform-posix",
+    "nros-rmw-zenoh?/platform-posix",
+]
 platform-zephyr = [
     "alloc",
     "nros/platform-zephyr",
