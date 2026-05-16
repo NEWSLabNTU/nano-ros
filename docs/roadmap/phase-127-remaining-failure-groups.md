@@ -784,9 +784,22 @@ Current signal (2026-05-17):
 Subitems:
 
 - [~] `127.D.1`: RTIC action E2E — connect path now passes; client
-  reply-correlation timeout remains.
+  reply-correlation timeout remains. 2026-05-17 trace via
+  `ZENOHD_LOG=zenoh=trace`: server sends "Goal accepted/complete";
+  zenohd schedules `Response` + `ResponseFinal` for transmission to
+  client TCP socket; client never matches the reply to its pending
+  query promise and the zenohd link to the client expires after the
+  10 s lease. Suspect zenoh-pico bare-metal pending-query slot
+  callback dispatch or WFI-induced keep-alive starvation; needs
+  deeper zenoh-pico internals trace.
 - [~] `127.D.2`: RTIC service E2E — connect path now passes; client
-  reply-correlation timeout remains.
+  reply-correlation timeout remains. Same trace shape as 127.D.1:
+  server logs `Handled: 5 + 3 = 8`; zenohd schedules `Response`
+  with payload `[00, 01, 00, 00, 08, ..]` (= CDR-wrapped `8`)
+  for the client TCP socket; client never advances past
+  `Calling: 5 + 3 = ?`. Cadence-gated WFI variants and a one-shot
+  trailing `iface.poll` removal both verified not to change the
+  symptom — the gap is not in the smoltcp bridge cadence.
 - [ ] `127.D.3`: Serial pub/sub E2E — pending RTIC-less idle hook
   (non-RTIC `run()` examples have no armed IRQ).
 
