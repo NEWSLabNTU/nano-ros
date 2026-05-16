@@ -17,7 +17,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(any(feature = "platform-freertos", feature = "platform-threadx"))]
+#[cfg(any(
+    feature = "platform-freertos",
+    feature = "platform-threadx",
+    feature = "platform-threadx-std",
+))]
 extern crate nros_platform as _;
 
 #[cfg(all(
@@ -41,6 +45,7 @@ extern crate panic_halt as _;
     feature = "platform-freertos",
     feature = "platform-nuttx",
     feature = "platform-threadx",
+    feature = "platform-threadx-std",
     feature = "platform-bare-metal",
 ))]
 pub use nros_rmw_zenoh::register;

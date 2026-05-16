@@ -160,14 +160,10 @@ impl Platform {
             Platform::Freertos | Platform::Nuttx | Platform::ThreadxRiscv64 => {
                 Duration::from_secs(20)
             }
-            // ThreadX Linux is a native process — ~5 s for ThreadX boot +
-            // NetX init + zenoh connect on an idle host. Under
-            // `just test-all` load (~30 nextest workers + sibling
-            // QEMU instances + cargo target rebuilds racing for the
-            // same loopback) the connect side regularly slips past
-            // 5 s — bump to 10 s so the listener has time to declare
-            // its subscription before the talker starts pumping.
-            Platform::ThreadxLinux => Duration::from_secs(10),
+            // ThreadX Linux is a native-process simulation. Keep this
+            // below zenohd's 10 s lease: a full-lease head start lets
+            // the first process expire just as the peer starts.
+            Platform::ThreadxLinux => Duration::from_secs(1),
         }
     }
 

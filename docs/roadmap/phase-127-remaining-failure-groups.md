@@ -317,6 +317,23 @@ Current signal:
     `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(Nuttx)' --no-capture --retries 0 --no-fail-fast`
     completed in 109.1s with 9 passed, 27 skipped; the 6 C/C++ cases print
     explicit skip reasons for missing NuttX variant libraries.
+- 2026-05-16 ThreadX Linux Rust close-out:
+  - The installed ThreadX Linux Zenoh variant now builds through the
+    `platform-threadx-std` staticlib feature. This keeps host ThreadX Linux on
+    `std` without also pulling the no-std ThreadX `panic-halt` dependency.
+  - ThreadX Linux Rust Zenoh talker and action-server had the same explicit
+    CFFI registration gap as the earlier FreeRTOS/NuttX action-server fixes.
+    DDS Rust talker/listener now explicitly register the DDS backend too,
+    because ThreadX Linux does not walk `.init_array` reliably for these
+    examples.
+  - The ThreadX Linux peer launch delay is now 1s, below zenohd's 10s lease.
+    The old 10s head start let the listener/server expire just as its peer
+    started.
+  - Focused verification:
+    `cargo nextest run -p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-capture --retries 0 --no-fail-fast`
+    completed in 298.4s with 3 passed / 6 failed / 27 skipped. Rust pub/sub,
+    service, and action pass. C/C++ pub/sub still receive 0 messages; C/C++
+    service/action start but fail request/goal flow.
 
 Subitems:
 
@@ -324,7 +341,9 @@ Subitems:
   all pass in the focused FreeRTOS slice.
 - [x] `127.B.2`: NuttX E2E triage. Rust pub/sub, service, and action pass;
   C/C++ combinations are gated on installed NuttX variant libraries.
-- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage.
+- [~] `127.B.3`: ThreadX Linux/RISC-V E2E triage. ThreadX Linux Rust Zenoh
+  pub/sub, service, and action pass; ThreadX Linux C/C++ and all RISC-V
+  runtime failures remain.
 - [~] `127.B.4`: Bare-metal DDS runtime triage.
 - [~] `127.B.5`: Shared platform DDS runtime triage.
 

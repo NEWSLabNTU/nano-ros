@@ -46,6 +46,13 @@ platform-threadx = [
     "nros-platform/global-allocator",
     "dep:panic-halt",
 ]
+platform-threadx-std = [
+    "std",
+    "nros-rmw-zenoh/platform-threadx",
+    "dep:nros-platform",
+    "nros-platform/platform-threadx",
+    "nros-platform/global-allocator",
+]
 platform-bare-metal = ["nros-rmw-zenoh/platform-bare-metal"]
 link-tcp = ["nros-rmw-zenoh/link-tcp"]
 link-udp-unicast = ["nros-rmw-zenoh/link-udp-unicast"]
