@@ -1,0 +1,239 @@
+diff --git a/drivers/virtio/virtio-net.c b/drivers/virtio/virtio-net.c
+index 84e850510e..d544bc71e2 100644
+--- a/drivers/virtio/virtio-net.c
++++ b/drivers/virtio/virtio-net.c
+@@ -46,6 +46,17 @@
+ /* Virtio net feature bits */
+ 
+ #define VIRTIO_NET_F_MAC      5
++#define VIRTIO_NET_F_CTRL_VQ  17
++#define VIRTIO_NET_F_CTRL_RX  18
++
++/* Virtio net control commands (class / cmd) — see VIRTIO 1.x §5.1.6.5 */
++
++#define VIRTIO_NET_CTRL_RX          0
++#define VIRTIO_NET_CTRL_RX_PROMISC  0
++#define VIRTIO_NET_CTRL_RX_ALLMULTI 1
++
++#define VIRTIO_NET_OK   0
++#define VIRTIO_NET_ERR  1
+ 
+ /* Virtio net header size and packet buffer size */
+ 
+@@ -53,11 +64,21 @@
+ #define VIRTIO_NET_LLHDRSIZE  (sizeof(struct virtio_net_llhdr_s))
+ #define VIRTIO_NET_BUFSIZE    (CONFIG_NET_ETH_PKTSIZE + CONFIG_NET_GUARDSIZE)
+ 
+-/* Virtio net virtqueue index and number */
++/* Virtio net virtqueue index and number.
++ *
++ * Phase 127.B.5 — when the device exposes VIRTIO_NET_F_CTRL_VQ, the
++ * driver creates a third (control) queue used to set ALLMULTI / PROMISC
++ * etc. Without that, QEMU's virtio-net backend filters every incoming
++ * frame whose destination MAC isn't this NIC's unicast or broadcast,
++ * which silently drops RTPS SPDP frames bound for `01:00:5e:7f:00:01`
++ * (mcast 239.255.0.1). The driver always tries to create three queues
++ * and falls back to two if the backend masked CTRL_VQ off.
++ */
+ 
+ #define VIRTIO_NET_RX         0
+ #define VIRTIO_NET_TX         1
+-#define VIRTIO_NET_NUM        2
++#define VIRTIO_NET_CTRL       2
++#define VIRTIO_NET_NUM        3
+ 
+ #define VIRTIO_NET_MAX_PKT_SIZE \
+     ((CONFIG_NET_LL_GUARDSIZE - ETH_HDRLEN) + VIRTIO_NET_BUFSIZE)
+@@ -494,14 +515,102 @@ static netpkt_t *virtio_net_recv(FAR struct netdev_lowerhalf_s *dev)
+   return hdr->pkt;
+ }
+ 
++/****************************************************************************
++ * Name: virtio_net_ctl_notify_cb
++ *
++ * Phase 127.B.5 — control-queue completion. Posts the semaphore the
++ * caller is blocked on so `virtio_net_send_ctrl_rx` can return.
++ ****************************************************************************/
++
++static void virtio_net_ctl_notify_cb(FAR struct virtqueue *vq)
++{
++  FAR struct virtio_net_priv_s *priv = vq->vq_dev->priv;
++  FAR sem_t *ctl_sem;
++
++  ctl_sem = virtqueue_get_buffer_lock(vq, NULL, NULL,
++                                      &priv->lock[VIRTIO_NET_CTRL]);
++  if (ctl_sem != NULL)
++    {
++      nxsem_post(ctl_sem);
++    }
++}
++
++/****************************************************************************
++ * Name: virtio_net_send_ctrl_rx
++ *
++ * Phase 127.B.5 — send a single `VIRTIO_NET_CTRL_RX` class command
++ * (PROMISC / ALLMULTI / etc.) with a single-byte `on` payload, block
++ * until the device acks, return 0 on VIRTIO_NET_OK.
++ ****************************************************************************/
++
++static int virtio_net_send_ctrl_rx(FAR struct virtio_net_priv_s *priv,
++                                   uint8_t cmd, uint8_t on)
++{
++  FAR struct virtqueue *vq = priv->vdev->vrings_info[VIRTIO_NET_CTRL].vq;
++  struct
++  {
++    uint8_t class;
++    uint8_t cmd;
++  } hdr = { VIRTIO_NET_CTRL_RX, cmd };
++  uint8_t data = on;
++  uint8_t ack = VIRTIO_NET_ERR;
++  struct virtqueue_buf vb[3];
++  irqstate_t flags;
++  sem_t ctl_sem;
++  int ret;
++
++  nxsem_init(&ctl_sem, 0, 0);
++
++  /* Three sg slots: hdr (R) + payload (R) + ack (W). Linux's
++   * virtio_net does the same split — QEMU's parser is lenient about
++   * concatenation but strict about hdr being its own sg slot. */
++
++  vb[0].buf = &hdr;
++  vb[0].len = sizeof(hdr);
++  vb[1].buf = &data;
++  vb[1].len = sizeof(data);
++  vb[2].buf = &ack;
++  vb[2].len = sizeof(ack);
++
++  flags = spin_lock_irqsave(&priv->lock[VIRTIO_NET_CTRL]);
++  virtqueue_add_buffer(vq, vb, 2, 1, &ctl_sem);
++  virtqueue_kick(vq);
++  spin_unlock_irqrestore(&priv->lock[VIRTIO_NET_CTRL], flags);
++
++  ret = nxsem_wait_uninterruptible(&ctl_sem);
++  nxsem_destroy(&ctl_sem);
++  if (ret < 0)
++    {
++      return ret;
++    }
++  return (ack == VIRTIO_NET_OK) ? OK : -EIO;
++}
++
+ #ifdef CONFIG_NET_MCASTGROUP
+ /****************************************************************************
+  * Name: virtio_net_addmac
++ *
++ * Phase 127.B.5 — IGMP joins call here when an app does
++ * `IP_ADD_MEMBERSHIP`. Without CTRL_VQ negotiated, QEMU's virtio-net
++ * backend filters out the matching multicast MAC. The driver leaves
++ * the MAC filter table untouched (the device is held in ALLMULTI from
++ * `virtio_net_init`); just return OK so the IGMP layer doesn't tear
++ * down state for an addmac that succeeded at the L2 level.
+  ****************************************************************************/
+ 
+ static int virtio_net_addmac(FAR struct netdev_lowerhalf_s *dev,
+                              FAR const uint8_t *mac)
+ {
++  FAR struct virtio_net_priv_s *priv = (FAR struct virtio_net_priv_s *)dev;
++
++  if (virtio_has_feature(priv->vdev, VIRTIO_NET_F_CTRL_VQ))
++    {
++      /* ALLMULTI was set at probe time; new multicast MACs are already
++       * delivered. Acknowledge the join silently.
++       */
++
++      return OK;
++    }
+   return -ENOSYS;
+ }
+ 
+@@ -512,6 +621,12 @@ static int virtio_net_addmac(FAR struct netdev_lowerhalf_s *dev,
+ static int virtio_net_rmmac(FAR struct netdev_lowerhalf_s *dev,
+                             FAR const uint8_t *mac)
+ {
++  FAR struct virtio_net_priv_s *priv = (FAR struct virtio_net_priv_s *)dev;
++
++  if (virtio_has_feature(priv->vdev, VIRTIO_NET_F_CTRL_VQ))
++    {
++      return OK;
++    }
+   return -ENOSYS;
+ }
+ #endif
+@@ -561,25 +676,40 @@ static int virtio_net_init(FAR struct virtio_net_priv_s *priv,
+ {
+   FAR const char *vqnames[VIRTIO_NET_NUM];
+   vq_callback callbacks[VIRTIO_NET_NUM];
++  unsigned int nvqs;
+   int ret;
+ 
+   spin_lock_init(&priv->lock[VIRTIO_NET_RX]);
+   spin_lock_init(&priv->lock[VIRTIO_NET_TX]);
++  spin_lock_init(&priv->lock[VIRTIO_NET_CTRL]);
+   priv->vdev = vdev;
+   vdev->priv = priv;
+ 
+-  /* Initialize the virtio device */
++  /* Initialize the virtio device.
++   *
++   * Phase 127.B.5 — request CTRL_VQ + CTRL_RX so we can flip the
++   * device into ALLMULTI mode. QEMU's virtio-net backend exposes
++   * both unconditionally, but the negotiation mask makes the
++   * driver continue to work against backends that don't.
++   */
+ 
+   virtio_set_status(vdev, VIRTIO_CONFIG_STATUS_DRIVER);
+   virtio_negotiate_features(vdev, (1UL << VIRTIO_NET_F_MAC) |
+-                                  (1UL << VIRTIO_F_ANY_LAYOUT), NULL);
++                                  (1UL << VIRTIO_F_ANY_LAYOUT) |
++                                  (1UL << VIRTIO_NET_F_CTRL_VQ) |
++                                  (1UL << VIRTIO_NET_F_CTRL_RX), NULL);
+   virtio_set_status(vdev, VIRTIO_CONFIG_FEATURES_OK);
+ 
+-  vqnames[VIRTIO_NET_RX]   = "virtio_net_rx";
+-  vqnames[VIRTIO_NET_TX]   = "virtio_net_tx";
+-  callbacks[VIRTIO_NET_RX] = virtio_net_rxready;
+-  callbacks[VIRTIO_NET_TX] = virtio_net_txdone;
+-  ret = virtio_create_virtqueues(vdev, 0, VIRTIO_NET_NUM, vqnames,
++  vqnames[VIRTIO_NET_RX]     = "virtio_net_rx";
++  vqnames[VIRTIO_NET_TX]     = "virtio_net_tx";
++  vqnames[VIRTIO_NET_CTRL]   = "virtio_net_ctrl";
++  callbacks[VIRTIO_NET_RX]   = virtio_net_rxready;
++  callbacks[VIRTIO_NET_TX]   = virtio_net_txdone;
++  callbacks[VIRTIO_NET_CTRL] = virtio_net_ctl_notify_cb;
++
++  nvqs = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ) ? VIRTIO_NET_NUM
++                                                        : VIRTIO_NET_NUM - 1;
++  ret = virtio_create_virtqueues(vdev, 0, nvqs, vqnames,
+                                  callbacks, NULL);
+   if (ret < 0)
+     {
+@@ -589,6 +719,28 @@ static int virtio_net_init(FAR struct virtio_net_priv_s *priv,
+ 
+   virtio_set_status(vdev, VIRTIO_CONFIG_STATUS_DRIVER_OK);
+ 
++  /* Phase 127.B.5 — put the device into ALLMULTI so RTPS SPDP
++   * frames (`01:00:5e:7f:00:01` / `01:00:5e:7f:ff:fa`) make it
++   * past the backend's MAC filter. Without this, IGMP joins at
++   * the L3 level are honoured but the L2 frames never arrive.
++   */
++
++  if (virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_RX))
++    {
++      int rc = virtio_net_send_ctrl_rx(priv,
++                                       VIRTIO_NET_CTRL_RX_PROMISC, 1);
++      if (rc < 0)
++        {
++          vrtwarn("virtio_net: PROMISC=1 failed rc=%d\n", rc);
++        }
++      rc = virtio_net_send_ctrl_rx(priv,
++                                   VIRTIO_NET_CTRL_RX_ALLMULTI, 1);
++      if (rc < 0)
++        {
++          vrtwarn("virtio_net: ALLMULTI=1 failed rc=%d\n", rc);
++        }
++    }
++
+ #if CONFIG_DRIVERS_VIRTIO_NET_BUFNUM > 0
+   priv->bufnum = CONFIG_DRIVERS_VIRTIO_NET_BUFNUM;
+ #else
