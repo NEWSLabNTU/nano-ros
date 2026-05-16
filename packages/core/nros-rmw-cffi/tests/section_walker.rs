@@ -18,11 +18,13 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+use linkme::distributed_slice;
 use nros_rmw_cffi::{
     BackendResolution, NROS_RMW_RET_AMBIGUOUS_BACKEND, NROS_RMW_RET_NO_BACKEND,
-    NROS_RMW_RET_OK, NROS_RMW_RET_UNKNOWN_BACKEND, NrosRmwVtable, backend_registered,
-    backend_resolution_to_ret, nros_rmw_cffi_register_named,
-    nros_rmw_cffi_registered_names, nros_rmw_cffi_walk_init_section, resolve_backend,
+    NROS_RMW_RET_OK, NROS_RMW_RET_UNKNOWN_BACKEND, NrosRmwVtable, RMW_INIT_ENTRIES,
+    RmwInitEntry, backend_registered, backend_resolution_to_ret,
+    nros_rmw_cffi_register_named, nros_rmw_cffi_registered_names,
+    nros_rmw_cffi_walk_init_section, resolve_backend,
 };
 
 // One addressable vtable shared by every entry. The registry never
@@ -68,15 +70,12 @@ unsafe extern "C" fn entry_b() {
     assert_eq!(rc, NROS_RMW_RET_OK);
 }
 
-// The pair of entries lives in the canonical `.nros_rmw_init` section,
-// matching exactly the layout backend crates will use. `#[used]` is
-// required so the linker keeps the symbols past dead-code elimination.
-#[used]
-#[unsafe(link_section = ".nros_rmw_init")]
-static SECTION_ENTRY_A: unsafe extern "C" fn() = entry_a;
-#[used]
-#[unsafe(link_section = ".nros_rmw_init")]
-static SECTION_ENTRY_B: unsafe extern "C" fn() = entry_b;
+// Two entries land in the distributed slice the same way backend
+// crates contribute theirs.
+#[distributed_slice(RMW_INIT_ENTRIES)]
+static SECTION_ENTRY_A: RmwInitEntry = entry_a;
+#[distributed_slice(RMW_INIT_ENTRIES)]
+static SECTION_ENTRY_B: RmwInitEntry = entry_b;
 
 fn assert_no_backend_initially() {
     // Walker has NOT been called yet — registry should be empty.

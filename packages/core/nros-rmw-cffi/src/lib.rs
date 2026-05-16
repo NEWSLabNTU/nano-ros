@@ -42,7 +42,7 @@ pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
 // Phase 128.A — linker-section registry discovery.
 pub mod section;
-pub use section::{nros_rmw_cffi_walk_init_section, RmwInitEntry};
+pub use section::{nros_rmw_cffi_walk_init_section, RMW_INIT_ENTRIES, RmwInitEntry};
 
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes

@@ -18,6 +18,13 @@ name = "nros_rmw_cffi"
 [dependencies]
 nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
+# Phase 128.A — cross-platform linker-section anchoring. Replaces the
+# hand-rolled `__start_/__stop_*` symbol pair + linker-script fragment
+# with a maintained crate that handles ELF, Mach-O, COFF, and the
+# `--gc-sections` / `start-stop-gc` interaction transparently. Backends
+# emit one `#[distributed_slice(RMW_INIT_ENTRIES)]` entry; the walker
+# iterates the slice on first `Executor::open`.
+linkme = { version = "0.3", default-features = false }
 
 [build-dependencies]
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in

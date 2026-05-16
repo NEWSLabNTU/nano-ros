@@ -63,6 +63,8 @@ nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features =
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
 # unconditionally (it boxes every entity handle).
 nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
+# Phase 128.B.1 — `#[distributed_slice]` for the RMW init section.
+linkme = { version = "0.3", default-features = false }
 nros-core = { workspace = true, default-features = false }
 # Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
 # for deadline / lifespan emulation. The façade crate gates the

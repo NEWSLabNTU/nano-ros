@@ -167,36 +167,18 @@ mod cffi_register {
         }
     }
 
-    // Phase 104.A — POSIX auto-registration. `.init_array` is walked
-    // by libc startup before `main`; the entry points to
-    // `auto_register_ctor` which calls `nros_rmw_zenoh_register`. Pure-
-    // Rust binaries that depend on this crate pick up registration
-    // automatically; users don't need an explicit `register()` call.
-    //
-    // Bare-metal targets (RTIC, FreeRTOS, NuttX, ThreadX, Zephyr,
-    // orin-spe) typically skip `.init_array` walking — those callers
-    // continue to invoke `register()` from `main`. The cfg below
-    // gates on POSIX-class hosts (`target_os = "linux" |
-    // "macos" | "freebsd"`) where the section is honoured.
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    #[used]
-    #[unsafe(link_section = ".init_array")]
-    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
-
-    #[cfg(target_os = "macos")]
-    #[used]
-    #[unsafe(link_section = "__DATA,__mod_init_func")]
-    static AUTO_REGISTER_CTOR: extern "C" fn() = auto_register_ctor;
-
-    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
-    extern "C" fn auto_register_ctor() {
-        // SAFETY: idempotent vtable install. The atomic slot accepts
-        // re-registration; if the user has already called register()
-        // manually, this is a no-op. Errors are ignored — the next
-        // `Executor::open` will fail with a clear message via
-        // `nros_rmw_cffi::backend_registered()`.
+    // Phase 128.B.1 — `RMW_INIT_ENTRIES` self-registration. Every
+    // target (POSIX, Mach-O, bare-metal, RTOS) contributes the same
+    // entry via `linkme`'s distributed slice; the `nros-rmw-cffi`
+    // walker invokes it on first `Executor::open`. Replaces the prior
+    // POSIX-only `.init_array` ctor — no more explicit `register()`
+    // call needed in bare-metal `main()`.
+    unsafe extern "C" fn section_register_entry() {
         let _ = nros_rmw_zenoh_register();
     }
+
+    #[linkme::distributed_slice(nros_rmw_cffi::RMW_INIT_ENTRIES)]
+    static SECTION_REGISTER: nros_rmw_cffi::RmwInitEntry = section_register_entry;
 }
 
 #[cfg(any(

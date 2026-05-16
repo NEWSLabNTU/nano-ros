@@ -61,9 +61,14 @@ fn main() {
     info!("nros Native Talker (Zenoh Transport)");
     info!("=========================================");
 
-    // Phase 104.A — explicit RMW backend registration. The auto-ctor
-    // in `.init_array` doesn't survive Rust's archive-walk linkage
-    // when no symbol from the rlib is otherwise referenced.
+    // Phase 128.B.1 — on stable Rust the backend rlib is NOT pulled
+    // into the link line unless something references one of its
+    // symbols, even though its `RMW_INIT_ENTRIES` entry is `#[used]`.
+    // The one-line `register()` call below doubles as both the
+    // (idempotent) backend registration trigger AND the symbol
+    // reference that drags the rlib's CGU into the binary. C/C++
+    // builds avoid this because `--whole-archive` semantics for
+    // static libs pulls every section entry unconditionally.
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
     // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
