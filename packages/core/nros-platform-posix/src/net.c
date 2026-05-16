@@ -53,6 +53,19 @@ typedef struct {
 /* ---- Internal helpers ---- */
 
 static void set_recv_timeout_ms(int fd, uint32_t timeout_ms) {
+    /* Phase 127.B.5 — `timeout_ms == 0` means "non-blocking" per the
+     * platform-net ABI (cooperative recv loops poll + yield). POSIX
+     * `SO_RCVTIMEO` with `{0, 0}` is the OPPOSITE — it means "block
+     * forever". Map timeout==0 to O_NONBLOCK so the dust-dds recv
+     * loops actually yield to the async runtime instead of starving
+     * `Executor::open` / `create_publisher`. */
+    if (timeout_ms == 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags >= 0) {
+            (void) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+        return;
+    }
     struct timeval tv = {
         .tv_sec  = (time_t)      (timeout_ms / 1000u),
         .tv_usec = (suseconds_t) ((timeout_ms % 1000u) * 1000u),
@@ -331,12 +344,17 @@ typedef struct {
 /* Walk the host's interfaces looking for one whose name matches
  * `iface` and whose address family matches `sa_family`. Returns a
  * malloc'd sockaddr (callee frees with libc free) or NULL.
- * Mirrors the Rust `get_ip_from_iface`. */
+ * Mirrors the Rust `get_ip_from_iface`.
+ *
+ * Phase 127.B.5: `iface == NULL` is the common DDS SPDP path — the
+ * caller has no preferred interface, "just join on whatever talks IPv4
+ * with a non-loopback address". Pick the first such interface so the
+ * caller can compute a valid `imr_interface` for IP_ADD_MEMBERSHIP. */
 static struct sockaddr *get_ip_from_iface(const uint8_t *iface,
                                           int sa_family,
                                           socklen_t *addrlen_out) {
     struct ifaddrs *ifaddrs_head = NULL;
-    if (getifaddrs(&ifaddrs_head) != 0 || iface == NULL) {
+    if (getifaddrs(&ifaddrs_head) != 0) {
         if (ifaddrs_head != NULL) freeifaddrs(ifaddrs_head);
         return NULL;
     }
@@ -346,7 +364,16 @@ static struct sockaddr *get_ip_from_iface(const uint8_t *iface,
     for (struct ifaddrs *it = ifaddrs_head; it != NULL; it = it->ifa_next) {
         if (it->ifa_addr == NULL) continue;
         if (it->ifa_addr->sa_family != sa_family) continue;
-        if (strcmp(it->ifa_name, (const char *) iface) != 0) continue;
+        if (iface != NULL) {
+            if (strcmp(it->ifa_name, (const char *) iface) != 0) continue;
+        } else {
+            /* Skip loopback when picking a default interface so SPDP
+             * lands on the actual network. The flags check uses the
+             * portable IFF_LOOPBACK bit. */
+            if ((it->ifa_flags & IFF_LOOPBACK) != 0) continue;
+            /* Skip down / not-running interfaces. */
+            if ((it->ifa_flags & IFF_UP) == 0) continue;
+        }
 
         size_t size = 0;
         if (sa_family == AF_INET)       size = sizeof(struct sockaddr_in);

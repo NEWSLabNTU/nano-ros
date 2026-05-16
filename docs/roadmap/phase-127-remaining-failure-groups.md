@@ -446,7 +446,10 @@ Subitems:
   pub/sub, service, and action pass in the focused ThreadX Linux slice;
   ThreadX RISC-V Rust/C/C++ pub/sub, service, and action pass after the
   ThreadX select, stack, and linker-wrapper fixes.
-- [~] `127.B.4`: Bare-metal DDS runtime triage.
+- [x] `127.B.4`: Bare-metal DDS runtime triage. Bare-metal MPS2-AN385
+  DDS Rust talker → listener passes (65 messages received in 83 s)
+  after `cd713d43` added the explicit `nros_rmw_dds::register()` call
+  to both fixtures.
 - [~] `127.B.5`: Shared platform DDS runtime triage. NuttX and ThreadX
   RISC-V DDS now open and publish but do not deliver RTPS messages.
 
