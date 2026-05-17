@@ -61,21 +61,18 @@ fn main() {
     configure_riscv64(&mut threadx);
     add_threadx_includes(&mut threadx, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
 
-    // All kernel common source files
-    for entry in std::fs::read_dir(threadx_dir.join("common/src")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "c") {
-            threadx.file(&path);
-        }
-    }
-
-    // RISC-V port C files
-    for entry in std::fs::read_dir(threadx_port_dir.join("src")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "c") {
-            threadx.file(&path);
-        }
-    }
+    // Phase 149.2.B — kernel + port-C source enumeration moved to
+    // `nros_board_common::threadx_sources`. The helper covers the
+    // identical loops both ThreadX overlays used. RISC-V-specific
+    // assembly files + the board's own `.S` overrides stay
+    // per-overlay below since they require manifest-dir paths and
+    // custom exclusion lists this overlay maintains.
+    nros_board_common::threadx_sources::add_threadx_kernel_sources(&mut threadx, &threadx_dir);
+    nros_board_common::threadx_sources::add_threadx_port_sources(
+        &mut threadx,
+        &threadx_dir,
+        "risc-v64/gnu",
+    );
 
     // RISC-V port assembly files — exclude files that the board crate
     // overrides with ULONG=4 struct layout fixes (see c/tx_thread_*.S).

@@ -48,26 +48,20 @@ fn main() {
     );
 
     // ---- Build ThreadX kernel ----
+    // Phase 149.2.B — kernel + port source enumeration moved to
+    // `nros_board_common::threadx_sources` so both ThreadX
+    // overlays (Linux sim + RISC-V QEMU) + the future generic
+    // crate share one canonical list. ThreadX-kernel submodule
+    // bumps that add new files pick up automatically here.
     let mut threadx = cc::Build::new();
     configure_linux(&mut threadx);
     add_threadx_includes(&mut threadx, &threadx_dir, &threadx_port_dir, &config_dir);
-
-    // All kernel source files
-    for entry in std::fs::read_dir(threadx_dir.join("common/src")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "c") {
-            threadx.file(&path);
-        }
-    }
-
-    // Linux port files
-    for entry in std::fs::read_dir(threadx_port_dir.join("src")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "c") {
-            threadx.file(&path);
-        }
-    }
-
+    nros_board_common::threadx_sources::add_threadx_kernel_sources(&mut threadx, &threadx_dir);
+    nros_board_common::threadx_sources::add_threadx_port_sources(
+        &mut threadx,
+        &threadx_dir,
+        "linux/gnu",
+    );
     threadx.compile("threadx");
 
     // ---- Build nsos-netx (NetX BSD compatibility shim over POSIX) ----
