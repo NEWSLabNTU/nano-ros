@@ -11,12 +11,11 @@ __pycache__/
 # Rust
 /target/
 
-# Build output (created by: just install-local)
+# Build output (per-example cmake build dirs, zenohd / zenoh-pico
+# scratch trees, Phase 138 Corrosion outputs). Phase 140 deleted the
+# install-local pipeline; build/ now only holds transient compile
+# artefacts.
 /build/
-
-# Distribution archives created by: just package
-/nros-*.tar.gz
-/nros-*.zip
 
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace
@@ -33,10 +32,6 @@ examples/**/generated/
 tools/*
 # ...but keep the pinned nightly for workspace tooling (fmt/miri/llvm-cov/etc.)
 !tools/rust-toolchain.toml
-# Phase 123.A.1.x.3 + A.1.x.4.a — install scaffolds for standalone
-# platform / RMW staticlibs. CMake projects driven by just recipes.
-!tools/install-platform/
-!tools/install-rmw/
 # Phase 123.A.3 — setup orchestrator (target → submodule fetch).
 !tools/setup.sh
 
