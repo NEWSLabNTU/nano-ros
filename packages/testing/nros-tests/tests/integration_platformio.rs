@@ -46,8 +46,8 @@ fn platformio_integration_shell_smoke() {
     );
 
     // Validate the library manifest parses.
-    let lib_json_raw = std::fs::read_to_string(shell.join("library.json"))
-        .expect("read library.json");
+    let lib_json_raw =
+        std::fs::read_to_string(shell.join("library.json")).expect("read library.json");
     assert!(
         lib_json_raw.contains("\"name\": \"nano-ros\""),
         "library.json must declare name = nano-ros",

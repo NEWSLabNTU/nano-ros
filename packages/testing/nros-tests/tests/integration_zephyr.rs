@@ -34,7 +34,9 @@ fn zephyr_integration_shell_smoke() {
     }
     let zephyr_base = std::env::var("ZEPHYR_BASE").ok();
     if zephyr_base.is_none() {
-        nros_tests::skip!("ZEPHYR_BASE unset — run `source <zephyr-workspace>/zephyr/zephyr-env.sh`");
+        nros_tests::skip!(
+            "ZEPHYR_BASE unset — run `source <zephyr-workspace>/zephyr/zephyr-env.sh`"
+        );
     }
 
     let root = workspace_root();
@@ -65,9 +67,7 @@ fn zephyr_integration_shell_smoke() {
         .output()
         .expect("invoke west list");
     if !list.status.success() {
-        nros_tests::skip!(
-            "west workspace not initialised — `just zephyr setup` to provision"
-        );
+        nros_tests::skip!("west workspace not initialised — `just zephyr setup` to provision");
     }
 
     // Final assertion: the shell's CMakeLists references the root.

@@ -103,12 +103,7 @@ fn run_platform_cell(platform: &str, tmp_subdir: &str) {
     );
 
     let build_cmd = Command::new("cmake")
-        .args([
-            "--build",
-            build.to_str().unwrap(),
-            "--target",
-            "plat_smoke",
-        ])
+        .args(["--build", build.to_str().unwrap(), "--target", "plat_smoke"])
         .output()
         .expect("failed to invoke cmake --build");
     assert!(
@@ -163,9 +158,7 @@ fn cmake_platform_zephyr() {
     // Zephyr's normal entry is `west`. Skip cleanly when absent —
     // Phase 139 will wire the west-driven integration shell.
     require_cmd_or_skip("west", "install zephyr SDK (`just zephyr setup`)");
-    nros_tests::skip!(
-        "Phase 138.6 zephyr cell deferred to Phase 139's west / module integration"
-    );
+    nros_tests::skip!("Phase 138.6 zephyr cell deferred to Phase 139's west / module integration");
 }
 
 #[test]

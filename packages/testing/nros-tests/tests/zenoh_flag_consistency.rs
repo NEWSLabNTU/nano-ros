@@ -39,10 +39,12 @@
 
 #![cfg(feature = "link-flag-matrix")]
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 const ARCHIVE_RELATIVE: &str = "build/install/lib/libnros_rmw_zenoh.a";
 
@@ -100,10 +102,7 @@ struct SymbolPresence {
 }
 
 fn dump_symbols(archive: &Path) -> BTreeMap<String, SymbolPresence> {
-    let output = Command::new("nm")
-        .arg(archive)
-        .output()
-        .expect("nm failed");
+    let output = Command::new("nm").arg(archive).output().expect("nm failed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut map: BTreeMap<String, SymbolPresence> = BTreeMap::new();
 
@@ -134,7 +133,13 @@ fn dump_symbols(archive: &Path) -> BTreeMap<String, SymbolPresence> {
             if name.starts_with(&wrapper_prefix) && name.ends_with(&wrapper_suffix) {
                 map.get_mut(*t).unwrap().wrapper_defined = true;
             }
-            let impl_prefixes = ["_z_open_", "_z_close_", "_z_read_", "_z_send_", "_z_listen_"];
+            let impl_prefixes = [
+                "_z_open_",
+                "_z_close_",
+                "_z_read_",
+                "_z_send_",
+                "_z_listen_",
+            ];
             for ip in &impl_prefixes {
                 if name.starts_with(ip) && name.ends_with(&wrapper_suffix) {
                     map.get_mut(*t).unwrap().impl_defined = true;
@@ -171,13 +176,12 @@ fn rebuild_with_features(root: &Path, extra_features: &[&str]) {
         // env to forward without modifying the recipe.
         // (Recipe in justfile pins `--features posix,tcp,humble`;
         // we extend via the staticlib's feature set.)
-        let features_arg = format!(
-            "platform-posix,std,ros-humble,{}",
-            extra_features.join(",")
-        );
+        let features_arg = format!("platform-posix,std,ros-humble,{}", extra_features.join(","));
         cmd.env("ZPICO_EXTRA_FEATURES", &features_arg);
     }
-    let status = cmd.status().expect("just install-rmw-zenoh failed to spawn");
+    let status = cmd
+        .status()
+        .expect("just install-rmw-zenoh failed to spawn");
     assert!(status.success(), "just install-rmw-zenoh failed");
 }
 

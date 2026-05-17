@@ -47,8 +47,7 @@ fn nuttx_integration_shell_smoke() {
         assert!(p.exists(), "integrations/nuttx/{} missing", f);
     }
 
-    let make_defs = std::fs::read_to_string(shell.join("Make.defs"))
-        .expect("read Make.defs");
+    let make_defs = std::fs::read_to_string(shell.join("Make.defs")).expect("read Make.defs");
     assert!(
         make_defs.contains("CONFIG_NROS"),
         "NuttX Make.defs must gate on CONFIG_NROS",
@@ -58,15 +57,14 @@ fn nuttx_integration_shell_smoke() {
         "NuttX Make.defs must add to CONFIGURED_APPS",
     );
 
-    let kconfig = std::fs::read_to_string(shell.join("Kconfig"))
-        .expect("read NuttX Kconfig");
+    let kconfig = std::fs::read_to_string(shell.join("Kconfig")).expect("read NuttX Kconfig");
     assert!(
         kconfig.contains("config NROS"),
         "NuttX Kconfig must declare config NROS",
     );
 
-    let cmake_shell = std::fs::read_to_string(shell.join("CMakeLists.txt"))
-        .expect("read NuttX CMakeLists.txt");
+    let cmake_shell =
+        std::fs::read_to_string(shell.join("CMakeLists.txt")).expect("read NuttX CMakeLists.txt");
     assert!(
         cmake_shell.contains("NANO_ROS_PLATFORM"),
         "NuttX shell CMake must set NANO_ROS_PLATFORM",
