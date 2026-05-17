@@ -160,7 +160,7 @@ required-features = ["trigger-test"]
 [[test]]
 name = "server_available_e2e"
 path = "tests/server_available_e2e.rs"
-required-features = ["trigger-test"]
+required-features = ["multi-rmw-bridge"]
 
 [[test]]
 name = "multi_rmw_bridge"

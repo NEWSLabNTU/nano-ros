@@ -1,41 +1,42 @@
 //! Phase 124.G.3 — `server_available()` flips false→true within
 //! 100 ms of the server's first discovery announcement on the
-//! zenoh-pico backend.
+//! dust-DDS backend.
 //!
 //! The cffi routing tests
 //! (`packages/core/nros-rmw-cffi/tests/server_available.rs`)
 //! prove the slot is plumbed; this E2E exercises the actual
 //! discovery timing on a live backend.
 //!
-//! **Status (deferred):** test stub uses one Executor + two
-//! Nodes (client + server) — matches the Phase 104.B bridge
-//! topology — but zenoh-pico's `server_seen` tracks REMOTE
-//! queryables only; an in-process queryable registered on the
-//! same zenoh-pico session is never reported to its own
-//! liveliness subscription. The probe therefore stays false.
+//! Single Executor, three Nodes per Phase 104.B's bridge
+//! topology — matches the same pattern used by the G.2 multi-
+//! RMW bridge test:
+//!   * Node A on the primary zenoh-pico session (smoke; not
+//!     used in the probe).
+//!   * Node B (client) on a dust-DDS extra session via
+//!     `NodeBuilder::rmw("dds").locator("client")`.
+//!   * Node C (server) on a second dust-DDS extra session via
+//!     `NodeBuilder::rmw("dds").locator("server")` — distinct
+//!     locator forces `resolve_session_slot` to open a separate
+//!     dust-DDS participant.
 //!
-//! Bridge mode with two different rmw names per Node would
-//! open two sessions in the same Executor, but zenoh-pico-cffi
-//! registers under a single name ("zenoh") and its static
-//! single-process slot pools don't tolerate two concurrent
-//! sessions anyway.
+//! dust-DDS is the right backend for this test because (a)
+//! zenoh-pico's `server_seen` tracks REMOTE queryables only
+//! (in-process queryables on the same session never appear in
+//! their own liveliness subscription), and (b) zenoh-pico's
+//! single-process static slot pools don't tolerate two
+//! sessions in one binary. dust-DDS opens a fresh
+//! `DomainParticipant` per session and the two participants
+//! discover each other via UDP exactly the way real DDS does.
 //!
-//! Real-world server_available probes only need to flip when
-//! a *remote* server appears (the common race the API guards
-//! against). True E2E coverage needs a cross-process harness
-//! (`ManagedProcess` × 2 connected via `zenohd_unique`), with
-//! the client process polling `server_available()` after the
-//! server process registers its service. Same harness gap as
-//! Phase 124.G.2.
-//!
-//! Run (currently `#[ignore]`'d): `cargo test -p nros-tests
-//! --test server_available_e2e --features trigger-test --
-//! --test-threads=1 --ignored`
+//! Run: `cargo test -p nros-tests --test server_available_e2e
+//! --features multi-rmw-bridge -- --test-threads=1`
 
-#![cfg(feature = "trigger-test")]
+#![cfg(feature = "multi-rmw-bridge")]
 
-// Force-link zenoh-pico so its `.init_array` ctor registers the
-// vtable before `Executor::open` runs.
+// Force-link both backends so each one's `.init_array` ctor
+// registers its vtable before `Executor::open` /
+// `NodeBuilder::rmw(...)` runs.
+use nros_rmw_dds as _;
 use nros_rmw_zenoh as _;
 
 use std::time::{Duration, Instant};
@@ -45,36 +46,17 @@ use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
 
 /// Acceptance bound from `phase-124-rmw-zero-copy-dispatch.md`
-/// thread C: client.server_available() must flip from false to
-/// true within 100 ms of the server's first publish-discovery.
-/// Allow some scheduler slack for CI under load.
+/// thread C. CI slack allows 250 ms; the SUCCESS log records the
+/// raw elapsed so regressions show up in test output.
 const SERVER_DISCOVERY_BOUND_MS: u64 = 250;
 
-/// Acceptance flow:
-///   1. Spawn client, register a typeless service client on
-///      `/svr_avail_e2e`.
-///   2. Assert `server_available()` returns `Ok(false)` before
-///      the server exists.
-///   3. Spawn the server thread; have it register the matching
-///      service server.
-///   4. Poll `server_available()` from the main (client) thread
-///      with a tight loop; assert it flips to `true` inside the
-///      bound.
-///   5. Record the elapsed time as a SUCCESS log so CI can
-///      compare bounds across runs.
 #[rstest]
-#[ignore = "zenoh-pico server_seen tracks REMOTE queryables only; in-process \
-            client+server can't see each other; needs cross-process harness"]
 fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
-
-    // Single Executor — matches the Phase 104.B bridge topology
-    // (one Executor, one or more Nodes per process). Avoids the
-    // in-process dual-Executor zenoh-pico flake.
     let mut executor = Executor::open(
         &ExecutorConfig::new(&locator)
             .node_name("svr_avail_root")
@@ -82,24 +64,37 @@ fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
     )
     .expect("Executor::open failed");
 
-    let client = {
-        let mut node = executor
-            .create_node("svr_avail_client_node")
-            .expect("client create_node failed");
-        node.create_client_raw(
-            "/svr_avail_e2e",
-            "example_interfaces/srv/Trigger",
-            "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        )
-        .expect("create_client_raw failed")
-    };
+    // Node A — smoke: keeps the multi-rmw Executor's primary
+    // session alive without being involved in the probe.
+    let _node_a_id = executor
+        .node_builder("svr_avail_node_a")
+        .build()
+        .expect("node A build failed");
 
-    // Drive spins so any latent discovery traffic settles.
-    for _ in 0..10 {
+    // Node B — client on dust-DDS extra session "client".
+    let node_b_id = executor
+        .node_builder("svr_avail_client")
+        .rmw("dds")
+        .locator("client")
+        .build()
+        .expect("node B build failed");
+    let client = executor
+        .with_node_try(node_b_id, |n| {
+            n.create_client_raw(
+                "/svr_avail_e2e",
+                "example_interfaces/srv/Trigger",
+                "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+        })
+        .expect("create_client_raw failed");
+
+    // Settle: spin enough for the client's writer to register
+    // and any spurious early matches to clear.
+    for _ in 0..20 {
         executor.spin_once(Duration::from_millis(20));
     }
 
-    // Before the server exists the probe must return false.
+    // Pre-server probe — must be false.
     let before = client
         .server_available()
         .expect("server_available probe failed before server registration");
@@ -109,25 +104,32 @@ fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
         before
     );
 
-    // Register the server Node on the same Executor; discovery
-    // clock starts at the moment the service-server entity
-    // exists. Keep `_server` alive for the polling window.
+    // Node C — server on dust-DDS extra session "server".
+    // Discovery clock starts the moment the service-server
+    // entity exists. Keep `_server` alive for the polling
+    // window.
     let discovery_start = Instant::now();
-    let _server = {
-        let mut node = executor
-            .create_node("svr_avail_server_node")
-            .expect("server create_node failed");
-        node.create_service_raw(
-            "/svr_avail_e2e",
-            "example_interfaces/srv/Trigger",
-            "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        )
-        .expect("create_service_raw failed")
-    };
+    let node_c_id = executor
+        .node_builder("svr_avail_server")
+        .rmw("dds")
+        .locator("server")
+        .build()
+        .expect("node C build failed");
+    let _server = executor
+        .with_node_try(node_c_id, |n| {
+            n.create_service_raw(
+                "/svr_avail_e2e",
+                "example_interfaces/srv/Trigger",
+                "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+        })
+        .expect("create_service_raw failed");
 
-    // Wait up to 5 s for liveliness propagation — well above the
-    // 100 ms acceptance bound so the assertion below catches
-    // latency regressions rather than test-harness flakes.
+    // Poll for the flip. Allow up to 5 s wall-clock so the
+    // assertion below catches latency regressions rather than
+    // test-harness flakes; the actual measured elapsed is
+    // checked against the 100 ms acceptance bound (with CI
+    // slack).
     let deadline = discovery_start + Duration::from_secs(5);
     let mut latest_state = false;
     while Instant::now() < deadline {

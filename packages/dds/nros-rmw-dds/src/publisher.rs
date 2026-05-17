@@ -47,6 +47,28 @@ impl DdsPublisher {
             shared,
         }
     }
+
+    /// Phase 124.G.3 — graph-aware "is anyone listening" probe.
+    /// Returns the current count of matched DataReaders for the
+    /// underlying DataWriter, via dust-dds's
+    /// `PublicationMatchedStatus::current_count`. Used by
+    /// `DdsServiceClient::server_available` to flip false→true
+    /// when a service server's request-side reader matches.
+    #[cfg(feature = "std")]
+    pub(crate) fn matched_subscription_count(&self) -> i32 {
+        self.writer
+            .get_publication_matched_status()
+            .map(|s| s.current_count)
+            .unwrap_or(0)
+    }
+
+    #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
+    pub(crate) fn matched_subscription_count(&self) -> i32 {
+        self.runtime
+            .block_on(self.writer_async.get_publication_matched_status())
+            .map(|s| s.current_count)
+            .unwrap_or(0)
+    }
 }
 
 impl Publisher for DdsPublisher {

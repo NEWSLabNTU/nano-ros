@@ -205,15 +205,14 @@ impl ServiceClientTrait for DdsServiceClient {
     }
 
     fn server_available(&self) -> Result<bool, Self::Error> {
-        // Phase 124.C.2 — DDS built-in topics (Cyclone's
-        // PublicationBuiltinTopicData / dust-dds's
-        // BuiltinDiscoveredDataReaders) would let us count matched
-        // request readers here. dust-dds doesn't yet expose that
-        // surface through its public API; for now, mirror the
-        // `is_server_ready` default — "best-effort true" — until the
-        // DataReader.matched_publication_count() shim lands. Callers
-        // that need a strict probe should distinguish via the
-        // returned `Ok(false)` once the count is wired in.
-        Ok(true)
+        // Phase 124.G.3 — graph-aware probe via
+        // `DataWriter::get_publication_matched_status().current_count`.
+        // The client's request writer matches the server's
+        // request reader when the server's
+        // `DdsSession::create_service_server` registers a
+        // DataReader on the same `rq/<service>Request` topic
+        // with compatible QoS. `current_count > 0` ↔ at least
+        // one matching service server is up.
+        Ok(self.request_writer.matched_subscription_count() > 0)
     }
 }

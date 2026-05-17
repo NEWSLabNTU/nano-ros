@@ -1096,20 +1096,35 @@ new test fixture rather than backend code change.
       Observed: 50/50 (100%) delivery in 1.51 s on POSIX, well
       under the 10 s budget and the 99 % threshold.
 
-- [ ] **124.G.3 — `server_available()` flips false→true within
-      100 ms.** Test stub landed in
-      `nros-tests/tests/server_available_e2e.rs`
-      (`#[ignore]`'d). Single-Executor + dual-Node attempt
-      revealed zenoh-pico's `server_seen` tracks REMOTE
-      queryables only — an in-process queryable on the same
-      session never appears in its own liveliness
-      subscription, so the probe stays false. Same blocker
-      shape as G.2: needs a cross-process harness (one
-      `ManagedProcess` for the server, the test process as
-      the client; both connect through `zenohd_unique`).
-      `RawServiceClient::server_available()` was added in
-      passing so the cross-process harness can use the raw
-      API directly (the typed `Client<S>` already has it).
+- [x] **124.G.3 — `server_available()` flips false→true within
+      100 ms.** `server_available_flips_within_100ms` in
+      `nros-tests/tests/server_available_e2e.rs` PASSES.
+      Single Executor with three Nodes per Phase 104.B's
+      bridge topology (same shape as G.2): Node A on primary
+      zenoh-pico (smoke); Node B (client) on a dust-DDS extra
+      session via `NodeBuilder::rmw("dds").locator("client")`;
+      Node C (server) on a second dust-DDS extra session via
+      `.locator("server")` — distinct locators force two
+      participants that discover each other via UDP.
+
+      Backend fix: `DdsServiceClient::server_available` was a
+      stub returning `Ok(true)` (per the 124.C.2 deferral
+      note). Replaced with a graph-aware probe via the new
+      `DdsPublisher::matched_subscription_count()` helper, which
+      reads dust-dds's `PublicationMatchedStatus::current_count`
+      from the client's `rq/<service>Request` writer. Returns
+      `true` ↔ at least one matching service-server reader is
+      currently matched. Wired for both the std and
+      nostd-runtime paths.
+
+      Observed: **63 ms** flip on POSIX — well under the 100 ms
+      acceptance target and the 250 ms CI-slack bound.
+
+      zenoh-pico variant deferred: in-process queryables on
+      the same session never appear in their own liveliness
+      subscription, and the single-process static slot pools
+      don't tolerate two sessions in one binary. Cross-process
+      harness still needed for zenoh-pico coverage.
 
 ## Acceptance criteria
 
