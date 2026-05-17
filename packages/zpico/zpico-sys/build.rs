@@ -1671,22 +1671,10 @@ fn build_zenoh_pico_embedded(
             .flag("-mfloat-abi=hard");
     }
 
-    // Collect zenoh-pico core sources (excluding platform-specific system backends)
-    let src_dir = zenoh_pico_src.join("src");
-    for subdir in &[
-        "api",
-        "collections",
-        "link",
-        "net",
-        "protocol",
-        "session",
-        "transport",
-        "utils",
-    ] {
-        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
-    }
-    // Common system sources (shared across all platforms)
-    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+    // Phase 136.4 (pre-collapse) — core source set (8 protocol
+    // subdirs + `system/common`) factored out. Platform-specific
+    // `system/<plat>/` sources are still per-RTOS below.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("zpico").join("zpico.c"));
@@ -1864,21 +1852,8 @@ fn build_zenoh_pico_orin_spe(
 
     // Collect zenoh-pico core sources (excluding platform-specific
     // system backends — we add freertos/system.c manually below).
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
     let src_dir = zenoh_pico_src.join("src");
-    for subdir in &[
-        "api",
-        "collections",
-        "link",
-        "net",
-        "protocol",
-        "session",
-        "transport",
-        "utils",
-    ] {
-        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
-    }
-    // Common system sources (cross-platform helpers).
-    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // FreeRTOS native system layer — provides clock / mutex / condvar /
     // task / sleep / random / time / alloc against the FSP API.
@@ -2029,22 +2004,10 @@ fn build_zenoh_pico_freertos(
             .flag("-mfloat-abi=hard");
     }
 
-    // Collect zenoh-pico core sources (excluding platform-specific system backends)
-    let src_dir = zenoh_pico_src.join("src");
-    for subdir in &[
-        "api",
-        "collections",
-        "link",
-        "net",
-        "protocol",
-        "session",
-        "transport",
-        "utils",
-    ] {
-        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
-    }
-    // Common system sources (shared across all platforms)
-    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+    // Phase 136.4 (pre-collapse) — core source set (8 protocol
+    // subdirs + `system/common`) factored out. Platform-specific
+    // `system/<plat>/` sources are still per-RTOS below.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
 
     // FreeRTOS platform sources
     // system.c skipped — platform symbols provided by zpico-platform-shim.
@@ -2144,22 +2107,10 @@ fn build_zenoh_pico_nuttx(
         build.flag("-march=armv7-a");
     }
 
-    // Collect zenoh-pico core sources (excluding platform-specific system backends)
-    let src_dir = zenoh_pico_src.join("src");
-    for subdir in &[
-        "api",
-        "collections",
-        "link",
-        "net",
-        "protocol",
-        "session",
-        "transport",
-        "utils",
-    ] {
-        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
-    }
-    // Common system sources (shared across all platforms)
-    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+    // Phase 136.4 (pre-collapse) — core source set (8 protocol
+    // subdirs + `system/common`) factored out. Platform-specific
+    // `system/<plat>/` sources are still per-RTOS below.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
 
     // Unix platform sources (NuttX is POSIX-compatible)
     // system.c skipped — most platform symbols come from zpico-platform-shim.
@@ -2332,22 +2283,10 @@ fn build_zenoh_pico_threadx(
             .flag("-mfloat-abi=hard");
     }
 
-    // Collect zenoh-pico core sources (excluding platform-specific system backends)
-    let src_dir = zenoh_pico_src.join("src");
-    for subdir in &[
-        "api",
-        "collections",
-        "link",
-        "net",
-        "protocol",
-        "session",
-        "transport",
-        "utils",
-    ] {
-        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
-    }
-    // Common system sources (shared across all platforms)
-    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+    // Phase 136.4 (pre-collapse) — core source set (8 protocol
+    // subdirs + `system/common`) factored out. Platform-specific
+    // `system/<plat>/` sources are still per-RTOS below.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
 
     // ThreadX platform sources
     // Most platform symbols (z_malloc, z_clock_now, _z_mutex_init, etc.) provided
@@ -2459,6 +2398,31 @@ fn build_zenoh_pico_threadx(
     println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=NROS_ZPICO_LOG_TO_UART");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_DEBUG");
+}
+
+/// Phase 136.4 (pre-collapse) — add the zenoh-pico core source set
+/// (8 protocol subdirs + `system/common`) to a `cc::Build`. Every
+/// per-RTOS `build_zenoh_pico_*` function used to inline the same
+/// 13-line block; centralising lets future bumps add or remove a
+/// subdir in one place. The platform-specific `system/<plat>/` set
+/// is still per-RTOS — that's the next collapse step (136.4) which
+/// drives it off `ResolvedPlatform::include` from `manifest.rs`.
+fn add_zenoh_pico_core_sources(build: &mut cc::Build, zenoh_pico_src: &Path) {
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(build, &src_dir.join(subdir));
+    }
+    // Common system sources (shared across all platforms)
+    add_c_sources_recursive(build, &src_dir.join("system").join("common"));
 }
 
 /// Recursively collect all .c files from a directory and add them to a cc::Build.
