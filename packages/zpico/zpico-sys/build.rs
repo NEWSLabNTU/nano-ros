@@ -663,6 +663,25 @@ fn main() {
         if target_os_for_alias == "none" {
             alias_build.flag("-ffreestanding");
         }
+        // Phase 152.B-followup — match the float-ABI of the rest
+        // of the link map on RISC-V. cc-rs defaults to
+        // `-mabi=lp64` (single-precision FP ABI) when the target
+        // triple is `riscv64gc-unknown-none-elf`, but every other
+        // .a in the link (kernel, NetX-Duo, platform-threadx,
+        // virtio, glue, Rust core) uses `lp64d` (double-precision).
+        // Mismatch produces `rust-lld: error: cannot link object
+        // files with different floating-point ABI` at the final
+        // example link. Apply the same RISC-V flag set the rest
+        // of this file uses for its own cc builds (line 859) and
+        // that `nros-board-threadx/build.rs` uses for kernel +
+        // platform-threadx.
+        let alias_target = env::var("TARGET").unwrap_or_default();
+        if alias_target.contains("riscv64") {
+            alias_build
+                .flag("-march=rv64gc")
+                .flag("-mabi=lp64d")
+                .flag("-mcmodel=medany");
+        }
         alias_build.compile("zpico_platform_aliases");
         println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
         println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
