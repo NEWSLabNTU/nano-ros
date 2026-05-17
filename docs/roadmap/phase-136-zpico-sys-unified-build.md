@@ -220,14 +220,16 @@ the manifest to stay in sync with upstream.
       **Files.** `packages/zpico/zpico-sys/build.rs`,
       `packages/zpico/zpico-sys/Cargo.toml`.
 
-- [ ] **136.4 — Collapse the per-RTOS cc-rs paths.**
-      `build_c_shim`, `build_zenoh_pico_threadx`,
-      `build_zenoh_pico_freertos`, `build_zenoh_pico_nuttx`, and
-      the Orin-SPE block collapse into one
-      `build_zenoh_pico(platform: &ResolvedPlatform)` function.
-      Per-platform deltas (compile flags, system libs, extra
-      defines) come from the manifest.
-      **Files.** `packages/zpico/zpico-sys/build.rs`.
+- [~] **136.4 — Collapse the per-RTOS cc-rs paths.** (2026-05-18 — pre-collapse partial)
+      Five per-RTOS `cc-rs` functions (`build_zenoh_pico_{embedded,
+      orin_spe, freertos, nuttx, threadx}`) each inlined the same
+      13-line core source loop; factored into
+      `add_zenoh_pico_core_sources()`. Pure code motion; full
+      collapse into one `build_zenoh_pico(platform: &ResolvedPlatform)`
+      waits on 136.3 (delete cmake POSIX path) so we don't ship a
+      half-collapsed state. Helper is the seam the eventual
+      manifest-driven function will share with whatever cmake-path
+      replacement 136.3 lands.
 
 - [ ] **136.5 — mbedTLS via pkg-config.**
       Replace CMake's `pkg_check_modules` with `pkg-config = "0.3"`
