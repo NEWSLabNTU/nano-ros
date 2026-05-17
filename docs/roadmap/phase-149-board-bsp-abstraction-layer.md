@@ -1,4 +1,4 @@
-# Phase 148 — Board / BSP Abstraction Layer
+# Phase 149 — Board / BSP Abstraction Layer
 
 **Goal.** Stop requiring a hand-written Cargo board crate per
 `(vendor × board × SDK-variant)` combo. Carve generic board crates
@@ -55,7 +55,7 @@ patterns vendors actually use:
    path. One generic crate per kernel + tiny overlay crates per
    vendor fork covers this surface.
 
-Phase 148 lands both.
+Phase 149 lands both.
 
 ---
 
@@ -152,7 +152,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
 
 ## Work Items
 
-- [ ] **148.1 — Carve `nros-board-freertos` generic crate.**
+- [ ] **149.1 — Carve `nros-board-freertos` generic crate.**
       Extract the FreeRTOS kernel build + lwIP wiring +
       `run(config, closure)` shape from
       `nros-board-mps2-an385-freertos` into a new
@@ -164,8 +164,8 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       `packages/boards/nros-board-mps2-an385-freertos/` (refactor),
       `packages/boards/nros-board-freertos/nros_board_freertos_platforms.toml` (new).
 
-- [ ] **148.2 — Carve `nros-board-threadx` generic crate.**
-      Same shape as 148.1 but for ThreadX kernel + NetX Duo. Existing
+- [ ] **149.2 — Carve `nros-board-threadx` generic crate.**
+      Same shape as 149.1 but for ThreadX kernel + NetX Duo. Existing
       `nros-board-threadx-linux` + `nros-board-threadx-qemu-riscv64`
       become overlays (`nsos-netx` Linux sim vs full NetX Duo TCP/IP
       + virtio-net on RISC-V).
@@ -174,7 +174,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       `packages/boards/nros-board-threadx-qemu-riscv64/` (refactor),
       `packages/boards/nros-board-threadx/nros_board_threadx_platforms.toml` (new).
 
-- [ ] **148.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
+- [ ] **149.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
       Become a true overlay on `nros-board-freertos` — re-exports
       `Config` / `run` + adds NVIDIA FSP wiring (consumes
       `NV_SPE_FSP_DIR`, replaces lwIP with IVC link). Demonstrates
@@ -183,7 +183,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       community crates.
       **Files.** `packages/boards/nros-board-orin-spe/` (refactor).
 
-- [ ] **148.4 — Migrate NuttX board crate.**
+- [ ] **149.4 — Migrate NuttX board crate.**
       `nros-board-nuttx-qemu-arm` → overlay on a thin generic
       `nros-board-nuttx` crate. NuttX owns the kernel build via its
       own apps/external path; the generic crate is mostly
@@ -191,7 +191,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       **Files.** `packages/boards/nros-board-nuttx/` (new),
       `packages/boards/nros-board-nuttx-qemu-arm/` (refactor).
 
-- [ ] **148.5 — Reuse Phase 136 manifest parser.**
+- [ ] **149.5 — Reuse Phase 136 manifest parser.**
       Land `packages/boards/nros-board-common/` containing the
       shared `manifest.rs` + `policy.rs` shims that the per-kernel
       generic crates pull in (avoid duplicating the
@@ -201,7 +201,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       **Files.** `packages/boards/nros-board-common/` (new) or shared
       shim under `packages/core/`.
 
-- [ ] **148.6 — Overlay-crate template + cookbook.**
+- [ ] **149.6 — Overlay-crate template + cookbook.**
       `templates/overlay-board/` cookiecutter-style skeleton + book
       chapter `book/src/porting/vendor-overlay.md` walking through
       the `nros-board-orin-spe` overlay. Include a "publish to
@@ -210,7 +210,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       **Files.** `templates/overlay-board/` (new),
       `book/src/porting/vendor-overlay.md` (new).
 
-- [ ] **148.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
+- [ ] **149.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
       - NuttX: wire `Rust.mk` macros + `context::` hook + `Kconfig`
         `choice` for RMW backend.
       - ESP-IDF: doc `esp-idf-sys` `extra_components` bridge.
@@ -219,7 +219,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       `book/src/getting-started/integration-esp-idf.md` (update),
       `integrations/platformio/README.md` (update).
 
-- [ ] **148.8 — Consumption-matrix doc.**
+- [ ] **149.8 — Consumption-matrix doc.**
       `book/src/concepts/board-integration.md` (new) covering the
       seven user profiles + recommended path per the design doc's
       matrix. Cross-link from `book/src/getting-started/installation.md`
@@ -227,9 +227,9 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       **Files.** `book/src/concepts/board-integration.md` (new),
       `book/src/SUMMARY.md`, `book/src/getting-started/installation.md`.
 
-- [ ] **148.9 — Migrate examples to consume generic + overlay path.**
+- [ ] **149.9 — Migrate examples to consume generic + overlay path.**
       Each `examples/<plat>/...` README points at the appropriate
-      consumption profile from 148.8. Existing Cargo `[dependencies]
+      consumption profile from 149.8. Existing Cargo `[dependencies]
       nros-board-<board>` entries unchanged — overlay re-exports
       preserve the public API.
       **Files.** `examples/**/README.md`, possibly some
@@ -246,7 +246,7 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       `NV_SPE_FSP_DIR` env requirement as today.
 - [ ] Adding a new overlay crate is < 100 LOC of Rust + < 50 LOC
       `build.rs`; verified by writing a `nros-board-stm32f4-freertos`
-      skeleton during 148.6.
+      skeleton during 149.6.
 - [ ] Each per-RTOS integration smoke test (Phase 139's set: NuttX,
       PlatformIO, Zephyr, PX4, ESP-IDF) stays green when its SDK
       env is sourced.
@@ -283,14 +283,14 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
 ## Notes
 
 - The Phase 136 manifest parser already proves the TOML-driven
-  build-data approach at scale. 148.5 reuses it to avoid
+  build-data approach at scale. 149.5 reuses it to avoid
   reinventing per-kernel.
 - Phase 139's smoke matrix (NuttX / PlatformIO / Zephyr / PX4 /
   ESP-IDF) validated 2026-05-18 — the integration shells work even
-  before the Phase 148 board-crate refactor; 148.7 is polish, not
+  before the Phase 149 board-crate refactor; 149.7 is polish, not
   rebuilding.
 - Phase 116 ("unified config and extensibility") is the long-term
-  north-star where this design sits. Phase 148 delivers the platform
+  north-star where this design sits. Phase 149 delivers the platform
   side; the configuration-DSL side (a la Zephyr's Kconfig + DTS)
   stays a Phase 116 open question.
 - Open question from the design doc: **monorepo vs sister repo for
@@ -300,4 +300,4 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
   community publishes more than ~5 overlays.
 - Open question: **who owns `nros-board-stm32*` / `nros-board-nxp-*`?**
   Plan: community-owned with one nano-ros-blessed example per
-  vendor (148.6 covers the example shape).
+  vendor (149.6 covers the example shape).
