@@ -1064,28 +1064,36 @@ new test fixture rather than backend code change.
       timer_fires -- --test-threads=1`.
 
 - [ ] **124.G.2 — Multi-RMW bridge ≥ 99% delivery.**
-      Blocked: in-process dual-Executor + zenoh-pico (single-
-      process static state) flake. Both Executors in one test
-      binary can't both `Executor::open` reliably against the
-      same `zenohd_unique` router — second `open` surfaces
-      `Transport(ConnectionFailed)`. Same root cause as
-      `loan_e2e::loan_commit_delivers_to_subscriber` flake.
-      Defer until a real cross-process bridge harness lands
-      (spawn two processes via `ManagedProcess`, link a
-      backend each, measure delivery + latency budget).
+      Test stub landed in
+      `nros-tests/tests/multi_rmw_bridge.rs`
+      (`bridge_zenoh_to_dds_delivers_99pct`,
+      `#[ignore]`'d). Single Executor with two Nodes per
+      Phase 104.B's bridge topology: Node A on the primary
+      session (rmw zenoh-pico), Node B on an extra session
+      opened via `NodeBuilder::rmw("dds")` (dust-DDS). Node
+      B's `create_publisher_raw` returns
+      `PublisherCreationFailed` — distinct integration gap
+      from the zenoh-pico dual-session limit. Likely cause:
+      dust-DDS's session-create path expects single-instance
+      participant state and doesn't compose with a
+      zenoh-primary Executor today. Needs dust-DDS shim work
+      to allow being opened as an `extra_session` alongside
+      another backend.
 
 - [ ] **124.G.3 — `server_available()` flips false→true within
       100 ms.** Test stub landed in
       `nros-tests/tests/server_available_e2e.rs`
-      (`server_available_flips_within_100ms`); blocked on the
-      same in-process dual-Executor zenoh-pico flake as G.2 —
-      client `Executor::open` succeeds but the server-side
-      one stalls because both reuse zenoh-pico's static slot
-      pools. Test code is correct; awaits the cross-process
-      harness shared with G.2. `RawServiceClient::server_available()`
-      was added in passing so the cross-process harness can
-      use the raw API directly (the typed `Client<S>` already
-      has it).
+      (`#[ignore]`'d). Single-Executor + dual-Node attempt
+      revealed zenoh-pico's `server_seen` tracks REMOTE
+      queryables only — an in-process queryable on the same
+      session never appears in its own liveliness
+      subscription, so the probe stays false. Same blocker
+      shape as G.2: needs a cross-process harness (one
+      `ManagedProcess` for the server, the test process as
+      the client; both connect through `zenohd_unique`).
+      `RawServiceClient::server_available()` was added in
+      passing so the cross-process harness can use the raw
+      API directly (the typed `Client<S>` already has it).
 
 ## Acceptance criteria
 

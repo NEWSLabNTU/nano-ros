@@ -7,18 +7,29 @@
 //! prove the slot is plumbed; this E2E exercises the actual
 //! discovery timing on a live backend.
 //!
-//! **Status (Phase 124.G.3 deferred):** test is `#[ignore]`d
-//! because in-process dual-Executor zenoh-pico setups are flaky
-//! — both Executors in one test binary reuse zenoh-pico's
-//! single-process static slot pools, and the second `open`
-//! surfaces `Transport(ConnectionFailed)`. Same root cause as
-//! `loan_e2e::loan_commit_delivers_to_subscriber`. Test code
-//! is correct; awaits a cross-process bridge harness (spawn
-//! two `ManagedProcess` instances, link a backend each, run
-//! the probe in the client process and assert the flip).
+//! **Status (deferred):** test stub uses one Executor + two
+//! Nodes (client + server) — matches the Phase 104.B bridge
+//! topology — but zenoh-pico's `server_seen` tracks REMOTE
+//! queryables only; an in-process queryable registered on the
+//! same zenoh-pico session is never reported to its own
+//! liveliness subscription. The probe therefore stays false.
 //!
-//! Run (currently fails): `cargo test -p nros-tests --test
-//! server_available_e2e --features trigger-test --
+//! Bridge mode with two different rmw names per Node would
+//! open two sessions in the same Executor, but zenoh-pico-cffi
+//! registers under a single name ("zenoh") and its static
+//! single-process slot pools don't tolerate two concurrent
+//! sessions anyway.
+//!
+//! Real-world server_available probes only need to flip when
+//! a *remote* server appears (the common race the API guards
+//! against). True E2E coverage needs a cross-process harness
+//! (`ManagedProcess` × 2 connected via `zenohd_unique`), with
+//! the client process polling `server_available()` after the
+//! server process registers its service. Same harness gap as
+//! Phase 124.G.2.
+//!
+//! Run (currently `#[ignore]`'d): `cargo test -p nros-tests
+//! --test server_available_e2e --features trigger-test --
 //! --test-threads=1 --ignored`
 
 #![cfg(feature = "trigger-test")]
@@ -27,10 +38,7 @@
 // vtable before `Executor::open` runs.
 use nros_rmw_zenoh as _;
 
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use nros_node::executor::*;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
@@ -55,7 +63,8 @@ const SERVER_DISCOVERY_BOUND_MS: u64 = 250;
 ///   5. Record the elapsed time as a SUCCESS log so CI can
 ///      compare bounds across runs.
 #[rstest]
-#[ignore = "in-process dual-Executor zenoh-pico flake; awaits cross-process harness"]
+#[ignore = "zenoh-pico server_seen tracks REMOTE queryables only; in-process \
+            client+server can't see each other; needs cross-process harness"]
 fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
@@ -63,18 +72,20 @@ fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
 
     let locator = zenohd_unique.locator();
 
-    let locator_client = locator.clone();
-    let mut client_exec = Executor::open(
-        &ExecutorConfig::new(&locator_client)
-            .node_name("svr_avail_client")
+    // Single Executor — matches the Phase 104.B bridge topology
+    // (one Executor, one or more Nodes per process). Avoids the
+    // in-process dual-Executor zenoh-pico flake.
+    let mut executor = Executor::open(
+        &ExecutorConfig::new(&locator)
+            .node_name("svr_avail_root")
             .domain_id(93),
     )
-    .expect("client Executor::open failed");
+    .expect("Executor::open failed");
 
     let client = {
-        let mut node = client_exec
+        let mut node = executor
             .create_node("svr_avail_client_node")
-            .expect("create_node failed");
+            .expect("client create_node failed");
         node.create_client_raw(
             "/svr_avail_e2e",
             "example_interfaces/srv/Trigger",
@@ -83,84 +94,44 @@ fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
         .expect("create_client_raw failed")
     };
 
-    // Drive a few spins so any latent discovery traffic settles.
+    // Drive spins so any latent discovery traffic settles.
     for _ in 0..10 {
-        client_exec.spin_once(Duration::from_millis(20));
+        executor.spin_once(Duration::from_millis(20));
     }
 
-    // Before the server exists the probe must return false. The
-    // zenoh-pico backend implements `service_server_available`
-    // via the queryable-interest path; an empty interest set
-    // resolves to "no matched server".
+    // Before the server exists the probe must return false.
     let before = client
         .server_available()
-        .expect("server_available probe failed before server spawn");
+        .expect("server_available probe failed before server registration");
     assert!(
         !before,
-        "server_available() returned true before the server was spawned (got {:?})",
+        "server_available() returned true before the server was registered (got {:?})",
         before
     );
 
-    // Spawn the server on a worker thread. The thread keeps its
-    // own Executor; we don't need to dispatch its requests here
-    // — just having the service-server entity registered is
-    // enough for the client's discovery probe to flip.
-    let server_locator = locator.clone();
-    let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
-    let server_started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let server_started_thread = std::sync::Arc::clone(&server_started);
-
-    let server_handle = thread::spawn(move || {
-        let mut srv_exec = Executor::open(
-            &ExecutorConfig::new(&server_locator)
-                .node_name("svr_avail_server")
-                .domain_id(93),
-        )
-        .expect("server Executor::open failed");
-        let mut node = srv_exec
+    // Register the server Node on the same Executor; discovery
+    // clock starts at the moment the service-server entity
+    // exists. Keep `_server` alive for the polling window.
+    let discovery_start = Instant::now();
+    let _server = {
+        let mut node = executor
             .create_node("svr_avail_server_node")
             .expect("server create_node failed");
-        // Discovery only needs the entity to exist; we don't
-        // dispatch requests. Keep `_server` bound to the outer
-        // thread scope so it lives until the stop signal.
-        let _server = node
-            .create_service_raw(
-                "/svr_avail_e2e",
-                "example_interfaces/srv/Trigger",
-                "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            )
-            .expect("create_service_raw failed");
-        server_started_thread.store(true, std::sync::atomic::Ordering::SeqCst);
-        // Spin until stop signal so discovery announcements keep
-        // flowing.
-        while stop_rx.try_recv().is_err() {
-            srv_exec.spin_once(Duration::from_millis(20));
-        }
-        drop(_server);
-    });
+        node.create_service_raw(
+            "/svr_avail_e2e",
+            "example_interfaces/srv/Trigger",
+            "RIHS01_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .expect("create_service_raw failed")
+    };
 
-    // Wait for the server thread to register its entity (sync
-    // point before we start the discovery clock).
-    let setup_deadline = Instant::now() + Duration::from_secs(5);
-    while !server_started.load(std::sync::atomic::Ordering::SeqCst) {
-        if Instant::now() >= setup_deadline {
-            let _ = stop_tx.send(());
-            let _ = server_handle.join();
-            panic!("server thread never finished setup within 5 s");
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-
-    // Discovery clock starts here.
-    let discovery_start = Instant::now();
     // Wait up to 5 s for liveliness propagation — well above the
-    // bound so the assertion below catches latency regressions
-    // rather than test-harness flakes.
+    // 100 ms acceptance bound so the assertion below catches
+    // latency regressions rather than test-harness flakes.
     let deadline = discovery_start + Duration::from_secs(5);
-
     let mut latest_state = false;
     while Instant::now() < deadline {
-        client_exec.spin_once(Duration::from_millis(20));
+        executor.spin_once(Duration::from_millis(20));
         latest_state = client
             .server_available()
             .expect("server_available probe failed during poll");
@@ -170,25 +141,23 @@ fn server_available_flips_within_100ms(zenohd_unique: ZenohRouter) {
     }
     let elapsed = discovery_start.elapsed();
 
-    let _ = stop_tx.send(());
-    server_handle.join().expect("server thread panicked");
-
     assert!(
         latest_state,
-        "server_available() never flipped to true (deadline {}ms, observed {:?})",
-        SERVER_DISCOVERY_BOUND_MS * 2,
+        "server_available() never flipped to true (waited {:?})",
         elapsed,
     );
     assert!(
         elapsed <= Duration::from_millis(SERVER_DISCOVERY_BOUND_MS),
-        "server_available() flipped after {:?} — over the {}ms bound",
+        "server_available() flipped after {:?} — over the {} ms bound \
+         (100 ms acceptance target; bound widened to {} ms for CI slack)",
         elapsed,
+        SERVER_DISCOVERY_BOUND_MS,
         SERVER_DISCOVERY_BOUND_MS,
     );
 
     println!(
         "SUCCESS: server_available() flipped false→true in {:?} \
-         (bound {}ms; harder 100ms target informational)",
+         (bound {} ms; 100 ms acceptance target)",
         elapsed, SERVER_DISCOVERY_BOUND_MS,
     );
 }
