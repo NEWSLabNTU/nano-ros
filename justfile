@@ -353,7 +353,7 @@ test verbose="": build-zenohd
 # use full host parallelism without competing with N concurrent QEMU +
 # zenohd processes during the nextest run, which used to stretch a 14 s
 # test out to 125 s under load. Run this before `just test-all`.
-build-test-fixtures: build-zenoh-header-fixture
+build-test-fixtures: build-zenoh-posix-fixture
     just native build-fixtures
     just qemu build-fixtures
     just freertos build-fixtures
@@ -364,21 +364,35 @@ build-test-fixtures: build-zenoh-header-fixture
     just stm32f4 build-fixtures
     @echo "All test fixtures built."
 
-# Phase 150.E — deterministic fixture for the `nros-tests::zenoh_header_parity`
-# test. Builds `nros-rmw-zenoh-staticlib --features platform-posix`
-# into a dedicated --target-dir so the test always reads the POSIX
-# canonical header, not whichever `zpico-sys-<hash>` left in `target/`
-# from an unrelated cross-target build (Phase 146.2 LinkPolicy::threadx()
-# etc.). Output: `target-zenoh-header-fixture/debug/build/zpico-sys-*/
-# out/zenoh-config/zenoh_generic_config.h` (one zpico-sys-<hash> per
-# target-dir → glob is safe). The test discovers this path via the
-# `NROS_TESTS_ZENOH_HEADER_DIR` env var (set by this recipe when
-# invoked through `just`); a manual override via
-# `NROS_TESTS_ZENOH_HEADER` takes priority.
-build-zenoh-header-fixture:
-    cargo build -p nros-rmw-zenoh-staticlib \
+# Phase 150.E rev3 — single deterministic fixture serving both
+# `nros-tests::zenoh_header_parity` (reads the canonical
+# `zenoh_generic_config.h`) and `nros-tests::zenoh_archive_symbols`
+# (reads `libnros_rmw_zenoh_staticlib.a`). Both artefacts are
+# products of `cargo build -p nros-rmw-zenoh-staticlib --features
+# platform-posix`; bundle them into one dedicated --target-dir so
+# the tests always read the POSIX-policy variant, not whichever
+# feature set hit the shared workspace `target/` last (a cross-
+# target `just threadx_riscv64 build-fixtures` would otherwise
+# overwrite both with Phase 146.2 `LinkPolicy::threadx()` content).
+#
+# Output (deterministic — one `zpico-sys-<hash>` per --target-dir):
+#   target-zenoh-fixture-posix/release/libnros_rmw_zenoh_staticlib.a
+#   target-zenoh-fixture-posix/release/build/zpico-sys-*/out/
+#       zenoh-config/zenoh_generic_config.h
+#
+# Tests discover these paths via the `NROS_TESTS_ZENOH_ARCHIVE`
+# and `NROS_TESTS_ZENOH_HEADER` env vars when set (out-of-tree /
+# CI override); otherwise walk this directory.
+#
+# `--release` matters: `zenoh_archive_symbols.rs` predates this
+# recipe and was written against `target/release/`. Sticking to
+# release keeps both tests symmetric and matches the archive-
+# parity script's expectation.
+build-zenoh-posix-fixture:
+    cargo build --release \
+        -p nros-rmw-zenoh-staticlib \
         --features platform-posix \
-        --target-dir target-zenoh-header-fixture
+        --target-dir target-zenoh-fixture-posix
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen

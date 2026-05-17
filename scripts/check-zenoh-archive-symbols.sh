@@ -63,6 +63,15 @@ for t in "${TRANSPORTS[@]}"; do
     # they have no underlying `_z_*_<t>` impl in zenoh-pico (they
     # call other wrappers internally), so skip them in the parity
     # gate. `write` maps to `send` on the impl side.
+    #
+    # Serial is special: zenoh-pico's `src/link/unicast/serial.c`
+    # wrappers (`_z_f_link_open_serial`, `_z_f_link_listen_serial`)
+    # call `_z_open_serial_from_{dev,pins}` /
+    # `_z_listen_serial_from_{dev,pins}` rather than a single
+    # `_z_open_serial`; `_z_f_link_read_socket_serial` calls
+    # `_z_read_serial_internal`; `write` maps to
+    # `_z_send_serial_internal`. Encode the divergence so the
+    # parity check measures the right contract.
     missing=()
     for w in "${WRAPPERS[@]}"; do
         op="${w#_z_f_link_}"; op="${op%_$t}"
@@ -70,16 +79,47 @@ for t in "${TRANSPORTS[@]}"; do
             free|write_all)
                 continue
                 ;;
-            write)
-                impl="_z_send_${t}"
-                ;;
-            *)
-                impl="_z_${op}_${t}"
-                ;;
         esac
-        # Defined if at least one row is `T impl` (text section).
-        if ! grep -qE " T ${impl}$" "$NM_TMP"; then
-            missing+=("$impl (wrapper $w)")
+        # Each wrapper may map to one or more candidate impls; the
+        # parity check passes if ANY candidate is defined as `T`.
+        impls=()
+        if [[ "$t" == "serial" ]]; then
+            case "$op" in
+                open|listen)
+                    impls=("_z_${op}_serial_from_dev" "_z_${op}_serial_from_pins")
+                    ;;
+                read_socket)
+                    impls=("_z_read_serial_internal")
+                    ;;
+                close)
+                    impls=("_z_close_serial")
+                    ;;
+                write)
+                    impls=("_z_send_serial_internal")
+                    ;;
+                *)
+                    impls=("_z_${op}_${t}")
+                    ;;
+            esac
+        else
+            case "$op" in
+                write)
+                    impls=("_z_send_${t}")
+                    ;;
+                *)
+                    impls=("_z_${op}_${t}")
+                    ;;
+            esac
+        fi
+        found=0
+        for impl in "${impls[@]}"; do
+            if grep -qE " T ${impl}$" "$NM_TMP"; then
+                found=1
+                break
+            fi
+        done
+        if (( ! found )); then
+            missing+=("${impls[*]} (wrapper $w)")
         fi
     done
 

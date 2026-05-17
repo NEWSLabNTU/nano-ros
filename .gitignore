@@ -10,9 +10,10 @@ __pycache__/
 
 # Rust
 /target/
-# Phase 150.E — deterministic --target-dir for the
-# `nros-tests::zenoh_header_parity` fixture (`just build-zenoh-header-fixture`).
-/target-zenoh-header-fixture/
+# Phase 150.E rev3 — deterministic --target-dir for the shared
+# `nros-tests::zenoh_header_parity` + `zenoh_archive_symbols`
+# POSIX fixture (`just build-zenoh-posix-fixture`).
+/target-zenoh-fixture-posix/
 
 # Build output (per-example cmake build dirs, zenohd / zenoh-pico
 # scratch trees, Phase 138 Corrosion outputs). Phase 140 deleted the

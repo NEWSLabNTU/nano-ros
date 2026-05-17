@@ -11,18 +11,18 @@
 //! `LinkFeatures::apply(LinkPolicy::posix())` chain produces, so
 //! we catch any future change that silently flips a flag.
 //!
-//! Header discovery (Phase 150.E rev2):
+//! Header discovery (Phase 150.E rev3):
 //!
 //! 1. `NROS_TESTS_ZENOH_HEADER` — explicit absolute path, wins.
 //!    Use this in CI / out-of-tree consumers (e.g. point at a CMake
 //!    build's `<build>/_deps/.../zenoh_generic_config.h`).
-//! 2. `<workspace>/target-zenoh-header-fixture/{debug,release}/build/
+//! 2. `<workspace>/target-zenoh-fixture-posix/release/build/
 //!    zpico-sys-*/out/zenoh-config/zenoh_generic_config.h` —
-//!    deterministic fixture built by `just build-zenoh-header-fixture`
+//!    deterministic fixture built by `just build-zenoh-posix-fixture`
 //!    (pulled in by `just build-test-fixtures`). Only ONE
 //!    `zpico-sys-<hash>` lives in this target-dir because the
 //!    dir only ever has `nros-rmw-zenoh-staticlib --features
-//!    platform-posix` built into it; the wildcard is safe.
+//!    platform-posix` (release) built into it; the wildcard is safe.
 //!
 //! Test FAILS (not skips) if neither source produces a header OR
 //! any `Z_FEATURE_LINK_*` value drifts from the contract. Failure
@@ -56,13 +56,14 @@ fn resolve_header_path() -> Result<PathBuf, String> {
     }
 
     let root = workspace_root();
-    // Same shape on both profiles; pick whichever exists. The fixture
-    // recipe (`just build-zenoh-header-fixture`) uses the dev profile
-    // (= `debug/`) but allowing `release/` keeps the contract honest
-    // if a caller invokes with `--release`.
-    for profile in ["debug", "release"] {
+    // Fixture is built with `--release` so the host-native subdir is
+    // `release/`. Allowing `debug/` as a secondary pick keeps the
+    // contract honest for a future caller that drops `--release`;
+    // both are deterministic because this --target-dir houses
+    // exactly one feature set (`platform-posix`).
+    for profile in ["release", "debug"] {
         let build_dir = root
-            .join("target-zenoh-header-fixture")
+            .join("target-zenoh-fixture-posix")
             .join(profile)
             .join("build");
         let Ok(entries) = fs::read_dir(&build_dir) else {
@@ -81,7 +82,7 @@ fn resolve_header_path() -> Result<PathBuf, String> {
     }
     Err(format!(
         "Phase 150.E fixture not built. Run:\n  \
-         just build-zenoh-header-fixture\n\
+         just build-zenoh-posix-fixture\n\
          (or `just build-test-fixtures` which pulls it in).\n\
          Override path via NROS_TESTS_ZENOH_HEADER=<abs/path/to/header>.\n\
          Workspace root searched: {}",
