@@ -470,7 +470,6 @@ dependencies = [
  "nros-platform-api",
  "nros-platform-mps2-an385",
  "panic-semihosting",
- "zpico-platform-shim",
  "zpico-serial",
 ]
 
@@ -1095,14 +1094,6 @@ name = "zpico-alloc"
 version = "0.1.0"
 
 [[package]]
-name = "zpico-platform-shim"
-version = "0.1.0"
-dependencies = [
- "cc",
- "nros-platform",
-]
-
-[[package]]
 name = "zpico-serial"
 version = "0.1.0"
 dependencies = [
@@ -1116,5 +1107,4 @@ dependencies = [
  "cbindgen",
  "cc",
  "cmake",
- "zpico-platform-shim",
 ]

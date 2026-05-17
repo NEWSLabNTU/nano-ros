@@ -164,7 +164,7 @@ install-rmw-zenoh:
     PREFIX="$(pwd)/build/install"
     echo "=== Building libnros_rmw_zenoh_staticlib.a (posix + tcp + humble) ==="
     cargo build -p nros-rmw-zenoh-staticlib \
-        --features platform-posix,link-tcp,ros-humble \
+        --features platform-posix,ros-humble \
         --release
     TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
     cmake -S tools/install-rmw/zenoh -B build/cmake-install-rmw-zenoh \
@@ -1285,7 +1285,7 @@ book:
     # nros-rmw-xrce is mutually exclusive with nros-rmw-zenoh (compile-
     # time mutex on `nros`), so it's not part of this invocation.
     cargo doc --no-deps \
-        --features rmw-zenoh,platform-posix,link-tcp,ros-humble \
+        --features rmw-zenoh,platform-posix,ros-humble \
         -p nros \
         -p nros-rmw \
         -p nros-rmw-cffi \

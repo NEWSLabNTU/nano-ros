@@ -472,7 +472,6 @@ dependencies = [
  "nros-smoltcp",
  "panic-semihosting",
  "smoltcp",
- "zpico-platform-shim",
 ]
 
 [[package]]
@@ -1096,19 +1095,10 @@ name = "zpico-alloc"
 version = "0.1.0"
 
 [[package]]
-name = "zpico-platform-shim"
-version = "0.1.0"
-dependencies = [
- "cc",
- "nros-platform",
-]
-
-[[package]]
 name = "zpico-sys"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
  "cmake",
- "zpico-platform-shim",
 ]

@@ -69,7 +69,7 @@ install:
         --target riscv64gc-unknown-none-elf \
         --release \
         --no-default-features \
-        --features platform-threadx,link-tcp,ros-humble
+        --features platform-threadx,ros-humble
     TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
     cp "$TARGET_DIR/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a" \
         "$PREFIX/lib/libnros_rmw_zenoh_threadx_riscv64.a"

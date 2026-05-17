@@ -207,10 +207,7 @@ fn main() {
             .file(posix_src.join("net.c"))
             .file(posix_src.join("timer.c"));
         posix_build.compile("nros_platform_posix_link");
-        println!(
-            "cargo:rerun-if-changed={}",
-            posix_src.display()
-        );
+        println!("cargo:rerun-if-changed={}", posix_src.display());
     }
 
     println!("cargo:rerun-if-changed=build.rs");

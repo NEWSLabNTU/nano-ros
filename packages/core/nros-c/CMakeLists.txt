@@ -45,20 +45,20 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
 elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
     # FreeRTOS bare-metal: no std, alloc for internal Rust collections,
-    # panic-halt for a minimal panic handler, link-tcp/link-udp for zenoh-pico.
-    set(_platform_features alloc panic-halt platform-freertos link-tcp link-udp-unicast)
+    # panic-halt for a minimal panic handler, link-tls/link-custom for zenoh-pico.
+    set(_platform_features alloc panic-halt platform-freertos)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     # NuttX provides a POSIX-like libc, so std is available.
     # NOTE: CMake/Corrosion builds for NuttX are disabled — upstream libc
     # is missing _SC_HOST_NAME_MAX which blocks build-std. Use Rust examples
     # directly (just nuttx build) until this is upstreamed.
-    set(_platform_features std platform-nuttx link-tcp link-udp-unicast)
+    set(_platform_features std platform-nuttx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
-    set(_platform_features std platform-threadx link-tcp link-udp-unicast)
+    set(_platform_features std platform-threadx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
-    set(_platform_features alloc panic-halt platform-threadx link-tcp link-udp-unicast)
+    set(_platform_features alloc panic-halt platform-threadx)
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
             "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")

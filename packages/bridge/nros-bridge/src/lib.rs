@@ -174,8 +174,7 @@ pub fn encode_bridge_origin(origin: &[u8], out: &mut [u8]) -> usize {
     out[..8].copy_from_slice(BRIDGE_ORIGIN_MAGIC);
     out[8] = BRIDGE_ORIGIN_VERSION;
     out[9] = copy as u8;
-    out[BRIDGE_ORIGIN_HEADER_LEN..BRIDGE_ORIGIN_HEADER_LEN + copy]
-        .copy_from_slice(&origin[..copy]);
+    out[BRIDGE_ORIGIN_HEADER_LEN..BRIDGE_ORIGIN_HEADER_LEN + copy].copy_from_slice(&origin[..copy]);
     BRIDGE_ORIGIN_HEADER_LEN + copy
 }
 

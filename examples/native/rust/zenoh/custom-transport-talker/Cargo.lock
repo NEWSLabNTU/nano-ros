@@ -981,14 +981,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zpico-platform-shim"
-version = "0.1.0"
-dependencies = [
- "cc",
- "nros-platform",
-]
-
-[[package]]
 name = "zpico-sys"
 version = "0.1.0"
 dependencies = [
@@ -996,5 +988,4 @@ dependencies = [
  "cc",
  "cmake",
  "zpico-platform-custom",
- "zpico-platform-shim",
 ]

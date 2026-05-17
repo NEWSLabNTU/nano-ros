@@ -636,11 +636,11 @@ fn main() {
     // for one-cycle co-existence.
     if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        let nros_platform_cffi_include =
-            manifest_dir.join("../../core/nros-platform-cffi/include");
-        cc::Build::new()
+        let nros_platform_cffi_include = manifest_dir.join("../../core/nros-platform-cffi/include");
+        let mut alias_build = cc::Build::new();
+        alias_build
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
-            .include(nros_platform_cffi_include)
+            .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
             // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
             // alias TU's clock-variant + network wrappers, which
@@ -648,8 +648,19 @@ fn main() {
             // and the canonical `_z_sys_net_*` opaque layouts in
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
-            .warnings(true)
-            .compile("zpico_platform_aliases");
+            .warnings(true);
+        // Phase 129.D — bare-metal cross targets
+        // (`target_os = "none"`) often lack a usable newlib on the
+        // host (`#include <stdint.h>` falls into gcc's own header
+        // which does `#include_next` expecting newlib).
+        // `-ffreestanding` tells gcc to use its own freestanding
+        // `<stdint.h>` / `<stddef.h>`, which is all the alias TU
+        // actually needs.
+        let target_os_for_alias = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        if target_os_for_alias == "none" {
+            alias_build.flag("-ffreestanding");
+        }
+        alias_build.compile("zpico_platform_aliases");
         println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
         println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
     }

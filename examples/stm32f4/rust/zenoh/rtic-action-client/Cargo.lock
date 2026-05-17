@@ -671,7 +671,6 @@ dependencies = [
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
- "zpico-platform-shim",
 ]
 
 [[package]]
@@ -1512,21 +1511,12 @@ name = "zpico-alloc"
 version = "0.1.0"
 
 [[package]]
-name = "zpico-platform-shim"
-version = "0.1.0"
-dependencies = [
- "cc",
- "nros-platform",
-]
-
-[[package]]
 name = "zpico-sys"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
  "cmake",
- "zpico-platform-shim",
 ]
 
 [[patch.unused]]

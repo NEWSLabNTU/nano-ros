@@ -11,6 +11,11 @@
 //! `_z_open_ivc` / `_z_ivc_*` symbols resolve.
 
 #![no_std]
+// The forwarders here are pure pointer pass-throughs to
+// `nvidia-ivc`'s C ABI. Safety contracts mirror the underlying
+// driver's; the link-layer caller is zenoh-pico vendor C which
+// supplies caller-owned storage.
+#![allow(clippy::missing_safety_doc)]
 
 use core::ffi::c_void;
 

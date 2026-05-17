@@ -56,8 +56,13 @@ log_info "Running install-local..."
 just install-local
 
 INSTALL_DIR="$PROJECT_ROOT/build/install"
-if [ ! -f "$INSTALL_DIR/lib/libnros_c_zenoh.a" ]; then
-    log_error "install-local failed: libnros_c_zenoh.a not found at $INSTALL_DIR/lib/"
+# Phase 128.C.4 — the cargo build is RMW-agnostic; the install
+# lib name no longer carries the `_zenoh` suffix. Single
+# canonical `libnros_c.a` per POSIX install. Backend selection
+# happens at the consumer's link step via
+# `target_link_libraries(... NanoRos::Rmw::<name>)`.
+if [ ! -f "$INSTALL_DIR/lib/libnros_c.a" ]; then
+    log_error "install-local failed: libnros_c.a not found at $INSTALL_DIR/lib/"
     exit 1
 fi
 
