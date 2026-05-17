@@ -136,7 +136,7 @@ test-basic verbose="": build-examples
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm-baremetal/rust/core/cdr-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+            -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 test-wcet verbose="": build-examples

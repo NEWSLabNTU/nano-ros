@@ -859,7 +859,7 @@ check-stack-all top="10":
     # Rust examples (QEMU ARM — no exclude, show full picture)
     for example in \
         examples/qemu-arm-baremetal/rust/core/wcet-bench \
-        examples/qemu-arm-baremetal/rust/core/cdr-test \
+        packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         examples/qemu-arm-baremetal/rust/zenoh/talker \
         examples/qemu-arm-baremetal/rust/zenoh/listener \
     ; do

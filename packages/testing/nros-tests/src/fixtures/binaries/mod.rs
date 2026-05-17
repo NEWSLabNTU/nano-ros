@@ -169,7 +169,8 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
     QEMU_TEST_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/qemu-arm-baremetal/rust/core/cdr-test");
+            let example_dir =
+                root.join("packages/testing/nros-tests/bins/cdr-roundtrip-qemu");
 
             eprintln!("Building qemu-test...");
 
