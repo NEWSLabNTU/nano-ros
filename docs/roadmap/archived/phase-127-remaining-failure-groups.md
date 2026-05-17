@@ -1,6 +1,27 @@
 # Phase 127 Remaining Failure Groups
 
 Date: 2026-05-15
+**Status: CLOSED (2026-05-18). Archived.**
+
+## Closeout summary
+
+Phase 127 split into seven failure groups (A–G); 5 closed in-phase,
+2 spun out:
+
+- 127.A (ESP32 Zenoh delivery) — closed.
+- 127.B (Hosted-RTOS Zenoh: FreeRTOS / NuttX / ThreadX) — closed.
+- 127.C (Zephyr boot + Zenoh + DDS + XRCE + interop) — closed.
+  All 5 subgroups landed.
+- 127.D (Bare-metal Zenoh QEMU) — D.1 / D.2 closed; **D.3 (serial
+  pub/sub) carved out → Phase 132** (CMSDK UART needs an IRQ-driven
+  driver, scope larger than a 127 follow-up).
+- 127.E (DDS action E2E) — closed.
+- 127.F (ROS 2 lifecycle interop) — closed.
+- 127.G (Snapshot / categorization) — G.1 / G.2 closed; **G.3
+  (`just test-all` rerun + fresh table) deferred** until after the
+  Phase 137 / 138 / 139 / 140 source-distribution refactor lands,
+  because a table captured against the current `install-local` path
+  goes stale the moment 140 deletes that path.
 
 Phase 127 tracks the remaining post-Phase-124 failure work as parallelizable
 groups. Historical Phase 124 run details remain in
@@ -809,7 +830,10 @@ Subitems:
 
 - [x] `127.D.1`: RTIC action E2E.
 - [x] `127.D.2`: RTIC service E2E.
-- [ ] `127.D.3`: Serial pub/sub E2E.
+- [~] `127.D.3`: Serial pub/sub E2E. **Carved out → Phase 132**
+  (`docs/roadmap/phase-132-cmsdk-uart-irq-driven.md`). Root cause is
+  the CMSDK UART busy-spin starving the QEMU main loop; the fix is
+  an IRQ-driven UART driver, which is bigger than a 127 follow-up.
 
 Done criteria:
 
@@ -1007,12 +1031,15 @@ Subitems:
 - [x] `127.G.1`: Run `just ci` and categorize nextest failures, skips, and
   environment skips.
 - [x] `127.G.2`: Run `just build-all` and isolate build-only regressions.
-- [ ] `127.G.3`: Run `just test-all` after fixture builds and refresh the final
-  phase table.
+- [~] `127.G.3`: Run `just test-all` after fixture builds and refresh the final
+  phase table. **Deferred — runs after Phases 137/138/139/140
+  (build-system source-distribution refactor) land.** The current
+  `install-local`-based path is being replaced; a fresh `test-all`
+  table before that refactor would be obsolete the moment 140 lands.
 
 Done criteria:
 
-- [ ] Produce a fresh table by category.
+- [~] Produce a fresh table by category. **Deferred with 127.G.3.**
 - [x] Keep failed, skipped, and harness-reported environment skips separate.
 - [x] Include nextest run id, JUnit path, and `test-logs/latest/` path.
 - [x] Update this document and the historical triage doc with the partial

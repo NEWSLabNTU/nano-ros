@@ -20,9 +20,9 @@ to be the **wrong fix for the actual symptom**. Diagnosis under
 IRQ-driven `write` deferred. Original 127.D.3 acceptance test
 still red, for a different reason now tracked separately.
 
-**Spun out from** [`phase-127-remaining-failure-groups.md`](phase-127-remaining-failure-groups.md)
+**Spun out from** [`phase-127-remaining-failure-groups.md`](archived/phase-127-remaining-failure-groups.md)
 `127.D.3` on 2026-05-17 after the D.1 / D.2 / D.4 portions of 127.D
-closed.
+closed. (Phase 127 archived 2026-05-18.)
 
 **Priority.** Low. The IRQ scaffolding is precondition work for
 any future serial-transport latency / power optimisation; the

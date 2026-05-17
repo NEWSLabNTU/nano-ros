@@ -133,7 +133,7 @@ entirely. If not, the only honest path is the upstream QEMU patch.
 * QEMU net queue: `net/queue.c`
 * QEMU slirp glue: `net/slirp.c`
 * Local pcap evidence: `/tmp/127d-service.pcap` (captured during this session)
-* Phase 127 doc: `docs/roadmap/phase-127-remaining-failure-groups.md`
+* Phase 127 doc: `docs/roadmap/archived/phase-127-remaining-failure-groups.md` (archived 2026-05-18)
 
 ## Build + ship the patch in-tree
 
