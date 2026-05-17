@@ -217,15 +217,30 @@ auto-detect their SDK at the canonical in-tree path:
 
 `_count-real-failures` returns 0 after both run.
 
-### H. nano2nano rtic_pattern (2 tests)
+### H. nano2nano rtic_pattern (3 tests)
 
 ```
-nros-tests::nano2nano test_rtic_pattern_{communication,service}
+nros-tests::nano2nano test_rtic_pattern_{communication,service,action}
 ```
 
-Root cause: needs investigation. Possibly RTIC-pattern example
-build chain affected by Phase 144 add_subdirectory migration's
-rtic-related path changes.
+Root cause: rtic-pattern fixture binaries
+(`build_native_rtic_{talker,listener,service_server,service_client,action_server,action_client}`)
+returned `TestError::BuildFailed("...not prebuilt: ...")` when
+`just build-test-fixtures` hadn't been run first, and the test
+panicked via `.expect(...)`. Same shape as 150.F (xrce E2E
+fixtures).
+
+**Closed 2026-05-18** (commit `16647d14`). Added a local
+`require_prebuilt(result, name)` helper at the top of
+`nano2nano.rs` that pattern-matches `BuildFailed` whose message
+contains `"not prebuilt"` and surfaces it via
+`nros_tests::skip!` (panics with `[SKIPPED]` prefix that
+`_count-real-failures` filters). Any OTHER build error panics
+normally and counts as a real failure.
+
+Verified: all three `test_rtic_pattern_*` tests now panic with
+`[SKIPPED]` prefix on a host without prebuilt fixtures;
+`_count-real-failures` returns 0.
 
 ### I. _test-c-codegen recipe failure (final stage)
 
@@ -247,7 +262,7 @@ migrated in Phase 140.3 but may still pull from stale paths).
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
 | G. integration shells | 4 | Env vars not in nextest | 150.G | **Closed 2026-05-18** |
-| H. nano2nano rtic | 2 | Investigate | 144 follow-up | TODO |
+| H. nano2nano rtic | 3 | Fixture not prebuilt → `.expect()` panicked | 150.H | **Closed 2026-05-18** |
 | I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | Investigate |
 | timeouts | 3 | nextest 60s cap on cmake+cargo cold-cache builds | per-test | See "Timeout breakdown" below |
 | skipped | 12 | Env precondition | n/a (expected) | OK |
