@@ -142,10 +142,7 @@ impl DdsSession {
                 None::<()>,
                 NO_STATUS,
             )
-            .map_err(|e| {
-                eprintln!("[dds diag] create_topic '{}' failed: {:?}", topic_name, e);
-                TransportError::PublisherCreationFailed
-            })?;
+            .map_err(|_| TransportError::PublisherCreationFailed)?;
         let mut cache = self
             .topic_cache
             .lock()
