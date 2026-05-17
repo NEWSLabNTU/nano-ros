@@ -51,8 +51,20 @@ extern "C" {
  * ----------------------------------------------------------------------- */
 
 #define NROS_ZP_TASK_STORAGE_BYTES    256
-#define NROS_ZP_MUTEX_STORAGE_BYTES   64
-#define NROS_ZP_CONDVAR_STORAGE_BYTES 64
+/* Phase 154 — bumped from 64 → 256 to cover ThreadX's
+ * `TX_MUTEX` (≈ 120 B with ownership / inheritance / suspension-
+ * list fields) and `TX_SEMAPHORE` (≈ 60 B). The smaller bound
+ * silently corrupted the next field when vendor `mutex.c`
+ * (which sees the alias-flavoured 64 B storage with
+ * NROS_PLATFORM_ALIASES) handed buffer to
+ * `nros_platform_mutex_init` (which casts to `TX_MUTEX *` and
+ * writes the full struct). Manifests as a hang in
+ * `Executor::open` after the zenoh handshake completes — every
+ * mutex op on the in-band executor corrupts a neighbouring
+ * field. Same logic for `_z_condvar_t = { TX_MUTEX + TX_SEMAPHORE
+ * + UINT }` ≈ 184 B. */
+#define NROS_ZP_MUTEX_STORAGE_BYTES   256
+#define NROS_ZP_CONDVAR_STORAGE_BYTES 256
 
 typedef uint8_t _z_task_t[NROS_ZP_TASK_STORAGE_BYTES];
 typedef uint8_t _z_mutex_t[NROS_ZP_MUTEX_STORAGE_BYTES];

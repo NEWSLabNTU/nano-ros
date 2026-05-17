@@ -155,6 +155,22 @@ required_env = [
 ]
 include_paths = [
   "{nros}/c/platform",
+  # Phase 154 — `c/zpico/` exposes `nros_zenoh_generic_platform.h`
+  # (32-byte opaque socket / endpoint / task layouts the alias
+  # TU uses). `c/platform/zenoh_generic_platform.h` `#include`s
+  # it when `NROS_PLATFORM_ALIASES` is defined (now set on the
+  # vendor build; see build.rs). Without `c/zpico` on the
+  # include path the chain fails to resolve and vendor src
+  # falls back to the small `threadx/platform.h` socket struct,
+  # ABI-misaligning every `_z_send_tcp` / `_z_read_tcp` call
+  # into the alias TU.
+  "{nros}/c/zpico",
+  # Phase 154 — `nros-platform-cffi/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*`
+  # ABI + the `nros_platform_socket_get_fd` accessor used by
+  # `zpico.c::get_session_fd` to read peer fd without
+  # depending on the per-RTOS socket-struct layout).
+  "{nros}/../../core/nros-platform-cffi/include",
   "{nros}/c/include",
   "{env:THREADX_DIR}/common/inc",
   "{env:THREADX_CONFIG_DIR}",

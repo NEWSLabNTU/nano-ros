@@ -1556,6 +1556,52 @@ fn build_zenoh_pico_unified(
         println!("cargo:rerun-if-env-changed={}", env_def.env);
     }
 
+    // Phase 154 — `NROS_PLATFORM_ALIASES` must flow into the
+    // vendor source build, not just the alias TU. The alias TU
+    // (`c/zpico/platform_aliases.c`) declares `_z_send_tcp` /
+    // `_z_read_tcp` / `_z_open_tcp` / etc. with a 32-byte
+    // opaque socket from `nros_zenoh_generic_platform.h`. Vendor
+    // src (`zenoh-pico/src/link/unicast/tcp.c`, etc.) compiled
+    // WITHOUT this define picks `c/platform/<rtos>/platform.h`
+    // (8-byte `{ int _fd; }` socket on ThreadX-Linux). Same
+    // `_z_send_tcp` symbol, different struct sizes → SysV
+    // AMD64 / AAPCS arg shift → `sendto(fd=0, buf=3,
+    // len=18446744073498616880, …)` strace traces →
+    // `Transport(ConnectionFailed)` on FreeRTOS +
+    // ThreadX-Linux + ThreadX-RISC-V Rust / C++ E2E.
+    //
+    // Two TUs that need the concrete per-RTOS layout handle
+    // the divergence either via the
+    // `nros_platform_socket_get_fd` accessor
+    // (`c/zpico/zpico.c::get_session_fd`) or TU-local
+    // `#undef NROS_PLATFORM_ALIASES`
+    // (`c/platform/threadx/task.c`).
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() {
+        build.define("NROS_PLATFORM_ALIASES", None);
+        // Two include paths the alias-flavoured dispatch chain
+        // needs from every platform: the per-RTOS `c/platform/<name>`
+        // already on `include_paths`, but the chain also reaches
+        // for `c/zpico/nros_zenoh_generic_platform.h` (opaque
+        // socket / task / mutex layouts) and `nros/platform_net.h`
+        // (accessor + canonical `nros_platform_*` decls used by
+        // `c/zpico/zpico.c::get_session_fd`). Apply here so
+        // every platform manifest doesn't need to repeat them.
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        // `c/platform` carries the `zenoh_generic_platform.h`
+        // dispatcher (which `#include`s `nros_zenoh_generic_platform.h`
+        // when the alias define is on). Some platform manifests
+        // (freertos-lwip, nuttx) don't list it — apply here.
+        build.include(manifest_dir.join("c/platform"));
+        build.include(manifest_dir.join("c/zpico"));
+        build.include(
+            manifest_dir
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|root| root.join("core/nros-platform-cffi/include"))
+                .expect("zpico-sys: workspace root unresolvable"),
+        );
+    }
+
     // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to
     // `pkg-config` / `vendored` / `none`; bare-metal vendored path
     // pulls in the in-tree mbedTLS submodule's sources.
