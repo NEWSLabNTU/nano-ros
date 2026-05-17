@@ -62,8 +62,6 @@ nros-platform-cffi = { path = "../../core/nros-platform-cffi", features = ["posi
 
 [features]
 default = []
-# Phase 134.6 E2E.3 — opt-in flag-drift matrix.
-link-flag-matrix = []
 types = ["nros-core", "nros-serdes"]
 rmw = ["nros-rmw", "nros-core", "nros-serdes"]
 safety-e2e = ["rmw", "nros-rmw/safety-e2e"]
@@ -218,15 +216,6 @@ path = "tests/cmake_platform_matrix.rs"
 [[test]]
 name = "zenoh_header_parity"
 path = "tests/zenoh_header_parity.rs"
-
-# Phase 134.6 E2E.3 — flag-drift cross-product gate. Rebuilds the
-# staticlib and walks the canonical header ↔ archive symbols. Heavy
-# (~10 min full matrix). Gated behind `link-flag-matrix` so it only
-# runs in `just test-all`.
-[[test]]
-name = "zenoh_flag_consistency"
-path = "tests/zenoh_flag_consistency.rs"
-required-features = ["link-flag-matrix"]
 
 # Phase 139.6 — per-RTOS integration-shell smoke tests. Each skips
 # cleanly via `nros_tests::skip!` when the RTOS SDK / toolchain isn't

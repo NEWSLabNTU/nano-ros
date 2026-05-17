@@ -920,7 +920,9 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         }
     };
 
-    let cmake_prefix = root.join("build/install");
+    // Phase 140 — Zephyr examples consume nano-ros via the Phase 139
+    // integration shell (`integrations/zephyr/`) which `add_subdirectory`s
+    // the root CMake. No CMAKE_PREFIX_PATH override is needed.
     let mut cmd = Command::new("west");
     cmd.current_dir(&workspace)
         .env(
@@ -938,12 +940,11 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         .arg(build_dir)
         .arg("-p")
         .arg(std::env::var("NROS_ZEPHYR_PRISTINE").unwrap_or_else(|_| "auto".to_string()))
-        .arg(&example_path)
-        .arg("--")
-        .arg(format!("-DCMAKE_PREFIX_PATH={}", cmake_prefix.display()));
+        .arg(&example_path);
 
     if let Some(port) = xrce_agent_port_for_example(example_name) {
-        cmd.arg(format!("-DCONFIG_NROS_XRCE_AGENT_PORT={port}"));
+        cmd.arg("--")
+            .arg(format!("-DCONFIG_NROS_XRCE_AGENT_PORT={port}"));
     }
 
     let output = cmd.output().map_err(|e| {

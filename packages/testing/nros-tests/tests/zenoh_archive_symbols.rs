@@ -1,7 +1,7 @@
 //! Phase 134.6 E2E.1 — Symbol parity gate.
 //!
 //! Asserts that for every `_z_f_link_*_<transport>` wrapper defined
-//! in `build/install/lib/libnros_rmw_zenoh.a`, the matching
+//! in `libnros_rmw_zenoh_staticlib.a`, the matching
 //! `_z_*_<transport>` impl is also defined (no `U` rows where the
 //! wrapper says `T`). Wraps `scripts/check-zenoh-archive-symbols.sh`
 //! and surfaces any non-zero exit code as a test failure.
@@ -14,13 +14,14 @@
 //! `platform_aliases.c` close the gap. This test regression-guards
 //! the contract for every future change to `build.rs`.
 //!
-//! Test FAILS (not skips) if the archive is missing — Phase 134
-//! contract presumes the install tree is built. Run
-//! `just install-rmw-zenoh` first.
+//! Phase 140 — the test now points at the Corrosion-emitted staticlib
+//! under `target/release/` instead of the legacy `build/install/`
+//! prefix. Test FAILS (not skips) if the archive is missing — run
+//! `cargo build -p nros-rmw-zenoh-staticlib --release` first.
 
 use std::{path::Path, process::Command};
 
-const ARCHIVE: &str = "build/install/lib/libnros_rmw_zenoh.a";
+const ARCHIVE: &str = "target/release/libnros_rmw_zenoh_staticlib.a";
 const SCRIPT: &str = "scripts/check-zenoh-archive-symbols.sh";
 
 fn workspace_root() -> std::path::PathBuf {
@@ -47,8 +48,9 @@ fn zenoh_archive_wrapper_impl_parity() {
     );
     assert!(
         archive.exists(),
-        "libnros_rmw_zenoh.a not found at {} — run `just install-rmw-zenoh` first \
-         (Phase 134 contract presumes the install tree is built)",
+        "libnros_rmw_zenoh_staticlib.a not found at {} — run \
+         `cargo build -p nros-rmw-zenoh-staticlib --release` first \
+         (Phase 134 contract presumes the staticlib is built)",
         archive.display()
     );
 

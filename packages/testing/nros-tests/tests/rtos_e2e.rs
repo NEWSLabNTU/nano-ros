@@ -274,14 +274,14 @@ impl Platform {
 
     /// Per-(lang, variant) skip reason, or `None` if the combination is
     /// expected to run on this platform.
-    fn skip_reason(self, lang: Lang, _variant: Variant) -> Option<&'static str> {
-        if matches!(self, Platform::Nuttx) && !matches!(lang, Lang::Rust) {
-            let c_lib = Path::new("build/install/lib/libnros_c_zenoh_nuttx_armv7a.a");
-            let cpp_lib = Path::new("build/install/lib/libnros_cpp_zenoh_nuttx_armv7a.a");
-            if !c_lib.exists() || !cpp_lib.exists() {
-                return Some("NuttX C/C++ variant libraries are not installed");
-            }
-        }
+    ///
+    /// Phase 140 — the pre-140 NuttX C/C++ heuristic looked for prebuilt
+    /// variant libs under `build/install/lib/`. With install-local gone,
+    /// NuttX C/C++ examples build in-tree via `add_subdirectory(nano-ros)`
+    /// + the Phase 139 NuttX integration shell; toolchain absence is the
+    /// real skip signal and is surfaced where the QEMU / cross-compile
+    /// build runs.
+    fn skip_reason(self, _lang: Lang, _variant: Variant) -> Option<&'static str> {
         None
     }
 }

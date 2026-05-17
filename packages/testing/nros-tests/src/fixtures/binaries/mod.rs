@@ -135,9 +135,6 @@ static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-serial-listener binary
 static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached: nros-c library built
-static NROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the c-talker binary
 static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1224,62 +1221,18 @@ pub fn qemu_large_msg_test_binary() -> PathBuf {
 // C Example Builders (CMake-based)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Build the nros-c static library (cached).
-///
-/// Runs `cargo build -p nros-c --release` and returns the path to `libnros_c.a`.
-pub fn build_nros_c_lib() -> TestResult<&'static Path> {
-    NROS_C_LIB
-        .get_or_try_init(|| {
-            let root = project_root();
-
-            eprintln!("Building nros-c library...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "-p",
-                "nros-c",
-                "--release",
-                "--features",
-                "cffi-zenoh-cffi,platform-posix,ros-humble"
-            )
-            .dir(&root)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            let lib_path = root.join("target/release/libnros_c.a");
-            if !lib_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Library not found after build: {}",
-                    lib_path.display()
-                )));
-            }
-
-            Ok(lib_path)
-        })
-        .map(|p| p.as_path())
-}
-
 /// Build a CMake-based C example.
 ///
 /// # Arguments
 /// * `example_dir` - Path relative to `examples/` (e.g., "native/c/zenoh/talker")
 /// * `binary_name` - Name of the output binary (e.g., "c_talker")
 ///
-/// This first ensures the nros-c library is built, then runs cmake + cmake --build.
+/// Phase 140 — the example's `CMakeLists.txt` consumes nano-ros via
+/// `add_subdirectory(<repo-root>)`; no pre-installed prefix is needed.
+/// `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` cache vars are typically baked
+/// into the example's CMakeLists, but we re-assert them here so the
+/// fixture is robust against accidental cache reuse.
 pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
-    // Ensure the C library is built first
-    build_nros_c_lib()?;
-
     let root = project_root();
     let src_dir = root.join(format!("examples/{}", example_dir));
 
@@ -1302,12 +1255,13 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — pass CMAKE_PREFIX_PATH to the install layout
-    let nano_ros_dir = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let output = cmd!("cmake", &nano_ros_dir, "..")
+    // Phase 140 — drive the per-example add_subdirectory(<repo-root>) shape.
+    let output = cmd!(
+        "cmake",
+        "-DNANO_ROS_PLATFORM=posix",
+        "-DNANO_ROS_RMW=zenoh",
+        ".."
+    )
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
@@ -1445,8 +1399,9 @@ pub fn c_action_client_binary() -> PathBuf {
 
 /// Build a CMake-based C example that uses the XRCE backend.
 ///
-/// Similar to `build_c_example()` but passes `-DNANO_ROS_RMW=xrce` to select
-/// the pre-installed XRCE library variant (`libnros_c_xrce.a`).
+/// Phase 140 — the example's `CMakeLists.txt` consumes nano-ros via
+/// `add_subdirectory(<repo-root>)`; `NANO_ROS_RMW=xrce` selects the
+/// XRCE RMW staticlib in-tree.
 pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
     let src_dir = root.join(format!("examples/{}", example_dir));
@@ -1470,12 +1425,14 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — select XRCE RMW variant
-    let nano_ros_dir = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let output = cmd!("cmake", &nano_ros_dir, "-DNANO_ROS_RMW=xrce", "..")
+    // Phase 140 — drive the per-example add_subdirectory(<repo-root>) shape
+    // with NANO_ROS_RMW=xrce to pick up the XRCE RMW staticlib in-tree.
+    let output = cmd!(
+        "cmake",
+        "-DNANO_ROS_PLATFORM=posix",
+        "-DNANO_ROS_RMW=xrce",
+        ".."
+    )
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
@@ -1798,8 +1755,10 @@ static CPP_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build a CMake-based C++ example.
 ///
-/// Reuses the same `build/install` layout as C examples. The NanoRos CMake
-/// package includes C++ support (NanoRosCpp target + codegen).
+/// Phase 140 — the example's `CMakeLists.txt` consumes nano-ros via
+/// `add_subdirectory(<repo-root>)`; no pre-installed prefix is needed.
+/// C++ support (NanoRos::NanoRosCpp + codegen) is wired automatically by
+/// the root CMakeLists.
 ///
 /// # Arguments
 /// * `example_dir` - Path relative to `examples/` (e.g., "native/cpp/zenoh/talker")
@@ -1827,12 +1786,13 @@ pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<Pat
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — pass CMAKE_PREFIX_PATH to the install layout
-    let nano_ros_dir = format!(
-        "-DCMAKE_PREFIX_PATH={}",
-        root.join("build/install").display()
-    );
-    let output = cmd!("cmake", &nano_ros_dir, "..")
+    // Phase 140 — drive the per-example add_subdirectory(<repo-root>) shape.
+    let output = cmd!(
+        "cmake",
+        "-DNANO_ROS_PLATFORM=posix",
+        "-DNANO_ROS_RMW=zenoh",
+        ".."
+    )
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
