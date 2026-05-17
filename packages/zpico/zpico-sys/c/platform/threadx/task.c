@@ -10,6 +10,19 @@
 #if defined(ZENOH_THREADX)
 
 #include <stdio.h>
+/* Phase 154 — `#undef NROS_PLATFORM_ALIASES` so the central
+ * `zenoh-pico/system/platform.h` dispatcher picks
+ * `c/platform/threadx/platform.h` (concrete TX_THREAD-flavoured
+ * `_z_task_t { TX_THREAD t; void (*_fun)(void *); void *_arg;
+ * TX_EVENT_FLAGS_GROUP done_flags; }`) instead of
+ * `c/zpico/nros_zenoh_generic_platform.h` (opaque storage).
+ * The vendor build defines `NROS_PLATFORM_ALIASES` so its
+ * socket layout matches the alias TU; this file implements
+ * `_z_task_init` / `_z_task_join` against the concrete struct
+ * fields and is the only known TU that needs the per-RTOS task
+ * layout. The `#undef` is TU-local — other vendor TUs keep
+ * the alias-flavoured layout. */
+#undef NROS_PLATFORM_ALIASES
 #include "zenoh-pico/system/platform.h"
 
 /* ── Task trampoline ───────────────────────────────────────────────────── */

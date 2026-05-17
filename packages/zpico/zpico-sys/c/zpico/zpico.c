@@ -12,6 +12,12 @@
 #include <zenoh-pico.h>
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
+/* Phase 154 — `nros_platform_socket_get_fd` accessor for the
+ * `get_session_fd` helper (used by ThreadX-Linux's
+ * `select`-driven read-task wakeup path). Replaces the
+ * `peer->_socket._fd` field access that no longer compiles
+ * once `NROS_PLATFORM_ALIASES` is defined on the vendor build. */
+#include <nros/platform_net.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdatomic.h>
@@ -1507,12 +1513,16 @@ static int get_session_fd(void) {
     if (peer == NULL) {
         return -1;
     }
-    // FreeRTOS+lwIP uses _socket (int), POSIX/bare-metal uses _fd
-#if defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_FREERTOS_PLUS_TCP)
-    return peer->_socket._socket;
-#else
-    return peer->_socket._fd;
-#endif
+    // Phase 154 — read the BSD fd via the platform accessor
+    // instead of reaching into the per-RTOS `_z_sys_net_socket_t`
+    // struct fields. With `NROS_PLATFORM_ALIASES` now defined for
+    // the vendor build (so the socket ABI matches the alias TU's
+    // 32-byte opaque layout), the `._fd` / `._socket` field names
+    // no longer exist at compile time in this TU. Every backend
+    // stores `int fd` at offset 0 of its socket struct, so
+    // `nros_platform_socket_get_fd` works uniformly across
+    // FreeRTOS+lwIP, POSIX, ThreadX, and bare-metal.
+    return nros_platform_socket_get_fd(&peer->_socket);
 }
 #endif
 

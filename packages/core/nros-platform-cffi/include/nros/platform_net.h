@@ -167,6 +167,33 @@ int8_t nros_platform_socket_wait_event(void *peers, void *mutex);
  *  the stack from this entry point. */
 void nros_platform_network_poll(void);
 
+/* ---- Socket accessor (Phase 154) ---- *
+ *
+ * Every `nros_platform_*` backend stores its socket struct with
+ * `int fd` (or equivalent) at offset 0:
+ *
+ *   - POSIX:        `typedef struct { int fd; } nros_posix_socket_t;`
+ *   - ThreadX:      `typedef struct { INT fd; } nros_threadx_socket_t;`
+ *   - FreeRTOS+lwIP same shape.
+ *
+ * This accessor lets callers (e.g. zpico-sys's `get_session_fd`
+ * helper used by the read-task wakeup path on ThreadX-Linux) read
+ * the fd without depending on the per-RTOS struct typedef being
+ * visible at compile time. Static-inline so it has zero call
+ * overhead and ships with the header — no extra TU to link.
+ *
+ * Returns -1 if `sock` is NULL. Otherwise returns the leading
+ * `int` (which platforms treat as -1 for an unbound socket).
+ */
+static inline int nros_platform_socket_get_fd(const void *sock) {
+    if (sock == NULL) { return -1; }
+    /* SAFETY: every backend's socket struct is `{ int fd; ... }`,
+     * so the first sizeof(int) bytes of the opaque storage are
+     * the BSD-style fd. Cast-to-int read is the canonical way to
+     * extract it. */
+    return *(const int *)sock;
+}
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif
