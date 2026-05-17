@@ -238,9 +238,7 @@ _cmake-cargo-stale-guard build_dir:
     SRC_HASH=$(find \
         packages/core \
         packages/xrce/nros-rmw-xrce \
-        packages/xrce/xrce-platform-shim \
         packages/zpico/nros-rmw-zenoh \
-        packages/zpico/zpico-platform-shim \
         packages/dds/nros-rmw-dds \
         -name '*.rs' -type f -print0 2>/dev/null \
         | sort -z \
@@ -628,8 +626,6 @@ build-workspace-embedded:
         --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
-        --exclude zpico-platform-shim \
-        --exclude xrce-platform-shim \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-uorb \
         --exclude nros-px4
@@ -675,8 +671,6 @@ check-workspace-embedded:
         --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
-        --exclude zpico-platform-shim \
-        --exclude xrce-platform-shim \
         --exclude nros-rmw-xrce-cffi \
 
 # Check workspace with various feature combinations
