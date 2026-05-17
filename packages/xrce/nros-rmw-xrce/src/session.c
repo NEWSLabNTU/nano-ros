@@ -299,12 +299,12 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
     /* Phase 115.K.2.4 — `custom://...` routes through
      * `xrce_custom_transport_install`. UDP path mirrors K.2.1.
      * Phase 115.K.2.5.1.5-serial — `serial://...` / `/dev/...`
-     * routes through `xrce_posix_serial_init`.
-     * Phase 115.K.2.5.1.3-zephyr — POSIX-specific UDP / serial
-     * paths only compile when `UCLIENT_PLATFORM_POSIX` is on; on
-     * Zephyr / bare-metal builds the consumer MUST use
-     * `custom://` and pre-register a Zephyr-side transport via
-     * `nros_rmw_cffi_set_custom_transport`. */
+     * routes through `xrce_posix_serial_init` (POSIX hosts only).
+     * Phase 127.C.4 — bare host:port locator now uses the
+     * platform-blind `xrce_nros_udp_init` path on every target;
+     * consumer must link a `nros_platform_udp_*` provider (POSIX
+     * net.c auto-linked by xrce-cffi build.rs on libc hosts; Zephyr /
+     * bare-metal pull `nros-platform-<rtos>` via cmake glue). */
 #if defined(UCLIENT_PLATFORM_POSIX)
     const char *serial_path = locator_serial_path(locator);
 #else
@@ -329,6 +329,7 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
+#endif
     } else {
         const char *addr_locator = locator != NULL ? locator : "127.0.0.1";
         (void)locator_strip_udp_prefix(&addr_locator);
@@ -348,9 +349,7 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
 
         /* Phase 129.NET.3 — UDP via the canonical `nros_platform_udp_*`
          * ABI. Platform-blind: works on any target with a wired
-         * platform-provider. Supersedes `xrce_posix_udp_init` /
-         * `xrce_zephyr_udp_init`; both legacy paths remain compiled
-         * for one cycle for fallback. */
+         * platform-provider. */
         st->use_custom_transport = true;
         nros_rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
@@ -359,41 +358,6 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         }
         uxr_init_session(&st->session, &st->custom.comm,
                          hash_session_key(node_name));
-#elif defined(UCLIENT_PLATFORM_ZEPHYR)
-    } else {
-        const char *addr_locator = locator != NULL ? locator : "127.0.0.1";
-        (void)locator_strip_udp_prefix(&addr_locator);
-
-        char host[64];
-        uint16_t port = XRCE_DEFAULT_AGENT_PORT;
-        if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
-            size_t hlen = strlen(addr_locator);
-            if (hlen == 0 || hlen + 1 > sizeof(host)) {
-                free(st);
-                return NROS_RMW_RET_INVALID_ARGUMENT;
-            }
-            memcpy(host, addr_locator, hlen + 1);
-        }
-        char port_str[8];
-        snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
-
-        st->use_custom_transport = true;
-        nros_rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
-        if (udp_ret != NROS_RMW_RET_OK) {
-            free(st);
-            return udp_ret;
-        }
-        uxr_init_session(&st->session, &st->custom.comm,
-                         hash_session_key(node_name));
-#else
-    } else {
-        /* Embedded build — caller must pass `custom://` and have
-         * pre-registered the transport via
-         * `nros_rmw_cffi_set_custom_transport`. UDP / serial
-         * locator schemes are unreachable here. */
-        free(st);
-        return NROS_RMW_RET_UNSUPPORTED;
-#endif
     }
 
     /* Topic / request / reply callbacks — single registration per

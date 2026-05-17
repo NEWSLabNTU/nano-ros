@@ -666,8 +666,14 @@ Subitems:
 - [ ] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
   service now pass on qemu_cortex_a9; DDS action A9 still fails on the
   send-goal acceptance reply path.
-- [ ] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub now passes for Rust, C,
-  and C++; XRCE service/action focused reruns remain.
+- [x] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub, service, and action
+  now pass for both Rust and C++ on native_sim. Root cause was a stale
+  `UCLIENT_PLATFORM_POSIX`/`UCLIENT_PLATFORM_ZEPHYR` gate in
+  `packages/xrce/nros-rmw-xrce/src/session.c` that returned
+  `RET_UNSUPPORTED` for the Zephyr Rust path (target_os=none). The
+  bare host:port locator now routes through the platform-blind
+  `xrce_nros_udp_init` path on every target, matching the Phase
+  129.NET.3 design intent.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and
   C++ listener delivery are fixed for the native_sim Zenoh pub/sub set.
 
