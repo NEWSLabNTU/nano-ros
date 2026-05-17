@@ -1,0 +1,22 @@
+# Phase 139.4 — Kconfig surfaced under
+# `Application Configuration → External Modules → nano-ros`.
+
+config NROS
+    bool "nano-ros ROS 2 client"
+    default n
+    help
+      Enables the nano-ros Cargo-built static library in the NuttX
+      build. Drives the CMake dispatch via NANO_ROS_PLATFORM=nuttx
+      when consumed through the CMake sibling.
+
+if NROS
+
+config NROS_RMW
+    string "RMW backend (zenoh | dds | xrce | cyclonedds)"
+    default "zenoh"
+
+config NROS_ROS_EDITION
+    string "ROS 2 edition (humble | iron)"
+    default "humble"
+
+endif # NROS

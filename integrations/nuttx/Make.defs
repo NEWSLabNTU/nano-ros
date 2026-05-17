@@ -1,0 +1,12 @@
+############################################################################
+# Phase 139.4 — NuttX integration shell (Make.defs).
+#
+# NuttX apps under `apps/external/<name>/` are discovered when this
+# file exists. We declare the app entry but do NOT compile any C
+# sources directly — the heavy lifting lives in the nano-ros Cargo
+# workspace. The Kconfig sibling gates inclusion on CONFIG_NROS.
+############################################################################
+
+ifneq ($(CONFIG_NROS),)
+CONFIGURED_APPS += $(APPDIR)/external/nano-ros
+endif
