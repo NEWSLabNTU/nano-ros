@@ -1127,12 +1127,7 @@ pub fn xrce_serial_listener_binary() -> PathBuf {
 pub fn build_xrce_large_msg_test() -> TestResult<&'static Path> {
     XRCE_LARGE_MSG_TEST_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/large-msg-test",
-                "xrce-large-msg-test",
-                None,
-                None,
-            )
+            build_test_fixture("nros-bench/large-msg-xrce", "xrce-large-msg-test", None)
         })
         .map(|p| p.as_path())
 }

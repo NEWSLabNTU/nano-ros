@@ -100,7 +100,6 @@ build-fixtures:
         native/rust/xrce/service-client
         native/rust/xrce/action-server
         native/rust/xrce/action-client
-        native/rust/xrce/large-msg-test
         native/rust/xrce/serial-talker
         native/rust/xrce/serial-listener
         native/rust/dds/talker
@@ -119,6 +118,7 @@ build-fixtures:
         packages/testing/nros-bench/stress-zenoh
         packages/testing/nros-bench/executor-fairness
         packages/testing/nros-bench/stress-xrce
+        packages/testing/nros-bench/large-msg-xrce
     )
     for fx in "${test_fixtures[@]}"; do
         echo "  → $fx"
