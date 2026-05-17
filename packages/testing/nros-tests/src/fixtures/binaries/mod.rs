@@ -261,6 +261,35 @@ pub fn build_example(
     require_prebuilt_binary(&binary_path)
 }
 
+/// Phase 131.B — resolve a prebuilt test-fixture / bench binary that lives
+/// under `packages/testing/nros-{tests/bins,bench,smoke}/<crate>/`.
+///
+/// `crate_subpath` is the path *under* `packages/testing/` (e.g.
+/// `"nros-tests/bins/cdr-roundtrip-qemu"`).
+pub fn build_test_fixture(
+    crate_subpath: &str,
+    binary_name: &str,
+    target: Option<&str>,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let crate_dir = root.join(format!("packages/testing/{}", crate_subpath));
+
+    if !crate_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Test fixture crate directory not found: {}",
+            crate_dir.display()
+        )));
+    }
+
+    let binary_path = if let Some(target) = target {
+        crate_dir.join(format!("target/{}/release/{}", target, binary_name))
+    } else {
+        crate_dir.join(format!("target/release/{}", binary_name))
+    };
+
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Build native-rs-talker with param-services feature (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
@@ -353,10 +382,9 @@ pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
 pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
     QEMU_LAN9118_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/standalone/lan9118",
+            build_test_fixture(
+                "nros-tests/bins/lan9118-qemu",
                 "qemu-rs-lan9118",
-                None,
                 Some("thumbv7m-none-eabi"),
             )
         })

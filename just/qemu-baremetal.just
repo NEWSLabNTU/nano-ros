@@ -152,7 +152,7 @@ test-lan9118 verbose="": build-examples
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+            -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Run all QEMU tests including networked E2E and RTIC
 test-all verbose="":

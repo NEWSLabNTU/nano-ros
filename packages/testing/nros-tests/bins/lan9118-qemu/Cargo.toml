@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "qemu-rs-lan9118"
 version = "0.1.0"
