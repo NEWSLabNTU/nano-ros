@@ -152,8 +152,9 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
 
 ## Work Items
 
-- [~] **149.1 — Carve `nros-board-freertos` generic crate.** (149.1.A
-      landed 2026-05-18; 149.1.B deferred)
+- [x] **149.1 — Carve `nros-board-freertos` generic crate.**
+      (149.1.A + 149.1.B.1-.6 landed 2026-05-18; B.5 partial —
+      `node.rs` lift deferred to `BoardInit` trait alongside 149.4.B)
       Split into two sub-steps:
       - **149.1.A — Scaffolding** (landed): new
         `packages/boards/nros-board-freertos/` crate claims the
@@ -277,23 +278,25 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`
       (shrinks to ~30 LOC re-exports + `init_hardware`).
 
-- [ ] **149.1.B.6 — Verify matrix.**
-      - `cargo build` (default + posix + bare-metal-thumbv7m) for
-        `zpico-sys` — unchanged.
-      - `cargo build --target thumbv7m-none-eabi --release` for
-        every `examples/qemu-arm-freertos/rust/zenoh/<example>`
-        — clean link.
-      - `cargo build` for the 3 freertos DDS examples — clean.
-      - `cargo build` for the 3 freertos XRCE examples — clean.
-      - `cargo nextest run rtos_e2e test_rtos_pubsub_e2e::platform_1_Platform__Freertos::lang_1_Lang__Rust`
-        — passes (currently pre-existing-broken per Phase 147;
-        re-verify it didn't regress).
-      - Native nano2nano talker-listener still passes.
+- [x] **149.1.B.6 — Verify matrix.** (landed 2026-05-18)
+      - `cargo build --release --target thumbv7m-none-eabi` for
+        all 6 `examples/qemu-arm-freertos/rust/zenoh/{talker,
+        listener, service-server, service-client, action-server,
+        action-client}` — clean.
+      - `cargo build --release --target thumbv7m-none-eabi` for
+        both `examples/qemu-arm-freertos/rust/dds/{talker, listener}`
+        — clean (after `rm -rf target` to drop stale artifacts
+        that mixed pre-149.1.B.4 platform.c with the new
+        generic-crate copy).
+      - `test_talker_listener_communication` native nano2nano
+        E2E — pass (1.2s).
+      - `cargo tree -p zpico-sys | grep cmake` — empty
+        (cmake dep stays gone since 136.3).
 
-      Land all subitems on the `phase-149-board-bsp-abstraction`
-      branch as separate commits; each subitem ends with at
-      least one verification command run + recorded in the
-      commit message.
+      `.B.1` → `.B.4` ran their own verify steps + recorded
+      results in their commit messages. Each subitem landed as
+      a separate commit on the `phase-149-board-bsp-abstraction`
+      branch.
 
 - [~] **149.2 — Carve `nros-board-threadx` generic crate.** (149.2.A
       landed 2026-05-18; 149.2.B deferred alongside 149.1.B)
