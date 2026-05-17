@@ -45,6 +45,13 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_service_client     = xrce_service_client_destroy,
     .call_raw                   = xrce_service_call_raw,
 
+    /* Phase 129.4 — non-blocking send/recv split. Lets the
+     * executor's spin loop poll for a late-arriving reply without
+     * re-sending the request or blocking 5 s in call_raw
+     * (Phase 127.C.4 C++ action send_goal root cause). */
+    .send_request_raw           = xrce_service_send_request_raw,
+    .try_recv_reply_raw         = xrce_service_try_recv_reply_raw,
+
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
     .register_subscriber_event  = NULL,
     .register_publisher_event   = NULL,

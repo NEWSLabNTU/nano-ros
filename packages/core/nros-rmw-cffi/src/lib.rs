@@ -475,6 +475,22 @@ pub struct NrosRmwVtable {
         reply_buf_len: usize,
     ) -> i32,
 
+    // ---- Phase 129.4 — non-blocking send/recv split (optional) ----
+    pub send_request_raw: Option<
+        unsafe extern "C" fn(
+            client: *mut NrosRmwServiceClient,
+            request: *const u8,
+            req_len: usize,
+        ) -> NrosRmwRet,
+    >,
+    pub try_recv_reply_raw: Option<
+        unsafe extern "C" fn(
+            client: *mut NrosRmwServiceClient,
+            reply_buf: *mut u8,
+            reply_buf_len: usize,
+        ) -> i32,
+    >,
+
     // ---- Phase 108 — status events (optional) ----
     pub register_subscriber_event: unsafe extern "C" fn(
         subscriber: *mut NrosRmwSubscriber,
@@ -2587,6 +2603,26 @@ impl ServiceClientTrait for CffiServiceClient {
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
+        // Phase 129.4 — prefer the backend's non-blocking
+        // `send_request_raw` vtable slot when available. Falls back
+        // to the legacy "store in pending_request, send during
+        // try_recv_reply_raw via blocking call_raw" pattern when
+        // the slot is NULL (Phase 127.C.4 root cause behaviour).
+        if let Some(f) = self.vtable.send_request_raw {
+            let mut view = self.make_view();
+            let rc = unsafe { f(&mut view, request.as_ptr(), request.len()) };
+            if rc != NROS_RMW_RET_OK {
+                return Err(error_from_ret(rc));
+            }
+            // Mark that we're awaiting a reply via the non-blocking
+            // path — try_recv_reply_raw uses pending_len > 0 to
+            // distinguish "no in-flight request" from "polling for
+            // reply", same as the blocking fallback. Length is the
+            // request size; the actual bytes aren't stored because
+            // the backend already owns them.
+            self.pending_len = request.len().max(1);
+            return Ok(());
+        }
         if request.len() > self.pending_request.len() {
             return Err(TransportError::BufferTooSmall);
         }
@@ -2599,10 +2635,31 @@ impl ServiceClientTrait for CffiServiceClient {
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
+        // Phase 129.4 — non-blocking path: backend's
+        // `try_recv_reply_raw` slot polls its own slot. Returning
+        // `Ok(None)` keeps `pending_len` set so the executor's
+        // next spin tick polls again — a late-arriving reply is
+        // caught by a later `drive_io` without re-sending the
+        // request.
+        if let Some(f) = self.vtable.try_recv_reply_raw {
+            let mut view = self.make_view();
+            let rc = unsafe { f(&mut view, reply_buf.as_mut_ptr(), reply_buf.len()) };
+            if rc == NROS_RMW_RET_NO_DATA {
+                return Ok(None);
+            }
+            if rc < 0 {
+                self.pending_len = 0;
+                return Err(error_from_ret(rc));
+            }
+            self.pending_len = 0;
+            return Ok(Some(rc as usize));
+        }
+        // Legacy blocking fallback (Phase 127.C.4 behaviour) for
+        // backends that haven't implemented the non-blocking
+        // split. Sends + polls in a single call_raw burst.
         if self.pending_len == 0 {
             return Ok(None);
         }
-        // Blocking fallback: copy request to stack, then call_raw
         let mut req_copy = [0u8; 4096];
         let req_len = self.pending_len;
         req_copy[..req_len].copy_from_slice(&self.pending_request[..req_len]);
@@ -2933,6 +2990,8 @@ mod tests {
         create_service_client: stub_create_service_client,
         destroy_service_client: stub_destroy_service_client,
         call_raw: stub_call_raw,
+        send_request_raw: None,
+        try_recv_reply_raw: None,
         register_subscriber_event: stub_register_subscriber_event,
         register_publisher_event: stub_register_publisher_event,
         assert_publisher_liveliness: stub_assert_publisher_liveliness,

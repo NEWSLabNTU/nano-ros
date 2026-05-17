@@ -97,6 +97,30 @@ typedef struct nros_rmw_vtable_t {
         const uint8_t *request, size_t req_len,
         uint8_t *reply_buf, size_t reply_buf_len);
 
+    /** Phase 129.4 — non-blocking send_request_raw.
+     *
+     *  Sends the request to the backend without blocking for a
+     *  reply. Returns immediately. NULL = the runtime falls back to
+     *  storing the pending request in CffiServiceClient and
+     *  invoking `call_raw` on the next `try_recv_reply_raw_slot`
+     *  call (blocking inside the executor, the Phase 127.C.4 root
+     *  cause behaviour). Backends that implement this slot must
+     *  also implement `try_recv_reply_raw_slot` so the executor's
+     *  poll loop can drain the reply non-blockingly. */
+    nros_rmw_ret_t (*send_request_raw)(nros_rmw_service_client_t *client,
+        const uint8_t *request, size_t req_len);
+
+    /** Phase 129.4 — non-blocking try_recv_reply_raw.
+     *
+     *  Polls the backend for a reply. `>= 0` = reply bytes copied
+     *  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.
+     *  Other negative = backend error. NULL = the runtime falls
+     *  back to the blocking `call_raw` path (Phase 127.C.4
+     *  behaviour). Paired with `send_request_raw` — backends
+     *  implement both or neither. */
+    int32_t (*try_recv_reply_raw)(nros_rmw_service_client_t *client,
+        uint8_t *reply_buf, size_t reply_buf_len);
+
     /* ---- Phase 108 — status events (optional) ---- */
     /** Register a callback for a subscriber-side event. NULL function
      *  pointer = backend doesn't generate any subscriber events.

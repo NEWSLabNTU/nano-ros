@@ -231,17 +231,35 @@ Document each impl's ISR-safety in
   `spin_once` actually runs the session for its full timeout
   instead of sleeping in a never-signaled wake-primitive wait.
   Phase 127.C.4 service case closeable.
-- [ ] 129.4 action: `test_zephyr_xrce_cpp_action_e2e` is now
-  intermittent — passes on broader test sweeps, fails on
-  focused reruns (3/3 with `retries = 2`). Server logs
-  `Goal received` + `Goal completed` quickly, client times out
-  on send-goal at 10 s. Distinct failure mode from the service
-  case — the request reaches the server and the server replies,
-  but the reply doesn't reach the client's blocking `call_raw`
-  inside the action arena trampoline. Likely XRCE wire-level
-  topology or sample-identity bug specific to the action
-  service-fan-out (3 services + 2 subscribers per client);
-  follow-up phase tracks the root cause hunt.
+- [x] 129.4 action: `test_zephyr_xrce_cpp_action_e2e` PASSES.
+  Three contributing causes addressed:
+
+  1. **Non-blocking CFFI send/recv split.** Added vtable slots
+     `send_request_raw` + `try_recv_reply_raw` to
+     `nros_rmw_vtable_t`; XRCE backend implements them (buffer
+     + flush on send, slot-check on recv). CFFI prefers the
+     non-blocking path when present, keeps the legacy blocking
+     `call_raw` as fallback. Eliminates the
+     `pending_len = 0`-on-timeout state loss that made arena
+     trampolines miss late-arriving replies.
+  2. **XRCE reliable stream history exhaustion.** Bumped
+     `XRCE_STREAM_HISTORY` from 4 to 16. The C++ action server's
+     `on_goal` callback publishes feedback ×3 +
+     `complete_goal` (publishes status_array) + result inside
+     one trampoline invocation before the arena drains ACKs;
+     with history=4 the 5th `uxr_buffer_reply` (accept-goal
+     response) returned `UXR_INVALID_REQUEST_ID` and the accept
+     reply never reached the client. History=16 covers a typical
+     action lifecycle with room to spare; costs an extra 48 KiB
+     of per-session output buffer.
+  3. **129.4 has_async_wake gate already in place.** Without it
+     the spin loop would have slept in a never-signaled
+     wake-primitive wait, masking the stream-history symptom
+     for even longer.
+
+  All 13 Zephyr XRCE E2E tests pass
+  (`cargo nextest run -p nros-tests -E 'test(test_zephyr_xrce_)'`).
+  Phase 127.C.4 is now closeable in full.
 - [x] 129.4 `set_wake_callback` probe: `Session` gains
   `supports_wake_callback() -> bool` (default `false`); CFFI
   returns whether the vtable slot is non-NULL.

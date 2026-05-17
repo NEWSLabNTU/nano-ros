@@ -234,6 +234,8 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_service_client: noop_ccli,
     destroy_service_client: noop_dcli,
     call_raw: noop_call,
+    send_request_raw: None,
+    try_recv_reply_raw: None,
     register_subscriber_event: noop_regsubev,
     register_publisher_event: noop_regpubev,
     assert_publisher_liveliness: noop_alv,

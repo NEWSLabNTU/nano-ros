@@ -185,6 +185,8 @@ const fn base_vtable() -> NrosRmwVtable {
         create_service_client: stub_create_service_client,
         destroy_service_client: stub_destroy_service_client,
         call_raw: stub_call_raw,
+        send_request_raw: None,
+        try_recv_reply_raw: None,
         register_subscriber_event: stub_reg_sub_event,
         register_publisher_event: stub_reg_pub_event,
         assert_publisher_liveliness: stub_assert_liveliness,

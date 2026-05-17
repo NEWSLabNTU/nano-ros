@@ -36,7 +36,16 @@ extern "C" {
 #define XRCE_MAX_SERVICE_SERVERS   4
 #define XRCE_MAX_SERVICE_CLIENTS   4
 #define XRCE_BUFFER_SIZE           1024
-#define XRCE_STREAM_HISTORY        4
+/* Phase 129.4 — bumped from 4 to 16. Action server callbacks that
+ * publish feedback + result + status_array + service replies in a
+ * single user-handler invocation could exhaust 4 unACK'd slots
+ * before the executor gets a chance to drain ACKs, causing
+ * `uxr_buffer_reply` to return UXR_INVALID_REQUEST_ID. Sixteen
+ * slots cover a typical action lifecycle (accept + 3-4 feedback
+ * + complete + status_array + result) with room to spare. Costs
+ * 16 * UXR_CONFIG_CUSTOM_TRANSPORT_MTU = 64 KiB of per-session
+ * output stream buffer (was 16 KiB at history=4). */
+#define XRCE_STREAM_HISTORY        16
 /* Stream buffer sized after the largest MTU compiled in. Embedded
  * (no_POSIX) builds drop the UDP profile, so fall back to the custom
  * transport MTU. */
@@ -284,6 +293,13 @@ void           xrce_service_client_destroy(nros_rmw_service_client_t *client);
 int32_t        xrce_service_call_raw(nros_rmw_service_client_t *client,
                                      const uint8_t *request, size_t req_len,
                                      uint8_t *reply_buf, size_t reply_buf_len);
+/* Phase 129.4 — non-blocking split. */
+nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t *client,
+                                              const uint8_t *request,
+                                              size_t req_len);
+int32_t        xrce_service_try_recv_reply_raw(nros_rmw_service_client_t *client,
+                                                uint8_t *reply_buf,
+                                                size_t reply_buf_len);
 
 void xrce_request_callback(uxrSession *session,
                            uxrObjectId object_id,

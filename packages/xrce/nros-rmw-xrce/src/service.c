@@ -282,6 +282,77 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t *server,
     return NROS_RMW_RET_OK;
 }
 
+/* Phase 129.4 — non-blocking send/recv split (paired vtable
+ * slots). Avoids the blocking call_raw burst that conflated
+ * "send pending request" + "block for reply"; lets the
+ * executor's spin loop poll for a late-arriving reply without
+ * re-sending the request or sleeping in a never-signaled
+ * wake-primitive wait (Phase 127.C.4 root cause for the C++
+ * action send_goal trampoline). */
+nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t *client,
+                                              const uint8_t *request,
+                                              size_t req_len) {
+    if (client == NULL || client->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    if (request == NULL && req_len > 0) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_service_client_state *cs = (xrce_service_client_state *)client->backend_data;
+    xrce_session_state_t *st = cs->session_state;
+    xrce_service_client_slot *slot = cs->slot;
+    if (slot == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+    /* Clear any stale reply so try_recv_reply_raw doesn't surface
+     * an earlier request's response. */
+    slot->has_reply = false;
+    slot->overflow = false;
+    uint16_t req = uxr_buffer_request(
+        &st->session, st->output_reliable, cs->requester_oid,
+        (uint8_t *)(uintptr_t)request, req_len);
+    if (req == UXR_INVALID_REQUEST_ID) {
+        return NROS_RMW_RET_ERROR;
+    }
+    /* Flush the reliable output stream so the request actually
+     * leaves the session — matches the publisher / send_reply
+     * paths' explicit flush. Subsequent `drive_io` calls drive
+     * reliable retransmission. */
+    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    return NROS_RMW_RET_OK;
+}
+
+int32_t xrce_service_try_recv_reply_raw(nros_rmw_service_client_t *client,
+                                         uint8_t *reply_buf,
+                                         size_t reply_buf_len) {
+    if (client == NULL || client->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_service_client_state *cs = (xrce_service_client_state *)client->backend_data;
+    xrce_service_client_slot *slot = cs->slot;
+    if (slot == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+    if (!slot->has_reply) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+    if (slot->overflow) {
+        slot->overflow = false;
+        slot->has_reply = false;
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
+    size_t len = slot->len;
+    if (len > reply_buf_len) {
+        slot->has_reply = false;
+        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    }
+    if (reply_buf != NULL && len > 0) {
+        memcpy(reply_buf, slot->data, len);
+    }
+    slot->has_reply = false;
+    return (int32_t)len;
+}
+
 /* ---- Service client -------------------------------------------------- */
 
 nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t *session,
