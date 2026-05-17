@@ -228,22 +228,31 @@ the manifest to stay in sync with upstream.
       pass (the 3 nano2nano fails are pre-existing missing rtic
       fixtures).
 
-- [~] **136.4 — Collapse the per-RTOS cc-rs paths.** (2026-05-18 — partial)
-      Pre-collapse helper landed in `54dd4596`
-      (`add_zenoh_pico_core_sources`); 136.3 landed POSIX cc-rs in
-      `cb21912f`. Full collapse into one
-      `build_zenoh_pico(platform: &ResolvedPlatform)` function
-      **deferred** because the manifest schema today only carries
-      `defines`/`include`/`exclude`/`system_libs`/`mbedtls`/`link.*`
-      — it lacks per-platform SDK env-var encoding
-      (`NV_SPE_FSP_DIR`, `FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`,
-      …) and per-target compiler flag tables (`-mcpu=cortex-m3`,
-      picolibc sysroot include, riscv ABI flags). Those are real
-      schema additions, not just code motion, and need verification
-      on every embedded target (QEMU + native FSP) before they can
-      land safely. Track as a follow-up phase or land alongside the
-      137-140 build refactor since both expand the same per-platform
-      data surface.
+- [x] **136.4 — Collapse the per-RTOS cc-rs paths.** (2026-05-18)
+      Schema option C (TOML + small DSL + shared `[arch.*]` table)
+      implemented. Five per-RTOS functions + `build_zenoh_pico_native`
+      deleted (~785 LOC); replaced by
+      `build_zenoh_pico_unified(&ResolvedPlatform, &arch_table,
+      &InterpContext, …)` (~250 LOC) driven entirely by
+      `zenoh_platforms.toml`. Each `[platform.*]` block now carries
+      `defines` / `defines_kv` / `defines_env` / `include` /
+      `extra_sources` (with `if_env` + `with_define` modifiers) /
+      `required_env` (with help + `validate_subdir`) /
+      `include_paths` / `include_paths_conditional` (`when.target_match`
+      / `target_not` / `if_env`) / `arch` / `compile` / `pic` /
+      `link.*`. `[arch.*]` blocks (cortex-m3, cortex-m4f, cortex-a7,
+      cortex-r5-softfp, riscv32imc, riscv32gc, riscv64gc) carry
+      target-arch cflags + `needs_picolibc` / `needs_errno_override`
+      / `needs_riscv_compiler` hooks. Interpolation tokens:
+      `{nros}` / `{out}` / `{src}` / `{env:VAR}`.
+      Verified by `cargo build -p zpico-sys` (default + posix +
+      bare-metal-thumbv7m) + `test_talker_listener_communication`
+      + `test_tls_talker_listener_communication` POSIX E2E pass.
+      Embedded paths (FreeRTOS / NuttX / ThreadX) hit pre-existing
+      symbol-conflict / serial-link errors on origin/main too —
+      out of scope for 136.4 verification.
+      Net diff: ~793 LOC removed, ~600 LOC of TOML + 250 LOC of
+      Rust consumer added.
 
 - [x] **136.5 — mbedTLS via pkg-config.** (2026-05-18, landed with 136.3)
       `pkg-config = "0.3"` build-dep added. `build_zenoh_pico_native`

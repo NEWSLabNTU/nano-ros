@@ -521,41 +521,67 @@ fn main() {
     let link_features = link_features.apply(&link_policy);
     generate_config_header(&out_dir, &link_features, &buf_config);
 
-    // Build zenoh-pico and C shim
-    //
-    // ThreadX is checked first because it uses its own build path for both
-    // native (Linux simulation) and embedded (RISC-V QEMU) targets.
-    // Platform symbols provided by zpico-platform-shim → nros-platform-threadx.
-    // Task creation kept in C (task.c) due to _z_task_t struct layout dependency.
-    // Network I/O provided by C network.c (NetX Duo BSD sockets).
-    if use_threadx {
-        build_zenoh_pico_threadx(
+    // Phase 136.4 — manifest-driven unified consumer. The TOML
+    // declares every per-platform datum (defines, required env
+    // vars, include paths, extra sources, arch profile, compile
+    // settings, pic). Drop the five per-RTOS Rust functions in
+    // favour of a single `build_zenoh_pico_unified` that consumes
+    // `ResolvedPlatform` + `[arch.*]`.
+    let interp_ctx = manifest::InterpContext {
+        nros: &manifest_dir,
+        out: &out_dir,
+        src: &zenoh_pico_src.join("src"),
+    };
+    let platform_name = if use_threadx {
+        Some("threadx")
+    } else if use_orin_spe {
+        Some("orin-spe")
+    } else if use_nuttx {
+        Some("nuttx")
+    } else if use_freertos {
+        Some("freertos-lwip")
+    } else if use_bare_metal {
+        Some("bare-metal")
+    } else if !is_embedded_target(&target) && !use_system {
+        Some("posix")
+    } else {
+        None
+    };
+    if let Some(name) = platform_name {
+        let resolved = platform_manifest
+            .for_platform(name)
+            .unwrap_or_else(|e| panic!("zenoh_platforms.toml: {e}"));
+        build_zenoh_pico_unified(
+            &resolved,
+            &platform_manifest.arch,
+            &interp_ctx,
             &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
             &out_dir,
             &target,
             &link_features,
             &shim_config,
         );
-    } else if !is_embedded_target(&target) {
-        // Native: build zenoh-pico via CMake (or use system library), then shim via cc
+    }
+
+    // POSIX still needs the separate C shim build below (shim is
+    // not included in extra_sources for posix). Native: link system
+    // libs that the manifest doesn't model yet (per-target).
+    if !is_embedded_target(&target) && !use_threadx {
         let zenoh_pico_include = if use_system {
             use_system_zenoh_pico()
         } else {
-            build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config, &link_features)
+            // Native zenoh-pico include dir for the shim. The
+            // unified consumer compiled the static archive; shim
+            // build below pulls public headers.
+            zenoh_pico_src.join("include")
         };
-        // `build_c_shim` only knows about `use_posix` and `use_bare_metal`; for
-        // `use_nuttx` / `use_threadx` features the native path has no meaningful
-        // shim to emit (the shim C layer is cross-compiled from the
-        // target-specific build functions below) and leaving them in would
-        // compile `zpico.c` with no platform define selected, which fails
-        // immediately because `zenoh-pico/system/common/platform.h` needs one
-        // of `ZENOH_LINUX` / `ZENOH_NUTTX` / etc. to route to a real platform.
-        // Bug pre-84.F4 was silent because all nuttx/threadx consumers went
-        // through the embedded branches (different Cargo targets); post-F4
-        // every feature combo reaches the host via feature unification so
-        // the miss surfaces as `error: unknown type '_z_sys_net_socket_t'`.
+        if !use_system {
+            if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
+                println!("cargo:rustc-link-lib=pthread");
+            } else if target.contains("windows") {
+                println!("cargo:rustc-link-lib=ws2_32");
+            }
+        }
         if backend_count > 0 && !use_zephyr && !use_freertos && !use_nuttx && !use_threadx {
             build_c_shim(
                 &c_dir,
@@ -568,61 +594,6 @@ fn main() {
                 &shim_config,
             );
         }
-    } else if use_bare_metal {
-        // Embedded + bare-metal: build zenoh-pico + platform + shim all together with cc.
-        // This replaces the external build-zenoh-pico.sh shell scripts.
-        // Generate config header from Cargo link-* features before building.
-        build_zenoh_pico_embedded(
-            &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
-            &out_dir,
-            &target,
-            &link_features,
-            &shim_config,
-        );
-    } else if use_freertos {
-        // Embedded + FreeRTOS: build zenoh-pico + FreeRTOS platform + shim with cc.
-        // Uses zenoh-pico's built-in FreeRTOS+lwIP platform (system.c + lwip/network.c).
-        build_zenoh_pico_freertos(
-            &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
-            &out_dir,
-            &target,
-            &link_features,
-            &shim_config,
-        );
-    } else if use_nuttx {
-        // Embedded + NuttX: build zenoh-pico + unix platform (NuttX is POSIX-compatible) + shim.
-        // Reuses zenoh-pico's unix/system.c + unix/network.c with ZENOH_NUTTX define.
-        build_zenoh_pico_nuttx(
-            &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
-            &out_dir,
-            &target,
-            &link_features,
-            &shim_config,
-        );
-    } else if use_orin_spe {
-        // Phase 11.3.B — AGX Orin SPE (Cortex-R5F + NVIDIA FSP).
-        // Routes through zenoh-pico's FreeRTOS native system layer
-        // (`src/system/freertos/system.c`) so `zpico_spin_once` falls
-        // into the `Z_FEATURE_MULTI_THREAD=1` condvar-wait branch
-        // instead of the single-threaded `select(2)` branch that
-        // crashes the link with an undefined-symbol error. NO lwIP
-        // (the SPE has no Ethernet) — the new ZENOH_ORIN_SPE platform
-        // header (`include/zenoh-pico/system/platform/freertos/orin_spe.h`)
-        // provides FreeRTOS thread/sync types with empty socket unions.
-        build_zenoh_pico_orin_spe(
-            &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
-            &out_dir,
-            &link_features,
-            &shim_config,
-        );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
@@ -1270,122 +1241,8 @@ fn extract_typedef_name(line: &str) -> Option<String> {
     None
 }
 
-/// Phase 136.3 — Build zenoh-pico via cc-rs for native (POSIX)
-/// targets. Replaces the previous CMake-driven path. Source set,
-/// defines, and link flags mirror what `build_zenoh_pico_native`'s
-/// CMake invocation produced; the wire-protocol output is identical.
-///
-/// - Sources: the same 8 protocol subdirs + `system/common` that
-///   every per-RTOS function uses, plus `system/unix/tls.c`
-///   (gated by `Z_FEATURE_LINK_TLS` inside the file itself —
-///   include unconditionally so behaviour matches CMake's glob).
-///   `system/unix/{system,network}.c` are deliberately skipped:
-///   nros-platform-posix / zpico-platform-shim supply those symbols.
-///
-/// - Defines: `ZENOH_GENERIC` makes upstream's
-///   `zenoh-pico/include/zenoh-pico/config.h` route through our
-///   canonical `zenoh_generic_config.h` (`<out_dir>/zenoh-config/`)
-///   instead of CMake's hardcoded defaults. `FRAG_MAX_SIZE` /
-///   `BATCH_*_SIZE` propagate via `cc::Build::define`. Z_FEATURE_*
-///   defines all live in the canonical header.
-///
-/// - mbedTLS: 136.5 routes through the `pkg-config` build crate
-///   with a generated-`.pc` fallback for distros (Ubuntu) that
-///   ship `libmbedtls-dev` without `.pc` files.
-fn build_zenoh_pico_native(
-    zenoh_pico_src: &Path,
-    out_dir: &Path,
-    buf: &ZenohBufferConfig,
-    link: &LinkFeatures,
-) -> PathBuf {
-    let mut build = cc::Build::new();
-
-    // Generate version header in OUT_DIR (same shape the embedded
-    // path uses) so the cc-rs path doesn't need a writable copy of
-    // the source tree.
-    let version_include_dir = out_dir.join("zenoh-pico-version");
-    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
-
-    // Core protocol sources (8 src/<x>/ dirs + system/common) +
-    // the POSIX tls source.
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-    let unix_dir = zenoh_pico_src.join("src").join("system").join("unix");
-    let unix_tls = unix_dir.join("tls.c");
-    if unix_tls.exists() {
-        build.file(&unix_tls);
-    }
-    // Intentionally skip src/system/unix/{system,network}.c —
-    // platform + network symbols come from nros-platform-posix.
-
-    // Include dirs.
-    let zenoh_config_dir = out_dir.join("zenoh-config");
-    build
-        .include(&zenoh_config_dir)
-        .include(zenoh_pico_src.join("include"))
-        .include(&version_include_dir);
-
-    // Defines — match what `build_zenoh_pico_native`'s CMake invocation
-    // set in the previous lifetime. ZENOH_GENERIC routes config.h
-    // through our canonical header; ZENOH_LINUX selects the POSIX
-    // platform branch in zenoh-pico's `system/common/platform.h`.
-    build
-        .define("ZENOH_GENERIC", None)
-        .define("ZENOH_LINUX", None)
-        .define("ZENOH_DEBUG", "0")
-        .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string().as_str())
-        .define(
-            "BATCH_UNICAST_SIZE",
-            buf.batch_unicast_size.to_string().as_str(),
-        )
-        .define(
-            "BATCH_MULTICAST_SIZE",
-            buf.batch_multicast_size.to_string().as_str(),
-        );
-
-    // mbedTLS — Phase 136.5: route through pkg-config with the
-    // .pc-synth fallback for Ubuntu's libmbedtls-dev. Apply Cflags
-    // so zenoh-pico's `link/unicast/tls.c` resolves mbedtls headers
-    // at compile time; emit rustc-link-lib so the final binary
-    // pulls the system shared libraries.
-    if link.tls {
-        let pc_dir = out_dir.join("pkgconfig");
-        generate_mbedtls_pc_files(&pc_dir);
-        let existing = env::var("PKG_CONFIG_PATH").unwrap_or_default();
-        let new_path = if existing.is_empty() {
-            pc_dir.display().to_string()
-        } else {
-            format!("{}:{existing}", pc_dir.display())
-        };
-        // SAFETY: build scripts are single-threaded; no other thread reads this variable.
-        unsafe { env::set_var("PKG_CONFIG_PATH", &new_path) };
-        let lib = pkg_config::Config::new()
-            .cargo_metadata(true)
-            .probe("mbedtls")
-            .expect("mbedtls discovery via pkg-config failed");
-        for include in &lib.include_paths {
-            build.include(include);
-        }
-    }
-
-    build.warnings(false);
-    build.compile("zenohpico");
-
-    // Link system libraries.
-    let target = env::var("TARGET").unwrap_or_default();
-    if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
-        println!("cargo:rustc-link-lib=pthread");
-    } else if target.contains("windows") {
-        println!("cargo:rustc-link-lib=ws2_32");
-    }
-
-    // Return include dir so `build_c_shim` can pull `zenoh-pico.h`
-    // + the canonical config + the public headers.
-    zenoh_pico_src.join("include")
-}
-
-/// Use a pre-built zenoh-pico from ZENOH_PICO_DIR (system-zenohpico feature).
-///
-/// Expects a CMake install prefix layout:
+/// Use a pre-built zenoh-pico from `ZENOH_PICO_DIR` (system-zenohpico
+/// feature). Expects a CMake install prefix layout:
 ///   $ZENOH_PICO_DIR/lib/libzenohpico.a
 ///   $ZENOH_PICO_DIR/include/zenoh-pico.h
 fn use_system_zenoh_pico() -> PathBuf {
@@ -1401,7 +1258,6 @@ fn use_system_zenoh_pico() -> PathBuf {
     let dir = PathBuf::from(&zenoh_pico_dir);
     let lib_path = dir.join("lib").join("libzenohpico.a");
     let header_path = dir.join("include").join("zenoh-pico.h");
-
     if !lib_path.exists() {
         panic!(
             "ZENOH_PICO_DIR={}: expected static library at {}\n\
@@ -1418,37 +1274,25 @@ fn use_system_zenoh_pico() -> PathBuf {
             header_path.display()
         );
     }
-
-    // Link the pre-built library
     println!(
         "cargo:rustc-link-search=native={}",
         dir.join("lib").display()
     );
     println!("cargo:rustc-link-lib=static=zenohpico");
-
-    // Link system libraries (same as build_zenoh_pico_native)
     let target = env::var("TARGET").unwrap_or_default();
     if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
         println!("cargo:rustc-link-lib=pthread");
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
     }
-
     println!(
         "cargo:warning=Using system zenoh-pico from {}. \
          Ensure it was built with compatible Z_FEATURE_* flags \
          (Z_FEATURE_INTEREST=1, Z_FEATURE_MATCHING=1).",
         zenoh_pico_dir
     );
-
     dir.join("include")
 }
-
-// `copy_source_tree` + `generate_version_header` deleted in Phase 136.3 —
-// the cc-rs native path no longer copies the source tree (cc-rs reads
-// in-place from `zenoh-pico/src/`) and uses `generate_embedded_version_header`
-// (writes to `out_dir/zenoh-pico-version/`) for both the embedded and
-// native paths.
 
 /// Build the C shim library
 ///
@@ -1546,644 +1390,234 @@ fn build_c_shim(
     build.compile("zpico");
 }
 
-/// Build zenoh-pico + platform layer + shim for embedded targets using cc.
-///
-/// Compiles all zenoh-pico sources together with our platform headers and
-/// shim into a single static library (`libzenohpico.a`). This replaces the
-/// external `scripts/{qemu,esp32}/build-zenoh-pico.sh` shell scripts.
+/// Phase 136.4 — unified zenoh-pico cc-rs builder, driven by the
+/// resolved `[platform.<name>]` block from `zenoh_platforms.toml`.
+/// Replaces the five per-RTOS functions (`build_zenoh_pico_{embedded,
+/// orin_spe, freertos, nuttx, threadx}`) and the POSIX
+/// `build_zenoh_pico_native` body. Per-platform deltas all come from
+/// the manifest: defines, required env vars, include paths
+/// (interpolated `{env:VAR}` / `{nros}` / `{src}` / `{out}`),
+/// conditional include paths (`when.target_match` /
+/// `when.target_not` / `when.if_env`), extra C sources (with
+/// `if_env` and `with_define` modifiers), the `[arch.*]` profile
+/// (cflags + picolibc / errno-override / riscv-compiler hooks),
+/// compile settings, and the `pic` flag.
 #[allow(clippy::too_many_arguments)]
-fn build_zenoh_pico_embedded(
+fn build_zenoh_pico_unified(
+    plat: &manifest::ResolvedPlatform,
+    arch_table: &std::collections::BTreeMap<String, manifest::ArchEntry>,
+    interp: &manifest::InterpContext<'_>,
     zenoh_pico_src: &Path,
-    c_dir: &Path,
-    include_dir: &Path,
     out_dir: &Path,
     target: &str,
     link: &LinkFeatures,
     shim: &ShimConfig,
 ) {
-    let mut build = cc::Build::new();
-    let platform_dir = c_dir.join("platform");
+    // Step 1 — validate required env vars (loud panic with help).
+    for req in &plat.required_env {
+        let val = env::var(&req.name).unwrap_or_else(|_| {
+            panic!("{} not set. {}", req.name, req.help);
+        });
+        if let Some(subdir) = &req.validate_subdir {
+            let path = PathBuf::from(&val).join(subdir);
+            if !path.exists() {
+                panic!(
+                    "{}={}: missing {} (expected at {}). {}",
+                    req.name,
+                    val,
+                    subdir,
+                    path.display(),
+                    req.help
+                );
+            }
+        }
+    }
 
-    // Generate version header in OUT_DIR
+    let mut build = cc::Build::new();
+
+    // Step 2 — version header (shared with embedded path).
     let version_include_dir = out_dir.join("zenoh-pico-version");
     generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
 
-    // RISC-V toolchain setup (compiler detection, errno shadow, picolibc)
-    if target.contains("riscv32imc") {
-        detect_riscv_compiler(&mut build);
-        build.flag("-march=rv32imc").flag("-mabi=ilp32");
-
-        // Generate errno.h shadow that avoids picolibc's TLS-based errno.
-        // picolibc declares `extern __thread int errno` which uses the tp register.
-        // On bare-metal ESP32-C3, tp is never initialized → null pointer crash.
-        let errno_dir = out_dir.join("errno-override");
-        std::fs::create_dir_all(&errno_dir).unwrap();
-        std::fs::write(
-            errno_dir.join("errno.h"),
-            include_bytes!("c/platform/errno_override.h"),
-        )
-        .unwrap();
-        // errno override must be searched BEFORE picolibc headers
-        build.include(&errno_dir);
-
-        // Add picolibc sysroot for C standard library headers (stdint.h, etc.)
-        // Do NOT use --specs=picolibc.specs (it enables TLS errno)
-        if let Some(sysroot) = get_picolibc_sysroot() {
-            build.include(sysroot.join("include"));
-        }
-    }
-
-    // ARM Cortex-M cross-compilation flags
-    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
-        build.flag("-mcpu=cortex-m3").flag("-mthumb");
-    } else if target.contains("thumbv7em") {
-        build
-            .flag("-mcpu=cortex-m4")
-            .flag("-mthumb")
-            .flag("-mfpu=fpv4-sp-d16")
-            .flag("-mfloat-abi=hard");
-    }
-
-    // Phase 136.4 (pre-collapse) — core source set (8 protocol
-    // subdirs + `system/common`) factored out. Platform-specific
-    // `system/<plat>/` sources are still per-RTOS below.
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-
-    // Shim (high-level API wrapper)
-    build.file(c_dir.join("zpico").join("zpico.c"));
-
-    // Include paths
-    // Generated config header takes precedence over the static one in platform_dir
-    let generated_config_dir = out_dir.join("zenoh-config");
-    build.include(&generated_config_dir);
-    build.include(zenoh_pico_src.join("include"));
-    build.include(&version_include_dir);
-    build.include(&platform_dir);
-    build.include(include_dir);
-
-    // Platform defines
-    build.define("ZENOH_GENERIC", None);
-    // Phase 132 — `ZPICO_NO_SMOLTCP=1` opt-out (same rationale as
-    // `build_c_shim`). Serial-only embedded firmware sets the env
-    // var in its `.cargo/config.toml [env]` block; the bare-metal
-    // link then succeeds because `zpico.c` no longer references
-    // `smoltcp_init` / `smoltcp_cleanup`.
-    let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
-    println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
-    let has_network =
-        (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
-    if has_network {
-        build.define("ZPICO_SMOLTCP", None);
-    } else if link.serial {
-        build.define("ZPICO_SERIAL", None);
-    }
-    build.define("ZENOH_DEBUG", "0");
-    build.define("Z_FEATURE_MULTI_THREAD", "0");
-    // Phase 134.4 — link-feature defines flow through the canonical
-    // `zenoh_generic_config.h` written by `generate_config_header`.
-    // Compile units that need them `#include "zenoh-pico/config.h"`
-    // which dispatches into our header via `ZENOH_GENERIC`.
-    let _ = link;
-
-    // Pass slot counts as -D flags so zpico.c gets them
-    shim.apply_to_cc(&mut build);
-
-    // mbedTLS — when the canonical header sets `Z_FEATURE_LINK_TLS=1`:
-    // 1. Add mbedTLS include paths for zenoh-pico's link/unicast/tls.c
-    // 2. Compile mbedTLS library sources (for crypto/TLS primitives)
-    // 3. Compile TLS platform symbols (tls_bare_metal.c, entropy_bare_metal.c)
-    //
-    // Everything is compiled into the same `zenohpico` archive so the linker
-    // can resolve references between zenoh-pico's link layer and the TLS
-    // platform implementation without circular archive dependencies.
-    if link.tls {
-        let zpico_sys_dir = zenoh_pico_src.parent().unwrap();
-        let mbedtls_dir = zpico_sys_dir.join("mbedtls");
-        let mbedtls_include = mbedtls_dir.join("include");
-        let mbedtls_library = mbedtls_dir.join("library");
-        if !mbedtls_include.exists() {
+    // Step 3 — arch profile (cflags + sysroot / errno-override /
+    // riscv-cc probe). Profile is applied iff it matches the
+    // target triple.
+    if let Some(arch_name) = plat.arch.as_deref() {
+        if let Some(arch) = arch_table.get(arch_name) {
+            if arch_matches(arch, target) {
+                apply_arch(arch, &mut build, out_dir);
+            }
+        } else {
             panic!(
-                "mbedTLS submodule not found at {:?}. Run: git submodule update --init",
-                mbedtls_include
+                "zenoh_platforms.toml: platform `{}` references unknown arch `{}`",
+                plat.name, arch_name
             );
         }
-        build.include(&mbedtls_include);
+    }
 
-        // Bare-metal mbedTLS config header (TLS support deferred)
-        // Previously in zpico-smoltcp/c/, will be relocated when TLS is implemented.
-        build.define("MBEDTLS_CONFIG_FILE", "\"mbedtls_config.h\"");
+    // Step 4 — core sources + per-platform extra C files.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
+    for extra in &plat.extra_sources {
+        if let Some(env_var) = &extra.if_env {
+            if env::var(env_var).is_err() {
+                continue;
+            }
+            println!("cargo:rerun-if-env-changed={env_var}");
+        }
+        let path_str = manifest::interpolate(&extra.path, interp).unwrap_or_else(|e| {
+            panic!(
+                "zenoh_platforms.toml: platform `{}` extra_sources `{}`: {e}",
+                plat.name, extra.path
+            )
+        });
+        build.file(&path_str);
+        if let Some(def) = &extra.with_define {
+            let value = def.get(1).map(|s| s.as_str());
+            build.define(&def[0], value);
+        }
+    }
 
-        // Compile mbedTLS library sources (excluding POSIX-only files)
-        let excluded_mbedtls = ["net_sockets.c", "timing.c", "threading.c", "psa_its_file.c"];
-        if let Ok(entries) = std::fs::read_dir(&mbedtls_library) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "c") {
-                    let filename = path.file_name().unwrap().to_str().unwrap();
-                    if !excluded_mbedtls.contains(&filename) {
-                        build.file(&path);
+    // Step 5 — include paths (unconditional + conditional).
+    let zenoh_config_dir = out_dir.join("zenoh-config");
+    build
+        .include(&zenoh_config_dir)
+        .include(zenoh_pico_src.join("include"))
+        .include(&version_include_dir);
+    let is_embedded = is_embedded_target(target);
+    for raw in &plat.include_paths {
+        let path = manifest::interpolate(raw, interp).unwrap_or_else(|e| {
+            panic!(
+                "zenoh_platforms.toml: platform `{}` include_paths `{raw}`: {e}",
+                plat.name
+            )
+        });
+        build.include(&path);
+    }
+    for cond in &plat.include_paths_conditional {
+        if !manifest::matches(&cond.when, target, is_embedded) {
+            continue;
+        }
+        let path = manifest::interpolate(&cond.path, interp).unwrap_or_else(|e| {
+            panic!(
+                "zenoh_platforms.toml: platform `{}` conditional include `{}`: {e}",
+                plat.name, cond.path
+            )
+        });
+        build.include(&path);
+    }
+
+    // Step 6 — defines (unconditional, key=value, env-derived).
+    for define in &plat.defines {
+        build.define(define, None);
+    }
+    for (key, value) in &plat.defines_kv {
+        build.define(key, value.as_str());
+    }
+    for (key, env_def) in &plat.defines_env {
+        let value = env::var(&env_def.env).unwrap_or_else(|_| env_def.default.clone());
+        build.define(key, value.as_str());
+        println!("cargo:rerun-if-env-changed={}", env_def.env);
+    }
+
+    // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to
+    // `pkg-config` / `vendored` / `none`; bare-metal vendored path
+    // pulls in the in-tree mbedTLS submodule's sources.
+    if link.tls {
+        match plat.mbedtls.as_deref() {
+            Some("pkg-config") => {
+                let pc_dir = out_dir.join("pkgconfig");
+                generate_mbedtls_pc_files(&pc_dir);
+                let existing = env::var("PKG_CONFIG_PATH").unwrap_or_default();
+                let new_path = if existing.is_empty() {
+                    pc_dir.display().to_string()
+                } else {
+                    format!("{}:{existing}", pc_dir.display())
+                };
+                // SAFETY: build scripts are single-threaded.
+                unsafe { env::set_var("PKG_CONFIG_PATH", &new_path) };
+                let lib = pkg_config::Config::new()
+                    .cargo_metadata(true)
+                    .probe("mbedtls")
+                    .expect("mbedtls discovery via pkg-config failed");
+                for include in &lib.include_paths {
+                    build.include(include);
+                }
+            }
+            Some("vendored") | None => {
+                // Bare-metal default — pull vendor sources.
+                let zpico_sys_dir = zenoh_pico_src.parent().unwrap();
+                let mbedtls_dir = zpico_sys_dir.join("mbedtls");
+                let mbedtls_include = mbedtls_dir.join("include");
+                let mbedtls_library = mbedtls_dir.join("library");
+                if !mbedtls_include.exists() {
+                    panic!(
+                        "mbedTLS submodule not found at {:?}. Run: git submodule update --init",
+                        mbedtls_include
+                    );
+                }
+                build.include(&mbedtls_include);
+                build.define("MBEDTLS_CONFIG_FILE", "\"mbedtls_config.h\"");
+                let excluded = ["net_sockets.c", "timing.c", "threading.c", "psa_its_file.c"];
+                if let Ok(entries) = std::fs::read_dir(&mbedtls_library) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().is_some_and(|ext| ext == "c") {
+                            let fname = path.file_name().unwrap().to_str().unwrap();
+                            if !excluded.contains(&fname) {
+                                build.file(&path);
+                            }
+                        }
                     }
                 }
             }
+            Some("none") | Some(_) => {}
         }
-
-        // TLS platform symbols and entropy source (bare-metal)
-        // Previously in zpico-smoltcp/c/. Will be relocated when TLS is implemented.
     }
 
-    // Embedded-optimized compiler flags
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-
-    build.compile("zenohpico");
-}
-
-/// Phase 11.3.B — build zenoh-pico for AGX Orin SPE.
-///
-/// Routes through zenoh-pico's FreeRTOS native system layer
-/// (`src/system/freertos/system.c`) so multi-thread paths
-/// (`zpico_spin_once`'s condvar wait, read/lease background tasks)
-/// work natively against the FSP V10.4.3 FreeRTOS API. Mirrors
-/// `build_zenoh_pico_freertos` but:
-/// - **No lwIP** — the SPE has no Ethernet. New `ZENOH_ORIN_SPE`
-///   platform header (`include/zenoh-pico/system/platform/freertos/orin_spe.h`)
-///   provides the FreeRTOS thread/sync types with empty socket unions
-///   (the link.h transport union still mentions them, but
-///   `Z_FEATURE_LINK_TCP/UDP/etc. == 0` makes them dead).
-/// - **IVC link only** — `Z_FEATURE_LINK_IVC=1`; everything else
-///   (TCP/UDP/SERIAL/RAWETH/TLS) forced to 0.
-/// - **No FreeRTOS source compile** — the FSP ships its own pre-built
-///   FreeRTOS V10.4.3 (`tegra_aon_fsp.a`); we just consume its
-///   headers via `NV_SPE_FSP_DIR`.
-///
-/// Required env vars:
-/// - `NV_SPE_FSP_DIR` — staged FSP install (sentinel `bsp-stage`
-///   recipe produces this). Must contain
-///   `include/freertos/{FreeRTOS,task,semphr,event_groups,...}.h`,
-///   `include/freertos/portable/GCC/ARM_R5/portmacro.h`, and
-///   `include/FreeRTOSConfig.h`.
-fn build_zenoh_pico_orin_spe(
-    zenoh_pico_src: &Path,
-    c_dir: &Path,
-    include_dir: &Path,
-    out_dir: &Path,
-    link: &LinkFeatures,
-    shim: &ShimConfig,
-) {
-    let fsp_dir = PathBuf::from(env::var("NV_SPE_FSP_DIR").unwrap_or_else(|_| {
-        panic!(
-            "NV_SPE_FSP_DIR not set. Point it at the staged SPE FSP install\n\
-             (sentinel `just orin_spe-bsp-stage` produces this under\n\
-             external/spe-fsp/install/). Required for zpico-sys to find\n\
-             FreeRTOS.h, portmacro.h, FreeRTOSConfig.h."
-        );
-    }));
-    let freertos_inc = fsp_dir.join("include").join("freertos");
-    let portmacro_inc = freertos_inc.join("portable").join("GCC").join("ARM_R5");
-    let freertos_config_inc = fsp_dir.join("include");
-    if !freertos_inc.join("FreeRTOS.h").exists() {
-        panic!(
-            "NV_SPE_FSP_DIR={}: missing include/freertos/FreeRTOS.h.\n\
-             Re-run `just orin_spe-bsp-stage` after the BSP download.",
-            fsp_dir.display()
-        );
-    }
-    if !portmacro_inc.join("portmacro.h").exists() {
-        panic!(
-            "NV_SPE_FSP_DIR={}: missing include/freertos/portable/GCC/ARM_R5/portmacro.h.\n\
-             The bsp-stage recipe needs to copy the ARM_R5 port directory.",
-            fsp_dir.display()
-        );
-    }
-    if !freertos_config_inc.join("FreeRTOSConfig.h").exists() {
-        panic!(
-            "NV_SPE_FSP_DIR={}: missing include/FreeRTOSConfig.h.\n\
-             The bsp-stage recipe needs to copy the demo's FreeRTOSConfig.h.",
-            fsp_dir.display()
-        );
-    }
-
-    let mut build = cc::Build::new();
-    let platform_dir = c_dir.join("platform");
-
-    // Generate version header in OUT_DIR
-    let version_include_dir = out_dir.join("zenoh-pico-version");
-    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
-
-    // ARMv7-R Cortex-R5 cross-compile flags. MUST match the BSP's
-    // CFLAGS (softfp + vfpv3-d16) so the C objects link against
-    // `tegra_aon_fsp.a` without `Tag_ABI_VFP_args` warnings.
-    build
-        .flag("-mcpu=cortex-r5")
-        .flag("-marm")
-        .flag("-mthumb-interwork")
-        .flag("-mfloat-abi=softfp")
-        .flag("-mfpu=vfpv3-d16");
-
-    // Collect zenoh-pico core sources (excluding platform-specific
-    // system backends — we add freertos/system.c manually below).
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-    let src_dir = zenoh_pico_src.join("src");
-
-    // FreeRTOS native system layer — provides clock / mutex / condvar /
-    // task / sleep / random / time / alloc against the FSP API.
-    build.file(src_dir.join("system").join("freertos").join("system.c"));
-
-    // Shim (high-level zpico_* API wrapper).
-    build.file(c_dir.join("zpico").join("zpico.c"));
-
-    // Include paths
-    let generated_config_dir = out_dir.join("zenoh-config");
-    build.include(&generated_config_dir);
-    build.include(zenoh_pico_src.join("include"));
-    build.include(&version_include_dir);
-    build.include(&platform_dir);
-    build.include(include_dir);
-    // FSP-supplied FreeRTOS headers — these resolve `FreeRTOS.h`,
-    // `semphr.h`, `event_groups.h`, `task.h`, `portmacro.h`, and
-    // `FreeRTOSConfig.h`.
-    build.include(&freertos_inc);
-    build.include(&portmacro_inc);
-    build.include(&freertos_config_inc);
-
-    // Platform defines.
-    //
-    // `ZENOH_GENERIC` makes `config.h` include the build.rs-generated
-    // `zenoh_generic_config.h` (which sets `Z_FEATURE_LINK_*` from
-    // Cargo features). Without it, config.h falls into a hard-coded
-    // `#else` branch that sets `Z_FEATURE_LINK_TCP=1` /
-    // `Z_FEATURE_LINK_UDP_MULTICAST=1`, dragging in tcp.c / udp.c
-    // and breaking the link with undefined `_z_send_tcp` etc.
-    //
-    // `ZENOH_ORIN_SPE` is independently checked by
-    // `system/common/platform.h` to pick `freertos/orin_spe.h` (the
-    // FreeRTOS-thread-types-without-lwIP variant). Both must be set.
-    build.define("ZENOH_GENERIC", None);
-    build.define("ZENOH_ORIN_SPE", None);
-    build.define("ZENOH_DEBUG", "0");
-    // FSP's FreeRTOS V10.4.3 has real threads.
-    build.define("Z_FEATURE_MULTI_THREAD", "1");
-    // Phase 134.4 — every `Z_FEATURE_LINK_*` / `Z_FEATURE_RAWETH_*`
-    // / `Z_FEATURE_SCOUTING_UDP` value flows from
-    // `<out_dir>/zenoh-config/zenoh_generic_config.h`, generated by
-    // `generate_config_header` from `LinkFeatures::apply(
-    // &LinkPolicy::orin_spe())` — which encodes the SPE invariants
-    // (no Ethernet → TCP/UDP/MC/SERIAL/TLS = false) declaratively
-    // instead of as scattered build.define literals here.
-    let _ = link;
-
-    // Pass slot counts as -D flags so zpico.c gets them
+    // Step 8 — shim slot counts.
     shim.apply_to_cc(&mut build);
 
-    // Embedded-optimized compiler flags
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-
-    build.compile("zenohpico");
-}
-
-/// Build zenoh-pico + FreeRTOS platform layer + shim for embedded FreeRTOS+lwIP targets.
-///
-/// Uses zenoh-pico's built-in FreeRTOS system implementation (`system.c`) and
-/// lwIP network layer (`lwip/network.c`). FreeRTOS has real threads, so
-/// `Z_FEATURE_MULTI_THREAD=1` is set (unlike bare-metal).
-///
-/// Required environment variables:
-/// - `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `third-party/freertos/kernel`)
-/// - `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`)
-/// - `LWIP_DIR` — path to lwIP source (e.g., `third-party/freertos/lwip`)
-/// - `FREERTOS_CONFIG_DIR` — path to directory with `FreeRTOSConfig.h` + `lwipopts.h`
-#[allow(clippy::too_many_arguments)]
-fn build_zenoh_pico_freertos(
-    zenoh_pico_src: &Path,
-    c_dir: &Path,
-    include_dir: &Path,
-    out_dir: &Path,
-    target: &str,
-    link: &LinkFeatures,
-    shim: &ShimConfig,
-) {
-    // Read FreeRTOS environment variables
-    let freertos_dir = PathBuf::from(env::var("FREERTOS_DIR").unwrap_or_else(|_| {
-        panic!(
-            "FREERTOS_DIR not set. Point it at the FreeRTOS kernel source directory.\n\
-             Run `just setup-freertos` to download, then set:\n\
-             export FREERTOS_DIR=$PWD/third-party/freertos/kernel"
-        );
-    }));
-    let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| {
-        panic!(
-            "FREERTOS_PORT not set. Set it to the FreeRTOS portable layer.\n\
-             Example: export FREERTOS_PORT=GCC/ARM_CM3"
-        );
-    });
-    let lwip_dir = PathBuf::from(env::var("LWIP_DIR").unwrap_or_else(|_| {
-        panic!(
-            "LWIP_DIR not set. Point it at the lwIP source directory.\n\
-             Run `just setup-freertos` to download, then set:\n\
-             export LWIP_DIR=$PWD/third-party/freertos/lwip"
-        );
-    }));
-    let freertos_config_dir = PathBuf::from(env::var("FREERTOS_CONFIG_DIR").unwrap_or_else(|_| {
-        panic!(
-            "FREERTOS_CONFIG_DIR not set. Point it at a directory containing\n\
-             FreeRTOSConfig.h and lwipopts.h for your board.\n\
-             Example: export FREERTOS_CONFIG_DIR=packages/boards/nros-board-mps2-an385-freertos/config"
-        );
-    }));
-
-    // Validate directories exist
-    if !freertos_dir.join("include").exists() {
-        panic!(
-            "FREERTOS_DIR={}: missing include/ directory. Is this a valid FreeRTOS kernel source?",
-            freertos_dir.display()
-        );
+    // Step 9 — compile settings (opt_level / warnings / cflags).
+    if let Some(level) = plat.compile.opt_level {
+        build.opt_level(level);
     }
-    let port_dir = freertos_dir.join("portable").join(&freertos_port);
-    if !port_dir.exists() {
-        panic!(
-            "FREERTOS_DIR/portable/{} not found at {}",
-            freertos_port,
-            port_dir.display()
-        );
+    if let Some(w) = plat.compile.warnings {
+        build.warnings(w);
+    } else {
+        // Default warnings off across the manifest-driven path —
+        // mirrors what every per-RTOS function used to set.
+        build.warnings(false);
     }
-    if !lwip_dir.join("src").join("include").exists() {
-        panic!(
-            "LWIP_DIR={}: missing src/include/ directory. Is this a valid lwIP source?",
-            lwip_dir.display()
-        );
+    for flag in &plat.compile.cflags {
+        build.flag(flag);
     }
 
-    let mut build = cc::Build::new();
-
-    // Generate version header in OUT_DIR
-    let version_include_dir = out_dir.join("zenoh-pico-version");
-    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
-
-    // ARM Cortex-M cross-compilation flags
-    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
-        build.flag("-mcpu=cortex-m3").flag("-mthumb");
-    } else if target.contains("thumbv7em") {
-        build
-            .flag("-mcpu=cortex-m4")
-            .flag("-mthumb")
-            .flag("-mfpu=fpv4-sp-d16")
-            .flag("-mfloat-abi=hard");
+    // Step 10 — PIC override (NuttX flat builds).
+    if let Some(pic) = plat.pic {
+        build.pic(pic);
     }
 
-    // Phase 136.4 (pre-collapse) — core source set (8 protocol
-    // subdirs + `system/common`) factored out. Platform-specific
-    // `system/<plat>/` sources are still per-RTOS below.
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-
-    // FreeRTOS platform sources
-    // system.c skipped — platform symbols provided by zpico-platform-shim.
-    // network.c skipped — networking provided by zpico-platform-shim via
-    // nros-platform-freertos (lwIP BSD socket calls via freertos-lwip-sys).
-
-    // Shim (high-level API wrapper)
-    build.file(c_dir.join("zpico").join("zpico.c"));
-
-    // Include paths (order matters — generated config takes precedence)
-    let generated_config_dir = out_dir.join("zenoh-config");
-    build.include(&generated_config_dir);
-    build.include(zenoh_pico_src.join("include"));
-    build.include(&version_include_dir);
-    build.include(include_dir);
-
-    // FreeRTOS kernel headers
-    build.include(freertos_dir.join("include"));
-    build.include(&port_dir);
-
-    // User-provided config (FreeRTOSConfig.h, lwipopts.h)
-    build.include(&freertos_config_dir);
-
-    // lwIP headers
-    build.include(lwip_dir.join("src/include"));
-    // lwIP FreeRTOS port (provides arch/sys_arch.h for threaded mode)
-    build.include(lwip_dir.join("contrib/ports/freertos/include"));
-
-    // Platform defines
-    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
-    // ZENOH_FREERTOS_LWIP: tells zenoh-pico platform.h to use FreeRTOS+lwIP types
-    build.define("ZENOH_GENERIC", None);
-    build.define("ZENOH_FREERTOS_LWIP", None);
-    build.define("ZENOH_DEBUG", "0");
-
-    // FreeRTOS has real threads — override the #ifndef default of 0 in config header
-    build.define("Z_FEATURE_MULTI_THREAD", "1");
-
-    // Phase 134.4 — link-feature defines flow through
-    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
+    // Step 11 — `link` field consumed by the policy layer earlier;
+    // touch here so it doesn't go cold under the borrow checker.
     let _ = link;
 
-    // Pass shim slot counts as -D flags
-    shim.apply_to_cc(&mut build);
-
-    // Embedded-optimized compiler flags
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-
     build.compile("zenohpico");
+
+    // Step 12 — register additional rerun-if-env-changed hooks.
+    for var in &plat.rerun_if_env_changed {
+        println!("cargo:rerun-if-env-changed={var}");
+    }
 }
 
-/// Build zenoh-pico for NuttX targets.
-///
-/// NuttX is POSIX-compliant, so we reuse the unix/ platform sources (system.c + network.c)
-/// with a ZENOH_NUTTX define for RNG adaptation. NuttX provides pthreads, BSD sockets,
-/// clock_gettime(), and /dev/urandom — all needed by the unix platform layer.
-///
-/// Only requires NUTTX_DIR (for NuttX system headers). No lwIP or FreeRTOS dirs needed.
-fn build_zenoh_pico_nuttx(
-    zenoh_pico_src: &Path,
-    c_dir: &Path,
-    include_dir: &Path,
-    out_dir: &Path,
-    target: &str,
-    link: &LinkFeatures,
-    shim: &ShimConfig,
-) {
-    // Read NuttX environment variable
-    let nuttx_dir = PathBuf::from(env::var("NUTTX_DIR").unwrap_or_else(|_| {
-        panic!(
-            "NUTTX_DIR not set. Point it at the NuttX OS source directory.\n\
-             Run `just setup-nuttx` to download, then set:\n\
-             export NUTTX_DIR=$PWD/third-party/nuttx/nuttx"
-        );
-    }));
-
-    // Validate directory exists
-    if !nuttx_dir.join("include").exists() {
-        panic!(
-            "NUTTX_DIR={}: missing include/ directory. Is this a valid NuttX source?",
-            nuttx_dir.display()
-        );
+/// Apply an `[arch.*]` profile to a `cc::Build`.
+fn apply_arch(arch: &manifest::ArchEntry, build: &mut cc::Build, out_dir: &Path) {
+    for flag in &arch.cflags {
+        build.flag(flag);
     }
-
-    let mut build = cc::Build::new();
-
-    // Generate version header in OUT_DIR
-    let version_include_dir = out_dir.join("zenoh-pico-version");
-    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
-
-    // ARM Cortex-A cross-compilation flags
-    if target.contains("armv7a") {
-        build.flag("-march=armv7-a");
+    if arch.needs_riscv_compiler {
+        detect_riscv_compiler(build);
     }
-
-    // Phase 136.4 (pre-collapse) — core source set (8 protocol
-    // subdirs + `system/common`) factored out. Platform-specific
-    // `system/<plat>/` sources are still per-RTOS below.
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-
-    // Unix platform sources (NuttX is POSIX-compatible)
-    // system.c skipped — most platform symbols come from zpico-platform-shim.
-    // network.c skipped — networking provided by zpico-platform-shim via
-    // nros-platform-nuttx (NuttX POSIX sockets via nuttx-sys bindgen).
-
-    // NuttX-specific clock functions (struct-timespec-aware, overriding the
-    // shim's usize-based clock because unix.h defines z_clock_t as struct
-    // timespec). zpico-platform-shim has `skip-clock-symbols` enabled for
-    // NuttX so there's no duplicate-symbol conflict.
-    build.file(c_dir.join("zpico").join("nuttx_clock.c"));
-
-    // Shim (high-level API wrapper)
-    build.file(c_dir.join("zpico").join("zpico.c"));
-
-    // Include paths (order matters — generated config takes precedence)
-    let generated_config_dir = out_dir.join("zenoh-config");
-    build.include(&generated_config_dir);
-    build.include(zenoh_pico_src.join("include"));
-    build.include(&version_include_dir);
-    build.include(include_dir);
-
-    // NuttX system headers (provides POSIX types: pthread, sockets, etc.)
-    build.include(nuttx_dir.join("include"));
-
-    // NuttX flat build: disable PIC — NuttX doesn't use GOT, and function
-    // pointers loaded through GOT entries resolve to 0 (NULL) at runtime.
-    build.pic(false);
-
-    // Platform defines
-    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
-    // ZENOH_NUTTX: tells platform.h to use unix.h types, and system.c to use /dev/urandom
-    build.define("ZENOH_GENERIC", None);
-    build.define("ZENOH_NUTTX", None);
-    build.define("ZENOH_DEBUG", "0");
-
-    // NuttX over QEMU slirp needs longer socket timeout for zenoh handshake.
-    // Default 100ms is too short — the handshake roundtrip through virtio-net
-    // + QEMU slirp can take several hundred milliseconds.
-    build.define("Z_CONFIG_SOCKET_TIMEOUT", "5000");
-
-    // NuttX has real POSIX threads
-    build.define("Z_FEATURE_MULTI_THREAD", "1");
-
-    // TCP_NODELAY is disabled for NuttX via #ifdef ZENOH_NUTTX guard in
-    // network.c. NuttX defines TCP_NODELAY=16, but cross-compiled zenoh-pico
-    // picks up the host's TCP_NODELAY=1, causing setsockopt(IPPROTO_TCP, 1)
-    // to fail with ENOPROTOOPT.
-
-    // Phase 134.4 — link-feature defines flow through
-    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
-    let _ = link;
-
-    // Pass shim slot counts as -D flags
-    shim.apply_to_cc(&mut build);
-
-    // Compiler flags
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-
-    build.compile("zenohpico");
-}
-
-/// Build zenoh-pico for Eclipse ThreadX targets.
-///
-/// ThreadX provides threading, clock, and memory via tx_api.h.
-/// Networking uses NetX Duo's BSD socket API (nxd_bsd.h).
-///
-/// Requires THREADX_DIR, THREADX_CONFIG_DIR, NETX_DIR, and NETX_CONFIG_DIR env vars.
-/// The board crate compiles ThreadX kernel + NetX Duo library; we only use their headers.
-fn build_zenoh_pico_threadx(
-    zenoh_pico_src: &Path,
-    c_dir: &Path,
-    include_dir: &Path,
-    out_dir: &Path,
-    target: &str,
-    link: &LinkFeatures,
-    shim: &ShimConfig,
-) {
-    // Read ThreadX environment variables
-    let threadx_dir = PathBuf::from(env::var("THREADX_DIR").unwrap_or_else(|_| {
-        panic!(
-            "THREADX_DIR not set. Point it at the ThreadX kernel source directory.\n\
-             Run `just setup-threadx` to download, then set:\n\
-             export THREADX_DIR=$PWD/third-party/threadx/kernel"
-        );
-    }));
-    let threadx_config_dir = PathBuf::from(env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
-        panic!(
-            "THREADX_CONFIG_DIR not set. Point it at a directory containing tx_user.h.\n\
-             Example: export THREADX_CONFIG_DIR=packages/boards/nros-board-threadx-linux/config"
-        );
-    }));
-    let netx_dir = PathBuf::from(env::var("NETX_DIR").unwrap_or_else(|_| {
-        panic!(
-            "NETX_DIR not set. Point it at the NetX Duo source directory.\n\
-             Run `just setup-threadx` to download, then set:\n\
-             export NETX_DIR=$PWD/third-party/threadx/netxduo"
-        );
-    }));
-    let netx_config_dir = PathBuf::from(env::var("NETX_CONFIG_DIR").unwrap_or_else(|_| {
-        panic!(
-            "NETX_CONFIG_DIR not set. Point it at a directory containing nx_user.h.\n\
-             Example: export NETX_CONFIG_DIR=packages/boards/nros-board-threadx-linux/config"
-        );
-    }));
-
-    // Validate directories exist
-    if !threadx_dir.join("common").join("inc").exists() {
-        panic!(
-            "THREADX_DIR={}: missing common/inc/ directory. Is this a valid ThreadX source?",
-            threadx_dir.display()
-        );
-    }
-    if !netx_dir.join("common").join("inc").exists() {
-        panic!(
-            "NETX_DIR={}: missing common/inc/ directory. Is this a valid NetX Duo source?",
-            netx_dir.display()
-        );
-    }
-
-    let mut build = cc::Build::new();
-
-    // Generate version header in OUT_DIR
-    let version_include_dir = out_dir.join("zenoh-pico-version");
-    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
-
-    // RISC-V cross-compilation flags + picolibc sysroot
-    if target.contains("riscv64") {
-        build
-            .flag("-march=rv64gc")
-            .flag("-mabi=lp64d")
-            .flag("-mcmodel=medany");
-
-        // Generate errno.h shadow that avoids picolibc's TLS-based errno.
-        // picolibc declares `extern __thread int errno` which uses the tp register.
-        // On bare-metal RISC-V, tp may not be initialized → crash.
+    if arch.needs_errno_override {
         let errno_dir = out_dir.join("errno-override");
         std::fs::create_dir_all(&errno_dir).unwrap();
         std::fs::write(
@@ -2193,144 +1627,28 @@ fn build_zenoh_pico_threadx(
         .unwrap();
         // errno override must be searched BEFORE picolibc headers
         build.include(&errno_dir);
-
-        // picolibc's <machine/endian.h> defines htonl as __bswap32 on LE, which is
-        // compatible with nx_port.h's #ifndef-guarded __builtin_bswap32 definitions.
-
-        // Add picolibc sysroot for C standard library headers (stdint.h, etc.)
-        // Do NOT use --specs=picolibc.specs (it enables TLS errno)
+    }
+    if arch.needs_picolibc {
         if let Some(sysroot) = get_picolibc_sysroot() {
             build.include(sysroot.join("include"));
         }
-    } else if target.contains("riscv32") {
-        build.flag("-march=rv32gc").flag("-mabi=ilp32d");
     }
-    // ARM Cortex-M cross-compilation flags
-    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
-        build.flag("-mcpu=cortex-m3").flag("-mthumb");
-    } else if target.contains("thumbv7em") {
-        build
-            .flag("-mcpu=cortex-m4")
-            .flag("-mthumb")
-            .flag("-mfpu=fpv4-sp-d16")
-            .flag("-mfloat-abi=hard");
+}
+
+/// Returns `true` when the `[arch.*]` block's `target_match` /
+/// `target_exclude` predicates allow the current target triple.
+fn arch_matches(arch: &manifest::ArchEntry, target: &str) -> bool {
+    if let Some(needle) = arch.target_match.as_deref() {
+        if !target.contains(needle) {
+            return false;
+        }
     }
-
-    // Phase 136.4 (pre-collapse) — core source set (8 protocol
-    // subdirs + `system/common`) factored out. Platform-specific
-    // `system/<plat>/` sources are still per-RTOS below.
-    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-
-    // ThreadX platform sources
-    // Most platform symbols (z_malloc, z_clock_now, _z_mutex_init, etc.) provided
-    // by zpico-platform-shim → nros-platform-threadx.
-    // Task functions (_z_task_init etc.) kept in C because they need _z_task_t struct
-    // layout (TX_THREAD + embedded stack + function/arg pointers).
-    let platform_dir = c_dir.join("platform");
-    build.file(platform_dir.join("threadx/task.c"));
-    // Phase 120.3 diag: bare-metal-safe vsnprintf+UART backing for
-    // zenoh-pico's _Z_LOG (ZENOH_LOG_PRINT). Opt-in via the
-    // `NROS_ZPICO_LOG_TO_UART` env var.
-    if std::env::var("NROS_ZPICO_LOG_TO_UART").is_ok() {
-        build.file(platform_dir.join("threadx/log_uart.c"));
-        build.define("ZENOH_LOG_PRINT", "zpico_log_print");
+    if let Some(needle) = arch.target_exclude.as_deref() {
+        if target.contains(needle) {
+            return false;
+        }
     }
-    // network.c skipped — networking provided by zpico-platform-shim via
-    // nros-platform-threadx (NetX Duo BSD socket calls).
-
-    // Shim (high-level API wrapper)
-    build.file(c_dir.join("zpico").join("zpico.c"));
-
-    // Include paths (order matters — generated config takes precedence)
-    let generated_config_dir = out_dir.join("zenoh-config");
-    build.include(&generated_config_dir);
-    build.include(zenoh_pico_src.join("include"));
-    build.include(&version_include_dir);
-    build.include(&platform_dir);
-    build.include(include_dir);
-
-    // ThreadX kernel headers (tx_api.h, tx_thread.h, etc.)
-    build.include(threadx_dir.join("common/inc"));
-
-    // ThreadX user config (tx_user.h)
-    build.include(&threadx_config_dir);
-
-    // ThreadX port headers (tx_port.h — platform-specific types)
-    // Detect port directory: Linux sim uses ports/linux/gnu/inc/, RISC-V uses ports/risc-v64/gnu/inc/
-    if !is_embedded_target(target) {
-        build.include(threadx_dir.join("ports/linux/gnu/inc"));
-    } else if target.contains("riscv64") {
-        build.include(threadx_dir.join("ports/risc-v64/gnu/inc"));
-    }
-
-    // NetX Duo headers (nx_api.h, nxd_bsd.h, etc.)
-    build.include(netx_dir.join("common/inc"));
-    build.include(netx_dir.join("addons/BSD"));
-
-    // NetX Duo port headers (nx_port.h — platform-specific types)
-    // Linux sim uses ports/linux/gnu/inc/, RISC-V uses the generic linux port too
-    // (NetX Duo doesn't have a RISC-V port; the Linux port is architecture-agnostic)
-    if !is_embedded_target(target) {
-        build.include(netx_dir.join("ports/linux/gnu/inc"));
-    } else if target.contains("riscv64") {
-        // RISC-V QEMU uses the Linux port's nx_port.h (via board crate config)
-        // The board crate supplies nx_port.h through its config dir
-    }
-
-    // NetX Duo user config (nx_user.h)
-    build.include(&netx_config_dir);
-
-    // Platform defines
-    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
-    // ZENOH_THREADX: tells zenoh_generic_platform.h to use ThreadX types and system layer
-    build.define("ZENOH_GENERIC", None);
-    build.define("ZENOH_THREADX", None);
-    // Phase 120.3 diag: gate ZENOH_DEBUG on env so we can flip from
-    // 0 → 3 without touching build.rs. Requires NROS_ZPICO_LOG_TO_UART
-    // to pick up the bare-metal vsnprintf+UART sink.
-    let zenoh_debug = std::env::var("NROS_ZENOH_DEBUG").unwrap_or_else(|_| "0".into());
-    build.define("ZENOH_DEBUG", zenoh_debug.as_str());
-
-    // NetX Duo's nxd_bsd.h remaps nx_bsd_* types to standard POSIX names
-    // (suseconds_t, fd_set, in_addr_t, etc.) which conflict with system headers
-    // (glibc on Linux sim, picolibc on bare-metal RISC-V).
-    // NX_BSD_ENABLE_NATIVE_API keeps the nx_bsd_* prefix to avoid these conflicts.
-    build.define("NX_BSD_ENABLE_NATIVE_API", None);
-
-    // Include tx_user.h / nx_user.h from the board crate config directory
-    build.define("TX_INCLUDE_USER_DEFINE_FILE", None);
-    build.define("NX_INCLUDE_USER_DEFINE_FILE", None);
-
-    // ThreadX has real threads — multi-thread support
-    build.define("Z_FEATURE_MULTI_THREAD", "1");
-
-    // Phase 134.4 — link-feature defines flow through
-    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
-    let _ = link;
-
-    // Pass shim slot counts as -D flags
-    shim.apply_to_cc(&mut build);
-
-    // Compiler flags
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-
-    build.compile("zenohpico");
-
-    // Rerun triggers for ThreadX-specific files
-    println!("cargo:rerun-if-changed=c/platform/threadx/task.c");
-    println!("cargo:rerun-if-changed=c/platform/threadx/network.c");
-    println!("cargo:rerun-if-changed=c/platform/threadx/platform.h");
-    println!("cargo:rerun-if-changed=c/platform/threadx/log_uart.c");
-    println!("cargo:rerun-if-env-changed=THREADX_DIR");
-    println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
-    println!("cargo:rerun-if-env-changed=NROS_ZPICO_LOG_TO_UART");
-    println!("cargo:rerun-if-env-changed=NROS_ZENOH_DEBUG");
+    true
 }
 
 /// Phase 136.4 (pre-collapse) — add the zenoh-pico core source set

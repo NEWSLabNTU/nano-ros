@@ -1,10 +1,14 @@
-//! Phase 136.1 — `zenoh_platforms.toml` parser.
+//! Phase 136.1 / 136.4 — `zenoh_platforms.toml` parser.
 //!
-//! 136.1 lands the loader + per-platform resolver only. The build
-//! script does not yet consume the resolved data — that happens in
-//! 136.3 / 136.4 when `build_zenoh_pico_native` and the per-RTOS
-//! cc-rs functions collapse into one. Keeping the parser separate
-//! lets it land + test independently of the cc-rs rewrite.
+//! 136.1 landed the loader + per-platform resolver. 136.4 expands
+//! the schema so it carries every per-platform datum the cc-rs
+//! collapse needs: SDK env vars (with help text + validation),
+//! conditional include paths (interpolated `{env:VAR}` /
+//! `{nros}` / `{out}` / `{src}` tokens; `when.target_match` /
+//! `when.target_not` / `when.if_env` gates), extra source files
+//! (with `if_env` and `with_define` modifiers), debug-env-driven
+//! defines, and an `[arch.*]` table for reusable target-arch
+//! compiler-flag profiles.
 //!
 //! Include from `build.rs` with:
 //! ```ignore
@@ -16,24 +20,35 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
 
-/// Top-level manifest: `[platform.<name>]` blocks keyed by name.
+/// Top-level manifest: `[platform.<name>]` + `[arch.<name>]`.
 #[derive(Debug, Deserialize)]
 pub struct PlatformManifest {
     pub platform: BTreeMap<String, PlatformEntry>,
+    #[serde(default)]
+    pub arch: BTreeMap<String, ArchEntry>,
 }
 
-/// One `[platform.<name>]` block as it appears in the TOML.
+/// One `[platform.<name>]` block.
 #[derive(Debug, Default, Deserialize, Clone)]
 pub struct PlatformEntry {
-    /// Optional parent platform name. The parent's fields are
-    /// merged before this entry's fields override them.
+    /// Optional parent platform name. Parent fields are merged
+    /// before this entry's fields override them.
     #[serde(default)]
     pub inherits: Option<String>,
     /// Preprocessor defines added unconditionally
     /// (`cc::Build::define(name, None)`).
     #[serde(default)]
     pub defines: Vec<String>,
-    /// Glob roots under `zenoh-pico/src/` for source selection.
+    /// Key=value defines (`cc::Build::define(name, Some(value))`).
+    #[serde(default)]
+    pub defines_kv: BTreeMap<String, String>,
+    /// Defines whose value comes from an env var with a literal
+    /// default.
+    #[serde(default)]
+    pub defines_env: BTreeMap<String, EnvDefault>,
+    /// Glob roots under `zenoh-pico/src/` for core protocol /
+    /// system-common source selection. Drift gate (136.6)
+    /// validates these.
     #[serde(default)]
     pub include: Vec<String>,
     /// Glob roots under `zenoh-pico/src/` to exclude from
@@ -47,16 +62,82 @@ pub struct PlatformEntry {
     /// `pkg-config`, `vendored`, or `none`.
     #[serde(default)]
     pub mbedtls: Option<String>,
-    /// Per-link-feature policy overrides.
+    /// Per-link-feature overrides declared in the manifest.
+    /// `LinkOverride::On(false)` forces off; `Mode("feature")`
+    /// defers to `CARGO_FEATURE_LINK_<X>`.
     #[serde(default)]
     pub link: BTreeMap<String, LinkOverride>,
+    /// Extra source files (paths interpolated; see `{nros}` /
+    /// `{src}` tokens), optionally conditional on env presence
+    /// and pulling in additional defines when included.
+    #[serde(default)]
+    pub extra_sources: Vec<ExtraSource>,
+    /// Required env vars + help text + optional sub-dir
+    /// validation. Build script panics loudly when absent.
+    #[serde(default)]
+    pub required_env: Vec<RequiredEnv>,
+    /// Unconditional include paths (interpolated). Order matters
+    /// — first wins for `#include` resolution.
+    #[serde(default)]
+    pub include_paths: Vec<String>,
+    /// Include paths gated by a `when` matcher (target /
+    /// env-presence).
+    #[serde(default)]
+    pub include_paths_conditional: Vec<ConditionalPath>,
+    /// Optional `[arch.*]` profile to apply (cflags + sysroot /
+    /// errno-override hooks).
+    #[serde(default)]
+    pub arch: Option<String>,
+    /// Cross-compile compile-rs options (opt_level, warnings,
+    /// extra cflags).
+    #[serde(default)]
+    pub compile: CompileSettings,
+    /// `cc::Build::pic(bool)` override (NuttX flat builds use
+    /// `false`; POSIX leaves the cc-rs default).
+    #[serde(default)]
+    pub pic: Option<bool>,
+    /// Rerun-if-env-changed env vars to register beyond
+    /// `required_env`. Set for env-gated debug knobs etc.
+    #[serde(default)]
+    pub rerun_if_env_changed: Vec<String>,
+}
+
+/// `[arch.<name>]` block — reusable target-arch compiler-flag
+/// profile shared across platforms.
+#[derive(Debug, Default, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct ArchEntry {
+    /// Substring that must be in the target triple for the arch
+    /// block to apply.
+    #[serde(default)]
+    pub target_match: Option<String>,
+    /// Substring that, if present in the target triple, vetoes
+    /// this arch block. Used to disambiguate Cortex-M3 (thumbv7m)
+    /// from Cortex-M4 (thumbv7em).
+    #[serde(default)]
+    pub target_exclude: Option<String>,
+    /// Compiler flags appended to `cc::Build`.
+    #[serde(default)]
+    pub cflags: Vec<String>,
+    /// Whether the build should add the picolibc sysroot's
+    /// `include/` to the search path (RISC-V bare-metal).
+    #[serde(default)]
+    pub needs_picolibc: bool,
+    /// Whether the build should generate + prepend the
+    /// errno-override shadow header (RISC-V picolibc TLS-errno
+    /// workaround).
+    #[serde(default)]
+    pub needs_errno_override: bool,
+    /// Whether the build needs `detect_riscv_compiler` cross-cc
+    /// probe (cargo doesn't auto-set CC for bare-metal RISC-V).
+    #[serde(default)]
+    pub needs_riscv_compiler: bool,
 }
 
 /// Per-link-feature override declared in `zenoh_platforms.toml`.
 /// `bool` collapses to On / Off; a string like `"feature"` defers
 /// to the matching `CARGO_FEATURE_*` env var. Distinct from the
-/// build-script `LinkPolicy` struct in `build/policy.rs`, which is
-/// the resolved mask passed into `LinkFeatures::apply`.
+/// build-script `LinkPolicy` struct in `build/policy.rs`.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum LinkOverride {
@@ -64,20 +145,104 @@ pub enum LinkOverride {
     Mode(String),
 }
 
+/// Env-var-backed define: value comes from `env`, falls back to
+/// `default` literal.
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct EnvDefault {
+    pub env: String,
+    pub default: String,
+}
+
+/// Extra C source compiled into the zenoh-pico archive.
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct ExtraSource {
+    /// Interpolated path (`{nros}` / `{src}` / `{out}` /
+    /// `{env:VAR}`).
+    pub path: String,
+    /// If set, only include when the named env var is present.
+    #[serde(default)]
+    pub if_env: Option<String>,
+    /// If set, `cc::Build::define(name, Some(value))` whenever
+    /// this source is included.
+    #[serde(default)]
+    pub with_define: Option<Vec<String>>,
+}
+
+/// One required env var.
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct RequiredEnv {
+    pub name: String,
+    pub help: String,
+    /// Optional sub-directory that must exist under the env's
+    /// value for the build to proceed (loud panic otherwise).
+    #[serde(default)]
+    pub validate_subdir: Option<String>,
+}
+
+/// One conditional include path.
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct ConditionalPath {
+    /// Interpolated path.
+    pub path: String,
+    /// Matcher table; see `WhenMatcher`.
+    pub when: WhenMatcher,
+}
+
+/// Gate that decides whether a conditional item applies.
+/// Forms (`target_match` / `target_not` / `if_env`) compose: each
+/// non-`None` field must match for the matcher to return `true`.
+#[derive(Debug, Default, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct WhenMatcher {
+    /// Substring that must appear in the target triple.
+    #[serde(default)]
+    pub target_match: Option<String>,
+    /// Substring that must NOT appear in the target triple.
+    /// Special value `"embedded"` means "target_os is one of the
+    /// known embedded RTOSes". Build-script consumer expands.
+    #[serde(default)]
+    pub target_not: Option<String>,
+    /// Env var that must be set (any value).
+    #[serde(default)]
+    pub if_env: Option<String>,
+}
+
+/// `cc::Build` compile settings.
+#[derive(Debug, Default, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct CompileSettings {
+    pub opt_level: Option<u32>,
+    #[serde(default)]
+    pub warnings: Option<bool>,
+    #[serde(default)]
+    pub cflags: Vec<String>,
+}
+
 /// Resolved view of one platform after `inherits` chain merge.
-/// What `build.rs` will consume in 136.3 / 136.4. The fields are
-/// read only by tests + future-phase code; `dead_code` is silenced
-/// for the 136.1 window.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ResolvedPlatform {
     pub name: String,
     pub defines: Vec<String>,
+    pub defines_kv: BTreeMap<String, String>,
+    pub defines_env: BTreeMap<String, EnvDefault>,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub system_libs: Vec<String>,
     pub mbedtls: Option<String>,
     pub link: BTreeMap<String, LinkOverride>,
+    pub extra_sources: Vec<ExtraSource>,
+    pub required_env: Vec<RequiredEnv>,
+    pub include_paths: Vec<String>,
+    pub include_paths_conditional: Vec<ConditionalPath>,
+    pub arch: Option<String>,
+    pub compile: CompileSettings,
+    pub pic: Option<bool>,
+    pub rerun_if_env_changed: Vec<String>,
 }
 
 impl PlatformManifest {
@@ -90,29 +255,44 @@ impl PlatformManifest {
         Self::parse(&text)
     }
 
-    /// Parse the manifest from an in-memory TOML string. Useful for
-    /// unit tests; production builds use `load`.
+    /// Parse the manifest from an in-memory TOML string.
     pub fn parse(text: &str) -> Result<Self, ManifestError> {
         toml::from_str(text).map_err(ManifestError::Parse)
     }
 
     /// Resolve one `[platform.<name>]` block, walking the
     /// `inherits` chain. Child fields win when both parent and
-    /// child set the same key; `defines` / `include` / `exclude` /
-    /// `system_libs` are unioned (parent first, then child); `link`
-    /// merges per-key (child overrides parent for matching keys).
+    /// child set the same key; list-shaped fields are unioned
+    /// (parent first, then child); maps merge per-key with child
+    /// override.
     pub fn for_platform(&self, name: &str) -> Result<ResolvedPlatform, ManifestError> {
         let mut seen = std::collections::BTreeSet::new();
         let entry = self.resolve(name, &mut seen)?;
         Ok(ResolvedPlatform {
             name: name.to_string(),
             defines: entry.defines,
+            defines_kv: entry.defines_kv,
+            defines_env: entry.defines_env,
             include: entry.include,
             exclude: entry.exclude,
             system_libs: entry.system_libs,
             mbedtls: entry.mbedtls,
             link: entry.link,
+            extra_sources: entry.extra_sources,
+            required_env: entry.required_env,
+            include_paths: entry.include_paths,
+            include_paths_conditional: entry.include_paths_conditional,
+            arch: entry.arch,
+            compile: entry.compile,
+            pic: entry.pic,
+            rerun_if_env_changed: entry.rerun_if_env_changed,
         })
+    }
+
+    /// Look up an `[arch.*]` block by name.
+    #[allow(dead_code)]
+    pub fn arch_for(&self, name: &str) -> Option<&ArchEntry> {
+        self.arch.get(name)
     }
 
     fn resolve(
@@ -144,6 +324,10 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
 
     let mut defines = parent.defines;
     defines.extend(child.defines.drain(..));
+    let mut defines_kv = parent.defines_kv;
+    defines_kv.extend(std::mem::take(&mut child.defines_kv));
+    let mut defines_env = parent.defines_env;
+    defines_env.extend(std::mem::take(&mut child.defines_env));
     let mut include = parent.include;
     include.extend(child.include.drain(..));
     let mut exclude = parent.exclude;
@@ -153,14 +337,46 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     let mbedtls = child.mbedtls.or(parent.mbedtls);
     let mut link = parent.link;
     link.extend(std::mem::take(&mut child.link));
+    let mut extra_sources = parent.extra_sources;
+    extra_sources.extend(child.extra_sources.drain(..));
+    let mut required_env = parent.required_env;
+    required_env.extend(child.required_env.drain(..));
+    let mut include_paths = parent.include_paths;
+    include_paths.extend(child.include_paths.drain(..));
+    let mut include_paths_conditional = parent.include_paths_conditional;
+    include_paths_conditional.extend(child.include_paths_conditional.drain(..));
+    let arch = child.arch.or(parent.arch);
+    let compile = CompileSettings {
+        opt_level: child.compile.opt_level.or(parent.compile.opt_level),
+        warnings: child.compile.warnings.or(parent.compile.warnings),
+        cflags: {
+            let mut c = parent.compile.cflags;
+            c.extend(child.compile.cflags);
+            c
+        },
+    };
+    let pic = child.pic.or(parent.pic);
+    let mut rerun_if_env_changed = parent.rerun_if_env_changed;
+    rerun_if_env_changed.extend(child.rerun_if_env_changed.drain(..));
+
     PlatformEntry {
         inherits: None,
         defines,
+        defines_kv,
+        defines_env,
         include,
         exclude,
         system_libs,
         mbedtls,
         link,
+        extra_sources,
+        required_env,
+        include_paths,
+        include_paths_conditional,
+        arch,
+        compile,
+        pic,
+        rerun_if_env_changed,
     }
 }
 
@@ -187,6 +403,117 @@ impl std::fmt::Display for ManifestError {
 }
 
 impl std::error::Error for ManifestError {}
+
+// ----------------------------------------------------------------
+// Interpolation + matcher (consumed by build.rs's unified driver).
+// ----------------------------------------------------------------
+
+/// Tokens available for interpolation in any `path` / `defines_env`
+/// field. Build-script populates this context once + threads it
+/// through.
+#[allow(dead_code)]
+pub struct InterpContext<'a> {
+    /// `CARGO_MANIFEST_DIR` (`zpico-sys/`).
+    pub nros: &'a Path,
+    /// `OUT_DIR`.
+    pub out: &'a Path,
+    /// `zenoh-pico/src` (relative to `nros`).
+    pub src: &'a Path,
+}
+
+/// Replace every `{nros}` / `{out}` / `{src}` / `{env:VAR}` token
+/// in `input`. Missing env vars produce `None` so the caller can
+/// emit a helpful panic.
+#[allow(dead_code)]
+pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, InterpError> {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    loop {
+        let Some(start) = rest.find('{') else {
+            out.push_str(rest);
+            return Ok(out);
+        };
+        out.push_str(&rest[..start]);
+        rest = &rest[start + 1..];
+        let Some(end) = rest.find('}') else {
+            return Err(InterpError::UnterminatedToken(input.to_string()));
+        };
+        let token = &rest[..end];
+        rest = &rest[end + 1..];
+        let value: String = if token == "nros" {
+            ctx.nros.display().to_string()
+        } else if token == "out" {
+            ctx.out.display().to_string()
+        } else if token == "src" {
+            ctx.src.display().to_string()
+        } else if let Some(var) = token.strip_prefix("env:") {
+            std::env::var(var).map_err(|_| InterpError::MissingEnv(var.to_string()))?
+        } else {
+            return Err(InterpError::UnknownToken(token.to_string()));
+        };
+        out.push_str(&value);
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum InterpError {
+    UnknownToken(String),
+    UnterminatedToken(String),
+    MissingEnv(String),
+}
+
+impl std::fmt::Display for InterpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownToken(t) => write!(f, "unknown interpolation token `{{{t}}}`"),
+            Self::UnterminatedToken(s) => write!(f, "unterminated `{{` in `{s}`"),
+            Self::MissingEnv(v) => write!(f, "env var `{v}` not set"),
+        }
+    }
+}
+
+impl std::error::Error for InterpError {}
+
+/// Returns `true` when every populated field in `m` matches the
+/// current target / env state. Empty matcher = always true.
+/// `target_not == "embedded"` is the special-case "target_os is
+/// one of the known RTOSes" gate; build-script supplies the
+/// `is_embedded` flag pre-computed.
+#[allow(dead_code)]
+pub fn matches(m: &WhenMatcher, target: &str, is_embedded: bool) -> bool {
+    if let Some(needle) = m.target_match.as_deref() {
+        if !match_target(target, needle) {
+            return false;
+        }
+    }
+    if let Some(needle) = m.target_not.as_deref() {
+        let hit = if needle == "embedded" {
+            is_embedded
+        } else {
+            match_target(target, needle)
+        };
+        if hit {
+            return false;
+        }
+    }
+    if let Some(var) = m.if_env.as_deref() {
+        if std::env::var(var).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Match a target-triple needle. Supports trailing `*` glob:
+/// `riscv64-*` matches anything starting with `riscv64-`.
+fn match_target(target: &str, needle: &str) -> bool {
+    if let Some(prefix) = needle.strip_suffix('*') {
+        target.starts_with(prefix)
+    } else {
+        target.contains(needle)
+    }
+}
 
 // Note: the loader is exercised at build time — `build.rs` parses
 // `zenoh_platforms.toml` + resolves every platform on every cargo

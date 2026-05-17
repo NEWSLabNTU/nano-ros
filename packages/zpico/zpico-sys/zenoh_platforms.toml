@@ -1,42 +1,195 @@
-# Phase 136.1 — canonical zenoh-pico build manifest.
+# Phase 136.1 / 136.4 — canonical zenoh-pico build manifest.
 #
 # build.rs reads this once. Cargo features select the platform.
-# Per-platform `link.*` policies mask LinkFeatures. `include` and
-# `exclude` are glob-style relative paths under `zenoh-pico/src/`.
-# `defines` are added unconditionally via `cc::Build::define(name, None)`.
+# Per-platform blocks declare every datum the unified
+# `build_zenoh_pico(plat: &ResolvedPlatform, target: &str, …)`
+# consumer needs:
+#   - `defines` / `defines_kv` / `defines_env` — preprocessor flags
+#   - `include` — glob roots under `zenoh-pico/src/` for core sources
+#   - `extra_sources` — additional .c files outside `zenoh-pico/src/`
+#     (interpolated via `{nros}` / `{src}` / `{out}` / `{env:VAR}`)
+#   - `required_env` — SDK paths the build needs, with help text
+#     and optional sub-dir validation
+#   - `include_paths` / `include_paths_conditional` — header search
+#     paths (interpolated; gated by `target_match` / `target_not` /
+#     `if_env`)
+#   - `arch` — name of `[arch.*]` block to apply for target-arch
+#     compiler flags
+#   - `compile` — opt_level / warnings / extra cflags
+#   - `pic` — `cc::Build::pic` override (NuttX flat builds)
+#   - `link.*` — per-link-feature policy mask (Phase 134)
 #
-# 136.1 lands the manifest + parser only. 136.2–136.5 plug the
-# resolved data into build.rs and delete the per-platform branches
-# in cmake/cc-rs. Manifest schema is the contract: future-phase
-# changes must preserve the shape or update every platform block.
+# Adding a new platform = one new `[platform.<name>]` block; no
+# `build.rs` edits.
+
+# ----------------------------------------------------------------
+# Arch profiles — reusable target-arch compiler flag tables.
+# ----------------------------------------------------------------
+
+[arch.cortex-m3]
+target_match = "thumbv7m"
+target_exclude = "thumbv7em"
+cflags = ["-mcpu=cortex-m3", "-mthumb"]
+
+[arch.cortex-m4f]
+target_match = "thumbv7em"
+cflags = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
+
+[arch.cortex-a7]
+target_match = "armv7a"
+cflags = ["-march=armv7-a"]
+
+[arch.cortex-r5-softfp]
+# AGX Orin SPE — softfp + vfpv3-d16 matches the FSP's CFLAGS.
+target_match = "armv7r"
+cflags = [
+  "-mcpu=cortex-r5", "-marm", "-mthumb-interwork",
+  "-mfloat-abi=softfp", "-mfpu=vfpv3-d16",
+]
+
+[arch.riscv32imc]
+target_match = "riscv32imc"
+cflags = ["-march=rv32imc", "-mabi=ilp32"]
+needs_picolibc = true
+needs_errno_override = true
+needs_riscv_compiler = true
+
+[arch.riscv32gc]
+target_match = "riscv32gc"
+cflags = ["-march=rv32gc", "-mabi=ilp32d"]
+
+[arch.riscv64gc]
+target_match = "riscv64"
+cflags = ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
+needs_picolibc = true
+needs_errno_override = true
+
+# ----------------------------------------------------------------
+# Platforms.
+# ----------------------------------------------------------------
 
 [platform.posix]
-defines = ["ZENOH_LINUX"]
-include = ["system/common", "system/unix"]
+defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]
+defines_kv = { ZENOH_DEBUG = "0" }
+include = ["system/common"]
 exclude = ["tests", "example"]
+extra_sources = [
+  { path = "{src}/system/unix/tls.c" },
+]
 system_libs = ["pthread", "rt"]
-mbedtls = "pkg-config"            # or "vendored" or "none"
+mbedtls = "pkg-config"
 
 [platform.zephyr]
-defines = ["ZENOH_ZEPHYR"]
+# Zephyr's build system compiles zenoh-pico itself; this block
+# exists so the drift gate has a manifest entry but no cc-rs
+# consumer hits it.
+defines = ["ZENOH_GENERIC", "ZENOH_ZEPHYR"]
 include = ["system/common", "system/zephyr"]
 
 [platform.freertos-lwip]
-defines = ["ZENOH_FREERTOS_LWIP"]
-include = ["system/common", "system/freertos"]
+defines = ["ZENOH_GENERIC", "ZENOH_FREERTOS_LWIP"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-m3"
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = [
+  { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
+  { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Example: export FREERTOS_PORT=GCC/ARM_CM3" },
+  { name = "LWIP_DIR", help = "lwIP source. just setup-freertos; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include" },
+  { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
+]
+include_paths = [
+  "{nros}/c/include",
+  "{env:FREERTOS_DIR}/include",
+  "{env:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}",
+  "{env:FREERTOS_CONFIG_DIR}",
+  "{env:LWIP_DIR}/src/include",
+  "{env:LWIP_DIR}/contrib/ports/freertos/include",
+]
+rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
 
 [platform.nuttx]
-defines = ["ZENOH_NUTTX", "ZENOH_LINUX"]  # nuttx reuses unix shim
-include = ["system/common", "system/unix"]
+defines = ["ZENOH_GENERIC", "ZENOH_NUTTX"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/zpico/nuttx_clock.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-a7"
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+pic = false
+required_env = [
+  { name = "NUTTX_DIR", help = "NuttX OS source. just setup-nuttx; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
+]
+include_paths = [
+  "{nros}/c/include",
+  "{env:NUTTX_DIR}/include",
+]
+rerun_if_env_changed = ["NUTTX_DIR"]
 
 [platform.threadx]
-defines = ["ZENOH_GENERIC", "ZENOH_THREADX"]
+defines = [
+  "ZENOH_GENERIC", "ZENOH_THREADX",
+  "NX_BSD_ENABLE_NATIVE_API",
+  "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
+]
+defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
+defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" } }
 include = ["system/common"]
-# consumer ships the platform shim via zpico-platform-shim
+extra_sources = [
+  { path = "{nros}/c/platform/threadx/task.c" },
+  { path = "{nros}/c/platform/threadx/log_uart.c", if_env = "NROS_ZPICO_LOG_TO_UART", with_define = ["ZENOH_LOG_PRINT", "zpico_log_print"] },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "riscv64gc"
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = [
+  { name = "THREADX_DIR", help = "ThreadX kernel source. just setup-threadx; export THREADX_DIR=$PWD/third-party/threadx/kernel", validate_subdir = "common/inc" },
+  { name = "THREADX_CONFIG_DIR", help = "Directory containing tx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
+  { name = "NETX_DIR", help = "NetX Duo source. just setup-threadx; export NETX_DIR=$PWD/third-party/threadx/netxduo", validate_subdir = "common/inc" },
+  { name = "NETX_CONFIG_DIR", help = "Directory containing nx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+  "{env:THREADX_DIR}/common/inc",
+  "{env:THREADX_CONFIG_DIR}",
+  "{env:NETX_DIR}/common/inc",
+  "{env:NETX_DIR}/addons/BSD",
+  "{env:NETX_CONFIG_DIR}",
+]
+rerun_if_env_changed = [
+  "THREADX_DIR", "THREADX_CONFIG_DIR",
+  "NETX_DIR", "NETX_CONFIG_DIR",
+  "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
+]
+[[platform.threadx.include_paths_conditional]]
+path = "{env:THREADX_DIR}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
+[[platform.threadx.include_paths_conditional]]
+path = "{env:THREADX_DIR}/ports/risc-v64/gnu/inc"
+when = { target_match = "riscv64" }
+[[platform.threadx.include_paths_conditional]]
+path = "{env:NETX_DIR}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
 
 [platform.bare-metal]
 defines = ["ZENOH_GENERIC"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
 include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-m3"
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+]
 
 [platform.generic]
 defines = ["ZENOH_GENERIC"]
@@ -44,14 +197,23 @@ include = ["system/common"]
 
 [platform.orin-spe]
 inherits = "generic"
-defines = ["ZENOH_ORIN_SPE"]
-link.tcp = false
-link.udp_unicast = false
-link.udp_multicast = false
-link.serial = false
-link.tls = false
-link.ws = false
-link.bluetooth = false
-link.raweth = false
-link.ivc = "feature"             # gated by CARGO_FEATURE_LINK_IVC
-link.custom = "feature"
+defines = ["ZENOH_GENERIC", "ZENOH_ORIN_SPE"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
+extra_sources = [
+  { path = "{src}/system/freertos/system.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-r5-softfp"
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+link = { tcp = false, udp_unicast = false, udp_multicast = false, serial = false, tls = false, ws = false, bluetooth = false, raweth = false, ivc = "feature", custom = "feature" }
+required_env = [
+  { name = "NV_SPE_FSP_DIR", help = "Staged SPE FSP install. sentinel `just orin_spe-bsp-stage` produces this under external/spe-fsp/install/. Required for FreeRTOS.h, portmacro.h, FreeRTOSConfig.h", validate_subdir = "include/freertos" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+  "{env:NV_SPE_FSP_DIR}/include/freertos",
+  "{env:NV_SPE_FSP_DIR}/include/freertos/portable/GCC/ARM_R5",
+  "{env:NV_SPE_FSP_DIR}/include",
+]
+rerun_if_env_changed = ["NV_SPE_FSP_DIR"]
