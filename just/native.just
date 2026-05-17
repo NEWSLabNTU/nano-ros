@@ -430,7 +430,7 @@ test-c-xrce verbose="":
 
 # Run executor fairness benchmark (requires zenohd)
 bench-fairness:
-    cd examples/native/rust/zenoh/fairness-bench && \
+    cd packages/testing/nros-bench/executor-fairness && \
         RUST_LOG=warn cargo run --release
 
 # =============================================================================
