@@ -101,7 +101,7 @@ build-fixtures:
                 cmake -S "$dir" -B "$dir/build" \
                     -DCMAKE_PREFIX_PATH="$cmake_pfx" \
                     -DNUTTX_DIR="$nuttx_dir" \
-                    -DNUTTX_FFI_CRATE_DIR="$(pwd)/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi" \
+                    -DNUTTX_FFI_CRATE_DIR="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi" \
                     -DCMAKE_BUILD_TYPE=Release > /dev/null
                 cmake --build "$dir/build" --parallel > /dev/null
             done

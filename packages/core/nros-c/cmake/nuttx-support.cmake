@@ -23,12 +23,16 @@ include(nros-nuttx)
 nros_nuttx_validate(REQUIRE NanoRos_DIR)
 nros_nuttx_set_cargo_target("armv7a-nuttx-eabihf")
 
-# FFI crate path. Phase 112.E.deferred — NuttX FFI crate has nested
-# path deps on workspace board crates that would dangle if relocated
-# under <prefix>/share/. Until a workspace-flattening installer
-# lands, examples pass `-DNUTTX_FFI_CRATE_DIR=<repo>/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi`
+# FFI crate path. Phase 144.6 relocated `nros-nuttx-ffi` under
+# `packages/boards/nros-board-nuttx-qemu-arm/` (the board package owns
+# the kernel + FFI bundle, examples just point at it). The crate has
+# nested path deps on workspace board / core / rmw crates that would
+# dangle if relocated under <prefix>/share/, so consumers still pass
+# `-DNUTTX_FFI_CRATE_DIR=<repo>/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi`
 # (or set the env var) so this support file can locate the in-tree
-# crate.
+# crate. The Phase 138 board overlay
+# `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` sets this
+# automatically for the in-tree `add_subdirectory` shape.
 if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})
     set(NUTTX_FFI_CRATE_DIR "$ENV{NUTTX_FFI_CRATE_DIR}")
 endif()
@@ -36,7 +40,7 @@ if(NOT NUTTX_FFI_CRATE_DIR OR NOT EXISTS "${NUTTX_FFI_CRATE_DIR}/Cargo.toml")
     message(FATAL_ERROR
         "nuttx-support: NUTTX_FFI_CRATE_DIR not set or invalid. Pass "
         "-DNUTTX_FFI_CRATE_DIR=<path>/nros-nuttx-ffi (or export the env var). "
-        "In-tree path: <repo>/examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi.")
+        "In-tree path: <repo>/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi.")
 endif()
 set(_NUTTX_FFI_CRATE_DIR "${NUTTX_FFI_CRATE_DIR}")
 
