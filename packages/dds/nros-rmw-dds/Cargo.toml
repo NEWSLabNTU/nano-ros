@@ -41,17 +41,18 @@ alloc = []
 # The remaining platforms plug `NrosPlatformRuntime<ConcretePlatform>`
 # (Phase 71.3) into dust-dds's `DdsRuntime` trait and use nros-platform
 # primitives for clock / sleep / sockets.
-# Phase 129.C.3 — `nros-rmw-dds` keeps `nros-platform/platform-<rtos>`
-# forwards. Unlike zenoh, it imports compile-time constants
-# (`NET_SOCKET_SIZE`, `NET_ENDPOINT_SIZE`, etc.) from
-# `nros-platform`, and those constants are gated on a concrete
-# `platform-*` feature being on. Until 129.D refactors the
-# constants out of feature gating, the forward stays.
-platform-posix    = ["std", "alloc", "nros-platform/platform-posix"]
-platform-zephyr   = ["nostd-runtime", "nros-platform/platform-zephyr"]
-platform-freertos = ["nostd-runtime", "nros-platform/platform-freertos"]
-platform-nuttx    = ["nostd-runtime", "nros-platform/platform-nuttx"]
-platform-threadx  = ["nostd-runtime", "nros-platform/platform-threadx"]
+# Phase 129.C.3.b — `nros-platform/platform-<rtos>` forwards
+# dropped. `NET_SOCKET_SIZE` / `NET_ENDPOINT_SIZE` and friends
+# are now exported unconditionally from `nros-platform`; this
+# crate no longer has to pin a concrete platform feature to
+# resolve them. Each `platform-<rtos>` feature here keeps only
+# its real responsibility (flipping `nostd-runtime` for the
+# embedded transports).
+platform-posix    = ["std", "alloc"]
+platform-zephyr   = ["nostd-runtime"]
+platform-freertos = ["nostd-runtime"]
+platform-nuttx    = ["nostd-runtime"]
+platform-threadx  = ["nostd-runtime"]
 
 # Internal — set by every `platform-*` feature that uses
 # `NrosPlatformRuntime` + `NrosUdpTransportFactory` (i.e. every

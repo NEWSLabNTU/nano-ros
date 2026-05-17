@@ -95,46 +95,17 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 // concrete platform crate. Phase 123's `nros-platform-posix`
 // Rust-crate deletion adopts the same inline shape on the
 // release-prep branch.
-#[cfg(feature = "platform-posix")]
-pub const NET_SOCKET_SIZE: usize = core::mem::size_of::<core::ffi::c_int>();
-#[cfg(feature = "platform-posix")]
-pub const NET_SOCKET_ALIGN: usize = core::mem::align_of::<core::ffi::c_int>();
-#[cfg(feature = "platform-posix")]
-pub const NET_ENDPOINT_SIZE: usize = core::mem::size_of::<*mut core::ffi::c_void>();
-#[cfg(feature = "platform-posix")]
-pub const NET_ENDPOINT_ALIGN: usize = core::mem::align_of::<*mut core::ffi::c_void>();
-
-#[cfg(any(
-    feature = "platform-mps2-an385",
-    feature = "platform-stm32f4",
-    feature = "platform-esp32",
-    feature = "platform-esp32-qemu",
-    feature = "platform-cffi",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-zephyr",
-    feature = "platform-orin-spe",
-))]
-mod fallback_net_sizes {
-    pub const NET_SOCKET_SIZE: usize = 64;
-    pub const NET_SOCKET_ALIGN: usize = 8;
-    pub const NET_ENDPOINT_SIZE: usize = 64;
-    pub const NET_ENDPOINT_ALIGN: usize = 8;
-}
-
-#[cfg(any(
-    feature = "platform-mps2-an385",
-    feature = "platform-stm32f4",
-    feature = "platform-esp32",
-    feature = "platform-esp32-qemu",
-    feature = "platform-cffi",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-zephyr",
-    feature = "platform-orin-spe",
-))]
-pub use fallback_net_sizes::{
-    NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
+// Phase 129.C.3.b — exported unconditionally. Previously gated
+// on a specific `platform-<rtos>` feature, which forced every
+// RMW crate that imported them (notably `nros-rmw-dds`) to
+// forward a `nros-platform/platform-*` feature so the constants
+// would resolve. Worst-case 64-byte / 8-aligned storage covers
+// every supported platform — POSIX's `{ int fd }` socket and
+// pointer endpoint, bare-metal smoltcp / lwIP / NetX handles
+// alike. Consumers that want a tighter packing can opt into a
+// per-platform `nros_platform_*` storage type at the link
+// layer once that ABI lands.
+pub const NET_SOCKET_SIZE: usize = 64;
+pub const NET_SOCKET_ALIGN: usize = 8;
+pub const NET_ENDPOINT_SIZE: usize = 64;
+pub const NET_ENDPOINT_ALIGN: usize = 8;

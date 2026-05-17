@@ -32,6 +32,12 @@ mod resolve;
 
 pub use board::BoardConfig;
 
+// Phase 129.C.3.b — `NET_*` constants exported unconditionally
+// (see `resolve.rs`). `ConcretePlatform` keeps its feature gate
+// because the type alias still needs a concrete platform crate
+// linked in.
+pub use resolve::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE};
+
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-cffi",
@@ -45,9 +51,7 @@ pub use board::BoardConfig;
     feature = "platform-zephyr",
     feature = "platform-orin-spe",
 ))]
-pub use resolve::{
-    ConcretePlatform, NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_SOCKET_SIZE,
-};
+pub use resolve::ConcretePlatform;
 
 // Re-export every trait from the split-out `nros-platform-api` crate so
 // existing `use nros_platform::PlatformClock;` imports keep working.

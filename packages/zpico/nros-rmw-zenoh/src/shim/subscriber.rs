@@ -371,11 +371,15 @@ struct EventReg {
     user_ctx: *mut core::ffi::c_void,
 }
 
-/// Phase 108.C.zenoh — read the platform clock in ms. Wraps the
-/// project-wide `<P as PlatformClock>` helper. `0` if no platform is
-/// concretely linked (bare-no-std smoke build w/o platform feature).
+/// Phase 108.C.zenoh — read the platform clock in ms.
+///
+/// Phase 129.C.3.a — call the canonical `nros_platform_*` C
+/// symbol directly instead of routing through `ConcretePlatform`.
 fn now_ms() -> u64 {
-    <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
+    unsafe extern "C" {
+        fn nros_platform_time_now_ms() -> u64;
+    }
+    unsafe { nros_platform_time_now_ms() }
 }
 
 impl ZenohSubscriber {

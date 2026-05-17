@@ -75,8 +75,15 @@ struct EventReg {
 }
 
 /// Phase 108.C.zenoh — read the platform clock in ms.
+///
+/// Phase 129.C.3.a — call the canonical `nros_platform_*` C
+/// symbol directly instead of routing through `ConcretePlatform`.
+/// Drops this crate's `nros-platform/platform-<rtos>` forward.
 fn now_ms() -> u64 {
-    <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ms()
+    unsafe extern "C" {
+        fn nros_platform_time_now_ms() -> u64;
+    }
+    unsafe { nros_platform_time_now_ms() }
 }
 
 impl ZenohPublisher {

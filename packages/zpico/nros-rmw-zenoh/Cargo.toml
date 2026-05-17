@@ -14,18 +14,20 @@ categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []
-# Phase 129.C.3 — `nros-platform/platform-<rtos>` forwards stay.
-# `zpico-platform-shim` imports `nros_platform::ConcretePlatform`,
-# which only resolves when the matching `platform-<rtos>` feature
-# on `nros-platform` is on. Until 129.D / 129.A.4 retire the shim
-# and route everything through the alias TU, the forward is
-# load-bearing.
-platform-posix = ["nros-platform/platform-posix", "zpico-sys/posix"]
-platform-zephyr = ["nros-platform/platform-zephyr", "zpico-sys/zephyr"]
+# Phase 129.C.3.a — `nros-platform/platform-<rtos>` forwards
+# dropped. Phase 129.D retired `zpico-platform-shim`, which was
+# the only consumer that needed `ConcretePlatform`. The two
+# `now_ms()` callsites in `shim/{publisher,subscriber}.rs` now
+# call the canonical `nros_platform_time_now_ms` C symbol
+# directly; no Rust trait dispatch, no platform pin. Each
+# `platform-<rtos>` feature here is a pure marker that enables
+# the matching `zpico-sys/<rtos>` build-script switch.
+platform-posix = ["zpico-sys/posix"]
+platform-zephyr = ["zpico-sys/zephyr"]
 platform-bare-metal = ["zpico-sys/bare-metal"]
-platform-freertos = ["nros-platform/platform-freertos", "zpico-sys/freertos"]
-platform-nuttx = ["nros-platform/platform-nuttx", "zpico-sys/nuttx"]
-platform-threadx = ["nros-platform/platform-threadx", "zpico-sys/threadx"]
+platform-freertos = ["zpico-sys/freertos"]
+platform-nuttx = ["zpico-sys/nuttx"]
+platform-threadx = ["zpico-sys/threadx"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
 platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` are now always-on

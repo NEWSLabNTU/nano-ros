@@ -275,9 +275,22 @@ that exercises it is**:
       (`NET_SOCKET_SIZE`, `NET_ENDPOINT_SIZE`) from
       `nros-platform`. The constants are gated on a concrete
       `platform-*` feature being on.
-  - [ ] `129.C.3.a` — retire shim (depends on 129.D / 129.A.4).
-  - [ ] `129.C.3.b` — promote `NET_SOCKET_SIZE` / equivalents
-    out of the feature-gated path in `nros-platform`.
+  - [x] `129.C.3.a` — `nros-rmw-zenoh/Cargo.toml`
+    `nros-platform/platform-<rtos>` forwards dropped. The two
+    `now_ms()` callsites in `shim/{publisher,subscriber}.rs`
+    used to dispatch through `ConcretePlatform`; they now call
+    `nros_platform_time_now_ms` directly via `extern "C"`.
+    `platform-<rtos>` keeps only its `zpico-sys/<rtos>`
+    forward (the build-script switch for the C-side platform
+    pick).
+  - [x] `129.C.3.b` — `NET_SOCKET_SIZE` / `NET_SOCKET_ALIGN`
+    / `NET_ENDPOINT_SIZE` / `NET_ENDPOINT_ALIGN` exported
+    unconditionally from `nros-platform/src/resolve.rs`.
+    Collapsed both the POSIX-specific tighter values and the
+    fallback into a single `64 / 8` worst-case envelope that
+    fits every supported platform. `nros-rmw-dds/Cargo.toml`
+    dropped its `nros-platform/platform-<rtos>` forwards;
+    `platform-<rtos>` keeps only `nostd-runtime` + `std`/`alloc`.
 
 ### 129.D — Delete `zpico-platform-shim` + `xrce-platform-shim`
 
