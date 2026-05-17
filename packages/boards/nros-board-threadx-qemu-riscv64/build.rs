@@ -193,7 +193,15 @@ fn main() {
     );
     platform.compile("nros_platform_threadx");
 
-    // ---- Build C glue (app_define.c) ----
+    // ---- Build C glue ----
+    // Phase 152.2.B.1 — shared `tx_application_define` stub lives
+    // in `nros-board-common`'s `c/threadx_hooks.c`; this overlay
+    // ships only the board-specific weak-hook impls (full NetX +
+    // virtio-net bring-up in `nros_board_init_eth`, `uart_puts`-
+    // backed `nros_board_log`, IP/MAC-derived RNG seed, strong-
+    // override of `nros_board_app_stack_size`/`_priority`) and
+    // the RISC-V `nros_threadx_set_config` (4-arg, no
+    // `interface_name`).
     let mut glue = cc::Build::new();
     configure_riscv64(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
@@ -201,7 +209,8 @@ fn main() {
     glue.include(virtio_driver_dir.join("include"));
     glue.file(manifest_dir.join("c/entry.s"));
     glue.file(manifest_dir.join("c/trap.c"));
-    glue.file(manifest_dir.join("c/app_define.c"));
+    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
+    glue.file(manifest_dir.join("c/board_threadx_qemu_riscv64.c"));
     glue.file(manifest_dir.join("c/syscalls.c"));
     glue.file(manifest_dir.join("c/hwtimer.c"));
 
@@ -236,7 +245,7 @@ fn main() {
     // ---- Rerun triggers ----
     println!("cargo:rerun-if-changed=c/entry.s");
     println!("cargo:rerun-if-changed=c/trap.c");
-    println!("cargo:rerun-if-changed=c/app_define.c");
+    println!("cargo:rerun-if-changed=c/board_threadx_qemu_riscv64.c");
     println!("cargo:rerun-if-changed=c/syscalls.c");
     println!("cargo:rerun-if-changed=config/tx_port.h");
     println!("cargo:rerun-if-changed=config/tx_user.h");

@@ -73,6 +73,55 @@ pub fn add_threadx_port_sources(
 /// );
 /// platform.compile("nros_platform_threadx");
 /// ```
+/// Phase 152.2.B.1 — generic `tx_application_define` stub +
+/// shared FFI setters (`nros_threadx_set_app_callback`,
+/// `nros_threadx_set_app_main`) + app-thread plumbing.
+/// Materialises `threadx_hooks.c` into `OUT_DIR` so consumers do
+/// not need to know `nros-board-common`'s own manifest path, then
+/// adds the file to `build` and emits the matching
+/// `cargo:rerun-if-changed`.
+///
+/// The overlay supplies the divergent bits via these weak hooks:
+///
+///   - `void nros_board_log(const char *)` — diagnostic print
+///     (overlay maps to `printf` / `uart_puts` / etc.).
+///   - `int nros_board_init_eth(void)` — per-board network init.
+///     Linux/NSOS overlay no-ops; the RISC-V QEMU overlay runs
+///     the full NetX-Duo + virtio-net sequence.
+///   - `void nros_board_compute_rng_seed(uint32_t *out)` —
+///     IP/MAC-derived seed so zenoh-pico session IDs do not
+///     collide across simulations.
+///
+/// And these weak-`const` knobs (defaults match the Linux overlay):
+///
+///   - `nros_board_app_stack_size` (default 64 KB)
+///   - `nros_board_app_priority`   (default 4)
+///
+/// # Example
+/// ```ignore
+/// let mut glue = cc::Build::new();
+/// configure_arch(&mut glue);
+/// add_threadx_includes(&mut glue, &threadx_dir, &port_dir, &config_dir);
+/// nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
+/// glue.file(manifest_dir.join("c/board_threadx_linux.c"));
+/// glue.compile("glue");
+/// ```
+pub fn add_threadx_hooks_source(build: &mut cc::Build) {
+    const HOOKS_C: &str = include_str!("../c/threadx_hooks.c");
+    let out_dir = std::path::PathBuf::from(
+        std::env::var_os("OUT_DIR").expect("nros-board-common: OUT_DIR not set"),
+    );
+    let dest = out_dir.join("nros_threadx_hooks.c");
+    std::fs::write(&dest, HOOKS_C).unwrap_or_else(|e| {
+        panic!("nros-board-common: write({}): {e}", dest.display())
+    });
+    build.file(&dest);
+    println!(
+        "cargo:rerun-if-changed={}/c/threadx_hooks.c",
+        env!("CARGO_MANIFEST_DIR")
+    );
+}
+
 pub fn add_nros_platform_threadx_build(build: &mut cc::Build, workspace_root: &Path) {
     let src_dir = workspace_root.join("packages/core/nros-platform-threadx/src");
     let cffi_include = workspace_root.join("packages/core/nros-platform-cffi/include");

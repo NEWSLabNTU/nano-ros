@@ -102,11 +102,19 @@ fn main() {
     );
     platform.compile("nros_platform_threadx");
 
-    // ---- Build C glue (app_define.c) ----
+    // ---- Build C glue ----
+    // Phase 152.2.B.1 — shared `tx_application_define` stub lives
+    // in `nros-board-common`'s `c/threadx_hooks.c`; this overlay
+    // ships only the board-specific weak-hook impls
+    // (`nros_board_init_eth` no-op for NSOS, `nros_board_log` →
+    // `printf`, `nros_board_compute_rng_seed` IP/MAC-derived) and
+    // the Linux flavour of `nros_threadx_set_config` (5-arg, takes
+    // `interface_name`).
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
-    glue.file(manifest_dir.join("c/app_define.c"));
+    nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
+    glue.file(manifest_dir.join("c/board_threadx_linux.c"));
 
     glue.compile("glue");
 
@@ -118,7 +126,7 @@ fn main() {
     println!("cargo:rustc-link-lib=pthread");
 
     // ---- Rerun triggers ----
-    println!("cargo:rerun-if-changed=c/app_define.c");
+    println!("cargo:rerun-if-changed=c/board_threadx_linux.c");
     println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
