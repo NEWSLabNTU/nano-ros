@@ -251,6 +251,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
     println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
+    println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
 }
 
 fn env_path(name: &str) -> PathBuf {
@@ -259,14 +260,34 @@ fn env_path(name: &str) -> PathBuf {
     )
 }
 
+/// Phase 149.1.B.3 — generic FreeRTOS+lwIP compiler-flag setup.
+///
+/// Reads `FREERTOS_CFLAGS` env var (space-separated flag list) +
+/// applies each via `cc::Build::flag`. The MPS2-AN385 board's
+/// reference `.cargo/config.toml` sets
+/// `FREERTOS_CFLAGS = "-mcpu=cortex-m3 -mthumb"`; future overlays
+/// (Cortex-M4F, etc.) set their own. Generic crate's build.rs
+/// (149.1.B.4) reads the same env var so kernel + lwIP + per-board
+/// glue all see consistent flags.
+///
+/// `-ffunction-sections` / `-fdata-sections` / `-O2` / `warnings off`
+/// stay built-in defaults — every FreeRTOS+lwIP consumer wants them.
 fn configure_arm_cm3(build: &mut cc::Build) {
     build
         .opt_level(2)
-        .flag("-mcpu=cortex-m3")
-        .flag("-mthumb")
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
         .warnings(false);
+
+    let cflags = env::var("FREERTOS_CFLAGS").unwrap_or_else(|_| {
+        // Backward-compat default for MPS2-AN385 consumers that
+        // don't yet set the env var. Future PR removes the
+        // fallback after every example bumps its `.cargo/config.toml`.
+        "-mcpu=cortex-m3 -mthumb".to_string()
+    });
+    for flag in cflags.split_whitespace() {
+        build.flag(flag);
+    }
 }
 
 fn add_freertos_includes(
