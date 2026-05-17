@@ -2,7 +2,11 @@
 
 **Goal.** Ship one thin integration shell per supported RTOS / IDE so users consume nano-ros via the RTOS's native dependency mechanism (`west update`, ESP-IDF component, PlatformIO library, NuttX app, PX4 external module). Each shell is a few files in `nano-ros/integrations/<rtos>/` that re-export the Phase 137 / 138 root CMake under that RTOS's package convention.
 
-**Status.** Not started.
+**Status.** Landed (139.1–139.9). Smoke tests `[SKIPPED]` on dev boxes
+without RTOS SDKs; full smoke matrix to run in per-RTOS CI. The
+NuttX shape-gate runs anywhere `arm-none-eabi-gcc` is on PATH;
+the other four gate on `west`/`idf.py`/`pio`/`PX4_AUTOPILOT_DIR`
+respectively.
 
 **Priority.** P2 — usability win, not a correctness blocker. Phase 137 + 138 are functional without 139; 139 lets a Zephyr / ESP-IDF / PlatformIO user `west update` / `idf.py add-dependency` / Library Manager-install nano-ros without manually wiring `add_subdirectory`.
 
@@ -111,34 +115,34 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
 
 ## Work Items
 
-- [ ] **139.1 — Zephyr shell.**
+- [x] **139.1 — Zephyr shell.**
       Land `integrations/zephyr/{module.yml,west.yml,CMakeLists.txt,Kconfig}`.
       `Kconfig` exposes `CONFIG_NROS_PLATFORM` (frozen to `zephyr`),
       `CONFIG_NROS_RMW`, `CONFIG_NROS_ROS_EDITION`. `module.yml` makes
       `west` discover this dir as a module.
       **Files.** `integrations/zephyr/*` (new).
 
-- [ ] **139.2 — ESP-IDF shell.**
+- [x] **139.2 — ESP-IDF shell.**
       Land `integrations/esp-idf/{idf_component.yml,CMakeLists.txt,Kconfig.projbuild}`.
       `Kconfig.projbuild` exposes the same `NANO_ROS_*` knobs.
       Pinned to ESP-IDF 5.1+.
       **Files.** `integrations/esp-idf/*` (new).
 
-- [ ] **139.3 — PlatformIO shell.**
+- [x] **139.3 — PlatformIO shell.**
       Land `integrations/platformio/library.json` + a curated
       `examples/` subset that PlatformIO's library manager
       discovers. PIO consumers add to `platformio.ini`:
       `lib_deps = nano-ros@*`.
       **Files.** `integrations/platformio/*` (new).
 
-- [ ] **139.4 — NuttX shell.**
+- [x] **139.4 — NuttX shell.**
       Land `integrations/nuttx/{Make.defs,Makefile,Kconfig,CMakeLists.txt}`.
       NuttX users copy or symlink to `apps/external/nano-ros/`;
       Kconfig surfaces under `Application Configuration → External
       Modules`.
       **Files.** `integrations/nuttx/*` (new).
 
-- [ ] **139.5 — PX4 shell consolidation.**
+- [x] **139.5 — PX4 shell consolidation.**
       `examples/px4/cpp/uorb/` already prototyped the
       EXTERNAL_MODULES_LOCATION pattern with the shim
       `src/modules/<name>/CMakeLists.txt` (Phase 131.C.2). Lift the
@@ -147,7 +151,7 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
       **Files.** `integrations/px4/module-template/*` (new),
       `examples/px4/cpp/uorb/CMakeLists.txt` (shrunk).
 
-- [ ] **139.6 — Per-shell smoke tests.**
+- [x] **139.6 — Per-shell smoke tests.**
       One test per integration in
       `packages/testing/nros-tests/tests/integration_<rtos>.rs`.
       Each builds a tiny consumer project via the RTOS's native
@@ -157,7 +161,7 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
       when SDK missing).
       **Files.** `packages/testing/nros-tests/tests/integration_*.rs` (new).
 
-- [ ] **139.7 — Doc updates.**
+- [x] **139.7 — Doc updates.**
       `book/src/getting-started/` gets one page per integration
       (`zephyr.md`, `esp-idf.md`, `platformio.md`, `nuttx.md`,
       `px4.md`). Each: SDK prereqs → one-liner add-dep command →
@@ -166,7 +170,7 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
       **Files.** `book/src/getting-started/{zephyr,esp-idf,platformio,nuttx,px4}.md` (new),
       `book/src/SUMMARY.md`.
 
-- [ ] **139.8 — Registry publishing.**
+- [x] **139.8 — Registry publishing.**
       Where each ecosystem has a public registry, publish (or
       document publishing) so users get one-line install:
       - Zephyr: included in `west.yml`'s default project list (or

@@ -5,6 +5,11 @@
 **Status.** Landed (137.1–137.6). XRCE/cyclonedds + non-POSIX platform
 branches in root CMake deferred to Phase 138/139. Phase 138 closes the
 non-POSIX gap by wiring up `cmake/platform/nano-ros-{zephyr,freertos,nuttx,threadx,baremetal}.cmake`.
+Phase 139 layers per-RTOS integration shells on top of this root
+CMake (`integrations/<rtos>/`); native RTOS package managers
+(`west` / `idf.py` / PIO / NuttX-Kconfig / PX4 EXTERNAL_MODULES_LOCATION)
+discover those shells and re-export `NanoRos::NanoRos` under each
+RTOS's own target naming.
 
 **Priority.** P1 — first piece of the install-local rip-off (Phase 140). Without 137, the source-distribution direction has no entry point.
 

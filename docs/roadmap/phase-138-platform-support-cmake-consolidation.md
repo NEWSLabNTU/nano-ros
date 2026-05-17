@@ -11,6 +11,11 @@ migrates to `add_subdirectory(nano-ros)` in later phases. Bonus:
 root `CMakeLists.txt` now dispatches via `include(cmake/platform/...)`
 instead of the POSIX-only `if` branch.
 
+Phase 139's per-RTOS integration shells (`integrations/<rtos>/`)
+consume these `cmake/platform/` modules via the root CMake — adding
+a new platform still only requires one file under `cmake/platform/`
+regardless of which RTOS package manager surfaces it.
+
 **Priority.** P1 — directly enables Phase 137's "≤10-line per-example CMakeLists" promise. Without 138, the boilerplate that motivated `find_package(NanoRos)` just relocates to per-example `add_subdirectory(<repo>)` glue.
 
 **Depends on.** Phase 137 (root `CMakeLists.txt` is the dispatch entry that includes these modules).
