@@ -8,10 +8,9 @@ only when the patched build is absent. Closes the "system qemu 6.2
 too old" WARN class across NuttX DDS multi-instance, LAN9118
 receive-flush, and any future patched-only behaviour.
 
-**Status.** Landed — 143.1/.2/.3/.4/.5/.6/.7 done (2026-05-18).
-143.8 deferred (no CI test workflow in-repo today; only
-`deploy-book.yml`. Cache wiring re-opens when a runtime-CI workflow
-lands).
+**Status.** Landed — 143.1–.8 done (2026-05-18). 143.8 ships the
+reusable composite action; first consumer rolls in with whichever
+phase introduces the runtime-CI workflow.
 
 **Priority.** P2 — deterministic test results, not a correctness
 blocker. The patched binary already exists; ~5 call sites just
@@ -196,14 +195,26 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `book/src/internals/qemu-patched-binary.md` (new),
       `book/src/SUMMARY.md`, `CLAUDE.md`.
 
-- [ ] **143.8 — CI cache key.** _Deferred 2026-05-18._ Only
-      `.github/workflows/deploy-book.yml` exists today — no
-      runtime-test workflow to attach a cache to. Re-open this
-      item when a runtime-CI workflow lands (likely Phase 144 or
-      later); the cache key recipe is straightforward
-      (`third-party/qemu/qemu` SHA + hash of every file under
-      `third-party/qemu/patches/`).
-      **Files.** `.github/workflows/*.yml` (none today).
+- [x] **143.8 — CI cache key.** Composite action at
+      `.github/actions/setup-qemu-patched/action.yml` loads (or
+      builds + caches) `build/qemu/` keyed on the superproject's
+      recorded `third-party/qemu/qemu` submodule SHA plus a
+      `sha256sum` over every file under
+      `third-party/qemu/patches/` (deterministic ordering via
+      `LC_ALL=C sort -z`). Bumping the submodule pin OR editing
+      the patch series invalidates the cache automatically. The
+      action installs the QEMU build deps (ninja-build, python3,
+      pkg-config, libslirp-dev, libglib2.0-dev, libpixman-1-dev,
+      flex, bison, meson) on cache miss, bootstraps `just` to
+      `~/.local/bin` when not already on PATH, then runs
+      `just qemu setup-qemu`. The final verification step asserts
+      the installed binary reports >= 7.2 AND advertises `dgram`
+      under `-netdev help` — catches stale-cache / too-old-pin
+      regressions loudly. No consumer workflow lands here; the
+      action is composed in by whichever phase introduces the
+      runtime-CI workflow (`- uses: ./.github/actions/setup-qemu-patched`).
+      **Files.** `.github/actions/setup-qemu-patched/action.yml`,
+      `.github/actions/setup-qemu-patched/README.md`.
 
 ---
 
@@ -283,9 +294,37 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
     "### QEMU Networked Tests" section so future contributors
     are pointed at the helper + justfile gate from the project's
     canonical contributor guide.
-- 143.8 deferred: no runtime-CI workflow in repo today, only
-  `deploy-book.yml`. Cache wiring rolls into whichever phase
-  introduces the runtime-CI workflow.
+- 2026-05-18 (latest) — 143.8 landed as a reusable composite
+  action at `.github/actions/setup-qemu-patched/`:
+  - Cache key composition: `qemu-patched-<os>-<arch>-<qemu-sha>-<patches-hash>`,
+    where `<qemu-sha>` comes from `git ls-tree HEAD
+    third-party/qemu/qemu` (the superproject's recorded pin, NOT
+    the working tree tip — guards against `git submodule update`
+    drift in an earlier step), and `<patches-hash>` is sha256
+    over every file under `third-party/qemu/patches/` in
+    deterministic order.
+  - No `restore-keys` fallback: a partial older cache for a
+    different submodule SHA or patch series would link
+    mismatched binaries against `build/qemu/share/`. Misses
+    force a full rebuild (~10 min cold on `ubuntu-latest`).
+  - Apt deps are installed only on cache miss (toggleable via
+    `install-apt-deps: "false"` for workflows that use a custom
+    container image with deps preinstalled).
+  - `just` is bootstrapped to `~/.local/bin` when not on PATH,
+    matching the contributor-docs install path so cached
+    behaviour matches a local checkout.
+  - Final verification step fails the job loudly if the
+    installed binary < 7.2 or `-netdev help` lacks `dgram` —
+    surfaces stale-cache / too-old-pin regressions before they
+    cascade into downstream test failures.
+  - Outputs `qemu-bin`, `cache-hit`, `cache-key` for consumer
+    workflows that want to log diagnostics or pipe the path
+    explicitly. The test harness picks the binary up
+    automatically via `nros_tests::qemu::qemu_system_arm_path()`,
+    so no env-var wiring is needed at the consumer side.
+  - First consumer rolls in with whichever phase introduces the
+    runtime-CI workflow — usage example documented in the
+    action's `README.md`.
 
 ## Notes
 

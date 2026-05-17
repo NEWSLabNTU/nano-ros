@@ -1,0 +1,173 @@
+name: Set up patched qemu-system-arm
+description: >
+  Phase 143.8 — load (or build + cache) the project-local patched
+  qemu-system-arm at build/qemu/bin/qemu-system-arm. The cache key
+  is composed of the third-party/qemu/qemu submodule SHA recorded
+  by the superproject + a sha256 hash of every patch file under
+  third-party/qemu/patches/, so a submodule pin bump OR a patch
+  series edit invalidates the cache automatically. On hit, the
+  step short-circuits in < 5 s; on miss, runs `just qemu setup-qemu`
+  which itself short-circuits when the installed binary is newer
+  than every patch (rare under CI but cheap to verify).
+
+  Consumers (planned: a future runtime-CI workflow) add this step
+  before running any test that calls qemu-system-arm. The test
+  harness picks the binary up automatically via
+  `nros_tests::qemu::qemu_system_arm_path()` — no env var needed.
+  See `book/src/internals/qemu-patched-binary.md`.
+
+inputs:
+  install-apt-deps:
+    description: >
+      When "true" (default), apt-installs the build dependencies
+      required to configure + build QEMU from source on
+      ubuntu-latest. Set to "false" if a parent workflow already
+      provisions them (e.g. a custom container image).
+    required: false
+    default: "true"
+
+outputs:
+  qemu-bin:
+    description: Absolute path to the installed qemu-system-arm binary.
+    value: ${{ steps.compute.outputs.qemu-bin }}
+  cache-hit:
+    description: '"true" if the binary came from cache, "false" if rebuilt.'
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-key:
+    description: The composite cache key (qemu SHA + patches hash).
+    value: ${{ steps.compute.outputs.cache-key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Init qemu submodule (shallow)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -e third-party/qemu/qemu/configure ]; then
+          git submodule update --init --depth=1 -- third-party/qemu/qemu
+        fi
+
+    - name: Compute cache key + paths
+      id: compute
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Submodule SHA recorded by the superproject (NOT the working
+        # tree's checked-out tip — that may drift if a previous step
+        # ran `git submodule update` against a different ref).
+        qemu_sha=$(git ls-tree HEAD third-party/qemu/qemu | awk '{ print $3 }')
+        if [ -z "$qemu_sha" ]; then
+          echo "::error::third-party/qemu/qemu submodule pointer not in HEAD tree"
+          exit 1
+        fi
+        # Stable hash of every patch under third-party/qemu/patches/.
+        # `LC_ALL=C sort` keeps the order deterministic across locales.
+        patches_hash=$(
+          if compgen -G "third-party/qemu/patches/*" > /dev/null; then
+            (cd third-party/qemu/patches && \
+             find . -type f -print0 | LC_ALL=C sort -z | \
+             xargs -0 sha256sum) | sha256sum | awk '{ print $1 }'
+          else
+            echo "no-patches"
+          fi
+        )
+        key="qemu-patched-${{ runner.os }}-${{ runner.arch }}-${qemu_sha}-${patches_hash}"
+        bin="$(pwd)/build/qemu/bin/qemu-system-arm"
+        prefix="$(pwd)/build/qemu"
+        {
+          echo "cache-key=$key"
+          echo "qemu-bin=$bin"
+          echo "qemu-prefix=$prefix"
+        } >> "$GITHUB_OUTPUT"
+        echo "patched qemu cache key: $key"
+
+    - name: Restore patched qemu from cache
+      id: restore
+      uses: actions/cache@v4
+      with:
+        path: build/qemu
+        key: ${{ steps.compute.outputs.cache-key }}
+        # No restore-keys: a partial / older cache for a different
+        # submodule SHA or patch series would link mismatched
+        # binaries against the build/qemu/share/ data dir. Force a
+        # full rebuild on miss.
+        enableCrossOsArchive: false
+
+    - name: Install QEMU build dependencies (apt)
+      if: ${{ steps.restore.outputs.cache-hit != 'true' && inputs.install-apt-deps == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update -y
+        # Minimum deps for the `--target-list=arm-softmmu --disable-docs
+        # --disable-tools --disable-{gtk,vnc,sdl,spice} --enable-slirp`
+        # configure that `just qemu setup-qemu` runs.
+        sudo apt-get install -y --no-install-recommends \
+          ninja-build \
+          python3 \
+          pkg-config \
+          libslirp-dev \
+          libglib2.0-dev \
+          libpixman-1-dev \
+          flex \
+          bison \
+          meson
+
+    - name: Install just (if absent)
+      if: ${{ steps.restore.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v just >/dev/null 2>&1; then
+          # Match the install path documented in the contributor
+          # docs (~/.local/bin) so cached PATH stays the same as a
+          # local checkout.
+          mkdir -p "$HOME/.local/bin"
+          curl --proto '=https' --tlsv1.2 -sSf \
+            https://just.systems/install.sh \
+            | bash -s -- --to "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Build patched qemu-system-arm
+      if: ${{ steps.restore.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.local/bin:$PATH"
+        just qemu setup-qemu
+
+    - name: Save patched qemu to cache (on miss)
+      if: ${{ steps.restore.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: build/qemu
+        key: ${{ steps.compute.outputs.cache-key }}
+
+    - name: Verify patched qemu reports >= 7.2
+      shell: bash
+      run: |
+        set -euo pipefail
+        bin="${{ steps.compute.outputs.qemu-bin }}"
+        if [ ! -x "$bin" ]; then
+          echo "::error::patched qemu-system-arm not found at $bin after setup"
+          exit 1
+        fi
+        ver_line=$("$bin" --version | head -1)
+        echo "patched qemu: $ver_line"
+        # Format: "QEMU emulator version <major>.<minor>(.<patch>) (...)"
+        ver=$(echo "$ver_line" | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        major=${ver%%.*}
+        minor=${ver##*.}
+        if [ "$major" -lt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -lt 2 ]; }; then
+          echo "::error::patched qemu reports $ver < 7.2 — bump third-party/qemu/qemu submodule pin"
+          exit 1
+        fi
+        # `-netdev help` must list dgram (the multi-instance backend
+        # required by NuttX / ThreadX DDS tests). Older qemus omit it.
+        if ! "$bin" -M virt -netdev help 2>&1 | grep -qw dgram; then
+          echo "::error::patched qemu at $bin does not advertise -netdev dgram"
+          exit 1
+        fi
+        echo "patched qemu @ $bin OK ($ver, dgram supported)"
