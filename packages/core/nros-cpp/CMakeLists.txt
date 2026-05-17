@@ -129,9 +129,13 @@ cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../.." CALL
 # itself transitively, and flip on the auto-register call inside
 # `nros::init` via the `NROS_RMW_CYCLONEDDS` macro.
 if(NANO_ROS_RMW STREQUAL "cyclonedds")
-    find_package(NrosRmwCyclonedds CONFIG REQUIRED)
-    target_link_libraries(nros-cpp-headers INTERFACE
-        NrosRmwCyclonedds::NrosRmwCyclonedds)
+    # Phase 140 — the root `CMakeLists.txt` cyclonedds branch
+    # add_subdirectory's `packages/dds/nros-rmw-cyclonedds`, which
+    # exports the `nros_rmw_cyclonedds` target directly. No more
+    # find_package against an install-local prefix.
+    if(TARGET nros_rmw_cyclonedds)
+        target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
+    endif()
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 144.3 — XRCE via the `nros-rmw-xrce-cffi` Rust shim, which
@@ -158,84 +162,21 @@ elseif(NANO_ROS_RMW STREQUAL "zenoh")
     # in the Rust shim.
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_ZENOH_CFFI=1)
 elseif(NANO_ROS_RMW STREQUAL "uorb")
-    # Phase 115.K.4: PX4 uORB backend (C++ port). Mirrors
-    # cyclonedds shape — find_package + link + auto-register
-    # via the `NROS_RMW_UORB` define in nros::init.
-    find_package(NrosRmwUorb CONFIG REQUIRED)
-    target_link_libraries(nros-cpp-headers INTERFACE
-        NrosRmwUorb::NrosRmwUorb)
+    # Phase 140 — PX4 uORB backend (C++ port). Consumed via the
+    # `integrations/px4/` shell which add_subdirectory's
+    # `packages/px4/nros-rmw-uorb` and exposes the `nros_rmw_uorb`
+    # target. Mirrors the cyclonedds shape above.
+    if(TARGET nros_rmw_uorb)
+        target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_uorb)
+    endif()
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_UORB=1)
 endif()
 
 # Require at least C++14
 target_compile_features(nros-cpp-headers INTERFACE cxx_std_14)
 
-# ---- Install ----
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
-)
-
-# Phase 119.2: install variant-specific generated header to a variant
-# subdir so each cmake build's exact storage sizes survive alongside
-# every other variant. The source-tree `nros_cpp_config_generated.h`
-# (max-merged upper bound for direct cargo users) is also installed
-# above as a fallback.
-#
-# nros-cpp's build.rs writes the per-build header to
-# `${CORROSION_BUILD_DIR}/nros_cpp_config_generated.h` (== this
-# CMakeLists.txt's CMAKE_CURRENT_BINARY_DIR — corrosion sets that env
-# var to point here).
-# Phase 128.C.4 — the Cargo build is RMW-agnostic now (only
-# `rmw-cffi` is fed through), so the install paths drop the RMW
-# suffix. Backend selection happens at the consumer's link step via
-# `target_link_libraries(... NanoRos::Rmw::<name>)`.
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_cpp_variant_subdir "nros_cpp")
-else()
-    set(_cpp_variant_subdir "nros_cpp_${NANO_ROS_PLATFORM}")
-endif()
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
-    DESTINATION "include/${_cpp_variant_subdir}/nros"
-    OPTIONAL
-)
-
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_cpp_lib_name "libnros_cpp.a")
-else()
-    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_PLATFORM}.a")
-endif()
-
-install(FILES "$<TARGET_FILE:nros_cpp-static>"
-    DESTINATION lib
-    RENAME "${_cpp_lib_name}"
-)
-
-# Strip soft-float compiler_builtins from RISC-V archive after installing.
-if(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
-    execute_process(COMMAND rustc --print sysroot
-        OUTPUT_VARIABLE _RUST_SYSROOT_CPP OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-    find_program(_LLVM_AR_CPP llvm-ar
-        PATHS "${_RUST_SYSROOT_CPP}/lib/rustlib/x86_64-unknown-linux-gnu/bin" NO_DEFAULT_PATH)
-    if(_LLVM_AR_CPP)
-        set(_strip_script_cpp "${PROJECT_SOURCE_DIR}/cmake/strip-compiler-builtins.sh")
-        install(CODE "execute_process(COMMAND bash \"${_strip_script_cpp}\" \"${_LLVM_AR_CPP}\" \"\${CMAKE_INSTALL_PREFIX}/lib/${_cpp_lib_name}\")")
-    endif()
-endif()
-
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCppTargets.cmake"
-    DESTINATION lib/cmake/NanoRos
-)
-
-# Install nros-serdes source for standalone C++ codegen builds.
-# The NanoRosGenerateInterfaces.cmake creates a temporary Cargo project
-# that depends on nros-serdes to compile the generated .rs FFI glue.
-# We install the Rust source files and a standalone Cargo.toml (without
-# workspace references).
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/packages/core/nros-serdes/src"
-    DESTINATION share/nano-ros/rust/nros-serdes
-)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nros-serdes-standalone-Cargo.toml"
-    DESTINATION share/nano-ros/rust/nros-serdes
-    RENAME Cargo.toml
-)
+# Phase 140 — install rules deleted. nros-cpp is consumed in-tree
+# via `add_subdirectory(<repo-root>)`; the build-dir variant header
+# path is wired via `target_include_directories(nros-cpp-headers
+# BEFORE INTERFACE …)` above. NanoRos::NanoRosCpp resolves directly
+# against the in-tree `nros-cpp-headers` INTERFACE target.

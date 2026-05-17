@@ -50,26 +50,6 @@ target_compile_options(nros_platform_nuttx PRIVATE
 # downstream CMake can `target_link_libraries(nros_platform_nuttx
 # PUBLIC Threads::Threads)` after `find_package(Threads)`.
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-install(TARGETS nros_platform_nuttx
-    EXPORT NrosPlatformNuttxTargets
-    ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformNuttxTargets
-    NAMESPACE NrosPlatformNuttx::
-    FILE NrosPlatformNuttxTargets.cmake
-    DESTINATION lib/cmake/NrosPlatformNuttx)
-
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformNuttxConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/NrosPlatformNuttx)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformNuttxConfigVersion.cmake"
-    DESTINATION lib/cmake/NrosPlatformNuttx)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from
+# `cmake/platform/nano-ros-nuttx.cmake`.

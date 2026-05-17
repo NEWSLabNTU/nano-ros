@@ -85,30 +85,6 @@ if(NROS_PLATFORM_FREERTOS_WITH_NET)
     endif()
 endif()
 
-option(NROS_PLATFORM_FREERTOS_INSTALL
-       "Generate install rules (skip when consumed as a subdirectory)" ON)
-if(NROS_PLATFORM_FREERTOS_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
-
-    install(TARGETS nros_platform_freertos
-        EXPORT NrosPlatformFreertosTargets
-        ARCHIVE DESTINATION lib)
-    install(EXPORT NrosPlatformFreertosTargets
-        NAMESPACE NrosPlatformFreertos::
-        FILE NrosPlatformFreertosTargets.cmake
-        DESTINATION lib/cmake/NrosPlatformFreertos)
-
-    configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformFreertosConfig.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfig.cmake"
-        INSTALL_DESTINATION lib/cmake/NrosPlatformFreertos)
-    write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfigVersion.cmake"
-        VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion)
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformFreertosConfigVersion.cmake"
-        DESTINATION lib/cmake/NrosPlatformFreertos)
-endif()
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from
+# `cmake/platform/nano-ros-freertos.cmake`.

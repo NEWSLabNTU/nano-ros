@@ -13,8 +13,9 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(packages/px4/nros-rmw-uorb)`
+# from the PX4 integration shell (integrations/px4/module-template/).
 
 # ---- Dependencies ----------------------------------------------------------
 # nros-rmw-cffi C ABI: headers only (vtable + entity structs + ret codes).
@@ -160,33 +161,4 @@ if(NROS_RMW_UORB_BUILD_TESTS)
     # K.4.0 doesn't need a Rust toolchain on the build host.
 endif()
 
-# ---- Install ---------------------------------------------------------------
-install(TARGETS nros_rmw_uorb
-    EXPORT NrosRmwUorbTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(FILES
-    include/nros_rmw_uorb.h
-    include/nros_rmw_uorb_registry.h
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(EXPORT NrosRmwUorbTargets
-    FILE NrosRmwUorbTargets.cmake
-    NAMESPACE NrosRmwUorb::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwUorb
-)
-
-configure_package_config_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosRmwUorbConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwUorbConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwUorb
-)
-
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwUorbConfig.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwUorb
-)
+# Phase 140 — install rules deleted; consumed in-tree via add_subdirectory.

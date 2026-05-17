@@ -45,26 +45,6 @@ if(TARGET zephyr)
     target_link_libraries(nros_platform_zephyr PUBLIC zephyr)
 endif()
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-install(TARGETS nros_platform_zephyr
-    EXPORT NrosPlatformZephyrTargets
-    ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformZephyrTargets
-    NAMESPACE NrosPlatformZephyr::
-    FILE NrosPlatformZephyrTargets.cmake
-    DESTINATION lib/cmake/NrosPlatformZephyr)
-
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformZephyrConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/NrosPlatformZephyr)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformZephyrConfigVersion.cmake"
-    DESTINATION lib/cmake/NrosPlatformZephyr)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from
+# `cmake/platform/nano-ros-zephyr.cmake`.

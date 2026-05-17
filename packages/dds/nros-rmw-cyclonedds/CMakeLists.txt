@@ -23,8 +23,11 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(packages/dds/nros-rmw-cyclonedds)`
+# from the root `CMakeLists.txt` cyclonedds branch. CycloneDDS itself
+# is still a third-party dependency surfaced via find_package(CycloneDDS)
+# — callers point CMAKE_PREFIX_PATH at its install prefix.
 
 # ---- Dependencies ----------------------------------------------------------
 # Cyclone DDS itself: built from the pinned submodule by
@@ -103,66 +106,6 @@ target_compile_options(nros_rmw_cyclonedds PRIVATE
 set_target_properties(nros_rmw_cyclonedds PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME NrosRmwCyclonedds
-)
-
-# ---- Install ---------------------------------------------------------------
-install(TARGETS nros_rmw_cyclonedds
-    EXPORT NrosRmwCycloneddsTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(FILES
-    include/nros_rmw_cyclonedds.h
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-# Type-support codegen helpers (Phase 117.2 + 117.X.1). Downstream
-# consumers include via `find_package(NrosRmwCyclonedds)` which pulls
-# in the config below; the config in turn `include()`s this file.
-install(FILES
-    cmake/NrosRmwCycloneddsTypeSupport.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwCyclonedds
-)
-
-# Phase 117.X.1: ship the .msg/.srv → mangled-IDL converter
-# alongside the install. Caller passes its absolute source path via
-# `NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE` (driven by `just cyclonedds
-# build-rmw`); skip when unset so the project remains self-contained
-# for ad-hoc cmake invocations.
-if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE)
-    if(NOT IS_ABSOLUTE "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE}")
-        message(FATAL_ERROR
-            "NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE must be an absolute path.")
-    endif()
-    install(PROGRAMS
-        "${NROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE}"
-        DESTINATION share/nros-rmw-cyclonedds
-    )
-endif()
-
-install(EXPORT NrosRmwCycloneddsTargets
-    FILE NrosRmwCycloneddsTargets.cmake
-    NAMESPACE NrosRmwCyclonedds::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwCyclonedds
-)
-
-# Generate + install the find_package config file.
-configure_package_config_file(
-    cmake/NrosRmwCycloneddsConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwCycloneddsConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwCyclonedds
-)
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwCycloneddsConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwCycloneddsConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwCycloneddsConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwCyclonedds
 )
 
 # ---- Tests -----------------------------------------------------------------

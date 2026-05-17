@@ -225,41 +225,12 @@ set_target_properties(nros_rmw_xrce PROPERTIES
     EXPORT_NAME NrosRmwXrce
 )
 
-# ---- Install ---------------------------------------------------------------
-install(TARGETS nros_rmw_xrce
-    EXPORT NrosRmwXrceTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(FILES
-    include/nros_rmw_xrce.h
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(EXPORT NrosRmwXrceTargets
-    FILE NrosRmwXrceTargets.cmake
-    NAMESPACE NrosRmwXrce::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
-)
-
-# ---- find_package(NrosRmwXrce) config ----
-configure_package_config_file(
-    cmake/NrosRmwXrceConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
-)
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwXrceConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwXrce
-)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# `nros-rmw-xrce` (the K.2 header-only C++ backend) is no longer
+# wired through the root CMake — XRCE consumption goes through the
+# Rust-side `nros-rmw-xrce-cffi` shim, added via Corrosion in the
+# root's xrce branch. This CMakeLists builds the C++ backend for
+# in-tree CTest harnesses; it's not part of the user-facing surface.
 
 # ---- Tests -----------------------------------------------------------------
 option(NROS_RMW_XRCE_C_BUILD_TESTS "Build CTest harness" ON)

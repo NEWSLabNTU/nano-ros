@@ -42,29 +42,6 @@ find_package(Threads REQUIRED)
 target_link_libraries(nros_platform_posix PUBLIC Threads::Threads)
 target_link_libraries(nros_platform_posix PUBLIC rt)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-install(TARGETS nros_platform_posix
-    EXPORT NrosPlatformPosixTargets
-    ARCHIVE DESTINATION lib)
-install(EXPORT NrosPlatformPosixTargets
-    NAMESPACE NrosPlatformPosix::
-    FILE NrosPlatformPosixTargets.cmake
-    DESTINATION lib/cmake/NrosPlatformPosix)
-
-# Phase 123.A.1.x.2 — emit a NrosPlatformPosixConfig.cmake so that
-# `find_package(NrosPlatformPosix CONFIG)` resolves from NanoRos's
-# `find_dependency()` call.
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformPosixConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/NrosPlatformPosix)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformPosixConfigVersion.cmake"
-    DESTINATION lib/cmake/NrosPlatformPosix)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from
+# `cmake/platform/nano-ros-posix.cmake`.

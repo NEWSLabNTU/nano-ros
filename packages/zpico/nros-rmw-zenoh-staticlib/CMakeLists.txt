@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 project(NrosRmwZenoh VERSION 0.1.0 LANGUAGES C)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from the root
+# `CMakeLists.txt` zenoh branch, which links `nros_rmw_zenoh_staticlib-static`
+# (the Corrosion target below) into `NanoRos::NanoRos` directly.
 
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
@@ -51,24 +53,7 @@ corrosion_import_crate(
     LOCKED
 )
 
-install(FILES "$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RENAME "${_lib_name}"
-)
-
+# _lib_name retained above for reference only — the in-tree consumer
+# links the Corrosion staticlib target directly under the
+# `nros_rmw_zenoh_staticlib-static` name (no rename needed).
 set(NROS_RMW_ZENOH_LIB_NAME "${_lib_name}")
-configure_package_config_file(
-    cmake/NrosRmwZenohConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwZenoh
-)
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/NrosRmwZenohConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NrosRmwZenoh
-)

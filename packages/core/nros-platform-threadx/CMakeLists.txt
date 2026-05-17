@@ -68,30 +68,6 @@ if(NROS_PLATFORM_THREADX_WITH_NET)
     endif()
 endif()
 
-option(NROS_PLATFORM_THREADX_INSTALL
-       "Generate install rules (skip when consumed as a subdirectory)" ON)
-if(NROS_PLATFORM_THREADX_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
-
-    install(TARGETS nros_platform_threadx
-        EXPORT NrosPlatformThreadxTargets
-        ARCHIVE DESTINATION lib)
-    install(EXPORT NrosPlatformThreadxTargets
-        NAMESPACE NrosPlatformThreadx::
-        FILE NrosPlatformThreadxTargets.cmake
-        DESTINATION lib/cmake/NrosPlatformThreadx)
-
-    configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosPlatformThreadxConfig.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfig.cmake"
-        INSTALL_DESTINATION lib/cmake/NrosPlatformThreadx)
-    write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfigVersion.cmake"
-        VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion)
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/NrosPlatformThreadxConfigVersion.cmake"
-        DESTINATION lib/cmake/NrosPlatformThreadx)
-endif()
+# Phase 140 — install rules + Config.cmake.in template deleted.
+# Consumed in-tree via `add_subdirectory(...)` from
+# `cmake/platform/nano-ros-threadx.cmake`.
