@@ -33,7 +33,10 @@ set(_rmw_features rmw-cffi)
 # ---- Map platform to Cargo features ----
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
+       OR NANO_ROS_PLATFORM STREQUAL "freertos")
+    # Phase 138 canonical "freertos" accepted alongside legacy
+    # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features alloc panic-halt platform-freertos)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     set(_platform_features std platform-nuttx)

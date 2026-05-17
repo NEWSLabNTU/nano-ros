@@ -43,9 +43,12 @@ endif()
 # ---- Map platform to Cargo features ----
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
+       OR NANO_ROS_PLATFORM STREQUAL "freertos")
     # FreeRTOS bare-metal: no std, alloc for internal Rust collections,
     # panic-halt for a minimal panic handler, link-tls/link-custom for zenoh-pico.
+    # Phase 138 canonical "freertos" accepted alongside legacy
+    # "freertos_armcm3" (Phase 138 collapsed board into NANO_ROS_BOARD).
     set(_platform_features alloc panic-halt platform-freertos)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     # NuttX provides a POSIX-like libc, so std is available.
@@ -210,7 +213,7 @@ install(DIRECTORY
     "${_PROJECT_ROOT}/packages/drivers/lan9118-lwip/src"
     DESTINATION share/nano_ros/drivers/lan9118-lwip)
 install(FILES
-    "${_PROJECT_ROOT}/examples/qemu-arm-freertos/cmake/startup.c"
+    "${_PROJECT_ROOT}/packages/boards/nros-board-mps2-an385-freertos/startup.c"
     "${_PROJECT_ROOT}/packages/core/nros-platform-freertos/src/net.c"
     DESTINATION share/nano_ros/platform/freertos)
 
