@@ -1,12 +1,36 @@
 ############################################################################
-# Phase 139.4 — NuttX integration shell (Make.defs).
+# Phase 139.4 / 149.7 — NuttX integration shell (Make.defs).
 #
 # NuttX apps under `apps/external/<name>/` are discovered when this
-# file exists. We declare the app entry but do NOT compile any C
-# sources directly — the heavy lifting lives in the nano-ros Cargo
-# workspace. The Kconfig sibling gates inclusion on CONFIG_NROS.
+# file exists. Inclusion is gated on CONFIG_NROS (Kconfig sibling).
+#
+# Phase 149.7 — wire upstream `apps/tools/Rust.mk` so the Cargo
+# build of `nros-c` / `nros-cpp` runs in the NuttX `context::` phase
+# and the resulting staticlib lands on `EXTRA_LIBS` for the
+# monolithic link. The Makefile sibling owns the `context::` hook;
+# Make.defs only registers the app and the lib paths.
 ############################################################################
 
 ifneq ($(CONFIG_NROS),)
 CONFIGURED_APPS += $(APPDIR)/external/nano-ros
+
+# Pull upstream `apps/tools/Rust.mk` for RUST_CARGO_BUILD /
+# RUST_CARGO_CLEAN / RUST_GET_BINDIR / RUST_GET_LIBDIR /
+# RUST_TARGET_TRIPLE. Optional include — older NuttX trees without
+# Rust.mk just skip the EXTRA_LIBS append; the user falls back to
+# pre-building the staticlib out-of-band and pointing EXTRA_LIBS at
+# it manually.
+-include $(APPDIR)/tools/Rust.mk
+
+ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
+# Rust.mk found — append the Cargo-built staticlib paths so NuttX's
+# top-level link sees them. `nros-c` is the canonical entry; users
+# wanting the C++ surface add `nros-cpp` analogously.
+EXTRA_LIBS    += $(call RUST_GET_BINDIR,nros_c,$(APPDIR)/external/nano-ros/packages/core)
+EXTRA_LIBPATHS+= $(call RUST_GET_LIBDIR,nros_c,$(APPDIR)/external/nano-ros/packages/core)
+endif
+
+# CFLAGS — surface the nano-ros C headers to user code that
+# `#include <nros/...>`.
+CFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/nano-ros/packages/core/nros-c/include
 endif
