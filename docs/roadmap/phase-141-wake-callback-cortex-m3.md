@@ -117,19 +117,51 @@ Closing 124.B.2 means:
         `shim/session.rs:449`).
 - [x] **141.A.2 — `set_wake_callback` impl in
       `nros-rmw-zenoh` on `platform-bare-metal` /
-      `platform-freertos`.** *(landed — verified 2026-05-18:
-      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs:473`
-      has no platform-posix cfg gate; `wake_cb` /`wake_ctx`
-      AtomicPtr fields are stored unconditionally and
-      `drive_io` (line 449) fires the cb when zenoh-pico's
-      spin_once observes work. The doc statement that the
-      shim was POSIX-only was stale.)*
-- [ ] **141.A.3 — ISR-safety contract verification.** If
-      141.A.1 goes interrupt-driven, the cb must use the
-      ISR-safe wake primitive (`nros_platform_wake_signal_from_isr`
-      from Phase 130.1, k_sem-equivalent on FreeRTOS). Verify
-      against Phase 130's ISR contract documented in
-      `docs/reference/platform-sync-abi.md`.
+      `platform-freertos`.** Backend-side: verified 2026-05-18
+      that `packages/zpico/nros-rmw-zenoh/src/shim/session.rs:473`
+      has no platform-posix cfg gate; `wake_cb` / `wake_ctx`
+      AtomicPtr fields are stored unconditionally and `drive_io`
+      (line 449) fires the cb when zenoh-pico's spin_once
+      observes work. Runtime-side scaffolding for the no_std cb
+      target landed in:
+      - `e36ee8cf` lifted `NodeWake` cfg from `std` to `alloc`
+        (kernel-native binary semaphore wrapper now compiles on
+        no_std RTOS targets too).
+      - `ee2b77f5` added `executor::wake_alloc::WakeCtxAlloc` +
+        no_std `nros_rmw_runtime_wake_cb` (mirror of the std
+        path's struct + cb function, using `Arc<AtomicBool>` +
+        `Arc<NodeWake>` instead of `std::sync::Condvar`).
+      The runtime cb *type* now exists for the no_std RTOS
+      build; wiring it into `Executor` fields + a spin_once
+      no_std wait branch is the remaining 141.A.3 work (next
+      bullet).
+- [ ] **141.A.3 — Wire `WakeCtxAlloc` into `Executor` +
+      no_std spin_once wait branch.** Mirrors the std-RTOS
+      branch already present in
+      `packages/core/nros-node/src/executor/spin.rs:3193-3216`
+      (which uses `node_wake.wait_ms(timeout_ms)` for the
+      kernel-native binary-semaphore wait):
+      - Add cfg-gated Executor fields
+        (`cfg(all(alloc, not(std), rmw-cffi, any-rtos-platform))`):
+        `wake_flag_alloc: Arc<AtomicBool>`,
+        `node_wake_alloc: Option<Arc<NodeWake>>`,
+        `wake_ctx_alloc: Option<Arc<WakeCtxAlloc>>`,
+        `has_async_wake_alloc: bool`.
+      - Initialize in both Executor constructors
+        (`from_session` line 749 + `from_session_ptr` line 837).
+      - Add `install_wake_signal_on_primary_alloc` /
+        `_on_extra_alloc` methods (alloc-mode mirrors of
+        the existing std installers at lines 1148-1180).
+      - Add the no_std wait branch in `spin_once` that picks
+        the alloc `node_wake.wait_ms(deadline)` when
+        `has_async_wake_alloc && wake_flag_alloc.swap(false)`
+        is false.
+      - ISR-safety: cb in `wake_alloc::nros_rmw_runtime_wake_cb`
+        is NOT ISR-safe (matches the std cb policy). ISR callers
+        route through the existing
+        `nros_platform_wake_signal_from_isr` slot (Phase 130.1).
+        Verify against the ISR contract in
+        `docs/reference/platform-sync-abi.md`.
 
 ### 141.B — µs-grain latency probe on Cortex-M3
 
