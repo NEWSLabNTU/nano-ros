@@ -253,6 +253,9 @@ static volatile uint32_t g_diag_gck_not_in_use = 0;
 static volatile uint32_t g_diag_gck_too_big = 0;
 static volatile uint32_t g_diag_gck_timeout = 0;
 static volatile uint32_t g_diag_gck_pending = 0;
+static volatile uint32_t g_diag_handler_ctx_addr = 0;
+static volatile uint32_t g_diag_check_ctx_addr = 0;
+static volatile uint32_t g_diag_start_ctx_addr = 0;
 
 // Reply waker callback — invoked when a pending get slot receives a reply
 // or times out, allowing Rust async code to wake the corresponding Future.
@@ -2093,6 +2096,22 @@ int32_t zpico_get(const char *keyexpr,
 // Reply handler for pending get slots — reuses the same logic as get_reply_handler
 static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
     g_diag_reply_handler_calls++;
+    /* Phase 127.D.2 — keep the address-recording side effect. It
+     * defeats whole-program LTO alias analysis that would otherwise
+     * prove the closure's `ctx` pointer disjoint from
+     * `&g_pending_gets[handle].ctx` (because the slot table is
+     * private to this TU and the callback type-erases `ctx` to
+     * `void *`). Without this side effect the write to
+     * `rctx->received` here was hoisted away from the read in
+     * `zpico_get_check`, leaving the polling client spinning on a
+     * stale `false`. _Atomic / volatile alone did not change the
+     * symptom; recording the address through a non-static observer
+     * does. See docs/research/qemu-lan9118-slirp-rx-stall.md.
+     *
+     * Bumping a counter unconditionally (vs. the "first write only"
+     * pattern) keeps the side effect from being scheduled as a
+     * one-shot branch that constant-folds away after the first hit. */
+    g_diag_handler_ctx_addr = (uint32_t)(uintptr_t)ctx;
     get_reply_handler(reply, ctx);
     _zpico_notify_spin();
     if (g_reply_waker) {
@@ -2114,7 +2133,7 @@ static void pending_get_dropper(void *ctx) {
     }
 }
 
-void zpico_get_diag_counters(uint32_t out[15]) {
+void zpico_get_diag_counters(uint32_t out[18]) {
     out[0] = g_diag_get_start_calls;
     out[1] = g_diag_get_check_calls;
     out[2] = g_diag_get_check_returns_data;
@@ -2130,6 +2149,9 @@ void zpico_get_diag_counters(uint32_t out[15]) {
     out[12] = g_diag_gck_too_big;
     out[13] = g_diag_gck_timeout;
     out[14] = g_diag_gck_pending;
+    out[15] = g_diag_start_ctx_addr;
+    out[16] = g_diag_handler_ctx_addr;
+    out[17] = g_diag_check_ctx_addr;
 }
 
 int32_t zpico_get_start(const char *keyexpr,
@@ -2189,6 +2211,8 @@ int32_t zpico_get_start(const char *keyexpr,
 
     z_owned_closure_reply_t callback;
     z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
+    /* Same aliasing-defeat trick. */
+    g_diag_start_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
     z_result_t zret = z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
                              z_move(callback), &opts);
@@ -2313,14 +2337,17 @@ int32_t zpico_liveliness_get_check(int32_t handle) {
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
+    /* Same aliasing-defeat trick as `zpico_get_check`; see comment
+     * in `pending_get_reply_handler`. */
+    g_diag_check_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
-    if (ps->ctx.received) {
-        if (ps->ctx.done) {
+    if (__atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST)) {
+        if (__atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST)) {
             ps->in_use = false;
         }
         return 1;
     }
-    if (ps->ctx.done) {
+    if (__atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST)) {
         ps->in_use = false;
         return -9;  /* ZPICO_ERR_TIMEOUT */
     }
@@ -2341,6 +2368,8 @@ int32_t zpico_get_check(int32_t handle,
         return ZPICO_ERR_INVALID;
     }
 
+    /* Same aliasing-defeat trick as in `pending_get_reply_handler`. */
+    g_diag_check_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
     bool received_snap = __atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST);
     bool done_snap = __atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST);
     if (received_snap) {

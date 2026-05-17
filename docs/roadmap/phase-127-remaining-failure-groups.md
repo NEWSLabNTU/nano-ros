@@ -968,21 +968,35 @@ Current signal (2026-05-17):
 
 Subitems:
 
-- [~] `127.D.1`: RTIC action E2E — connect path now passes; reply
-  correlation gap remains (same as 127.D.2 — see below).
-- [~] `127.D.2`: RTIC service E2E — connect path passes; LAN9118 RX
-  FIFO drops eliminated by `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`
-  (built via `just qemu setup-qemu`, wired into top-level `just setup`).
-  Empirical retest 2026-05-17: with patched `build/qemu/bin/qemu-system-arm`,
-  `lan_pend` jumps from a stuck **518** to **3428+** — LAN9118 now
-  accepts every frame slirp pushes. Client `rx` / `recv` still capped
-  at ~256 bytes; the zenoh-pico `g_pending_gets[slot]` callback that
-  bridges `z_get` replies to `zpico_get_check` is not firing for the
-  reply that did reach smoltcp. Distinct failure mode in the
-  zenoh-pico reply-dispatch path under `ZPICO_SMOLTCP` /
-  `Z_FEATURE_MULTI_THREAD=0`. Needs a dedicated zenoh-pico internals
-  trace; tracked separately. Pubsub continues to pass.
+- [x] `127.D.1`: RTIC action E2E — **PASS** under
+  `QEMU_SYSTEM_ARM=build/qemu/bin/qemu-system-arm` after the
+  LTO alias-defeat fix in `pending_get_reply_handler` /
+  `zpico_get_check` / `zpico_liveliness_get_check` (commit pending).
+  Verified 3/3 with `cargo nextest run -p nros-tests --test emulator
+  --no-fail-fast --no-capture --retries 0 test_qemu_rtic_action_e2e`
+  — client receives goal acceptance + 5 feedback frames in 17 s.
+- [x] `127.D.2`: RTIC service E2E — **PASS** under patched QEMU + the
+  same fix. Verified 3/3 (~19 s each): server `Handled: 5+3=8`,
+  client `Reply: 5+3=8`, all 4 calls complete.
 
+  Root cause: under `lto = "fat"` + `opt-level = "s"` on cortex-m3,
+  the compiler proved `&g_pending_gets[handle].ctx` and the closure's
+  type-erased `void *ctx` were disjoint (the slot table is private
+  to the TU and `pending_get_reply_handler` receives `void *`), so
+  the `received = true` write inside the handler was elided wrt the
+  read in `zpico_get_check`. `volatile`, `_Atomic`, and
+  `__atomic_load_n` / `store_n` with `SEQ_CST` were all insufficient
+  — fat-LTO kept proving the no-alias.
+
+  Fix: record the closure ctx + the `&ps->ctx` address into
+  externally-visible `volatile uint32_t` counters in both
+  `pending_get_reply_handler` and `zpico_get_check`
+  (+ `zpico_liveliness_get_check`). The address store has a real
+  side effect the compiler can't optimise away, which prevents the
+  whole-program aliasing proof and forces the cross-callback memory
+  access to go through actual memory.
+
+  Pre-patch capture of the failing service path is below:
   Pre-patch capture (2026-05-17 via tshark + zenoh-dissector on
   host loopback `tcp port 7460`) for reference:
   - Client TX path: query frame (98 B) leaves QEMU, host kernel ACKs.

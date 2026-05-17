@@ -98,25 +98,11 @@ mod app {
             let mut promise = cx.local.client.call(&request).unwrap();
 
             let mut got_reply = false;
-            let mut last_dump = 0u32;
             for _i in 0..3000u32 {
                 cx.local
                     .executor
                     .spin_once(core::time::Duration::from_millis(0));
                 Mono::delay(10.millis()).await;
-                if _i.wrapping_sub(last_dump) >= 100 {
-                    last_dump = _i;
-                    let (rx, recv) = nros_board_mps2_an385::nros_smoltcp::rx_diagnostics();
-                    let (pend, deliv, err) =
-                        nros_board_mps2_an385::lan9118_smoltcp::rx_diag_counters();
-                    let mut g = [0u32; 15];
-                    unsafe { zpico_sys::zpico_get_diag_counters(g.as_mut_ptr()) };
-                    println!(
-                        "[d] i={} rx={} gst={} gck={} rh={} rd={} set={} | inv={} niu={} big={} to={} pend={}",
-                        _i, rx, g[0], g[1], g[3], g[4], g[7],
-                        g[10], g[11], g[12], g[13], g[14]
-                    );
-                }
 
                 // Transient errors (e.g. a non-CDR sample from the zenoh
                 // discovery channel arriving on the reply slot before the
