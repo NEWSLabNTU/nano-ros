@@ -375,8 +375,8 @@ void     nros_platform_critical_section_release(uint32_t token);
 
 Work items:
 
-- [ ] **121.9.a** — Add the two symbols to `<nros/platform.h>` + the `unsafe extern "C" {}` mirror block in `nros-platform-cffi`. Add `PlatformCriticalSection` trait to `nros-platform-api` (acquire returning `u32`, release taking `u32`). Add `nros_platform_export_critical_section!` macro emitting both symbols from a trait-implementing type. Extend `CffiPlatform`'s impl set + the drift gate's `HEADERS_REQUIRE_MACRO` list.
-- [ ] **121.9.b** — Per-port C bodies:
+- [x] **121.9.a** — Done. `nros_platform_critical_section_acquire` / `_release` live in `<nros/platform.h>:259-260`; Rust extern mirror at `nros-platform-cffi/src/lib.rs:126-127`; `PlatformCriticalSection` trait at `nros-platform-api/src/lib.rs:576`; `CffiPlatform` impl at `nros-platform-api/src/lib.rs:625`; `nros_platform_export_critical_section!` macro at `nros-platform-api/src/lib.rs:885+`; drift gate covers `platform.h` symbols generically.
+- [x] **121.9.b** — Done. C bodies land in five ports:
   - POSIX C port — `pthread_mutex_t` (recursive, static-init), `pthread_mutex_lock` / `_unlock`. Token is unused (return 0).
   - POSIX Rust crate (`nros-platform-posix`) — same pattern via `std::sync::Mutex` for the host build.
   - FreeRTOS C port — Cortex-M PRIMASK enable/disable (matches today's Rust impl byte-for-byte). Token is the prior PRIMASK bit.
@@ -384,9 +384,9 @@ Work items:
   - Zephyr C port — `irq_lock` / `irq_unlock`. Token is the irq_lock return.
   - NuttX C port — `enter_critical_section` / `leave_critical_section`. Token is the returned flags.
   - ESP-IDF C port — `portENTER_CRITICAL` against a static spinlock OR `portSET_INTERRUPT_MASK_FROM_ISR`. Decide per platform-doc.
-- [ ] **121.9.c** — New crate `packages/core/nros-platform-critical-section/` (~30 lines): `critical_section::set_impl!` body just calls the externs. Pulled in by any binary that needs the global `critical_section::Impl` registration. Drops `nros-platform-freertos`'s `critical-section` feature, drops `nros-platform-orin-spe`'s `cortex-r` feature, drops the per-arch Rust fan-out in `nros-platform`'s `Cargo.toml`.
-- [ ] **121.9.d** — Bare-metal Cortex-M boards (`mps2-an385`, `stm32f4`) reuse `nros-platform-critical-section` via the bare-metal platform crate's `cffi-export` already-emitted Cortex-M body — no extra crate needed. The crate is opt-in: `nros-platform/critical-section` feature toggles the dep so non-RMW examples don't pay for the global impl.
-- [ ] **121.9.e** — Drift-gate verification: `scripts/check-platform-abi-mirror.sh` now sees the two new symbols in `platform.h`. Add a host-runnable test under `nros-platform-posix/tests/cffi_export_parity.rs` exercising acquire/release ordering (token round-trips correctly).
+- [x] **121.9.c** — Done. `packages/core/nros-platform-critical-section/src/lib.rs` registers `critical_section::set_impl!(PlatformCs)` and forwards `acquire`/`release` to the canonical externs. Per-arch Rust fan-out across `nros-platform-{freertos,orin-spe}` retired.
+- [x] **121.9.d** — Done. `packages/platforms/nros-platform-mps2-an385/src/lib.rs:41-42` documents that the bare-metal board defers `critical_section::Impl` to the canonical `nros_platform_critical_section_{acquire,release}` C bodies — STM32F4 follows the same path through the shared crate.
+- [x] **121.9.e** — Done. `scripts/check-platform-abi-mirror.sh` runs clean and recognises the two new symbols (generic `nros_platform_*` grep covers `platform.h`). Host-runnable parity test at `packages/core/nros-platform-cffi/tests/c_port_posix_critical_section.rs` exercises acquire/release round-trip, nesting, and a 100k-iteration hot-path stability loop; all three cases green on POSIX.
 
 **Files:**
 - `packages/core/nros-platform-cffi/include/nros/platform.h` (or a new `platform_cs.h`)
