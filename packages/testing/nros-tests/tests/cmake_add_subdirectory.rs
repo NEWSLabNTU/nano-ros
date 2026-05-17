@@ -73,9 +73,8 @@ fn cmake_add_subdirectory_smoke() {
     // `NanoRosGenerateInterfaces.cmake` and the root CMakeLists never
     // hits a steady state. Skip cleanly so a fresh worktree without
     // submodules surfaces the right signal.
-    let codegen_marker = root.join(
-        "packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake",
-    );
+    let codegen_marker =
+        root.join("packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake");
     if !codegen_marker.exists() {
         nros_tests::skip!(
             "codegen submodule not initialised — run `git submodule update --init packages/codegen` first"
@@ -99,12 +98,7 @@ fn cmake_add_subdirectory_smoke() {
 
     // Configure.
     let configure = Command::new("cmake")
-        .args([
-            "-S",
-            user.to_str().unwrap(),
-            "-B",
-            build.to_str().unwrap(),
-        ])
+        .args(["-S", user.to_str().unwrap(), "-B", build.to_str().unwrap()])
         .output()
         .expect("failed to invoke cmake configure");
     assert!(
