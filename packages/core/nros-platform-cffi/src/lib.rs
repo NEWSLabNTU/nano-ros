@@ -879,6 +879,38 @@ macro_rules! nros_platform_export_threading {
         ) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::condvar_wait_until(cv, m, abstime)
         }
+        // Phase 130 — wake primitive (binary semaphore shape).
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_init(w: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_init(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_drop(w: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_drop(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_wait_ms(
+            w: *mut ::core::ffi::c_void,
+            timeout_ms: u32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_wait_ms(w, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_signal(w: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_signal(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_signal_from_isr(w: *mut ::core::ffi::c_void) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_signal_from_isr(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_size()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_align()
+        }
     };
 }
 
