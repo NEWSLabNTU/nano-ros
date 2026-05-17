@@ -195,31 +195,37 @@ doctor:
     # QEMU 6.2's `socket,mcast=` cannot do this reliably; the
     # documented workaround uses `-netdev dgram,local.type=unix,...`,
     # which was introduced in QEMU 7.2.
-    if command -v qemu-system-arm &>/dev/null; then
+    # Phase 143 — patched build at {{QEMU_BIN}} is the primary path
+    # picked up automatically by `nros_tests::qemu::qemu_system_arm_path`.
+    if [ -x {{QEMU_BIN}} ]; then
+        ver=$({{QEMU_BIN}} --version 2>/dev/null | head -1)
+        echo "  [OK] patched qemu-system-arm: {{QEMU_BIN}} ($ver)"
+    elif command -v qemu-system-arm &>/dev/null; then
         ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
         major=${ver%%.*}
         minor=${ver##*.}
         if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
-            echo "  [OK] qemu-system-arm ($ver, >= 7.2 — supports -netdev dgram unix)"
+            echo "  [OK] system qemu-system-arm ($ver, fallback path; >= 7.2 — supports -netdev dgram unix)"
         else
-            echo "  [WARN] qemu-system-arm ($ver) < 7.2 — NuttX DDS multi-instance"
-            echo "         tests need '-netdev dgram,local.type=unix,...' which was"
-            echo "         introduced in QEMU 7.2. Older QEMU's 'socket,mcast=' is"
-            echo "         known to drop cross-process frames silently."
+            echo "  [WARN] system qemu-system-arm ($ver) < 7.2 AND patched build absent —"
+            echo "         NuttX DDS multi-instance tests need '-netdev dgram,local.type=unix,...'"
+            echo "         which was introduced in QEMU 7.2."
+            echo ""
+            echo "         Primary remedy (no sudo, portable): just qemu setup-qemu"
+            echo "         Fallback (system-wide, requires sudo):"
             if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
                 codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
-                echo "         Ubuntu detected ($codename). Get QEMU 8.2 from"
-                echo "         Canonical's server-backports PPA:"
-                echo ""
-                echo "           sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "           sudo apt update"
-                echo "           sudo apt install qemu-system-arm"
-                echo ""
-                echo "         PPA: https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
+                echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
+                echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
+                echo "             sudo apt update && sudo apt install qemu-system-arm"
+                echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
             else
-                echo "         Build from source: https://www.qemu.org/download/#source"
+                echo "           Build from source: https://www.qemu.org/download/#source"
             fi
         fi
+    else
+        echo "  [MISSING] qemu-system-arm — run \`just qemu setup-qemu\` (recommended)"
+        echo "            or \`just workspace apt-packages\` for the system binary."
     fi
     exit $fail
 

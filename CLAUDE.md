@@ -54,6 +54,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - Bridge-net (threadx-linux veth): `ZenohRouter::start_on("0.0.0.0", port)`.
 - Subscriber first, then publisher. 5–10s stabilization.
 - Per-platform nextest groups (`max-threads = 1`); platforms parallel.
+- **Patched `qemu-system-arm`** (Phase 143): `just qemu setup-qemu` builds `third-party/qemu/qemu` @ stable-11.0 + `third-party/qemu/patches/` into `build/qemu/bin/qemu-system-arm`. Test harness picks it up automatically via `nros_tests::qemu::qemu_system_arm_path()` — no env-var needed. System `qemu-system-arm` is the fallback. New test code MUST use `nros_tests::qemu::qemu_system_arm_cmd()` instead of `Command::new("qemu-system-arm")`. New justfile recipes MUST gate through `{{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }}`. See `book/src/internals/qemu-patched-binary.md`.
 
 ### Examples = Standalone Projects
 **Each `examples/` dir is self-contained, copy-out template.**

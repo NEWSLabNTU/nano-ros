@@ -8,8 +8,10 @@ only when the patched build is absent. Closes the "system qemu 6.2
 too old" WARN class across NuttX DDS multi-instance, LAN9118
 receive-flush, and any future patched-only behaviour.
 
-**Status.** In progress — 143.1/.2/.3/.4 landed (2026-05-18).
-Helper exists, sweep done, smoke test added. 143.5/.6/.7/.8 pending.
+**Status.** Landed — 143.1/.2/.3/.4/.5/.6/.7 done (2026-05-18).
+143.8 deferred (no CI test workflow in-repo today; only
+`deploy-book.yml`. Cache wiring re-opens when a runtime-CI workflow
+lands).
 
 **Priority.** P2 — deterministic test results, not a correctness
 blocker. The patched binary already exists; ~5 call sites just
@@ -168,7 +170,7 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `packages/testing/nros-tests/tests/qemu_patched_binary.rs`,
       `packages/testing/nros-tests/Cargo.toml`.
 
-- [ ] **143.5 — Submodule pin bump.**
+- [x] **143.5 — Submodule pin bump.**
       Verify `third-party/qemu/qemu` is pinned to a release that
       supports `-netdev dgram,local.type=unix,...` (qemu 7.2+ per
       `just qemu doctor` WARN). Recommend pinning to qemu 8.2 LTS or
@@ -176,7 +178,7 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `third-party/qemu/qemu` (submodule),
       `third-party/qemu/patches/` (if rebase needed).
 
-- [ ] **143.6 — Doctor wording update.**
+- [x] **143.6 — Doctor wording update.**
       `just qemu doctor` currently WARNs on system qemu < 7.2 with
       sudo PPA suggestion. After 143, the primary remedy is "run
       `just qemu setup-qemu`" (which gives the patched binary).
@@ -185,7 +187,7 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `just/qemu-baremetal.just` (doctor recipe),
       `just/nuttx.just` (doctor recipe).
 
-- [ ] **143.7 — Doc page.**
+- [x] **143.7 — Doc page.**
       Add `book/src/internals/qemu-patched-binary.md` — explains the
       submodule + patch set + which arches go through the patched
       build vs. system + how to add a new patch. Cross-link from
@@ -194,13 +196,14 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `book/src/internals/qemu-patched-binary.md` (new),
       `book/src/SUMMARY.md`, `CLAUDE.md`.
 
-- [ ] **143.8 — CI cache key.**
-      Patched qemu binary is ~150 MB. CI should cache `build/qemu/`
-      across runs so each runner builds once. Cache key off
-      `third-party/qemu/qemu` submodule SHA + `third-party/qemu/patches/`
-      content hash.
-      **Files.** `.github/workflows/*.yml` (or local CI config —
-      project may use a different CI driver; verify).
+- [ ] **143.8 — CI cache key.** _Deferred 2026-05-18._ Only
+      `.github/workflows/deploy-book.yml` exists today — no
+      runtime-test workflow to attach a cache to. Re-open this
+      item when a runtime-CI workflow lands (likely Phase 144 or
+      later); the cache key recipe is straightforward
+      (`third-party/qemu/qemu` SHA + hash of every file under
+      `third-party/qemu/patches/`).
+      **Files.** `.github/workflows/*.yml` (none today).
 
 ---
 
@@ -256,6 +259,33 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
 - Remaining: 143.5 (submodule pin verification), 143.6 (doctor
   wording downgrade once 143.5 lands), 143.7 (book page), 143.8
   (CI cache key for `build/qemu/`).
+
+- 2026-05-18 (later) — 143.5/.6/.7 landed:
+  - 143.5: verified `.gitmodules` already pins
+    `third-party/qemu/qemu` to `branch = stable-11.0` (QEMU 11.0.x,
+    comfortably ≥ 7.2). No bump needed; documented in the book
+    page so the contract is explicit.
+  - 143.6: rewrote the `just qemu doctor` + `just nuttx doctor`
+    QEMU sections to make the patched build the primary path.
+    System binary at ≥ 7.2 reports as `[OK] system qemu-system-arm
+    (fallback path)`; system binary at < 7.2 with patched build
+    present becomes an informational `[INFO]` (no sudo nudge);
+    only the genuine "system < 7.2 AND patched absent" case
+    surfaces a `[WARN]` whose primary remedy is
+    `just qemu setup-qemu` (no sudo, portable across distros)
+    with the Canonical server-backports PPA path demoted to a
+    fallback. Smoke-tested both recipes locally.
+  - 143.7: new `book/src/internals/qemu-patched-binary.md`
+    explains why, layout, build, test resolver, smoke test, how
+    to add a new patch, and submodule pin bumps. Linked from
+    `book/src/SUMMARY.md` between FreeRTOS LAN9118 Debugging and
+    Opaque Storage Sizing. Cross-linked from `CLAUDE.md`'s
+    "### QEMU Networked Tests" section so future contributors
+    are pointed at the helper + justfile gate from the project's
+    canonical contributor guide.
+- 143.8 deferred: no runtime-CI workflow in repo today, only
+  `deploy-book.yml`. Cache wiring rolls into whichever phase
+  introduces the runtime-CI workflow.
 
 ## Notes
 

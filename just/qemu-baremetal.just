@@ -273,29 +273,42 @@ doctor:
         # `socket,mcast=` delivery) was introduced in QEMU 7.2.
         # NuttX DDS / RTPS multi-instance tests need it.
         if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
-            echo "  [OK] qemu-system-arm ($ver, supports -netdev dgram unix)"
+            echo "  [OK] system qemu-system-arm ($ver, fallback path; >= 7.2 — supports -netdev dgram unix)"
+        elif [ -x {{QEMU_BIN}} ]; then
+            # Phase 143 — patched build is the primary path and is
+            # already OK above; demote the system-binary warning to
+            # an informational note so users aren't pressured to
+            # touch system packages.
+            echo "  [INFO] system qemu-system-arm ($ver) < 7.2 — patched build at {{QEMU_BIN}} is the active path; nothing to do."
         else
-            echo "  [WARN] qemu-system-arm ($ver) is older than 7.2 — RTPS multi-instance"
-            echo "         tests (NuttX DDS in particular) hit a known cross-process"
-            echo "         delivery limit in 'socket,mcast='. The workaround"
-            echo "         '-netdev dgram,local.type=unix,...' needs QEMU >= 7.2."
+            echo "  [WARN] system qemu-system-arm ($ver) < 7.2 AND patched build absent."
+            echo "         Primary remedy (no sudo, portable across distros):"
+            echo ""
+            echo "           just qemu setup-qemu"
+            echo ""
+            echo "         (builds third-party/qemu/qemu @ stable-11.0 with the"
+            echo "         LAN9118 RX-flush patch into build/qemu/bin/qemu-system-arm;"
+            echo "         picked up automatically by the test harness via Phase 143's"
+            echo "         qemu_system_arm_path() resolver — no env-var needed.)"
+            echo ""
+            echo "         Fallback (system-wide, requires sudo):"
             if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
                 codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
-                echo "         Ubuntu detected (codename: $codename). Get QEMU 8.2 via"
-                echo "         Canonical's server-backports PPA:"
-                echo ""
-                echo "           sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "           sudo apt update"
-                echo "           sudo apt install qemu-system-arm"
-                echo ""
-                echo "         PPA: https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
+                echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
+                echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
+                echo "             sudo apt update && sudo apt install qemu-system-arm"
+                echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
             else
-                echo "         Build from source: https://www.qemu.org/download/#source"
+                echo "           Build from source: https://www.qemu.org/download/#source"
             fi
         fi
     else
-        echo "  [MISSING] qemu-system-arm (run: just workspace apt-packages)"
-        fail=1
+        echo "  [MISSING] system qemu-system-arm (apt path). The patched"
+        echo "            build at {{QEMU_BIN}} is the recommended path —"
+        echo "            run \`just qemu setup-qemu\` to produce it."
+        # No fail bump: if the patched build is in place, the system
+        # binary is unused. The patched-binary check above already
+        # bumped fail when {{QEMU_BIN}} was absent.
     fi
     exit $fail
 

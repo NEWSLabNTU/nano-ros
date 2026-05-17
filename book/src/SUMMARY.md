@@ -72,6 +72,7 @@
 - [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [FreeRTOS LAN9118 Debugging](./internals/freertos-lan9118-debugging.md)
+- [Patched qemu-system-arm](./internals/qemu-patched-binary.md)
 - [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
