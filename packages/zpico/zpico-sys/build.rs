@@ -349,6 +349,47 @@ fn main() {
             .unwrap_or_else(|e| panic!("zenoh_platforms.toml: resolve {name}: {e}"));
     }
 
+    // Phase 136.6 (partial) — source-list drift gate. For every
+    // platform, verify each `include` root names a real directory
+    // under `zenoh-pico/src/` and contains at least one `.c` file.
+    // Catches submodule bumps that rename / delete dirs and typos
+    // in the manifest. Full set-equality vs. the cc-rs source list
+    // lands with 136.4 once the per-RTOS functions collapse into a
+    // single manifest-driven path.
+    let zenoh_pico_src = manifest_dir.join("zenoh-pico").join("src");
+    if zenoh_pico_src.exists() {
+        for (name, _) in &platform_manifest.platform {
+            let resolved = platform_manifest.for_platform(name).unwrap();
+            for include in &resolved.include {
+                let dir = zenoh_pico_src.join(include);
+                if !dir.is_dir() {
+                    panic!(
+                        "zenoh_platforms.toml: platform `{name}` `include = \"{include}\"` \
+                         does not resolve to a directory under zenoh-pico/src/ \
+                         (expected: {})",
+                        dir.display()
+                    );
+                }
+                let has_c_file = std::fs::read_dir(&dir)
+                    .map(|entries| {
+                        entries.flatten().any(|e| {
+                            e.path().extension().is_some_and(|x| x == "c")
+                                || e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+                if !has_c_file {
+                    panic!(
+                        "zenoh_platforms.toml: platform `{name}` `include = \"{include}\"` \
+                         resolves to {} but contains no .c files or subdirs",
+                        dir.display()
+                    );
+                }
+                println!("cargo:rerun-if-changed={}", dir.display());
+            }
+        }
+    }
+
     // Check which platform backend to use
     let mut use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let use_zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();

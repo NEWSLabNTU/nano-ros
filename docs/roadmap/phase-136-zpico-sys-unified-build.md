@@ -236,10 +236,20 @@ the manifest to stay in sync with upstream.
       **Files.** `packages/zpico/zpico-sys/build.rs`,
       `packages/zpico/zpico-sys/Cargo.toml`.
 
-- [ ] **136.6 — Source-list drift gate.**
-      Inside `build.rs`, glob upstream sources after the manifest
-      resolves and assert set equality. Fail with a message naming
-      the diff and pointing at the manifest path.
+- [x] **136.6 — Source-list drift gate.** (2026-05-18 — partial)
+      Build-script glob runs immediately after manifest resolution
+      (still in `main()` prologue). For every platform, every
+      `include` root in `zenoh_platforms.toml` must (a) resolve to
+      an existing directory under `zenoh-pico/src/`, (b) contain
+      `≥1 .c` file or sub-directory. Fires a build-script panic
+      naming the manifest path + the offending include on drift.
+      Verified by flipping `system/unix` → `system/nonexistent`:
+      panic surfaces; restoring passes.
+      Full set-equality vs the cc-rs source list (the version
+      described in the phase doc above) lands with 136.4 once the
+      per-RTOS functions collapse into a single manifest-driven
+      path. The partial gate already catches the most common upstream
+      bumps (renamed `system/<plat>/` dirs).
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
 - [ ] **136.7 — E2E tests.** See "Acceptance / E2E" below.
