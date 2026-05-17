@@ -63,6 +63,7 @@ install:
     cmake -S . -B "build/cmake-threadx-linux-zenoh" \
         -DNANO_ROS_RMW="zenoh" \
         -DNANO_ROS_PLATFORM="threadx_linux" \
+        -DNANO_ROS_BOARD="threadx-linux" \
         -DNANO_ROS_BUILD_CODEGEN=OFF \
         -DCMAKE_BUILD_TYPE=Release
     just _cmake-cargo-stale-guard "build/cmake-threadx-linux-zenoh"
