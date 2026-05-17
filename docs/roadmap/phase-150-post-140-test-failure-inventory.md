@@ -7,27 +7,34 @@ points at its root cause + remediation phase. Acts as the bridge
 between Phase 140's "structurally complete" state and a fully
 green CI.
 
-**Status.** Inventory complete. Phase 151 stubs landed
-(`1d66d3dc` parent of this update). Interim CI v6 snapshot at
-769/797 tests run:
+**Status.** CI v6 complete: 658 pass / 136 fail / 12 skip / 3
+timeout of 797. Phase 151 (POSIX serial-link stubs) landed but
+dropped failures by ONLY 8, not the 58 predicted — most native_api
+failures have a SECOND root cause: undefined `nros_cpp_publish_raw`
+from codegen-generated C++ FFI archive vs `nros-cpp` staticlib
+link order. Filed as **Phase 152**.
 
 ```
-class                             v5      v6 (interim)   delta
-A. POSIX serial-link (native_api) 58      1              -57   ✓ Phase 149
-B. dds_api C++ builds              8      4              -4    (partial; investigate residual)
-C. qemu_patched_binary             6      3              -3    (some flaked / passed)
-D. cmake_platform_matrix          10      5              -5    (some passed)
-E. zenoh_header_parity             2      1              -1
-F. xrce                            2      1              -1
-G. integration_zephyr/esp_idf      4      2              -2
-H. nano2nano rtic_pattern          2      3              +1    (px4 + 3 rtic now)
-─────────────────────────────────────────────────────
-total fails seen so far           92      ~20            -72    Phase 149 dominant impact
+class                          v5     v6    delta  root cause
+A. native_api                  58     42    -16    Phase 152 (nros_cpp_publish_raw)
+B. dds_api C++ builds           8      8     0     Same as A (cpp FFI)
+C. qemu_patched_binary          6      6     0     `just qemu setup-qemu` not run
+D. cmake_platform_matrix       10     10     0     skip-precondition gap
+E. zenoh_header_parity          2      2     0     Phase 134 user-owned
+F. xrce E2E                     2      2     0     agent fixture
+G. integration_{zephyr,esp_idf} 4      4     0     env vars not in nextest
+H. nano2nano rtic + px4         2      6    +4     investigate
+I. _test-c-codegen recipe       1      0    -1     Phase 140.3 fixture closed
+timeouts                        3      3     0     individual
+──────────────────────────────────────────
+total fails                   144    136    -8     Phase 151 partial; Phase 152 dominant
 ```
 
-Item-level remediation tracked in the per-phase docs referenced
-below. Run completes at 797/797; final numbers updated once
-`tests run:` line lands in the log.
+**Hypothesis correction.** Class A wasn't all serial-link. Phase
+151 stubs satisfied the 16 fails that hit serial wrappers; the
+remaining 42 native_api + 8 dds_api come from C++ FFI codegen
+archive needing post-Phase-144 link-order adjustment. Phase 152
+addresses this.
 
 **Priority.** P2 — bookkeeping. No new bugs introduced by Phase
 140; existing classes simply got exercised end-to-end for the
