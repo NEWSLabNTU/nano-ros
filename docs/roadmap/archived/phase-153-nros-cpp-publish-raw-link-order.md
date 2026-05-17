@@ -1,5 +1,25 @@
 # Phase 153 — `nros_cpp_publish_raw` Link-Order / Codegen-FFI Archive Gap
 
+> **Archived 2026-05-18 — superseded by Phase 150.B.** Phase
+> 150.B's commit `5d00c930` added `NanoRos::NanoRosCpp` to the
+> per-package `${_lib_target}_ffi_lib` STATIC IMPORTED target's
+> `INTERFACE_LINK_LIBRARIES` in
+> `cmake/NanoRosGenerateInterfaces.cmake`, which records the
+> ffi → cpp dep so CMake's topological sort places `libnros_cpp.a`
+> AFTER the ffi staticlib in the final link line and the
+> `nros_cpp_publish_raw` symbol resolves on the second pass.
+> dds_api C++ builds (6 tests, the Phase 150.B class) verified
+> closed. native_api class (42 tests, Phase 150.A) likely
+> closed by the same fix since they share the codegen-FFI root
+> cause — pending CI verification.
+>
+> This doc preserved for the analysis it captures (option A vs
+> B vs C vs D); the actual fix landed as option A (NanoRosCpp
+> on INTERFACE_LINK_LIBRARIES) rather than option D (codegen
+> template dep) which this doc originally recommended. Option A
+> is more surgical — single cmake file, no codegen template
+> churn.
+
 **Goal.** Resolve undefined `nros_cpp_publish_raw` references from
 codegen-generated `nano_ros_cpp_ffi_<pkg>.a` archives at native
 C++ example link time. Today every C++ example pulling a codegen
