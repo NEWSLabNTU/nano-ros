@@ -2,11 +2,20 @@
 
 **Goal.** Ship one thin integration shell per supported RTOS / IDE so users consume nano-ros via the RTOS's native dependency mechanism (`west update`, ESP-IDF component, PlatformIO library, NuttX app, PX4 external module). Each shell is a few files in `nano-ros/integrations/<rtos>/` that re-export the Phase 137 / 138 root CMake under that RTOS's package convention.
 
-**Status.** Landed (139.1–139.9). Smoke tests `[SKIPPED]` on dev boxes
-without RTOS SDKs; full smoke matrix to run in per-RTOS CI. The
-NuttX shape-gate runs anywhere `arm-none-eabi-gcc` is on PATH;
-the other four gate on `west`/`idf.py`/`pio`/`PX4_AUTOPILOT_DIR`
-respectively.
+**Status.** Landed (139.1–139.9). Smoke matrix validated 2026-05-18
+on dev box after `just setup` + `just esp_idf setup`: all 5
+integration smokes (nuttx, platformio, zephyr, px4, esp-idf) PASS
+when their respective env is sourced:
+- nuttx: no env needed (arm-none-eabi-gcc on PATH)
+- platformio: no env needed (PlatformIO Core via Phase 142.1)
+- zephyr: `ZEPHYR_BASE=$(pwd)/zephyr-workspace/zephyr`
+- px4: `PX4_AUTOPILOT_DIR=$(pwd)/third-party/px4/PX4-Autopilot`
+- esp-idf: `source esp-idf-workspace/env.sh`
+The `[SKIPPED]` panics fire honestly when env unset — working as
+designed per CLAUDE.md "Tests must fail on unmet preconditions".
+Cross-links between contributor (`zephyr.md`, `nuttx.md`, `px4.md`)
+and integration-shell (`integration-*.md`) pages landed in
+`book/src/getting-started/`.
 
 **Priority.** P2 — usability win, not a correctness blocker. Phase 137 + 138 are functional without 139; 139 lets a Zephyr / ESP-IDF / PlatformIO user `west update` / `idf.py add-dependency` / Library Manager-install nano-ros without manually wiring `add_subdirectory`.
 
