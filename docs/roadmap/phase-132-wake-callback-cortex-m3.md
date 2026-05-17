@@ -1,4 +1,4 @@
-# Phase 131 — Wake-Callback Wiring on Embedded Backends + Cortex-M3 P99 Microbench
+# Phase 132 — Wake-Callback Wiring on Embedded Backends + Cortex-M3 P99 Microbench
 
 **Goal.** Close Phase 124.B.2 acceptance: wake-latency P99
 (subscriber-receive → callback-run) ≤ 100 µs on Cortex-M3 QEMU +

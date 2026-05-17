@@ -1178,7 +1178,7 @@ new test fixture rather than backend code change.
       (Phase 124.G.1) — observed 5 fires in 5.001 s on POSIX.
 - [-] Wake-latency P99 (subscriber-receive → callback-run)
       ≤ 100 µs on Cortex-M3 QEMU + zenoh-pico — moved to
-      Phase 131 (`phase-131-wake-callback-cortex-m3.md`).
+      Phase 132 (`phase-132-wake-callback-cortex-m3.md`).
       Phase 124.B ships the executor-side wake plumbing
       (cv-wait / NodeWake / wake_flag) verified on POSIX +
       RTOS std; closing the embedded P99 needs three pieces
@@ -1188,7 +1188,7 @@ new test fixture rather than backend code change.
       on POSIX std only), (2) a DWT CYCCNT µs-grain probe in
       the executor + transport notify path, (3) histogram
       aggregation + UART export with host-side parsing.
-      Tracked in full as Phase 131 (P2; not gating any other
+      Tracked in full as Phase 132 (P2; not gating any other
       shipping work).
 - [x] Multi-RMW bridge ≥ 99% delivery — covered by
       `multi_rmw_bridge::bridge_zenoh_to_dds_delivers_99pct`
