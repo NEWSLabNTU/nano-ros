@@ -10,11 +10,28 @@ build = "build.rs"
 
 [lib]
 path = "src/lib.rs"
+# Phase 144.3 — emit `libnros_rmw_xrce_cffi.a` so the root CMake's xrce
+# branch can pull this crate via `corrosion_import_crate(... CRATE_TYPES
+# staticlib)` and link it into `NanoRos::NanoRos`. Mirrors the
+# `nros-rmw-{zenoh,dds}-staticlib` shape — the cffi crate already
+# bundles the C XRCE backend + the Rust register entry point, so no
+# extra wrapper crate is needed.
+crate-type = ["staticlib", "rlib"]
 
 [features]
 default = ["linkme-register"]
 # Phase 134.fix — see nros-rmw-zenoh's identically-named feature.
 linkme-register = ["nros-rmw-cffi/linkme-register"]
+# Phase 144.3 — enable when emitting this crate as a top-level
+# `staticlib` against a hosted target (e.g. via
+# `corrosion_import_crate(... CRATE_TYPES staticlib)` from the root
+# CMake's xrce branch). The `staticlib` crate-type forces Cargo to
+# resolve a panic strategy/handler at the cdylib boundary; toggling
+# off `#![no_std]` pulls in libstd's unwinding handler so the build
+# succeeds on POSIX hosts. Embedded consumers (RTOS) keep the
+# default `no_std` build and supply their own panic handler at the
+# top-level link step.
+std = []
 
 # Phase 129.C.1 — all `platform-<rtos>` features deleted. Build
 # selection is `target_os`-driven; the platform-blind
