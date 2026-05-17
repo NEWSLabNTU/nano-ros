@@ -1,6 +1,8 @@
-# Bare-Metal Platform Demo
+# Custom Platform Implementation Demo
 
-This example demonstrates how to use nros-c with bare-metal/embedded platform patterns.
+This example demonstrates how to use nros-c with a hand-rolled
+platform abstraction layer suitable for bare-metal / RTOS / custom
+embedded targets.
 
 ## Features Demonstrated
 
@@ -17,7 +19,7 @@ This example demonstrates how to use nros-c with bare-metal/embedded platform pa
 cargo build --release -p nros-c
 
 # Then build the example
-cd examples/native-c-baremetal-demo
+cd examples/native/c/zenoh/custom-platform
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make
