@@ -76,6 +76,7 @@
 - [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
+- [zpico-sys Build Architecture](./internals/zpico-build.md)
 - [Formal Verification](./internals/verification.md)
 - [Safety Protocol](./internals/safety.md)
 - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)

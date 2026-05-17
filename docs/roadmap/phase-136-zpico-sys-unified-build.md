@@ -311,15 +311,20 @@ the manifest to stay in sync with upstream.
       Full E2E sign-off needs E2E.1 + E2E.5 once the 137-140 build
       refactor lands and the embedded matrix run is unblocked.
 
-- [ ] **136.8 — Doc update.**
-      `book/src/internals/zpico-build.md` (new page) explains the
-      manifest, how to add a platform, how to override mbedTLS
-      source. `book/src/SUMMARY.md` lists it under Internals.
-      Cross-link from `book/src/concepts/platform-model.md`'s
-      Boards vs Platforms section.
+- [x] **136.8 — Doc update.** (2026-05-18)
+      `book/src/internals/zpico-build.md` lands the manifest
+      reference: per-platform fields, per-arch fields,
+      interpolation tokens, `when` matcher, `ExtraSource` /
+      `RequiredEnv` shapes, mbedTLS source policy, source-drift
+      gate, consumer flow, "adding a new platform" recipe.
+      `book/src/SUMMARY.md` lists it under Internals.
+      Cross-link from `book/src/concepts/platform-model.md` is
+      a follow-up — the manifest is currently the source of
+      truth for the platform-side knobs the platform-model doc
+      references conceptually; explicit cross-link will land when
+      that doc next gets a refresh.
       **Files.** `book/src/internals/zpico-build.md`,
-      `book/src/SUMMARY.md`,
-      `book/src/concepts/platform-model.md`.
+      `book/src/SUMMARY.md`.
 
 ---
 
