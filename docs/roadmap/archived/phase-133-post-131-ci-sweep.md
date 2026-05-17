@@ -1,11 +1,17 @@
 # Phase 133 — Post-Phase-131 CI Sweep
 
+> **ARCHIVED 2026-05-17.** Every named follow-up closed (5 landed
+> directly, 1 via Phase 134, 1 via Phase 135). Doc kept under
+> `archived/` as the index that ties each fix commit / deferred
+> phase together so future "why does CI complain about X"
+> investigations land on a single page.
+
 **Goal.** Chronicle every drift / latent bug surfaced by the first
 clean `just ci` run after Phase 131 landed on `main`. Acts as an
 index over the per-issue fix commits + the deferred follow-up phases
 that close the larger gaps.
 
-**Status.** 7 of 7 items closed (5 landed directly, 1 closed via Phase 134, 1 closed via Phase 135 with verify rolled into Phase 140).
+**Status.** Closed. 7 of 7 items resolved (5 landed directly, 1 via Phase 134, 1 via Phase 135 with verify rolled into Phase 140).
 
 **Priority.** P2 — bookkeeping. Each line item is small (or
 delegated). Recorded here so future "why does CI complain about X"
