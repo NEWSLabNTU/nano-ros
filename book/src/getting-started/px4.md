@@ -1,4 +1,10 @@
-# PX4 Autopilot
+# PX4 Autopilot (contributor / in-tree workflow)
+
+> **Looking for the user-facing path?** This page covers building
+> nano-ros's PX4 example from this repository.
+> If you're adding nano-ros to YOUR PX4 module via
+> `EXTERNAL_MODULES_LOCATION`, see
+> [Integration: PX4 external module](./integration-px4.md) instead.
 
 nano-ros runs on PX4 Autopilot via the **uORB transport** — a publish/subscribe
 broker that ships in every PX4 build. Unlike the network-based zenoh and

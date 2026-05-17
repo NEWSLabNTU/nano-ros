@@ -1,5 +1,8 @@
 # NuttX (integration shell)
 
+> **Contributor docs?** Building nano-ros's own NuttX examples on
+> QEMU from this repository is covered at [NuttX (contributor)](./nuttx.md).
+
 Phase 139 ships a NuttX app shell under `integrations/nuttx/`.
 NuttX users symlink (or submodule) the shell into
 `apps/external/nano-ros/`; Kconfig surfaces it under

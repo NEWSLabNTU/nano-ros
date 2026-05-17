@@ -1,5 +1,10 @@
 # ESP-IDF (integration shell)
 
+> **Building nano-ros ESP32 examples in this repo?** The bare-metal
+> esp-hal path is at [ESP32](./esp32.md); the ESP-IDF C-port runs
+> via `just esp_idf setup` (separate from this user-facing
+> component).
+
 Phase 139 ships an ESP-IDF component under `integrations/esp-idf/`.
 ESP-IDF projects pull nano-ros via `idf.py add-dependency` (once
 published to the ESP Component Registry) or via a local path during

@@ -1,5 +1,8 @@
 # Zephyr (integration shell)
 
+> **Contributor docs?** Building nano-ros's own Zephyr examples from
+> this repository is covered at [Zephyr (contributor)](./zephyr.md).
+
 Phase 139 ships a thin Zephyr module under `integrations/zephyr/`
 that lets `west` discover nano-ros automatically. Use this path
 when consuming nano-ros from a Zephyr workspace alongside other

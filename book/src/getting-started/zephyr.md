@@ -1,4 +1,10 @@
-# Zephyr
+# Zephyr (contributor / in-tree workflow)
+
+> **Looking for the user-facing path?** This page covers building
+> nano-ros's own Zephyr examples from this repository.
+> If you're consuming nano-ros as a Zephyr module in YOUR Zephyr
+> workspace, see [Integration: Zephyr (`west` module)](./integration-zephyr.md)
+> instead.
 
 Complete setup procedure for Zephyr `native_sim` testing. Networking uses
 **NSOS** (Native Sim Offloaded Sockets) — each socket call is forwarded to
