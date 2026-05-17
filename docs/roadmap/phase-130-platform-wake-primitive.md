@@ -222,10 +222,17 @@ Document each impl's ISR-safety in
 - [x] **130.7 — verify wake_* on other RTOS.** `cargo check`
   passes for `rmw-cffi + platform-{zephyr,freertos,nuttx,threadx}`;
   per-platform C ports compile via `cc::Build` under their
-  respective platform features. Runtime validation only done on
-  POSIX (15 wake tests) and Zephyr (13 XRCE E2E). FreeRTOS /
-  NuttX / ThreadX / ESP-IDF still need QEMU smoke harness runs;
-  status table in `docs/reference/platform-sync-abi.md`.
+  respective platform features. Runtime regression sweep run on
+  POSIX (15 wake tests), Zephyr native_sim (13 XRCE E2E),
+  FreeRTOS QEMU (9 zenoh E2E), ThreadX Linux (9 zenoh E2E),
+  ThreadX RISC-V QEMU (9 zenoh E2E after `clean` to drop stale
+  fixtures), and ESP32-QEMU (9 zenoh E2E). NuttX pending —
+  local sandbox needs `qemu-system-arm`. Status table in
+  `docs/reference/platform-sync-abi.md`. The wake primitive is
+  dormant on every shipping backend (all NULL the
+  `set_wake_callback` slot), so the sweep verifies "no
+  regression from wake_* + has_async_wake gate + non-blocking
+  CFFI split", not end-to-end signal/wait exercise.
 - [x] **130.8 — deprecate legacy blocking `call_raw` fallback.**
   `CffiServiceClient::send_request_raw` now emits a one-shot
   `warn_legacy_send_recv_fallback()` warning when the backend's

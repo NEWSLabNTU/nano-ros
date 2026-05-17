@@ -91,24 +91,42 @@ stale wake credits.
 
 ## Verification status (Phase 130.7)
 
-| Platform | Compile-check (`cargo check`) | Link + integration test |
-|----------|-------------------------------|--------------------------|
-| POSIX (Linux) | ✅ | ✅ 15 tests pass (`c_port_posix_wake.rs`, `wake_wrapper.rs`) |
+| Platform | Compile-check (`cargo check`) | Link + RTOS regression sweep |
+|----------|-------------------------------|------------------------------|
+| POSIX (Linux) | ✅ | ✅ 15 wake tests (`c_port_posix_wake.rs`, `wake_wrapper.rs`) |
 | POSIX (macOS) | ✅ | not tested in CI |
-| Zephyr native_sim | ✅ | ✅ all 13 Zephyr XRCE E2E pass |
+| Zephyr native_sim | ✅ | ✅ 13 Zephyr XRCE E2E |
 | Zephyr qemu_cortex_a9 | ✅ | not run since 130.x landed |
-| FreeRTOS | ✅ | needs FreeRTOS QEMU smoke |
-| NuttX | ✅ (reuses POSIX C source) | needs NuttX QEMU smoke |
-| ThreadX | ✅ | needs ThreadX QEMU smoke |
-| ESP-IDF | ✅ | needs ESP32-QEMU smoke |
+| FreeRTOS (MPS2-AN385 QEMU) | ✅ | ✅ 9 zenoh pubsub/service/action E2E |
+| NuttX (qemu_arm) | ✅ (reuses POSIX C source) | qemu-system-arm install pending; sudo needed |
+| ThreadX Linux | ✅ | ✅ 9 zenoh pubsub/service/action E2E |
+| ThreadX RISC-V (QEMU) | ✅ | ✅ 9 zenoh pubsub/service/action E2E (rebuild fixtures after wake_* land) |
+| ESP-IDF (ESP32-QEMU) | ✅ | ✅ 9 zenoh emulator E2E |
 | bare-metal (Cortex-M) | trait default = unsupported | n/a |
 
-RTOS targets are compile-clean (the `cc::Build` step succeeds for
-each `platform-*` feature), but the binary-semaphore impls have
-only been runtime-exercised on POSIX and Zephyr. FreeRTOS / NuttX
-/ ThreadX / ESP-IDF runtime validation tracks as a Phase 130
-follow-up — needs each platform's QEMU smoke harness to run a
-service or action E2E.
+Note: the wake primitive is currently dormant on every shipping
+backend — XRCE, Cyclone, dust-DDS, zenoh-pico all leave
+`set_wake_callback` NULL, so the executor's `has_async_wake`
+probe stays `false` and `spin_once` routes through
+`drive_io(timeout_ms)`. Phase 130.7 runtime sweep therefore
+verifies "wake_* additions and the executor's NodeWake/cv-wait
+gate don't regress existing E2E flows" rather than exercising
+the wake primitive end-to-end. Real runtime exercise of the
+binary-semaphore signal/wait path waits for the first
+event-driven backend (zenoh-pico RX-task wake-callback, dust-DDS
+listener thread, …) to opt in.
+
+ThreadX RISC-V first reported 6/9 failures (illegal instruction
+in zenoh-pico binary); root cause was stale fixtures from the
+pre-130 build cache. `just threadx_riscv64 clean && just
+threadx_riscv64 build-fixtures` rebuilt with the new
+`nros-platform-threadx` C port and all 9 tests pass. Backend
+authors landing changes that touch `nros-platform-*/src/`
+should remind users to `<plat> clean` before retesting.
+
+NuttX runtime sweep pending — local sandbox needs
+`qemu-system-arm` install (sudo). Re-runs once the QEMU
+package lands.
 
 ## Consumer expectations
 
