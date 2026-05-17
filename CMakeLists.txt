@@ -127,9 +127,11 @@ if(NOT TARGET NanoRos)
     # NanoRos::NanoRos behaviour from NanoRosCTargets.cmake.
     if(NANO_ROS_PLATFORM STREQUAL "posix")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_POSIX)
-    elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+    elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
+           OR NANO_ROS_PLATFORM STREQUAL "freertos")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_FREERTOS)
-    elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
+           OR NANO_ROS_PLATFORM STREQUAL "nuttx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_NUTTX)
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)

@@ -7,7 +7,10 @@ include(CMakePackageConfigHelpers)
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
     set(_lib_name "libnros_rmw_zenoh.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
+       OR NANO_ROS_PLATFORM STREQUAL "freertos")
+    # Phase 138 canonical "freertos" accepted alongside legacy
+    # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features platform-freertos)
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
