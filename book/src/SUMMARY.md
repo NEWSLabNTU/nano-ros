@@ -96,3 +96,7 @@
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
 - [`nros.toml` Schema](./reference/nros-toml.md)
+
+# Release Notes
+
+- [Migrating off `install-local` (Phase 140)](./release/migration-install-local-removal.md)
