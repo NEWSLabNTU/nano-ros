@@ -228,5 +228,28 @@ name = "zenoh_flag_consistency"
 path = "tests/zenoh_flag_consistency.rs"
 required-features = ["link-flag-matrix"]
 
+# Phase 139.6 — per-RTOS integration-shell smoke tests. Each skips
+# cleanly via `nros_tests::skip!` when the RTOS SDK / toolchain isn't
+# installed on the test box; full builds run in per-RTOS CI.
+[[test]]
+name = "integration_zephyr"
+path = "tests/integration_zephyr.rs"
+
+[[test]]
+name = "integration_esp_idf"
+path = "tests/integration_esp_idf.rs"
+
+[[test]]
+name = "integration_platformio"
+path = "tests/integration_platformio.rs"
+
+[[test]]
+name = "integration_nuttx"
+path = "tests/integration_nuttx.rs"
+
+[[test]]
+name = "integration_px4"
+path = "tests/integration_px4.rs"
+
 [lints]
 workspace = true
