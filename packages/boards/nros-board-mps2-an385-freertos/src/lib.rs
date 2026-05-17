@@ -34,11 +34,15 @@ extern crate nros_platform as _;
 #[cfg(feature = "rmw-zenoh")]
 extern crate zpico_sys;
 
-mod config;
-mod error;
 mod node;
 
-pub use config::Config;
+// Phase 149.1.B.5 — `Config` + `Error` live in the generic
+// `nros-board-freertos` crate. Re-export `Config` here so existing
+// `use nros_board_mps2_an385_freertos::Config` consumers keep
+// compiling. `node.rs` (board-specific FreeRTOS task plumbing +
+// semihosting + QEMU exit) stays per-board until a `BoardPrint` /
+// `BoardExit` trait abstraction lands.
+pub use nros_board_freertos::Config;
 pub use node::{init_hardware, run};
 
 /// Re-export semihosting for the `println!` macro.

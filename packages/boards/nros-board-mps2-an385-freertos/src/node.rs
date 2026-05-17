@@ -10,8 +10,13 @@ use core::ffi::c_void;
 
 use cortex_m_semihosting::hprintln;
 
-use crate::config::Config;
-use crate::error::{Error, Result};
+// Phase 149.1.B.5 — `Config` + `Error` live in the generic
+// `nros-board-freertos` crate. `Error` and `Result` are
+// `pub(crate)` there; re-import via the dedicated `__board_lift`
+// re-export the generic crate exposes for overlays.
+use nros_board_freertos::Config;
+use nros_board_freertos::__internal::{Error, Result};
+
 use crate::{exit_failure, exit_success};
 
 // FFI bindings to the C startup/glue + trace code compiled by build.rs
