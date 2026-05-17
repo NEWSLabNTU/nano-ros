@@ -149,6 +149,10 @@ fn configure_linux(build: &mut cc::Build) {
         .define("NX_INCLUDE_USER_DEFINE_FILE", None);
     // Suppress common warnings in third-party code
     build.warnings(false);
+    // Phase 152.2.B.2 — `THREADX_CFLAGS` extension point.
+    // Linux overlay typically leaves it unset (host gcc); the
+    // helper is a no-op then but still emits the rerun trigger.
+    nros_board_common::threadx_sources::apply_threadx_cflags(build);
 }
 
 fn add_threadx_includes(

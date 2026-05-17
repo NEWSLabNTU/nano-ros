@@ -404,18 +404,46 @@ with two reference overlays instead of one:
       `73d2316a` without this patch — same infrastructure issue
       noted for FreeRTOS in 152.1.B.5.
 
-- [ ] **152.2.B.2 — `THREADX_CFLAGS` arch parameterisation.**
-      Same shape as 152.1.B.3. Linux overlay sets
-      `THREADX_CFLAGS = ""` (host gcc native); RISC-V overlay sets
-      `THREADX_CFLAGS = "-march=rv64gc -mabi=lp64d -mcmodel=medany"`.
+- [x] **152.2.B.2 — `THREADX_CFLAGS` arch parameterisation.**
+      (landed 2026-05-18)
+      New helper
+      `nros_board_common::threadx_sources::apply_threadx_cflags(&mut cc::Build)`
+      reads `THREADX_CFLAGS` env (space-separated) + emits
+      `cargo:rerun-if-env-changed=THREADX_CFLAGS`. Both overlays'
+      `configure_*` call it after their hard-coded flag set, so
+      consumers can extend via `.cargo/config.toml [env]` without
+      touching crate sources. Empty/unset = no-op. Verified:
+      `just threadx_linux build` clean + RISC-V `cargo check`
+      clean. Extension point ready for 152.2.B.3's future generic
+      `nros-board-threadx` `build.rs`.
 
 - [ ] **152.2.B.3 — Move kernel + NetX-Duo + nros-platform-threadx
-      build into generic `build.rs`.**
-      New `nros_board_threadx_platforms.toml` mirrors
-      152.1.B.4's structure. Per-platform blocks declare which
-      NetX-Duo features to compile (full TCP/IP for QEMU vs.
-      nsos-netx-only for Linux sim). Linker emits
-      `cargo:rustc-link-lib=static={threadx,netxduo,nros_platform_threadx}`.
+      build into generic `build.rs`.** (deferred — non-mechanical)
+      Unlike FreeRTOS+lwIP+platform (152.1.B.4) which had one
+      canonical shape, ThreadX overlays diverge in three ways
+      that resist a single TOML manifest:
+      1. **NetX-Duo shape**: Linux sim uses the NSOS BSD shim
+         over host POSIX sockets; RISC-V QEMU compiles the full
+         NetX-Duo TCP/IP stack + virtio-net driver. Same
+         `nros_board_threadx_platforms.toml` block would need a
+         union: "either nsos-netx OR full-netx-duo-with-driver".
+      2. **Kernel ASM overrides**: RISC-V overlay excludes 5 of
+         the port `.S` files (`tx_thread_schedule.S`, etc.) and
+         supplies board-local versions with ULONG=4 struct
+         offsets — generic kernel compile can't ship these.
+      3. **Include extensions**: RISC-V kernel build adds
+         `<port>/example_build/qemu_virt` for the QEMU virt
+         board.c / plic.c / uart.c sources; Linux doesn't.
+      Helpers from 152.2.B partial already share the kernel C +
+      port C source enumeration (`add_threadx_kernel_sources`,
+      `add_threadx_port_sources`) and the
+      `nros-platform-threadx` compile setup
+      (`add_nros_platform_threadx_build`). The remaining
+      duplication is the per-overlay `cc::Build::new + flags +
+      includes + compile` boilerplate (~10 lines each), which is
+      small enough that a future generic `build.rs` is not
+      obviously cheaper than keeping the per-overlay form.
+      Reconsider when a third ThreadX overlay shows up.
 
 - [~] **152.2.B.4 — `Config` + `run` lift into generic crate.**
       (partial 2026-05-18 — trait scaffolding only)
@@ -439,17 +467,23 @@ with two reference overlays instead of one:
       Verified: `cargo check` clean for both overlays + 
       `just threadx_linux build` clean.
 
-- [ ] **152.2.B.5 — Verify matrix.**
-      - `cargo build` for `threadx-linux` Rust talker / listener
-        — clean (currently pre-existing-broken per Phase 147 with
-        `_z_task_free` duplicate; expect either to still fail the
-        same way OR to become unblocked if the carve-out routes
-        symbol selection cleaner).
-      - `cargo build` for `qemu-riscv64-threadx` Rust talker —
-        clean.
-      - `cargo nextest run rtos_e2e test_rtos_pubsub_e2e::platform_3_Platform__Threadx` —
-        passes (where applicable).
-      - Native nano2nano talker-listener still passes.
+- [x] **152.2.B.5 — Verify matrix.** (rolling, last 2026-05-18)
+      - `just threadx_linux build` — clean across all 6 zenoh
+        examples (talker, listener, service-{server,client},
+        action-{server,client}).
+      - `just threadx_linux test` — 2/2 pass
+        (`test_threadx_all_examples_build` + `test_threadx_detection`).
+      - `cargo check --target riscv64gc-unknown-none-elf` for
+        `nros-board-threadx-qemu-riscv64` — clean.
+      - `just threadx_riscv64 build` — RISC-V example link still
+        blocked by pre-existing `zpico-sys/platform_aliases.o`
+        float-ABI mismatch (reproduces on `73d2316a` without any
+        patches; tracked separately, not a 152.2.B regression).
+      - `test_rtos_pubsub_e2e::*::ThreadxLinux::*` — pre-existing
+        `Transport(ConnectionFailed)` infra issue (same shape as
+        FreeRTOS in 152.1.B.5); shared hooks confirmed firing in
+        order via `[app_define] Creating byte pool... →
+        [app_thread] Calling Rust entry...` log trace.
 
 - [x] **152.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
       (landed 2026-05-18, partial)
