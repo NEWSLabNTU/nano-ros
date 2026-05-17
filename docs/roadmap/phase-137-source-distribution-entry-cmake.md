@@ -147,7 +147,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       `install(...)` rules on `PROJECT_IS_TOP_LEVEL`.
       **Files.** `CMakeLists.txt` (new), `cmake/nano-ros-validate-config.cmake` (new).
 
-- [ ] **137.2 — Move `NanoRosGenerateInterfaces.cmake` to root cmake/.** *(2026-05-18 — DISCREPANCY: status line claims landed but `cmake/NanoRosGenerateInterfaces.cmake` does NOT exist at the root path; the file still lives at `packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake` and installs to `build/install/lib/cmake/NanoRos/`. Move not performed.)*
+- [x] **137.2 — Move `NanoRosGenerateInterfaces.cmake` to root cmake/.** *(landed 2026-05-18 — `cmake/NanoRosGenerateInterfaces.cmake` + sibling templates (`cpp_ffi_Cargo.toml.in`, `ffi_lib_rs.in`) copied to repo root. Root `CMakeLists.txt:261` points at the new path; `cmake --trace-source=CMakeLists.txt` confirms `_nros_codegen_module = ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake`. The submodule copy stays as the install-rule source for the legacy `install-local` path; the codegen submodule pointer needs a bump to delete it cleanly. Header note added in the root copy flagging the duplication + maintenance contract; mirror edits into both copies until the submodule sync.)*
       The codegen function currently lives at
       `packages/core/nros-c/cmake/NanoRosGenerateInterfaces.cmake` and
       gets `install`-copied to the prefix. Move it to
@@ -176,7 +176,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       **Files.** `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs` (new),
       `packages/testing/nros-tests/Cargo.toml` (test entry).
 
-- [x] **137.5 — Rewrite one example as proof of concept.** *(verified 2026-05-18 — `examples/native/c/zenoh/talker/CMakeLists.txt` is 20 lines using `add_subdirectory(<repo-root>)`; commit `83a57148`. Note: `examples/native/c/zenoh/talker/README.md` was NOT created — the "legacy `find_package` path documented in README" deliverable is unmet but the CMake migration itself landed.)*
+- [x] **137.5 — Rewrite one example as proof of concept.** *(verified 2026-05-18 — `examples/native/c/zenoh/talker/CMakeLists.txt` is 20 lines using `add_subdirectory(<repo-root>)`; commit `83a57148`. 2026-05-18 follow-up: `examples/native/c/zenoh/talker/README.md` landed, documenting both the canonical `add_subdirectory` path and the legacy `find_package(NanoRos CONFIG)` escape hatch that Phase 140 retires.)*
       `examples/native/c/zenoh/talker/CMakeLists.txt` shrinks from ~50
       lines to ~10 lines using `add_subdirectory(<repo-root>)` instead
       of `find_package(NanoRos)`. Keep the `find_package` path documented

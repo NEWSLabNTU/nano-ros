@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "nano-ros-cpp-ffi-@FFI_TARGET@"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "nano_ros_cpp_ffi_@FFI_TARGET@"
+crate-type = ["staticlib"]
+
+[dependencies]
+nros-serdes = { path = "@SERDES_DIR@", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"

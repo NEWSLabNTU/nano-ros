@@ -259,7 +259,7 @@ endif()
 # commands), not at configure time.
 # ---------------------------------------------------------------------------
 set(_nros_codegen_module
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_codegen_module}"
    AND NANO_ROS_BUILD_CODEGEN
    AND NANO_ROS_PLATFORM STREQUAL "posix"
