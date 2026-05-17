@@ -1129,11 +1129,30 @@ pub fn build_xrce_large_msg_test() -> TestResult<&'static Path> {
 }
 
 /// rstest fixture that provides the xrce-large-msg-test binary path.
+///
+/// Phase 150.F — "binary not prebuilt" is an environment/setup
+/// condition (user didn't run `just build-test-fixtures`), not a
+/// test-logic failure. Surface it via `nros_tests::skip!` so
+/// `_count-real-failures` filters it out and the ci summary
+/// doesn't flag it as a real failure. Any OTHER build error (e.g.
+/// the fixture crate genuinely failing to compile) panics
+/// normally and counts as a real failure.
 #[rstest::fixture]
 pub fn xrce_large_msg_test_binary() -> PathBuf {
-    build_xrce_large_msg_test()
-        .expect("Failed to build xrce-large-msg-test")
-        .to_path_buf()
+    match build_xrce_large_msg_test() {
+        Ok(p) => p.to_path_buf(),
+        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+            nros_tests_skip(msg)
+        }
+        Err(e) => panic!("Failed to build xrce-large-msg-test: {e:?}"),
+    }
+}
+
+/// Helper that panics with the `[SKIPPED]` prefix recognised by
+/// `justfile::_count-real-failures`. Kept local to this module
+/// so the macro's lexical scope doesn't need to escape.
+fn nros_tests_skip(msg: String) -> ! {
+    panic!("[SKIPPED] {msg}")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1150,11 +1169,17 @@ pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
 }
 
 /// rstest fixture that provides the zenoh-stress-test binary path.
+/// See `xrce_large_msg_test_binary` for the not-prebuilt → skip
+/// rationale (Phase 150.F).
 #[rstest::fixture]
 pub fn zenoh_stress_test_binary() -> PathBuf {
-    build_zenoh_stress_test()
-        .expect("Failed to build zenoh-stress-test")
-        .to_path_buf()
+    match build_zenoh_stress_test() {
+        Ok(p) => p.to_path_buf(),
+        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+            nros_tests_skip(msg)
+        }
+        Err(e) => panic!("Failed to build zenoh-stress-test: {e:?}"),
+    }
 }
 
 /// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
@@ -1189,11 +1214,17 @@ pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
 }
 
 /// rstest fixture that provides the xrce-stress-test binary path.
+/// See `xrce_large_msg_test_binary` for the not-prebuilt → skip
+/// rationale (Phase 150.F).
 #[rstest::fixture]
 pub fn xrce_stress_test_binary() -> PathBuf {
-    build_xrce_stress_test()
-        .expect("Failed to build xrce-stress-test")
-        .to_path_buf()
+    match build_xrce_stress_test() {
+        Ok(p) => p.to_path_buf(),
+        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+            nros_tests_skip(msg)
+        }
+        Err(e) => panic!("Failed to build xrce-stress-test: {e:?}"),
+    }
 }
 
 /// Build qemu-bsp-large-msg-test (cached).
