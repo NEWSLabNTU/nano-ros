@@ -1,5 +1,5 @@
 //! Phase 130.3 / 130.5 — `NodeWake`: heap-backed wake primitive
-//! used by `Executor::spin_once` on RTOS std builds where the
+//! used by `Executor::spin_once` on builds where the
 //! `nros_platform_wake_*` ABI is wired (Phase 130.1 + 130.5).
 //!
 //! Originally added for Zephyr+std because Zephyr's libc
@@ -16,9 +16,15 @@
 //! driving the transport for the full timeout (matches the
 //! Phase 127.C.4 expedient gate behaviour but without skipping
 //! reliable RTOS stream retransmission).
+//!
+//! Phase 141.A.2 — cfg relaxed from `std` to `alloc` so the same
+//! `NodeWake` type works for the embedded no_std FreeRTOS wake-cb
+//! path (target for the Cortex-M3 P99 acceptance). The
+//! `Box`/`Vec`/`Arc` types switch to the `alloc` crate; the
+//! kernel-side semantics are unchanged.
 
 #![cfg(all(
-    feature = "std",
+    feature = "alloc",
     feature = "rmw-cffi",
     any(
         feature = "platform-zephyr",
@@ -27,6 +33,14 @@
         feature = "platform-threadx",
     )
 ))]
+// Phase 141.A.2 — `NodeWake` is callable from the std-gated
+// `install_wake_signal_on_*` path today; the matching no_std
+// caller for the FreeRTOS-embedded wake-cb path is the
+// follow-on 141.A.3 work. Until that lands, the no_std build of
+// this module has no consumer — `#[allow(dead_code)]` keeps the
+// type compilable so 141.A.3 only has to add the caller, not
+// re-introduce the type.
+#![cfg_attr(not(feature = "std"), allow(dead_code))]
 
 use core::ffi::c_void;
 
@@ -44,7 +58,7 @@ unsafe extern "C" {
 /// Heap-backed wake primitive. Sized at runtime from the platform
 /// probe (`nros_platform_wake_storage_size`).
 pub(crate) struct NodeWake {
-    storage: std::boxed::Box<[u8]>,
+    storage: alloc::boxed::Box<[u8]>,
 }
 
 // SAFETY: per `<nros/platform.h>`'s wake contract, signal/wait are
@@ -75,18 +89,18 @@ impl NodeWake {
             return None;
         }
         let u64s = size.div_ceil(8);
-        let boxed: std::boxed::Box<[u64]> = std::vec![0u64; u64s].into_boxed_slice();
+        let boxed: alloc::boxed::Box<[u64]> = alloc::vec![0u64; u64s].into_boxed_slice();
         // Reinterpret the boxed [u64] as a boxed [u8]. The
         // capacity in bytes is `u64s * 8 >= size`; the data
         // pointer inherits 8-byte alignment from `Vec<u64>`'s
         // allocator request.
-        let raw = std::boxed::Box::into_raw(boxed) as *mut [u8];
+        let raw = alloc::boxed::Box::into_raw(boxed) as *mut [u8];
         // SAFETY: `raw` came from `Box::<[u64]>::into_raw`; we
         // re-box as `Box<[u8]>` with the same total byte length.
         // The allocator only cares about the total size + the
         // pointer originally returned, both preserved.
-        let storage: std::boxed::Box<[u8]> = unsafe {
-            std::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+        let storage: alloc::boxed::Box<[u8]> = unsafe {
+            alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(
                 raw as *mut u8,
                 u64s * 8,
             ))
