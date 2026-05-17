@@ -196,13 +196,23 @@ fn cmake_platform_threadx() {
 }
 
 #[test]
-fn cmake_platform_baremetal_requires_board() {
+fn cmake_platform_threadx_requires_board() {
     require_codegen_or_skip();
-    // Configure-only assertion: bare-metal without NANO_ROS_BOARD must
-    // FATAL_ERROR inside nros_platform_link_app — proves the dispatch
-    // reaches the right module and the board-required guard fires.
+    // Phase 150.D — rewritten from the original
+    // `cmake_platform_baremetal_requires_board` after Phase 138
+    // collapsed "baremetal" into per-board platform values
+    // (`freertos_armcm3`, `threadx_linux`, `threadx_riscv64`,
+    // `threadx`+board, …). The only platform whose CMakeLists.txt
+    // still requires a separate `NANO_ROS_BOARD` value today is
+    // `threadx` (lines 73-81 of `packages/core/nros-c/CMakeLists.txt`),
+    // which disambiguates the std-vs-no_std split between
+    // `threadx-linux` (host libc) and `riscv64-qemu` (bare-metal).
+    //
+    // Verifies: `NANO_ROS_PLATFORM=threadx` without `NANO_ROS_BOARD`
+    // FATAL_ERRORs at configure time and the error message mentions
+    // NANO_ROS_BOARD.
     let root = workspace_root();
-    let tmp = root.join("tmp").join("phase-138-smoke-baremetal-noboard");
+    let tmp = root.join("tmp").join("phase-150-smoke-threadx-noboard");
     if tmp.exists() {
         fs::remove_dir_all(&tmp).expect("clear previous tmp dir");
     }
@@ -210,7 +220,7 @@ fn cmake_platform_baremetal_requires_board() {
     let build = tmp.join("build");
     fs::create_dir_all(&user).expect("create user_project dir");
     let cmake_body = USER_CMAKE_TEMPLATE
-        .replace("@PLATFORM@", "baremetal")
+        .replace("@PLATFORM@", "threadx")
         .replace("@NANO_ROS_ROOT@", root.to_str().unwrap());
     fs::write(user.join("CMakeLists.txt"), cmake_body).expect("write user CMakeLists.txt");
     fs::write(user.join("main.c"), USER_MAIN_C).expect("write user main.c");
@@ -219,18 +229,10 @@ fn cmake_platform_baremetal_requires_board() {
         .args(["-S", user.to_str().unwrap(), "-B", build.to_str().unwrap()])
         .output()
         .expect("failed to invoke cmake configure");
-    // Configure may pass — link_app is only invoked at the
-    // add_executable + nros_platform_link_app line. In CMake that runs
-    // at configure time, so the FATAL_ERROR fires during configure.
     let stderr = String::from_utf8_lossy(&configure.stderr);
     if configure.status.success() {
-        // POSIX-side dispatch may have skipped baremetal-specific RMW
-        // wiring on a Linux host (the FATAL_ERROR for missing
-        // NANO_ROS_BOARD lives inside nros_platform_link_app, which the
-        // smoke project DOES call). Surface the unexpected pass as a
-        // failure so the contract regression is loud.
         panic!(
-            "expected baremetal-without-board to FATAL_ERROR at configure time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
+            "expected NANO_ROS_PLATFORM=threadx without NANO_ROS_BOARD to FATAL_ERROR at configure time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&configure.stdout),
             stderr
         );
