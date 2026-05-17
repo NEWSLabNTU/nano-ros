@@ -82,4 +82,31 @@ impl CycleCounter {
         let elapsed = Self::read().wrapping_sub(start);
         (result, elapsed)
     }
+
+    /// Convert a DWT cycle count to nanoseconds at the supplied
+    /// `SystemCoreClock` rate.
+    ///
+    /// Uses `u64` arithmetic to avoid overflow at typical Cortex-M
+    /// clock rates (25 MHz → 50 ns/cycle * 2³² cycles fits in u64).
+    /// Phase 141.B.1: lets the wake-latency probe convert its
+    /// `clock_cycles` deltas into a transport-comparable µs/ns
+    /// distribution without dragging in `core::time::Duration` math.
+    pub const fn cycles_to_ns(cycles: u32, system_core_clock_hz: u32) -> u64 {
+        (cycles as u64 * 1_000_000_000) / system_core_clock_hz as u64
+    }
+}
+
+/// Free-function alias for `CycleCounter::read()` — Phase 141.B.1
+/// names the probe entry-points `clock_cycles()` / `cycles_to_ns(…)`
+/// at the module level so wake-latency probe call sites stay
+/// terse and don't need to import the `CycleCounter` type.
+#[inline]
+pub fn clock_cycles() -> u32 {
+    CycleCounter::read()
+}
+
+/// Free-function alias for [`CycleCounter::cycles_to_ns`].
+#[inline]
+pub const fn cycles_to_ns(cycles: u32, system_core_clock_hz: u32) -> u64 {
+    CycleCounter::cycles_to_ns(cycles, system_core_clock_hz)
 }

@@ -82,12 +82,15 @@ Closing 124.B.2 means:
     already used for `nros_smoltcp::poll_diagnostics`.
     Lower-overhead; doesn't need a new FreeRTOS task slot. But
     less portable to non-smoltcp embedded transports.
-- [ ] **141.A.2 — `set_wake_callback` impl in
+- [x] **141.A.2 — `set_wake_callback` impl in
       `nros-rmw-zenoh` on `platform-bare-metal` /
-      `platform-freertos`.** Today the shim only installs the
-      cb on `feature = "platform-posix"`. Extend cfg so the
-      embedded builds store the cb/ctx the same way; firing
-      site picks up 141.A.1.
+      `platform-freertos`.** *(landed — verified 2026-05-18:
+      `packages/zpico/nros-rmw-zenoh/src/shim/session.rs:473`
+      has no platform-posix cfg gate; `wake_cb` /`wake_ctx`
+      AtomicPtr fields are stored unconditionally and
+      `drive_io` (line 449) fires the cb when zenoh-pico's
+      spin_once observes work. The doc statement that the
+      shim was POSIX-only was stale.)*
 - [ ] **141.A.3 — ISR-safety contract verification.** If
       141.A.1 goes interrupt-driven, the cb must use the
       ISR-safe wake primitive (`nros_platform_wake_signal_from_isr`
@@ -97,14 +100,17 @@ Closing 124.B.2 means:
 
 ### 141.B — µs-grain latency probe on Cortex-M3
 
-- [ ] **141.B.1 — DWT CYCCNT helper in
+- [x] **141.B.1 — DWT CYCCNT helper in
       `nros-platform-mps2-an385`.** Cortex-M3 has DWT
       (`0xE0001000`) and CYCCNT (`+0x4`); init via DEMCR
       `TRCENA` + DWT_CTRL `CYCCNTENA`. Expose
       `clock_cycles() -> u32` and
       `cycles_to_ns(cycles, system_core_clock_hz) -> u64`. Read
       on transport-notify entry + executor-dispatch exit; diff
-      gives sub-µs wake latency.
+      gives sub-µs wake latency. *(landed 2026-05-18 —
+      `CycleCounter::{enable, read, measure, cycles_to_ns}` +
+      free-fn aliases `clock_cycles()` / `cycles_to_ns()` in
+      `packages/platforms/nros-platform-mps2-an385/src/timing.rs`.)*
 - [ ] **141.B.2 — Instrumentation hooks in executor +
       transport.** Two probe points: (a) inside
       `nros_rmw_runtime_wake_cb` (entry — "transport notified
