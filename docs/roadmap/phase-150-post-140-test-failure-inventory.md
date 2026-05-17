@@ -249,6 +249,20 @@ end. Need to scan for the actual error; likely an artefact-pickup
 issue post-install-local-rip-off (the c-msg-gen-tests.sh was
 migrated in Phase 140.3 but may still pull from stale paths).
 
+**Closed 2026-05-18** — no-op. Re-ran `just native
+_test-c-codegen` on `main` after pull: both stages
+(`c-codegen` cargo-test + `c-msg-gen` shell-driven cmake/cargo
+build of `examples/native/c/zenoh/custom-msg/`) report PASS,
+recipe exits 0. The recipe's underlying scripts
+(`tests/run-test.sh`, `tests/c-msg-gen-tests.sh`) and the
+custom-msg example all exist and resolve their paths
+correctly through the Phase 144 `add_subdirectory(<repo-root>)`
+shape. The original 150 sweep flag was a transient artefact —
+either Phase 140 had not fully landed when the inventory was
+written, or an intervening commit (qemu submodule bump,
+150.B/E closures, etc.) repaired the path indirectly. No code
+change required.
+
 ---
 
 ## Remediation status
@@ -263,7 +277,7 @@ migrated in Phase 140.3 but may still pull from stale paths).
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
 | G. integration shells | 4 | Env vars not in nextest | 150.G | **Closed 2026-05-18** |
 | H. nano2nano rtic | 3 | Fixture not prebuilt → `.expect()` panicked | 150.H | **Closed 2026-05-18** |
-| I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | Investigate |
+| I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | **Closed 2026-05-18 (no-op, recipe now exits 0)** |
 | timeouts | 3 | nextest 60s cap on cmake+cargo cold-cache builds | per-test | See "Timeout breakdown" below |
 | skipped | 12 | Env precondition | n/a (expected) | OK |
 
