@@ -29,7 +29,14 @@ std = []
 # `packages/core/nros-platform-posix/src/{platform,net,timer}.c`,
 # linked at the consumer's CMake site (test harness build.rs or
 # `nano_ros_link_platform`).
-platform-posix = ["dep:nros-platform-cffi"]
+# Phase 150.D — `posix-c-port` must be on too: nros-platform's
+# `__FORCE_LINK_CFFI` static (the link-graph anchor at
+# `src/lib.rs:70`) references `nros_platform_cffi::_nros_force_link_cffi`
+# which is itself gated behind `posix-c-port`. Without the feature
+# flow, every POSIX consumer through the add_subdirectory shape
+# (Phase 138 dispatch, smoke test, etc.) fails to compile with
+# "cannot find _nros_force_link_cffi".
+platform-posix = ["dep:nros-platform-cffi", "nros-platform-cffi/posix-c-port"]
 # `platform-cffi` selects `CffiPlatform` without pinning a Rust
 # kernel crate. The binary's C ABI symbols must come from
 # somewhere else — a hand-written C port (`nros-platform-<rtos>-c`)

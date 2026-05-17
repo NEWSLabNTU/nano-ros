@@ -128,20 +128,35 @@ Fix: run `just qemu setup-qemu` (one-time, ~10 min build) OR
 upgrade system qemu via Canonical PPA. Pre-existing per
 `just doctor` warning.
 
-### D. cmake_platform_matrix cross-platform cells (10 tests)
+### D. cmake_platform_matrix cross-platform cells (6 tests) → **Closed 2026-05-18**
 
 ```
-nros-tests::cmake_platform_matrix cmake_platform_*
+nros-tests::cmake_platform_matrix cmake_platform_{posix,zephyr,freertos,nuttx,threadx,threadx_requires_board}
 ```
 
-Root cause: cross-platform smoke matrix expects
-`[SKIPPED]` cleanly when toolchain absent. Some skips evaluating
-as test failures instead of `nros_tests::skip!` panics. Possibly
-Phase 138.6 (cmake_platform_matrix) test infra needs revision.
+Inventory said "10 tests" — actually 6. Of those 6:
 
-Fix: audit `cmake_platform_matrix.rs` for missing `skip!`
-preconditions; convert hard failures to `[SKIPPED]` per CLAUDE.md
-rule.
+- 5 cross-platform cells (`zephyr`, `freertos`, `nuttx`, `threadx`,
+  `threadx_requires_board`) use `nros_tests::skip!` to bail when
+  cross-toolchain / SDK env absent. The `[FAIL]` line in nextest
+  is the project convention from CLAUDE.md ("`nros_tests::skip!`
+  panics with `[SKIPPED]`") — working as designed, no fix needed.
+  Inventory misclassified them; status updated.
+- 1 cell (`cmake_platform_posix`) had a REAL compile error:
+  `cannot find _nros_force_link_cffi`. The symbol lives in
+  `nros-platform-cffi` behind the `posix-c-port` feature; the
+  link-graph anchor at `packages/core/nros-platform/src/lib.rs:70`
+  references it under `#[cfg(feature = "platform-posix")]` but
+  the matching `platform-posix` feature in `nros-platform/Cargo.toml`
+  enabled `dep:nros-platform-cffi` WITHOUT also activating
+  `nros-platform-cffi/posix-c-port`. Every Phase 138 `add_subdirectory`
+  POSIX consumer (cmake_platform_matrix smoke, the integration
+  shells, downstream user projects) tripped on this.
+
+Fix: `nros-platform/Cargo.toml` — `platform-posix` now activates
+`nros-platform-cffi/posix-c-port` too. Verified by
+`cargo nextest run -p nros-tests --test cmake_platform_matrix
+cmake_platform_posix` passing.
 
 ### E. zenoh_header_parity (1 test) → **Closed 2026-05-18**
 
@@ -272,7 +287,7 @@ change required.
 | A. POSIX serial-link | 58 | Missing aliases | 149 | Stubs ready to land (this branch) |
 | B. dds_api C++ builds | 6 | CMake link order: ffi_lib → NanoRosCpp dep not recorded | 150.B | **Closed 2026-05-18** |
 | C. qemu_patched_binary | 6 | Patched qemu not built; `just qemu setup-qemu` itself fails — qemu submodule's `python/scripts/mkvenv.py` can't `pip install -e` qemu's own python lib because its build backend lacks PEP 660 `build_editable` hook (Python 3.10 / current pip combo) | 143 | **Blocked on qemu submodule + pip toolchain compatibility** |
-| D. cmake_platform_matrix | 10 | Skip-precondition gap | 138.6 follow-up | Filed as TODO |
+| D. cmake_platform_matrix | 6 | POSIX cell: `platform-posix` feature didn't activate `nros-platform-cffi/posix-c-port`. Other 5 cells were `skip!` panics (inventory misclassified) | 150.D | **Closed 2026-05-18** |
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
 | G. integration shells | 4 | Env vars not in nextest | 150.G | **Closed 2026-05-18** |
