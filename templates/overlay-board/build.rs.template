@@ -1,0 +1,78 @@
+//! Build script for {NAME}
+//!
+//! Pulls in vendor HAL C sources via cc-rs and forwards an optional
+//! board-specific linker script directory to the generic kernel
+//! crate via the documented env-var contract.
+//!
+//! The generic crate's own SDK env vars (`FREERTOS_DIR` /
+//! `THREADX_DIR` / `NUTTX_DIR` / `BOARD_LINKER_SCRIPT_DIR` / …) stay
+//! the user's responsibility — this script only consumes the
+//! vendor-specific ones the overlay defines.
+
+use std::{env, path::PathBuf};
+
+fn main() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+
+    // ---------------------------------------------------------------
+    // Vendor SDK env var (rename per your overlay).
+    //
+    // Example: STM32_HAL_DIR for STMicroelectronics STM32CubeF4.
+    // ---------------------------------------------------------------
+    let vendor_sdk_dir = env::var("STM32_HAL_DIR")
+        .expect("set STM32_HAL_DIR to your STMicroelectronics HAL source root");
+
+    // ---------------------------------------------------------------
+    // Compile vendor HAL sources into a static archive that gets
+    // pulled into the final binary by Cargo.
+    // ---------------------------------------------------------------
+    let mut hal = cc::Build::new();
+
+    // Architecture flags — match your board's CPU + FPU.
+    // Replace this block for your target (Cortex-M4F shown).
+    hal.flag("-mcpu=cortex-m4")
+        .flag("-mthumb")
+        .flag("-mfpu=fpv4-sp-d16")
+        .flag("-mfloat-abi=hard")
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    // Vendor HAL include dirs.
+    hal.include(format!("{vendor_sdk_dir}/Inc"));
+
+    // Vendor HAL source list — fill in the files your board uses.
+    // Compile only what you reference; the linker strips dead code
+    // but pre-pruning shrinks build time.
+    for f in &[
+        // "Src/stm32f4xx_hal.c",
+        // "Src/stm32f4xx_hal_rcc.c",
+        // "Src/stm32f4xx_hal_gpio.c",
+        // "Src/stm32f4xx_hal_eth.c",
+        // "Src/stm32f4xx_hal_uart.c",
+    ] {
+        hal.file(format!("{vendor_sdk_dir}/{f}"));
+    }
+    hal.compile("vendor_hal");
+
+    // ---------------------------------------------------------------
+    // Optional: forward a board-specific linker script directory
+    // to the generic crate via the BOARD_LINKER_SCRIPT_DIR contract.
+    //
+    // The generic crate's build.rs reads BOARD_LINKER_SCRIPT_DIR and
+    // adds it to the linker search path.  Drop your `linker.ld` (or
+    // however your board names its script) under `config/`.
+    // ---------------------------------------------------------------
+    let board_linker_dir = manifest_dir.join("config");
+    if board_linker_dir.exists() {
+        println!(
+            "cargo:rustc-env=BOARD_LINKER_SCRIPT_DIR={}",
+            board_linker_dir.display()
+        );
+    }
+
+    println!("cargo:rerun-if-env-changed=STM32_HAL_DIR");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    println!("cargo:rerun-if-changed=config/");
+}

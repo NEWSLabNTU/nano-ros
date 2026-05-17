@@ -1,0 +1,40 @@
+# Replace {NAME} → e.g. `nros-board-stm32f4-freertos`
+# Replace {VENDOR} → e.g. "STMicroelectronics", "NXP", "NVIDIA"
+# Replace {KERNEL} → e.g. "FreeRTOS", "ThreadX", "NuttX"
+# Replace {REPO}   → your github / gitlab URL
+# Replace {AUTHOR} → "Your Name <you@example.com>"
+[package]
+name = "{NAME}"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["{AUTHOR}"]
+description = "{VENDOR} board overlay on nros-board-{KERNEL_LOWER} for nano-ros"
+repository = "{REPO}"
+keywords = ["nano-ros", "ros2", "{VENDOR_LOWER}", "{KERNEL_LOWER}", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[dependencies]
+# Generic kernel-family crate from nano-ros (Layer 2).
+# Replace `nros-board-freertos` with the matching kernel:
+#   nros-board-freertos
+#   nros-board-threadx
+#   nros-board-nuttx
+#   nros-board-baremetal-cortex-m
+#   nros-board-baremetal-cortex-a
+nros-board-freertos = "0.1"
+
+# Vendor HAL bindings — replace with your vendor's crate or use
+# raw bindgen output in this crate's build.rs.
+# stm32f4xx-hal = "0.21"
+# nxp-imxrt1064-hal = "0.x"
+
+[build-dependencies]
+cc = "1.0"
+# Add bindgen here if you generate Rust bindings for vendor HAL
+# headers at build time.
+
+[features]
+default = []
+# Optional: feature-gate per-board variations within the same
+# overlay (e.g. STM32F407 vs STM32F411).
