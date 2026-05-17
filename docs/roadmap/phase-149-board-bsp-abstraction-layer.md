@@ -152,17 +152,36 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
 
 ## Work Items
 
-- [ ] **149.1 — Carve `nros-board-freertos` generic crate.**
-      Extract the FreeRTOS kernel build + lwIP wiring +
-      `run(config, closure)` shape from
-      `nros-board-mps2-an385-freertos` into a new
-      `packages/boards/nros-board-freertos/` crate. The existing
-      board crate becomes an overlay (~50 LOC) re-exporting from the
-      generic crate + adding board-specific linker script + LAN9118
-      driver init.
+- [~] **149.1 — Carve `nros-board-freertos` generic crate.** (149.1.A
+      landed 2026-05-18; 149.1.B deferred)
+      Split into two sub-steps:
+      - **149.1.A — Scaffolding** (landed): new
+        `packages/boards/nros-board-freertos/` crate claims the
+        Layer-2 namespace + documents the public contract in
+        `src/lib.rs`. Behind the opt-in `reference-mps2` feature
+        it re-exports `Config` + `run` from
+        `nros-board-mps2-an385-freertos` so future overlays can
+        depend on the generic crate today and switch wiring
+        transparently when 149.1.B completes the build-glue
+        carve-out. Workspace `Cargo.toml` excludes the new crate
+        from members (standalone like every other board crate);
+        `cargo check` clean (default + `reference-mps2 --target
+        thumbv7m-none-eabi`); native nano2nano E2E unchanged.
+      - **149.1.B — Build-glue carve-out** (deferred): move the
+        FreeRTOS kernel + lwIP + sys_arch + nros-platform-freertos
+        compile pipeline out of
+        `nros-board-mps2-an385-freertos/build.rs` (~600 of its 816
+        LOC) into `nros-board-freertos/build.rs`. Parameterise
+        per-target compiler flags via `FREERTOS_CFLAGS` env var so
+        the generic crate is arch-agnostic. Leave LAN9118 driver +
+        linker script + startup.c in the per-board overlay (~200
+        LOC). Defer because a careful split + per-board (MPS2 +
+        future overlays) verification is multi-day work; the
+        scaffolding lets the rest of Phase 149 progress without
+        blocking on it.
       **Files.** `packages/boards/nros-board-freertos/` (new),
-      `packages/boards/nros-board-mps2-an385-freertos/` (refactor),
-      `packages/boards/nros-board-freertos/nros_board_freertos_platforms.toml` (new).
+      `packages/boards/nros-board-mps2-an385-freertos/` (refactor —
+      149.1.B), `Cargo.toml` (exclude list — 149.1.A landed).
 
 - [ ] **149.2 — Carve `nros-board-threadx` generic crate.**
       Same shape as 149.1 but for ThreadX kernel + NetX Duo. Existing
