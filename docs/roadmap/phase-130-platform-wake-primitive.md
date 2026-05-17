@@ -233,12 +233,17 @@ Document each impl's ISR-safety in
   `set_wake_callback` slot), so the sweep verifies "no
   regression from wake_* + has_async_wake gate + non-blocking
   CFFI split", not end-to-end signal/wait exercise.
-- [x] **130.8 — deprecate legacy blocking `call_raw` fallback.**
-  `CffiServiceClient::send_request_raw` now emits a one-shot
-  `warn_legacy_send_recv_fallback()` warning when the backend's
-  vtable omits the non-blocking `send_request_raw` /
-  `try_recv_reply_raw` slots; documents the removal target
-  (when Cyclone + dust-DDS ship the split).
+- [x] **130.8 — remove legacy blocking `call_raw` fallback.**
+  Every shipping backend now provides the non-blocking
+  `send_request_raw` + `try_recv_reply_raw` vtable slots:
+  XRCE-DDS-Client (native C), Cyclone DDS C++ wrapper (native
+  C++, this phase), and Rust adapters (dust-DDS + zenoh-pico
+  via `rust_adapter` trampolines, this phase). The legacy
+  blocking-call_raw fallback in `CffiServiceClient` is gone;
+  NULL slot now surfaces `TransportError::Unsupported` instead
+  of silently degrading to a multi-second blocking burst. The
+  4 KiB `pending_request` scratch buffer + one-shot deprecation
+  warning are dropped with it.
 
 ## Acceptance
 

@@ -55,6 +55,12 @@ const nros_rmw_vtable_t kVtable = {
     /*create_service_client*/     service_client_create,
     /*destroy_service_client*/    service_client_destroy,
     /*call_raw*/                  service_call_raw,
+    /* Phase 130.8 — non-blocking send/recv split. Skips the
+     * CFFI legacy blocking-call_raw fallback so the executor's
+     * spin loop polls for replies without re-sending the
+     * request. */
+    /*send_request_raw*/          service_send_request_raw,
+    /*try_recv_reply_raw*/        service_try_recv_reply_raw,
 
     /* ---- Phase 108 event hooks (deferred) ---- */
     /*register_subscriber_event*/ kRegisterSubscriberEvent,

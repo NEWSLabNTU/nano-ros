@@ -104,6 +104,12 @@ struct ClientState {
     SertypeMin                   *rep_st{nullptr};
     uint64_t                      my_guid{0};
     std::atomic<int64_t>          next_seq{0};
+    // Phase 130.8 — non-blocking send/recv split. `pending_seq`
+    // tracks the most recent request issued via
+    // `service_send_request_raw`; `try_recv_reply_raw` polls for a
+    // matching reply without re-sending the request. -1 = no
+    // in-flight request.
+    std::atomic<int64_t>          pending_seq{-1};
 };
 
 bool service_topic_name(const char *service_name, const char *prefix,
@@ -645,6 +651,79 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     return NROS_RMW_RET_TIMEOUT;
+}
+
+// Phase 130.8 — non-blocking send/recv split. Mirrors
+// `xrce_service_send_request_raw` / `_try_recv_reply_raw` in the
+// XRCE backend. Lets the executor's spin loop poll for a late-
+// arriving reply without re-sending the request or blocking 5 s
+// inside `call_raw` (Phase 127.C.4 root cause class).
+nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
+                                        const uint8_t *request,
+                                        size_t req_len) {
+    if (client == nullptr || client->backend_data == nullptr ||
+        request == nullptr || req_len < 4) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto *state = static_cast<ClientState *>(client->backend_data);
+
+    RequestId my_id{};
+    my_id.guid = state->my_guid;
+    my_id.seq  = state->next_seq.fetch_add(1, std::memory_order_relaxed);
+
+    uint8_t wire_req[kWireScratch];
+    int32_t wire_len = build_wire_with_header(request, req_len, my_id,
+                                              wire_req, sizeof(wire_req));
+    if (wire_len < 0) return wire_len;
+    nros_rmw_ret_t pr = write_typed(state->writer, state->req_desc,
+                                    state->req_st, wire_req,
+                                    static_cast<size_t>(wire_len));
+    if (pr != NROS_RMW_RET_OK) return pr;
+
+    state->pending_seq.store(my_id.seq, std::memory_order_release);
+    return NROS_RMW_RET_OK;
+}
+
+int32_t service_try_recv_reply_raw(nros_rmw_service_client_t *client,
+                                    uint8_t *reply_buf,
+                                    size_t reply_buf_len) {
+    if (client == nullptr || client->backend_data == nullptr ||
+        reply_buf == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto *state = static_cast<ClientState *>(client->backend_data);
+
+    int64_t pending = state->pending_seq.load(std::memory_order_acquire);
+    if (pending < 0) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+
+    uint32_t status = 0;
+    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK
+        || !(status & DDS_DATA_AVAILABLE_STATUS)) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+
+    uint8_t wire_rep[kWireScratch];
+    int32_t wlen = take_typed_wire(state->reader, state->rep_st,
+                                    wire_rep, sizeof(wire_rep));
+    if (wlen == NROS_RMW_RET_NO_DATA) return NROS_RMW_RET_NO_DATA;
+    if (wlen < 0) return wlen;
+
+    RequestId got_id{};
+    int32_t user_len =
+        split_wire_header(wire_rep, static_cast<size_t>(wlen),
+                          &got_id, reply_buf, reply_buf_len);
+    if (user_len < 0) return user_len;
+
+    if (got_id.seq == pending && got_id.guid == state->my_guid) {
+        state->pending_seq.store(-1, std::memory_order_release);
+        return user_len;
+    }
+    // Reply for a different in-flight call (impossible in single-
+    // shot tests; defensive). Drop, surface as NoData so the
+    // executor retries on the next spin tick.
+    return NROS_RMW_RET_NO_DATA;
 }
 
 } // namespace nros_rmw_cyclonedds

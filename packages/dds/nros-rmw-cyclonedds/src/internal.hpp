@@ -87,6 +87,13 @@ void           service_client_destroy(nros_rmw_service_client_t *client);
 int32_t        service_call_raw(nros_rmw_service_client_t *client,
                                 const uint8_t *request, size_t req_len,
                                 uint8_t *reply_buf, size_t reply_buf_len);
+// Phase 130.8 — non-blocking send/recv split.
+nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
+                                        const uint8_t *request,
+                                        size_t req_len);
+int32_t        service_try_recv_reply_raw(nros_rmw_service_client_t *client,
+                                          uint8_t *reply_buf,
+                                          size_t reply_buf_len);
 
 } // namespace nros_rmw_cyclonedds
 

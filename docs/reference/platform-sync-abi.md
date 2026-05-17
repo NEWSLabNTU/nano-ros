@@ -98,7 +98,7 @@ stale wake credits.
 | Zephyr native_sim | ✅ | ✅ 13 Zephyr XRCE E2E |
 | Zephyr qemu_cortex_a9 | ✅ | not run since 130.x landed |
 | FreeRTOS (MPS2-AN385 QEMU) | ✅ | ✅ 9 zenoh pubsub/service/action E2E |
-| NuttX (qemu_arm) | ✅ (reuses POSIX C source) | qemu-system-arm install pending; sudo needed |
+| NuttX (qemu_arm) | ✅ (reuses POSIX C source) | ✅ 9 zenoh pubsub/service/action E2E (qemu-system-arm 9.0) |
 | ThreadX Linux | ✅ | ✅ 9 zenoh pubsub/service/action E2E |
 | ThreadX RISC-V (QEMU) | ✅ | ✅ 9 zenoh pubsub/service/action E2E (rebuild fixtures after wake_* land) |
 | ESP-IDF (ESP32-QEMU) | ✅ | ✅ 9 zenoh emulator E2E |
@@ -124,9 +124,8 @@ threadx_riscv64 build-fixtures` rebuilt with the new
 authors landing changes that touch `nros-platform-*/src/`
 should remind users to `<plat> clean` before retesting.
 
-NuttX runtime sweep pending — local sandbox needs
-`qemu-system-arm` install (sudo). Re-runs once the QEMU
-package lands.
+NuttX runtime sweep ran after `qemu-system-arm 9.0` install:
+9/9 zenoh E2E (Rust + C + C++) pass on the qemu_arm virt target.
 
 ## Consumer expectations
 

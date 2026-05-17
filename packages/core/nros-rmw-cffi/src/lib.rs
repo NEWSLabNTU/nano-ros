@@ -154,32 +154,6 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
 /// path before calling this. Unknown negative codes collapse to the
 /// generic `TransportError::Backend("unknown rmw_ret_t")` so a future
 /// constant added to the C header degrades gracefully on the Rust side.
-/// Phase 130.8 — one-shot warning when an RMW backend's vtable
-/// omits the non-blocking `send_request_raw` / `try_recv_reply_raw`
-/// slots and the runtime falls back to the legacy blocking
-/// `call_raw` burst. The fallback blocks the executor's spin loop
-/// (Phase 127.C.4 root cause for the C++ XRCE action E2E hang);
-/// new backends should implement the non-blocking split. Removal
-/// target: when every shipping backend has migrated.
-fn warn_legacy_send_recv_fallback() {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static WARNED: AtomicBool = AtomicBool::new(false);
-        if !WARNED.swap(true, Ordering::Relaxed) {
-            std::eprintln!(
-                "[nros-rmw-cffi] WARNING: backend vtable omits non-blocking \
-                 send_request_raw + try_recv_reply_raw slots; falling back to \
-                 the deprecated blocking call_raw burst (Phase 130.8). The \
-                 fallback blocks the executor's spin loop for up to the \
-                 backend's call_raw timeout. Backends should implement the \
-                 non-blocking vtable slots (see \
-                 docs/roadmap/phase-130-platform-wake-primitive.md)."
-            );
-        }
-    }
-}
-
 pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
     match ret {
         NROS_RMW_RET_OK => {
@@ -1642,7 +1616,6 @@ impl Session for CffiSession {
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
-            pending_request: [0u8; 4096],
             pending_len: 0,
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
@@ -2585,9 +2558,12 @@ pub struct CffiServiceClient {
     service_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     backend_data: *mut c_void,
-    /// Stored request for blocking fallback in `try_recv_reply_raw`
-    pending_request: [u8; 4096],
-    /// Length of stored pending request (0 = no pending request)
+    /// Phase 130.8 — flag (request length, or 0) tracking whether a
+    /// request is in flight via the non-blocking `send_request_raw`
+    /// / `try_recv_reply_raw` vtable slots. The legacy
+    /// blocking-call_raw fallback that previously needed a local
+    /// 4 KiB pending-request buffer has been removed; backends own
+    /// the request bytes from `send_request_raw` onward.
     pending_len: usize,
 }
 
@@ -2632,36 +2608,25 @@ impl ServiceClientTrait for CffiServiceClient {
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
-        // Phase 130.4 — prefer the backend's non-blocking
-        // `send_request_raw` vtable slot when available. Falls back
-        // to the legacy "store in pending_request, send during
-        // try_recv_reply_raw via blocking call_raw" pattern when
-        // the slot is NULL.
-        //
-        // Phase 130.8 — the legacy fallback is DEPRECATED. It
-        // conflates send + recv into a single blocking burst that
-        // starves the executor's spin loop (Phase 127.C.4 root
-        // cause); backends should implement the non-blocking
-        // `send_request_raw` + `try_recv_reply_raw` vtable slots
-        // instead. First use logs a one-shot warning so backend
-        // authors notice. Removal target: when every shipping
-        // backend (Cyclone, dust-DDS) provides the non-blocking
-        // split.
-        if let Some(f) = self.vtable.send_request_raw {
-            let mut view = self.make_view();
-            let rc = unsafe { f(&mut view, request.as_ptr(), request.len()) };
-            if rc != NROS_RMW_RET_OK {
-                return Err(error_from_ret(rc));
-            }
-            self.pending_len = request.len().max(1);
-            return Ok(());
+        // Phase 130.8 — every shipping backend now provides the
+        // non-blocking `send_request_raw` + `try_recv_reply_raw`
+        // vtable slots: XRCE-DDS-Client (native C),
+        // Cyclone DDS C++ wrapper (native C++), Rust adapters
+        // (dust-DDS + zenoh-pico via `rust_adapter`). The legacy
+        // blocking-call_raw fallback that starved the executor's
+        // spin loop (Phase 127.C.4 root cause) has been removed.
+        // Backends that omit the slot get `Unsupported`; the
+        // executor surfaces the error to the caller instead of
+        // silently degrading to a multi-second blocking burst.
+        let Some(f) = self.vtable.send_request_raw else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut view = self.make_view();
+        let rc = unsafe { f(&mut view, request.as_ptr(), request.len()) };
+        if rc != NROS_RMW_RET_OK {
+            return Err(error_from_ret(rc));
         }
-        warn_legacy_send_recv_fallback();
-        if request.len() > self.pending_request.len() {
-            return Err(TransportError::BufferTooSmall);
-        }
-        self.pending_request[..request.len()].copy_from_slice(request);
-        self.pending_len = request.len();
+        self.pending_len = request.len().max(1);
         Ok(())
     }
 
@@ -2669,41 +2634,23 @@ impl ServiceClientTrait for CffiServiceClient {
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        // Phase 130.4 — non-blocking path: backend's
-        // `try_recv_reply_raw` slot polls its own slot. Returning
-        // `Ok(None)` keeps `pending_len` set so the executor's
-        // next spin tick polls again — a late-arriving reply is
-        // caught by a later `drive_io` without re-sending the
-        // request.
-        if let Some(f) = self.vtable.try_recv_reply_raw {
-            let mut view = self.make_view();
-            let rc = unsafe { f(&mut view, reply_buf.as_mut_ptr(), reply_buf.len()) };
-            if rc == NROS_RMW_RET_NO_DATA {
-                return Ok(None);
-            }
-            if rc < 0 {
-                self.pending_len = 0;
-                return Err(error_from_ret(rc));
-            }
-            self.pending_len = 0;
-            return Ok(Some(rc as usize));
-        }
-        // Phase 130.8 — DEPRECATED legacy blocking fallback for
-        // backends that haven't implemented the non-blocking
-        // split. Sends + polls in a single call_raw burst, which
-        // blocks the executor for up to the backend's call_raw
-        // timeout (Phase 127.C.4 root cause). One-shot warning is
-        // emitted from `send_request_raw`; no extra log here.
-        if self.pending_len == 0 {
+        // Phase 130.8 — non-blocking poll only. NULL slot = backend
+        // doesn't implement the service-client path; surface
+        // Unsupported rather than the deprecated blocking fallback.
+        let Some(f) = self.vtable.try_recv_reply_raw else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut view = self.make_view();
+        let rc = unsafe { f(&mut view, reply_buf.as_mut_ptr(), reply_buf.len()) };
+        if rc == NROS_RMW_RET_NO_DATA {
             return Ok(None);
         }
-        let mut req_copy = [0u8; 4096];
-        let req_len = self.pending_len;
-        req_copy[..req_len].copy_from_slice(&self.pending_request[..req_len]);
+        if rc < 0 {
+            self.pending_len = 0;
+            return Err(error_from_ret(rc));
+        }
         self.pending_len = 0;
-        #[allow(deprecated)]
-        let len = self.call_raw(&req_copy[..req_len], reply_buf)?;
-        Ok(Some(len))
+        Ok(Some(rc as usize))
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {
