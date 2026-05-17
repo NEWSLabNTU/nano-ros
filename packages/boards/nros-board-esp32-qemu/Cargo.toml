@@ -15,8 +15,9 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 # Phase 97.3.esp32-qemu — `smoltcp_clock_now_ms` extern shim needs the
 # trait import. Only used inside the cfg-gated forwarder in lib.rs.
 nros-platform-api = { path = "../../core/nros-platform-api" }
-# Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
+# Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
+# symbols come from `zpico-sys`'s default-on `platform-aliases`
+# alias TU when `rmw-zenoh` is active.
 
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -45,8 +46,10 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 
 [features]
 default = ["ethernet", "rmw-zenoh"]
-# Phase 97.1.board-decouple — pull in zenoh-pico C transport shim.
-rmw-zenoh = ["dep:zpico-platform-shim"]
+# Phase 129.D — `rmw-zenoh` is now a pure marker. Symbols come
+# from `zpico-sys`'s default-on `platform-aliases` C TU, which
+# the consumer pulls in transitively via `nros-rmw-zenoh`.
+rmw-zenoh = []
 # Ethernet transport via OpenETH + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)

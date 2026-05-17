@@ -62,12 +62,12 @@ nvidia-ivc = { path = "../../drivers/nvidia-ivc", default-features = false }
 
 # zenoh-pico C transport + the IVC shim block.
 #
-# Phase 11.3.B — `active` feature is OFF. zenoh-pico's
-# `src/system/freertos/system.c` provides clock / mutex / condvar /
-# task / sleep / random / time / alloc against the FSP V10.4.3
-# FreeRTOS API (multi-thread path). Activating `active` would
-# double-define those symbols at link.
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["link-ivc"] }
+# Phase 129.D — IVC link-layer forwarders moved out of the
+# retired `zpico-platform-shim` into the carved-out
+# `zpico-link-ivc` crate. `zpico-sys/orin-spe + link-ivc`
+# pulls it in transitively; the dep here is for the keep-alive
+# `extern crate` below.
+zpico-link-ivc = { path = "../../zpico/zpico-link-ivc", default-features = false }
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["orin-spe", "link-ivc"] }
 
 # Cortex-R5 panic handler is supplied by the user/firmware crate, not

@@ -2746,18 +2746,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
-name = "xrce-platform-shim"
-version = "0.1.0"
-dependencies = [
- "nros-platform",
-]
-
-[[package]]
 name = "xrce-sys"
 version = "0.1.0"
 dependencies = [
  "cc",
- "xrce-platform-shim",
 ]
 
 [[package]]
@@ -2802,19 +2794,17 @@ name = "zpico-alloc"
 version = "0.1.0"
 
 [[package]]
+name = "zpico-link-ivc"
+version = "0.1.0"
+dependencies = [
+ "nvidia-ivc",
+]
+
+[[package]]
 name = "zpico-platform-custom"
 version = "0.1.0"
 dependencies = [
  "nros-rmw",
-]
-
-[[package]]
-name = "zpico-platform-shim"
-version = "0.1.0"
-dependencies = [
- "cc",
- "nros-platform",
- "nvidia-ivc",
 ]
 
 [[package]]
@@ -2824,6 +2814,6 @@ dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-link-ivc",
  "zpico-platform-custom",
- "zpico-platform-shim",
 ]

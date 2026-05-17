@@ -140,6 +140,19 @@ void z_yield(void) {
 }
 
 /* -------------------------------------------------------------------------
+ *  smoltcp bridge — used by `nros-smoltcp/src/bridge.rs` to read
+ *  millisecond wall-clock from any platform (bare-metal smoltcp
+ *  driver) without taking a Rust trait dep on `PlatformClock`.
+ *  Boards that ship their own bare-metal `smoltcp_clock_now_ms`
+ *  emitter (e.g. `nros-board-mps2-an385`) must NOT enable
+ *  `platform-aliases` on `zpico-sys` to avoid double-define.
+ * ----------------------------------------------------------------------- */
+
+uint64_t smoltcp_clock_now_ms(void) {
+    return nros_platform_time_now_ms();
+}
+
+/* -------------------------------------------------------------------------
  *  Threading: tasks. zenoh-pico passes a `_z_task_t *` whose layout is
  *  opaque caller storage. nros_platform_task_init takes a `void *` for
  *  the same purpose — direct pass-through.

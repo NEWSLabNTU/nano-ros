@@ -25,15 +25,14 @@ extern crate std;
 // include the symbols (see board crate Cargo.toml).
 // Force-link: POSIX/NuttX/FreeRTOS/ThreadX use the shim for platform symbols.
 // Bare-metal board crates have their own extern crate for the embedded linker.
-#[cfg(any(
-    feature = "posix",
-    feature = "nuttx",
-    feature = "freertos",
-    feature = "threadx",
-    feature = "orin-spe",
-    feature = "zephyr"
-))]
-extern crate zpico_platform_shim;
+// Phase 129.D — `zpico-platform-shim` retired. The C alias TU
+// (`c/zpico/platform_aliases.c`, default-on via `platform-aliases`)
+// emits every `z_*` / `_z_*` symbol the shim used to provide;
+// no `extern crate` keep-alive needed any more. IVC link-layer
+// forwarders moved to the carved-out `zpico-link-ivc` crate,
+// keep-alived below.
+#[cfg(feature = "link-ivc")]
+extern crate zpico_link_ivc;
 
 // Phase 115.B — force-link the Rust-side `nros_zpico_custom_take`
 // symbol that the C custom-link factory calls. Same pattern as

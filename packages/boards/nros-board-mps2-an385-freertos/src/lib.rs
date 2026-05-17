@@ -31,7 +31,6 @@ extern crate nros_platform as _;
 // `default-features = false` and reach the linker without the
 // zenoh-pico symbol set.
 #[cfg(feature = "rmw-zenoh")]
-extern crate zpico_platform_shim;
 #[cfg(feature = "rmw-zenoh")]
 extern crate zpico_sys;
 

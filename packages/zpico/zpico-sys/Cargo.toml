@@ -28,27 +28,29 @@ name = "zpico_sys"
 # want the Rust shim can pass `default-features = false`.
 default = ["platform-aliases"]
 # Platform backends (mutually exclusive)
-# All platforms activate the shim to provide z_* symbols via nros-platform.
-# The C library's system.c is excluded — only network.c is kept.
-# Zephyr's platform code is compiled by Zephyr's CMake build system, but the
-# shim (Rust staticlib) still gets linked into nros-c / nros-cpp / rust apps.
-posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
-zephyr = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-clock-symbols", "zpico-platform-shim?/skip-time-symbols", "zpico-platform-shim?/skip-threading-symbols", "zpico-platform-shim?/network"]
-bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network", "zpico-platform-shim?/network-smoltcp-bridge"]
-freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
-nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-clock-symbols", "zpico-platform-shim?/network"]
-threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-task-symbols", "zpico-platform-shim?/network"]
+#
+# Phase 129.D — the C alias TU (`platform-aliases`, default-on)
+# now provides every `z_*` / `_z_*` symbol that
+# `zpico-platform-shim` used to emit. The per-platform features
+# below are pure ABI markers — they no longer pull in the shim.
+# Vendor zenoh-pico `system/<rtos>/system.c` is still
+# stripped on the relevant platforms by `build.rs`; the alias
+# TU + the consumer's `nros-platform-<rtos>` library satisfy
+# every symbol.
+posix = []
+zephyr = []
+bare-metal = []
+freertos = []
+nuttx = []
+threadx = []
 # Phase 100.6 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP). IVC-only:
-# `active` for the Rust→C symbol forwarders, `link-ivc` for the IVC
-# link-transport forwarders (Phase 100.4). NO `network` because the
-# SPE has no TCP/UDP. The board crate must also enable
-# `zpico-sys/link-ivc` to flip `Z_FEATURE_LINK_IVC=1` in the C build.
-# Phase 11.3.B — orin-spe activates ONLY `link-ivc` on the shim.
-# zenoh-pico's `src/system/freertos/system.c` provides clock / mutex /
-# condvar / task / sleep / random / time / alloc natively via the FSP
-# V10.4.3 FreeRTOS API. Activating `active` would double-define those
-# symbols.
-orin-spe = ["dep:zpico-platform-shim", "zpico-platform-shim?/link-ivc"]
+# orin-spe pulls `zpico-link-ivc` (the carved-out IVC link-layer
+# forwarders that used to live inside `zpico-platform-shim`).
+# zenoh-pico's `src/system/freertos/system.c` provides clock /
+# mutex / condvar / task / sleep / random / time / alloc
+# natively via the FSP V10.4.3 FreeRTOS API, so `platform-aliases`
+# is OFF for orin-spe to avoid double-define.
+orin-spe = ["dep:zpico-link-ivc"]
 # Phase 128.E.1 — `link-tcp`, `link-udp-unicast`, `link-udp-multicast`,
 # `link-serial` features deleted. Vendor C sources for those four
 # always compile in (`Z_FEATURE_LINK_TCP=1` etc.). The locator string
@@ -68,11 +70,10 @@ link-tls = []
 # `platform-aliases` here (then turning off
 # `zpico-platform-shim`'s `active` feature for the alias subset).
 # Threading + smoltcp + serial bridge symbols stay in the shim.
-platform-aliases = ["zpico-platform-shim?/provided-by-aliases"]
-# Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Selecting
-# this feature also propagates `cargo:rustc-cfg=feature="link_ivc"` so
-# zpico-platform-shim's `mod ivc_helpers` block compiles in.
-link-ivc = []
+platform-aliases = []
+# Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Adds
+# the carved-out `zpico-link-ivc` forwarders crate.
+link-ivc = ["dep:zpico-link-ivc"]
 # Phase 115.B — runtime-pluggable user transport via the
 # `custom://` locator scheme. Compiles in `src/link/{config,unicast}/custom.c`
 # from the zenoh-pico fork + force-links `zpico-platform-custom`'s
@@ -88,10 +89,11 @@ std = []
 unstable-zenoh-api = []
 
 [dependencies]
-# Platform symbol forwarders (z_clock_now, z_malloc, etc.)
-# Activated by any platform feature; actual ConcretePlatform resolved by
-# the board crate's nros-platform-<board> dependency via Cargo feature unification.
-zpico-platform-shim = { version = "0.1.0", path = "../zpico-platform-shim", default-features = false, optional = true }
+# Phase 129.D — `zpico-platform-shim` dep removed. Symbols come
+# from the C alias TU (`platform-aliases`, default-on).
+# IVC link-layer forwarders moved into the carved-out
+# `zpico-link-ivc` crate, pulled by the `link-ivc` feature.
+zpico-link-ivc = { workspace = true, optional = true }
 # Phase 115.B — Rust-side `nros_zpico_custom_take` extern that the
 # C custom-link factory calls. Optional; only pulled in when
 # `link-custom` is enabled.

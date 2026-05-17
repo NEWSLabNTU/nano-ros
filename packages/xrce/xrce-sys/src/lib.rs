@@ -7,16 +7,12 @@
 #![no_std]
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
-// Force-link the platform shim crate so its extern "C" symbols (uxr_millis,
-// uxr_nanos) are available to the C objects in this crate.
-#[cfg(any(
-    feature = "posix",
-    feature = "bare-metal",
-    feature = "freertos",
-    feature = "nuttx",
-    feature = "threadx",
-))]
-extern crate xrce_platform_shim;
+// Phase 129.D.2 — `xrce-platform-shim` retired. `uxr_millis` /
+// `uxr_nanos` now come from
+// `nros-rmw-xrce/src/platform_aliases.c`, compiled into
+// `nros-rmw-xrce-cffi`. xrce-sys never references the symbols
+// directly — vendor `time.c` does, and that vendor TU is no
+// longer compiled here either.
 
 #[cfg(feature = "std")]
 extern crate std;

@@ -15,8 +15,9 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 # Phase 97.3.mps2-an385 — `smoltcp_clock_now_ms` extern shim needs the
 # trait import. Only used inside the cfg-gated forwarder in lib.rs.
 nros-platform-api = { path = "../../core/nros-platform-api" }
-# Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
+# Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
+# symbols come from `zpico-sys`'s default-on `platform-aliases`
+# alias TU when `rmw-zenoh` (or `serial`) is active.
 
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -51,17 +52,17 @@ panic-semihosting = "0.6"
 # Default keeps the historic zenoh-pico wiring active. DDS-only
 # downstream crates use `default-features = false, features = ["ethernet"]`.
 default = ["ethernet", "rmw-zenoh"]
-# Phase 97.1.board-decouple — pull in the zenoh-pico C transport
-# shim. Off for DDS-only builds (which drive their own UDP via
-# `nros-platform-mps2-an385`'s `PlatformUdp` impl directly).
-rmw-zenoh = ["dep:zpico-platform-shim"]
+# Phase 129.D — `rmw-zenoh` is a pure marker. The zenoh-pico
+# `z_*` / `_z_*` symbols come from `zpico-sys`'s default-on
+# `platform-aliases` C TU, which the consumer pulls in
+# transitively via `nros-rmw-zenoh`.
+rmw-zenoh = []
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
-# Serial transport via CMSDK UART. Still needs zpico-platform-shim because
-# zpico-sys's peer.c references the `_z_socket_*` symbols even when the
-# transport is serial-only (the calls are no-ops at runtime via the
-# `_owns_socket` flag, but the linker still needs the symbols).
-serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:zpico-platform-shim"]
+# Serial transport via CMSDK UART. The `_z_socket_*` symbols
+# peer.c references at link time come from `zpico-sys`'s
+# default-on `platform-aliases` C TU; no shim needed.
+serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)

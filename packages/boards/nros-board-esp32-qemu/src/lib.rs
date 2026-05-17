@@ -19,7 +19,6 @@
 #![no_std]
 // Phase 97.1.board-decouple — only force-link when `rmw-zenoh` active.
 #[cfg(feature = "rmw-zenoh")]
-extern crate zpico_platform_shim;
 
 // Phase 97.3.esp32-qemu — `nros-smoltcp::bridge` references
 // `smoltcp_clock_now_ms` as an `extern "C"` symbol. zpico-platform-shim

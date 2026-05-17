@@ -88,6 +88,9 @@ fn main() {
         // satisfies the symbols. Supersedes `transport_posix_udp`
         // / `transport_zephyr_udp`.
         "transport_nros_udp",
+        // Phase 129.D.2 — `uxr_millis` / `uxr_nanos` carved out
+        // of the retired `xrce-platform-shim` crate.
+        "platform_aliases",
     ];
     // Phase 118 — `transport_posix_{udp,serial}.c` define
     // `xrce_posix_{udp,serial}_init`. The TUs only build where

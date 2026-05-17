@@ -25,7 +25,6 @@
 // zenoh-pico-backed transport is active (rmw-zenoh ethernet OR rmw-zenoh
 // serial). DDS-only builds drop this dep.
 #[cfg(any(feature = "rmw-zenoh", feature = "serial"))]
-extern crate zpico_platform_shim;
 
 // Phase 97.3.mps2-an385 — `nros-smoltcp::bridge` references
 // `smoltcp_clock_now_ms` as an `extern "C"` symbol. zpico-platform-shim

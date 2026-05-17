@@ -287,18 +287,39 @@ that exercises it is**:
   default-on (129.A.4). The shim's `active` mode is gated off
   whenever `provided-by-aliases` is set, eliminating duplicate-
   symbol collisions.
-- [ ] `129.D.1` — rehome shim's still-Rust-only responsibilities
-  into the board / driver crates that need them, then physically
-  delete the `zpico-platform-shim` crate:
-    - `smoltcp_clock_now_ms` (used by bare-metal smoltcp drivers)
-      → `nros-smoltcp` direct export.
-    - `link-ivc` helpers (`ivc_helpers.rs`, orin-spe) →
-      `nros-platform-esp32` / orin board crate.
-    - Per-board serial openers (none on POSIX) →
-      `nros-platform-<board>`.
-  Each rehome is a separate sub-PR; cargo dep on `zpico-platform-shim`
-  comes off the board crate as soon as the symbols move.
-- [ ] `129.D.2` — same for `xrce-platform-shim` (smaller surface).
+- [x] `129.D.1` — `zpico-platform-shim` deleted.
+    - IVC link-layer forwarders (`ivc_helpers.rs`, nine `extern "C"`
+      symbols dispatching to `nvidia-ivc`) carved out into a new
+      `packages/zpico/zpico-link-ivc` crate. `zpico-sys`'s
+      `link-ivc` feature pulls it in instead of the shim.
+    - `smoltcp_clock_now_ms` moved into the C alias TU
+      (`platform_aliases.c`) — every consumer that depends on
+      `zpico-sys/platform-aliases` (default-on) now gets it.
+      Boards that ship their own bare-metal forwarder
+      (mps2-an385, esp32-qemu) cfg-gate to avoid double-define
+      when `rmw-zenoh` is on.
+    - Six board crates (`nros-board-{esp32,esp32-qemu,
+      mps2-an385,mps2-an385-freertos,stm32f4,orin-spe}`) dropped
+      their `zpico-platform-shim` dep + `extern crate` keep-
+      alive. Per-board `rmw-zenoh` / `serial` features turned
+      into pure markers — the symbols come from `zpico-sys`'s
+      default-on alias TU.
+    - `packages/zpico/zpico-platform-shim/` removed from the
+      filesystem, workspace `[workspace.members]`, and workspace
+      `[workspace.dependencies]`.
+- [x] `129.D.2` — `xrce-platform-shim` deleted.
+    - `uxr_millis` / `uxr_nanos` carved out into a new
+      `nros-rmw-xrce/src/platform_aliases.c` that calls
+      `nros_platform_time_now_ms` / `nros_platform_clock_us`.
+      Compiled into `nros-rmw-xrce-cffi` always (every supported
+      target needs the symbols).
+    - `xrce-sys`'s per-platform features (`posix`, `bare-metal`,
+      `freertos`, `nuttx`, `threadx`) became pure markers — no
+      more `dep:xrce-platform-shim`. `extern crate
+      xrce_platform_shim` keep-alive removed from
+      `xrce-sys/src/lib.rs`.
+    - `packages/xrce/xrce-platform-shim/` removed from filesystem
+      + workspace.
 
 ### 129.E — Examples + fixtures sweep
 

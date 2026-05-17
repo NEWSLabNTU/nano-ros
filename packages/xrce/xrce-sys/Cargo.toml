@@ -15,20 +15,20 @@ categories = ["embedded", "no-std", "external-ffi-bindings", "network-programmin
 
 [features]
 default = []
-# Platform backends — all (except Zephyr) activate the shim for uxr_millis/uxr_nanos.
-# Zephyr provides clock symbols via xrce_zephyr.c (compiled by Zephyr CMake,
-# needs Zephyr kernel headers that nros_platform_zephyr_shims.c can't provide
-# without CONFIG_POSIX_API).
-posix = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
-bare-metal = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
+# Phase 129.D.2 — `xrce-platform-shim` retired. `uxr_millis` /
+# `uxr_nanos` symbols come from
+# `nros-rmw-xrce/src/platform_aliases.c` (compiled into
+# `nros-rmw-xrce-cffi`). Per-platform features below are pure
+# markers; no `dep:xrce-platform-shim` left.
+posix = []
+bare-metal = []
 zephyr = []
-freertos = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
-nuttx = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
-threadx = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
+freertos = []
+nuttx = []
+threadx = []
 std = []
 
 [dependencies]
-xrce-platform-shim = { path = "../xrce-platform-shim", default-features = false, optional = true }
 
 [build-dependencies]
 cc = "1.0"

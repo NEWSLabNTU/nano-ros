@@ -12,8 +12,9 @@ name = "nros_board_stm32f4"
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4", "global-allocator", "critical-section"] }
-# Phase 97.1.board-decouple — only needed when `rmw-zenoh` is active.
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"], optional = true }
+# Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
+# symbols come from `zpico-sys`'s default-on `platform-aliases`
+# C TU when `rmw-zenoh` is active.
 
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -47,8 +48,8 @@ defmt = "0.3"
 
 [features]
 default = ["stm32f429", "ethernet", "rmw-zenoh"]
-# Phase 97.1.board-decouple — pull in zenoh-pico C transport shim.
-rmw-zenoh = ["dep:zpico-platform-shim"]
+# Phase 129.D — `rmw-zenoh` is a pure marker now.
+rmw-zenoh = []
 # Ethernet transport via STM32 MAC + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
 # Serial transport via USART

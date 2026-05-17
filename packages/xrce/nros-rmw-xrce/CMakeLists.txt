@@ -184,6 +184,7 @@ add_library(nros_rmw_xrce STATIC
     src/transport_nros_udp.c
     src/transport_posix_udp.c
     src/transport_posix_serial.c
+    src/platform_aliases.c
     ${_uxr_all_src}
     ${_ucdr_all_src}
 )

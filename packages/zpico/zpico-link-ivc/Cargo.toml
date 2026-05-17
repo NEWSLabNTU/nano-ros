@@ -1,0 +1,18 @@
+[package]
+name = "zpico-link-ivc"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Phase 129.D — zenoh-pico IVC link-layer forwarders (split out of zpico-platform-shim)"
+publish = false
+keywords = ["embedded", "ivc", "nvidia", "tegra", "zenoh"]
+categories = ["embedded", "no-std"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+nvidia-ivc = { path = "../../drivers/nvidia-ivc", default-features = false }
+
+[lints]
+workspace = true

@@ -42,7 +42,7 @@
 // drops `_z_open_ivc` / `_z_f_link_open_ivc` because nothing in the
 // Rust crate graph names them — they're only consumed at the C level.
 extern crate nvidia_ivc;
-extern crate zpico_platform_shim;
+extern crate zpico_link_ivc;
 extern crate zpico_sys;
 
 mod config;

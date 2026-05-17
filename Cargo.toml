@@ -71,9 +71,16 @@ members = [
     # now a board over FreeRTOS-FSP (see `packages/boards/nros-board-orin-spe`);
     # IVC + FSP init live at the board level.
     # Platform shims for RMW backends
-    "packages/zpico/zpico-platform-shim",
+    # Phase 129.D — `zpico-platform-shim` deleted. IVC link-layer
+    # forwarders carved out into `zpico-link-ivc`; every other
+    # `z_*` / `_z_*` symbol now comes from `zpico-sys`'s default-on
+    # `platform-aliases` C TU.
+    "packages/zpico/zpico-link-ivc",
     "packages/zpico/zpico-platform-custom",
-    "packages/xrce/xrce-platform-shim",
+    # Phase 129.D.2 — `xrce-platform-shim` deleted. `uxr_millis` /
+    # `uxr_nanos` symbols now come from
+    # `nros-rmw-xrce/src/platform_aliases.c` compiled into
+    # `nros-rmw-xrce-cffi`.
     # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
     # (nros-rmw-xrce) and exposes its register entry point.
     "packages/xrce/nros-rmw-xrce-cffi",
@@ -332,9 +339,8 @@ nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cf
 # link the C port via the board crate's build.rs (FreeRTOS, ThreadX)
 # or via the parent build
 # system (Zephyr west, NuttX make).
-zpico-platform-shim = { version = "0.1.0", path = "packages/zpico/zpico-platform-shim", default-features = false }
+zpico-link-ivc = { version = "0.1.0", path = "packages/zpico/zpico-link-ivc", default-features = false }
 zpico-platform-custom = { version = "0.1.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
-xrce-platform-shim = { version = "0.1.0", path = "packages/xrce/xrce-platform-shim", default-features = false }
 zpico-sys = { version = "0.1.0", path = "packages/zpico/zpico-sys", default-features = false }
 zpico-alloc = { version = "0.1.0", path = "packages/zpico/zpico-alloc" }
 xrce-sys = { version = "0.1.0", path = "packages/xrce/xrce-sys", default-features = false }

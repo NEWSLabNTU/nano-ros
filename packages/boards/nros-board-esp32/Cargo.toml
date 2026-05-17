@@ -12,7 +12,8 @@ name = "nros_board_esp32"
 # Unified platform primitives (clock, memory, random, sleep)
 nros-platform-esp32 = { path = "../../platforms/nros-platform-esp32" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32"] }
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+# Phase 129.D — `zpico-platform-shim` retired. Symbols come
+# from `zpico-sys`'s default-on `platform-aliases` C TU.
 
 # smoltcp network provider (wifi only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
