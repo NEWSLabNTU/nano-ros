@@ -1,0 +1,67 @@
+//! # {NAME}
+//!
+//! {VENDOR} board overlay on `nros-board-{KERNEL_LOWER}` for nano-ros.
+//!
+//! Re-exports the generic `Config` + `run()` entry point and injects
+//! vendor HAL initialisation via `#[no_mangle]` hooks the generic
+//! crate's C glue calls during boot.
+//!
+//! See `book/src/porting/vendor-overlay.md` for the contract.
+
+#![no_std]
+
+// Re-export the generic crate's public surface.  User application
+// code depends on `{NAME}` and gets `Config` + `run` transparently.
+//
+// Replace `nros_board_freertos` with the kernel-family crate you
+// chose in Cargo.toml (nros_board_threadx, nros_board_nuttx, …).
+pub use nros_board_freertos::{Config, run};
+
+// ---------------------------------------------------------------
+// Vendor HAL hooks — called from the generic crate's C glue.
+//
+// Each `#[no_mangle]` function below replaces a weak default in
+// the generic crate.  Implement the ones your board needs; leave
+// the rest unimplemented and the generic crate's defaults fire.
+// ---------------------------------------------------------------
+
+/// Clock-tree + pin-mux configuration.
+///
+/// Called from `run()` before the network stack initialises.
+/// Use the vendor HAL to set up PLL / bus clocks / GPIO MUX.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_board_init_clocks() {
+    // Example STM32F4:
+    //   HAL_RCC_OscConfig(&osc_init);
+    //   HAL_RCC_ClockConfig(&clock_init, FLASH_LATENCY_5);
+    //
+    // Vendor-specific call; remove this comment block when done.
+}
+
+/// Ethernet PHY + MAC initialisation + lwIP netif binding.
+///
+/// Called from `run()` after the kernel start but before the app
+/// callback. Implement to bind your vendor Ethernet driver into
+/// the generic crate's lwIP / NetX-Duo netif slot.
+///
+/// Leave unimplemented if your board uses something other than
+/// Ethernet (e.g. IVC, serial, no networking).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_board_init_eth() {
+    // Example STM32F4 + lwIP:
+    //   HAL_ETH_Init(&heth);
+    //   netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL,
+    //             ethernetif_init, ethernet_input);
+    //   netif_set_default(&gnetif);
+    //   netif_set_up(&gnetif);
+}
+
+/// Optional: extra-driver init (sensors, displays, etc.).
+///
+/// Default no-op. Override only if your board needs peripherals
+/// beyond Ethernet / serial that must be ready before the user
+/// callback runs.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_board_init_extra_drivers() {
+    // Default: nothing.
+}
