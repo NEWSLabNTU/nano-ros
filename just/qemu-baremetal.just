@@ -20,30 +20,27 @@ setup-qemu:
     #!/usr/bin/env bash
     set -euo pipefail
     submodule_path=third-party/qemu/qemu
-    patch_dir=third-party/qemu/patches
     prefix={{QEMU_PREFIX}}
     bin={{QEMU_BIN}}
     if [ ! -d "$submodule_path/.git" ] && [ ! -f "$submodule_path/.git" ]; then
         git submodule update --init --depth=1 -- "$submodule_path"
     fi
-    # Re-stamp = newest patch mtime. Skip rebuild if binary newer than every patch.
+    # Re-stamp = submodule HEAD commit. Skip rebuild if binary newer
+    # than the recorded submodule commit's mtime (a proxy for "no
+    # source change since last build").
     if [ -x "$bin" ]; then
-        newest_patch=$(ls -t "$patch_dir"/*.patch 2>/dev/null | head -1 || true)
-        if [ -z "$newest_patch" ] || [ "$bin" -nt "$newest_patch" ]; then
+        head_stamp="$submodule_path/.git/HEAD"
+        if [ ! -f "$head_stamp" ] || [ "$bin" -nt "$head_stamp" ]; then
             echo "qemu: $bin up to date"
             "$bin" --version | head -1
             exit 0
         fi
     fi
-    echo "qemu: applying patches + building (this can take ~10 min)"
+    echo "qemu: building (this can take ~10 min)"
+    # Patches live in NEWSLabNTU/qemu fork's git history (branch
+    # `nano-ros-v11.0.0-patches`). The submodule checkout already
+    # has them applied — no separate `git apply` step.
     pushd "$submodule_path" >/dev/null
-    git reset --hard HEAD --quiet
-    git clean -fdx --quiet
-    for p in ../patches/*.patch; do
-        [ -f "$p" ] || continue
-        echo "  apply $(basename "$p")"
-        git apply "$p"
-    done
     mkdir -p build
     cd build
     ../configure \

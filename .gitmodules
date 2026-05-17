@@ -63,8 +63,9 @@
 	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
 [submodule "third-party/qemu/qemu"]
 	path = third-party/qemu/qemu
-	url = https://gitlab.com/qemu-project/qemu.git
-	# Stable branch. Patches applied on top by `just qemu setup`
-	# live in third-party/qemu/patches/. Bump intentionally and
-	# re-verify the patches still apply cleanly before pushing.
-	branch = stable-11.0
+	url = https://github.com/NEWSLabNTU/qemu.git
+	branch = nano-ros-v11.0.0-patches
+	# NEWSLabNTU/qemu fork carries the nano-ros patch set on top of
+	# upstream QEMU release tags. Bump the submodule pointer to the
+	# fork's latest patched commit; the legacy patches/ dir was
+	# removed since the patches live in the fork's git history now.
