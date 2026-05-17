@@ -233,18 +233,21 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    uart_puts("[app_define] Enabling TCP/UDP/ICMP...\n");
-    /* Enable TCP, UDP, ICMP. IGMP intentionally *not* enabled —
-     * NetX's IGMP TX path runs through the cooperative single-thread
-     * runtime and stalls on virtio-net-netx queue fill. The QEMU
-     * `-netdev socket,mcast=…` tunnel forwards every mcast frame to
-     * sibling sockets regardless of the in-VM IGMP state, so the
-     * RX side works without `IP_ADD_MEMBERSHIP`; on the platform-
-     * threadx mcast_listen path we make the setsockopt best-effort
-     * to tolerate this. */
+    uart_puts("[app_define] Enabling TCP/UDP/ICMP/IGMP...\n");
+    /* Phase 127.B.5 — IGMP must be enabled for both RX
+     * (IP_ADD_MEMBERSHIP setsockopt returns NX_NOT_ENABLED otherwise)
+     * AND TX (NetX's class-D multicast send path consults the IGMP
+     * join list to derive the L2 multicast MAC; without IGMP the UDP
+     * socket send to a 239.x.x.x destination returns NX_NOT_BOUND, so
+     * dust-dds SPDP and user-data publishes fail. The old comment
+     * here disabled IGMP because the broken QEMU `-netdev socket,
+     * mcast=…` tunnel duplicated frames regardless; we now use a
+     * `-netdev dgram` AF_UNIX peer pair so the in-VM IGMP behaviour
+     * matters again. */
     nx_tcp_enable(&ip_instance);
     nx_udp_enable(&ip_instance);
     nx_icmp_enable(&ip_instance);
+    nx_igmp_enable(&ip_instance);
 
     uart_puts("[app_define] Initializing BSD sockets...\n");
     /* Initialize BSD socket layer */

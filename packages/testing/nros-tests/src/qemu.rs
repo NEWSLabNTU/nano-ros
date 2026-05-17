@@ -669,6 +669,57 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
+    /// peer pair for RV64 ThreadX. Same shape as
+    /// `start_nuttx_virt_dgram` — avoids QEMU's broken cross-process
+    /// `socket,mcast=` delivery by routing two QEMU processes at each
+    /// other via an AF_UNIX SOCK_DGRAM pair.
+    pub fn start_riscv64_virt_dgram(
+        binary: &Path,
+        local_unix_path: &str,
+        remote_unix_path: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-riscv64");
+        cmd.args([
+            "-M",
+            "virt",
+            "-m",
+            "256M",
+            "-bios",
+            "none",
+            "-nographic",
+            "-global",
+            "virtio-mmio.force-legacy=false",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-netdev",
+            &format!(
+                "dgram,id=net0,\
+                 local.type=unix,local.path={local_unix_path},\
+                 remote.type=unix,remote.path={remote_unix_path}"
+            ),
+            "-device",
+            &format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={mac}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(

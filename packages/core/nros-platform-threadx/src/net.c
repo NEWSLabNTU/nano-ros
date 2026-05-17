@@ -40,6 +40,16 @@ typedef struct {
 #define TRANSPORT_LEASE_MS 10000u
 
 static void set_rcv_timeout(INT fd, uint32_t timeout_ms) {
+    /* Phase 127.B.5 — same fix as nros-platform-posix: `timeout_ms == 0`
+     * means "non-blocking" per the platform-net ABI (cooperative recv
+     * loops poll + yield). NetX BSD's SO_RCVTIMEO with `{0, 0}` is
+     * "block forever" — the inverse. Map timeout==0 to O_NONBLOCK via
+     * fcntl so dust-dds's multicast_recv_loop yields cleanly instead
+     * of blocking the cooperative async runtime. */
+    if (timeout_ms == 0) {
+        (void) nx_bsd_fcntl(fd, F_SETFL, O_NONBLOCK);
+        return;
+    }
     struct nx_bsd_timeval tv;
     tv.tv_sec  = (LONG) (timeout_ms / 1000u);
     tv.tv_usec = (LONG) ((timeout_ms % 1000u) * 1000u);
@@ -344,8 +354,15 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                                       uint32_t timeout_ms,
                                       const uint8_t *iface,
                                       const uint8_t *join) {
-    (void) iface; (void) join;
-    if (sock_raw == NULL || endpoint == NULL) return -1;
+    /* Phase 127.B.5 — same fix as nros-platform-posix: use the `join`
+     * dotted-quad (e.g. "239.255.0.1") for `imr_multiaddr`, NOT the
+     * local endpoint's sin_addr which is always 0.0.0.0 on the
+     * dust-dds SPDP bind path (`create_endpoint("0.0.0.0", port)`).
+     * Joining 0.0.0.0 silently fails (NetX adds a sentinel grp entry
+     * that never matches any real incoming mcast frame, so SPDP
+     * discovery silently fails). */
+    (void) iface;
+    if (sock_raw == NULL || endpoint == NULL || join == NULL) return -1;
     nros_threadx_socket_t *sock = (nros_threadx_socket_t *) sock_raw;
     const nros_threadx_endpoint_t *ep = (const nros_threadx_endpoint_t *) endpoint;
     if (ep->iptcp == NULL) return -1;
@@ -368,7 +385,10 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
 
     struct nx_bsd_ip_mreq mreq;
     memset(&mreq, 0, sizeof(mreq));
-    mreq.imr_multiaddr = ((const struct nx_bsd_sockaddr_in *) ai->ai_addr)->sin_addr;
+    mreq.imr_multiaddr.s_addr = nx_bsd_inet_addr((CHAR *) join);
+    if (mreq.imr_multiaddr.s_addr == 0xffffffffu /* INADDR_NONE */) {
+        nx_bsd_soc_close(fd); sock->fd = -1; return -1;
+    }
     mreq.imr_interface.s_addr = 0;  /* INADDR_ANY */
     if (nx_bsd_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                           &mreq, sizeof(mreq)) < 0) {
