@@ -1028,26 +1028,11 @@ Subitems:
     [`docs/research/qemu-lan9118-slirp-rx-stall.md`](../research/qemu-lan9118-slirp-rx-stall.md)
     and `external/qemu/lan9118-flow-control.patch` (against
     `qemu/master`).
-- [ ] `127.D.3`: Serial pub/sub E2E — non-RTIC `run()` examples have
-  no armed IRQ + tight `spin_once` loop never yields to QEMU's main
-  loop, so the CMSDK UART model's TX FIFO never drains and
-  `cmsdk_uart::write` busy-spins forever on `tx_full`. 2026-05-17
-  experiment:
-  - Adding `#[cortex_m_rt::exception] fn SysTick(){}` + arming SysTick
-    @1 kHz + `enable_wfi_idle()` in the example does not unblock
-    write — the WFI hook only fires inside
-    `nros_baremetal_common::sleep_ms` and inside
-    `nros_smoltcp::do_poll`, not inside `cmsdk_uart::write`.
-  - Replacing the `core::hint::spin_loop` in `cmsdk_uart::write`
-    with `cortex_m::asm::wfe` does break the write hang, but the
-    timing of byte release vs the zenoh init handshake regresses:
-    zenohd reports `Unexpected Init flag in message` and the
-    session never completes. Reverted.
-  - Real fix likely needs: (a) an IRQ-driven CMSDK UART driver that
-    can sleep on TXIM, OR (b) a per-byte yield with a much shorter
-    cadence than WFE delivers under QEMU's icount, OR (c) a separate
-    polling thread that drains TX in the background. All three are
-    bigger work than a single session can absorb here.
+- [>] `127.D.3`: Serial pub/sub E2E — root-caused (CMSDK UART
+  busy-spin starves QEMU main loop, TX FIFO never drains, write
+  hangs after session-open). Spun out as a dedicated phase:
+  [`phase-132-cmsdk-uart-irq-driven.md`](phase-132-cmsdk-uart-irq-driven.md).
+  Includes the 2026-05-17 experiment log + fix-space analysis.
 
 Done criteria:
 
