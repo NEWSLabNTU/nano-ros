@@ -18,3 +18,10 @@ path = "../../../../../packages/core/nros-serdes"
 
 [patch.crates-io.example_interfaces]
 path = "generated/example_interfaces"
+
+# Phase 127.B.5 — pin NetX/ThreadX user-config dirs to the RV64
+# board crate (default .envrc points at threadx-linux which has no
+# nx_port.h, breaking the zpico.c → nxd_bsd.h chain).
+[env]
+NETX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }
+THREADX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }
