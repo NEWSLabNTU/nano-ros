@@ -62,9 +62,14 @@ set(_NROS_BOARD_STARTUP_C  "${_NROS_BOARD_DIR}/startup.c")
 set(_NROS_BOARD_APP_DEFINE_C "${_NROS_BOARD_DIR}/c/app_define.c")
 
 # Default vendored locations — overridable via -D/env.
-if(NOT DEFINED THREADX_DIR AND NOT DEFINED ENV{THREADX_DIR})
-    set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel"
-        CACHE PATH "ThreadX kernel source root")
+if(NOT DEFINED THREADX_DIR)
+    if(DEFINED ENV{THREADX_DIR})
+        set(THREADX_DIR "$ENV{THREADX_DIR}"
+            CACHE PATH "ThreadX kernel source root (from env)")
+    else()
+        set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel"
+            CACHE PATH "ThreadX kernel source root")
+    endif()
 endif()
 # THREADX_CONFIG_DIR is board-specific (each board ships its own
 # tx_user.h / nx_user.h). FORCE the right per-board path here — the
@@ -74,9 +79,14 @@ endif()
 # same shell session.
 set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
     CACHE PATH "Directory containing tx_user.h / nx_user.h" FORCE)
-if(NOT DEFINED NETX_DIR AND NOT DEFINED ENV{NETX_DIR})
-    set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
-        CACHE PATH "NetX Duo source root (BSD addon headers only on Linux)")
+if(NOT DEFINED NETX_DIR)
+    if(DEFINED ENV{NETX_DIR})
+        set(NETX_DIR "$ENV{NETX_DIR}"
+            CACHE PATH "NetX Duo source root (from env)")
+    else()
+        set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
+            CACHE PATH "NetX Duo source root (BSD addon headers only on Linux)")
+    endif()
 endif()
 if(NOT DEFINED NSOS_NETX_DIR AND NOT DEFINED ENV{NSOS_NETX_DIR})
     set(NSOS_NETX_DIR "${_NROS_BOARD_ROOT}/packages/drivers/nsos-netx"
