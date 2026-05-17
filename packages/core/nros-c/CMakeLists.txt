@@ -76,6 +76,35 @@ corrosion_import_crate(
     LOCKED
 )
 
+# ---- In-tree variant header (Phase 137) ----
+# `nros-c`'s build.rs writes the per-build `nros_config_generated.h` to
+# `${CORROSION_BUILD_DIR}/nros_config_generated.h` (== this file's
+# `CMAKE_CURRENT_BINARY_DIR`). Consumers `#include <nros/nros_config_generated.h>`
+# — i.e. through a `nros/` subdir. The install-time path materialises that
+# layout under `<prefix>/include/nros_c/nros/`; for in-tree consumers
+# (Phase 137 `add_subdirectory(...)`) we mirror the header into a sibling
+# `include/nros/` dir and add it to `nros_c-static`'s INTERFACE so any
+# target linking against `nros_c-static` (or the `NanoRos::NanoRos`
+# umbrella declared at the root) gets the per-build sizes without an
+# install step.
+set(_nros_c_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
+file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
+add_custom_command(TARGET cargo-build_nros_c POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+        "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
+    BYPRODUCTS "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
+    COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"
+    VERBATIM
+)
+if(TARGET nros_c-static)
+    target_include_directories(nros_c-static INTERFACE
+        "${_nros_c_intree_include_dir}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-cffi/include"
+    )
+endif()
+
 # ---- Install library ----
 # Phase 128.C.4 — the Cargo build is RMW-agnostic (only `rmw-cffi`
 # is enabled), so the install lib name no longer carries the RMW
