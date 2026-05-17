@@ -85,26 +85,22 @@ fn main() {
     println!("cargo:rerun-if-changed={}", nsos_src.display());
 
     // ---- Phase 121.3 — Build nros-platform-threadx C port ----
-    // The native C port provides the canonical `nros_platform_*`
-    // symbols against the ThreadX kernel + nsos-netx BSD shim. Built
-    // in-tree by the board because the includes (`tx_api.h`,
-    // `nx_bsd_*.h`) are already configured here.
-    let nros_platform_threadx_dir =
-        workspace_root.join("packages/core/nros-platform-threadx/src");
-    let nros_platform_cffi_include =
-        workspace_root.join("packages/core/nros-platform-cffi/include");
+    // Phase 152.2.B — wire up via
+    // `nros_board_common::threadx_sources::add_nros_platform_threadx_build`.
+    // The helper owns the source-file list + cffi-include + rerun
+    // triggers; overlay still owns the `cc::Build` so it can stamp
+    // its own cflags + ThreadX/NetX include set.
     let mut platform = cc::Build::new();
     configure_linux(&mut platform);
     add_threadx_includes(&mut platform, &threadx_dir, &threadx_port_dir, &config_dir);
     platform.include(netx_dir.join("common/inc"));
     platform.include(netx_dir.join("ports/linux/gnu/inc"));
     platform.include(netx_dir.join("addons/BSD"));
-    platform.include(&nros_platform_cffi_include);
-    platform.file(nros_platform_threadx_dir.join("platform.c"));
-    platform.file(nros_platform_threadx_dir.join("net.c"));
-    platform.file(nros_platform_threadx_dir.join("timer.c"));
+    nros_board_common::threadx_sources::add_nros_platform_threadx_build(
+        &mut platform,
+        workspace_root,
+    );
     platform.compile("nros_platform_threadx");
-    println!("cargo:rerun-if-changed={}", nros_platform_threadx_dir.display());
 
     // ---- Build C glue (app_define.c) ----
     let mut glue = cc::Build::new();

@@ -49,6 +49,43 @@ pub fn add_threadx_port_sources(
     add_c_files_in(build, &threadx_dir.join("ports").join(port_subpath).join("src"))
 }
 
+/// Phase 152.2.B — wire `nros-platform-threadx`'s C port into a
+/// pre-configured `cc::Build`. Adds the cffi include dir + the
+/// three platform C files (`platform.c`, `net.c`, `timer.c`) and
+/// emits the matching `cargo:rerun-if-changed` lines.
+///
+/// Caller's `build` must already carry the architecture / cflags
+/// + ThreadX kernel + NetX includes — those differ per overlay
+/// (NSOS shim vs full NetX-Duo) so they can't be lifted here.
+///
+/// `workspace_root` is the directory containing `packages/` —
+/// typically `manifest_dir.parent().parent().parent()`.
+///
+/// # Example
+/// ```ignore
+/// let mut platform = cc::Build::new();
+/// configure_arch(&mut platform);
+/// add_threadx_includes(&mut platform, &threadx_dir, &port_dir, &config_dir);
+/// add_netx_includes(&mut platform, &netx_dir);
+/// nros_board_common::threadx_sources::add_nros_platform_threadx_build(
+///     &mut platform,
+///     &workspace_root,
+/// );
+/// platform.compile("nros_platform_threadx");
+/// ```
+pub fn add_nros_platform_threadx_build(build: &mut cc::Build, workspace_root: &Path) {
+    let src_dir = workspace_root.join("packages/core/nros-platform-threadx/src");
+    let cffi_include = workspace_root.join("packages/core/nros-platform-cffi/include");
+
+    build.include(&cffi_include);
+    build.file(src_dir.join("platform.c"));
+    build.file(src_dir.join("net.c"));
+    build.file(src_dir.join("timer.c"));
+
+    println!("cargo:rerun-if-changed={}", src_dir.display());
+    println!("cargo:rerun-if-changed={}", cffi_include.display());
+}
+
 fn add_c_files_in(build: &mut cc::Build, dir: &Path) -> usize {
     let mut count = 0;
     let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {

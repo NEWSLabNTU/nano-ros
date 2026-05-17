@@ -313,7 +313,8 @@ delta:
         `reference-linux` host build).
       - **152.2.B — Build-glue carve-out** (partial 2026-05-18;
         full carve deferred).
-        Partial landed: kernel + port-source enumeration helpers
+        Partial landed (two passes):
+        (1) kernel + port-source enumeration helpers
         (`add_threadx_kernel_sources` +
         `add_threadx_port_sources`) lifted into
         `nros-board-common::threadx_sources`. Both overlays
@@ -322,13 +323,25 @@ delta:
         `read_dir(ports/<port>/src)` loops to the shared helpers.
         Future ThreadX-kernel submodule bumps that add files pick
         up automatically in both overlays.
+        (2) `add_nros_platform_threadx_build` helper (same module)
+        wires the `nros-platform-threadx` C port (`platform.c`,
+        `net.c`, `timer.c`) + the cffi include path + matching
+        `cargo:rerun-if-changed` triggers into a pre-configured
+        `cc::Build`. Both overlays dropped the hand-rolled
+        sources/include/rerun lines (~6 lines each → 1 call).
+        `nros-board-threadx-linux` `cargo check` clean +
+        `just threadx_linux build` clean. RISC-V `cargo check`
+        clean for the board crate; full link verification
+        blocked by pre-existing `zpico-sys/platform_aliases.o`
+        float-ABI mismatch (unrelated to the carve — reproduces
+        on `main`).
         Full carve-out deferred — same shape as 152.1.B but with
         two reference overlays differing in `std`/`no_std` +
         `pthreads`/`bare-metal` + with/without full NetX-Duo
         TCP/IP + with/without RISC-V startup assembly. Per-board
-        `Config` shapes diverge enough that a `BoardInit` trait
-        (152.4.B) is the right abstraction to share — wait for
-        that to land first.
+        `Config` shapes diverge enough that the `BoardInit` trait
+        (152.4.B) is the right abstraction to share — now landed,
+        so the full carve is unblocked for a follow-up session.
 
 #### 152.2.B subitems
 
