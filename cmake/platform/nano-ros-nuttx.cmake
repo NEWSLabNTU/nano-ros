@@ -25,7 +25,7 @@
 #   * Pulls in `NanoRosReadConfig.cmake` + `NanoRosLink.cmake` so
 #     in-tree consumers get `nano_ros_read_config()` /
 #     `nano_ros_generate_config_header()` / `nano_ros_link_rmw()`
-#     without a legacy `find_package(NanoRos CONFIG)` step. The
+#     without an install step (Phase 140 removed the legacy install path). The
 #     latter is a no-op on NuttX (the FFI crate's Cargo.toml pulls
 #     the RMW staticlib in directly) — keeping the function defined
 #     lets examples call it without a per-platform `if`.
@@ -92,22 +92,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosLink.
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.
 # Mirrors the FreeRTOS module: the root CMake only includes the codegen
 # module on the POSIX branch (it builds the codegen Rust tool via
-# Corrosion in that branch). For cross-compile NuttX, consumers need
-# a host-side `nros-codegen` binary; best-effort find it under
-# `<repo>/build/install/bin/` first.
+# Corrosion in that branch). For cross-compile NuttX, consumers point
+# `_NANO_ROS_CODEGEN_TOOL` at a host-side binary produced by a
+# parallel POSIX configure (see the FreeRTOS module's comment for the
+# pattern). The module's own `find_program(nros-codegen)` walks PATH
+# when nothing is pre-set.
 # ---------------------------------------------------------------------------
 set(_nros_nuttx_codegen_module
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_nuttx_codegen_module}")
-    if(NOT DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-        find_program(_nros_nuttx_codegen_hint nros-codegen
-            PATHS "${CMAKE_CURRENT_LIST_DIR}/../../build/install/bin"
-            NO_DEFAULT_PATH)
-        if(_nros_nuttx_codegen_hint)
-            set(_NANO_ROS_CODEGEN_TOOL "${_nros_nuttx_codegen_hint}"
-                CACHE INTERNAL "nros codegen host binary (NuttX cross build)")
-        endif()
-    endif()
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
     include("${_nros_nuttx_codegen_module}")
 endif()

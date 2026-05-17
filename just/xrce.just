@@ -33,23 +33,13 @@ build-agent:
 clean-agent:
     ./scripts/xrce-agent/build.sh --clean
 
-# Phase 115.K.2.5.2: build the standalone `nros-rmw-xrce` CMake
-# project and install into the shared `build/install/` prefix so
-# downstream `find_package(NrosRmwXrce)` resolves it. Mirrors the
-# cyclonedds `build-rmw` recipe — runs ahead of `install-local-posix`'s
-# `xrce` iteration so the nros-c xrce variant links cleanly against
-# `NrosRmwXrce::NrosRmwXrce`.
-build-rmw:
-    #!/usr/bin/env bash
-    set -e
-    PROJ="packages/xrce/nros-rmw-xrce"
-    cmake -S "$PROJ" -B "$PROJ/build" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH="$PWD/build/install" \
-        -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
-        -DNROS_RMW_XRCE_C_BUILD_TESTS=OFF
-    cmake --build "$PROJ/build" --parallel
-    cmake --install "$PROJ/build"
+# Phase 140 — the legacy `build-rmw` recipe (standalone CMake build
+# + install) is gone. The Rust-side `nros-rmw-xrce-cffi` shim is
+# what the root CMake xrce branch consumes; build it via cargo or
+# via the root cmake configure with NANO_ROS_RMW=xrce. The
+# header-only `nros-rmw-xrce` C++ project under
+# packages/xrce/nros-rmw-xrce/ keeps its CTest harness for ad-hoc
+# in-tree validation.
 
 # Run XRCE-DDS integration tests (requires: just xrce build-agent)
 test verbose="":

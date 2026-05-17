@@ -8,8 +8,10 @@
  *
  * Build systems pick the right variant header — see the matching stub
  * in `nros-cpp/include/nros/nros_cpp_config_generated.h` for the full
- * dispatch model. Short form:
- *   - CMake `find_package(NanoRos)`: handled by NanoRosCTargets.cmake.
+ * dispatch model. Short form (Phase 140):
+ *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists mirrors
+ *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/nros/
+ *     and adds it to nros_c-static's INTERFACE include path.
  *   - Zephyr: zephyr/CMakeLists.txt prepends the cargo target dir.
  *   - Direct `cargo build`: add `-I$CARGO_TARGET_DIR/nros-c-generated/<slug>`.
  *

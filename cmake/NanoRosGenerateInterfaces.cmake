@@ -4,15 +4,14 @@ NanoRosGenerateInterfaces
 
 **Source-of-truth location.** Phase 137.2 (2026-05-18) made
 ``<repo-root>/cmake/NanoRosGenerateInterfaces.cmake`` the canonical
-copy that the root entry CMake (``CMakeLists.txt:261``) includes.
-A second copy lives in the ``packages/codegen`` submodule at
-``packages/codegen/packages/nros-codegen-c/cmake/`` to keep the
-legacy ``install-local`` → ``find_package(NanoRos CONFIG)`` path
-working (its ``install(FILES …)`` rule still copies from the
-submodule path into ``build/install/lib/cmake/NanoRos/``). When
-editing this module, mirror the change into both copies. The
-duplication ends when the ``packages/codegen`` submodule pointer is
-next bumped to a commit that no longer ships the module.
+copy that the root entry CMake includes. A second copy lives in
+the ``packages/codegen`` submodule at
+``packages/codegen/packages/nros-codegen-c/cmake/``; Phase 140
+deleted that copy's install rule (the legacy ``find_package`` path
+is gone), but the file itself stays for the codegen project's own
+in-tree build. When editing this module, mirror the change into
+both copies until the ``packages/codegen`` submodule pointer is
+next bumped.
 
 Generate C or C++ bindings for ROS 2 interface files (.msg, .srv, .action).
 
@@ -40,8 +39,10 @@ This module provides two functions:
     )
 
 Prerequisites:
-  Run ``just install-local`` (or ``cmake --build && cmake --install``)
-  before configuring CMake.
+  Reached automatically when the user's ``CMakeLists.txt`` calls
+  ``add_subdirectory(nano-ros)``. The root entry CMake `include()`s
+  this module and points ``_NANO_ROS_CODEGEN_TOOL`` at the
+  Corrosion-built ``nros-codegen`` target. No install step needed.
 
 #]=======================================================================]
 
@@ -166,7 +167,7 @@ function(nros_generate_interfaces target)
           "    ${CMAKE_CURRENT_SOURCE_DIR}/${_relpath}\n"
           "    AMENT_PREFIX_PATH/share/${target}/${_relpath}\n"
           "    ${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/${_relpath}\n"
-          "  Hint: run 'just install-local', or check the file path.")
+          "  Hint: check the file path or set AMENT_PREFIX_PATH.")
       endif()
       list(APPEND _interface_files "${_abs_path}")
     endforeach()
@@ -204,7 +205,7 @@ function(nros_generate_interfaces target)
         "    ${CMAKE_CURRENT_SOURCE_DIR}/{msg,srv,action}/\n"
         "    AMENT_PREFIX_PATH/share/${target}/{msg,srv,action}/\n"
         "    ${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/{msg,srv,action}/\n"
-        "  Hint: add msg/*.msg locally, source ROS 2 setup.bash, or run 'just install-local'.")
+        "  Hint: add msg/*.msg locally or source ROS 2 setup.bash to populate AMENT_PREFIX_PATH.")
     endif()
   endif()
 

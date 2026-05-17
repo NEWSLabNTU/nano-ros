@@ -89,26 +89,29 @@ cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zen
 
 ## Quick Start (C API)
 
-Build the nano-ros C library and link against it with CMake:
+Consume nano-ros from a CMake project via `add_subdirectory`:
 
 ```bash
-# Build the static library
-cd nano-ros
-cargo build -p nros-c --release
-
-# Build a C example
-just install-local  # Build libraries + create CMake package
+# Clone alongside (or as a submodule of) your project.
 cd examples/native/c/zenoh/talker
-mkdir -p build && cd build
-cmake ..
-make
+cmake -B build -S .
+cmake --build build
+./build/c_talker
 ```
 
-A config-mode CMake package is provided for easy integration:
+The example's `CMakeLists.txt` is 20 lines:
 
 ```cmake
-find_package(NanoRos REQUIRED CONFIG)
-target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
+cmake_minimum_required(VERSION 3.22)
+project(c_talker LANGUAGES C)
+
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(<path-to-nano-ros> nano_ros)
+
+add_executable(c_talker src/main.c)
+target_link_libraries(c_talker PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(c_talker)
 ```
 
 See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrough.

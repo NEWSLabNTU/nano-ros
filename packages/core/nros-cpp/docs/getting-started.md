@@ -10,37 +10,26 @@
   install a matching version from
   [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases))
 
-## 1. Build and Install nros
-
-```bash
-cd /path/to/nano-ros
-just install-local
-# CMake-ready package now lives at: build/install/
-```
-
-`just install-local` builds both zenoh and XRCE-DDS variants and stages
-a config-mode CMake package at `build/install/`. The C++ static library
-is `libnros_cpp.a`; headers live under `include/nros/`.
-
-## 2. Create a CMake Project
+## 1. Create a CMake Project
 
 ```bash
 mkdir my-cpp-talker && cd my-cpp-talker
 mkdir src
 ```
 
-`CMakeLists.txt`:
+`CMakeLists.txt` (Phase 140 — `add_subdirectory` is the only
+consumption shape):
 
 ```cmake
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.22)
 project(my_cpp_talker LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(NanoRos REQUIRED CONFIG
-    PATHS "/path/to/nano-ros/build/install"
-)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(/path/to/nano-ros nano_ros)
 
 # Generate C++ message bindings from .msg files
 nano_ros_generate_interfaces(std_msgs
@@ -52,13 +41,14 @@ nano_ros_generate_interfaces(std_msgs
 add_executable(my_cpp_talker src/main.cpp)
 target_link_libraries(my_cpp_talker PRIVATE
     NanoRos::NanoRosCpp
-    std_msgs__cpp
+    std_msgs__nano_ros_cpp
 )
+nros_platform_link_app(my_cpp_talker)
 ```
 
-`find_package(NanoRos)` exports `NanoRos::NanoRosCpp` (the C++ library
-target) and the `nano_ros_generate_interfaces(... LANGUAGE CPP)` CMake
-function.
+`NanoRos::NanoRosCpp` is the C++ INTERFACE target wired by the root
+CMake; `nano_ros_generate_interfaces(... LANGUAGE CPP)` becomes
+available the moment `add_subdirectory(nano-ros)` runs.
 
 ## 3. Code Generation
 

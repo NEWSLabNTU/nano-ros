@@ -7,11 +7,11 @@
  * where <variant_slug> = sorted underscore-joined cargo feature list
  * (e.g. `platform-posix_rmw-zenoh_ros-humble_std`).
  *
- * Build systems pick the right variant header:
- *   - CMake (find_package(NanoRos)):  NanoRosCppTargets.cmake prepends
- *     `include/nros_cpp_<rmw>[_<platform>]` to the include path; user
- *     code's `#include "nros/nros_cpp_config_generated.h"` resolves
- *     there before this stub.
+ * Build systems pick the right variant header (Phase 140):
+ *   - CMake `add_subdirectory(nano-ros)`: nros-cpp's CMakeLists mirrors
+ *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/nros/
+ *     and adds it to nros-cpp-headers' INTERFACE include path BEFORE
+ *     the source-tree stub.
  *   - Zephyr: zephyr/CMakeLists.txt prepends `${CMAKE_BINARY_DIR}/nros-rust`
  *     (the cargo target dir) so the per-build header wins.
  *   - Direct `cargo build`: add the per-build path to your compile

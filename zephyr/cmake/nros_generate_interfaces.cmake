@@ -38,10 +38,13 @@ Arguments:
 Prerequisites:
   ``nros-codegen`` is located in order:
 
-  1. ``CONFIG_NROS_INSTALL_PREFIX/bin/`` — set in ``prj.conf``
-  2. ``CMAKE_PREFIX_PATH/bin/`` — passed via ``west build -- -DCMAKE_PREFIX_PATH=...``
+  1. ``_NANO_ROS_CODEGEN_TOOL`` cache var (set on the cmake command
+     line via ``west build -- -D_NANO_ROS_CODEGEN_TOOL=...``)
+  2. ``CONFIG_NROS_CODEGEN_TOOL`` — set in ``prj.conf``
+  3. ``nros-codegen`` on ``PATH``
 
-  At least one must be set; there is no PATH fallback.
+  Build a host-side binary first via a parallel POSIX configure
+  (see Kconfig help for ``NROS_CODEGEN_TOOL``).
 
 #]=======================================================================]
 
@@ -50,32 +53,31 @@ Prerequisites:
 # =========================================================================
 
 if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-  # 1. Kconfig: CONFIG_NROS_INSTALL_PREFIX set in prj.conf
-  if(DEFINED CONFIG_NROS_INSTALL_PREFIX AND NOT CONFIG_NROS_INSTALL_PREFIX STREQUAL "")
-    find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen
-      PATHS "${CONFIG_NROS_INSTALL_PREFIX}/bin"
-      NO_DEFAULT_PATH)
+  # 1. Pre-set cache var: west build -- -D_NANO_ROS_CODEGEN_TOOL=...
+  if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
+    set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}")
   endif()
 
-  # 2. CMake: CMAKE_PREFIX_PATH passed via west build -- -DCMAKE_PREFIX_PATH=...
-  # find_program() does not search CMAKE_PREFIX_PATH automatically, so we do it explicitly.
+  # 2. Kconfig: CONFIG_NROS_CODEGEN_TOOL set in prj.conf
+  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL
+     AND DEFINED CONFIG_NROS_CODEGEN_TOOL
+     AND NOT CONFIG_NROS_CODEGEN_TOOL STREQUAL "")
+    set(_NROS_ZEPHYR_CODEGEN_TOOL "${CONFIG_NROS_CODEGEN_TOOL}")
+  endif()
+
+  # 3. PATH search.
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-    foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
-      find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen
-        PATHS "${_prefix}/bin"
-        NO_DEFAULT_PATH)
-      if(_NROS_ZEPHYR_CODEGEN_TOOL)
-        break()
-      endif()
-    endforeach()
+    find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen)
   endif()
 
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros-codegen not found. Set the nano-ros install prefix via one of:\n"
-      "  prj.conf:   CONFIG_NROS_INSTALL_PREFIX=\"/path/to/install\"\n"
-      "  west build: west build -b <board> -- -DCMAKE_PREFIX_PATH=/path/to/install\n"
-      "Build the install prefix with: just install-local")
+      "nros-codegen not found. Build a host-side codegen tool first:\n"
+      "  cmake -S <nano-ros> -B build-host -DNANO_ROS_PLATFORM=posix\n"
+      "  cmake --build build-host --target nros-codegen\n"
+      "Then point the Zephyr build at it via:\n"
+      "  prj.conf:   CONFIG_NROS_CODEGEN_TOOL=\"/path/to/nros-codegen\"\n"
+      "  west build: west build -b <board> -- -D_NANO_ROS_CODEGEN_TOOL=/path/to/nros-codegen")
   endif()
 
   set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
@@ -266,19 +268,22 @@ function(nros_generate_interfaces target)
 
     # Build Rust FFI glue for generated message types
     if(_generated_rs_files)
-      # Locate repo root and install prefix for templates/serdes
+      # Phase 140 — resolve templates/serdes directly from the
+      # in-tree nano-ros checkout (the legacy install-local prefix is
+      # gone). The Zephyr module ships under <repo>/zephyr/cmake/, so
+      # walk up two dirs to reach the repo root.
       set(_nros_repo_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..")
       get_filename_component(_nros_repo_dir "${_nros_repo_dir}" ABSOLUTE)
 
-      get_filename_component(_codegen_bindir "${_NROS_ZEPHYR_CODEGEN_TOOL}" DIRECTORY)
-      get_filename_component(_install_prefix "${_codegen_bindir}" DIRECTORY)
-      set(_serdes_dir "${_install_prefix}/share/nano-ros/rust/nros-serdes")
-      set(_template_dir "${_install_prefix}/lib/cmake/NanoRos")
+      set(_serdes_dir
+          "${_nros_repo_dir}/packages/core/nros-cpp/cmake")
+      set(_template_dir
+          "${_nros_repo_dir}/cmake")
 
-      if(NOT EXISTS "${_serdes_dir}/Cargo.toml")
+      if(NOT EXISTS "${_serdes_dir}/nros-serdes-standalone-Cargo.toml")
         message(FATAL_ERROR
-          "nros-serdes not found at ${_serdes_dir}.\n"
-          "Run: just install-local")
+          "nros-serdes standalone Cargo.toml not found at "
+          "${_serdes_dir}. The nano-ros checkout looks incomplete.")
       endif()
 
       # Set up temp Cargo project

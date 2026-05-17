@@ -27,7 +27,7 @@
 #   * Pulls in `NanoRosReadConfig.cmake` + `NanoRosLink.cmake` so
 #     in-tree consumers get `nano_ros_read_config()` /
 #     `nano_ros_generate_config_header()` / `nano_ros_link_rmw()`
-#     without a legacy `find_package(NanoRos CONFIG)` step.
+#     without an install step (Phase 140 removed the legacy install path).
 #
 #   * Defines `nros_platform_link_app(target)` — links
 #     `threadx_platform` onto the app target, appends the board's
@@ -68,29 +68,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosLink.
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.
 # The root CMakeLists.txt only includes the codegen module on the POSIX
 # branch (it builds the codegen Rust tool via Corrosion in that branch).
-# For cross-compile branches (ThreadX RV64, etc.) the codegen Rust tool
-# can't be built with the cross toolchain — consumers must point
-# `_NANO_ROS_CODEGEN_TOOL` at an already-built host binary
-# (e.g. `<repo>/build/install/bin/nros-codegen`, produced by
-# `just install-local` on the host). Include the module unconditionally
-# when present; if `_NANO_ROS_CODEGEN_TOOL` isn't pre-set the module's
-# own `find_program(nros-codegen)` walks PATH + the cmake prefix path.
-# threadx-linux runs on the host so it can find a system-built tool;
-# qemu-riscv64-threadx cross-compiles for RISC-V but the codegen tool
-# always runs on the build host, so the same heuristic applies.
+# For cross-compile branches (ThreadX RV64, etc.) consumers point
+# `_NANO_ROS_CODEGEN_TOOL` at a host-side binary produced by a parallel
+# POSIX configure (see the FreeRTOS module comment for the pattern).
+# threadx-linux runs on the host so a system-built tool resolves
+# automatically via PATH.
 # ---------------------------------------------------------------------------
 set(_nros_threadx_codegen_module
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_threadx_codegen_module}")
-    if(NOT DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-        find_program(_nros_threadx_codegen_hint nros-codegen
-            PATHS "${CMAKE_CURRENT_LIST_DIR}/../../build/install/bin"
-            NO_DEFAULT_PATH)
-        if(_nros_threadx_codegen_hint)
-            set(_NANO_ROS_CODEGEN_TOOL "${_nros_threadx_codegen_hint}"
-                CACHE INTERNAL "nros codegen host binary (ThreadX cross build)")
-        endif()
-    endif()
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
     include("${_nros_threadx_codegen_module}")
 endif()

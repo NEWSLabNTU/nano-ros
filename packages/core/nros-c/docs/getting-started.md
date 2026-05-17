@@ -8,56 +8,43 @@
 - zenohd router (build from submodule with `just build-zenohd`,
   or install a matching version from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases))
 
-## 1. Build the nros C Library
-
-```bash
-cd /path/to/nano-ros
-
-# Build the static library (libnros_c.a)
-cargo build -p nros-c --release
-# Library at: target/release/libnros_c.a
-# Headers at: packages/core/nros-c/include/
-
-# Or use the install recipe for a CMake-ready layout:
-just install-local
-# Installs to: build/install/
-```
-
-`just install-local` builds both zenoh and XRCE variants and creates a
-config-mode CMake package at `build/install/`.
-
-## 2. Create a CMake Project
+## 1. Create a CMake Project
 
 ```bash
 mkdir my-c-talker && cd my-c-talker
 mkdir src
 ```
 
-Create `CMakeLists.txt`:
+Create `CMakeLists.txt` (Phase 140 — `add_subdirectory` is the only
+consumption shape):
 
 ```cmake
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.22)
 project(my_c_talker LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 
-# Point to the nros install prefix
-list(APPEND CMAKE_MODULE_PATH "/path/to/nano-ros/cmake")
-find_package(NanoRos REQUIRED CONFIG)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(/path/to/nano-ros nano_ros)
 
 add_executable(my_c_talker src/main.c)
 target_link_libraries(my_c_talker PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_c_talker)
 ```
 
-`find_package(NanoRos)` provides include directories, the static library,
-and platform link libraries (pthread, dl, m) automatically.
+`NanoRos::NanoRos` provides include directories, the static library, and
+platform link libraries (pthread, dl, m) automatically via the root CMake's
+INTERFACE target. The nros-c static library is built in-tree per-project
+via Corrosion.
 
-## 3. Code Generation
+## 2. Code Generation
 
 Use `nano_ros_generate_interfaces()` to generate C message types. This
-CMake function is included automatically by `find_package(NanoRos CONFIG)`.
-The codegen tool (`nros-codegen`) is installed to `$PREFIX/bin/` by
-`just install-local`.
+CMake function becomes available automatically once `add_subdirectory(nano-ros)`
+runs (the root CMake includes `cmake/NanoRosGenerateInterfaces.cmake`).
+The codegen tool (`nros-codegen`) is a Corrosion-built target reachable via
+`$<TARGET_FILE:nros-codegen>`.
 
 **Never hand-write CDR serialization or struct definitions** — always use
 the code generator.
@@ -90,20 +77,14 @@ Resolution order for each file:
 Generated type info structs (`nros_message_type_t`, `nros_service_type_t`,
 `nros_action_type_t`) are defined in `<nros/types.h>`.
 
-## 4. RMW Backend Selection
+## 3. RMW Backend Selection
 
-The `NANO_ROS_RMW` CMake variable selects which library variant to link.
-Default is `zenoh`.
+The `NANO_ROS_RMW` CMake variable selects which RMW staticlib to build
+in-tree. Set it in `CMakeLists.txt` (BEFORE `add_subdirectory`) or
+override on the command line (`-DNANO_ROS_RMW=xrce`). Valid: `zenoh`
+(default), `dds`, `xrce`, `cyclonedds`.
 
-```bash
-# Zenoh backend (default)
-cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros ..
-
-# XRCE-DDS backend
-cmake -S . -B build -DNANO_ROS_RMW=xrce -DNANO_ROS_ROOT=/path/to/nano-ros ..
-```
-
-## 5. Write a Publisher
+## 4. Write a Publisher
 
 Create `src/main.c`:
 
@@ -205,11 +186,11 @@ int main(void) {
 }
 ```
 
-## 6. Build and Run
+## 5. Build and Run
 
 ```bash
 mkdir build && cd build
-cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+cmake ..
 make
 
 # Terminal 1: start zenoh router
@@ -221,18 +202,8 @@ zenohd --listen tcp/127.0.0.1:7447
 
 ## System Install
 
-For package maintainers or system-wide installation:
-
-```bash
-cmake -S . -B build -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-cmake --install build --prefix /usr/local
-
-# Multi-RMW: run cmake twice to the same prefix
-cmake -S . -B build-xrce -DNANO_ROS_RMW=xrce -DCMAKE_BUILD_TYPE=Release
-cmake --build build-xrce
-cmake --install build-xrce --prefix /usr/local
-```
+Phase 140 — there is no system install for nano-ros. Your user
+project owns whatever install layout it needs for *its* binaries.
 
 ## Zephyr Integration
 

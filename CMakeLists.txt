@@ -11,8 +11,8 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 #     add_subdirectory(third_party/nano-ros nano_ros)
 #     target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 #
-# No `just install-local` / `find_package(NanoRos CONFIG)` required. The
-# legacy install path stays supported until Phase 140.
+# Phase 140 deleted `just install-local` + `find_package(NanoRos
+# CONFIG)`; `add_subdirectory` is the only supported shape.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -221,10 +221,9 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # (NOT a Rust crate via corrosion). It builds a libnros_rmw_cyclonedds.a
     # that registers the C++ vtable via nros_rmw_cffi_register at .init_array
     # time. add_subdirectory invokes the project's own CMakeLists.txt;
-    # CMAKE_PREFIX_PATH must already point at the Cyclone DDS install
-    # (handled by the install-local-posix recipe's cyclonedds::build-rmw
-    # dep). For users consuming via add_subdirectory directly, they
-    # must `just cyclonedds setup` first to populate Cyclone DDS itself.
+    # CMAKE_PREFIX_PATH must already point at the Cyclone DDS install —
+    # users run `just cyclonedds setup` first to populate Cyclone DDS
+    # itself (third-party C++ library, not part of nano-ros).
     add_subdirectory(packages/dds/nros-rmw-cyclonedds)
     if(TARGET nros_rmw_cyclonedds)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
@@ -271,14 +270,12 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
 endif()
 
 # ---------------------------------------------------------------------------
-# Phase 137.2 — codegen module reachable from in-tree consumers.
+# Phase 137.2 / 140 — codegen module reachable from in-tree consumers.
 #
 # The function lives in the codegen submodule. We `include()` it
 # directly so consumers reaching this root via `add_subdirectory` get
 # `nros_generate_interfaces()` + `nros_find_interfaces()` without an
-# install step. The install rule inside the codegen sub-project still
-# copies it to `<prefix>/lib/cmake/NanoRos/` for legacy
-# `find_package(NanoRos CONFIG)` consumers.
+# install step (Phase 140 — no install layout exists any more).
 #
 # The codegen module runs `find_program(nros-codegen ...)` at include
 # time. In-tree consumers don't have an installed `<prefix>/bin/nros-codegen`,

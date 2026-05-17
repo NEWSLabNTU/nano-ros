@@ -13,11 +13,8 @@
 #     to do; pthread/dl/m already flow through the umbrella target.
 #   - Sets NROS_PLATFORM_LINK_FEATURES — defaults for this platform.
 #
-# Also dual-installs as `nros-posix.cmake` under <prefix>/lib/cmake/NanoRos
-# for legacy find_package(NanoRos) consumers (138.5). The install rule
-# lives in the root CMakeLists.txt next to the other platform-module
-# installs — kept central so the dual-surface contract is visible in one
-# place.
+# Phase 140 deleted the dual-install shim — this module is consumed
+# in-tree only.
 
 if(DEFINED _NROS_PLATFORM_POSIX_INCLUDED)
     return()

@@ -386,19 +386,25 @@ config NROS_INIT_DELAY_MS
       before initializing the RMW transport.
 
 # =============================================================================
-# Install Prefix
+# Host-side codegen tool (cross-compile fix-up)
 # =============================================================================
 
-config NROS_INSTALL_PREFIX
-    string "nano-ros install prefix"
+config NROS_CODEGEN_TOOL
+    string "Path to host-built nros-codegen binary"
     default ""
     help
-      Path to the nano-ros install prefix produced by `just install-local`
-      (e.g. /home/user/nano-ros/build/install).
+      Phase 140 — Zephyr builds cross-compile for the target, but
+      nros-codegen runs on the build host. Build it once via a
+      parallel POSIX configure:
 
-      When set, the build system finds nros-codegen at this location.
-      Equivalent to passing -DCMAKE_PREFIX_PATH=<prefix> via west build.
+        cmake -S <nano-ros> -B build-host -DNANO_ROS_PLATFORM=posix
+        cmake --build build-host --target nros-codegen
 
-      Either this or CMAKE_PREFIX_PATH must be set; there is no PATH fallback.
+      and point this Kconfig at the resulting binary
+      (e.g. /home/user/nano-ros/build-host/<...>/nros-codegen).
+
+      The Zephyr module's nros_generate_interfaces() picks it up
+      automatically when set. Without this (and without the binary
+      on PATH), configure errors out with a Hint.
 
 endif # NROS

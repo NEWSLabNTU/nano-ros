@@ -93,8 +93,9 @@ mkdir -p "$BUILD_DIR"
 rm -f "$BUILD_DIR/CMakeCache.txt"
 (
     cd "$BUILD_DIR"
+    # Phase 140 — example CMakeLists drive add_subdirectory(nano-ros)
+    # directly; no NanoRos_DIR / install prefix needed.
     cmake .. \
-        -DNanoRos_DIR="$REPO_ROOT/build/install/lib/cmake/NanoRos" \
         -DCMAKE_C_FLAGS="-fstack-usage" \
         -DCMAKE_BUILD_TYPE=Release \
         > /dev/null 2>&1

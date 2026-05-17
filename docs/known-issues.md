@@ -293,7 +293,7 @@ QEMU-based E2E tests now run in parallel across platforms using:
 - **Per-platform zenohd ports** (74.2) — each platform uses a fixed port (baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453, esp32=7454, threadx-linux=7455, zephyr=7456)
 - **Per-platform nextest groups** (74.5) — `qemu-baremetal`, `qemu-freertos`, `qemu-nuttx`, etc. run concurrently; tests within each group are still serial
 
-C/C++ library contention was resolved by Phase 75 (relocatable CMake install): pre-built libraries live in a shared read-only `build/install/` prefix, and each example's CMake build dir is cleaned per invocation.
+C/C++ library contention was resolved by Phase 75 (relocatable CMake install). Phase 140 superseded that: examples now build the staticlibs in-tree per-example via Corrosion (no shared prefix), and each example's CMake build dir is cleaned per invocation.
 
 **Remaining serialization** (by design):
 - `c_api` / `cpp_api` — C/C++ native tests share static library build outputs
@@ -303,28 +303,16 @@ C/C++ library contention was resolved by Phase 75 (relocatable CMake install): p
 
 ## 10. CMake install prefix is never cleaned between builds
 
-`just install-local` runs `cmake --install build/cmake-<rmw> --prefix build/install/`
-for each RMW backend. CMake install is **additive** — it writes new files but never
-removes files left over from previous builds.
+**Status: Resolved by Phase 140 (install-local rip-off).**
 
-**Current stale artifacts** in `build/install/lib/`:
-
-| File | Status | Reason |
-|------|--------|--------|
-| `libnros_cpp_ffi_zenoh.a` | Stale (2026-03-14) | Leftover from before `nros_cpp_ffi` was renamed to `nros_cpp` |
-| `libnros_cpp_ffi_xrce.a` | Stale (2026-03-14) | Same |
-
-These are not referenced by any current CMake target or config file. They persist
-only because no clean step exists.
-
-**Possible improvements**:
-
-- Add a `just clean-install` recipe: `rm -rf build/install/ && just install-local`
-- Or add a pre-install step that removes `build/install/lib/libnros_*.a` before
-  reinstalling, so stale RMW variants don't accumulate.
-- For system installs (`--prefix /usr/local`), provide an uninstall target (CMake
-  install manifests in `build/cmake-<rmw>/install_manifest.txt` can be used with
-  `xargs rm` to remove exactly what was installed).
+Pre-Phase-140, `just install-local` ran `cmake --install` for each
+RMW backend into a shared `build/install/` prefix. CMake install is
+additive — it wrote new files but never removed files left over from
+previous builds, so stale `libnros_cpp_ffi_zenoh.a` /
+`libnros_cpp_ffi_xrce.a` archives accumulated. Phase 140 deleted
+`install-local` entirely; per-example builds produce their own
+Corrosion target tree and never reuse a shared prefix, so the
+stale-artefact failure mode is gone.
 
 ## 11. C/C++ examples do not use package.xml as single source of truth for message deps
 
