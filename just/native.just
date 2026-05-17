@@ -218,7 +218,7 @@ size: build-examples
     @size packages/reference/stm32f4-porting/rtic/target/thumbv7em-none-eabihf/release/stm32f4-rs-rtic-example 2>/dev/null || echo "RTIC: build failed"
     @size examples/stm32f4/rust/zenoh/talker-embassy/target/thumbv7em-none-eabihf/release/stm32f4-rs-embassy-example 2>/dev/null || echo "Embassy: build failed"
     @size packages/reference/stm32f4-porting/polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
-    @size examples/stm32f4/rust/standalone/smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
+    @size packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-smoltcp-echo: build failed"
 
 # Clean all example build artifacts
 clean: clean-c clean-cpp

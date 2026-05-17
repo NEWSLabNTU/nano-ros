@@ -177,7 +177,7 @@ exclude = [
     "examples/stm32f4/rust/zenoh/rtic-action-server",
     "examples/stm32f4/rust/zenoh/rtic-action-client",
     "examples/stm32f4/rust/zenoh/talker-embassy",
-    "examples/stm32f4/rust/standalone/smoltcp",
+    "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     "examples/zephyr/rust/zenoh/talker",
     "examples/zephyr/rust/zenoh/listener",
