@@ -55,8 +55,11 @@
 
 mod config;
 mod error;
+mod node;
 
 pub use config::Config;
+pub use node::run;
+pub use nros_board_common::{BoardExit, BoardInit, BoardPrint};
 
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift
