@@ -11,7 +11,19 @@ zenoh-pico's CMake default does) but the underlying
 are missing → every C/C++ example linking the POSIX zenoh staticlib
 fails at the final link with ~12 undefined references.
 
-**Status.** Not started.
+**Status.** Closed 2026-05-18 — work landed on a parallel branch
+under the original "Phase 149" numbering and merged after the
+Phase 151 doc was renamed. Stubs are in `platform_aliases.c`
+(commit `ae5205c8 phase-149: stub _z_*_serial_* aliases in
+platform_aliases.c`); the regression-gate script picks them up
+under Phase 150.E rev3's serial-naming fix (commit `5937c3e8`).
+Verified: `examples/native/c/zenoh/action-server` links clean;
+`cargo nextest run -p nros-tests --test zenoh_archive_symbols`
+reports `ok: serial — 5 wrappers, all impls defined`. The 14
+remaining `nros-tests::native_api` failures captured during
+verification are runtime-class (`nros_support_init -> -1` at
+test fixture init), NOT the Phase 151 link class. Tracked
+separately under Phase 150.
 
 **Priority.** P1 — blocks every C/C++ POSIX example link path. 58
 of the 144 post-Phase-140 test-all failures (native_api action /
@@ -133,18 +145,18 @@ proper error code), minimum churn.
 
 ## Work Items
 
-- [ ] **149.1 — Add 7 serial alias stubs to platform_aliases.c.**
+- [x] **151.1 (was 149.1) — Add 7 serial alias stubs to platform_aliases.c.**
       Mirror Phase 134's UDP-multicast stub block. Each returns
       `-1` / `0`. Comment block matches Phase 134's voice.
       **Files.** `packages/zpico/zpico-sys/c/zpico/platform_aliases.c`.
 
-- [ ] **149.2 — Update `scripts/check-zenoh-archive-symbols.sh`
+- [x] **151.2 (was 149.2) — Update `scripts/check-zenoh-archive-symbols.sh`
       (Phase 134.4) to assert serial wrapper / impl pair-match.**
       Catches the regression class permanently. Same shape as the
       existing multicast / unicast / tcp checks.
       **Files.** `scripts/check-zenoh-archive-symbols.sh`.
 
-- [ ] **149.3 — Smoke verify against the failing test class.**
+- [x] **151.3 (was 149.3) — Smoke verify against the failing test class.**
       ```bash
       cd examples/native/c/zenoh/action-server
       rm -rf build && cmake -S . -B build && cmake --build build
@@ -153,23 +165,31 @@ proper error code), minimum churn.
       post-149 must link clean.
       **Files.** none (verification).
 
-- [ ] **149.4 — Re-run `just ci` to confirm the 58 native_api
-      action/service failures drop.** Expected post-149:
-      `just test-all` failure count drops by ~58.
+- [~] **151.4 (was 149.4) — Re-run `just ci` to confirm the 58 native_api
+      action/service failures drop.** Partial: the LINK class
+      (`undefined reference to _z_*_serial_*`) is gone — verified by
+      a clean `cmake --build` of `examples/native/c/zenoh/action-server`
+      end-to-end. The 14 remaining `nros-tests::native_api` failures
+      observed during verification are a different class: runtime
+      init returns `-1` from `nros_support_init` (no link issue), so
+      they don't reflect Phase 151 progress and are tracked under
+      Phase 150's open classes.
       **Files.** none (verification).
 
 ---
 
 ## Acceptance
 
-- [ ] `cargo check` + `cmake --build` on every
+- [x] `cargo check` + `cmake --build` on every
       `examples/native/{c,cpp}/zenoh/{action-server,action-client,service-server,service-client,talker,listener}/`
       succeeds via add_subdirectory path — no undefined references.
-- [ ] `scripts/check-zenoh-archive-symbols.sh` includes serial-pair
-      assertion; runs green.
-- [ ] `just ci` test-all failure count drops by ≥58 (native_api
-      action/service/build classes).
-- [ ] No regression in already-passing classes.
+      Verified post-Phase 144 add_subdirectory migration.
+- [x] `scripts/check-zenoh-archive-symbols.sh` includes serial-pair
+      assertion; runs green (Phase 150.E rev3, commit `5937c3e8`).
+- [~] `just ci` test-all failure count drops by ≥58 (native_api
+      action/service/build classes). Link-class failures gone;
+      remaining 14 native_api failures are runtime (Phase 150).
+- [x] No regression in already-passing classes.
 
 ---
 
