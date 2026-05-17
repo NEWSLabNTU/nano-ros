@@ -1,164 +1,233 @@
-# Phase 134 — zenoh-pico UDP Multicast Feature-Gate Alignment
+# Phase 134 — zenoh-pico Build-Flag Canonical Header
 
-**Goal.** Eliminate the linker-time mismatch where
-`libnros_rmw_zenoh.a` ships
-`_z_f_link_{open,close,read,read_exact}_udp_multicast` wrappers
-compiled with `Z_FEATURE_LINK_UDP_MULTICAST=1` but **omits** the
-underlying `_z_read_udp_multicast` / `_z_read_exact_udp_multicast`
-transport fns (compiled with `=0`). The archive is internally
-inconsistent and any C consumer that pulls multicast in transitively
-fails to link.
+**Goal.** Eliminate the linker-time class where `libnros_rmw_zenoh.a`
+ships `_z_f_link_*` wrappers compiled under one `Z_FEATURE_LINK_*`
+value while the underlying transport impls compile under a different
+value, leaving the archive internally inconsistent. The root fix is
+structural: make `zenoh_config.h` the **single source of truth** for
+every `Z_FEATURE_LINK_*` flag and stop overriding it from `build.rs`
+via `.define(…)` calls. After the change there is no path through
+`build.rs` where two compile units can disagree about a flag because
+both paths read the same header.
+
+This phase is the minimal, ship-fast fix. The larger "unify the two
+build paths and eliminate CMake from `zpico-sys`" effort is deferred
+to Phase 136.
 
 **Status.** Not started.
 
-**Priority.** P1 — blocks every C / C++ native example link path
-(~86 of 148 post-Phase-131 ci failures: native_api 58, rmw_interop
-40, c_xrce_api 10 are all this single root cause).
+**Priority.** P1 — blocks ~86 of 148 post-Phase-131 ci failures
+(`native_api` 58, `rmw_interop` 40, `c_xrce_api` 10) all caused by
+this one half-defined-archive class.
 
 **Depends on.** Phase 128 (which introduced the gate mismatch by
 deleting "inert link-tcp / udp-unicast" but leaving the multicast
-side half-wired).
+side half-wired across the cc-rs / CMake split).
 
-**Related.** Phase 133 (post-131 ci sweep), Phase 131 (the trigger
-that first hit it under clean CI on this machine).
+**Related.** Phase 133 (post-131 ci sweep — same failure inventory),
+Phase 131 (forced clean install that surfaced the latent bug),
+Phase 136 (structural unify of the two build paths — supersedes the
+need for 134's `.define()` deletions but does not replace 134's
+header-as-source-of-truth contract).
 
 ---
 
 ## Overview
 
-`packages/zpico/zpico-sys/build.rs` has **two** code paths that
-compile zenoh-pico for the C shim layer:
+`packages/zpico/zpico-sys/build.rs` has two compile paths that build
+zenoh-pico for the C shim layer:
 
-1. **Direct cc-rs build** for embedded / threadx / freertos /
-   nuttx / bare-metal builds (functions `build_c_shim`,
-   `build_zenoh_pico_threadx`, …).
-2. **CMake build via `build_zenoh_pico_native`** for the POSIX path,
-   driven from a separate CMake configure step that produces
-   `build/cmake-zenoh/cargo/nros-rmw-zenoh-staticlib_*/.../out/zenoh-pico-build/…`.
+1. **cc-rs path** (`build_c_shim`, `build_zenoh_pico_threadx`,
+   `build_zenoh_pico_freertos`, …) — used for every embedded target
+   (threadx, freertos, nuttx, bare-metal, esp-idf, Orin SPE).
+2. **CMake path** (`build_zenoh_pico_native`) — used for the POSIX
+   path. Delegates to upstream `zenoh-pico/CMakeLists.txt`.
 
-Phase 128's audit only flipped the multicast `Z_FEATURE_LINK_UDP_*`
-flags in one path. The CMake build still uses an older flag set,
-so:
+Today every flag has up to four expressions: a `LinkFeatures` field,
+a per-path `build.define(…)` literal in cc-rs, a separate
+`cmake_cfg.define(…)` literal in CMake, and a `#define …` line
+written into `zenoh_config.h` by `generate_config_header`. Drift
+between any two of those four is silent until the linker fails.
 
-```
-$ nm build/install/lib/libnros_rmw_zenoh.a | grep _z_read_udp_multicast
-                 U _z_read_udp_multicast          # ← undefined, expected to come from network.c
-                 U _z_read_exact_udp_multicast    # ← undefined
+After this phase:
 
-$ nm build/install/lib/libnros_rmw_zenoh.a | grep _z_f_link_.*udp_multicast
-0000000000000000 T _z_f_link_open_udp_multicast   # ← defined
-0000000000000000 T _z_f_link_read_udp_multicast   # ← defined, calls the missing _z_read_*
-0000000000000000 T _z_f_link_read_exact_udp_multicast
-...
-```
-
-Source locations of the gate:
-
-- Defines: `packages/zpico/zpico-sys/zenoh-pico/src/system/unix/network.c`
-  lines 809 (`_z_read_udp_multicast`) and 856 (`_z_read_exact_udp_multicast`),
-  both inside `#if Z_FEATURE_LINK_UDP_MULTICAST == 1`.
-- Callers: `packages/zpico/zpico-sys/zenoh-pico/src/link/multicast/udp.c`
-  lines 176 + 182, inside the same `#if`.
-
-Both files MUST be compiled with the same value of
-`Z_FEATURE_LINK_UDP_MULTICAST`. Today they aren't — the CMake path
-sets the wrappers' file ON and the system file OFF (or vice versa).
+- `zenoh_config.h` is canonical. Every `Z_FEATURE_LINK_*` flag
+  appears there once, derived from `LinkFeatures`.
+- Both compile paths force-include the header (`-include
+  <out_dir>/zenoh_config.h`).
+- Every `build.define("Z_FEATURE_LINK_*", …)` and every
+  `cmake_cfg.define("Z_FEATURE_LINK_*", …)` in `build.rs` is
+  deleted.
+- Platform-invariant overrides (e.g. SPE has no Ethernet, so TCP /
+  UDP must be 0 regardless of `LinkFeatures`) live in a per-platform
+  policy table, not as inline literals.
 
 ---
 
 ## Architecture
 
-### A. Where the flags get set
+### A. Where the flags get set today
 
 ```
-build.rs::generate_config_header
-  ├── writes zenoh_config.h with #define Z_FEATURE_LINK_UDP_MULTICAST {0|1}
-  └── used by the cc-rs path (build_c_shim, build_zenoh_pico_threadx, …)
-
-build.rs::build_zenoh_pico_native
-  ├── invokes CMake on third-party zenoh-pico/CMakeLists.txt
-  └── passes -DZ_FEATURE_LINK_UDP_MULTICAST=… via build.define("Z_FEATURE_LINK_UDP_MULTICAST", …)
+build.rs::generate_config_header   →  zenoh_config.h  (declarative)
+build.rs::build_c_shim             →  build.define(...)  (literals)
+build.rs::build_zenoh_pico_threadx →  build.define(...)  (literals)
+build.rs::build_zenoh_pico_freertos →  build.define(...) (literals)
+build.rs::build_zenoh_pico_native  →  cmake_cfg.define(...) (literals + reliance on CMake default)
+build.rs Orin-SPE block (line ~1925) → build.define(...) (literals)
 ```
 
-Today the two paths can disagree because:
+Four sources of truth + one CMake-default fallthrough = guaranteed
+divergence given enough changes. Phase 128 was the change.
 
-- `build.rs:1716–1717` and `:299–300` write the cc-rs flag from
-  `link.udp_multicast`.
-- `build.rs:1927` hard-codes `build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0")`
-  for one specific subpath. This is the gate that flips `network.c`
-  off while the rest of the source is compiled with the source-of-
-  truth value.
+### B. Single source of truth
 
-### B. What the fix looks like
+```
+LinkFeatures + per-platform LinkPolicy  →  zenoh_config.h  →  every compile unit
+```
 
-Single source of truth for the flag, plumbed identically into:
-1. the cc-rs `build.define(…)` call(s)
-2. the CMake `build.define(…)` call(s) used by `build_zenoh_pico_native`
-3. the generated `zenoh_config.h` header
+`build.rs` writes the header once. Both paths `-include` it.
+Per-path `build.define(…)` / `cmake_cfg.define(…)` calls for
+`Z_FEATURE_LINK_*` are deleted entirely. Other defines unrelated to
+link features (`ZENOH_GENERIC`, `ZENOH_LINUX`, `ZPICO_SMOLTCP`,
+`Z_FEATURE_MULTI_THREAD`, …) stay where they are — they are not the
+bug class. The CMake path keeps the few non-`Z_FEATURE_LINK_*`
+defines it needs to drive upstream's CMake (`BUILD_SHARED_LIBS=OFF`,
+buffer sizes, …) untouched.
 
-After the change, `nm libnros_rmw_zenoh.a` shows either both
-wrapper-and-impl symbols **defined** (multicast on) or neither
-(multicast off). No half-states.
+For platform invariants (Orin SPE has no Ethernet; bare-metal
+serial-only boards have no IVC) introduce a `LinkPolicy` struct that
+masks `LinkFeatures` before `generate_config_header` writes the
+header. Policies are platform-specific data, not inline literals
+scattered through `build.rs`. The Orin SPE block becomes:
+
+```rust
+// Before: ten literal build.define("Z_FEATURE_LINK_*", "0") calls
+// After:
+let link = LinkFeatures::from_env().apply(LinkPolicy::orin_spe());
+generate_config_header(&out_dir, &link, &buf_config);
+// remaining ZENOH_GENERIC / ZENOH_ORIN_SPE / Z_FEATURE_MULTI_THREAD
+// defines stay — they are not link-feature gates.
+```
 
 ---
 
 ## Work Items
 
-- [ ] 134.1 — Audit every `Z_FEATURE_LINK_*` site in `build.rs`. Build a
-      table: caller path → flag-source variable → which compile unit
-      sees the value. Confirm the disagreement on
-      `Z_FEATURE_LINK_UDP_MULTICAST` (and check the same shape for
-      `_TCP`, `_UDP_UNICAST`, `_SERIAL`, `_WS`).
+- [ ] **134.1 — Audit `Z_FEATURE_LINK_*` sites.**
+      Walk `build.rs` and produce a table: caller path → flag-source
+      variable → which compile unit sees the value. Confirm the
+      disagreement on `Z_FEATURE_LINK_UDP_MULTICAST` and check the
+      same shape for `_TCP`, `_UDP_UNICAST`, `_SERIAL`, `_WS`,
+      `_BLUETOOTH`, `_TLS`, `_IVC`, `_CUSTOM`. Land the table in this
+      doc under "Notes" so future readers see the pre-fix state.
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] 134.2 — Introduce a single
-      `fn zenoh_link_flags(link: &LinkFeatures) -> Vec<(&'static str, &'static str)>`
-      that returns the canonical `(name, "0"|"1")` list. Both the
-      cc-rs and CMake paths consume it.
+- [ ] **134.2 — Introduce `LinkPolicy`.**
+      Add `struct LinkPolicy { tcp: bool, udp_unicast: bool,
+      udp_multicast: bool, serial: bool, ws: bool, bluetooth: bool,
+      tls: bool, ivc: PolicyChoice, custom: PolicyChoice }`. `PolicyChoice`
+      is `Force(bool)` or `FollowCargoFeature(&'static str)`. Constructors:
+      `LinkPolicy::posix()`, `::orin_spe()`, `::bare_metal_serial()`,
+      `::default()`. `LinkFeatures::apply(self, policy) -> LinkFeatures`
+      masks per the policy.
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] 134.3 — Replace every ad-hoc `build.define("Z_FEATURE_LINK_*", …)`
-      and every `zenoh_config.h` write with the helper from 134.2.
+- [ ] **134.3 — Force-include `zenoh_config.h` on both paths.**
+      Add `-include <out_dir>/zenoh_config.h` to every cc-rs
+      `build.flag(…)` call. For the CMake path, pass
+      `-DCMAKE_C_FLAGS=-include <out_dir>/zenoh_config.h` via
+      `cmake_cfg.cflag(…)` (or equivalent) so upstream's CMake-driven
+      build also picks up the header before its own defaults fire.
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] 134.4 — Add a build-time invariant check: after `cargo build -p
-      nros-rmw-zenoh-staticlib`, run `nm build/install/lib/libnros_rmw_zenoh.a`
-      and assert that for every `_z_f_link_*_udp_multicast` symbol
-      defined, the matching `_z_*_udp_multicast` impl is also defined
-      (no `U`). Wire into `just doctor` or a new `just check-zenoh-archive`
-      recipe. Catches the regression class for good.
+- [ ] **134.4 — Delete every `Z_FEATURE_LINK_*` literal.**
+      Remove all `build.define("Z_FEATURE_LINK_*", …)` calls from
+      `build_c_shim`, `build_zenoh_pico_threadx`,
+      `build_zenoh_pico_freertos`, the Orin-SPE block, and every
+      other cc-rs site. Remove all
+      `cmake_cfg.define("Z_FEATURE_LINK_*", …)` calls from
+      `build_zenoh_pico_native`. Per-platform invariants flow through
+      the new `LinkPolicy` instead.
+      **Files.** `packages/zpico/zpico-sys/build.rs`.
+
+- [ ] **134.5 — Build-time archive invariant check.**
+      Add `scripts/check-zenoh-archive-symbols.sh` that runs `nm
+      build/install/lib/libnros_rmw_zenoh.a` and asserts: for every
+      `_z_f_link_*_udp_multicast` (and `_tcp` / `_udp_unicast` /
+      `_serial` / …) wrapper symbol defined, the matching
+      `_z_*_udp_multicast` impl is also defined (no `U`). Wire into
+      `just check-zenoh-archive` and call it from `just doctor` +
+      from CI. Catches the regression class permanently.
       **Files.** `scripts/check-zenoh-archive-symbols.sh`, `justfile`.
 
-- [ ] 134.5 — Re-run `just ci`. Expected: ~86 of the 148 fails
-      (native_api, rmw_interop, c_xrce_api categories) drop to PASS
-      assuming local env has zenohd / cmake. Surviving fails should
-      be the `[SKIPPED]` precondition panics (XRCE agent + ROS 2 +
-      cross-toolchain).
+- [ ] **134.6 — E2E tests.** See "Acceptance / E2E" below.
 
 ---
 
-## Acceptance
+## Acceptance / E2E
 
-- [ ] `nm build/install/lib/libnros_rmw_zenoh.a | grep _z_read_udp_multicast`
-      returns either zero matches OR matches with `T` (defined), never `U`.
-- [ ] `just check-zenoh-archive` passes (new recipe from 134.4).
-- [ ] `just ci` no longer reports the
-      `undefined reference to '_z_read_*_udp_multicast'` linker class.
-- [ ] `just ci` test-all FAIL count drops by ≥85.
+The header-canonical contract has to hold end-to-end, not only at
+the `nm` level. Land all of:
+
+- [ ] **E2E.1 — Symbol parity gate.** New
+      `packages/testing/nros-tests/tests/zenoh_archive_symbols.rs`
+      runs `check-zenoh-archive-symbols.sh` over the install tree
+      produced by `just build`. Asserts no `U` rows for any
+      `_z_*_udp_multicast` / `_z_*_tcp` / `_z_*_udp_unicast` /
+      `_z_*_serial` symbol whose wrapper is `T`. Test FAILS on any
+      `U/T` mismatch, never silently skips. Runs in `just ci`.
+
+- [ ] **E2E.2 — Native C link smoke.** `examples/native/c/` and
+      `examples/native/cpp/` each ship one talker / listener pair.
+      Run via `just test-all`. After 134, the link errors
+      (`undefined reference to '_z_read_udp_multicast'` and the
+      `_z_read_exact_udp_multicast` partner) must be gone. Expected
+      drop in CI: ~58 `native_api` + 40 `rmw_interop` + 10
+      `c_xrce_api` = ~108 fails → PASS.
+
+- [ ] **E2E.3 — Flag-drift property test.** New
+      `packages/testing/nros-tests/tests/zenoh_flag_consistency.rs`
+      programmatically builds `nros-rmw-zenoh-staticlib` with
+      `LinkFeatures` toggled across the cross-product (TCP on/off ×
+      UDP-multicast on/off × IVC on/off × CUSTOM on/off — 16
+      combinations). For each: parse the generated
+      `zenoh_config.h`, dump the archive's defined `_z_f_link_*` and
+      `_z_*_<transport>` symbols via `nm`, assert the **header
+      value** matches the **archive presence** (header=1 ⇔ both
+      wrapper and impl present; header=0 ⇔ both absent). Cycle time
+      ~5 min, gated behind a `link-flag-matrix` feature so it only
+      runs in `just test-all`.
+
+- [ ] **E2E.4 — POSIX vs embedded parity.** `packages/testing/
+      nros-tests/tests/zenoh_header_parity.rs` builds the staticlib
+      for two targets in one run (`x86_64-unknown-linux-gnu` POSIX
+      via CMake path; `thumbv7m-none-eabi` bare-metal via cc-rs
+      path). For each, dumps the generated `zenoh_config.h` and
+      asserts the `Z_FEATURE_LINK_*` values match the `LinkFeatures`
+      they were built with. Closes the cc-rs ↔ CMake divergence loop
+      that Phase 128 left open.
+
+- [ ] **E2E.5 — `just ci` post-134.** Re-run `just ci`; FAIL count
+      must drop by ≥85. Document the resulting count in this doc
+      before archive.
 
 ---
 
 ## Notes
 
-- The `Z_FEATURE_LINK_UDP_MULTICAST` symmetry is the smoking gun, but
-  the audit (134.1) should look at every link-feature pair. The
-  Phase 128 cleanup deleted whole feature dirs; survivors may have
-  the same shape bug.
-- Do not "fix" by setting `Z_FEATURE_LINK_UDP_MULTICAST=0` everywhere
-  without checking whether the runtime needs multicast (rmw_zenoh
-  discovery uses multicast on LAN by default). Set the flag to match
-  what the runtime actually requires per `LinkFeatures`.
-- Phase 131's parallel-build pressure didn't introduce the bug —
-  it surfaced because Phase 131 forced a clean install where the
-  bug had previously been masked by stale archives from earlier
-  builds that happened to have both halves defined.
+- The `Z_FEATURE_LINK_UDP_MULTICAST` mismatch is the smoking gun, but
+  every link feature has the same shape. The audit (134.1) catches
+  any sibling already festering.
+- Do **not** "fix" by setting `Z_FEATURE_LINK_UDP_MULTICAST=0`
+  everywhere without checking whether the runtime needs multicast.
+  rmw_zenoh discovery uses multicast on LAN by default. Per-platform
+  `LinkPolicy` is the correct shape.
+- Phase 131's parallel-build pressure did not introduce the bug — it
+  surfaced because Phase 131 forced a clean install where the bug
+  had previously been masked by stale archives with both halves
+  defined.
+- This phase intentionally keeps the two build paths split. Phase
+  136 unifies them. 134 makes the canonical-header contract hold
+  even with the split present, so 136 can be a pure refactor
+  afterward.
