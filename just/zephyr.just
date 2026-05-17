@@ -374,10 +374,10 @@ build-fvp-aemv8r-cyclonedds:
     cmake_pfx="$nros_root/build/install"
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
-    echo "Building examples/zephyr-aemv8r-cyclonedds for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
-        nano-ros/examples/zephyr-aemv8r-cyclonedds \
+        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
         -- -DCMAKE_PREFIX_PATH="$cmake_pfx"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 

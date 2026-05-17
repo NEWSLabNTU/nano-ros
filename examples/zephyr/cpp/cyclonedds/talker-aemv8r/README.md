@@ -1,4 +1,4 @@
-# zephyr-aemv8r-cyclonedds
+# zephyr/cpp/cyclonedds/talker-aemv8r
 
 Phase 117.14 — nros C++ pub/sub demo on the ARM FVP `Base_RevC AEMv8-R`
 Cortex-A SMP target under Zephyr. Copy-out template per CLAUDE.md
@@ -18,7 +18,7 @@ cd zephyr-workspace
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-aemv8r-cyclonedds \
-    nano-ros/examples/zephyr-aemv8r-cyclonedds \
+    nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
     -- -DCMAKE_PREFIX_PATH=$NROS_ROOT/build/install
 ```
 
