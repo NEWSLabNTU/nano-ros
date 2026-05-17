@@ -14,7 +14,14 @@ Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX). `
 
 ## Build
 - `just setup` / `just doctor` / `just check` / `just ci` (check + test-all) / `just verify` (Kani+Verus) / `just generate-bindings`
-- `just <module> setup`: workspace, verification, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32, zephyr, xrce, zenohd
+- `just <module> setup`: workspace, verification, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32, zephyr, xrce, zenohd, rmw_zenoh, orin_spe, cyclonedds, platformio, esp_idf, px4
+
+**SDK tiers** (Phase 142, `just setup tier=<tier>`, defaults to `default` or `NROS_SETUP_TIER` env):
+- `minimal` — workspace, verification, zenohd (Rust-only contributors)
+- `default` — minimal + qemu, freertos, nuttx, threadx_{linux,riscv64}, esp32, zephyr, xrce, rmw_zenoh, orin_spe, cyclonedds, platformio (full `just ci` coverage)
+- `extended` — default + esp_idf, px4 (every Phase 139 integration shell runnable)
+
+Tiers are strict supersets; never move a module between tiers without bumping `docs/development/sdk-tiers.md` AND the orchestrator switch in `justfile::_orchestrate`. Policy: a module joins `default` iff ≤ 500 MB / ≤ 5 min wall-clock install AND exercised by `just test-all` AND idempotent. ARM FVP, NVIDIA SDK Manager, license-gated installs stay opt-in entirely (run `just <module> setup` out-of-band).
 
 **Build tiers** (each strict superset): `build` (workspace + transports) ⊂ `build-examples` ⊂ `build-all` (= `build-examples` + `build-test-fixtures`). Per-platform tier: `just <plat> build` ⊂ `build-examples` ⊂ `build-fixtures` ⊂ `build-all`. Orchestration in `justfile` + `just/*.just`.
 

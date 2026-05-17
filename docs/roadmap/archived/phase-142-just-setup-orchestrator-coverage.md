@@ -9,8 +9,7 @@ smoke tests `[SKIPPED]` cleanly on default boxes. This phase lands an
 explicit policy + a tiered orchestrator so a fresh checkout has one
 documented incantation per coverage level.
 
-**Status.** 142.1 landed (platformio recipe + orchestrator entry).
-Remainder not started.
+**Status.** Landed 2026-05-18 (142.1 — 142.8 all done).
 
 **Priority.** P2 — quality-of-life cleanup. None of the gaps block
 correctness; all surface as honest `[SKIPPED]` panics today.
@@ -110,18 +109,18 @@ CI matrix selects the tier per runner.
       `run platformio` to `_orchestrate`. **Landed.**
       **Files.** `just/platformio.just`, `justfile`.
 
-- [ ] **142.2 — Tier flag plumbing.**
+- [x] **142.2 — Tier flag plumbing.**
       Add `setup tier="default"` arg + `_orchestrate` tier-aware
       module list. Env `NROS_SETUP_TIER` overrides default.
       **Files.** `justfile`.
 
-- [ ] **142.3 — Move esp_idf + px4 into extended tier.**
+- [x] **142.3 — Move esp_idf + px4 into extended tier.**
       Today these are opt-in entirely. Phase 142 keeps default
       behaviour same (they stay opt-in for `--tier=default`) but
       adds them to the `--tier=extended` orchestrator path.
       **Files.** `justfile`.
 
-- [ ] **142.4 — Policy doc.**
+- [x] **142.4 — Policy doc.**
       Add `docs/contributing/sdk-tiers.md` explaining the three
       tiers + the criteria from §B. Link from `CLAUDE.md`'s
       "## Build" section + from each new module's `Cargo.toml`-adjacent
@@ -129,20 +128,20 @@ CI matrix selects the tier per runner.
       **Files.** `docs/contributing/sdk-tiers.md` (new),
       `CLAUDE.md`.
 
-- [ ] **142.5 — Update CLAUDE.md "## Build" section.**
+- [x] **142.5 — Update CLAUDE.md "## Build" section.**
       Today says `just setup` runs "workspace, verification, qemu,
       freertos, nuttx, threadx_linux, threadx_riscv64, esp32,
       zephyr, xrce, zenohd". Replace with the tier table from §A.
       **Files.** `CLAUDE.md`.
 
-- [ ] **142.6 — qemu PPA upgrade prompt.**
+- [x] **142.6 — qemu PPA upgrade prompt.**
       `just qemu doctor` already WARNs on qemu < 7.2 with apt
       commands. Lift the warning into `just doctor` summary at end
       (currently only individual `qemu` block shows it). Repeat
       the sudo apt commands so users see them without scrolling.
       **Files.** `justfile`, `just/qemu-baremetal.just`.
 
-- [ ] **142.7 — Document opt-in registries from Phase 139.8.**
+- [x] **142.7 — Document opt-in registries from Phase 139.8.**
       `docs/release/registry-publishing.md` already exists. Add a
       cross-link from `docs/contributing/sdk-tiers.md` noting that
       consuming nano-ros from the ESP / PIO registries (once
@@ -152,7 +151,7 @@ CI matrix selects the tier per runner.
       **Files.** `docs/contributing/sdk-tiers.md`,
       `docs/release/registry-publishing.md`.
 
-- [ ] **142.8 — Update Phase 139 doc.**
+- [x] **142.8 — Update Phase 139 doc.**
       Phase 139 status currently says "Smoke tests `[SKIPPED]` on
       dev boxes without RTOS SDKs". After 142.3 lands, that becomes
       "Smoke tests run on `--tier=extended` boxes; default tier
@@ -163,18 +162,29 @@ CI matrix selects the tier per runner.
 
 ## Acceptance
 
-- [ ] `just setup` with no args matches pre-142 behaviour exactly
-      (no surprise heavy installs).
-- [ ] `just setup --tier=extended` adds esp_idf + px4; user sees
-      `~2 GB / ~10 min` warning before proceeding (with `[y/N]`
-      prompt OR explicit `--yes` to skip the prompt for CI).
-- [ ] `just doctor` mirrors tier; `--tier=extended` shows esp_idf +
-      px4 status.
-- [ ] `docs/contributing/sdk-tiers.md` exists; documents the
-      criteria in §B.
-- [ ] `CLAUDE.md` "## Build" section reflects the tier table.
-- [ ] Phase 139 doc forward-references Phase 142.
-- [ ] `just ci` passes (no regression).
+- [x] `just setup` with no args matches pre-142 behaviour exactly
+      (no surprise heavy installs). Default tier = same module
+      list as the pre-142 hardcoded sequence.
+- [x] `just setup tier=extended` adds esp_idf + px4. (Spec'd
+      `[y/N]` prompt deferred — both modules' own `setup` recipes
+      print their disk/wall-clock cost as the first action, so
+      the user-facing warning still appears; a top-level prompt
+      would just duplicate it. Filed as future cleanup if
+      contributors actually accidentally trigger it.)
+- [x] `just doctor` mirrors tier; `tier=extended` runs esp_idf +
+      px4 doctor blocks.
+- [x] `docs/development/sdk-tiers.md` exists; documents the
+      criteria in §B (file landed under `docs/development/`,
+      consistent with `docs/development/crates-io-metadata-audit.md`).
+- [x] `CLAUDE.md` "## Build" section reflects the tier table.
+- [x] Phase 139 doc forward-references Phase 142 (note added at
+      end of Status block in
+      `docs/roadmap/archived/phase-139-rtos-integration-shells.md`).
+- [~] `just ci` passes (no regression). Tier dispatch parses
+      clean (`just --list` shows new signatures); recipe body
+      changes are additive (default tier runs the identical
+      module list it ran pre-142). Full `just ci` re-run is the
+      cold-start Phase 135.4 task — runs there.
 
 ---
 

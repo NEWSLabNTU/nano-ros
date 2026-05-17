@@ -6,6 +6,16 @@ docs-only.** Actual `upload` / `publish` invocations are not
 automated in CI; credentials live with designated maintainers, not
 in the repo.
 
+## Relation to local-development tiers
+
+Downstream consumers of a packaged nano-ros release pull a pinned
+version through their RTOS's package manager (the rest of this
+doc). They never invoke `just esp_idf setup` / `just px4 setup`
+themselves — the RTOS toolchain handles the SDK install. The
+[`just setup` tier system](../development/sdk-tiers.md) (Phase 142)
+applies to **local development** of nano-ros itself, not to
+downstream consumers.
+
 Each section below covers:
 
 1. Registry (what + URL)

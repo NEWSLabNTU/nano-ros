@@ -1062,21 +1062,43 @@ regenerate-bindings: clean-bindings generate-bindings
 # posix-zenoh`) shim to `tools/setup.sh --target=<target>`. When
 # `target` is empty (`just setup`), runs the full contributor
 # orchestrator that walks every per-platform module.
-setup target="":
+# Phase 142 — tiered orchestrator. `tier` ∈ {minimal,default,extended}.
+# `NROS_SETUP_TIER` env overrides the default when no positional arg
+# is passed. See docs/contributing/sdk-tiers.md for tier criteria.
+#
+# Phase 123.A.4 — optional positional `target` (e.g. `just setup
+# posix-zenoh`) shim to `tools/setup.sh --target=<target>` is retained:
+# `just setup <target>` invokes the per-target SDK setup script
+# (interactive flow). Tier orchestration applies only to the no-arg
+# `just setup` / explicit `just setup tier=<tier>` form.
+setup target="" tier="":
     #!/usr/bin/env bash
     set -e
     if [[ -n "{{target}}" ]]; then
         exec "$(pwd)/tools/setup.sh" --target="{{target}}"
     fi
-    just _orchestrate setup
+    chosen_tier="{{tier}}"
+    if [[ -z "$chosen_tier" ]]; then
+        chosen_tier="${NROS_SETUP_TIER:-default}"
+    fi
+    just _orchestrate setup "$chosen_tier"
 
-# Diagnose install status (read-only).
-doctor:
-    @just _orchestrate doctor
+# Diagnose install status (read-only). Tier matches `just setup`.
+doctor tier="":
+    #!/usr/bin/env bash
+    set -e
+    chosen_tier="{{tier}}"
+    if [[ -z "$chosen_tier" ]]; then
+        chosen_tier="${NROS_SETUP_TIER:-default}"
+    fi
+    just _orchestrate doctor "$chosen_tier"
 
-# Internal: walk every module calling the requested recipe (setup or doctor).
+# Internal: walk every module in `tier` calling the requested recipe
+# (setup or doctor). Tiers are strict supersets: minimal ⊂ default ⊂
+# extended. Unknown tier exits non-zero so a typo doesn't silently
+# pick the wrong module list.
 [private]
-_orchestrate verb:
+_orchestrate verb tier="default":
     #!/usr/bin/env bash
     set +e
     failed=()
@@ -1090,28 +1112,99 @@ _orchestrate verb:
             failed+=("$mod")
         fi
     }
-    run workspace
-    run verification
-    run qemu
-    run freertos
-    run nuttx
-    run threadx_linux
-    run threadx_riscv64
-    run esp32
-    run zephyr
-    run xrce
-    run zenohd
-    run rmw_zenoh
-    run orin_spe
-    run cyclonedds
-    run platformio
+    # Phase 142.6 — surface the qemu PPA upgrade prompt at end of
+    # `just doctor` (qemu module's own doctor already prints it).
+    capture_qemu_doctor=""
+    case "{{tier}}" in
+        minimal)
+            run workspace
+            run verification
+            run zenohd
+            ;;
+        default)
+            # minimal
+            run workspace
+            run verification
+            run zenohd
+            # + RTOS, embedded, support services
+            run qemu
+            run freertos
+            run nuttx
+            run threadx_linux
+            run threadx_riscv64
+            run esp32
+            run zephyr
+            run xrce
+            run rmw_zenoh
+            run orin_spe
+            run cyclonedds
+            run platformio
+            ;;
+        extended)
+            # default
+            run workspace
+            run verification
+            run zenohd
+            run qemu
+            run freertos
+            run nuttx
+            run threadx_linux
+            run threadx_riscv64
+            run esp32
+            run zephyr
+            run xrce
+            run rmw_zenoh
+            run orin_spe
+            run cyclonedds
+            run platformio
+            # + heavy / private-SDK modules
+            run esp_idf
+            run px4
+            ;;
+        *)
+            echo "unknown tier '{{tier}}' — expected one of: minimal, default, extended" >&2
+            exit 2
+            ;;
+    esac
     echo ""
+    # Phase 142.6 — repeat the qemu < 7.2 PPA hint at the end of
+    # `just doctor` so users don't scroll past it during the qemu
+    # block. Skipped for `setup` (it would just duplicate the
+    # `just qemu setup` output) and for `minimal` (no qemu in
+    # that tier). Best-effort: silent if qemu missing entirely.
+    if [[ "{{verb}}" == "doctor" && "{{tier}}" != "minimal" ]]; then
+        if command -v qemu-system-arm >/dev/null 2>&1; then
+            ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
+            major=${ver%%.*}
+            minor=${ver##*.}
+            if [ -n "$ver" ] && ! { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
+                echo "================================================================="
+                echo "  REMINDER — system qemu-system-arm is $ver (< 7.2)."
+                echo "================================================================="
+                echo "  NuttX DDS multi-instance + ThreadX RV64 DDS tests need"
+                echo "  '-netdev dgram,local.type=unix,...' from QEMU 7.2+."
+                echo ""
+                echo "  Primary remedy (no sudo, portable): just qemu setup-qemu"
+                echo ""
+                if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
+                    echo "  Fallback (system-wide, requires sudo) — Canonical PPA:"
+                    echo "    sudo add-apt-repository ppa:canonical-server/server-backports"
+                    echo "    sudo apt update && sudo apt install qemu-system-arm"
+                else
+                    echo "  Fallback: build from source — https://www.qemu.org/download/#source"
+                fi
+                echo "================================================================="
+                echo ""
+            fi
+        fi
+    fi
     if [ ${#failed[@]} -gt 0 ]; then
         echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"
         echo "Re-run individually: just <module> {{verb}}"
+        echo "(tier: {{tier}})"
         exit 1
     fi
-    echo "{{verb}} complete!"
+    echo "{{verb}} complete! (tier: {{tier}})"
 
 # Setup bridge network for ThreadX Linux sim (requires sudo; Zephyr native_sim uses NSOS and needs no bridge)
 setup-network: qemu::setup-network
