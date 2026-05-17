@@ -1,20 +1,28 @@
 cmake_minimum_required(VERSION 3.22)
-project(threadx_cpp_talker LANGUAGES C CXX)
+project(threadx_cpp_talker VERSION 0.1.0 LANGUAGES C CXX)
 
-set(NANO_ROS_PLATFORM threadx_linux)
-find_package(NanoRos CONFIG REQUIRED)
-include(threadx-support)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Phase 144.8 — consume nano-ros via add_subdirectory(<repo-root>).
+set(NANO_ROS_PLATFORM threadx)
+set(NANO_ROS_RMW      zenoh)
+set(NANO_ROS_BOARD    threadx-linux)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
-
-add_executable(threadx_cpp_talker src/main.cpp ${THREADX_STARTUP_SOURCE} ${THREADX_APP_DEFINE_SOURCE})
-target_include_directories(threadx_cpp_talker PRIVATE ${THREADX_STARTUP_INCLUDES}
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
 nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
-target_compile_definitions(threadx_cpp_talker PRIVATE ${THREADX_GLUE_DEFINES})
-nano_ros_link_rmw(threadx_cpp_talker RMW zenoh)
+
+add_executable(threadx_cpp_talker src/main.cpp)
+target_include_directories(threadx_cpp_talker PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(threadx_cpp_talker PRIVATE
-    std_msgs__nano_ros_cpp NanoRos::NanoRosCpp threadx_platform)
+    std_msgs__nano_ros_cpp
+    NanoRos::NanoRosCpp)
+nros_platform_link_app(threadx_cpp_talker)
+nano_ros_link_rmw(threadx_cpp_talker RMW zenoh)
