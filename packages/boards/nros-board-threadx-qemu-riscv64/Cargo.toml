@@ -12,6 +12,12 @@ name = "nros_board_threadx_qemu_riscv64"
 # Phase 121.3 — canonical symbols from ThreadX C port; see sibling
 # nros-board-threadx-linux for full rationale.
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator"] }
+# Phase 152.2.B — `BoardInit` / `BoardPrint` / `BoardExit` trait
+# impls so this overlay fits the canonical overlay shape (same
+# pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`
+# 152.1.B.5). Generic-crate `run<B>` lift deferred to a follow-up
+# session.
+nros-board-common = { path = "../nros-board-common", default-features = false }
 
 [build-dependencies]
 cc = "1"
