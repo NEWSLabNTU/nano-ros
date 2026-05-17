@@ -214,8 +214,11 @@ test-zenoh: build
 run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
     ./scripts/qemu/launch-mps2-an385.sh --tap {{TAP}} --ip {{IP}} --binary {{BINARY}}
 
-# Install QEMU bare-metal prerequisites (ARM zenoh-pico).
-setup: build-zenoh-pico
+# Install QEMU bare-metal prerequisites (ARM zenoh-pico + patched
+# qemu-system-arm under build/qemu/). Building patched QEMU is
+# idempotent and short-circuits when build/qemu/bin/qemu-system-arm
+# is newer than every patch file.
+setup: build-zenoh-pico setup-qemu
 
 # Diagnose QEMU bare-metal install status (read-only).
 doctor:
@@ -232,6 +235,13 @@ doctor:
         echo "  [OK] arm-none-eabi-gcc"
     else
         echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        fail=1
+    fi
+    if [ -x {{QEMU_BIN}} ]; then
+        ver=$({{QEMU_BIN}} --version 2>/dev/null | head -1)
+        echo "  [OK] patched qemu-system-arm: {{QEMU_BIN}} ($ver)"
+    else
+        echo "  [MISSING] patched qemu-system-arm (run: just qemu setup-qemu)"
         fail=1
     fi
     if command -v qemu-system-arm &>/dev/null; then
