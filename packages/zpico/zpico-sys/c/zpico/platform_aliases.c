@@ -486,4 +486,63 @@ int8_t _z_socket_wait_event(void *peers, void *mutex) {
     return nros_platform_socket_wait_event(peers, mutex);
 }
 
+/* Serial transport.
+ *
+ * Phase 149 — minimum stubs so `libnros_rmw_zenoh_staticlib.a` (which
+ * keeps `Z_FEATURE_LINK_SERIAL=1` to satisfy zenoh-pico's link-wrapper
+ * layer in `src/link/unicast/serial.c` + `src/system/common/serial.c`)
+ * links cleanly against platform_aliases.c. Stubs return `-1` / `0`
+ * so the serial transport is reachable but non-functional at runtime;
+ * POSIX consumers use TCP / UDP scouting which is rmw_zenoh's default.
+ *
+ * Functional POSIX serial via termios is straightforward (~150 LOC)
+ * but no consumer has requested it. RTOS / bare-metal targets that
+ * actually use serial supply their own impls via per-board shims
+ * (e.g. `nros-platform-{freertos,nuttx,threadx}` board crates).
+ *
+ * Mirrors Phase 134's UDP-multicast stub pattern. */
+int8_t _z_open_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+                                uint32_t baudrate) {
+    (void)sock;
+    (void)txpin;
+    (void)rxpin;
+    (void)baudrate;
+    return -1;
+}
+int8_t _z_open_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+    (void)sock;
+    (void)dev;
+    (void)baudrate;
+    return -1;
+}
+int8_t _z_listen_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+                                  uint32_t baudrate) {
+    (void)sock;
+    (void)txpin;
+    (void)rxpin;
+    (void)baudrate;
+    return -1;
+}
+int8_t _z_listen_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+    (void)sock;
+    (void)dev;
+    (void)baudrate;
+    return -1;
+}
+void _z_close_serial(void *sock) {
+    (void)sock;
+}
+size_t _z_send_serial_internal(void *sock, const uint8_t *buf, size_t len) {
+    (void)sock;
+    (void)buf;
+    (void)len;
+    return 0;
+}
+size_t _z_read_serial_internal(void *sock, uint8_t *buf, size_t len) {
+    (void)sock;
+    (void)buf;
+    (void)len;
+    return 0;
+}
+
 #endif /* NROS_PLATFORM_ALIASES */
