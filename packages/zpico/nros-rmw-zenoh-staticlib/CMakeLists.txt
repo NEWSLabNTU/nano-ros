@@ -13,7 +13,10 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
     # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features platform-freertos)
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
+       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
+    # Phase 138 canonical "nuttx" accepted alongside legacy
+    # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features platform-nuttx)
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
