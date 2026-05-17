@@ -23,7 +23,7 @@ builds them in dependency order, and shares one nano-ros build across
 every consuming package. Users never run `cmake` manually.
 
 A complete working example lives at
-[`examples/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/multi-package-workspace).
+[`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace).
 
 ## One-shot bootstrap
 
@@ -84,7 +84,7 @@ demo workspace shows the pattern).
 ### Without colcon
 
 Some setups don't have a ROS 2 distro installed (embedded-focused users,
-CI runners). For these, `examples/multi-package-workspace/build-all.sh`
+CI runners). For these, `examples/templates/multi-package-workspace/build-all.sh`
 shows the bare CMake + Cargo invocation that mimics what colcon would
 do — useful as a fallback.
 
@@ -155,7 +155,7 @@ For a tidier workspace, `tools/setup.sh --rust-workspace` (planned)
 will auto-generate a workspace-level `Cargo.toml` with the right
 `[workspace.dependencies]` + `[patch.crates-io]` table. Until then,
 each Rust package carries its own `.cargo/config.toml` patch —
-see [`examples/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/multi-package-workspace/src/pkg_rust_publisher)
+see [`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
 for the pattern.
 
 ## Contributor setup (working on nano-ros itself)
@@ -204,4 +204,4 @@ just docker test-qemu  # Run QEMU tests in container
 
 - [First Native Rust Node](native.md) — build + run a Rust publisher
 - [C API](../reference/c-api.md) — API entry points and CMake integration
-- [`examples/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/multi-package-workspace) — full mixed C / C++ / Rust example
+- [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace) — full mixed C / C++ / Rust example

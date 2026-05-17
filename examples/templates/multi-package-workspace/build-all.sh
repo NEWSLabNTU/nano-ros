@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+NANO_ROS_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 NANO_ROS_INSTALL="${NANO_ROS_INSTALL:-${NANO_ROS_ROOT}/build/install}"
 GEN_CACHE="${SCRIPT_DIR}/build/nros-gen-cache"
 

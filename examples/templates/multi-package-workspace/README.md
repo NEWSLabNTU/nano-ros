@@ -28,7 +28,7 @@ multi-package-workspace/
 In a real Pattern A workspace, `src/nano-ros/` is the nano-ros checkout
 (or symlink) alongside the user packages. This in-repo demo
 references the parent checkout via relative paths
-(`../../../../packages/core/nros` etc.) so the example tree stays
+(`../../../../../packages/core/nros` etc.) so the example tree stays
 self-contained inside the nano-ros source repo.
 
 ## What it shows
