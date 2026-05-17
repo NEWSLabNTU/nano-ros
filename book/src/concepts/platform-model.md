@@ -81,6 +81,29 @@ The RMW axis is not enforced this way — it is the consuming crate's
 choice of which `nros-rmw-*` dependency to add (one, or several for
 bridge nodes).
 
+## Boards vs Platforms
+
+Above the platform axis, **board crates** select a concrete chip + RTOS
+combination on top of one of the platform features. A board owns the
+linker layout, the vendor HAL wiring, the boot path, and any chip-specific
+peripherals (Ethernet PHY, IVC mailboxes, RTC). It does **not** carry its
+own platform axis — it pulls in one of the rows above.
+
+| Board crate                  | Underlying platform | CPU         | Notes                                       |
+|------------------------------|---------------------|-------------|---------------------------------------------|
+| `nros-board-mps2-an385`      | `bare-metal`        | Cortex-M3   | QEMU MPS2-AN385 + LAN9118 + smoltcp         |
+| `nros-board-stm32f4`         | `bare-metal`        | Cortex-M4   | STM32F4-Discovery                           |
+| `nros-board-esp32`           | `bare-metal`        | Xtensa LX6  | ESP-IDF-compatible UART/WiFi bring-up       |
+| `nros-board-esp32-qemu`      | `bare-metal`        | Xtensa LX6  | QEMU ESP32                                  |
+| `nros-board-orin-spe`        | `freertos`          | Cortex-R5F  | NVIDIA Jetson AGX Orin SPE + FreeRTOS-FSP   |
+
+`nros-board-orin-spe` is the canonical example of the board-over-RTOS
+pattern: a Cortex-R5F SPE running NVIDIA's FreeRTOS V10.4.3 FSP, with
+critical-section provided by the canonical
+`nros_platform_critical_section_{acquire,release}` C symbols (Cortex-R
+CPSR I-bit body inside the port) — not by a per-CPU Rust feature flag.
+See `docs/roadmap/phase-100-orin-spe-infra.md` for the wiring.
+
 ## Example Configurations
 
 Each config lists `nros` (with `rmw-cffi` + one `platform-*`) plus

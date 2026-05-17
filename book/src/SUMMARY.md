@@ -61,6 +61,7 @@
 
 # Internals
 
+- [Canonical Platform C ABI](./internals/platform-c-abi.md)
 - [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [FreeRTOS LAN9118 Debugging](./internals/freertos-lan9118-debugging.md)

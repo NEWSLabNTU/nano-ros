@@ -9,6 +9,21 @@ this phase delivers the pieces nano-ros has to provide to make Phase 11 buildabl
 
 **Status:** Done. All 10 sub-items landed; POSIX mock-IVC E2E green; hardware bring-up
 deferred to `autoware_sentinel` Phase 11.7.
+
+**Layering update (Phase 121.9, 2026-05-17):** the `cortex-r` feature on
+`nros-platform-freertos` referenced throughout this doc has been retired.
+Critical-section is now a canonical platform capability: each port's C body owns
+the CPU-specific implementation (Cortex-M PRIMASK on bare-metal Cortex-M,
+ARMv7-R CPSR I-bit on the SPE FreeRTOS-FSP port, irq_lock on Zephyr, etc.) and
+the `nros-platform-critical-section` shim crate registers
+`critical_section::Impl` by calling the canonical
+`nros_platform_critical_section_{acquire,release}` extern symbols. The Rust
+`nros-platform-freertos` crate itself is gone — `nros-platform-orin-spe` is a
+**board** crate (Cortex-R5 over NVIDIA's FreeRTOS-FSP) that builds on top of
+the canonical platform-C-ABI surface, not a sibling platform. Work item 100.1
+(`cortex-r` feature) is closed by displacement: the abstraction lives one layer
+down now, inside the C port. See `book/src/concepts/platform-model.md` for the
+current board-vs-platform split.
 **Priority:** Medium (driven by autoware_sentinel Phase 11 dependency).
 **Depends on:** none in nano-ros (greenfield).
 **Cross-cutting:** `autoware_sentinel` Phase 11 consumes everything this phase produces.

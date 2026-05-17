@@ -145,7 +145,11 @@ Concrete shape per layer:
 - **Platform ABI** (`<nros/platform.h>`) — hand-written canonical
   set of free `extern "C"` symbols (no vtable struct, no register
   call). Link-time resolution; one platform per binary. Diverges
-  from the RMW shape because platforms never swap at runtime.
+  from the RMW shape because platforms never swap at runtime. The
+  full contract — surface inventory, capability groups, two port
+  shapes (Rust trait + macro export vs pure C body), and the
+  "adding a new port" checklist — lives in
+  [`book/src/internals/platform-c-abi.md`](../../book/src/internals/platform-c-abi.md).
 
 cbindgen still produces `nros_generated.h` for message types —
 that surface is data-only, machine-derivable, and a poor fit for

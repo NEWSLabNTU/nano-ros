@@ -327,7 +327,7 @@ Work items:
 - [x] **121.8.a** — `packages/drivers/nros-smoltcp/` already owns the SmoltcpBridge driver glue, socket / endpoint storage layout, network-state tracker, and the `define_smoltcp_platform!` macro that emits `PlatformTcp / Udp / SocketHelpers / UdpMulticast` impls on a given platform ZST. Generic across phy::Device implementations via the board crate's bridge wiring.
 - [x] **121.8.b** — Per-bare-metal-crate `PlatformTcp / Udp / SocketHelpers / UdpMulticast` impls already emitted by `nros_smoltcp::define_smoltcp_platform!(<Plat>)` in each platform crate's `src/net.rs`. Covers mps2-an385, stm32f4, esp32, esp32-qemu.
 - [x] **121.8.c** — `PlatformNetworkPoll` added to the macro emission as an empty impl (uses the new trait default `fn network_poll() {}`). Semantics: SmoltcpBridge keeps pumping internally from send/recv bodies + the timer ISR — `network_poll` is a no-op for now, with the symbol resolvable for binaries that route through CffiPlatform.
-- [ ] **121.8.d (follow-up, optional)** — Per-board socket / endpoint size publication. The smoltcp `Socket` struct emitted by the macro is `{ i8, bool }` = 2 bytes and `Endpoint` = `{ [u8;4], u16 }` = 6 bytes — both well below the 64-byte `fallback_net_sizes`. The fallback works correctly today; per-board publication is an opportunistic size optimization, not a correctness gate.
+- [x] **121.8.d (follow-up, won't-do)** — Per-board socket / endpoint size publication. Closed without action after consumer audit. The only consumer of `NET_SOCKET_SIZE` / `NET_ENDPOINT_SIZE` is `nros-rmw-dds`'s `transport_nros.rs` (`OpaqueSocket` / `OpaqueEndpoint`), and dust-DDS doesn't compile to bare-metal Cortex-M (needs `std` or `nostd-runtime` + alloc). Bare-metal RMW backends — zenoh-pico and XRCE — size their own `_z_sys_net_*` / Micro-XRCE buffers via the upstream library's opaque-size probe and never read the platform-layer fallback. Publishing tighter per-board sizes would save 0 bytes on every shippable build. Re-open only if a future bare-metal-capable consumer starts honouring these constants.
 - [x] **121.8.e** — `resolve.rs` flipped: every `platform-{mps2-an385,stm32f4,esp32,esp32-qemu}` feature resolves `ConcretePlatform` to `CffiPlatform`. Each platform crate's `lib.rs` invokes both `nros_platform_export!` and `nros_platform_export_net!` under `#[cfg(feature = "cffi-export")]`. `nros-platform/Cargo.toml`'s `platform-<embedded>` features each pull `nros-platform-cffi` and activate the platform crate's `cffi-export`. Stale "bare-metal keeps its direct alias" comments removed.
 - [x] **121.8.f** — `just qemu build-fixtures` builds every bare-metal example clean (cdr-test, wcet-bench, dds talker/listener, lan9118 standalone, large-msg-test, all rtic-* variants, serial-listener/talker, zenoh talker/listener). `just qemu test` passes (qemu-basic, qemu-wcet-bench, qemu-lan9118 — 5 passed in lan9118).
 - [x] **121.8.g** — `zpico-smoltcp` no longer exists; it was already renamed/relocated to `packages/drivers/nros-smoltcp/`. No further cleanup required.
@@ -438,13 +438,14 @@ Work items:
 
 ### 121.5 — Docs + roadmap hygiene
 
-- [ ] **121.5.a** — Add a `docs/internals/platform-c-abi.md` page explaining the canonical ABI, the macro-export pattern, the rationale for free symbols vs vtable, and how to write a new port (both Rust-via-macro and pure C). Cross-link from `docs/design/portable-rmw-platform-interface.md`.
-- [ ] **121.5.b** — Update `book/src/internals/platform-abstraction.md` (if present) to describe the new layering.
+- [x] **121.5.a** — Done. `book/src/internals/platform-c-abi.md` covers the surface inventory (57 + 29 + 8 = 94 symbols across three headers), the free-symbols-vs-vtable rationale, both port shapes (Rust trait + macro export, pure C body), the capability-group table, and the "adding a new port" checklist. Registered in `book/src/SUMMARY.md` under Internals; cross-linked from `docs/design/portable-rmw-platform-interface.md`. (Lives under `book/src/internals/` rather than the originally-planned `docs/internals/` because the project's mdBook is the canonical reader path.)
+- [x] **121.5.b** — Done by displacement. `book/src/internals/platform-abstraction.md` was never created — the territory it would cover is split across `book/src/concepts/platform-model.md` (user-facing axes + boards-vs-platforms table, updated for orin-spe by 121.10.g), the new `platform-c-abi.md` (canonical ABI internals), `book/src/design/platform-api.md` (rationale), and `book/src/internals/platform-porting-pitfalls.md` (gotchas). No single new page is needed.
 - [x] **121.5.c** — Phase doc stays in-place (not archived). Load-bearing reference for the canonical ABI design + the C-port deletion / rename history. Future platform-layer phases (121.3.freertos-parity, 121.3.threadx-linux-net) link here for context.
 
 **Files:**
-- `docs/internals/platform-c-abi.md`
-- `book/src/internals/platform-abstraction.md`
+- `book/src/internals/platform-c-abi.md` (canonical ABI internals page; landed)
+- `book/src/concepts/platform-model.md` (updated with boards-vs-platforms section)
+- `docs/design/portable-rmw-platform-interface.md` (cross-link added)
 - `docs/roadmap/archived/phase-121-platform-c-abi-canonical.md` (move on completion)
 
 **Acceptance:** porter doc reads end-to-end; design doc no longer mentions cbindgen for the vtable surface.
