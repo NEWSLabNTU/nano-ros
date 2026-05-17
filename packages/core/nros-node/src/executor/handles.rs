@@ -1615,6 +1615,13 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
+    /// Phase 124.G.3 — graph-aware "is the matching server up?"
+    /// probe. Mirrors [`Client::server_available`] for the raw API.
+    pub fn server_available(&self) -> Result<bool, NodeError> {
+        use nros_rmw::ServiceClientTrait;
+        self.handle.server_available().map_err(NodeError::Transport)
+    }
+
     /// Try to receive a reply (non-blocking). Returns
     /// `Ok(Some(len))` with the reply length on success; bytes
     /// live in [`reply_buffer`](Self::reply_buffer) until the next

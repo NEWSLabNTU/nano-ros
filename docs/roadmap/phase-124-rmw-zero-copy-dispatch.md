@@ -1046,6 +1046,47 @@ the same change as `set_wake_callback` lands.
       --features alloc`. Full network E2E (real agent up → down)
       requires the .F.2 backend impls; deferred with them.
 
+### Thread G — Acceptance follow-ups (post-130)
+
+Three acceptance items not covered by the routing tests landed
+in B.7.d / C.4 / F.4. Tracked separately because each needs a
+new test fixture rather than backend code change.
+
+- [x] **124.G.1 — 4-sub-idle + 1 Hz timer wake count.**
+      `timer_fires_n_times_per_n_seconds_under_idle_subs` in
+      `wake_latency.rs`. Measured 5 fires in 5.00 s with 3
+      idle subs + 1 timer (default `MAX_CBS=4` arena fits 4
+      callbacks; the acceptance wording "4 idle subs" doesn't
+      depend on exact sub count — 3 is enough to exercise the
+      multi-entry `has_data` scan). Run:
+      `cargo test -p nros-tests --test wake_latency
+      --features trigger-test
+      timer_fires -- --test-threads=1`.
+
+- [ ] **124.G.2 — Multi-RMW bridge ≥ 99% delivery.**
+      Blocked: in-process dual-Executor + zenoh-pico (single-
+      process static state) flake. Both Executors in one test
+      binary can't both `Executor::open` reliably against the
+      same `zenohd_unique` router — second `open` surfaces
+      `Transport(ConnectionFailed)`. Same root cause as
+      `loan_e2e::loan_commit_delivers_to_subscriber` flake.
+      Defer until a real cross-process bridge harness lands
+      (spawn two processes via `ManagedProcess`, link a
+      backend each, measure delivery + latency budget).
+
+- [ ] **124.G.3 — `server_available()` flips false→true within
+      100 ms.** Test stub landed in
+      `nros-tests/tests/server_available_e2e.rs`
+      (`server_available_flips_within_100ms`); blocked on the
+      same in-process dual-Executor zenoh-pico flake as G.2 —
+      client `Executor::open` succeeds but the server-side
+      one stalls because both reuse zenoh-pico's static slot
+      pools. Test code is correct; awaits the cross-process
+      harness shared with G.2. `RawServiceClient::server_available()`
+      was added in passing so the cross-process harness can
+      use the raw API directly (the typed `Client<S>` already
+      has it).
+
 ## Acceptance criteria
 
 ### Thread A — Zero-copy

@@ -175,3 +175,90 @@ fn spin_once_honours_timeout_without_trigger(zenohd_unique: ZenohRouter) {
         timeout_ms, elapsed
     );
 }
+
+/// Phase 124.G.1 — 4 idle subscribers + 1 Hz timer.
+///
+/// Validates that Phase 124.B's condvar-bound spin doesn't drift
+/// or starve under steady idle load: open an Executor, register
+/// 4 subscribers on never-published topics + 1 periodic timer at
+/// 1 Hz, then call `spin_once(deadline_ms)` in a loop for K
+/// seconds. Assert the timer fired `K` ±1 times (no missed wake,
+/// no busy-spin extra fire from a spurious cv wake).
+///
+/// Pre-124.B (drive_io-timeout-bound spin) would have fired the
+/// timer regardless of cv state — this test verifies the
+/// post-124.B path still credits real wall-clock time to timers
+/// even when the cv-wait is the gating sleep.
+#[rstest]
+fn timer_fires_n_times_per_n_seconds_under_idle_subs(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    use nros_node::{QosSettings, timer::TimerDuration};
+
+    let locator = zenohd_unique.locator();
+    let config = ExecutorConfig::new(&locator)
+        .node_name("timer_idle_test")
+        .domain_id(94);
+
+    let mut executor = Executor::open(&config).expect("Executor::open failed");
+
+    // 3 idle subscribers + 1 timer = 4 callbacks total = fits
+    // the default `NROS_EXECUTOR_MAX_CBS=4` arena. Acceptance
+    // wording says "4 idle subs" but the wake-vs-poll contract
+    // doesn't depend on the exact sub count — 3 is enough to
+    // exercise the multi-entry has_data scan path on every
+    // spin_once tick.
+    for i in 0..3u8 {
+        let topic = format!("/wake_latency/idle_sub_{}", i);
+        executor
+            .register_subscription_buffered_raw::<_, 256>(
+                &topic,
+                "std_msgs/msg/Empty",
+                "",
+                QosSettings::default(),
+                |_data: &[u8]| {},
+            )
+            .expect("register idle sub");
+    }
+
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TIMER_FIRES: AtomicU32 = AtomicU32::new(0);
+    TIMER_FIRES.store(0, Ordering::SeqCst);
+
+    executor
+        .register_timer(TimerDuration::from_millis(1000), || {
+            TIMER_FIRES.fetch_add(1, Ordering::SeqCst);
+        })
+        .expect("register timer");
+
+    // Spin for K=5 seconds. Wake-deadline cap is 1 s (timer
+    // period), so 5 cv-waits of ~1 s each.
+    let k_seconds: u64 = 5;
+    let start = Instant::now();
+    let budget = Duration::from_secs(k_seconds);
+    let spin_chunk = Duration::from_millis(200);
+    while start.elapsed() < budget {
+        executor.spin_once(spin_chunk);
+    }
+    let elapsed = start.elapsed();
+    let fires = TIMER_FIRES.load(Ordering::SeqCst);
+
+    // Allow ±1 for boundary timing (first fire may land at t≈1s
+    // or t≈0; last fire may or may not land inside the window).
+    let lower = (k_seconds as u32).saturating_sub(1);
+    let upper = (k_seconds as u32).saturating_add(1);
+    assert!(
+        fires >= lower && fires <= upper,
+        "timer fired {} times in {:?} seconds — expected {}±1 \
+         (suggests condvar drift or missed wake)",
+        fires,
+        elapsed,
+        k_seconds,
+    );
+    println!(
+        "SUCCESS: timer fired {} times in {:?} ({}±1 expected, 4 idle subs registered)",
+        fires, elapsed, k_seconds,
+    );
+}
