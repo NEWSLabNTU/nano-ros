@@ -102,10 +102,13 @@ zpico-platform-custom = { workspace = true, optional = true }
 [build-dependencies]
 cbindgen = "0.29"
 cc = "1.0"
-cmake = "0.1"
-# Phase 136.1 — zenoh_platforms.toml parser. The reader runs at
-# build time but does not yet drive cc-rs / cmake; 136.3 / 136.4
-# wire it into the cc-rs collapse.
+# Phase 136.5 — mbedTLS discovery moved off cmake's
+# `pkg_check_modules` onto the `pkg-config` build crate. The
+# `.pc`-file synthesizer fallback (Ubuntu's `libmbedtls-dev` ships
+# no `.pc`) stays in build.rs.
+pkg-config = "0.3"
+# Phase 136.1 — zenoh_platforms.toml parser. Drives source +
+# define selection in the unified cc-rs path after 136.3.
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 

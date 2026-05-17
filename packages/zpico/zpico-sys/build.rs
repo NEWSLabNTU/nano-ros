@@ -1270,77 +1270,86 @@ fn extract_typedef_name(line: &str) -> Option<String> {
     None
 }
 
-/// Build zenoh-pico via CMake for native targets
+/// Phase 136.3 — Build zenoh-pico via cc-rs for native (POSIX)
+/// targets. Replaces the previous CMake-driven path. Source set,
+/// defines, and link flags mirror what `build_zenoh_pico_native`'s
+/// CMake invocation produced; the wire-protocol output is identical.
+///
+/// - Sources: the same 8 protocol subdirs + `system/common` that
+///   every per-RTOS function uses, plus `system/unix/tls.c`
+///   (gated by `Z_FEATURE_LINK_TLS` inside the file itself —
+///   include unconditionally so behaviour matches CMake's glob).
+///   `system/unix/{system,network}.c` are deliberately skipped:
+///   nros-platform-posix / zpico-platform-shim supply those symbols.
+///
+/// - Defines: `ZENOH_GENERIC` makes upstream's
+///   `zenoh-pico/include/zenoh-pico/config.h` route through our
+///   canonical `zenoh_generic_config.h` (`<out_dir>/zenoh-config/`)
+///   instead of CMake's hardcoded defaults. `FRAG_MAX_SIZE` /
+///   `BATCH_*_SIZE` propagate via `cc::Build::define`. Z_FEATURE_*
+///   defines all live in the canonical header.
+///
+/// - mbedTLS: 136.5 routes through the `pkg-config` build crate
+///   with a generated-`.pc` fallback for distros (Ubuntu) that
+///   ship `libmbedtls-dev` without `.pc` files.
 fn build_zenoh_pico_native(
     zenoh_pico_src: &Path,
     out_dir: &Path,
     buf: &ZenohBufferConfig,
     link: &LinkFeatures,
 ) -> PathBuf {
-    let zenoh_pico_build = out_dir.join("zenoh-pico-build");
+    let mut build = cc::Build::new();
 
-    // Copy source to build directory to avoid modifying source tree
-    copy_source_tree(zenoh_pico_src, &zenoh_pico_build);
+    // Generate version header in OUT_DIR (same shape the embedded
+    // path uses) so the cc-rs path doesn't need a writable copy of
+    // the source tree.
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
 
-    // Remove system.c and network.c from the build copy — platform symbols
-    // and networking are provided by zpico-platform-shim via nros-platform.
-    for c_file in &[
-        "src/system/unix/system.c",
-        "src/system/unix/network.c",
-        "src/system/freertos/system.c",
-    ] {
-        let path = zenoh_pico_build.join(c_file);
-        if path.exists() {
-            std::fs::remove_file(&path).ok();
-        }
+    // Core protocol sources (8 src/<x>/ dirs + system/common) +
+    // the POSIX tls source.
+    add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
+    let unix_dir = zenoh_pico_src.join("src").join("system").join("unix");
+    let unix_tls = unix_dir.join("tls.c");
+    if unix_tls.exists() {
+        build.file(&unix_tls);
     }
+    // Intentionally skip src/system/unix/{system,network}.c —
+    // platform + network symbols come from nros-platform-posix.
 
-    // Generate version header
-    generate_version_header(&zenoh_pico_build);
-
-    // Build via CMake
-    // Note: Z_FEATURE_INTEREST must be enabled for proper message routing between
-    // clients on different networks (e.g., Zephyr on TAP vs native on localhost).
-    // Both clients must have matching INTEREST settings for the router to route properly.
-    let mut cmake_cfg = cmake::Config::new(&zenoh_pico_build);
-    // Phase 134.3 / 134.4 — `ZENOH_GENERIC` makes upstream's
-    // `zenoh-pico/include/zenoh-pico/config.h` `#include
-    // <zenoh_generic_config.h>` instead of falling into the CMake-
-    // configured `#else` branch with its hardcoded
-    // `#define Z_FEATURE_LINK_TCP 1` defaults. Our header lives in
-    // `<out_dir>/zenoh-config/` (written by `generate_config_header`)
-    // and carries every `Z_FEATURE_LINK_*` from the resolved
-    // `LinkFeatures`. Adding the include search dir lets CMake's
-    // `-include`-less compile units pick it up via the `#include`
-    // directive inside config.h. Net effect: NO `Z_FEATURE_LINK_*`
-    // literals scattered across `build.rs`.
+    // Include dirs.
     let zenoh_config_dir = out_dir.join("zenoh-config");
-    cmake_cfg
-        .define("BUILD_SHARED_LIBS", "OFF")
-        .define("BUILD_EXAMPLES", "OFF")
-        .define("BUILD_TESTING", "OFF")
-        .define("BUILD_TOOLS", "OFF")
-        .define("ZENOH_DEBUG", "0")
-        .define("ZENOH_GENERIC", "1")
-        .cflag(format!("-I{}", zenoh_config_dir.display()))
-        // zenoh-pico CMakeLists.txt uses FRAG_MAX_SIZE / BATCH_*_SIZE (no Z_ prefix)
-        .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string())
-        .define("BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
-        .define("BATCH_MULTICAST_SIZE", buf.batch_multicast_size.to_string());
-    // Touch `link` so the closure-captured borrow keeps a single
-    // call site for what used to be the per-feature CMake defines.
-    let _ = link;
+    build
+        .include(&zenoh_config_dir)
+        .include(zenoh_pico_src.join("include"))
+        .include(&version_include_dir);
 
-    // TLS — when the canonical header sets `Z_FEATURE_LINK_TLS=1`
-    // we still need to wire pkg-config so CMake's FindPkgConfig
-    // can locate Ubuntu's libmbedtls-dev (which ships no .pc).
+    // Defines — match what `build_zenoh_pico_native`'s CMake invocation
+    // set in the previous lifetime. ZENOH_GENERIC routes config.h
+    // through our canonical header; ZENOH_LINUX selects the POSIX
+    // platform branch in zenoh-pico's `system/common/platform.h`.
+    build
+        .define("ZENOH_GENERIC", None)
+        .define("ZENOH_LINUX", None)
+        .define("ZENOH_DEBUG", "0")
+        .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string().as_str())
+        .define(
+            "BATCH_UNICAST_SIZE",
+            buf.batch_unicast_size.to_string().as_str(),
+        )
+        .define(
+            "BATCH_MULTICAST_SIZE",
+            buf.batch_multicast_size.to_string().as_str(),
+        );
+
+    // mbedTLS — Phase 136.5: route through pkg-config with the
+    // .pc-synth fallback for Ubuntu's libmbedtls-dev. Apply Cflags
+    // so zenoh-pico's `link/unicast/tls.c` resolves mbedtls headers
+    // at compile time; emit rustc-link-lib so the final binary
+    // pulls the system shared libraries.
     if link.tls {
-        // Ubuntu's libmbedtls-dev doesn't ship pkg-config .pc files, but
-        // zenoh-pico's CMakeLists.txt uses pkg_check_modules to find mbedTLS.
-        // Generate .pc files so CMake can discover the system libraries.
         let pc_dir = out_dir.join("pkgconfig");
         generate_mbedtls_pc_files(&pc_dir);
-        // Prepend our pc dir so CMake's FindPkgConfig picks it up first.
         let existing = env::var("PKG_CONFIG_PATH").unwrap_or_default();
         let new_path = if existing.is_empty() {
             pc_dir.display().to_string()
@@ -1349,15 +1358,19 @@ fn build_zenoh_pico_native(
         };
         // SAFETY: build scripts are single-threaded; no other thread reads this variable.
         unsafe { env::set_var("PKG_CONFIG_PATH", &new_path) };
+        let lib = pkg_config::Config::new()
+            .cargo_metadata(true)
+            .probe("mbedtls")
+            .expect("mbedtls discovery via pkg-config failed");
+        for include in &lib.include_paths {
+            build.include(include);
+        }
     }
 
-    let dst = cmake_cfg.build();
+    build.warnings(false);
+    build.compile("zenohpico");
 
-    // Link the static library
-    println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-lib=static=zenohpico");
-
-    // Link system libraries
+    // Link system libraries.
     let target = env::var("TARGET").unwrap_or_default();
     if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
         println!("cargo:rustc-link-lib=pthread");
@@ -1365,16 +1378,9 @@ fn build_zenoh_pico_native(
         println!("cargo:rustc-link-lib=ws2_32");
     }
 
-    // Link mbedTLS libraries (zenoh-pico's static lib references mbedTLS symbols)
-    if link.tls {
-        println!("cargo:rustc-link-lib=mbedtls");
-        println!("cargo:rustc-link-lib=mbedx509");
-        println!("cargo:rustc-link-lib=mbedcrypto");
-    }
-
-    // Return installed include dir (not source dir) so the cc shim build gets
-    // the CMake-generated config.h with correct Z_FEATURE_* defines.
-    dst.join("include")
+    // Return include dir so `build_c_shim` can pull `zenoh-pico.h`
+    // + the canonical config + the public headers.
+    zenoh_pico_src.join("include")
 }
 
 /// Use a pre-built zenoh-pico from ZENOH_PICO_DIR (system-zenohpico feature).
@@ -1438,84 +1444,11 @@ fn use_system_zenoh_pico() -> PathBuf {
     dir.join("include")
 }
 
-/// Copy source tree to build directory
-fn copy_source_tree(src: &Path, dst: &Path) {
-    if dst.exists() {
-        // Check if we need to recopy by comparing sentinel files.
-        // We check CMakeLists.txt and network.c (the latter catches submodule changes
-        // that don't touch the build system, e.g. adding serial support).
-        let sentinels = ["CMakeLists.txt", "src/system/unix/network.c"];
-        let mut up_to_date = true;
-        for sentinel in &sentinels {
-            let src_file = src.join(sentinel);
-            let dst_file = dst.join(sentinel);
-            if !dst_file.exists() {
-                up_to_date = false;
-                break;
-            }
-            let src_meta = std::fs::metadata(&src_file).ok();
-            let dst_meta = std::fs::metadata(&dst_file).ok();
-            match (src_meta, dst_meta) {
-                (Some(s), Some(d)) => {
-                    if let (Ok(st), Ok(dt)) = (s.modified(), d.modified())
-                        && dt < st
-                    {
-                        up_to_date = false;
-                        break;
-                    }
-                }
-                _ => {
-                    up_to_date = false;
-                    break;
-                }
-            }
-        }
-        if up_to_date {
-            return;
-        }
-        let _ = std::fs::remove_dir_all(dst);
-    }
-
-    let status = Command::new("cp")
-        .args(["-r", src.to_str().unwrap(), dst.to_str().unwrap()])
-        .status()
-        .expect("Failed to copy zenoh-pico source");
-
-    if !status.success() {
-        panic!("Failed to copy zenoh-pico source to build directory");
-    }
-}
-
-/// Generate zenoh-pico.h version header
-fn generate_version_header(build_dir: &Path) {
-    let include_dir = build_dir.join("include");
-    std::fs::create_dir_all(&include_dir).unwrap();
-
-    let version_header = include_dir.join("zenoh-pico.h");
-    let version_file = build_dir.join("version.txt");
-
-    let version = std::fs::read_to_string(&version_file)
-        .unwrap_or_else(|_| "0.0.0".to_string())
-        .trim()
-        .to_string();
-
-    let parts: Vec<&str> = version.split('.').collect();
-    let major = parts.first().unwrap_or(&"0");
-    let minor = parts.get(1).unwrap_or(&"0");
-    let patch = parts.get(2).unwrap_or(&"0");
-
-    let template_path = include_dir.join("zenoh-pico.h.in");
-    if template_path.exists() {
-        let template = std::fs::read_to_string(&template_path).unwrap();
-        let generated = template
-            .replace("@ZENOH_PICO@", &version)
-            .replace("@ZENOH_PICO_MAJOR@", major)
-            .replace("@ZENOH_PICO_MINOR@", minor)
-            .replace("@ZENOH_PICO_PATCH@", patch)
-            .replace("@ZENOH_PICO_TWEAK@", "0");
-        std::fs::write(&version_header, generated).unwrap();
-    }
-}
+// `copy_source_tree` + `generate_version_header` deleted in Phase 136.3 —
+// the cc-rs native path no longer copies the source tree (cc-rs reads
+// in-place from `zenoh-pico/src/`) and uses `generate_embedded_version_header`
+// (writes to `out_dir/zenoh-pico-version/`) for both the embedded and
+// native paths.
 
 /// Build the C shim library
 ///
