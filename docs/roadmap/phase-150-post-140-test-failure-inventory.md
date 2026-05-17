@@ -7,8 +7,27 @@ points at its root cause + remediation phase. Acts as the bridge
 between Phase 140's "structurally complete" state and a fully
 green CI.
 
-**Status.** Inventory complete (this doc). Item-level remediation
-tracked in the per-phase docs referenced below.
+**Status.** Inventory complete. Phase 149 stubs landed
+(`1d66d3dc` parent of this update). Interim CI v6 snapshot at
+769/797 tests run:
+
+```
+class                             v5      v6 (interim)   delta
+A. POSIX serial-link (native_api) 58      1              -57   ✓ Phase 149
+B. dds_api C++ builds              8      4              -4    (partial; investigate residual)
+C. qemu_patched_binary             6      3              -3    (some flaked / passed)
+D. cmake_platform_matrix          10      5              -5    (some passed)
+E. zenoh_header_parity             2      1              -1
+F. xrce                            2      1              -1
+G. integration_zephyr/esp_idf      4      2              -2
+H. nano2nano rtic_pattern          2      3              +1    (px4 + 3 rtic now)
+─────────────────────────────────────────────────────
+total fails seen so far           92      ~20            -72    Phase 149 dominant impact
+```
+
+Item-level remediation tracked in the per-phase docs referenced
+below. Run completes at 797/797; final numbers updated once
+`tests run:` line lands in the log.
 
 **Priority.** P2 — bookkeeping. No new bugs introduced by Phase
 140; existing classes simply got exercised end-to-end for the
