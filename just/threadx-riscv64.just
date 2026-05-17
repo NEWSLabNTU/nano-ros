@@ -57,6 +57,7 @@ install:
         -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/riscv64-threadx.cmake" \
         -DNANO_ROS_RMW="zenoh" \
         -DNANO_ROS_PLATFORM="threadx_riscv64" \
+        -DNANO_ROS_BOARD="riscv64-qemu" \
         -DNANO_ROS_BUILD_CODEGEN=OFF \
         -DCMAKE_BUILD_TYPE=Release
     just _cmake-cargo-stale-guard "build/cmake-threadx-riscv64-zenoh"
