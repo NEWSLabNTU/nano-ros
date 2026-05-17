@@ -66,10 +66,14 @@ if(NOT DEFINED THREADX_DIR AND NOT DEFINED ENV{THREADX_DIR})
     set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel"
         CACHE PATH "ThreadX kernel source root")
 endif()
-if(NOT DEFINED THREADX_CONFIG_DIR AND NOT DEFINED ENV{THREADX_CONFIG_DIR})
-    set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
-        CACHE PATH "Directory containing tx_user.h / nx_user.h" FORCE)
-endif()
+# THREADX_CONFIG_DIR is board-specific (each board ships its own
+# tx_user.h / nx_user.h). FORCE the right per-board path here — the
+# .env's legacy value happens to point at this same dir today but
+# might drift; staying explicit avoids cross-board contamination
+# when both threadx-linux and riscv64-qemu cmake trees exist in the
+# same shell session.
+set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
+    CACHE PATH "Directory containing tx_user.h / nx_user.h" FORCE)
 if(NOT DEFINED NETX_DIR AND NOT DEFINED ENV{NETX_DIR})
     set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
         CACHE PATH "NetX Duo source root (BSD addon headers only on Linux)")
@@ -146,6 +150,33 @@ set(THREADX_STARTUP_INCLUDES
     ${NROS_THREADX_INCLUDES}
     "${NSOS_NETX_DIR}/include"
     CACHE INTERNAL "Include dirs for THREADX_STARTUP_SOURCE / APP_DEFINE TUs")
+
+# nros-platform-threadx/src/net.c needs upstream NetX Duo's full
+# nxd_bsd.h (declares nx_bsd_inet_addr / nx_bsd_socket / ...) plus the
+# linux/gnu port's nx_port.h. Stash the upstream NetX paths +
+# NX_INCLUDE_USER_DEFINE_FILE (so nx_user.h's NX_BSD_ENABLE_NATIVE_API
+# fires and shadows the un-prefixed BSD declarations that otherwise
+# collide with glibc <sys/select.h>) in cache vars; the platform module
+# pushes them onto nros_platform_threadx after add_subdirectory.
+# nsos-netx ships only stub include/nx_api.h + nxd_bsd.h covering the
+# nsos_netx.c shim itself — its `${NSOS_NETX_DIR}/include` is fine as
+# a secondary path because the upstream NetX paths sit ahead of it via
+# the explicit push and resolve first.
+# Mirrors the include layout
+# packages/boards/nros-board-threadx-linux/build.rs configures for the
+# Rust-side build of the same TUs.
+if(EXISTS "${NETX_DIR}/addons/BSD/nxd_bsd.h"
+   AND EXISTS "${NETX_DIR}/ports/linux/gnu/inc/nx_port.h")
+    set(NROS_THREADX_EXTRA_INCLUDES
+        "${NETX_DIR}/common/inc"
+        "${NETX_DIR}/ports/linux/gnu/inc"
+        "${NETX_DIR}/addons/BSD"
+        CACHE INTERNAL "Extra include dirs for nros_platform_threadx")
+    set(NROS_THREADX_EXTRA_DEFINES
+        TX_INCLUDE_USER_DEFINE_FILE
+        NX_INCLUDE_USER_DEFINE_FILE
+        CACHE INTERNAL "Extra compile defines for nros_platform_threadx")
+endif()
 
 set(THREADX_GLUE_DEFINES
     ${NROS_THREADX_DEFINES}

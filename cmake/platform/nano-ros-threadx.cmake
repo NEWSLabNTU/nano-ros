@@ -145,6 +145,39 @@ if(NOT TARGET nros_platform_threadx)
     add_subdirectory(
         "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-threadx"
         nros_platform_threadx)
+    # The shim's CMakeLists links ${THREADX_KERNEL_TARGET} PUBLIC, but the
+    # kernel target keeps its includes PRIVATE (nros_build_rtos_static_lib
+    # default), so platform.c / timer.c / net.c can't find <tx_api.h>.
+    # Push the layer-2 helper's resolved include list onto the shim — same
+    # set the kernel itself was built with.
+    if(TARGET nros_platform_threadx AND DEFINED NROS_THREADX_INCLUDES)
+        target_include_directories(nros_platform_threadx PUBLIC
+            ${NROS_THREADX_INCLUDES})
+    endif()
+    # Per-board extra include dirs + compile defines for the shim.
+    # Board overlays populate NROS_THREADX_EXTRA_INCLUDES with upstream
+    # NetX paths needed by net.c (the BSD addon's nxd_bsd.h declares
+    # nx_bsd_inet_addr / nx_bsd_socket / ..., the port dir provides
+    # nx_port.h) and NROS_THREADX_EXTRA_DEFINES with
+    # NX_INCLUDE_USER_DEFINE_FILE so nx_user.h fires (its
+    # NX_BSD_ENABLE_NATIVE_API in turn shadows the unprefixed BSD
+    # declarations that otherwise collide with glibc <sys/select.h>).
+    # Belt-and-braces: also auto-push the standard NetX paths when
+    # `netxduo` is the netstack and no explicit override.
+    if(TARGET nros_platform_threadx AND DEFINED NROS_THREADX_EXTRA_INCLUDES)
+        target_include_directories(nros_platform_threadx PUBLIC
+            ${NROS_THREADX_EXTRA_INCLUDES})
+    elseif(TARGET nros_platform_threadx AND TARGET netxduo
+           AND DEFINED NETX_DIR
+           AND EXISTS "${NETX_DIR}/addons/BSD/nxd_bsd.h")
+        target_include_directories(nros_platform_threadx PUBLIC
+            "${NETX_DIR}/common/inc"
+            "${NETX_DIR}/addons/BSD")
+    endif()
+    if(TARGET nros_platform_threadx AND DEFINED NROS_THREADX_EXTRA_DEFINES)
+        target_compile_definitions(nros_platform_threadx PUBLIC
+            ${NROS_THREADX_EXTRA_DEFINES})
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

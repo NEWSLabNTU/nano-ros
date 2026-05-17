@@ -47,9 +47,24 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features std platform-threadx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     set(_platform_features alloc panic-halt platform-threadx)
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
+    # Phase 138 canonical "threadx" — board axis disambiguates the
+    # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
+    # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
+    # consumers per Phase 144.7-8.
+    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
+        set(_platform_features std platform-threadx)
+    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
+        set(_platform_features alloc panic-halt platform-threadx)
+    else()
+        message(FATAL_ERROR
+            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
+            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
+    endif()
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
-            "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")
+            "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
+            "threadx_linux, threadx_riscv64, or threadx)")
 endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})

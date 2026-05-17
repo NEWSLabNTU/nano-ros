@@ -23,9 +23,10 @@ option(NANO_ROS_FORCE_INSTALL "Emit install(...) rules even when consumed as a s
 set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
 set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
-    "Target platform: posix, freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64")
+    "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
-    posix freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
+    posix freertos nuttx threadx
+    freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
 set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble or iron")
 set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron)
 

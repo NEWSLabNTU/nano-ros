@@ -92,10 +92,12 @@ if(NOT DEFINED NETX_DIR AND NOT DEFINED ENV{NETX_DIR})
     set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
         CACHE PATH "NetX Duo source root")
 endif()
-if(NOT DEFINED THREADX_CONFIG_DIR AND NOT DEFINED ENV{THREADX_CONFIG_DIR})
-    set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
-        CACHE PATH "Directory with tx_user.h / nx_user.h / link.lds" FORCE)
-endif()
+# THREADX_CONFIG_DIR is board-specific (each board ships its own
+# tx_user.h / nx_user.h / link.lds). The .env file ships a single
+# legacy value pointing at the threadx-linux config dir — ignore it
+# and FORCE the right per-board path here.
+set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
+    CACHE PATH "Directory with tx_user.h / nx_user.h / link.lds" FORCE)
 if(NOT DEFINED THREADX_BOARD_DIR AND NOT DEFINED ENV{THREADX_BOARD_DIR})
     set(THREADX_BOARD_DIR "${_NROS_BOARD_C_DIR}"
         CACHE PATH "ThreadX RV64 board C dir (entry.s, app_define.c, ...)")
@@ -248,6 +250,21 @@ set(THREADX_GLUE_DEFINES
 
 set(THREADX_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/link.lds"
     CACHE FILEPATH "ThreadX RISC-V linker script")
+
+# nros-platform-threadx/src/net.c needs upstream NetX Duo BSD declarations
+# AND the user-define-file flag so NX_BSD_ENABLE_NATIVE_API in nx_user.h
+# shadows the un-prefixed `select` / `fd_set` / `suseconds_t` declarations
+# that otherwise collide with picolibc's <sys/types.h>. The platform
+# module reads these cache vars after add_subdirectory(...).
+set(NROS_THREADX_EXTRA_INCLUDES
+    "${NETX_DIR}/common/inc"
+    "${NETX_DIR}/addons/BSD"
+    CACHE INTERNAL "Extra include dirs for nros_platform_threadx")
+set(NROS_THREADX_EXTRA_DEFINES
+    TX_INCLUDE_USER_DEFINE_FILE
+    NX_INCLUDE_USER_DEFINE_FILE
+    NROS_PLATFORM_BAREMETAL
+    CACHE INTERNAL "Extra compile defines for nros_platform_threadx")
 
 # ---------------------------------------------------------------------------
 # nros_board_link_app(<target>)
