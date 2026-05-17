@@ -33,7 +33,7 @@ per-platform datum the build needs. Two top-level table groups:
 | `required_env` | list[RequiredEnv] | SDK paths the build needs. See below. |
 | `include_paths` | list[str] | Header search paths; interpolated. |
 | `include_paths_conditional` | list[ConditionalPath] | Header paths gated by `when`. |
-| `arch` | string | Name of `[arch.*]` block to apply. |
+| `arch` | string \| list[str] | Name(s) of `[arch.*]` block(s) to apply. Single name (TOML scalar) for single-arch platforms; list (TOML array) for multi-arch platforms like `bare-metal` (cortex-m3 + riscv32imc). build.rs walks the list in order and applies the first arch whose `target_match` hits the build target. Phase 148. |
 | `compile` | table | `opt_level` / `warnings` / `cflags`. |
 | `pic` | bool | `cc::Build::pic` override (NuttX flat builds use `false`). |
 | `link.*` | map | Per-link-feature policy (Phase 134). Values: `true` / `false` (force on/off) or `"feature"` (defer to `CARGO_FEATURE_LINK_<X>`). |
@@ -127,7 +127,26 @@ No `build.rs` edits needed for the data layer.
 Adding a new CPU family is one `[arch.*]` block + any of the
 `needs_picolibc` / `needs_errno_override` /
 `needs_riscv_compiler` flags it requires. Existing platforms that
-need to target it set `arch = "<your_arch>"`.
+need to target it set `arch = "<your_arch>"` (or extend their
+existing `arch = [...]` list with the new name).
+
+For platforms that span multiple architectures (e.g. `bare-metal`
+covers `cortex-m3` for `qemu-arm-baremetal` / `stm32f4` AND
+`riscv32imc` for `ESP32-C3`), declare every arch the platform
+supports and let build.rs's first-match dispatch pick the right
+one per target triple:
+
+```toml
+[platform.bare-metal]
+arch = ["cortex-m3", "riscv32imc"]   # first arch_matches wins
+```
+
+This is what makes `cargo check` work on both
+`qemu-arm-baremetal/rust/zenoh/talker` and
+`esp32/rust/zenoh/{listener,talker}` from the same platform
+entry — the picolibc sysroot wired up by
+`arch.riscv32imc.needs_picolibc = true` is added to the cc-rs
+`-I` list only when the build target is riscv32imc-*. (Phase 148.)
 
 ## mbedTLS source policy
 

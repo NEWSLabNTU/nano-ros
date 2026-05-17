@@ -1,5 +1,20 @@
 # Phase 148 — zenoh_platforms.toml Per-Target Arch Dispatch
 
+> **Archived 2026-05-18 — closed.** All five work-items landed.
+> `[platform.bare-metal].arch` is now `["cortex-m3", "riscv32imc"]`;
+> `manifest.rs::deserialize_arch_field` accepts both TOML scalar
+> and array forms; `build.rs::build_zenoh_pico_unified` Step 3
+> walks `plat.arch` in order and applies the first arch whose
+> `target_match` hits. Verified: `cargo check` succeeds on
+> `examples/esp32/rust/zenoh/{listener,talker}` AND
+> `examples/qemu-arm-baremetal/rust/zenoh/talker` from a single
+> platform entry — picolibc sysroot (`needs_picolibc = true` on
+> `[arch.riscv32imc]`) is added to the cc-rs `-I` list only when
+> the build target is riscv32imc-*. Doc + CLAUDE.md note landed
+> (`book/src/internals/zpico-build.md` per-platform table +
+> "Adding a new target arch" section; `CLAUDE.md` §"Platform
+> Backends" Platform line annotation).
+
 **Goal.** Fix `zpico-sys` manifest's platform→arch mapping so
 ESP32-C3 (riscv32imc bare-metal) gets the `riscv32imc` arch profile
 applied, not `cortex-m3`. Today `bare-metal` platform hard-codes
@@ -119,7 +134,7 @@ Phase 136 introduced.
 
 ## Work Items
 
-- [ ] **148.1 — Manifest schema bump.**
+- [x] **148.1 — Manifest schema bump.**
       `[platform.bare-metal].arch` becomes `array` instead of
       `scalar`. Other platform entries can stay scalar
       (`arch = "cortex-m3"` is treated as a single-element array
@@ -127,7 +142,7 @@ Phase 136 introduced.
       **Files.** `packages/zpico/zpico-sys/build/manifest.rs`,
       `packages/zpico/zpico-sys/zenoh_platforms.toml`.
 
-- [ ] **148.2 — `bare-metal` platform manifest update.**
+- [x] **148.2 — `bare-metal` platform manifest update.**
       ```toml
       [platform.bare-metal]
       arch = ["cortex-m3", "riscv32imc"]
@@ -136,7 +151,7 @@ Phase 136 introduced.
       against current manifest).
       **Files.** `packages/zpico/zpico-sys/zenoh_platforms.toml`.
 
-- [ ] **148.3 — `build.rs` first-match dispatch.**
+- [x] **148.3 — `build.rs` first-match dispatch.**
       ```rust
       for arch_name in &plat.arch {
           if let Some(arch) = arch_table.get(arch_name.as_str())
@@ -149,7 +164,7 @@ Phase 136 introduced.
       ```
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] **148.4 — Per-target smoke verification.**
+- [x] **148.4 — Per-target smoke verification.**
       ```bash
       cd examples/esp32/rust/zenoh/listener && cargo check
       cd examples/qemu-arm-baremetal/rust/zenoh/talker && cargo check
@@ -157,7 +172,7 @@ Phase 136 introduced.
       Both must succeed.
       **Files.** none (verification).
 
-- [ ] **148.5 — Doc + CLAUDE.md note.**
+- [x] **148.5 — Doc + CLAUDE.md note.**
       Document the platform→arch array contract in
       `book/src/internals/zpico-build.md` (Phase 136 page).
       Mirrors `CLAUDE.md`'s build-tier note that platforms can
@@ -168,12 +183,12 @@ Phase 136 introduced.
 
 ## Acceptance
 
-- [ ] `cargo check` succeeds on `examples/esp32/rust/zenoh/{listener,talker}`.
-- [ ] `cargo check` on `examples/qemu-arm-baremetal/rust/zenoh/talker`
+- [x] `cargo check` succeeds on `examples/esp32/rust/zenoh/{listener,talker}`.
+- [x] `cargo check` on `examples/qemu-arm-baremetal/rust/zenoh/talker`
       still succeeds (cortex-m3 path unbroken).
-- [ ] `just check` passes the per-example fan-out (no
+- [x] `just check` passes the per-example fan-out (no
       `stdint.h: No such file or directory` for any bare-metal target).
-- [ ] `cargo metadata --no-deps` clean.
+- [x] `cargo metadata --no-deps` clean.
 
 ---
 
