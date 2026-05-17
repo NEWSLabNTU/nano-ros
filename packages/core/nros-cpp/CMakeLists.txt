@@ -67,8 +67,41 @@ target_include_directories(nros-cpp-headers INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
+# Phase 144 — mirror the per-build `nros_cpp_config_generated.h` (produced
+# by nros-cpp's build.rs into CMAKE_CURRENT_BINARY_DIR via corrosion) to
+# a sibling `include/nros/` dir that we add to nros-cpp-headers' INTERFACE.
+# Same pattern as the nros-c sub-project (see Phase 137 comment block in
+# `packages/core/nros-c/CMakeLists.txt`). The mirrored copy is searched
+# BEFORE the source-tree stub, so per-variant storage sizes take effect
+# under add_subdirectory(<repo-root>) consumption.
+set(_nros_cpp_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
+file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/nros")
+if(TARGET cargo-build_nros_cpp)
+    add_custom_command(TARGET cargo-build_nros_cpp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
+            "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
+        BYPRODUCTS "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
+        COMMENT "nros-cpp: mirroring nros_cpp_config_generated.h for in-tree consumers"
+        VERBATIM
+    )
+    target_include_directories(nros-cpp-headers BEFORE INTERFACE
+        $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
+endif()
+
 # Link against the FFI static library
 target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
+# Phase 144 — pull NanoRos::NanoRos into nros-cpp-headers transitively
+# so consumers linking NanoRos::NanoRosCpp also get the C-side headers
+# (`<nros/app_main.h>` etc.) reachable. Matches the legacy
+# `NanoRosCppTargets.cmake` shape (`INTERFACE_LINK_LIBRARIES
+# NanoRos::NanoRosCppLib NanoRos::NanoRos`). The root `CMakeLists.txt`
+# declares `NanoRos::NanoRos` AFTER add_subdirectory'ing this file
+# (it's the umbrella that wires in nros-c + the platform shim +
+# the RMW staticlib), so we register the link via a deferred call
+# rooted in the nano-ros root directory.
+cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../.." CALL
+    target_link_libraries nros-cpp-headers INTERFACE NanoRos::NanoRos)
 
 # Phase 117.8: when the consumer asks for the Cyclone DDS RMW backend,
 # pull in the standalone `nros-rmw-cyclonedds` library + Cyclone DDS
