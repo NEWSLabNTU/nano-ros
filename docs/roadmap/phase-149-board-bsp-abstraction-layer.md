@@ -183,15 +183,25 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       `packages/boards/nros-board-mps2-an385-freertos/` (refactor —
       149.1.B), `Cargo.toml` (exclude list — 149.1.A landed).
 
-- [ ] **149.2 — Carve `nros-board-threadx` generic crate.**
-      Same shape as 149.1 but for ThreadX kernel + NetX Duo. Existing
-      `nros-board-threadx-linux` + `nros-board-threadx-qemu-riscv64`
-      become overlays (`nsos-netx` Linux sim vs full NetX Duo TCP/IP
-      + virtio-net on RISC-V).
-      **Files.** `packages/boards/nros-board-threadx/` (new),
-      `packages/boards/nros-board-threadx-linux/` (refactor),
-      `packages/boards/nros-board-threadx-qemu-riscv64/` (refactor),
-      `packages/boards/nros-board-threadx/nros_board_threadx_platforms.toml` (new).
+- [~] **149.2 — Carve `nros-board-threadx` generic crate.** (149.2.A
+      landed 2026-05-18; 149.2.B deferred alongside 149.1.B)
+      Same split as 149.1:
+      - **149.2.A — Scaffolding** (landed): new
+        `packages/boards/nros-board-threadx/` crate claims the
+        Layer-2 namespace + documents the public contract. Two
+        opt-in features (`reference-linux` +
+        `reference-qemu-riscv64`) re-export `Config` + `run` +
+        `init_hardware` from the existing per-board crates;
+        mutually exclusive (incompatible `std` requirements +
+        different `Config` shapes). Workspace `Cargo.toml`
+        excludes the new crate; `cargo check` clean (default +
+        `reference-linux` host build).
+      - **149.2.B — Build-glue carve-out** (deferred): move the
+        ThreadX kernel + NetX-Duo + nros-platform-threadx compile
+        pipeline out of the two per-board `build.rs` files into
+        the generic crate's own `build.rs`. Parameterise per-target
+        cflags via `THREADX_CFLAGS`. Land alongside 149.1.B since
+        both need the same kind of multi-day verification.
 
 - [ ] **149.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
       Become a true overlay on `nros-board-freertos` — re-exports
@@ -202,13 +212,21 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       community crates.
       **Files.** `packages/boards/nros-board-orin-spe/` (refactor).
 
-- [ ] **149.4 — Migrate NuttX board crate.**
-      `nros-board-nuttx-qemu-arm` → overlay on a thin generic
-      `nros-board-nuttx` crate. NuttX owns the kernel build via its
-      own apps/external path; the generic crate is mostly
-      `Config` + `run` shape + `nros-platform-nuttx` registration.
-      **Files.** `packages/boards/nros-board-nuttx/` (new),
-      `packages/boards/nros-board-nuttx-qemu-arm/` (refactor).
+- [~] **149.4 — Migrate NuttX board crate.** (149.4.A landed 2026-05-18;
+      149.4.B deferred)
+      - **149.4.A — Scaffolding** (landed): thin
+        `packages/boards/nros-board-nuttx/` crate (NuttX owns the
+        kernel build via `apps/external/nano-ros/` + the Phase
+        149.7 `Make.defs` / `Makefile` / `Kconfig` shell). Opt-in
+        `reference-qemu-arm` feature re-exports `Config` + `run` +
+        `init_hardware` from `nros-board-nuttx-qemu-arm`. Default
+        build (no feature) clean on host; reference feature
+        requires NuttX target (same constraint as the underlying
+        crate; not a regression).
+      - **149.4.B — `BoardInit` trait + per-board overlay refactor**
+        (deferred): land `BoardInit` trait so the per-board crate
+        shrinks to a `pub struct MyBoard; impl BoardInit for MyBoard
+        { ... }`. Today the per-board crate hand-rolls `Config`.
 
 - [ ] **149.5 — Reuse Phase 136 manifest parser.**
       Land `packages/boards/nros-board-common/` containing the

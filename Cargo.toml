@@ -248,6 +248,12 @@ exclude = [
     # Phase 149.1.A scaffolding — generic FreeRTOS+lwIP façade.
     # 149.1.B carves the kernel + lwIP build glue here.
     "packages/boards/nros-board-freertos",
+    # Phase 149.2.A scaffolding — generic ThreadX+NetX-Duo façade.
+    # 149.2.B carves the kernel + NetX-Duo build glue here.
+    "packages/boards/nros-board-threadx",
+    # Phase 149.4.A scaffolding — thin NuttX façade (NuttX owns
+    # the kernel build via its own apps/external + Make.defs).
+    "packages/boards/nros-board-nuttx",
     # Phase 100.6 — AGX Orin SPE board crate. Excluded because it
     # links against NVIDIA's `tegra_aon_fsp.a`, which only exists on
     # an SDK-Manager-installed Orin SPE FSP tree at `$NV_SPE_FSP_DIR`.
