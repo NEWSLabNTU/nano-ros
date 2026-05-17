@@ -1,5 +1,23 @@
 # Phase 147 — `install-local` Per-Platform Fragility Triage (radar)
 
+> **Archived 2026-05-18 — moot.** Phase 140 deleted `just
+> install-local`, the `build/install/` layout, every `install(...)`
+> rule, and every `Config.cmake.in` template. Every issue listed
+> below — the 7 inline fixes on the Phase 144 branch AND the two
+> Open sections (`app_define.c` picolibc vs nxd_bsd.h collision,
+> threadx_linux / freertos install-recipe untested ground) —
+> exists only because the legacy install path tried to build
+> complete staticlibs from a CMake configure that didn't know
+> which TUs a downstream consumer would link. The
+> `add_subdirectory(<repo-root>)` shape (Phase 137/138/139/144)
+> only builds what `nros_platform_link_app(target)` actually
+> needs, so the include-composition collisions can't surface.
+> Verification: `grep -rn install-local justfile just/*.just`
+> returns only "Phase 140 — removed" / "Phase 140 — `install`
+> recipe deleted" comments; no live recipe references the path.
+> Keeping the doc around as historical reference only — do not
+> iterate.
+
 **Goal.** Document the per-platform install-local issues surfaced
 by Phase 144's CI runs. These are NOT migration bugs — Phase 144's
 structural work (83 example CMakeLists migrated to
