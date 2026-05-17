@@ -148,7 +148,7 @@ test verbose="":
 test-basic verbose="": build
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
+        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
             -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/release/qemu-rs-test
 
@@ -156,7 +156,7 @@ test-basic verbose="": build
 test-wcet verbose="": build
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
+        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
             -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
@@ -164,7 +164,7 @@ test-wcet verbose="": build
 test-lan9118 verbose="": build
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
             -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 

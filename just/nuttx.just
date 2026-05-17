@@ -1,5 +1,10 @@
 set working-directory := '..'
 
+# Phase 143 — patched qemu-system-arm built by `just qemu setup-qemu`.
+# Used by NuttX QEMU recipes so the `-netdev dgram,local.type=unix,…`
+# multi-instance path works on Ubuntu jammy (system qemu 6.2 too old).
+QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
+
 default:
     @just --list --justfile {{source_file()}}
 
@@ -240,7 +245,7 @@ _run-qemu example binary:
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
     # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)
-    qemu-system-arm -M virt -cpu cortex-a7 -nographic \
+    {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -M virt -cpu cortex-a7 -nographic \
         -icount shift=auto \
         -kernel "target/armv7a-nuttx-eabihf/release/{{binary}}" \
         -netdev user,id=net0 -device virtio-net-device,netdev=net0 &

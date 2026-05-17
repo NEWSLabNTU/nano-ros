@@ -172,7 +172,7 @@ fn test_qemu_cortex_m3_available() {
     }
 
     // Verify QEMU can list the machine type we need
-    let output = Command::new("qemu-system-arm")
+    let output = nros_tests::qemu::qemu_system_arm_cmd()
         .args(["-machine", "help"])
         .output()
         .expect("Failed to query QEMU machines");
@@ -193,7 +193,7 @@ fn test_qemu_semihosting_support() {
     }
 
     // Verify QEMU supports semihosting (check help output)
-    let output = Command::new("qemu-system-arm")
+    let output = nros_tests::qemu::qemu_system_arm_cmd()
         .args(["--help"])
         .output()
         .expect("Failed to query QEMU help");

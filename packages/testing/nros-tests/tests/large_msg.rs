@@ -593,12 +593,11 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 #[rstest]
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     use nros_tests::platform;
-    use std::process::Command;
 
     // This test uses QEMU slirp (user-mode) networking with port forwarding.
     // No TAP devices, bridge interfaces, or sudo required.
     // Skip if QEMU is not available.
-    let qemu_available = Command::new("qemu-system-arm")
+    let qemu_available = nros_tests::qemu::qemu_system_arm_cmd()
         .arg("--version")
         .output()
         .is_ok();
@@ -610,7 +609,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     let _zenohd =
         ZenohRouter::start_slirp(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
-    let mut cmd = Command::new("qemu-system-arm");
+    let mut cmd = nros_tests::qemu::qemu_system_arm_cmd();
     cmd.args([
         "-cpu",
         "cortex-m3",

@@ -171,8 +171,10 @@ impl ZephyrProcess {
                 cmd.spawn()?
             }
             ZephyrPlatform::QemuArm => {
-                // QEMU ARM requires qemu-system-arm
-                let mut cmd = Command::new("qemu-system-arm");
+                // QEMU ARM requires qemu-system-arm; Phase 143 routes
+                // this through the patched build under `build/qemu/`
+                // when present.
+                let mut cmd = crate::qemu::qemu_system_arm_cmd();
                 cmd.args([
                     "-cpu",
                     "cortex-m3",

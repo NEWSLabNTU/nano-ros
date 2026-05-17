@@ -1,5 +1,8 @@
 set working-directory := '..'
 
+# Phase 143 — patched qemu-system-arm built by `just qemu setup-qemu`.
+QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
+
 default:
     @just --list --justfile {{source_file()}}
 
@@ -278,7 +281,7 @@ trace example="talker":
     # QEMU with semihosting ignores SIGINT — we must kill explicitly.
     QEMU_PID=""
     trap 'if [ -n "$QEMU_PID" ]; then kill $QEMU_PID 2>/dev/null; wait $QEMU_PID 2>/dev/null; fi; exit 130' INT TERM
-    timeout 60 qemu-system-arm \
+    timeout 60 {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} \
         -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
@@ -319,7 +322,7 @@ _run-qemu example binary:
     set -e
     cd "examples/qemu-arm-freertos/rust/zenoh/{{example}}" && cargo build --release
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
-    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+    {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
         -kernel "target/thumbv7m-none-eabi/release/{{binary}}" \

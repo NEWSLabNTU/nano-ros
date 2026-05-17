@@ -15,16 +15,60 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Phase 127.D — pick the qemu-system-arm binary to use.
+/// Phase 127.D + Phase 143 — pick the `qemu-system-arm` binary to use.
 ///
-/// `QEMU_SYSTEM_ARM` env var wins (set it to e.g. `build/qemu/bin/qemu-system-arm`
-/// after `just qemu setup-qemu`). Falls back to "qemu-system-arm" so the
-/// system binary stays the default for users who haven't built the patched
-/// in-tree QEMU.
-#[allow(dead_code)]
-fn qemu_system_arm_cmd() -> Command {
-    let bin = std::env::var_os("QEMU_SYSTEM_ARM");
-    Command::new(bin.unwrap_or_else(|| std::ffi::OsString::from("qemu-system-arm")))
+/// Selection order:
+///   1. `QEMU_SYSTEM_ARM` env var (developer override / CI pin).
+///   2. Project-local patched build at
+///      `<project_root>/build/qemu/bin/qemu-system-arm` (built by
+///      `just qemu setup-qemu`, includes the LAN9118 RX-flush patch
+///      and ships qemu ≥ 7.2 so `-netdev dgram,local.type=unix,…`
+///      works for NuttX / ThreadX multi-instance tests).
+///   3. System `qemu-system-arm` on `$PATH` — kept as fallback so
+///      contributors who ran a minimal `just setup` still produce
+///      the documented `[SKIPPED]` rather than an exec error.
+pub fn qemu_system_arm_path() -> std::ffi::OsString {
+    if let Some(env) = std::env::var_os("QEMU_SYSTEM_ARM") {
+        return env;
+    }
+    if let Some(root) = project_root() {
+        let patched = root.join("build/qemu/bin/qemu-system-arm");
+        if patched.exists() {
+            return patched.into_os_string();
+        }
+    }
+    std::ffi::OsString::from("qemu-system-arm")
+}
+
+/// Convenience wrapper around [`qemu_system_arm_path`] that returns
+/// a fresh [`Command`] preconfigured to invoke the resolved binary.
+/// Prefer this over `Command::new("qemu-system-arm")` so future
+/// `build/qemu/` patches propagate automatically (Phase 143).
+pub fn qemu_system_arm_cmd() -> Command {
+    Command::new(qemu_system_arm_path())
+}
+
+/// Best-effort discovery of the cargo workspace root by walking
+/// upward from `CARGO_MANIFEST_DIR` looking for a `Cargo.toml` that
+/// declares `[workspace]`. Used by [`qemu_system_arm_path`] to find
+/// the patched `build/qemu/bin/qemu-system-arm` without forcing
+/// callers to set `QEMU_SYSTEM_ARM`.
+fn project_root() -> Option<std::path::PathBuf> {
+    let start = std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())?;
+    let mut cur: &std::path::Path = start.as_path();
+    loop {
+        let cargo_toml = cur.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            if let Ok(s) = std::fs::read_to_string(&cargo_toml) {
+                if s.contains("[workspace]") {
+                    return Some(cur.to_path_buf());
+                }
+            }
+        }
+        cur = cur.parent()?;
+    }
 }
 
 /// Managed QEMU process for Cortex-M3 emulation
@@ -529,7 +573,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-M",
             "virt",
@@ -876,7 +920,7 @@ pub fn is_qemu_riscv64_available() -> bool {
 /// netdev that replaces the lossy `socket,mcast=` cross-process
 /// path)? `dgram` was added in QEMU 7.2.
 pub fn qemu_supports_dgram_unix() -> bool {
-    let out = Command::new("qemu-system-arm")
+    let out = qemu_system_arm_cmd()
         .args(["-M", "virt", "-netdev", "help"])
         .output();
     match out {

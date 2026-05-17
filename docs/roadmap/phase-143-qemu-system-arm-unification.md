@@ -8,7 +8,8 @@ only when the patched build is absent. Closes the "system qemu 6.2
 too old" WARN class across NuttX DDS multi-instance, LAN9118
 receive-flush, and any future patched-only behaviour.
 
-**Status.** Not started.
+**Status.** In progress — 143.1/.2/.3/.4 landed (2026-05-18).
+Helper exists, sweep done, smoke test added. 143.5/.6/.7/.8 pending.
 
 **Priority.** P2 — deterministic test results, not a correctness
 blocker. The patched binary already exists; ~5 call sites just
@@ -128,14 +129,14 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
 
 ## Work Items
 
-- [ ] **143.1 — Helper landed at one call site (verify).**
+- [x] **143.1 — Helper landed at one call site (verify).**
       Confirm `qemu_system_arm_command()` (or equivalent) exists in
       `packages/testing/nros-tests/src/qemu.rs`. Today it's at
       `qemu.rs:18-27` per Phase 127.D. Rename if needed for
       consistency.
       **Files.** `packages/testing/nros-tests/src/qemu.rs`.
 
-- [ ] **143.2 — Sweep all `Command::new("qemu-system-arm")` call
+- [x] **143.2 — Sweep all `Command::new("qemu-system-arm")` call
       sites in nros-tests.** Replace with the helper. Audit list (per
       pre-phase-143 grep):
       - `qemu.rs:532` — NuttX QEMU launch
@@ -148,7 +149,7 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `packages/testing/nros-tests/src/qemu.rs` (and any
       other test that calls qemu-system-arm directly).
 
-- [ ] **143.3 — Sweep `qemu-system-arm` hardcoded in just files.**
+- [x] **143.3 — Sweep `qemu-system-arm` hardcoded in just files.**
       `just/nuttx.just:193,243` references system binary directly.
       Replace with `{{QEMU_BIN}}` from `just/qemu-baremetal.just`
       (import via `mod qemu` already present). Same for any other
@@ -156,7 +157,7 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       **Files.** `just/nuttx.just`, possibly others (`just/freertos.just`,
       `just/qemu-baremetal.just`).
 
-- [ ] **143.4 — Patched-binary smoke test.**
+- [x] **143.4 — Patched-binary smoke test.**
       Add `packages/testing/nros-tests/tests/qemu_patched_binary.rs`
       that asserts: (a) `qemu_system_arm()` returns a Command whose
       program path resolves to `build/qemu/bin/qemu-system-arm` when
@@ -222,6 +223,39 @@ gate becomes the primary signal: "run `just qemu setup-qemu`".
       now run.
 
 ---
+
+## Progress
+
+- 2026-05-18 — 143.1/.2/.3/.4 landed:
+  - `qemu_system_arm_path()` in
+    `packages/testing/nros-tests/src/qemu.rs` is now the single
+    resolver: `QEMU_SYSTEM_ARM` env > project-local
+    `build/qemu/bin/qemu-system-arm` (auto-detected via
+    `CARGO_MANIFEST_DIR` walk up to the workspace `Cargo.toml`)
+    > system PATH. `qemu_system_arm_cmd()` is a `pub` wrapper.
+  - Every `Command::new("qemu-system-arm")` in
+    `packages/testing/nros-tests/{src,tests}/` now goes through
+    `nros_tests::qemu::qemu_system_arm_cmd()`. Verified via
+    `grep -rn 'Command::new("qemu-system-arm")' packages/testing/`
+    (returns nothing).
+  - `just/qemu-baremetal.just`, `just/nuttx.just`, `just/freertos.just`
+    each gate `qemu-system-arm` shell invocations through
+    `{{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else
+    { "qemu-system-arm" } }}`, with `QEMU_BIN := absolute_path
+    ("build/qemu") / "bin/qemu-system-arm"`. The two surviving
+    direct `qemu-system-arm` references in `just/qemu-baremetal.just`
+    are the doctor-recipe + the "manual reproduce" hint, which
+    must report the system binary's version specifically.
+  - `packages/testing/nros-tests/tests/qemu_patched_binary.rs`
+    asserts resolution to the patched build, version ≥ 7.2, and
+    that `-netdev help` lists `dgram`. Tests use
+    `nros_tests::skip!` (the project convention from CLAUDE.md
+    "Tests must fail on unmet preconditions") so a fresh clone
+    without `just qemu setup-qemu` surfaces a clear `[SKIPPED]`
+    panic with the suggested remedy.
+- Remaining: 143.5 (submodule pin verification), 143.6 (doctor
+  wording downgrade once 143.5 lands), 143.7 (book page), 143.8
+  (CI cache key for `build/qemu/`).
 
 ## Notes
 
