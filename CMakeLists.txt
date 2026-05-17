@@ -73,14 +73,38 @@ add_subdirectory(packages/core/nros-c)
 add_subdirectory(packages/core/nros-cpp)
 
 # ---------------------------------------------------------------------------
-# Platform shim (canonical `nros_platform_*` ABI). POSIX has a dedicated
-# C-port `libnros_platform_posix.a`; other platforms (Zephyr / FreeRTOS /
-# NuttX / ThreadX) ship the shim through their own RTOS integration which
-# Phase 138 will wire in. For Phase 137 only POSIX is hooked up.
+# Platform shim (canonical `nros_platform_*` ABI). Phase 138 dispatches
+# via per-platform modules under `cmake/platform/`. Each module:
+#   - Builds / surfaces the platform staticlib(s) for its target
+#   - Exposes `NanoRos::Platform` ALIAS (linked into the umbrella below)
+#   - Defines `nros_platform_link_app(target)` (per-app fixups —
+#     link script, startup files, ISR vectors, RTOS-specific tweaks)
+#   - Sets `NROS_PLATFORM_LINK_FEATURES` (default link feature set)
+# Validation: the configured value must match a module on disk.
 # ---------------------------------------------------------------------------
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    add_subdirectory(packages/core/nros-platform-posix)
+# Map legacy / variant NANO_ROS_PLATFORM values to their canonical
+# per-platform module names. The legacy cache strings (e.g.
+# `freertos_armcm3`, `threadx_riscv64`) name a specific platform+board
+# pairing — Phase 138 collapses them to the platform axis (board moves
+# to NANO_ROS_BOARD). Map here so existing recipes keep working.
+set(_nros_platform_module_name "${NANO_ROS_PLATFORM}")
+if(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+    set(_nros_platform_module_name "freertos")
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    set(_nros_platform_module_name "nuttx")
+elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
+    set(_nros_platform_module_name "threadx")
 endif()
+set(_nros_platform_module
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform/nano-ros-${_nros_platform_module_name}.cmake")
+if(NOT EXISTS "${_nros_platform_module}")
+    message(FATAL_ERROR
+        "Unknown NANO_ROS_PLATFORM: '${NANO_ROS_PLATFORM}' "
+        "(no module at cmake/platform/nano-ros-${_nros_platform_module_name}.cmake). "
+        "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal "
+        "(plus legacy freertos_armcm3 / nuttx_armv7a / threadx_linux / threadx_riscv64).")
+endif()
+include("${_nros_platform_module}")
 
 # ---------------------------------------------------------------------------
 # Phase 137.1 — in-tree NanoRos::NanoRos alias for source-vendored
@@ -110,20 +134,13 @@ if(NOT TARGET NanoRos)
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
     endif()
-    # POSIX host system libraries — same set NanoRosCTargets.cmake adds.
-    if(NANO_ROS_PLATFORM STREQUAL "posix")
-        if(UNIX AND NOT APPLE)
-            target_link_libraries(NanoRos INTERFACE pthread dl m)
-        elseif(APPLE)
-            target_link_libraries(NanoRos INTERFACE
-                pthread dl m "-framework Security" "-framework CoreFoundation")
-        endif()
-        # Canonical `nros_platform_*` symbols come from the C-port
-        # `libnros_platform_posix.a` (post-Phase 123.A.1.x.2 the
-        # Rust-side `nros-platform-posix` crate was deleted).
-        if(TARGET nros_platform_posix)
-            target_link_libraries(NanoRos INTERFACE nros_platform_posix)
-        endif()
+    # Platform shim (canonical `nros_platform_*`) — Phase 138 moves
+    # host-libs + platform-staticlib wiring into
+    # `cmake/platform/nano-ros-<plat>.cmake`. The per-platform module
+    # creates `NanoRos::Platform` (ALIAS over `nros_platform_<plat>_iface`),
+    # which carries both the static archive and the host-system libs.
+    if(TARGET NanoRos::Platform)
+        target_link_libraries(NanoRos INTERFACE NanoRos::Platform)
     endif()
 endif()
 
@@ -262,4 +279,26 @@ if(PROJECT_IS_TOP_LEVEL OR NANO_ROS_FORCE_INSTALL)
             install(DIRECTORY DESTINATION share/nano-ros/interfaces)
         endif()
     endif()
+
+    # ------------------------------------------------------------------
+    # Phase 138.5 — dual-install the Phase 138 platform modules under
+    # `<prefix>/lib/cmake/NanoRos/cmake/platform/`. Legacy
+    # `find_package(NanoRos)` consumers already get the layer-2 helpers
+    # (`nros-freertos.cmake`, `nros-nuttx.cmake`, `nros-threadx.cmake`)
+    # via the install rule in `packages/core/nros-c/CMakeLists.txt`;
+    # those files are the implementation, and the Phase 138 modules
+    # forward to them via `include(...)` with an in-tree relative path
+    # — that path does not resolve from an install prefix, so the
+    # Phase 138 modules are installed under their canonical
+    # `cmake/platform/nano-ros-<plat>.cmake` names only (no RENAME),
+    # alongside the canonical-name board overlays. Consumers using the
+    # legacy find_package path see no change; new install-side consumers
+    # can pick up the Phase 138 modules at `<prefix>/lib/cmake/NanoRos/cmake/platform/`.
+    # Migration shim — Phase 140 removes once `install-local` itself disappears.
+    # ------------------------------------------------------------------
+    install(DIRECTORY
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/board"
+        DESTINATION lib/cmake/NanoRos/cmake
+        FILES_MATCHING PATTERN "*.cmake")
 endif()
