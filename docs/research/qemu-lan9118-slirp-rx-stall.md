@@ -134,3 +134,50 @@ entirely. If not, the only honest path is the upstream QEMU patch.
 * QEMU slirp glue: `net/slirp.c`
 * Local pcap evidence: `/tmp/127d-service.pcap` (captured during this session)
 * Phase 127 doc: `docs/roadmap/phase-127-remaining-failure-groups.md`
+
+## Build + ship the patch in-tree
+
+QEMU is wired as a submodule at `third-party/qemu/qemu` (pinned to
+`stable-11.0`). Patches live in `third-party/qemu/patches/` and are
+applied on top of the submodule before configure. Build with:
+
+```bash
+just qemu setup-qemu
+```
+
+The recipe pulls the submodule on first run, applies every patch in
+`third-party/qemu/patches/`, configures with `--target-list=arm-softmmu`,
+and installs into `build/qemu/`. Subsequent runs are no-ops unless a
+patch file's mtime is newer than the installed binary.
+
+Wire the test runner to use the patched binary via the
+`QEMU_SYSTEM_ARM` env var (see
+`packages/testing/nros-tests/src/qemu.rs::qemu_system_arm_cmd`):
+
+```bash
+just qemu test-patched   # = QEMU_SYSTEM_ARM=$(just qemu qemu-bin) just qemu test
+```
+
+Or set `QEMU_SYSTEM_ARM=$PWD/build/qemu/bin/qemu-system-arm` in your
+shell + run nextest directly.
+
+## 2026-05-17 test outcome with patched binary
+
+Empirically running `test_qemu_rtic_service_e2e` against the patched
+`qemu-system-arm v11.0.0-dirty`:
+
+- `lan_pend` jumped from a stuck **518** (unpatched) to **3428 and
+  still climbing** at iter=2900 — the LAN9118 model now accepts and
+  delivers every frame slirp pushes. **Patch confirmed effective at
+  the QEMU layer.**
+- Client `rx` / `recv` only advanced to **256 bytes total** over the
+  30 s call window. Service call still times out: the zenoh `Reply`
+  payload isn't being surfaced from smoltcp's TCP socket to the
+  application even though LAN9118 isn't dropping it.
+- Distinct failure mode from the QEMU bug. Likely zenoh-pico
+  bare-metal reply correlation (pending-query slot dispatch) on the
+  single-thread `ZPICO_SMOLTCP` build, not the network stack. Track
+  separately under a follow-up.
+
+So the QEMU patch is necessary infrastructure but not sufficient
+on its own to close 127.D.1/D.2. Pubsub continues to pass.

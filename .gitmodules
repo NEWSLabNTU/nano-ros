@@ -61,3 +61,10 @@
 [submodule "third-party/dds/cyclonedds"]
 	path = third-party/dds/cyclonedds
 	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
+[submodule "third-party/qemu/qemu"]
+	path = third-party/qemu/qemu
+	url = https://gitlab.com/qemu-project/qemu.git
+	# Stable branch. Patches applied on top by `just qemu setup`
+	# live in third-party/qemu/patches/. Bump intentionally and
+	# re-verify the patches still apply cleanly before pushing.
+	branch = stable-11.0

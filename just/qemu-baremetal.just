@@ -4,6 +4,77 @@ default:
     @just --list --justfile {{source_file()}}
 LOG_DIR := "test-logs"
 
+# Project-local patched QEMU prefix (built by `just qemu setup-qemu`).
+QEMU_PREFIX := absolute_path("build/qemu")
+QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
+
+# Build a project-local patched qemu-system-arm under build/qemu.
+#
+# Pulls third-party/qemu/qemu (stable-11.0), applies every patch in
+# third-party/qemu/patches/, configures for the arm-softmmu target
+# (no other targets, no docs, no tools), and installs into
+# build/qemu/. Subsequent runs are no-ops unless the patches change
+# (touch a patch to force a rebuild) — wire the test runner with
+# QEMU_SYSTEM_ARM=$(just qemu qemu-bin) to pick this up.
+setup-qemu:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    submodule_path=third-party/qemu/qemu
+    patch_dir=third-party/qemu/patches
+    prefix={{QEMU_PREFIX}}
+    bin={{QEMU_BIN}}
+    if [ ! -d "$submodule_path/.git" ] && [ ! -f "$submodule_path/.git" ]; then
+        git submodule update --init --depth=1 -- "$submodule_path"
+    fi
+    # Re-stamp = newest patch mtime. Skip rebuild if binary newer than every patch.
+    if [ -x "$bin" ]; then
+        newest_patch=$(ls -t "$patch_dir"/*.patch 2>/dev/null | head -1 || true)
+        if [ -z "$newest_patch" ] || [ "$bin" -nt "$newest_patch" ]; then
+            echo "qemu: $bin up to date"
+            "$bin" --version | head -1
+            exit 0
+        fi
+    fi
+    echo "qemu: applying patches + building (this can take ~10 min)"
+    pushd "$submodule_path" >/dev/null
+    git reset --hard HEAD --quiet
+    git clean -fdx --quiet
+    for p in ../patches/*.patch; do
+        [ -f "$p" ] || continue
+        echo "  apply $(basename "$p")"
+        git apply "$p"
+    done
+    mkdir -p build
+    cd build
+    ../configure \
+        --target-list=arm-softmmu \
+        --disable-docs \
+        --disable-tools \
+        --disable-gtk \
+        --disable-vnc \
+        --disable-sdl \
+        --disable-spice \
+        --enable-slirp \
+        --prefix="$prefix" \
+        >/dev/null
+    make -j$(nproc) >/dev/null
+    make install >/dev/null
+    popd >/dev/null
+    echo "qemu: installed to $bin"
+    "$bin" --version | head -1
+
+# Print the path to the patched qemu-system-arm binary. Empty if
+# `just qemu setup-qemu` hasn't been run.
+qemu-bin:
+    @echo {{QEMU_BIN}}
+
+# Run all qemu-baremetal tests with the patched qemu-system-arm.
+# Wraps `just qemu test` with QEMU_SYSTEM_ARM exported so the test
+# runner picks the project-local build instead of system qemu.
+test-patched verbose="":
+    @just qemu setup-qemu
+    QEMU_SYSTEM_ARM={{QEMU_BIN}} just qemu test {{verbose}}
+
 # Build QEMU ARM bare-metal examples
 build:
     #!/usr/bin/env bash

@@ -1,0 +1,73 @@
+From 511427779feca112fa19e4c9e57e5c9bffd03707 Mon Sep 17 00:00:00 2001
+From: nano-ros bring-up <jerry73204@gmail.com>
+Date: Sun, 17 May 2026 16:55:14 +0800
+Subject: [PATCH] hw/net/lan9118: add can_receive + flush on FIFO drain
+
+The LAN9118 model registered .receive but no .can_receive, and never
+called qemu_flush_queued_packets() after the guest popped frames out
+of the RX FIFOs. Combined with the queue-layer rule in net/queue.c
+('if no sent_cb, drop instead of queueing'), this silently dropped
+any frame whose arrival overlapped a brief moment when the guest's
+RX FIFO was near full -- even though slirp's host TCP layer ACKed
+the bytes.
+
+For nano-ros's RTIC service/action E2E tests on -M mps2-an385 with
+-nic user,model=lan9118, this manifests as zenoh Reply payloads being
+silently dropped after the handshake burst. See
+docs/research/qemu-lan9118-slirp-rx-stall.md (in nano-ros) for the
+full evidence chain.
+
+This mirrors cadence_gem, imx_fec, sunhme, igb, mcf_fec, msf2-emac,
+npcm7xx_emc, and npcm_gmac, which already wire flow control via
+can_receive + qemu_flush_queued_packets.
+---
+ hw/net/lan9118.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/hw/net/lan9118.c b/hw/net/lan9118.c
+index 072a741d81..ce84241012 100644
+--- a/hw/net/lan9118.c
++++ b/hw/net/lan9118.c
+@@ -495,6 +495,20 @@ static int lan9118_filter(lan9118_state *s, const uint8_t *addr)
+     }
+ }
+ 
++static bool lan9118_can_receive(NetClientState *nc)
++{
++    lan9118_state *s = qemu_get_nic_opaque(nc);
++
++    if ((s->mac_cr & MAC_CR_RXEN) == 0) {
++        return false;
++    }
++    if (s->rx_status_fifo_used == s->rx_status_fifo_size) {
++        return false;
++    }
++    /* Leave a frame's worth of headroom in the data FIFO. */
++    return s->rx_fifo_size - s->rx_fifo_used >= 384;
++}
++
+ static ssize_t lan9118_receive(NetClientState *nc, const uint8_t *buf,
+                                size_t size)
+ {
+@@ -684,6 +698,10 @@ static uint32_t rx_status_fifo_pop(lan9118_state *s)
+         if (s->rx_status_fifo_head >= s->rx_status_fifo_size) {
+             s->rx_status_fifo_head -= s->rx_status_fifo_size;
+         }
++        /* RX FIFO just freed up — tell the net queue layer to
++         * retry any packets it had to defer because we previously
++         * returned `false` from `can_receive`. */
++        qemu_flush_queued_packets(qemu_get_queue(s->nic));
+         /* ??? What value should be returned when the FIFO is empty?  */
+         DPRINTF("RX status pop 0x%08x\n", val);
+     }
+@@ -1262,6 +1280,7 @@ static const MemoryRegionOps lan9118_16bit_mem_ops = {
+ static NetClientInfo net_lan9118_info = {
+     .type = NET_CLIENT_DRIVER_NIC,
+     .size = sizeof(NICState),
++    .can_receive = lan9118_can_receive,
+     .receive = lan9118_receive,
+     .link_status_changed = lan9118_set_link,
+ };
+-- 
+2.34.1
+

@@ -15,6 +15,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Phase 127.D — pick the qemu-system-arm binary to use.
+///
+/// `QEMU_SYSTEM_ARM` env var wins (set it to e.g. `build/qemu/bin/qemu-system-arm`
+/// after `just qemu setup-qemu`). Falls back to "qemu-system-arm" so the
+/// system binary stays the default for users who haven't built the patched
+/// in-tree QEMU.
+#[allow(dead_code)]
+fn qemu_system_arm_cmd() -> Command {
+    let bin = std::env::var_os("QEMU_SYSTEM_ARM");
+    Command::new(bin.unwrap_or_else(|| std::ffi::OsString::from("qemu-system-arm")))
+}
+
 /// Managed QEMU process for Cortex-M3 emulation
 ///
 /// Starts QEMU with semihosting enabled and captures output.
@@ -53,7 +65,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-cpu",
             "cortex-m3",
@@ -91,7 +103,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-cpu",
             "cortex-m3",
@@ -134,7 +146,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-cpu",
             "cortex-m3",
@@ -186,7 +198,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-cpu",
             "cortex-m3",
@@ -232,7 +244,7 @@ impl QemuProcess {
         }
 
         let chardev_arg = format!("serial,id=ser0,path={}", serial_path);
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-cpu",
             "cortex-m3",
@@ -458,7 +470,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-M",
             "virt",
@@ -556,7 +568,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-arm");
+        let mut cmd = qemu_system_arm_cmd();
         cmd.args([
             "-M",
             "virt",
@@ -827,7 +839,7 @@ pub fn qemu_supports_dgram_unix() -> bool {
 
 /// Check if QEMU ARM is available
 pub fn is_qemu_available() -> bool {
-    Command::new("qemu-system-arm")
+    qemu_system_arm_cmd()
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
