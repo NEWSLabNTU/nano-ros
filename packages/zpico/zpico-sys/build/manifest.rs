@@ -323,28 +323,28 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     };
 
     let mut defines = parent.defines;
-    defines.extend(child.defines.drain(..));
+    defines.append(&mut child.defines);
     let mut defines_kv = parent.defines_kv;
     defines_kv.extend(std::mem::take(&mut child.defines_kv));
     let mut defines_env = parent.defines_env;
     defines_env.extend(std::mem::take(&mut child.defines_env));
     let mut include = parent.include;
-    include.extend(child.include.drain(..));
+    include.append(&mut child.include);
     let mut exclude = parent.exclude;
-    exclude.extend(child.exclude.drain(..));
+    exclude.append(&mut child.exclude);
     let mut system_libs = parent.system_libs;
-    system_libs.extend(child.system_libs.drain(..));
+    system_libs.append(&mut child.system_libs);
     let mbedtls = child.mbedtls.or(parent.mbedtls);
     let mut link = parent.link;
     link.extend(std::mem::take(&mut child.link));
     let mut extra_sources = parent.extra_sources;
-    extra_sources.extend(child.extra_sources.drain(..));
+    extra_sources.append(&mut child.extra_sources);
     let mut required_env = parent.required_env;
-    required_env.extend(child.required_env.drain(..));
+    required_env.append(&mut child.required_env);
     let mut include_paths = parent.include_paths;
-    include_paths.extend(child.include_paths.drain(..));
+    include_paths.append(&mut child.include_paths);
     let mut include_paths_conditional = parent.include_paths_conditional;
-    include_paths_conditional.extend(child.include_paths_conditional.drain(..));
+    include_paths_conditional.append(&mut child.include_paths_conditional);
     let arch = child.arch.or(parent.arch);
     let compile = CompileSettings {
         opt_level: child.compile.opt_level.or(parent.compile.opt_level),
@@ -357,7 +357,7 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     };
     let pic = child.pic.or(parent.pic);
     let mut rerun_if_env_changed = parent.rerun_if_env_changed;
-    rerun_if_env_changed.extend(child.rerun_if_env_changed.drain(..));
+    rerun_if_env_changed.append(&mut child.rerun_if_env_changed);
 
     PlatformEntry {
         inherits: None,
@@ -482,10 +482,10 @@ impl std::error::Error for InterpError {}
 /// `is_embedded` flag pre-computed.
 #[allow(dead_code)]
 pub fn matches(m: &WhenMatcher, target: &str, is_embedded: bool) -> bool {
-    if let Some(needle) = m.target_match.as_deref() {
-        if !match_target(target, needle) {
-            return false;
-        }
+    if let Some(needle) = m.target_match.as_deref()
+        && !match_target(target, needle)
+    {
+        return false;
     }
     if let Some(needle) = m.target_not.as_deref() {
         let hit = if needle == "embedded" {
@@ -497,10 +497,10 @@ pub fn matches(m: &WhenMatcher, target: &str, is_embedded: bool) -> bool {
             return false;
         }
     }
-    if let Some(var) = m.if_env.as_deref() {
-        if std::env::var(var).is_err() {
-            return false;
-        }
+    if let Some(var) = m.if_env.as_deref()
+        && std::env::var(var).is_err()
+    {
+        return false;
     }
     true
 }

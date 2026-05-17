@@ -60,12 +60,11 @@ fn project_root() -> Option<std::path::PathBuf> {
     let mut cur: &std::path::Path = start.as_path();
     loop {
         let cargo_toml = cur.join("Cargo.toml");
-        if cargo_toml.is_file() {
-            if let Ok(s) = std::fs::read_to_string(&cargo_toml) {
-                if s.contains("[workspace]") {
-                    return Some(cur.to_path_buf());
-                }
-            }
+        if cargo_toml.is_file()
+            && let Ok(s) = std::fs::read_to_string(&cargo_toml)
+            && s.contains("[workspace]")
+        {
+            return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;
     }

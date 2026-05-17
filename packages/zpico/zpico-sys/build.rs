@@ -358,7 +358,7 @@ fn main() {
     // single manifest-driven path.
     let zenoh_pico_src = manifest_dir.join("zenoh-pico").join("src");
     if zenoh_pico_src.exists() {
-        for (name, _) in &platform_manifest.platform {
+        for name in platform_manifest.platform.keys() {
             let resolved = platform_manifest.for_platform(name).unwrap();
             for include in &resolved.include {
                 let dir = zenoh_pico_src.join(include);
@@ -1651,25 +1651,25 @@ fn apply_arch(arch: &manifest::ArchEntry, build: &mut cc::Build, out_dir: &Path)
         // errno override must be searched BEFORE picolibc headers
         build.include(&errno_dir);
     }
-    if arch.needs_picolibc {
-        if let Some(sysroot) = get_picolibc_sysroot() {
-            build.include(sysroot.join("include"));
-        }
+    if arch.needs_picolibc
+        && let Some(sysroot) = get_picolibc_sysroot()
+    {
+        build.include(sysroot.join("include"));
     }
 }
 
 /// Returns `true` when the `[arch.*]` block's `target_match` /
 /// `target_exclude` predicates allow the current target triple.
 fn arch_matches(arch: &manifest::ArchEntry, target: &str) -> bool {
-    if let Some(needle) = arch.target_match.as_deref() {
-        if !target.contains(needle) {
-            return false;
-        }
+    if let Some(needle) = arch.target_match.as_deref()
+        && !target.contains(needle)
+    {
+        return false;
     }
-    if let Some(needle) = arch.target_exclude.as_deref() {
-        if target.contains(needle) {
-            return false;
-        }
+    if let Some(needle) = arch.target_exclude.as_deref()
+        && target.contains(needle)
+    {
+        return false;
     }
     true
 }
