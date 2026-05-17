@@ -25,3 +25,5 @@ path = "generated/std_msgs"
 [env]
 NETX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }
 THREADX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }
+THREADX_PORT = { value = "risc-v64/gnu", force = true }
+THREADX_EXTRA_INCLUDES = { value = "../../../../../third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt", relative = true, force = true }

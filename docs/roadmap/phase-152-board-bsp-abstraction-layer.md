@@ -417,33 +417,42 @@ with two reference overlays instead of one:
       clean. Extension point ready for 152.2.B.3's future generic
       `nros-board-threadx` `build.rs`.
 
-- [ ] **152.2.B.3 — Move kernel + NetX-Duo + nros-platform-threadx
-      build into generic `build.rs`.** (deferred — non-mechanical)
-      Unlike FreeRTOS+lwIP+platform (152.1.B.4) which had one
-      canonical shape, ThreadX overlays diverge in three ways
-      that resist a single TOML manifest:
-      1. **NetX-Duo shape**: Linux sim uses the NSOS BSD shim
-         over host POSIX sockets; RISC-V QEMU compiles the full
-         NetX-Duo TCP/IP stack + virtio-net driver. Same
-         `nros_board_threadx_platforms.toml` block would need a
-         union: "either nsos-netx OR full-netx-duo-with-driver".
-      2. **Kernel ASM overrides**: RISC-V overlay excludes 5 of
-         the port `.S` files (`tx_thread_schedule.S`, etc.) and
-         supplies board-local versions with ULONG=4 struct
-         offsets — generic kernel compile can't ship these.
-      3. **Include extensions**: RISC-V kernel build adds
-         `<port>/example_build/qemu_virt` for the QEMU virt
-         board.c / plic.c / uart.c sources; Linux doesn't.
-      Helpers from 152.2.B partial already share the kernel C +
-      port C source enumeration (`add_threadx_kernel_sources`,
-      `add_threadx_port_sources`) and the
-      `nros-platform-threadx` compile setup
-      (`add_nros_platform_threadx_build`). The remaining
-      duplication is the per-overlay `cc::Build::new + flags +
-      includes + compile` boilerplate (~10 lines each), which is
-      small enough that a future generic `build.rs` is not
-      obviously cheaper than keeping the per-overlay form.
-      Reconsider when a third ThreadX overlay shows up.
+- [x] **152.2.B.3 — Move kernel + nros-platform-threadx build
+      into generic `build.rs`.** (Option C, landed 2026-05-18)
+      Full NetX-Duo + asm carve was deemed not worth it for two
+      overlays — Option C (the hybrid) lifts the two pieces with
+      truly identical compile shape:
+      - `libthreadx_kernel.a` (kernel `common/src/*.c` + port C)
+      - `libnros_platform_threadx.a` (the cffi C port)
+      Generic `nros-board-threadx/build.rs` reads `THREADX_DIR`,
+      `THREADX_PORT` (default `linux/gnu`), `THREADX_CONFIG_DIR`,
+      `THREADX_EXTRA_INCLUDES` (colon-sep, optional), `NETX_DIR`,
+      `NETX_EXTRA_INCLUDES`. Auto-detects RISC-V cross-compile
+      via `TARGET` triple (probes `riscv64-unknown-elf-gcc
+      --specs=picolibc.specs -print-sysroot` for `string.h` etc.).
+      Auto-includes `NETX_DIR/ports/<THREADX_PORT>/inc` when it
+      exists (Linux has it; RISC-V doesn't).
+      Per-overlay `build.rs` shrinks:
+      - **Linux**: dropped kernel + platform-threadx compile
+        (~30 LOC). Keeps NSOS shim + glue + pthread link line.
+      - **RISC-V**: dropped kernel C + platform-threadx compile
+        (~30 LOC). Keeps port `.S` asm + board ASM overrides +
+        QEMU virt support C/asm (renamed archive
+        `libthreadx_port_asm.a`) + full NetX-Duo + virtio-net
+        + glue + linker script + picolibc/libgcc discovery.
+      RISC-V example `.cargo/config.toml [env]` blocks set
+      `THREADX_PORT = "risc-v64/gnu"` +
+      `THREADX_EXTRA_INCLUDES = "<port>/example_build/qemu_virt"`.
+      Verified: `just threadx_linux build` + E2E lifecycle clean
+      (banner, kernel boot, Rust entry via generic-built
+      libthreadx_kernel + libnros_platform_threadx, then pre-
+      existing `Transport(ConnectionFailed)` infra issue).
+      RISC-V build compiles all C cleanly through; the link-time
+      `platform_aliases.o` float-ABI mismatch is pre-existing
+      (reproduces on `88448942` without this patch).
+      NetX-Duo + asm + glue stay per-overlay — NetX variant
+      (NSOS vs full + virtio) genuinely diverges + ASM overrides
+      need per-overlay manifest-dir paths.
 
 - [x] **152.2.B.4 — `Config` + `run` lift into generic crate.**
       (landed 2026-05-18)

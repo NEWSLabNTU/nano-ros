@@ -56,28 +56,30 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    // ---- Build ThreadX kernel ----
-    let mut threadx = cc::Build::new();
-    configure_riscv64(&mut threadx);
-    add_threadx_includes(&mut threadx, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
-
-    // Phase 152.2.B — kernel + port-C source enumeration moved to
-    // `nros_board_common::threadx_sources`. The helper covers the
-    // identical loops both ThreadX overlays used. RISC-V-specific
-    // assembly files + the board's own `.S` overrides stay
-    // per-overlay below since they require manifest-dir paths and
-    // custom exclusion lists this overlay maintains.
-    nros_board_common::threadx_sources::add_threadx_kernel_sources(&mut threadx, &threadx_dir);
-    nros_board_common::threadx_sources::add_threadx_port_sources(
-        &mut threadx,
+    // ---- Build ThreadX port asm + board ASM overrides + QEMU virt support ----
+    //
+    // Phase 152.2.B.3 — kernel C + port C compile lifted into the
+    // generic `nros-board-threadx` `build.rs`. The RISC-V overlay
+    // owns the asm-half of the kernel because:
+    //   - 5 port `.S` files are excluded (board ships overrides
+    //     with ULONG=4 struct layout fixes).
+    //   - `tx_initialize_low_level.S` is overridden by a board-
+    //     patched copy (Phase 120.3 16-byte SP alignment).
+    //   - QEMU virt support C/asm files (board.c / plic.c /
+    //     uart.c / entry.s) live alongside the asm overrides and
+    //     also compile with the RISC-V toolchain.
+    // Bundled into a single `libthreadx_port_asm.a` archive.
+    let mut port_asm = cc::Build::new();
+    configure_riscv64(&mut port_asm);
+    add_threadx_includes(
+        &mut port_asm,
         &threadx_dir,
-        "risc-v64/gnu",
+        &threadx_port_dir,
+        &qemu_virt_dir,
+        &config_dir,
     );
 
-    // RISC-V port assembly files — exclude files that the board crate
-    // overrides with ULONG=4 struct layout fixes (see c/tx_thread_*.S).
-    // Also exclude tx_initialize_low_level.S (QEMU virt board provides its own).
-    let excluded_asm: &[&str] = &[
+    let excluded_port_asm: &[&str] = &[
         "tx_initialize_low_level.S",
         "tx_thread_schedule.S",
         "tx_thread_context_save.S",
@@ -89,14 +91,12 @@ fn main() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "S") {
             let name = path.file_name().unwrap().to_str().unwrap_or("");
-            if excluded_asm.contains(&name) {
+            if excluded_port_asm.contains(&name) {
                 continue;
             }
-            threadx.file(&path);
+            port_asm.file(&path);
         }
     }
-
-    // Board-local assembly overrides (ULONG=4 struct offset fixes)
     for asm_name in &[
         "tx_thread_schedule.S",
         "tx_thread_context_save.S",
@@ -104,26 +104,25 @@ fn main() {
         "tx_thread_stack_build.S",
         "tx_thread_system_return.S",
     ] {
-        threadx.file(manifest_dir.join("c").join(asm_name));
+        port_asm.file(manifest_dir.join("c").join(asm_name));
     }
 
-    // QEMU virt board support C files (board.c, plic.c, uart.c)
-    // trap.c and hwtimer.c are excluded — board crate provides its own versions
+    // QEMU virt board support C files (board.c, plic.c, uart.c).
+    // trap.c + hwtimer.c overridden by board crate's c/ versions.
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_name().unwrap().to_str().unwrap_or("");
         if name == "trap.c" || name == "hwtimer.c" {
-            continue; // use board crate's c/ versions instead
+            continue;
         }
         if path.extension().is_some_and(|e| e == "c") {
-            threadx.file(&path);
+            port_asm.file(&path);
         }
     }
 
-    // QEMU virt assembly files — entry.s and tx_initialize_low_level.S
-    // are provided by the board crate's c/ dir. entry.s for .init section
-    // placement; tx_initialize_low_level.S patched for Phase 120.3
-    // 16-byte SP alignment in trap_entry.
+    // QEMU virt asm — entry.s + tx_initialize_low_level.S come
+    // from board crate's c/ dir (entry.s for .init placement;
+    // tx_initialize_low_level.S patched for Phase 120.3 SP alignment).
     let qemu_virt_excluded_asm = ["entry.s", "tx_initialize_low_level.S"];
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
@@ -133,12 +132,12 @@ fn main() {
             continue;
         }
         if ext == Some("S") || ext == Some("s") {
-            threadx.file(&path);
+            port_asm.file(&path);
         }
     }
-    threadx.file(manifest_dir.join("c").join("tx_initialize_low_level.S"));
+    port_asm.file(manifest_dir.join("c").join("tx_initialize_low_level.S"));
 
-    threadx.compile("threadx");
+    port_asm.compile("threadx_port_asm");
 
     // ---- Build NetX Duo ----
     let mut netxduo = cc::Build::new();
@@ -175,24 +174,6 @@ fn main() {
 
     virtio.compile("virtio_net_netx");
 
-    // ---- Build nros-platform-threadx C port ----
-    // Phase 152.2.B — wire up via
-    // `nros_board_common::threadx_sources::add_nros_platform_threadx_build`.
-    // The helper owns the source-file list + cffi-include + rerun
-    // triggers; overlay still owns the `cc::Build` so it can stamp
-    // its own cflags + ThreadX/NetX include set. Rust examples
-    // route platform calls through CffiPlatform, so the canonical
-    // `nros_platform_*` symbols must be provided by the board.
-    let mut platform = cc::Build::new();
-    configure_riscv64(&mut platform);
-    add_threadx_includes(&mut platform, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
-    add_netx_includes(&mut platform, &netx_dir, &config_dir);
-    nros_board_common::threadx_sources::add_nros_platform_threadx_build(
-        &mut platform,
-        workspace_root,
-    );
-    platform.compile("nros_platform_threadx");
-
     // ---- Build C glue ----
     // Phase 152.2.B.1 — shared `tx_application_define` stub lives
     // in `nros-board-common`'s `c/threadx_hooks.c`; this overlay
@@ -217,11 +198,13 @@ fn main() {
     glue.compile("glue");
 
     // ---- Link order (reverse dependency) ----
-    println!("cargo:rustc-link-lib=static=nros_platform_threadx");
+    // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come
+    // from the generic `nros-board-threadx` `build.rs` (152.2.B.3
+    // Option C lift).
     println!("cargo:rustc-link-lib=static=glue");
     println!("cargo:rustc-link-lib=static=virtio_net_netx");
     println!("cargo:rustc-link-lib=static=netxduo");
-    println!("cargo:rustc-link-lib=static=threadx");
+    println!("cargo:rustc-link-lib=static=threadx_port_asm");
 
     // Linker script — copy to OUT_DIR so downstream binaries can find it via
     // rustflags = ["-C", "link-arg=-Tlink.lds"] in their .cargo/config.toml.

@@ -10,6 +10,8 @@ rustflags = [
 [env]
 NROS_LOCAL_IPV4 = "10.0.2.41"
 THREADX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true }
+THREADX_PORT = { value = "risc-v64/gnu", force = true }
+THREADX_EXTRA_INCLUDES = { value = "../../../../../third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt", relative = true, force = true }
 NETX_CONFIG_DIR = { value = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true }
 
 [patch.crates-io.builtin_interfaces]
