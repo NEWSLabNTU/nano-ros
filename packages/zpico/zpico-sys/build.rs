@@ -12,19 +12,11 @@ use std::{
     process::Command,
 };
 
-// Phase 136.1 — zenoh_platforms.toml parser. Loaded + smoke-resolved
-// at the top of `main()` so any TOML drift surfaces at build time
-// instead of waiting for 136.3 / 136.4 to wire the resolver into
-// cc-rs. The resolved data is not yet consumed by the build path.
-#[path = "build/manifest.rs"]
-mod manifest;
-
-// Phase 136.2 — link-feature env reader + per-platform policy mask.
-// Moved out of this file to `build/policy.rs` so the manifest layer
-// can produce the same `LinkPolicy` values directly in 136.4.
-#[path = "build/policy.rs"]
-mod policy;
-
+// Phase 149.5 — manifest parser + link-feature policy live in the
+// shared `nros-board-common` library. zpico-sys pulls them as
+// build-deps; the old `zpico-sys/build/{manifest,policy}.rs`
+// copies were deleted so there's only one canonical source.
+use nros_board_common::{manifest, policy};
 use policy::{LinkFeatures, LinkPolicy};
 
 /// Shim slot count configuration.
