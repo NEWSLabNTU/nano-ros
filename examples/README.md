@@ -95,7 +95,7 @@ STM32F4 microcontroller examples using `nros-board-stm32f4`.
 | `rust/zenoh/talker` | Publisher for NUCLEO-F429ZI |
 | `rust/zenoh/polling` | Polling-based networking |
 | `rust/zenoh/rtic` | RTIC-based networking |
-| `rust/core/embassy` | Embassy async framework |
+| `rust/zenoh/talker-embassy` | Embassy async framework |
 | `rust/standalone/smoltcp` | smoltcp TCP echo server |
 
 ### Zephyr (`zephyr/`)

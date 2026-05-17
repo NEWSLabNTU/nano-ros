@@ -15,4 +15,4 @@ Low-level reference implementations for BSP developers. These are libraries (not
 
 - [examples/qemu-arm-baremetal/rust/standalone/lan9118/](../../examples/qemu-arm-baremetal/rust/standalone/lan9118/) - LAN9118 driver validation
 - [examples/stm32f4/rust/standalone/smoltcp/](../../examples/stm32f4/rust/standalone/smoltcp/) - smoltcp TCP echo server
-- [examples/stm32f4/rust/core/embassy/](../../examples/stm32f4/rust/core/embassy/) - Embassy async
+- [examples/stm32f4/rust/zenoh/talker-embassy/](../../examples/stm32f4/rust/zenoh/talker-embassy/) - Embassy async
