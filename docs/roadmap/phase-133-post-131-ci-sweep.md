@@ -5,7 +5,7 @@ clean `just ci` run after Phase 131 landed on `main`. Acts as an
 index over the per-issue fix commits + the deferred follow-up phases
 that close the larger gaps.
 
-**Status.** 6 of 7 items closed (5 landed directly, 1 closed via Phase 134, 1 superseded by Phase 140 plan). 133.7 stays open but is now scheduled to be eliminated wholesale rather than fixed in place.
+**Status.** 7 of 7 items closed (5 landed directly, 1 closed via Phase 134, 1 closed via Phase 135 with verify rolled into Phase 140).
 
 **Priority.** P2 — bookkeeping. Each line item is small (or
 delegated). Recorded here so future "why does CI complain about X"
@@ -72,8 +72,8 @@ prevents the same root-causes recurring under a new label later.
 **Original trigger.** Test-all C-link of every native_api / rmw_interop / c_xrce_api example failed: `/usr/bin/ld: …libnros_rmw_zenoh.a(udp.c.o): in function '_z_f_link_open_udp_multicast': undefined reference to '_z_read_udp_multicast' / '_z_read_exact_udp_multicast'`.
 **Note.** The entire bug class (cc-rs / CMake split + `--allow-multiple-definition` for the dual-staticlib link) is structurally eliminated by Phase 140's `install-local` removal: `add_subdirectory(third_party/nano-ros)` builds everything in one cargo dep graph, no second zenoh-pico C build, no duplicate REGISTRY, no `--allow-multiple-definition` needed. The 134 fix is therefore transitional. The archived Phase 134 doc records the structural shape so the lesson survives the rewrite.
 
-### 133.7 — `test-all` install-ordering bug → **Phase 135 (open, will be subsumed by Phase 140)**
-**Status.** **Open.** Tracked in [phase-135-test-all-install-ordering.md](phase-135-test-all-install-ordering.md). [Phase 140](phase-140-install-local-rip-off.md) supersedes the fix: rather than reorder `test-all`'s dep on `install-local`, Phase 140 deletes `install-local` entirely + migrates tests to the `add_subdirectory` path landed by Phase 137 / 138. Phase 135 stays open as a placeholder so the regression test from `chore: fix all just-check warnings` (`25a83568`) keeps its tracking issue, but the implementation will land inside Phase 140.
+### 133.7 — `test-all` install-ordering bug → **Phase 135 (closed, verify rolled into Phase 140)**
+**Status.** **CLOSED** via [phase-135-test-all-install-ordering.md](archived/phase-135-test-all-install-ordering.md) (135.1 landed in commit `25a83568`; doc archived). The remaining verify items (135.2 timing, 135.3 redundant install call cleanup, 135.4 cold-start ci run) are minor and roll into [Phase 140](phase-140-install-local-rip-off.md)'s broader test-fixture migration — Phase 140 deletes `install-local` and the entire `build/install/` layout, so verifying the pre-140 path cold-start then re-verifying the post-140 path is wasted work.
 **Original trigger.** First-run fresh `just ci` on a checkout that has never run `just install-local`: native_api / dds_api / rmw_interop / xrce tests panic with `cmake configure failed … Could not find a package configuration file provided by "NrosPlatformPosix"`.
 **Why.** `test-all` depends only on `build-zenohd`. Tests that build C / C++ examples via cmake assume `build/install/lib/cmake/NanoRos/…` is populated, which only happens after `just install-local` runs.
 **Impact.** Cosmetic on warm machines; broken first-run CI on fresh clones. Pinned for 140 because fixing it in 135 first (then immediately deleting the install path) is wasted work.
@@ -85,7 +85,7 @@ prevents the same root-causes recurring under a new label later.
 - [x] 133.1–133.4 committed on `main`.
 - [x] 133.5 committed on `main`.
 - [x] 133.6 closed via Phase 134 (commit `241172e5`); doc archived at `archived/phase-134-zenoh-pico-udp-multicast-gate.md`.
-- [x] 133.7 superseded by Phase 140 (`install-local` deletion); 135 stays open as a tracking placeholder.
+- [x] 133.7 closed via Phase 135 (commit `25a83568`); doc archived. Verify items rolled into Phase 140.
 - [x] phase-134 + phase-135 stubs exist with reproducible trigger + a one-line theory of the fix.
 - [x] This index links every fix commit + every deferred phase.
 

@@ -1,5 +1,26 @@
 # Phase 135 — `test-all` Install-Ordering Bug
 
+> **ARCHIVED 2026-05-17.** The actual fix (135.1) landed in commit
+> `25a83568` — `test-all` now declares `install-local` as a
+> dependency, so cold-start `just ci` populates the install layout
+> before any cmake-driven test fixture runs.
+>
+> The three remaining items (135.2 timing sanity-check, 135.3
+> redundant `just install-local` call in `tests/c-msg-gen-tests.sh`,
+> 135.4 cold-start `just ci` verification) are minor verify /
+> cleanup. [Phase 140](../phase-140-install-local-rip-off.md)
+> deletes `install-local` and the entire `build/install/` layout
+> outright, migrating every test fixture to the
+> `add_subdirectory(third_party/nano-ros)` path landed by Phase 137
+> + Phase 138. The 135.2/.3/.4 verification rolls into Phase 140's
+> "every test fixture's cmake configure step is migrated and
+> green" acceptance — running the cold-start check pre-140 then
+> immediately re-running it post-140 with a totally different
+> infrastructure is wasted work.
+>
+> Doc kept under `archived/` as the record of why `test-all` grew
+> the `install-local` dep so future readers don't re-add it.
+
 **Goal.** Make `just test-all` (and therefore `just ci`) self-contained:
 populate `build/install/` BEFORE running the nextest tests that build
 C / C++ examples via `cmake … find_package(NanoRos)`. Today the
@@ -9,7 +30,7 @@ clean `just ci` on a fresh checkout fails ~58 native_api tests and
 ~24 dds_api tests because `build/install/lib/cmake/NanoRos/` does not
 yet exist.
 
-**Status.** Landed (135.1). Verification (135.4) pending a cold-start `just ci`.
+**Status.** Closed. 135.1 landed (commit `25a83568`); 135.2/.3/.4 verify rolled into Phase 140.
 
 **Priority.** P2 — broken first-run CI on fresh clones. Warm
 machines that already ran `just install-local` (or that previously
