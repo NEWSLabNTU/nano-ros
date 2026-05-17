@@ -676,15 +676,15 @@ pub struct Executor {
     /// feature); spin_once falls back to driving the transport
     /// for the full timeout in that case.
     #[cfg(all(
-    feature = "std",
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+        feature = "std",
+        feature = "rmw-cffi",
+        any(
+            feature = "platform-zephyr",
+            feature = "platform-freertos",
+            feature = "platform-nuttx",
+            feature = "platform-threadx",
+        )
+    ))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
     /// Phase 130.4 — true when at least one session's backend
     /// installed the wake callback. Drives whether `spin_once`
@@ -789,15 +789,15 @@ impl Executor {
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
             #[cfg(all(
-    feature = "std",
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+                feature = "std",
+                feature = "rmw-cffi",
+                any(
+                    feature = "platform-zephyr",
+                    feature = "platform-freertos",
+                    feature = "platform-nuttx",
+                    feature = "platform-threadx",
+                )
+            ))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
@@ -874,15 +874,15 @@ impl Executor {
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
             #[cfg(all(
-    feature = "std",
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+                feature = "std",
+                feature = "rmw-cffi",
+                any(
+                    feature = "platform-zephyr",
+                    feature = "platform-freertos",
+                    feature = "platform-nuttx",
+                    feature = "platform-threadx",
+                )
+            ))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,

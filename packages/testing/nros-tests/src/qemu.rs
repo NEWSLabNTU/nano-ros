@@ -821,7 +821,9 @@ pub fn is_mcast_loopback_route_present(group: &str) -> bool {
      * entry; use `ip route get <addr>` so a prefix route like
      * `230.10.0.0/16 dev lo` is recognised when the test picks
      * `230.10.0.137` from inside it. */
-    let out = Command::new("ip").args(["route", "get", group_only]).output();
+    let out = Command::new("ip")
+        .args(["route", "get", group_only])
+        .output();
     match out {
         Ok(o) if o.status.success() => {
             let s = String::from_utf8_lossy(&o.stdout);
@@ -881,8 +883,12 @@ pub fn qemu_supports_dgram_unix() -> bool {
         Ok(o) => {
             // `-netdev help` lists backend types one per line; "dgram"
             // appears iff QEMU >= 7.2.
-            String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "dgram")
-                || String::from_utf8_lossy(&o.stderr).lines().any(|l| l.trim() == "dgram")
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.trim() == "dgram")
+                || String::from_utf8_lossy(&o.stderr)
+                    .lines()
+                    .any(|l| l.trim() == "dgram")
         }
         Err(_) => false,
     }

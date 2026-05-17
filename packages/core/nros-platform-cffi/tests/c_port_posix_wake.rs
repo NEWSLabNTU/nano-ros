@@ -159,10 +159,16 @@ fn signal_coalesces_when_already_pending() {
     assert_eq!(unsafe { nros_platform_wake_signal(buf.as_mut_ptr()) }, 0);
 
     // First wait consumes the signal.
-    assert_eq!(unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) }, 0);
+    assert_eq!(
+        unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) },
+        0
+    );
     // Second wait must time out — the coalesced signal didn't bump
     // the sem past 1.
-    assert_eq!(unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) }, 1);
+    assert_eq!(
+        unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) },
+        1
+    );
 
     unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
 }
@@ -172,8 +178,14 @@ fn signal_from_isr_aliases_to_signal_on_hosted_posix() {
     let mut buf = WakeBuf::new();
     unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
 
-    assert_eq!(unsafe { nros_platform_wake_signal_from_isr(buf.as_mut_ptr()) }, 0);
-    assert_eq!(unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) }, 0);
+    assert_eq!(
+        unsafe { nros_platform_wake_signal_from_isr(buf.as_mut_ptr()) },
+        0
+    );
+    assert_eq!(
+        unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 50) },
+        0
+    );
 
     unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
 }

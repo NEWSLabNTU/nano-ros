@@ -120,9 +120,12 @@ impl DdsSession {
     fn get_or_create_topic(
         &mut self,
         topic_name: &str,
-    ) -> Result<dust_dds::topic_definition::topic_description::TopicDescription, TransportError> {
+    ) -> Result<dust_dds::topic_definition::topic_description::TopicDescription, TransportError>
+    {
         use crate::raw_type::RawCdrPayload;
-        use dust_dds::infrastructure::{qos::QosKind, status::NO_STATUS, type_support::TypeSupport};
+        use dust_dds::infrastructure::{
+            qos::QosKind, status::NO_STATUS, type_support::TypeSupport,
+        };
 
         {
             let cache = self
@@ -399,7 +402,10 @@ impl Session for DdsSession {
                     ],
                 )
                 .map_err(|e| {
-                    eprintln!("[dds diag] create_datawriter '{}' failed: {:?}", topic.name, e);
+                    eprintln!(
+                        "[dds diag] create_datawriter '{}' failed: {:?}",
+                        topic.name, e
+                    );
                     TransportError::PublisherCreationFailed
                 })?;
 

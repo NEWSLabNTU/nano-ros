@@ -58,7 +58,7 @@ use core::ffi::{c_int, c_void};
 pub mod wake;
 pub mod xorshift32;
 
-pub use wake::{Wake, WakeInitError, WakeReason, WAKE_STORAGE_ALIGN, WAKE_STORAGE_BYTES};
+pub use wake::{WAKE_STORAGE_ALIGN, WAKE_STORAGE_BYTES, Wake, WakeInitError, WakeReason};
 
 // ============================================================================
 // Clock (required by all RMW backends)

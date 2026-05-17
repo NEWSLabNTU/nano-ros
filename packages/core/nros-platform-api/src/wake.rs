@@ -19,10 +19,7 @@
 //! stay put because the platform impl stores backing-primitive
 //! pointers that reference it.
 
-use core::cell::UnsafeCell;
-use core::ffi::c_void;
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::{cell::UnsafeCell, ffi::c_void, marker::PhantomData, mem::MaybeUninit};
 
 use crate::PlatformThreading;
 

@@ -124,28 +124,68 @@ fn explicit_unsupported_path_returns_initerror() {
             _: *mut std::ffi::c_void,
             _: Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void>,
             _: *mut std::ffi::c_void,
-        ) -> i8 { -1 }
-        fn task_join(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn task_detach(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn task_cancel(_: *mut std::ffi::c_void) -> i8 { -1 }
+        ) -> i8 {
+            -1
+        }
+        fn task_join(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn task_detach(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn task_cancel(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
         fn task_exit() {}
         fn task_free(_: *mut *mut std::ffi::c_void) {}
-        fn mutex_init(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_drop(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_lock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_try_lock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_unlock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_rec_init(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_rec_drop(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_rec_lock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_rec_try_lock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn mutex_rec_unlock(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_init(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_drop(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_signal(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_signal_all(_: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_wait(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void) -> i8 { -1 }
-        fn condvar_wait_until(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void, _: u64) -> i8 { -1 }
+        fn mutex_init(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_drop(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_lock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_try_lock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_unlock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_rec_init(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_rec_drop(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_rec_lock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_rec_try_lock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn mutex_rec_unlock(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_init(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_drop(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_signal(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_signal_all(_: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_wait(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void) -> i8 {
+            -1
+        }
+        fn condvar_wait_until(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void, _: u64) -> i8 {
+            -1
+        }
         // wake_* all left as defaults — `wake_storage_size` -> 0.
     }
 

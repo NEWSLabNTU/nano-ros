@@ -169,8 +169,7 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
     QEMU_TEST_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir =
-                root.join("packages/testing/nros-tests/bins/cdr-roundtrip-qemu");
+            let example_dir = root.join("packages/testing/nros-tests/bins/cdr-roundtrip-qemu");
 
             eprintln!("Building qemu-test...");
 
@@ -1188,9 +1187,7 @@ pub fn zenoh_stress_test_large_buf_binary() -> PathBuf {
 /// Build the xrce-stress-test binary (cached).
 pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
     XRCE_STRESS_TEST_BINARY
-        .get_or_try_init(|| {
-            build_test_fixture("nros-bench/stress-xrce", "xrce-stress-test", None)
-        })
+        .get_or_try_init(|| build_test_fixture("nros-bench/stress-xrce", "xrce-stress-test", None))
         .map(|p| p.as_path())
 }
 
