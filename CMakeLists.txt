@@ -19,7 +19,6 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # Options / cache vars (set BEFORE add_subdirectory in the user project).
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
-option(NANO_ROS_FORCE_INSTALL "Emit install(...) rules even when consumed as a subdirectory" OFF)
 set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
 set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
@@ -30,25 +29,10 @@ set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
 set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble or iron")
 set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron)
 
-# ---------------------------------------------------------------------------
-# CPack — binary distribution archives (only meaningful when nano-ros is
-# the top-level build; harmless otherwise).
-# ---------------------------------------------------------------------------
-if(PROJECT_IS_TOP_LEVEL)
-    set(CPACK_PACKAGE_NAME        "nros")
-    set(CPACK_PACKAGE_VENDOR      "nano-ros contributors")
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-        "nano-ros: lightweight ROS 2 client for embedded real-time systems")
-    set(CPACK_PACKAGE_VERSION     "${PROJECT_VERSION}")
-    set(CPACK_GENERATOR           "TGZ;ZIP")
-    set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
-
-    string(TOLOWER "${CMAKE_SYSTEM_NAME}" _sys)
-    set(CPACK_PACKAGE_FILE_NAME
-        "nros-${PROJECT_VERSION}-${_sys}-${CMAKE_SYSTEM_PROCESSOR}-${NANO_ROS_RMW}-${NANO_ROS_PLATFORM}")
-
-    include(CPack)
-endif()
+# Phase 140 — CPack block removed alongside the install-local layout
+# (CPack only ever bundled the install tree). Source-distribution
+# consumers vendor the repo + run `add_subdirectory(nano-ros)` from
+# their own project; no binary tarballs to ship.
 
 # ---------------------------------------------------------------------------
 # Phase 123.A.5 — auto-run tools/setup.sh if the user invoked cmake
@@ -317,44 +301,7 @@ if(EXISTS "${_nros_codegen_module}"
     include("${_nros_codegen_module}")
 endif()
 
-# ---------------------------------------------------------------------------
-# Install rules — only fire when nano-ros is the top-level build (or the
-# user opted in via -DNANO_ROS_FORCE_INSTALL=ON). When nano-ros is
-# add_subdirectory'd into a user project, the user owns install layout.
-# Sub-projects' own install(...) calls remain defined but are inert until
-# the consumer invokes `cmake --install` against the top-level build.
-# ---------------------------------------------------------------------------
-if(PROJECT_IS_TOP_LEVEL OR NANO_ROS_FORCE_INSTALL)
-    if(NANO_ROS_PLATFORM STREQUAL "posix")
-        # Bundled interfaces (optional — codegen works via ament index when absent)
-        if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/packages/codegen/interfaces")
-            install(DIRECTORY packages/codegen/interfaces/
-                DESTINATION share/nano-ros/interfaces
-            )
-        else()
-            install(DIRECTORY DESTINATION share/nano-ros/interfaces)
-        endif()
-    endif()
-
-    # ------------------------------------------------------------------
-    # Phase 138.5 — dual-install the Phase 138 platform modules under
-    # `<prefix>/lib/cmake/NanoRos/cmake/platform/`. Legacy
-    # `find_package(NanoRos)` consumers already get the layer-2 helpers
-    # (`nros-freertos.cmake`, `nros-nuttx.cmake`, `nros-threadx.cmake`)
-    # via the install rule in `packages/core/nros-c/CMakeLists.txt`;
-    # those files are the implementation, and the Phase 138 modules
-    # forward to them via `include(...)` with an in-tree relative path
-    # — that path does not resolve from an install prefix, so the
-    # Phase 138 modules are installed under their canonical
-    # `cmake/platform/nano-ros-<plat>.cmake` names only (no RENAME),
-    # alongside the canonical-name board overlays. Consumers using the
-    # legacy find_package path see no change; new install-side consumers
-    # can pick up the Phase 138 modules at `<prefix>/lib/cmake/NanoRos/cmake/platform/`.
-    # Migration shim — Phase 140 removes once `install-local` itself disappears.
-    # ------------------------------------------------------------------
-    install(DIRECTORY
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform"
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/board"
-        DESTINATION lib/cmake/NanoRos/cmake
-        FILES_MATCHING PATTERN "*.cmake")
-endif()
+# Phase 140 — install-mode branch deleted. nano-ros is consumed
+# exclusively as a source distribution via `add_subdirectory(<repo>)`
+# (or the Phase 139 integration shells under `integrations/`).
+# No install(...) rules anywhere in-tree.
