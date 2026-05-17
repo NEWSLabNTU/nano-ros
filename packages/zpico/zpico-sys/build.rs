@@ -1087,7 +1087,9 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
             let tmp = output_file
                 .parent()
                 .map(|p| p.join(format!(".zpico.h.tmp.{}", std::process::id())))
-                .unwrap_or_else(|| output_file.with_extension(format!("h.tmp.{}", std::process::id())));
+                .unwrap_or_else(|| {
+                    output_file.with_extension(format!("h.tmp.{}", std::process::id()))
+                });
             if let Err(e) = std::fs::write(&tmp, processed) {
                 println!("cargo:warning=Failed to write tmp header {tmp:?}: {e}");
                 return;
