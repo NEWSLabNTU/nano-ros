@@ -3,7 +3,7 @@ name = "nros-board-nuttx"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Generic NuttX board scaffolding for nano-ros (Phase 149.4 — overlay foundation)"
+description = "Generic NuttX board scaffolding for nano-ros (Phase 152.4 — overlay foundation)"
 authors = ["nano-ros contributors"]
 repository = "https://github.com/NEWSLabNTU/nano-ros"
 keywords = ["nano-ros", "ros2", "nuttx", "embedded"]
@@ -12,14 +12,14 @@ categories = ["embedded", "hardware-support"]
 [lib]
 name = "nros_board_nuttx"
 
-# Phase 149.4.A scaffolding — thin façade. NuttX owns the kernel
+# Phase 152.4.A scaffolding — thin façade. NuttX owns the kernel
 # build (the user's NuttX tree compiles ThreadX-equivalent task /
 # socket / clock primitives via `apps/external/nano-ros/` + the
-# Phase 149.7 `Make.defs` / `Makefile` / `Kconfig` shell). The
+# Phase 152.7 `Make.defs` / `Makefile` / `Kconfig` shell). The
 # Cargo side ships `Config` + `run` shape only; no `build.rs`
 # bundles the kernel here.
 [dependencies]
-# 149.4.B — `BoardInit` trait used by the `run<B: BoardInit>`
+# 152.4.B — `BoardInit` trait used by the `run<B: BoardInit>`
 # generic entry point.
 nros-board-common = { path = "../nros-board-common" }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }

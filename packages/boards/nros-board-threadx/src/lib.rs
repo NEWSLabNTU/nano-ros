@@ -9,12 +9,12 @@
 //! on this crate + patch vendor HAL deltas via `#[no_mangle]`
 //! hooks. See `book/src/porting/vendor-overlay.md` for the cookbook.
 //!
-//! ## 149.2.A scaffolding
+//! ## 152.2.A scaffolding
 //!
 //! The crate exists today as a façade. Two opt-in features
 //! re-export `Config` + `run` from the existing per-board ThreadX
 //! crates so future overlays have a stable name to depend on while
-//! 149.2.B carves the kernel + NetX-Duo build glue out of the
+//! 152.2.B carves the kernel + NetX-Duo build glue out of the
 //! per-board `build.rs` files into this crate's own `build.rs`.
 //!
 //! | Feature | Re-exports from | Use case |
@@ -26,7 +26,7 @@
 //! `Config` shapes; the scaffolding feature-gate keeps them
 //! mutually exclusive at link time).
 //!
-//! ## Public contract (post-149.2.B)
+//! ## Public contract (post-152.2.B)
 //!
 //! Once the build-glue carve-out lands:
 //!
@@ -44,7 +44,7 @@
 //!
 //! ## SDK env-var contract
 //!
-//! The generic `build.rs` will read (after 149.2.B):
+//! The generic `build.rs` will read (after 152.2.B):
 //!
 //! | Var | Default | Purpose |
 //! |---|---|---|

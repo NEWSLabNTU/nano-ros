@@ -1,7 +1,7 @@
 //! Manifest parser for `<kernel>_platforms.toml` files.
 //!
 //! Phase 136.1 / 136.4 landed the loader + per-platform resolver
-//! inside `zpico-sys/build/`. Phase 149.5 lifted it into the
+//! inside `zpico-sys/build/`. Phase 152.5 lifted it into the
 //! `nros-board-common` library so the per-kernel generic board
 //! crates can share one canonical implementation.
 //!

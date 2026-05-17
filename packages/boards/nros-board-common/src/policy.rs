@@ -5,7 +5,7 @@
 //! (Orin SPE has no Ethernet → `Force(false)` masks TCP / UDP /
 //! MC / SERIAL / TLS, etc.). Phase 136.2 extracted it from
 //! `zpico-sys/build.rs` into `zpico-sys/build/policy.rs`. Phase
-//! 149.5 lifted it into the `nros-board-common` library so the
+//! 152.5 lifted it into the `nros-board-common` library so the
 //! per-kernel generic board crates can share one canonical
 //! implementation alongside the manifest parser.
 //!

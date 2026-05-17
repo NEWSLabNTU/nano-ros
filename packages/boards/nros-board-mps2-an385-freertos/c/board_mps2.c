@@ -1,7 +1,7 @@
 /*
  * board_mps2.c — MPS2-AN385 board-specific startup + LAN9118 diag
  *
- * Phase 149.1.B.1 — extracted from build.rs's `STARTUP_C` const.
+ * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
  * Contains:
  *   - Cortex-M3 vector table (`isr_vector`)
  *   - `Reset_Handler` (data copy + bss zero + jump to Rust `_start`)
@@ -53,9 +53,9 @@ extern void _start(void);
 /* Semihosting helper exported by freertos_hooks.c */
 extern void semihosting_write0(const char *s);
 
-/* ---- LAN9118 netif globals (149.1.B.2 lift) ---- *
- * Phase 149.1.B.2 — these lived in `network_glue.c` until 149.1.B.1;
- * 149.1.B.2 moved them into the board-specific TU together with
+/* ---- LAN9118 netif globals (152.1.B.2 lift) ---- *
+ * Phase 152.1.B.2 — these lived in `network_glue.c` until 152.1.B.1;
+ * 152.1.B.2 moved them into the board-specific TU together with
  * the strong `nros_board_register_netif` + `nros_board_poll_netif`
  * implementations the generic glue invokes through its weak hooks. */
 struct netif lan9118_netif;

@@ -12,7 +12,7 @@ categories = ["development-tools::build-utils"]
 [lib]
 name = "nros_board_common"
 
-# Phase 149.5 — common build-script library shared between
+# Phase 152.5 — common build-script library shared between
 # `zpico-sys` (Phase 136) and the per-kernel generic board crates
 # (`nros-board-{freertos, threadx, nuttx}`). Consumers add this as
 # a `[build-dependencies]` path dep + import the `manifest` /
@@ -22,7 +22,7 @@ name = "nros_board_common"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-# 149.2.B — `threadx_sources::add_threadx_kernel_sources` /
+# 152.2.B — `threadx_sources::add_threadx_kernel_sources` /
 # `_add_threadx_port_sources` take `&mut cc::Build`. The cc crate
 # is also a build-time-only dep but a regular `[dependencies]`
 # entry is fine since `nros-board-common` itself is only ever

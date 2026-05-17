@@ -1,13 +1,13 @@
 /*
  * freertos_hooks.c — generic FreeRTOS kernel hooks
  *
- * Phase 149.1.B.1 — extracted from build.rs's `STARTUP_C` const
+ * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const
  * as part of the per-board → generic-crate refactor. Contains
  * hook functions FreeRTOS calls back into (assert, idle, malloc-
  * failed, stack-overflow, SysTick) plus the semihosting helpers
  * those hooks use to report failures. No board-specific code
  * here — `freertos_hooks.c` is the candidate for promotion into
- * the generic `nros-board-freertos` crate in 149.1.B.4.
+ * the generic `nros-board-freertos` crate in 152.1.B.4.
  */
 
 #include <stdint.h>

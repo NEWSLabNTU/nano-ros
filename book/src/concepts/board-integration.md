@@ -7,7 +7,7 @@ linked guide.
 
 The architecture behind the matrix lives in
 [`docs/design/board-bsp-integration-architecture.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/board-bsp-integration-architecture.md)
-(layered model, vendor-BSP scaling, Phase 149 plan).
+(layered model, vendor-BSP scaling, Phase 152 plan).
 
 ## Consumption matrix
 

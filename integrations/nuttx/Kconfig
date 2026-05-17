@@ -1,7 +1,7 @@
-# Phase 139.4 / 149.7 — Kconfig surfaced under
+# Phase 139.4 / 152.7 — Kconfig surfaced under
 # `Application Configuration → External Modules → nano-ros`.
 #
-# 149.7 — promoted free-form `string` knobs to `choice` so
+# 152.7 — promoted free-form `string` knobs to `choice` so
 # `make menuconfig` drives Cargo `--features` cleanly via the
 # matching `CONFIG_NROS_RMW_*` / `CONFIG_NROS_ROS_*` symbols read
 # by the sibling `Makefile`.

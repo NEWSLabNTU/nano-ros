@@ -298,7 +298,7 @@ them against that RTOS's APIs.
 
 ## Work breakdown (proposed new phase)
 
-Suggest **Phase 149 — Board / BSP abstraction layer**:
+Suggest **Phase 152 — Board / BSP abstraction layer**:
 
 1. **148.1 — Carve generic board crates from existing per-board ones.**
    Refactor `nros-board-mps2-an385-freertos` to depend on a new
@@ -325,7 +325,7 @@ Suggest **Phase 149 — Board / BSP abstraction layer**:
    `examples/<plat>/...` README points at the appropriate
    consumption path.
 
-Phase 149 depends on Phase 137 (already landed), Phase 138 (already
+Phase 152 depends on Phase 137 (already landed), Phase 138 (already
 landed), Phase 139 (already landed), Phase 136 (already landed —
 provides the manifest parser to reuse). No new infrastructure
 needed; this phase is restructuring + documentation.

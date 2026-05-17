@@ -9,7 +9,7 @@ description = "QEMU MPS2-AN385 board crate for nros on FreeRTOS + lwIP"
 name = "nros_board_mps2_an385_freertos"
 
 [dependencies]
-# Phase 149.1.B.4 — generic FreeRTOS+lwIP+nros-platform-freertos
+# Phase 152.1.B.4 — generic FreeRTOS+lwIP+nros-platform-freertos
 # build glue lives in nros-board-freertos. Depending on it ensures
 # its `build.rs` runs first + its `cargo:rustc-link-lib=static=...`
 # lines propagate to the final binary.

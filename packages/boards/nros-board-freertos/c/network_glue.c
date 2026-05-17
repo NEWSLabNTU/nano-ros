@@ -1,13 +1,13 @@
 /*
  * network_glue.c — lwIP + FreeRTOS network plumbing called from Rust
  *
- * Phase 149.1.B.1 — extracted from build.rs's `STARTUP_C` const.
- * Phase 149.1.B.2 — board-specific Ethernet init lifted to the
+ * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
+ * Phase 152.1.B.2 — board-specific Ethernet init lifted to the
  * weak `nros_board_register_netif` / `nros_board_poll_netif`
  * hooks the overlay implements (see `board_mps2.c` for the
  * LAN9118 strong override). This TU is now board-agnostic and
  * can promote into the generic `nros-board-freertos` crate at
- * 149.1.B.4 without further changes.
+ * 152.1.B.4 without further changes.
  */
 
 #include <stdint.h>
