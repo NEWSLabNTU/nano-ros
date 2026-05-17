@@ -7,7 +7,16 @@ handshake. Replace the synchronous busy-spin TX in
 IRQ-driven design that yields cleanly to QEMU's main loop between
 bytes.
 
-**Status:** open. Spun out from
+**Status:** structural pieces landed (ISR symbol + NVIC unmask +
+`zpico-sys` serial-only build break fix); IRQ-driven `write`
+implementation still WIP — initial integration pass surfaced a
+QEMU-CMSDK timing puzzle where the zenoh InitSyn write succeeds
+but the peer's InitAck never arrives back through the polled read
+path. Polled busy-spin `write` remains the active TX
+implementation behind a default-off feature flag until the IRQ
+design lands a green `test_qemu_serial_pubsub_e2e`.
+
+Spun out from
 [`phase-127-remaining-failure-groups.md`](phase-127-remaining-failure-groups.md)
 `127.D.3` on 2026-05-17 after the D.1 / D.2 / D.4 portions of 127.D
 closed.

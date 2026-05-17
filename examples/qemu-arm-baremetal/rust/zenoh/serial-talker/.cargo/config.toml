@@ -1,6 +1,16 @@
 [build]
 target = "thumbv7m-none-eabi"
 
+# Phase 132 — serial-only firmware. `zpico-sys`'s `build.rs` reads
+# this env var and skips compiling smoltcp glue into `zpico.c` (no
+# `smoltcp_init` / `smoltcp_cleanup` link refs), defining
+# `ZPICO_SERIAL` instead. Without the opt-out the bare-metal link
+# fails — Phase 128 retired the per-transport Cargo features that
+# used to gate this and `LinkFeatures::from_env()` now hardcodes
+# tcp/udp on.
+[env]
+ZPICO_NO_SMOLTCP = "1"
+
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"
 

@@ -1651,8 +1651,21 @@ fn build_c_shim(
         // Include platform headers
         build.include(&platform_dir);
 
-        // Platform defines — link features from Cargo features
-        let has_network = link.tcp || link.udp_unicast || link.udp_multicast;
+        // Platform defines — link features from Cargo features.
+        //
+        // Phase 132 — `ZPICO_NO_SMOLTCP=1` lets a consumer (the
+        // serial-only board crate, an XRCE-over-UART firmware, …)
+        // opt out of compiling the smoltcp glue into `zpico.c`.
+        // Phase 128 retired the per-transport Cargo features that
+        // used to gate this; without an override the embedded build
+        // always pulls smoltcp because `LinkFeatures::from_env()`
+        // hardcodes tcp/udp = true. Serial-only firmware links
+        // against `ZPICO_SERIAL` instead and never provides the
+        // `smoltcp_init` / `smoltcp_cleanup` symbols.
+        let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
+        println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
+        let has_network =
+            (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
         if has_network {
             build.define("ZPICO_SMOLTCP", None);
         }
@@ -1788,7 +1801,15 @@ fn build_zenoh_pico_embedded(
 
     // Platform defines
     build.define("ZENOH_GENERIC", None);
-    let has_network = link.tcp || link.udp_unicast || link.udp_multicast;
+    // Phase 132 — `ZPICO_NO_SMOLTCP=1` opt-out (same rationale as
+    // `build_c_shim`). Serial-only embedded firmware sets the env
+    // var in its `.cargo/config.toml [env]` block; the bare-metal
+    // link then succeeds because `zpico.c` no longer references
+    // `smoltcp_init` / `smoltcp_cleanup`.
+    let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
+    println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
+    let has_network =
+        (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
     if has_network {
         build.define("ZPICO_SMOLTCP", None);
     } else if link.serial {

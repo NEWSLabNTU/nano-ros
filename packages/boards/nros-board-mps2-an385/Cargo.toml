@@ -39,6 +39,11 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
 # CMSDK UART driver (serial only)
 cmsdk-uart = { path = "../../drivers/cmsdk-uart", optional = true }
+# Phase 132 — `mps2-an385-pac` exposes the `Interrupt` enum so
+# `init_serial` can `NVIC::unmask(Interrupt::UARTTX0)` to enable
+# the TX-empty IRQ that backs the cmsdk-uart driver's `wfi`-loop.
+# Optional + only pulled in by `serial`.
+mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 
 # Embedded dependencies
 cortex-m = "0.7"
@@ -62,7 +67,7 @@ ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART. The `_z_socket_*` symbols
 # peer.c references at link time come from `zpico-sys`'s
 # default-on `platform-aliases` C TU; no shim needed.
-serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
+serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:mps2-an385-pac"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)

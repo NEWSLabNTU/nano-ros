@@ -297,6 +297,23 @@ fn init_ethernet(config: &Config) {
     hprintln!("Ethernet ready.");
 }
 
+/// Phase 132 — UART0 TX-empty interrupt handler.
+///
+/// Wired by `cmsdk-uart`'s IRQ-driven write path. Forwards to the
+/// driver-side ISR helper that clears the pending INTSTATUS_TX bit
+/// and masks CTRL_TX_INT_EN. The writer in `CmsdkUart::write`
+/// `wfi`s between bytes, wakes here, then re-enables the interrupt
+/// for the next byte. Vector slot per `mps2-an385-pac` matches the
+/// CMSDK_CM3 IRQ map: `UARTTX0` = NVIC line 1.
+#[cfg(feature = "serial")]
+use mps2_an385_pac::interrupt;
+
+#[cfg(feature = "serial")]
+#[interrupt]
+fn UARTTX0() {
+    cmsdk_uart::handle_tx_irq(cmsdk_uart::UART0_BASE);
+}
+
 /// Initialize serial (UART) transport.
 #[cfg(feature = "serial")]
 #[allow(static_mut_refs)]
@@ -307,6 +324,22 @@ fn init_serial(config: &Config) {
 
     let mut uart = cmsdk_uart::CmsdkUart::new(config.uart_base);
     uart.enable();
+
+    // Phase 132 — unmask the UARTTX0 NVIC line so the driver's
+    // `wfi` between bytes wakes when QEMU's CMSDK model raises
+    // TX-empty. Mask all other CMSDK UART vectors (RX / OVF) — the
+    // current driver only uses TX-IRQ-driven write; RX stays polled.
+    //
+    // The pac's `Interrupt` enum gives the vector ordinal directly
+    // (see `mps2-an385-pac/src/lib.rs::Interrupt`). UARTTX0 = 1.
+    unsafe {
+        let mut nvic = cortex_m::peripheral::Peripherals::steal().NVIC;
+        cortex_m::peripheral::NVIC::unmask(mps2_an385_pac::Interrupt::UARTTX0);
+        // Lowest priority so user-level ISRs (Ethernet, timers) can
+        // preempt — TX-empty is a "wake the writer" signal, not a
+        // hard real-time event.
+        nvic.set_priority(mps2_an385_pac::Interrupt::UARTTX0, 0xE0);
+    }
 
     // Move into static storage
     unsafe {
