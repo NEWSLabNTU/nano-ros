@@ -29,17 +29,34 @@ fn have(cmd: &str) -> bool {
 
 #[test]
 fn zephyr_integration_shell_smoke() {
+    let root = workspace_root();
+
+    // Phase 150.G — auto-detect ZEPHYR_BASE at the canonical
+    // in-tree path provisioned by `scripts/zephyr/setup.sh`
+    // (`<root>/zephyr-workspace/zephyr/`) when the caller hasn't
+    // exported it. Means `cargo nextest` in a bare shell picks up
+    // the SDK that `just zephyr setup` installed without needing
+    // a wrapper that sources `env.sh`.
+    if std::env::var("ZEPHYR_BASE").is_err() {
+        let candidate = root.join("zephyr-workspace/zephyr");
+        if candidate.join("zephyr-env.sh").exists() {
+            // SAFETY: build-script-style env mutation before
+            // anything reads ZEPHYR_BASE; nextest runs each test
+            // in its own process so cross-test races are
+            // impossible.
+            unsafe { std::env::set_var("ZEPHYR_BASE", &candidate) };
+        }
+    }
+
     if !have("west") {
         nros_tests::skip!("west CLI not on PATH — install Zephyr SDK + west");
     }
-    let zephyr_base = std::env::var("ZEPHYR_BASE").ok();
-    if zephyr_base.is_none() {
+    if std::env::var("ZEPHYR_BASE").is_err() {
         nros_tests::skip!(
-            "ZEPHYR_BASE unset — run `source <zephyr-workspace>/zephyr/zephyr-env.sh`"
+            "ZEPHYR_BASE unset and no in-tree zephyr-workspace/zephyr — \
+             run `just zephyr setup` or `source <ws>/zephyr/zephyr-env.sh`"
         );
     }
-
-    let root = workspace_root();
     let shell = root.join("integrations/zephyr");
     assert!(
         shell.join("module.yml").exists(),
