@@ -137,7 +137,6 @@ unsafe extern "C" {
 /// connection ("Unexpected Init flag in message") after the handshake.
 fn connect_serial(sock: ZSysNetSocket) -> ZResult {
     let index = sock._handle as usize;
-
     // Drain any stale data in the RX buffer before starting
     drain_rx(sock);
 

@@ -81,7 +81,16 @@ pub type RmwInitEntry = unsafe extern "C" fn();
         target_os = "watchos",
         target_os = "windows",
         target_os = "illumos",
-        target_os = "none",
+        // Phase 142 — `target_os = "none"` DROPPED. Bare-metal
+        // Cortex-M3 (and likely other no-OS targets) hangs
+        // on `RMW_INIT_ENTRIES.iter()` inside `Executor::open`
+        // because `cortex_m_rt`'s link script doesn't provide
+        // the `__start_/__stop_` section anchors in a shape that
+        // lets linkme's slice iterator terminate. Bare-metal
+        // firmware uses the explicit `nros_rmw_<x>::register()`
+        // call from `main()` (Phase 104.A pattern), so falling
+        // into the stub path (empty slice, walker returns 0) is
+        // the correct behaviour.
     )
 ))]
 mod linkme_backed {
@@ -110,7 +119,16 @@ mod linkme_backed {
         target_os = "watchos",
         target_os = "windows",
         target_os = "illumos",
-        target_os = "none",
+        // Phase 142 — `target_os = "none"` DROPPED. Bare-metal
+        // Cortex-M3 (and likely other no-OS targets) hangs
+        // on `RMW_INIT_ENTRIES.iter()` inside `Executor::open`
+        // because `cortex_m_rt`'s link script doesn't provide
+        // the `__start_/__stop_` section anchors in a shape that
+        // lets linkme's slice iterator terminate. Bare-metal
+        // firmware uses the explicit `nros_rmw_<x>::register()`
+        // call from `main()` (Phase 104.A pattern), so falling
+        // into the stub path (empty slice, walker returns 0) is
+        // the correct behaviour.
     )
 )))]
 mod linkme_backed {
@@ -163,7 +181,10 @@ macro_rules! nros_rmw_register_backend {
                 target_os = "watchos",
                 target_os = "windows",
                 target_os = "illumos",
-                target_os = "none",
+                // Phase 142 — `target_os = "none"` dropped here
+                // too so the macro expansion in bare-metal
+                // backend crates also collapses to a no-op,
+                // matching the mod-gating above.
             )
         ))]
         const _: () = {

@@ -1,5 +1,20 @@
 # Phase 142 — zenoh-pico Bare-Metal Serial Init/InitAck Regression
 
+> **ARCHIVED — RESOLVED.** Fix: drop `target_os = "none"` from the
+> linkme allow-list in `packages/core/nros-rmw-cffi/src/section.rs`.
+> Root cause: `cortex_m_rt`'s link script doesn't provide
+> `__start_/__stop_` section anchors for linkme in a shape that
+> lets `RMW_INIT_ENTRIES.iter()` terminate — bare-metal binaries
+> hang inside `Executor::open` before `_z_open_session` is ever
+> called. Bare-metal firmware was already using the explicit
+> `nros_rmw_<x>::register()` call (Phase 104.A pattern), so the
+> linkme path is unused on bare-metal; falling into the stub path
+> (empty slice + walker returns 0) is the correct behaviour.
+>
+> Verified: `cargo nextest run -p nros-tests --test emulator
+> --no-fail-fast --retries 0 test_qemu_serial_pubsub_e2e` → PASS
+> in 8.9 s.
+
 **Goal.** Make `test_qemu_serial_pubsub_e2e` pass against the
 patched MPS2-AN385 QEMU. The test today hangs both talker and
 listener at `Zenoh locator: serial/UART_0...` inside
