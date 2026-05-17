@@ -228,19 +228,59 @@ migrated in Phase 140.3 but may still pull from stale paths).
 |-------|-------|------------|-------|--------|
 | A. POSIX serial-link | 58 | Missing aliases | 149 | Stubs ready to land (this branch) |
 | B. dds_api C++ builds | 6 | CMake link order: ffi_lib → NanoRosCpp dep not recorded | 150.B | **Closed 2026-05-18** |
-| C. qemu_patched_binary | 6 | Patched qemu not built | 143 | Run `just qemu setup-qemu` |
+| C. qemu_patched_binary | 6 | Patched qemu not built; `just qemu setup-qemu` itself fails — qemu submodule's `python/scripts/mkvenv.py` can't `pip install -e` qemu's own python lib because its build backend lacks PEP 660 `build_editable` hook (Python 3.10 / current pip combo) | 143 | **Blocked on qemu submodule + pip toolchain compatibility** |
 | D. cmake_platform_matrix | 10 | Skip-precondition gap | 138.6 follow-up | Filed as TODO |
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
 | G. integration shells | 4 | Env vars not in nextest | 139.9 follow-up | TODO |
 | H. nano2nano rtic | 2 | Investigate | 144 follow-up | TODO |
 | I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | Investigate |
-| timeouts | 3 | Unrelated | per-test | Investigate |
+| timeouts | 3 | nextest 60s cap on cmake+cargo cold-cache builds | per-test | See "Timeout breakdown" below |
 | skipped | 12 | Env precondition | n/a (expected) | OK |
 
 After A + B land: ~78 tests recover (~50%). C + D + G are
 env/infra (run-the-setup); E + H + I + F are individual
 follow-ups.
+
+---
+
+## Timeout breakdown
+
+3 tests hit nextest's 60s test-timeout:
+
+| Test | Duration | Why |
+|------|----------|-----|
+| `nros-tests::cmake_add_subdirectory cmake_add_subdirectory_smoke` | 60.004s | Phase 137 smoke. Test spins up a tmpdir cmake project that pulls every nros-c + zpico-sys + rmw-zenoh-staticlib build via add_subdirectory; cold-cache build > 60s on this dev box. |
+| `nros-tests::cmake_platform_matrix cmake_platform_posix` | 60.006s | Phase 138.6 smoke. Same shape: tmpdir cmake project, full cold-cache build per platform module. |
+| `nros-tests::cpp_parameters cpp_parameters_roundtrip` | 60.008s | E2E test that builds a cpp_parameters example + spawns it + sends ros2 service requests. Build alone exceeds 60s. |
+
+All three are **build-bound on cold cache**, not stuck waiting on
+sockets / timeouts. The 60s nextest cap is too tight for
+add_subdirectory-shaped consumer tests that compile zenoh-pico +
+zpico-sys + nros-cpp from scratch each invocation.
+
+### Fix options
+
+- **A. Per-test override** — add `[[profile.default.overrides]]`
+  in `.config/nextest.toml` with `slow-timeout = "300s"` filter
+  on these 3 tests.
+- **B. Warm shared target dir** — pre-populate
+  `<build>/target/release/build/zpico-sys-*/out` via a build
+  fixture so each test reuses the cache.
+- **C. Smoke-test refactor** — strip the per-test cmake project
+  down to a minimal example (drop codegen + cpp), keeping the
+  test as a "configure succeeds" check rather than a full build.
+
+Recommend **A** for the smoke tests (137.4 + 138.6) — they're
+build-correctness checks, latency tolerable. **B** for
+`cpp_parameters_roundtrip` since it's an actual E2E that should
+exercise the full chain at runtime, not just configure.
+
+### Status
+
+Open, filed as Phase 150.T. None of these block correctness;
+they're CI tuning. Hold until a real consumer trips on the
+build-time gate.
 
 ---
 
