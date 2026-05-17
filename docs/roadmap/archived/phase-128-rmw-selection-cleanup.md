@@ -738,3 +738,46 @@ New test `packages/testing/nros-tests/tests/run_from_config.rs`:
 - **`xrce-zephyr` crate.** Likely deletable after 128.D.4 collapses
   the platform shim. Audit at the end of phase 128 and remove if
   unreferenced.
+
+## Post-merge CI sweep (2026-05-17)
+
+`just ci` exercise after phase 128 + 129 archival surfaced several
+loose ends. All landed in commit `3475b5b5`:
+
+- **Format**: three build / lib files needed
+  `cargo +nightly fmt` after the bulk sed edits (line wrap after
+  the inserted string-replacement).
+- **Clippy**: `zpico-link-ivc` (carved out in 129.D.1) needed
+  `#![allow(clippy::missing_safety_doc)]` — every fn is a pure
+  pointer pass-through to `nvidia-ivc`; safety contract mirrors
+  the driver's.
+- **Bare-metal cc**: `zpico-sys/build.rs` adds `-ffreestanding` to
+  the `platform_aliases.c` cc build on `target_os = "none"`. Cross
+  toolchains (`riscv64-unknown-elf-gcc`, `arm-none-eabi-gcc`) often
+  lack a usable newlib install on the host; `#include <stdint.h>`
+  falls into gcc's own header which does `#include_next` expecting
+  newlib. `-ffreestanding` makes gcc use its own freestanding
+  `<stdint.h>` instead.
+- **Stale `link-tcp` / `link-udp-unicast` refs** missed in the
+  first E.1 sweep: `justfile:167,1288`,
+  `just/threadx-riscv64.just:72`,
+  `nros-rmw-zenoh-staticlib/CMakeLists.txt` (5 platform branches),
+  `nros-rmw-zenoh-staticlib/Cargo.toml` (feature forwards),
+  `nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt`
+  (`_platform_features` lists). Codegen submodule
+  (`backend_features` zenoh push) also stripped.
+- **`tests/c-msg-gen-tests.sh`** updated to look for
+  `libnros_c.a` instead of `libnros_c_zenoh.a` (phase 128.C.4
+  collapsed the RMW suffix on the canonical install name).
+- **Bulk-stripped** `link-tcp` / `link-udp-unicast` /
+  `link-udp-multicast` / `link-serial` refs from every
+  example `Cargo.toml` (78+ files) + the affected `Cargo.lock`s.
+
+The local `just ci` run on this host did not reach a clean
+end-state — disk pressure (`/home` 100% repeatedly) forced
+deletion of `examples/**/target` mid-run, then `riscv64-unknown-elf-gcc`
+toolchain quirks on this specific host blocked
+`cargo-nextest run --workspace` from completing the embedded
+matrix. The user moved the remaining run to a different
+machine; the code changes above are independent of that
+runtime issue.
