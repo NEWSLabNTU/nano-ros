@@ -6,6 +6,10 @@ fn main() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // Phase 144.6 — crate relocated to
+    // packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/ ;
+    // 4 levels up to the repo root (matches the prior path depth under
+    // examples/qemu-arm-nuttx/cmake/).
     let nros_root = manifest_dir.join("../../../..");
 
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {

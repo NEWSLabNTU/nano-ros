@@ -102,13 +102,26 @@ function(nros_nuttx_build_example)
         endif()
     endforeach()
 
-    if(NOT DEFINED NanoRos_DIR)
+    # NanoRos_DIR (set by find_package(NanoRos CONFIG)) points at
+    # `<prefix>/lib/cmake/NanoRos/` — `${NanoRos_DIR}/../../../include`
+    # resolves to `<prefix>/include`. Under the Phase 137
+    # `add_subdirectory(<repo>)` shape there is no NanoRos_DIR; fall
+    # back to `${_NANO_ROS_PREFIX}/packages/core/nros-cpp/include`
+    # (the in-tree source layout). `_NANO_ROS_PREFIX` is set by the
+    # platform module to the repo root.
+    if(DEFINED NanoRos_DIR)
+        get_filename_component(_nros_cpp_include
+            "${NanoRos_DIR}/../../../include" ABSOLUTE)
+    elseif(DEFINED _NANO_ROS_PREFIX)
+        get_filename_component(_nros_cpp_include
+            "${_NANO_ROS_PREFIX}/packages/core/nros-cpp/include" ABSOLUTE)
+    else()
         message(FATAL_ERROR
-            "nros_nuttx_build_example requires find_package(NanoRos CONFIG REQUIRED) "
-            "to be called first.")
+            "nros_nuttx_build_example: neither NanoRos_DIR (legacy "
+            "find_package shape) nor _NANO_ROS_PREFIX (Phase 137 "
+            "add_subdirectory shape) is defined. The platform module "
+            "should set one of them before calling this function.")
     endif()
-    get_filename_component(_nros_cpp_include
-        "${NanoRos_DIR}/../../../include" ABSOLUTE)
 
     # ── include-dir closure via file(GENERATE) ────────────────────────
     # Each LINK_INTERFACES library's INTERFACE_INCLUDE_DIRECTORIES is a
