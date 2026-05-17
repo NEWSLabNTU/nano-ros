@@ -501,7 +501,7 @@ int8_t _z_socket_wait_event(void *peers, void *mutex) {
  * (e.g. `nros-platform-{freertos,nuttx,threadx}` board crates).
  *
  * Mirrors Phase 134's UDP-multicast stub pattern. */
-int8_t _z_open_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+__attribute__((weak)) int8_t _z_open_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
                                 uint32_t baudrate) {
     (void)sock;
     (void)txpin;
@@ -509,13 +509,13 @@ int8_t _z_open_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
     (void)baudrate;
     return -1;
 }
-int8_t _z_open_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+__attribute__((weak)) int8_t _z_open_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
     (void)sock;
     (void)dev;
     (void)baudrate;
     return -1;
 }
-int8_t _z_listen_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+__attribute__((weak)) int8_t _z_listen_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
                                   uint32_t baudrate) {
     (void)sock;
     (void)txpin;
@@ -523,26 +523,40 @@ int8_t _z_listen_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
     (void)baudrate;
     return -1;
 }
-int8_t _z_listen_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+__attribute__((weak)) int8_t _z_listen_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
     (void)sock;
     (void)dev;
     (void)baudrate;
     return -1;
 }
-void _z_close_serial(void *sock) {
+__attribute__((weak)) void _z_close_serial(void *sock) {
     (void)sock;
 }
-size_t _z_send_serial_internal(void *sock, const uint8_t *buf, size_t len) {
-    (void)sock;
-    (void)buf;
-    (void)len;
-    return 0;
-}
-size_t _z_read_serial_internal(void *sock, uint8_t *buf, size_t len) {
+__attribute__((weak)) size_t _z_send_serial_internal(void *sock, const uint8_t *buf, size_t len) {
     (void)sock;
     (void)buf;
     (void)len;
     return 0;
 }
+__attribute__((weak)) size_t _z_read_serial_internal(void *sock, uint8_t *buf, size_t len) {
+    (void)sock;
+    (void)buf;
+    (void)len;
+    return 0;
+}
+
+/* Weak stubs for legacy smoltcp_init / smoltcp_cleanup hooks. zpico.c
+ * still calls these inside `#ifdef ZPICO_SMOLTCP` blocks (added pre-Phase
+ * 80 when the smoltcp glue lived inside zpico-sys's own `platform_smoltcp.rs`).
+ * After Phase 80 carved the smoltcp ↔ zenoh-pico bridge into the standalone
+ * `nros-smoltcp` crate the symbols moved to `nros_smoltcp_init` and the
+ * board's `define_network_state!` macro handles init/teardown directly,
+ * so these zpico.c calls are no-ops. Weak stubs let bare-metal builds
+ * link; a board crate may override by defining its own non-weak
+ * `smoltcp_init` / `smoltcp_cleanup` if needed. */
+__attribute__((weak)) int32_t smoltcp_init(void) {
+    return 0;
+}
+__attribute__((weak)) void smoltcp_cleanup(void) {}
 
 #endif /* NROS_PLATFORM_ALIASES */

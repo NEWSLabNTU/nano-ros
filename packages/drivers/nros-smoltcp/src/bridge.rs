@@ -540,8 +540,14 @@ pub fn poll_count() -> u32 {
 // ============================================================================
 
 unsafe extern "C" {
-    /// Millisecond clock — provided by the board crate's platform implementation.
-    fn smoltcp_clock_now_ms() -> u64;
+    /// Millisecond clock — supplied by the canonical platform C ABI
+    /// (`nros_platform_*`). The cffi rlib chain — anchored from
+    /// `nros::__FORCE_LINK_PLATFORM_CFFI` — keeps the symbol resolved
+    /// regardless of which RMW backend the binary picks (no longer
+    /// routed through `smoltcp_clock_now_ms`, which `zpico-sys`'s
+    /// `platform_aliases.c` still provides for the C-side `zpico.c`
+    /// callers but DDS-only builds drop along with zpico-sys).
+    fn nros_platform_time_now_ms() -> u64;
 }
 
 // ============================================================================
@@ -642,7 +648,7 @@ impl SmoltcpBridge {
         BRIDGE_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
 
         let timestamp =
-            smoltcp::time::Instant::from_millis(unsafe { smoltcp_clock_now_ms() } as i64);
+            smoltcp::time::Instant::from_millis(unsafe { nros_platform_time_now_ms() } as i64);
 
         // Phase 71.26 — drain any multicast joins queued by
         // `mcast_listen` since the previous poll, so the IP layer
@@ -1091,7 +1097,7 @@ impl SmoltcpBridge {
 
     /// Get current clock in milliseconds (delegates to platform).
     pub fn clock_now_ms() -> u64 {
-        unsafe { smoltcp_clock_now_ms() }
+        unsafe { nros_platform_time_now_ms() }
     }
 
     /// Trigger a poll via the registered callback.

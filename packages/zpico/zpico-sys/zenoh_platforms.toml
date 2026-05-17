@@ -178,7 +178,18 @@ path = "{env:NETX_DIR}/ports/linux/gnu/inc"
 when = { target_not = "embedded" }
 
 [platform.bare-metal]
-defines = ["ZENOH_GENERIC"]
+# `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`
+# (clock via `smoltcp_clock_now_ms`, RX via `zp_read` single-read drain,
+# init via `smoltcp_init`). Without it `zpico_spin_once` falls into the
+# generic single-threaded `#else` that calls POSIX `select()` +
+# `clock_gettime`, both unresolved at bare-metal link time. Phase 136.4
+# (build_c_shim → build_zenoh_pico_unified manifest migration) dropped
+# this define from the bare-metal path; the manifest had no opinion so
+# `ZPICO_SMOLTCP` was simply not emitted. The legacy `ZPICO_NO_SMOLTCP`
+# env-based opt-out (Phase 132) for hypothetical serial-only firmware
+# is not wired through the manifest yet — restore here if such a board
+# materialises.
+defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
 include = ["system/common"]
 extra_sources = [

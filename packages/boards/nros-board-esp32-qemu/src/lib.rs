@@ -17,20 +17,9 @@
 //! (Ethernet) or zenoh-pico's built-in serial for the link layer.
 
 #![no_std]
-// Phase 97.1.board-decouple — only force-link when `rmw-zenoh` active.
-#[cfg(feature = "rmw-zenoh")]
-
-// Phase 97.3.esp32-qemu — `nros-smoltcp::bridge` references
-// `smoltcp_clock_now_ms` as an `extern "C"` symbol. zpico-platform-shim
-// supplies it for zenoh-pico builds; DDS-only builds drop that shim
-// crate, so provide the same forwarder directly here. Cfg-gated to
-// avoid a duplicate-symbol clash when both transports are active.
-#[cfg(all(feature = "ethernet", not(any(feature = "rmw-zenoh", feature = "serial"))))]
-#[unsafe(no_mangle)]
-pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
-    use nros_platform_api::PlatformClock;
-    <nros_platform_esp32_qemu::Esp32QemuPlatform as PlatformClock>::clock_ms()
-}
+// `smoltcp_clock_now_ms` (referenced by `nros-smoltcp::bridge`) is
+// provided by `zpico-sys`'s `platform_aliases.c`, which forwards to
+// `nros_platform_time_now_ms`. Phase 129 retired the per-board override.
 
 extern crate alloc;
 
