@@ -533,3 +533,11 @@ fail-fast = true
 # When a new heavy test binary lands, assign it to one of these
 # groups via a `[[profile.default.overrides]]` entry — `just test`
 # will automatically pick up the exclusion.
+
+# Phase 150.T — three smoke tests build a tmpdir cmake project that
+# triggers full cold-cache cmake + cargo compilation (zenoh-pico +
+# zpico-sys + nros-cpp). Default 60s terminate-after is too tight;
+# bump to 600s so cold-cache builds finish without spurious TIMEOUT.
+[[profile.default.overrides]]
+filter = "binary(cmake_add_subdirectory) or binary(cmake_platform_matrix) or test(cpp_parameters_roundtrip)"
+slow-timeout = { period = "60s", terminate-after = 10 }
