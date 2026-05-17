@@ -55,6 +55,16 @@ cortex-r = [
 # to `CffiPlatform` per the uniform routing (Phase 121.7.b).
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
 
+# Phase 152.3 — implements `nros_board_common::BoardInit` so the
+# crate fits the canonical overlay pattern documented in
+# `book/src/porting/vendor-overlay.md`. Doesn't pull the generic
+# `nros-board-freertos` crate because the FSP-FreeRTOS variant
+# ships a prebuilt `libtegra_aon_fsp.a` (no kernel rebuild) and
+# replaces lwIP with IVC — the generic crate's lwIP-driven shape
+# doesn't apply. orin-spe is a FreeRTOS-fork overlay that talks
+# the same `BoardInit` contract.
+nros-board-common = { path = "../nros-board-common", default-features = false }
+
 # IVC driver crate (re-exported here so the firmware can call into it
 # directly without going through the trait dispatch — useful for
 # board-side bring-up tests).

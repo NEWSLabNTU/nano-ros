@@ -1,44 +1,42 @@
 //! # nros-board-common
 //!
-//! **Shared build-script helpers for nano-ros board crates.**
+//! **Shared helpers for nano-ros board crates.**
 //!
-//! Houses the manifest parser + link-feature policy lifted out of
-//! `packages/zpico/zpico-sys/build/` in Phase 152.5 so the
-//! per-kernel generic crates (`nros-board-{freertos, threadx,
-//! nuttx}`) and `zpico-sys` can share one canonical implementation.
+//! Two distinct surfaces under one crate name:
+//!
+//! - [`BoardInit`] trait — kernel-agnostic per-board init contract
+//!   (Phase 152.4.B). `no_std`, zero deps. Always available; safe
+//!   to pull from a bare-metal firmware crate under
+//!   `default-features = false`.
+//! - `build-helpers` (default-on feature) — manifest parser +
+//!   link-feature policy + ThreadX source helpers. Used from
+//!   `build.rs` files; pulls `serde` + `toml` + `cc` transitively.
+//!   Disable when only the trait is needed.
 //!
 //! ## Use
 //!
-//! In your `build.rs`:
+//! Trait-only consumer (overlay's runtime `lib.rs`):
 //!
-//! ```ignore
-//! use nros_board_common::{manifest, policy};
-//!
-//! fn main() {
-//!     let m = manifest::PlatformManifest::load("platforms.toml".as_ref())
-//!         .expect("parse platforms.toml");
-//!     let resolved = m.for_platform("posix").unwrap();
-//!     let link = policy::LinkFeatures::from_env()
-//!         .apply(&policy::LinkPolicy::posix());
-//!     // ... drive cc::Build off `resolved` + `link` ...
-//! }
+//! ```toml
+//! [dependencies]
+//! nros-board-common = { path = "...", default-features = false }
 //! ```
 //!
-//! ## Modules
+//! Build-helper consumer (`build.rs`):
 //!
-//! - [`manifest`] — TOML schema + parser + interpolator + matcher
-//!   for the per-platform build-data files (Phase 136's
-//!   `zenoh_platforms.toml`; future per-kernel
-//!   `<kernel>_platforms.toml`).
-//! - [`policy`] — `LinkFeatures` env reader + `LinkPolicy` mask
-//!   (Phase 134's per-platform link-feature gating).
-//!
-//! This crate is **build-host only** — never reaches a final
-//! binary. Consumers declare it under `[build-dependencies]`.
+//! ```toml
+//! [build-dependencies]
+//! nros-board-common = { path = "..." }  # default features include build-helpers
+//! ```
+
+#![cfg_attr(not(feature = "build-helpers"), no_std)]
 
 pub mod board_init;
-pub mod manifest;
-pub mod policy;
-pub mod threadx_sources;
-
 pub use board_init::BoardInit;
+
+#[cfg(feature = "build-helpers")]
+pub mod manifest;
+#[cfg(feature = "build-helpers")]
+pub mod policy;
+#[cfg(feature = "build-helpers")]
+pub mod threadx_sources;
