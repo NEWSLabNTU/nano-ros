@@ -372,17 +372,37 @@ The two existing ThreadX board crates differ structurally:
 The generic crate must handle both. Subitems mirror 152.1.B but
 with two reference overlays instead of one:
 
-- [ ] **152.2.B.1 — Split per-board C startup.**
-      Promote `startup.c` from each per-board crate into:
-      - `startup/threadx_hooks.c` (generic): ThreadX kernel
-        assertion handler, `tx_application_define` stub that
-        calls `nros_board_init_eth()` weak hook.
-      - `startup/board_threadx_linux.c` (overlay): nsos-netx
-        wire-up + Linux signal-handler glue.
-      - `startup/board_threadx_qemu_riscv64.c` (overlay):
-        RISC-V vector table + Reset + NetX-Duo virtio-net driver
-        init.
-      Mirror 152.1.B.2's weak-hook contract.
+- [x] **152.2.B.1 — Split per-board C startup.** (landed 2026-05-18)
+      Generic `tx_application_define` stub + byte-pool / app-thread
+      plumbing lifted into `packages/boards/nros-board-common/c/threadx_hooks.c`
+      (materialised into each overlay's `OUT_DIR` by the new
+      `add_threadx_hooks_source(&mut cc::Build)` helper in
+      `nros_board_common::threadx_sources`). Overlays now ship only
+      the board-specific glue:
+      - `nros-board-threadx-linux/c/board_threadx_linux.c` (renamed
+        from `c/app_define.c`, 70 LOC): NSOS-flavour
+        `nros_threadx_set_config` (5-arg) + `nros_board_log` →
+        `printf` + `nros_board_init_eth` no-op + IP/MAC RNG seed.
+      - `nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64.c`
+        (renamed from `c/app_define.c`, 230 LOC): RISC-V-flavour
+        `nros_threadx_set_config` (4-arg) + `nros_board_log` →
+        `uart_puts` + `nros_board_init_eth` running the full
+        NetX-Duo + virtio-net + BSD socket bring-up + strong
+        overrides of `nros_board_app_stack_size` (512 KB) and
+        `nros_board_app_priority` (15) + bare-metal `errno`
+        global.
+      Weak-hook contract mirrors 152.1.B.2's FreeRTOS shape:
+      `nros_board_log`, `nros_board_init_eth`,
+      `nros_board_compute_rng_seed` + weak-`const`
+      `nros_board_app_stack_size` / `nros_board_app_priority`.
+      Verified: `cargo check` clean both overlays + `just
+      threadx_linux build` + `just threadx_linux test` clean +
+      `[app_define] Creating byte pool... → [app_thread] Calling
+      Rust entry...` log trace shows the shared hooks firing in
+      order. Pre-existing `Transport(ConnectionFailed)` failure
+      on `test_rtos_pubsub_e2e::*::ThreadxLinux::*` reproduces on
+      `73d2316a` without this patch — same infrastructure issue
+      noted for FreeRTOS in 152.1.B.5.
 
 - [ ] **152.2.B.2 — `THREADX_CFLAGS` arch parameterisation.**
       Same shape as 152.1.B.3. Linux overlay sets
