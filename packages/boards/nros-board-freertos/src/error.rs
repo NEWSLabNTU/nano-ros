@@ -5,7 +5,7 @@ use core::fmt;
 /// Error type for platform initialization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)] // TaskCreate used once FreeRTOS examples exercise error paths
-pub(crate) enum Error {
+pub enum Error {
     /// lwIP / LAN9118 network initialization failed
     NetworkInit,
     /// FreeRTOS task creation failed
@@ -22,4 +22,4 @@ impl fmt::Display for Error {
 }
 
 /// Result type for platform operations.
-pub(crate) type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
