@@ -36,6 +36,9 @@
 //! This crate is **build-host only** — never reaches a final
 //! binary. Consumers declare it under `[build-dependencies]`.
 
+pub mod board_init;
 pub mod manifest;
 pub mod policy;
 pub mod threadx_sources;
+
+pub use board_init::BoardInit;

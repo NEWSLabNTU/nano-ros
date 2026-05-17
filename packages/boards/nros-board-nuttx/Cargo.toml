@@ -19,6 +19,9 @@ name = "nros_board_nuttx"
 # Cargo side ships `Config` + `run` shape only; no `build.rs`
 # bundles the kernel here.
 [dependencies]
+# 149.4.B — `BoardInit` trait used by the `run<B: BoardInit>`
+# generic entry point.
+nros-board-common = { path = "../nros-board-common" }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
 
 [features]

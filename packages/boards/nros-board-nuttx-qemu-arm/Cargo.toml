@@ -12,6 +12,10 @@ name = "nros_board_nuttx_qemu_arm"
 # No platform crate needed — NuttX is POSIX-compatible, zenoh-pico reuses unix/ platform.
 # No smoltcp/lwIP needed — NuttX has built-in BSD sockets.
 # No custom Ethernet driver — NuttX has virtio-net built into the kernel.
+# Phase 149.4.B — implements `nros_board_common::BoardInit` so the
+# `nros_board_nuttx` generic crate can drive boot via the
+# `run_generic<B: BoardInit>` shim.
+nros-board-common = { path = "../nros-board-common" }
 
 [build-dependencies]
 cc = "1"

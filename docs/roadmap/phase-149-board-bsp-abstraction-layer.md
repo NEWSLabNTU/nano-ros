@@ -422,8 +422,7 @@ with two reference overlays instead of one:
       of `build.rs`, matching the
       `book/src/porting/vendor-overlay.md` cookbook's promise.
 
-- [~] **149.4 — Migrate NuttX board crate.** (149.4.A landed 2026-05-18;
-      149.4.B deferred)
+- [x] **149.4 — Migrate NuttX board crate.** (149.4.A + 149.4.B landed 2026-05-18)
       - **149.4.A — Scaffolding** (landed): thin
         `packages/boards/nros-board-nuttx/` crate (NuttX owns the
         kernel build via `apps/external/nano-ros/` + the Phase
@@ -434,10 +433,21 @@ with two reference overlays instead of one:
         requires NuttX target (same constraint as the underlying
         crate; not a regression).
       - **149.4.B — `BoardInit` trait + per-board overlay refactor**
-        (deferred; broken down below). NuttX kernel build stays
-        with NuttX — Cargo only ships the staticlib. So 149.4.B
-        is a Rust-only refactor + doesn't need TOML manifest /
-        cflags parameterisation like 149.1.B and 149.2.B do.
+        (landed 2026-05-18). Kernel-agnostic `BoardInit` trait
+        landed in `nros-board-common::board_init`; generic
+        `nros-board-nuttx::run_generic<B: BoardInit>` consumes it.
+        `nros-board-nuttx-qemu-arm` exposes `pub struct QemuArmVirt`
+        with the trait impl (delegates to the existing
+        `node::init_hardware`). Public API of the overlay crate
+        preserved — `Config` + `init_hardware` + `run` still exported.
+        All 6 NuttX zenoh examples build clean for
+        `armv7a-nuttx-eabihf` target. Future NuttX overlays
+        (`nros-board-px4-fmu-v5-nuttx` etc.) provide their own
+        `BoardInit` impl + use the same `run_generic` shim. The
+        trait sits in `nros-board-common` so future FreeRTOS +
+        ThreadX generic crates can reuse the contract when they
+        adopt the same pattern (unlocks the deferred 149.1.B.5
+        `node.rs` lift + the full 149.2.B carve-out).
 
 #### 149.4.B subitems
 
