@@ -55,6 +55,13 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 
 ### Examples = Standalone Projects
 **Each `examples/` dir is self-contained, copy-out template.**
+- Canonical shape `examples/<plat>/<lang>/<rmw>/<example>/`. Sibling categories: `examples/bridges/<name>/` (cross-RMW gateways), `examples/templates/<name>/` (multi-platform copy-out recipes — Pattern A workspaces etc.).
+- **Non-example binaries live elsewhere.** Tests/benches/smokes are NOT in `examples/`:
+  - `packages/testing/nros-bench/<name>/` — perf, fairness, stress, large-msg
+  - `packages/testing/nros-smoke/<name>/` — driver/board bringup (no nros API)
+  - `packages/testing/nros-tests/bins/<name>/` — fixture binaries built by integration tests
+  Each is a standalone Cargo package with empty `[workspace]` table (they nest under the `nros-tests` member dir).
+- Variant naming: suffix form (`talker-rtic`, `service-client-async`, `talker-rtic-mixed`) so variants sort with peers.
 - No shared example-only helpers in `nros-cpp`/`nros-c` — boilerplate IS lesson.
 - `*_DIR` env / `-D` injection = SDK-path contract. Example cmake accepts env or `-D` only — never project-tree heuristics.
 - Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` build in isolation. No workspace reliance, no walk-up.
