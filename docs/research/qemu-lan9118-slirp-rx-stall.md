@@ -181,3 +181,54 @@ Empirically running `test_qemu_rtic_service_e2e` against the patched
 
 So the QEMU patch is necessary infrastructure but not sufficient
 on its own to close 127.D.1/D.2. Pubsub continues to pass.
+
+## 2026-05-17 reply-dispatch counter trace
+
+After landing the QEMU patch the failing path narrows precisely.
+Counters added inside `packages/zpico/zpico-sys/c/zpico/zpico.c`:
+
+| Counter | Meaning | Service-test observation |
+|---|---|---|
+| `gst` (`zpico_get_start` calls) | requests fired by client | **1** — the single `client.call` did issue the query |
+| `gck` (`zpico_get_check` calls) | poll attempts on the slot | **2000** then frozen (`pending_handle = None`) |
+| `pend` (gck → pending branch) | calls that returned 0 | **2000** — every check saw `received=false` |
+| `rh` (`pending_get_reply_handler`) | reply callback invocations | **1** — zenoh-pico DID dispatch the matched reply |
+| `set` (`received = true` write) | actual flag store inside the handler | **1** — write happened |
+| `rd` (`pending_get_dropper`) | dropper fired | **1** — closure finalised |
+| `niu` (slot in-use false at check) | spurious slot release | **0** |
+| `inv` / `big` / `to` (other Err branches) | | **0** each |
+
+Result: the handler sets `received = true` exactly once, the dropper
+fires, but every subsequent `zpico_get_check` reads `received = false`
+and falls through to the `pending` branch — until `try_recv` finally
+gives up because the Rust shim sets `pending_handle = None` after
+some intermediate `Err` (`gck` freezing at 2000 confirms it).
+
+Hypotheses tried and ruled out:
+
+- `volatile bool received / done` — no change.
+- `_Atomic bool` — no change.
+- `__atomic_load_n` / `__atomic_store_n` with `__ATOMIC_SEQ_CST` —
+  no change.
+
+These should all defeat any compiler caching. That they don't change
+the observation strongly suggests **the handler is writing to a
+different memory than `g_pending_gets[handle].ctx`** even though the
+slot index matches. Most likely candidates:
+
+1. `g_pending_gets[]` linked twice (LTO duplicates an internal
+   linkage static across staticlibs), so the handler's `ctx` pointer
+   resolves into one copy and `zpico_get_check`'s
+   `&g_pending_gets[handle]` resolves into another.
+2. `z_get`'s closure plumbing somewhere stores the ctx by value or
+   relocates the struct, so the closure callback's `ctx` ends up
+   pointing into a copy of the original `get_reply_ctx_t` (e.g. a
+   field of an internal `_z_pending_query_t`) and the original
+   `g_pending_gets[handle].ctx` never sees the write.
+
+Next step (out of session scope): add an explicit `(void *)`
+address print in `zpico_get_start` (right after the closure capture)
+and in `zpico_get_check` (right before the load) so the two pointers
+can be compared at runtime. Whichever hypothesis matches dictates
+the fix — link-script audit for (1), zenoh-pico closure-storage fix
+for (2). Both are reasonable Phase 128 candidates.

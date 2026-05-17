@@ -203,8 +203,16 @@ static atomic_uint g_session_zid_counter;
 typedef struct {
     uint8_t buf[ZPICO_GET_REPLY_BUF_SIZE];
     size_t len;
-    bool received;
-    bool done;
+    /* Phase 127.D — atomic+volatile so fat-LTO doesn't hoist the
+     * read in `zpico_get_check` over the write inside
+     * `get_reply_handler` (callback fired by zenoh-pico's RX path
+     * during `zp_read`, which sits between two polls of the same
+     * struct field). Plain volatile alone was not enough under
+     * `lto = "fat"` + `opt-level = "s"` on cortex-m3. Use the GCC
+     * `__atomic_*` builtins so the access is a real load/store
+     * even after whole-program inlining. */
+    _Atomic bool received;
+    _Atomic bool done;
     /* Phase 108.C.zenoh.4-followup — counts every reply that arrives.
      * Single-response queries (`zpico_get*`) use `received` for "first
      * reply only" semantics; multi-response queries (liveliness) read
@@ -227,6 +235,24 @@ typedef struct {
 } pending_get_slot_t;
 
 static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
+
+// Phase 127.D — diagnostic counters for reply-dispatch debugging.
+// Read via `zpico_get_diag_counters` from Rust.
+static volatile uint32_t g_diag_reply_handler_calls = 0;
+static volatile uint32_t g_diag_reply_dropper_calls = 0;
+static volatile uint32_t g_diag_get_start_calls = 0;
+static volatile uint32_t g_diag_get_check_calls = 0;
+static volatile uint32_t g_diag_get_check_returns_data = 0;
+static volatile uint32_t g_diag_reply_not_ok = 0;
+static volatile uint32_t g_diag_reply_to_slice_fail = 0;
+static volatile uint32_t g_diag_reply_too_big = 0;
+static volatile uint32_t g_diag_reply_already_received = 0;
+static volatile uint32_t g_diag_reply_received_set = 0;
+static volatile uint32_t g_diag_gck_invalid_arg = 0;
+static volatile uint32_t g_diag_gck_not_in_use = 0;
+static volatile uint32_t g_diag_gck_too_big = 0;
+static volatile uint32_t g_diag_gck_timeout = 0;
+static volatile uint32_t g_diag_gck_pending = 0;
 
 // Reply waker callback — invoked when a pending get slot receives a reply
 // or times out, allowing Rust async code to wake the corresponding Future.
@@ -1885,6 +1911,7 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
 
     // Only process successful replies
     if (!z_reply_is_ok(reply)) {
+        g_diag_reply_not_ok++;
         return;
     }
 
@@ -1895,6 +1922,7 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
 
     // Skip if we already have a reply (only take first)
     if (rctx->received) {
+        g_diag_reply_already_received++;
         return;
     }
 
@@ -1910,9 +1938,14 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
         if (len <= ZPICO_GET_REPLY_BUF_SIZE) {
             memcpy(rctx->buf, data, len);
             rctx->len = len;
-            rctx->received = true;
+            __atomic_store_n(&rctx->received, true, __ATOMIC_SEQ_CST);
+            g_diag_reply_received_set++;
+        } else {
+            g_diag_reply_too_big++;
         }
         z_slice_drop(z_slice_move(&slice));
+    } else {
+        g_diag_reply_to_slice_fail++;
     }
 }
 
@@ -2059,6 +2092,7 @@ int32_t zpico_get(const char *keyexpr,
 
 // Reply handler for pending get slots — reuses the same logic as get_reply_handler
 static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
+    g_diag_reply_handler_calls++;
     get_reply_handler(reply, ctx);
     _zpico_notify_spin();
     if (g_reply_waker) {
@@ -2070,8 +2104,9 @@ static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
 static void pending_get_dropper(void *ctx) {
+    g_diag_reply_dropper_calls++;
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
-    rctx->done = true;
+    __atomic_store_n(&rctx->done, true, __ATOMIC_SEQ_CST);
     _zpico_notify_spin();
     if (g_reply_waker) {
         int32_t slot = (int32_t)((pending_get_slot_t *)ctx - g_pending_gets);
@@ -2079,9 +2114,28 @@ static void pending_get_dropper(void *ctx) {
     }
 }
 
+void zpico_get_diag_counters(uint32_t out[15]) {
+    out[0] = g_diag_get_start_calls;
+    out[1] = g_diag_get_check_calls;
+    out[2] = g_diag_get_check_returns_data;
+    out[3] = g_diag_reply_handler_calls;
+    out[4] = g_diag_reply_dropper_calls;
+    out[5] = g_diag_reply_not_ok;
+    out[6] = g_diag_reply_already_received;
+    out[7] = g_diag_reply_received_set;
+    out[8] = g_diag_reply_too_big;
+    out[9] = g_diag_reply_to_slice_fail;
+    out[10] = g_diag_gck_invalid_arg;
+    out[11] = g_diag_gck_not_in_use;
+    out[12] = g_diag_gck_too_big;
+    out[13] = g_diag_gck_timeout;
+    out[14] = g_diag_gck_pending;
+}
+
 int32_t zpico_get_start(const char *keyexpr,
                               const uint8_t *payload, size_t payload_len,
                               uint32_t timeout_ms) {
+    g_diag_get_start_calls++;
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -2275,20 +2329,27 @@ int32_t zpico_liveliness_get_check(int32_t handle) {
 
 int32_t zpico_get_check(int32_t handle,
                               uint8_t *reply_buf, size_t reply_buf_size) {
+    g_diag_get_check_calls++;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        g_diag_gck_invalid_arg++;
         return ZPICO_ERR_INVALID;
     }
 
     pending_get_slot_t *ps = &g_pending_gets[handle];
     if (!ps->in_use) {
+        g_diag_gck_not_in_use++;
         return ZPICO_ERR_INVALID;
     }
 
-    if (ps->ctx.received) {
+    bool received_snap = __atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST);
+    bool done_snap = __atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST);
+    if (received_snap) {
+        g_diag_get_check_returns_data++;
         // Reply arrived — copy data
         if (ps->ctx.len > reply_buf_size) {
+            g_diag_gck_too_big++;
             // Only release slot if dropper has also fired
-            if (ps->ctx.done) {
+            if (done_snap) {
                 ps->in_use = false;
             }
             return ZPICO_ERR_FULL;
@@ -2298,18 +2359,20 @@ int32_t zpico_get_check(int32_t handle,
         // Only release slot if dropper has also fired; otherwise the old
         // z_get's dropper callback still references this slot and would
         // corrupt it if the slot were reused before the dropper fires.
-        if (ps->ctx.done) {
+        if (done_snap) {
             ps->in_use = false;
         }
         return len;
     }
 
-    if (ps->ctx.done) {
+    if (done_snap) {
+        g_diag_gck_timeout++;
         // Dropper fired without a reply — timeout
         ps->in_use = false;
         return -9;  // ZPICO_ERR_TIMEOUT
     }
 
+    g_diag_gck_pending++;
     // Not yet — still pending
     return 0;
 }

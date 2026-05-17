@@ -734,6 +734,7 @@ dependencies = [
  "panic-semihosting",
  "rtic",
  "rtic-monotonics",
+ "zpico-sys",
 ]
 
 [[package]]

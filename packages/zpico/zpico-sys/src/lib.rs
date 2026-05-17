@@ -289,6 +289,11 @@ unsafe extern "C" {
     // Reply waker callback (for async service client)
     pub fn zpico_set_reply_waker(func: Option<unsafe extern "C" fn(i32)>);
 
+    // Phase 127.D — get/get_check/reply-handler/dropper diagnostic counters.
+    // out fills with [get_start, get_check, get_check_returns_data,
+    // reply_handler_calls, reply_dropper_calls].
+    pub fn zpico_get_diag_counters(out: *mut u32);
+
     // Polling
     pub fn zpico_spin_once(timeout_ms: u32) -> i32;
     pub fn zpico_uses_polling() -> bool;
