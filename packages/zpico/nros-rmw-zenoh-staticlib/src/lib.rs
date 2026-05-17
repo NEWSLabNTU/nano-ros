@@ -124,8 +124,7 @@ mod auto_register_ctor {
         any(target_os = "macos", target_os = "ios"),
         unsafe(link_section = "__DATA,__mod_init_func")
     )]
-    static AUTO_REGISTER_CTOR: unsafe extern "C" fn() =
-        nros_rmw_zenoh_auto_register;
+    static AUTO_REGISTER_CTOR: unsafe extern "C" fn() = nros_rmw_zenoh_auto_register;
 
     // Touch `c_void` to silence the unused-import warning when the
     // module is compiled for a target where neither `link_section`

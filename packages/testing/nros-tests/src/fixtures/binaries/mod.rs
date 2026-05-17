@@ -1262,12 +1262,12 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
         "-DNANO_ROS_RMW=zenoh",
         ".."
     )
-        .dir(&build_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+    .dir(&build_dir)
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
     if !output.status.success() {
         return Err(TestError::BuildFailed(format!(
@@ -1433,12 +1433,12 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
         "-DNANO_ROS_RMW=xrce",
         ".."
     )
-        .dir(&build_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+    .dir(&build_dir)
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
     if !output.status.success() {
         return Err(TestError::BuildFailed(format!(
@@ -1793,12 +1793,12 @@ pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<Pat
         "-DNANO_ROS_RMW=zenoh",
         ".."
     )
-        .dir(&build_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+    .dir(&build_dir)
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
     if !output.status.success() {
         return Err(TestError::BuildFailed(format!(
