@@ -1,4 +1,4 @@
-# Phase 129 — Platform-Native Wake Primitive
+# Phase 130 — Platform-Native Wake Primitive
 
 **Goal.** Replace `std::sync::Condvar` in `Executor` with a
 platform-supplied wake primitive routed through the canonical
@@ -87,7 +87,7 @@ and wakes on either:
 
 ## Work Items
 
-### 129.1 — `nros_platform_wake_*` ABI
+### 130.1 — `nros_platform_wake_*` ABI
 
 **Files**
 - `packages/core/nros-platform-cffi/include/nros/platform.h`
@@ -109,7 +109,7 @@ size_t  nros_platform_wake_storage_align(void);
 Storage sizing follows the Phase 118.B probe pattern so the Rust
 wrapper can sit on `MaybeUninit<[u64; N]>`.
 
-### 129.1.zephyr — Zephyr `k_sem` impl
+### 130.1.zephyr — Zephyr `k_sem` impl
 
 **Files**
 - `packages/core/nros-platform-zephyr/src/platform.c`
@@ -120,7 +120,7 @@ the deadline; `k_sem_give` is documented ISR-safe. No libc
 pthread dependency. Lives alongside the existing pthread-backed
 `nros_platform_condvar_*` (kept for zenoh-pico's Zephyr ABI).
 
-### 129.2 — Rust `PlatformWake` wrapper
+### 130.2 — Rust `PlatformWake` wrapper
 
 **Files**
 - `packages/core/nros-platform/src/wake.rs` (new)
@@ -149,7 +149,7 @@ impl Drop for PlatformWake { ... }                         // calls _drop
 emits a one-word placeholder; the resulting rlib must not be
 linked.
 
-### 129.3 — Executor swap
+### 130.3 — Executor swap
 
 **Files**
 - `packages/core/nros-node/src/executor/spin.rs`
@@ -174,7 +174,7 @@ Gate is `feature = "rmw-cffi"` only — no platform-specific cfg.
 `primary_drive_timeout_ms = 0` for any `rmw-cffi` build (wait
 above already burned the timeout).
 
-### 129.4 — Revert Phase 127.C.4 expedient gate
+### 130.4 — Revert Phase 127.C.4 expedient gate
 
 **Files**
 - `packages/core/nros-node/src/executor/spin.rs`
@@ -187,7 +187,7 @@ Verify `nros_cpp_spin_once` still compiles after the revert —
 it already routes through `executor.spin_once` and needs no further
 change.
 
-### 129.5 — Other-platform `nros_platform_wake_*` impls
+### 130.5 — Other-platform `nros_platform_wake_*` impls
 
 **Files**
 - `packages/core/nros-platform-posix/src/platform.c`
@@ -212,26 +212,26 @@ Document each impl's ISR-safety in
 
 ## Acceptance
 
-- [x] 129.1: `nros_platform_wake_*` declared in `platform.h` +
+- [x] 130.1: `nros_platform_wake_*` declared in `platform.h` +
   Rust FFI bindings + Zephyr `k_sem` + POSIX `sem_t` impls.
   POSIX integration tests (7) pass.
-- [x] 129.2: `PlatformWake` trait + `Wake<P>` RAII wrapper in
+- [x] 130.2: `PlatformWake` trait + `Wake<P>` RAII wrapper in
   `nros-platform-api`, default-unsupported bodies so existing
   Platform impls don't need updates. 8 wrapper tests pass.
-- [x] 129.3: `cargo test -p nros-node --lib (--features rmw-cffi)`
+- [x] 130.3: `cargo test -p nros-node --lib (--features rmw-cffi)`
   131/131 + 63/63 passes — no behavior change on POSIX hosts.
   Zephyr+std now routes spin_once through `NodeWake` (k_sem)
   instead of the broken `Condvar::wait_timeout_while`. Falls back
   to `drive_io(timeout_ms)` when the platform provider hasn't
   linked a wake primitive.
-- [x] 129.4 service: `test_zephyr_xrce_cpp_service_e2e` PASSES
+- [x] 130.4 service: `test_zephyr_xrce_cpp_service_e2e` PASSES
   with the wake gate routing through `drive_io(timeout_ms)`
   when no backend installed `set_wake_callback`. Server's
   reliable XRCE reply stream now gets retransmitted because
   `spin_once` actually runs the session for its full timeout
   instead of sleeping in a never-signaled wake-primitive wait.
   Phase 127.C.4 service case closeable.
-- [x] 129.4 action: `test_zephyr_xrce_cpp_action_e2e` PASSES.
+- [x] 130.4 action: `test_zephyr_xrce_cpp_action_e2e` PASSES.
   Three contributing causes addressed:
 
   1. **Non-blocking CFFI send/recv split.** Added vtable slots
@@ -252,7 +252,7 @@ Document each impl's ISR-safety in
      reply never reached the client. History=16 covers a typical
      action lifecycle with room to spare; costs an extra 48 KiB
      of per-session output buffer.
-  3. **129.4 has_async_wake gate already in place.** Without it
+  3. **130.4 has_async_wake gate already in place.** Without it
      the spin loop would have slept in a never-signaled
      wake-primitive wait, masking the stream-history symptom
      for even longer.
@@ -260,7 +260,7 @@ Document each impl's ISR-safety in
   All 13 Zephyr XRCE E2E tests pass
   (`cargo nextest run -p nros-tests -E 'test(test_zephyr_xrce_)'`).
   Phase 127.C.4 is now closeable in full.
-- [x] 129.4 `set_wake_callback` probe: `Session` gains
+- [x] 130.4 `set_wake_callback` probe: `Session` gains
   `supports_wake_callback() -> bool` (default `false`); CFFI
   returns whether the vtable slot is non-NULL.
   `Executor::install_wake_signal_on_*` collects the probe into
@@ -269,7 +269,7 @@ Document each impl's ISR-safety in
   honours the callback — poll-only backends route to
   `drive_io(timeout_ms)` so the transport's blocking `recv`
   keeps reliable streams ticking.
-- [x] 129.5: `nros_platform_wake_*` impls landed for FreeRTOS
+- [x] 130.5: `nros_platform_wake_*` impls landed for FreeRTOS
   (`xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`), ESP-IDF
   (FreeRTOS-derived; same surface + per-SoC `portYIELD_FROM_ISR`),
   ThreadX (`tx_semaphore_ceiling_put`), and NuttX (POSIX `sem_t`

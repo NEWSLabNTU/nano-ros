@@ -110,7 +110,7 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     pub fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
-    // -- Wake primitive (Phase 129) --
+    // -- Wake primitive (Phase 130) --
     // Binary-semaphore-shaped primitive for the executor's wake_flag /
     // spin_once cv-wait pair. See `<nros/platform.h>` for per-platform
     // contract and ISR-safety rules.

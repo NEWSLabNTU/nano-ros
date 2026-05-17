@@ -1,4 +1,4 @@
-//! Phase 129.2 — exercise the `Wake<CffiPlatform>` ergonomic wrapper
+//! Phase 130.2 — exercise the `Wake<CffiPlatform>` ergonomic wrapper
 //! against the POSIX C port. Verifies the trait-based RAII path
 //! that the executor will use, not just the bare FFI.
 //!

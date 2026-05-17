@@ -289,7 +289,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         create_service_client: create_service_client_trampoline::<R>,
         destroy_service_client: destroy_service_client_trampoline::<R>,
         call_raw: call_raw_trampoline::<R>,
-        // Phase 129.4 — Rust-side ServiceClient already implements
+        // Phase 130.4 — Rust-side ServiceClient already implements
         // send_request_raw / try_recv_reply_raw natively (default
         // body in the trait stores pending + maps NoData to Ok(None));
         // CFFI users get the legacy blocking call_raw fallback

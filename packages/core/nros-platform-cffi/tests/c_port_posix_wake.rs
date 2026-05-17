@@ -1,4 +1,4 @@
-//! Phase 129 — exercise the POSIX C-port `nros_platform_wake_*`
+//! Phase 130 — exercise the POSIX C-port `nros_platform_wake_*`
 //! binary-semaphore primitive. Verifies init/drop, wait_ms timeout
 //! semantics, signal coalescing, and cross-thread signal delivery.
 //!

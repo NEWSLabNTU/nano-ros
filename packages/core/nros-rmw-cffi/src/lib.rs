@@ -475,7 +475,7 @@ pub struct NrosRmwVtable {
         reply_buf_len: usize,
     ) -> i32,
 
-    // ---- Phase 129.4 — non-blocking send/recv split (optional) ----
+    // ---- Phase 130.4 — non-blocking send/recv split (optional) ----
     pub send_request_raw: Option<
         unsafe extern "C" fn(
             client: *mut NrosRmwServiceClient,
@@ -1703,7 +1703,7 @@ impl Session for CffiSession {
     }
 
     fn supports_wake_callback(&self) -> bool {
-        // Phase 129.4 — the vtable slot's presence is the truthful
+        // Phase 130.4 — the vtable slot's presence is the truthful
         // signal. Poll-only backends (XRCE-DDS-Client, current
         // Cyclone wrapper, current dust-DDS shim) leave the slot
         // NULL; only backends with an async wake source fill it.
@@ -2603,7 +2603,7 @@ impl ServiceClientTrait for CffiServiceClient {
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
-        // Phase 129.4 — prefer the backend's non-blocking
+        // Phase 130.4 — prefer the backend's non-blocking
         // `send_request_raw` vtable slot when available. Falls back
         // to the legacy "store in pending_request, send during
         // try_recv_reply_raw via blocking call_raw" pattern when
@@ -2635,7 +2635,7 @@ impl ServiceClientTrait for CffiServiceClient {
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        // Phase 129.4 — non-blocking path: backend's
+        // Phase 130.4 — non-blocking path: backend's
         // `try_recv_reply_raw` slot polls its own slot. Returning
         // `Ok(None)` keeps `pending_len` set so the executor's
         // next spin tick polls again — a late-arriving reply is

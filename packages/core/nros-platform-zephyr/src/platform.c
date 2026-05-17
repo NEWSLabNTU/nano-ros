@@ -375,7 +375,7 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 #endif
 
 /* ============================================================
- *   Wake primitive (Phase 129)
+ *   Wake primitive (Phase 130)
  *
  *   Binary semaphore backed by `k_sem`. Bypasses libc pthread
  *   so the executor's spin_once wake is not subject to the

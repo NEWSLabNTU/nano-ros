@@ -897,8 +897,8 @@ Subitems:
   and action now pass on qemu_cortex_a9 with rebuilt current fixtures.
 - [x] `127.C.4`: Zephyr XRCE runtime failures closed. Pub/sub
   passes for Rust, C, and C++; Rust XRCE service/action passes;
-  C++ XRCE service + action pass after Phase 129 (see
-  `docs/roadmap/phase-129-platform-wake-primitive.md`). All 13
+  C++ XRCE service + action pass after Phase 130 (see
+  `docs/roadmap/phase-130-platform-wake-primitive.md`). All 13
   Zephyr XRCE E2E tests pass under
   `cargo nextest run -p nros-tests -E 'test(test_zephyr_xrce_)'`.
 - [x] `127.C.5`: Cross-language Zephyr interop failures. C++ Zenoh startup and

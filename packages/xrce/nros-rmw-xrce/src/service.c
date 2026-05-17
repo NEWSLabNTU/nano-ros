@@ -282,7 +282,7 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t *server,
     return NROS_RMW_RET_OK;
 }
 
-/* Phase 129.4 — non-blocking send/recv split (paired vtable
+/* Phase 130.4 — non-blocking send/recv split (paired vtable
  * slots). Avoids the blocking call_raw burst that conflated
  * "send pending request" + "block for reply"; lets the
  * executor's spin loop poll for a late-arriving reply without

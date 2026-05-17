@@ -1,6 +1,6 @@
-//! Phase 129.3 / 129.5 — `NodeWake`: heap-backed wake primitive
+//! Phase 130.3 / 130.5 — `NodeWake`: heap-backed wake primitive
 //! used by `Executor::spin_once` on RTOS std builds where the
-//! `nros_platform_wake_*` ABI is wired (Phase 129.1 + 129.5).
+//! `nros_platform_wake_*` ABI is wired (Phase 130.1 + 130.5).
 //!
 //! Originally added for Zephyr+std because Zephyr's libc
 //! `pthread_cond_timedwait` hangs past its deadline (Phase

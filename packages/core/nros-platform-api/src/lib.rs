@@ -491,7 +491,7 @@ pub trait PlatformThreading {
     /// timeout.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
-    // -- Wake primitive (Phase 129) --
+    // -- Wake primitive (Phase 130) --
     //
     // Binary-semaphore-shaped primitive for the executor's wake_flag
     // / spin_once cv-wait pair. Default bodies return "unsupported"

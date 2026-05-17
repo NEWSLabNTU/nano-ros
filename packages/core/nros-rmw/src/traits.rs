@@ -940,7 +940,7 @@ pub trait Session {
         let _ = (cb, ctx);
     }
 
-    /// Phase 129.4 — does this backend actually honour
+    /// Phase 130.4 — does this backend actually honour
     /// [`set_wake_callback`]?
     ///
     /// `true` means the backend installs the callback and will

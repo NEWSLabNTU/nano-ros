@@ -97,7 +97,7 @@ typedef struct nros_rmw_vtable_t {
         const uint8_t *request, size_t req_len,
         uint8_t *reply_buf, size_t reply_buf_len);
 
-    /** Phase 129.4 — non-blocking send_request_raw.
+    /** Phase 130.4 — non-blocking send_request_raw.
      *
      *  Sends the request to the backend without blocking for a
      *  reply. Returns immediately. NULL = the runtime falls back to
@@ -110,7 +110,7 @@ typedef struct nros_rmw_vtable_t {
     nros_rmw_ret_t (*send_request_raw)(nros_rmw_service_client_t *client,
         const uint8_t *request, size_t req_len);
 
-    /** Phase 129.4 — non-blocking try_recv_reply_raw.
+    /** Phase 130.4 — non-blocking try_recv_reply_raw.
      *
      *  Polls the backend for a reply. `>= 0` = reply bytes copied
      *  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.

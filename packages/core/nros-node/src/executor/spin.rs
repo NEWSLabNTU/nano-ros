@@ -219,7 +219,7 @@ pub(crate) struct WakeCtx {
     pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
     #[allow(dead_code)] // Held by spin_once's wait predicate (124.B.4).
     pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
-    /// Phase 129.3 — Zephyr+std uses the k_sem wake primitive; the
+    /// Phase 130.3 — Zephyr+std uses the k_sem wake primitive; the
     /// runtime cb signals both this and the std cv so a future
     /// migration to a single primitive flips one branch instead
     /// of two.
@@ -273,7 +273,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // waiter cannot miss the signal even though we don't hold mu
     // here. Standard pthread cond-var idiom.
     wake.cv.notify_all();
-    // Phase 129.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
+    // Phase 130.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
     // of the std cv. Signal both so the cb keeps working whichever
     // wait primitive spin_once is using.
     #[cfg(any(
@@ -531,7 +531,7 @@ pub struct Executor {
     #[cfg(feature = "std")]
     #[allow(dead_code)]
     pub(crate) wake_mu: std::sync::Arc<std::sync::Mutex<()>>,
-    /// Phase 129.3 — Zephyr+std uses `nros_platform_wake_*` (k_sem)
+    /// Phase 130.3 — Zephyr+std uses `nros_platform_wake_*` (k_sem)
     /// instead of `std::sync::Condvar` because Zephyr's libc
     /// `pthread_cond_timedwait` hangs past its deadline. `None`
     /// when the platform provider didn't link a wake primitive
@@ -549,7 +549,7 @@ pub struct Executor {
     )
 ))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
-    /// Phase 129.4 — true when at least one session's backend
+    /// Phase 130.4 — true when at least one session's backend
     /// installed the wake callback. Drives whether `spin_once`
     /// uses the wake-primitive wait (`NodeWake` / `Condvar`) or
     /// just `drive_io(timeout_ms)`. Poll-only backends
@@ -3006,7 +3006,7 @@ impl Executor {
         // the predicate. If wake fires between drain and cv.wait
         // entry, the predicate sees flag=true on first eval and
         // exits immediately.
-        // Phase 129.4 — only sleep in the wake-primitive wait when a
+        // Phase 130.4 — only sleep in the wake-primitive wait when a
         // backend actually installed `set_wake_callback`. Poll-only
         // backends (XRCE, current Cyclone / dust-DDS) leave the
         // vtable slot NULL → `has_async_wake == false` → drive_io

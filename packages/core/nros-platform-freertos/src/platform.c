@@ -552,7 +552,7 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 }
 
 /* ============================================================
- *   Wake primitive (Phase 129)
+ *   Wake primitive (Phase 130)
  *
  *   Binary semaphore backed by `xSemaphoreCreateBinary`. ISR
  *   signal uses `xSemaphoreGiveFromISR` (FreeRTOS ISR-safe by

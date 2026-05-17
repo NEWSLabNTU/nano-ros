@@ -36,7 +36,7 @@ extern "C" {
 #define XRCE_MAX_SERVICE_SERVERS   4
 #define XRCE_MAX_SERVICE_CLIENTS   4
 #define XRCE_BUFFER_SIZE           1024
-/* Phase 129.4 — bumped from 4 to 16. Action server callbacks that
+/* Phase 130.4 — bumped from 4 to 16. Action server callbacks that
  * publish feedback + result + status_array + service replies in a
  * single user-handler invocation could exhaust 4 unACK'd slots
  * before the executor gets a chance to drain ACKs, causing
@@ -293,7 +293,7 @@ void           xrce_service_client_destroy(nros_rmw_service_client_t *client);
 int32_t        xrce_service_call_raw(nros_rmw_service_client_t *client,
                                      const uint8_t *request, size_t req_len,
                                      uint8_t *reply_buf, size_t reply_buf_len);
-/* Phase 129.4 — non-blocking split. */
+/* Phase 130.4 — non-blocking split. */
 nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t *client,
                                               const uint8_t *request,
                                               size_t req_len);

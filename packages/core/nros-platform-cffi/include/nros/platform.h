@@ -212,7 +212,7 @@ int8_t nros_platform_condvar_wait(void *cv, void *m);
  *  `clock_ms` units). Returns non-zero on timeout. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
-/* ---- Threading: wake primitive (Phase 129) ----
+/* ---- Threading: wake primitive (Phase 130) ----
  *
  * Binary-semaphore-shaped primitive used by the executor's wake_flag /
  * spin_once cv-wait pair. Separate from `nros_platform_condvar_*` so

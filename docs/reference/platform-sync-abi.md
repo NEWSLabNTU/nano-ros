@@ -8,7 +8,7 @@ Two primitive families are exposed today:
 1. **Condvar + mutex** (`nros_platform_condvar_*`, `nros_platform_mutex_*`) —
    used by `nros-platform-zenoh` and other libraries that mirror
    POSIX `pthread_cond_t` / `pthread_mutex_t`.
-2. **Wake** (`nros_platform_wake_*`, Phase 129) — binary-semaphore-
+2. **Wake** (`nros_platform_wake_*`, Phase 130) — binary-semaphore-
    shaped primitive used by `Executor::spin_once`'s wake_flag /
    cv-wait pair. Added because Zephyr's libc
    `pthread_cond_timedwait` hangs past its deadline (Phase
@@ -122,5 +122,5 @@ the condvar ABI without disturbing existing consumers.
   `Wake<P>` ergonomic wrapper.
 - `packages/core/nros-node/src/executor/node_wake.rs` — executor's
   internal `NodeWake` (heap-backed, uses the FFI directly).
-- `docs/roadmap/phase-129-platform-wake-primitive.md` — phase
+- `docs/roadmap/phase-130-platform-wake-primitive.md` — phase
   plan + acceptance.
