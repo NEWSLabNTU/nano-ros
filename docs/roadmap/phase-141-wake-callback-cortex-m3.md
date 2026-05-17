@@ -71,17 +71,50 @@ Closing 124.B.2 means:
 
 ### 141.A — Wake-callback on embedded zenoh-pico
 
-- [ ] **141.A.1 — Decide RX driver shape.** Two paths:
-  - **141.A.1.a — Dedicated RX FreeRTOS task.** Owns
-    `zp_read` in a tight loop; fires
-    `nros_rmw_runtime_wake_cb` on data arrival. Cleanest on
-    FreeRTOS; matches POSIX worker-thread shape.
-  - **141.A.1.b — smoltcp on-receive callback.** smoltcp's
-    `Interface::poll` returns immediately when packets arrive;
-    wire the wake-fire into the smoltcp poll-callback path
-    already used for `nros_smoltcp::poll_diagnostics`.
-    Lower-overhead; doesn't need a new FreeRTOS task slot. But
-    less portable to non-smoltcp embedded transports.
+- [x] **141.A.1 — Decide RX driver shape.** **Picked option a
+      (dedicated FreeRTOS RX task)** 2026-05-18 for the
+      following reasons:
+  - **Portability.** Option (a) matches the POSIX worker-thread
+    shape (`shim/session.rs` already drives `zp_read` from the
+    runtime); the same `nros_rmw_runtime_wake_cb` plumbing
+    extends to FreeRTOS by swapping the storage primitive
+    (`Wake<P>` instead of `std::sync::Condvar`). Works for any
+    embedded transport (smoltcp, raw socket, UART), not just
+    smoltcp.
+  - **No transport carve-out.** Option (b) requires a callback
+    slot inside smoltcp's `Interface::poll` path — couples the
+    wake-fire to one driver. Phase 80 deliberately keeps the
+    transport / driver split orthogonal; (b) would re-couple
+    them.
+  - **Existing infra.** `Wake<P>` from
+    `packages/core/nros-platform-api/src/wake.rs` already
+    provides a no_std-safe wait-signal primitive backed by the
+    platform-cffi `nros_platform_wake_*` C ABI. FreeRTOS's impl
+    in `packages/core/nros-platform-freertos/src/platform.c`
+    routes through `xSemaphoreCreateBinary` /
+    `xSemaphoreTake(timeout_ms)` / `xSemaphoreGive` /
+    `xSemaphoreGiveFromISR` — exactly the contract 141.A needs.
+  - **Bare-metal carve-out.** Pure bare-metal Cortex-M3 (no
+    RTOS — `platform-bare-metal`) has NO wake primitive: single
+    thread, no scheduler to wake. The spin-loop falls back to
+    `cortex_m::asm::wfi()` / busy-spin. Phase 141 acceptance is
+    explicitly scoped to **FreeRTOS on Cortex-M3** (the
+    `freertos_armcm3` platform value, MPS2-AN385 board), NOT
+    `platform-bare-metal`. Updated wording elsewhere in this
+    phase doc reflects that scoping.
+
+      **Files (forthcoming under 141.A.2 / .A.3).**
+      - `packages/core/nros-node/src/executor/spin.rs` — extend
+        `WakeCtx` + `nros_rmw_runtime_wake_cb` cfg from
+        `feature = "std"` to `feature = "alloc"` + present-wake-
+        primitive; replace `std::sync::Condvar`/`Mutex` with
+        `Wake<P>` on no-std branch. Existing std path stays for
+        POSIX.
+      - `packages/zpico/nros-rmw-zenoh/src/shim/session.rs` —
+        spawn a dedicated `zenoh-rx` task on FreeRTOS that owns
+        the inner `zp_read` loop and fires `wake_cb` on
+        data-arrival (mirrors the POSIX worker pattern at
+        `shim/session.rs:449`).
 - [x] **141.A.2 — `set_wake_callback` impl in
       `nros-rmw-zenoh` on `platform-bare-metal` /
       `platform-freertos`.** *(landed — verified 2026-05-18:
