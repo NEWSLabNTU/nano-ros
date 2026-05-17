@@ -358,7 +358,7 @@ fn main() {
     // single manifest-driven path.
     let zenoh_pico_src = manifest_dir.join("zenoh-pico").join("src");
     if zenoh_pico_src.exists() {
-        for (name, _) in &platform_manifest.platform {
+        for name in platform_manifest.platform.keys() {
             let resolved = platform_manifest.for_platform(name).unwrap();
             for include in &resolved.include {
                 let dir = zenoh_pico_src.join(include);

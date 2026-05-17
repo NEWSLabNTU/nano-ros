@@ -143,13 +143,13 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     };
 
     let mut defines = parent.defines;
-    defines.extend(child.defines.drain(..));
+    defines.append(&mut child.defines);
     let mut include = parent.include;
-    include.extend(child.include.drain(..));
+    include.append(&mut child.include);
     let mut exclude = parent.exclude;
-    exclude.extend(child.exclude.drain(..));
+    exclude.append(&mut child.exclude);
     let mut system_libs = parent.system_libs;
-    system_libs.extend(child.system_libs.drain(..));
+    system_libs.append(&mut child.system_libs);
     let mbedtls = child.mbedtls.or(parent.mbedtls);
     let mut link = parent.link;
     link.extend(std::mem::take(&mut child.link));
