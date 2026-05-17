@@ -213,30 +213,47 @@ the manifest to stay in sync with upstream.
       `packages/zpico/zpico-sys/build/manifest.rs`,
       `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] **136.3 — Replace `build_zenoh_pico_native`.**
-      Delete the CMake path entirely. POSIX builds run through the
-      unified cc-rs path with `[platform.posix]`. Drop `cmake =
-      "0.1"` from `Cargo.toml`.
-      **Files.** `packages/zpico/zpico-sys/build.rs`,
-      `packages/zpico/zpico-sys/Cargo.toml`.
+- [x] **136.3 — Replace `build_zenoh_pico_native`.** (2026-05-18)
+      CMake invocation deleted. POSIX zenoh-pico builds via cc-rs:
+      `add_zenoh_pico_core_sources` + `system/unix/tls.c` +
+      `ZENOH_GENERIC` / `ZENOH_LINUX` / `ZENOH_DEBUG=0` / buffer
+      sizes. Version header writes to `OUT_DIR/zenoh-pico-version/`
+      via the shared `generate_embedded_version_header`. cc-rs reads
+      `zenoh-pico/src/` in-place; `copy_source_tree` deleted.
+      `cmake = "0.1"` dropped from `Cargo.toml`. Manifest's
+      `[platform.posix]` block has `mbedtls = "pkg-config"` set —
+      it's not yet consumed by 136.3 (still passes the literal
+      flag), but the data lives in one place for the next collapse.
+      Verified by 8/11 nano2nano + 3/3 actions + 7/7 custom_msg
+      pass (the 3 nano2nano fails are pre-existing missing rtic
+      fixtures).
 
-- [~] **136.4 — Collapse the per-RTOS cc-rs paths.** (2026-05-18 — pre-collapse partial)
-      Five per-RTOS `cc-rs` functions (`build_zenoh_pico_{embedded,
-      orin_spe, freertos, nuttx, threadx}`) each inlined the same
-      13-line core source loop; factored into
-      `add_zenoh_pico_core_sources()`. Pure code motion; full
-      collapse into one `build_zenoh_pico(platform: &ResolvedPlatform)`
-      waits on 136.3 (delete cmake POSIX path) so we don't ship a
-      half-collapsed state. Helper is the seam the eventual
-      manifest-driven function will share with whatever cmake-path
-      replacement 136.3 lands.
+- [~] **136.4 — Collapse the per-RTOS cc-rs paths.** (2026-05-18 — partial)
+      Pre-collapse helper landed in `54dd4596`
+      (`add_zenoh_pico_core_sources`); 136.3 landed POSIX cc-rs in
+      `cb21912f`. Full collapse into one
+      `build_zenoh_pico(platform: &ResolvedPlatform)` function
+      **deferred** because the manifest schema today only carries
+      `defines`/`include`/`exclude`/`system_libs`/`mbedtls`/`link.*`
+      — it lacks per-platform SDK env-var encoding
+      (`NV_SPE_FSP_DIR`, `FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`,
+      …) and per-target compiler flag tables (`-mcpu=cortex-m3`,
+      picolibc sysroot include, riscv ABI flags). Those are real
+      schema additions, not just code motion, and need verification
+      on every embedded target (QEMU + native FSP) before they can
+      land safely. Track as a follow-up phase or land alongside the
+      137-140 build refactor since both expand the same per-platform
+      data surface.
 
-- [ ] **136.5 — mbedTLS via pkg-config.**
-      Replace CMake's `pkg_check_modules` with `pkg-config = "0.3"`
-      build-dep. Port the `.pc`-synthesizer fallback from the
-      current CMake path.
-      **Files.** `packages/zpico/zpico-sys/build.rs`,
-      `packages/zpico/zpico-sys/Cargo.toml`.
+- [x] **136.5 — mbedTLS via pkg-config.** (2026-05-18, landed with 136.3)
+      `pkg-config = "0.3"` build-dep added. `build_zenoh_pico_native`
+      calls `pkg_config::Config::probe("mbedtls")` which emits the
+      include paths + `cargo:rustc-link-lib` triples
+      (`mbedtls` / `mbedx509` / `mbedcrypto`) automatically. The
+      `.pc`-synthesizer fallback (`generate_mbedtls_pc_files`) is
+      preserved and prepended to `PKG_CONFIG_PATH` before the
+      probe so Ubuntu's libmbedtls-dev (no `.pc`) resolves.
+      Verified by `test_tls_talker_listener_communication` pass.
 
 - [x] **136.6 — Source-list drift gate.** (2026-05-18 — partial)
       Build-script glob runs immediately after manifest resolution
@@ -254,7 +271,34 @@ the manifest to stay in sync with upstream.
       bumps (renamed `system/<plat>/` dirs).
       **Files.** `packages/zpico/zpico-sys/build.rs`.
 
-- [ ] **136.7 — E2E tests.** See "Acceptance / E2E" below.
+- [~] **136.7 — E2E tests.** (2026-05-18 — most gates already
+      satisfied by the 136.3 / 136.5 + earlier work)
+      - E2E.1 (build parity per platform): **not run** — needs the
+        full embedded matrix that's on hold for the 137-140 refactor.
+      - E2E.2 (Phase 134.5 symbol gate): **pass** —
+        `scripts/check-zenoh-archive-symbols.sh` against the existing
+        `build/install/lib/libnros_rmw_zenoh.a` reports
+        `zenoh archive symbol parity: clean` (tcp/udp_unicast/
+        udp_multicast: 8 wrappers each, all impls defined).
+      - E2E.3 (drift gate fires on regression): **pass** — verified
+        in 136.6 by flipping `system/unix` → `system/nonexistent`
+        and observing the build-script panic name the offending key.
+      - E2E.4 (POSIX native examples link clean): **pass** —
+        `test_talker_listener_communication`,
+        `test_tls_talker_listener_communication`, all 7
+        `custom_msg::*` tests, all 3 `actions::*` tests pass.
+      - E2E.5 (embedded smoke unchanged): **not run** — same hold
+        reason as E2E.1.
+      - E2E.6 (mbedTLS path): **pass** —
+        `test_tls_talker_listener_communication` exercises the
+        synthesized-`.pc` → `pkg_config::probe` →
+        `cargo:rustc-link-lib=mbedtls / mbedx509 / mbedcrypto` chain
+        end-to-end.
+      - E2E.7 (`cmake` dep removed): **pass** —
+        `cargo tree -p zpico-sys | grep cmake` returns no rows.
+      - E2E.8 (build-time delta): **not measured** — informational.
+      Full E2E sign-off needs E2E.1 + E2E.5 once the 137-140 build
+      refactor lands and the embedded matrix run is unblocked.
 
 - [ ] **136.8 — Doc update.**
       `book/src/internals/zpico-build.md` (new page) explains the
