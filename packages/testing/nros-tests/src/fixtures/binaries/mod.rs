@@ -1153,12 +1153,7 @@ pub fn xrce_large_msg_test_binary() -> PathBuf {
 pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/stress-test",
-                "zenoh-stress-test",
-                None,
-                None,
-            )
+            build_test_fixture("nros-bench/stress-zenoh", "zenoh-stress-test", None)
         })
         .map(|p| p.as_path())
 }
@@ -1179,7 +1174,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_LARGE_BUF_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/stress-test");
+            let example_dir = root.join("packages/testing/nros-bench/stress-zenoh");
             let target_dir = example_dir.join("target-large-buf");
             let binary_path = target_dir.join("release/zenoh-stress-test");
             require_prebuilt_binary(&binary_path)

@@ -111,7 +111,7 @@ exclude = [
     "examples/native/rust/zenoh/action-client",
     "examples/native/rust/zenoh/async-action-client",
     "packages/testing/nros-bench/executor-fairness",
-    "examples/native/rust/zenoh/stress-test",
+    "packages/testing/nros-bench/stress-zenoh",
     "examples/native/rust/zenoh/rtic-talker",
     "examples/native/rust/zenoh/rtic-listener",
     "examples/native/rust/zenoh/rtic-service-server",

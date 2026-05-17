@@ -133,8 +133,8 @@ build-fixtures:
     echo "  → native/rust/zenoh/listener (--features unstable-zenoh-api)"
     ( cd examples/native/rust/zenoh/listener && \
       cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
-    echo "  → native/rust/zenoh/stress-test (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
-    ( cd examples/native/rust/zenoh/stress-test && \
+    echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
+    ( cd packages/testing/nros-bench/stress-zenoh && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
