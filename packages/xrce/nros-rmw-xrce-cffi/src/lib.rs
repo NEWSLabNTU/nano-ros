@@ -18,7 +18,7 @@
 //! `register()` is idempotent — calling it twice re-registers the
 //! same vtable, which the runtime treats as a no-op.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use core::ffi::c_int;
 

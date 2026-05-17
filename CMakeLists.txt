@@ -194,18 +194,41 @@ elseif(NANO_ROS_RMW STREQUAL "dds")
         target_link_libraries(NanoRos INTERFACE nros_rmw_dds_staticlib-static)
     endif()
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 137 gap — the XRCE backend has no add_subdirectory-friendly
-    # CMake entry point. `packages/xrce/nros-rmw-xrce/` is a standalone
-    # cmake project that expects `find_package(NrosRmwXrce)` against an
-    # installed prefix (driven by `just xrce build-rmw`). Phase 138 / 139
-    # will rip it into a wrapper module. For now, users selecting the
-    # XRCE backend should keep using the legacy install-local + find_package
-    # path. We surface a fatal error so misconfiguration is loud rather
-    # than producing a half-linked binary.
-    message(FATAL_ERROR
-        "NANO_ROS_RMW=xrce is not yet supported via add_subdirectory(). "
-        "Use the legacy install-local path: `just install-local` + "
-        "`find_package(NanoRos CONFIG)`. Phase 138/139 will close this gap.")
+    # Phase 144.3 — XRCE via `nros-rmw-xrce-cffi` (the Rust C-FFI shim
+    # that wraps the header-only Micro XRCE-DDS client + auto-registers
+    # the RMW vtable via `linkme`). The cffi crate has no
+    # `platform-*` / `ros-*` features (Phase 129.C.1 deleted them in
+    # favour of `target_os`-driven selection); we pass `linkme-register`
+    # (default) and `std` on hosted targets so Cargo can resolve the
+    # panic handler when emitting the staticlib top-level. RTOS
+    # consumers keep the default `no_std` build and supply their own
+    # panic handler at the top-level link.
+    set(_xrce_features linkme-register)
+    if(NANO_ROS_PLATFORM STREQUAL "posix")
+        list(APPEND _xrce_features std)
+    endif()
+    corrosion_import_crate(
+        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
+        CRATES        nros-rmw-xrce-cffi
+        CRATE_TYPES   staticlib
+        NO_DEFAULT_FEATURES
+        FEATURES      ${_xrce_features}
+        LOCKED
+    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
+       OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+        target_link_libraries(NanoRos INTERFACE
+            "-Wl,--whole-archive"
+            nros_rmw_xrce_cffi-static
+            "-Wl,--no-whole-archive"
+            "-Wl,--allow-multiple-definition")
+    elseif(APPLE)
+        target_link_libraries(NanoRos INTERFACE
+            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_xrce_cffi-static>"
+            "-Wl,--allow-multiple-definition")
+    else()
+        target_link_libraries(NanoRos INTERFACE nros_rmw_xrce_cffi-static)
+    endif()
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     message(FATAL_ERROR
         "NANO_ROS_RMW=cyclonedds is not yet supported via add_subdirectory(). "

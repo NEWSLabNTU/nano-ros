@@ -113,13 +113,16 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds")
         NrosRmwCyclonedds::NrosRmwCyclonedds)
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 115.K.2.5.2: micro-XRCE-DDS-Client C backend (the
-    # canonical XRCE path after the K.2.5 close-out — flipped from
-    # the previous `xrce-c` selector).
-    find_package(NrosRmwXrce CONFIG REQUIRED)
-    target_link_libraries(nros-cpp-headers INTERFACE
-        NrosRmwXrce::NrosRmwXrce)
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE=1)
+    # Phase 144.3 — XRCE via the `nros-rmw-xrce-cffi` Rust shim, which
+    # is built+linked by the root `CMakeLists.txt` xrce branch (see
+    # add_subdirectory path). Mirrors the dds/zenoh shape above: no
+    # find_package required — the `nros_rmw_xrce_register()` symbol
+    # lives in the staticlib and auto-registers via the `linkme`
+    # distributed-slice (Phase 128.B.3). The compile define is kept
+    # under the `_CFFI` suffix to distinguish from the legacy
+    # `NROS_RMW_XRCE` define still emitted by `NanoRosCppTargets.cmake`
+    # for installed find_package consumers.
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_CFFI=1)
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 115.L.1: dust-DDS via the C vtable. The register
     # entry point `nros_rmw_dds_register()` ships from the

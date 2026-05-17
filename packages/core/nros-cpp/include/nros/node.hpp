@@ -40,7 +40,7 @@
 #ifdef NROS_RMW_CYCLONEDDS
 extern "C" int32_t nros_rmw_cyclonedds_register(void);
 #endif
-#ifdef NROS_RMW_XRCE
+#if defined(NROS_RMW_XRCE) || defined(NROS_RMW_XRCE_CFFI)
 extern "C" int32_t nros_rmw_xrce_register(void);
 #endif
 #ifdef NROS_RMW_DDS_CFFI
